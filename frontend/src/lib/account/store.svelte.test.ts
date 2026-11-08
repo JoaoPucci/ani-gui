@@ -15,6 +15,7 @@ import { refreshAccount } from './refresh-flow';
 import { freshBearerFor, __resetInFlightRefreshes } from './fresh-bearer';
 import { persistAccount, refreshTokens } from './api';
 import type { PersistedAccount } from './types';
+import { KEYRING_WAIT_MS } from './keyring-wait';
 
 function payload(overrides: Partial<PersistedAccount> = {}): PersistedAccount {
 	return {
@@ -147,7 +148,7 @@ describe('accountStore.hydrate', () => {
 		(globalThis as { window?: { aniGui?: unknown } }).window = {
 			aniGui: {
 				account: {
-					getToken(provider: string) {
+					async getToken(provider: string) {
 						const acc = byProvider[provider];
 						return acc ? { ok: true, payload: acc } : { ok: false, kind: 'not_found' };
 					}
@@ -160,7 +161,7 @@ describe('accountStore.hydrate', () => {
 		(globalThis as { window?: { aniGui?: unknown } }).window = {
 			aniGui: {
 				account: {
-					getToken(p: string) {
+					async getToken(p: string) {
 						return p === provider ? { ok: false, kind, message } : { ok: false, kind: 'not_found' };
 					}
 				}
@@ -168,40 +169,40 @@ describe('accountStore.hydrate', () => {
 		};
 	}
 
-	it('seeds disconnected when no payload exists', () => {
+	it('seeds disconnected when no payload exists', async () => {
 		stubBridge({});
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
 	});
 
-	it('seeds connected when a valid payload exists', () => {
+	it('seeds connected when a valid payload exists', async () => {
 		const p = payload();
 		stubBridge({ anilist: p });
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		expect(accountStore.byProvider.anilist.kind).toBe('connected');
 	});
 
-	it('seeds expired when expiry is in the past', () => {
+	it('seeds expired when expiry is in the past', async () => {
 		const p = payload({ expires_at_epoch_s: 1 });
 		stubBridge({ anilist: p });
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		expect(accountStore.byProvider.anilist.kind).toBe('expired');
 	});
 
-	it('seeds connected when expires_at is zero (unknown)', () => {
+	it('seeds connected when expires_at is zero (unknown)', async () => {
 		// expires_at_epoch_s === 0 means "we don't know"; treat as
 		// valid so a missing-expiry round-trip doesn't accidentally
 		// trip the expired branch.
 		const p = payload({ expires_at_epoch_s: 0 });
 		stubBridge({ anilist: p });
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		expect(accountStore.byProvider.anilist.kind).toBe('connected');
 	});
 
-	it('is a no-op when the preload bridge is absent', () => {
+	it('is a no-op when the preload bridge is absent', async () => {
 		(globalThis as { window?: unknown }).window = undefined;
 		accountStore.setConnected('anilist', payload());
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		// hydrate without a bridge resets to disconnected
 		expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
 	});
@@ -215,9 +216,9 @@ describe('accountStore.hydrate', () => {
 	// action that calls clearToken, and the orphaned file would have
 	// no in-app cleanup path. Surface the read failure as an `error`
 	// state so the page can render a cleanup affordance.
-	it('seeds error state when keychain read fails with encryption_unavailable', () => {
+	it('seeds error state when keychain read fails with encryption_unavailable', async () => {
 		stubBridgeWithReadError('anilist', 'encryption_unavailable');
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		const s = accountStore.byProvider.anilist;
 		expect(s.kind).toBe('error');
 		if (s.kind === 'error') {
@@ -229,12 +230,266 @@ describe('accountStore.hydrate', () => {
 		}
 	});
 
-	it('seeds error state when keychain read fails with decrypt_error', () => {
+	it('seeds error state when keychain read fails with decrypt_error', async () => {
 		// Corrupted token file (e.g., a partial write) — same orphan-cleanup
 		// path as encryption_unavailable.
 		stubBridgeWithReadError('anilist', 'decrypt_error');
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		expect(accountStore.byProvider.anilist.kind).toBe('error');
+	});
+
+	// The keyring can take its time: a locked one waits on its unlock
+	// prompt, an unresponsive secret service until the bus gives up.
+	// The reads are asynchronous, the app renders signed out meanwhile,
+	// and each provider takes its account when its read answers.
+	describe('a keyring that has not answered yet', () => {
+		type Answer = (r: unknown) => void;
+		function stubSlowBridge() {
+			const answers: Partial<Record<string, Answer>> = {};
+			(globalThis as { window?: { aniGui?: unknown } }).window = {
+				aniGui: {
+					account: {
+						getToken: (p: string) => new Promise((resolve) => (answers[p] = resolve))
+					}
+				}
+			};
+			return (p: string, r: unknown) => answers[p]?.(r);
+		}
+		function countingSlowBridge() {
+			const answers: Partial<Record<string, Answer>> = {};
+			const counts: Record<string, number> = {};
+			(globalThis as { window?: { aniGui?: unknown } }).window = {
+				aniGui: {
+					account: {
+						getToken: (p: string) => {
+							counts[p] = (counts[p] ?? 0) + 1;
+							return new Promise((resolve) => (answers[p] = resolve));
+						}
+					}
+				}
+			};
+			return {
+				answer: (p: string, r: unknown) => answers[p]?.(r),
+				count: (p: string) => counts[p] ?? 0
+			};
+		}
+		const flush = async () => {
+			for (let i = 0; i < 5; i++) await Promise.resolve();
+		};
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it('leaves every provider signed out until its read answers', async () => {
+			const answer = stubSlowBridge();
+			const done = accountStore.hydrate();
+			await flush();
+			expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+			answer('anilist', { ok: true, payload: payload() });
+			await flush();
+			expect(accountStore.byProvider.anilist.kind).toBe('connected');
+			answer('mal', { ok: false, kind: 'not_found' });
+			answer('inhouse', { ok: false, kind: 'not_found' });
+			await done;
+		});
+
+		it('takes one provider without waiting on another still out', async () => {
+			const answer = stubSlowBridge();
+			void accountStore.hydrate();
+			answer('mal', { ok: true, payload: payload({ username: 'm' }) });
+			await flush();
+			expect(accountStore.byProvider.mal.kind).toBe('connected');
+			expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+		});
+
+		it('drops a read the user overtook while it waited', async () => {
+			// A sign-in made while the keyring was still answering is newer
+			// than what the read finds on disk.
+			const answer = stubSlowBridge();
+			void accountStore.hydrate();
+			const fresh = payload({ access_token: 'fresh', username: 'new' });
+			accountStore.setConnected('anilist', fresh);
+			answer('anilist', { ok: true, payload: payload({ access_token: 'stale' }) });
+			await flush();
+			const s = accountStore.byProvider.anilist;
+			expect(s.kind).toBe('connected');
+			if (s.kind === 'connected') expect(s.account.access_token).toBe('fresh');
+		});
+
+		it('reads a provider again when what overtook its read was undone', async () => {
+			// A connect started and cancelled while the keyring was still
+			// answering leaves the provider signed out; the sign-in saved on
+			// disk is still there and must not stay hidden until relaunch.
+			const answer = stubSlowBridge();
+			void accountStore.hydrate();
+			accountStore.setConnecting('anilist');
+			accountStore.setDisconnected('anilist');
+			answer('anilist', { ok: true, payload: payload() });
+			await flush();
+			// The answer was overtaken; the provider is read again.
+			expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+			answer('anilist', { ok: true, payload: payload() });
+			await flush();
+			expect(accountStore.byProvider.anilist.kind).toBe('connected');
+		});
+
+		it('leaves a connect under way alone, and reads again once it is cancelled', async () => {
+			// The keyring answers while the user is still in the browser's
+			// sign-in: the provider stays connecting (its Cancel button with
+			// it) until the connect settles one way or the other.
+			const calls = countingSlowBridge();
+			void accountStore.hydrate();
+			accountStore.setConnecting('anilist');
+			calls.answer('anilist', { ok: true, payload: payload() });
+			await flush();
+			expect(accountStore.byProvider.anilist.kind).toBe('connecting');
+			expect(calls.count('anilist')).toBe(1);
+			accountStore.setDisconnected('anilist'); // the connect was cancelled
+			await flush();
+			expect(calls.count('anilist')).toBe(2);
+			calls.answer('anilist', { ok: true, payload: payload() });
+			await flush();
+			expect(accountStore.byProvider.anilist.kind).toBe('connected');
+		});
+
+		it('does not read a provider whose connect is under way when the hydrate starts', async () => {
+			// The account page remounted mid-connect: its hydrate waits, and
+			// the sign-in the connect lands is the provider's state.
+			const calls = countingSlowBridge();
+			accountStore.setConnecting('anilist');
+			void accountStore.hydrate();
+			await flush();
+			expect(calls.count('anilist')).toBe(0);
+			expect(accountStore.byProvider.anilist.kind).toBe('connecting');
+			accountStore.setConnected('anilist', payload({ access_token: 'new' }));
+			await flush();
+			expect(calls.count('anilist')).toBe(0);
+			const s = accountStore.byProvider.anilist;
+			expect(s.kind === 'connected' && s.account.access_token).toBe('new');
+		});
+
+		it('leaves a disconnect under way alone until it lands', async () => {
+			const calls = countingSlowBridge();
+			accountStore.setConnected('anilist', payload());
+			void accountStore.hydrate();
+			accountStore.beginAccountChange('anilist');
+			calls.answer('anilist', { ok: true, payload: payload() });
+			await flush();
+			// Not read again while the disconnect clears the saved sign-in.
+			expect(calls.count('anilist')).toBe(1);
+			accountStore.setDisconnected('anilist');
+			await flush();
+			expect(calls.count('anilist')).toBe(2);
+			calls.answer('anilist', { ok: false, kind: 'not_found' });
+			await flush();
+			expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+		});
+
+		it('does not say it is waiting on the keyring while a read waits for a connect', async () => {
+			// The wait is the user's sign-in in the browser, not the keyring.
+			vi.useFakeTimers();
+			const calls = countingSlowBridge();
+			accountStore.setConnecting('anilist');
+			void accountStore.hydrate();
+			calls.answer('mal', { ok: false, kind: 'not_found' });
+			calls.answer('inhouse', { ok: false, kind: 'not_found' });
+			await vi.advanceTimersByTimeAsync(KEYRING_WAIT_MS * 2);
+			expect(accountStore.keyringWaiting).toBe(false);
+		});
+
+		it('leaves the outcome a change reported, short of signed out, as it is', async () => {
+			// A connect whose save failed reports an error; reading the disk
+			// afterwards must not paper over it with "signed out".
+			const calls = countingSlowBridge();
+			void accountStore.hydrate();
+			accountStore.setConnecting('anilist');
+			calls.answer('anilist', { ok: false, kind: 'not_found' });
+			await flush();
+			accountStore.setError('anilist', 'persist failed');
+			await flush();
+			expect(calls.count('anilist')).toBe(1);
+			expect(accountStore.byProvider.anilist.kind).toBe('error');
+		});
+
+		it('settles while one provider waits for a connect, so the others get their refresh', async () => {
+			// An abandoned browser sign-in holds its provider's read for up to
+			// the OAuth timeout; the rest of the hydrate, and the refresh of an
+			// expired sign-in elsewhere that follows it, do not wait for it.
+			const calls = countingSlowBridge();
+			accountStore.setConnecting('anilist');
+			let state = 'held';
+			void accountStore.hydrate().then(() => (state = 'settled'));
+			calls.answer('mal', { ok: false, kind: 'not_found' });
+			calls.answer('inhouse', { ok: false, kind: 'not_found' });
+			await flush();
+			await new Promise((r) => setTimeout(r, 0));
+			expect(state).toBe('settled');
+			expect(accountStore.byProvider.anilist.kind).toBe('connecting');
+			expect(calls.count('anilist')).toBe(0);
+		});
+
+		it('asks once to refresh a sign-in read again while the hydrate is still out', async () => {
+			// MAL's read is overtaken by a connect the user cancels; its read
+			// again finds an expired sign-in while AniList's keyring read is
+			// still out. The hydrate's own refresh, when AniList answers,
+			// covers it: two exchanges of one refresh token can revoke it.
+			const calls = countingSlowBridge();
+			const asked: string[][] = [];
+			const spy = vi.spyOn(accountStore, 'refreshExpired').mockImplementation(async () => {
+				asked.push(
+					Object.entries(accountStore.byProvider)
+						.filter(([, st]) => st.kind === 'expired')
+						.map(([p]) => p)
+				);
+			});
+			try {
+				void accountStore.hydrate();
+				accountStore.setConnecting('mal');
+				calls.answer('mal', { ok: false, kind: 'not_found' });
+				calls.answer('inhouse', { ok: false, kind: 'not_found' });
+				await flush();
+				accountStore.setDisconnected('mal'); // the connect was cancelled
+				await flush();
+				calls.answer('mal', {
+					ok: true,
+					payload: payload({ expires_at_epoch_s: 1, refresh_token: 'rt' })
+				});
+				await flush();
+				calls.answer('anilist', { ok: false, kind: 'not_found' });
+				await flush();
+				expect(accountStore.byProvider.mal.kind).toBe('expired');
+				expect(asked.filter((ps) => ps.includes('mal'))).toHaveLength(1);
+			} finally {
+				spy.mockRestore();
+			}
+		});
+
+		it('says it is waiting on the keyring once a read runs past the wait, and stops when it answers', async () => {
+			vi.useFakeTimers();
+			const answer = stubSlowBridge();
+			const done = accountStore.hydrate();
+			answer('mal', { ok: false, kind: 'not_found' });
+			answer('inhouse', { ok: false, kind: 'not_found' });
+			await vi.advanceTimersByTimeAsync(KEYRING_WAIT_MS - 1);
+			expect(accountStore.keyringWaiting).toBe(false);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(accountStore.keyringWaiting).toBe(true);
+			answer('anilist', { ok: true, payload: payload() });
+			await done;
+			expect(accountStore.keyringWaiting).toBe(false);
+			expect(accountStore.byProvider.anilist.kind).toBe('connected');
+		});
+
+		it('never says it is waiting when the keyring answers in time', async () => {
+			vi.useFakeTimers();
+			const answer = stubSlowBridge();
+			const done = accountStore.hydrate();
+			for (const p of ['anilist', 'mal', 'inhouse']) answer(p, { ok: false, kind: 'not_found' });
+			await done;
+			await vi.advanceTimersByTimeAsync(KEYRING_WAIT_MS * 2);
+			expect(accountStore.keyringWaiting).toBe(false);
+		});
 	});
 });
 
@@ -320,18 +575,18 @@ describe('accountStore.hydrate triggers refresh', () => {
 		vi.restoreAllMocks();
 	});
 
-	it('kicks off refreshExpired after seeding state', () => {
+	it('kicks off refreshExpired after seeding state', async () => {
 		// Every hydrate path (cold launch AND the
 		// account page) must follow up with a refresh, so hydrate() owns it.
 		(globalThis as { window?: { aniGui?: unknown } }).window = {
 			aniGui: {
 				account: {
-					getToken: () => ({ ok: false, kind: 'not_found' })
+					getToken: async () => ({ ok: false, kind: 'not_found' })
 				}
 			}
 		};
 		const spy = vi.spyOn(accountStore, 'refreshExpired').mockResolvedValue();
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		expect(spy).toHaveBeenCalledTimes(1);
 	});
 });
@@ -397,14 +652,14 @@ describe('accountStore.retryRenewal', () => {
 });
 
 describe('accountStore.hydrate after a refused bearer', () => {
-	it('keeps a sign-in expired when the keychain hands back the bearer the tracker refused', () => {
+	it('keeps a sign-in expired when the keychain hands back the bearer the tracker refused', async () => {
 		// The token's date says valid, but the tracker refused it: reading
 		// it from the keychain again must not make it look healthy.
 		const refused = payload({ refresh_token: 'rt', expires_at_epoch_s: 1_999_999_999 });
 		(globalThis as { window?: { aniGui?: unknown } }).window = {
 			aniGui: {
 				account: {
-					getToken: (p: string) =>
+					getToken: async (p: string) =>
 						p === 'mal' ? { ok: true, payload: refused } : { ok: false, kind: 'not_found' }
 				}
 			}
@@ -412,17 +667,17 @@ describe('accountStore.hydrate after a refused bearer', () => {
 		const refresh = vi.spyOn(accountStore, 'refreshExpired').mockResolvedValue();
 		accountStore.setExpired('mal', refused);
 		accountStore.noteRenewalFailed('mal', 'unreachable');
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		expect(accountStore.byProvider.mal.kind).toBe('expired');
 		expect(accountStore.renewalFailure.mal).toBe('unreachable');
 		refresh.mockRestore();
 	});
 
-	it('takes a different bearer from the keychain as the sign-in it is', () => {
+	it('takes a different bearer from the keychain as the sign-in it is', async () => {
 		(globalThis as { window?: { aniGui?: unknown } }).window = {
 			aniGui: {
 				account: {
-					getToken: (p: string) =>
+					getToken: async (p: string) =>
 						p === 'mal'
 							? { ok: true, payload: payload({ access_token: 'fresh', refresh_token: 'rt' }) }
 							: { ok: false, kind: 'not_found' }
@@ -431,7 +686,7 @@ describe('accountStore.hydrate after a refused bearer', () => {
 		};
 		accountStore.setExpired('mal', payload({ access_token: 'refused', refresh_token: 'rt' }));
 		accountStore.noteRenewalFailed('mal', 'rejected');
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		expect(accountStore.byProvider.mal.kind).toBe('connected');
 		// A different sign-in owes nothing to the old one's failure.
 		expect(accountStore.renewalFailure.mal).toBeNull();
@@ -479,7 +734,7 @@ describe('a renewal that a hydrate overtakes', () => {
 			aniGui: {
 				apiBase: 'http://127.0.0.1:1',
 				account: {
-					getToken: (p: string) =>
+					getToken: async (p: string) =>
 						p === 'mal' ? { ok: true, payload: keychain } : { ok: false, kind: 'not_found' },
 					setToken
 				}
@@ -527,7 +782,7 @@ describe('a renewal that a hydrate overtakes', () => {
 		await Promise.resolve();
 		r.setKeychain(fresh);
 		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		r.release();
 		await renewal;
 		expect(accountStore.byProvider.mal).toMatchObject({
@@ -553,7 +808,7 @@ describe('a renewal that a hydrate overtakes', () => {
 		await Promise.resolve();
 		r.setKeychain(fresh);
 		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		r.release();
 		await renewal;
 		expect(accountStore.byProvider.mal).toMatchObject({
@@ -579,7 +834,7 @@ describe('a renewal that a hydrate overtakes', () => {
 		await Promise.resolve();
 		// The keychain still holds the same sign-in: the re-read changes nothing.
 		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		r.release();
 		await renewal;
 		expect(accountStore.byProvider.mal).toMatchObject({
@@ -614,7 +869,7 @@ describe('a renewal that a hydrate overtakes', () => {
 		await Promise.resolve();
 		r.setKeychain({ ...soon, expires_at_epoch_s: 1 });
 		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		expect(accountStore.byProvider.mal.kind).toBe('expired');
 		r.release();
 		expect((await renewal).kind).toBe('refreshed');
@@ -653,7 +908,7 @@ describe('a renewal that a hydrate overtakes', () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		r.setKeychain(fresh);
 		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		// Still waiting means its save is in the queue behind the earlier
 		// write: the re-read landed where this case says, not before the
@@ -701,7 +956,7 @@ describe('a renewal that a hydrate overtakes', () => {
 		r.release();
 		await vi.waitFor(() => expect(r.setToken).toHaveBeenCalled());
 		vi.spyOn(accountStore, 'refreshExpired').mockResolvedValueOnce();
-		accountStore.hydrate();
+		await accountStore.hydrate();
 		releaseWrite();
 		expect(await bearer).toBe('renewed');
 		expect(accountStore.byProvider.mal).toMatchObject({

@@ -20,7 +20,7 @@ import type { QualityView } from './quality-menu';
 import { qualityPin, rememberPick } from './quality-pin';
 import { consoleQualityLog, healthyMove, pageNow, reactTo, readError } from './quality-report';
 import { choosable, pickMove } from './quality-choice';
-import { afterError, engineMover, levelsUpdated, whenSettled } from './quality-sink';
+import { afterError, engineMover, levelsUpdated, startEngine, whenSettled } from './quality-sink';
 import { RemapWindow } from './quality-remap';
 import { learnEncoded, learnPicture } from './quality-learn';
 import { QualityTrack } from './quality-track';
@@ -68,6 +68,10 @@ export function armQuality(input: {
 	 *  chosen the start level; the page then makes the engine with
 	 *  `autoStartLoad: false`. */
 	holdsStart?: boolean;
+	/** Where the started engine begins loading, with `holdsStart`: a
+	 *  resume point, so that no fragment before the point's is loaded.
+	 *  The engine's own start, the first fragment, when omitted. */
+	startAt?: number | null;
 	/** Told what the menu shows whenever it changes; null once the
 	 *  stream retires. */
 	onView: (view: QualityView | null) => void;
@@ -106,7 +110,7 @@ export function armQuality(input: {
 			log(`one level, ${track.describe(0)}: nothing to choose`);
 		}
 		publish(g);
-		if (input.holdsStart) engine.startLoad();
+		if (input.holdsStart) startEngine(engine, input.startAt);
 	};
 
 	engine.on(events.MANIFEST_PARSED, (_event, data) => {

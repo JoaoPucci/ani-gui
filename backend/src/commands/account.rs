@@ -495,7 +495,7 @@ const MAL_MAP_MISS_TTL_SECS: u64 = 24 * 60 * 60; // 1d
 /// input rather than on the individual Kitsu lookups inside it, so a
 /// hit skips the AniList fallback hop as well as the Kitsu one.
 fn mal_map_key(mal_id: u32) -> String {
-    format!("kitsu:mal-map:v1:{mal_id}")
+    format!("{}{mal_id}", crate::cache::families::KITSU_MAL_MAP)
 }
 
 /// The cached answer for one id: `Some(kitsu_id)` resolved,

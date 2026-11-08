@@ -109,30 +109,34 @@ pub(crate) async fn row_before_check(
 /// a few seconds; a shortcut that takes longer than that is no
 /// shortcut, and the proxy's client would otherwise let each URL
 /// stall for its own two minutes. The URLs are asked together,
-/// so this bounds the whole check, however many tracks the row
-/// lists.
+/// so this bounds the whole check.
 pub(crate) const CACHED_ROW_CHECK_DEADLINE: std::time::Duration =
     std::time::Duration::from_secs(10);
 
 /// Whether a cached row can still be served: its stream answers the
-/// HEAD check, and every sidecar track it lists reads as a track
-/// ([`cached_track_ok`]) — each with the row's referer, which is
-/// what the relay sends when it fetches a track. A track is signed
-/// like the stream and expires on its own, and a track that fails
-/// to load never reaches the player's recovery path, so a row is
-/// live only when everything it names is. The URLs are asked
-/// together under [`CACHED_ROW_CHECK_DEADLINE`]; the first dead URL
-/// ends the check, a URL that does not parse is dead, and a deadline
-/// that elapses is a row that is not live.
+/// HEAD check, and the user's [`CACHED_ROW_CHECK_TRACKS`] most wanted
+/// sidecar tracks read as tracks ([`cached_track_ok`]) — each with the
+/// row's referer, which is what the relay sends when it fetches a
+/// track. A track is signed like the stream and expires on its own,
+/// and a track that fails to load never reaches the player's recovery
+/// path, so a row is live only when the tracks it is likely to play
+/// are. The URLs are asked together under
+/// [`CACHED_ROW_CHECK_DEADLINE`]; the first dead URL ends the check,
+/// a track URL that does not parse is dead whether read or not, and a
+/// deadline that elapses is a row that is not live.
 ///
 /// Before any of that, the row has to come from a provider the state
 /// walks ([`cached_row_is_walked`]). The checks ask whether URLs
 /// answer, and an answer is not the stream: a redirect counts as live,
 /// and a provider that has left can redirect every URL it ever served
 /// to another site, whose page the player would then be handed.
-pub(crate) async fn cached_row_is_live(state: &AppState, cached: &CachedResolution) -> bool {
+pub(crate) async fn cached_row_is_live(
+    state: &AppState,
+    cached: &CachedResolution,
+    remembered: Option<&str>,
+) -> bool {
     cached_row_is_walked(state, cached)
-        && cached_row_is_live_within(state, cached, CACHED_ROW_CHECK_DEADLINE).await
+        && cached_row_is_live_within(state, cached, CACHED_ROW_CHECK_DEADLINE, remembered).await
 }
 
 /// Whether a cached row was resolved through a provider the state
@@ -143,22 +147,48 @@ pub(crate) fn cached_row_is_walked(state: &AppState, cached: &CachedResolution) 
     cached_row_provider(cached).is_some_and(|p| state.providers.order().contains(&p))
 }
 
+/// How many of a cached row's tracks its check reads: the one the
+/// built-in player starts on and the next most wanted
+/// ([`crate::scraper::track_preference::preference_order`]).
+pub(crate) const CACHED_ROW_CHECK_TRACKS: usize = 4;
+
 /// [`cached_row_is_live`] under a caller's deadline.
 pub(crate) async fn cached_row_is_live_within(
     state: &AppState,
     cached: &CachedResolution,
     deadline: std::time::Duration,
+    remembered: Option<&str>,
 ) -> bool {
     let Ok(stream_url) = url::Url::parse(&cached.upstream_url) else {
         return false;
     };
-    let mut track_urls = Vec::with_capacity(cached.subtitles.len());
-    for track in &cached.subtitles {
-        let Ok(url) = url::Url::parse(&track.url) else {
-            return false;
-        };
-        track_urls.push(url);
+    if cached
+        .subtitles
+        .iter()
+        .any(|t| url::Url::parse(&t.url).is_err())
+    {
+        return false;
     }
+    // The tracks the user most likely turns on, not every one the row
+    // lists: a row carries up to the accept cap, every read waits for a
+    // token at the host, and one of dozens failing would evict a row
+    // whose stream and wanted tracks are fine. A listing's tracks sit
+    // together on one host and expire with it, so the ones read stand
+    // for the rest.
+    let locale = crate::config::read_config(&state.config_path)
+        .unwrap_or_default()
+        .locale;
+    let track_urls: Vec<url::Url> = crate::scraper::track_preference::preferred_first(
+        &cached.subtitles,
+        crate::scraper::track_preference::Wanted {
+            remembered: remembered.filter(|c| *c != "off"),
+            locale: &locale,
+        },
+    )
+    .into_iter()
+    .take(CACHED_ROW_CHECK_TRACKS)
+    .filter_map(|t| url::Url::parse(&t.url).ok())
+    .collect();
     // The host counts the check's requests, so each hop waits for a
     // token at the host it reaches, as a probe: behind a player playing
     // there, ahead of background traffic. The proxy's client follows no
@@ -190,8 +220,9 @@ pub(crate) async fn cached_row_is_live_within(
 pub(crate) async fn try_serve_cached(
     state: &AppState,
     cached: &CachedResolution,
+    remembered: Option<&str>,
 ) -> Option<CreateSessionResponse> {
-    if !cached_row_is_live(state, cached).await {
+    if !cached_row_is_live(state, cached, remembered).await {
         return None;
     }
     let session_args = CreateSessionArgs {
@@ -241,7 +272,7 @@ pub(crate) async fn try_launch_args_from_cache(
     // Captured before the check goes out, like a fresh resolve's
     // answer: a refresh landing during the check owns the row.
     let at_start = row_before_check(state, args).await;
-    if !cached_row_is_live(state, &cached).await {
+    if !cached_row_is_live(state, &cached, args.caption.as_deref()).await {
         play_resolution_cache::evict(&state.cache_pool, &cache_key);
         tracing::info!(
             title = %args.title,
@@ -280,9 +311,9 @@ pub(crate) fn cached_watch(
 }
 
 /// The launch a cached resolution describes: the row's stream and
-/// referer, its sidecar tracks with the provider's default first —
-/// as the fresh resolve lists them — and the user's player settings.
-/// The title names the episode the watch records ([`cached_watch`]).
+/// referer, its sidecar tracks most wanted first — as a fresh resolve
+/// orders them — and the user's player settings. The title names the
+/// episode the watch records ([`cached_watch`]).
 pub(crate) fn cached_launch_args(
     cached: play_resolution_cache::CachedResolution,
     args: &super::play::PlayArgs,
@@ -300,7 +331,15 @@ pub(crate) fn cached_launch_args(
         player_command: cfg.external_player.clone(),
         player_kind: cfg.external_player_kind,
         custom_args_template: Some(cfg.external_player_custom_args.clone()),
-        subtitle_urls: super::play_handoff::subtitle_urls_default_first(&cached.subtitles),
+        subtitle_urls: super::play_handoff::subtitle_urls_preferred(
+            &cached.subtitles,
+            args.wanted(&cfg.locale),
+        ),
+        subtitles_off: args.captions_off()
+            || !crate::scraper::track_preference::has_start(
+                &cached.subtitles,
+                args.wanted(&cfg.locale),
+            ),
     }
 }
 

@@ -2,7 +2,8 @@
 # Architectural invariant: every e2e launch of Electron goes through
 # the one shared launch helper, electron/e2e/launch.ts.
 #
-# That helper passes `--mute-audio`. A headless test launch still
+# That helper passes `--mute-audio`, and refuses a display someone may
+# be looking at (electron/lib/e2e-display.cjs). A headless test launch still
 # opens the host's audio device, and test runs have played sound on
 # the desktop of whoever was running them. Muting is cheap to forget
 # in a new spec and invisible when forgotten — nothing fails, the
@@ -44,7 +45,7 @@ others=$(grep -rlF \
     '_electron' electron | grep -vxF "$HELPER" || true)
 if [ -n "$others" ]; then
     printf 'arch/e2e_launch FAIL: Playwright'\''s Electron driver is named outside %s;\n' "$HELPER" >&2
-    printf 'launch through the helper, which mutes audio:\n%s\n' "$others" >&2
+    printf 'launch through the helper, which mutes audio and refuses a visible display:\n%s\n' "$others" >&2
     failed=1
 fi
 

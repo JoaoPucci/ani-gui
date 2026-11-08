@@ -16,9 +16,9 @@ use super::*;
 /// captions, or whose file the transport cannot fetch, are left out,
 /// and so are rows the reader cannot read at all
 /// ([`readable_tracks`]) and rows whose file runs longer than any a
-/// CDN signs ([`SUBTITLE_URL_CAP`]): the hand-offs put every track
-/// URL on the player's command line, and one such row would fail
-/// the hand-off for an episode whose stream is fine.
+/// CDN signs ([`SUBTITLE_URL_CAP`]): the hand-offs put track URLs on
+/// the player's command line, and one such row would take the room
+/// of several others there.
 ///
 /// # Errors
 /// [`AniError::ParseFailed`] for a body without a fetchable source.
@@ -61,7 +61,8 @@ pub fn parse_sources(json: &str) -> Result<EmbedPayload> {
             default: t.default,
             url: t.file,
         })
-        .collect();
+        .collect::<Vec<_>>();
+    warn_unread_languages(&subtitles);
     Ok(EmbedPayload { src, subtitles })
 }
 

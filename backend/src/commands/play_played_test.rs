@@ -610,6 +610,7 @@ async fn a_fresh_play_overtaken_by_a_later_watch_leaves_that_watchs_stamp() {
             episode: "0.5",
             mode: "sub",
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: Some(2),
             year: Some(2026),
             subtype: None,
@@ -622,7 +623,13 @@ async fn a_fresh_play_overtaken_by_a_later_watch_leaves_that_watchs_stamp() {
     )
     .await
     .expect("resolves the recap");
-    crate::commands::play_native_record::record_fresh_watch(&state, &recap, "0.5", begun_before);
+    crate::commands::play_native_record::record_fresh_watch(
+        &state,
+        &recap,
+        "0.5",
+        begun_before,
+        None,
+    );
     assert_eq!(cumulative_listed(&state), "1");
 }
 
@@ -798,6 +805,7 @@ async fn a_handoffs_watch_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
             episode: "0.5",
             mode: "sub",
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: Some(2),
             year: Some(2026),
             subtype: None,

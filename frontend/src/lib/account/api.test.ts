@@ -326,37 +326,62 @@ function stubBridge(impl: Record<string, unknown>) {
 }
 
 describe('readPersistedAccount', () => {
-	it('returns ok+account when the bridge has one', () => {
-		stubBridge({ getToken: () => ({ ok: true, payload: payload() }) });
-		const r = readPersistedAccount('anilist');
+	it('returns ok+account when the bridge has one', async () => {
+		stubBridge({ getToken: async () => ({ ok: true, payload: payload() }) });
+		const r = await readPersistedAccount('anilist');
 		expect(r.ok).toBe(true);
 		if (r.ok) expect(r.account.username).toBe('p');
 	});
 
-	it('returns not_found when the bridge says no token on disk', () => {
-		stubBridge({ getToken: () => ({ ok: false, kind: 'not_found' }) });
-		const r = readPersistedAccount('anilist');
+	it('returns not_found when the bridge says no token on disk', async () => {
+		stubBridge({ getToken: async () => ({ ok: false, kind: 'not_found' }) });
+		const r = await readPersistedAccount('anilist');
 		expect(r).toEqual({ ok: false, kind: 'not_found' });
 	});
 
-	it('returns not_found when no bridge is wired (browser-only dev)', () => {
+	it('returns not_found when no bridge is wired (browser-only dev)', async () => {
 		(globalThis as { window?: unknown }).window = undefined;
-		const r = readPersistedAccount('anilist');
+		const r = await readPersistedAccount('anilist');
 		expect(r).toEqual({ ok: false, kind: 'not_found' });
 	});
 
-	it('returns unreadable when the bridge surfaces encryption_unavailable', () => {
+	it('returns unreadable when the bridge surfaces encryption_unavailable', async () => {
 		// Keychain outage → file is on disk but
 		// can't be decrypted. Callers must NOT collapse this to "no
 		// account" — the orphan file needs an in-app cleanup path.
-		stubBridge({ getToken: () => ({ ok: false, kind: 'encryption_unavailable' }) });
-		const r = readPersistedAccount('anilist');
+		stubBridge({ getToken: async () => ({ ok: false, kind: 'encryption_unavailable' }) });
+		const r = await readPersistedAccount('anilist');
 		expect(r).toEqual({ ok: false, kind: 'unreadable', detail: 'encryption_unavailable' });
 	});
 
-	it('returns unreadable when the bridge surfaces decrypt_error', () => {
-		stubBridge({ getToken: () => ({ ok: false, kind: 'decrypt_error' }) });
-		const r = readPersistedAccount('anilist');
+	it('waits for a read the keyring has not answered yet', async () => {
+		// A locked or unresponsive keyring holds the read; the caller
+		// gets a promise, not a blocked thread, and the answer when it
+		// comes.
+		let answer: (r: unknown) => void = () => {};
+		stubBridge({ getToken: () => new Promise((resolve) => (answer = resolve)) });
+		let settled = false;
+		const read = readPersistedAccount('anilist').then((r) => {
+			settled = true;
+			return r;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		answer({ ok: true, payload: payload() });
+		const r = await read;
+		expect(r.ok).toBe(true);
+	});
+
+	it('returns unreadable when the bridge call itself fails', async () => {
+		stubBridge({ getToken: async () => Promise.reject(new Error('ipc gone')) });
+		const r = await readPersistedAccount('anilist');
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.kind).toBe('unreadable');
+	});
+
+	it('returns unreadable when the bridge surfaces decrypt_error', async () => {
+		stubBridge({ getToken: async () => ({ ok: false, kind: 'decrypt_error' }) });
+		const r = await readPersistedAccount('anilist');
 		expect(r).toEqual({ ok: false, kind: 'unreadable', detail: 'decrypt_error' });
 	});
 });

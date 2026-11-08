@@ -187,6 +187,22 @@ describe('makeContinueRowReadyHandler', () => {
 		expect(spy.calls.setEpisode).toEqual([['hist-a', null]]);
 	});
 
+	it('names the episode each answer was fetched for, a found one or none', async () => {
+		const entry = makeEntry('hist-a', '5', 'Show A');
+		const match = makeMatch('k-a', 12);
+		const forEpisode: (number | undefined)[] = [];
+		const found = makeSpy([entry], () => Promise.resolve([makeKitsuEpisode(6)]));
+		found.deps.setEpisode = (_id, _ep, n) => forEpisode.push(n);
+		makeContinueRowReadyHandler(found.deps)('hist-a', match, 12);
+		const failed = makeSpy([entry], () => Promise.reject(new Error('network')));
+		failed.deps.setEpisode = (_id, _ep, n) => forEpisode.push(n);
+		makeContinueRowReadyHandler(failed.deps)('hist-a', match, 12);
+		await vi.waitFor(() => expect(forEpisode).toHaveLength(2));
+		// An answer of "nothing" names its episode too: without it, a
+		// card could not tell a stale "nothing" from its own.
+		expect(forEpisode).toEqual([6, 6]);
+	});
+
 	it('fetch rejection: sets episode null (the row degrades to no thumbnail rather than throwing)', async () => {
 		const entry = makeEntry('hist-a', '5', 'Show A');
 		const match = makeMatch('k-a', 12);

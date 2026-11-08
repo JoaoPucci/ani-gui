@@ -38,6 +38,9 @@ struct RangeStartAttempt<'r> {
     args: &'r DownloadArgs,
     first: u32,
     quality: &'r str,
+    /// The user's locale, which decides the subtitle tracks a listing
+    /// past the cap keeps.
+    locale: &'r str,
     /// The evidence about the entry's last episodes, when the range
     /// knows the entry.
     tail: Option<&'r dyn super::play_native_appended::TailSource>,
@@ -81,6 +84,7 @@ impl Attempt for RangeStartAttempt<'_> {
             None,
             &self.args.mode,
             self.quality,
+            crate::scraper::track_preference::Wanted::locale(self.locale),
         )
         .await;
         Ok((picked, served, first?))
@@ -126,6 +130,9 @@ where
         super::availability::RowAtStart::read(state, args.kitsu_id.as_deref(), &args.mode).await;
     let remembered = at_start.remembered();
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
+    let locale = crate::config::read_config(&state.config_path)
+        .unwrap_or_default()
+        .locale;
     // Every listing the start picks is recorded, whether or not its
     // first episode serves.
     let recorder = crate::commands::listing_tags::Recorder::new(state);
@@ -133,6 +140,7 @@ where
         args,
         first,
         quality,
+        locale: &locale,
         tail: tail
             .as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
@@ -223,6 +231,7 @@ where
                     None,
                     &args.mode,
                     quality,
+                    crate::scraper::track_preference::Wanted::locale(&locale),
                 )
                 .await
             }
