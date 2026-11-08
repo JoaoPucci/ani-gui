@@ -1150,10 +1150,11 @@ them introduces a new widget style.
   - A forked run: the numbered path runs up to the fork, and the ways
     on stand side by side, unnumbered. A fork left with one way (the
     others start at a join or in a loop) is listed as a line.
-  - A title the page cannot number and that does not only lead into
-    another, such as the titles after ways that join back up, sits
-    under "No clear place in the order"; stretches of them that
-    follow each other share one heading.
+  - Titles the page cannot number, such as those after ways that
+    join back up, gather at the end of the main story under "No
+    clear place in the order". A title with no number that only leads
+    into a numbered one stays in place and says what it leads into;
+    one that leads into a title with no clear place joins them.
   - Entries the provider lacks: listed normally.
 
 ### The watch-order setting
@@ -1340,8 +1341,9 @@ The rules below hold on every surface:
   width they need, and the fork and the loop can be laid out as what
   they are.
 - **Structure.** Straight stretches are numbered from the run's first
-  entry; a stretch after a loop or a fork is not, since nothing gives
-  it a single place, and its key says so. A fork is a group
+  entry. A title with no number either says what it leads into or
+  gathers with the others at the end under "No clear place in the
+  order", since nothing gives it a single place. A fork is a group
   under "2 ways to continue", its branches side by side as unnumbered
   columns, each under "Way n of N". A loop is a group under "10
   linked titles, order unclear" with one sentence on why it has no
