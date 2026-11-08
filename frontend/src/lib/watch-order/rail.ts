@@ -1,12 +1,11 @@
 /**
- * The run as rail cards, and the keys that say why an entry has no
- * number: a branch, a loop, or an entry that only leads into a join.
- * Part of the run's ordering; `./order` gathers the pieces.
+ * Why an entry of the run has no number: a branch, a loop, or an
+ * entry that only leads into a join. Part of the run's ordering;
+ * `./order` gathers the pieces.
  */
 import type { WatchOrder } from './by-start';
 import { linkGraph } from './graph';
-import { linkedPosition, placement } from './place';
-import { segments } from './segments';
+import { linkedPosition } from './place';
 import type { WatchEntry, WatchRun } from './types';
 
 export type PathNote =
@@ -26,73 +25,4 @@ export function pathNote(run: WatchRun, id: string, order: WatchOrder): PathNote
 	const after = graph.next.get(id)!;
 	if (before.length === 0 && after.length === 1) return { kind: 'leads-into', entry: after[0] };
 	return null;
-}
-
-export type RailKey =
-	| { readonly kind: 'way'; readonly n: number; readonly count: number }
-	| { readonly kind: 'loop'; readonly count: number }
-	| { readonly kind: 'leads-into'; readonly entry: WatchEntry; readonly position: number | null }
-	| null;
-
-export interface RailItem {
-	readonly entry: WatchEntry;
-	readonly position: number | null;
-	/** What the card's key line says about its place, when it is not a plain step. */
-	readonly key: RailKey;
-	/** A hairline before the card: a branch, a loop or a side entry starts here. */
-	readonly divider: boolean;
-	/** A member of a loop: a rule over its poster joins the loop's cards. */
-	readonly inLoop: boolean;
-}
-
-/**
- * The run as rail cards, with the structure the flat row would hide:
- * each branch after a fork opens with "Way n of N", a loop opens with
- * its size, and an entry that only leads into a join says so.
- */
-export function railItems(run: WatchRun, order: WatchOrder): RailItem[] {
-	const out: RailItem[] = [];
-	const pos = (e: WatchEntry) => placement(run, e.id, order).position;
-	for (const seg of segments(run, order)) {
-		if (seg.kind === 'fork') {
-			seg.branches.forEach((branch, b) =>
-				branch.forEach((e, i) =>
-					out.push({
-						entry: e,
-						position: pos(e),
-						key: i === 0 ? { kind: 'way', n: b + 1, count: seg.branches.length } : null,
-						divider: i === 0,
-						inLoop: false
-					})
-				)
-			);
-		} else if (seg.kind === 'cycle') {
-			seg.entries.forEach((e, i) =>
-				out.push({
-					entry: e,
-					position: null,
-					key: i === 0 ? { kind: 'loop', count: seg.entries.length } : null,
-					divider: i === 0,
-					inLoop: true
-				})
-			);
-		} else {
-			let afterLoop = out.length > 0 && out.at(-1)!.position === null;
-			for (const e of seg.entries) {
-				const note = pathNote(run, e.id, order);
-				const leads = note?.kind === 'leads-into' ? note : null;
-				out.push({
-					entry: e,
-					position: pos(e),
-					key: leads
-						? { kind: 'leads-into', entry: leads.entry, position: pos(leads.entry) }
-						: null,
-					divider: leads !== null || afterLoop,
-					inLoop: false
-				});
-				afterLoop = false;
-			}
-		}
-	}
-	return out;
 }

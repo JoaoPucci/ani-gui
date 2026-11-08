@@ -1,8 +1,4 @@
 {
-	"diag_description": "Макеты дизайна функции порядка просмотра на фиксированных примерах: страница франшизы.",
-	"diag_section": "Макеты порядка просмотра",
-	"diag_switcher": "Показывать переключатель вариантов макетов",
-	"diag_toggle": "Показывать макеты порядка просмотра",
 	"franchise_after_loop": "Место в порядке просмотра неясно",
 	"franchise_count": [
 		{
@@ -34,7 +30,6 @@
 		}
 	],
 	"franchise_main": "Основная история",
-	"franchise_off": "Эта страница — макет дизайна. Включите макеты в разделе «Диагностика», чтобы её увидеть.",
 	"franchise_order_change": "Изменить в настройках",
 	"franchise_order_note_linked": "В порядке, в котором их связывают базы данных аниме.",
 	"franchise_order_note_released": "В порядке выхода.",
@@ -55,12 +50,6 @@
 	"meta_progress": "ЭП {episode} из {total}",
 	"meta_progress_open": "ЭП {episode}",
 	"meta_watched": "Просмотрено",
-	"mock_badge": "Макет",
-	"mock_franchise": "Франшиза",
-	"mock_franchise_list": "Список",
-	"mock_franchise_shelf": "Полка",
-	"mock_group_aria": "Параметры макета порядка просмотра",
-	"mock_order": "Порядок",
 	"setting_aria": "Порядок просмотра",
 	"setting_hint": "Как упорядочены сезоны, фильмы и спецвыпуски серии: как их связывают базы данных аниме или по дате выхода. Связи обычно следуют сюжету, но их ведёт сообщество каждой базы, и в них бывают ошибки.",
 	"setting_key": "Порядок просмотра",
@@ -68,7 +57,6 @@
 	"setting_released": "По выходу",
 	"strip_eyebrow": "Порядок просмотра",
 	"strip_first": "До этого ничего нет",
-	"strip_franchise_link": "Вся франшиза",
 	"strip_franchise_stack_films": "Фильмы и версии: {count}",
 	"strip_franchise_stack_main": "В основной истории: {count}",
 	"strip_franchise_stack_recaps": "Пересказы: {count}",

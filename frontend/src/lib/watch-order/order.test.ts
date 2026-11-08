@@ -7,7 +7,6 @@ import {
 	loopSize,
 	pathNote,
 	placement,
-	railItems,
 	segments,
 	sequence,
 	type Segment
@@ -206,48 +205,6 @@ function entryOf(id: string): WatchEntry {
 		cover: null
 	};
 }
-
-describe('rail items', () => {
-	it('opens each Fate branch with its way and a divider', () => {
-		const items = railItems(run('fate'), 'linked');
-		expect(items.map((i) => [i.entry.id, i.key?.kind ?? null, i.divider])).toEqual([
-			['6028', null, false],
-			['7658', null, false],
-			['323', 'way', true],
-			['9718', 'way', true],
-			['7882', null, false],
-			['10052', null, false]
-		]);
-		expect(items[3].key).toEqual({ kind: 'way', n: 2, count: 2 });
-	});
-
-	it('marks the Semi-Final as leading into The Final, unnumbered', () => {
-		const semi = railItems(run('gintama'), 'linked').find((i) => i.entry.id === '43829')!;
-		expect(semi).toMatchObject({
-			position: null,
-			divider: true,
-			key: { kind: 'leads-into', entry: { id: '43683' }, position: 10 }
-		});
-	});
-
-	it('opens the Monogatari loop with its size, and divides the line after it', () => {
-		const items = railItems(run('monogatari'), 'linked');
-		expect(items[1]).toMatchObject({
-			key: { kind: 'loop', count: 10 },
-			divider: true,
-			inLoop: true
-		});
-		expect(items.filter((i) => i.inLoop)).toHaveLength(10);
-		expect(items[11].divider).toBe(true);
-		expect(items[12].divider).toBe(false);
-	});
-
-	it('is a numbered line with no keys in release order', () => {
-		const items = railItems(run('gintama'), 'released');
-		expect(items.every((i) => i.key === null && !i.divider)).toBe(true);
-		expect(items.map((i) => i.position)).toEqual(items.map((_, i) => i + 1));
-	});
-});
 
 describe('loop size', () => {
 	it('counts the loop an entry sits in, and nothing outside one', () => {

@@ -1,8 +1,4 @@
 {
-	"diag_description": "Maquetas de diseño de la función de orden para ver, hechas con datos de ejemplo fijos: una página de franquicia.",
-	"diag_section": "Maquetas de orden para ver",
-	"diag_switcher": "Mostrar el selector de opciones de las maquetas",
-	"diag_toggle": "Mostrar las maquetas de orden para ver",
 	"franchise_after_loop": "Sin un lugar claro en el orden",
 	"franchise_count": [
 		{
@@ -30,7 +26,6 @@
 		}
 	],
 	"franchise_main": "Historia principal",
-	"franchise_off": "Esta página es una maqueta de diseño. Activa las maquetas en Diagnóstico para verla.",
 	"franchise_order_change": "Cambiar en Ajustes",
 	"franchise_order_note_linked": "En el orden en que las bases de datos de anime los enlazan.",
 	"franchise_order_note_released": "En orden de estreno.",
@@ -51,12 +46,6 @@
 	"meta_progress": "EP {episode} de {total}",
 	"meta_progress_open": "EP {episode}",
 	"meta_watched": "Visto",
-	"mock_badge": "Maqueta",
-	"mock_franchise": "Franquicia",
-	"mock_franchise_list": "Lista",
-	"mock_franchise_shelf": "Estante",
-	"mock_group_aria": "Opciones de la maqueta de orden para ver",
-	"mock_order": "Orden",
 	"setting_aria": "Orden para ver",
 	"setting_hint": "Cómo se ordenan las temporadas, películas y especiales de una serie: como los enlazan las bases de datos de anime, o por fecha de estreno. Los enlaces suelen seguir la historia, pero los mantiene la comunidad de cada base y pueden estar mal.",
 	"setting_key": "Orden para ver",
@@ -64,7 +53,6 @@
 	"setting_released": "Por estreno",
 	"strip_eyebrow": "Orden para ver",
 	"strip_first": "No hay nada antes de este",
-	"strip_franchise_link": "Franquicia completa",
 	"strip_franchise_stack_films": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

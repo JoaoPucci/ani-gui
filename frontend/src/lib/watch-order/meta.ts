@@ -6,7 +6,6 @@
 import { m } from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
 import { subtypeLabel } from '$lib/search/subtype-label';
-import type { RailKey } from './order';
 import { isUnaired, progressOf, yearOf } from './entry';
 import type { EntryProgress, WatchEntry } from './types';
 
@@ -80,24 +79,4 @@ export function loopGroupText(count: number): string {
 /** "05": positions read as oversized two-digit numerals. */
 export function numeral(position: number): string {
 	return String(position).padStart(2, '0');
-}
-
-/**
- * The key line above a rail card's title: "You are here" on the entry
- * being viewed, else what its RailKey says, else nothing.
- */
-export function railKeyText(
-	key: RailKey,
-	here: boolean,
-	label: (e: WatchEntry) => string
-): string | null {
-	if (here) return m.watchorder_franchise_here();
-	if (key === null) return null;
-	if (key.kind === 'way') return m.watchorder_strip_way({ n: key.n, count: key.count });
-	if (key.kind === 'loop') return loopText(key.count);
-	// The target's number when it has one: a title would not fit the
-	// key line beside "Leads into".
-	return m.watchorder_strip_leads_into({
-		title: key.position !== null ? numeral(key.position) : label(key.entry)
-	});
 }

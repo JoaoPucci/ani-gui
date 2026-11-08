@@ -8,4 +8,4 @@ export { linkGraph, type RunGraph } from './graph';
 export { placement, type Placement } from './place';
 export { sequence } from './sequence';
 export { loopSize, segments, type Segment } from './segments';
-export { pathNote, railItems, type PathNote, type RailItem, type RailKey } from './rail';
+export { pathNote, type PathNote } from './rail';

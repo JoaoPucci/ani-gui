@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
-import { loopGroupText, metaLine, numeral, railKeyText, splitMeta } from './meta';
+import { loopGroupText, metaLine, numeral, splitMeta } from './meta';
 import type { WatchEntry, WatchRun } from './types';
 
 const TODAY = '2026-11-02';
@@ -41,27 +41,6 @@ describe('meta line', () => {
 	it('pads positions to two digits', () => {
 		expect(numeral(5)).toBe('05');
 		expect(numeral(16)).toBe('16');
-	});
-});
-
-describe('rail key text', () => {
-	const e = entryIn(run('gintama'), '43683')!;
-	const label = (x: { title: string }) => x.title;
-	it('says where the viewer is first', () => {
-		expect(railKeyText({ kind: 'loop', count: 10 }, true, label)).toBe('You are here');
-	});
-	it('names a way, a loop, or the entry a side entry leads into', () => {
-		expect(railKeyText({ kind: 'way', n: 2, count: 2 }, false, label)).toBe('Way 2 of 2');
-		expect(railKeyText({ kind: 'loop', count: 10 }, false, label)).toBe(
-			'Linked with 9 others, order unclear'
-		);
-		expect(railKeyText({ kind: 'leads-into', entry: e, position: 10 }, false, label)).toBe(
-			'Leads into 10'
-		);
-		expect(railKeyText({ kind: 'leads-into', entry: e, position: null }, false, label)).toBe(
-			'Leads into Gintama: The Final'
-		);
-		expect(railKeyText(null, false, label)).toBeNull();
 	});
 });
 
