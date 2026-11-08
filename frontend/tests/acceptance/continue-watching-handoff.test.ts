@@ -34,6 +34,11 @@ import { savePosition } from '../../src/lib/play/watch-position';
 const FIRST = 'Arc of the Moon: First Night';
 const SECOND = 'Arc of the Moon: Second Night';
 const BRANCH = 'Arc of the Moon: Other Night';
+// A second series whose finale always moves on: a scenario that
+// expects no hand-off waits for this one, so it knows the reads it
+// cares about have settled and rendered.
+const CONTROL = 'Tide Bell: Spring';
+const CONTROL_NEXT = 'Tide Bell: Summer';
 
 const entry = (id: string, title: string, start: string, episodes: number) => ({
 	id,
@@ -72,6 +77,14 @@ const forkFrom10 = {
 	]
 };
 
+const lineFrom30 = {
+	...lineFrom10,
+	anchor: '30',
+	entries: [entry('30', CONTROL, '2015-01-01', 13), entry('40', CONTROL_NEXT, '2016-01-01', 13)],
+	links: [['30', '40']]
+};
+const controlRow = () => row('13', 'p-control', '30', CONTROL);
+
 const row = (ep_no: string, id = 'p-first', kitsu_id = '10', title = FIRST) => ({
 	ep_no,
 	id,
@@ -109,6 +122,10 @@ interface Scenario {
 	history: ReturnType<typeof row>[];
 	franchise?: () => Response;
 	order?: string;
+	/** The settings read's answer; the Watch order `order` by default. */
+	settings?: () => Response;
+	/** What the source's availability probe counts for every show. */
+	probedCap?: number;
 }
 
 /** Mounts Home over `history`, the first show's series answered by `franchise`. */
@@ -117,8 +134,25 @@ function mountHome(s: Scenario) {
 	server.use(
 		...homeHandlers({ history: s.history }, [
 			http.get(`${API_BASE}/api/settings`, () =>
-				HttpResponse.json({ ...appConfig(), watch_order: s.order ?? 'linked' })
+				s.settings
+					? s.settings()
+					: HttpResponse.json({ ...appConfig(), watch_order: s.order ?? 'linked' })
 			),
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json({
+					available: true,
+					episode_count: s.probedCap ?? 13,
+					approximate: false
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/anime/30`, () =>
+				HttpResponse.json(kitsuRef('30', CONTROL, 13))
+			),
+			// A row that recorded no Kitsu id is matched by its title.
+			http.post(`${API_BASE}/api/kitsu/search`, async ({ request }) => {
+				const body = JSON.stringify(await request.json());
+				return HttpResponse.json(body.includes('Second') ? [kitsuRef('20', SECOND, 13)] : []);
+			}),
 			http.get(`${API_BASE}/api/kitsu/anime/10`, () =>
 				HttpResponse.json(kitsuRef('10', FIRST, 13))
 			),
@@ -127,6 +161,7 @@ function mountHome(s: Scenario) {
 			),
 			http.get(`${API_BASE}/api/kitsu/franchise/:id`, ({ params }) => {
 				asked.push(String(params.id));
+				if (params.id === '30') return HttpResponse.json(lineFrom30);
 				if (params.id !== '10') return HttpResponse.error();
 				return s.franchise ? s.franchise() : HttpResponse.json(lineFrom10);
 			})
@@ -134,6 +169,16 @@ function mountHome(s: Scenario) {
 	);
 	app = mount(HomePage, { target });
 	return asked;
+}
+
+/** Whether `predicate` held after any change to the page since mount, not only at the end. */
+function everHeld(predicate: () => boolean): () => boolean {
+	let held = predicate();
+	const observer = new MutationObserver(() => {
+		if (predicate()) held = true;
+	});
+	observer.observe(target, { subtree: true, childList: true, attributes: true });
+	return () => held;
 }
 
 const handoffTo = (id: string) =>
@@ -168,12 +213,9 @@ describe('Continue Watching after a finale', () => {
 	});
 
 	it('keeps both ordinary cards once the next show has a row of its own', async () => {
-		const asked = mountHome({ history: [row('3', 'p-second', '20', SECOND), row('13')] });
-		await until(
-			() => resumeFor(FIRST) !== null && resumeFor(SECOND) !== null && asked.length > 0,
-			'both cards and the series read'
-		);
-		await new Promise((r) => setTimeout(r, 50));
+		mountHome({ history: [row('3', 'p-second', '20', SECOND), row('13'), controlRow()] });
+		await until(() => handoffTo('40') !== null, 'the other series to move on');
+		await until(() => resumeFor(SECOND) !== null, "the next show's own card");
 		expect(handoffTo('20')).toBeNull();
 		expect(resumeFor(FIRST)).not.toBeNull();
 	});
@@ -196,23 +238,22 @@ describe('Continue Watching after a finale', () => {
 	});
 
 	it('keeps the ordinary card, with no error, when the series cannot be read', async () => {
-		const asked = mountHome({
-			history: [row('13')],
+		mountHome({
+			history: [row('13'), controlRow()],
 			franchise: () => new HttpResponse(null, { status: 503 })
 		});
-		await until(() => resumeFor(FIRST) !== null && asked.length > 0, 'the card and the read');
-		await new Promise((r) => setTimeout(r, 50));
+		await until(() => handoffTo('40') !== null, 'the other series to move on');
 		expect(handoffTo('20')).toBeNull();
 		expect(resumeFor(FIRST)).not.toBeNull();
 	});
 
 	it('keeps the ordinary card where the show leads two ways as linked', async () => {
-		const asked = mountHome({
-			history: [row('13')],
+		mountHome({
+			history: [row('13'), controlRow()],
 			franchise: () => HttpResponse.json(forkFrom10)
 		});
-		await until(() => resumeFor(FIRST) !== null && asked.length > 0, 'the card and the read');
-		await new Promise((r) => setTimeout(r, 50));
+		await until(() => handoffTo('40') !== null, 'the other series to move on');
+		expect(resumeFor(FIRST)).not.toBeNull();
 		expect(handoffTo('20')).toBeNull();
 		expect(handoffTo('25')).toBeNull();
 	});
@@ -225,5 +266,37 @@ describe('Continue Watching after a finale', () => {
 		});
 		await until(() => handoffTo('20') !== null, 'the card to move on as released');
 		expect(handoffTo('25')).toBeNull();
+	});
+
+	it('keeps the ordinary card when the next show was played from a row with no recorded id', async () => {
+		// Written before history recorded the Kitsu id: the row is
+		// matched by its title, and counts as played once it is.
+		const second = { ep_no: '2', id: 'p-second', title: SECOND };
+		mountHome({ history: [second as ReturnType<typeof row>, row('13'), controlRow()] });
+		const movedOn = everHeld(() => handoffTo('20') !== null);
+		await until(() => handoffTo('40') !== null, 'the other series to move on');
+		await until(() => resumeFor(SECOND) !== null, "the next show's matched card");
+		expect(movedOn()).toBe(false);
+		expect(resumeFor(FIRST)).not.toBeNull();
+	});
+
+	it("offers the source's episode past Kitsu's count rather than moving on", async () => {
+		mountHome({ history: [row('13')], probedCap: 14 });
+		await until(
+			() =>
+				resumeFor(FIRST)?.textContent?.includes(m.home_resume_episode_label({ episode: 14 })) ??
+				false,
+			'the card to offer episode 14'
+		);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(handoffTo('20')).toBeNull();
+	});
+
+	it('moves on in the default order when the settings cannot be read', async () => {
+		mountHome({
+			history: [row('13')],
+			settings: () => new HttpResponse(null, { status: 500 })
+		});
+		await until(() => handoffTo('20') !== null, 'the card to move on as linked');
 	});
 });

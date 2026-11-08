@@ -66,6 +66,14 @@ describe('handoffAsk', () => {
 		expect(handoffAsk(null, '13', null, never)).toBeNull();
 	});
 
+	it("waits for the player's own last step where the source lists more than Kitsu", () => {
+		expect(handoffAsk(finished(13), '13', 14, never)).toBeNull();
+		expect(handoffAsk(finished(13), '14', 14, never)).toBe('43078');
+		// A source that lists fewer does not make an earlier episode the finale.
+		expect(handoffAsk(finished(13), '12', 12, never)).toBeNull();
+		expect(handoffAsk(finished(13), '13', 12, never)).toBe('43078');
+	});
+
 	it('asks nothing when the finale was left part-way, asking about the finale itself', () => {
 		const leftPartWay = vi.fn(() => true);
 		expect(handoffAsk(finished(13), '13', null, leftPartWay)).toBeNull();
@@ -82,13 +90,15 @@ describe('handoffAsk', () => {
 						fc.integer({ min: 0, max: 32 }).map(String),
 						fc.constantFrom('', '3.5', '12.5', 'x', '-1', '1-12')
 					),
-					partWay: fc.boolean()
+					partWay: fc.boolean(),
+					playable: fc.option(fc.integer({ min: 1, max: 32 }), { nil: null })
 				}),
-				({ status, episodes, ep, partWay }) => {
+				({ status, episodes, ep, partWay, playable }) => {
 					const match = { id: '7', status, episode_count: episodes };
-					const got = handoffAsk(match, ep, null, () => partWay);
+					const got = handoffAsk(match, ep, playable, () => partWay);
 					const n = parseHistoryEpisode(ep);
-					const atFinale = n !== null && isFinale({ status, episodes }, n);
+					const last = episodes === null ? null : Math.max(episodes, playable ?? 0);
+					const atFinale = n !== null && isFinale({ status, episodes: last }, n);
 					expect(got).toBe(atFinale && !partWay ? '7' : null);
 				}
 			)
@@ -122,6 +132,10 @@ describe('handoffFrom', () => {
 	it('keeps the ordinary card before an entry not aired yet, and at the end', () => {
 		expect(handoffFrom(payload('monogatari', '48434'), '48434', 'linked', TODAY, none)).toBeNull();
 		expect(handoffFrom(payload('bleach', '49444'), '49444', 'linked', TODAY, none)).toBeNull();
+	});
+
+	it('waits for the played set', () => {
+		expect(handoffFrom(payload('bleach', '43078'), '43078', 'linked', TODAY, null)).toBeNull();
 	});
 
 	it('waits for the series and the settings, and reads only its own series', () => {
@@ -174,6 +188,13 @@ describe('playedIds', () => {
 			{ a: { id: '9' }, b: { id: '2' }, c: null, e: { id: '5' } }
 		);
 		expect([...got!].sort()).toEqual(['1', '2', '5']);
+	});
+
+	it('is not known while a row without a recorded id is still being matched', () => {
+		expect(playedIds([{ id: 'a', kitsu_id: '1' }, { id: 'b' }], {})).toBeNull();
+		expect(playedIds([{ id: 'b' }], { b: undefined })).toBeNull();
+		// A recorded id needs no match.
+		expect([...playedIds([{ id: 'a', kitsu_id: '1' }], {})!]).toEqual(['1']);
 	});
 });
 
