@@ -177,10 +177,10 @@ const APP_DOCUMENT = appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL });
 // answers only the main frame holding that document (lib/ipc-guard.cjs);
 // tests/arch/ipc_sender.sh keeps them all registered through it.
 const ipc = mainProcessIpc({ app: APP_DOCUMENT, logError: console.error });
-// Every window, the splash's and the app's, holds the app's document or
-// nothing loaded by a page: navigations, redirects, subframes, webviews
-// and new windows all pass through one verdict, and web links go to the
-// system browser. Fullscreen and clipboard writes for the app's
+// Every window, the splash's and the app's, holds what the main process
+// loaded into it, and a page can take it only to the app's document:
+// navigations, redirects, subframes, webviews and new windows all pass
+// through one verdict, and web links go to the system browser. Fullscreen and clipboard writes for the app's
 // document; every other permission denied (lib/guarded-window.cjs,
 // tests/arch/window_guard.sh).
 const makeWindow = guardedWindowMaker({
