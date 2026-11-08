@@ -2,6 +2,7 @@
 // still stands, and the rows matched again once it does not.
 
 import { describe, expect, it, vi } from 'vitest';
+import fc from 'fast-check';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { createCardRelink, type CardRelinkDeps } from './card-relink';
 
@@ -143,5 +144,71 @@ describe("a row matched to another show forgets its former show's", () => {
 		await h.relink.reread();
 		await flush();
 		expect(h.events).toEqual(['a forgets', 'a is nothing']);
+	});
+});
+
+/** A match answered when the test says, one per ask. */
+function heldMatches() {
+	const asks: { entry: HistoryEntry; answer: () => void }[] = [];
+	const resolveMatch = (entry: HistoryEntry) =>
+		new Promise<KitsuAnimeRef | null>((resolve) => {
+			asks.push({ entry, answer: () => resolve(ref(entry.kitsu_id ?? `guess-${entry.id}`)) });
+		});
+	return { asks, resolveMatch };
+}
+
+describe('what was asked for a row before it was matched again', () => {
+	it('is told apart: a view taken before a read names the rows it matched again', async () => {
+		const h = home([row('a'), row('b')], [[row('a', '5'), row('b')]]);
+		const fromLoad = h.relink.since();
+		expect(fromLoad('a')).toBe(true);
+		await h.relink.reread();
+		// The first load's answers for `a` are for the guess it started with.
+		expect(fromLoad('a')).toBe(false);
+		expect(fromLoad('b')).toBe(true);
+		// A view taken now holds.
+		expect(h.relink.since()('a')).toBe(true);
+	});
+
+	it("does not publish an earlier rematch's answer over a later one's", async () => {
+		// The link's match lands after its undo's.
+		const held = heldMatches();
+		const h = home([row('a')], [[row('a', '5')], [row('a')]], {
+			resolveMatch: held.resolveMatch
+		});
+		await h.relink.reread();
+		await h.relink.reread();
+		expect(held.asks.map((a) => a.entry.kitsu_id ?? null)).toEqual(['5', null]);
+		held.asks[1].answer();
+		await flush();
+		held.asks[0].answer();
+		await flush();
+		expect(h.published).toEqual([['a', 'guess-a']]);
+		expect(h.events).toEqual(['a forgets', 'a is guess-a']);
+	});
+
+	it('publishes only the latest rematch of a row, whatever order the answers land in', async () => {
+		await fc.assert(
+			fc.asyncProperty(
+				fc
+					.integer({ min: 1, max: 5 })
+					.chain((n) =>
+						fc.tuple(fc.constant(n), fc.shuffledSubarray([...Array(n).keys()], { minLength: n }))
+					),
+				async ([n, order]) => {
+					const held = heldMatches();
+					// Each read finds the row recorded as another show.
+					const listed = [...Array(n).keys()].map((i) => [row('a', String(i + 1))]);
+					const h = home([row('a')], listed, { resolveMatch: held.resolveMatch });
+					for (let i = 0; i < n; i++) await h.relink.reread();
+					for (const i of order) {
+						held.asks[i].answer();
+						await flush();
+					}
+					expect(h.published).toEqual([['a', String(n)]]);
+				}
+			),
+			{ numRuns: 50 }
+		);
 	});
 });

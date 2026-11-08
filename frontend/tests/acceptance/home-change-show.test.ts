@@ -499,6 +499,41 @@ describe("a link forgets what Home kept for the card's former show", () => {
 	});
 });
 
+describe("a probe still on its way for the card's former show", () => {
+	// The first load's availability probe for JoJo's guess is held: the
+	// card is drawn and takes its pill from the match alone, so the user
+	// can link it before the probe answers.
+	let answerProbe: () => void = () => {};
+	beforeEach(() => {
+		const answered = new Promise<void>((resolve) => {
+			answerProbe = resolve;
+		});
+		server.use(
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const { kitsu_id } = (await request.json()) as { kitsu_id?: string };
+				if (kitsu_id === JOJO_GUESS) await answered;
+				return HttpResponse.json({ available: true, episode_count: 26 });
+			})
+		);
+	});
+
+	it('lands without putting the guess back on the linked card', async () => {
+		await openHome();
+		pill(JOJO_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(JOJO_RIGHT_TITLE);
+		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the card as the OVA');
+		answerProbe();
+		await settle();
+		expect(showLine(JOJO_CARD)).toContain(JOJO_RIGHT_TITLE);
+		// Its next resume is a play of the OVA.
+		cell(JOJO_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!.click();
+		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+		const url = new URL(FakeEventSource.instances.at(-1)!.url, 'http://x');
+		expect(url.searchParams.get('kitsu_id')).toBe(JOJO_RIGHT);
+	});
+});
+
 describe("a guessed card's player is told where its play landed", () => {
 	async function resumeJojo(ownListing: boolean) {
 		await openHome();
