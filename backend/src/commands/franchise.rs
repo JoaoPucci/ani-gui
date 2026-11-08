@@ -4,7 +4,8 @@
 //! Each listing is the detailed relations read
 //! ([`crate::meta::kitsu::KitsuClient::franchise_relations`]), cached
 //! under `kitsu:franchise-rel:v1:<id>` for a week, or a day when it
-//! relates an anime that has not finished ([`listing_ttl`]). An entry no listing describes — the
+//! relates an anime that has not finished ([`listing_ttl`]). Two reads
+//! of one listing at the same time share one request. An entry no listing describes — the
 //! anchor, usually — takes its fields from the cached detail read
 //! ([`crate::commands::kitsu::kitsu_anime_detail`]).
 
@@ -17,6 +18,7 @@ use crate::cache::ttl::{ANIME_DETAIL_TTL, EPISODES_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::franchise_walk::{plan, Franchise, Plan};
 use crate::error::Result;
+use crate::meta::inflight::Inflight;
 use crate::meta::kitsu::{FranchiseEntry, FranchiseListing, KitsuAnimeRef};
 
 /// Listings read at the same time in one round of the walk.
@@ -56,12 +58,23 @@ pub async fn franchise_listing(state: &AppState, id: &str) -> Result<FranchiseLi
             return Ok(listing);
         }
     }
-    let listing = state.kitsu.franchise_relations(id).await?;
-    if let Ok(body) = serde_json::to_string(&listing) {
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, listing_ttl(&listing));
-    }
-    Ok(listing)
+    // Keyed by the state as well as the id: one app has one state, and
+    // two states (two tests) never share an answer.
+    let running = format!("{:p}:{id}", std::ptr::from_ref(state));
+    LISTINGS_IN_FLIGHT
+        .run(running, || async {
+            let listing = state.kitsu.franchise_relations(id).await?;
+            if let Ok(body) = serde_json::to_string(&listing) {
+                let _ = meta_cache_put(&state.cache_pool, &key, &body, listing_ttl(&listing));
+            }
+            Ok(listing)
+        })
+        .await
 }
+
+/// The listing reads in flight: two at once for one entry share one.
+static LISTINGS_IN_FLIGHT: std::sync::LazyLock<Inflight<Result<FranchiseListing>>> =
+    std::sync::LazyLock::new(Default::default);
 
 /// What the franchise surfaces show of an entry, from its detail.
 #[must_use]
