@@ -1,13 +1,101 @@
 /**
- * Continue Watching's hand-offs.
- * Part of the mockups' views; `./mock/view` gathers them.
+ * Continue Watching's hand-off (docs/proposals/franchise-watch-order.md,
+ * option b): once an entry's finale has been played through, its card
+ * moves on to the entry that comes next, the way the player's Up next
+ * card names it, and opens that entry's show page.
+ *
+ * It moves on only where exactly one entry comes next, has aired, and
+ * has no history row of its own; in every other case the row keeps
+ * its ordinary card. Nothing here asks the provider.
  */
 import { MOCK_RUNS } from './mock/fixtures';
 import { sequence, type WatchOrder } from './order';
 import type { MockEntry, MockRun } from './mock/types';
+import type { FranchiseData, WatchEntry } from './types';
 import { upNextFor } from './up-next';
 
+/** A Continue card moved on: the entry played through, and the one after it. */
 export interface Handoff {
+	readonly finished: WatchEntry;
+	readonly next: WatchEntry;
+	/** The titles of the finished entry's series, which its short title is cut against. */
+	readonly titles: readonly string[];
+}
+
+/** What a Continue row's Kitsu match says about the entry it plays. */
+export interface HandoffMatch {
+	readonly id: string;
+	/** Kitsu's status: `finished` once the entry has finished airing. */
+	readonly status: string | null;
+	readonly episode_count: number | null;
+}
+
+/**
+ * The Kitsu id whose series a row's hand-off needs, or null: a matched
+ * row whose last episode is the finale of an entry that has finished
+ * airing, and was not left part-way. Only such a row asks for its
+ * series, so no other card costs a request.
+ */
+export function handoffAsk(
+	match: HandoffMatch | null | undefined,
+	epNo: string,
+	leftPartWay: (kitsuId: string, episode: number) => boolean
+): string | null {
+	void [match, epNo, leftPartWay];
+	return null;
+}
+
+/**
+ * The hand-off from `id`, the entry a row played through, or null: the
+ * series not read (or read for another id), the settings not settled
+ * (`order` null), `id` outside the series, a fork, an entry not aired
+ * yet, nothing after it, or an entry after it that `played` holds.
+ */
+export function handoffFrom(
+	franchise: FranchiseData | null,
+	id: string,
+	order: WatchOrder | null,
+	today: string,
+	played: ReadonlySet<string>
+): Handoff | null {
+	void [franchise, id, order, today, played];
+	return null;
+}
+
+/** A history row as the played set reads it. */
+export interface PlayedRow {
+	readonly id: string;
+	readonly kitsu_id?: string;
+}
+
+/**
+ * The Kitsu ids with a history row: each row's recorded id, else the
+ * id its match found (rows written before history recorded one).
+ */
+export function playedIds(
+	rows: readonly PlayedRow[],
+	matches: Readonly<Record<string, { readonly id: string } | null | undefined>>
+): Set<string> {
+	void [rows, matches];
+	return new Set();
+}
+
+/**
+ * Each rail row's hand-off, keyed by row id. `asks` is the rail in
+ * order, each row with its `handoffAsk`. Two rows that would move on
+ * to the same entry show it once: the first in the rail moves on, the
+ * other keeps its ordinary card.
+ */
+export function railHandoffs(
+	asks: readonly (readonly [rowId: string, kitsuId: string | null])[],
+	from: (kitsuId: string) => Handoff | null
+): Map<string, Handoff> {
+	void [asks, from];
+	return new Map();
+}
+
+/** The mockups' hand-offs, from the fixtures. */
+export interface MockHandoff {
 	readonly run: MockRun;
 	readonly finished: MockEntry;
 	readonly next: MockEntry;
@@ -21,8 +109,8 @@ export function handoffs(
 	order: WatchOrder,
 	today: string,
 	runs: readonly MockRun[] = MOCK_RUNS
-): Handoff[] {
-	const out: Handoff[] = [];
+): MockHandoff[] {
+	const out: MockHandoff[] = [];
 	for (const run of runs) {
 		const watched = sequence(run, order).filter((e) => run.progress[e.id] === 'watched');
 		const finished = watched.at(-1);

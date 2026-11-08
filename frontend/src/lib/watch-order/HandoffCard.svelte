@@ -13,9 +13,9 @@
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
 	import { shortTitle } from './short-title';
-	import type { Handoff } from './handoff';
+	import type { MockHandoff } from './handoff';
 
-	let { handoff, variant }: { handoff: Handoff; variant: 'next' | 'episode' } = $props();
+	let { handoff, variant }: { handoff: MockHandoff; variant: 'next' | 'episode' } = $props();
 
 	// The finished entry by the words that set it apart: the one-line
 	// mono row would otherwise cut exactly those.
