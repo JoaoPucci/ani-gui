@@ -115,6 +115,6 @@ export interface AniGuiAccountBridge {
 	openOAuth(args: OAuthOpenArgs): Promise<OAuthOpenResult>;
 	cancelOAuth(): Promise<boolean>;
 	setToken(provider: Provider, payload: PersistedAccount): Promise<SetTokenResult>;
-	getToken(provider: Provider): GetTokenResult;
+	getToken(provider: Provider): Promise<GetTokenResult>;
 	clearToken(provider: Provider): Promise<{ ok: boolean; kind?: string; message?: string }>;
 }
