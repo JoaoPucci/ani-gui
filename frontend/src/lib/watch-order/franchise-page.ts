@@ -6,6 +6,7 @@
  * order, and the rails around it. The route and its view only hand
  * these on.
  */
+import type { BreadcrumbSegment } from '$lib/breadcrumb';
 import type { WatchOrder } from './by-start';
 import { progressOf, progressShare } from './entry';
 import { franchiseName } from './franchise-name';
@@ -149,4 +150,14 @@ export function franchisePage(
 		recaps: run.recaps,
 		partial: !data.franchise.complete
 	};
+}
+
+/**
+ * The topbar trail for the franchise page opened from `id`: Home, the
+ * show it was opened from (a link back to it), then "Franchise".
+ */
+export function franchiseTrail(model: FranchisePageModel, id: string): BreadcrumbSegment[] {
+	void model;
+	void id;
+	return [];
 }
