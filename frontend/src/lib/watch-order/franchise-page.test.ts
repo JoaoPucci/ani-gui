@@ -13,7 +13,7 @@ import { pathNote, placement, segments, sequence } from './order';
 import type { HistoryRow } from './progress';
 import { runOf } from './strip-model';
 import { currentIn } from './strip-view';
-import { franchiseArb } from './testing/arbitraries';
+import { franchiseArb, franchiseAroundArb } from './testing/arbitraries';
 import type { FranchiseData } from './types';
 
 const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
@@ -243,10 +243,15 @@ describe('franchisePage', () => {
 		expect(rowsOf(page).some((r) => r.here)).toBe(false);
 	});
 
-	const anyPage = franchiseArb().chain((f) =>
+	// Mostly payloads that answer the page's own id, with titles around
+	// the run; sometimes any payload, malformed links included.
+	const anyPage = fc.oneof(franchiseAroundArb(), franchiseArb()).chain((f) =>
 		fc.record({
 			f: fc.constant(f),
-			id: fc.constantFrom(f.anchor, ...f.entries.map((e) => e.id)),
+			id: fc.oneof(
+				{ weight: 3, arbitrary: fc.constant(f.anchor) },
+				{ weight: 1, arbitrary: fc.constantFrom(f.anchor, ...f.entries.map((e) => e.id)) }
+			),
 			order: fc.constantFrom('linked' as const, 'released' as const),
 			rows: fc.array(
 				fc.record({
@@ -387,16 +392,20 @@ describe('franchiseTrail', () => {
 	it('always ends on Franchise, with the show between Home and it when the page lists it', () => {
 		fc.assert(
 			fc.property(
-				franchiseArb().chain((f) =>
-					fc.record({ f: fc.constant(f), id: fc.constantFrom(f.anchor, ...ids(f.entries)) })
-				),
+				fc
+					.oneof(franchiseAroundArb(), franchiseArb())
+					.chain((f) =>
+						fc.record({ f: fc.constant(f), id: fc.constantFrom(f.anchor, ...ids(f.entries)) })
+					),
 				({ f, id }) => {
 					const page = franchisePage({ franchise: f, rows: [] }, id, 'linked');
 					if (!page) return;
 					const trail = franchiseTrail(page, id);
 					expect(trail[0]).toEqual({ label: 'Home', href: '/' });
 					expect(trail.at(-1)).toEqual({ label: 'Franchise' });
-					const listed = [...f.entries, ...f.sides].some((e) => e.id === id);
+					const listed = [...f.entries, ...f.versions, ...f.films, ...f.sides, ...f.recaps].some(
+						(e) => e.id === id
+					);
 					expect(trail).toHaveLength(listed ? 3 : 2);
 					if (listed) expect(trail[1].href).toBe(`/anime/${id}`);
 				}
