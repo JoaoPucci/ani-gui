@@ -1,9 +1,12 @@
 <!--
-  The franchise page (mockup), in the show page's frame: a hero band
-  and masthead, then the main story, other versions, films, side
-  stories and recaps. The main story is a numbered list (`list`) or a
-  shelf of RunCards (`shelf`); the rest are Strip rails of PosterCards.
-  The entry the page was opened from is "You are here".
+  The franchise page, in the show page's frame: a hero band and
+  masthead named after the franchise's first title, then the main
+  story as a numbered list, other versions, films, side stories and
+  recaps. Numbered stretches carry the oversized numeral; ways to
+  continue stand side by side and titles with no clear order form one
+  group, both unnumbered. The title the page was opened from is "You
+  are here". Every reading comes from the page model
+  (`./franchise-page`); this component only draws it.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
@@ -12,54 +15,21 @@
 	import Strip from '$lib/components/Strip.svelte';
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
-	import { mastheadArt } from './masthead';
-	import MetaLine from '../MetaLine.svelte';
-	import MockSwitch from './MockSwitch.svelte';
-	import RunCard from './RunCard.svelte';
-	import { loopGroupText, metaLine, numeral, railKeyText } from '../meta';
-	import { pathNote, placement, railItems, segments } from '../order';
-	import type { WatchOrderMockPrefs } from './prefs';
-	import { shortTitle } from '../short-title';
-	import { franchiseSummary } from '../strip-view';
-	import type { MockEntry, MockRun } from './types';
-	import { asRef, currentIn, franchiseName, progressOf, progressShare } from './view';
+	import MetaLine from './MetaLine.svelte';
+	import type { FranchisePageModel, FranchiseRow } from './franchise-page';
+	import { loopGroupText, metaLine, numeral } from './meta';
+	import { asRef } from './poster-ref';
 
-	let {
-		run,
-		id,
-		prefs,
-		today,
-		onchoose
-	}: {
-		run: MockRun;
-		id: string;
-		prefs: WatchOrderMockPrefs;
-		today: string;
-		onchoose: (next: WatchOrderMockPrefs) => void;
-	} = $props();
+	let { model, today }: { model: FranchisePageModel; today: string } = $props();
 
-	const segs = $derived(segments(run, prefs.order));
-	const items = $derived(railItems(run, prefs.order));
-	const first = $derived(run.entries.find((e) => e.id === run.nameId)!);
-	const onNow = $derived(currentIn(run, run.progress, prefs.order));
-	// The artwork is the named entry's; Resume goes to the entry being watched.
-	const heroEntry = $derived(mastheadArt(run, prefs.order));
-	const accent = $derived(accentFor(heroEntry.id));
-	const titles = $derived(run.entries.map((e) => e.title));
-	const franchiseTitles = $derived(
-		[...run.entries, ...run.versions, ...run.films, ...run.sides, ...run.recaps]
-			.filter((e) => e.id !== first.id)
-			.map((e) => e.title)
-	);
-	const label = (e: MockEntry) => shortTitle(e.title, titles);
-	const posOf = (e: MockEntry) => placement(run, e.id, prefs.order).position;
+	const accent = $derived(accentFor(model.art.id));
 	let recapsOpen = $state(false);
 </script>
 
 <div class="franchise" style:--accent={accent}>
 	<section class="hero" aria-hidden="true">
-		{#if imageProxyUrl(heroEntry.cover)}
-			<img class="hero-img" src={imageProxyUrl(heroEntry.cover)} alt="" />
+		{#if imageProxyUrl(model.art.cover)}
+			<img class="hero-img" src={imageProxyUrl(model.art.cover)} alt="" />
 		{/if}
 		<div class="hero-scrim"></div>
 	</section>
@@ -67,8 +37,8 @@
 	<div class="content">
 		<section class="masthead">
 			<div class="poster-frame">
-				{#if imageProxyUrl(heroEntry.poster)}<img
-						src={imageProxyUrl(heroEntry.poster)}
+				{#if imageProxyUrl(model.art.poster)}<img
+						src={imageProxyUrl(model.art.poster)}
 						alt=""
 					/>{/if}
 			</div>
@@ -76,36 +46,36 @@
 				<p class="eyebrow">
 					<span class="eyebrow-key">{m.watchorder_franchise_eyebrow()}</span>
 					<span class="eyebrow-rule" aria-hidden="true"></span>
-					<span class="eyebrow-value"
-						>{m.watchorder_franchise_count({ count: franchiseSummary(run).total })}</span
-					>
+					<span class="eyebrow-value">{m.watchorder_franchise_count({ count: model.total })}</span>
 				</p>
-				<h1 class="title">{franchiseName(first.title, franchiseTitles)}</h1>
+				<h1 class="title">{model.name}</h1>
 				<div class="actions">
 					<a
 						class="btn btn-glass"
 						style:--btn-glow="var(--accent)"
-						href={resolve('/anime/[id]', { id: (onNow?.entry ?? first).id })}
+						href={resolve('/anime/[id]', { id: (model.resume?.entry ?? model.start).id })}
 					>
 						<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"
 							><path d="M8 5v14l11-7z" fill="currentColor" /></svg
 						>
-						{onNow ? m.watchorder_franchise_resume() : m.watchorder_franchise_start()}
+						{model.resume ? m.watchorder_franchise_resume() : m.watchorder_franchise_start()}
 					</a>
-					{#if onNow}
+					{#if model.resume}
 						<span class="resume-caption">
-							{#if posOf(onNow.entry) !== null}<span class="caption-num"
-									>{numeral(posOf(onNow.entry)!)}</span
+							{#if model.resume.position !== null}<span class="caption-num"
+									>{numeral(model.resume.position)}</span
 								>{/if}
-							<span class="caption-title">{label(onNow.entry)}</span>
+							<span class="caption-title" title={model.resume.entry.title}
+								>{model.resume.label}</span
+							>
 							<span class="caption-ep"
-								>{m.watchorder_meta_progress_open({ episode: onNow.episode })}</span
+								>{m.watchorder_meta_progress_open({ episode: model.resume.episode })}</span
 							>
 						</span>
 					{/if}
 				</div>
 				<p class="order-note">
-					{prefs.order === 'linked'
+					{model.order === 'linked'
 						? m.watchorder_franchise_order_note_linked()
 						: m.watchorder_franchise_order_note_released()}
 					<a class="text-link" href={resolve('/settings')}
@@ -115,49 +85,44 @@
 			</div>
 		</section>
 
-		{#if prefs.switcher}
-			<div class="switch-row">
-				<MockSwitch {prefs} keys={['order', 'franchise']} {onchoose} />
-			</div>
-		{/if}
-
-		{#snippet row(e: MockEntry, numbered: boolean)}
-			{@const pos = numbered ? posOf(e) : null}
-			{@const share = progressShare(progressOf(e, run.progress[e.id]))}
-			{@const note = pathNote(run, e.id, prefs.order)}
-			<li class:here={e.id === id} style:--row-accent={accentFor(e.id)}>
+		{#snippet row(r: FranchiseRow, numbered: boolean)}
+			<li class:here={r.here} style:--row-accent={accentFor(r.entry.id)}>
 				<a
 					class="story-row"
 					class:compact={!numbered}
-					href={resolve('/anime/[id]', { id: e.id })}
-					title={e.title}
-					aria-current={e.id === id ? 'page' : undefined}
+					href={resolve('/anime/[id]', { id: r.entry.id })}
+					title={r.entry.title}
+					aria-current={r.here ? 'page' : undefined}
 				>
 					{#if numbered}
-						<span class="row-num" aria-hidden="true">{pos !== null ? numeral(pos) : ''}</span>
+						<span class="row-num" aria-hidden="true"
+							>{r.position !== null ? numeral(r.position) : ''}</span
+						>
 					{/if}
 					<span class="row-poster">
-						{#if imageProxyUrl(e.poster)}<img
-								src={imageProxyUrl(e.poster)}
+						{#if imageProxyUrl(r.entry.poster)}<img
+								src={imageProxyUrl(r.entry.poster)}
 								alt=""
 								loading="lazy"
 								decoding="async"
 							/>{/if}
 					</span>
 					<span class="row-text">
-						{#if e.id === id}<span class="here-key">{m.watchorder_franchise_here()}</span>{/if}
-						<span class="row-title">{label(e)}</span>
-						{#if label(e) !== e.title}<span class="sr-only">{e.title}</span>{/if}
-						<MetaLine segments={metaLine(e, run.progress[e.id], today)} />
-						{#if note?.kind === 'leads-into'}
-							<span class="row-note"
-								>{m.watchorder_strip_leads_into({ title: label(note.entry) })}</span
-							>
+						{#if r.here}<span class="here-key">{m.watchorder_franchise_here()}</span>{/if}
+						{#if r.label !== r.entry.title}
+							<span class="sr-only">{r.entry.title}</span>
+							<span class="row-title" aria-hidden="true">{r.label}</span>
+						{:else}
+							<span class="row-title">{r.entry.title}</span>
+						{/if}
+						<MetaLine segments={metaLine(r.entry, r.progress, today)} />
+						{#if r.leadsInto !== null}
+							<span class="row-note">{m.watchorder_strip_leads_into({ title: r.leadsInto })}</span>
 						{/if}
 					</span>
-					{#if share > 0}
+					{#if r.share > 0}
 						<span class="row-progress" aria-hidden="true">
-							<span class="row-progress-fill" style:inline-size={`${share * 100}%`}></span>
+							<span class="row-progress-fill" style:inline-size={`${r.share * 100}%`}></span>
 						</span>
 					{/if}
 				</a>
@@ -168,84 +133,67 @@
 			<h2 class="eyebrow section-eyebrow">
 				<span class="eyebrow-key">{m.watchorder_franchise_main()}</span>
 			</h2>
-			{#if prefs.franchise === 'list'}
-				{#each segs as seg, i (i)}
-					{#if seg.kind === 'line'}
-						{#if i > 0 && segs[i - 1].kind === 'cycle'}
-							<p class="group-key after-loop">{m.watchorder_franchise_after_loop()}</p>
-						{/if}
-						<ol class="story-list">
-							{#each seg.entries as e (e.id)}{@render row(e, true)}{/each}
-						</ol>
-					{:else if seg.kind === 'fork'}
-						<div class="fork">
-							<p class="group-key">{m.watchorder_strip_ways({ count: seg.branches.length })}</p>
-							<div class="branches">
-								{#each seg.branches as branch, b (b)}
-									<div class="branch">
-										<p class="branch-key">
-											{m.watchorder_strip_way({ n: b + 1, count: seg.branches.length })}
-										</p>
-										<ol class="story-list">
-											{#each branch as e (e.id)}{@render row(e, false)}{/each}
-										</ol>
-									</div>
-								{/each}
-							</div>
-						</div>
-					{:else}
-						<div class="loop">
-							<p class="group-key">
-								{loopGroupText(seg.entries.length)}
-							</p>
-							<p class="group-hint">{m.watchorder_franchise_cycle_hint()}</p>
-							<ol class="story-list">
-								{#each seg.entries as e (e.id)}{@render row(e, false)}{/each}
-							</ol>
-						</div>
+			{#each model.sections as section, i (i)}
+				{#if section.kind === 'line'}
+					{#if section.afterGroup}
+						<p class="group-key after-loop">{m.watchorder_franchise_after_loop()}</p>
 					{/if}
-				{/each}
-			{:else}
-				<ol class="shelf">
-					{#each items as item (item.entry.id)}
-						<li>
-							<RunCard
-								{run}
-								entry={item.entry}
-								position={item.position}
-								label={label(item.entry)}
-								current={item.entry.id === id}
-								keyText={railKeyText(item.key, item.entry.id === id, label)}
-								{today}
-							/>
-						</li>
-					{/each}
-				</ol>
+					<ol class="story-list">
+						{#each section.rows as r (r.entry.id)}{@render row(r, true)}{/each}
+					</ol>
+				{:else if section.kind === 'ways'}
+					<div class="fork">
+						<p class="group-key">{m.watchorder_strip_ways({ count: section.ways.length })}</p>
+						<div class="branches">
+							{#each section.ways as way, w (w)}
+								<div class="branch">
+									<p class="branch-key">
+										{m.watchorder_strip_way({ n: w + 1, count: section.ways.length })}
+									</p>
+									<ol class="story-list">
+										{#each way as r (r.entry.id)}{@render row(r, false)}{/each}
+									</ol>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{:else}
+					<div class="loop">
+						<p class="group-key">{loopGroupText(section.rows.length)}</p>
+						<p class="group-hint">{m.watchorder_franchise_cycle_hint()}</p>
+						<ol class="story-list">
+							{#each section.rows as r (r.entry.id)}{@render row(r, false)}{/each}
+						</ol>
+					</div>
+				{/if}
+			{/each}
+			{#if model.partial}
+				<p class="partial">{m.watchorder_franchise_partial()}</p>
 			{/if}
 		</section>
 
-		{#if run.versions.length > 0}
+		{#if model.versions.length > 0}
 			<Strip eyebrow={m.watchorder_franchise_versions()}>
-				{#each run.versions as e (e.id)}<PosterCard anime={asRef(e)} />{/each}
+				{#each model.versions as e (e.id)}<PosterCard anime={asRef(e)} />{/each}
 			</Strip>
 		{/if}
-		{#if run.films.length > 0}
+		{#if model.films.length > 0}
 			<Strip eyebrow={m.watchorder_franchise_films()}>
-				{#each run.films as e (e.id)}<PosterCard anime={asRef(e)} />{/each}
+				{#each model.films as e (e.id)}<PosterCard anime={asRef(e)} />{/each}
 			</Strip>
 		{/if}
-		{#if run.sides.length > 0}
+		{#if model.sides.length > 0}
 			<Strip eyebrow={m.watchorder_franchise_sides()}>
-				{#each run.sides as e (e.id)}<PosterCard anime={asRef(e)} />{/each}
+				{#each model.sides as e (e.id)}<PosterCard anime={asRef(e)} />{/each}
 			</Strip>
 		{/if}
-		{#if run.recaps.length > 0}
+		{#if model.recaps.length > 0}
 			<section class="recaps">
 				<div class="recaps-head">
 					<h2 class="eyebrow">
 						<span class="eyebrow-key">{m.watchorder_franchise_recaps()}</span>
 						<span class="eyebrow-rule" aria-hidden="true"></span>
-						<span class="eyebrow-value">{run.recaps.length}</span>
+						<span class="eyebrow-value">{model.recaps.length}</span>
 					</h2>
 					<button
 						type="button"
@@ -259,7 +207,7 @@
 				</div>
 				{#if recapsOpen}
 					<Strip eyebrow={m.watchorder_franchise_recaps()} headless>
-						{#each run.recaps as e (e.id)}<PosterCard anime={asRef(e)} />{/each}
+						{#each model.recaps as e (e.id)}<PosterCard anime={asRef(e)} />{/each}
 					</Strip>
 				{/if}
 			</section>
@@ -401,10 +349,6 @@
 		font-size: var(--type-meta);
 		color: var(--bone-300);
 	}
-	.switch-row {
-		padding-inline: var(--space-8);
-		margin-block-start: var(--space-6);
-	}
 	.main-story {
 		padding-inline: var(--space-8);
 		margin-block: var(--space-7);
@@ -526,6 +470,12 @@
 		font-weight: 500;
 		line-height: 1.3;
 	}
+	.partial {
+		margin: var(--space-4) 0 0;
+		max-inline-size: 60rem;
+		font-size: var(--type-meta);
+		color: var(--bone-300);
+	}
 	.row-note {
 		font-size: var(--type-micro);
 		color: var(--bone-300);
@@ -541,14 +491,6 @@
 		display: block;
 		block-size: 100%;
 		background: var(--row-accent);
-	}
-	.shelf {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
-		gap: var(--space-6) var(--space-5);
-		margin: 0;
-		padding: 0;
-		list-style: none;
 	}
 	.recaps {
 		margin-block-start: var(--space-7);
