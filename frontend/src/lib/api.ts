@@ -65,6 +65,18 @@ declare global {
 			 *  per OS (e.g. the FfmpegMissing modal). Absent in browser-
 			 *  only dev. */
 			platform?: string;
+			/** The launch's remote flags, decided by the backend before
+			 *  the window opened and fixed for the session
+			 *  (`$lib/flags`). Absent in browser-only dev. */
+			flags?: Readonly<Record<string, boolean>>;
+			/** Where those flags came from: `file`, `cache`,
+			 *  `defaults` or `test`; null when the window opened
+			 *  without them. */
+			flagsOrigin?: string | null;
+			/** Tell the main process the app's first page has rendered,
+			 *  which the window's reveal waits for (`$lib/app-ready`).
+			 *  Absent in browser-only dev. */
+			appReady?: () => void;
 			/** Open a native folder picker dialog. Returns the chosen
 			 *  absolute path or null on cancel. */
 			pickDirectory?: (options?: {
@@ -995,6 +1007,10 @@ export interface DownloadArgs {
 	download_dir?: string;
 	/** Which version to download — {@link PlayArgs.version}. */
 	version?: VersionKind;
+	/** The captions choice remembered for the show —
+	 *  {@link PlayArgs.caption} — which decides the subtitle tracks a
+	 *  listing past the backend's cap keeps. */
+	caption?: string;
 }
 
 /** SSE progress event body — one line of the download's progress
@@ -1041,6 +1057,7 @@ export function downloadStream(
 	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
 	if (args.download_dir) params.set('download_dir', args.download_dir);
 	if (args.version) params.set('version', args.version);
+	if (args.caption) params.set('caption', args.caption);
 	params.set('locale', uiLocale());
 
 	return url(`/api/download/stream?${params.toString()}`, 'download').then(

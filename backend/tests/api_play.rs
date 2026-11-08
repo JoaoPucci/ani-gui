@@ -66,6 +66,7 @@ fn build_state(tmp: &std::path::Path, hianime_base: &str) -> AppState {
         account_write_locks: ani_gui::commands::account::AccountWriteLocks::new(),
         availability_refreshes: ani_gui::commands::availability_refresh::AvailabilityRefreshes::new(
         ),
+        flags: ani_gui::flags::FlagStore::fixed(ani_gui::flags::DECLARED),
     }
 }
 

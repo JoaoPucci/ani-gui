@@ -39,6 +39,7 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests, type VersionInfo } from '../../src/lib/api';
 import { applyChoice } from '../../src/lib/versions/version-choice';
+import { rememberCaption } from '../../src/lib/play/caption-choice';
 import { downloadStore } from '../../src/lib/download/store.svelte';
 
 const KITSU_ID = '7154';
@@ -337,5 +338,42 @@ describe('play route — a download names the remembered version', () => {
 		const dl = await confirmDownload();
 		expect(dl.searchParams.get('episode')).toBe('3');
 		expect(dl.searchParams.has('version')).toBe(false);
+	});
+});
+
+// ------------------------------------------------------------- captions
+
+// A listing longer than the backend's track cap is cut to the tracks
+// most wanted, the show's remembered language first; a download that
+// named no choice would be cut by the app's language alone, and its
+// subtitle files could leave out the language the viewer picked.
+describe("a download names the show's remembered captions choice", () => {
+	it('names it from the detail page', async () => {
+		rememberCaption(KITSU_ID, 'vi');
+		await openDetailDownload();
+		dialogButton(m.download_mode_all())!.click();
+		flushSync();
+
+		const dl = await confirmDownload();
+		expect(dl.searchParams.get('caption')).toBe('vi');
+	});
+
+	it('names it from the play page', async () => {
+		rememberCaption(KITSU_ID, 'vi');
+		await openPlayDownload();
+		dialogButton(m.download_mode_this_episode())!.click();
+		flushSync();
+
+		const dl = await confirmDownload();
+		expect(dl.searchParams.get('caption')).toBe('vi');
+	});
+
+	it('names none when nothing is remembered', async () => {
+		await openPlayDownload();
+		dialogButton(m.download_mode_this_episode())!.click();
+		flushSync();
+
+		const dl = await confirmDownload();
+		expect(dl.searchParams.has('caption')).toBe(false);
 	});
 });
