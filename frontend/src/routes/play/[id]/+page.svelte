@@ -437,6 +437,8 @@
 		playheadOnScreen && Number.isFinite(duration) && duration > 0
 	);
 	const aniskipTrigger = createAniskipFetchTrigger();
+	// The fetch key the skip times on hand were cleared for.
+	let skipsKey: string | null = null;
 	$effect(() => {
 		// Subscribing to the fetch-key derived re-runs the effect on
 		// episode boundaries; subscribing to the readiness boolean
@@ -445,6 +447,13 @@
 		// is reused below to detect an episode change between issuing
 		// and resolving the request.
 		const key = aniskipFetchKey;
+		// Another episode: the last one's skip times go now, not when this
+		// one's length is known and its own are asked for.
+		if (key !== skipsKey) {
+			skipsKey = key;
+			skipIntervals = [];
+			skipsFor = null;
+		}
 		const decision = aniskipTrigger.step(id, episodeNum, aniskipDurationReady);
 		if (decision.kind === 'clear') {
 			skipIntervals = [];
