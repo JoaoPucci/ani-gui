@@ -138,7 +138,7 @@
 	import GuessMark from '$lib/components/GuessMark.svelte';
 	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
 	import { appLinkDeps } from '$lib/history/link-deps';
-	import { rereadLinked } from '$lib/history/reread-linked';
+	import { createCardRelink } from '$lib/history/card-relink';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
@@ -462,40 +462,37 @@
 		...appLinkDeps(),
 		notify: (notice) =>
 			toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined }),
-		refresh: () => void rereadCards()
+		refresh: () => void relink.reread().catch(() => {})
 	});
 	async function openCardLink(row: string, matchId: string, episode: number) {
 		resumeFailure = null;
-		if (await stillGuessed(row, matchId)) void cardLink.start(episode);
+		if (await relink.stillGuessed(row, matchId)) void cardLink.start(episode);
 	}
-	// Rows found no longer guessed since the cards were read: a link made
-	// elsewhere, a play that recorded the show. Their pill goes rather
-	// than open nothing, and the cards are read again.
+	// Rows found no longer guessed since the cards were read: their pill
+	// goes rather than open nothing ($lib/history/card-relink.ts).
 	const settledRows = new SvelteSet<string>();
-	async function stillGuessed(row: string, matchId: string): Promise<boolean> {
-		await cardLink.arrive(row, matchId);
-		if (cardLink.offer) return true;
-		settledRows.add(row);
-		void rereadCards();
-		return false;
-	}
+	const relink = createCardRelink({
+		offerStands: async (row, matchId) => {
+			await cardLink.arrive(row, matchId);
+			return Boolean(cardLink.offer);
+		},
+		settled: settledRows,
+		current: () => history ?? [],
+		list: historyList,
+		order: (rows) => sortByWatchedAt(rows, historyWatchedAt),
+		setHistory: (rows) => {
+			history = rows;
+			for (const h of rows) historyById.set(h.id, h);
+		},
+		// rowTrust is declared further down: read it at the call.
+		resolveMatch: (h) => rowTrust.resolveMatch(h),
+		publish: (id, match) => publishLoaderCap(id, match, match?.episode_count ?? null, true)
+	});
 	/** The card that stands for the history row `row`. */
 	function cardButton(row: string): HTMLElement | null {
 		return document.querySelector<HTMLElement>(
 			`.resume-cell[data-card-row="${CSS.escape(row)}"] .resume-card`
 		);
-	}
-	async function rereadCards() {
-		const next = await rereadLinked(history ?? [], {
-			list: historyList,
-			order: (rows) => sortByWatchedAt(rows, historyWatchedAt),
-			rematch: (h) =>
-				void rowTrust
-					.resolveMatch(h)
-					.then((match) => publishLoaderCap(h.id, match, match?.episode_count ?? null, true))
-		});
-		history = next;
-		for (const h of next) historyById.set(h.id, h);
 	}
 
 	const heroRotation = $derived<KitsuAnimeRef[]>(
@@ -906,7 +903,8 @@
 			// A guess still standing gets the pick; one settled since the
 			// cards were read gets none.
 			const guessed = args.guess ? historyById.get(args.row ?? '') : undefined;
-			const row = guessed && (await stillGuessed(guessed.id, args.match.id)) ? guessed : undefined;
+			const row =
+				guessed && (await relink.stillGuessed(guessed.id, args.match.id)) ? guessed : undefined;
 			if (isCurrent?.() === false) return;
 			resumeFailure = {
 				title,
