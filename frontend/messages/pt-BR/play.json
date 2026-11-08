@@ -145,5 +145,5 @@
 	"test_error_play_failed": "Falha ao reproduzir: {detail}",
 	"test_error_setup_failed": "Falha na configuração: {detail}",
 	"error_load_failed": "Não foi possível carregar este anime. {reason}",
-	"play_failure_source_error": "A fonte de streaming respondeu com um erro. Tente novamente mais tarde."
+	"play_failure_source_error": "A fonte de streaming respondeu com um erro. Tente de novo mais tarde."
 }
