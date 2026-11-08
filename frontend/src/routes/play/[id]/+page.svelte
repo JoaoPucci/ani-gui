@@ -203,7 +203,7 @@
 	import { noteSwitch, sessionRow } from '$lib/history/guess-slip';
 	import { appLinkDeps } from '$lib/history/link-deps';
 	import { switchShow } from '$lib/play/switch-show';
-	import { carryRate, takeRate } from '$lib/play/rate-carry';
+	import { carryRate, rateFor, takeRate } from '$lib/play/rate-carry';
 	import { takeSwitch } from '$lib/history/guess-slip';
 	import { holdPlayback } from '$lib/play/hold-playback';
 	import GuessSlip from '$lib/components/GuessSlip.svelte';
@@ -1890,14 +1890,16 @@
 		playerError = null;
 		failedStreamError = null;
 		// A switch from another show's player hands its speed over
-		// ($lib/play/rate-carry), played once the stream's metadata has
-		// loaded: the load resets the rate, and the element's default
+		// ($lib/play/rate-carry), taken and played once the stream's
+		// metadata has loaded: the load resets the rate, a stream attached
+		// again before then still finds it, and the element's default
 		// stays as it was, so a later episode does not fall back to it.
-		const carriedRate = takeRate(id);
-		if (carriedRate !== null) {
+		if (rateFor(id)) {
 			const v = videoEl;
+			const showId = id;
 			const play = () => {
-				v.playbackRate = carriedRate;
+				const rate = takeRate(showId);
+				if (rate !== null) v.playbackRate = rate;
 			};
 			v.addEventListener('loadedmetadata', play, { once: true });
 			sourceScope.add(() => v.removeEventListener('loadedmetadata', play));
