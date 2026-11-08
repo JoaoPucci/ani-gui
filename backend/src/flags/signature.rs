@@ -30,6 +30,10 @@ pub const TRUSTED_KEYS: &[&str] = &[];
 /// Appended to the file's address to get its signature's.
 pub const SIGNATURE_SUFFIX: &str = ".minisig";
 
+/// The largest signature read. A minisign signature file is a few
+/// hundred bytes.
+pub const MAX_SIGNATURE_BYTES: usize = 4 * 1024;
+
 /// What the signature says about the file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {

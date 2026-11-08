@@ -103,3 +103,72 @@ fn no_throwaway_key_is_one_this_build_trusts() {
         Verdict::Invalid
     );
 }
+
+async fn serve(body: Vec<u8>, signature: Option<String>) -> (wiremock::MockServer, String) {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/flags/flags.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(body))
+        .mount(&server)
+        .await;
+    let sig = match signature {
+        Some(s) => ResponseTemplate::new(200).set_body_string(s),
+        None => ResponseTemplate::new(404),
+    };
+    Mock::given(method("GET"))
+        .and(path("/flags/flags.json.minisig"))
+        .respond_with(sig)
+        .mount(&server)
+        .await;
+    let url = format!("{}/flags/flags.json", server.uri());
+    (server, url)
+}
+
+/// End to end through the launch's fetch: a file minisign signed,
+/// under a trusted key, turns its feature on.
+#[tokio::test]
+async fn a_file_minisign_signed_turns_its_feature_on() {
+    use crate::flags::remote::{fetch_trusting, FETCH_TIMEOUT};
+    use crate::flags::resolve::resolve;
+    use crate::flags::test_decls::TEST_DECLS;
+    let body = file();
+    let s = sign(&body, "flags.json");
+    let (_server, url) = serve(body, Some(s.signature)).await;
+    let doc = fetch_trusting(
+        &reqwest::Client::new(),
+        &url,
+        FETCH_TIMEOUT,
+        &[&s.public_key],
+    )
+    .await
+    .expect("the file");
+    let flags = resolve(TEST_DECLS, Some(&doc));
+    assert!(flags.enabled(&TEST_DECLS[0]));
+    assert!(!flags.enabled(&TEST_DECLS[1]));
+}
+
+/// The same file unsigned, or signed by a key the build does not
+/// trust: its feature stays off.
+#[tokio::test]
+async fn the_same_file_unverified_leaves_its_feature_off() {
+    use crate::flags::remote::{fetch_trusting, FETCH_TIMEOUT};
+    use crate::flags::resolve::resolve;
+    use crate::flags::test_decls::TEST_DECLS;
+    let body = file();
+    let trusted = sign(&body, "flags.json");
+    let stranger = sign(&body, "flags.json");
+    for signature in [None, Some(stranger.signature)] {
+        let (_server, url) = serve(body.clone(), signature).await;
+        let doc = fetch_trusting(
+            &reqwest::Client::new(),
+            &url,
+            FETCH_TIMEOUT,
+            &[&trusted.public_key],
+        )
+        .await
+        .expect("the flags arrive");
+        assert!(!resolve(TEST_DECLS, Some(&doc)).enabled(&TEST_DECLS[0]));
+    }
+}

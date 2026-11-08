@@ -74,6 +74,17 @@ pub fn start(
     client: reqwest::Client,
     plan: LaunchPlan,
 ) -> tokio::task::JoinHandle<()> {
+    start_trusting(store, client, plan, &[])
+}
+
+/// Stub.
+pub(crate) fn start_trusting(
+    store: FlagStore,
+    client: reqwest::Client,
+    plan: LaunchPlan,
+    keys: &'static [&'static str],
+) -> tokio::task::JoinHandle<()> {
+    let _ = keys;
     tokio::spawn(async move {
         match plan {
             LaunchPlan::Live { cache } => {

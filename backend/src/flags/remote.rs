@@ -38,6 +38,10 @@ pub const FETCH_TIMEOUT: Duration = Duration::from_secs(45);
 /// timeouts, so tests pin the constant, not the builder call.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How long the signature may lag behind the file once the file has
+/// arrived.
+pub const SIGNATURE_GRACE: Duration = Duration::from_millis(750);
+
 /// The client the flags file is fetched with: its own, for the
 /// connect timeout above. Falls back to the default client if the
 /// builder fails, which it does not in practice.
@@ -54,6 +58,17 @@ pub fn client() -> reqwest::Client {
 /// transport error, the timeout, a status other than 200, a body over
 /// the cap, or a body that is not a flags document.
 pub async fn fetch(client: &reqwest::Client, url: &str, timeout: Duration) -> Option<Document> {
+    fetch_trusting(client, url, timeout, &[]).await
+}
+
+/// Stub.
+pub async fn fetch_trusting(
+    client: &reqwest::Client,
+    url: &str,
+    timeout: Duration,
+    keys: &[&str],
+) -> Option<Document> {
+    let _ = keys;
     let body = tokio::time::timeout(timeout, fetch_body(client, url, timeout))
         .await
         .ok()??;
@@ -88,3 +103,7 @@ async fn fetch_body(client: &reqwest::Client, url: &str, timeout: Duration) -> O
 #[cfg(test)]
 #[path = "remote_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "remote_signed_test.rs"]
+mod signed_tests;
