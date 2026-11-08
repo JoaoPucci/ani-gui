@@ -4,6 +4,7 @@
 //! production file's CRAP roll-up. Moving them back inline puts that
 //! file's score at the mercy of its test count.
 
+use super::choice::*;
 use super::*;
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
