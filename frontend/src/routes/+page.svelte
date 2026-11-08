@@ -791,6 +791,9 @@
 		(next) => (wl = next)
 	);
 	let wl = $state(wlFreshness.state);
+	// A number, so a write that leaves it alone (the clock moving, the
+	// held label) does not have the status recomputed.
+	const wlStamped = $derived(wl.stamped);
 	onDestroy(() => wlFreshness.dispose());
 	$effect(() => onWatchLaterInvalidated(() => wlFreshness.stampsChanged()));
 	const wlCopy: StatusCopy = {
@@ -800,7 +803,7 @@
 		updated: (when) => m.account_watch_later_updated({ when })
 	};
 	const wlStatus = $derived.by(() => {
-		void wl.stamped;
+		void wlStamped;
 		const providers = Object.keys(buildWatchLaterDeps().credentials) as Provider[];
 		return watchLaterStatus(providers.map(readLastRefreshed), refreshingWatchLater);
 	});
