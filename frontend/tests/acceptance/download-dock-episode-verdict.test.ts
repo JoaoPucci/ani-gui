@@ -1,5 +1,7 @@
-// Acceptance: a download of an episode the source does not carry
-// tells the user so, in the dock, with the play page's own words.
+// Acceptance: a download the provider fails (an episode the source
+// does not carry, a video server that did not serve, an answer this
+// version cannot read) tells the user so, in the dock, with the play
+// page's own words.
 //
 // The backend ends the download stream with the typed episode
 // verdict — a unit variant, so no message rides with it — and the
@@ -86,7 +88,7 @@ function openDock(): HTMLElement {
 	return pop as HTMLElement;
 }
 
-describe('the download dock renders the episode verdict', () => {
+describe('the download dock words a provider failure as the play page does', () => {
 	it('an episode the source does not carry names the episode on its failed row', async () => {
 		const id = startDownload({
 			title: 'Frieren',
