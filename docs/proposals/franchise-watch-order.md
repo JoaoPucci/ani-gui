@@ -527,12 +527,16 @@ is defined from the entry being viewed — the anchor — by these rules
    `alternative_setting`, only one of each such group is added: the
    one in the same format as the entry listing them (TV, movie,
    OVA…), else the one that started first, else the lowest Kitsu id.
+   This holds across distances: an entry is not added when the entry
+   listing it also lists, in the same role, a version of it already in
+   the run.
 3. **Versions along the path are left out.** An entry is not added if
    it and any entry on its path to the anchor list each other (in
    either direction) as `alternative_version` or
    `alternative_setting`. The anchor is never left out.
 4. **Other versions** are the anime entries rules 2 and 3 left out,
-   plus the anime that run members list as `alternative_version`.
+   music videos aside, plus the anime that run members list as
+   `alternative_version`.
    `alternative_setting` is not listed: Kitsu uses it for separate
    series in the same world (*Fate/stay night* lists *Apocrypha*,
    *Prisma☆Illya* and *Grand Order* that way). Manga and novels are
