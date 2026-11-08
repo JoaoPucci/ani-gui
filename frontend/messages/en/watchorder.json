@@ -95,6 +95,7 @@
 	"strip_leads_into": "Leads into {title}",
 	"strip_of_total": "of {total}",
 	"strip_position": "{position} of {total}",
+	"strip_position_open": "Position {position}",
 	"strip_side_end": "Nothing links on from here",
 	"strip_side_story": "Side story",
 	"strip_unnumbered_branch": "One of the ways to continue",

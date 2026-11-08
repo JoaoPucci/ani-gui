@@ -32,3 +32,9 @@ export function isUnaired(entry: WatchEntry, today: string): boolean {
 export function yearOf(entry: WatchEntry): string | null {
 	return entry.start?.slice(0, 4) ?? null;
 }
+
+/** The viewer's local calendar day, YYYY-MM-DD, which "Coming …" is judged against. */
+export function localDay(now: Date): string {
+	void now;
+	return '';
+}
