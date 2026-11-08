@@ -18,6 +18,16 @@
 	"franchise_eyebrow": "Franchise",
 	"franchise_films": "Films",
 	"franchise_here": "You are here",
+	"franchise_loop_group": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} linked title, order unclear",
+				"countPlural=*": "{count} linked titles, order unclear"
+			}
+		}
+	],
 	"franchise_main": "Main story",
 	"franchise_off": "This page is a design mockup. Turn the mockups on in Diagnostics to see it.",
 	"franchise_order_change": "Change in Settings",

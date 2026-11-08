@@ -74,8 +74,7 @@ export function loopText(count: number): string {
 
 /** A loop of `count` as the heading over its group of titles. */
 export function loopGroupText(count: number): string {
-	void count;
-	return '';
+	return m.watchorder_franchise_loop_group({ count });
 }
 
 /** "05": positions read as oversized two-digit numerals. */

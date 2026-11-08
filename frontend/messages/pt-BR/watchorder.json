@@ -14,10 +14,20 @@
 			}
 		}
 	],
-	"franchise_cycle_hint": "Todos estes estão ligados entre si, então não há uma ordem clara para assistir. Eles aparecem na ordem dos vínculos.",
+	"franchise_cycle_hint": "Todos estes estão vinculados entre si, então não há uma ordem clara para assistir. Eles aparecem na ordem dos vínculos.",
 	"franchise_eyebrow": "Franquia",
 	"franchise_films": "Filmes",
 	"franchise_here": "Você está aqui",
+	"franchise_loop_group": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} título vinculado, ordem incerta",
+				"countPlural=*": "{count} títulos vinculados, ordem incerta"
+			}
+		}
+	],
 	"franchise_main": "História principal",
 	"franchise_off": "Esta página é um protótipo de design. Ative os protótipos em Diagnóstico para vê-la.",
 	"franchise_order_change": "Alterar em Configurações",
@@ -104,8 +114,8 @@
 			"declarations": ["input others", "local countPlural = others: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "Ligado a {others} outro, ordem incerta",
-				"countPlural=*": "Ligado a {others} outros, ordem incerta"
+				"countPlural=one": "Vinculado a {others} outro, ordem incerta",
+				"countPlural=*": "Vinculado a {others} outros, ordem incerta"
 			}
 		}
 	],

@@ -3,7 +3,7 @@
 	"diag_section": "Макеты порядка просмотра",
 	"diag_switcher": "Показывать переключатель вариантов макетов",
 	"diag_toggle": "Показывать макеты порядка просмотра",
-	"franchise_after_loop": "Без ясного места в порядке просмотра",
+	"franchise_after_loop": "Место в порядке просмотра неясно",
 	"franchise_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -20,6 +20,18 @@
 	"franchise_eyebrow": "Франшиза",
 	"franchise_films": "Фильмы",
 	"franchise_here": "Вы здесь",
+	"franchise_loop_group": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} связанный тайтл, порядок неясен",
+				"countPlural=few": "{count} связанных тайтла, порядок неясен",
+				"countPlural=many": "{count} связанных тайтлов, порядок неясен",
+				"countPlural=*": "{count} связанного тайтла, порядок неясен"
+			}
+		}
+	],
 	"franchise_main": "Основная история",
 	"franchise_off": "Эта страница — макет дизайна. Включите макеты в разделе «Диагностика», чтобы её увидеть.",
 	"franchise_order_change": "Изменить в настройках",
@@ -110,7 +122,7 @@
 	"strip_word_sequels": "Сиквелы",
 	"upnext_announce": "Далее: {title}",
 	"upnext_choices": "Варианты продолжения",
-	"upnext_coming": "Следующая часть — когда выйдет",
+	"upnext_coming": "Выйдет следующей",
 	"upnext_dismiss": "Закрыть",
 	"upnext_eyebrow": "Далее"
 }
