@@ -534,6 +534,60 @@ describe("a probe still on its way for the card's former show", () => {
 	});
 });
 
+describe("the cap retry for a card's former show", () => {
+	// JoJo's guess answers its first probe unconfirmed, so the row goes
+	// into the cap retry, which starts once every first probe answered.
+	// Black Clover's first probe is held until the card is linked, so the
+	// retry starts after the link. Asked again, the guess would confirm a
+	// cap of 1 — the series' would hold the OVA at episode 1.
+	let releaseBc: () => void = () => {};
+	let guessProbes = 0;
+	beforeEach(() => {
+		guessProbes = 0;
+		// The 2012 row probes the same guess, legitimately: leave it out.
+		backend.rows = backend.rows.filter((r) => r.id !== JOJO_PLAYED);
+		const bcHeld = new Promise<void>((resolve) => {
+			releaseBc = resolve;
+		});
+		server.use(
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const { kitsu_id } = (await request.json()) as { kitsu_id?: string };
+				if (kitsu_id === BC_GUESS) await bcHeld;
+				if (kitsu_id === JOJO_GUESS) {
+					guessProbes++;
+					return HttpResponse.json({
+						available: true,
+						episode_count: 1,
+						episode_count_approximate: guessProbes === 1
+					});
+				}
+				const count = kitsu_id === JOJO_RIGHT ? 13 : 26;
+				return HttpResponse.json({ available: true, episode_count: count });
+			})
+		);
+	});
+
+	it('asks nothing more about the guess once the card is linked, and keeps the linked cap', async () => {
+		await openHome();
+		expect(guessProbes).toBe(1);
+		pill(JOJO_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(JOJO_RIGHT_TITLE);
+		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the card as the OVA');
+		const asked = guessProbes;
+		// The retry starts, and its first step (half a second) passes.
+		releaseBc();
+		await new Promise((r) => setTimeout(r, 1500));
+		expect(guessProbes).toBe(asked);
+		// The card still has the OVA's cap: Continue goes on to episode 2.
+		cell(JOJO_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!.click();
+		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+		const url = new URL(FakeEventSource.instances.at(-1)!.url, 'http://x');
+		expect(url.searchParams.get('kitsu_id')).toBe(JOJO_RIGHT);
+		expect(url.searchParams.get('episode')).toBe('2');
+	}, 15_000);
+});
+
 describe("a guessed card's player is told where its play landed", () => {
 	async function resumeJojo(ownListing: boolean) {
 		await openHome();
