@@ -53,7 +53,7 @@ describe('rail key text', () => {
 	it('names a way, a loop, or the entry a side entry leads into', () => {
 		expect(railKeyText({ kind: 'way', n: 2, count: 2 }, false, label)).toBe('Way 2 of 2');
 		expect(railKeyText({ kind: 'loop', count: 10 }, false, label)).toBe(
-			'Part of a loop of 10 entries'
+			'Linked with 9 others, order unclear'
 		);
 		expect(railKeyText({ kind: 'leads-into', entry: e, position: 10 }, false, label)).toBe(
 			'Leads into 10'
