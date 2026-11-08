@@ -274,7 +274,7 @@ curl -sI http://127.0.0.1:42337/healthz
 | `ANI_GUI_UPSTREAM_BASE` | dev/test only; redirects `meta_http` to a wiremock instance |
 | `VITE_ANI_GUI_API_BASE` | browser-only dev: point the Vite renderer at a separately-running backend |
 | `ANI_GUI_UNATTENDED` | set to `1` by a harness with nobody at the screen (the e2e launch helper and the backend's integration tests always do): a packaged build whose startup fails then exits at once instead of showing its error dialog, and the backend never fetches the live remote flags file, taking its flags from `ANI_GUI_TEST_FLAGS_FILE` or the defaults ([Remote flags](#remote-flags)) |
-| `ANI_GUI_TEST_FLAGS_FILE` | only with `ANI_GUI_UNATTENDED=1`: a flags file, in the remote file's format, that the test run's flags come from. Ignored on any other launch |
+| `ANI_GUI_TEST_FLAGS_FILE` | only with `ANI_GUI_UNATTENDED=1`: a flags file, in the remote file's format, that the test run's flags come from. A `true` in it counts only when a `.minisig` beside it verifies under the build's keys, as for the live file. Ignored on any other launch |
 | `ANI_GUI_DEV` | forces the dev data profile (`ani-gui-dev` dirs) — see below. Auto-set by the Electron dev launcher; rarely needed by hand |
 
 **Dev data isolation.** Any source-built backend (`cargo run`, the
@@ -298,16 +298,19 @@ the installed app's shell profile, and hands over to it if it is running.
 
 The maintainer can switch a declared flag without a release by editing
 one file on the repository's `flags` branch. What a flag may do, and
-why the file is not signed, is in
+which values need the file signed, is in
 [`architecture.md`](./architecture.md#remote-flags). Only a flag
 declared in `backend/src/flags/mod.rs` (`DECLARED`) has any effect. A
 build ignores names it does not declare and values its declaration
 does not list.
 
-**Creating the branch (once).** The branch holds `flags.json` and
-nothing else. It is not the default branch, so the `master` ruleset
-does not cover it. These commands create it in a separate worktree
-next to the checkout. Run them in bash from the repository root:
+**Creating the branch (once).** The branch holds `flags.json` and,
+once the file is signed, its signature `flags.json.minisig` and a
+`.gitattributes` that keeps both byte for byte (see
+[Signing the flags file](#signing-the-flags-file) below). It is not the
+default branch, so the `master` ruleset does not cover it. These
+commands create it in a separate worktree next to the checkout. Run
+them in bash from the repository root:
 
 ```sh
 git worktree add --detach ../ani-gui-flags
@@ -319,36 +322,74 @@ git commit -m "chore: start the remote flags file"
 git push -u origin flags
 ```
 
+On another checkout, once the branch exists, make the same worktree
+from the repository root (the same two commands in bash and
+PowerShell):
+
+```sh
+git fetch origin flags
+git worktree add ../ani-gui-flags flags
+```
+
 Until the branch exists, every launch gets a 404 and uses the
 defaults, which is also what an empty `flags` object does, and each
 session retries the file after 3, 10 and 30 minutes and then hourly.
 Create the branch before the first release that carries this.
 
 **The format.** One JSON object with a `flags` object inside, each flag
-`true` or `false`, as its declaration allows. Flags are default OFF, and any read
-failure means OFF: a flag the file does not mention, or one it gives
-any other value, is off. This build declares no flag, so the file
-changes nothing yet:
+`true` or `false`. Flags are default OFF, and any read failure means
+OFF: a flag the file does not mention, or one it gives any other value,
+is off. `true` turns a flag's feature on, and counts only in a signed
+file (see [Signing the flags file](#signing-the-flags-file)); `false`
+counts in any file. This build declares no flag, so the file changes
+nothing yet:
 
 ```json
 {
   "flags": {
-    "some_feature": false
+    "some_feature": true
   }
 }
 ```
 
-**Changing a flag.** Edit `flags.json` on the `flags` branch, either in
-the worktree above or in GitHub's web editor, and commit. From the
-worktree, in bash:
+An unsigned file, or one whose signature is stale, keeps every `false`
+and loses every `true`, so each feature it would turn on stays off on
+every install.
+
+**Changing a flag.** Edit `flags.json` in the worktree above, not in
+GitHub's web editor, and publish it. Once `flags.json.minisig` is on
+the branch, publish every edit with step 3 of
+[Signing the flags file](#signing-the-flags-file): the signature covers
+the whole file, and an edit pushed without a fresh one turns off every
+feature the file turns on (step 3 says how long). Until then the file
+is published unsigned, and a `true` in it changes nothing. In bash:
 
 ```sh
-cd ../ani-gui-flags
-git pull
-python3 -m json.tool flags.json
-git commit -am "chore: set some_feature to false"
-git push
+cd ../ani-gui-flags &&
+  git pull &&
+  python3 -m json.tool flags.json &&
+  git commit -am "chore: turn some_feature off" &&
+  git push
 ```
+
+In PowerShell (on `py -3`, see step 3):
+
+```powershell
+& {
+  Set-Location -ErrorAction Stop ..\ani-gui-flags
+  git pull
+  if ($LASTEXITCODE -ne 0) { throw 'git pull failed' }
+  py -3 -m json.tool flags.json
+  if ($LASTEXITCODE -ne 0) { throw 'flags.json is not valid JSON' }
+  git commit -am "chore: turn some_feature off"
+  if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
+  git push
+  if ($LASTEXITCODE -ne 0) { throw 'git push failed' }
+}
+```
+
+Each command runs only if the one before it succeeded, so a file that
+is not JSON is never committed or pushed.
 
 `python3 -m json.tool` checks only that the file is JSON. Two other
 mistakes get past it and fail differently:
@@ -364,11 +405,11 @@ mistakes get past it and fail differently:
 So after pushing, wait out the five-minute CDN cache, launch the app,
 and confirm the values with `GET /api/flags` (below).
 
-**Setting a flag back.** Set the flag back to its default (`false`), or
-remove its entry, and push. Removing
-the whole file, or the branch, also works in the end. But installs then
-get a 404, which counts as a failed fetch, so each one keeps the copy it
-cached for up to seven days.
+**Turning a feature off again.** Set its flag to `false`, or remove its
+entry, and publish the file as above. Any file may do that, signed or
+not. Removing the whole file, or the branch, also works in the end. But
+installs then get a 404, which counts as a failed fetch, so each one
+keeps the copy it cached for up to seven days.
 
 **How long until installs see it.** `raw.githubusercontent.com` serves
 the file with `Cache-Control: max-age=300`, so the CDN can return the
@@ -387,22 +428,162 @@ To see what a running backend decided, read
 where they came from (`origin`: `file`, `cache` or `defaults`, or
 `test` in a test run). The
 backend logs the decision at `info` as `remote flags settled`, with the
-same origin. The app's window gets the same values from the preload, as
-`window.aniGui.flags`.
+same origin, and each fetch of the live file logs the signature's
+verdict as `flags file signature checked` (`Verified`, `Unsigned` or
+`Invalid`). The app's window gets
+the same values from the preload, as `window.aniGui.flags`.
 
 **Development and test runs.** `pnpm dev` is a normal launch: it reads
 the live file, so a flag flipped on the branch reaches a dev run too.
 Test runs never do. The end-to-end launch helper and the backend's
 integration tests set `ANI_GUI_UNATTENDED=1`, and their flags come from
 `ANI_GUI_TEST_FLAGS_FILE` or the defaults (see the table of
-environment variables above).
+environment variables above). That file is admitted like the live one,
+so it turns a feature on only with a `.minisig` beside it that verifies
+under the build's keys.
 
 **Declaring a flag** (for the change that adds one). Declare it as a
-`pub const FlagDecl`, list it in `DECLARED`, read it through that
-constant, and register a test case for its default and for each other
-value it allows in `flags::matrix::CASES`. A test fails until every
-value has one. This build has no kind to declare it with: a kind
-arrives with the change that verifies the file.
+`pub const FlagDecl` of kind `FlagKind::Rollout`, list it in
+`DECLARED`, read it through that constant, and register a test case for
+both its values, off and on, in `flags::matrix::CASES`. A test fails
+until both have one.
+
+## Signing the flags file
+
+A flag's `true` turns its feature on, and is used only when `flags.json`
+is signed with minisign and the signature verifies against a public key
+the build trusts (`backend/src/flags/signature.rs`, `TRUSTED_KEYS`).
+Each launch fetches `flags.json.minisig` from beside `flags.json` on the
+`flags` branch. An unsigned file, a signature that does not verify, or a
+build that trusts no key keeps the file's `false` values and drops every
+`true`. The shipped build trusts no key yet: the maintainer generates
+the key, and its public half goes into a release, before any flag is
+turned on remotely.
+
+The private key never goes into this repository, a pull request, CI or
+any shared drive. Keep it, and its password, offline with the
+maintainer. Anyone holding it can turn on, on every install, any
+feature a build declares as a flag.
+
+These steps need [minisign](https://jedisct1.github.io/minisign/)
+0.11 or later. Each step is given for bash on Linux and for
+PowerShell 7.1 or later on Windows.
+
+**0. Keep the file's bytes as they are pushed (once).** The signature
+covers the exact bytes, and the `flags` branch does not carry the main
+branch's `.gitattributes`. A checkout that converts line endings (Git
+for Windows with `core.autocrlf=true`) would sign bytes that are not the
+ones GitHub serves. In the branch's worktree:
+
+```sh
+printf 'flags.json -text\n*.minisig -text\n' > .gitattributes
+git add .gitattributes
+git commit -m "chore: keep the flags file's bytes as signed"
+git push
+```
+
+```powershell
+Set-Content -NoNewline -Path .gitattributes -Value "flags.json -text`n*.minisig -text`n"
+git add .gitattributes
+git commit -m "chore: keep the flags file's bytes as signed"
+git push
+```
+
+**1. Make the key pair (once per key).**
+
+```sh
+mkdir -p ~/.minisign
+minisign -G -p ~/.minisign/ani-gui-flags.pub -s ~/.minisign/ani-gui-flags.key
+```
+
+```powershell
+New-Item -ItemType Directory -Force "$HOME\.minisign" | Out-Null
+minisign -G -p "$HOME\.minisign\ani-gui-flags.pub" -s "$HOME\.minisign\ani-gui-flags.key"
+```
+
+minisign asks for a password for the secret key. `ani-gui-flags.pub`
+holds two lines; the second is the public key, a base64 string starting
+`RW`.
+
+**2. Trust the key in a release.** Add that second line to
+`TRUSTED_KEYS` in `backend/src/flags/signature.rs`, one line:
+
+```rust
+pub const TRUSTED_KEYS: &[&str] = &["RW…the second line of ani-gui-flags.pub…"];
+```
+
+Then change what pins the shipped build as trusting no key: the test
+`the_shipped_build_trusts_no_key_until_the_maintainer_adds_one` in
+`signature_test.rs`, to pin the list you added, and the sentence in
+`docs/PRIVACY.md` saying this version trusts no signing key. Ship the
+release. Installs on older releases ignore the signature and turn
+nothing on; that is the safe direction.
+
+**3. Sign and publish.** After every edit of `flags.json`, sign the
+exact bytes you push, then commit the file and its signature together:
+
+```sh
+cd ../ani-gui-flags &&
+  git pull &&
+  python3 -m json.tool flags.json &&
+  minisign -S -s ~/.minisign/ani-gui-flags.key -m flags.json \
+    -t "flags.json $(date -u +%Y-%m-%dT%H:%M:%SZ)" &&
+  minisign -V -p ~/.minisign/ani-gui-flags.pub -m flags.json &&
+  git add flags.json flags.json.minisig &&
+  git commit -m "chore: say what changed" &&
+  git push
+```
+
+`-S` writes `flags.json.minisig` beside the file with minisign's default
+prehashed signature, the only kind the app accepts; `-V` checks it
+before it is pushed. Each command runs only if the one before it
+succeeded, so a file that is not JSON, or a signature that does not
+verify, is never committed or pushed. Put what changed in the commit
+message. In PowerShell (Windows' `python3` may be the Store's
+placeholder, so the check uses `py -3`; PowerShell's own
+`ConvertFrom-Json` accepts comments the app does not, so it is no
+substitute):
+
+```powershell
+& {
+  Set-Location -ErrorAction Stop ..\ani-gui-flags
+  git pull
+  if ($LASTEXITCODE -ne 0) { throw 'git pull failed' }
+  py -3 -m json.tool flags.json
+  if ($LASTEXITCODE -ne 0) { throw 'flags.json is not valid JSON' }
+  minisign -S -s "$HOME\.minisign\ani-gui-flags.key" -m flags.json -t "flags.json $(Get-Date -AsUTC -UFormat '%Y-%m-%dT%H:%M:%SZ')"
+  if ($LASTEXITCODE -ne 0) { throw 'signing failed' }
+  minisign -V -p "$HOME\.minisign\ani-gui-flags.pub" -m flags.json
+  if ($LASTEXITCODE -ne 0) { throw 'the signature does not verify' }
+  git add flags.json flags.json.minisig
+  if ($LASTEXITCODE -ne 0) { throw 'git add failed' }
+  git commit -m "chore: say what changed"
+  if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
+  git push
+  if ($LASTEXITCODE -ne 0) { throw 'git push failed' }
+}
+```
+
+After pushing, wait out the CDN's five-minute cache: until both files
+are fresh it can serve the new file with the old signature, and a
+launch in that window keeps the `false` values and turns nothing on. An
+edit pushed without a fresh signature leaves the old signature beside
+new bytes: installs keep the `false` values and turn nothing on until a
+matching signature is pushed. GitHub's web editor cannot sign, so make
+every edit in the worktree; an edit already made there needs this step
+at once.
+
+**4. Rotating the key.** Make the new pair (step 1), add its public key
+to `TRUSTED_KEYS` beside the old one, and ship that release. Once it is
+out, sign with the new key only. A release later, remove the old key
+from the list. If a secret key is lost or leaked, delete
+`flags.json.minisig` from the branch at once, and ship a release that
+removes that key. An install turns off every feature the file turned on
+once a launch has downloaded the unsigned file: on that launch if the
+file arrives within its two-second wait, otherwise on the next (a
+deleted signature answers 404 at once, so it adds no wait). One that
+cannot reach the file keeps its cached copy, and what it turned on, for
+up to seven days.
 
 ## Code style
 
