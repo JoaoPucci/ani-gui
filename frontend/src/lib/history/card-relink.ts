@@ -49,7 +49,8 @@ export interface CardRelink {
 	/** Reads the cards again where they stand. */
 	reread: () => Promise<void>;
 	/** A view of the rows as they are matched now: it answers, for a
-	 *  row, whether the row has not been matched again since. An answer
+	 *  row, whether the row has not been matched again since — and no for
+	 *  a row whose rematch was still on its way when the view was taken. An answer
 	 *  asked for before — the first load's probe — is about the show the
 	 *  row was then, and is dropped once the view says no. */
 	since: () => (row: string) => boolean;
@@ -62,14 +63,19 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 	// undo's is about a show the row no longer records.
 	const rematches = new Map<string, number>();
 	const count = (row: string) => rematches.get(row) ?? 0;
+	// Rows whose latest rematch has not landed yet: they are leaving the
+	// show they are shown as.
+	const leaving = new Set<string>();
 
 	// A row matched to another show forgets the former one's cap, then
 	// takes its new match.
 	const rematch = (h: HistoryEntry) => {
 		const ask = count(h.id) + 1;
 		rematches.set(h.id, ask);
+		leaving.add(h.id);
 		const settle = (match: KitsuAnimeRef | null) => {
 			if (count(h.id) !== ask) return;
+			leaving.delete(h.id);
 			deps.forget(h.id);
 			deps.publish(h.id, match);
 		};
@@ -101,7 +107,10 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 		reread,
 		since: () => {
 			const taken = new Map(rematches);
-			return (row) => count(row) === (taken.get(row) ?? 0);
+			// A row being matched again when the view is taken is already
+			// another show: a click on it then is on the one it is leaving.
+			const left = new Set(leaving);
+			return (row) => !left.has(row) && count(row) === (taken.get(row) ?? 0);
 		}
 	};
 }
