@@ -120,6 +120,7 @@
 		type HeroOrigin
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
+	import { splitTrending } from '$lib/hero/rotation';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayArgs } from '$lib/play/play-args';
@@ -170,7 +171,8 @@
 	// faster than read-time, and every item is one click away from the
 	// strip below. AGENTS.md §7 anti-pattern is "auto-rotating carousels"
 	// in the marketing-page sense; this is a programmed marquee.
-	const HERO_ROTATION_COUNT = 3;
+	// Which shows it takes, and which the trending row lists, is
+	// $lib/hero/rotation.
 
 	let trending = $state<KitsuAnimeRef[] | null>(null);
 	let topRated = $state<KitsuAnimeRef[] | null>(null);
@@ -441,15 +443,14 @@
 	let resumeProgress = $state<string | null>(null);
 	let resumeFailure = $state<{ title: string; message: string } | null>(null);
 
-	const heroRotation = $derived<KitsuAnimeRef[]>(
-		trending && trending.length > 0 ? trending.slice(0, HERO_ROTATION_COUNT) : []
-	);
+	const trendingSplit = $derived(splitTrending(trending ?? []));
+	const heroRotation = $derived<KitsuAnimeRef[]>(trendingSplit.hero);
 	const featured = $derived(
 		heroRotation.length > 0 ? heroRotation[heroIndex % heroRotation.length] : null
 	);
-	// Tail starts after the rotation set so the user doesn't see the
-	// hero title also pinned as the first card of the row below.
-	const trendingTail = $derived(trending ? trending.slice(HERO_ROTATION_COUNT) : []);
+	// The row leaves out the rotation's shows, so the user doesn't see
+	// the hero title also pinned as a card of the row below.
+	const trendingTail = $derived(trendingSplit.row);
 	const featuredAccent = $derived(featured ? accentFor(featured.id) : 'var(--accent-ink)');
 
 	onMount(() => {
