@@ -8,7 +8,10 @@
 //! 2. Of the sequels (or prequels) one entry lists, those that list one
 //!    another as `alternative_version`/`alternative_setting` keep one:
 //!    the one in the listing entry's format, else the earliest, else the
-//!    lowest id.
+//!    lowest id. A sequel (or prequel) whose lister also lists, in the
+//!    same role, a version of it already in the run is left out too, so
+//!    the group keeps one even when its first member was met earlier,
+//!    through another entry.
 //! 3. An entry that, with any entry on its path, lists the other as an
 //!    alternative version or setting is left out. The root never is.
 //!
@@ -69,6 +72,20 @@ impl Walk<'_, '_> {
         out
     }
 
+    /// Rule 2 across steps: whether `via` also lists, under one of
+    /// `roles`, a run member that `id` is an alternative of.
+    fn sibling_in_run(&self, id: &str, via: &str, roles: &BTreeSet<String>) -> bool {
+        let look = self.look;
+        look.listing(via).is_some_and(|l| {
+            l.relations.iter().any(|r| {
+                r.kind == "anime"
+                    && roles.contains(&r.role)
+                    && self.members.contains_key(&r.id)
+                    && alt(look, id, &r.id)
+            })
+        })
+    }
+
     /// Rule 3: whether `id`, met through `via`, is an alternative of an
     /// entry on its path.
     fn along_path(&self, id: &str, via: &str) -> bool {
@@ -99,8 +116,11 @@ impl Walk<'_, '_> {
         let losers = self.rule_two(&kept, &met);
         let mut added = Vec::new();
         for id in kept {
-            let via = &met[&id].via;
-            if losers.contains(&id) || self.along_path(&id, via) {
+            let (via, roles) = (&met[&id].via, &met[&id].roles);
+            let left_out = losers.contains(&id)
+                || self.sibling_in_run(&id, via, roles)
+                || self.along_path(&id, via);
+            if left_out {
                 self.left_out.insert(id);
                 continue;
             }

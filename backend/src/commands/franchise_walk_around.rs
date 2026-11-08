@@ -1,8 +1,8 @@
 //! What sits around a run, from its members' listings, and the
 //! response assembled from it:
 //!
-//! - **versions** (rule 4): the entries rules 2 and 3 left out, and the
-//!   anime members list as `alternative_version`;
+//! - **versions** (rule 4): the entries rules 2 and 3 left out, music
+//!   aside, and the anime members list as `alternative_version`;
 //! - **recaps**: what members list as `summary`;
 //! - **films** and **sides**: the rest, prequel and sequel aside (run or
 //!   versions), `character`, `adaptation` and the alternatives aside,
@@ -38,8 +38,17 @@ struct Sections {
 }
 
 fn sections(run: &Run, look: &Lookup<'_>) -> Sections {
+    let music = |id: &String| {
+        look.entry(id, &run.consulted)
+            .is_some_and(|e| e.subtype.as_deref() == Some("music"))
+    };
     let mut s = Sections {
-        versions: run.left_out.clone(),
+        versions: run
+            .left_out
+            .iter()
+            .filter(|id| !music(id))
+            .cloned()
+            .collect(),
         ..Sections::default()
     };
     let listings = run.members.keys().filter_map(|m| look.listing(m));
