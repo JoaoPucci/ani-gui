@@ -1236,8 +1236,9 @@ The rules below hold on every surface:
   checks the preference itself. Nothing moves on a timer.
 - **Logical properties** only, so a right-to-left locale is a
   translation.
-- **Titles.** A card clamps its title to two lines and keeps the full
-  title as its tooltip and accessible name. The "short titles" option
+- **Titles.** A card clamps its title to two lines (the player's
+  narrower Up next card, three) and keeps the full title as its
+  tooltip and accessible name. The "short titles" option
   drops the leading words another entry of the run shares, up to a
   separator (": ", " - "): *JoJo no Kimyou na Bouken: Stone Ocean Part
   3* becomes *Stone Ocean Part 3*. A title with no shared part, such
