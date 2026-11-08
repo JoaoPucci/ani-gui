@@ -180,9 +180,9 @@ const ipc = mainProcessIpc({ app: APP_DOCUMENT, logError: console.error });
 // Every window, the splash's and the app's, holds what the main process
 // loaded into it, and a page can take it only to the app's document:
 // navigations, redirects, subframes, webviews and new windows all pass
-// through one verdict, and web links go to the system browser. Fullscreen and clipboard writes for the app's
-// document; every other permission denied (lib/guarded-window.cjs,
-// tests/arch/window_guard.sh).
+// through one verdict, and web links go to the system browser.
+// Fullscreen and clipboard writes for the app's document; every other
+// permission denied (lib/guarded-window.cjs, tests/arch/window_guard.sh).
 const makeWindow = guardedWindowMaker({
   BrowserWindow,
   app: APP_DOCUMENT,

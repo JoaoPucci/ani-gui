@@ -30,8 +30,9 @@
 #     dot, or `["ipc"]` in any quotes, not followed by a name
 #     character — the per-contents and per-frame IPC objects
 #     (`webContents.ipc`, `webFrameMain.ipc`), which Electron consults
-#     before ipcMain. Prose or a string such as `socket.ipc` matches as
-#     well, and fails the check;
+#     before ipcMain. Prose or a string such as `socket.ipc`, or a
+#     sentence ending in a dot before the word `ipc`, matches as well,
+#     and fails the check;
 #   - the name of the `ipc-message` or `ipc-message-sync` event, which
 #     a webContents emits for every message it receives.
 #

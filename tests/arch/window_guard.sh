@@ -16,6 +16,9 @@
 # makes a webContents of its own. That covers the class reached as a
 # member (`new electron.BrowserWindow(…)`, `new
 # (require("electron").BrowserWindow)(…)`) as well as by its bare name.
+# Comments and strings count, and so does an unrelated `new` earlier on
+# the line (`new Set([BrowserWindow.getFocusedWindow()])`): such a line
+# fails the check and is reworded.
 #
 # A syntactic constraint, per AGENTS.md §2: the text is there or it is
 # not. What it does NOT establish, and cannot without a JavaScript
