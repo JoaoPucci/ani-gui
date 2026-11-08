@@ -22,7 +22,6 @@ const {
   BrowserWindow,
   Menu,
   dialog,
-  ipcMain,
   net,
   protocol,
   safeStorage,
@@ -71,7 +70,7 @@ const { startOAuthServer } = require("./oauth-server");
 const { appDocumentFrom } = require("./lib/app-document.cjs");
 const { guardWindow } = require("./lib/window-guard.cjs");
 const { guardPermissions } = require("./lib/permissions.cjs");
-const { guardedIpc } = require("./lib/ipc-guard.cjs");
+const { mainProcessIpc } = require("./lib/ipc-guard.cjs");
 const { isRevealableDirectory } = require("./lib/reveal-folder.cjs");
 const { KEYRING_HELPER_SWITCH, serveKeyring } = require("./lib/keyring-helper.cjs");
 const {
@@ -175,6 +174,10 @@ const APP_SCHEME = "app";
 const APP_ORIGIN = `${APP_SCHEME}://localhost`;
 // The one document the window may hold (lib/app-document.cjs).
 const APP_DOCUMENT = appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL });
+// Every IPC handler, and the wait for the renderer's app-ready word,
+// answers only the main frame holding that document (lib/ipc-guard.cjs);
+// tests/arch/ipc_sender.sh keeps them all registered through it.
+const ipc = mainProcessIpc({ app: APP_DOCUMENT, logError: console.error });
 
 // Register the scheme as standard + secure BEFORE app.whenReady, so
 // fetch + service-worker-style guarantees apply to assets loaded
@@ -466,7 +469,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   );
   // Started now, so the renderer's word is not missed however early it
   // comes; the reveal waits for it (bounded) as well as for the splash.
-  const appReady = appReadyWaiter(win.webContents, ipcMain, {
+  const appReady = appReadyWaiter(win.webContents, ipc, {
     isShown: () => !win.isDestroyed() && win.isVisible(),
   });
   appReady.ready.then((rendered) =>
@@ -672,11 +675,6 @@ function registerAppProtocol() {
     }
   });
 }
-
-// Every IPC handler below answers only the main frame holding the app's
-// own document (lib/ipc-guard.cjs); tests/arch/ipc_sender.sh keeps them
-// all registered through this wrapper.
-const ipc = guardedIpc(ipcMain, { app: APP_DOCUMENT, logError: console.error });
 
 // Window controls for the renderer's custom (frameless) titlebar.
 // Each resolves the sender's own window, so they're correct even if a

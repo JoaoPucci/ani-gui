@@ -51,8 +51,10 @@ function appWindowOptions({ width, height, icon, preload, additionalArguments })
 let current = { rendered: false, gaveUp: false, beforeReveal: false };
 
 /**
- * Wait for `contents`' renderer to say, on APP_READY_CHANNEL of `ipc`,
- * that its first page has rendered. `ready` settles true when it does,
+ * Wait for `contents`' renderer to say, on APP_READY_CHANNEL of `ipc`
+ * (the main process's guarded IPC, lib/ipc-guard.cjs, so a word from
+ * any document but the app's is dropped before it gets here), that its
+ * first page has rendered. `ready` settles true when it does,
  * false after `timeoutMs`; either way the listener goes. Start it when
  * the window is made, so a word that comes early is not missed. The
  * record notes whether the window was still hidden (`isShown`) when
@@ -70,8 +72,9 @@ function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown 
   let settle;
   const ready = new Promise((resolve) => (settle = resolve));
   let timer = null;
+  let stopListening = () => {};
   const done = (rendered) => {
-    ipc.removeListener(APP_READY_CHANNEL, onReady);
+    stopListening();
     if (timer) clearTimeout(timer);
     state.rendered = rendered;
     state.gaveUp = !rendered;
@@ -84,7 +87,7 @@ function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown 
     state.beforeReveal = !isShown();
     done(true);
   }
-  ipc.on(APP_READY_CHANNEL, onReady);
+  stopListening = ipc.on(APP_READY_CHANNEL, onReady);
   timer = setTimeout(() => done(false), timeoutMs);
   return { ready };
 }

@@ -2,8 +2,10 @@
 
 // Every IPC handler in the main process registers through here, and
 // acts only for a call from the main frame holding the app's own
-// document (app-document.cjs). tests/arch/ipc_sender.sh keeps
-// registrations from going around it.
+// document (app-document.cjs). This is the one file that holds ipcMain
+// (mainProcessIpc); the rest of the main process gets the guarded
+// object, and tests/arch/ipc_sender.sh keeps any other file from naming
+// ipcMain or a contents' own IPC object.
 //
 // The navigation guard (window-guard.cjs) is meant to keep any other
 // document out of the window. This is the line behind it: a document
@@ -47,6 +49,8 @@ function describe(frame) {
  * Wrap `ipcMain` so every handler checks its caller:
  *   - handle(channel, fn)              an untrusted invoke rejects;
  *   - on(channel, fn)                  an untrusted message is dropped;
+ *                                      answers a function that removes
+ *                                      the listener again;
  *   - onSync(channel, fn, refusal)     an untrusted sendSync gets `refusal`
  *                                      as its answer — a sync call left
  *                                      without one hangs the renderer.
@@ -66,10 +70,12 @@ function guardedIpc(ipcMain, { app, logError }) {
       });
     },
     on(channel, fn) {
-      ipcMain.on(channel, (event, ...args) => {
+      const listener = (event, ...args) => {
         if (!trusted(channel, event)) return;
         fn(event, ...args);
-      });
+      };
+      ipcMain.on(channel, listener);
+      return () => ipcMain.removeListener(channel, listener);
     },
     onSync(channel, fn, refusal) {
       if (refusal === undefined) {
@@ -86,4 +92,9 @@ function guardedIpc(ipcMain, { app, logError }) {
   };
 }
 
-module.exports = { guardedIpc, isTrustedSender };
+/** The main process's guarded IPC, over Electron's own ipcMain. */
+function mainProcessIpc({ app, logError }) {
+  return guardedIpc(require("electron").ipcMain, { app, logError });
+}
+
+module.exports = { guardedIpc, isTrustedSender, mainProcessIpc };
