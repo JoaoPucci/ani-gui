@@ -223,6 +223,55 @@ describe('franchisePage', () => {
 		});
 	});
 
+	it('sets an unnumbered title inside a numbered stretch apart, under its own heading', () => {
+		// 1→2→J and R→S→J: R leads into S, S has no number and no note.
+		const page = franchisePage(
+			shaped(
+				['1', '2', 'R', 'S', 'J'],
+				[
+					['1', '2'],
+					['2', 'J'],
+					['R', 'S'],
+					['S', 'J']
+				]
+			),
+			'1',
+			'linked'
+		)!;
+		const s = page.sections.find(
+			(x) => x.kind === 'line' && x.rows.some((r) => r.entry.id === 'S')
+		)!;
+		expect(s.kind === 'line' && s.unplaced).toBe(true);
+		expect(s.kind === 'line' && s.rows.map((r) => r.entry.id)).toEqual(['S']);
+	});
+
+	it('keeps a title that says what it leads into among the numbered ones', () => {
+		// Gintama: The Semi-Final leads into The Final, with no heading.
+		const page = franchisePage(data('gintama', '818'), '818', 'linked')!;
+		expect(page.sections.some((x) => x.kind === 'line' && x.unplaced)).toBe(false);
+	});
+
+	it('puts one heading over unnumbered stretches that follow each other', () => {
+		const page = franchisePage(
+			shaped(
+				['1', '2', '3', '4', '5'],
+				[
+					['1', '2'],
+					['1', '3'],
+					['4', '3'],
+					['2', '5']
+				]
+			),
+			'1',
+			'linked'
+		)!;
+		page.sections.forEach((x, i) => {
+			const prev = page.sections[i - 1];
+			if (x.kind === 'line' && x.unplaced)
+				expect(prev?.kind === 'line' && prev.unplaced).toBe(false);
+		});
+	});
+
 	it('lists every title in one numbered line in release order', () => {
 		const page = franchisePage(data('monogatari', '3919'), '3919', 'released')!;
 		expect(page.sections).toHaveLength(1);
@@ -304,14 +353,20 @@ describe('franchisePage', () => {
 			fc.property(anyPage, ({ f, id, order, rows }) => {
 				const page = franchisePage({ franchise: f, rows }, id, order);
 				if (!page) return;
-				// A fork left with one way is drawn as a line.
-				expect(page.sections.map((s) => s.kind)).toEqual(
-					segments(page.run, order).map((s) =>
-						s.kind === 'cycle'
-							? 'group'
-							: s.kind === 'fork' && s.branches.length > 1
-								? 'ways'
-								: 'line'
+				// A fork left with one way is drawn as a line, and a line
+				// may be split where its numbers stop: compare with
+				// neighbouring lines run together.
+				const runs = (kinds: string[]) =>
+					kinds.filter((k, i) => k !== 'line' || kinds[i - 1] !== 'line');
+				expect(runs(page.sections.map((s) => s.kind))).toEqual(
+					runs(
+						segments(page.run, order).map((s) =>
+							s.kind === 'cycle'
+								? 'group'
+								: s.kind === 'fork' && s.branches.length > 1
+									? 'ways'
+									: 'line'
+						)
 					)
 				);
 				if (order === 'released') expect(page.sections).toHaveLength(1);
@@ -320,15 +375,25 @@ describe('franchisePage', () => {
 		);
 	});
 
-	it('draws ways only in twos or more, and heads every unnumbered stretch after the first', () => {
+	it('explains every title it cannot number, and draws ways only in twos or more', () => {
 		fc.assert(
 			fc.property(anyPage, ({ f, id, order, rows }) => {
 				const page = franchisePage({ franchise: f, rows }, id, order);
 				if (!page) return;
 				page.sections.forEach((s, i) => {
 					if (s.kind === 'ways') expect(s.ways.length).toBeGreaterThan(1);
-					if (s.kind === 'line')
-						expect(s.unplaced).toBe(i > 0 && s.rows.every((r) => r.position === null));
+					if (s.kind !== 'line') return;
+					// A line is either numbered titles (and titles that say
+					// what they lead into), or titles with no clear place.
+					const unexplained = s.rows.filter((r) => r.position === null && r.leadsInto === null);
+					if (s.unplaced) {
+						expect(unexplained).toHaveLength(s.rows.length);
+						// One heading for a stretch, never two in a row.
+						const prev = page.sections[i - 1];
+						expect(prev?.kind === 'line' && prev.unplaced).toBe(false);
+					} else {
+						expect(unexplained).toEqual([]);
+					}
 				});
 			})
 		);

@@ -327,17 +327,39 @@ describe('franchise page', () => {
 		]);
 	});
 
-	it('says the show has nothing around it, with no Try again, when the answer lists nothing', async () => {
+	it('says the show has nothing around it when the franchise is the show alone', async () => {
 		useFranchise({
-			franchise: () => HttpResponse.json({ ...FRANCHISE, entries: [], links: [] })
+			franchise: () =>
+				HttpResponse.json({
+					...FRANCHISE,
+					entries: [SECOND],
+					links: [],
+					versions: [],
+					films: [],
+					sides: [],
+					recaps: []
+				})
 		});
 		app = mount(FranchisePage, { target });
 		await until(
 			() => target.textContent?.includes(m.watchorder_franchise_none()) ?? false,
-			'the empty answer'
+			'the lone show'
 		);
+		expect(rows()).toHaveLength(0);
 		expect(target.textContent).not.toContain(m.watchorder_franchise_failed());
 		expect(button(m.watchorder_franchise_retry())).toBeUndefined();
+	});
+
+	it('does not claim the show is alone when the answer lists titles around it', async () => {
+		// An answer with no main story at all cannot be drawn: it is a
+		// read that went wrong, not a show with nothing around it.
+		useFranchise({ franchise: () => HttpResponse.json({ ...FRANCHISE, entries: [], links: [] }) });
+		app = mount(FranchisePage, { target });
+		await until(
+			() => target.textContent?.includes(m.watchorder_franchise_failed()) ?? false,
+			'the unreadable answer'
+		);
+		expect(target.textContent).not.toContain(m.watchorder_franchise_none());
 	});
 
 	it('keeps the latest read when an older one for the same show answers after it', async () => {
