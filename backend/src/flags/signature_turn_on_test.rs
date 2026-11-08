@@ -5,7 +5,7 @@
 use proptest::prelude::*;
 use serde_json::{json, Value};
 
-use super::{admit, Verdict};
+use super::{admit, holds_signed_content, Verdict};
 use crate::flags::decl::{FlagDecl, FlagKind, FlagValue};
 use crate::flags::resolve::{resolve, Document};
 use crate::flags::test_decls::{A, B, TEST_DECLS};
@@ -126,5 +126,29 @@ proptest! {
         let admitted = admit(d.clone(), Verdict::Verified);
         prop_assert_eq!(&admitted, &d);
         prop_assert_eq!(resolve(TEST_DECLS, Some(&admitted)), resolve(TEST_DECLS, Some(&d)));
+    }
+
+    /// What an unverified file leaves after admission never looks like
+    /// a verified one, so the cache never marks it as one.
+    #[test]
+    fn an_unverified_file_never_holds_signed_content(
+        d in any_doc(),
+        verdict in prop::sample::select(vec![Verdict::Unsigned, Verdict::Invalid]),
+    ) {
+        prop_assert!(!holds_signed_content(&admit(d, verdict)));
+    }
+
+    /// Admitting an admitted document again changes nothing, which is
+    /// what lets the cache admit an unmarked entry again on reading.
+    #[test]
+    fn admission_is_idempotent(
+        d in any_doc(),
+        verdict in prop::sample::select(vec![Verdict::Verified, Verdict::Unsigned, Verdict::Invalid]),
+    ) {
+        let once = admit(d, verdict);
+        prop_assert_eq!(admit(once.clone(), verdict), once.clone());
+        if verdict != Verdict::Verified {
+            prop_assert_eq!(admit(once.clone(), Verdict::Unsigned), once);
+        }
     }
 }
