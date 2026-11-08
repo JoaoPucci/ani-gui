@@ -415,8 +415,10 @@ describe('franchisePage', () => {
 					// that has a place.
 					for (const r of s.rows) {
 						if (r.position !== null) continue;
-						expect(r.leadsInto).not.toBeNull();
-						expect(unplaced[0]?.rows.some((u) => u.label === r.leadsInto) ?? false).toBe(false);
+						const note = pathNote(page.run, r.entry.id, order);
+						expect(note?.kind).toBe('leads-into');
+						const target = note?.kind === 'leads-into' ? note.entry.id : '';
+						expect(unplaced[0]?.rows.some((u) => u.entry.id === target) ?? false).toBe(false);
 					}
 				}
 			})
