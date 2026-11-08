@@ -412,14 +412,21 @@ describe('the Up next card at a finale', () => {
 		expect(card()!.closest('section.player-frame')).not.toBeNull();
 	});
 
-	it('appears without moving under reduced motion', async () => {
-		await setReducedMotion(true);
+	it.each([
+		['appears without moving under reduced motion', true],
+		['settles in, as the skip pill does, with motion on', false]
+	] as const)('%s', async (_name, reduced) => {
+		await setReducedMotion(reduced);
 		const motion = recordMotion();
 		try {
 			const { video } = await openEpisode();
 			await playTo(video, 1300);
 			await until(() => card() !== null, 'the card');
-			expect(motion.animations.filter((a) => a.includes('up-next'))).toEqual([]);
+			// A transition starts on the next frame.
+			await new Promise((r) => setTimeout(r, 100));
+			const moved = motion.animations.filter((a) => a.includes('up-next'));
+			if (reduced) expect(moved).toEqual([]);
+			else expect(moved.length).toBeGreaterThan(0);
 		} finally {
 			motion.stop();
 		}
