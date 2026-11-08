@@ -8,15 +8,9 @@ import type { StorageLike } from '$lib/hero/prefs';
 
 export const MOCK_OPTIONS = {
 	order: ['linked', 'released'],
-	strip: ['rail', 'trio'],
 	upNext: ['poster', 'still'],
 	franchise: ['list', 'shelf'],
-	setting: ['segmented', 'radio'],
-	handoff: ['next', 'episode'],
-	cta: ['button', 'stack'],
-	stackHover: ['surface', 'underline', 'border'],
-	footer: ['center', 'axis', 'ends'],
-	stackPosters: ['3', '2', '1', '0']
+	handoff: ['next', 'episode']
 } as const;
 
 type Options = typeof MOCK_OPTIONS;
@@ -32,15 +26,9 @@ export const MOCK_PREFS_DEFAULT: WatchOrderMockPrefs = {
 	enabled: false,
 	switcher: false,
 	order: 'linked',
-	strip: 'trio',
 	upNext: 'poster',
 	franchise: 'list',
-	setting: 'segmented',
-	handoff: 'next',
-	cta: 'stack',
-	stackHover: 'surface',
-	footer: 'center',
-	stackPosters: '3'
+	handoff: 'next'
 };
 export const MOCK_PREFS_STORAGE_KEY = 'ani-gui:watch-order-mockups';
 

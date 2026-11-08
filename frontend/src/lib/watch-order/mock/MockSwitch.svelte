@@ -19,41 +19,19 @@
 
 	const groupLabel: Record<MockOptionKey, () => string> = {
 		order: m.watchorder_mock_order,
-		strip: m.watchorder_mock_strip,
 		upNext: m.watchorder_mock_upnext,
 		franchise: m.watchorder_mock_franchise,
-		setting: m.watchorder_mock_setting,
-		handoff: m.watchorder_mock_handoff,
-		cta: m.watchorder_mock_cta,
-		stackHover: m.watchorder_mock_stack_hover,
-		footer: m.watchorder_mock_footer,
-		stackPosters: m.watchorder_mock_stack_posters
+		handoff: m.watchorder_mock_handoff
 	};
 	const optionLabel: Record<string, () => string> = {
 		linked: m.watchorder_setting_linked,
 		released: m.watchorder_setting_released,
-		rail: m.watchorder_mock_strip_rail,
-		trio: m.watchorder_mock_strip_trio,
 		poster: m.watchorder_mock_upnext_poster,
 		still: m.watchorder_mock_upnext_still,
 		list: m.watchorder_mock_franchise_list,
 		shelf: m.watchorder_mock_franchise_shelf,
-		segmented: m.watchorder_mock_setting_segmented,
-		radio: m.watchorder_mock_setting_radio,
 		next: m.watchorder_mock_handoff_next,
-		episode: m.watchorder_mock_handoff_episode,
-		button: m.watchorder_mock_cta_button,
-		stack: m.watchorder_mock_cta_stack,
-		surface: m.watchorder_mock_stack_hover_surface,
-		underline: m.watchorder_mock_stack_hover_underline,
-		border: m.watchorder_mock_stack_hover_border,
-		center: m.watchorder_mock_footer_center,
-		axis: m.watchorder_mock_footer_axis,
-		ends: m.watchorder_mock_footer_ends,
-		'3': m.watchorder_mock_stack_posters_3,
-		'2': m.watchorder_mock_stack_posters_2,
-		'1': m.watchorder_mock_stack_posters_1,
-		'0': m.watchorder_mock_stack_posters_0
+		episode: m.watchorder_mock_handoff_episode
 	};
 </script>
 
