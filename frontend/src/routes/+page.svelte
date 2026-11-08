@@ -65,6 +65,7 @@
 		kitsuAnimeDetail,
 		kitsuByMalIds,
 		kitsuEpisodes,
+		kitsuFranchise,
 		kitsuTopRated,
 		kitsuTrendingAnilist,
 		markWatched,
@@ -130,13 +131,11 @@
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import Strip from '$lib/components/Strip.svelte';
 	import HandoffCard from '$lib/watch-order/HandoffCard.svelte';
-	import MockSwitch from '$lib/watch-order/mock/MockSwitch.svelte';
-	import {
-		loadMockPrefs,
-		saveMockPrefs,
-		type WatchOrderMockPrefs
-	} from '$lib/watch-order/mock/prefs';
-	import { handoffs as mockHandoffs } from '$lib/watch-order/mock/view';
+	import { handoffAsk, handoffFrom, playedIds, railHandoffs } from '$lib/watch-order/handoff';
+	import { createFranchiseReads } from '$lib/watch-order/handoff-reads';
+	import { localDay } from '$lib/watch-order/entry';
+	import { settledOrder } from '$lib/watch-order/page-model';
+	import type { FranchiseData } from '$lib/watch-order/types';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
@@ -439,6 +438,9 @@
 	// /play/[id] — bypassing the detail page so the back button
 	// returns to the home grid, not the detail view.
 	let config = $state<Config | null>(null);
+	// The settings read answered with nothing: the hand-offs then use
+	// the default order rather than waiting for it.
+	let configFailed = $state(false);
 	// Shared settings load — created on mount, awaited by BOTH the
 	// loader's getMode and startResume. Cards can release (and be
 	// clicked) before this resolves; the click awaits it via
@@ -490,6 +492,7 @@
 		settingsPromise = settingsGet().catch(() => null as Config | null);
 		void settingsPromise.then((c) => {
 			if (c) config = c;
+			else configFailed = true;
 		});
 		Promise.all([historyList(), watchedAtAll().catch(() => ({}) as Record<string, number>)])
 			.then(([h, watchedAt]) => {
@@ -948,32 +951,36 @@
 	// epOf / titleOf were absorbed into resolveHistoryEntry — see
 	// $lib/history/resolve.ts (target.displayEpisode / displayTitle).
 
-	// Watch-order mockups (0.19.0 design review): Continue Watching's
-	// hand-off cards, from fixture data, while Diagnostics turns the
-	// mockups on — see $lib/watch-order/mock.
-	let mockPrefs = $state(loadMockPrefs(browserStorage()));
-	function chooseMockPrefs(next: WatchOrderMockPrefs) {
-		mockPrefs = next;
-		saveMockPrefs(browserStorage(), next);
-	}
-	// A hand-off replaces the finished entry's own card, and gives way
-	// to the next entry's card once that has a history row.
-	const mockRowIds = $derived(
-		new Set(dedupedHistory.map((e) => historyMatches[e.id]?.id).filter((x) => x !== undefined))
+	// Continue Watching's hand-off ($lib/watch-order/handoff): a row
+	// whose finale was played through moves on to the show that comes
+	// next, once that row's series has been read. Only such a row asks
+	// for its series, each once per visit; until it answers, and when it
+	// cannot be read, the row keeps its ordinary card.
+	let handoffSeries = $state<Record<string, FranchiseData | null>>({});
+	const handoffReads = createFranchiseReads(kitsuFranchise, (id, franchise) => {
+		handoffSeries = { ...handoffSeries, [id]: franchise };
+	});
+	const handoffToday = localDay(new Date());
+	const handoffOrder = $derived(settledOrder(config, configFailed));
+	const handoffAsks = $derived(
+		dedupedHistory.map(
+			(row) => [row.id, handoffAsk(historyMatches[row.id], row.ep_no, leftPartWay)] as const
+		)
 	);
-	const mockCards = $derived(
-		mockPrefs.enabled
-			? mockHandoffs(mockPrefs.order, new Date().toISOString().slice(0, 10)).filter(
-					(h) => !mockRowIds.has(h.next.id)
-				)
-			: []
-	);
-	const continueRows = $derived(
-		mockCards.length === 0
-			? dedupedHistory
-			: dedupedHistory.filter(
-					(e) => !mockCards.some((h) => h.finished.id === historyMatches[e.id]?.id)
-				)
+	$effect(() => {
+		for (const [, kitsuId] of handoffAsks) if (kitsuId !== null) handoffReads.want(kitsuId);
+	});
+	const handoffPlayed = $derived(playedIds(history ?? [], historyMatches));
+	const handoffs = $derived(
+		railHandoffs(handoffAsks, (kitsuId) =>
+			handoffFrom(
+				handoffSeries[kitsuId] ?? null,
+				kitsuId,
+				handoffOrder,
+				handoffToday,
+				handoffPlayed
+			)
+		)
 	);
 </script>
 
@@ -1230,11 +1237,6 @@
 {/snippet}
 
 <!-- Continue Watching: only when history is non-empty -->
-{#if mockPrefs.enabled && mockPrefs.switcher}
-	<div class="mock-switch-row">
-		<MockSwitch prefs={mockPrefs} keys={['order', 'handoff']} onchoose={chooseMockPrefs} />
-	</div>
-{/if}
 {#if history && history.length > 0}
 	<Strip
 		eyebrow={m.home_strip_continue_eyebrow()}
@@ -1243,13 +1245,9 @@
 		padBlock="var(--space-4) var(--space-3)"
 		headerTrailing={continueHeaderTrailing}
 	>
-		{#each mockCards as card (card.next.id)}
-			<div class="resume-cell">
-				<HandoffCard handoff={card} variant={mockPrefs.handoff} />
-			</div>
-		{/each}
-		{#each continueRows as entry (entry.id)}
+		{#each dedupedHistory as entry (entry.id)}
 			{@const match = historyMatches[entry.id]}
+			{@const handoff = handoffs.get(entry.id)}
 			{@const ep = historyEpisodes[entry.id]}
 			{@const target = resolveHistoryEntry(entry, match ?? null)}
 			{@const accent = accentFor(match?.id ?? entry.id)}
@@ -1325,7 +1323,11 @@
 			     card is clickable while its artwork is still a
 			     skeleton. -->
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
-				{#if resumable && match}
+				{#if handoff}
+					<!-- The finale was played through: the card moves on to
+					     the next show's page. -->
+					<HandoffCard {handoff} />
+				{:else if resumable && match}
 					<button
 						type="button"
 						class="resume-card"
@@ -2084,10 +2086,6 @@
 		color: var(--accent-oxblood);
 	}
 
-	.mock-switch-row {
-		padding-inline: var(--space-8);
-		margin-block-end: var(--space-4);
-	}
 	.resume-card {
 		scroll-snap-align: start;
 		display: grid;
