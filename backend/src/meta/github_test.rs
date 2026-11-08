@@ -624,3 +624,283 @@ async fn a_page_github_answers_with_something_unreadable_falls_back_to_the_lates
         fetch_latest_release(&client, false, Some(Platform::Linux), Some(&server.uri())).await;
     assert_eq!(release.map(|r| r.tag).as_deref(), Some("v0.10.0"));
 }
+
+// ---- The naming fallback --------------------------------------------------
+//
+// The lookup knows a package by how its file name ends. If a release's
+// files are ever named some other way, an install could no longer tell
+// any release apart from one cut without its platform, and would see
+// "no update" for good. So when nothing read carries a file any
+// packaged platform recognises, the lookup takes the naming to have
+// changed and offers the newest release by version alone, as it did
+// before it read files at all.
+
+/// A release whose files are named in a way no platform recognises.
+fn renamed(version: &str, prerelease: bool) -> RawRelease {
+    raw(
+        version,
+        prerelease,
+        false,
+        &[
+            format!("ani-gui-{version}-x86-64.AppImage"),
+            format!("ani-gui-{version}-setup-x64.exe"),
+        ],
+    )
+}
+
+fn raw(version: &str, prerelease: bool, draft: bool, assets: &[String]) -> RawRelease {
+    RawRelease {
+        tag_name: Some(format!("v{version}")),
+        name: None,
+        html_url: Some(format!("https://example.invalid/v{version}")),
+        published_at: None,
+        body: None,
+        draft,
+        prerelease,
+        assets: assets
+            .iter()
+            .map(|name| RawAsset { name: name.clone() })
+            .collect(),
+    }
+}
+
+fn offered(
+    page: Vec<RawRelease>,
+    latest: Option<RawRelease>,
+    platform: Platform,
+    include_prereleases: bool,
+) -> Option<String> {
+    offer(page, latest, platform, include_prereleases).map(|r| r.tag)
+}
+
+#[test]
+fn files_no_platform_recognises_offer_the_newest_release_by_version() {
+    let page = vec![renamed("0.19.0", true), renamed("0.18.0", false)];
+    for platform in [Platform::Windows, Platform::Linux] {
+        assert_eq!(
+            offered(page.clone(), None, platform, true).as_deref(),
+            Some("v0.19.0")
+        );
+        assert_eq!(
+            offered(page.clone(), None, platform, false).as_deref(),
+            Some("v0.18.0")
+        );
+    }
+}
+
+#[test]
+fn the_naming_fallback_keeps_the_draft_and_pre_release_rules() {
+    let mut draft = renamed("0.20.0", false);
+    draft.draft = true;
+    let page = vec![draft, renamed("0.19.0", true)];
+    assert_eq!(
+        offered(page.clone(), None, Platform::Linux, true).as_deref(),
+        Some("v0.19.0")
+    );
+    // Excluding pre-releases, the page holds nothing; the newest full
+    // release comes from `/releases/latest`, which must be full itself.
+    assert_eq!(offered(page.clone(), None, Platform::Linux, false), None);
+    assert_eq!(
+        offered(
+            page.clone(),
+            Some(renamed("0.17.0", false)),
+            Platform::Linux,
+            false
+        )
+        .as_deref(),
+        Some("v0.17.0")
+    );
+    assert_eq!(
+        offered(page, Some(renamed("0.17.0", true)), Platform::Linux, false),
+        None
+    );
+}
+
+#[test]
+fn the_latest_full_releases_files_count_toward_what_was_read() {
+    // A page of renamed pre-releases, and a latest full release whose
+    // files Linux recognises: the naming has not changed, Windows was
+    // simply skipped, and gets nothing.
+    let page = vec![renamed("0.19.0", true)];
+    let latest = raw("0.18.0", false, false, &linux_packages("0.18.0"));
+    assert_eq!(
+        offered(page.clone(), Some(latest.clone()), Platform::Windows, false),
+        None
+    );
+    assert_eq!(
+        offered(page, Some(latest), Platform::Linux, false).as_deref(),
+        Some("v0.18.0")
+    );
+}
+
+#[test]
+fn a_release_with_another_platforms_packages_only_is_still_skipped() {
+    // v0.12.1 shipped the Windows installer alone: recognisable files,
+    // so a Linux install skips it rather than falling back.
+    let page = vec![raw("0.12.1", true, false, &windows_package("0.12.1"))];
+    assert_eq!(offered(page.clone(), None, Platform::Linux, true), None);
+    let with_older = vec![
+        raw("0.12.1", true, false, &windows_package("0.12.1")),
+        raw("0.12.0", true, false, &every_package("0.12.0")),
+    ];
+    assert_eq!(
+        offered(with_older, None, Platform::Linux, true).as_deref(),
+        Some("v0.12.0")
+    );
+    // One recognisable file anywhere in what was read is enough.
+    let mixed = vec![
+        renamed("0.13.0", true),
+        raw("0.12.1", true, false, &windows_package("0.12.1")),
+    ];
+    assert_eq!(offered(mixed, None, Platform::Linux, true), None);
+}
+
+#[test]
+fn releases_with_no_files_at_all_do_not_count_as_renamed() {
+    // A release published before its files finish uploading carries
+    // none. That says nothing about how files are named, and offering
+    // it would send the install to a page with nothing to download.
+    let page = vec![
+        raw("0.19.0", true, false, &[]),
+        raw("0.18.0", false, false, &[]),
+    ];
+    for include in [true, false] {
+        assert_eq!(offered(page.clone(), None, Platform::Linux, include), None);
+    }
+}
+
+#[tokio::test]
+async fn the_lookup_falls_back_when_every_file_it_read_is_named_some_other_way() {
+    let page: Vec<_> = ["0.19.0", "0.18.0"]
+        .iter()
+        .map(|v| {
+            release_json(
+                v,
+                true,
+                &[
+                    format!("ani-gui-{v}-x86-64.AppImage"),
+                    format!("ani-gui-{v}-setup-x64.exe"),
+                ],
+            )
+        })
+        .collect();
+    let server = serving(&page).await;
+    latest_serving(
+        &server,
+        release_json(
+            "0.17.0",
+            false,
+            &[String::from("ani-gui-0.17.0-x86-64.AppImage")],
+        ),
+        2,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let with_pre =
+        fetch_latest_release(&client, true, Some(Platform::Windows), Some(&server.uri())).await;
+    assert_eq!(with_pre.map(|r| r.tag).as_deref(), Some("v0.19.0"));
+    let full =
+        fetch_latest_release(&client, false, Some(Platform::Linux), Some(&server.uri())).await;
+    assert_eq!(full.map(|r| r.tag).as_deref(), Some("v0.17.0"));
+}
+
+#[tokio::test]
+async fn the_fallback_reads_the_page_alone_when_the_latest_release_does_not_answer() {
+    let v = "0.19.0";
+    let server = serving(&[release_json(
+        v,
+        true,
+        &[format!("ani-gui-{v}-x86-64.AppImage")],
+    )])
+    .await;
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{REPO_PATH}/releases/latest")))
+        .respond_with(ResponseTemplate::new(503))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let release =
+        fetch_latest_release(&client, true, Some(Platform::Linux), Some(&server.uri())).await;
+    assert_eq!(release.map(|r| r.tag).as_deref(), Some("v0.19.0"));
+}
+
+/// One generated release for the full oracle: pre-release, draft,
+/// which of the three packages it carries (as in [`Shape`]), and
+/// whether it also carries a file named in a way no platform knows.
+type FullShape = (bool, bool, u8, bool);
+
+fn raw_full(version: &str, (prerelease, draft, mask, unknown): FullShape) -> RawRelease {
+    let packages = [
+        format!("ani-gui-{version}-x64-setup.exe"),
+        format!("ani-gui-{version}-x86_64.AppImage"),
+        format!("ani-gui-{version}-amd64.deb"),
+    ];
+    let mut assets: Vec<String> = packages
+        .into_iter()
+        .enumerate()
+        .filter(|(bit, _)| mask & (1 << bit) != 0)
+        .map(|(_, name)| name)
+        .collect();
+    if unknown {
+        assets.push(format!("ani-gui-{version}-x86-64.AppImage"));
+    }
+    raw(version, prerelease, draft, &assets)
+}
+
+/// Weighted toward releases carrying no package, so that pages where
+/// nothing is recognised — the fallback's case — come up often.
+fn full_shape() -> impl proptest::strategy::Strategy<Value = FullShape> {
+    use proptest::strategy::{Just, Strategy};
+    let mask = proptest::prop_oneof![3 => Just(0u8), 1 => 0u8..8].boxed();
+    (
+        proptest::bool::ANY,
+        proptest::bool::ANY,
+        mask,
+        proptest::bool::ANY,
+    )
+}
+
+proptest::proptest! {
+    /// The whole choice, page and latest together: the newest page
+    /// release installable here; else the latest release, if it is a
+    /// published full release carrying this platform's package; else,
+    /// when something read carries files and none of them is any
+    /// platform's package, the newest page release under the draft and
+    /// pre-release rules, or the latest if it is a published full
+    /// release; else nothing.
+    #[test]
+    fn the_offer_follows_the_platform_then_falls_back_only_on_unknown_naming(
+        page in proptest::collection::vec(full_shape(), 0..6),
+        latest in proptest::option::of(full_shape()),
+        windows in proptest::bool::ANY,
+        include_prereleases in proptest::bool::ANY,
+    ) {
+        let platform = if windows { Platform::Windows } else { Platform::Linux };
+        let carried = |mask: u8| if windows { mask & 0b001 != 0 } else { mask & 0b110 != 0 };
+        let eligible = |&(pre, draft, _, _): &FullShape, inc: bool| !draft && (inc || !pre);
+        let latest_tag = "v9.9.0".to_owned();
+        let page_tag = |i: usize| format!("v0.{i}.0");
+        let read: Vec<FullShape> = page.iter().copied().chain(latest).collect();
+        let any_file = read.iter().any(|&(_, _, mask, unknown)| mask != 0 || unknown);
+        let recognised = read.iter().any(|&(_, _, mask, _)| mask != 0);
+
+        let want = page
+            .iter()
+            .position(|s| eligible(s, include_prereleases) && carried(s.2))
+            .map(page_tag)
+            .or_else(|| latest.filter(|s| eligible(s, false) && carried(s.2)).map(|_| latest_tag.clone()))
+            .or_else(|| {
+                (any_file && !recognised).then(|| {
+                    page.iter()
+                        .position(|s| eligible(s, include_prereleases))
+                        .map(page_tag)
+                        .or_else(|| latest.filter(|s| eligible(s, false)).map(|_| latest_tag.clone()))
+                })?
+            });
+
+        let raws = page.iter().enumerate().map(|(i, s)| raw_full(&format!("0.{i}.0"), *s)).collect();
+        let got = offered(raws, latest.map(|s| raw_full("9.9.0", s)), platform, include_prereleases);
+        proptest::prop_assert_eq!(got, want);
+    }
+}
