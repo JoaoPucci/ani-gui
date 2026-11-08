@@ -397,13 +397,13 @@ const ROWS: Row[] = [
 			2: '2 descargas en curso, 2 en cola, ' + SPEED
 		},
 		ru: {
-			1: '1 загрузка в процессе, 2 в очереди, ' + SPEED,
-			2: '2 загрузки в процессе, 2 в очереди, ' + SPEED,
-			5: '5 загрузок в процессе, 2 в очереди, ' + SPEED,
-			21: '21 загрузка в процессе, 2 в очереди, ' + SPEED,
-			22: '22 загрузки в процессе, 2 в очереди, ' + SPEED,
-			25: '25 загрузок в процессе, 2 в очереди, ' + SPEED,
-			11: '11 загрузок в процессе, 2 в очереди, ' + SPEED
+			1: '1 активная загрузка, 2 в очереди, ' + SPEED,
+			2: '2 активные загрузки, 2 в очереди, ' + SPEED,
+			5: '5 активных загрузок, 2 в очереди, ' + SPEED,
+			21: '21 активная загрузка, 2 в очереди, ' + SPEED,
+			22: '22 активные загрузки, 2 в очереди, ' + SPEED,
+			25: '25 активных загрузок, 2 в очереди, ' + SPEED,
+			11: '11 активных загрузок, 2 в очереди, ' + SPEED
 		}
 	},
 	{
@@ -425,13 +425,13 @@ const ROWS: Row[] = [
 			2: '2 descargas en curso, ' + SPEED
 		},
 		ru: {
-			1: '1 загрузка в процессе, ' + SPEED,
-			2: '2 загрузки в процессе, ' + SPEED,
-			5: '5 загрузок в процессе, ' + SPEED,
-			21: '21 загрузка в процессе, ' + SPEED,
-			22: '22 загрузки в процессе, ' + SPEED,
-			25: '25 загрузок в процессе, ' + SPEED,
-			11: '11 загрузок в процессе, ' + SPEED
+			1: '1 активная загрузка, ' + SPEED,
+			2: '2 активные загрузки, ' + SPEED,
+			5: '5 активных загрузок, ' + SPEED,
+			21: '21 активная загрузка, ' + SPEED,
+			22: '22 активные загрузки, ' + SPEED,
+			25: '25 активных загрузок, ' + SPEED,
+			11: '11 активных загрузок, ' + SPEED
 		}
 	},
 	{
@@ -466,14 +466,14 @@ const ROWS: Row[] = [
 			2: "You can't download more than 2 episodes for this show."
 		},
 		'pt-BR': {
-			0: 'Não é possível baixar mais de 0 episódios deste título.',
-			1: 'Não é possível baixar mais de 1 episódio deste título.',
-			2: 'Não é possível baixar mais de 2 episódios deste título.'
+			0: 'Não é possível baixar mais de 0 episódios deste anime.',
+			1: 'Não é possível baixar mais de 1 episódio deste anime.',
+			2: 'Não é possível baixar mais de 2 episódios deste anime.'
 		},
 		'es-419': {
-			0: 'No puedes descargar más de 0 episodios de este título.',
-			1: 'No puedes descargar más de 1 episodio de este título.',
-			2: 'No puedes descargar más de 2 episodios de este título.'
+			0: 'No puedes descargar más de 0 episodios de este anime.',
+			1: 'No puedes descargar más de 1 episodio de este anime.',
+			2: 'No puedes descargar más de 2 episodios de este anime.'
 		},
 		// After "больше" the count is genitive: 1 эпизода, 2 / 5 эпизодов.
 		ru: {

@@ -42,11 +42,22 @@ describe('unavailableMessage — the notice that replaces Play', () => {
 	});
 
 	it('every locale names the audio that has the title, translated', () => {
-		for (const locale of ['pt-BR', 'es-419', 'ru'] as const) {
+		// The notice names the other audio the way the locale's toggle
+		// does: Portuguese and Spanish spell it out, Russian keeps the
+		// short SUB and DUB its toggle shows.
+		const names = {
+			'pt-BR': { sub: /legendad/, dub: /dublad/ },
+			'es-419': { sub: /subtitulad/, dub: /doblad/ },
+			ru: { sub: /SUB/, dub: /DUB/ }
+		};
+		for (const [locale, name] of Object.entries(names) as [
+			'pt-BR' | 'es-419' | 'ru',
+			{ sub: RegExp; dub: RegExp }
+		][]) {
 			const dub = m.detail_unavailable_in_dub_message({}, { locale });
 			const sub = m.detail_unavailable_in_sub_message({}, { locale });
-			expect(dub, locale).toContain('SUB');
-			expect(sub, locale).toContain('DUB');
+			expect(dub, locale).toMatch(name.sub);
+			expect(sub, locale).toMatch(name.dub);
 			expect(dub, locale).not.toBe(m.detail_unavailable_in_dub_message({}, { locale: 'en' }));
 			expect(sub, locale).not.toBe(m.detail_unavailable_in_sub_message({}, { locale: 'en' }));
 		}
