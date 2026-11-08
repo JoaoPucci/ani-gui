@@ -2,7 +2,8 @@
  * Everything the show page draws from the watch order, in one pure
  * reading: the strip itself, its caption, the masthead eyebrow's
  * position, each tile's progress, the "You're watching" card, and the
- * entries "Similar titles" leaves out because the strip shows them.
+ * titles "Similar titles" leaves out because the franchise page the
+ * strip links to lists them.
  * The page and the strip component only hand these on.
  */
 import type { WatchOrder } from './by-start';
@@ -10,7 +11,7 @@ import type { WatchOrderData } from './loader';
 import { loopSize } from './order';
 import { progressFromHistory } from './progress';
 import { stripFor } from './strip-model';
-import { shownOnStrip, watchingFor, type StripView } from './strip-view';
+import { watchingFor, type StripView } from './strip-view';
 import type { Progress, WatchEntry, WatchRun } from './types';
 
 /** What the strip's centre says about this entry's place. */
@@ -31,7 +32,7 @@ export interface WatchOrderPage {
 	readonly progress: Progress;
 	/** The entry the viewer is part-way through, when no tile shows it. */
 	readonly watching: { readonly entry: WatchEntry; readonly episode: number } | null;
-	/** Ids "Similar titles" leaves out: what the strip shows. */
+	/** Ids "Similar titles" leaves out: the rest of the franchise. */
 	readonly similarHidden: ReadonlySet<string>;
 	/** The run's titles, which short titles are cut against. */
 	readonly titles: readonly string[];
@@ -64,6 +65,15 @@ export function captionOf(view: StripView, loop: number): StripCaption {
 	return view.inCycle ? { kind: 'cycle', count: loop } : { kind: 'branch' };
 }
 
+/**
+ * Every title the franchise page lists for `run` but `id` itself: the
+ * run, its other versions, films, side stories and recaps.
+ */
+function restOfFranchise(run: WatchRun, id: string): ReadonlySet<string> {
+	const all = [...run.entries, ...run.versions, ...run.films, ...run.sides, ...run.recaps];
+	return new Set(all.map((e) => e.id).filter((x) => x !== id));
+}
+
 /** The page's reading of `data` for `id`, or null where the page shows no strip. */
 export function watchOrderPage(
 	data: WatchOrderData,
@@ -85,7 +95,7 @@ export function watchOrderPage(
 			caption.kind === 'position' ? { position: caption.position, total: caption.total } : null,
 		progress,
 		watching,
-		similarHidden: shownOnStrip(view, watching?.entry ?? null),
+		similarHidden: restOfFranchise(run, id),
 		titles: run.entries.map((e) => e.title)
 	};
 }
