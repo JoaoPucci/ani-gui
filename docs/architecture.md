@@ -428,9 +428,9 @@ directory makes the one attempt only. A 404 counts as a failed attempt,
 so until the `flags` branch exists every session retries on that
 schedule. None of this changes the running session's flags. Worst
 case: one launch delay; never stuck unless the file can't be downloaded
-at all during an entire session. A connection
-that always misses the cap still gets a switch-off on its next launch,
-as long as the file arrives at any point during the previous session.
+at all during an entire session. On a connection that always misses
+the cap, the cached copy decides the next launch's flags, as long as the
+file arrived at any point during the previous session.
 
 Only a 200 whose body is at most 64 KiB and is a `{"flags": {...}}`
 object counts as the file. Anything else counts as a failed fetch: a
