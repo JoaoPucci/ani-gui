@@ -3,7 +3,7 @@
 // file to read (docs/development.md), and a build started from the
 // desktop has no terminal. It also said "local token", and three
 // locales carried the English sentence. These cases hold the message,
-// and the account bundle around it, to what a user can act on.
+// and every bundle, to what a user can act on.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -42,10 +42,17 @@ describe('the message when a sign-in cannot be removed', () => {
 		});
 	}
 
-	it('no account message in any locale points at logs', () => {
+	it('no message in any bundle of any locale points at logs', () => {
+		// The English word, which the other locales' bundles carried
+		// untranslated, and each locale's own word for a log file.
+		const LOG_WORDS =
+			/\blogs?\b|\bregistro de (eventos|depuración)|\bregistro de log|журнал|логи?\b/i;
 		for (const locale of LOCALES) {
-			for (const [key, text] of Object.entries(account(locale))) {
-				expect(String(text), `${locale} ${key}`).not.toMatch(/\blogs?\b/i);
+			for (const file of readdirSync(join(ROOT, locale))) {
+				const bundle = JSON.parse(readFileSync(join(ROOT, locale, file), 'utf8'));
+				for (const [key, text] of Object.entries(bundle)) {
+					expect(String(text), `${locale}/${file} ${key}`).not.toMatch(LOG_WORDS);
+				}
 			}
 		}
 	});
