@@ -178,9 +178,9 @@ ani-gui keeps the following on your computer only:
   your OS user-data directory, so the next launch opens at that size.
 - **Remote flags cache** — the last copy of the project's remote flags
   file the app fetched (see below), when it was fetched, and whether
-  its signature verified, in `remote-flags.json` under your OS's cache
-  directory. It holds only the maintainer's switches, nothing about
-  you.
+  it holds a switch only a verified signature could have turned on,
+  in `remote-flags.json` under your OS's cache directory. It holds
+  only the maintainer's switches, nothing about you.
 
 ## What ani-gui transmits to public services
 

@@ -84,7 +84,8 @@ fn a_signature_that_is_not_one_is_refused() {
 
 /// Pinned until the maintainer generates the signing key and adds its
 /// public half. Adding it is the one-line change to `TRUSTED_KEYS`,
-/// and this test and its sibling below change with it.
+/// and this test changes with it; no other test depends on the list
+/// being empty.
 #[test]
 fn the_shipped_build_trusts_no_key_until_the_maintainer_adds_one() {
     assert!(std::hint::black_box(super::TRUSTED_KEYS).is_empty());

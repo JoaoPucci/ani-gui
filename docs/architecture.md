@@ -321,11 +321,12 @@ can ship a release before the maintainer signs with it. A verified file
 is used whole. Any other file loses every `true` and keeps the rest,
 which can only leave features off: so someone who rewrote the file in
 transit, or got write access to the branch without the signing key,
-can switch nothing on. That is also why the flags still apply while
+can switch nothing on that the maintainer has not signed before (an
+older signed pair, below). That is also why the flags still apply while
 signing is not set up, or when a signature is stale: an unsigned edit
 can still turn a feature off. What is cached is the admitted document
 (see "The last good copy" below). The shipped build trusts no key yet,
-so no file turns anything on. Signing, trusting and rotating a key are
+so no file turns anything on until a release adds one. Signing, trusting and rotating a key are
 in [`development.md`](./development.md#signing-the-flags-file).
 
 What a signature does not cover: the cached copy is the user's own disk

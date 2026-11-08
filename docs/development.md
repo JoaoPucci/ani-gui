@@ -297,7 +297,7 @@ the installed app's shell profile, and hands over to it if it is running.
 ## Remote flags
 
 The maintainer can switch a declared flag without a release by editing
-one file on the repository's `flags` branch. What a flag may do, and
+`flags.json` on the repository's `flags` branch, and signing it. What a flag may do, and
 which values need the file signed, is in
 [`architecture.md`](./architecture.md#remote-flags). Only a flag
 declared in `backend/src/flags/mod.rs` (`DECLARED`) has any effect. A
@@ -428,8 +428,8 @@ To see what a running backend decided, read
 where they came from (`origin`: `file`, `cache` or `defaults`, or
 `test` in a test run). The
 backend logs the decision at `info` as `remote flags settled`, with the
-same origin, and each fetch of the live file logs the signature's
-verdict as `flags file signature checked` (`Verified`, `Unsigned` or
+same origin, and each fetch that gets the live file logs the
+signature's verdict as `flags file signature checked` (`Verified`, `Unsigned` or
 `Invalid`). The app's window gets
 the same values from the preload, as `window.aniGui.flags`.
 
@@ -515,7 +515,11 @@ pub const TRUSTED_KEYS: &[&str] = &["RWâ€¦the second line of ani-gui-flags.pubâ€
 Then change what pins the shipped build as trusting no key: the test
 `the_shipped_build_trusts_no_key_until_the_maintainer_adds_one` in
 `signature_test.rs`, to pin the list you added, and the sentence in
-`docs/PRIVACY.md` saying this version trusts no signing key. Ship the
+`docs/PRIVACY.md` saying this version trusts no signing key. Sentences
+that describe the shipped build as trusting no key also go stale: the
+first paragraph of this section, the `TRUSTED_KEYS` comment in
+`signature.rs`, and the end of "What a signature adds" in
+[`architecture.md`](./architecture.md#remote-flags). Ship the
 release. Installs on older releases ignore the signature and turn
 nothing on; that is the safe direction.
 
