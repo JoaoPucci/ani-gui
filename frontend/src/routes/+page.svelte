@@ -584,6 +584,7 @@
 					// rows and only pay the provider roundtrip on misses.
 					fetchAvailability: makeFetchAvailability(checkAvailability),
 					signal: continueProbes.signal,
+					shouldProbe: fromLoad,
 					getMode: () => settingsPromise.then(pickAvailabilityMode),
 					// Per-row state mutations are routed through the
 					// component-scope rowReady handler (row-ready.ts) —
