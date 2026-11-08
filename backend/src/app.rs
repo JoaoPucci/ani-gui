@@ -108,6 +108,10 @@ pub struct AppState {
     /// sent to replace for the row's whole TTL. Process-wide; cloned
     /// `Arc` is cheap.
     pub availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes,
+    /// The remote flags this launch resolved (see [`crate::flags`]).
+    /// Starts at the built-in defaults; the launch refresh the binary
+    /// spawns fills it without holding up startup.
+    pub flags: crate::flags::FlagStore,
 }
 
 impl AppState {
@@ -183,6 +187,7 @@ impl AppState {
             account_write_locks: AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+            flags: crate::flags::FlagStore::pending(crate::flags::DECLARED),
         };
         // What a provider the app no longer walks left in the history
         // and the cache goes before anything is served, so no surface
