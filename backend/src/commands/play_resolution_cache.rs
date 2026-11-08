@@ -210,10 +210,11 @@ use crate::proxy::MediaKind;
 // Steel Ball Run's first episode cached without Portuguese, Spanish,
 // Russian or Japanese — and a replay would keep offering that cut for
 // the row's whole life; bumping re-resolves. A row now holds each file
-// once. Past sixty-four tracks the cut follows the locale of the play
-// that wrote the row, which the key does not name: a row written
-// before a locale change keeps the earlier locale's cut until it
-// expires — no listing seen comes near the cap.
+// once. Past sixty-four tracks the cut follows the remembered language
+// and the locale of the play that wrote the row, which neither the key
+// nor the row names, so a row holding the cap's worth of tracks is
+// never replayed (`play_cache::cached_row_may_be_cut`) — no listing
+// seen comes near the cap.
 pub(crate) const SCHEMA: &str = "v28";
 
 /// What the native resolve produced, frozen for replay. The session
@@ -394,8 +395,9 @@ pub(crate) fn store(
 
 /// Drop a single cached resolution. Two callers feed this:
 /// 1. The play flow's unservable-row branch — the row's provider is
-///    no longer walked, or the cached URL is dead — so the row should
-///    not linger if the fresh resolve also fails.
+///    no longer walked, its tracks may be a cut listing, or the cached
+///    URL is dead — so the row should not linger if the fresh resolve
+///    also fails.
 /// 2. The frontend's player-error feedback path — the player tried
 ///    the cached upstream and got a 4xx/5xx, so the URL has rotated
 ///    even though our HEAD said it was alive.

@@ -216,6 +216,7 @@ AniList refusing this client, or being down, is no answer: what it would have sa
 | AniList banner per Kitsu id (from the trending feed) | SQLite `meta_cache` | 30 days; rewritten or dropped by each trending answer that lists the show, and dropped by a detail read once the image proxy has found the URL gone |
 | Image URL the upstream answered 404 or 410 for | SQLite `meta_cache` | 30 days, or until a fetch of it succeeds |
 | Poster + banner image bytes | Filesystem `images/<shard>/<hash>.<ext>` | LRU, capped at 500 MB |
+| The last good remote flags file ([Remote flags](#remote-flags)) | Filesystem `remote-flags.json` in the cache root | Replaced by every successful fetch, in the launch or later in its session; decides the next launch's flags when the file misses the cap, for 7 days |
 
 Only the probe passes the show's status when it writes an availability row, so a negative row's lifetime, like a positive one's, depends on what wrote it last. A play, a download, a hand-off or a page's warm whose walk ended in a clean miss stamps that miss through the resolve path, which writes without a status, so the negative row it writes — over a probe's row, or where none stood — gets the window of an ongoing show whatever the show's status: 24 hours at most, dated from that operation, a finished show's seven days and an unreleased show's premiere-sized window included. The row is served as any negative row is, under the read rule above, for as long as it lasts, and the status-sized window comes back only when a probe runs and writes the row again.
 
@@ -246,13 +247,240 @@ file at exactly that path — a directory wearing the name is left
 alone, and the neighbouring image cache and database are never
 candidates.
 
+## Remote flags
+
+Remote flags are values a released build reads at launch from a file
+on GitHub, so a flag can change without shipping a release. The code is
+in `backend/src/flags/`. How to edit the file is in
+[`development.md`](./development.md#remote-flags).
+
+**One file, read by the backend.** The file is `flags.json` on the
+repository's `flags` branch:
+
+```json
+{ "flags": { "some_feature": false } }
+```
+
+The backend reads it from
+`https://raw.githubusercontent.com/JoaoPucci/ani-gui/flags/flags.json`.
+The renderer never fetches it. `GET /api/flags` answers, once the
+launch's flags are decided, with their values and where they came from
+(`origin`: `file`, `cache`, `defaults`, or `test` in a test run).
+
+**Every flag is declared in code**, in `flags::DECLARED`, with a name, a
+kind and a stated reason. The kind fixes the only values the file may
+send.
+
+**Flags are default OFF, and any read failure means OFF.** Every flag's
+built-in default is off. It stays off when the file sends anything else
+for it (a value the declaration does not allow, the wrong JSON type, or
+no entry at all) and when there is no usable file. Flags the build does
+not declare are ignored. The value resolution returns is the
+declaration's own, never one copied from the file.
+
+**This build declares no flag, and has no kind to declare one with.**
+`flags::FlagKind` has no variant outside the tests, so `DECLARED` can
+only be empty, and the unsigned file can change nothing. A kind arrives
+with the change that verifies the file (below).
+
+**Read through the declaration, on only for `true`.** Consumers read a
+flag through its declaration (`Resolved::enabled`), never through a name
+typed out again, so a misspelt or undeclared flag reads off. The
+renderer reads one through `flagOn(name)` (`frontend/src/lib/flags.ts`),
+which is on only when the window was opened with exactly `true` for it:
+a window opened without flags, a backend that never answered and a flag
+the set does not hold all read off. Whether a flag's other values are
+safe for the feature it gates is not something a type can see, so each
+declaration states its case in `safe_because`, and a test refuses a
+declaration that leaves it empty.
+
+**Every value is tested.** A flag sits at its default until something
+changes it, so its other value is the one least likely to have run.
+Each consumer registers a test case for its flag's default and for every
+other value it allows in `flags::matrix::CASES`, a check that receives
+the flags with that value in force. A test over `DECLARED` fails while
+any value of a declared flag has no case, or a case names a flag or
+value no longer declared.
+
+**Why the file is not signed.** With no flag declared, no value the file
+sends can take effect, so someone who rewrote the file in transit, or
+got write access to the branch, could change nothing. A flag kind must
+not be added until the file is verified. The verifier to adopt then is
+the minisign signature check proposed for the in-app updater (#342) and
+the notification center (#351).
+
+**Decided once per launch, behind the splash.** The flags are decided
+once, within two seconds of the backend starting its refresh (just
+after its state is built), and do not change for the rest of the
+session. A cache read slower than that decides when it ends, up to the
+three-second limit below.
+
+1. The Electron main process puts up a splash at once, as the backend
+   starts. It opens before the desktop's reduced-motion setting has
+   been read (within half a second; about 20 ms on GNOME, at once
+   elsewhere), so it holds its first frame until that read settles,
+   and is then told either to start its motion or to rest on its
+   finished still frame: a reduced-motion user never sees it move.
+2. The backend starts the fetch in a task of its own as soon as its
+   state is built, and reads the cached copy beside it. If the file
+   arrives within two seconds of that start (the cap), it decides the
+   flags. Otherwise the cached copy decides them (below), or the
+   defaults when there is none. While a slow cache read is still
+   running, a file that arrives first decides, even past the cap.
+3. Once the backend has announced itself, the main process asks
+   `GET /api/flags`, which answers when the flags are decided. It opens
+   the app's window with them, so the preload puts them on
+   `window.aniGui.flags` before the first page renders. The main process
+   waits at most four seconds for that answer, and opens the window
+   without flags if none comes. The renderer then runs on every flag's
+   default while the backend may have decided otherwise, for the whole
+   session. The preload marks that case with `window.aniGui.flagsOrigin`
+   set to null, so a renderer consumer that must agree with the backend
+   can ask `GET /api/flags` itself.
+4. The splash is on screen first and alone. The app's window, like the
+   splash, is made on the app's own dark background (`--ink-000`), so
+   nothing white shows before a stylesheet loads. It loads and paints
+   its first page hidden, and its renderer says when that page has
+   rendered (two animation frames after the root layout mounts); the
+   reveal waits for that word, at most four seconds from the window's
+   creation, past which the window is revealed anyway, on the dark
+   background. Once it is ready to show, it also waits up
+   to a second for the splash to answer that it has rendered a frame,
+   then until the splash has been on screen for 500 ms since that paint
+   (300 ms when it rests on its still frame) — long enough for the
+   opening to read — and only then is it mapped, already maximized and
+   painted, and the splash closes. A launch whose window is ready later
+   than that pays nothing for the minimum; a warm one, whose window is
+   ready as soon as the splash has painted, pays up to that half second
+   for it. The rail's completion hold can add to either: a page that
+   renders less than 250 ms before the minimum runs out (150 ms on the
+   still frame), or after it, or after a splash that painted too late
+   for the minimum, holds the reveal until 250 ms (150 ms) after it
+   rendered, so the rail's last stretch is seen lit.
+   The two are never on screen competing, so it does not matter that
+   native Wayland ignores always-on-top. A splash that never paints, or
+   is minimized, holds the window no longer than that first second. The
+   hidden window is made at the size the desktop granted the window when
+   a launch last revealed it maximized on the same display (by id, size
+   and scale), kept in `window-geometry.json` under the app's user data,
+   else at the work area. On Wayland, which reports no work area until a
+   window is on screen, that remembered size is what lets the window
+   appear at its final size. The first launch on a display, or one after
+   the display's size or scale changes, paints at the full screen; one
+   after its top bar changes paints at the old remembered size. Either
+   takes a one-time correction from the compositor as it appears.
+   Closing the splash before the app's window appears cancels the
+   launch. Measured on GNOME under Wayland and on Xvfb; X11 with a real
+   window manager and Windows were not measured.
+
+The splash is a 35mm strip of the app's mark pulled through a lit gate a
+frame at a time, beside the app's name with its version above it
+(`electron/splash/`). The version is the app's own, labelled as the rail
+and About label it (`-dev` in a dev run), and the main process opens the
+page with it. Nothing else on the splash is a number, since any number
+on a screen this brief reads as a count. Under the name, a wordless rail
+of film edge lights one of its three stretches as each step of the boot
+lands: the backend's handshake, the launch's flags decided, the app's
+first page rendered (`electron/lib/splash-progress.cjs`); a launch whose
+wait for that render gave up lights the last stretch as its window is
+about to be revealed anyway, held the same way, so the rail is always
+seen complete. The splash waits at most 150 ms, about a millisecond in
+practice, for its page to take the last step. A last step landing so
+late that the splash's minimum time on screen would not show it then
+holds the splash until 250 ms (150 ms on the still frame) after that
+step landed, so the rail is seen complete before the app's window
+replaces it. A line under the rail, in the app's language, appears only
+once the pending step has taken longer than 700 ms, and then stays until
+the splash closes; only its words change, when the reason does. While
+the flags step stalls it says "Network is slow — starting in a moment…":
+the app is waiting on the flags fetch, for at most its two-second cap,
+and what it starts with (the file if it lands in time, else the saved
+copy or the defaults) is not decided yet. A slow read of the saved copy
+can hold that step too, rarely. Any other stalled step says "Starting
+up…", and once the flags land the network line gives way to it at once.
+The splash's motion starts only when the main process tells it to, once
+the window is on screen and the reduced-motion setting is known; under
+reduced motion it rests on a still frame and its rail lights without a
+wipe, and the page's own fallback timer, for a signal that never comes,
+rests it too rather than starting the motion. The mark is `mark.svg`
+alone, and the layout holds for a mark of another shape, so a new mark
+replaces one file.
+
+The store accepts one decision and refuses every later one. A backend
+consumer reads the flags with `FlagStore::settled()`, which waits for
+that decision. Past three seconds it decides the defaults itself, so no
+reader ever sees a value that changes afterwards. `FlagStore::current()`
+does not wait and is for diagnostics only.
+
+**The cap bounds the wait, not the fetch.** After the cap, the fetch
+goes on in the background. Its whole request, connect to body, has 45
+seconds, 30 of which may go on connecting (DNS, TCP and TLS): the file
+is tiny, so the time goes on the connection and round trips. The flags
+use a client of their own for that, where the metadata client allows
+10 seconds. The connector splits the connect timeout across the
+addresses DNS returns, so with the CDN's four addresses each TCP
+attempt gets about 7.5 seconds before the next address is tried. When
+the file arrives it is cached for the next launch. When that attempt
+fails, the file is fetched again later in the session, after 3, 10 and
+30 minutes and then hourly, until one attempt succeeds and is cached.
+The retries exist to fill the cache, so a launch with no cache
+directory makes the one attempt only. A 404 counts as a failed attempt,
+so until the `flags` branch exists every session retries on that
+schedule. None of this changes the running session's flags. Worst
+case: one launch delay; never stuck unless the file can't be downloaded
+at all during an entire session. On a connection that always misses
+the cap, the cached copy decides the next launch's flags, as long as the
+file arrived at any point during the previous session.
+
+Only a 200 whose body is at most 64 KiB and is a `{"flags": {...}}`
+object counts as the file. Anything else counts as a failed fetch: a
+transport error, the timeout, any other status (404 included), a larger
+body, or malformed JSON.
+
+**The last good copy.** Each successful fetch is cached as
+`remote-flags.json` in the cache root, together with the time it was
+fetched. When the file does not arrive within the cap, the cached copy
+decides the flags if it is at most seven days old, and the defaults
+decide them otherwise. A copy dated in the
+future (a clock set back) counts as too old. The cached copy goes
+through the same resolution as a fetched file, so a cache written by
+another build, or edited by hand, still resolves only to values this
+build declares. Why seven days: every value a document can produce is
+one its flag's declaration allows, so a cached copy resolves only to
+what this build accepts. Its age only limits how long a value the
+maintainer has since changed stays in force on a machine that cannot
+reach GitHub. A week covers a stretch of launches without the network,
+such as a trip, a captive portal or a blocked CDN, so a flag keeps its
+value through it. And even on a machine that never reaches the file
+again, a changed value clears within the week.
+
+**Test runs bring their own flags.** A test run is a launch with
+`ANI_GUI_UNATTENDED=1`, which the end-to-end launch helper and the
+backend's integration tests always set. A test run's backend never
+fetches the live file, so a flipped flag or a slow or rate-limited CDN
+cannot change a test's result. It takes its flags from the file
+`ANI_GUI_TEST_FLAGS_FILE` names, resolved like the live one, or the
+defaults when that names none. `ANI_GUI_TEST_FLAGS_FILE` means nothing
+without `ANI_GUI_UNATTENDED=1`. `backend/tests/flags_launch.rs` proves
+it by watching the network: a test run never asks for
+raw.githubusercontent.com, and a normal launch does. Development runs
+(`pnpm dev`) are normal launches and read the live file.
+
+**Rate limits.** `raw.githubusercontent.com` is GitHub's content CDN,
+not the REST API. The request does not count against the 60 requests
+an hour that GitHub allows unauthenticated REST callers, which the
+update check uses. GitHub publishes no figure for the CDN's own limit.
+One request per launch, and at most one an hour after the first few
+retries of a session whose fetch keeps failing, is far below any
+plausible one. A rate-limited answer is a failed fetch like any other.
+
 ## Embedded playback
 
 Playback happens inside the desktop window — not in a detached `mpv` process. Implementation:
 
 - `<video>` element receives the master.m3u8 URL from the local proxy.
 - `hls.js` handles HLS streams. mp4 streams (some providers) play natively via `<video src=...>`.
-- Subtitles inside the HLS manifest are surfaced by hls.js as `textTracks`. Sidecar tracks — the `.vtt` files a provider lists beside the stream, outside the playlist — ride the session: the proxy lists them at `/s/<id>/subtitles` and serves each at `/s/<id>/sub/<n>.vtt` with the session's referer, and the play page appends one `<track>` per listing. Where the session lists sidecar tracks, the track an episode starts on is the language last picked on the show (Off included) — in the app's captions menu, or in the browser's own when the app's custom controls are turned off — kept per show in the renderer's local storage beside the version choices; else the UI locale's language, its own region first, then its script, then any region; else the track the provider flagged default; else none. A stream whose subtitles exist only inside its own playlist gets no start, whichever controls are on (see "The starting captions on a playlist-only stream" in `docs/deferred-work.md`). External players and Syncplay get the tracks in the same order — every play, handoff and download request names the locale the renderer runs in, and the backend orders by it rather than by `config.toml`'s, which the renderer adopts only when it is one of the app's own — so a player that takes one file takes the track the built-in player starts on; where it starts on none — a show remembered Off, or nothing in the viewer's language and no default — mpv and IINA start with subtitles off (`--sid=no`) beside every track, and VLC or a custom template gets none. mpv starts on the first track unless its own configuration (a `slang`, or `subs-match-os-language`) picks another. The player's CC picker selects among both kinds, and loads only the track it shows. It names each track from its language tag in the app's language rather than by the provider's label, marks the tracks for the deaf and hard of hearing with a short tag, and lists the tracks in the language last picked on the show and in the app's language above a divider, the rest alphabetically below; it stays inside the player and below the app's top bar, scrolling instead (a player with less room than two entries still shows two), and two tracks of one language under different provider qualifiers (full and signs-only) read as the language plus that qualifier. Downloads write sidecar tracks beside the media as `<name>.<lang>.vtt` — never over a file already there, which is the user's; external players receive them as subtitle-file arguments, most wanted first and as many as the command line carries, and Syncplay forwards them to the player it wraps the same way.
+- Subtitles inside the HLS manifest are surfaced by hls.js as `textTracks`. Sidecar tracks — the `.vtt` files a provider lists beside the stream, outside the playlist — ride the session: the proxy lists them at `/s/<id>/subtitles` and serves each at `/s/<id>/sub/<n>.vtt` with the session's referer, and the play page appends one `<track>` per listing. Where the session lists sidecar tracks, the track an episode starts on is the language last picked on the show (Off included) — in the app's captions menu, or in the browser's own when the app's custom controls are turned off — kept per show in the renderer's local storage beside the version choices; else the UI locale's language, its own region first, then its script, then any region; else the track the provider flagged default; else none. A stream whose subtitles exist only inside its own playlist gets no start, whichever controls are on (see "The starting captions on a playlist-only stream" in `docs/deferred-work.md`). External players and Syncplay get the tracks in the same order — every play, handoff, next-episode warm and download request names the language last picked on the show and the locale the renderer runs in, and the backend orders by the pick first, then by that locale rather than by `config.toml`'s, which the renderer adopts only when it is one of the app's own — so a player that takes one file takes the track the built-in player starts on; where it starts on none — a show remembered Off, or nothing in the viewer's language and no default — mpv and IINA start with subtitles off (`--sid=no`) beside every track, and VLC or a custom template gets none. mpv starts on the first track unless its own configuration (a `slang`, or `subs-match-os-language`) picks another. The player's CC picker selects among both kinds, and loads only the track it shows. It names each track from its language tag in the app's language rather than by the provider's label, marks the tracks for the deaf and hard of hearing with a short tag, and lists the tracks in the language last picked on the show and in the app's language above a divider, the rest alphabetically below; it stays inside the player and below the app's top bar and grows to at most half the player's height — the screen's in fullscreen — scrolling instead and opening on the ticked entry (a player with less room than two entries still shows two), and two tracks of one language under different provider qualifiers (full and signs-only) read as the language plus that qualifier. Downloads write sidecar tracks beside the media as `<name>.<lang>.vtt` — never over a file already there, which is the user's; external players receive them as subtitle-file arguments, most wanted first and as many as the command line carries, and Syncplay forwards them to the player it wraps the same way.
 - The level an HLS master plays is the app's choice, not hls.js's bandwidth estimate: every segment waits its turn in the proxy's paced line to the host, which the estimate reads as a slow network. When the quality setting leaves the master to the player — `best` always, and any other setting whose rendition the master does not list, or whose rendition the host answers without a playlist, a 404 for one — the player starts at the setting's level, the highest for `best`, the lowest for `worst`, and for a height its own level or the nearest below it (the lowest when every level is above), and holds it while playback is healthy; the engine does not start loading until the settings have answered, so a setting still on its way is never read as `best` — for three seconds at most, after which settings that have not answered read as `best`. A stall with nothing buffered steps it down one level, at most once every eight seconds and never within three seconds of a seek; a level whose playlist the engine gives up on is left for the stream, and a level the engine switches away from for any other error — its segments failing to load, or failing to append — is stepped down from at once rather than put back. A switch the engine makes over an audio or subtitle rendition — a segment, a track playlist, or the audio buffer — is no failure of the video: the player holds the level it moved to, even above the setting's level when the levels below share the failing group, and leaves the level it left for the stream. A retry the engine still has pending is no verdict. When the engine removes levels it cannot play — the variants of a mixed-codec master the browser refuses — the player carries the level it holds, the levels it has left, what it learned of each and the menu over to the levels that remain, re-seats a hold whose level was removed at the nearest loadable level below it that is left (or, with none, the nearest above) without counting anything as a failure, and puts the engine back on the level held; when every level left has failed, the hold and the pin are released rather than the engine put back on a level that failed. A content-steering pathway switch, which replaces every level object, seats the hold at the setting's level, re-pins a pinned stream at the height the viewer picked (or the nearest level below it) among the new levels — as Auto when every new level is above it — and starts the player's knowledge of the levels afresh. After a step down, playback that has run healthy (segments of the level held buffering with fifteen seconds in hand; a segment of the level left, landing late, says nothing) climbs back one level per window — a window any stall outside a seek's grace restarts, under a pin as well as in Auto, as does every move the player did not choose to a level that has proven nothing yet (a failure, a switch the engine made, a removal that took the level held) — never above the setting's level; the window starts at thirty seconds and doubles with every step down, up to four minutes. The player's menu lists Auto and the master's levels, named by the height their segments are encoded at but ordered as the player moves through them — by the height each playlist declares, which every choice the player makes, and the pin, reads; the log names a level by both heights when they differ. A level picked in the menu switches at once — even when it is the level already held, if another still plays from the buffer — no longer moves for stalls, and is kept, by the height its playlist lists (or, for a level that lists none, its rank from the top of the levels), for the rest of the app's run. A pinned level is never exceeded while the menu shows it pinned, and it is where the play returns: a failure of its segments steps the play down and leaves the pin in place, and once playback has run healthy — the same window as Auto's climb, doubling with every fall — the play climbs back toward the pin, never above it, as long as the pinned level can still load. The pin itself moves only when its level cannot load, down to the nearest level that can — or, when the engine leaves the pinned level over a failing audio or subtitle rendition, down to the level the engine chose, since every level between shares what failed; a play already below its pin that the engine moves further down keeps its pin and climbs back. When no level at or below the pin can load, when the engine's own fallback takes over, or when the engine switches above it over a failing audio or subtitle rendition, the stream's pin is let go and the menu shows Auto. The next stream starts at the pinned height or the nearest level below it, and as Auto when every level is above it. A stream of one level — what the backend resolves for `worst` or a height the master serves — has nothing to choose: the player leaves its level to the engine, and the menu's row names that level, listed alone and checked with no Auto, once a height or a bitrate names it (a media playlist served alone lists neither, so its row appears once the player learns the picture's height: from the first parsed segment for MPEG-TS, and from the video element when its metadata has loaded, which fMP4 segments need since hls.js reports no picture size for them); picking it changes nothing, the pin kept for the run included. mp4 streams play as they are.
 
 An "Open in …" item in the player's More menu, named after the configured player flavour ("Open in mpv", "Open in VLC", "Open in IINA", or "Open in external player" for Custom), runs the External player command from Settings (`mpv` by default) with that flavour's arguments and the natively resolved master-playlist URL. The flavour and the command are separate settings: the item names the flavour, and the command is what runs. This is a user choice, never an automatic fallback — silent fallback would be confusing.
