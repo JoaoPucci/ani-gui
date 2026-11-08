@@ -558,3 +558,22 @@ async fn forgetting_a_row_drops_its_link_note() {
         None
     );
 }
+
+#[tokio::test]
+async fn clearing_the_history_drops_every_link_note() {
+    let (_tmp, _mock, state) = setup(200).await;
+    link(
+        &state,
+        &args(&["hianime:black-clover-949", "black-clover-77"], LINKED),
+    )
+    .await
+    .expect("link");
+    crate::commands::history_forget::forget_all(&state).expect("clear");
+    for row in ["hianime:black-clover-949", "black-clover-77"] {
+        assert_eq!(
+            crate::commands::linked_note::linked(&state, row),
+            None,
+            "{row}"
+        );
+    }
+}
