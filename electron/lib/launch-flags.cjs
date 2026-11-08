@@ -48,13 +48,11 @@ async function waitForLaunchFlags(apiBase, { fetch, timeoutMs = FLAGS_WAIT_MS })
 }
 
 /** Whether `body` is a flags answer: a string origin and a flags
- *  object whose every value is a boolean or a string. */
+ *  object whose every value is a boolean. */
 function isFlagsAnswer(body) {
   if (!isPlainObject(body) || typeof body.origin !== "string") return false;
   if (!isPlainObject(body.flags)) return false;
-  return Object.values(body.flags).every(
-    (v) => typeof v === "boolean" || typeof v === "string",
-  );
+  return Object.values(body.flags).every((v) => typeof v === "boolean");
 }
 
 function isPlainObject(v) {
