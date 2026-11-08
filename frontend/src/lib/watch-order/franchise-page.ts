@@ -40,7 +40,7 @@ export type FranchiseSection =
 	| {
 			readonly kind: 'line';
 			readonly rows: readonly FranchiseRow[];
-			/** An unnumbered stretch after the first: it has no clear place in the order. */
+			/** Titles with no number and no note: they have no clear place in the order. */
 			readonly unplaced: boolean;
 	  }
 	| { readonly kind: 'ways'; readonly ways: readonly (readonly FranchiseRow[])[] }
@@ -96,19 +96,47 @@ function rowOf(ctx: RowContext, entry: WatchEntry, numbered: boolean): Franchise
 	};
 }
 
+/** A title the page can neither number nor say what it leads into. */
+const unexplained = (r: FranchiseRow) => r.position === null && r.leadsInto === null;
+
+/**
+ * A line's titles as the page draws them: numbered titles (and titles
+ * that say what they lead into) together, and each stretch of titles
+ * with neither under its own "no clear place" heading.
+ */
+function lineSections(rows: readonly FranchiseRow[]): FranchiseSection[] {
+	const out: { kind: 'line'; rows: FranchiseRow[]; unplaced: boolean }[] = [];
+	for (const r of rows) {
+		const last = out.at(-1);
+		if (last && last.unplaced === unexplained(r)) last.rows.push(r);
+		else out.push({ kind: 'line', rows: [r], unplaced: unexplained(r) });
+	}
+	return out;
+}
+
 /**
  * One segment as the page draws it. A fork left with one way (its
- * other way starts at a join) is drawn as a line. A line after the
- * first whose titles have no number says it has no clear place.
+ * other ways start at a join or in a loop) is drawn as a line.
  */
-function sectionOf(ctx: RowContext, seg: Segment, first: boolean): FranchiseSection {
+function sectionsOf(ctx: RowContext, seg: Segment): FranchiseSection[] {
 	if (seg.kind === 'fork' && seg.branches.length > 1)
-		return { kind: 'ways', ways: seg.branches.map((b) => b.map((e) => rowOf(ctx, e, false))) };
+		return [{ kind: 'ways', ways: seg.branches.map((b) => b.map((e) => rowOf(ctx, e, false))) }];
 	if (seg.kind === 'cycle')
-		return { kind: 'group', rows: seg.entries.map((e) => rowOf(ctx, e, false)) };
+		return [{ kind: 'group', rows: seg.entries.map((e) => rowOf(ctx, e, false)) }];
 	const entries = seg.kind === 'fork' ? seg.branches.flat() : seg.entries;
-	const rows = entries.map((e) => rowOf(ctx, e, true));
-	return { kind: 'line', rows, unplaced: !first && rows.every((r) => r.position === null) };
+	return lineSections(entries.map((e) => rowOf(ctx, e, true)));
+}
+
+/** Stretches with no clear place that follow each other, under one heading. */
+function joinUnplaced(sections: readonly FranchiseSection[]): FranchiseSection[] {
+	const out: FranchiseSection[] = [];
+	for (const s of sections) {
+		const last = out.at(-1);
+		if (s.kind === 'line' && s.unplaced && last?.kind === 'line' && last.unplaced)
+			out[out.length - 1] = { ...last, rows: [...last.rows, ...s.rows] };
+		else out.push(s);
+	}
+	return out;
 }
 
 /** The page for `id`, or null where there is no franchise to show. */
@@ -147,7 +175,7 @@ export function franchisePage(
 			position: placement(run, now.entry.id, order).position
 		},
 		start: sequence(run, order)[0],
-		sections: segs.map((seg, i) => sectionOf(ctx, seg, i === 0)),
+		sections: joinUnplaced(segs.flatMap((seg) => sectionsOf(ctx, seg))),
 		versions: run.versions,
 		films: run.films,
 		sides: run.sides,

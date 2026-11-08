@@ -2,8 +2,8 @@
   The franchise page for the show with this id: its franchise and the
   watch history read together ($lib/watch-order/loader), drawn in the
   order the settings choose once that read has settled. A franchise
-  that cannot be read says so, with Try again. One that answers with
-  nothing beyond the show says that instead.
+  that cannot be read, or answers with no main story, says so, with
+  Try again. A franchise that is the show alone says that instead.
 -->
 <script lang="ts">
 	import { page } from '$app/state';
@@ -49,12 +49,12 @@
 	});
 </script>
 
-{#if model}
+{#if model && model.total === 1}
+	<p class="none">{m.watchorder_franchise_none()}</p>
+{:else if model}
 	{#key id}
 		<FranchiseView {model} {today} />
 	{/key}
-{:else if data && order && data.franchise !== null}
-	<p class="none">{m.watchorder_franchise_none()}</p>
 {:else if data && order}
 	<div class="failed">
 		<p>{m.watchorder_franchise_failed()}</p>
