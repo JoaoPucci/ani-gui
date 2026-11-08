@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { SkipInterval } from '$lib/api';
 import { FINISHED_REMAINING_S } from './watch-position';
-import { creditsStart, inCredits } from './up-next-window';
+import { creditsStart, inCredits, upNextShown, type UpNextState } from './up-next-window';
 
 const ed = (start: number, end: number, skip_type = 'ed'): SkipInterval => ({
 	skip_type,
@@ -74,5 +74,60 @@ describe('inCredits', () => {
 				}
 			)
 		);
+	});
+});
+
+describe('inCredits before the skip times answer', () => {
+	it('waits for them rather than deciding by the last minutes', () => {
+		expect(inCredits(1400, 1420, null)).toBe(false);
+		expect(inCredits(1420, 1420, null)).toBe(false);
+	});
+});
+
+describe('upNextShown', () => {
+	const due: UpNextState = {
+		card: true,
+		hasNext: false,
+		resumeHolding: false,
+		dismissed: false,
+		videoFullscreen: false,
+		inCredits: true
+	};
+
+	it('shows at a finale in its credits', () => {
+		expect(upNextShown(due)).toBe(true);
+	});
+
+	it('shows only when every condition holds', () => {
+		fc.assert(
+			fc.property(
+				fc.record({
+					card: fc.boolean(),
+					hasNext: fc.boolean(),
+					resumeHolding: fc.boolean(),
+					dismissed: fc.boolean(),
+					videoFullscreen: fc.boolean(),
+					inCredits: fc.boolean()
+				}),
+				(state) => {
+					const want =
+						state.card &&
+						!state.hasNext &&
+						!state.resumeHolding &&
+						!state.dismissed &&
+						!state.videoFullscreen &&
+						state.inCredits;
+					expect(upNextShown(state)).toBe(want);
+				}
+			)
+		);
+	});
+
+	it('waits while the player still has an episode of the entry to step to', () => {
+		expect(upNextShown({ ...due, hasNext: true })).toBe(false);
+	});
+
+	it('is not drawn where only the video is fullscreen', () => {
+		expect(upNextShown({ ...due, videoFullscreen: true })).toBe(false);
 	});
 });

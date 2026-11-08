@@ -152,6 +152,8 @@ interface Options {
 	skips?: { skip_type: string; start_time: number; end_time: number }[];
 	/** Null: the franchise cannot be read. */
 	franchise?: ReturnType<typeof franchise> | null;
+	/** How many episodes the source lists and has aired: Kitsu's 12 unless set. */
+	sourceEpisodes?: number;
 }
 
 /** Opens `options.episode` of Second Arc and gives its video a length. */
@@ -176,7 +178,12 @@ async function openEpisode(options: Options = {}) {
 		),
 		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: EPISODES, next_episode: null, next_airing_at: null, upcoming: [] })
+			HttpResponse.json({
+				aired: options.sourceEpisodes ?? EPISODES,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
 		),
 		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
 			HttpResponse.json(kitsuEpisodes(EPISODES))
@@ -185,7 +192,7 @@ async function openEpisode(options: Options = {}) {
 		http.post(`${API_BASE}/api/availability`, () =>
 			HttpResponse.json({
 				available: true,
-				episode_count: EPISODES,
+				episode_count: options.sourceEpisodes ?? EPISODES,
 				extra_episodes: [],
 				episode_count_approximate: false
 			})
@@ -223,6 +230,39 @@ async function playTo(video: HTMLVideoElement, at: number) {
 const card = () => target.querySelector<HTMLElement>('.up-next');
 const cardLinks = () => [...(card()?.querySelectorAll<HTMLAnchorElement>('a') ?? [])];
 const skipPill = () => target.querySelector('.player-skip-btn');
+const announcement = () => card()?.querySelector('[role="status"]')?.textContent ?? '';
+
+/** Moves the page to `episode` in a new session, as a switch lands. */
+async function switchTo(video: HTMLVideoElement, episode: number, session: string) {
+	setUrl(`/play/${KITSU_ID}`, { session, episode: String(episode), kind: 'mp4' });
+	await new Promise((r) => setTimeout(r, 0));
+	video.dispatchEvent(new Event('loadedmetadata'));
+	video.dispatchEvent(new Event('durationchange'));
+}
+
+/** Counts every time the card is put on the page. */
+function countMounts(): { readonly count: number; stop(): void } {
+	let count = 0;
+	const observer = new MutationObserver((records) => {
+		for (const r of records)
+			for (const n of r.addedNodes)
+				if (n instanceof HTMLElement && (n.matches('.up-next') || n.querySelector('.up-next')))
+					count++;
+	});
+	observer.observe(target, { childList: true, subtree: true });
+	return {
+		get count() {
+			return count;
+		},
+		stop: () => observer.disconnect()
+	};
+}
+
+/** Puts `el` in fullscreen, as the browser reports it, or leaves it with null. */
+function setFullscreen(el: Element | null) {
+	Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => el });
+	document.dispatchEvent(new Event('fullscreenchange'));
+}
 
 describe('the Up next card at a finale', () => {
 	it("names the next entry once the credits begin, in the Skip Ending pill's place", async () => {
@@ -264,6 +304,7 @@ describe('the Up next card at a finale', () => {
 
 	it('names the next entry without asking the provider about it', async () => {
 		const { video, fetches } = await openEpisode();
+		const sentBefore = fetches.sent.length;
 		await playTo(video, 1300);
 		await until(() => card() !== null, 'the card');
 		await fetches.settled('anything the card set off');
@@ -274,6 +315,10 @@ describe('the Up next card at a finale', () => {
 				JSON.stringify(f.body).includes('"50"')
 		);
 		expect(asked).toEqual([]);
+		const after = fetches.sent.slice(sentBefore);
+		expect(after.filter((f) => /^\/api\/(availability|play|kitsu\/search)/.test(f.path))).toEqual(
+			[]
+		);
 	});
 
 	it('plays nothing further at the end, even with auto-play on', async () => {
@@ -404,12 +449,34 @@ describe('the Up next card at a finale', () => {
 		await until(() => card() !== null, 'the card');
 	});
 
-	it('is not among the controls fullscreen hides', async () => {
+	it('stays when the frame is fullscreen and its controls hide', async () => {
 		const { video } = await openEpisode();
+		Object.defineProperty(video, 'paused', { configurable: true, get: () => false });
+		video.dispatchEvent(new Event('play'));
 		await playTo(video, 1300);
 		await until(() => card() !== null, 'the card');
-		expect(card()!.closest('.player-controls')).toBeNull();
-		expect(card()!.closest('section.player-frame')).not.toBeNull();
+		const frame = target.querySelector('section.player-frame')!;
+		try {
+			setFullscreen(frame);
+			await until(() => frame.classList.contains('fs-controls-hidden'), 'the controls to hide');
+			expect(card()).not.toBeNull();
+			expect(card()!.closest('.player-controls')).toBeNull();
+		} finally {
+			setFullscreen(null);
+		}
+	});
+
+	it('is not put on the page while only the video is fullscreen', async () => {
+		const { video } = await openEpisode();
+		try {
+			setFullscreen(video);
+			await playTo(video, 1300);
+			await new Promise((r) => setTimeout(r, 50));
+			expect(card()).toBeNull();
+		} finally {
+			setFullscreen(null);
+		}
+		await until(() => card() !== null, 'the card once the video leaves fullscreen');
 	});
 
 	it.each([
@@ -430,5 +497,78 @@ describe('the Up next card at a finale', () => {
 		} finally {
 			motion.stop();
 		}
+	});
+
+	it("waits for the last episode the player reaches when the source lists more than Kitsu's count", async () => {
+		const { video } = await openEpisode({ sourceEpisodes: 13 });
+		await playTo(video, 1300);
+		await until(() => skipPill() !== null, 'the Skip Ending pill');
+		expect(card()).toBeNull();
+		const next = target.querySelector<HTMLButtonElement>(
+			`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
+		);
+		expect(next!.disabled).toBe(false);
+	});
+
+	it('shows on the episode past the count once nothing in the entry follows', async () => {
+		const { video } = await openEpisode({ sourceEpisodes: 13, episode: 13 });
+		await playTo(video, 1300);
+		await until(() => card() !== null, 'the card');
+	});
+
+	it('does not flash on a finale opened from the previous episode’s end', async () => {
+		const { video } = await openEpisode({ episode: 11 });
+		await playTo(video, LENGTH - 5);
+		const mounts = countMounts();
+		try {
+			await switchTo(video, 12, 'session-2');
+			await new Promise((r) => setTimeout(r, 100));
+			expect(mounts.count).toBe(0);
+		} finally {
+			mounts.stop();
+		}
+	});
+
+	it('comes back when the episode is played again after a dismissal', async () => {
+		const { video } = await openEpisode();
+		await playTo(video, 1300);
+		await until(() => card() !== null, 'the card');
+		card()!
+			.querySelector<HTMLButtonElement>(`button[aria-label="${m.watchorder_upnext_dismiss()}"]`)!
+			.click();
+		await until(() => card() === null, 'the card to be dismissed');
+		await switchTo(video, 11, 'session-2');
+		await switchTo(video, 12, 'session-3');
+		await playTo(video, 1300);
+		await until(() => card() !== null, 'the card on the new viewing');
+	});
+
+	it('is announced once per viewing, not again on its way back', async () => {
+		const { video } = await openEpisode();
+		await playTo(video, 1300);
+		await until(() => card() !== null, 'the card');
+		const said = m.watchorder_upnext_announce({ title: 'Saga: Final Arc' });
+		await until(() => announcement() === said, 'the announcement');
+		await playTo(video, 600);
+		await until(() => card() === null, 'the card to go');
+		await playTo(video, 1300);
+		await until(() => card() !== null, 'the card again');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(announcement()).toBe('');
+	});
+
+	it('gives focus back where it came from when Esc dismisses it', async () => {
+		const { video } = await openEpisode();
+		await playTo(video, 1300);
+		await until(() => card() !== null, 'the card');
+		const before = target.querySelector<HTMLButtonElement>(
+			`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
+		)!;
+		before.disabled = false;
+		before.focus();
+		cardLinks()[0].focus();
+		cardLinks()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await until(() => card() === null, 'the card to be dismissed');
+		expect(document.activeElement).toBe(before);
 	});
 });
