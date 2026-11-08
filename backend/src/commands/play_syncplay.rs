@@ -39,7 +39,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     // quality, episode) tuple. Without it, the user waits another
     // ~30s for a fresh resolve.
     // Syncplay wraps whichever player the user already configured
-    // for "Open in external" — most users have one media player
+    // for the "Open in …" item — most users have one media player
     // installed, and routing both flows through the same kind keeps
     // the per-stream flag shapes (referer) consistent between the
     // two surfaces.

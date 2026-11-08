@@ -1,7 +1,7 @@
 // The play page's "Open in …" item and the Settings hint that names
-// it. The item says which player it opens, from the configured
-// player flavour, so a user who picked VLC reads "Open in VLC". A
-// Custom flavour has no product name, so it says "external player".
+// it. The item names the configured player flavour, so a user who
+// picked VLC reads "Open in VLC". A Custom flavour has no product
+// name, so it says "external player".
 import { describe, expect, it } from 'vitest';
 import * as fc from 'fast-check';
 

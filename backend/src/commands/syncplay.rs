@@ -11,8 +11,8 @@
 //! Player-kind flag mapping past `--` mirrors what
 //! `external_player::build_argv` emits for the direct-spawn path,
 //! so a user who configured `external_player_kind = Vlc` gets the
-//! same `--http-referrer=` flag whether they click "Open in
-//! external" or "Watch together". Custom kind bypasses the
+//! same `--http-referrer=` flag whether they click "Open in VLC"
+//! or "Watch together". Custom kind bypasses the
 //! forwarding — the wrapped player's own config carries the
 //! per-stream args.
 //!
@@ -61,7 +61,7 @@ pub struct SyncplayLaunchArgs {
     ///
     /// Reuses `Config::external_player_kind` directly: most users
     /// have one media player installed and Syncplay defaults to
-    /// wrapping the same one they picked for "Open in external".
+    /// wrapping the same one they picked for the "Open in …" item.
     /// Old payloads without this field decode as `Mpv` (the
     /// upstream Syncplay default).
     #[serde(default)]

@@ -1,9 +1,9 @@
 /**
  * The label of the play page's external-player item, and the button
- * the Settings hint quotes. It names the player the configured flavour
- * opens ("Open in VLC"), so the user knows where the episode goes
- * before clicking. A Custom flavour runs the user's own command and
- * has no product name, so it says "external player" instead.
+ * the Settings hint quotes. It names the configured player flavour
+ * ("Open in VLC"). What runs is the External player command with that
+ * flavour's arguments. A Custom flavour uses the user's own argument
+ * template and has no product name, so it says "external player".
  */
 
 import type { ExternalPlayerKind } from '$lib/api';
