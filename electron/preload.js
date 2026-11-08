@@ -158,13 +158,14 @@ contextBridge.exposeInMainWorld('aniGui', {
 	//   2. account.setToken(provider, payload) → safeStorage-encrypts
 	//      the payload (`{access_token, refresh_token, expires_at_epoch_s,
 	//      user_id}`) and writes to disk.
-	//   3. account.getToken(provider) → sync read + decrypt; returns
+	//   3. account.getToken(provider) → read + decrypt; resolves to
 	//      {ok:true, payload} or {ok:false, kind:'not_found'|...}.
 	//   4. account.clearToken(provider) → drops the persisted file.
 	//
-	// Sync `getToken` because every backend call that needs a bearer
-	// reads it inline; an async round-trip per fetch is unnecessary
-	// IPC overhead.
+	// Every call here is asynchronous. `getToken` was once synchronous,
+	// and a keyring waiting on its unlock prompt then held the
+	// renderer's thread as well as the main process's: the first page
+	// never rendered.
 	account: {
 		openOAuth(args) {
 			return ipcRenderer.invoke('ani-gui:account:open-oauth', args);
@@ -176,7 +177,7 @@ contextBridge.exposeInMainWorld('aniGui', {
 			return ipcRenderer.invoke('ani-gui:account:set-token', { provider, payload });
 		},
 		getToken(provider) {
-			return ipcRenderer.sendSync('ani-gui:account:get-token', provider);
+			return ipcRenderer.invoke('ani-gui:account:get-token', provider);
 		},
 		clearToken(provider) {
 			return ipcRenderer.invoke('ani-gui:account:clear-token', provider);
