@@ -21,16 +21,19 @@ export interface Attempt {
 
 /**
  * The flow's save, held back once the sign-in is abandoned: the user
- * was told it was cancelled. A save sent before that is noted, since it
- * may land.
+ * was told it was cancelled. The check is made again when a save queued
+ * behind another token write is about to be sent. A save sent before
+ * the abandon is noted, since it may land.
  */
 export function guarded(flow: ConnectFlowDeps, attempt: Attempt): ConnectFlowDeps {
 	return {
 		...flow,
 		persistAccount: (provider, payload) => {
 			if (attempt.abandoned) return Promise.resolve({ ok: false, kind: 'superseded' });
+			// Noted now, since a save may land once handed over; reading
+			// the disk back when one did not is harmless.
 			attempt.saveSent = true;
-			return flow.persistAccount(provider, payload);
+			return flow.persistAccount(provider, payload, () => !attempt.abandoned);
 		}
 	};
 }

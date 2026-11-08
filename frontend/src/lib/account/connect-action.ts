@@ -105,14 +105,16 @@ export async function connectProvider(provider: Provider, deps: ConnectActionDep
  * cannot be delivered, the sign-in is abandoned here instead.
  */
 export async function cancelConnect(provider: Provider, deps: CancelConnectDeps): Promise<void> {
+	// The sign-in this cancel is for. By the time a failed cancel comes
+	// back, it may have settled and another may have started.
+	const attempt = attempts.get(provider);
 	try {
 		await deps.cancelOAuth();
 		return;
 	} catch {
 		/* not delivered: abandon the sign-in below */
 	}
-	const attempt = attempts.get(provider);
-	if (!attempt) return;
+	if (!attempt || attempts.get(provider) !== attempt) return;
 	attempts.delete(provider);
 	attempt.abandoned = true;
 	restore(deps.store, provider, attempt.prev);
