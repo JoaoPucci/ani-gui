@@ -1,11 +1,12 @@
 <!--
   Home — the front door. Editorial repertory cinema, programmed by a
   librarian. Composition:
-    1. Hero: kitsuTrendingAnilist()[0], full-bleed cover with parallax + scrim,
+    1. Hero: the first trending shows with art of their own
+       ($lib/hero/rotation), full-bleed cover with parallax + scrim,
        "View" call. NO autoplay, NO carousel.
     2. Continue Watching: hidden when historyList() is empty; otherwise a
        horizontal strip whose cards lean on an oversized mono episode number.
-    3. Trending strip: rest of kitsuTrendingAnilist() (1..n).
+    3. Trending strip: every other trending show, in trending order.
     4. Top Rated: kitsuTopRated().
 -->
 <script lang="ts">
@@ -131,6 +132,7 @@
 		type HeroOrigin
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
+	import { splitTrending } from '$lib/hero/rotation';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayArgs } from '$lib/play/play-args';
@@ -173,15 +175,16 @@
 	import { revealWhenDecoded } from '$lib/history/reveal-image';
 	import { m } from '$lib/paraglide/messages';
 
-	// Hero cycles through the top N trending titles. Rotation is slow
-	// (~9s) and pauses while the cursor is over the hero, so it never
-	// snatches a title out from under a user mid-read. Honors
-	// prefers-reduced-motion (cycle disabled, first item shown
-	// statically). Not a carousel — there's no scroll, no auto-advance
-	// faster than read-time, and every item is one click away from the
-	// strip below. AGENTS.md §7 anti-pattern is "auto-rotating carousels"
-	// in the marketing-page sense; this is a programmed marquee.
-	const HERO_ROTATION_COUNT = 3;
+	// Hero cycles through the first N trending titles with art of their
+	// own ($lib/hero/rotation, which also says what the trending row
+	// lists). Rotation is slow (~9s) and pauses while the cursor is over
+	// the hero, so it never snatches a title out from under a user
+	// mid-read. Honors prefers-reduced-motion (cycle disabled, first item
+	// shown statically). Not a carousel — there's no scroll, no
+	// auto-advance faster than read-time, and every item is one click
+	// away on the pager. AGENTS.md §7 anti-pattern is "auto-rotating
+	// carousels" in the marketing-page sense; this is a programmed
+	// marquee.
 
 	let trending = $state<KitsuAnimeRef[] | null>(null);
 	let topRated = $state<KitsuAnimeRef[] | null>(null);
@@ -454,15 +457,14 @@
 	let resumeProgress = $state<string | null>(null);
 	let resumeFailure = $state<{ title: string; message: string } | null>(null);
 
-	const heroRotation = $derived<KitsuAnimeRef[]>(
-		trending && trending.length > 0 ? trending.slice(0, HERO_ROTATION_COUNT) : []
-	);
+	const trendingSplit = $derived(splitTrending(trending ?? []));
+	const heroRotation = $derived<KitsuAnimeRef[]>(trendingSplit.hero);
 	const featured = $derived(
 		heroRotation.length > 0 ? heroRotation[heroIndex % heroRotation.length] : null
 	);
-	// Tail starts after the rotation set so the user doesn't see the
-	// hero title also pinned as the first card of the row below.
-	const trendingTail = $derived(trending ? trending.slice(HERO_ROTATION_COUNT) : []);
+	// The row leaves out the rotation's shows, so the user doesn't see
+	// the hero title also pinned as a card of the row below.
+	const trendingTail = $derived(trendingSplit.row);
 	const featuredAccent = $derived(featured ? accentFor(featured.id) : 'var(--accent-ink)');
 
 	onMount(() => {
