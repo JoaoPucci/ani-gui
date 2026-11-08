@@ -65,10 +65,10 @@ test("the launch's flags come off their flag, frozen, with their origin", () => 
   const bridge = exposedWith([
     "electron",
     "--ani-gui-api-base=http://127.0.0.1:1",
-    flagsArg({ a: false, b: "old" }),
+    flagsArg({ a: false, b: true }),
     "--ani-gui-flags-origin=cache",
   ]);
-  assert.deepEqual({ ...bridge.flags }, { a: false, b: "old" });
+  assert.deepEqual({ ...bridge.flags }, { a: false, b: true });
   assert.ok(Object.isFrozen(bridge.flags));
   assert.equal(bridge.flagsOrigin, "cache");
 });
