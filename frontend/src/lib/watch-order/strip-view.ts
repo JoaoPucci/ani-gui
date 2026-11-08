@@ -109,14 +109,3 @@ export function watchingFor(
 	const shown = [...view.before, ...view.after].some((e) => e.id === now.entry.id);
 	return shown ? null : now;
 }
-
-/**
- * The entries the strip itself shows: its tiles, and the entry the
- * "You're watching" card names. "Similar titles" leaves these out, so
- * no poster appears twice on the page.
- */
-export function shownOnStrip(view: StripView, watching: WatchEntry | null): ReadonlySet<string> {
-	const shown = [...view.before, ...view.after];
-	if (watching) shown.push(watching);
-	return new Set(shown.map((e) => e.id));
-}

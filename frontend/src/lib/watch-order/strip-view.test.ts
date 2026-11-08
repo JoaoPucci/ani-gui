@@ -1,15 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import fc from 'fast-check';
 import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
 import { placement } from './order';
-import {
-	currentIn,
-	emptyColumn,
-	franchiseSummary,
-	shownOnStrip,
-	stripView,
-	watchingFor
-} from './strip-view';
+import { currentIn, emptyColumn, franchiseSummary, stripView, watchingFor } from './strip-view';
 import type { WatchEntry, WatchRun } from './types';
 
 const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
@@ -145,47 +137,5 @@ describe('watchingFor', () => {
 
 	it('says nothing where nothing is part-way', () => {
 		expect(watching('bleach', '244')).toBeNull();
-	});
-});
-
-describe('shownOnStrip', () => {
-	it("names the strip's tiles and the watched entry's card, and nothing else", () => {
-		const jojo = run('jojo');
-		const golden = stripView(jojo, '41410', 'linked');
-		const sbr = jojo.entries.find((e) => e.id === '49847')!;
-		expect([...shownOnStrip(golden, sbr)].sort()).toEqual(
-			[...golden.before, ...golden.after, sbr].map((e) => e.id).sort()
-		);
-		// A side story's parents are its tiles.
-		expect([...shownOnStrip(stripView(run('fate'), '6928', 'linked'), null)].sort()).toEqual([
-			'6028',
-			'7658'
-		]);
-	});
-
-	it('leaves the rest of the run to "Similar titles"', () => {
-		const bleach = run('bleach');
-		const shown = shownOnStrip(stripView(bleach, '48015', 'linked'), null);
-		expect(shown.has('244')).toBe(false);
-		expect(shown.size).toBe(2);
-	});
-
-	it('is exactly the tiles plus the card, on every member of every run, in either order', () => {
-		const member = fc.constantFrom(...FIXTURE_RUNS).chain((r) =>
-			fc.record({
-				r: fc.constant(r),
-				id: fc.constantFrom(...r.entries.map((e) => e.id)),
-				card: fc.option(fc.constantFrom(...r.entries), { nil: null }),
-				order: fc.constantFrom('linked' as const, 'released' as const)
-			})
-		);
-		fc.assert(
-			fc.property(member, ({ r, id, card, order }) => {
-				const view = stripView(r, id, order);
-				const want = new Set([...view.before, ...view.after].map((e) => e.id));
-				if (card) want.add(card.id);
-				expect(shownOnStrip(view, card)).toEqual(want);
-			})
-		);
 	});
 });
