@@ -12,6 +12,13 @@ export interface HeroArtInput {
 	cover_image: { large?: string | null; original?: string | null; small?: string | null } | null;
 }
 
+/** Whether `show` has art of its own for the hero. Every show counts
+ *  for now: the hero takes the top of the list whatever it carries. */
+export function hasRealArt(show: HeroArtInput): boolean {
+	void show;
+	return true;
+}
+
 /** The hero's shows and the row's, both in trending order. */
 export interface TrendingSplit<T> {
 	hero: T[];
