@@ -414,6 +414,75 @@ describe('cancelConnect', () => {
 		await secondRun;
 	});
 
+	it('a cancel that rejects after its sign-in settled leaves a newer sign-in alone', async () => {
+		const first = deferred<{ ok: false; kind: string }>();
+		const firstRun = connectProvider('anilist', deps(flow({ openOAuth: () => first.promise })));
+		await settle();
+		const cancel = deferred<boolean>();
+		const cancelling = cancelConnect(
+			'anilist',
+			cancelDeps(() => cancel.promise)
+		);
+		// The first sign-in settles while the cancel is still on its way,
+		// and the user signs in again.
+		first.resolve({ ok: false, kind: 'cancelled' });
+		await firstRun;
+		await settle();
+		const second = deferred<{ ok: true; code: string; state: string }>();
+		const persist = vi.fn(async (p: Provider, payload: PersistedAccount) => {
+			disk[p] = payload;
+			return { ok: true as const };
+		});
+		const secondRun = connectProvider(
+			'anilist',
+			deps(flow({ openOAuth: () => second.promise, persistAccount: persist }))
+		);
+		await settle();
+		toasts = [];
+		cancel.reject(new Error('ipc gone'));
+		await cancelling;
+		await settle();
+		// The cancel was for the first sign-in, which is over.
+		expect(accountStore.byProvider.anilist.kind).toBe('connecting');
+		expect(messages()).toEqual([]);
+		second.resolve({ ok: true, code: 'code', state: 'st' });
+		await secondRun;
+		await settle();
+		expect(persist).toHaveBeenCalledTimes(1);
+		expect(accountStore.byProvider.anilist.kind).toBe('connected');
+	});
+
+	it('a save still queued when its sign-in is abandoned is never sent', async () => {
+		// The token-write queue asks `stillCurrent` when a save's turn
+		// comes (bridge.persistAccount). A save queued behind another write
+		// when the cancel fails must answer no then.
+		const asked: (() => boolean)[] = [];
+		const queued = deferred<{ ok: false; kind: string }>();
+		const running = connectProvider(
+			'anilist',
+			deps(
+				flow({
+					persistAccount: (_p, _payload, stillCurrent) => {
+						if (stillCurrent) asked.push(stillCurrent);
+						return queued.promise;
+					}
+				})
+			)
+		);
+		await settle();
+		expect(asked).toHaveLength(1);
+		expect(asked[0]()).toBe(true);
+		await cancelConnect(
+			'anilist',
+			cancelDeps(() => Promise.reject(new Error('ipc gone')))
+		);
+		expect(asked[0]()).toBe(false);
+		queued.resolve({ ok: false, kind: 'superseded' });
+		await running;
+		await settle();
+		expect(accountStore.byProvider.anilist.kind).toBe('disconnected');
+	});
+
 	it('a rejected cancel with no sign-in under way changes nothing', async () => {
 		accountStore.setConnected('anilist', account());
 		await cancelConnect(
