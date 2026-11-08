@@ -57,15 +57,21 @@
 	});
 
 	// The card never takes focus itself, so focus inside it came from
-	// somewhere: a dismissal gives it back there.
+	// somewhere: a keyboard dismissal gives it back there. A pointer
+	// dismissal leaves it alone, so a click cannot hand focus to a
+	// player control and keep the fullscreen controls up.
 	let cameFrom: HTMLElement | null = null;
 	let card = $state<HTMLElement | null>(null);
 	function onfocusin(e: FocusEvent) {
 		const from = e.relatedTarget;
 		if (from instanceof HTMLElement && !card?.contains(from)) cameFrom = from;
 	}
-	function dismiss() {
-		const back = card?.contains(document.activeElement) ? cameFrom : null;
+	function onfocusout(e: FocusEvent) {
+		const to = e.relatedTarget;
+		if (!(to instanceof Node) || !card?.contains(to)) cameFrom = null;
+	}
+	function dismiss(byKeyboard: boolean) {
+		const back = byKeyboard && card?.contains(document.activeElement) ? cameFrom : null;
 		ondismiss();
 		if (back?.isConnected) back.focus();
 	}
@@ -73,7 +79,7 @@
 	function onkeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			e.stopPropagation();
-			dismiss();
+			dismiss(true);
 		}
 	}
 </script>
@@ -96,6 +102,7 @@
 	bind:this={card}
 	{onkeydown}
 	{onfocusin}
+	{onfocusout}
 	transition:settle={{ duration: 200 }}
 >
 	<span class="sr-only" role="status">{said}</span>
@@ -103,7 +110,7 @@
 		type="button"
 		class="dismiss"
 		aria-label={m.watchorder_upnext_dismiss()}
-		onclick={dismiss}
+		onclick={(e) => dismiss(e.detail === 0)}
 	>
 		<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
 			<path

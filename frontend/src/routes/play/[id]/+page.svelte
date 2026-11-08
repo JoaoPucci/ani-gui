@@ -295,8 +295,8 @@
 	// The URL the element's stream was attached from; hls.js gives the
 	// element a blob: URL of its own, so the element cannot say.
 	let attachedUrl: string | null = null;
-	// The source `currentTime` and `duration` describe, set as one
-	// attaches: the Up next card reads them only for the source on screen.
+	// The session whose stream `currentTime` and `duration` describe,
+	// set as one attaches: they count only for the stream on screen.
 	let playheadFor = $state<string | null>(null);
 
 	// Settings-driven: whether to use our custom controls bar in
@@ -430,7 +430,12 @@
 	// value is read once at fetch time via `untrack` so its sub-µs
 	// tick stream stays off the effect's dependency set.
 	const aniskipFetchKey = $derived(id && episodeNum > 0 ? `${id}|${episodeNum}` : null);
-	const aniskipDurationReady = $derived(Number.isFinite(duration) && duration > 0);
+	// Across a switch the length still holds the last episode's until
+	// the new stream attaches: aniskip is asked with this one's.
+	const playheadOnScreen = $derived(playheadFor === sessionId);
+	const aniskipDurationReady = $derived(
+		playheadOnScreen && Number.isFinite(duration) && duration > 0
+	);
 	const aniskipTrigger = createAniskipFetchTrigger();
 	$effect(() => {
 		// Subscribing to the fetch-key derived re-runs the effect on
@@ -1526,11 +1531,17 @@
 			detail ? { status: detail.status, episodes: detail.episode_count } : null
 		)
 	);
+	// The skip times the card waits for: none to wait for on a
+	// fractional extra, which aniskip has no times for.
+	const upNextSkips = $derived(
+		!Number.isInteger(episodeNum) ? [] : skipsFor === aniskipFetchKey ? skipIntervals : null
+	);
 	let upNextDismissed = $state(false);
 	let upNextAnnounced = $state(false);
 	$effect(() => {
-		// A new viewing: another show, episode or session.
-		void [id, episodeNum, sessionId];
+		// A new viewing: another show or episode. A recovery or a
+		// quality switch re-opens the same episode, and is not one.
+		void [id, episodeNum];
 		upNextDismissed = false;
 		upNextAnnounced = false;
 	});
@@ -1544,9 +1555,7 @@
 			// The playhead and the skip times count only once they belong
 			// to the source and the episode on screen: across a switch
 			// both still hold the last episode's until it is replaced.
-			inCredits:
-				playheadFor === mediaUrl &&
-				inCredits(currentTime, duration, skipsFor === aniskipFetchKey ? skipIntervals : null)
+			inCredits: playheadOnScreen && inCredits(currentTime, duration, upNextSkips)
 		})
 	);
 	$effect(() => {
@@ -1891,7 +1900,7 @@
 		sourceScope.flush();
 		teardown();
 		attachedUrl = mediaUrl;
-		playheadFor = mediaUrl;
+		playheadFor = untrack(() => sessionId);
 		// Source-scoped listeners — the resume seek, the progress
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
