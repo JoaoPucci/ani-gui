@@ -35,6 +35,8 @@ export interface FranchisePageModel {
 	readonly art: WatchEntry;
 	/** Every title the page lists. */
 	readonly total: number;
+	/** The franchise is the show alone: it lists the show and nothing else. */
+	readonly alone: boolean;
 	/** The title the viewer is part-way through, where Resume goes. */
 	readonly resume: {
 		readonly entry: WatchEntry;
@@ -82,6 +84,7 @@ export function franchisePage(
 		name: franchiseName(art.title, others),
 		art,
 		total: franchiseSummary(run).total,
+		alone: false,
 		resume: now && {
 			entry: now.entry,
 			label: ctx.label(now.entry),
