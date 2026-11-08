@@ -12,8 +12,9 @@
   Everything sits on a faint band, one step of the page's own ink, so
   the columns read as one thing without becoming a card. Its footer,
   centred, holds the card for the entry being watched elsewhere in the
-  run. Every reading comes from the page model (`./page-model`); this
-  component only draws it.
+  run, when there is one, and the way to the franchise page. Every
+  reading comes from the page model (`./page-model`); this component
+  only draws it.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
@@ -21,6 +22,7 @@
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
 	import MetaLine from './MetaLine.svelte';
+	import StripFranchiseLink from './StripFranchiseLink.svelte';
 	import StripWatching from './StripWatching.svelte';
 	import { metaLine, numeral } from './meta';
 	import type { WatchOrderPage } from './page-model';
@@ -108,11 +110,16 @@
 			</div>
 			{@render column('after')}
 
-			{#if model.watching}
-				<footer class="trio-footer">
-					<StripWatching entry={model.watching.entry} episode={model.watching.episode} {label} />
-				</footer>
-			{/if}
+			<footer class="trio-footer" class:alone={!model.watching}>
+				{#if model.watching}
+					<div class="slot">
+						<StripWatching entry={model.watching.entry} episode={model.watching.episode} {label} />
+					</div>
+				{/if}
+				<div class="slot">
+					<StripFranchiseLink run={model.run} {id} />
+				</div>
+			</footer>
 		</div>
 	</div>
 </section>
@@ -128,6 +135,9 @@
 		padding: var(--space-5) var(--space-5) var(--space-4);
 		border-radius: var(--radius-card);
 		background: color-mix(in oklab, var(--ink-050) 72%, transparent);
+		/* The footer asks the band's width whether its two items fit
+		   side by side. */
+		container: trio-band / inline-size;
 	}
 	.band > .eyebrow {
 		margin-block-end: var(--space-4);
@@ -304,23 +314,46 @@
 		color: color-mix(in oklab, var(--bone-100) 90%, transparent);
 	}
 
-	/* The footer: the card for the entry being watched, under a
-	   hairline, centred at 24rem at most. It is the grid's fourth
-	   row. */
+	/* The footer, under a hairline, the grid's fourth row: the card for
+	   the entry being watched and the way to the franchise page, side
+	   by side in the middle at one width (24rem at most), so the two
+	   read as a matched pair; one above the other, the card first,
+	   where the band is under 50rem. */
 	.trio-footer {
 		grid-column: 1 / -1;
 		grid-row: 4;
 		display: grid;
-		grid-template-columns: minmax(0, 24rem);
+		grid-auto-flow: column;
+		grid-auto-columns: minmax(0, 24rem);
 		justify-content: center;
+		align-items: center;
+		gap: var(--space-4) var(--space-6);
 		margin-block-start: var(--space-5);
 		padding-block-start: var(--space-4);
 		border-block-start: 1px solid var(--ink-200);
 	}
-	.trio-footer > :global(*) {
+	@container trio-band (max-width: 50rem) {
+		.trio-footer {
+			grid-auto-flow: row;
+		}
+	}
+	.slot {
+		display: grid;
+		min-inline-size: 0;
+	}
+	.slot > :global(*) {
 		inline-size: 100%;
 		max-inline-size: none;
+		margin: 0;
 		box-sizing: border-box;
+	}
+	/* Alone, the franchise link keeps its own width, so its arrow stays
+	   by its text. */
+	.trio-footer.alone {
+		grid-auto-columns: auto;
+	}
+	.trio-footer.alone .slot > :global(*) {
+		inline-size: auto;
 	}
 	.sr-only {
 		position: absolute;

@@ -70,6 +70,12 @@ export function captionText(caption: StripCaption): string {
  * other versions, side stories and recaps, each only where there is one.
  */
 export function stackPartsText(summary: FranchiseSummary): string[] {
-	void summary;
-	return [];
+	const parts = [m.watchorder_strip_franchise_stack_main({ count: summary.main })];
+	if (summary.films > 0)
+		parts.push(m.watchorder_strip_franchise_stack_films({ count: summary.films }));
+	if (summary.sides > 0)
+		parts.push(m.watchorder_strip_franchise_stack_sides({ count: summary.sides }));
+	if (summary.recaps > 0)
+		parts.push(m.watchorder_strip_franchise_stack_recaps({ count: summary.recaps }));
+	return parts;
 }
