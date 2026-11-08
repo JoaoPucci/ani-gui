@@ -234,13 +234,19 @@ describe('a pick of another show on the player', () => {
 
 	it('says whether the pick was saved, so a switch never follows one that was not', async () => {
 		const f = fake(true);
+		// The session keeps the deps it was built with: the save fails by
+		// a switch it reads at each call.
+		let down = false;
+		const link = f.deps.link;
+		f.deps.link = (card, rows, id) =>
+			down ? Promise.reject(new Error('down')) : link(card, rows, id);
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
 		await s.start(2);
 		s.choose({ ref: RIGHT, current: false });
 		expect(await s.confirm()).toBe(true);
 		// A second pick that fails: the first one's switch stays as it was.
-		f.deps.link = async () => Promise.reject(new Error('down'));
+		down = true;
 		await s.start(2);
 		s.choose({ ref: ref('9999', 'JoJo 2007'), current: false });
 		expect(await s.confirm()).toBe(false);
