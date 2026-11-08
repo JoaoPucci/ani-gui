@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { MOCK_RUNS } from './fixtures';
 import type { MockRun } from './types';
-import { asRef, franchiseName, entryIn, handoffs, runFor } from './view';
+import { asRef, franchiseName, entryIn, runFor } from './view';
 
-const TODAY = '2026-11-02';
 const run = (key: string): MockRun => MOCK_RUNS.find((r) => r.key === key)!;
 
 describe('mockup view', () => {
@@ -12,14 +11,6 @@ describe('mockup view', () => {
 		expect(runFor('610')).toBeNull();
 		expect(entryIn(run('jojo'), '610')?.subtype).toBe('OVA');
 		expect(entryIn(run('jojo'), 'nope')).toBeNull();
-	});
-
-	it('hands Continue on only where one unstarted entry follows the last watched', () => {
-		const got = handoffs('linked', TODAY).map((h) => [h.finished.id, h.next.id]);
-		expect(got).toEqual([
-			['43078', '46903'],
-			['44240', '46038']
-		]);
 	});
 });
 

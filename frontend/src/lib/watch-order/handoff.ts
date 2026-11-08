@@ -8,9 +8,7 @@
  * has no history row of its own; in every other case the row keeps
  * its ordinary card. Nothing here asks the provider.
  */
-import { MOCK_RUNS } from './mock/fixtures';
-import { sequence, type WatchOrder } from './order';
-import type { MockEntry, MockRun } from './mock/types';
+import type { WatchOrder } from './order';
 import type { FranchiseData, WatchEntry } from './types';
 import { parseHistoryEpisode } from '$lib/play/episode-number';
 import { runOf } from './strip-model';
@@ -110,35 +108,6 @@ export function railHandoffs(
 		if (!handoff || shown.has(handoff.next.id)) continue;
 		shown.add(handoff.next.id);
 		out.set(rowId, handoff);
-	}
-	return out;
-}
-
-/** The mockups' hand-offs, from the fixtures. */
-export interface MockHandoff {
-	readonly run: MockRun;
-	readonly finished: MockEntry;
-	readonly next: MockEntry;
-}
-
-/**
- * Continue Watching's hand-offs: the last watched entry of each run
- * whose single next entry has aired and has not been started.
- */
-export function handoffs(
-	order: WatchOrder,
-	today: string,
-	runs: readonly MockRun[] = MOCK_RUNS
-): MockHandoff[] {
-	const out: MockHandoff[] = [];
-	for (const run of runs) {
-		const watched = sequence(run, order).filter((e) => run.progress[e.id] === 'watched');
-		const finished = watched.at(-1);
-		if (!finished) continue;
-		const up = upNextFor(run, finished.id, order, today);
-		if (up.kind === 'one' && run.progress[up.entry.id] === undefined) {
-			out.push({ run, finished, next: up.entry });
-		}
 	}
 	return out;
 }
