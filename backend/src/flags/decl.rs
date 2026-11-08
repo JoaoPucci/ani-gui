@@ -1,52 +1,37 @@
 //! Flag declarations: the name, the built-in default and the values
 //! the remote file may select.
 //!
-//! The kinds are the safety rule written as a type. Neither kind can
-//! name a value riskier than the build's own default:
+//! The rule the type carries: a flag ships off. Its default is
+//! `false` whatever its kind, and a read that fails, a value the
+//! declaration does not allow and a flag the file does not mention
+//! all leave it there.
 //!
-//! - a [`FlagKind::KillSwitch`] gates a feature that ships on. Its
-//!   default is `true`; the only other value the file may send is
-//!   `false`, which switches the feature off;
-//! - a [`FlagKind::Fallback`] chooses between the behaviour this
-//!   build ships (`current`, the default) and behaviours earlier
-//!   releases had (`earlier`). The file may select only those.
+//! This build declares no flag and has no kind one could be declared
+//! with: [`FlagKind`] has no variant outside the tests, so a
+//! [`FlagDecl`] cannot be built and [`super::DECLARED`] can only be
+//! empty. A kind arrives with the change that verifies the file, and
+//! with it the values that kind lets the file send.
 //!
-//! What the type cannot see is whether "off" or "earlier" really is
-//! the safer side for a given feature — a kill switch on something
-//! protective (a check, a warning, the update notice) would turn the
-//! rule inside out. That is a review question, so every declaration
-//! states its answer in `safe_because`, and [`validate`] refuses a
-//! declaration that leaves it empty.
+//! What the type cannot see is whether a flag's other values are safe
+//! for the feature it gates. That is a review question, so every
+//! declaration states its answer in `safe_because`, and [`validate`]
+//! refuses a declaration that leaves it empty.
 
 use serde::Serialize;
 
-/// A resolved flag value. The string of a [`FlagValue::Choice`] is
-/// always borrowed from a declaration, never from the remote file.
+/// A resolved flag value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 pub enum FlagValue {
-    /// A kill switch: `true` while the feature runs, `false` once the
-    /// file switches it off.
+    /// An on/off flag: `false`, the default, or `true` when the file
+    /// switches it on.
     Bool(bool),
-    /// A fallback: the name of the behaviour in force.
-    Choice(&'static str),
 }
 
-/// Which way a flag may move, and so which values the file may send.
+/// Which values the file may send for a flag. No kind is declarable
+/// in this build.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlagKind {
-    /// Gates a feature that ships on. Default `true`; the file may
-    /// send only `false`.
-    KillSwitch,
-    /// Chooses a behaviour. Default `current`; the file may send only
-    /// one of `earlier`, behaviours a previous release had.
-    Fallback {
-        /// The behaviour this build ships, and the default.
-        current: &'static str,
-        /// Behaviours earlier releases had, which the file may
-        /// select instead.
-        earlier: &'static [&'static str],
-    },
     /// A test double for the mechanism: an on/off flag that ships
     /// off. `may_switch_on` says whether the file may send `true` as
     /// well as `false`. Never declarable outside the tests.
@@ -63,35 +48,25 @@ pub struct FlagDecl {
     /// The key the remote file uses. Lower-case ASCII letters, digits
     /// and underscores.
     pub name: &'static str,
-    /// Which way the flag may move.
+    /// Which values the file may send.
     pub kind: FlagKind,
-    /// Why the non-default values are the safer side: what still works,
-    /// or what the user still gets, once the flag is flipped.
+    /// Why the values the file may send are safe for the feature this
+    /// flag gates.
     pub safe_because: &'static str,
 }
 
 impl FlagDecl {
     /// The value used when the file says nothing usable about this
-    /// flag.
+    /// flag: off, for every flag.
     #[must_use]
     pub fn default_value(&self) -> FlagValue {
-        match self.kind {
-            FlagKind::KillSwitch => FlagValue::Bool(true),
-            FlagKind::Fallback { current, .. } => FlagValue::Choice(current),
-            #[cfg(test)]
-            FlagKind::Probe { .. } => FlagValue::Bool(true),
-        }
+        FlagValue::Bool(false)
     }
 
     /// Every value this flag can resolve to, the default first.
     #[must_use]
     pub fn allowed(&self) -> Vec<FlagValue> {
         match self.kind {
-            FlagKind::KillSwitch => vec![FlagValue::Bool(true), FlagValue::Bool(false)],
-            FlagKind::Fallback { current, earlier } => std::iter::once(current)
-                .chain(earlier.iter().copied())
-                .map(FlagValue::Choice)
-                .collect(),
             #[cfg(test)]
             FlagKind::Probe { may_switch_on } => std::iter::once(false)
                 .chain(may_switch_on.then_some(true))
@@ -101,26 +76,17 @@ impl FlagDecl {
     }
 
     /// The declared value `raw` selects, or `None` when `raw` is of
-    /// the wrong type or names a value this flag does not allow. The
-    /// value returned is one of [`FlagDecl::allowed`], never built
-    /// from `raw`.
+    /// the wrong type or names a value this flag does not allow.
     #[must_use]
     pub fn accept(&self, raw: &serde_json::Value) -> Option<FlagValue> {
-        self.allowed().into_iter().find(|v| matches(*v, raw))
+        self.allowed()
+            .into_iter()
+            .find(|FlagValue::Bool(b)| raw.as_bool() == Some(*b))
     }
 }
 
-/// Whether `raw` spells the declared value `v`, type included.
-fn matches(v: FlagValue, raw: &serde_json::Value) -> bool {
-    match v {
-        FlagValue::Bool(b) => raw.as_bool() == Some(b),
-        FlagValue::Choice(c) => raw.as_str() == Some(c),
-    }
-}
-
-/// Check a declaration list: names well-formed and unique, every
-/// fallback naming at least one earlier behaviour distinct from its
-/// current one, and every declaration stating why its retreat is safe.
+/// Check a declaration list: names well-formed and unique, and every
+/// declaration stating why the values the file may send are safe.
 ///
 /// # Errors
 /// A description of the first problem found.
@@ -145,23 +111,7 @@ fn check_one(decl: &FlagDecl) -> Result<(), String> {
         return Err(format!("{name:?} is not a lower-case snake_case name"));
     }
     if decl.safe_because.trim().is_empty() {
-        return Err(format!("{name} does not say why its retreat is safe"));
-    }
-    if let FlagKind::Fallback { current, earlier } = decl.kind {
-        check_fallback(name, current, earlier)?;
-    }
-    Ok(())
-}
-
-fn check_fallback(name: &str, current: &str, earlier: &[&str]) -> Result<(), String> {
-    if earlier.is_empty() {
-        return Err(format!("{name} names no earlier behaviour to fall back to"));
-    }
-    let mut seen = std::collections::BTreeSet::new();
-    for value in std::iter::once(current).chain(earlier.iter().copied()) {
-        if value.is_empty() || !seen.insert(value) {
-            return Err(format!("{name} has an empty or repeated value {value:?}"));
-        }
+        return Err(format!("{name} does not say why its values are safe"));
     }
     Ok(())
 }
