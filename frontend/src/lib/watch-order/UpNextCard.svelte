@@ -23,11 +23,16 @@
 		progress,
 		upNext,
 		today,
+		announce,
+		onannounce,
 		ondismiss
 	}: {
 		progress: Progress;
 		upNext: Exclude<UpNext, { kind: 'none' }>;
 		today: string;
+		/** False once this viewing has announced the card. */
+		announce: boolean;
+		onannounce: () => void;
 		ondismiss: () => void;
 	} = $props();
 
@@ -44,15 +49,31 @@
 
 	// Filled after mount: a live region that already holds its text
 	// when it appears is not announced by every screen reader.
-	let announce = $state('');
+	let said = $state('');
 	onMount(() => {
-		announce = m.watchorder_upnext_announce({ title: entries[0].title });
+		if (!announce) return;
+		said = m.watchorder_upnext_announce({ title: entries[0].title });
+		onannounce();
 	});
+
+	// The card never takes focus itself, so focus inside it came from
+	// somewhere: a dismissal gives it back there.
+	let cameFrom: HTMLElement | null = null;
+	let card = $state<HTMLElement | null>(null);
+	function onfocusin(e: FocusEvent) {
+		const from = e.relatedTarget;
+		if (from instanceof HTMLElement && !card?.contains(from)) cameFrom = from;
+	}
+	function dismiss() {
+		const back = card?.contains(document.activeElement) ? cameFrom : null;
+		ondismiss();
+		if (back?.isConnected) back.focus();
+	}
 
 	function onkeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			e.stopPropagation();
-			ondismiss();
+			dismiss();
 		}
 	}
 </script>
@@ -69,13 +90,20 @@
 {/snippet}
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="up-next" style:--accent={accent} {onkeydown} transition:settle={{ duration: 200 }}>
-	<span class="sr-only" role="status">{announce}</span>
+<div
+	class="up-next"
+	style:--accent={accent}
+	bind:this={card}
+	{onkeydown}
+	{onfocusin}
+	transition:settle={{ duration: 200 }}
+>
+	<span class="sr-only" role="status">{said}</span>
 	<button
 		type="button"
 		class="dismiss"
 		aria-label={m.watchorder_upnext_dismiss()}
-		onclick={ondismiss}
+		onclick={dismiss}
 	>
 		<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
 			<path

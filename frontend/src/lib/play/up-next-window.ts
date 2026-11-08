@@ -29,7 +29,8 @@ export function inCredits(
 	duration: number,
 	skips: readonly SkipInterval[] | null
 ): boolean {
-	const start = creditsStart(skips ?? []);
+	if (skips === null) return false;
+	const start = creditsStart(skips);
 	if (start !== null) return currentTime >= start;
 	// The play page holds a length it has not learned as zero.
 	return duration > 0 && isFinishedAt(currentTime, duration);
@@ -50,6 +51,12 @@ export interface UpNextState {
 
 /** Whether the Up next card shows. */
 export function upNextShown(state: UpNextState): boolean {
-	void state;
-	return false;
+	return (
+		state.card &&
+		!state.hasNext &&
+		!state.resumeHolding &&
+		!state.dismissed &&
+		!state.videoFullscreen &&
+		state.inCredits
+	);
 }

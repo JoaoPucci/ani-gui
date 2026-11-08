@@ -40,7 +40,7 @@
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
 	import { settledOrder } from '$lib/watch-order/page-model';
 	import { finaleCard } from '$lib/watch-order/up-next';
-	import { inCredits } from '$lib/play/up-next-window';
+	import { inCredits, upNextShown as upNextShownFor } from '$lib/play/up-next-window';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
@@ -295,6 +295,9 @@
 	// The URL the element's stream was attached from; hls.js gives the
 	// element a blob: URL of its own, so the element cannot say.
 	let attachedUrl: string | null = null;
+	// The source `currentTime` and `duration` describe, set as one
+	// attaches: the Up next card reads them only for the source on screen.
+	let playheadFor = $state<string | null>(null);
 
 	// Settings-driven: whether to use our custom controls bar in
 	// place of Chromium's native one. Custom gives the timeline
@@ -383,6 +386,10 @@
 	// `activeSkip` is the interval the playhead is currently inside;
 	// the Skip OP / Skip Outro overlay binds to it.
 	let skipIntervals = $state<SkipInterval[]>([]);
+	// The episode whose skip times have answered (or failed), as the
+	// fetch key names it: the Up next card's last-minutes rule waits for
+	// this episode's, and a previous episode's answer is not this one's.
+	let skipsFor = $state<string | null>(null);
 	const activeSkip = $derived(pickActiveSkip(skipIntervals, currentTime));
 
 	// Auto-skip: when a skip becomes active AND the user has the
@@ -436,6 +443,7 @@
 		const decision = aniskipTrigger.step(id, episodeNum, aniskipDurationReady);
 		if (decision.kind === 'clear') {
 			skipIntervals = [];
+			skipsFor = null;
 			return;
 		}
 		if (decision.kind !== 'fetch') return;
@@ -444,55 +452,20 @@
 		// intervals can't briefly drive `activeSkip` against the new
 		// episode's currentTime.
 		skipIntervals = [];
+		skipsFor = null;
 		void aniskipGet(decision.showId, decision.episode, len)
 			.then((v) => {
 				if (aniskipFetchKey === key) {
 					skipIntervals = v;
+					skipsFor = key;
 				}
 			})
 			.catch(() => {
 				if (aniskipFetchKey === key) {
 					skipIntervals = [];
+					skipsFor = key;
 				}
 			});
-	});
-
-	// The "Up next" card at a finale: on the last episode of an entry
-	// that has finished airing, from the start of its credits, it names
-	// the entry the order setting puts next and waits for a click
-	// ($lib/watch-order/up-next, $lib/play/up-next-window). Nothing
-	// asks the provider about that entry, and nothing plays it: the
-	// end of the video stops here whatever auto-play says. Dismissed,
-	// it stays away for the rest of the episode.
-	let upNextData = $state<WatchOrderData | null>(null);
-	let configFailed = $state(false);
-	const upNextToday = localDay(new Date());
-	const upNextCard = $derived(
-		finaleCard(
-			upNextData,
-			id,
-			settledOrder(config, configFailed),
-			upNextToday,
-			episodeNum,
-			detail ? { status: detail.status, episodes: detail.episode_count } : null
-		)
-	);
-	let upNextDismissed = $state<string | null>(null);
-	const upNextShown = $derived(
-		upNextCard !== null &&
-			!resumeHolding &&
-			upNextDismissed !== `${id}|${episodeNum}` &&
-			inCredits(currentTime, duration, skipIntervals)
-	);
-	$effect(() => {
-		const showId = id;
-		upNextData = null;
-		if (!showId) return;
-		// Neither read rejects; a franchise that cannot be read means no
-		// card ($lib/watch-order/loader).
-		void loadWatchOrder(showId, { franchise: kitsuFranchise, history: historyList }).then((w) => {
-			if (id === showId) upNextData = w;
-		});
 	});
 
 	function onSkipClick() {
@@ -1531,6 +1504,62 @@
 	const hasPrev = $derived(prevEpisodeNum >= 1);
 	const hasNext = $derived(stepAllowed(nextEpisodeNum, totalEpisodes, extraNums));
 
+	// The "Up next" card at a finale: on the last episode of an entry
+	// that has finished airing, with no further episode of the entry to
+	// step to, from the start of its credits, it names the entry the
+	// order setting puts next and waits for a click
+	// ($lib/watch-order/up-next, $lib/play/up-next-window). Nothing
+	// asks the provider about that entry, and the card plays nothing:
+	// auto-play only ever steps within the entry. Dismissed, it stays
+	// away for the rest of that viewing, and it is announced once per
+	// viewing.
+	let upNextData = $state<WatchOrderData | null>(null);
+	let configFailed = $state(false);
+	const upNextToday = localDay(new Date());
+	const upNextCard = $derived(
+		finaleCard(
+			upNextData,
+			id,
+			settledOrder(config, configFailed),
+			upNextToday,
+			episodeNum,
+			detail ? { status: detail.status, episodes: detail.episode_count } : null
+		)
+	);
+	let upNextDismissed = $state(false);
+	let upNextAnnounced = $state(false);
+	$effect(() => {
+		// A new viewing: another show, episode or session.
+		void [id, episodeNum, sessionId];
+		upNextDismissed = false;
+		upNextAnnounced = false;
+	});
+	const upNextShown = $derived(
+		upNextShownFor({
+			card: upNextCard !== null,
+			hasNext,
+			resumeHolding,
+			dismissed: upNextDismissed,
+			videoFullscreen,
+			// The playhead and the skip times count only once they belong
+			// to the source and the episode on screen: across a switch
+			// both still hold the last episode's until it is replaced.
+			inCredits:
+				playheadFor === mediaUrl &&
+				inCredits(currentTime, duration, skipsFor === aniskipFetchKey ? skipIntervals : null)
+		})
+	);
+	$effect(() => {
+		const showId = id;
+		upNextData = null;
+		if (!showId) return;
+		// Neither read rejects; a franchise that cannot be read means no
+		// card ($lib/watch-order/loader).
+		void loadWatchOrder(showId, { franchise: kitsuFranchise, history: historyList }).then((w) => {
+			if (id === showId) upNextData = w;
+		});
+	});
+
 	// Auto-play next: persisted in Config.auto_play_next; mirrored as a
 	// local boolean so the inline toggle on the player can flip the
 	// state instantly while the persist call goes out async.
@@ -1716,6 +1745,10 @@
 		// fresh one.
 		hls = null;
 		attachedUrl = null;
+		// The last source's playhead and length are not this one's: the
+		// Up next card judges a finale's credits by them.
+		currentTime = 0;
+		duration = 0;
 		if (videoEl) {
 			videoEl.removeAttribute('src');
 			videoEl.load();
@@ -1858,6 +1891,7 @@
 		sourceScope.flush();
 		teardown();
 		attachedUrl = mediaUrl;
+		playheadFor = mediaUrl;
 		// Source-scoped listeners — the resume seek, the progress
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
@@ -3009,7 +3043,9 @@
 					progress={upNextCard.progress}
 					upNext={upNextCard.upNext}
 					today={upNextToday}
-					ondismiss={() => (upNextDismissed = `${id}|${episodeNum}`)}
+					announce={!upNextAnnounced}
+					onannounce={() => (upNextAnnounced = true)}
+					ondismiss={() => (upNextDismissed = true)}
 				/>
 			{:else if !resumeHolding && activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
 				<button
