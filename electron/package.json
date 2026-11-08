@@ -48,6 +48,7 @@
 			"oauth-server.js",
 			"package.json",
 			"lib/**/*.cjs",
+			"splash/**/*",
 			"!lib/**/*.test.cjs",
 			"node_modules/**/*"
 		],
