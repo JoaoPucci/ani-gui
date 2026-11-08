@@ -167,6 +167,31 @@ async fn a_value_that_is_not_an_id_is_refused() {
     ));
 }
 
+/// Two reads of one listing at the same time make one request to
+/// Kitsu: the show page and another surface asking for the same
+/// franchise share the read in flight.
+#[tokio::test]
+async fn reads_of_one_listing_at_the_same_time_share_one_request() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/610/media-relationships"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(page(&[("prequel", OVA_2000)], 1))
+                .set_delay(std::time::Duration::from_millis(200)),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let state = state_with_kitsu(&server.uri());
+    let (a, b) = tokio::join!(
+        super::franchise_listing(&state, "610"),
+        super::franchise_listing(&state, "610")
+    );
+    assert_eq!(a.expect("listing"), b.expect("listing"));
+    server.verify().await;
+}
+
 /// A listing whose related anime have all finished keeps the week the
 /// detail read keeps; one that relates an anime still airing, not yet
 /// out or of unknown status keeps a day, so its counts and statuses do
