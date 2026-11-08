@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { flushSync, mount, unmount } from 'svelte';
+import { get } from 'svelte/store';
 
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
@@ -32,6 +33,7 @@ vi.mock('$app/navigation', () => ({
 
 import FranchisePage from '../../src/routes/anime/[id]/franchise/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import { breadcrumb } from '../../src/lib/breadcrumb';
 
 const KITSU_ID = '42';
 
@@ -310,5 +312,16 @@ describe('franchise page', () => {
 		setParams({ id: OTHER });
 		await until(() => row('50')?.getAttribute('aria-current') === 'page', 'the second page');
 		expect(row('42')!.getAttribute('aria-current')).toBeNull();
+	});
+
+	it('names the show it was opened from in the topbar, between Home and Franchise', async () => {
+		useFranchise();
+		app = mount(FranchisePage, { target });
+		await until(() => rows().length === 4, 'the main story');
+		expect(get(breadcrumb)).toEqual([
+			{ label: m.breadcrumb_home(), href: '/' },
+			{ label: 'Saga: Second Arc', href: `/anime/${KITSU_ID}` },
+			{ label: m.watchorder_franchise_eyebrow() }
+		]);
 	});
 });

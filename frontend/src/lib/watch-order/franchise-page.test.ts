@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
-import { franchisePage, type FranchiseRow, type FranchisePageModel } from './franchise-page';
+import {
+	franchisePage,
+	franchiseTrail,
+	type FranchiseRow,
+	type FranchisePageModel
+} from './franchise-page';
 import { withoutFormatSuffix } from './franchise-name';
 import type { WatchOrderData } from './loader';
 import { pathNote, placement, segments, sequence } from './order';
@@ -268,6 +273,43 @@ describe('franchisePage', () => {
 					);
 				}
 			})
+		);
+	});
+});
+
+describe('franchiseTrail', () => {
+	it('reads Home, the show it was opened from, then Franchise', () => {
+		const page = franchisePage(data('jojo', '41410'), '41410', 'linked')!;
+		expect(franchiseTrail(page, '41410')).toEqual([
+			{ label: 'Home', href: '/' },
+			{ label: "JoJo's Bizarre Adventure: Golden Wind", href: '/anime/41410' },
+			{ label: 'Franchise' }
+		]);
+	});
+
+	it('names a side story it was opened from, which sits outside the main story', () => {
+		const page = franchisePage(data('fate', '6928'), '6928', 'linked')!;
+		const side = run('fate').sides.find((e) => e.id === '6928')!;
+		expect(franchiseTrail(page, '6928')[1]).toEqual({ label: side.title, href: '/anime/6928' });
+	});
+
+	it('always ends on Franchise, with the show between Home and it when the page lists it', () => {
+		fc.assert(
+			fc.property(
+				franchiseArb().chain((f) =>
+					fc.record({ f: fc.constant(f), id: fc.constantFrom(f.anchor, ...ids(f.entries)) })
+				),
+				({ f, id }) => {
+					const page = franchisePage({ franchise: f, rows: [] }, id, 'linked');
+					if (!page) return;
+					const trail = franchiseTrail(page, id);
+					expect(trail[0]).toEqual({ label: 'Home', href: '/' });
+					expect(trail.at(-1)).toEqual({ label: 'Franchise' });
+					const listed = [...f.entries, ...f.sides].some((e) => e.id === id);
+					expect(trail).toHaveLength(listed ? 3 : 2);
+					if (listed) expect(trail[1].href).toBe(`/anime/${id}`);
+				}
+			)
 		);
 	});
 });
