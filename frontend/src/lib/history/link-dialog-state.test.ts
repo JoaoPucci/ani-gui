@@ -145,12 +145,14 @@ describe("the picker's words for a single-video work", () => {
 	const movie = candidate({ subtype: 'movie', episode_count: 1 }).ref;
 	const series = candidate({ subtype: 'TV', episode_count: 26 }).ref;
 
-	it('name no episode on a work that has only one, as the rest of the player does', () => {
+	it('name no episode of a work that has only one on the player, as the rest of it does', () => {
 		expect(listBody({ playing: true, episode: '1', savedTitle: 'X', current: movie })).toBe(
 			m.play_link_dialog_body_single({ title: 'X' })
 		);
-		expect(listBody({ playing: false, episode: '1', savedTitle: 'X', current: movie })).toBe(
-			m.detail_link_dialog_body_single({ title: 'X' })
+		// Home's card and the show page name the episode they offer, a
+		// special's included: the picker says what they say.
+		expect(listBody({ playing: false, episode: '2', savedTitle: 'X', current: movie })).toBe(
+			m.detail_link_dialog_body({ episode: '2', title: 'X' })
 		);
 		expect(switchHint({ episode: '1', time: '0:14', to: movie })).toBe(
 			m.play_link_switch_hint_single({ time: '0:14' })
