@@ -1,11 +1,9 @@
 /**
- * Tests for the GitHub release-payload parser.
- *
- * GitHub's `/releases/latest` endpoint returns a JSON object with a
- * larger field set; the notifier only needs five. The helper
- * normalises the response into a smaller shape and rejects payloads
- * that are missing load-bearing fields (so the badge never appears
- * pointing at a half-published release).
+ * Tests for `parseGitHubRelease`, the frontend's parser for a raw
+ * GitHub release object. The update notifier does not call it: it
+ * reads the backend's answer, built in `meta::github::normalise`,
+ * where the rules the badge and the dialog rely on are enforced. These
+ * cases hold the parser to the same rules.
  *
  * Drafts are skipped — they shouldn't show as available updates.
  * Pre-releases ARE accepted (our releases are all marked prerelease
@@ -81,9 +79,9 @@ describe('parseGitHubRelease', () => {
 	});
 
 	describe('the release link', () => {
-		// The update dialog renders `url` as a link the system browser
-		// opens. GitHub's html_url is https; anything else in that field
-		// is not a release page and must not become a link.
+		// GitHub's html_url is https; anything else in that field is not
+		// a release page. The backend applies the same rule to the
+		// answer the update dialog links to.
 		it.each([
 			'javascript:alert(1)',
 			'file:///etc/passwd',
