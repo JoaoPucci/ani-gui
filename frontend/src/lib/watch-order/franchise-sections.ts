@@ -32,7 +32,7 @@ export type FranchiseSection =
 	| {
 			readonly kind: 'line';
 			readonly rows: readonly FranchiseRow[];
-			/** Titles with no number and no note: they have no clear place in the order. */
+			/** Titles with no clear place in the order: no number, and no note or a note into such a title. */
 			readonly unplaced: boolean;
 	  }
 	| { readonly kind: 'ways'; readonly ways: readonly (readonly FranchiseRow[])[] }

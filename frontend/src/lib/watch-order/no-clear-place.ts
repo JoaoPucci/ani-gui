@@ -30,7 +30,10 @@ function noClearPlace(ctx: RowContext, rows: readonly FranchiseRow[]): Set<strin
 	return loose;
 }
 
-/** `sections` with the titles that have no clear place gathered at the end. */
+/**
+ * `sections` with the titles that have no clear place gathered at the
+ * end, and the lines left next to each other joined into one.
+ */
 export function gatherUnplaced(
 	ctx: RowContext,
 	sections: readonly FranchiseSection[]
@@ -41,7 +44,15 @@ export function gatherUnplaced(
 		.map((s) =>
 			s.kind === 'line' ? { ...s, rows: s.rows.filter((r) => !loose.has(r.entry.id)) } : s
 		)
-		.filter((s) => s.kind !== 'line' || s.rows.length > 0);
+		.filter((s) => s.kind !== 'line' || s.rows.length > 0)
+		.reduce<FranchiseSection[]>((out, s) => {
+			// Numbered stretches left next to each other read as one list.
+			const last = out.at(-1);
+			if (s.kind === 'line' && last?.kind === 'line')
+				out[out.length - 1] = { ...last, rows: [...last.rows, ...s.rows] };
+			else out.push(s);
+			return out;
+		}, []);
 	const rest = lineRows.filter((r) => loose.has(r.entry.id));
 	return rest.length > 0 ? [...placed, { kind: 'line', rows: rest, unplaced: true }] : placed;
 }
