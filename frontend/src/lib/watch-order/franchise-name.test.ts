@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { MOCK_RUNS } from './fixtures';
+import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
 import { franchiseName, withoutFormatSuffix } from './franchise-name';
-import type { MockRun } from './types';
 
-const run = (key: string): MockRun => MOCK_RUNS.find((r) => r.key === key)!;
-const titlesBut = (r: MockRun, id: string) =>
+const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
+const titlesBut = (r: FixtureRun, id: string) =>
 	[...r.entries, ...r.versions, ...r.films, ...r.sides, ...r.recaps]
 		.filter((e) => e.id !== id)
 		.map((e) => e.title);

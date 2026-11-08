@@ -17,4 +17,5 @@ export function entryIn(run: MockRun, id: string): MockEntry | null {
 
 export { currentIn } from '../strip-view';
 export { isUnaired, progressOf, progressShare, yearOf, type ProgressView } from '../entry';
-export { asRef, franchiseName } from './adapters';
+export { asRef } from '../poster-ref';
+export { franchiseName } from '../franchise-name';

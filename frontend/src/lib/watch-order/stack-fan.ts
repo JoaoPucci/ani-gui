@@ -1,6 +1,6 @@
 /**
- * The "Whole franchise" poster stack's geometry (mockup, third round):
- * which cards it holds, and where each sits at rest and once the stack
+ * The strip's link to the franchise page, a stack of posters: which
+ * cards it holds, and where each sits at rest and once the stack
  * is hovered or focused. The cards stand on one arc, so opening the
  * fan moves each one along it, away from the middle: the stack draws
  * a card by rotating it about the arc's centre, `FAN_RADIUS_REM` below
@@ -8,11 +8,11 @@
  * arc rather than cutting across it. Under reduced motion the stack
  * is drawn open and stays there.
  */
-import type { MockEntry } from './types';
+import type { WatchEntry } from './types';
 
 /** One card of the stack: an entry's poster, or a blank frame when no entry has one. */
 export type StackCard =
-	| { readonly kind: 'poster'; readonly entry: MockEntry }
+	| { readonly kind: 'poster'; readonly entry: WatchEntry }
 	| { readonly kind: 'blank' };
 
 /** Fanned, neighbouring cards stand this many degrees apart. */
@@ -44,7 +44,7 @@ export interface FanPose {
 }
 
 /** The cards: up to `limit` of `posters`, or three blank frames when there are none. */
-export function stackCards(posters: readonly MockEntry[], limit: number): StackCard[] {
+export function stackCards(posters: readonly WatchEntry[], limit: number): StackCard[] {
 	const shown = posters.slice(0, Math.max(0, limit));
 	if (shown.length === 0) return [{ kind: 'blank' }, { kind: 'blank' }, { kind: 'blank' }];
 	return shown.map((entry) => ({ kind: 'poster', entry }));

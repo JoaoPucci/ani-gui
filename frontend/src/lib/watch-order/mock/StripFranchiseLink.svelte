@@ -23,7 +23,7 @@
 	import { reducedMotion } from '$lib/motion/reduced-motion.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { numeral } from '../meta';
-	import { FAN_RADIUS_REM, fanPoses, stackCards } from './stack-fan';
+	import { FAN_RADIUS_REM, fanPoses, stackCards } from '../stack-fan';
 	import { franchiseSummary } from '../strip-view';
 	import type { MockRun } from './types';
 
