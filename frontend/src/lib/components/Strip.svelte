@@ -267,8 +267,9 @@
 		     gradient stays a non-interactive backdrop ("more content
 		     this way") and the arrow is a small, deliberately-styled
 		     click target floating above the fade. Fades use a
-		     horizontal linear gradient against the page background
-		     so the falloff reads clearly even on dark posters. -->
+		     horizontal linear gradient in the row's surface colour
+		     (the page, or the band while it shows) so the falloff
+		     reads clearly even on dark posters. -->
 		<div class="strip-fade strip-fade-start" class:visible={canScrollLeft} aria-hidden="true"></div>
 		<div class="strip-fade strip-fade-end" class:visible={canScrollRight} aria-hidden="true"></div>
 		<button
@@ -397,8 +398,9 @@
 		align-items: center;
 		gap: var(--strip-header-gap);
 	}
-	/* On a band the row's extent is drawn, so its actions can sit at the
-	   band's end and still read as this row's. */
+	/* In the banded style the actions sit at the end of the row's header,
+	   where the band, while it shows, draws the row's extent and keeps
+	   them reading as this row's. */
 	.strip[data-surface='band'] .strip-actions {
 		margin-inline-start: auto;
 	}
@@ -464,7 +466,7 @@
 
 	/* Edge fade — non-interactive gradient backdrop that says "more
 	   content this way". Wider (9rem ≈ 144px) and stronger than the
-	   previous radial: solid page-background at the edge, semi-solid
+	   previous radial: solid row surface (--strip-surface) at the edge, semi-solid
 	   in the middle, transparent past 70%. Reads clearly even when
 	   the cards underneath are dark posters. */
 	.strip-fade {
