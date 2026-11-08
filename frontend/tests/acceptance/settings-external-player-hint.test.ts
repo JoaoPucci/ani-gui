@@ -1,6 +1,6 @@
 // Acceptance: the Settings hint under "External player" quotes the
 // button the play page shows, and that button names the configured
-// player. Switching the player flavour changes the quoted button with
+// player flavour. Switching the player flavour changes the quoted button with
 // it, so the hint never names a button the user cannot find.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

@@ -221,8 +221,8 @@ describe('play route — the handoffs send the Kitsu id', () => {
 	});
 });
 
-// The external-player item names the player it opens, from the
-// configured flavour, and clicking it is still the external handoff.
+// The external-player item names the configured player flavour, and
+// clicking it is still the external handoff.
 describe('play route — the external-player item names the configured player', () => {
 	it.each([
 		['vlc', 'Open in VLC'],
