@@ -251,6 +251,45 @@ describe('franchisePage', () => {
 		]);
 	});
 
+	it('keeps numbered titles that follow each other in one list', () => {
+		// 11 → 51 → 14, and 59 → 51, 59 → 31: 59 and 31 have no clear
+		// place, and 11, 51 and 14 read as one numbered list.
+		const page = franchisePage(
+			shaped(
+				['31', '51', '14', '11', '59'],
+				[
+					['59', '51'],
+					['51', '14'],
+					['59', '31'],
+					['11', '51']
+				]
+			),
+			'11',
+			'linked'
+		)!;
+		const first = page.sections[0];
+		expect(first.kind === 'line' && first.rows.map((r) => [r.entry.id, r.position])).toEqual([
+			['11', 1],
+			['51', 2],
+			['14', 3]
+		]);
+	});
+
+	it('never sets two lists of the same kind side by side', () => {
+		fc.assert(
+			fc.property(anyPage, ({ f, id, order, rows }) => {
+				const page = franchisePage({ franchise: f, rows }, id, order);
+				if (!page) return;
+				page.sections.forEach((s, i) => {
+					const prev = page.sections[i - 1];
+					if (s.kind === 'line' && prev?.kind === 'line')
+						expect(prev.unplaced).not.toBe(s.unplaced);
+				});
+			}),
+			{ numRuns: 2000 }
+		);
+	});
+
 	it('is not alone when the one title it lists is another show', () => {
 		const f = payload('jojo', '7158');
 		const one = {
