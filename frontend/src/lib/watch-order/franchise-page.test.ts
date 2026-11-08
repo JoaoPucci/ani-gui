@@ -132,9 +132,9 @@ describe('franchisePage', () => {
 		expect(group.kind === 'group' && group.rows.length).toBe(10);
 		expect(group.kind === 'group' && group.rows.every((r) => r.position === null)).toBe(true);
 		const after = page.sections[2];
-		expect(after.kind === 'line' && after.afterGroup).toBe(true);
+		expect(after.kind === 'line' && after.unplaced).toBe(true);
 		const first = page.sections[0];
-		expect(first.kind === 'line' && first.afterGroup).toBe(false);
+		expect(first.kind === 'line' && first.unplaced).toBe(false);
 	});
 
 	it('puts the ways to continue side by side, unnumbered, where the story branches', () => {

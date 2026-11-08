@@ -40,8 +40,8 @@ export type FranchiseSection =
 	| {
 			readonly kind: 'line';
 			readonly rows: readonly FranchiseRow[];
-			/** Right after a group with no clear order, so unnumbered. */
-			readonly afterGroup: boolean;
+			/** An unnumbered stretch after the first: it has no clear place in the order. */
+			readonly unplaced: boolean;
 	  }
 	| { readonly kind: 'ways'; readonly ways: readonly (readonly FranchiseRow[])[] }
 	| { readonly kind: 'group'; readonly rows: readonly FranchiseRow[] };
@@ -104,7 +104,7 @@ function sectionOf(ctx: RowContext, seg: Segment, before: Segment | undefined): 
 	return {
 		kind: 'line',
 		rows: seg.entries.map((e) => rowOf(ctx, e, true)),
-		afterGroup: before?.kind === 'cycle'
+		unplaced: before?.kind === 'cycle'
 	};
 }
 

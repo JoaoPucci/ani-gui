@@ -135,7 +135,7 @@
 			</h2>
 			{#each model.sections as section, i (i)}
 				{#if section.kind === 'line'}
-					{#if section.afterGroup}
+					{#if section.unplaced}
 						<p class="group-key after-loop">{m.watchorder_franchise_after_loop()}</p>
 					{/if}
 					<ol class="story-list">
