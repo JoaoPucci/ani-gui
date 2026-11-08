@@ -21,6 +21,32 @@ describe('shortTitle', () => {
 		expect(shortTitle(bleach[0], bleach)).toBe('Ketsubetsu-tan');
 	});
 
+	it('drops a trailing part that another member starts with', () => {
+		const run = [
+			'Steel Ball Run: JoJo no Kimyou na Bouken',
+			'JoJo no Kimyou na Bouken: Ougon no Kaze',
+			'JoJo no Kimyou na Bouken (TV)'
+		];
+		expect(shortTitle(run[0], run)).toBe('Steel Ball Run');
+	});
+
+	it('keeps a trailing part no member starts with as a whole word', () => {
+		const run = ['Steel Ball Run: JoJo', 'JoJoland: Part 9'];
+		expect(shortTitle(run[0], run)).toBe(run[0]);
+	});
+
+	it('what it keeps is a part of the title, never the whole of a shared part', () => {
+		const part = fc.stringMatching(/^[A-Za-z ]{1,8}$/);
+		fc.assert(
+			fc.property(part, part, part, (a, b, c) => {
+				const title = `${a}: ${b}`;
+				const got = shortTitle(title, [title, `${b}: ${c}`]);
+				expect(title.includes(got)).toBe(true);
+				expect(got.length).toBeGreaterThan(0);
+			})
+		);
+	});
+
 	it('keeps a title nobody shares a part of', () => {
 		expect(shortTitle(jojo[2], jojo)).toBe(jojo[2]);
 		expect(shortTitle('Gintama', ['Gintama', "Gintama'"])).toBe('Gintama');
