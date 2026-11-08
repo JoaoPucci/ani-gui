@@ -37,6 +37,7 @@ vi.mock('$lib/account/push-watched', () => ({
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { applyChoice } from '../../src/lib/versions/version-choice';
+import { rememberCaption } from '../../src/lib/play/caption-choice';
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -238,5 +239,34 @@ describe('play route — the version remembered for the show', () => {
 		await clickMenuItem(m.play_external_label());
 		await until(() => posted.external.length === 1, 'the external-player request');
 		expect('version' in posted.external[0]).toBe(false);
+	});
+});
+
+describe("play route — the show's remembered captions choice", () => {
+	// An external player starts on the track the built-in one would:
+	// the backend orders the tracks it hands off by the choice, and
+	// starts the player with its subtitles off when the choice is Off.
+	it('names it on both hand-offs', async () => {
+		rememberCaption(KITSU_ID, 'es-419');
+		const posted = fresh();
+		useHandlers(posted);
+		await mountPlaying();
+
+		await clickMenuItem(m.play_external_label());
+		await until(() => posted.external.length === 1, 'the external-player request');
+		expect(posted.external[0].caption).toBe('es-419');
+
+		await clickMenuItem(m.play_hamburger_syncplay_label());
+		await until(() => posted.syncplay.length === 1, 'the Syncplay request');
+		expect(posted.syncplay[0].caption).toBe('es-419');
+	});
+
+	it('names none when nothing is remembered', async () => {
+		const posted = fresh();
+		useHandlers(posted);
+		await mountPlaying();
+		await clickMenuItem(m.play_external_label());
+		await until(() => posted.external.length === 1, 'the external-player request');
+		expect('caption' in posted.external[0]).toBe(false);
 	});
 });

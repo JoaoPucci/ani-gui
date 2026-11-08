@@ -77,6 +77,20 @@ outputs() { printf 'relevant=%s\npicker=%s\ntracker_map=%s' "$1" "$2" "$3"; }
     [ "$output" = "$(outputs true true false)" ]
 }
 
+@test "a hand-written picker pool selects both: the threaded-walk test reads them" {
+    head=$(change tests/picker-oracle/cases/doc-table.json)
+    run filter pull_request "$base" "$head"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(outputs true true false)" ]
+}
+
+@test "the runner the picker oracle jobs start their steps with selects them only" {
+    head=$(change tools/alongside.sh)
+    run filter pull_request "$base" "$head"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(outputs false true false)" ]
+}
+
 @test "the title-resolution docs alone select both oracles only" {
     head=$(change docs/title-resolution.md)
     run filter pull_request "$base" "$head"
@@ -129,7 +143,7 @@ outputs() { printf 'relevant=%s\npicker=%s\ntracker_map=%s' "$1" "$2" "$3"; }
 }
 
 @test "a picker file beside a frontend file selects the oracle" {
-    head=$(change frontend/src/app.ts tests/picker-oracle/cases/doc-table.json)
+    head=$(change frontend/src/app.ts tests/picker-oracle/oracle.py)
     run filter pull_request "$base" "$head"
     [ "$status" -eq 0 ]
     [ "$output" = "$(outputs false true false)" ]

@@ -39,16 +39,14 @@
  *
  * Pre-condition: `pnpm run package` has produced `dist/linux-unpacked/`.
  */
-import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
+import { expect, test, type ElectronApplication } from '@playwright/test';
 import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-
-const electronDir = path.resolve(__dirname, '..');
-const packagedBinary = path.join(electronDir, 'dist/linux-unpacked/ani-gui');
+import { launchPackagedApp, packagedBinary } from './launch';
 
 /** How many requests each held lane is given — more than Chromium's
  *  six, so every one of its connections is taken. */
@@ -106,17 +104,13 @@ async function upstream(): Promise<{ port: number; close: () => void }> {
 async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 	const tmp = path.join(os.tmpdir(), `ani-gui-e2e-lanes-${process.pid}-${Date.now()}`);
 	fs.mkdirSync(tmp, { recursive: true });
-	const app = await electron.launch({
-		executablePath: packagedBinary,
-		args: ['--no-sandbox'],
-		env: {
-			...process.env,
-			XDG_STATE_HOME: path.join(tmp, 'state'),
-			XDG_CONFIG_HOME: path.join(tmp, 'config'),
-			XDG_CACHE_HOME: path.join(tmp, 'cache'),
-			XDG_DATA_HOME: path.join(tmp, 'data'),
-			ANI_GUI_UNATTENDED: '1'
-		}
+	const app = await launchPackagedApp({
+		...process.env,
+		XDG_STATE_HOME: path.join(tmp, 'state'),
+		XDG_CONFIG_HOME: path.join(tmp, 'config'),
+		XDG_CACHE_HOME: path.join(tmp, 'cache'),
+		XDG_DATA_HOME: path.join(tmp, 'data'),
+		ANI_GUI_UNATTENDED: '1'
 	});
 	onLaunch(app);
 	const page = await app.firstWindow();

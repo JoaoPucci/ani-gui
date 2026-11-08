@@ -54,6 +54,13 @@ pub(super) async fn fetch_anilist_eps_thumbs(
             error = ?e,
             "anilist thumbs: streamingEpisodes fetch got no answer; nothing cached",
         );
+        crate::commands::held_fill::on_unanswered(
+            state,
+            crate::commands::held_fill::Fill::Thumbs,
+            kitsu_id,
+            anilist_base,
+            &e,
+        );
         Miss::Unanswered
     })
 }

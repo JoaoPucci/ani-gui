@@ -92,7 +92,8 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 		const cachedId = await kitsuTitleMatchGet(
 			preliminary.searchTitle,
 			preliminary.cour,
-			providerOfShowId(preliminary.allmangaShowId)
+			providerOfShowId(preliminary.allmangaShowId),
+			preliminary.year
 		);
 		if (cachedId) {
 			try {
@@ -186,7 +187,8 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 				preliminary.searchTitle,
 				preliminary.cour,
 				match.id,
-				providerOfShowId(preliminary.allmangaShowId)
+				providerOfShowId(preliminary.allmangaShowId),
+				preliminary.year
 			);
 		} catch {
 			// Cache write failed — non-fatal, callers still get the match.

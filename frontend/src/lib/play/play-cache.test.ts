@@ -54,6 +54,18 @@ describe('makeKey', () => {
 		);
 	});
 
+	it("keeps a guessed card's session apart from every other caller's", () => {
+		// A guessed card's play asks whether it landed on that card's own
+		// listing; a session another caller fired never answered that, and
+		// another card's session answered it for that card.
+		const plain = makeKey('show-1', 1, 'sub', 'best');
+		const guessed = makeKey('show-1', 1, 'sub', 'best', undefined, 'hianime:show-1');
+		expect(guessed).not.toBe(plain);
+		expect(makeKey('show-1', 1, 'sub', 'best', undefined, 'hianime:other-2')).not.toBe(guessed);
+		expect(makeKey('show-1', 1, 'sub', 'best', undefined, 'hianime:show-1')).toBe(guessed);
+		expect(makeKey('show-1', 1, 'sub', 'best', 'standard', 'hianime:show-1')).not.toBe(guessed);
+	});
+
 	it("still lets clearForShow release every version's entries", async () => {
 		const signals: AbortSignal[] = [];
 		const hold = (_emit: unknown, signal: AbortSignal) => {
@@ -601,6 +613,30 @@ describe('clearBackgroundForOtherVersions', () => {
 		const b = getOrFire(makeKey('show-1', 2, 'sub', 'best', 'standard'), standard.fire);
 		for (const p of [a, b]) p.catch(() => {});
 		await Promise.resolve();
+		clearBackgroundForOtherVersions('show-1', undefined);
+		expect(unversioned.seen.signal?.aborted).toBe(false);
+		expect(standard.seen.signal?.aborted).toBe(true);
+	});
+
+	it("sweeps a guessed card's warms by their version too", async () => {
+		// A guessed card's keys carry its row before the version, which
+		// stays the key's last axis.
+		const row = 'hianime:show-1|odd';
+		const standard = heldFire();
+		const uncensored = heldFire();
+		const unversioned = heldFire();
+		const a = getOrFire(makeKey('show-1', 1, 'sub', 'best', 'standard', row), standard.fire);
+		const b = getOrFire(makeKey('show-1', 2, 'sub', 'best', 'uncensored', row), uncensored.fire);
+		for (const p of [a, b]) p.catch(() => {});
+		await Promise.resolve();
+		clearBackgroundForOtherVersions('show-1', 'standard');
+		expect(standard.seen.signal?.aborted).toBe(false);
+		expect(uncensored.seen.signal?.aborted).toBe(true);
+		const c = getOrFire(makeKey('show-1', 3, 'sub', 'best', undefined, row), unversioned.fire);
+		c.catch(() => {});
+		// The swept warm's prefetch slot passes to this one.
+		await new Promise((r) => setTimeout(r, 0));
+		expect(unversioned.seen.signal?.aborted).toBe(false);
 		clearBackgroundForOtherVersions('show-1', undefined);
 		expect(unversioned.seen.signal?.aborted).toBe(false);
 		expect(standard.seen.signal?.aborted).toBe(true);

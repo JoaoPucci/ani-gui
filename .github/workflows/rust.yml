@@ -238,11 +238,23 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/master' }}
           workspaces: backend
       - if: needs.filter.outputs.picker == 'true'
-        name: The model's own tests
-        run: python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
-      - if: needs.filter.outputs.picker == 'true'
-        name: Generate the pools
-        run: python3 -I tests/picker-oracle/oracle.py gen "$RUNNER_TEMP/cases.json"
+        name: The model's own tests, the pools and the picker's build, at once
+        # Three independent pieces of work, run together so they share
+        # the runner's cores: the model's tests take minutes on one,
+        # the build of the test binary and the generation of the pools
+        # fit beside them. tools/alongside.sh waits for each by its own
+        # process id and fails the step when any of them failed, once
+        # all have ended (tests/bash/arch/alongside.bats runs it over
+        # every outcome). The step execs it, so a cancelled or timed-out
+        # step signals it directly: it then stops all three and prints
+        # what each had written. The build takes the flags and
+        # environment the next step's test run takes, so that step
+        # compiles nothing.
+        run: |
+          exec sh tools/alongside.sh \
+            'python3 -I -m unittest discover -s tests/picker-oracle -p "test_*.py"' \
+            'python3 -I tests/picker-oracle/oracle.py gen "$RUNNER_TEMP/cases.json"' \
+            'cd backend && cargo test --lib --no-run'
       - if: needs.filter.outputs.picker == 'true'
         name: Run the picker over them
         working-directory: backend
@@ -250,7 +262,9 @@ jobs:
           PICKER_ORACLE_CASES: ${{ runner.temp }}/cases.json
           PICKER_ORACLE_OUT: ${{ runner.temp }}/out.json
         # The exact test name, and the outcome file has to exist after:
-        # a filter that matches no test exits 0 having run nothing.
+        # a filter that matches no test exits 0 having run nothing. The
+        # driver walks the pools on a worker per core and writes their
+        # outcomes in the file's order.
         run: |
           cargo test --lib -- --ignored --exact commands::play_native_walk::fixture_tests::oracle::run_the_oracle_cases
           test -s "$PICKER_ORACLE_OUT" || {
@@ -295,10 +309,15 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/master' }}
           workspaces: backend
       - if: needs.filter.outputs.picker == 'true'
-        name: Draw the pools
+        name: Draw the pools and build the picker, at once
+        # As in the agreement job: the draw and the build of the test
+        # binary share the runner's cores, and tools/alongside.sh, exec'd
+        # so a cancel reaches it, fails the step when either failed.
         run: |
           echo "fuzz seed $FUZZ_SEED, $FUZZ_POOLS pools"
-          python3 -I tests/picker-oracle/oracle.py fuzz "$FUZZ_SEED" "$FUZZ_POOLS" "$RUNNER_TEMP/fuzz.json"
+          exec sh tools/alongside.sh \
+            'python3 -I tests/picker-oracle/oracle.py fuzz "$FUZZ_SEED" "$FUZZ_POOLS" "$RUNNER_TEMP/fuzz.json"' \
+            'cd backend && cargo test --lib --no-run'
       - if: needs.filter.outputs.picker == 'true'
         name: Run the picker over them
         working-directory: backend

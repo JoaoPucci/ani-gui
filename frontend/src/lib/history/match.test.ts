@@ -285,6 +285,7 @@ describe('resolveKitsuMatch', () => {
 			preliminary.searchTitle,
 			preliminary.cour,
 			'fresh-id',
+			null,
 			null
 		);
 	});
@@ -302,13 +303,43 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedGetMatch).toHaveBeenCalledWith(
 			preliminary.searchTitle,
 			preliminary.cour,
-			'hianime'
+			'hianime',
+			null
 		);
 		expect(mockedPutMatch).toHaveBeenCalledWith(
 			preliminary.searchTitle,
 			preliminary.cour,
 			'fresh-id',
-			'hianime'
+			'hianime',
+			null
+		);
+	});
+
+	it('asks and writes the title match under the year the row names', async () => {
+		// Two rows titled alike name different years, and guess
+		// different shows: each keeps its own.
+		const preliminary = resolveHistoryEntry(
+			{
+				id: 'hianime:jojos-bizarre-adventure-2000-5182',
+				ep_no: '1',
+				title: "JoJo's Bizarre Adventure",
+				key_year: 2000
+			},
+			null
+		);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([
+			{ ...stubKitsu('7730', 'JoJo no Kimyou na Bouken: Adventure'), start_date: '2000-05-25' }
+		]);
+
+		await resolveKitsuMatch(preliminary);
+		expect(mockedGetMatch).toHaveBeenCalledWith("JoJo's Bizarre Adventure", 1, 'hianime', 2000);
+		expect(mockedPutMatch).toHaveBeenCalledWith(
+			"JoJo's Bizarre Adventure",
+			1,
+			'7730',
+			'hianime',
+			2000
 		);
 	});
 
@@ -387,7 +418,7 @@ describe('resolveKitsuMatch', () => {
 		mockedSearch.mockResolvedValue([]);
 
 		await resolveKitsuMatch(preliminary);
-		expect(mockedGetMatch).toHaveBeenCalledWith(preliminary.searchTitle, 2, null);
+		expect(mockedGetMatch).toHaveBeenCalledWith(preliminary.searchTitle, 2, null, null);
 	});
 
 	it('multi-cour entry: tries slug-fetch first and skips search when slug hits', async () => {

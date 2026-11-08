@@ -5,6 +5,7 @@
   list a card width when the strip itself is focused.
 -->
 <script lang="ts">
+	import { scrollBehavior } from '$lib/motion/scroll';
 	import type { Snippet } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { watchStripOverflow } from '$lib/components/strip-overflow';
@@ -63,7 +64,7 @@
 		if (!scrollerEl) return;
 		// page by ~75% of the visible width so a card doesn't sit half-cut.
 		const dx = scrollerEl.clientWidth * 0.75 * dir;
-		scrollerEl.scrollBy({ left: dx, behavior: 'smooth' });
+		scrollerEl.scrollBy({ left: dx, behavior: scrollBehavior() });
 	}
 
 	function onKey(e: KeyboardEvent) {
@@ -423,6 +424,8 @@
 	.strip-arrow:active {
 		transform: translateY(-50%) scale(0.96);
 	}
+	/* The hover lift and press are a change of state, not motion, but
+	   under reduced motion the arrow stays put rather than jump. */
 	@media (prefers-reduced-motion: reduce) {
 		.strip-arrow:hover,
 		.strip-arrow:active {

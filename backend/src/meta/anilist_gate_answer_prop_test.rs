@@ -18,7 +18,7 @@ proptest::proptest! {
         background in proptest::bool::ANY,
     ) {
         let class = if background { Class::Background } else { Class::Interactive };
-        let err = not_sent(Duration::from_millis(millis), class);
+        let err = not_sent(Duration::from_millis(millis), class, 0, false);
         let AniError::RateLimited { retry_after_secs, refused_by } = err else {
             panic!("not a rate limit: {err:?}");
         };

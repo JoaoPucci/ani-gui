@@ -42,7 +42,11 @@ interface Spy {
 
 function makeSpy(
 	history: HistoryEntry[],
-	fetchImpl?: (kitsuId: string, page: number) => Promise<KitsuEpisode[]>,
+	fetchImpl?: (
+		kitsuId: string,
+		page: number,
+		opts?: { onRefill?: (eps: KitsuEpisode[]) => void; signal?: AbortSignal }
+	) => Promise<KitsuEpisode[]>,
 	leftPartWay?: (kitsuId: string, episode: number) => boolean
 ): Spy {
 	const historyById = new Map(history.map((h) => [h.id, h]));
@@ -99,7 +103,7 @@ describe('makeContinueRowReadyHandler', () => {
 		expect(spy.calls.setPlayableCount).toEqual([['hist-a', 12]]);
 		// last_watched=5, cap=12 → pickNextEpisode = 6. Page for ep 6
 		// is Math.ceil(6 / EPISODES_KITSU_PAGE_SIZE) = 1.
-		expect(spy.fetchKitsuEpisodes).toHaveBeenCalledWith('k-a', 1);
+		expect(spy.fetchKitsuEpisodes).toHaveBeenCalledWith('k-a', 1, expect.anything());
 		expect(spy.calls.setEpisode).toEqual([['hist-a', expect.objectContaining({ number: 6 })]]);
 	});
 
@@ -119,7 +123,7 @@ describe('makeContinueRowReadyHandler', () => {
 
 		expect(spy.calls.setMatch).toEqual([['hist-a', match]]);
 		expect(spy.calls.setPlayableCount).toEqual([]);
-		expect(spy.fetchKitsuEpisodes).toHaveBeenCalledWith('k-a', 1);
+		expect(spy.fetchKitsuEpisodes).toHaveBeenCalledWith('k-a', 1, expect.anything());
 	});
 
 	it('entry not in historyById: setMatch fires but no episode fetch (stale callback)', async () => {
@@ -183,6 +187,22 @@ describe('makeContinueRowReadyHandler', () => {
 		expect(spy.calls.setEpisode).toEqual([['hist-a', null]]);
 	});
 
+	it('names the episode each answer was fetched for, a found one or none', async () => {
+		const entry = makeEntry('hist-a', '5', 'Show A');
+		const match = makeMatch('k-a', 12);
+		const forEpisode: (number | undefined)[] = [];
+		const found = makeSpy([entry], () => Promise.resolve([makeKitsuEpisode(6)]));
+		found.deps.setEpisode = (_id, _ep, n) => forEpisode.push(n);
+		makeContinueRowReadyHandler(found.deps)('hist-a', match, 12);
+		const failed = makeSpy([entry], () => Promise.reject(new Error('network')));
+		failed.deps.setEpisode = (_id, _ep, n) => forEpisode.push(n);
+		makeContinueRowReadyHandler(failed.deps)('hist-a', match, 12);
+		await vi.waitFor(() => expect(forEpisode).toHaveLength(2));
+		// An answer of "nothing" names its episode too: without it, a
+		// card could not tell a stale "nothing" from its own.
+		expect(forEpisode).toEqual([6, 6]);
+	});
+
 	it('fetch rejection: sets episode null (the row degrades to no thumbnail rather than throwing)', async () => {
 		const entry = makeEntry('hist-a', '5', 'Show A');
 		const match = makeMatch('k-a', 12);
@@ -217,7 +237,7 @@ describe('makeContinueRowReadyHandler', () => {
 		expect(spy.calls.setPlayableCount).toEqual([['hist-a', 12]]);
 		// pickNextEpisode(NaN, 12) → 1; ceil(1/20) → page 1; setEpisode
 		// receives the ep-1 row, not an ep-2 lookup that would miss.
-		expect(spy.fetchKitsuEpisodes).toHaveBeenCalledWith('k-a', 1);
+		expect(spy.fetchKitsuEpisodes).toHaveBeenCalledWith('k-a', 1, expect.anything());
 		expect(spy.calls.setEpisode).toEqual([['hist-a', expect.objectContaining({ number: 1 })]]);
 	});
 
@@ -439,5 +459,84 @@ describe('makeContinueRowReadyHandler — a range-shaped row', () => {
 		makeContinueRowReadyHandler(spy.deps)('hist-g', makeMatch('k-g', 12), 12);
 		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
 		expect(spy.calls.setEpisode).toEqual([['hist-g', expect.objectContaining({ number: 2 })]]);
+	});
+});
+
+describe('a held-back thumbnail landing later', () => {
+	it('puts only the still on the card still showing its episode', async () => {
+		const entry = makeEntry('hist-r', '5', 'Show R');
+		let refill: ((eps: KitsuEpisode[]) => void) | undefined;
+		const spy = makeSpy([entry], (_id, _page, opts) => {
+			refill = opts?.onRefill;
+			return Promise.resolve([makeKitsuEpisode(6)]);
+		});
+		const filledStills: [string, string, { original: string | null }][] = [];
+		makeContinueRowReadyHandler({
+			...spy.deps,
+			fillThumbnail: (entryId, episodeId, thumbnail) =>
+				filledStills.push([entryId, episodeId, thumbnail])
+		})('hist-r', makeMatch('k-r', 12), 12);
+		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
+
+		const filled = { ...makeKitsuEpisode(6), thumbnail: { original: 'https://x/6.jpg' } };
+		refill?.([filled as KitsuEpisode]);
+		// The still goes onto the card's episode; the episode itself is
+		// not replaced.
+		expect(filledStills).toEqual([['hist-r', 'ep-6', { original: 'https://x/6.jpg' }]]);
+		expect(spy.calls.setEpisode).toHaveLength(1);
+	});
+
+	it('puts nothing on the card when the refill brought no still', async () => {
+		const entry = makeEntry('hist-u', '5', 'Show U');
+		let refill: ((eps: KitsuEpisode[]) => void) | undefined;
+		const spy = makeSpy([entry], (_id, _page, opts) => {
+			refill = opts?.onRefill;
+			return Promise.resolve([makeKitsuEpisode(6)]);
+		});
+		const fillThumbnail = vi.fn();
+		makeContinueRowReadyHandler({ ...spy.deps, fillThumbnail })('hist-u', makeMatch('k-u', 12), 12);
+		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
+		refill?.([makeKitsuEpisode(6)]);
+		expect(fillThumbnail).not.toHaveBeenCalled();
+	});
+
+	it('leaves a card that moved on to another episode alone', async () => {
+		const entry = makeEntry('hist-s', '5', 'Show S');
+		const refills: ((eps: KitsuEpisode[]) => void)[] = [];
+		const spy = makeSpy([entry], (_id, _page, opts) => {
+			if (opts?.onRefill) refills.push(opts.onRefill);
+			return Promise.resolve([makeKitsuEpisode(6), makeKitsuEpisode(7)]);
+		});
+		const fillThumbnail = vi.fn();
+		const handle = makeContinueRowReadyHandler({ ...spy.deps, fillThumbnail });
+		handle('hist-s', makeMatch('k-s', 12), 12);
+		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
+		// The row moves on: the watched episode is now 6, so the card
+		// shows 7.
+		spy.deps.historyById.set('hist-s', makeEntry('hist-s', '6', 'Show S'));
+		handle('hist-s', makeMatch('k-s', 12), 12);
+		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(2));
+
+		refills[0]([
+			{ ...makeKitsuEpisode(6), thumbnail: { original: 'https://x/6.jpg' } } as KitsuEpisode
+		]);
+		expect(spy.calls.setEpisode).toHaveLength(2);
+		expect(fillThumbnail).not.toHaveBeenCalled();
+	});
+
+	it('passes the page signal along, so a closed page fetches nothing more', async () => {
+		const entry = makeEntry('hist-t', '5', 'Show T');
+		const page = new AbortController();
+		let signal: AbortSignal | undefined;
+		const spy = makeSpy([entry], (_id, _page, opts) => {
+			signal = opts?.signal;
+			return Promise.resolve([]);
+		});
+		makeContinueRowReadyHandler({ ...spy.deps, signal: page.signal })(
+			'hist-t',
+			makeMatch('k-t', 12),
+			12
+		);
+		await vi.waitFor(() => expect(signal).toBe(page.signal));
 	});
 });

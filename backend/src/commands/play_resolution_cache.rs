@@ -196,7 +196,25 @@ use crate::proxy::MediaKind;
 // year filter drops the latter too. A v25 row for an undated entry can hold a hentai's stream — one
 // listed under one of the entry's own names — under the entry's key,
 // and a HEAD-passing hit would keep serving it; bumping re-resolves.
-const SCHEMA: &str = "v26";
+// v27: the language reader learned the `<code>-<n>.vtt` naming, and a
+// megaplay track's language became a BCP 47 tag read from its file
+// name or its label (`eng` is now `en`, `Portuguese (- Brazil)` is
+// `pt-BR`). A v26 row from that CDN holds each track's label as its
+// language (`lang: "Portuguese (- Brazil)"`), which a replay hands
+// the player as the track's srclang and a download names its sidecar
+// by, and every v26 megaplay row holds the old codes; bumping
+// re-resolves.
+// v28: the accept cap rose from 16 tracks to 64, and a cut keeps the
+// user's most wanted rather than the listing's first. A v27 row holds
+// the first sixteen of a listing the provider orders alphabetically —
+// Steel Ball Run's first episode cached without Portuguese, Spanish,
+// Russian or Japanese — and a replay would keep offering that cut for
+// the row's whole life; bumping re-resolves. A row now holds each file
+// once. Past sixty-four tracks the cut follows the locale of the play
+// that wrote the row, which the key does not name: a row written
+// before a locale change keeps the earlier locale's cut until it
+// expires — no listing seen comes near the cap.
+pub(crate) const SCHEMA: &str = "v28";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -296,7 +314,10 @@ pub fn cache_key(
     let y = year.map_or_else(|| "-".to_string(), |v| v.to_string());
     let e = episode_count.map_or_else(|| "-".to_string(), |v| v.to_string());
     let s = subtype.unwrap_or("-");
-    format!("play:{SCHEMA}:{title}:{mode}:{quality}:{episode}:{y}:{e}:{s}")
+    format!(
+        "{}{title}:{mode}:{quality}:{episode}:{y}:{e}:{s}",
+        crate::cache::families::play()
+    )
 }
 
 /// [`cache_key`] for a request naming the version it plays
@@ -329,6 +350,7 @@ pub fn cache_key_for_version(
 /// # Errors
 /// SQLite errors propagate; deserialization failures are treated as
 /// misses (we don't want a corrupt row to permanently mask a show).
+#[cfg_attr(test, track_caller)]
 pub fn get(pool: &SqlitePool, key: &str) -> crate::error::Result<Option<CachedResolution>> {
     match meta_cache_get(pool, key)? {
         None => Ok(None),
@@ -340,6 +362,7 @@ pub fn get(pool: &SqlitePool, key: &str) -> crate::error::Result<Option<CachedRe
 /// from SQLite or serialization are logged at warn level by the
 /// caller; we don't propagate (a cache write failure shouldn't fail
 /// the play).
+#[cfg_attr(test, track_caller)]
 pub fn put(pool: &SqlitePool, key: &str, value: &CachedResolution) {
     let Ok(body) = serde_json::to_string(value) else {
         return;

@@ -27,7 +27,9 @@
 //!   the keys their pages resolved under, not those of shows never in
 //!   the history.
 //!
-//! An expired cache row stays on disk until something overwrites it,
+//! An expired cache row stays on disk until something overwrites it or
+//! the next launch's reclaim deletes it — and the mappings and title
+//! matches, which removal reads whatever their age, stay past expiry —
 //! so expiry is not removal: deleting a row deletes all of these for
 //! its show, and clearing the history deletes them for every show.
 //! The order is what a retry needs: nothing goes before what the

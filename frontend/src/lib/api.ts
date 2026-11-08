@@ -25,10 +25,21 @@
  * without a backend address.
  */
 import type { StreamProvider } from '$lib/history/show-key';
+import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
+import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
 import { laneBase, type Lane } from '$lib/backend/lanes';
 import { probeLimiter } from '$lib/availability/probe-limiter';
 import { probeScope } from '$lib/availability/probe-scope';
+import {
+	REFILL_HEADER,
+	RefillWaiter,
+	parseRefills,
+	refetchOnRefill,
+	shareRefetch,
+	type RefillEnded,
+	type Served
+} from '$lib/refill/refill';
 
 let apiBaseCache: string | null = null;
 
@@ -182,6 +193,77 @@ async function getJson<T>(path: string): Promise<T> {
 	return expect2xx<T>(resp);
 }
 
+/** A GET's JSON body, with the tickets of the refills it was served
+ *  without (`$lib/refill/refill`). */
+async function getJsonServed<T>(path: string): Promise<Served<T>> {
+	const resp = await fetch(await url(path));
+	const data = await expect2xx<T>(resp);
+	// A response built without headers (a test's stand-in) has none.
+	const headers = resp.headers as Headers | undefined;
+	return { data, refills: parseRefills(headers?.get(REFILL_HEADER)) };
+}
+
+/** Wait until one of `tickets` has ended; `[]` past the backend's own
+ *  limit. */
+export function refillsWait(tickets: number[], signal: AbortSignal): Promise<RefillEnded[]> {
+	return postJson<RefillEnded[]>('/api/refills/wait', { tickets }, { signal });
+}
+
+/** The page showing these tickets' fills has gone. Best effort: a
+ *  release that fails leaves the retry ranked as on screen a moment
+ *  longer. */
+export function refillsRelease(tickets: number[]): void {
+	void postJson<void>('/api/refills/release', { tickets }).catch(() => {});
+}
+
+/** The renderer's one waiter on refills. */
+const refillWaiter = new RefillWaiter(refillsWait, undefined, refillsRelease);
+
+/** What a read the page waits on a refill for takes: what to do with
+ *  the read fetched once more after the refill landed, and what says
+ *  the page has gone. */
+export interface RefillOptions<T> {
+	onRefill?: (data: T) => void;
+	signal?: AbortSignal;
+}
+
+/** GET `path`, and when it was served without a fill a retry will
+ *  bring, fetch it once more after the retry lands and hand that to
+ *  `opts.onRefill`. */
+async function getJsonRefilled<T>(
+	path: string,
+	refetchPath: string,
+	opts: RefillOptions<T>
+): Promise<T> {
+	const served = await getJsonServed<T>(path);
+	const apply = opts.onRefill;
+	if (apply) {
+		void refetchOnRefill(served, {
+			waiter: refillWaiter,
+			// Every read of this page waiting on the same refill fetches
+			// it once between them.
+			refetch: () =>
+				shareRefetch(`${refetchPath}#${served.refills.join(',')}`, () =>
+					getJsonLettingGo<T>(refetchPath)
+				),
+			apply,
+			signal: opts.signal
+		});
+	} else {
+		refillWaiter.letGo(served.refills);
+	}
+	return served.data;
+}
+
+/** GET `path` for a read that waits on no refill: the tickets it is
+ *  served with are let go, so their retries rank after every fill a
+ *  page on screen waits for. */
+async function getJsonLettingGo<T>(path: string): Promise<T> {
+	const served = await getJsonServed<T>(path);
+	refillWaiter.letGo(served.refills);
+	return served.data;
+}
+
 /** Where a request goes and what can cancel it. */
 interface RequestOptions {
 	lane?: Lane;
@@ -223,6 +305,14 @@ export interface AppInfo {
 	 *  launch after upgrading; the diagnostics page decides what to
 	 *  show via `$lib/diagnostics/legacy-sweep`. */
 	removed_legacy_paths: string[];
+	/** What the boot sweep over a retired streaming provider's rows
+	 *  changed; empty on every launch that found none. The page decides
+	 *  what to show via `$lib/diagnostics/retired-sweep`. */
+	retired_provider_sweep?: RetiredSweepReport;
+	/** What the launch's cache reclaim deleted; zero on every launch
+	 *  that found nothing to reclaim. The page decides what to show via
+	 *  `$lib/diagnostics/cache-reclaim`. */
+	cache_reclaim?: CacheReclaimReport;
 }
 
 /** One row from the watch-history file. */
@@ -233,6 +323,10 @@ export interface HistoryEntry {
 	/** Kitsu id of the show the user played, recorded with the watch.
 	 *  Absent on rows written before history recorded it. */
 	kitsu_id?: string;
+	/** The release year the row's show key names among its slug's words
+	 *  (`hianime:jojos-bizarre-adventure-2000-5182` names 2000), read by
+	 *  the backend; absent when it names none. */
+	key_year?: number;
 }
 
 /** Input to `cmd_create_session`. */
@@ -293,6 +387,10 @@ export interface CreateSessionResponse {
 	versions?: VersionInfo[];
 	/** The version that played, when there are several. */
 	version?: VersionKind;
+	/** Whether a play that named a guessed card's row (`guess_row`)
+	 *  landed on that row's own listing. Absent (false) otherwise and
+	 *  from older backends. */
+	own_listing?: boolean;
 }
 
 /** Which copy of a season a version is: the provider lists some
@@ -612,6 +710,20 @@ export interface PlayArgs {
 	 *  resolution cache on it, so a stamp or an eviction names the
 	 *  version its play named. */
 	version?: VersionKind;
+	/** The history row a Continue card whose show was only a guess
+	 *  opened the play from. The session answers whether the play
+	 *  landed on that row's own listing (`own_listing`). */
+	guess_row?: string;
+	/** The Kitsu id the guessed card guessed, sent with `guess_row` in
+	 *  place of `kitsu_id`: the backend records it on the row the
+	 *  resolve writes only when the play landed on that row's own
+	 *  listing, and reads it for nothing else. */
+	guess_id?: string;
+	/** The captions choice remembered for the show
+	 *  (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. The
+	 *  backend orders the subtitle tracks it hands an external player,
+	 *  and cuts a listing past its cap, by it. Absent when none is. */
+	caption?: string;
 }
 
 /** Play an episode in the embedded player. Returns the session URLs
@@ -718,6 +830,9 @@ export function playStream(
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.prefetch === true) params.set('prefetch', '1');
 	if (args.version) params.set('version', args.version);
+	if (args.guess_row) params.set('guess_row', args.guess_row);
+	if (args.guess_id) params.set('guess_id', args.guess_id);
+	if (args.caption) params.set('caption', args.caption);
 
 	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
 		(url) =>
@@ -1083,8 +1198,15 @@ export function kitsuSearchPage(
 	return postJson<KitsuSearchPage>('/api/kitsu/search/page', body);
 }
 
-export function kitsuAnimeDetail(id: string): Promise<KitsuAnimeRef> {
-	return getJson<KitsuAnimeRef>(`/api/kitsu/anime/${encodeURIComponent(id)}`);
+/** One show's detail. A page showing its banner passes `onRefill`: when
+ *  AniList's banner was held back, the detail fetched once more after
+ *  the retry lands is handed to it. */
+export function kitsuAnimeDetail(
+	id: string,
+	opts: RefillOptions<KitsuAnimeRef> = {}
+): Promise<KitsuAnimeRef> {
+	const path = `/api/kitsu/anime/${encodeURIComponent(id)}`;
+	return getJsonRefilled<KitsuAnimeRef>(path, path, opts);
 }
 
 /**
@@ -1188,17 +1310,21 @@ export function kitsuTopRated(): Promise<KitsuAnimeRef[]> {
 	return getJson<KitsuAnimeRef[]>('/api/kitsu/top-rated');
 }
 
+/** One page of a show's episodes. A page showing their stills passes
+ *  `onRefill`: when AniList's thumbnails were held back, the page
+ *  fetched once more after the retry lands is handed to it. */
 export function kitsuEpisodes(
 	animeId: string,
 	page: number = 1,
-	opts: { refresh?: boolean } = {}
+	opts: { refresh?: boolean } & RefillOptions<KitsuEpisode[]> = {}
 ): Promise<KitsuEpisode[]> {
+	const base = `/api/kitsu/episodes/${encodeURIComponent(animeId)}`;
 	const qs = new URLSearchParams({ page: String(page) });
+	// The refetch reads the page the first read cached.
+	const refetchPath = `${base}?${qs.toString()}`;
 	// Same contract as `airingGet`'s refresh: past the cached page.
 	if (opts.refresh) qs.set('refresh', 'true');
-	return getJson<KitsuEpisode[]>(
-		`/api/kitsu/episodes/${encodeURIComponent(animeId)}?${qs.toString()}`
-	);
+	return getJsonRefilled<KitsuEpisode[]>(`${base}?${qs.toString()}`, refetchPath, opts);
 }
 
 /**
@@ -1211,11 +1337,15 @@ export function kitsuEpisodes(
 export function kitsuTitleMatchGet(
 	title: string,
 	cour: number,
-	provider: StreamProvider | null
+	provider: StreamProvider | null,
+	year: number | null = null
 ): Promise<string | null> {
 	const qs = new URLSearchParams({ title, cour: String(cour) });
 	// A history row whose key names no provider asks without one.
 	if (provider !== null) qs.set('provider', provider);
+	// A row that names a year keeps its guess apart from a row titled
+	// alike that names another.
+	if (year !== null) qs.set('year', String(year));
 	return getJson<string | null>(`/api/title-match?${qs.toString()}`);
 }
 
@@ -1230,9 +1360,11 @@ export function kitsuTitleMatchPut(
 	title: string,
 	cour: number,
 	kitsuId: string,
-	provider: StreamProvider | null
+	provider: StreamProvider | null,
+	year: number | null = null
 ): Promise<void> {
-	return putJson<void>('/api/title-match', { title, cour, kitsu_id: kitsuId, provider });
+	const body = { title, cour, kitsu_id: kitsuId, provider };
+	return putJson<void>('/api/title-match', year === null ? body : { ...body, year });
 }
 
 /**

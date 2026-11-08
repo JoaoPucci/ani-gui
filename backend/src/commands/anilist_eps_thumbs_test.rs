@@ -768,3 +768,69 @@ async fn an_anilist_answer_that_cannot_be_read_is_asked_again_rather_than_cached
         None
     );
 }
+
+#[tokio::test]
+async fn two_views_filling_the_same_show_at_once_share_one_lookup() {
+    // The episode page and a Continue Watching card ask for kitsu 1555's
+    // thumbnails within milliseconds of each other: one read of Kitsu's
+    // mappings and one AniList request serve both.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/1555"))
+        .and(query_param("include", "mappings"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(mappings_body("1555", &[("myanimelist/anime", 21)]))
+                .set_delay(std::time::Duration::from_millis(100)),
+        )
+        .expect(1)
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(&anilist, serde_json::json!({ "idMal": 21 }), ONE_EP_BODY, 1).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let base = anilist.uri();
+    let (a, b) = tokio::join!(
+        thumbs_for_show_with_anilist_base(&state, "1555", Some(&base)),
+        thumbs_for_show_with_anilist_base(&state, "1555", Some(&base)),
+    );
+    assert_eq!(a, one_ep_listing());
+    assert_eq!(b, one_ep_listing());
+}
+
+#[tokio::test]
+async fn two_app_states_filling_the_same_show_at_once_each_look_it_up() {
+    // The lookup is shared within one app state, never across two: two
+    // states (two test fixtures) can read the same show from Kitsus that
+    // answer differently.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu_for = |mal: u32| async move {
+        let kitsu = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/anime/1555"))
+            .and(query_param("include", "mappings"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(mappings_body("1555", &[("myanimelist/anime", mal)]))
+                    .set_delay(std::time::Duration::from_millis(100)),
+            )
+            .expect(1)
+            .mount(&kitsu)
+            .await;
+        kitsu
+    };
+    let (first, second) = (kitsu_for(21).await, kitsu_for(22).await);
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(&anilist, serde_json::json!({ "idMal": 21 }), ONE_EP_BODY, 1).await;
+    mount_anilist(&anilist, serde_json::json!({ "idMal": 22 }), ONE_EP_BODY, 1).await;
+    let (a, b) = (
+        state_with_kitsu_at(&first.uri()),
+        state_with_kitsu_at(&second.uri()),
+    );
+    let base = anilist.uri();
+    tokio::join!(
+        thumbs_for_show_with_anilist_base(&a, "1555", Some(&base)),
+        thumbs_for_show_with_anilist_base(&b, "1555", Some(&base)),
+    );
+}

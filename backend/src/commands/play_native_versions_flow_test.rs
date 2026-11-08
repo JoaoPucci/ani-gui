@@ -54,6 +54,7 @@ async fn resolve(
             episode: "2",
             mode: "sub",
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: Some(3),
             year: Some(YEAR),
             subtype: Some("TV"),
@@ -123,7 +124,7 @@ fn a_play_and_a_download_ask_for_the_version_they_name() {
     .expect("play args");
     assert_eq!(play.version, Some(VersionKind::Standard));
     assert_eq!(
-        play.native_request("best", None, None).version,
+        play.native_request("best", "en", None, None).version,
         Some(VersionKind::Standard)
     );
     let download: crate::commands::download::DownloadArgs =
@@ -132,7 +133,7 @@ fn a_play_and_a_download_ask_for_the_version_they_name() {
         }))
         .expect("download args");
     assert_eq!(
-        download.native_request("best", None, None).version,
+        download.native_request("best", "en", None, None).version,
         Some(VersionKind::Uncensored)
     );
 }
@@ -228,6 +229,7 @@ fn a_session_answer_names_versions_only_when_there_are_several() {
         episode: None,
         former_episode: None,
         episode_unverified: false,
+        own_listing: false,
     };
     let plain = serde_json::to_value(&resp).expect("json");
     assert!(plain.get("versions").is_none() && plain.get("version").is_none());
@@ -277,6 +279,7 @@ fn a_session_built_from_a_resolve_carries_its_versions() {
         episode: None,
         former_episode: None,
         episode_unverified: false,
+        own_listing: false,
     };
     crate::commands::play::with_versions_of(&mut resp, &native.versions, native.version);
     assert_eq!(resp.versions, both_versions());
@@ -312,6 +315,7 @@ async fn resolve_in(
             episode: "2",
             mode,
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: Some(3),
             year: Some(YEAR),
             subtype: Some("TV"),

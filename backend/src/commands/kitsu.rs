@@ -42,7 +42,7 @@ use super::kitsu_search::SEARCH_PAGE_LIMIT;
 pub async fn kitsu_trending(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
     discovery_cached(
         state,
-        "kitsu:v2:trending",
+        crate::cache::families::KITSU_TRENDING,
         TRENDING_TTL.as_secs(),
         |limit| async move { state.kitsu.currently_airing_by_user_count(limit).await },
     )
@@ -65,7 +65,7 @@ pub(crate) use trending_anilist::kitsu_trending_anilist_with_base;
 pub async fn kitsu_top_rated(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
     discovery_cached(
         state,
-        "kitsu:v2:top_rated",
+        crate::cache::families::KITSU_TOP_RATED,
         DISCOVERY_TTL.as_secs(),
         |limit| async move { state.kitsu.top_rated(limit).await },
     )
@@ -157,7 +157,7 @@ pub async fn kitsu_episodes_with(
     refresh: bool,
 ) -> Result<Vec<KitsuEpisode>> {
     let p = page.max(1);
-    let key = format!("kitsu:episodes:{anime_id}:p{p}");
+    let key = format!("{}{anime_id}:p{p}", crate::cache::families::KITSU_EPISODES);
     let cached = if refresh {
         None
     } else {
@@ -225,7 +225,7 @@ pub(crate) async fn kitsu_episode_page(
     page: u32,
 ) -> Result<Vec<KitsuEpisode>> {
     let p = page.max(1);
-    let key = format!("kitsu:episodes:{anime_id}:p{p}");
+    let key = format!("{}{anime_id}:p{p}", crate::cache::families::KITSU_EPISODES);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(eps) = serde_json::from_str::<Vec<KitsuEpisode>>(&body) {
             return Ok(eps);
@@ -255,7 +255,7 @@ pub async fn kitsu_relationships(
     state: &AppState,
     anime_id: &str,
 ) -> Result<crate::meta::kitsu::KitsuRelations> {
-    let key = format!("kitsu:relations:v3:{anime_id}");
+    let key = format!("{}{anime_id}", crate::cache::families::KITSU_RELATIONS);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(rel) = serde_json::from_str(&body) {
             return Ok(rel);
@@ -295,7 +295,7 @@ async fn kitsu_episodes_fresh(
 /// # Errors
 /// Inherits from [`crate::meta::kitsu::KitsuClient::anime_by_slug`].
 pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<KitsuAnimeRef>> {
-    let key = format!("kitsu:v2:anime-slug:{slug}");
+    let key = format!("{}{slug}", crate::cache::families::KITSU_ANIME_SLUG);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(detail) = serde_json::from_str::<Option<KitsuAnimeRef>>(&body) {
             warm_signed_image_urls(state, &body);
@@ -331,7 +331,29 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 ///   providers naming different shows identically cannot read or
 ///   overwrite each other's mapping. v2 rows are orphaned rather
 ///   than left answering for another provider.
-pub(crate) const TITLE_MATCH_VERSION: u32 = 3;
+/// - v4: the pick takes the hit from the row's year, then the hit
+///   titled as the row, before the hit whose slug the title spells. A
+///   v3 row can hold a pick this one would not make — Black Clover's
+///   one-episode special for the TV series, the 2012 JoJo for the
+///   2000 OVA — so v3 rows are not read and the next load picks again;
+///   the launch's cache reclaim deletes them (`crate::cache::families`).
+/// - v5: the title guess searches Kitsu without the dashes no ASCII
+///   letter or digit leads, which Kitsu read as exclusions, and the
+///   reverse resolve it falls back to reads words a show key runs
+///   together as the entry's. A v4 row can hold a pick either rule made
+///   wrong — a pick among the hits Kitsu returned for Re:ZERO without
+///   "Starting", or Season 2 Part 2 for Re:ZERO Season 2; re-keying
+///   lets the next load re-derive it.
+pub(crate) const TITLE_MATCH_VERSION: u32 = 5;
+
+/// The first version whose keys name the provider segment
+/// ([`title_match_prefix`]); the versions before it keyed the title
+/// alone.
+pub(crate) const FIRST_SEGMENTED_TITLE_MATCH_VERSION: u32 = 3;
+
+/// The first version that keys a row's title match by the year the row
+/// names ([`crate::commands::title_match_year`]).
+pub(crate) const FIRST_YEAR_KEYED_TITLE_MATCH_VERSION: u32 = 4;
 
 fn title_match_key(
     provider: Option<crate::scraper::provider::ProviderId>,
@@ -349,9 +371,22 @@ pub(crate) fn title_match_prefix(
     provider: Option<crate::scraper::provider::ProviderId>,
     title: &str,
 ) -> String {
+    title_match_prefix_at(TITLE_MATCH_VERSION, provider, title)
+}
+
+/// [`title_match_prefix`] as `version` wrote it — a version from
+/// [`FIRST_SEGMENTED_TITLE_MATCH_VERSION`] on.
+pub(crate) fn title_match_prefix_at(
+    version: u32,
+    provider: Option<crate::scraper::provider::ProviderId>,
+    title: &str,
+) -> String {
     let normalized = title.trim().to_lowercase();
     let segment = provider.map_or(LEGACY_TITLE_MATCH_SEGMENT, |p| p.label());
-    format!("title-match:v{TITLE_MATCH_VERSION}:{segment}:{normalized}:c")
+    format!(
+        "{}{segment}:{normalized}:c",
+        crate::cache::families::title_match_at(version)
+    )
 }
 
 /// The provider segment of a title match for a history row whose key
@@ -360,8 +395,12 @@ pub(crate) const LEGACY_TITLE_MATCH_SEGMENT: &str = "legacy";
 
 /// The segments a bare history row's title matches were written under
 /// before bare keys named no provider: anidb.app's label, while the
-/// app shipped it. They are no longer read; a removal of the row still
-/// takes them.
+/// app shipped it. Nothing files a match under them now, and every
+/// match under them is a v3 key, which no family declares since v4: the
+/// launch's cache reclaim deletes them ([`crate::cache::families`])
+/// before anything reads. A removal of the row still asks for them, as
+/// does the launch sweep ([`crate::retired_provider`]), and finds them
+/// only where a reclaim was refused.
 pub(crate) const RETIRED_TITLE_MATCH_SEGMENTS: &[&str] = &["anidb.app"];
 
 /// Read the cached `(title, cour) → kitsu_id` mapping. Returns `None`
@@ -460,17 +499,23 @@ pub fn title_match_put(
 ///   row can bind a hentai's key to an
 ///   undated entry one of whose names it is listed under; re-keying
 ///   lets the next resolve re-derive it.
-pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 9;
+/// - v10: words a show key runs together name the entry whose titles
+///   keep them apart ("rezero" is "Re:ZERO"). A v9 row can bind a
+///   season's key to a later part of it — Re:ZERO Season 2's to Season
+///   2 Part 2, taken on its slug's cour after the resolve passed over
+///   Season 2 — or to nothing it could name at all; re-keying lets the
+///   next resolve re-derive it.
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 10;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
-    format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
+    format!("{}{show_id}", crate::cache::families::mapping())
 }
 
 /// The mark a play leaves beside the mapping it stored, naming the
 /// Kitsu id it stored ([`crate::commands::kitsu_played`]). Under the
 /// mapping's prefix, so clearing the history takes it with them.
 pub(crate) fn allmanga_kitsu_played_key(show_id: &str) -> String {
-    format!("allmanga2kitsu:played:v1:{show_id}")
+    format!("{}{show_id}", crate::cache::families::MAPPING_PLAYED)
 }
 
 /// Read the cached `provider show_id → kitsu_id` mapping. Returns
@@ -691,7 +736,10 @@ async fn drop_mapping_the_title_disagrees_with(
 /// `-part-N` suffix. So a slug that's present but has no suffix is
 /// POSITIVE evidence (cour 1), not missing evidence — that's the
 /// signal that catches the original Stone Ocean Part 2 → Part 1
-/// poison. Only an absent `slug` field counts as no evidence.
+/// poison. Only an absent `slug` field counts as no evidence. A slug
+/// can mark a later season without a suffix (`gintama-2`), so an
+/// entry whose own titles include `show_title` agrees whatever its
+/// slug says ([`crate::commands::cour_pairing::entry_disagrees`]).
 pub(crate) async fn cour_pairing_disagrees(
     state: &AppState,
     show_title: &str,
@@ -706,7 +754,7 @@ pub(crate) async fn cour_pairing_disagrees(
     let Ok(detail) = kitsu_anime_detail(state, kitsu_id).await else {
         return false;
     };
-    slug_cour_disagrees(provider_cour, &detail)
+    crate::commands::cour_pairing::entry_disagrees(show_title, provider_cour, &detail)
 }
 
 /// [`cour_pairing_disagrees`] answered from the cache alone: `None`
@@ -722,18 +770,11 @@ pub(crate) fn cached_cour_pairing_verdict(
     };
     let body = meta_cache_get(&state.cache_pool, &anime_detail_key(kitsu_id)).ok()??;
     let detail: KitsuAnimeRef = serde_json::from_str(&body).ok()?;
-    Some(slug_cour_disagrees(provider_cour, &detail))
-}
-
-/// Whether the detail's slug names another cour than `provider_cour`.
-/// Kitsu's slug convention leaves cour 1 unmarked, so a slug without a
-/// suffix is cour 1; a detail without a slug is no evidence.
-fn slug_cour_disagrees(provider_cour: u32, detail: &KitsuAnimeRef) -> bool {
-    detail
-        .slug
-        .as_deref()
-        .map(|slug| crate::commands::cour::cour_from_slug(slug).unwrap_or(1))
-        .is_some_and(|kitsu_cour| kitsu_cour != provider_cour)
+    Some(crate::commands::cour_pairing::entry_disagrees(
+        show_title,
+        provider_cour,
+        &detail,
+    ))
 }
 
 /// Whether a Kitsu `subtype` is a music video. A provider that indexes
@@ -841,8 +882,9 @@ pub async fn resolve_allmanga_show_id(
 /// Kitsu answers words it does not carry with its closest entry, and
 /// "there is also a hole in the student organization" brings back Here
 /// is Greenwood. So is a hit whose slug disagrees with
-/// `source_cour`, the cour the source carries
-/// ([`cour::hit_cour_disagrees`]) — read off the stored slug by the
+/// `source_cour`, the cour the source carries, and whose titles do
+/// not include the term ([`crate::commands::cour_pairing::hit_agrees`])
+/// — the cour read off the stored slug by the
 /// caller, since a slug's cour forms include a bare number the
 /// term's words would not carry: Kitsu ranking the parent cour first
 /// is the poison the mapping guard refuses on the play path, so the
@@ -862,7 +904,7 @@ async fn first_kitsu_match(
         };
         if let Some(first) = hits.into_iter().find(|h| {
             !is_music_subtype(h.subtype.as_deref())
-                && !crate::commands::cour::hit_cour_disagrees(source_cour, h.slug.as_deref())
+                && crate::commands::cour_pairing::hit_agrees(source_cour, &term, h)
                 && crate::commands::kitsu_title_words::shares_words(&[term.as_str()], h)
         }) {
             // The guess answers this request; whether it is stored as
@@ -891,7 +933,7 @@ async fn first_kitsu_match(
 /// resolved and never reached mark-watched — the user left before it
 /// fired — has no stamp, so its row falls to the bottom of the strip
 /// (still rendered, just demoted).
-const WATCHED_AT_PREFIX: &str = "watched-at:v1:";
+const WATCHED_AT_PREFIX: &str = crate::cache::families::WATCHED_AT;
 
 pub(crate) fn watched_at_key(show_id: &str) -> String {
     format!("{WATCHED_AT_PREFIX}{show_id}")
@@ -953,7 +995,7 @@ pub(crate) fn anime_detail_key(id: &str) -> String {
     // rows hold null covers for shows only that path can fill — a
     // finished show's for a week — so re-keying refetches them on the
     // next open.
-    format!("kitsu:v5:anime:{id}")
+    format!("{}{id}", crate::cache::families::KITSU_ANIME)
 }
 
 /// How long a detail row is served. The row carries the show's status
@@ -1126,8 +1168,17 @@ async fn anime_detail_read(
             Some(b) => Some(b),
             None => anilist_banner_for(state, id, anilist_base)
                 .await
-                .unwrap_or_else(|()| {
+                .unwrap_or_else(|e| {
                     answered = false;
+                    // Held back by the gate: retried once the pause
+                    // ends, and the page told so (`held_fill`).
+                    super::held_fill::on_unanswered(
+                        state,
+                        super::held_fill::Fill::Detail,
+                        id,
+                        anilist_base,
+                        &e,
+                    );
                     None
                 }),
         }
@@ -1167,10 +1218,8 @@ async fn anilist_banner_for(
     state: &AppState,
     kitsu_id: &str,
     anilist_base: Option<&str>,
-) -> std::result::Result<Option<String>, ()> {
-    let ids = super::external_ids::external_ids_for(state, kitsu_id)
-        .await
-        .map_err(|_| ())?;
+) -> Result<Option<String>> {
+    let ids = super::external_ids::external_ids_for(state, kitsu_id).await?;
     // The detail renders without it: a background fill.
     crate::meta::anilist_gate::in_background(crate::meta::anilist_media::banner_for_ids(
         &state.meta_http,
@@ -1179,7 +1228,6 @@ async fn anilist_banner_for(
         anilist_base,
     ))
     .await
-    .map_err(|_| ())
 }
 
 #[cfg(test)]
@@ -1189,6 +1237,10 @@ mod detail_ttl_tests;
 #[cfg(test)]
 #[path = "kitsu_title_match_test.rs"]
 mod title_match_tests;
+
+#[cfg(test)]
+#[path = "kitsu_title_match_version_test.rs"]
+mod title_match_version_tests;
 
 #[cfg(test)]
 #[path = "kitsu_show_key_test.rs"]
@@ -1604,13 +1656,15 @@ mod tests {
         // through. Nothing in a row says which pick wrote it.
         let state = state_with_kitsu_at("http://unused");
         let key = "hianime:gintama-silver-soul-arc-second-half-war-1157";
-        crate::cache::meta_cache_put(
-            &state.cache_pool,
-            &format!("allmanga2kitsu:v3:{key}"),
-            "14095",
-            60,
-        )
-        .expect("put");
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v3:{key}"),
+                "14095",
+                60,
+            )
+            .expect("put")
+        });
         assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
     }
 
@@ -1623,13 +1677,15 @@ mod tests {
         // wrote it.
         let state = state_with_kitsu_at("http://unused");
         let key = "hianime:dragon-ball-super-1101";
-        crate::cache::meta_cache_put(
-            &state.cache_pool,
-            &format!("allmanga2kitsu:v4:{key}"),
-            "50496",
-            60,
-        )
-        .expect("put");
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v4:{key}"),
+                "50496",
+                60,
+            )
+            .expect("put")
+        });
         assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
     }
 
@@ -1642,13 +1698,15 @@ mod tests {
         // a title the cross-cour guard has no cour to refuse on.
         let state = state_with_kitsu_at("http://unused");
         let key = "hianime:show-1";
-        crate::cache::meta_cache_put(
-            &state.cache_pool,
-            &format!("allmanga2kitsu:v5:{key}"),
-            "50600",
-            60,
-        )
-        .expect("put");
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v5:{key}"),
+                "50600",
+                60,
+            )
+            .expect("put")
+        });
         assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
     }
 
@@ -1661,14 +1719,66 @@ mod tests {
         // refuse on.
         let state = state_with_kitsu_at("http://unused");
         let key = "hianime:girlfriend-girlfriend-560";
-        crate::cache::meta_cache_put(
-            &state.cache_pool,
-            &format!("allmanga2kitsu:v6:{key}"),
-            "45637",
-            60,
-        )
-        .expect("put");
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v6:{key}"),
+                "45637",
+                60,
+            )
+            .expect("put")
+        });
         assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
+    fn a_mapping_guessed_before_run_together_words_named_the_entry_is_not_read() {
+        // The reverse resolve did not read a key's "rezero" as Kitsu's
+        // "re zero": it passed over Re:ZERO Season 2, Kitsu's first hit
+        // for the Season 2 key's words, and bound the key to Season 2
+        // Part 2, whose slug alone carried the key's cour.
+        let state = state_with_kitsu_at("http://unused");
+        let key = "hianime:rezero-starting-life-in-another-world-season-2-100";
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v9:{key}"),
+                "43247",
+                60,
+            )
+            .expect("put")
+        });
+        assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
+    fn a_title_match_guessed_before_a_dash_led_word_reached_kitsu_is_not_read() {
+        // The title guess searched Kitsu with the provider's title as
+        // typed, a dash before "Starting" and all, which Kitsu read as
+        // "without Starting"; and the reverse resolve it falls back to
+        // bound the Season 2 key to Season 2 Part 2. Either stored its
+        // pick under the title.
+        let state = state_with_kitsu_at("http://unused");
+        let title = "Re:ZERO -Starting Life in Another World- Season 2";
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("title-match:v4:hianime:{}:c2", title.to_lowercase()),
+                "43247",
+                60,
+            )
+            .expect("put")
+        });
+        assert_eq!(
+            title_match_get(
+                &state,
+                Some(crate::scraper::provider::ProviderId::Hianime),
+                title,
+                2
+            )
+            .expect("get ok"),
+            None
+        );
     }
 
     #[test]
@@ -1679,13 +1789,15 @@ mod tests {
         let state = state_with_kitsu_at("http://unused");
         let key =
             "hianime:muttsuri-dosukebe-tsuyu-gibo-shimai-no-honshitsu-minuite-sex-sanmai-2256";
-        crate::cache::meta_cache_put(
-            &state.cache_pool,
-            &format!("allmanga2kitsu:v8:{key}"),
-            "8404",
-            60,
-        )
-        .expect("put");
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v8:{key}"),
+                "8404",
+                60,
+            )
+            .expect("put")
+        });
         assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
     }
 
@@ -1696,13 +1808,15 @@ mod tests {
         // title the cross-cour guard has no cour to refuse on.
         let state = state_with_kitsu_at("http://unused");
         let key = "hianime:medaka-box-abnormal-4606";
-        crate::cache::meta_cache_put(
-            &state.cache_pool,
-            &format!("allmanga2kitsu:v7:{key}"),
-            "6067",
-            60,
-        )
-        .expect("put");
+        crate::cache::families::undeclared_allowed(|| {
+            crate::cache::meta_cache_put(
+                &state.cache_pool,
+                &format!("allmanga2kitsu:v7:{key}"),
+                "6067",
+                60,
+            )
+            .expect("put")
+        });
         assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
     }
 

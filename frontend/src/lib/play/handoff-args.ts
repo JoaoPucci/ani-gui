@@ -18,6 +18,9 @@ export function handoffArgs(input: {
 	detail: KitsuAnimeRef | null;
 	/** The version the embedded play names for the show. */
 	version?: VersionKind;
+	/** The captions choice remembered for the show, which the external
+	 *  player starts on as the embedded one does. */
+	caption?: string;
 }): PlayArgs {
 	return buildPlayArgs({
 		title: input.title,
@@ -26,6 +29,7 @@ export function handoffArgs(input: {
 		quality: input.config.quality || 'best',
 		show: input.detail,
 		kitsuId: input.kitsuId,
-		version: input.version
+		version: input.version,
+		caption: input.caption
 	});
 }

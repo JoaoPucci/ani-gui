@@ -84,7 +84,8 @@ proptest! {
         interactive: bool,
         caller in prop_oneof![
             Just(crate::meta::anilist_gate::Class::Interactive),
-            Just(crate::meta::anilist_gate::Class::Background)
+            Just(crate::meta::anilist_gate::Class::Background),
+            Just(crate::meta::anilist_gate::Class::Retry)
         ],
     ) {
         let expected = if interactive {

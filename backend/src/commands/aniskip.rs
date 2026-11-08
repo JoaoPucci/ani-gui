@@ -101,7 +101,10 @@ fn store_skip_times(
 /// rows without asking Kitsu for the MAL id. Schema v2; v1 keys carried
 /// the MAL id alone and are no longer read.
 fn cache_key(kitsu_id: &str, mal_id: u32, episode: &str) -> String {
-    format!("aniskip:v2:{kitsu_id}:{mal_id}:{episode}")
+    format!(
+        "{}{kitsu_id}:{mal_id}:{episode}",
+        crate::cache::families::ANISKIP
+    )
 }
 
 #[cfg(test)]

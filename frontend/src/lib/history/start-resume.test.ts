@@ -256,7 +256,7 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
 
 		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
-			expect.objectContaining({ guess: true }),
+			expect.objectContaining({ guess: true, row: 'h1' }),
 			expect.any(Function)
 		);
 		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ guess: true }));
@@ -270,6 +270,34 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 		);
 	});
 
+	it("records a guess whose play landed on the card's own listing, and writes the trackers", async () => {
+		const h = makeHarness({
+			isGuess: (id) => id === 'h1',
+			resolvePlay: vi.fn().mockResolvedValue({ session_id: 's1', own_listing: true })
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+
+		expect(h.deps.markWatched).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: false, episode: 6 })
+		);
+		expect(h.deps.syncTrackers).toHaveBeenCalledWith('k1', 6, 12, true);
+	});
+
+	it('records the guess but writes no tracker for an episode the session could not verify', async () => {
+		const h = makeHarness({
+			isGuess: (id) => id === 'h1',
+			resolvePlay: vi
+				.fn()
+				.mockResolvedValue({ session_id: 's1', own_listing: true, episode_unverified: true })
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+
+		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ guess: false }));
+		expect(h.deps.syncTrackers).not.toHaveBeenCalled();
+	});
+
 	it('opens a trusted match as the show itself', async () => {
 		const h = makeHarness({ isGuess: () => false });
 		const start = makeStartResume(h.deps);
@@ -279,6 +307,8 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 			expect.objectContaining({ guess: false }),
 			expect.any(Function)
 		);
+		// Only a guess names its card's row on the play.
+		expect(vi.mocked(h.deps.resolvePlay).mock.calls[0][0].row).toBeUndefined();
 		expect(h.deps.syncTrackers).toHaveBeenCalledWith('k1', 6, 12, true);
 		expect(h.deps.navigateToSession).toHaveBeenCalledWith(
 			'k1',

@@ -1,9 +1,9 @@
 /**
  * Playwright e2e for the Electron app.
  *
- * The actual Electron launch happens inside each test via
- * `_electron.launch(...)` from `playwright`'s electron driver — this
- * config just sets defaults for test discovery, retries, and reports.
+ * The actual Electron launch happens inside each test, through the
+ * shared helper `e2e/launch.ts` (which mutes audio) — this config
+ * just sets defaults for test discovery, retries, and reports.
  *
  * Pre-test setup is the responsibility of a global setup hook (or the
  * `pnpm package` script run beforehand): the Rust backend binary at
