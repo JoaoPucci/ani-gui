@@ -19,6 +19,8 @@ function home(rows: HistoryEntry[], listed: HistoryEntry[][], over: Partial<Card
 	let history = rows;
 	const settled = new Set<string>();
 	const published: [string, string | null][] = [];
+	// Publications and forgettings, in the order they happened.
+	const events: string[] = [];
 	const deps: CardRelinkDeps = {
 		offerStands: async () => true,
 		settled,
@@ -29,10 +31,21 @@ function home(rows: HistoryEntry[], listed: HistoryEntry[][], over: Partial<Card
 			history = r;
 		},
 		resolveMatch: async (h) => ref(h.kitsu_id ?? `guess-${h.id}`),
-		publish: (id, m) => published.push([id, m?.id ?? null]),
+		publish: (id, m) => {
+			published.push([id, m?.id ?? null]);
+			events.push(`${id} is ${m?.id ?? 'nothing'}`);
+		},
+		forget: (id) => events.push(`${id} forgets`),
 		...over
 	};
-	return { relink: createCardRelink(deps), deps, settled, published, history: () => history };
+	return {
+		relink: createCardRelink(deps),
+		deps,
+		settled,
+		published,
+		events,
+		history: () => history
+	};
 }
 
 describe('whether a guessed card still stands', () => {
@@ -110,5 +123,25 @@ describe('reading the cards again', () => {
 		await expect(h.relink.reread()).rejects.toThrow('down');
 		await h.relink.reread();
 		expect(h.history()).toEqual([row('a', '5')]);
+	});
+});
+
+describe("a row matched to another show forgets its former show's", () => {
+	it('cap before its new match is published, and only for the rows matched again', async () => {
+		// The cap a click pinned, the count a probe found: both were the
+		// former show's.
+		const h = home([row('a'), row('b')], [[row('a', '5'), row('b')]]);
+		await h.relink.reread();
+		await flush();
+		expect(h.events).toEqual(['a forgets', 'a is 5']);
+	});
+
+	it('cap when its match failed too', async () => {
+		const h = home([row('a')], [[row('a', '5')]], {
+			resolveMatch: async () => Promise.reject(new Error('down'))
+		});
+		await h.relink.reread();
+		await flush();
+		expect(h.events).toEqual(['a forgets', 'a is nothing']);
 	});
 });

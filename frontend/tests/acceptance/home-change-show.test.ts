@@ -454,6 +454,51 @@ describe('a card whose guessed play wrote a row on another listing stands for th
 	});
 });
 
+describe("a link forgets what Home kept for the card's former show", () => {
+	// The special has one episode, the series 170: each probe answers
+	// for the show it is asked about.
+	beforeEach(() => {
+		server.use(
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const { kitsu_id } = (await request.json()) as { kitsu_id?: string };
+				const count = kitsu_id === BC_GUESS ? 1 : kitsu_id === BC_RIGHT ? 170 : 26;
+				return HttpResponse.json({ available: true, episode_count: count });
+			})
+		);
+	});
+
+	it("a failed special's exact cap does not hold the linked series at episode 1", async () => {
+		await openHome();
+		const card = () => cell(BC_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!;
+		// The special's resume asks for its one episode, and fails: the
+		// click pinned that cap as exact.
+		card().click();
+		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+		const first = new URL(FakeEventSource.instances.at(-1)!.url, 'http://x');
+		expect(first.searchParams.get('episode')).toBe('1');
+		FakeEventSource.instances
+			.at(-1)!
+			.dispatch('error', JSON.stringify({ kind: 'no_results', message: 'not found' }));
+		await until(
+			() => target.querySelector('[role="alertdialog"]') !== null,
+			'the failed resume overlay'
+		);
+		const overlay = target.querySelector<HTMLElement>('[role="alertdialog"]')!;
+		await until(() => button(m.home_link_pick_button(), overlay) !== null, 'the pick button');
+		button(m.home_link_pick_button(), overlay)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(BC_RIGHT_TITLE);
+		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'the card as the series');
+		await settle();
+		// Continue goes on to episode 2 of the series.
+		const before = FakeEventSource.instances.length;
+		card().click();
+		await until(() => FakeEventSource.instances.length > before, 'the second resume');
+		const second = new URL(FakeEventSource.instances.at(-1)!.url, 'http://x');
+		expect(second.searchParams.get('episode')).toBe('2');
+	});
+});
+
 describe("a guessed card's player is told where its play landed", () => {
 	async function resumeJojo(ownListing: boolean) {
 		await openHome();
