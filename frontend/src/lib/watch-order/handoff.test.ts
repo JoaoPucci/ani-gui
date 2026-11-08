@@ -43,32 +43,32 @@ const never = () => false;
 
 describe('handoffAsk', () => {
 	it("asks for the series of a finale played through, by the row's match", () => {
-		expect(handoffAsk(finished(13), '13', never)).toBe('43078');
+		expect(handoffAsk(finished(13), '13', null, never)).toBe('43078');
 		// A row past Kitsu's count is at the end too.
-		expect(handoffAsk(finished(13), '14', never)).toBe('43078');
+		expect(handoffAsk(finished(13), '14', null, never)).toBe('43078');
 	});
 
 	it('asks nothing for a row short of the finale', () => {
-		expect(handoffAsk(finished(13), '12', never)).toBeNull();
-		expect(handoffAsk(finished(13), '12.5', never)).toBeNull();
-		expect(handoffAsk(finished(13), '', never)).toBeNull();
-		expect(handoffAsk(finished(13), 'abc', never)).toBeNull();
+		expect(handoffAsk(finished(13), '12', null, never)).toBeNull();
+		expect(handoffAsk(finished(13), '12.5', null, never)).toBeNull();
+		expect(handoffAsk(finished(13), '', null, never)).toBeNull();
+		expect(handoffAsk(finished(13), 'abc', null, never)).toBeNull();
 	});
 
 	it('asks nothing for an entry still airing or of unknown length', () => {
-		expect(handoffAsk({ ...finished(13), status: 'current' }, '13', never)).toBeNull();
-		expect(handoffAsk({ ...finished(13), status: null }, '13', never)).toBeNull();
-		expect(handoffAsk(finished(null), '13', never)).toBeNull();
+		expect(handoffAsk({ ...finished(13), status: 'current' }, '13', null, never)).toBeNull();
+		expect(handoffAsk({ ...finished(13), status: null }, '13', null, never)).toBeNull();
+		expect(handoffAsk(finished(null), '13', null, never)).toBeNull();
 	});
 
 	it('asks nothing for a row not matched yet, or that could not be', () => {
-		expect(handoffAsk(undefined, '13', never)).toBeNull();
-		expect(handoffAsk(null, '13', never)).toBeNull();
+		expect(handoffAsk(undefined, '13', null, never)).toBeNull();
+		expect(handoffAsk(null, '13', null, never)).toBeNull();
 	});
 
 	it('asks nothing when the finale was left part-way, asking about the finale itself', () => {
 		const leftPartWay = vi.fn(() => true);
-		expect(handoffAsk(finished(13), '13', leftPartWay)).toBeNull();
+		expect(handoffAsk(finished(13), '13', null, leftPartWay)).toBeNull();
 		expect(leftPartWay).toHaveBeenCalledWith('43078', 13);
 	});
 
@@ -86,7 +86,7 @@ describe('handoffAsk', () => {
 				}),
 				({ status, episodes, ep, partWay }) => {
 					const match = { id: '7', status, episode_count: episodes };
-					const got = handoffAsk(match, ep, () => partWay);
+					const got = handoffAsk(match, ep, null, () => partWay);
 					const n = parseHistoryEpisode(ep);
 					const atFinale = n !== null && isFinale({ status, episodes }, n);
 					expect(got).toBe(atFinale && !partWay ? '7' : null);
@@ -173,7 +173,7 @@ describe('playedIds', () => {
 			],
 			{ a: { id: '9' }, b: { id: '2' }, c: null, e: { id: '5' } }
 		);
-		expect([...got].sort()).toEqual(['1', '2', '5']);
+		expect([...got!].sort()).toEqual(['1', '2', '5']);
 	});
 });
 

@@ -964,7 +964,16 @@
 	const handoffOrder = $derived(settledOrder(config, configFailed));
 	const handoffAsks = $derived(
 		dedupedHistory.map(
-			(row) => [row.id, handoffAsk(historyMatches[row.id], row.ep_no, leftPartWay)] as const
+			(row) =>
+				[
+					row.id,
+					handoffAsk(
+						historyMatches[row.id],
+						row.ep_no,
+						historyPlayableCounts[row.id] ?? null,
+						leftPartWay
+					)
+				] as const
 		)
 	);
 	$effect(() => {

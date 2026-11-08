@@ -34,13 +34,17 @@ export interface HandoffMatch {
  * The Kitsu id whose series a row's hand-off needs, or null: a matched
  * row whose last episode is the finale of an entry that has finished
  * airing, and was not left part-way. Only such a row asks for its
- * series, so no other card costs a request.
+ * series, so no other card costs a request. `playableCount` is the
+ * episode count the row's availability probe found, null until it
+ * answers.
  */
 export function handoffAsk(
 	match: HandoffMatch | null | undefined,
 	epNo: string,
+	playableCount: number | null,
 	leftPartWay: (kitsuId: string, episode: number) => boolean
 ): string | null {
+	void playableCount;
 	const episode = parseHistoryEpisode(epNo);
 	if (!match || episode === null) return null;
 	if (!isFinale({ status: match.status, episodes: match.episode_count }, episode)) return null;
@@ -58,8 +62,9 @@ export function handoffFrom(
 	id: string,
 	order: WatchOrder | null,
 	today: string,
-	played: ReadonlySet<string>
+	played: ReadonlySet<string> | null
 ): Handoff | null {
+	if (played === null) return null;
 	if (franchise === null || order === null || franchise.anchor !== id) return null;
 	const run = runOf(franchise);
 	const entry = run?.entries.find((e) => e.id === id);
@@ -82,7 +87,7 @@ export interface PlayedRow {
 export function playedIds(
 	rows: readonly PlayedRow[],
 	matches: Readonly<Record<string, { readonly id: string } | null | undefined>>
-): Set<string> {
+): Set<string> | null {
 	const out = new Set<string>();
 	for (const row of rows) {
 		const id = row.kitsu_id ?? matches[row.id]?.id;
