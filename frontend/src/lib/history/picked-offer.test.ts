@@ -26,9 +26,6 @@ const d = deps;
 beforeEach(() => __resetHiddenRowsForTests());
 
 describe('pickedOffer', () => {
-	const picked = { ...CARD, kitsu_id: '4013' };
-	const d = (over: Partial<LinkDeps> = {}) => deps({ history: async () => [picked], ...over });
-
 	it("offers to change again the row a pick saved, while it records the page's show", async () => {
 		const offer = await pickedOffer(d(), CARD.id, '4013');
 		expect(offer).toMatchObject({ entry: picked, saved: '4013' });
