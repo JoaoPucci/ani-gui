@@ -72,7 +72,7 @@
 	});
 
 	onMount(() => {
-		accountStore.hydrate();
+		void accountStore.hydrate();
 		void settingsGet()
 			.then((c) => {
 				config = c;

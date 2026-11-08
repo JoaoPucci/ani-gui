@@ -116,3 +116,32 @@ test("the renderer can say its first page has rendered, once, on the app-ready c
   exposed.aniGui.appReady();
   assert.deepEqual(sent, ["ani-gui:app-ready"]);
 });
+
+test("reading a saved sign-in is asynchronous: a keyring that waits holds no renderer thread", () => {
+  const calls = [];
+  const exposed = {};
+  const electron = {
+    contextBridge: { exposeInMainWorld: (name, value) => (exposed[name] = value) },
+    ipcRenderer: {
+      invoke: (channel, ...args) => {
+        calls.push(["invoke", channel, ...args]);
+        return new Promise(() => {});
+      },
+      send() {},
+      sendSync: (channel) => {
+        calls.push(["sendSync", channel]);
+        return { ok: false, kind: "not_found" };
+      },
+      on() {},
+      removeListener() {},
+    },
+  };
+  vm.runInNewContext(source, {
+    require: () => electron,
+    process: { argv: ["electron"], platform: "linux" },
+    console: { error() {} },
+  });
+  const result = exposed.aniGui.account.getToken("anilist");
+  assert.equal(typeof result.then, "function");
+  assert.deepEqual(calls, [["invoke", "ani-gui:account:get-token", "anilist"]]);
+});
