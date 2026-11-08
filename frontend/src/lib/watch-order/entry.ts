@@ -35,6 +35,6 @@ export function yearOf(entry: WatchEntry): string | null {
 
 /** The viewer's local calendar day, YYYY-MM-DD, which "Coming …" is judged against. */
 export function localDay(now: Date): string {
-	void now;
-	return '';
+	const pad = (n: number) => String(n).padStart(2, '0');
+	return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }

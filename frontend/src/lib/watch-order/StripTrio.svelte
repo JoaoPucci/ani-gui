@@ -55,8 +55,12 @@
 			{/if}
 		</span>
 		<span class="tile-text">
-			<span class="tile-title">{label(e)}</span>
-			{#if label(e) !== e.title}<span class="sr-only">{e.title}</span>{/if}
+			{#if label(e) !== e.title}
+				<span class="sr-only">{e.title}</span>
+				<span class="tile-title" aria-hidden="true">{label(e)}</span>
+			{:else}
+				<span class="tile-title">{e.title}</span>
+			{/if}
 			<span class="tile-meta"
 				><MetaLine segments={metaLine(e, model.progress[e.id], today)} stacked /></span
 			>
@@ -246,7 +250,8 @@
 	.tile-meta {
 		display: grid;
 	}
-	.tile:hover {
+	.tile:hover,
+	.tile:focus-visible {
 		background: var(--ink-100);
 	}
 	.tile:focus-visible {

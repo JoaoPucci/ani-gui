@@ -34,7 +34,12 @@
 	<span class="chip-text">
 		<span class="chip-key">{m.watchorder_strip_watching_key()}</span>
 		<span class="chip-line">
-			<span class="chip-title">{label(entry)}</span>
+			{#if label(entry) !== entry.title}
+				<span class="sr-only">{entry.title}</span>
+				<span class="chip-title" aria-hidden="true">{label(entry)}</span>
+			{:else}
+				<span class="chip-title">{entry.title}</span>
+			{/if}
 			<span class="chip-ep">{m.watchorder_meta_progress_open({ episode })}</span>
 		</span>
 	</span>
@@ -43,6 +48,7 @@
 
 <style>
 	.chip {
+		position: relative;
 		display: inline-grid;
 		grid-template-columns: auto minmax(0, 1fr) auto;
 		align-items: center;
@@ -113,6 +119,14 @@
 		font-size: var(--type-micro);
 		letter-spacing: var(--tracking-micro);
 		color: var(--bone-300);
+	}
+	.sr-only {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	.arrow {
 		display: inline-flex;

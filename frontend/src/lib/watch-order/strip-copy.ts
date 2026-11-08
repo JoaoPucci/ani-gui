@@ -54,7 +54,7 @@ export function captionText(caption: StripCaption): string {
 				total: numeral(caption.total)
 			});
 		case 'numeral':
-			return numeral(caption.position);
+			return m.watchorder_strip_position_open({ position: numeral(caption.position) });
 		case 'side':
 			return m.watchorder_strip_side_story();
 		case 'cycle':

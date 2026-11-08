@@ -25,6 +25,7 @@
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import StripTrio from '$lib/watch-order/StripTrio.svelte';
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
+	import { localDay } from '$lib/watch-order/entry';
 	import { numeral } from '$lib/watch-order/meta';
 	import { settledOrder, watchOrderPage } from '$lib/watch-order/page-model';
 	import { onDestroy, onMount, untrack } from 'svelte';
@@ -1411,13 +1412,17 @@
 	// The watch-order strip, its place in the masthead eyebrow, and what
 	// "Similar titles" leaves out, all read by $lib/watch-order/page-model.
 	// It waits for the settings read so it never re-orders under the viewer.
-	const watchToday = new Date().toISOString().slice(0, 10);
+	const watchToday = localDay(new Date());
 	const watchOrder = $derived(settledOrder(config, configError !== null));
 	const watchModel = $derived(
 		watchOrderData && watchOrder ? watchOrderPage(watchOrderData, id, watchOrder) : null
 	);
+	// "Similar titles" waits for the strip's reads, so it never shows a
+	// card the strip then takes away.
 	const similarShown = $derived(
-		(similar ?? []).filter((s) => !watchModel?.similarHidden.has(s.id))
+		watchOrderData && watchOrder
+			? (similar ?? []).filter((s) => !watchModel?.similarHidden.has(s.id))
+			: []
 	);
 
 	// `raw` is the upstream URL `url` proxies; a load failure is noted
