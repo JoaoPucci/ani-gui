@@ -325,23 +325,29 @@ nodeTest("the probe runs with core dumps off", { skip: process.platform !== "lin
 });
 
 // Interrupting the launcher while it waits on the probe stops the
-// launch: Ctrl-C (SIGINT to the whole process group) or a SIGTERM to
-// AppRun alone ends it promptly, starts nothing, and leaves no probe,
-// watchdog or answer file behind.
-for (const [signal, group] of [
-  ["SIGINT", true],
-  ["SIGTERM", false],
-]) {
-  test(`${signal} while the probe runs stops the launch and leaves nothing behind`, async () => {
-    const r = await launchAndSignal(EB25, "hangs", USER_ARGS, { afterMs: 700, signal, group });
-    try {
-      assert.equal(r.launched, null, "nothing launched");
-      assert.ok(r.elapsedMs < 3000, `stopped after ${r.elapsedMs} ms`);
-      assert.doesNotMatch(r.run.stderr, /command not found|Terminated|Killed/);
-      assert.deepEqual(r.tmpLeft, [], "the probe's answer file is removed");
-      assertNothingLeft(r.token);
-    } finally {
-      cleanup(r);
-    }
-  });
+// launch: Ctrl-C (SIGINT to the whole process group), a SIGTERM to
+// AppRun alone, or a SIGHUP (the terminal closing) ends it promptly,
+// starts nothing, and leaves no probe, watchdog or answer file behind.
+// AppRun then dies by that same signal, as a shell expects of a
+// command it interrupted, so a calling loop stops too.
+for (const [name, template] of Object.entries(TEMPLATES)) {
+  for (const [signal, group] of [
+    ["SIGINT", true],
+    ["SIGTERM", false],
+    ["SIGHUP", false],
+  ]) {
+    test(`${name}: ${signal} while the probe runs stops the launch and leaves nothing behind`, async () => {
+      const r = await launchAndSignal(template, "hangs", USER_ARGS, { afterMs: 700, signal, group });
+      try {
+        assert.equal(r.launched, null, "nothing launched");
+        assert.equal(r.run.signal, signal, `AppRun ended with status ${r.run.status}, not by ${signal}`);
+        assert.ok(r.elapsedMs < 3000, `stopped after ${r.elapsedMs} ms`);
+        assert.doesNotMatch(r.run.stderr, /command not found|Terminated|Killed|Hangup/);
+        assert.deepEqual(r.tmpLeft, [], "the probe's answer file is removed");
+        assertNothingLeft(r.token);
+      } finally {
+        cleanup(r);
+      }
+    });
+  }
 }
