@@ -3258,15 +3258,13 @@
 		filter: saturate(0.6);
 	}
 
-	/* Aired, but above the episode count the provider last reported. Dimmed
-	   the same amount as an uncatalogued tile — the episode genuinely
-	   is not streamable yet — but it keeps the pointer and the hover
-	   lift, because clicking it re-asks the provider. `not-allowed` here
-	   would deny the one affordance the tile exists to offer. */
+	/* Aired, but above the episode count the provider last reported. Its
+	   picture dims as far as an uncatalogued tile's — the episode
+	   genuinely is not streamable yet — but it keeps the pointer and the
+	   hover lift, because clicking it re-asks the provider. `not-allowed`
+	   here would deny the one affordance the tile exists to offer. */
 	.ep-tile-recheck {
 		cursor: pointer;
-		opacity: 0.55;
-		filter: saturate(0.6);
 	}
 
 	/* Unaired episodes: visible so the season's shape stays readable,
@@ -3276,8 +3274,48 @@
 	   `.ep-tile-recheck`. */
 	.ep-tile-unaired {
 		cursor: pointer;
+	}
+
+	/* Both stay clickable, so their words stay readable: the picture
+	   dims and the title steps down a tier, where fading the whole tile
+	   took the title to 3.9:1 and the meta line under it to 1.9:1. A
+	   tile that is also disabled keeps fading whole through
+	   `.ep-tile-disabled`, so these rules leave it alone. Hover lifts
+	   the brightness as on any tile but keeps the desaturation. */
+	.ep-tile-recheck:not(.ep-tile-disabled) .ep-thumb img {
+		opacity: 0.55;
+		filter: brightness(0.85) saturate(0.6);
+	}
+	.ep-tile-unaired:not(.ep-tile-disabled) .ep-thumb img {
 		opacity: 0.45;
-		filter: saturate(0.35);
+		filter: brightness(0.85) saturate(0.35);
+	}
+	.ep-tile-recheck:not(.ep-tile-disabled):hover .ep-thumb img {
+		filter: brightness(1) saturate(0.6);
+	}
+	.ep-tile-unaired:not(.ep-tile-disabled):hover .ep-thumb img {
+		filter: brightness(1) saturate(0.35);
+	}
+	.ep-tile-recheck:not(.ep-tile-disabled) .ep-title,
+	.ep-tile-unaired:not(.ep-tile-disabled) .ep-title {
+		color: var(--bone-300);
+	}
+	/* With no picture to dim, the placeholder loses its accent warmth
+	   and its words step down to the faintest tier, which still clears
+	   AA on ink-100 (5.4:1). The frame number follows them; it sits on
+	   the darkest part of the scrim. */
+	.ep-tile-recheck:not(.ep-tile-disabled) .ep-thumb-placeholder,
+	.ep-tile-unaired:not(.ep-tile-disabled) .ep-thumb-placeholder {
+		background: var(--ink-100);
+		color: var(--bone-400);
+	}
+	.ep-tile-recheck:not(.ep-tile-disabled, :hover)
+		.ep-thumb:has(.ep-thumb-placeholder)
+		:is(.ep-frame-num-key, .ep-frame-num-val),
+	.ep-tile-unaired:not(.ep-tile-disabled, :hover)
+		.ep-thumb:has(.ep-thumb-placeholder)
+		:is(.ep-frame-num-key, .ep-frame-num-val) {
+		color: var(--bone-400);
 	}
 	.ep-unaired-label {
 		font-variant-caps: all-small-caps;
@@ -3665,7 +3703,7 @@
 		color: var(--bone-200);
 	}
 	.ep-range-faint {
-		color: color-mix(in oklab, var(--bone-300) 70%, transparent);
+		color: var(--bone-400);
 	}
 
 	/* Prev/next chevron mini-buttons — small bordered chips with
