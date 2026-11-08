@@ -388,6 +388,37 @@ fn neither_platform_carries_an_unrelated_file() {
     }
 }
 
+/// The endings the lookup accepts are the ones in
+/// `release_assets.json`, the file `electron/lib/release-asset-names.cjs`
+/// checks electron-builder's file names against. A package renamed on
+/// one side only fails that check instead of silencing every update.
+#[test]
+fn the_lookup_accepts_exactly_the_endings_the_packaging_check_reads() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/src/meta/release_assets.json");
+    let text = std::fs::read_to_string(path).expect("the endings file");
+    let file: serde_json::Value = serde_json::from_str(&text).expect("the endings file is JSON");
+    for (platform, key, other) in [
+        (Platform::Windows, "windows", Platform::Linux),
+        (Platform::Linux, "linux", Platform::Windows),
+    ] {
+        let mut listed: Vec<String> = file[key]
+            .as_object()
+            .expect(key)
+            .values()
+            .map(|v| v.as_str().expect("an ending is a string").to_owned())
+            .collect();
+        listed.sort();
+        let mut accepted = platform.endings();
+        accepted.sort();
+        assert_eq!(accepted, listed, "{key}");
+        for ending in &listed {
+            let name = format!("ani-gui-9.9.9{ending}");
+            assert!(platform.carries(&name), "{name}");
+            assert!(!other.carries(&name), "{name}");
+        }
+    }
+}
+
 proptest::proptest! {
     /// Whatever the version in the name, each platform recognises its
     /// own packages and never the other platform's.

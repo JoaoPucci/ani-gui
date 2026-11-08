@@ -66,6 +66,15 @@ impl Platform {
         }
     }
 
+    /// How the names of this platform's packages end.
+    pub fn endings(self) -> Vec<String> {
+        let suffixes: &[&str] = match self {
+            Self::Windows => &["-x64-setup.exe"],
+            Self::Linux => &["-x86_64.AppImage", "-amd64.deb"],
+        };
+        suffixes.iter().map(|s| (*s).to_owned()).collect()
+    }
+
     /// Whether a release asset named `asset_name` installs on this
     /// platform.
     pub fn carries(self, asset_name: &str) -> bool {
