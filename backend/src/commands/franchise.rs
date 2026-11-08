@@ -27,6 +27,12 @@ pub(crate) fn listing_key(id: &str) -> String {
     format!("{}{id}", crate::cache::families::KITSU_FRANCHISE_RELATIONS)
 }
 
+/// How long a listing is cached, in seconds.
+#[must_use]
+pub fn listing_ttl(_listing: &FranchiseListing) -> u64 {
+    ANIME_DETAIL_TTL.as_secs()
+}
+
 /// `id`'s relation listing, from the cache or Kitsu.
 ///
 /// # Errors
@@ -40,7 +46,7 @@ pub async fn franchise_listing(state: &AppState, id: &str) -> Result<FranchiseLi
     }
     let listing = state.kitsu.franchise_relations(id).await?;
     if let Ok(body) = serde_json::to_string(&listing) {
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, ANIME_DETAIL_TTL.as_secs());
+        let _ = meta_cache_put(&state.cache_pool, &key, &body, listing_ttl(&listing));
     }
     Ok(listing)
 }
