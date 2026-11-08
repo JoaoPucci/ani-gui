@@ -15,9 +15,11 @@
 //   "título" means a name (an episode title, a title typed into
 //   search), it stays, so the rule lists the show-meaning keys.
 // - Russian headings end without a full stop.
-// - "Try again" is one phrase per locale: "Tente de novo" in
-//   Portuguese, and the streaming source is «Источник стриминга» in
-//   every Russian play failure.
+// - "Again" is one phrase per locale: "de novo" in Portuguese (never
+//   "novamente"), «Попробуйте снова» in Russian (never «Попробуйте ещё
+//   раз»).
+// - Russian calls the streaming source «Источник стриминга», never
+//   «Источник видео».
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -208,21 +210,15 @@ describe('Russian headings end without a full stop', () => {
 });
 
 describe('one phrase per term', () => {
-	it('Portuguese says "Tente de novo", never "Tente novamente"', () => {
-		expect(offenders('pt-BR', (s) => /tente novamente/i.test(s))).toEqual([]);
+	it('Portuguese says "de novo", never "novamente"', () => {
+		expect(offenders('pt-BR', (s) => /novamente/i.test(s))).toEqual([]);
 	});
 
-	it('every Russian play failure names the source «Источник стриминга»', () => {
-		const PLAY_FAILURES = [
-			'play.play_failure_no_results',
-			'play.play_failure_episode_unavailable',
-			'play.play_failure_scraper',
-			'play.play_failure_timeout',
-			'play.play_failure_rate_limited',
-			'play.play_failure_rate_limited_wait',
-			'play.play_failure_source_error',
-			'play.play_failure_unreadable'
-		];
-		expect(offenders('ru', (s) => /Источник видео/.test(s), PLAY_FAILURES)).toEqual([]);
+	it('Russian says «Попробуйте снова», never «Попробуйте ещё раз»', () => {
+		expect(offenders('ru', (s) => /Попробуйте ещё раз/i.test(s))).toEqual([]);
+	});
+
+	it('Russian never calls the streaming source «Источник видео»', () => {
+		expect(offenders('ru', (s) => /Источник видео/i.test(s))).toEqual([]);
 	});
 });
