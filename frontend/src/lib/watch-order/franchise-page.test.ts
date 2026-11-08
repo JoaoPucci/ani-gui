@@ -225,8 +225,8 @@ describe('franchisePage', () => {
 		}
 	});
 
-	it('sets an unnumbered title inside a numbered stretch apart, under its own heading', () => {
-		// 1→2→J and R→S→J: R leads into S, S has no number and no note.
+	it('gathers the titles with no clear place at the end, with the titles that only lead into them', () => {
+		// 1→2→J and R→S→J: S has no number, and R only leads into S.
 		const page = franchisePage(
 			shaped(
 				['1', '2', 'R', 'S', 'J'],
@@ -240,11 +240,32 @@ describe('franchisePage', () => {
 			'1',
 			'linked'
 		)!;
-		const s = page.sections.find(
-			(x) => x.kind === 'line' && x.rows.some((r) => r.entry.id === 'S')
-		)!;
-		expect(s.kind === 'line' && s.unplaced).toBe(true);
-		expect(s.kind === 'line' && s.rows.map((r) => r.entry.id)).toEqual(['S']);
+		const last = page.sections.at(-1)!;
+		expect(last.kind === 'line' && last.unplaced).toBe(true);
+		expect(last.kind === 'line' && last.rows.map((r) => r.entry.id)).toEqual(['R', 'S']);
+		const first = page.sections[0];
+		expect(first.kind === 'line' && first.rows.map((r) => [r.entry.id, r.position])).toEqual([
+			['1', 1],
+			['2', 2],
+			['J', 3]
+		]);
+	});
+
+	it('is not alone when the one title it lists is another show', () => {
+		const f = payload('jojo', '7158');
+		const one = {
+			...f,
+			entries: f.entries.filter((e) => e.id === '8063'),
+			links: [],
+			versions: [],
+			sides: [],
+			recaps: [],
+			films: []
+		};
+		const page = franchisePage({ franchise: one, rows: [] }, '7158', 'linked')!;
+		expect(page.alone).toBe(false);
+		const self = { ...one, entries: f.entries.filter((e) => e.id === '7158') };
+		expect(franchisePage({ franchise: self, rows: [] }, '7158', 'linked')!.alone).toBe(true);
 	});
 
 	it('keeps a title that says what it leads into among the numbered ones', () => {
@@ -382,21 +403,35 @@ describe('franchisePage', () => {
 			fc.property(anyPage, ({ f, id, order, rows }) => {
 				const page = franchisePage({ franchise: f, rows }, id, order);
 				if (!page) return;
-				page.sections.forEach((s, i) => {
+				const lines = page.sections.filter((s) => s.kind === 'line');
+				const unplaced = lines.filter((s) => s.unplaced);
+				// At most one stretch with no clear place, and it comes last,
+				// so nothing numbered ever reads as part of it.
+				expect(unplaced.length).toBeLessThanOrEqual(1);
+				if (unplaced.length === 1) expect(page.sections.at(-1)).toBe(unplaced[0]);
+				for (const s of page.sections) {
 					if (s.kind === 'ways') expect(s.ways.length).toBeGreaterThan(1);
-					if (s.kind !== 'line') return;
-					// A line is either numbered titles (and titles that say
-					// what they lead into), or titles with no clear place.
-					const unexplained = s.rows.filter((r) => r.position === null && r.leadsInto === null);
-					if (s.unplaced) {
-						expect(unexplained).toHaveLength(s.rows.length);
-						// One heading for a stretch, never two in a row.
-						const prev = page.sections[i - 1];
-						expect(prev?.kind === 'line' && prev.unplaced).toBe(false);
-					} else {
-						expect(unexplained).toEqual([]);
+					if (s.kind !== 'line' || s.unplaced) continue;
+					// Outside it, a title with no number leads into a title
+					// that has a place.
+					for (const r of s.rows) {
+						if (r.position !== null) continue;
+						expect(r.leadsInto).not.toBeNull();
+						expect(unplaced[0]?.rows.some((u) => u.label === r.leadsInto) ?? false).toBe(false);
 					}
-				});
+				}
+			})
+		);
+	});
+
+	it('says the franchise is the show alone only when it lists the show and nothing else', () => {
+		fc.assert(
+			fc.property(anyPage, ({ f, id, order, rows }) => {
+				const page = franchisePage({ franchise: f, rows }, id, order);
+				if (!page) return;
+				const r = page.run;
+				const listed = [...r.entries, ...r.versions, ...r.films, ...r.sides, ...r.recaps];
+				expect(page.alone).toBe(listed.length === 1 && listed[0].id === id);
 			})
 		);
 	});
