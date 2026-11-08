@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
 	guessBinds,
@@ -119,5 +120,39 @@ describe('the show a session plays as', () => {
 			recordAs: '4013',
 			mirrors: false
 		});
+	});
+
+	it('is the show picked again on a session that switched to its first pick', () => {
+		// The session plays the show it switched to, from the card's row,
+		// and the viewer picked another show for the row from it: the
+		// stream is still the first pick's, so the new pick goes out
+		// apart, on the card's row, and the trackers hear nothing.
+		expect(sessionShow({ id: '4013', guess: false, row: CARD, linked: '9999' })).toEqual({
+			guessRow: CARD,
+			guessId: '9999',
+			recordAs: '9999',
+			mirrors: false
+		});
+	});
+
+	it('names the page as itself whenever nothing was picked apart from it', () => {
+		fc.assert(
+			fc.property(
+				fc.constantFrom('7158', '4013'),
+				fc.boolean(),
+				fc.option(fc.constant(CARD), { nil: null }),
+				fc.option(fc.constantFrom('7158', '4013', '9999'), { nil: null }),
+				(id, guess, row, linked) => {
+					const as = sessionShow({ id, guess, row, linked });
+					// The trackers hear a session only when what plays is what it
+					// records.
+					expect(as.mirrors).toBe(linked === null);
+					expect(as.recordAs).toBe(linked ?? id);
+					// A page's own id goes out as itself only when no guess or
+					// pick stands apart from it.
+					expect(as.kitsuId !== undefined).toBe(!guess && linked === null);
+				}
+			)
+		);
 	});
 });

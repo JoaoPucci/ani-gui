@@ -229,9 +229,10 @@ describe("a guessed Continue card's pill", () => {
 		pill(BC_CARD)!.click();
 		await until(() => dialog()?.open === true, 'the picker');
 		const text = dialog()!.textContent ?? '';
-		expect(text).toContain(m.detail_link_dialog_title({ title: BC_TITLE }));
-		// The card offers episode 2 (the row is at 1): the picker says so.
-		expect(text).toContain(m.detail_link_dialog_body({ episode: '2' }));
+		expect(text).toContain(m.detail_link_dialog_title());
+		// The card offers episode 2 (the row is at 1): the picker says so,
+		// with the title the history saved.
+		expect(text).toContain(m.detail_link_dialog_body({ episode: '2', title: BC_TITLE }));
 		// No show page is open: the guess is the one on the card.
 		await until(
 			() => (dialog()!.textContent ?? '').includes(m.home_link_on_card()),

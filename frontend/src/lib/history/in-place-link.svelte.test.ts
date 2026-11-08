@@ -10,6 +10,7 @@ import {
 	__resetHiddenRowsForTests,
 	type InPlaceLinkDeps
 } from './in-place-link.svelte';
+import { notePick, noteSwitch, pickedRow } from './guess-slip';
 
 function ref(id: string, title: string): KitsuAnimeRef {
 	return {
@@ -45,7 +46,9 @@ interface Fake {
 	rows: HistoryEntry[];
 }
 
-function fake(): Fake {
+/** The app's dependencies; `inPlayer` for the player's session, which
+ *  says what a pick did in its slip rather than in a notice. */
+function fake(inPlayer = false): Fake {
 	const f = { notices: [], refreshed: 0, rows: [CARD] } as unknown as Fake;
 	f.deps = {
 		history: async () => f.rows,
@@ -69,7 +72,8 @@ function fake(): Fake {
 			return { restored: rows.map((r) => r.row), kept: [] };
 		},
 		notify: (n) => f.notices.push(n),
-		refresh: () => f.refreshed++
+		refresh: () => f.refreshed++,
+		inPlayer
 	};
 	return f;
 }
@@ -125,81 +129,43 @@ describe('Hide', () => {
 	});
 });
 
-describe("That's right", () => {
-	it('links the card to its guess, says it was kept, and leaves the slip', async () => {
-		const f = fake();
+describe('"Yes" on the player', () => {
+	it('records the show playing on the line without a word, and leaves the slip', async () => {
+		const f = fake(true);
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
-		await s.confirmCurrent();
+		await s.answerYes(true);
 		expect(f.rows[0].kitsu_id).toBe(GUESS.id);
 		expect(s.slip).toBe('none');
 		expect(s.linked).toBeNull();
-		const notice = f.notices.at(-1)!;
-		expect(notice.message).toBe(m.play_link_kept_toast({ title: GUESS.canonical_title }));
-		expect(notice.actionLabel).toBe(m.detail_link_undo());
+		expect(f.notices).toEqual([]);
 		expect(f.refreshed).toBe(1);
+		// The ⋯ entry still changes the show, and asks nothing.
+		expect(s.offer?.saved).toBe(GUESS.id);
 	});
 
-	it('gives the guess back on Undo', async () => {
-		const f = fake();
+	it('records nothing where the play landed on another listing, and sets the slip aside', async () => {
+		const f = fake(true);
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
-		await s.confirmCurrent();
-		f.notices.at(-1)!.onAction!();
-		await new Promise((r) => setTimeout(r, 0));
-		await new Promise((r) => setTimeout(r, 0));
+		await s.answerYes(false);
 		expect(f.rows[0].kitsu_id).toBeUndefined();
-		expect(s.slip).toBe('guess');
+		expect(s.slip).toBe('none');
+		expect(f.notices).toEqual([]);
+		expect(s.offer).not.toBeNull();
 	});
 
 	it('does nothing without an offer', async () => {
-		const f = fake();
+		const f = fake(true);
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(null, GUESS.id);
-		await s.confirmCurrent();
+		await s.answerYes(true);
 		expect(f.notices).toEqual([]);
 	});
 });
 
-describe('a link to another show', () => {
-	it('notes the linked show, while what plays is still the guess', async () => {
-		const f = fake();
-		const s = new InPlaceLinkSession(f.deps);
-		await s.arrive(CARD.id, GUESS.id);
-		await s.start(2);
-		s.choose({ ref: RIGHT, current: false });
-		await s.confirm();
-		expect(s.slip).toBe('linked');
-		expect(s.linked).toEqual({ id: RIGHT.id, title: RIGHT.canonical_title });
-		expect(f.notices.at(-1)!.message).toBe(
-			m.detail_link_done_toast({ title: RIGHT.canonical_title })
-		);
-		expect(f.refreshed).toBe(1);
-	});
-
-	it('gives the guess back on Undo', async () => {
-		const f = fake();
-		const s = new InPlaceLinkSession(f.deps);
-		await s.arrive(CARD.id, GUESS.id);
-		await s.start(2);
-		s.choose({ ref: RIGHT, current: false });
-		await s.confirm();
-		const undo = s.undo(
-			{
-				kitsu_id: RIGHT.id,
-				linked: [{ row: CARD.id, previous: null, ep_no: '1', watched_at: null }]
-			},
-			GUESS.id,
-			CARD.id
-		);
-		expect(s.linked).toBeNull();
-		expect(s.slip).toBe('holding');
-		await undo;
-		expect(s.slip).toBe('guess');
-		expect(f.refreshed).toBe(2);
-	});
-
-	it('picking the guess in the picker keeps it, as "That\'s right" does', async () => {
+describe('a pick on Home', () => {
+	it('of the show on the card says it was saved, with an Undo that gives the guess back', async () => {
 		const f = fake();
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
@@ -207,13 +173,67 @@ describe('a link to another show', () => {
 		s.choose({ ref: GUESS, current: true });
 		await s.confirm();
 		expect(s.slip).toBe('none');
-		expect(f.notices.at(-1)!.message).toBe(
-			m.play_link_kept_toast({ title: GUESS.canonical_title })
-		);
+		const notice = f.notices.at(-1)!;
+		expect(notice.message).toBe(m.detail_link_done_toast({ title: GUESS.canonical_title }));
+		expect(notice.actionLabel).toBe(m.detail_link_undo());
+		notice.onAction!();
+		await new Promise((r) => setTimeout(r, 0));
+		await new Promise((r) => setTimeout(r, 0));
+		expect(f.rows[0].kitsu_id).toBeUndefined();
+		expect(s.slip).toBe('guess');
 	});
 
-	it('leaves the slip as it was when the link fails', async () => {
+	it('keeps no offer once the card is saved, as the card is read again', async () => {
 		const f = fake();
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		await s.start(2);
+		s.choose({ ref: RIGHT, current: false });
+		await s.confirm();
+		expect(s.offer).toBeNull();
+		expect(pickedRow(CARD.id)).toBe(false);
+	});
+});
+
+describe('a pick of another show on the player', () => {
+	it('records it, keeps watching what plays, and says so in the slip alone', async () => {
+		const f = fake(true);
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		await s.start(2);
+		s.choose({ ref: RIGHT, current: false });
+		await s.confirm();
+		expect(f.rows[0].kitsu_id).toBe(RIGHT.id);
+		expect(s.slip).toBe('linked');
+		expect(s.linked).toEqual({ id: RIGHT.id, title: RIGHT.canonical_title, show: RIGHT });
+		// The confirmation is the slip's: no notice, so no Undo.
+		expect(f.notices).toEqual([]);
+		expect(f.refreshed).toBe(1);
+	});
+
+	it('keeps the ⋯ entry to change the show again, the one playing still named as such', async () => {
+		const f = fake(true);
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		await s.start(2);
+		s.choose({ ref: RIGHT, current: false });
+		await s.confirm();
+		expect(s.offer?.current.id).toBe(GUESS.id);
+		expect(s.offer?.saved).toBe(RIGHT.id);
+		expect(pickedRow(CARD.id)).toBe(true);
+		// Picking the show playing after all: nothing left to switch to.
+		await s.start(2);
+		s.choose({ ref: GUESS, current: true });
+		await s.confirm();
+		expect(f.rows[0].kitsu_id).toBe(GUESS.id);
+		expect(s.linked).toBeNull();
+		expect(s.slip).toBe('none');
+		expect(s.offer?.saved).toBe(GUESS.id);
+		expect(f.notices).toEqual([]);
+	});
+
+	it('leaves the slip as it was when the pick cannot be saved', async () => {
+		const f = fake(true);
 		f.deps.link = async () => Promise.reject(new Error('down'));
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
@@ -223,6 +243,45 @@ describe('a link to another show', () => {
 		expect(s.slip).toBe('guess');
 		expect(s.linked).toBeNull();
 		expect(s.error).not.toBeNull();
+		expect(pickedRow(CARD.id)).toBe(false);
+	});
+});
+
+describe('the session a switch opens', () => {
+	it('says once which show plays now, and keeps the ⋯ entry to change it again', async () => {
+		const f = fake(true);
+		f.rows = [{ ...CARD, kitsu_id: RIGHT.id }];
+		notePick(CARD.id);
+		noteSwitch(CARD.id, RIGHT.canonical_title);
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, RIGHT.id);
+		expect(s.slip).toBe('switched');
+		expect(s.switchedTitle).toBe(RIGHT.canonical_title);
+		expect(s.offer?.current.id).toBe(RIGHT.id);
+		expect(s.offer?.saved).toBe(RIGHT.id);
+		// Once: the next arrival of the row is told nothing.
+		const later = new InPlaceLinkSession(f.deps);
+		await later.arrive(CARD.id, RIGHT.id);
+		expect(later.slip).toBe('none');
+		expect(later.offer).not.toBeNull();
+	});
+
+	it('offers nothing for a row no pick on the player saved', async () => {
+		const f = fake(true);
+		f.rows = [{ ...CARD, kitsu_id: RIGHT.id }];
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, RIGHT.id);
+		expect(s.offer).toBeNull();
+		expect(s.slip).toBe('none');
+	});
+
+	it('offers nothing once the row records another show than the one playing', async () => {
+		const f = fake(true);
+		f.rows = [{ ...CARD, kitsu_id: '9999' }];
+		notePick(CARD.id);
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, RIGHT.id);
+		expect(s.offer).toBeNull();
 	});
 });
 
@@ -248,13 +307,13 @@ describe('a surface that reads nothing from the history', () => {
 	});
 });
 
-describe('a "That\'s right" that fails', () => {
+describe('a "Yes" that fails', () => {
 	it('says so in a notice, since the picker that shows errors is closed', async () => {
-		const f = fake();
+		const f = fake(true);
 		f.deps.link = async () => Promise.reject(new Error('down'));
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
-		await s.confirmCurrent();
+		await s.answerYes(true);
 		expect(f.notices.at(-1)).toEqual({ kind: 'error', message: m.detail_link_failed() });
 		expect(s.slip).toBe('guess');
 	});

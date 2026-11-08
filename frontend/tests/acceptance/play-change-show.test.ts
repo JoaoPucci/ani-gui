@@ -1,16 +1,17 @@
-// Acceptance: the player of a guessed Continue session says the show
-// was guessed, and lets the viewer keep it or change it.
+// Acceptance: the player of a guessed Continue session asks whether
+// this is the show the user meant.
 //
 // The JoJo card's own row is hianime's 2000 OVA listing, which a guess
 // from its title matched to the 2012 series; its play landed on the
 // 2012 listing and wrote a row there, which the same guess matches.
 // The player's slip — a line attached to the now-playing row, never
-// over the picture — names the history title the guess came from and
-// offers "That's right" and "Not this show? Change"; the ⋯ menu offers
-// the same picker. The picker holds playback while it is open. A link
-// to another show covers the card's own row only, and the slip stays
-// to say what is playing is still the guessed show. Hide sets the slip
-// aside for the card's row until the app restarts.
+// over the picture — names the history title and asks. Yes records the
+// show without a word. No opens the picker ("Which show is it?"), as
+// the ⋯ menu does; it holds playback while it is open. A pick of
+// another show covers the card's own row only, and the user switches
+// to it now or keeps watching this: the slip alone says which, with no
+// toast and no Undo, and the ⋯ entry stays to change it again. Hide
+// sets the slip aside for the card's row until the app restarts.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -43,6 +44,7 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { __resetHiddenRowsForTests } from '../../src/lib/history/in-place-link.svelte';
+import { recoveryResume } from '../../src/lib/play/resume-after-recovery';
 
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
@@ -193,20 +195,30 @@ async function openPicker() {
 	await until(() => dialog()?.open === true, 'the picker');
 }
 
-async function pickAndLink(title: string) {
+/** Pick `title` in the open picker and answer its last step with
+ *  `answer`: the one button of a pick of the show playing, or on the
+ *  player, "Keep watching this" or "Switch to it now". */
+async function pickAndLink(title: string, answer = m.play_link_keep_watching()) {
 	const row = () =>
 		Array.from(dialog()?.querySelectorAll<HTMLButtonElement>('li button') ?? []).find((b) =>
 			(b.textContent ?? '').includes(title)
 		);
 	await until(() => row() !== undefined, `${title} among the candidates`);
 	row()!.click();
-	await until(() => !button(m.detail_link_confirm_button())?.disabled, 'the Link button');
-	button(m.detail_link_confirm_button())!.click();
+	await until(() => !button(answer, dialog()!)?.disabled, `the ${answer} button`);
+	button(answer, dialog()!)!.click();
 	await until(() => backend.linkCalls.length > 0, 'the link');
 }
 
+const moreMenu = async () => {
+	target
+		.querySelector<HTMLButtonElement>(`button[aria-label="${m.play_more_aria_label()}"]`)!
+		.click();
+	await until(() => target.querySelector('#np-more-menu') !== null, 'the menu');
+};
+
 describe('the slip of a guessed session', () => {
-	it('names the history title the guess was made from, under the player, not over it', async () => {
+	it('names the history title and asks whether this is the show meant, under the player', async () => {
 		await openPlayer();
 		await until(() => slipText().includes(guessNote()), 'the slip');
 		expect(button(m.play_link_guess_right(), slip()!)).not.toBeNull();
@@ -223,13 +235,18 @@ describe('the slip of a guessed session', () => {
 		expect(dialog()).toBeNull();
 	});
 
-	it('offers no "That\'s right" when the play landed on another listing than the card\'s', async () => {
-		// The JoJo card's play landed on the 2012 listing: "That's right"
-		// would record the 2012 series on the 2000 line.
+	it("records nothing on Yes when the play landed on another listing than the card's", async () => {
+		// The JoJo card's play landed on the 2012 listing: recording the
+		// 2012 series would put it on the 2000 line. Yes sets the
+		// question aside instead.
 		await openPlayer({ guess: '1', row: CARD, landed: 'other' });
 		await until(() => slipText().includes(guessNote()), 'the slip');
-		expect(button(m.play_link_guess_right(), slip()!)).toBeNull();
 		expect(button(m.play_link_change_button(), slip()!)).not.toBeNull();
+		button(m.play_link_guess_right(), slip()!)!.click();
+		await until(() => slip() === null, 'the slip to go');
+		await settle();
+		expect(backend.linkCalls).toEqual([]);
+		expect(toastStore.items).toEqual([]);
 	});
 
 	it('holds its room with nothing in it while the guess is decided, and goes if there is none', async () => {
@@ -286,8 +303,9 @@ describe('the ⋯ menu of a guessed session', () => {
 		const text = dialog()!.textContent ?? '';
 		// The episode the player and breadcrumb show, named as the one
 		// playing: Continue Watching picks up at the next one.
-		expect(text).toContain(m.play_link_dialog_body({ episode: '2' }));
-		expect(text).not.toContain(m.detail_link_dialog_body({ episode: '2' }));
+		expect(text).toContain(m.detail_link_dialog_title());
+		expect(text).toContain(m.play_link_dialog_body({ episode: '2', title: TITLE }));
+		expect(text).not.toContain(m.detail_link_dialog_body({ episode: '2', title: TITLE }));
 		// The guessed show is the one playing, not one "on this page".
 		await until(
 			() => (dialog()!.textContent ?? '').includes(m.play_link_playing_now()),
@@ -367,37 +385,49 @@ describe('the player behind the picker', () => {
 	});
 });
 
-describe('linking from the player', () => {
-	it("links the card's own row only, and the slip says what is still playing", async () => {
+describe('a pick of another show on the player, kept watching here', () => {
+	it("records the card's own row only, and the slip alone says so", async () => {
 		await openPlayer();
 		await openPicker();
-		await pickAndLink(RIGHT_TITLE);
+		// Picking another show asks whether to switch to it now.
+		const pick = () =>
+			Array.from(dialog()!.querySelectorAll<HTMLButtonElement>('li button')).find((b) =>
+				(b.textContent ?? '').includes(RIGHT_TITLE)
+			);
+		await until(() => pick() !== undefined, 'the candidates');
+		pick()!.click();
+		await until(() => button(m.play_link_switch_now(), dialog()!) !== null, 'the switch question');
+		expect(dialog()!.textContent).toContain(m.play_link_switch_heading({ title: RIGHT_TITLE }));
+		expect(dialog()!.textContent).toContain(
+			m.play_link_switch_hint({ episode: '2', time: '0:00' })
+		);
+		expect(button(m.detail_link_confirm_button(), dialog()!)).toBeNull();
+		// Switch is the answer the focus is on.
+		await until(
+			() => document.activeElement === button(m.play_link_switch_now(), dialog()!),
+			'focus on Switch'
+		);
+		button(m.play_link_keep_watching(), dialog()!)!.click();
+		await until(() => backend.linkCalls.length > 0, 'the pick to be saved');
 		expect(backend.linkCalls[0].card).toBe(CARD);
 		// The 2012 listing's row stays the 2012 series' history.
 		expect(backend.rows.find((r) => r.id === CARD)?.kitsu_id).toBe(RIGHT);
 		expect(backend.rows.find((r) => r.id === PLAYED)?.kitsu_id).toBeUndefined();
 		await until(
 			() => slipText().includes(m.play_link_linked_note({ title: RIGHT_TITLE })),
-			'the linked note'
+			'the note'
 		);
-		expect(toastWith(m.detail_link_done_toast({ title: RIGHT_TITLE }))?.actionLabel).toBe(
-			m.detail_link_undo()
-		);
-		// The ⋯ entry goes with the guess.
-		target
-			.querySelector<HTMLButtonElement>(`button[aria-label="${m.play_more_aria_label()}"]`)!
-			.click();
-		await until(() => target.querySelector('#np-more-menu') !== null, 'the menu');
-		expect(button(m.play_link_menu_item())).toBeNull();
-		// The way to the linked show.
-		button(m.play_link_open_linked(), slip()!)!.click();
-		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the way to the linked show');
-		expect(String(vi.mocked(goto).mock.calls.at(-1)?.[0])).toBe(`/anime/${RIGHT}`);
+		// Said once, in the player: no toast, so no Undo.
+		expect(toastStore.items).toEqual([]);
+		expect(button(m.play_link_switch_now(), slip()!)).not.toBeNull();
+		// The ⋯ entry stays, to change the show again.
+		await moreMenu();
+		expect(button(m.play_link_menu_item())).not.toBeNull();
 	});
 
-	it('plays later episodes of the session as the linked show, which history keeps', async () => {
+	it('plays later episodes of the session as the pick, which history keeps', async () => {
 		// A backend that records whatever id a watch names, on the card's
-		// row: only the renderer stands between the link and the old guess.
+		// row: only the renderer stands between the pick and the old guess.
 		const watched: Record<string, unknown>[] = [];
 		server.use(
 			http.post(`${API_BASE}/api/play/mark-watched`, async ({ request }) => {
@@ -414,7 +444,7 @@ describe('linking from the player', () => {
 		await pickAndLink(RIGHT_TITLE);
 		await until(
 			() => slipText().includes(m.play_link_linked_note({ title: RIGHT_TITLE })),
-			'the linked note'
+			'the note'
 		);
 		const next = target.querySelector<HTMLButtonElement>(
 			`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
@@ -426,7 +456,7 @@ describe('linking from the player', () => {
 		const play = FakeEventSource.instances.at(-1)!;
 		const asked = new URL(play.url, 'http://x').searchParams;
 		expect(asked.get('episode')).toBe('3');
-		// Named as the link, on the card's row; never as the old guess.
+		// Named as the pick, on the card's row; never as the old guess.
 		expect(asked.get('guess_row')).toBe(CARD);
 		expect(asked.get('guess_id')).toBe(RIGHT);
 		expect(asked.get('kitsu_id')).toBeNull();
@@ -444,36 +474,126 @@ describe('linking from the player', () => {
 		expect(watched.every((w) => w.kitsu_id !== GUESS && w.guess_id !== GUESS)).toBe(true);
 		expect(backend.rows.find((r) => r.id === CARD)?.kitsu_id).toBe(RIGHT);
 	});
+});
 
-	it('gives the slip its guess back on Undo', async () => {
+describe('switching to the pick', () => {
+	/** The player's video, at `at` seconds in. */
+	function videoAt(at: number) {
+		const v = target.querySelector<HTMLVideoElement>('.player-video-slot video')!;
+		Object.defineProperty(v, 'currentTime', { configurable: true, get: () => at, set: () => {} });
+		v.pause = vi.fn();
+		v.play = vi.fn(async () => {});
+		return v;
+	}
+
+	/** The play the switch asks for: the pick's own. */
+	const pickPlay = () =>
+		FakeEventSource.instances.find(
+			(es) => new URL(es.url, 'http://x').searchParams.get('kitsu_id') === RIGHT
+		);
+
+	/** Answer the play the switch asks for, as the backend does. */
+	async function answerSwitch() {
+		await until(() => pickPlay() !== undefined, 'the play of the pick');
+		const play = pickPlay()!;
+		const asked = new URL(play.url, 'http://x').searchParams;
+		expect(asked.get('episode')).toBe('2');
+		expect(asked.get('guess_row')).toBeNull();
+		expect(asked.get('guess_id')).toBeNull();
+		// The band between episodes holds the player meanwhile.
+		expect(target.ownerDocument.querySelector('.band')).not.toBeNull();
+		play.dispatch(
+			'done',
+			JSON.stringify({ session_id: 'session-9', master_url: '/s/u/file.mp4', media_kind: 'mp4' })
+		);
+		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to land');
+		return String(vi.mocked(goto).mock.calls.at(-1)?.[0]);
+	}
+
+	it('from the picker reloads the player at the same episode and point on the pick', async () => {
 		await openPlayer();
+		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+		videoAt(74);
+		await openPicker();
+		await pickAndLink(RIGHT_TITLE, m.play_link_switch_now());
+		const href = await answerSwitch();
+		const url = new URL(href, 'http://x');
+		expect(url.pathname).toBe(`/play/${RIGHT}`);
+		expect(url.searchParams.get('episode')).toBe('2');
+		expect(url.searchParams.get('row')).toBe(CARD);
+		// The row records the pick now: the session is no guess.
+		expect(url.searchParams.get('guess')).toBeNull();
+		expect(recoveryResume.consume(RIGHT, 2)).toBe(74);
+		expect(toastStore.items).toEqual([]);
+	});
+
+	it('from the slip after keeping watching does the same', async () => {
+		await openPlayer();
+		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+		videoAt(30);
 		await openPicker();
 		await pickAndLink(RIGHT_TITLE);
+		await until(() => button(m.play_link_switch_now(), slip() ?? target) !== null, 'Switch');
+		button(m.play_link_switch_now(), slip()!)!.click();
+		const href = await answerSwitch();
+		expect(new URL(href, 'http://x').pathname).toBe(`/play/${RIGHT}`);
+		expect(recoveryResume.consume(RIGHT, 2)).toBe(30);
+	});
+
+	it('opens a session that says once what plays now, with the ⋯ entry to change it again', async () => {
+		await openPlayer();
+		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+		videoAt(74);
+		await openPicker();
+		await pickAndLink(RIGHT_TITLE, m.play_link_switch_now());
+		const href = await answerSwitch();
+		// The route mounts the player afresh for the other show
+		// (play/[id]/+layout.svelte).
+		unmount(app!);
+		app = null;
+		const url = new URL(href, 'http://x');
+		setParams({ id: RIGHT });
+		setUrl(url.pathname, Object.fromEntries(url.searchParams));
+		app = mount(PlayPage, { target });
 		await until(
-			() => toastWith(m.detail_link_done_toast({ title: RIGHT_TITLE })) !== undefined,
-			'the toast'
+			() => slipText().includes(m.play_link_switched_note({ title: RIGHT_TITLE })),
+			'the switched note'
 		);
-		toastWith(m.detail_link_done_toast({ title: RIGHT_TITLE }))!.onAction!();
-		await until(() => backend.unlinkCalls.length === 1, 'the undo');
-		await until(() => slipText().includes(guessNote()), 'the guess again');
-		expect(backend.rows.every((r) => r.kitsu_id === undefined)).toBe(true);
+		expect(slip()!.querySelector('button:not(.hide)')).toBeNull();
+		await moreMenu();
+		expect(button(m.play_link_menu_item())).not.toBeNull();
+	});
+
+	it('says so and keeps the player as it was when the pick has no stream', async () => {
+		await openPlayer();
+		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+		videoAt(74);
+		await openPicker();
+		await pickAndLink(RIGHT_TITLE, m.play_link_switch_now());
+		await until(() => pickPlay() !== undefined, 'the play of the pick');
+		pickPlay()!.dispatch('error', JSON.stringify({ kind: 'timeout' }));
+		await until(
+			() => toastWith(m.play_link_switch_failed({ title: RIGHT_TITLE })) !== undefined,
+			'the failure'
+		);
+		expect(vi.mocked(goto)).not.toHaveBeenCalled();
+		expect(recoveryResume.consume(RIGHT, 2)).toBeNull();
+		// Still kept watching here, with the way to switch.
+		expect(slipText()).toContain(m.play_link_linked_note({ title: RIGHT_TITLE }));
+		expect(button(m.play_link_switch_now(), slip()!)).not.toBeNull();
 	});
 });
 
-describe('"That\'s right"', () => {
-	it('records the guessed show on the line, says it was kept, and Undo brings the guess back', async () => {
+describe('"Yes"', () => {
+	it('records the guessed show on the line without a word, and the slip goes', async () => {
 		await openPlayer();
 		await until(() => slipText().includes(guessNote()), 'the slip');
 		button(m.play_link_guess_right(), slip()!)!.click();
-		await until(() => backend.linkCalls.length === 1, 'the link');
+		await until(() => backend.linkCalls.length === 1, 'the record');
 		expect(backend.linkCalls[0]).toMatchObject({ card: CARD, kitsu_id: GUESS });
 		expect(backend.rows.find((r) => r.id === CARD)?.kitsu_id).toBe(GUESS);
 		await until(() => slip() === null, 'the slip to go');
-		const toast = toastWith(m.play_link_kept_toast({ title: GUESS_TITLE }));
-		expect(toast?.actionLabel).toBe(m.detail_link_undo());
-		toast!.onAction!();
-		await until(() => backend.unlinkCalls.length === 1, 'the undo');
-		await until(() => slipText().includes(guessNote()), 'the guess again');
+		expect(toastStore.items).toEqual([]);
 	});
 });
 

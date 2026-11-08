@@ -186,6 +186,18 @@ describe('guessedGroup', () => {
 	});
 });
 
+describe('guessedGroup, for a card picked again on the player', () => {
+	it('stands for the rows recorded as the pick, which a guess no longer matches', async () => {
+		// The card and the row it hides were saved as 4013 by a pick on
+		// the player; the special plays still, and a new pick changes
+		// both rows again, never the special's own.
+		const picked = (e: HistoryEntry) => ({ ...e, kitsu_id: '4013' });
+		const d = deps({ history: async () => [picked(CARD), picked(HIDDEN), PLAYED, OTHER] });
+		const offer = { entry: picked(CARD), current: ref(GUESS), saved: '4013' };
+		expect(await guessedGroup(d, offer)).toEqual([CARD.id, HIDDEN.id]);
+	});
+});
+
 describe('guessedGroup, over a long history', () => {
 	it('asks for the rows’ matches side by side', async () => {
 		let inFlight = 0;

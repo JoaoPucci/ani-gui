@@ -383,8 +383,8 @@ describe('the episode the picker names', () => {
 		button(m.detail_link_change())!.click();
 		await until(() => target.querySelector('dialog') !== null, 'the picker');
 		const text = target.querySelector('dialog')!.textContent ?? '';
-		expect(text).toContain(m.detail_link_dialog_body({ episode: '6' }));
-		expect(text).not.toContain(m.detail_link_dialog_body({ episode: '5' }));
+		expect(text).toContain(m.detail_link_dialog_body({ episode: '6', title: TITLE }));
+		expect(text).not.toContain(m.detail_link_dialog_body({ episode: '5', title: TITLE }));
 	});
 });
 

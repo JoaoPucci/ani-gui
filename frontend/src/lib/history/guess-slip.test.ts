@@ -6,7 +6,12 @@ import {
 	__resetHiddenRowsForTests,
 	hideRow,
 	isRowHidden,
+	notePick,
+	noteSwitch,
+	pickedRow,
+	sessionRow,
 	slipState,
+	takeSwitch,
 	type SlipInputs
 } from './guess-slip';
 
@@ -16,8 +21,10 @@ const inputs = fc.record({
 	row: fc.option(fc.constantFrom('hianime:a-1', 'b-2'), { nil: null }),
 	aside: fc.boolean(),
 	linked: fc.boolean(),
+	switched: fc.boolean(),
 	settled: fc.boolean(),
-	offered: fc.boolean()
+	offered: fc.boolean(),
+	asking: fc.boolean()
 });
 
 describe('slipState', () => {
@@ -37,12 +44,75 @@ describe('slipState', () => {
 		);
 	});
 
-	it('holds its room until the offer is decided, then shows the guess while offered', () => {
-		const base = { row: 'hianime:a-1', aside: false, linked: false };
-		expect(slipState({ ...base, settled: false, offered: false })).toBe('holding');
-		expect(slipState({ ...base, settled: false, offered: true })).toBe('holding');
-		expect(slipState({ ...base, settled: true, offered: true })).toBe('guess');
-		expect(slipState({ ...base, settled: true, offered: false })).toBe('none');
+	it('holds its room until the offer is decided, then asks while the offer still asks', () => {
+		const base = { row: 'hianime:a-1', aside: false, linked: false, switched: false };
+		expect(slipState({ ...base, settled: false, offered: false, asking: false })).toBe('holding');
+		expect(slipState({ ...base, settled: false, offered: true, asking: true })).toBe('holding');
+		expect(slipState({ ...base, settled: true, offered: true, asking: true })).toBe('guess');
+		expect(slipState({ ...base, settled: true, offered: false, asking: false })).toBe('none');
+		// An offer kept only to change the show again asks nothing.
+		expect(slipState({ ...base, settled: true, offered: true, asking: false })).toBe('none');
+	});
+
+	it('says once that the show was switched, before the question or the held room', () => {
+		fc.assert(
+			fc.property(inputs, (s: SlipInputs) => {
+				if (s.row !== null && !s.aside && !s.linked && s.switched)
+					expect(slipState(s)).toBe('switched');
+			})
+		);
+	});
+
+	it('asks the question only for an offer that asks', () => {
+		fc.assert(
+			fc.property(inputs, (s: SlipInputs) => {
+				if (slipState(s) === 'guess') expect(s.offered && s.asking && s.settled).toBe(true);
+			})
+		);
+	});
+});
+
+describe('rows picked on the player', () => {
+	it('carry their session on, without a guess, until the app restarts', () => {
+		expect(sessionRow(true, 'hianime:a-1')).toBe('hianime:a-1');
+		expect(sessionRow(false, 'hianime:a-1')).toBeNull();
+		notePick('hianime:a-1');
+		expect(pickedRow('hianime:a-1')).toBe(true);
+		expect(pickedRow('b-2')).toBe(false);
+		expect(sessionRow(false, 'hianime:a-1')).toBe('hianime:a-1');
+		expect(sessionRow(false, null)).toBeNull();
+		__resetHiddenRowsForTests();
+		expect(sessionRow(false, 'hianime:a-1')).toBeNull();
+	});
+
+	it('are a row of the session opened from the card, whatever else is noted', () => {
+		fc.assert(
+			fc.property(
+				fc.boolean(),
+				fc.option(fc.constantFrom('hianime:a-1', 'b-2'), { nil: null }),
+				fc.array(fc.constantFrom('hianime:a-1', 'b-2')),
+				(guess, row, picked) => {
+					__resetHiddenRowsForTests();
+					for (const p of picked) notePick(p);
+					const got = sessionRow(guess, row);
+					expect(got === null || got === row).toBe(true);
+					if (guess && row !== null) expect(got).toBe(row);
+					if (row === null) expect(got).toBeNull();
+				}
+			)
+		);
+	});
+});
+
+describe('a switch to the picked show', () => {
+	it('is told once, to the session of its row', () => {
+		noteSwitch('hianime:a-1', 'JoJo 2000');
+		expect(takeSwitch('b-2')).toBeNull();
+		expect(takeSwitch('hianime:a-1')).toBeNull();
+		noteSwitch('hianime:a-1', 'JoJo 2000');
+		expect(takeSwitch('hianime:a-1')).toBe('JoJo 2000');
+		expect(takeSwitch('hianime:a-1')).toBeNull();
+		expect(takeSwitch(null)).toBeNull();
 	});
 });
 
