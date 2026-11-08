@@ -8,7 +8,7 @@
  * CRAP ratchet ceiling (`coverage-baseline.json#crap.high_risk_le`).
  */
 
-import type { OAuthOpenResult, PersistedAccount, Provider } from './types';
+import type { GetTokenResult, OAuthOpenResult, PersistedAccount, Provider } from './types';
 import { enqueueTokenWrite } from './token-write-queue';
 
 function bridge() {
@@ -29,11 +29,22 @@ export type ReadPersistedAccountResult =
 	| { ok: false; kind: 'not_found' }
 	| { ok: false; kind: 'unreadable'; detail: string };
 
-/** Synchronous safeStorage read. Used at boot by `accountStore.hydrate()`. */
-export function readPersistedAccount(provider: Provider): ReadPersistedAccountResult {
+/**
+ * Read + decrypt a provider's persisted token. Used by
+ * `accountStore.hydrate()`. Asynchronous: a keyring that is locked or
+ * not answering holds this promise, and nothing else.
+ */
+export async function readPersistedAccount(
+	provider: Provider
+): Promise<ReadPersistedAccountResult> {
 	const b = bridge();
 	if (!b) return { ok: false, kind: 'not_found' };
-	const r = b.getToken(provider);
+	let r: GetTokenResult;
+	try {
+		r = await b.getToken(provider);
+	} catch (err) {
+		return { ok: false, kind: 'unreadable', detail: String(err) };
+	}
 	if (r.ok) return { ok: true, account: r.payload };
 	// `not_found` is the only "you should treat this as disconnected"
 	// case. Everything else means the file is on disk but unusable —

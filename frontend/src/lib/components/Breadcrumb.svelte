@@ -13,10 +13,10 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
-	import type { BreadcrumbSegment } from '$lib/breadcrumb';
+	import { goesBack, yieldingSegment, type BreadcrumbSegment } from '$lib/breadcrumb';
 	import { m } from '$lib/paraglide/messages';
 
-	let { segments }: { segments: BreadcrumbSegment[] } = $props();
+	let { segments, back = null }: { segments: BreadcrumbSegment[]; back?: string | null } = $props();
 
 	// The chevron walks "up" one level — to the second-to-last
 	// segment. When there's only one segment (the current page), it
@@ -25,10 +25,23 @@
 		segments.length >= 2 ? (segments[segments.length - 2].href ?? '/') : '/'
 	);
 
+	// The label that ellipsises first when the topbar runs short.
+	const yielding = $derived(yieldingSegment(segments));
+
+	// A hop to the page behind steps back to its history entry, so it
+	// comes back as it was left (the search page restores its results
+	// and scroll from it); any other hop opens the page.
 	function goUp(e: MouseEvent) {
 		e.preventDefault();
+		if (goesBack(upHref, back)) window.history.back();
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
-		void goto(upHref);
+		else void goto(upHref);
+	}
+
+	function stepBack(e: MouseEvent, href: string) {
+		if (!goesBack(href, back)) return;
+		e.preventDefault();
+		window.history.back();
 	}
 </script>
 
@@ -63,13 +76,17 @@
 				{#if i > 0}
 					<li class="sep" aria-hidden="true">·</li>
 				{/if}
-				<li class:current={!seg.href}>
+				<li class:current={!seg.href} class:yields={i === yielding}>
 					{#if seg.href}
 						<!-- href is `/` literal or `/anime/[id]` etc; the no-resolve
 						     rule pattern-matches a literal `resolve(...)` and trips
 						     on the conditional, so wrap with a disable. -->
-						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-						<a href={seg.href === '/' ? resolve('/') : seg.href}>{seg.label}</a>
+						<!-- eslint-disable svelte/no-navigation-without-resolve -->
+						<a
+							href={seg.href === '/' ? resolve('/') : seg.href}
+							onclick={(e) => stepBack(e, seg.href ?? '')}>{seg.label}</a
+						>
+						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					{:else}
 						<span aria-current="page">{seg.label}</span>
 					{/if}
@@ -80,15 +97,26 @@
 {/if}
 
 <style>
+	/* The trail shares the topbar's row with the search pill and the
+	   window controls, and it is the one that gives way: with
+	   `min-inline-size: 0` the row may narrow it below its full width,
+	   and the longest label inside then ellipsises (the labels clip,
+	   so a flex item's automatic minimum is zero for them). Without it a
+	   long title at the smallest window pushed the window controls,
+	   and the page with them, past the window's edge.
+	   The search pill still gives way first, as it did before the trail
+	   could shrink at all; see `.topbar-search` in +layout.svelte. */
 	.crumbs {
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-2);
+		min-inline-size: 0;
 		padding: 0.4rem 0.6rem 0.4rem 0.4rem;
 		margin-inline-start: calc(-1 * var(--space-2));
 		border-radius: var(--radius-pill);
 	}
 	.up {
+		flex-shrink: 0;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -122,10 +150,18 @@
 		letter-spacing: var(--tracking-meta);
 		min-inline-size: 0;
 	}
+	/* One label gives way: the longest, which is the show's title in
+	   practice (`yields`, from yieldingSegment). The others hold their
+	   width: any share of the shrink, however small, would ellipsise
+	   them. */
 	li {
 		display: inline-flex;
 		align-items: center;
+		flex-shrink: 0;
 		min-inline-size: 0;
+	}
+	li.yields {
+		flex-shrink: 1;
 	}
 	li.sep {
 		color: var(--bone-400);

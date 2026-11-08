@@ -103,7 +103,7 @@ The full pyramid (unit → acceptance → e2e → property → architectural inv
 
 **The coverage floors (`rust.*`, `frontend.*`, `bash.*`) are also firm — tighten-only.** `node tools/check-coverage-baseline.mjs --update` now refuses to lower a floor below the recorded baseline, even if the current measurement would drop it. A PR that removes coverage must restore it (delete-with-tests, port the assertions to a new layer), not paper over the regression by re-baselining. Use `--update` when tests were deliberately added or scope grew and the floor should genuinely rise; never as a workaround for new code that skipped testing.
 
-**Svelte component logic must be testable.** The M3 design + UX detour shipped several pieces of behaviour inside `.svelte` files (BackButton depth tracking, topbar dropdown state machine, detail-page URL `$effect`s, hero rotation). Mounting Svelte 5 components against SvelteKit's runtime in vitest is brittle, so the rule is: **when you find yourself writing more than a couple of lines of imperative logic inside a `<script>`, extract it into a sibling `.ts` module under `$lib` and unit-test the module.** The component becomes a thin adapter that pulls inputs from the Svelte runtime and hands them to the pure function. `$lib/history/nav-depth.ts` is the canonical example — the layout's `afterNavigate` hook is now four lines of glue around a tested function.
+**Svelte component logic must be testable.** The M3 design + UX detour shipped several pieces of behaviour inside `.svelte` files (BackButton depth tracking, topbar dropdown state machine, detail-page URL `$effect`s, hero rotation). Mounting Svelte 5 components against SvelteKit's runtime in vitest is brittle, so the rule is: **when you find yourself writing more than a couple of lines of imperative logic inside a `<script>`, extract it into a sibling `.ts` module under `$lib` and unit-test the module.** The component becomes a thin adapter that pulls inputs from the Svelte runtime and hands them to the pure function. `$lib/history/nav-depth.ts` is the canonical example — the layout's `afterNavigate` hook is glue around a tested function: it passes the event, `page.state` and the browser's index for the entry in, and writes back the stamp it gets.
 
 Known test debt (extract + unit-test next time you touch them):
 
@@ -188,6 +188,40 @@ This rule holds in **all modes**, including auto mode. Pause and surface a reque
 Project-local writes inside the repo are always fine (the test toolchain installer at `tests/bash/helpers/install-bats.sh` writes only to `tests/bash/.bats-vendor/`, which is gitignored — that's project-local and proceeds).
 
 When pausing for approval, explain what the action does, why it's needed, and what the alternative is if the user declines. Examples of safe alternatives: ship a Docker dev image rather than asking the user to install system packages; vendor a tool into the repo rather than `cargo install -g`; document the requirement in `docs/development.md` so the user installs it themselves.
+
+### A safety check is not an obstacle
+
+Some checks exist to stop harm rather than to judge code: the e2e
+launch guard (`electron/lib/e2e-display.cjs`), which keeps test
+windows off the screen of whoever runs the suite; the git hooks; the
+architectural checks; the coverage and CRAP gates. Never get past one
+by making it believe something untrue — setting `GITHUB_ACTIONS=true`
+outside CI, unsetting the variables it reads so it cannot see what it
+guards, pointing it at a stand-in — or by any route it was not
+written to allow. That holds even when the run would have been
+harmless: a check worked around once stops being a check, and nobody
+reviewing the result can tell.
+
+A check that blocks legitimate work is a finding. Stop, say what it
+blocked and why the work needs it, and then either add an explicit,
+documented mode to the check in its own reviewed change, or ask.
+
+What a check allows is not getting past it. The launch guard has two
+modes: locally, the suite runs through `tools/headless-wayland.sh`;
+on GitHub's runners, under Xvfb. A local headless X11 run is neither:
+it needs its own mode, added to the guard as above, before anything
+uses it.
+
+Skipping a check outright happens in these cases, and only these.
+Each is either a rule written here or a skip someone with the
+authority directed, never a route an agent picks for itself:
+
+- A frontend `test(red):` commit excludes the hook checks §12 names
+  (`frontend-test`, and `frontend-check` when the red names a module
+  its green adds), and its body says so.
+- Any other hook skip (`--no-verify`, `LEFTHOOK=0`,
+  `LEFTHOOK_EXCLUDE`) needs the user's explicit direction, as §12
+  says.
 
 ## 12. Git hygiene
 

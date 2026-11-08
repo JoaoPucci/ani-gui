@@ -5,11 +5,11 @@
   - Persistent narrow left rail with home / search / continue / settings
     / diagnostics. Active item gets a 2px accent rule and bone-100 type;
     everything else is hairlined and quiet.
-  - Sticky glassy topbar across all routes: BackButton on the left
-    (auto-hides when there's no history to go back to), persistent
+  - Sticky glassy topbar across all routes: the breadcrumb on the left
+    (hidden when there's no in-app page to go back to), persistent
     search input on the right. Pressing Enter routes to /search?q=…
     so the field works from any page. Removes per-route topbars whose
-    BackButtons jumped around between pages.
+    back buttons jumped around between pages.
   - Wires the favicon via <svelte:head>.
   - Same chrome (rail + topbar) applies everywhere, including /play, so
     navigation is consistent (the player page used to be full-bleed,
@@ -20,12 +20,14 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { afterNavigate, goto } from '$app/navigation';
+	import { afterNavigate, goto, replaceState } from '$app/navigation';
 	import Icon from '$lib/components/Icon.svelte';
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { m } from '$lib/paraglide/messages';
-	import { breadcrumb, defaultTrailFor } from '$lib/breadcrumb';
+	import { breadcrumb, withSearchOrigin } from '$lib/breadcrumb';
+	import { searchOrigin } from '$lib/search-origin';
+	import { pageTrail } from '$lib/page-trail';
 	import {
 		imageProxyUrl,
 		kitsuSearch,
@@ -53,9 +55,10 @@
 	import { ExpiryToastTracker } from '$lib/account/expiry-toast';
 	import { signInToastCopy } from '$lib/account/sign-in-toast-copy';
 	import { needsRenewalRetry, RenewalRetry } from '$lib/account/renewal-retry';
+	import { KeyringWaitNotice } from '$lib/account/keyring-wait';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { downloadStore } from '$lib/download/store.svelte';
-	import { nextDepth, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
+	import { afterNavigation, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
 	import { probeScope } from '$lib/availability/probe-scope';
 	import {
 		RECENT_LIMIT,
@@ -94,41 +97,48 @@
 	const isDiagnostics = $derived(routeId.startsWith('/diagnostics'));
 	const isAbout = $derived(routeId.startsWith('/about'));
 
-	// Back-stack depth tracker. Layout adapter; the rules live in
-	// `$lib/history/nav-depth` so they're unit-testable. We pull
-	// type + stamped depth out of the SvelteKit event, hand them to
-	// nextDepth, and stamp the result back on forward navs so
-	// popstate can read it later.
+	// Back-stack position. Layout adapter; the rules live in
+	// `$lib/history/nav-depth` so they're unit-testable. We hand the
+	// SvelteKit event, the entry's `page.state` and the browser's index
+	// for the entry to afterNavigation, and write the stamp it returns
+	// (the page an entry was opened from) through SvelteKit's shallow
+	// routing so popstate can read it back from `page.state`.
 	let canGoBack = $state(false);
 	let navDepth = 0;
+	// The address of the page behind this one, when the layout knows it.
+	let navOrigin = $state<string | null>(null);
 
 	// Availability probes the page just left asked are aborted now
 	// that the next page is up ($lib/availability/probe-scope).
 	afterNavigate(() => probeScope.settle());
 
-	afterNavigate(({ type }) => {
+	afterNavigate(({ type, from, to }) => {
 		if (typeof window === 'undefined') return;
-		const stamped = (window.history.state as { aniGuiDepth?: number } | null)?.aniGuiDepth;
-		navDepth = nextDepth({
+		const out = afterNavigation({
 			type: type as NavType,
-			stampedDepth: typeof stamped === 'number' ? stamped : null,
-			prevDepth: navDepth
+			state: page.state ?? {},
+			from: from?.url ?? null,
+			to: to?.url ?? null,
+			entry: 'navigation' in window ? (window.navigation.currentEntry?.index ?? null) : null,
+			prev: { depth: navDepth, origin: navOrigin }
 		});
-		// Forward navs need their depth stamped onto the new history
-		// entry so popstate can recover it. enter / popstate /
-		// leave / replaceState don't push a new entry — no stamp needed.
-		if (type === 'goto' || type === 'link' || type === 'form') {
+		navDepth = out.depth;
+		navOrigin = out.origin;
+		if (out.stamp) {
 			try {
-				window.history.replaceState({ ...window.history.state, aniGuiDepth: navDepth }, '');
+				replaceState('', { ...page.state, ...out.stamp });
 			} catch {
-				// replaceState can throw in privacy modes; non-fatal.
+				// The history API can refuse a write (a privacy mode, or
+				// Chromium's rate limit on history writes); non-fatal.
 			}
 		}
 		canGoBack = shouldShowBackButton(navDepth);
 		// Reset the breadcrumb to a default URL-only trail on every
-		// navigation. Routes with richer labels (anime title, episode
-		// number) overwrite this in onMount once their data lands.
-		breadcrumb.set(defaultTrailFor(page.route?.id ?? null));
+		// navigation, keeping a trail the page on this address already
+		// named itself with: SvelteKit runs this only after the page has
+		// rendered, so a page that stayed mounted, or whose data landed
+		// first, has named itself by now ($lib/page-trail).
+		pageTrail.reset(page.url.pathname, page.route?.id ?? null);
 	});
 
 	// Sign-in notices: one pinned `warning` toast per provider whose
@@ -171,6 +181,18 @@
 			accountStore.renewalFailure
 		);
 		renewalRetry.sync();
+	});
+
+	// Keyring notice: pinned while a saved sign-in's keyring read runs
+	// past its wait (see `$lib/account/keyring-wait`), so a signed-out
+	// home is not taken for a lost sign-in; down when the read settles.
+	const keyringWaitNotice = new KeyringWaitNotice();
+	$effect(() => {
+		keyringWaitNotice.sync(accountStore.keyringWaiting, {
+			push: () =>
+				toastStore.push({ kind: 'info', duration: null, message: m.account_keyring_waiting() }),
+			dismiss: (id) => toastStore.dismiss(id)
+		});
 	});
 
 	let topbarQuery = $state('');
@@ -222,13 +244,13 @@
 		// only `/account/+page.svelte` called this, which meant a cold
 		// launch directly to `/` left the rail blank for connected
 		// users until they visited Accounts first.
-		// `hydrate()` is sync (preload's `getToken` is sync IPC) so by
-		// the time the home page mounts the store is fully populated.
-		// hydrate() seeds the store from safeStorage AND kicks off a
-		// silent refresh of any expired-but-refreshable token (e.g. MAL's
-		// ~1h access token), so the user isn't pushed through OAuth every
-		// hour.
-		accountStore.hydrate();
+		// `hydrate()` is asynchronous: the keyring may be locked or slow
+		// to answer, and the page renders signed out until it does —
+		// every consumer reads the store reactively. hydrate() seeds the
+		// store from the OS keyring AND kicks off a silent refresh of any
+		// expired-but-refreshable token (e.g. MAL's ~1h access token), so
+		// the user isn't pushed through OAuth every hour.
+		void accountStore.hydrate();
 
 		// Update notifier — one-shot check on app open. Routes
 		// through the local backend (`/api/update-check`); the
@@ -558,9 +580,15 @@
 	</aside>
 
 	<div class="main-area">
+		<!-- The player's captions menu caps its height at this bar's
+		     bottom edge, found by its class (routes/play/[id]/+page.svelte,
+		     fitCcMenu): renaming this class means renaming that lookup. -->
 		<header class="topbar">
 			{#if canGoBack}
-				<Breadcrumb segments={$breadcrumb} />
+				<Breadcrumb
+					segments={withSearchOrigin($breadcrumb, navOrigin, routeId)}
+					back={searchOrigin(navOrigin)}
+				/>
 			{/if}
 			<form
 				class="topbar-search"
@@ -737,8 +765,9 @@
 		/* Extra inline gutter on both sides so the main column
 		   doesn't feel glued to the rail on the left or the
 		   window edge on the right. Stacks on top of each route's
-		   own padding-inline. Banners (.hero, .masthead) escape
-		   this gutter via negative margins so they stay full-bleed. */
+		   own padding-inline. Banners (Home's .hero, the show page's
+		   .hero-frame, .masthead) escape this gutter via negative
+		   margins so they stay full-bleed. */
 		padding-inline: var(--space-7);
 	}
 	@media (max-inline-size: 720px) {
@@ -873,12 +902,15 @@
 			flex-wrap: wrap;
 		}
 	}
+	/* The small rail link steps down to the faintest text tier rather
+	   than fading with opacity: bone-300 at 0.6 read 3.8:1, short of
+	   WCAG AA for its label. */
 	.nav li.small .nav-link {
-		opacity: 0.6;
+		color: var(--bone-400);
 	}
 	.nav li.small .nav-link:hover,
 	.nav li.small .nav-link.active {
-		opacity: 1;
+		color: var(--bone-100);
 	}
 
 	.nav-link {
@@ -1130,7 +1162,7 @@
 	     negative margin so the bar reaches the rail's right edge on
 	     the left and the window's right edge on the right —
 	     otherwise it floats with empty bands of background on both
-	     sides. Internal `--space-8` padding keeps the BackButton and
+	     sides. Internal `--space-8` padding keeps the breadcrumb and
 	     search from hugging the new edges. */
 	.topbar {
 		position: sticky;
@@ -1175,7 +1207,7 @@
 
 	/* Persistent search input. Pill-rounded to match /search; capped
 	   so it doesn't dominate on widescreen, and pushed toward the
-	   trailing edge so the BackButton stays anchored at the leading
+	   trailing edge so the breadcrumb stays anchored at the leading
 	   edge regardless of the input's width. */
 	.topbar-search {
 		position: relative; /* dropdown anchors absolute to this */
@@ -1184,8 +1216,17 @@
 		gap: var(--space-3);
 		/* Bumped from 28rem to 32rem; the search is the topbar's
 		   primary action and the previous size made the input feel
-		   secondary. */
-		flex: 0 1 32rem;
+		   secondary.
+		   Sized from its narrowest up rather than from 32rem down, so
+		   that when the row runs short the pill gives way first and the
+		   breadcrumb only after it: the pill starts at its min-content
+		   width (basis 0, held there by its automatic minimum), grows
+		   into whatever room the row has, up to 32rem, and never shrinks.
+		   The breadcrumb is the row's only shrinking item, so it takes
+		   any shortfall left once the pill is at its narrowest. Where
+		   the row has room, the result is what `0 1 32rem` gave. */
+		flex: 1 0 0;
+		max-inline-size: 32rem;
 		margin-inline-start: auto;
 		/* Pill thickens (--space-2 → --space-3 vertical, --space-4
 		   → --space-5 horizontal) to host the new 16px body-sans
@@ -1252,9 +1293,9 @@
 		display: none;
 	}
 	.topbar-search input::placeholder {
-		/* Lift placeholder from bone-400 to a brighter color-mix so
-		   the call-to-action ("Search anime…") is legible at the
-		   bumped 16px size. */
+		/* The call-to-action ("Search anime…") at the bumped 16px
+		   size. Bone-100 at 55% clears WCAG AA (4.5:1) on every ink
+		   surface; tests/lint/text-contrast.test.ts holds it there. */
 		color: color-mix(in oklab, var(--bone-100) 55%, transparent);
 		font-weight: 400;
 	}

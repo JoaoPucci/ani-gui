@@ -49,6 +49,15 @@ fn state_at(history_path: PathBuf, kitsu_base: &str) -> AppState {
 /// A history holding one row that records `recorded`, with Kitsu
 /// answering `/anime/<recorded>` with `status`.
 async fn row_recording(recorded: &str, status: u16) -> (tempfile::TempDir, MockServer, AppState) {
+    row_recording_titled(recorded, status, TITLE).await
+}
+
+/// [`row_recording`], the row titled `title`.
+async fn row_recording_titled(
+    recorded: &str,
+    status: u16,
+    title: &str,
+) -> (tempfile::TempDir, MockServer, AppState) {
     let mock = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path(format!("/anime/{recorded}")))
@@ -62,7 +71,7 @@ async fn row_recording(recorded: &str, status: u16) -> (tempfile::TempDir, MockS
         &[HistoryEntry {
             ep_no: "5".into(),
             id: SHOW.into(),
-            title: TITLE.into(),
+            title: title.into(),
             watched_at: None,
             kitsu_id: Some(recorded.into()),
             own_number: false,
@@ -115,6 +124,63 @@ async fn a_deleted_recorded_entry_gives_way_to_the_title_match_past_a_dead_mappi
 
     assert_eq!(found(&state, "1").as_deref(), Some(SHOW));
     assert_eq!(found(&state, "999"), None);
+}
+
+#[tokio::test]
+async fn a_title_match_the_version_before_stored_names_no_show() {
+    // Home no longer reads a title match an earlier pick order stored —
+    // Black Clover's special for the TV series — so neither does the
+    // resume lookup: the row is named by the match Home reads now.
+    let (_tmp, _mock, state) = row_recording("999", 404).await;
+    let before = crate::commands::kitsu::TITLE_MATCH_VERSION - 1;
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &format!(
+            "{}1",
+            crate::commands::kitsu::title_match_prefix_at(
+                before,
+                ShowKey::parse(SHOW).provider,
+                TITLE
+            )
+        ),
+        "1",
+        86_400,
+    )
+    .unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert_eq!(found(&state, "1"), None);
+}
+
+#[tokio::test]
+async fn a_deleted_recorded_entry_gives_way_to_the_title_match_its_year_keyed() {
+    // A row whose title ends with the year it names keeps its guess
+    // keyed by that year; the resume lookup reads it there.
+    let (_tmp, _mock, state) = row_recording_titled("999", 404, "Show (12 episodes) (2009)").await;
+    crate::commands::kitsu::title_match_put(
+        &state,
+        ShowKey::parse(SHOW).provider,
+        "Show (2009)",
+        1,
+        "1",
+    )
+    .unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert_eq!(found(&state, "1").as_deref(), Some(SHOW));
+}
+
+#[tokio::test]
+async fn a_row_naming_a_year_is_not_named_by_the_guess_of_a_row_naming_none() {
+    // A row naming 2009 keeps its guess under "Show (2009)"; the guess
+    // under "Show" alone is another row's, titled alike but naming no
+    // year, and names a different show.
+    let (_tmp, _mock, state) = row_recording_titled("999", 404, "Show (12 episodes) (2009)").await;
+    crate::commands::kitsu::title_match_put(&state, ShowKey::parse(SHOW).provider, "Show", 1, "1")
+        .unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert_eq!(found(&state, "1"), None);
 }
 
 #[tokio::test]

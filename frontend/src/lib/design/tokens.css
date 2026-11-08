@@ -42,10 +42,15 @@
 	   eyebrow value voice (color-mix bone-100 70%) so the secondary
 	   tier reads consistently across labels and metadata. */
 	--bone-300: #b6ad9f;
-	/* Placeholder + deep mute. Bumped from #6b6359 (~40% L, 2.5:1 —
-	   below WCAG AA) to #877f73 (~52% L, ~4.1:1) so placeholder text
-	   in inputs and separator dots stop disappearing. */
-	--bone-400: #877f73;
+	/* Placeholder + deep mute: the faintest text tier, for captions and
+	   meta that should read as secondary. Raised from #877f73, which
+	   cleared WCAG AA (4.5:1) on the page but not on the elevated and
+	   hover surfaces (4.46:1 on ink-100, 3.84:1 on ink-200). This value
+	   clears it on every ink surface: 6.1:1 on ink-000, 4.68:1 on
+	   ink-200, still well under bone-300's 8.9:1 so the tiers stay
+	   apart. `tests/lint/text-contrast.test.ts` holds every bone tier
+	   to AA on every ink surface. */
+	--bone-400: #968e81;
 
 	/* Per-anime accents (8). Deterministic pick by id hash on detail page.
 	   Tones lifted from film-poster ink: oxblood, ink, persimmon, jade,
@@ -354,4 +359,18 @@ img {
 .eyebrow-value {
 	font-weight: 500;
 	color: color-mix(in oklab, var(--bone-100) 70%, transparent);
+}
+
+/* — Fading image: an episode still on a show's page or in the player
+   fades in once its pixels arrive (`$lib/images/fade-on-load` adds
+   .img-loaded on load), including one a held-back fill brings later. (A
+   Continue card's artwork has its own reveal, `$lib/history/reveal-image`.)
+   Its box is already sized, so nothing moves; under
+   prefers-reduced-motion --dur-med is 0, so it just appears. */
+.img-fade {
+	opacity: 0;
+	transition: opacity var(--dur-med) var(--ease-out-soft);
+}
+.img-fade.img-loaded {
+	opacity: 1;
 }

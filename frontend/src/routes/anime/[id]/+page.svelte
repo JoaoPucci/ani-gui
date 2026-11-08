@@ -20,6 +20,8 @@
 		type HeroOrigin
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
+	import { refillEpisodes, refilledImages } from '$lib/refill/apply';
+	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
@@ -113,6 +115,7 @@
 		versionsToOffer,
 		versionsInMode
 	} from '$lib/versions/version-choice';
+	import { storedCaption } from '$lib/play/caption-choice';
 	import { handleRadioKey } from '$lib/versions/radio-keys';
 	import { versionLabel } from '$lib/versions/version-label';
 	import { followPlayed } from '$lib/play/played-episode';
@@ -140,7 +143,7 @@
 	import type { DownloadArgs } from '$lib/api';
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { decideEpisodeFetchAction, parsePageParam } from '$lib/history/url-deeplink';
-	import { breadcrumb } from '$lib/breadcrumb';
+	import { pageTrail } from '$lib/page-trail';
 	import { m } from '$lib/paraglide/messages';
 
 	let detail = $state<KitsuAnimeRef | null>(null);
@@ -680,11 +683,22 @@
 		return out;
 	}
 
+	// What says the show this page shows has gone: a refill landing
+	// after it is not fetched ($lib/refill/refill).
+	let refillSignal: AbortSignal | undefined;
+
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
-		const eps = await kitsuEpisodes(id, p);
+		const eps = await kitsuEpisodes(id, p, {
+			signal: refillSignal,
+			// Thumbnails AniList's pacing held back, filled in once
+			// they land.
+			onRefill: (filled) => {
+				refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
+			}
+		});
 		kitsuPageCache.set(p, eps);
 		return eps;
 	}
@@ -930,7 +944,8 @@
 			quality,
 			show: d,
 			kitsuId: d.id,
-			version
+			version,
+			caption: storedCaption(d.id)
 		});
 		return warmResumeEpisode({ showId, episode: ep, mode, quality, version }, args, playStream);
 	}
@@ -1138,7 +1153,17 @@
 		resumeEntry = null;
 		resumeRefresh.reset();
 		resetEpisodePageCache(kitsuPageCache);
-		const detailServed = kitsuAnimeDetail(currentId);
+		const refills = new AbortController();
+		refillSignal = refills.signal;
+		const detailServed = kitsuAnimeDetail(currentId, {
+			signal: refills.signal,
+			// A banner AniList's pacing held back, put on the hero once
+			// it lands.
+			onRefill: (fresh) => {
+				const images = refilledImages(detail, fresh);
+				if (images && detail && id === currentId) Object.assign(detail, images);
+			}
+		});
 		void lookupResume(currentId, historyByKitsu, detailServed)
 			.then((h) => {
 				if (id !== currentId) return;
@@ -1150,7 +1175,10 @@
 			});
 		void detailServed
 			.then((d) => {
-				if (id !== currentId) return; // navigation raced ahead
+				// Navigation raced ahead: another show, or another page
+				// altogether (the player keeps the same id), whose trail
+				// this show must not name.
+				if (id !== currentId || refills.signal.aborted) return;
 				detail = d;
 				if (isMusicSubtype(d.subtype)) {
 					// Music videos (a YOASOBI MV, say) never exist on the provider —
@@ -1162,8 +1190,9 @@
 				}
 				// Override the layout's URL-only default with the
 				// loaded title so the breadcrumb reads the show
-				// instead of "Anime".
-				breadcrumb.set([
+				// instead of "Anime" — whether the layout's reset for
+				// this navigation has run yet or not.
+				pageTrail.name(page.url.pathname, [
 					{ label: m.breadcrumb_home(), href: '/' },
 					{ label: d.canonical_title ?? m.breadcrumb_anime() }
 				]);
@@ -1202,6 +1231,7 @@
 		// click's own play runs on and records its show's watch. Only
 		// when the id moved: this effect also re-runs on the same show.
 		return () => {
+			refills.abort();
 			if (id !== currentId) clearBackgroundForShow(currentId);
 		};
 	});
@@ -1283,7 +1313,8 @@
 				show: detail,
 				kitsuId: id,
 				prefetch: true,
-				version
+				version,
+				caption: storedCaption(id)
 			});
 			const warmedVisit = visit;
 			const warm = getOrFire(makeKey(id, ep, mode, quality, version), (emit, signal) =>
@@ -1529,7 +1560,8 @@
 			quality,
 			show,
 			kitsuId: owner.showId,
-			version
+			version,
+			caption: storedCaption(owner.showId)
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if the player never opens.
@@ -1560,11 +1592,11 @@
 		);
 		if (outcome.kind === 'played') {
 			actionNotice = null;
-			// Stamp Continue Watching for the click. getOrFire shares
-			// the prefetch's in-flight promise (which had prefetch=true),
-			// so the backend's auto-history-write stayed silent for
-			// cache-hit clicks — markWatched covers that gap. The backend
-			// op is idempotent.
+			// Stamp Continue Watching for the click. A click served from a
+			// finished prefetch (prefetch=true) wrote no history row on
+			// resolving — getOrFire refires a warm still running — so
+			// markWatched, sent now as the session arrives, writes it. The
+			// backend op is idempotent.
 			// Completion is decided against the FULL finite series total
 			// (Kitsu's mode-independent count), NOT episodeCap — in dub
 			// mode the playable cap is only the dubbed slice — and only for a finished series.
@@ -1695,9 +1727,11 @@
 		</div>
 	{:else if detail === null}
 		<!-- Skeleton -->
-		<section class="hero hero-skeleton" aria-busy="true">
-			<div class="hero-img hero-skeleton-img"></div>
-		</section>
+		<div class="hero-frame">
+			<section class="hero hero-skeleton" aria-busy="true">
+				<div class="hero-img hero-skeleton-img"></div>
+			</section>
+		</div>
 		<div class="content">
 			<section class="masthead">
 				<div class="poster-frame poster-skeleton"></div>
@@ -1717,40 +1751,42 @@
 		{@const rating = ratingDisplay(detail.average_rating)}
 		{@const year = yearOf(detail)}
 
-		<section
-			class="hero"
-			class:hero-fallback={!hero.isCover}
-			class:framing-contain={hero.isCover && heroPrefs.framing === 'contain'}
-			class:framing-pillar={hero.isCover && heroPrefs.framing === 'pillar'}
-			class:framing-focus={hero.isCover && heroPrefs.framing === 'focus'}
-		>
-			{#if hero.url && hero.isCover && (heroPrefs.framing === 'contain' || heroPrefs.framing === 'pillar')}
-				<img
-					class="hero-backdrop"
-					src={hero.url}
-					alt=""
-					style:transform={`${heroTransform(scrollY, true)} scale(1.22)`}
-				/>
-			{/if}
-			{#if hero.url}
-				<img
-					class="hero-img"
-					src={hero.url}
-					alt=""
-					style:transform={heroTransform(scrollY, hero.isCover)}
-					style:--ratio={heroRatios[heroId]}
-					onload={(e) => onHeroLoad(heroId, e)}
-					onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
-				/>
-			{/if}
-			<div class="hero-scrim" aria-hidden="true"></div>
-			{#if !hero.isCover}
-				<div class="hero-grain" aria-hidden="true"></div>
-			{/if}
-			{#if heroPrefs.controls}
-				<HeroFramingSwitch prefs={heroPrefs} origin={hero.origin} onchoose={chooseHeroPrefs} />
-			{/if}
-		</section>
+		<div class="hero-frame">
+			<section
+				class="hero"
+				class:hero-fallback={!hero.isCover}
+				class:framing-contain={hero.isCover && heroPrefs.framing === 'contain'}
+				class:framing-pillar={hero.isCover && heroPrefs.framing === 'pillar'}
+				class:framing-focus={hero.isCover && heroPrefs.framing === 'focus'}
+			>
+				{#if hero.url && hero.isCover && (heroPrefs.framing === 'contain' || heroPrefs.framing === 'pillar')}
+					<img
+						class="hero-backdrop"
+						src={hero.url}
+						alt=""
+						style:transform={`${heroTransform(scrollY, true)} scale(1.22)`}
+					/>
+				{/if}
+				{#if hero.url}
+					<img
+						class="hero-img"
+						src={hero.url}
+						alt=""
+						style:transform={heroTransform(scrollY, hero.isCover)}
+						style:--ratio={heroRatios[heroId]}
+						onload={(e) => onHeroLoad(heroId, e)}
+						onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
+					/>
+				{/if}
+				<div class="hero-scrim" aria-hidden="true"></div>
+				{#if !hero.isCover}
+					<div class="hero-grain" aria-hidden="true"></div>
+				{/if}
+				{#if heroPrefs.controls}
+					<HeroFramingSwitch prefs={heroPrefs} origin={hero.origin} onchoose={chooseHeroPrefs} />
+				{/if}
+			</section>
+		</div>
 
 		<div class="content">
 			<section class="masthead">
@@ -2221,7 +2257,14 @@
 										>
 											<span class="ep-thumb">
 												{#if thumb}
-													<img src={thumb} alt="" loading="lazy" decoding="async" />
+													<img
+														class="img-fade"
+														use:fadeOnLoad
+														src={thumb}
+														alt=""
+														loading="lazy"
+														decoding="async"
+													/>
 												{:else if air.unaired}
 													<span class="ep-thumb-placeholder ep-thumb-airs" aria-hidden="true">
 														{unairedLabel(air.airsAt)}
@@ -2405,16 +2448,23 @@
 		}
 	}
 
-	/* — Hero band. */
-	.hero {
-		position: relative;
-		aspect-ratio: var(--hero-aspect);
-		overflow: hidden;
-		/* Escape the layout's inline gutters AND the rail column on
-		   the left so the banner spreads behind the glassy rail too
-		   (the rail's backdrop-blur frosts whatever shows through).
-		   Right side just escapes the gutter — there's no chrome
-		   there to bleed behind. */
+	/* — Hero band.
+	   The frame holds the band's place: it escapes the layout's
+	   inline gutters AND the rail column on the left so the banner
+	   spreads behind the glassy rail too (the rail's backdrop-blur
+	   frosts whatever shows through). Right side just escapes the
+	   gutter — there's no chrome there to bleed behind.
+	   It also clips. The band below arrives scaled up and settles to
+	   its own size; a transformed box adds to the page's scrollable
+	   overflow unless an ancestor clips it, and the frame is the
+	   nearest box exactly the band's size. Without it the page grew a
+	   horizontal scrollbar for as long as the entry lasted. Once the
+	   page has settled the frame reaches the window's edges on three
+	   sides, and the band's foot fades out under its mask, so the clip
+	   takes nothing a reader could see. `clip`, not `hidden`, so the frame does not become a
+	   scroll container. */
+	.hero-frame {
+		overflow: clip;
 		margin-inline-start: calc(-1 * (var(--space-7) + var(--rail-width)));
 		margin-inline-end: calc(-1 * var(--space-7));
 		inline-size: calc(100% + 2 * var(--space-7) + var(--rail-width));
@@ -2424,6 +2474,14 @@
 		   margin-block-end below compensates so the masthead under
 		   the hero stays at its original y. */
 		margin-block-start: calc(-1 * var(--topbar-h));
+		/* Compensate for the negative margin-block-start above so the
+		   masthead beneath the hero stays at its original y. */
+		margin-block-end: calc(var(--space-7) + var(--topbar-h));
+	}
+	.hero {
+		position: relative;
+		aspect-ratio: var(--hero-aspect);
+		overflow: hidden;
 		/* Per-anime accent gradient shows through when Kitsu has no
 		   cover, no poster, and no episode thumbnail — the show
 		   still gets a branded backdrop instead of dead grey. The
@@ -2436,9 +2494,6 @@
 				var(--ink-050) 100%
 			),
 			var(--ink-050);
-		/* Compensate for the negative margin-block-start above so the
-		   masthead beneath the hero stays at its original y. */
-		margin-block-end: calc(var(--space-7) + var(--topbar-h));
 		/* Bleed the banner image down into the masthead area: mask
 		   the bottom 30% of the hero to transparent so the image
 		   fades over the page background. The masthead then pulls
@@ -3074,15 +3129,13 @@
 		filter: saturate(0.6);
 	}
 
-	/* Aired, but above the episode count the provider last reported. Dimmed
-	   the same amount as an uncatalogued tile — the episode genuinely
-	   is not streamable yet — but it keeps the pointer and the hover
-	   lift, because clicking it re-asks the provider. `not-allowed` here
-	   would deny the one affordance the tile exists to offer. */
+	/* Aired, but above the episode count the provider last reported. Its
+	   picture dims as far as an uncatalogued tile's — the episode
+	   genuinely is not streamable yet — but it keeps the pointer and the
+	   hover lift, because clicking it re-asks the provider. `not-allowed`
+	   here would deny the one affordance the tile exists to offer. */
 	.ep-tile-recheck {
 		cursor: pointer;
-		opacity: 0.55;
-		filter: saturate(0.6);
 	}
 
 	/* Unaired episodes: visible so the season's shape stays readable,
@@ -3092,8 +3145,48 @@
 	   `.ep-tile-recheck`. */
 	.ep-tile-unaired {
 		cursor: pointer;
+	}
+
+	/* Both stay clickable, so their words stay readable: the picture
+	   dims and the title steps down a tier, where fading the whole tile
+	   took the title to 3.9:1 and the meta line under it to 1.9:1. A
+	   tile that is also disabled keeps fading whole through
+	   `.ep-tile-disabled`, so these rules leave it alone. Hover lifts
+	   the brightness as on any tile but keeps the desaturation. */
+	.ep-tile-recheck:not(.ep-tile-disabled) .ep-thumb img {
+		opacity: 0.55;
+		filter: brightness(0.85) saturate(0.6);
+	}
+	.ep-tile-unaired:not(.ep-tile-disabled) .ep-thumb img {
 		opacity: 0.45;
-		filter: saturate(0.35);
+		filter: brightness(0.85) saturate(0.35);
+	}
+	.ep-tile-recheck:not(.ep-tile-disabled):hover .ep-thumb img {
+		filter: brightness(1) saturate(0.6);
+	}
+	.ep-tile-unaired:not(.ep-tile-disabled):hover .ep-thumb img {
+		filter: brightness(1) saturate(0.35);
+	}
+	.ep-tile-recheck:not(.ep-tile-disabled) .ep-title,
+	.ep-tile-unaired:not(.ep-tile-disabled) .ep-title {
+		color: var(--bone-300);
+	}
+	/* With no picture to dim, the placeholder loses its accent warmth
+	   and its words step down to the faintest tier, which still clears
+	   AA on ink-100 (5.4:1). The frame number follows them; it sits on
+	   the darkest part of the scrim. */
+	.ep-tile-recheck:not(.ep-tile-disabled) .ep-thumb-placeholder,
+	.ep-tile-unaired:not(.ep-tile-disabled) .ep-thumb-placeholder {
+		background: var(--ink-100);
+		color: var(--bone-400);
+	}
+	.ep-tile-recheck:not(.ep-tile-disabled, :hover)
+		.ep-thumb:has(.ep-thumb-placeholder)
+		:is(.ep-frame-num-key, .ep-frame-num-val),
+	.ep-tile-unaired:not(.ep-tile-disabled, :hover)
+		.ep-thumb:has(.ep-thumb-placeholder)
+		:is(.ep-frame-num-key, .ep-frame-num-val) {
+		color: var(--bone-400);
 	}
 	.ep-unaired-label {
 		font-variant-caps: all-small-caps;
@@ -3192,7 +3285,10 @@
 		block-size: 100%;
 		object-fit: cover;
 		filter: brightness(0.85);
-		transition: filter var(--dur-med) var(--ease-out-soft);
+		/* Opacity: the fade in on load (.img-fade, tokens.css). */
+		transition:
+			filter var(--dur-med) var(--ease-out-soft),
+			opacity var(--dur-med) var(--ease-out-soft);
 	}
 	.ep-thumb-placeholder {
 		display: grid;
@@ -3478,7 +3574,7 @@
 		color: var(--bone-200);
 	}
 	.ep-range-faint {
-		color: color-mix(in oklab, var(--bone-300) 70%, transparent);
+		color: var(--bone-400);
 	}
 
 	/* Prev/next chevron mini-buttons — small bordered chips with

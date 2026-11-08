@@ -409,3 +409,98 @@ fn an_order_the_route_does_not_offer_is_an_invalid_body() {
         assert!(matches!(err, AniError::InvalidRequestBody), "{err:?}");
     }
 }
+
+const REZERO_DASHED: &[u8] =
+    include_bytes!("../../../tests/fixtures/kitsu/search_rezero_season_4_dashed.json");
+const REZERO: &[u8] = include_bytes!("../../../tests/fixtures/kitsu/search_rezero_season_4.json");
+
+/// Kitsu as recorded: the provider's Re:ZERO Season 4 title as typed
+/// answers Zoids Genesis, and without the dash that leads "Starting"
+/// answers Re:ZERO Season 4. `expect` is how often the second may be
+/// asked.
+async fn rezero_kitsu(expect: u64) -> MockServer {
+    let mock = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .and(query_param(
+            "filter[text]",
+            "Re:ZERO -Starting Life in Another World- Season 4",
+        ))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_bytes(REZERO_DASHED.to_vec()),
+        )
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .and(query_param(
+            "filter[text]",
+            "Re:ZERO Starting Life in Another World- Season 4",
+        ))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_bytes(REZERO.to_vec()),
+        )
+        .expect(expect)
+        .mount(&mock)
+        .await;
+    mock
+}
+
+/// The Continue card's title guess searches the history row's title,
+/// and the provider titles Re:ZERO's seasons with a dash before
+/// "Starting".
+#[tokio::test]
+async fn a_title_with_a_dash_led_word_finds_its_show() {
+    let mock = rezero_kitsu(1).await;
+    let state = state_with_kitsu_at(&mock.uri());
+    let hits = kitsu_search(&state, "Re:ZERO -Starting Life in Another World- Season 4")
+        .await
+        .expect("ok");
+    let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
+    assert_eq!(ids, ["49746"]);
+}
+
+/// The title as typed and as Kitsu is sent it are one search: the
+/// second is answered from the page the first cached.
+#[tokio::test]
+async fn a_title_and_its_dashless_spelling_share_one_page() {
+    let mock = rezero_kitsu(1).await;
+    let state = state_with_kitsu_at(&mock.uri());
+    for q in [
+        "Re:ZERO -Starting Life in Another World- Season 4",
+        "Re:ZERO Starting Life in Another World- Season 4",
+    ] {
+        let hits = kitsu_search(&state, q).await.expect("ok");
+        assert_eq!(hits[0].id, "49746", "{q}");
+    }
+}
+
+/// A build that sent the dash cached Kitsu's answer to it — Zoids
+/// Genesis for Re:ZERO Season 4 — for six hours under the title as
+/// typed. That page is not served.
+#[tokio::test]
+async fn a_page_cached_for_the_dash_is_not_served() {
+    let mock = rezero_kitsu(1).await;
+    let state = state_with_kitsu_at(&mock.uri());
+    let stale = serde_json::to_string(
+        &crate::meta::kitsu::parse_search_page(REZERO_DASHED, 0, SEARCH_PAGE_LIMIT).expect("page"),
+    )
+    .expect("json");
+    crate::cache::families::undeclared_allowed(|| {
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            "kitsu:v4:search:0:re:zero -starting life in another world- season 4",
+            &stale,
+            3600,
+        )
+        .expect("seed");
+    });
+    let hits = kitsu_search(&state, "Re:ZERO -Starting Life in Another World- Season 4")
+        .await
+        .expect("ok");
+    assert_eq!(hits[0].id, "49746");
+}

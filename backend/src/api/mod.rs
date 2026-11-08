@@ -28,6 +28,7 @@ use tower_http::cors::CorsLayer;
 
 mod account;
 mod airing;
+mod refill;
 mod sse_abort;
 mod syncplay;
 mod update;
@@ -44,7 +45,7 @@ use crate::commands::{
 use crate::config::Config;
 use crate::error::AniError;
 use crate::history::HistoryEntry;
-use crate::meta::kitsu::{KitsuAnimeRef, KitsuEpisode};
+use crate::meta::kitsu::KitsuAnimeRef;
 use crate::meta::kitsu_page::KitsuSearchPage;
 
 /// Map every `AniError` variant to the closest matching HTTP status.
@@ -102,7 +103,6 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/sessions", post(post_session))
         .route("/api/kitsu/search", post(post_kitsu_search))
         .route("/api/kitsu/search/page", post(post_kitsu_search_page))
-        .route("/api/kitsu/anime/:id", get(get_kitsu_anime_detail))
         .route(
             "/api/kitsu/anime-by-slug/:slug",
             get(get_kitsu_anime_by_slug),
@@ -116,7 +116,6 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/aniskip/:kitsu_id/:episode", get(get_aniskip))
         .route("/api/update-check", get(update::get_update_check))
         .route("/api/kitsu/top-rated", get(get_kitsu_top_rated))
-        .route("/api/kitsu/episodes/:anime_id", get(get_kitsu_episodes))
         .route(
             "/api/title-match",
             get(get_title_match).put(put_title_match),
@@ -151,6 +150,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/watched-at", get(get_watched_at_all))
         .merge(account::router())
         .merge(airing::router())
+        .merge(refill::router())
         .with_state(state)
         // The Electron renderer in dev runs at `http://localhost:<vite>`
         // while we bind 127.0.0.1:<random> — that's cross-origin, so
@@ -173,10 +173,31 @@ async fn get_proxy_base_url(State(state): State<Arc<AppState>>) -> Result<Json<S
     Ok(Json(proxy_url::proxy_base_url(&state)?))
 }
 
+/// A history row as Continue Watching reads it: the row, and the
+/// release year its show key names among its slug's words
+/// ([`crate::scraper::provider::key_year`]) — the renderer does not
+/// read slugs, and the year is what tells apart listings a provider
+/// titles alike ("JoJo's Bizarre Adventure", three times over).
+#[derive(serde::Serialize)]
+struct HistoryRow {
+    #[serde(flatten)]
+    entry: HistoryEntry,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    key_year: Option<u32>,
+}
+
 async fn get_history(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<HistoryEntry>>, AniError> {
-    Ok(Json(h_inner::history_list(&state)?))
+) -> Result<Json<Vec<HistoryRow>>, AniError> {
+    Ok(Json(
+        h_inner::history_list(&state)?
+            .into_iter()
+            .map(|entry| HistoryRow {
+                key_year: crate::scraper::provider::key_year(&entry.id),
+                entry,
+            })
+            .collect(),
+    ))
 }
 
 async fn delete_history(State(state): State<Arc<AppState>>) -> Result<StatusCode, AniError> {
@@ -263,16 +284,6 @@ async fn post_kitsu_search_page(
     ))
 }
 
-async fn get_kitsu_anime_detail(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> Result<Json<KitsuAnimeRef>, AniError> {
-    let id = crate::kitsu_id::require(&id)?;
-    Ok(Json(
-        kitsu_inner::kitsu_anime_detail_page(&state, id).await?,
-    ))
-}
-
 async fn get_kitsu_anime_by_slug(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
@@ -353,27 +364,6 @@ async fn get_kitsu_top_rated(
 }
 
 #[derive(Deserialize)]
-struct EpisodesQuery {
-    page: Option<u32>,
-    /// Skip the cached page — sent only by a click on a tile the
-    /// schedule calls unaired.
-    #[serde(default)]
-    refresh: bool,
-}
-
-async fn get_kitsu_episodes(
-    State(state): State<Arc<AppState>>,
-    Path(anime_id): Path<String>,
-    Query(q): Query<EpisodesQuery>,
-) -> Result<Json<Vec<KitsuEpisode>>, AniError> {
-    let anime_id = crate::kitsu_id::require(&anime_id)?;
-    let page = q.page.unwrap_or(1);
-    Ok(Json(
-        kitsu_inner::kitsu_episodes_with(&state, anime_id, page, q.refresh).await?,
-    ))
-}
-
-#[derive(Deserialize)]
 struct TitleMatchQuery {
     title: String,
     cour: u32,
@@ -381,6 +371,10 @@ struct TitleMatchQuery {
     /// row whose key names no provider.
     #[serde(default)]
     provider: Option<String>,
+    /// The year the row names, which keeps its guess apart from a
+    /// row's titled alike ([`crate::commands::title_match_year`]).
+    #[serde(default)]
+    year: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -398,7 +392,8 @@ async fn get_title_match(
 ) -> Result<Json<Option<String>>, AniError> {
     let provider =
         crate::scraper::provider::ProviderId::from_label(q.provider.as_deref().unwrap_or(""));
-    let stored = kitsu_inner::title_match_get(&state, provider, &q.title, q.cour)?;
+    let title = crate::commands::title_match_year::keyed_title(&q.title, q.year);
+    let stored = kitsu_inner::title_match_get(&state, provider, &title, q.cour)?;
     Ok(Json(stored_kitsu_id(stored)))
 }
 
@@ -421,6 +416,9 @@ struct TitleMatchBody {
     /// row whose key names no provider.
     #[serde(default)]
     provider: Option<String>,
+    /// The year the row names ([`TitleMatchQuery::year`]).
+    #[serde(default)]
+    year: Option<u32>,
 }
 
 async fn put_title_match(
@@ -430,10 +428,11 @@ async fn put_title_match(
     let provider =
         crate::scraper::provider::ProviderId::from_label(body.provider.as_deref().unwrap_or(""));
     let kitsu_id = crate::kitsu_id::require(&body.kitsu_id)?;
-    crate::commands::title_match_store::store_title_match(
+    crate::commands::title_match_store::store_title_match_for_year(
         &state,
         provider,
         &body.title,
+        body.year,
         body.cour,
         kitsu_id,
     )?;
@@ -725,10 +724,13 @@ async fn post_play_mark_watched(
             // build theirs: the episode the click played, as the app
             // numbers it.
             let watch = crate::commands::play_cache::cached_watch(&cached, &args.episode);
+            // A guessed card's watch carries the guessed id only onto
+            // that card's own listing: a resolve since the session's may
+            // have landed elsewhere.
             crate::commands::play_native_record::record_watch_requested_at(
                 &state,
                 &watch,
-                args.kitsu_id.as_deref(),
+                args.recordable_kitsu_id(&cached.show_id),
                 begun,
             )
             .await;
@@ -831,6 +833,18 @@ async fn post_play_cache_evict(
 #[cfg(test)]
 #[path = "kitsu_map_test.rs"]
 mod kitsu_map_tests;
+
+#[cfg(test)]
+#[path = "history_key_year_test.rs"]
+mod history_key_year_tests;
+
+#[cfg(test)]
+#[path = "title_match_year_test.rs"]
+mod title_match_year_tests;
+
+#[cfg(test)]
+#[path = "mark_watched_guess_test.rs"]
+mod mark_watched_guess_tests;
 
 #[cfg(test)]
 #[path = "kitsu_id_boundary_test.rs"]
@@ -1883,7 +1897,7 @@ mod tests {
         // Verify the reverse mapping was persisted by reading the
         // cache row directly. The frontend will read this via the
         // GET /api/allmanga-kitsu-map/:show_id endpoint.
-        let key = "allmanga2kitsu:v9:vDTSJHSpYnrkZnAvG";
+        let key = &crate::commands::kitsu::allmanga_kitsu_key("vDTSJHSpYnrkZnAvG");
         let body = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(body, Some("11061".to_string()));
     }
@@ -2062,7 +2076,7 @@ mod tests {
         // the mapping write was suppressed. Surface decisions stay in
         // tracing::warn for diagnostics.
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        let key = "allmanga2kitsu:v9:D5ksnsKtYAzzFXeSp";
+        let key = &crate::commands::kitsu::allmanga_kitsu_key("D5ksnsKtYAzzFXeSp");
         let stored = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(
             stored, None,
@@ -2162,8 +2176,11 @@ mod tests {
             .await
             .expect("oneshot");
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        let stored =
-            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v9:seq-show").expect("get");
+        let stored = crate::cache::meta_cache_get(
+            &pool,
+            &crate::commands::kitsu::allmanga_kitsu_key("seq-show"),
+        )
+        .expect("get");
         assert_eq!(
             stored,
             Some("99001".to_string()),
@@ -2258,8 +2275,11 @@ mod tests {
             .await
             .expect("oneshot");
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        let stored =
-            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v9:seq2-show").expect("get");
+        let stored = crate::cache::meta_cache_get(
+            &pool,
+            &crate::commands::kitsu::allmanga_kitsu_key("seq2-show"),
+        )
+        .expect("get");
         assert_eq!(
             stored,
             Some("99002".to_string()),
@@ -2339,7 +2359,7 @@ mod tests {
             .expect("oneshot");
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        let key = "allmanga2kitsu:v9:D5ksnsKtYAzzFXeSp";
+        let key = &crate::commands::kitsu::allmanga_kitsu_key("D5ksnsKtYAzzFXeSp");
         let stored = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(
             stored,
@@ -2457,8 +2477,11 @@ mod tests {
             "a watch that never reached the file must not be stamped"
         );
         assert_eq!(
-            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v9:vDTSJHSpYnrkZnAvG")
-                .expect("get"),
+            crate::cache::meta_cache_get(
+                &pool,
+                &crate::commands::kitsu::allmanga_kitsu_key("vDTSJHSpYnrkZnAvG")
+            )
+            .expect("get"),
             None,
             "nor mapped"
         );

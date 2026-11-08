@@ -159,19 +159,19 @@ pub struct EpisodeRef {
     pub title: Option<String>,
 }
 
-pub use super::show_key::{slug_numeric_id, slug_search_term, slug_words, ShowKey};
+pub use super::show_key::{
+    key_year, same_listing, slug_numeric_id, slug_search_term, slug_words, ShowKey,
+};
 
 /// The most a subtitle track's URL may run to, in bytes. A track URL
 /// a CDN signs runs to a few hundred bytes — a path, a token, an
 /// expiry — and a kibibyte leaves room for a long path and a long
-/// signature both. The bound is the hand-offs': every track URL rides
-/// on the player's command line, whose budget the packaged platforms
-/// set differently and Windows sets smallest, at about thirty-two
-/// kibibytes; sixteen tracks at this bound take half of it, leaving
-/// the stream URL, the referer and the player's own flags the rest.
-/// A provider drops a row past it where it drops a row it cannot
-/// fetch, so a malformed page cannot fail a hand-off through an
-/// optional track.
+/// signature both. A track URL rides on a hand-off's command line,
+/// which the hand-off fits to Windows' bound track by track
+/// ([`crate::commands::command_line`]); the bound here keeps one
+/// track from taking a large share of it on its own. A provider drops
+/// a row past it where it drops a row it cannot fetch, so a malformed
+/// page cannot crowd a hand-off's other tracks out.
 pub const SUBTITLE_URL_CAP: usize = 1024;
 
 /// A sidecar subtitle track a provider lists beside the stream —
