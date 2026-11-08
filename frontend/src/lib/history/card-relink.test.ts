@@ -66,6 +66,26 @@ describe('whether a guessed card still stands', () => {
 		expect(h.published).toEqual([['a', '5']]);
 	});
 
+	it('settles the row even when the cards cannot be read again, and reads again next time', async () => {
+		// The history read fails: the settling stands, nothing is left
+		// unhandled, and the next read goes ahead.
+		let fail = true;
+		const h = home([row('a')], [], {
+			offerStands: async () => false,
+			list: async () => {
+				if (fail) throw new Error('down');
+				return [row('a', '5')];
+			}
+		});
+		expect(await h.relink.stillGuessed('a', 'g')).toBe(false);
+		expect(h.settled.has('a')).toBe(true);
+		await flush();
+		expect(h.history()).toEqual([row('a')]);
+		fail = false;
+		await h.relink.reread();
+		expect(h.history()).toEqual([row('a', '5')]);
+	});
+
 	it('asks the offer for the row and the guess it was shown as', async () => {
 		const offerStands = vi.fn(async () => true);
 		const h = home([row('a')], [], { offerStands });
