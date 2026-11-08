@@ -14,9 +14,13 @@
 // What is restated here is the extension each target hands that
 // method (AppImageTarget "AppImage", FpmTarget its own target name,
 // NsisTarget "exe" — the same in electron-builder 25 and 26) and the
-// arch a target listed without one is built for: x64, the only arch
-// the release runners build and the only one the update check
-// recognises.
+// arch a target listed without one is built for. electron-builder
+// builds such a target for the build host's arch; the release
+// packages are built by hand on x64 hosts (docs/development.md), and
+// x64 is the only arch the update check recognises. The release
+// scripts name only the platform on electron-builder's command line,
+// so these config targets, not a list typed there, are what a release
+// builds (the test beside this file holds them to that).
 //
 // A target whose name pattern is electron-builder's default, not one
 // set in this manifest, is reported rather than expanded: whether a
