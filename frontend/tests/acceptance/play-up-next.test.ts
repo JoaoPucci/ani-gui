@@ -156,6 +156,7 @@ interface Options {
 	sourceEpisodes?: number;
 	/** Fractional extras the source lists ("12.5"). */
 	extras?: string[];
+	autoSkipOp?: boolean;
 }
 
 /** Opens `options.episode` of Second Arc and gives its video a length. */
@@ -167,6 +168,7 @@ async function openEpisode(options: Options = {}) {
 				...appConfig(),
 				watch_order: options.order ?? 'linked',
 				auto_play_next: options.autoPlayNext === true,
+				auto_skip_op: options.autoSkipOp === true,
 				use_custom_player_controls: options.nativeControls !== true
 			})
 		),
@@ -633,5 +635,25 @@ describe('the Up next card at a finale', () => {
 			.slice(before)
 			.filter((f) => f.path.startsWith(`/api/aniskip/${KITSU_ID}/12`));
 		expect(asked.map((f) => f.query.get('episode_length'))).toEqual(['1500']);
+	});
+
+	it("does not carry the last episode's skip times into the next before its own arrive", async () => {
+		const { video } = await openEpisode({
+			episode: 11,
+			autoSkipOp: true,
+			skips: [{ skip_type: 'op', start_time: 0, end_time: 90 }]
+		});
+		await playTo(video, 600);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '12', kind: 'mp4' });
+		await until(
+			() => (video.getAttribute('src') ?? '').includes('session-2'),
+			'session-2 attached'
+		);
+		// The new stream starts at zero and has not learned its length.
+		video.currentTime = 0;
+		video.dispatchEvent(new Event('timeupdate'));
+		await new Promise((r) => setTimeout(r, 50));
+		expect(video.currentTime).toBe(0);
+		expect(skipPill()).toBeNull();
 	});
 });
