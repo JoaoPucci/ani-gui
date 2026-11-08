@@ -94,12 +94,12 @@
 		onWatchLaterInvalidated
 	} from '$lib/account/watch-later-refresh';
 	import {
-		nextAgeChange,
 		statusLabel,
 		statusPhrases,
 		watchLaterStatus,
 		type StatusCopy
 	} from '$lib/account/watch-later-status';
+	import { createFreshness } from '$lib/account/watch-later-freshness';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import RowAction from '$lib/components/RowAction.svelte';
 	import RowStyleSwitch from '$lib/rows/RowStyleSwitch.svelte';
@@ -697,7 +697,7 @@
 		// Whatever sent the row here — a mount, a pull, a settled write
 		// that invalidated a tracker's last pull — may have changed the
 		// stamps the freshness line reads, so it reads them again.
-		wlStamped += 1;
+		wlFreshness.stampsChanged();
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const ticket = watchLaterLoads.start(false);
 		const deps = buildWatchLaterDeps();
@@ -745,9 +745,8 @@
 		const deps = buildWatchLaterDeps();
 		const providers = Object.keys(deps.credentials) as Provider[];
 		if (providers.length === 0) return;
-		wlHeld = wlStatusText;
+		wlFreshness.refreshStarted(wlStatusText, m.account_watch_later_refreshing());
 		refreshingWatchLater = true;
-		wlAnnounce = m.account_watch_later_refreshing();
 		try {
 			await Promise.all(
 				providers.map(async (p) => {
@@ -773,24 +772,27 @@
 			await reloadWatchLaterRail();
 		} finally {
 			refreshingWatchLater = false;
-			wlNow = Date.now();
-			wlStamped += 1;
-			wlHeld = null;
-			wlAnnounce = wlStatusText ?? '';
+			wlFreshness.refreshSettled(() => wlStatusText);
 		}
 	}
 
-	// The Watch Later rail's freshness line — see
-	// $lib/account/watch-later-status. The last-pulled times live in
-	// local storage, which nothing reactive watches, so `wlStamped`
-	// moves whenever a pull may have recorded one, or a write cleared
-	// one, and the times are read again; `wlNow` moves when the age on
-	// screen next changes, and not otherwise.
-	let wlStamped = $state(0);
-	let wlNow = $state(Date.now());
-	// A write clears a tracker's stamp whatever became of it, including
-	// writes that land nowhere and so never read the rail again.
-	$effect(() => onWatchLaterInvalidated(() => (wlStamped += 1)));
+	// The Watch Later rail's freshness line — what it reads is
+	// $lib/account/watch-later-status, and when its inputs move is
+	// $lib/account/watch-later-freshness. The last-pulled times live in
+	// local storage, which nothing reactive watches, so `stamped` moves
+	// whenever a pull may have recorded one, or a write cleared one, and
+	// the times are read again.
+	const wlFreshness = createFreshness(
+		{
+			now: () => Date.now(),
+			schedule: (fn, ms) => setTimeout(fn, ms),
+			cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>)
+		},
+		(next) => (wl = next)
+	);
+	let wl = $state(wlFreshness.state);
+	onDestroy(() => wlFreshness.dispose());
+	$effect(() => onWatchLaterInvalidated(() => wlFreshness.stampsChanged()));
 	const wlCopy: StatusCopy = {
 		refreshing: () => m.account_watch_later_refreshing(),
 		never: () => m.account_watch_later_not_updated(),
@@ -798,25 +800,15 @@
 		updated: (when) => m.account_watch_later_updated({ when })
 	};
 	const wlStatus = $derived.by(() => {
-		void wlStamped;
+		void wl.stamped;
 		const providers = Object.keys(buildWatchLaterDeps().credentials) as Provider[];
 		return watchLaterStatus(providers.map(readLastRefreshed), refreshingWatchLater);
 	});
-	const wlStatusText = $derived(statusLabel(wlStatus, wlNow, getLocale(), wlCopy));
-	// The label the line had when a refresh started, held (hidden) for
-	// its width until the refresh settles; see statusPhrases.
-	let wlHeld = $state<string | null>(null);
-	const wlPhrases = $derived(statusPhrases(wlStatus, wlNow, getLocale(), wlCopy, wlHeld));
-	// What a refresh says to assistive technology: written when one
-	// starts and when it settles, and at no other time — the line itself
-	// ticks every minute and would chatter as a live region.
-	let wlAnnounce = $state('');
-	$effect(() => {
-		const s = wlStatus;
-		if (s?.kind !== 'updated') return;
-		const timer = setTimeout(() => (wlNow = Date.now()), nextAgeChange(s.at, wlNow));
-		return () => clearTimeout(timer);
-	});
+	const wlStatusText = $derived(statusLabel(wlStatus, wl.now, getLocale(), wlCopy));
+	// `wl.held` is the label the line had when a refresh started, held
+	// (hidden) for its width until the refresh settles; see statusPhrases.
+	const wlPhrases = $derived(statusPhrases(wlStatus, wl.now, getLocale(), wlCopy, wl.held));
+	$effect(() => wlFreshness.track(wlStatus));
 
 	// Home row style — see $lib/rows/prefs. A choice made in the switch
 	// applies to every row at once and is kept for the next load.
@@ -1494,8 +1486,8 @@
 	</Strip>
 {/if}
 
-<!-- The Watch Later refresh's announcement; see wlAnnounce. -->
-<p class="wl-announce" role="status">{wlAnnounce}</p>
+<!-- The Watch Later refresh's announcement; see watch-later-freshness. -->
+<p class="wl-announce" role="status">{wl.announce}</p>
 
 <!-- Trending strip (the tail; the head is the hero) -->
 {#if trending === null && !trendingError}
