@@ -644,6 +644,10 @@ describe('the Up next card at a finale', () => {
 			skips: [{ skip_type: 'op', start_time: 0, end_time: 90 }]
 		});
 		await playTo(video, 600);
+		// Episode 12 opens with no opening, and its stream has not
+		// learned its length yet.
+		server.use(http.get(`${API_BASE}/api/aniskip/:id/12`, () => HttpResponse.json([])));
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => Number.NaN });
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '12', kind: 'mp4' });
 		await until(
 			() => (video.getAttribute('src') ?? '').includes('session-2'),
