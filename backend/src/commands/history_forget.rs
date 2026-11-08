@@ -7,6 +7,8 @@
 //! - the show's watch stamp (`watched-at:`);
 //! - the card its guessed play came from (`guessed-from:`,
 //!   [`super::guessed_from`]);
+//! - the show the user linked it to (`history-linked:`,
+//!   [`super::linked_note`]);
 //! - its reverse mapping to Kitsu (`allmanga2kitsu:`), under every
 //!   version's key, with the mark a play left beside it;
 //! - the title-match rows Continue Watching stored for the row's title
@@ -51,9 +53,10 @@ use crate::commands::kitsu::{watched_at_key, ALLMANGA_KITSU_VERSION};
 use crate::error::Result;
 
 /// The prefixes every history-derived cache entry lives under.
-const HISTORY_PREFIXES: [&str; 7] = [
+const HISTORY_PREFIXES: [&str; 8] = [
     "watched-at:",
     "guessed-from:",
+    "history-linked:",
     "allmanga2kitsu:",
     "title-match:",
     "play:",
