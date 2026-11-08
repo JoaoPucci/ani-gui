@@ -35,16 +35,12 @@
 	import Hls from 'hls.js';
 	import { spotlightEpisode } from '$lib/detail/episode-spotlight';
 	import { settle } from '$lib/motion/settle';
-	import { browserStorage as mockStorage } from '$lib/hero/prefs';
-	import MockSwitch from '$lib/watch-order/mock/MockSwitch.svelte';
 	import UpNextCard from '$lib/watch-order/UpNextCard.svelte';
-	import {
-		loadMockPrefs,
-		saveMockPrefs,
-		type WatchOrderMockPrefs
-	} from '$lib/watch-order/mock/prefs';
-	import { runFor as mockRunFor } from '$lib/watch-order/mock/view';
-	import { upNextFor as mockUpNextFor } from '$lib/watch-order/up-next';
+	import { localDay } from '$lib/watch-order/entry';
+	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
+	import { settledOrder } from '$lib/watch-order/page-model';
+	import { finaleCard } from '$lib/watch-order/up-next';
+	import { inCredits } from '$lib/play/up-next-window';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
@@ -57,7 +53,9 @@
 		checkAvailability,
 		kitsuAnimeDetail,
 		kitsuEpisodes,
+		kitsuFranchise,
 		kitsuSearch,
+		historyList,
 		markWatched,
 		playStream,
 		playExternal,
@@ -209,20 +207,6 @@
 
 	const id = $derived(page.params.id ?? '');
 
-	// Watch-order mockups (0.19.0 design review): the finale's "Up next"
-	// card, shown at once on a run member's last episode while
-	// Diagnostics turns the mockups on — see $lib/watch-order/mock.
-	let mockPrefs = $state(loadMockPrefs(mockStorage()));
-	function chooseMockPrefs(next: WatchOrderMockPrefs) {
-		mockPrefs = next;
-		saveMockPrefs(mockStorage(), next);
-	}
-	let mockDismissed = $state(false);
-	const mockRun = $derived(mockPrefs.enabled ? mockRunFor(id) : null);
-	const mockToday = new Date().toISOString().slice(0, 10);
-	const mockUpNext = $derived(
-		mockRun ? mockUpNextFor(mockRun, id, mockPrefs.order, mockToday) : null
-	);
 	// A session opened from a guessed Continue match records the guess —
 	// on the history row, on tracker accounts — only for a play that
 	// landed on the card's own listing ($lib/play/play-origin.ts). The
@@ -237,12 +221,6 @@
 	// A fractional extra (a 7.5 recap) stays itself: see
 	// $lib/play/episode-number.
 	const episodeNum = $derived(parseEpisodeNumber(page.url.searchParams.get('episode')) ?? 1);
-	// The mockup's card waits for an entry's last episode, as the
-	// feature's will.
-	const mockAtFinale = $derived.by(() => {
-		const count = mockRun?.entries.find((e) => e.id === id)?.episodes ?? null;
-		return count === null || episodeNum >= count;
-	});
 	// kind defaults to hls — the legacy URL shape didn't carry one. The
 	// detail page now always appends &kind=<hls|mp4>, so this default
 	// only kicks in when a refresh on a stale URL drops the param.
@@ -477,6 +455,44 @@
 					skipIntervals = [];
 				}
 			});
+	});
+
+	// The "Up next" card at a finale: on the last episode of an entry
+	// that has finished airing, from the start of its credits, it names
+	// the entry the order setting puts next and waits for a click
+	// ($lib/watch-order/up-next, $lib/play/up-next-window). Nothing
+	// asks the provider about that entry, and nothing plays it: the
+	// end of the video stops here whatever auto-play says. Dismissed,
+	// it stays away for the rest of the episode.
+	let upNextData = $state<WatchOrderData | null>(null);
+	let configFailed = $state(false);
+	const upNextToday = localDay(new Date());
+	const upNextCard = $derived(
+		finaleCard(
+			upNextData,
+			id,
+			settledOrder(config, configFailed),
+			upNextToday,
+			episodeNum,
+			detail ? { status: detail.status, episodes: detail.episode_count } : null
+		)
+	);
+	let upNextDismissed = $state<string | null>(null);
+	const upNextShown = $derived(
+		upNextCard !== null &&
+			!resumeHolding &&
+			upNextDismissed !== `${id}|${episodeNum}` &&
+			inCredits(currentTime, duration, skipIntervals)
+	);
+	$effect(() => {
+		const showId = id;
+		upNextData = null;
+		if (!showId) return;
+		// Neither read rejects; a franchise that cannot be read means no
+		// card ($lib/watch-order/loader).
+		void loadWatchOrder(showId, { franchise: kitsuFranchise, history: historyList }).then((w) => {
+			if (id === showId) upNextData = w;
+		});
 	});
 
 	function onSkipClick() {
@@ -2155,6 +2171,7 @@
 			})
 			.catch(() => {
 				config = null;
+				configFailed = true;
 				answerQualitySetting(undefined);
 			});
 	});
@@ -2986,7 +3003,16 @@
 			     seeks just past `end_time`. Positioned bottom-right
 			     above native + custom controls so it never overlaps
 			     the timeline. -->
-			{#if !resumeHolding && activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
+			{#if upNextShown && upNextCard}
+				<!-- Takes the Skip Ending pill's place and corner. -->
+				<UpNextCard
+					progress={upNextCard.progress}
+					upNext={upNextCard.upNext}
+					variant="poster"
+					today={upNextToday}
+					ondismiss={() => (upNextDismissed = `${id}|${episodeNum}`)}
+				/>
+			{:else if !resumeHolding && activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
 				<button
 					type="button"
 					class="player-skip-btn"
@@ -3566,21 +3592,9 @@
 				<span class="player-spinner-track"><span class="player-spinner-sweep"></span></span>
 			</span>
 		{/if}
-		{#if mockRun && mockUpNext && mockUpNext.kind !== 'none' && mockAtFinale && !mockDismissed}
-			<UpNextCard
-				progress={mockRun.progress}
-				upNext={mockUpNext}
-				variant={mockPrefs.upNext}
-				today={mockToday}
-				ondismiss={() => (mockDismissed = true)}
-			/>
-		{/if}
 	</section>
 
 	<div class="watch-column">
-		{#if mockRun}
-			<MockSwitch prefs={mockPrefs} keys={['order', 'upNext']} onchoose={chooseMockPrefs} />
-		{/if}
 		<!-- Now-playing row: compact breadcrumb under the player so the
 		     page hierarchy reads "video → context → more episodes →
 		     similar". Show title links back to the detail page; episode

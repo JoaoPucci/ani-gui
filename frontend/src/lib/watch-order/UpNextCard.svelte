@@ -102,7 +102,12 @@
 		<ul class="choices">
 			{#each entries as e (e.id)}
 				<li>
-					<a class="row" href={resolve('/anime/[id]', { id: e.id })} title={e.title}>
+					<a
+						class="row"
+						href={resolve('/anime/[id]', { id: e.id })}
+						title={e.title}
+						aria-label={e.title}
+					>
 						{@render inner(e, true)}
 					</a>
 				</li>
@@ -115,6 +120,7 @@
 			class="row single"
 			href={resolve('/anime/[id]', { id: upNext.entry.id })}
 			title={upNext.entry.title}
+			aria-label={upNext.entry.title}
 		>
 			{@render inner(upNext.entry, false)}
 		</a>
