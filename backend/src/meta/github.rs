@@ -32,8 +32,9 @@
 //! read carry files, none of which any packaged platform recognises,
 //! the lookup takes the naming to have changed and offers what it
 //! offered before it read files, with a warning in the log: with
-//! pre-releases counted, the newest published release on the page;
-//! without, the latest full release. A release with no files is never
+//! pre-releases counted, the newest published release on the page, or
+//! the latest full release when none there has files; without, the
+//! latest full release. A release with no files is never
 //! offered this way, and releases with no files at all do not trigger
 //! it. A release whose recognisable files are another platform's is
 //! still skipped.
@@ -210,7 +211,7 @@ fn select_release(
 /// When neither offers anything and the releases read carry files but
 /// none that any packaged platform recognises, the naming has changed
 /// rather than this platform having been skipped: the release is
-/// chosen as before files were read ([`newest_by_version`]), so a
+/// chosen as before files were read ([`offer_as_before_files`]), so a
 /// renamed package cannot silence every update.
 fn offer(
     page: Vec<RawRelease>,
@@ -229,9 +230,9 @@ fn offer(
     }
     tracing::warn!(
         "update check: no release read carries a file any packaged platform recognises; \
-         offering a release by version alone"
+         offering the release the check offered before it read files"
     );
-    newest_by_version(page, latest, include_prereleases)
+    offer_as_before_files(page, latest, include_prereleases)
 }
 
 /// Whether the releases read carry files, and none of them is any
@@ -244,10 +245,11 @@ fn naming_unrecognised(page: &[RawRelease], latest: Option<&RawRelease>) -> bool
 
 /// What the check offered before it read files, for when their naming
 /// is not recognised: with pre-releases counted, the newest published
-/// page release; without, the latest full release alone, as the
+/// page release, or the latest full release when none on the page has
+/// files; without, the latest full release alone, as the
 /// `/releases/latest` request it made then. A release carrying no
 /// files has nothing to download and is passed over either way.
-fn newest_by_version(
+fn offer_as_before_files(
     page: Vec<RawRelease>,
     latest: Option<RawRelease>,
     include_prereleases: bool,

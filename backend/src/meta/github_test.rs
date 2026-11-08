@@ -632,8 +632,9 @@ async fn a_page_github_answers_with_something_unreadable_falls_back_to_the_lates
 // any release apart from one cut without its platform, and would see
 // "no update" for good. So when nothing read carries a file any
 // packaged platform recognises, the lookup takes the naming to have
-// changed and offers the newest release by version alone, as it did
-// before it read files at all.
+// changed and offers what it offered before it read files at all: the
+// newest release with pre-releases counted, the latest full release
+// without.
 
 /// A release whose files are named in a way no platform recognises.
 fn renamed(version: &str, prerelease: bool) -> RawRelease {
@@ -674,7 +675,7 @@ fn offered(
 }
 
 #[test]
-fn files_no_platform_recognises_offer_the_newest_release_by_version() {
+fn files_no_platform_recognises_offer_what_the_check_offered_before_reading_files() {
     let page = vec![renamed("0.19.0", true), renamed("0.18.0", false)];
     for platform in [Platform::Windows, Platform::Linux] {
         assert_eq!(
