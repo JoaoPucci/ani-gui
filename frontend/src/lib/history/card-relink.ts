@@ -13,6 +13,8 @@
  * both reach the cards. A row matched to another show forgets what was
  * kept for the former one: a cap a failed resume of a one-episode
  * special pinned as exact would hold the linked series at episode 1.
+ * And whatever was still on its way about the former show — the first
+ * load's probe, an earlier rematch — lands without putting it back.
  *
  * The component holds the state; this decides what happens to it.
  */
@@ -46,15 +48,28 @@ export interface CardRelink {
 	stillGuessed: (row: string, matchId: string) => Promise<boolean>;
 	/** Reads the cards again where they stand. */
 	reread: () => Promise<void>;
+	/** A view of the rows as they are matched now: it answers, for a
+	 *  row, whether the row has not been matched again since. An answer
+	 *  asked for before — the first load's probe — is about the show the
+	 *  row was then, and is dropped once the view says no. */
+	since: () => (row: string) => boolean;
 }
 
 export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 	let reads: Promise<unknown> = Promise.resolve();
+	// How many times each row has been matched again. Only the latest
+	// rematch of a row publishes: a link's answer landing after its
+	// undo's is about a show the row no longer records.
+	const rematches = new Map<string, number>();
+	const count = (row: string) => rematches.get(row) ?? 0;
 
 	// A row matched to another show forgets the former one's cap, then
 	// takes its new match.
 	const rematch = (h: HistoryEntry) => {
+		const ask = count(h.id) + 1;
+		rematches.set(h.id, ask);
 		const settle = (match: KitsuAnimeRef | null) => {
+			if (count(h.id) !== ask) return;
 			deps.forget(h.id);
 			deps.publish(h.id, match);
 		};
@@ -83,6 +98,10 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 			void reread().catch(() => {});
 			return false;
 		},
-		reread
+		reread,
+		since: () => {
+			const taken = new Map(rematches);
+			return (row) => count(row) === (taken.get(row) ?? 0);
+		}
 	};
 }

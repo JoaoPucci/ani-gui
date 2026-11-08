@@ -571,6 +571,10 @@
 				// Part 1's episode 1.
 				historyById.clear();
 				for (const h of history) historyById.set(h.id, h);
+				// The load's answers are about the shows the rows are now: a
+				// row linked before one lands has moved on, and the answer is
+				// dropped ($lib/history/card-relink.ts).
+				const fromLoad = relink.since();
 				void loadContinueWatchingState(history, {
 					resolveMatch: rowTrust.resolveMatch,
 					// makeFetchAvailability keeps the args-mapping closure
@@ -586,6 +590,7 @@
 					// shared with startResume so a click-time cap
 					// refinement refreshes the same badge metadata.
 					onRowReady: (id, m, count, approximate) => {
+						if (!fromLoad(id)) return;
 						publishLoaderCap(id, m, count, approximate === true);
 						// Read the row again once its match is known — the
 						// stamp can name its former number with no listing
@@ -617,6 +622,7 @@
 						// The retry pays for the listing the first probe
 						// did not: read the row again after it.
 						onRefined: (id, count) => {
+							if (!fromLoad(id)) return;
 							publishLoaderCap(id, historyMatches[id] ?? null, count, false);
 							void readRowAgain(id);
 						},
@@ -627,7 +633,10 @@
 						// interactive lookup — or when the user removes it
 						// from the strip. The route survives a delete, so
 						// the teardown flag does not cover that one.
+						// …or when it is matched again: the retry would ask about
+						// the show it was.
 						shouldRetry: (id) =>
+							fromLoad(id) &&
 							rowWorthRetrying(
 								id,
 								new Set((history ?? []).map((h) => h.id)),
