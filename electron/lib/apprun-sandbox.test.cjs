@@ -53,7 +53,10 @@ function stubFor(probe) {
     `    ${outcome}`,
     "  fi",
     "done",
-    'printf "%s\\0" "$@" > "$here/launched"',
+    // One NUL-terminated entry per argument; printf alone would write
+    // one empty entry for a launch with none.
+    ': > "$here/launched"',
+    'for a in "$@"; do printf "%s\\0" "$a" >> "$here/launched"; done',
     "",
   ].join("\n");
 }
