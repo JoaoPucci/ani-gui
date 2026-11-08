@@ -4,7 +4,7 @@
  * thin.
  */
 import { m } from '$lib/paraglide/messages';
-import { numeral } from './meta';
+import { loopText, numeral } from './meta';
 import type { StripCaption } from './page-model';
 import type { EmptyColumn } from './strip-view';
 import type { ColumnKey, ColumnWord } from './strip-wording';
@@ -58,7 +58,7 @@ export function captionText(caption: StripCaption): string {
 		case 'side':
 			return m.watchorder_strip_side_story();
 		case 'cycle':
-			return m.watchorder_strip_unnumbered_cycle({ count: caption.count });
+			return loopText(caption.count);
 		case 'branch':
 			return m.watchorder_strip_unnumbered_branch();
 	}

@@ -16,7 +16,7 @@
 	import MetaLine from '../MetaLine.svelte';
 	import MockSwitch from './MockSwitch.svelte';
 	import RunCard from './RunCard.svelte';
-	import { metaLine, numeral, railKeyText } from '../meta';
+	import { loopGroupText, metaLine, numeral, railKeyText } from '../meta';
 	import { pathNote, placement, railItems, segments } from '../order';
 	import type { WatchOrderMockPrefs } from './prefs';
 	import { shortTitle } from '../short-title';
@@ -196,7 +196,7 @@
 					{:else}
 						<div class="loop">
 							<p class="group-key">
-								{m.watchorder_strip_unnumbered_cycle({ count: seg.entries.length })}
+								{loopGroupText(seg.entries.length)}
 							</p>
 							<p class="group-hint">{m.watchorder_franchise_cycle_hint()}</p>
 							<ol class="story-list">

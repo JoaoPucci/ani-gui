@@ -3,21 +3,31 @@
 	"diag_section": "Watch-order mockups",
 	"diag_switcher": "Show the switch for the mockup options",
 	"diag_toggle": "Show the watch-order mockups",
-	"franchise_after_loop": "After the loop, unnumbered: the loop gives these no single place",
+	"franchise_after_loop": "No clear place in the order",
 	"franchise_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} entry",
-				"countPlural=*": "{count} entries"
+				"countPlural=one": "{count} title",
+				"countPlural=*": "{count} titles"
 			}
 		}
 	],
-	"franchise_cycle_hint": "These entries link round to one another, so they have no single order. They are listed along their links, from where the run enters the loop.",
+	"franchise_cycle_hint": "These are all linked to each other, so there's no clear order to watch them in. They're listed as they're linked.",
 	"franchise_eyebrow": "Franchise",
 	"franchise_films": "Films",
 	"franchise_here": "You are here",
+	"franchise_loop_group": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} linked title, order unclear",
+				"countPlural=*": "{count} linked titles, order unclear"
+			}
+		}
+	],
 	"franchise_main": "Main story",
 	"franchise_off": "This page is a design mockup. Turn the mockups on in Diagnostics to see it.",
 	"franchise_order_change": "Change in Settings",
@@ -53,7 +63,7 @@
 	"setting_linked": "As linked",
 	"setting_released": "As released",
 	"strip_eyebrow": "Watch order",
-	"strip_first": "Start of the run",
+	"strip_first": "Nothing comes before this",
 	"strip_franchise_link": "Whole franchise",
 	"strip_franchise_stack_films": [
 		{
@@ -88,21 +98,21 @@
 	],
 	"strip_franchise_stack_title": "See the whole franchise",
 	"strip_join": "Comes after these {count}",
-	"strip_last": "End of the run",
+	"strip_last": "Nothing comes after this",
 	"strip_leads_into": "Leads into {title}",
 	"strip_of_total": "of {total}",
 	"strip_position": "{position} of {total}",
 	"strip_position_open": "Position {position}",
-	"strip_side_end": "Nothing links on from here",
+	"strip_side_end": "Nothing comes after this",
 	"strip_side_story": "Side story",
 	"strip_unnumbered_branch": "One of the ways to continue",
 	"strip_unnumbered_cycle": [
 		{
-			"declarations": ["input count", "local countPlural = count: plural"],
+			"declarations": ["input others", "local countPlural = others: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "Part of a loop of {count} entry",
-				"countPlural=*": "Part of a loop of {count} entries"
+				"countPlural=one": "Linked with {others} other, order unclear",
+				"countPlural=*": "Linked with {others} others, order unclear"
 			}
 		}
 	],

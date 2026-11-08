@@ -67,6 +67,16 @@ export function splitMeta(
 	return [segments.slice(0, cut), segments.slice(cut)];
 }
 
+/** An entry in a loop of `count`, said as the others it links with. */
+export function loopText(count: number): string {
+	return m.watchorder_strip_unnumbered_cycle({ others: count - 1 });
+}
+
+/** A loop of `count` as the heading over its group of titles. */
+export function loopGroupText(count: number): string {
+	return m.watchorder_franchise_loop_group({ count });
+}
+
 /** "05": positions read as oversized two-digit numerals. */
 export function numeral(position: number): string {
 	return String(position).padStart(2, '0');
@@ -84,7 +94,7 @@ export function railKeyText(
 	if (here) return m.watchorder_franchise_here();
 	if (key === null) return null;
 	if (key.kind === 'way') return m.watchorder_strip_way({ n: key.n, count: key.count });
-	if (key.kind === 'loop') return m.watchorder_strip_unnumbered_cycle({ count: key.count });
+	if (key.kind === 'loop') return loopText(key.count);
 	// The target's number when it has one: a title would not fit the
 	// key line beside "Leads into".
 	return m.watchorder_strip_leads_into({

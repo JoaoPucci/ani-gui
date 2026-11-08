@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { m } from '$lib/paraglide/messages';
 import { captionText, columnCountText, columnKeyText, emptyColumnText } from './strip-copy';
 import type { ColumnWord } from './strip-wording';
 
@@ -31,9 +30,9 @@ describe('the strip copy', () => {
 	});
 
 	it('says why a column is empty', () => {
-		expect(emptyColumnText('first')).toBe('Start of the run');
-		expect(emptyColumnText('last')).toBe('End of the run');
-		expect(emptyColumnText('side_end')).toBe('Nothing links on from here');
+		expect(emptyColumnText('first')).toBe('Nothing comes before this');
+		expect(emptyColumnText('last')).toBe('Nothing comes after this');
+		expect(emptyColumnText('side_end')).toBe('Nothing comes after this');
 	});
 
 	it("reads the strip's caption", () => {
@@ -41,9 +40,9 @@ describe('the strip copy', () => {
 		// Read aloud in the strip's heading, a bare number says nothing.
 		expect(captionText({ kind: 'numeral', position: 7 })).toBe('Position 07');
 		expect(captionText({ kind: 'side' })).toBe('Side story');
-		expect(captionText({ kind: 'cycle', count: 10 })).toBe(
-			m.watchorder_strip_unnumbered_cycle({ count: 10 })
-		);
+		// A loop is said as what the viewer sees: the others it links with.
+		expect(captionText({ kind: 'cycle', count: 10 })).toBe('Linked with 9 others, order unclear');
+		expect(captionText({ kind: 'cycle', count: 2 })).toBe('Linked with 1 other, order unclear');
 		expect(captionText({ kind: 'branch' })).toBe('One of the ways to continue');
 	});
 });

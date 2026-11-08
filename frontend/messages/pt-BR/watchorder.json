@@ -3,7 +3,7 @@
 	"diag_section": "Protótipos de ordem para assistir",
 	"diag_switcher": "Mostrar o seletor de opções dos protótipos",
 	"diag_toggle": "Mostrar os protótipos de ordem para assistir",
-	"franchise_after_loop": "Depois do ciclo, sem número: o ciclo não lhes dá um lugar único",
+	"franchise_after_loop": "Sem um lugar claro na ordem",
 	"franchise_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -14,10 +14,20 @@
 			}
 		}
 	],
-	"franchise_cycle_hint": "Estes títulos se vinculam uns aos outros em ciclo, então não têm uma ordem única. Eles estão listados seguindo os vínculos, a partir de onde a sequência entra no ciclo.",
+	"franchise_cycle_hint": "Todos estes estão vinculados entre si, então não há uma ordem clara para assistir. Eles aparecem na ordem dos vínculos.",
 	"franchise_eyebrow": "Franquia",
 	"franchise_films": "Filmes",
 	"franchise_here": "Você está aqui",
+	"franchise_loop_group": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} título vinculado, ordem incerta",
+				"countPlural=*": "{count} títulos vinculados, ordem incerta"
+			}
+		}
+	],
 	"franchise_main": "História principal",
 	"franchise_off": "Esta página é um protótipo de design. Ative os protótipos em Diagnóstico para vê-la.",
 	"franchise_order_change": "Alterar em Configurações",
@@ -53,7 +63,7 @@
 	"setting_linked": "Por vínculo",
 	"setting_released": "Por lançamento",
 	"strip_eyebrow": "Ordem para assistir",
-	"strip_first": "Início da sequência",
+	"strip_first": "Nada vem antes deste",
 	"strip_franchise_link": "Franquia inteira",
 	"strip_franchise_stack_films": [
 		{
@@ -88,21 +98,21 @@
 	],
 	"strip_franchise_stack_title": "Ver a franquia inteira",
 	"strip_join": "Vem depois destes {count}",
-	"strip_last": "Fim da sequência",
+	"strip_last": "Nada vem depois deste",
 	"strip_leads_into": "Leva a {title}",
 	"strip_of_total": "de {total}",
 	"strip_position": "{position} de {total}",
 	"strip_position_open": "Posição {position}",
-	"strip_side_end": "Nada continua a partir daqui",
+	"strip_side_end": "Nada vem depois deste",
 	"strip_side_story": "História paralela",
 	"strip_unnumbered_branch": "Um dos caminhos para continuar",
 	"strip_unnumbered_cycle": [
 		{
-			"declarations": ["input count", "local countPlural = count: plural"],
+			"declarations": ["input others", "local countPlural = others: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "Parte de um ciclo de {count} título",
-				"countPlural=*": "Parte de um ciclo de {count} títulos"
+				"countPlural=one": "Vinculado a {others} outro, ordem incerta",
+				"countPlural=*": "Vinculado a {others} outros, ordem incerta"
 			}
 		}
 	],
