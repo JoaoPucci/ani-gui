@@ -49,3 +49,13 @@ describe('the watch order speaks the viewer’s words', () => {
 		expect(found).toEqual([]);
 	});
 });
+
+describe('the Up next key over an entry not aired yet', () => {
+	// It says what comes next for the viewer, once it is out, as the
+	// other locales do. Russian once said "will be released next", which
+	// is about release order and agrees with a noun it never names.
+	it('reads "Next, when it airs" in Russian too', () => {
+		const ru = catalogues.find((c) => c.locale === 'ru')!.messages;
+		expect(ru.upnext_coming).toBe('Далее, когда выйдет');
+	});
+});
