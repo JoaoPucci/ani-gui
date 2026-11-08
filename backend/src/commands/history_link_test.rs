@@ -128,12 +128,14 @@ async fn a_link_writes_the_column_of_every_named_row_and_nothing_else() {
             LinkedRow {
                 row: "hianime:black-clover-949".into(),
                 previous: None,
+                previous_linked: None,
                 ep_no: "1".into(),
                 watched_at: Some(1_791_253_563_411),
             },
             LinkedRow {
                 row: "black-clover-77".into(),
                 previous: None,
+                previous_linked: None,
                 ep_no: "3".into(),
                 watched_at: None,
             },
@@ -576,4 +578,55 @@ async fn clearing_the_history_drops_every_link_note() {
             "{row}"
         );
     }
+}
+
+#[tokio::test]
+async fn an_undone_relink_gives_the_row_back_its_earlier_link_note() {
+    // Linked to 12, then to 99; undoing the second puts the row back on
+    // 12, and 12 is still the user's link.
+    let (_tmp, mock, state) = setup(200).await;
+    Mock::given(method("GET"))
+        .and(path("/anime/99"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_bytes(DETAIL_FIXTURE.to_vec()),
+        )
+        .mount(&mock)
+        .await;
+    let card = "hianime:black-clover-949";
+    link(&state, &args(&[card], LINKED)).await.expect("link");
+    let relinked = link(&state, &args(&[card], "99")).await.expect("relink");
+    assert_eq!(relinked.linked[0].previous_linked.as_deref(), Some(LINKED));
+
+    unlink(
+        &state,
+        &UnlinkArgs {
+            kitsu_id: "99".into(),
+            rows: relinked.linked,
+        },
+    )
+    .expect("unlink");
+
+    assert_eq!(
+        read_all(&state.history_path).unwrap()[0]
+            .kitsu_id
+            .as_deref(),
+        Some(LINKED)
+    );
+    assert_eq!(
+        crate::commands::linked_note::linked(&state, card).as_deref(),
+        Some(LINKED)
+    );
+}
+
+#[test]
+fn an_undo_reads_the_rows_of_a_build_that_sent_no_earlier_link() {
+    // The renderer hands the link's rows back as it got them; a row
+    // without the field reads as one with no earlier link.
+    let row: LinkedRow = serde_json::from_str(
+        r#"{"row":"hianime:black-clover-949","previous":null,"ep_no":"1","watched_at":null}"#,
+    )
+    .expect("parses");
+    assert_eq!(row.previous_linked, None);
 }
