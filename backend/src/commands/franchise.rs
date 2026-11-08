@@ -5,9 +5,10 @@
 //! ([`crate::meta::kitsu::KitsuClient::franchise_relations`]), cached
 //! under `kitsu:franchise-rel:v1:<id>` for a week, or a day when it
 //! relates an anime that has not finished ([`listing_ttl`]). Two reads
-//! of one listing at the same time share one request. An entry no listing describes — the
-//! anchor, usually — takes its fields from the cached detail read
-//! ([`crate::commands::kitsu::kitsu_anime_detail`]).
+//! of one listing at the same time share one request. The entry asked
+//! about takes its fields from the cached detail read
+//! ([`crate::commands::kitsu::kitsu_anime_detail`]); every other entry,
+//! from the listing that relates it.
 
 use std::collections::BTreeMap;
 

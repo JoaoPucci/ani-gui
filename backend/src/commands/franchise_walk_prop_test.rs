@@ -151,9 +151,9 @@ proptest! {
     }
 
     /// A member's listing never names, in one role, two members that
-    /// are versions of each other and joined at or after its own step:
-    /// a group of versions it lists keeps one. Two that were both in
-    /// the run before it was walked from cannot be undone.
+    /// are versions of each other when either joined in the step that
+    /// walked from it: a group of versions it lists keeps one. Two that
+    /// were both in the run before it was walked from cannot be undone.
     #[test]
     fn a_listing_keeps_one_of_each_group_it_lists((cat, anchor) in catalogue()) {
         let (_, (known, details)) = drive_with(&anchor, &cat, &[]);

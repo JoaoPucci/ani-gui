@@ -500,8 +500,8 @@ titles nor posters. From those listings it builds two things:
 The read is unfiltered so one cached listing serves both. An earlier
 draft of this section filtered the walk's read to
 `sequel,prequel,alternative_version,alternative_setting` (four rows
-instead of fifteen for *Gintama*) and read the rest separately; one
-read per entry costs fewer requests than two.
+instead of fifteen for *Gintama*) and read one entry's other
+relations separately; one unfiltered listing serves both.
 
 It makes no provider request. Kitsu is the metadata service the
 app already pages through on every show page.
@@ -529,12 +529,13 @@ is defined from the entry being viewed — the anchor — by these rules
    sequels (or several prequels) of which some list one another, in
    either direction, as `alternative_version` or
    `alternative_setting`, only one of each such group is added: the
-   one in the same format as the entry listing them (TV, movie,
+   one in the same format as the entry it was met through (TV, movie,
    OVA…), else the one that started first, else the lowest Kitsu id.
    A group is decided once per distance, over every entry that lists
    its members, so it keeps one even when they were met through
    different entries, and adds none when one of them is already in
-   the run.
+   the run. Groups that share an entry are one group: entries that
+   are versions of one another, directly or through one another.
 3. **Versions along the path are left out.** An entry is not added if
    it and any entry on its path to the anchor list each other (in
    either direction) as `alternative_version` or

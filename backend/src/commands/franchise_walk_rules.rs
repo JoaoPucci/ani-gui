@@ -7,11 +7,13 @@
 //!    once, on that path.
 //! 2. Of the sequels (or prequels) one entry lists, those that list one
 //!    another as `alternative_version`/`alternative_setting` keep one:
-//!    the one in the listing entry's format, else the earliest, else the
-//!    lowest id. A group is decided once per distance, over every entry
-//!    that lists its members, so it keeps one even when they were met
-//!    through different entries, and adds none when one of them is
-//!    already in the run.
+//!    the one in the format of the entry it was met through, else the
+//!    earliest, else the lowest id. A group is decided once per
+//!    distance, over every entry that lists its members, so it keeps one
+//!    even when they were met through different entries, and adds none
+//!    when one of them is already in the run. Groups that share an entry
+//!    are one group: versions of one another, directly or through one
+//!    another.
 //! 3. An entry that, with any entry on its path, lists the other as an
 //!    alternative version or setting is left out. The root never is.
 //!
