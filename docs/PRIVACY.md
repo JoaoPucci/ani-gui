@@ -318,9 +318,10 @@ each kind of request:
   which is compared on your machine, and no account information. It
   asks for the ten newest releases
   (`/repos/JoaoPucci/ani-gui/releases?per_page=10`) and picks, on your
-  machine, the newest one that has a download for your platform (or,
-  should none of their files be named the way the app expects, the
-  newest one by version alone). The
+  machine, the newest one that has a download for your platform.
+  Should none of the files it read be named the way the app expects,
+  it picks as it did before it looked at files: the newest release, or
+  with pre-releases excluded, the newest full release. The
   "Include pre-releases in update check" setting (on by default)
   decides whether a pre-release can be that pick. It does not change
   the request. When that list arrives but none of it can be offered,
