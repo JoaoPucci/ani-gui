@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { columnCountText, columnKeyText, emptyColumnText } from './strip-copy';
+import { m } from '$lib/paraglide/messages';
+import { captionText, columnCountText, columnKeyText, emptyColumnText } from './strip-copy';
 import type { ColumnWord } from './strip-wording';
 
 describe('the strip copy', () => {
@@ -33,5 +34,15 @@ describe('the strip copy', () => {
 		expect(emptyColumnText('first')).toBe('Start of the run');
 		expect(emptyColumnText('last')).toBe('End of the run');
 		expect(emptyColumnText('side_end')).toBe('Nothing links on from here');
+	});
+
+	it("reads the strip's caption", () => {
+		expect(captionText({ kind: 'position', position: 4, total: 5 })).toBe('04 of 05');
+		expect(captionText({ kind: 'numeral', position: 7 })).toBe('07');
+		expect(captionText({ kind: 'side' })).toBe('Side story');
+		expect(captionText({ kind: 'cycle', count: 10 })).toBe(
+			m.watchorder_strip_unnumbered_cycle({ count: 10 })
+		);
+		expect(captionText({ kind: 'branch' })).toBe('One of the ways to continue');
 	});
 });
