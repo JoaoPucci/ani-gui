@@ -7,7 +7,10 @@
  */
 import type { WatchOrder } from './by-start';
 import type { WatchOrderData } from './loader';
-import type { StripView } from './strip-view';
+import { loopSize } from './order';
+import { progressFromHistory } from './progress';
+import { stripFor } from './strip-model';
+import { shownOnStrip, watchingFor, type StripView } from './strip-view';
 import type { Progress, WatchEntry, WatchRun } from './types';
 
 /** What the strip's centre says about this entry's place. */
@@ -36,8 +39,7 @@ export interface WatchOrderPage {
 
 /** The order setting as stored: anything but `released` reads as linked. */
 export function orderOf(value: string | null | undefined): WatchOrder {
-	void value;
-	return 'linked';
+	return value === 'released' ? 'released' : 'linked';
 }
 
 /**
@@ -49,16 +51,17 @@ export function settledOrder(
 	config: { readonly watch_order: string } | null,
 	failed: boolean
 ): WatchOrder | null {
-	void config;
-	void failed;
-	return null;
+	if (config) return orderOf(config.watch_order);
+	return failed ? 'linked' : null;
 }
 
 /** The caption for a view; `loop` is the size of the cycle `view` sits in, if any. */
 export function captionOf(view: StripView, loop: number): StripCaption {
-	void view;
-	void loop;
-	return { kind: 'branch' };
+	if (view.kind === 'side') return { kind: 'side' };
+	if (view.position !== null && view.total !== null)
+		return { kind: 'position', position: view.position, total: view.total };
+	if (view.position !== null) return { kind: 'numeral', position: view.position };
+	return view.inCycle ? { kind: 'cycle', count: loop } : { kind: 'branch' };
 }
 
 /** The page's reading of `data` for `id`, or null where the page shows no strip. */
@@ -67,8 +70,22 @@ export function watchOrderPage(
 	id: string,
 	order: WatchOrder
 ): WatchOrderPage | null {
-	void data;
-	void id;
-	void order;
-	return null;
+	const strip = stripFor(data.franchise, id, order);
+	if (!strip) return null;
+	const { run, view } = strip;
+	const progress = progressFromHistory(data.rows, run.entries);
+	const watching = watchingFor(run, progress, id, view, order);
+	const caption = captionOf(view, loopSize(run, id, order));
+	return {
+		order,
+		run,
+		view,
+		caption,
+		eyebrow:
+			caption.kind === 'position' ? { position: caption.position, total: caption.total } : null,
+		progress,
+		watching,
+		similarHidden: shownOnStrip(view, watching?.entry ?? null),
+		titles: run.entries.map((e) => e.title)
+	};
 }

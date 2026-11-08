@@ -4,6 +4,7 @@
  * thin.
  */
 import { m } from '$lib/paraglide/messages';
+import { numeral } from './meta';
 import type { StripCaption } from './page-model';
 import type { EmptyColumn } from './strip-view';
 import type { ColumnKey, ColumnWord } from './strip-wording';
@@ -46,6 +47,19 @@ export function emptyColumnText(kind: EmptyColumn): string {
 
 /** The strip's caption ("05 of 09", "Side story", …), as its heading reads it. */
 export function captionText(caption: StripCaption): string {
-	void caption;
-	return '';
+	switch (caption.kind) {
+		case 'position':
+			return m.watchorder_strip_position({
+				position: numeral(caption.position),
+				total: numeral(caption.total)
+			});
+		case 'numeral':
+			return numeral(caption.position);
+		case 'side':
+			return m.watchorder_strip_side_story();
+		case 'cycle':
+			return m.watchorder_strip_unnumbered_cycle({ count: caption.count });
+		case 'branch':
+			return m.watchorder_strip_unnumbered_branch();
+	}
 }

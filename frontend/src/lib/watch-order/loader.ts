@@ -25,7 +25,9 @@ export async function loadWatchOrder(
 	id: string,
 	sources: WatchOrderSources
 ): Promise<WatchOrderData> {
-	void id;
-	void sources;
-	return { franchise: null, rows: [] };
+	const [franchise, rows] = await Promise.all([
+		sources.franchise(id).catch(() => null),
+		sources.history().catch(() => [])
+	]);
+	return { franchise, rows };
 }

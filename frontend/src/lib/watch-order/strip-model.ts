@@ -25,13 +25,18 @@ function memberLinks(links: readonly RunLink[], members: ReadonlySet<string>): R
 	});
 }
 
-/** Each side story's parents among the members, dropping a side story left with none. */
+/**
+ * Each side story's parents among the members, dropping a side story
+ * left with none. A member of the run is placed in it, never as a side
+ * story, so parents listed for a member (itself among them) are dropped.
+ */
 function memberParents(
 	parents: FranchiseData['parents'],
 	members: ReadonlySet<string>
 ): Record<string, readonly string[]> {
 	const out: Record<string, readonly string[]> = {};
 	for (const [side, list] of Object.entries(parents)) {
+		if (members.has(side)) continue;
 		const kept = [...new Set(list)].filter((p) => members.has(p));
 		if (kept.length > 0) out[side] = kept;
 	}
