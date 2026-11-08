@@ -605,6 +605,57 @@ describe('a guessed card whose resume is running', () => {
 	});
 });
 
+describe('a card linked while its first probe waits in the queue', () => {
+	// Four rows of a recorded show take the four probe slots first and
+	// hold them; JoJo's card, matched by a slower title search, waits in
+	// the queue behind them, and is linked there.
+	let releaseSlots: () => void = () => {};
+	let guessProbes = 0;
+	beforeEach(() => {
+		guessProbes = 0;
+		backend.rows = [
+			{ ep_no: '1', id: JOJO_CARD, title: JOJO_TITLE },
+			...['1', '2', '3', '4'].map((i) => ({
+				ep_no: '5',
+				id: `hianime:gintama-${i}`,
+				title: 'Gintama',
+				kitsu_id: KNOWN_ID
+			}))
+		];
+		const slots = new Promise<void>((resolve) => {
+			releaseSlots = resolve;
+		});
+		server.use(
+			http.get(`${API_BASE}/api/title-match`, async ({ request }) => {
+				const title = new URL(request.url).searchParams.get('title') ?? '';
+				if (!title.startsWith(JOJO_TITLE)) return HttpResponse.json(null);
+				await new Promise((r) => setTimeout(r, 200));
+				return HttpResponse.json(JOJO_GUESS);
+			}),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const { kitsu_id } = (await request.json()) as { kitsu_id?: string };
+				if (kitsu_id === KNOWN_ID) await slots;
+				if (kitsu_id === JOJO_GUESS) guessProbes++;
+				return HttpResponse.json({ available: true, episode_count: 26 });
+			})
+		);
+	});
+
+	it('is not probed for its former show once a slot frees', async () => {
+		app = mount(HomePage, { target });
+		await until(() => pill(JOJO_CARD) !== null, 'the JoJo card and its pill');
+		pill(JOJO_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(JOJO_RIGHT_TITLE);
+		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the card as the OVA');
+		const asked = guessProbes;
+		releaseSlots();
+		await new Promise((r) => setTimeout(r, 800));
+		expect(guessProbes).toBe(asked);
+		expect(showLine(JOJO_CARD)).toContain(JOJO_RIGHT_TITLE);
+	});
+});
+
 describe("a guessed card's player is told where its play landed", () => {
 	async function resumeJojo(ownListing: boolean) {
 		await openHome();

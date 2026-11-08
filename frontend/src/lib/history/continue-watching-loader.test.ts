@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import fc from 'fast-check';
 import { loadContinueWatchingState } from './continue-watching-loader';
 import { probeScope } from '$lib/availability/probe-scope';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
@@ -510,5 +511,53 @@ describe('reporting the rows whose cap is still unconfirmed', () => {
 		} finally {
 			delete g.location;
 		}
+	});
+});
+
+describe('a row queued for its first probe', () => {
+	it('is not probed once it should not be: it was matched again meanwhile', async () => {
+		const history = ['1', '2'].map((i) => makeEntry(`h${i}`, '1', `T${i}`));
+		const first = defer<{ episode_count: number }>();
+		const fetchAvailability = vi.fn().mockImplementation(() => first.promise);
+		const relinked = new Set<string>();
+		const onRowReady = vi.fn();
+		const done = loadContinueWatchingState(history, {
+			resolveMatch: (e: HistoryEntry) => Promise.resolve(makeMatch(`k-${e.id}`, 12)),
+			fetchAvailability,
+			getMode: subMode,
+			probeConcurrency: 1,
+			onRowReady,
+			shouldProbe: (id) => !relinked.has(id)
+		});
+		await vi.waitFor(() => expect(fetchAvailability).toHaveBeenCalledTimes(1));
+		// h2 waits behind h1's probe, and is linked meanwhile.
+		relinked.add('h2');
+		first.resolve({ episode_count: 12 });
+		const state = await done;
+		expect(fetchAvailability).toHaveBeenCalledTimes(1);
+		expect((fetchAvailability.mock.calls[0][0] as KitsuAnimeRef).id).toBe('k-h1');
+		// Released on its match, and nothing after.
+		expect(onRowReady.mock.calls.filter(([id]) => id === 'h2')).toHaveLength(1);
+		expect(state.approximateRows).toEqual([]);
+	});
+
+	it('probes exactly the rows it should, whichever those are', async () => {
+		await fc.assert(
+			fc.asyncProperty(fc.array(fc.boolean(), { minLength: 1, maxLength: 6 }), async (skips) => {
+				const history = skips.map((_, i) => makeEntry(`h${i}`, '1', `T${i}`));
+				const fetchAvailability = vi.fn().mockResolvedValue({ episode_count: 12 });
+				await loadContinueWatchingState(history, {
+					resolveMatch: (e: HistoryEntry) => Promise.resolve(makeMatch(`k-${e.id}`, 12)),
+					fetchAvailability,
+					getMode: subMode,
+					probeConcurrency: 2,
+					shouldProbe: (id) => !skips[Number(id.slice(1))]
+				});
+				const probed = fetchAvailability.mock.calls.map(([m]) => (m as KitsuAnimeRef).id).sort();
+				const expected = history.filter((_, i) => !skips[i]).map((h) => `k-${h.id}`);
+				expect(probed).toEqual(expected.sort());
+			}),
+			{ numRuns: 50 }
+		);
 	});
 });
