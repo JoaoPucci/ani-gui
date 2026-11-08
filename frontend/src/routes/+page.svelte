@@ -620,9 +620,10 @@
 							makeFetchAvailability(checkAvailability)(m, mode, continueProbes.signal),
 						mode,
 						// The retry pays for the listing the first probe
-						// did not: read the row again after it.
+						// did not: read the row again after it. A row matched
+						// again never gets here: the retry asks shouldRetry
+						// after every answer, before this.
 						onRefined: (id, count) => {
-							if (!fromLoad(id)) return;
 							publishLoaderCap(id, historyMatches[id] ?? null, count, false);
 							void readRowAgain(id);
 						},
