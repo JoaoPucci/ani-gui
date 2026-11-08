@@ -338,4 +338,42 @@ describe('detail route — the watch-order strip', () => {
 		expect(strip()).toBeNull();
 		expect(eyebrow()).not.toContain(m.watchorder_strip_position({ position: '03', total: '04' }));
 	});
+
+	it("shows no strip from a show's franchise that answers after leaving it", async () => {
+		// From Second Arc to Final Arc, a member of the same run whose
+		// own franchise read fails: Second Arc's answer, arriving late,
+		// would place Final Arc at "04 of 04" if the page took it.
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		let answered = false;
+		useShow();
+		const OTHER = '50';
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, async () => {
+				await held;
+				answered = true;
+				return HttpResponse.json(FRANCHISE);
+			}),
+			http.get(`${API_BASE}/api/kitsu/anime/${OTHER}`, () =>
+				HttpResponse.json({ ...kitsuRef(OTHER, 'Saga: Final Arc', 12), subtype: 'TV' })
+			),
+			http.get(
+				`${API_BASE}/api/kitsu/franchise/${OTHER}`,
+				() => new HttpResponse(null, { status: 503 })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${OTHER}`, () =>
+				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+			),
+			http.get(`${API_BASE}/api/history/by-kitsu/${OTHER}`, () => HttpResponse.json(null))
+		);
+		app = mount(DetailPage, { target });
+		await until(() => title() === 'Saga: Second Arc', 'the first show');
+		setParams({ id: OTHER });
+		await until(() => title() === 'Saga: Final Arc', 'the second show');
+		release();
+		await until(() => answered, "the first show's franchise answer");
+		await new Promise((r) => setTimeout(r, 150));
+		expect(strip()).toBeNull();
+		expect(eyebrow()).not.toContain(m.watchorder_strip_position({ position: '04', total: '04' }));
+	});
 });
