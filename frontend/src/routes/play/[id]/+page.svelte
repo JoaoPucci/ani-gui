@@ -5652,8 +5652,6 @@
 	   keeps the default cursor. */
 	.ep-card-unaired {
 		cursor: default;
-		opacity: 0.45;
-		filter: saturate(0.35);
 	}
 	.ep-card-unaired:not(:disabled) {
 		cursor: pointer;
@@ -5667,8 +5665,36 @@
 	   the episode. Hiding the icon would advertise the opposite. */
 	.ep-card-recheck {
 		cursor: pointer;
+	}
+	/* Both stay clickable, so their words stay readable: the picture
+	   dims and the title steps down a tier, where fading the whole card
+	   took the title to 4.0:1 and the number line to 2.6:1. A disabled
+	   card (a delisted show, a switch in flight) keeps fading whole
+	   through `.ep-card:disabled`, so these rules leave it alone. Hover
+	   lifts the brightness as on any card but keeps the desaturation. */
+	.ep-card-unaired:not(:disabled) .ep-card-thumb img,
+	.ep-card-recheck:not(:disabled) .ep-card-thumb img {
 		opacity: 0.45;
-		filter: saturate(0.35);
+		filter: brightness(0.92) saturate(0.35);
+	}
+	.ep-card-unaired:not(:disabled):hover .ep-card-thumb img,
+	.ep-card-recheck:not(:disabled):hover .ep-card-thumb img {
+		filter: brightness(1) saturate(0.35);
+	}
+	.ep-card-unaired:not(:disabled) .ep-card-foot-title,
+	.ep-card-recheck:not(:disabled) .ep-card-foot-title {
+		color: var(--bone-300);
+	}
+	/* The thumb loses its accent warmth, and a placeholder's words step
+	   down to the faintest tier, which still clears AA on ink-100
+	   (5.4:1). */
+	.ep-card-unaired:not(:disabled) .ep-card-thumb,
+	.ep-card-recheck:not(:disabled) .ep-card-thumb {
+		background: var(--ink-100);
+	}
+	.ep-card-unaired:not(:disabled) .ep-card-thumb-placeholder,
+	.ep-card-recheck:not(:disabled) .ep-card-thumb-placeholder {
+		color: var(--bone-400);
 	}
 	/* Center-of-thumb airs label replaces the display-size number.
 	   Smaller than the detail grid's — these cards are ~1/5 row. */
