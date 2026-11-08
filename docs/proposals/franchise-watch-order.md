@@ -7,9 +7,9 @@ page with its link to the franchise page, the "Watch order" setting,
 the player's "Up next" card at a finale, Continue Watching moving on
 to the next entry, and the franchise page. One card per franchise
 (option d) is not planned. Section 4 describes each option as it was
-proposed; section 5 records the design as it was decided and built. The research was done on 2026-11-01; the
-live samples it quotes describe the catalogues on that day and will
-drift.
+proposed; section 5 records the design as it was decided and built.
+The research was done on 2026-11-01; the live samples it quotes
+describe the catalogues on that day and will drift.
 
 ## The problem in plain terms
 
@@ -1147,8 +1147,13 @@ them introduces a new widget style.
   - A bounded walk that stopped early, or a listing cut short: the
     list ends with a quiet "There may be more titles than the ones
     listed here." line.
-  - A forked run: the numbered path continues as a list, and the
-    branches stand side by side, unnumbered, from the fork.
+  - A forked run: the numbered path runs up to the fork, and the ways
+    on stand side by side, unnumbered. A fork left with one way (the
+    others start at a join or in a loop) is listed as a line.
+  - A title the page cannot number and that does not only lead into
+    another, such as the titles after ways that join back up, sits
+    under "No clear place in the order"; stretches of them that
+    follow each other share one heading.
   - Entries the provider lacks: listed normally.
 
 ### The watch-order setting
@@ -1335,8 +1340,8 @@ The rules below hold on every surface:
   width they need, and the fork and the loop can be laid out as what
   they are.
 - **Structure.** Straight stretches are numbered from the run's first
-  entry; a stretch after a loop is not, since the loop gives it no
-  single place, and its key says so. A fork is a group
+  entry; a stretch after a loop or a fork is not, since nothing gives
+  it a single place, and its key says so. A fork is a group
   under "2 ways to continue", its branches side by side as unnumbered
   columns, each under "Way n of N". A loop is a group under "10
   linked titles, order unclear" with one sentence on why it has no
