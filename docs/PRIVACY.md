@@ -309,21 +309,24 @@ each kind of request:
     - AniList: <https://anilist.co/terms>
     - MyAnimeList: <https://myanimelist.net/about/privacy_policy>
 - **Update check (automatic, on launch)** — ani-gui asks GitHub's
-  public releases API (`api.github.com`) for the project's newest
-  release, so it can tell you when a new version is out. It asks again
+  public releases API (`api.github.com`) for the project's recent
+  releases, so it can tell you when a new version is out. It asks again
   when changing the language reloads the window. Besides standard
   headers that say nothing about you (GitHub's `Accept` and
-  API-version headers, and the compression it accepts), the request
+  API-version headers, and the compression it accepts), each request
   carries only the User-Agent `ani-gui`: not the version you run,
   which is compared on your machine, and no account information. It
   asks for the ten newest releases
   (`/repos/JoaoPucci/ani-gui/releases?per_page=10`) and picks, on your
-  machine, the newest one that has a download for your platform. The
+  machine, the newest one that has a download for your platform (or,
+  should none of their files be named the way the app expects, the
+  newest one by version alone). The
   "Include pre-releases in update check" setting (on by default)
   decides whether a pre-release can be that pick. It does not change
-  the request. When none of those ten can be offered, it makes one more
-  request, for the newest full release
-  (`/repos/JoaoPucci/ani-gui/releases/latest`). On a platform the app
+  the request. When that list arrives but none of it can be offered,
+  or it cannot be read, it makes one more request, for the newest full
+  release (`/repos/JoaoPucci/ani-gui/releases/latest`). When the first
+  request fails, nothing more is asked. On a platform the app
   publishes no download for, it makes no request at all. Otherwise the
   check cannot be turned off.
 

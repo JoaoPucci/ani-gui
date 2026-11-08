@@ -350,7 +350,13 @@ is user-facing:
   `backend/src/meta/github.rs`). A newer release without one is
   passed over for the newest of the ten most recent releases that
   carries one, or, failing that, for the newest full release, if that
-  release carries one. Installs on 0.17.0 or earlier compare versions
+  release carries one. The file names are matched by their endings,
+  listed in `backend/src/meta/release_assets.json`, and
+  `electron/lib/release-asset-names.test.cjs` fails when the names
+  electron-builder gives the packages stop ending that way. Should no
+  release read carry a file any packaged platform recognises, the
+  notifier takes the naming to have changed and offers the newest
+  release by version alone. Installs on 0.17.0 or earlier compare versions
   and nothing else: they do not read a release's assets and have no
   concept of platform, so shipping a release with no asset for a
   platform still prompts those of that platform's users toward a page
