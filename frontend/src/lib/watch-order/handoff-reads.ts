@@ -15,6 +15,15 @@ export function createFranchiseReads(
 	read: (id: string) => Promise<FranchiseData>,
 	settled: (id: string, franchise: FranchiseData | null) => void
 ): FranchiseReads {
-	void [read, settled];
-	return { want: () => {} };
+	const asked = new Set<string>();
+	return {
+		want(id) {
+			if (asked.has(id)) return;
+			asked.add(id);
+			read(id).then(
+				(franchise) => settled(id, franchise),
+				() => settled(id, null)
+			);
+		}
+	};
 }

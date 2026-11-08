@@ -12,7 +12,9 @@ import { MOCK_RUNS } from './mock/fixtures';
 import { sequence, type WatchOrder } from './order';
 import type { MockEntry, MockRun } from './mock/types';
 import type { FranchiseData, WatchEntry } from './types';
-import { upNextFor } from './up-next';
+import { parseHistoryEpisode } from '$lib/play/episode-number';
+import { runOf } from './strip-model';
+import { isFinale, upNextFor } from './up-next';
 
 /** A Continue card moved on: the entry played through, and the one after it. */
 export interface Handoff {
@@ -41,8 +43,10 @@ export function handoffAsk(
 	epNo: string,
 	leftPartWay: (kitsuId: string, episode: number) => boolean
 ): string | null {
-	void [match, epNo, leftPartWay];
-	return null;
+	const episode = parseHistoryEpisode(epNo);
+	if (!match || episode === null) return null;
+	if (!isFinale({ status: match.status, episodes: match.episode_count }, episode)) return null;
+	return leftPartWay(match.id, episode) ? null : match.id;
 }
 
 /**
@@ -58,8 +62,13 @@ export function handoffFrom(
 	today: string,
 	played: ReadonlySet<string>
 ): Handoff | null {
-	void [franchise, id, order, today, played];
-	return null;
+	if (franchise === null || order === null || franchise.anchor !== id) return null;
+	const run = runOf(franchise);
+	const entry = run?.entries.find((e) => e.id === id);
+	if (!run || !entry) return null;
+	const up = upNextFor(run, id, order, today);
+	if (up.kind !== 'one' || played.has(up.entry.id)) return null;
+	return { finished: entry, next: up.entry, titles: run.entries.map((e) => e.title) };
 }
 
 /** A history row as the played set reads it. */
@@ -76,8 +85,12 @@ export function playedIds(
 	rows: readonly PlayedRow[],
 	matches: Readonly<Record<string, { readonly id: string } | null | undefined>>
 ): Set<string> {
-	void [rows, matches];
-	return new Set();
+	const out = new Set<string>();
+	for (const row of rows) {
+		const id = row.kitsu_id ?? matches[row.id]?.id;
+		if (id !== undefined) out.add(id);
+	}
+	return out;
 }
 
 /**
@@ -90,8 +103,15 @@ export function railHandoffs(
 	asks: readonly (readonly [rowId: string, kitsuId: string | null])[],
 	from: (kitsuId: string) => Handoff | null
 ): Map<string, Handoff> {
-	void [asks, from];
-	return new Map();
+	const out = new Map<string, Handoff>();
+	const shown = new Set<string>();
+	for (const [rowId, kitsuId] of asks) {
+		const handoff = kitsuId === null ? null : from(kitsuId);
+		if (!handoff || shown.has(handoff.next.id)) continue;
+		shown.add(handoff.next.id);
+		out.set(rowId, handoff);
+	}
+	return out;
 }
 
 /** The mockups' hand-offs, from the fixtures. */
