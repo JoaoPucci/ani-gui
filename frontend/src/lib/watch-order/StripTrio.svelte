@@ -305,8 +305,8 @@
 	}
 
 	/* The footer: the card for the entry being watched, under a
-	   hairline, centred at the width the franchise link will share
-	   with it. It is the grid's fourth row. */
+	   hairline, centred at 24rem at most. It is the grid's fourth
+	   row. */
 	.trio-footer {
 		grid-column: 1 / -1;
 		grid-row: 4;

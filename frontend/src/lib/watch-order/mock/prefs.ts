@@ -2,7 +2,8 @@
  * Watch-order mockup preferences, kept per machine in local storage
  * like the hero framing switch's ($lib/hero/prefs). The diagnostics
  * page owns `enabled` and `switcher`; the on-page switch sets the
- * rest. `order` stands in for the app setting the feature will add.
+ * rest. `order` is the remaining mockups' own order switch: they read
+ * it, not the app's Watch order setting.
  */
 import type { StorageLike } from '$lib/hero/prefs';
 

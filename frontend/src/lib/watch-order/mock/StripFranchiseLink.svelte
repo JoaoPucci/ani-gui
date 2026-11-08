@@ -1,6 +1,8 @@
 <!--
-  The strip's way to the franchise page (mockup), at the end of the
-  strip's footer, in two variants:
+  A way to the franchise page (mockup), designed for the end of the
+  strip's footer. No surface draws it: the show page's strip has no
+  franchise link, and its footer holds only the watching card. Two
+  variants:
 
   - `button`: the show page's outline button (.btn.btn-outline) at its
     full size, with the number of entries the franchise page lists and

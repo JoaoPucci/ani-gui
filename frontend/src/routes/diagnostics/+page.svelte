@@ -51,8 +51,8 @@
 		saveHeroPrefs(browserStorage(), heroPrefs);
 	}
 
-	// Watch-order mockups (0.19.0 design review): whether the show,
-	// player, home, franchise and settings pages draw them, and whether
+	// Watch-order mockups (0.19.0 design review): whether the player,
+	// home and franchise pages draw them, and whether
 	// each shows its option switch — see $lib/watch-order/mock.
 	let mockPrefs = $state(loadMockPrefs(browserStorage()));
 	function setMock(field: 'enabled' | 'switcher', on: boolean) {
