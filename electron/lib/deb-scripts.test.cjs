@@ -58,6 +58,13 @@ function host({ apparmor = "active", abi4 = true, parser = 0 } = {}) {
   fs.mkdirSync(path.join(tree, "etc", "apparmor.d", "abi"), { recursive: true });
   if (abi4) fs.writeFileSync(path.join(tree, "etc", "apparmor.d", "abi", "4.0"), "");
   fs.mkdirSync(bin);
+  // The scripts see only this directory on PATH, so a command the host
+  // happens to have (its own aa-enabled, say) cannot stand in for a
+  // stub; the few real tools they use are linked in by name.
+  for (const tool of ["cat", "chmod", "mkdir", "ln", "readlink", "rm"]) {
+    const real = ["/usr/bin", "/bin"].map((d) => path.join(d, tool)).find((p) => fs.existsSync(p));
+    fs.symlinkSync(real, path.join(bin, tool));
+  }
   const stub = (name, body) =>
     fs.writeFileSync(path.join(bin, name), `#!/bin/sh\necho "${name} $*" >> "${log}"\n${body}\n`, { mode: 0o755 });
   stub("chown", "exit 0");
@@ -68,9 +75,9 @@ function host({ apparmor = "active", abi4 = true, parser = 0 } = {}) {
 
 function run(h, script, arg) {
   assertRooted(script);
-  const r = spawnSync("sh", [script, arg], {
+  const r = spawnSync("/bin/sh", [script, arg], {
     encoding: "utf8",
-    env: { PATH: `${h.bin}:/usr/bin:/bin`, DPKG_ROOT: h.tree },
+    env: { PATH: h.bin, DPKG_ROOT: h.tree },
   });
   const calls = fs.existsSync(h.log) ? fs.readFileSync(h.log, "utf8").split("\n").filter(Boolean) : [];
   return { ...r, calls };
