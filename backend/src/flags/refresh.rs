@@ -145,10 +145,7 @@ async fn keep_until_cached<F, Fut, C>(
     let mut attempt = 0;
     loop {
         if let Some(flags) = outcome {
-            let entry = CacheEntry {
-                fetched_at: clock(),
-                flags,
-            };
+            let entry = CacheEntry::admitted(clock(), flags);
             cache::write(path, &entry).await;
             return;
         }

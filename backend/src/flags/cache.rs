@@ -35,8 +35,23 @@ pub const FRESH_FOR: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 pub struct CacheEntry {
     /// When the document was fetched, in seconds since the Unix epoch.
     pub fetched_at: u64,
-    /// The `flags` object as fetched.
+    /// The `flags` object as admitted.
     pub flags: Document,
+    /// Stub.
+    #[serde(default)]
+    pub verified: bool,
+}
+
+impl CacheEntry {
+    /// Stub.
+    #[must_use]
+    pub fn admitted(fetched_at: u64, flags: Document) -> Self {
+        Self {
+            fetched_at,
+            flags,
+            verified: false,
+        }
+    }
 }
 
 /// Whether an entry fetched at `fetched_at` may stand in at `now`:
