@@ -1,11 +1,12 @@
 <!--
   Home — the front door. Editorial repertory cinema, programmed by a
   librarian. Composition:
-    1. Hero: kitsuTrendingAnilist()[0], full-bleed cover with parallax + scrim,
+    1. Hero: the first trending shows with art of their own
+       ($lib/hero/rotation), full-bleed cover with parallax + scrim,
        "View" call. NO autoplay, NO carousel.
     2. Continue Watching: hidden when historyList() is empty; otherwise a
        horizontal strip whose cards lean on an oversized mono episode number.
-    3. Trending strip: rest of kitsuTrendingAnilist() (1..n).
+    3. Trending strip: every other trending show, in trending order.
     4. Top Rated: kitsuTopRated().
 -->
 <script lang="ts">
@@ -163,7 +164,8 @@
 	import { revealWhenDecoded } from '$lib/history/reveal-image';
 	import { m } from '$lib/paraglide/messages';
 
-	// Hero cycles through the top N trending titles. Rotation is slow
+	// Hero cycles through the first N trending titles with art of their
+	// own. Rotation is slow
 	// (~9s) and pauses while the cursor is over the hero, so it never
 	// snatches a title out from under a user mid-read. Honors
 	// prefers-reduced-motion (cycle disabled, first item shown
