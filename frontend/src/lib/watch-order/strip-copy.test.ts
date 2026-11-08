@@ -38,7 +38,8 @@ describe('the strip copy', () => {
 
 	it("reads the strip's caption", () => {
 		expect(captionText({ kind: 'position', position: 4, total: 5 })).toBe('04 of 05');
-		expect(captionText({ kind: 'numeral', position: 7 })).toBe('07');
+		// Read aloud in the strip's heading, a bare number says nothing.
+		expect(captionText({ kind: 'numeral', position: 7 })).toBe('Position 07');
 		expect(captionText({ kind: 'side' })).toBe('Side story');
 		expect(captionText({ kind: 'cycle', count: 10 })).toBe(
 			m.watchorder_strip_unnumbered_cycle({ count: 10 })

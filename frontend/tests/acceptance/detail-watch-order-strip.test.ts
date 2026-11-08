@@ -148,6 +148,17 @@ const strip = (): HTMLElement | null =>
 const tile = (id: string) => strip()?.querySelector(`a[href="/anime/${id}"]`) ?? null;
 const eyebrow = () => target.querySelector('.masthead-text .eyebrow')?.textContent ?? '';
 const title = () => target.querySelector('h1.title')?.textContent ?? '';
+/** What a screen reader reads for `el`: its text outside `aria-hidden` parts. */
+function spoken(el: Element): string {
+	const out: string[] = [];
+	const walk = (n: Node) => {
+		if (n instanceof Element && n.getAttribute('aria-hidden') === 'true') return;
+		if (n.nodeType === Node.TEXT_NODE) out.push(n.textContent ?? '');
+		n.childNodes.forEach(walk);
+	};
+	walk(el);
+	return out.join(' ').replace(/\s+/g, ' ').trim();
+}
 const similarCard = (id: string) =>
 	target.querySelector(`section.similar a[href="/anime/${id}"]`) ?? null;
 
@@ -219,5 +230,43 @@ describe('detail route — the watch-order strip', () => {
 		app = mount(DetailPage, { target });
 		await until(() => tile('5') !== null && similarCard('77') !== null, 'the card and Similar');
 		expect(similarCard('5')).toBeNull();
+	});
+
+	it('names each tile and the watching card by the full title, once', async () => {
+		useShow({
+			history: [{ id: 'hianime:saga-origins', title: 'Saga Origins', ep_no: '3', kitsu_id: '5' }]
+		});
+		app = mount(DetailPage, { target });
+		await until(() => tile('5') !== null, 'the watching card');
+		expect(spoken(tile('50')!).startsWith('Saga: Final Arc')).toBe(true);
+		expect(spoken(tile('50')!)).not.toMatch(/^Final Arc/);
+		expect(spoken(tile('5')!)).toContain('Saga: Origins');
+		expect(spoken(tile('5')!).split('Origins').length).toBe(2);
+	});
+
+	it('shows no Similar titles card that the strip then takes away', async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		useShow({
+			similar: ['50', '77'],
+			franchise: () => HttpResponse.json(FRANCHISE)
+		});
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, async () => {
+				await held;
+				return HttpResponse.json(FRANCHISE);
+			})
+		);
+		app = mount(DetailPage, { target });
+		let sawFifty = false;
+		const deadline = Date.now() + 1500;
+		while (Date.now() < deadline) {
+			if (similarCard('50') !== null) sawFifty = true;
+			await new Promise((r) => setTimeout(r, 10));
+		}
+		release();
+		await until(() => strip() !== null && similarCard('77') !== null, 'the strip and Similar');
+		expect(sawFifty).toBe(false);
+		expect(similarCard('50')).toBeNull();
 	});
 });
