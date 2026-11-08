@@ -67,3 +67,24 @@ pub(crate) fn forget(state: &AppState, row: &str) -> Result<()> {
 pub(crate) fn linked(state: &AppState, row: &str) -> Option<String> {
     meta_cache_get(&state.cache_pool, &key(row)).ok().flatten()
 }
+
+/// Note that the user linked `row` to `kitsu_id`, and answer the note
+/// it replaces, for the link's undo to give back.
+///
+/// # Errors
+/// SQLite errors propagate.
+pub(crate) fn replace(state: &AppState, row: &str, kitsu_id: &str) -> Result<Option<String>> {
+    let earlier = linked(state, row);
+    record(state, row, kitsu_id).map(|()| earlier)
+}
+
+/// Give `row` back the note an earlier link left, or none.
+///
+/// # Errors
+/// SQLite errors propagate.
+pub(crate) fn restore(state: &AppState, row: &str, earlier: Option<&str>) -> Result<()> {
+    match earlier {
+        Some(id) => record(state, row, id),
+        None => forget(state, row),
+    }
+}

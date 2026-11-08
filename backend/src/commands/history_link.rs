@@ -156,11 +156,10 @@ fn link_held(
     let mut linked = plan_held(&held.rows()?, rows);
     linked.retain(|l| !held.show_removed_since(begun, &l.row));
     for l in &mut linked {
-        l.previous_linked = crate::commands::linked_note::linked(state, &l.row);
         held.set_kitsu_id(&l.row, Some(kitsu_id.to_string()))?;
         drop_other_mapping(state, &l.row, kitsu_id)?;
         // The user named the show: a refused watch leaves it on the row.
-        crate::commands::linked_note::record(state, &l.row, kitsu_id)?;
+        l.previous_linked = crate::commands::linked_note::replace(state, &l.row, kitsu_id)?;
     }
     Ok(LinkOutcome {
         kitsu_id: kitsu_id.to_string(),
@@ -192,10 +191,7 @@ pub fn unlink(state: &AppState, args: &UnlinkArgs) -> Result<UnlinkOutcome> {
         for l in &restored {
             held.set_kitsu_id(&l.row, l.previous.clone())?;
             // The note goes back to what an earlier link of the row named.
-            match &l.previous_linked {
-                Some(id) => crate::commands::linked_note::record(state, &l.row, id)?,
-                None => crate::commands::linked_note::forget(state, &l.row)?,
-            }
+            crate::commands::linked_note::restore(state, &l.row, l.previous_linked.as_deref())?;
         }
         let kept = args
             .rows
