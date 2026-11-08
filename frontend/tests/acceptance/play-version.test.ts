@@ -261,6 +261,38 @@ describe("play route — the show's remembered captions choice", () => {
 		expect(posted.syncplay[0].caption).toBe('es-419');
 	});
 
+	// The backend keeps the tracks a long listing has room for by the
+	// choice, and the play cache does not key on it: a switch plays the
+	// session its warm resolved, so a warm that named no choice would
+	// hand the switch a session cut without the viewer's language.
+	it('names it on the warms, and a switch plays the session warmed with it', async () => {
+		rememberCaption(KITSU_ID, 'es-419');
+		const posted = fresh();
+		useHandlers(posted);
+		await mountPlaying();
+
+		const episodeOf = (es: FakeEventSource) => new URL(es.url).searchParams.get('episode');
+		const captionOf = (es: FakeEventSource) => new URL(es.url).searchParams.get('caption');
+		await until(
+			() => FakeEventSource.instances.some((es) => episodeOf(es) === '4'),
+			'the warm of the next episode'
+		);
+		for (const es of FakeEventSource.instances) expect(captionOf(es)).toBe('es-419');
+
+		// That warm is the only stream the page opened, and
+		// `mountPlaying` has already answered it.
+		const opened = FakeEventSource.instances.length;
+		const next = () =>
+			target.querySelector(
+				`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
+			) as HTMLButtonElement | null;
+		await until(() => next() !== null && !next()!.disabled, 'the next-episode button');
+		next()!.click();
+		await until(() => posted.watched.some((w) => w.episode === '4'), 'the switch watch');
+		// The switch asked for nothing new: it played the warm's session.
+		expect(FakeEventSource.instances.length).toBe(opened);
+	});
+
 	it('names none when nothing is remembered', async () => {
 		const posted = fresh();
 		useHandlers(posted);
@@ -268,5 +300,8 @@ describe("play route — the show's remembered captions choice", () => {
 		await clickMenuItem(m.play_external_label());
 		await until(() => posted.external.length === 1, 'the external-player request');
 		expect('caption' in posted.external[0]).toBe(false);
+		for (const es of FakeEventSource.instances) {
+			expect(new URL(es.url).searchParams.has('caption')).toBe(false);
+		}
 	});
 });
