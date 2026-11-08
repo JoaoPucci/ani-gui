@@ -255,7 +255,7 @@ proptest::proptest! {
     /// counts under the pre-release setting, and carries a package for
     /// the platform — and nothing when no release is all three.
     #[test]
-    fn the_offer_is_the_newest_release_installable_here(
+    fn the_page_pick_is_the_newest_release_installable_here(
         shapes in proptest::collection::vec((proptest::bool::ANY, proptest::bool::ANY, 0u8..8), 0..12),
         windows in proptest::bool::ANY,
         include_prereleases in proptest::bool::ANY,
