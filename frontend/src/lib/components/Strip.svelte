@@ -326,15 +326,16 @@
 		margin-block-end: var(--space-7);
 	}
 
-	/* A banded row: a faint ground the whole row — header, cards, fades —
-	   sits on, so an action in the header is visibly part of this row.
-	   It runs the full width of the rows' column, square, with the row's
-	   own gutter: an inset rounded panel per row is the stacked-card
-	   look the design rules keep out, and a change of ground is all the
-	   row needs. It lifts a little while the row is under the pointer or
-	   holds focus — the subtle per-row highlight the style is for. */
+	/* A banded row: while the row is under the pointer or holds focus,
+	   a faint ground the whole row — header, cards, fades — sits on, so
+	   an action in the header is visibly part of this row. At rest the
+	   row sits on the page, as a plain row does. The band runs the full
+	   width of the rows' column, square, with the row's own gutter: an
+	   inset rounded panel per row is the stacked-card look the design
+	   rules keep out, and a change of ground is all the row needs. Its
+	   spacing is in place at rest, so showing it moves nothing. */
 	.strip[data-surface='band'] {
-		--strip-surface: color-mix(in oklab, var(--bone-100) 4%, var(--ink-000));
+		--strip-surface: var(--ink-000);
 		/* The band's own padding replaces part of the gap between rows,
 		   so the page is no taller than with plain rows. */
 		margin-block-end: var(--space-5);
