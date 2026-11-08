@@ -111,8 +111,14 @@ test("the profile parses, attaches to the installed binary and grants userns", (
     const text = fs.readFileSync(profileAt(h), "utf8");
     assert.match(text, /^profile ani-gui \/opt\/ani-gui\/ani-gui\.bin flags=\(unconfined\) \{$/m);
     assert.match(text, /^\s*userns,$/m);
+    // As in Ubuntu's own profiles for Chrome, VS Code and Obsidian.
+    assert.match(text, /^\s*@\{exec_path\} mr,$/m);
     if (!parser) {
       t.skip("apparmor_parser is not installed here: the profile was not parsed");
+      return;
+    }
+    if (!fs.existsSync("/etc/apparmor.d/abi/4.0")) {
+      t.skip("this host's AppArmor predates ABI 4.0, where the postinst writes no profile: not parsed");
       return;
     }
     const parsed = spawnSync(parser, ["-Q", "-K", "-T", "--skip-cache", profileAt(h)], { encoding: "utf8" });
@@ -188,7 +194,9 @@ test("the terminal launcher link is still made, inside the target root", () => {
   }
 });
 
-for (const action of ["remove", "purge"]) {
+// `disappear` is dpkg's word for a package whose every file another
+// package has replaced: it is gone as surely as on remove.
+for (const action of ["remove", "purge", "disappear"]) {
   test(`${action} unloads the profile and deletes it`, () => {
     const h = host();
     try {
@@ -255,8 +263,35 @@ test("remove on a host that never had the profile succeeds", () => {
 // and stops the build on a name it does not know
 // (app-builder-lib/out/targets/FpmTarget.js, writeConfigFile). A
 // script that needs a braced expansion has to spell it some other way.
-test("neither script carries a ${name} electron-builder would try to fill in", () => {
+test("neither script carries a macro electron-builder would try to fill in", () => {
   for (const script of [POSTINST, POSTRM]) {
-    assert.deepEqual(fs.readFileSync(script, "utf8").match(/\$\{[a-zA-Z]+\}/g) ?? [], [], script);
+    const text = fs.readFileSync(script, "utf8");
+    assert.deepEqual(text.match(/\$\{[a-zA-Z]+\}/g) ?? [], [], script);
+    assert.deepEqual(text.match(/<%=[a-zA-Z]+%>/g) ?? [], [], script);
+  }
+});
+
+// On purge, what a local administrator added for the profile goes with
+// it, as dh_apparmor's postrm does: the local override and the
+// disable / force-complain markers.
+test("purge removes the profile's local override and markers", () => {
+  const h = host();
+  try {
+    run(h, POSTINST, "configure");
+    for (const dir of ["local", "disable", "force-complain"]) {
+      fs.mkdirSync(path.join(h.tree, "etc", "apparmor.d", dir), { recursive: true });
+      fs.writeFileSync(path.join(h.tree, "etc", "apparmor.d", dir, "ani-gui"), "");
+    }
+    run(h, POSTRM, "remove");
+    for (const dir of ["local", "disable", "force-complain"]) {
+      assert.ok(fs.existsSync(path.join(h.tree, "etc", "apparmor.d", dir, "ani-gui")), `remove keeps ${dir}/`);
+    }
+    const r = run(h, POSTRM, "purge");
+    assert.equal(r.status, 0, r.stderr);
+    for (const dir of ["local", "disable", "force-complain"]) {
+      assert.ok(!fs.existsSync(path.join(h.tree, "etc", "apparmor.d", dir, "ani-gui")), `purge removes ${dir}/`);
+    }
+  } finally {
+    cleanup(h);
   }
 });
