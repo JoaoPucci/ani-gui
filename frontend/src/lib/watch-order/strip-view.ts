@@ -111,15 +111,6 @@ export function watchingFor(
 }
 
 /**
- * The entries "Similar titles" leaves out while the strip shows: the
- * run's own entries, which the strip and its franchise link stand for,
- * and the strip's tiles (a side story's parents).
- */
-export function similarHidden(run: WatchRun, view: StripView): ReadonlySet<string> {
-	return new Set([...run.entries, ...view.before, ...view.after].map((e) => e.id));
-}
-
-/**
  * The entries the strip itself shows: its tiles, and the entry the
  * "You're watching" card names. "Similar titles" leaves these out, so
  * no poster appears twice on the page.

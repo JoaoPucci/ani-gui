@@ -7,7 +7,6 @@ import {
 	emptyColumn,
 	franchiseSummary,
 	shownOnStrip,
-	similarHidden,
 	stripView,
 	watchingFor
 } from './strip-view';
@@ -146,18 +145,6 @@ describe('watchingFor', () => {
 
 	it('says nothing where nothing is part-way', () => {
 		expect(watching('bleach', '244')).toBeNull();
-	});
-});
-
-describe('similarHidden', () => {
-	it("leaves out the run's entries and the strip's tiles, and nothing else", () => {
-		const jojo = run('jojo');
-		const hidden = similarHidden(jojo, stripView(jojo, '12064', 'linked'));
-		for (const e of jojo.entries) expect(hidden.has(e.id)).toBe(true);
-		expect(hidden.has('11459')).toBe(true);
-		// The franchise's other versions are not the run: they may still appear.
-		expect(hidden.has('610')).toBe(false);
-		expect(hidden.size).toBe(jojo.entries.length);
 	});
 });
 

@@ -36,4 +36,4 @@ export function upNextFor(run: MockRun, id: string, order: WatchOrder, today: st
 export { handoffs, type Handoff } from './handoff';
 export { currentIn } from '../strip-view';
 export { isUnaired, progressOf, progressShare, yearOf, type ProgressView } from '../entry';
-export { asRef, franchiseName, scrollLeftFor } from './adapters';
+export { asRef, franchiseName } from './adapters';
