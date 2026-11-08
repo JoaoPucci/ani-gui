@@ -70,17 +70,32 @@ describe('splitTrending', () => {
 	});
 });
 
-const show = fc.record({
-	art: fc.constantFrom('banner', 'cover', 'none')
-});
+type Art = 'banner' | 'cover' | 'whole' | 'small' | 'both' | 'empty-cover' | 'none';
+
+function make(art: Art, id: string): Show {
+	switch (art) {
+		case 'banner':
+			return banner(id);
+		case 'cover':
+			return cover(id);
+		case 'whole':
+			return { id, cover_image: { original: COVER } };
+		case 'small':
+			return { id, cover_image: { small: COVER } };
+		case 'both':
+			return { id, anilist_banner: BANNER, cover_image: { large: COVER } };
+		case 'empty-cover':
+			return { id, anilist_banner: null, cover_image: { large: null, original: null } };
+		case 'none':
+			return bare(id);
+	}
+}
+
+const ART: Art[] = ['banner', 'cover', 'whole', 'small', 'both', 'empty-cover', 'none'];
 
 const trendingList = fc
-	.array(show, { maxLength: 30 })
-	.map((xs) =>
-		xs.map(({ art }, i) =>
-			art === 'banner' ? banner(String(i)) : art === 'cover' ? cover(String(i)) : bare(String(i))
-		)
-	);
+	.array(fc.constantFrom(...ART), { maxLength: 30 })
+	.map((arts) => arts.map((art, i) => make(art, String(i))));
 
 const rank = (s: Show) => Number(s.id);
 const isAscending = (xs: readonly Show[]) =>
@@ -110,15 +125,25 @@ describe('splitTrending properties', () => {
 		);
 	});
 
-	it('puts art first: the hero is the first shows with art, and is filled without art only when they run out', () => {
+	it('puts art first: the first shows with art, then the first without it only when those run out', () => {
 		fc.assert(
 			fc.property(trendingList, fc.integer({ min: 0, max: 6 }), (t, n) => {
 				const { hero } = splitTrending(t, n);
 				const withArt = t.filter(hasRealArt);
+				const without = t.filter((s) => !hasRealArt(s));
 				expect(hero.length).toBe(Math.min(n, t.length));
 				const artCount = Math.min(n, withArt.length);
-				expect(hero.slice(0, artCount)).toEqual(withArt.slice(0, artCount));
-				expect(hero.slice(artCount).every((s) => !hasRealArt(s))).toBe(true);
+				expect(ids(hero.slice(0, artCount))).toEqual(ids(withArt.slice(0, artCount)));
+				expect(ids(hero.slice(artCount))).toEqual(ids(without.slice(0, hero.length - artCount)));
+			})
+		);
+	});
+
+	it('lists in the row exactly the shows the hero did not take, in trending order', () => {
+		fc.assert(
+			fc.property(trendingList, fc.integer({ min: 0, max: 6 }), (t, n) => {
+				const { hero, row } = splitTrending(t, n);
+				expect(ids(row)).toEqual(ids(t.filter((s) => !hero.includes(s))));
 			})
 		);
 	});
@@ -128,9 +153,10 @@ describe('splitTrending properties', () => {
 			fc.property(trendingList, (t) => {
 				const { hero, row } = splitTrending(t);
 				const last = hero.filter(hasRealArt).at(-1);
-				if (last === undefined) return;
-				const skipped = row.filter((s) => rank(s) < rank(last));
-				expect(row.slice(0, skipped.length)).toEqual(skipped);
+				fc.pre(last !== undefined);
+				const cut = rank(last as Show);
+				const skipped = t.filter((s) => rank(s) < cut && !hero.includes(s));
+				expect(ids(row.slice(0, skipped.length))).toEqual(ids(skipped));
 			})
 		);
 	});
