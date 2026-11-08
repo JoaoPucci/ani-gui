@@ -390,3 +390,29 @@ fn a_music_entry_left_out_is_not_an_other_version() {
     assert_eq!(ids(&f.entries), ["94001", "94002"]);
     assert!(f.versions.is_empty(), "{:?}", ids(&f.versions));
 }
+
+/// Two versions met in one step through different entries still keep
+/// one when an entry lists both: R lists X and Y, X lists A, and Y
+/// lists A and B, which are versions of each other. B starts first, so
+/// it is decided first, but A must not join beside it.
+#[test]
+fn versions_met_in_one_step_through_different_entries_keep_one() {
+    let mut c = Catalogue::default();
+    c.add("95001", "TV", Some("2010-01-01"))
+        .add("95002", "TV", Some("2011-01-01"))
+        .add("95003", "TV", Some("2011-06-01"))
+        .add("95004", "TV", Some("2013-01-01"))
+        .add("95005", "TV", Some("2012-01-01"));
+    c.rel("95001", "sequel", "95002")
+        .rel("95001", "sequel", "95003")
+        .rel("95002", "sequel", "95004")
+        .rel("95003", "sequel", "95004")
+        .rel("95003", "sequel", "95005")
+        .rel("95004", "alternative_version", "95005");
+    let f = drive("95001", &c);
+    let members = ids(&f.entries);
+    assert!(
+        members.contains(&"95004") != members.contains(&"95005"),
+        "{members:?}"
+    );
+}
