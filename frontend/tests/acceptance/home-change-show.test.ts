@@ -656,6 +656,93 @@ describe('a card linked while its first probe waits in the queue', () => {
 	});
 });
 
+describe("a resume clicked while a link's Undo is still matching the card", () => {
+	// JoJo's card is linked to the OVA from its pill. Its Undo is pressed,
+	// and while the card is being matched as the guess again (its title
+	// search held), the card is clicked: the click is a resume of the OVA,
+	// whose cap lookup (held too) answers 1 only after the card is the
+	// guess again. That cap is the OVA's: the guess's next resume must not
+	// replay episode 1 because of it.
+	let holdTitle = false;
+	let releaseTitle: () => void = () => {};
+	let releaseLookup: () => void = () => {};
+	let titleAsks = 0;
+	let lookupAsked = false;
+	beforeEach(() => {
+		holdTitle = false;
+		titleAsks = 0;
+		lookupAsked = false;
+		const title = new Promise<void>((resolve) => {
+			releaseTitle = resolve;
+		});
+		const lookup = new Promise<void>((resolve) => {
+			releaseLookup = resolve;
+		});
+		server.use(
+			http.get(`${API_BASE}/api/title-match`, async ({ request }) => {
+				const t = new URL(request.url).searchParams.get('title') ?? '';
+				if (t.startsWith(JOJO_TITLE)) {
+					if (holdTitle) {
+						titleAsks++;
+						await title;
+					}
+					return HttpResponse.json(JOJO_GUESS);
+				}
+				if (t.startsWith(BC_TITLE)) return HttpResponse.json(BC_GUESS);
+				return HttpResponse.json(null);
+			}),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const { kitsu_id, background } = (await request.json()) as {
+					kitsu_id?: string;
+					background?: boolean;
+				};
+				if (kitsu_id === JOJO_RIGHT && background === false) {
+					lookupAsked = true;
+					await lookup;
+					return HttpResponse.json({ available: true, episode_count: 1 });
+				}
+				return HttpResponse.json({ available: true, episode_count: 26 });
+			})
+		);
+	});
+
+	it("does not keep the OVA's cap on the card once it is the guess again", async () => {
+		await openHome();
+		pill(JOJO_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(JOJO_RIGHT_TITLE);
+		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the card as the OVA');
+		await settle();
+		// Undo: the card is matched as the guess again, held at its title.
+		holdTitle = true;
+		toastWith(m.detail_link_done_toast({ title: JOJO_RIGHT_TITLE }))!.onAction!();
+		await until(() => titleAsks > 0, 'the card being matched again');
+		// The card still shows the OVA, and is clicked.
+		const card = () => cell(JOJO_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!;
+		card().click();
+		await until(() => lookupAsked, "the click's cap lookup");
+		releaseTitle();
+		await until(() => showLine(JOJO_CARD).includes(JOJO_GUESS_TITLE), 'the card as the guess');
+		releaseLookup();
+		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+		FakeEventSource.instances
+			.at(-1)!
+			.dispatch('error', JSON.stringify({ kind: 'no_results', message: 'not found' }));
+		await until(
+			() => target.querySelector('[role="alertdialog"]') !== null,
+			'the failed resume overlay'
+		);
+		await settle();
+		// The guess's resume goes on to episode 2.
+		const before = FakeEventSource.instances.length;
+		card().click();
+		await until(() => FakeEventSource.instances.length > before, 'the second resume');
+		const url = new URL(FakeEventSource.instances.at(-1)!.url, 'http://x');
+		expect(url.searchParams.get('kitsu_id')).toBeNull();
+		expect(url.searchParams.get('episode')).toBe('2');
+	});
+});
+
 describe("a guessed card's player is told where its play landed", () => {
 	async function resumeJojo(ownListing: boolean) {
 		await openHome();

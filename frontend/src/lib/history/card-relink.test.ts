@@ -212,3 +212,44 @@ describe('what was asked for a row before it was matched again', () => {
 		);
 	});
 });
+
+describe('a view taken while a row is being matched again', () => {
+	it('answers that the row changed, before and after the match lands', async () => {
+		// A click on the card mid-rematch is a click on the show the row is
+		// leaving: its cap lookup, landing after, is the former show's.
+		const held = heldMatches();
+		const h = home([row('a'), row('b')], [[row('a', '5'), row('b')]], {
+			resolveMatch: held.resolveMatch
+		});
+		await h.relink.reread();
+		const click = h.relink.since();
+		expect(click('a')).toBe(false);
+		expect(click('b')).toBe(true);
+		held.asks[0].answer();
+		await flush();
+		expect(click('a')).toBe(false);
+		// A view taken once the match landed holds.
+		expect(h.relink.since()('a')).toBe(true);
+	});
+
+	it('answers for any row: changed exactly while it was or has since been matched again', async () => {
+		await fc.assert(
+			fc.asyncProperty(fc.boolean(), fc.boolean(), async (answerFirst, rereadAfter) => {
+				const held = heldMatches();
+				const h = home([row('a')], [[row('a', '5')], [row('a')]], {
+					resolveMatch: held.resolveMatch
+				});
+				await h.relink.reread();
+				if (answerFirst) {
+					held.asks[0].answer();
+					await flush();
+				}
+				const view = h.relink.since();
+				if (rereadAfter) await h.relink.reread();
+				for (const a of held.asks) a.answer();
+				await flush();
+				expect(view('a')).toBe(!(rereadAfter || !answerFirst));
+			})
+		);
+	});
+});
