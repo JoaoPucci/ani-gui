@@ -1,9 +1,7 @@
 <!--
   The player's "Up next" card at a finale. It takes the skip
   pill's corner, surface and accent border, and grows into a card:
-
-  - `poster`: the next entry's poster beside its title and meta;
-  - `still`: the next entry's banner above its title, wider.
+  the next entry's poster beside its title and meta.
 
   It waits for a click, which opens the next entry's show page; it
   never takes focus by itself, Esc dismisses it while it has focus,
@@ -24,13 +22,11 @@
 	let {
 		progress,
 		upNext,
-		variant,
 		today,
 		ondismiss
 	}: {
 		progress: Progress;
 		upNext: Exclude<UpNext, { kind: 'none' }>;
-		variant: 'poster' | 'still';
 		today: string;
 		ondismiss: () => void;
 	} = $props();
@@ -44,8 +40,7 @@
 				? m.watchorder_upnext_coming()
 				: m.watchorder_upnext_eyebrow()
 	);
-	const image = (e: WatchEntry) =>
-		imageProxyUrl(variant === 'still' ? (e.cover ?? e.poster) : e.poster);
+	const image = (e: WatchEntry) => imageProxyUrl(e.poster);
 
 	// Filled after mount: a live region that already holds its text
 	// when it appears is not announced by every screen reader.
@@ -74,13 +69,7 @@
 {/snippet}
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-	class="up-next"
-	class:still={variant === 'still'}
-	style:--accent={accent}
-	{onkeydown}
-	transition:settle={{ duration: 200 }}
->
+<div class="up-next" style:--accent={accent} {onkeydown} transition:settle={{ duration: 200 }}>
 	<span class="sr-only" role="status">{announce}</span>
 	<button
 		type="button"
@@ -144,9 +133,6 @@
 			0 8px 24px rgb(0 0 0 / 0.45),
 			0 2px 8px rgb(0 0 0 / 0.3);
 	}
-	.up-next.still {
-		inline-size: min(20rem, calc(100% - 3rem));
-	}
 	.row {
 		display: grid;
 		grid-template-columns: 4.5rem minmax(0, 1fr);
@@ -166,9 +152,6 @@
 		outline-offset: 2px;
 		box-shadow: none;
 	}
-	.still .row.single {
-		grid-template-columns: minmax(0, 1fr);
-	}
 	.art {
 		position: relative;
 		display: block;
@@ -179,12 +162,6 @@
 	}
 	.art.compact {
 		inline-size: 2.75rem;
-	}
-	.still .art {
-		aspect-ratio: 16 / 9;
-	}
-	.still .art.compact {
-		inline-size: 4.5rem;
 	}
 	.art img {
 		position: absolute;
@@ -198,9 +175,6 @@
 		gap: var(--space-1);
 		min-inline-size: 0;
 		padding-inline-end: var(--space-5);
-	}
-	.still .single .text {
-		padding-inline-end: 0;
 	}
 	.key {
 		font-size: var(--type-micro);

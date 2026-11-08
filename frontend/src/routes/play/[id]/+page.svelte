@@ -3008,7 +3008,6 @@
 				<UpNextCard
 					progress={upNextCard.progress}
 					upNext={upNextCard.upNext}
-					variant="poster"
 					today={upNextToday}
 					ondismiss={() => (upNextDismissed = `${id}|${episodeNum}`)}
 				/>
