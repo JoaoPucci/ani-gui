@@ -15,9 +15,11 @@
  *
  * The episode is the one the session says it plays, which a renumbered
  * recap may name by another number than the one asked for, and the
- * playback speed goes along ($lib/play/rate-carry). A stream that
- * cannot be had, or a player that cannot be opened on it, is a failed
- * switch: the episode on screen goes on, and the caller says so. A viewer who left the player while
+ * playback speed goes along ($lib/play/rate-carry). The watch is
+ * recorded once the player opened on the stream. A stream that cannot
+ * be had, or a player that cannot be opened on it, is a failed switch
+ * that records nothing and leaves nothing for a later page: the
+ * episode on screen goes on, and the caller says so. A viewer who left the player while
  * the stream was on its way is not taken back to it.
  *
  * The page is an adapter: it hands in the app's effects and shows the
@@ -30,8 +32,9 @@ import { playArgsFor } from './owned-play';
 export interface SwitchShowDeps {
 	/** The stream for `args`. Rejects when there is none. */
 	resolve: (args: PlayArgs) => Promise<CreateSessionResponse>;
-	/** Record the watch the play stands for, and mirror it. */
-	record: (args: PlayArgs, session: CreateSessionResponse) => void;
+	/** Record the watch the play stands for, of `episode`, and mirror
+	 *  it. */
+	record: (args: PlayArgs, session: CreateSessionResponse, episode: number) => void;
 	/** Carry `at` seconds over to the next attach of `episode` of
 	 *  `showId`. */
 	carry: (showId: string, episode: number, at: number) => void;
@@ -52,6 +55,9 @@ export interface SwitchShowDeps {
 	/** Hand the playback speed to the next player of `showId`
 	 *  ($lib/play/rate-carry). */
 	carryRate: (showId: string, rate: number) => void;
+	/** Forget what a switch to `showId` from the card row `row` left for
+	 *  the next page: the point, the speed and the note. */
+	forget: (showId: string, row: string | null) => void;
 	/** Whether the viewer is still on the player the switch began on. */
 	isCurrent: () => boolean;
 }
@@ -98,9 +104,14 @@ export async function switchShow(deps: SwitchShowDeps, req: SwitchRequest): Prom
 	if (!deps.isCurrent()) return 'abandoned';
 	// The session may name the episode by the number it has now.
 	const episode = deps.played(req.to.id, session, req.episode);
-	deps.record({ ...args, episode: String(episode) }, session);
+	// What the next page takes as it mounts goes first.
 	deps.carry(req.to.id, episode, req.at);
 	if (req.rate !== undefined) deps.carryRate(req.to.id, req.rate);
 	if (req.row) deps.noteSwitch(req.row, title);
-	return (await deps.open(req.to.id, session, episode, req.row)) ? 'switched' : 'failed';
+	if (!(await deps.open(req.to.id, session, episode, req.row))) {
+		deps.forget(req.to.id, req.row);
+		return 'failed';
+	}
+	deps.record({ ...args, episode: String(episode) }, session, episode);
+	return 'switched';
 }

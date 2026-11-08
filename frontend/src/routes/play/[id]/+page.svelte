@@ -204,6 +204,7 @@
 	import { appLinkDeps } from '$lib/history/link-deps';
 	import { switchShow } from '$lib/play/switch-show';
 	import { carryRate, takeRate } from '$lib/play/rate-carry';
+	import { takeSwitch } from '$lib/history/guess-slip';
 	import { holdPlayback } from '$lib/play/hold-playback';
 	import GuessSlip from '$lib/components/GuessSlip.svelte';
 	import GuessMark from '$lib/components/GuessMark.svelte';
@@ -1889,12 +1890,17 @@
 		playerError = null;
 		failedStreamError = null;
 		// A switch from another show's player hands its speed over
-		// ($lib/play/rate-carry); a load resets the rate to the default.
+		// ($lib/play/rate-carry), played once the stream's metadata has
+		// loaded: the load resets the rate, and the element's default
+		// stays as it was, so a later episode does not fall back to it.
 		const carriedRate = takeRate(id);
 		if (carriedRate !== null) {
-			videoEl.defaultPlaybackRate = carriedRate;
-			videoEl.playbackRate = carriedRate;
-			playbackRate = carriedRate;
+			const v = videoEl;
+			const play = () => {
+				v.playbackRate = carriedRate;
+			};
+			v.addEventListener('loadedmetadata', play, { once: true });
+			sourceScope.add(() => v.removeEventListener('loadedmetadata', play));
 		}
 
 		// One held retry pending per source: a second failure inside
@@ -2497,12 +2503,12 @@
 								switchProgress = progressLabel(p);
 							}
 						),
-					record: (args, session) =>
+					record: (args, session, episode) =>
 						void recordPlayed(
 							{
 								args,
 								showId: pick.id,
-								episode: episodeNum,
+								episode,
 								show: pick.show,
 								mirror: true,
 								unverified: session.episode_unverified
@@ -2513,6 +2519,11 @@
 					noteSwitch,
 					played: (showId, session, requested) => followPlayed(showId, session, requested),
 					carryRate,
+					forget: (showId, row) => {
+						recoveryResume.forgetShow(showId);
+						takeRate(showId);
+						takeSwitch(row);
+					},
 					open: (showId, session, episode, row) =>
 						/* eslint-disable svelte/no-navigation-without-resolve */
 						goto(
@@ -4310,6 +4321,7 @@
 			onConfirm={() => void playLink.confirm()}
 			onCancel={() => playLink.cancel()}
 			switchAt={formatTime(currentTime)}
+			shown={detail}
 			onSwitch={async () => {
 				// Only a pick that was saved: a failed one leaves its error in
 				// the picker, and an earlier pick's switch is not this one.

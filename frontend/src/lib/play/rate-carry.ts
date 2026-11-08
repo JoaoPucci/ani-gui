@@ -1,10 +1,10 @@
 /**
  * The playback speed a switch to another show's player carries over
- * ($lib/play/switch-show.ts). An episode switch keeps the page, and its
- * speed with it; a switch to another show mounts a new page, which
- * would start at normal speed. The switch leaves the speed here, and
- * the next player of that show takes it once as its stream attaches.
- * A player of any other show drops it. Normal speed is not carried.
+ * ($lib/play/switch-show.ts). A switch to another show mounts a new
+ * page, whose stream would start at normal speed. The switch leaves the
+ * speed here, and the next player of that show takes it once as its
+ * stream attaches, to play at once its metadata loads. A player of any
+ * other show drops it. Normal speed is not carried.
  */
 
 let pending: { showId: string; rate: number } | null = null;

@@ -20,7 +20,7 @@
 -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
-	import { imageProxyUrl } from '$lib/api';
+	import { imageProxyUrl, type KitsuAnimeRef } from '$lib/api';
 	import type { LinkCandidate, LinkWarning } from '$lib/history/link-candidates';
 	import {
 		candidateMeta,
@@ -69,6 +69,9 @@
 		switchAt?: string | null;
 		/** "Switch to it now": save the pick and switch to it. */
 		onSwitch?: () => void;
+		/** On the player: the show playing, known before the candidates
+		 *  are. */
+		shown?: KitsuAnimeRef | null;
 	}
 	let {
 		open,
@@ -89,7 +92,8 @@
 		onConfirm,
 		onCancel,
 		switchAt = null,
-		onSwitch
+		onSwitch,
+		shown = null
 	}: Props = $props();
 
 	/** Whether the answer is "switch now or keep watching". */
@@ -186,7 +190,7 @@
 							playing,
 							episode,
 							savedTitle,
-							current: candidates?.find((c) => c.current)?.ref ?? null
+							current: shown ?? candidates?.find((c) => c.current)?.ref ?? null
 						})}
 					</p>
 				{/if}
