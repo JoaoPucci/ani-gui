@@ -775,3 +775,34 @@ describe('makeStartResume (moved on while a failure is worded)', () => {
 		expect(current?.()).toBe(false);
 	});
 });
+
+describe('a resume whose row is matched again while it works', () => {
+	it("pins no cap: the one it learned is the former show's", async () => {
+		// The card is linked (from its pill, by keyboard, behind the
+		// resume's overlay) while the click's cap lookup is out.
+		let relinked = false;
+		const h = makeHarness({
+			since: () => {
+				h.log.push('view');
+				return () => !relinked;
+			},
+			fetchInteractiveCount: vi.fn().mockImplementation(async () => {
+				h.log.push('interactive-count');
+				relinked = true;
+				return { count: 1, approximate: false };
+			})
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '1', 'Show'), makeMatch('k1', 1), 1, true);
+		expect(h.counts).toEqual([]);
+		// The view is the row as the click found it.
+		expect(h.log.indexOf('view')).toBeLessThan(h.log.indexOf('settings'));
+	});
+
+	it('pins the cap while the row is still matched as the click found it', async () => {
+		const h = makeHarness({ since: () => () => true });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '12', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(h.counts).toEqual([['h1', 12]]);
+	});
+});

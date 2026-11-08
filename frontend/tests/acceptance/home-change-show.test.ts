@@ -588,6 +588,23 @@ describe("the cap retry for a card's former show", () => {
 	}, 15_000);
 });
 
+describe('a guessed card whose resume is running', () => {
+	it('cannot open its picker until the resume ends', async () => {
+		await openHome();
+		cell(JOJO_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!.click();
+		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+		expect(pill(JOJO_CARD)!.disabled).toBe(true);
+		FakeEventSource.instances
+			.at(-1)!
+			.dispatch('error', JSON.stringify({ kind: 'no_results', message: 'not found' }));
+		await until(
+			() => target.querySelector('[role="alertdialog"]') !== null,
+			'the failed resume overlay'
+		);
+		await until(() => pill(JOJO_CARD)?.disabled === false, 'the pill back');
+	});
+});
+
 describe("a guessed card's player is told where its play landed", () => {
 	async function resumeJojo(ownListing: boolean) {
 		await openHome();
