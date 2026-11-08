@@ -106,14 +106,12 @@ describe('watchOrderPage', () => {
 		expect(got.progress).toEqual({ '244': 'watched', '43078': 4 });
 	});
 
-	it('names the entry being watched elsewhere in the run, and leaves it out of Similar titles', () => {
+	it('names the entry being watched elsewhere in the run, which Similar titles leaves out', () => {
 		// On Golden Wind, the viewer is on Steel Ball Run, episode 1.
 		const rows: HistoryRow[] = [{ kitsu_id: '49847', ep_no: '1' }];
 		const got = watchOrderPage(data('jojo', '41410', rows), '41410', 'linked')!;
 		expect(got.watching).toMatchObject({ entry: { id: '49847' }, episode: 1 });
-		expect([...got.similarHidden].sort()).toEqual(
-			[...ids(got.view.before), ...ids(got.view.after), '49847'].sort()
-		);
+		expect(got.similarHidden.has('49847')).toBe(true);
 	});
 
 	it('names no entry being watched where a tile already shows it', () => {
@@ -122,9 +120,17 @@ describe('watchOrderPage', () => {
 		expect(watchOrderPage(data('jojo', '46598', rows), '46598', 'linked')!.watching).toBeNull();
 	});
 
-	it('leaves only the tiles out of Similar titles, not the rest of the run', () => {
+	it('leaves the whole franchise out of Similar titles, not only the tiles', () => {
+		// The strip links to the franchise page, which lists all of it.
+		const b = run('bleach');
 		const got = watchOrderPage(data('bleach', '48015'), '48015', 'linked')!;
-		expect([...got.similarHidden].sort()).toEqual(['46903', '49444']);
+		const all = [...b.entries, ...b.versions, ...b.films, ...b.sides, ...b.recaps];
+		expect([...got.similarHidden].sort()).toEqual(
+			ids(all)
+				.filter((x) => x !== '48015')
+				.sort()
+		);
+		expect(got.similarHidden.has('244')).toBe(true);
 	});
 
 	it('changes the neighbours with the order where release dates disagree with the links', () => {
@@ -159,15 +165,17 @@ describe('watchOrderPage', () => {
 		);
 	});
 
-	it('never hides the entry itself, and hides only what the strip shows', () => {
+	it('never hides the entry itself, and hides the rest of what the franchise page lists', () => {
 		fc.assert(
 			fc.property(anyPage, ({ f, id, order, rows }) => {
 				const got = watchOrderPage({ franchise: f, rows }, id, order);
 				if (!got) return;
 				expect(got.similarHidden.has(id)).toBe(false);
-				const shown = new Set([...got.view.before, ...got.view.after].map((e) => e.id));
-				if (got.watching) shown.add(got.watching.entry.id);
-				expect(got.similarHidden).toEqual(shown);
+				const listed = [...f.entries, ...f.versions, ...f.films, ...f.sides, ...f.recaps];
+				expect(got.similarHidden).toEqual(new Set(listed.map((e) => e.id).filter((x) => x !== id)));
+				for (const e of [...got.view.before, ...got.view.after])
+					expect(got.similarHidden.has(e.id)).toBe(true);
+				if (got.watching) expect(got.similarHidden.has(got.watching.entry.id)).toBe(true);
 			})
 		);
 	});

@@ -5,8 +5,9 @@
 // in the masthead eyebrow where the run is one line), and a card for
 // the entry the viewer is part-way through elsewhere in the run. The
 // order setting decides the neighbours. A franchise that cannot be
-// read leaves the page as it was, with no strip and no error. Entries
-// the strip shows are left out of "Similar titles", and only those.
+// read leaves the page as it was, with no strip and no error. Where
+// the strip shows, the franchise it links to is left out of "Similar
+// titles", and nothing else is.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -220,14 +221,21 @@ describe('detail route — the watch-order strip', () => {
 		expect(tile('5')!.textContent).toContain(m.watchorder_meta_progress_open({ episode: 3 }));
 	});
 
-	it('leaves the entries the strip shows out of Similar titles, and only those', async () => {
-		useShow({ similar: ['10', '50', '5', '77'] });
+	it('leaves the whole franchise out of Similar titles, and only the franchise', async () => {
+		// The strip links to the franchise page, which lists all of it:
+		// Origins is in the run but not on the strip, and the film is
+		// beside the run, yet neither is a similar title.
+		const FILM = entry('60', 'Saga: The Movie', 'movie', '2015-01-01');
+		useShow({
+			similar: ['10', '50', '5', '60', '77'],
+			franchise: () => HttpResponse.json({ ...FRANCHISE, films: [FILM] })
+		});
 		app = mount(DetailPage, { target });
 		await until(() => strip() !== null && similarCard('77') !== null, 'the strip and Similar');
 		expect(similarCard('10')).toBeNull();
 		expect(similarCard('50')).toBeNull();
-		// Origins is in the run but not on the strip: it stays.
-		expect(similarCard('5')).not.toBeNull();
+		expect(similarCard('5')).toBeNull();
+		expect(similarCard('60')).toBeNull();
 	});
 
 	it("leaves the watching card's entry out of Similar titles too", async () => {
