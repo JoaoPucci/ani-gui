@@ -50,6 +50,15 @@ describe('the command after a change of player type', () => {
 		expect(commandAfterKindChange('mpv', 'custom', 'vlc')).toBe('mpv');
 	});
 
+	it("turns every bare type's own command into every other bare type's", () => {
+		const bare = fc.constantFrom<ExternalPlayerKind>('mpv', 'vlc', 'iina');
+		fc.assert(
+			fc.property(bare, bare, (from, to) => {
+				expect(commandAfterKindChange(bareCommand(from)!, from, to)).toBe(bareCommand(to));
+			})
+		);
+	});
+
 	it("is the command as it was, or the new type's bare command, and nothing else", () => {
 		fc.assert(
 			fc.property(command, kind, kind, (cmd, from, to) => {
