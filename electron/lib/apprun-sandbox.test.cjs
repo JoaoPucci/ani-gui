@@ -351,3 +351,42 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
     });
   }
 }
+
+// The stop handler signals the probe job, and once that job has ended
+// there is nothing of the probe's left to signal: a signal arriving
+// between the probe's end and the moment the traps are cleared must
+// not reach any other process, such as whatever now holds the job's
+// old pid or the shell's latest background job. Exercised on the
+// probe's own functions, cut from the rendered AppRun at the lines
+// the repack writes, with an answering stub, then a background
+// process standing in for the next one `$!` would name.
+test("a stop after the probe has ended signals nothing but AppRun itself", () => {
+  const img = image(EB25, "answers");
+  try {
+    const appRun = fs.readFileSync(path.join(img.app, "AppRun"), "utf8");
+    const start = appRun.indexOf("ani_gui_answer_file=\n");
+    const end = appRun.indexOf("ani_gui_user_no_sandbox=0\n");
+    assert.ok(start > 0 && end > start, "the probe's functions are in AppRun");
+    const script = [
+      `BIN=${JSON.stringify(path.join(img.app, "ani-gui"))}`,
+      appRun.slice(start, end),
+      'ani_gui_sandbox_starts || exit 3',
+      'sleep 30 </dev/null >/dev/null 2>&1 & bystander=$!',
+      'echo "$bystander" > "$APPDIR/bystander"',
+      "ani_gui_probe_stop TERM",
+    ].join("\n");
+    const run = spawnSync("bash", ["-c", script], { encoding: "utf8", env: img.env({}) });
+    assert.equal(run.signal, "SIGTERM", `status ${run.status}: ${run.stderr}`);
+    const bystander = Number(fs.readFileSync(path.join(img.app, "bystander"), "utf8"));
+    let alive = true;
+    try {
+      process.kill(bystander, 0);
+    } catch {
+      alive = false;
+    }
+    if (alive) process.kill(bystander, "SIGKILL");
+    assert.ok(alive, "the stop handler killed a process that was not the probe");
+  } finally {
+    fs.rmSync(img.root, { recursive: true, force: true });
+  }
+});
