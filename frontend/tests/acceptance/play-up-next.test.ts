@@ -232,12 +232,16 @@ const cardLinks = () => [...(card()?.querySelectorAll<HTMLAnchorElement>('a') ??
 const skipPill = () => target.querySelector('.player-skip-btn');
 const announcement = () => card()?.querySelector('[role="status"]')?.textContent ?? '';
 
-/** Moves the page to `episode` in a new session, as a switch lands. */
+/** Moves the page to `episode` in a new session, as a switch lands:
+ *  the page attaches the session's stream, and the element, loaded
+ *  afresh, starts at zero and learns its length. */
 async function switchTo(video: HTMLVideoElement, episode: number, session: string) {
 	setUrl(`/play/${KITSU_ID}`, { session, episode: String(episode), kind: 'mp4' });
-	await new Promise((r) => setTimeout(r, 0));
+	await until(() => (video.getAttribute('src') ?? '').includes(session), `${session} attached`);
+	video.currentTime = 0;
 	video.dispatchEvent(new Event('loadedmetadata'));
 	video.dispatchEvent(new Event('durationchange'));
+	video.dispatchEvent(new Event('timeupdate'));
 }
 
 /** Counts every time the card is put on the page. */
@@ -538,6 +542,9 @@ describe('the Up next card at a finale', () => {
 			.click();
 		await until(() => card() === null, 'the card to be dismissed');
 		await switchTo(video, 11, 'session-2');
+		// A fresh start, not a resume: the resume hold keeps the card
+		// back until playback is under way again.
+		window.localStorage.clear();
 		await switchTo(video, 12, 'session-3');
 		await playTo(video, 1300);
 		await until(() => card() !== null, 'the card on the new viewing');
