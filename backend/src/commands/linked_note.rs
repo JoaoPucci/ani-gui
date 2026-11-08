@@ -15,9 +15,9 @@
 //! refused watch leaves that id on the row. The note is a cache row
 //! (`history-linked:v1:<row>` → the id), as `guessed_from`'s is, for the same
 //! reason: builds before this one read the history file and never ask
-//! for it. Undoing the link drops the note for the rows it restored,
-//! and removing or clearing the row takes it with the row's other cache
-//! rows. A row another id is written to since (a play from another
+//! for it. Undoing the link gives each row it restored the note an
+//! earlier link left on it, or none, and removing a row or clearing the
+//! history takes the note with the row's other cache rows. A row another id is written to since (a play from another
 //! show's page) no longer records the noted id, so the note says
 //! nothing of it. A lost note only lets the guard clear the id again,
 //! as it did before the note existed.
