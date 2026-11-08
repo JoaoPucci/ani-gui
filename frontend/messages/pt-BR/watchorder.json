@@ -1,5 +1,4 @@
 {
-	"franchise_after_loop": "Sem um lugar claro na ordem",
 	"franchise_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -38,6 +37,7 @@
 	"franchise_retry": "Tentar de novo",
 	"franchise_sides": "Histórias paralelas e especiais",
 	"franchise_start": "Começar do início",
+	"franchise_unplaced": "Sem um lugar claro na ordem",
 	"franchise_versions": "Outras versões",
 	"handoff_after": "Depois de {title}",
 	"handoff_aria": "A seguir: {title}, depois de {finished}",

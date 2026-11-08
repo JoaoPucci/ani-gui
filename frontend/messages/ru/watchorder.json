@@ -1,5 +1,4 @@
 {
-	"franchise_after_loop": "Место в порядке просмотра неясно",
 	"franchise_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -42,6 +41,7 @@
 	"franchise_retry": "Повторить",
 	"franchise_sides": "Побочные истории и спецвыпуски",
 	"franchise_start": "Начать с начала",
+	"franchise_unplaced": "Место в порядке просмотра неясно",
 	"franchise_versions": "Другие версии",
 	"handoff_after": "После «{title}»",
 	"handoff_aria": "Далее: {title}, после «{finished}»",

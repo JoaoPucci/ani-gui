@@ -136,7 +136,7 @@
 			{#each model.sections as section, i (i)}
 				{#if section.kind === 'line'}
 					{#if section.unplaced}
-						<p class="group-key after-loop">{m.watchorder_franchise_after_loop()}</p>
+						<p class="group-key unplaced-key">{m.watchorder_franchise_unplaced()}</p>
 					{/if}
 					<ol class="story-list">
 						{#each section.rows as r (r.entry.id)}{@render row(r, true)}{/each}
@@ -383,7 +383,7 @@
 	.branch-key {
 		color: var(--bone-300);
 	}
-	.after-loop {
+	.unplaced-key {
 		margin-block-start: var(--space-5);
 	}
 	.group-hint {
