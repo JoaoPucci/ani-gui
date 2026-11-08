@@ -1260,7 +1260,7 @@ The rules below hold on every surface:
   (2006) → the UBW prologue → UBW as one sequence, though they are two
   ways on from *Fate/Zero 2nd Season*. So each branch opens with a key
   ("Way 1 of 2") and a hairline in the gap before it; a loop opens
-  with "Part of a loop of 10 entries"; an entry that only leads into a
+  with "Linked with 9 others, order unclear"; an entry that only leads into a
   join says so ("Leads into 10", by the number of the entry it leads
   into, since a title would not fit the key line). Every member of a
   loop carries a rule over its poster that runs across the gaps, so
@@ -1270,8 +1270,8 @@ The rules below hold on every surface:
   prequel reaches, has no number rather than a second "01". The key
   line is reserved on every card, so titles share one baseline.
 - **Missing data.** No run: no strip, no position in the masthead.
-  First or last entry: "Start of the run", "End of the run" in the
-  empty column. Unknown date: "Date not announced" in place of the
+  First or last entry: "Nothing comes before this", "Nothing comes
+  after this" in the empty column. Unknown date: "Date not announced" in place of the
   year and count. An entry the provider lacks looks like any other.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
   keys page it); every card and tile is a link with the poster card's
@@ -1323,10 +1323,9 @@ The rules below hold on every surface:
   entry; a stretch after a loop is not, since the loop gives it no
   single place, and its key says so. A fork is a group
   under "2 ways to continue", its branches side by side as unnumbered
-  columns, each under "Way n of N". A loop is a group under "Part of a
-  loop of 10 entries" with one sentence on why it has no single order;
-  its entries are listed along their links, from where the run enters
-  the loop. In release order every one of these is a single numbered
+  columns, each under "Way n of N". A loop is a group under "Linked with 9
+  others, order unclear" with one sentence on why it has no clear
+  order; its entries are listed along their links. In release order every one of these is a single numbered
   line.
 - **Masthead.** The franchise is named after the run's first entry,
   without Kitsu's format suffix ("(TV)", "(Movie)", …) unless another
@@ -1394,7 +1393,7 @@ variant below is one of the switch's options.
   so the three keys share one baseline whatever sits under them, and
   the centre's two hairlines run through all three rows. An empty
   side keeps its column, drops its key and says why it is empty
-  ("Start of the run", "End of the run"), so the numeral does not move
+  ("Nothing comes before this", "Nothing comes after this"), so the numeral does not move
   at either end of a run. The centre column stays at every window
   width; the first round hid it below 1100 px.
 - **The band.** The strip sits on one faint band: the page's own ink,
