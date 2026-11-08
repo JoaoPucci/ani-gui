@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=ani-gui
+Exec=AppRun --no-sandbox %U
+Terminal=false
+Type=Application
+Icon=ani-gui
+StartupWMClass=ani-gui
+X-AppImage-Version=0.12.0
+GenericName=Anime Viewer
+Keywords=anime;video;streaming;player;
+Comment=Browse and watch anime
+Categories=AudioVideo;
