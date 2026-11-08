@@ -52,6 +52,67 @@ describe('menuHeight — the captions menu fits inside the player', () => {
 		);
 	});
 
+	it("stops at half the player's height, however much room is above the button", () => {
+		// A 1000 px player: 884 px of room above the button, 500 of it kept.
+		expect(
+			menuHeight({ frameTop: 100, frameHeight: 1000, anchorTop: 1000, gap: 8, margin: 8 })
+		).toBe(500);
+		// Less room than half the player: the room.
+		expect(menuHeight({ frameTop: 84, frameHeight: 1000, anchorTop: 420, gap: 8, margin: 8 })).toBe(
+			320
+		);
+		// Half of an odd height rounds down.
+		expect(menuHeight({ frameTop: 0, frameHeight: 601, anchorTop: 600, gap: 0, margin: 0 })).toBe(
+			300
+		);
+	});
+
+	it('keeps the floor in a player too short for half of it to hold two entries', () => {
+		expect(
+			menuHeight({ frameTop: 0, frameHeight: 150, anchorTop: 140, gap: 8, margin: 8, floor: 96 })
+		).toBe(96);
+	});
+
+	it('is never above half the player, nor the room, unless the floor applies; never below the floor', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: -2000, max: 2000 }),
+				fc.integer({ min: -2000, max: 2000 }),
+				fc.nat(3000),
+				fc.integer({ min: -2000, max: 2000 }),
+				fc.nat(50),
+				fc.nat(50),
+				fc.nat(200),
+				(frameTop, ceiling, frameHeight, anchorTop, gap, margin, floor) => {
+					const h = menuHeight({
+						frameTop,
+						ceiling,
+						frameHeight,
+						anchorTop,
+						gap,
+						margin,
+						floor
+					});
+					expect(h).toBeGreaterThanOrEqual(floor);
+					expect(Number.isInteger(h)).toBe(true);
+					if (h > floor) {
+						expect(h).toBeLessThanOrEqual(frameHeight / 2);
+						expect(anchorTop - gap - h).toBeGreaterThanOrEqual(
+							Math.max(frameTop, ceiling) + margin
+						);
+						// And as tall as either bound allows: a pixel more
+						// would pass one of them.
+						const tooTall = h + 1;
+						expect(
+							tooTall > frameHeight / 2 ||
+								anchorTop - gap - tooTall < Math.max(frameTop, ceiling) + margin
+						).toBe(true);
+					}
+				}
+			)
+		);
+	});
+
 	it('never reaches above the player', () => {
 		fc.assert(
 			fc.property(
