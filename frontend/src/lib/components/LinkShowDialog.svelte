@@ -18,9 +18,8 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
 	import { imageProxyUrl } from '$lib/api';
-	import { subtypeLabel } from '$lib/search/subtype-label';
 	import type { LinkCandidate, LinkWarning } from '$lib/history/link-candidates';
-	import { focusBack, openerOf } from '$lib/history/focus-return';
+	import { candidateMeta, createDialogFocus, listStatus } from '$lib/history/link-dialog-state';
 
 	interface Props {
 		open: boolean;
@@ -82,66 +81,32 @@
 	let searchInput: HTMLInputElement | undefined = $state();
 	let confirmBtn: HTMLButtonElement | undefined = $state();
 	let list: HTMLUListElement | undefined = $state();
-	/** The show last picked, so Back lands on its row. */
-	let lastPicked: string | null = null;
-	/** What had focus when the dialog opened, given it back on close. */
-	let opener: HTMLElement | null = null;
-	/** Whether the dialog has been open since it last closed. */
-	let shown = false;
+	/** Where focus goes as the picker opens, picks, goes Back and closes
+	 *  ($lib/history/link-dialog-state.ts). */
+	const focus = createDialogFocus();
 
 	// Into the top layer once it is in the document.
 	$effect(() => {
 		if (dialog && !dialog.open) dialog.showModal();
 	});
 	$effect.pre(() => {
-		if (!open || shown) return;
-		shown = true;
-		opener = openerOf(document.activeElement, document.body);
+		if (open) focus.opened(document.activeElement, document.body);
 	});
 	$effect(() => {
-		if (open || !shown) return;
-		shown = false;
-		const back = focusBack(opener, returnFocus);
-		opener = null;
-		lastPicked = null;
-		back?.focus();
+		if (!open) focus.closed(returnFocus)?.focus();
 	});
 	$effect(() => {
 		if (!open) return;
-		if (chosen) {
-			lastPicked = chosen.ref.id;
-			confirmBtn?.focus();
-			return;
-		}
-		const row = lastPicked
-			? list?.querySelector<HTMLButtonElement>(`button[data-id="${CSS.escape(lastPicked)}"]`)
-			: null;
+		const target = focus.focusFor(chosen?.ref.id ?? null);
+		if (target.to === 'confirm') return confirmBtn?.focus();
+		const row =
+			target.to === 'row'
+				? list?.querySelector<HTMLButtonElement>(`button[data-id="${CSS.escape(target.id)}"]`)
+				: null;
 		(row ?? searchInput)?.focus();
 	});
 
-	/** What the list says to assistive tech, from one live region. */
-	const status = $derived(
-		candidates === null
-			? m.detail_link_candidates_loading()
-			: failed
-				? m.detail_link_candidates_failed()
-				: candidates.length === 0
-					? m.detail_link_candidates_empty()
-					: ''
-	);
-
-	/** The row's facts, in order: year, format, episode count. */
-	function meta(c: LinkCandidate): { text: string; num: boolean }[] {
-		const fields: { text: string; num: boolean }[] = [];
-		const year = c.ref.start_date?.slice(0, 4);
-		if (year) fields.push({ text: year, num: true });
-		fields.push({ text: subtypeLabel(c.ref.subtype), num: false });
-		const count = c.ref.episode_count;
-		if (count !== null) {
-			fields.push({ text: `${count} ${m.search_card_eps_suffix({ count })}`, num: true });
-		}
-		return fields;
-	}
+	const status = $derived(listStatus(candidates, failed));
 
 	function close() {
 		if (!busy) onCancel();
@@ -284,7 +249,7 @@
 									<span class="ls-row-text">
 										<span class="ls-row-title">{c.ref.canonical_title}</span>
 										<span class="ls-row-meta">
-											{#each meta(c) as field, i (i)}
+											{#each candidateMeta(c) as field, i (i)}
 												{#if i > 0}<span class="ls-dot" aria-hidden="true">·</span>{/if}
 												<span class:ls-num={field.num}>{field.text}</span>
 											{/each}
