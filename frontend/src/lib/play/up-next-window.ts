@@ -26,5 +26,7 @@ export function inCredits(
 	skips: readonly SkipInterval[]
 ): boolean {
 	const start = creditsStart(skips);
-	return start !== null ? currentTime >= start : isFinishedAt(currentTime, duration);
+	if (start !== null) return currentTime >= start;
+	// The play page holds a length it has not learned as zero.
+	return duration > 0 && isFinishedAt(currentTime, duration);
 }
