@@ -372,8 +372,9 @@ is user-facing:
   `electron/lib/release-asset-names.test.cjs` fails when the names
   electron-builder gives the packages stop ending that way. Should no
   release read carry a file any packaged platform recognises, the
-  notifier takes the naming to have changed and offers the newest
-  release by version alone. Installs on 0.17.0 or earlier compare versions
+  notifier takes the naming to have changed and offers what it offered
+  before it read files: the newest release, or with pre-releases
+  excluded, the latest full release. Installs on 0.17.0 or earlier compare versions
   and nothing else: they do not read a release's assets and have no
   concept of platform, so shipping a release with no asset for a
   platform still prompts those of that platform's users toward a page
