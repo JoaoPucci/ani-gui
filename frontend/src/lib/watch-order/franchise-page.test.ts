@@ -216,11 +216,13 @@ describe('franchisePage', () => {
 			'linked'
 		)!;
 		for (const s of page.sections) if (s.kind === 'ways') expect(s.ways.length).toBeGreaterThan(1);
-		// Every unnumbered stretch after the first says why.
-		page.sections.forEach((s, i) => {
-			if (s.kind === 'line' && i > 0 && s.rows.every((r) => r.position === null))
-				expect(s.unplaced).toBe(true);
-		});
+		// Every title with no number says why: what it leads into, or
+		// the heading over it.
+		for (const s of page.sections) {
+			if (s.kind !== 'line') continue;
+			for (const r of s.rows)
+				if (r.position === null) expect(r.leadsInto !== null || s.unplaced).toBe(true);
+		}
 	});
 
 	it('sets an unnumbered title inside a numbered stretch apart, under its own heading', () => {
