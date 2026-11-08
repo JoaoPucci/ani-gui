@@ -6,7 +6,8 @@ questions (section 5): the app has the watch-order strip on the show
 page with its link to the franchise page, the "Watch order" setting,
 the player's "Up next" card at a finale, Continue Watching moving on
 to the next entry, and the franchise page. One card per franchise
-(option d) is not planned. The research was done on 2026-11-01; the
+(option d) is not planned. Section 4 describes each option as it was
+proposed; section 5 records the design as it was decided and built. The research was done on 2026-11-01; the
 live samples it quotes describe the catalogues on that day and will
 drift.
 
@@ -1120,7 +1121,7 @@ them introduces a new widget style.
     own line beside the Resume button.
   - **Masthead:** the run's name in the italic display serif under a
     "Franchise · 15 titles" eyebrow (every entry the page lists, the
-    total the strip's "Whole franchise" link stands for), with a Resume
+    total behind the strip's "See the whole franchise" link), with a Resume
     button styled and
     glowing like the show page's Play. The page takes the accent of the
     entry the hero shows; Resume goes to the entry being watched.
@@ -1134,9 +1135,10 @@ them introduces a new widget style.
   - **Films, side stories and other versions:** standard `Strip` rails
     of poster cards, each under the app's eyebrow.
   - **Recaps:** a collapsed section under the same eyebrow.
-- **At a glance versus on hover.** The list shows the numeral, title,
-  year and progress. Hover or focus reveals the full title, the
-  episode count and the link target, as on the show page.
+- **At a glance versus on hover.** Each row shows the numeral, the
+  short title, the format, the year, and the episode count or the
+  progress. The full title is the row's tooltip on hover and what a
+  screen reader reads, as on the show page's strip.
 - **Keyboard and motion.** The list is a list of links in reading
   order. There is no order switch (section 4). The page enters like the
   show page. Under reduced motion it does not
