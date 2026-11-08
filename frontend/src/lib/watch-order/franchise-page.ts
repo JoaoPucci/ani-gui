@@ -7,8 +7,15 @@
  * these on.
  */
 import type { WatchOrder } from './by-start';
+import { progressOf, progressShare } from './entry';
+import { franchiseName } from './franchise-name';
 import type { WatchOrderData } from './loader';
-import type { EntryProgress, WatchEntry, WatchRun } from './types';
+import { pathNote, placement, segments, sequence, type Segment } from './order';
+import { progressFromHistory } from './progress';
+import { shortTitle } from './short-title';
+import { runOf } from './strip-model';
+import { currentIn, franchiseSummary } from './strip-view';
+import type { EntryProgress, Progress, WatchEntry, WatchRun } from './types';
 
 /** One title of the main story. */
 export interface FranchiseRow {
@@ -64,14 +71,82 @@ export interface FranchisePageModel {
 	readonly partial: boolean;
 }
 
+/** What the rows of one page share: the run, the order, progress and short titles. */
+interface RowContext {
+	readonly run: WatchRun;
+	readonly order: WatchOrder;
+	readonly progress: Progress;
+	readonly id: string;
+	readonly label: (e: WatchEntry) => string;
+}
+
+function rowOf(ctx: RowContext, entry: WatchEntry, numbered: boolean): FranchiseRow {
+	const progress = ctx.progress[entry.id];
+	const note = pathNote(ctx.run, entry.id, ctx.order);
+	return {
+		entry,
+		label: ctx.label(entry),
+		position: numbered ? placement(ctx.run, entry.id, ctx.order).position : null,
+		progress,
+		share: progressShare(progressOf(entry, progress)),
+		leadsInto: note?.kind === 'leads-into' ? ctx.label(note.entry) : null,
+		here: entry.id === ctx.id
+	};
+}
+
+function sectionOf(ctx: RowContext, seg: Segment, before: Segment | undefined): FranchiseSection {
+	if (seg.kind === 'fork')
+		return { kind: 'ways', ways: seg.branches.map((b) => b.map((e) => rowOf(ctx, e, false))) };
+	if (seg.kind === 'cycle')
+		return { kind: 'group', rows: seg.entries.map((e) => rowOf(ctx, e, false)) };
+	return {
+		kind: 'line',
+		rows: seg.entries.map((e) => rowOf(ctx, e, true)),
+		afterGroup: before?.kind === 'cycle'
+	};
+}
+
 /** The page for `id`, or null where there is no franchise to show. */
 export function franchisePage(
 	data: WatchOrderData,
 	id: string,
 	order: WatchOrder
 ): FranchisePageModel | null {
-	void data;
-	void id;
-	void order;
-	return null;
+	if (data.franchise === null || data.franchise.anchor !== id) return null;
+	const run = runOf(data.franchise);
+	if (run === null) return null;
+	const titles = run.entries.map((e) => e.title);
+	const ctx: RowContext = {
+		run,
+		order,
+		id,
+		progress: progressFromHistory(data.rows, run.entries),
+		label: (e) => shortTitle(e.title, titles)
+	};
+	const art = run.entries.find((e) => e.id === run.nameId)!;
+	const others = [...run.entries, ...run.versions, ...run.films, ...run.sides, ...run.recaps]
+		.filter((e) => e.id !== art.id)
+		.map((e) => e.title);
+	const now = currentIn(run, ctx.progress, order);
+	const segs = segments(run, order);
+	return {
+		order,
+		run,
+		name: franchiseName(art.title, others),
+		art,
+		total: franchiseSummary(run).total,
+		resume: now && {
+			entry: now.entry,
+			label: ctx.label(now.entry),
+			episode: now.episode,
+			position: placement(run, now.entry.id, order).position
+		},
+		start: sequence(run, order)[0],
+		sections: segs.map((seg, i) => sectionOf(ctx, seg, segs[i - 1])),
+		versions: run.versions,
+		films: run.films,
+		sides: run.sides,
+		recaps: run.recaps,
+		partial: !data.franchise.complete
+	};
 }
