@@ -46,7 +46,7 @@ import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary } from './launch';
 
 /** How many requests each held lane is given — more than Chromium's
  *  six, so every one of its connections is taken. */
@@ -113,7 +113,7 @@ async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 		ANI_GUI_UNATTENDED: '1'
 	});
 	onLaunch(app);
-	const page = await app.firstWindow();
+	const page = await appWindow(app);
 	return { app, page };
 }
 
