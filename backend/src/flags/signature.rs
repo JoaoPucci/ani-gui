@@ -12,6 +12,8 @@
 
 use minisign_verify::{PublicKey, Signature};
 
+use super::resolve::Document;
+
 /// The base64 minisign public keys the flags file is trusted under:
 /// the second line of a `minisign.pub`. Empty until the maintainer
 /// generates the signing key and adds its public half in a release;
@@ -55,9 +57,20 @@ pub fn verify(body: &[u8], signature: Option<&str>, keys: &[&str]) -> Verdict {
     }
 }
 
+/// Stub.
+#[must_use]
+pub fn admit(doc: Document, verdict: Verdict) -> Document {
+    let _ = verdict;
+    doc
+}
+
 #[cfg(test)]
 #[path = "signature_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "signature_turn_on_test.rs"]
+mod turn_on_tests;
 
 #[cfg(test)]
 #[path = "signature_minisign_test.rs"]

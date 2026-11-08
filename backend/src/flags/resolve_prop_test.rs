@@ -42,7 +42,6 @@ fn key() -> impl Strategy<Value = String> {
     prop_oneof![
         Just(A.to_string()),
         Just(B.to_string()),
-        Just(NARROW.to_string()),
         Just("flags".to_string()),
         "[a-z_]{0,12}",
         any::<String>(),
@@ -61,31 +60,15 @@ fn document() -> impl Strategy<Value = Value> {
     ]
 }
 
-/// The declarations these properties resolve against: the test
-/// declarations, which the file may switch on, and one it may not, the
-/// shape a flag takes while the file is unsigned.
-const PROP_DECLS: &[FlagDecl] = &[
-    TEST_DECLS[0],
-    TEST_DECLS[1],
-    FlagDecl {
-        name: NARROW,
-        kind: FlagKind::Probe {
-            may_switch_on: false,
-        },
-        safe_because: "test-only: the flag gates nothing",
-    },
-];
-const NARROW: &str = "test_narrow";
+/// The declarations these properties resolve against.
+const PROP_DECLS: &[FlagDecl] = TEST_DECLS;
 
 /// The values a declaration permits, written out from its kind rather
 /// than read through the code under test: off first, the default.
 fn permitted(decl: &FlagDecl) -> Vec<FlagValue> {
-    let FlagKind::Probe { may_switch_on } = decl.kind;
-    let mut v = vec![FlagValue::Bool(false)];
-    if may_switch_on {
-        v.push(FlagValue::Bool(true));
+    match decl.kind {
+        FlagKind::Rollout => vec![FlagValue::Bool(false), FlagValue::Bool(true)],
     }
-    v
 }
 
 fn assert_only_declared(r: &Resolved) {

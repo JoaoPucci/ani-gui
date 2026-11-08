@@ -5,10 +5,10 @@ use crate::flags::test_decls::TEST_DECLS;
 
 const A: FlagDecl = TEST_DECLS[0];
 
-fn probe(name: &'static str, may_switch_on: bool) -> FlagDecl {
+fn rollout(name: &'static str) -> FlagDecl {
     FlagDecl {
         name,
-        kind: FlagKind::Probe { may_switch_on },
+        kind: FlagKind::Rollout,
         safe_because: "reason",
     }
 }
@@ -16,11 +16,7 @@ fn probe(name: &'static str, may_switch_on: bool) -> FlagDecl {
 /// The rule: a flag ships off.
 #[test]
 fn every_declaration_ships_off() {
-    for decl in TEST_DECLS
-        .iter()
-        .copied()
-        .chain([probe("narrow", false), probe("wide", true)])
-    {
+    for decl in TEST_DECLS.iter().copied().chain([rollout("other")]) {
         assert_eq!(
             decl.default_value(),
             FlagValue::Bool(false),
@@ -31,17 +27,21 @@ fn every_declaration_ships_off() {
 }
 
 #[test]
-fn a_flag_the_file_may_switch_on_allows_off_and_on() {
+fn a_rollout_allows_off_and_on() {
     assert_eq!(
-        probe("p", true).allowed(),
+        rollout("p").allowed(),
         vec![FlagValue::Bool(false), FlagValue::Bool(true)]
     );
 }
 
+/// Turning a rollout on is riskier than the build's own default, so
+/// only a verified file may do it; off is the default, and any file
+/// may say so.
 #[test]
-fn a_flag_the_file_may_not_switch_on_allows_off_alone() {
-    assert_eq!(probe("p", false).allowed(), vec![FlagValue::Bool(false)]);
-    assert_eq!(probe("p", false).accept(&json!(true)), None);
+fn only_a_rollouts_on_needs_a_signature() {
+    let decl = rollout("p");
+    assert!(decl.signed_only(FlagValue::Bool(true)));
+    assert!(!decl.signed_only(FlagValue::Bool(false)));
 }
 
 #[test]
@@ -79,19 +79,19 @@ fn the_test_declarations_are_valid() {
 #[test]
 fn validation_refuses_a_malformed_name() {
     for bad in ["", "Upper", "has space", "dash-ed", "dot.ted"] {
-        assert!(validate(&[probe(bad, true)]).is_err(), "{bad:?}");
+        assert!(validate(&[rollout(bad)]).is_err(), "{bad:?}");
     }
-    assert_eq!(validate(&[probe("ok_name_2", true)]), Ok(()));
+    assert_eq!(validate(&[rollout("ok_name_2")]), Ok(()));
 }
 
 #[test]
 fn validation_refuses_a_name_declared_twice() {
-    assert!(validate(&[probe("same", true), probe("same", false)]).is_err());
+    assert!(validate(&[rollout("same"), rollout("same")]).is_err());
 }
 
 #[test]
 fn validation_refuses_a_declaration_without_its_reason() {
-    let mut d = probe("k", true);
+    let mut d = rollout("k");
     d.safe_because = "  ";
     assert!(validate(&[d]).is_err());
 }

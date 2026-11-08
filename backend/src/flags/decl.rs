@@ -28,18 +28,12 @@ pub enum FlagValue {
     Bool(bool),
 }
 
-/// Which values the file may send for a flag. No kind is declarable
-/// in this build.
+/// Which values the file may send for a flag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlagKind {
-    /// A test double for the mechanism: an on/off flag that ships
-    /// off. `may_switch_on` says whether the file may send `true` as
-    /// well as `false`. Never declarable outside the tests.
-    #[cfg(test)]
-    Probe {
-        /// Whether the file may switch the flag on.
-        may_switch_on: bool,
-    },
+    /// Gates a feature that ships off. Default `false`; any file may
+    /// send `false`, and only a verified file `true`.
+    Rollout,
 }
 
 /// One declared flag.
@@ -67,11 +61,7 @@ impl FlagDecl {
     #[must_use]
     pub fn allowed(&self) -> Vec<FlagValue> {
         match self.kind {
-            #[cfg(test)]
-            FlagKind::Probe { may_switch_on } => std::iter::once(false)
-                .chain(may_switch_on.then_some(true))
-                .map(FlagValue::Bool)
-                .collect(),
+            FlagKind::Rollout => vec![FlagValue::Bool(false), FlagValue::Bool(true)],
         }
     }
 
@@ -82,6 +72,13 @@ impl FlagDecl {
         self.allowed()
             .into_iter()
             .find(|FlagValue::Bool(b)| raw.as_bool() == Some(*b))
+    }
+
+    /// Stub.
+    #[must_use]
+    pub fn signed_only(&self, v: FlagValue) -> bool {
+        let _ = v;
+        false
     }
 }
 
