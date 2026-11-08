@@ -681,8 +681,9 @@ starting it, and delete it when you find it done.
   without a title renders as a card whose click does nothing. One
   whose show was played through to its finale, with one aired show
   after it in the series that has not been started, becomes a card
-  for that next show and opens the next show's page, not its own. This entry is about the matched,
-  titled cards that still offer an episode.) The
+  for that next show and opens the next show's page, not its own.
+  This entry is about the matched, titled cards that still offer an
+  episode.) The
   route that exists runs through playback: the play page's poster,
   title and breadcrumb link to the show's page, so a user who wants
   the show itself — its episode list, its synopsis, its list entry —
