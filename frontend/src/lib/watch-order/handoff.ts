@@ -44,10 +44,13 @@ export function handoffAsk(
 	playableCount: number | null,
 	leftPartWay: (kitsuId: string, episode: number) => boolean
 ): string | null {
-	void playableCount;
 	const episode = parseHistoryEpisode(epNo);
 	if (!match || episode === null) return null;
-	if (!isFinale({ status: match.status, episodes: match.episode_count }, episode)) return null;
+	// The player's own last step: a source listing past Kitsu's count
+	// plays on to that episode first.
+	const last =
+		match.episode_count === null ? null : Math.max(match.episode_count, playableCount ?? 0);
+	if (!isFinale({ status: match.status, episodes: last }, episode)) return null;
 	return leftPartWay(match.id, episode) ? null : match.id;
 }
 
@@ -83,6 +86,8 @@ export interface PlayedRow {
 /**
  * The Kitsu ids with a history row: each row's recorded id, else the
  * id its match found (rows written before history recorded one).
+ * Null while such a row is still being matched: until then a show it
+ * played could look unplayed.
  */
 export function playedIds(
 	rows: readonly PlayedRow[],
@@ -90,8 +95,13 @@ export function playedIds(
 ): Set<string> | null {
 	const out = new Set<string>();
 	for (const row of rows) {
-		const id = row.kitsu_id ?? matches[row.id]?.id;
-		if (id !== undefined) out.add(id);
+		if (row.kitsu_id !== undefined) {
+			out.add(row.kitsu_id);
+			continue;
+		}
+		const match = matches[row.id];
+		if (match === undefined) return null;
+		if (match !== null) out.add(match.id);
 	}
 	return out;
 }
