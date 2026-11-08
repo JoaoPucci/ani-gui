@@ -26,6 +26,7 @@
 		}
 	],
 	"franchise_main": "Historia principal",
+	"franchise_none": "Este anime no tiene otras temporadas ni títulos relacionados.",
 	"franchise_order_change": "Cambiar en Ajustes",
 	"franchise_order_note_linked": "En el orden en que las bases de datos de anime los enlazan.",
 	"franchise_order_note_released": "En orden de estreno.",

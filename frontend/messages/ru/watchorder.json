@@ -30,6 +30,7 @@
 		}
 	],
 	"franchise_main": "Основная история",
+	"franchise_none": "У этого аниме нет других сезонов и связанных тайтлов.",
 	"franchise_order_change": "Изменить в настройках",
 	"franchise_order_note_linked": "В порядке, в котором их связывают базы данных аниме.",
 	"franchise_order_note_released": "В порядке выхода.",
