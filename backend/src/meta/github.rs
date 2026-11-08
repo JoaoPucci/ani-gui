@@ -11,7 +11,9 @@
 //! that is published (not a draft), counts under the pre-release
 //! setting (with `include_prereleases=false` a pre-release does not),
 //! and carries a package for the platform this binary was built for
-//! (see [`Platform::carries`]). A release cut without one platform's
+//! (see [`Platform::carries`]; the endings are in `release_assets.json`,
+//! which `electron/lib/release-asset-names.cjs` holds to the names
+//! electron-builder gives the packages). A release cut without one platform's
 //! package is skipped for that platform, which is offered the newest
 //! release it can install instead. A platform the app does not
 //! package is offered nothing and asks GitHub nothing. The version
@@ -25,6 +27,14 @@
 //! pre-release setting. A page that fails to arrive (network error,
 //! non-success status) ends the lookup. A pre-release further back
 //! than the page reaches is not found.
+//!
+//! A failsafe for the naming: when nothing offers and the releases
+//! read carry files, none of which any packaged platform recognises,
+//! the lookup takes the naming to have changed and offers the newest
+//! release by version alone, under the same draft and pre-release
+//! rules, with a warning in the log. A release whose recognisable
+//! files are another platform's is still skipped, and releases with
+//! no files at all do not trigger it.
 //!
 //! Failures (network down, GitHub rate limit, malformed payload)
 //! collapse to `None` so the renderer can branch on a single
@@ -54,6 +64,9 @@ pub enum Platform {
 }
 
 impl Platform {
+    /// Every platform the app is packaged for.
+    pub const ALL: [Self; 2] = [Self::Windows, Self::Linux];
+
     /// The packaged platform this binary was built for, or `None`
     /// on one the app does not package.
     pub fn current() -> Option<Self> {
@@ -191,14 +204,54 @@ fn select_release(
 /// GitHub answered — the newest full release. The page's pick comes
 /// first; the latest full release is offered only as a full release
 /// carrying this platform's package.
+///
+/// When neither offers anything and the releases read carry files but
+/// none that any packaged platform recognises, the naming has changed
+/// rather than this platform having been skipped: the newest release
+/// is offered by version alone ([`newest_by_version`]), so a renamed
+/// package cannot silence every update.
 fn offer(
     page: Vec<RawRelease>,
     latest: Option<RawRelease>,
     platform: Platform,
     include_prereleases: bool,
 ) -> Option<ReleaseInfo> {
-    select_release(page, platform, include_prereleases)
-        .or_else(|| select_release(latest.into_iter().collect(), platform, false))
+    if let Some(found) = select_release(page.clone(), platform, include_prereleases) {
+        return Some(found);
+    }
+    if let Some(found) = select_release(latest.clone().into_iter().collect(), platform, false) {
+        return Some(found);
+    }
+    if !naming_unrecognised(&page, latest.as_ref()) {
+        return None;
+    }
+    tracing::warn!(
+        "update check: no release read carries a file any packaged platform recognises; \
+         offering the newest release by version alone"
+    );
+    newest_by_version(page, latest, include_prereleases)
+}
+
+/// Whether the releases read carry files, and none of them is any
+/// packaged platform's package. A release with no files at all says
+/// nothing about how files are named.
+fn naming_unrecognised(page: &[RawRelease], latest: Option<&RawRelease>) -> bool {
+    let assets = || page.iter().chain(latest).flat_map(|r| &r.assets);
+    assets().next().is_some() && !assets().any(|a| Platform::ALL.iter().any(|p| p.carries(&a.name)))
+}
+
+/// The newest release under the draft and pre-release rules, files
+/// unread: the first on the page that counts, else the latest release
+/// if it is a full one.
+fn newest_by_version(
+    page: Vec<RawRelease>,
+    latest: Option<RawRelease>,
+    include_prereleases: bool,
+) -> Option<ReleaseInfo> {
+    page.into_iter()
+        .filter(|r| include_prereleases || !r.prerelease)
+        .find_map(normalise)
+        .or_else(|| latest.filter(|r| !r.prerelease).and_then(normalise))
 }
 
 /// Fetch the newest release `platform` can install. Returns `None`
