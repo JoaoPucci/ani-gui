@@ -3,8 +3,8 @@
 //!
 //! Each listing is the detailed relations read
 //! ([`crate::meta::kitsu::KitsuClient::franchise_relations`]), cached
-//! under `kitsu:franchise-rel:v1:<id>` for as long as the tracker's
-//! relations read keeps its rows. An entry no listing describes — the
+//! under `kitsu:franchise-rel:v1:<id>` for a week, or a day when it
+//! relates an anime that has not finished ([`listing_ttl`]). An entry no listing describes — the
 //! anchor, usually — takes its fields from the cached detail read
 //! ([`crate::commands::kitsu::kitsu_anime_detail`]).
 
@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use futures_util::stream::{self, StreamExt};
 
 use crate::app::AppState;
-use crate::cache::ttl::ANIME_DETAIL_TTL;
+use crate::cache::ttl::{ANIME_DETAIL_TTL, EPISODES_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::franchise_walk::{plan, Franchise, Plan};
 use crate::error::Result;
@@ -27,10 +27,22 @@ pub(crate) fn listing_key(id: &str) -> String {
     format!("{}{id}", crate::cache::families::KITSU_FRANCHISE_RELATIONS)
 }
 
-/// How long a listing is cached, in seconds.
+/// How long a listing is cached, in seconds: a week when every anime
+/// it relates has finished, else a day, since an airing entry's count
+/// and status move (as [`crate::commands::kitsu::anime_detail_ttl`]
+/// does for one show).
 #[must_use]
-pub fn listing_ttl(_listing: &FranchiseListing) -> u64 {
-    ANIME_DETAIL_TTL.as_secs()
+pub fn listing_ttl(listing: &FranchiseListing) -> u64 {
+    let finished = listing
+        .relations
+        .iter()
+        .filter(|r| r.kind == "anime")
+        .all(|r| r.entry.as_ref().and_then(|e| e.status.as_deref()) == Some("finished"));
+    if finished {
+        ANIME_DETAIL_TTL.as_secs()
+    } else {
+        EPISODES_TTL.as_secs()
+    }
 }
 
 /// `id`'s relation listing, from the cache or Kitsu.
