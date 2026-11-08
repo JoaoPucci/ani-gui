@@ -152,6 +152,77 @@ describe('franchisePage', () => {
 		expect(semi.leadsInto).toBe(rowsOf(page).find((r) => r.entry.id === '43683')!.label);
 	});
 
+	/** A payload of `ids` linked by `links`, anchored on the first. */
+	function shaped(ids: string[], links: [string, string][]): WatchOrderData {
+		const entries = ids.map((id, i) => ({
+			id,
+			title: `T${id}`,
+			subtype: 'TV',
+			start: `20${10 + i}-01-01`,
+			episodes: 12,
+			status: 'finished',
+			poster: null,
+			cover: null
+		}));
+		return {
+			franchise: {
+				anchor: ids[0],
+				entries,
+				links,
+				versions: [],
+				films: [],
+				sides: [],
+				recaps: [],
+				parents: {},
+				complete: true
+			},
+			rows: []
+		};
+	}
+
+	it('heads the titles after ways that join back up as having no clear place', () => {
+		const page = franchisePage(
+			shaped(
+				['1', '2', '3', '4', '5'],
+				[
+					['1', '2'],
+					['1', '3'],
+					['2', '4'],
+					['3', '4'],
+					['4', '5']
+				]
+			),
+			'1',
+			'linked'
+		)!;
+		expect(page.sections.map((s) => s.kind)).toEqual(['line', 'ways', 'line']);
+		const after = page.sections[2];
+		expect(after.kind === 'line' && after.rows.map((r) => r.position)).toEqual([null, null]);
+		expect(after.kind === 'line' && after.unplaced).toBe(true);
+	});
+
+	it('never draws ways to continue with only one way', () => {
+		const page = franchisePage(
+			shaped(
+				['1', '2', '3', '4', '5'],
+				[
+					['1', '2'],
+					['1', '3'],
+					['4', '3'],
+					['2', '5']
+				]
+			),
+			'1',
+			'linked'
+		)!;
+		for (const s of page.sections) if (s.kind === 'ways') expect(s.ways.length).toBeGreaterThan(1);
+		// Every unnumbered stretch after the first says why.
+		page.sections.forEach((s, i) => {
+			if (s.kind === 'line' && i > 0 && s.rows.every((r) => r.position === null))
+				expect(s.unplaced).toBe(true);
+		});
+	});
+
 	it('lists every title in one numbered line in release order', () => {
 		const page = franchisePage(data('monogatari', '3919'), '3919', 'released')!;
 		expect(page.sections).toHaveLength(1);
@@ -228,12 +299,32 @@ describe('franchisePage', () => {
 			fc.property(anyPage, ({ f, id, order, rows }) => {
 				const page = franchisePage({ franchise: f, rows }, id, order);
 				if (!page) return;
-				const kinds = { line: 'line', fork: 'ways', cycle: 'group' } as const;
+				// A fork left with one way is drawn as a line.
 				expect(page.sections.map((s) => s.kind)).toEqual(
-					segments(page.run, order).map((s) => kinds[s.kind])
+					segments(page.run, order).map((s) =>
+						s.kind === 'cycle'
+							? 'group'
+							: s.kind === 'fork' && s.branches.length > 1
+								? 'ways'
+								: 'line'
+					)
 				);
 				if (order === 'released') expect(page.sections).toHaveLength(1);
 				expect(page.start).toBe(sequence(page.run, order)[0]);
+			})
+		);
+	});
+
+	it('draws ways only in twos or more, and heads every unnumbered stretch after the first', () => {
+		fc.assert(
+			fc.property(anyPage, ({ f, id, order, rows }) => {
+				const page = franchisePage({ franchise: f, rows }, id, order);
+				if (!page) return;
+				page.sections.forEach((s, i) => {
+					if (s.kind === 'ways') expect(s.ways.length).toBeGreaterThan(1);
+					if (s.kind === 'line')
+						expect(s.unplaced).toBe(i > 0 && s.rows.every((r) => r.position === null));
+				});
 			})
 		);
 	});

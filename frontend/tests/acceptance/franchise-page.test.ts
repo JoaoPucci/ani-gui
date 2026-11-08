@@ -167,7 +167,9 @@ describe('franchise page', () => {
 		]);
 		expect(row('5')!.textContent).toContain('01');
 		expect(row('50')!.textContent).toContain('04');
-		expect(row('42')!.getAttribute('aria-current')).toBe('page');
+		// The row links to the show's page, not to this one: it marks
+		// the current item, not the current page.
+		expect(row('42')!.getAttribute('aria-current')).toBe('true');
 		expect(row('42')!.textContent).toContain(m.watchorder_franchise_here());
 		expect(row('10')!.getAttribute('aria-current')).toBeNull();
 		// Short titles on the rows, the full title as the tooltip.
@@ -308,9 +310,9 @@ describe('franchise page', () => {
 			)
 		);
 		app = mount(FranchisePage, { target });
-		await until(() => row('42')?.getAttribute('aria-current') === 'page', 'the first page');
+		await until(() => row('42')?.getAttribute('aria-current') === 'true', 'the first page');
 		setParams({ id: OTHER });
-		await until(() => row('50')?.getAttribute('aria-current') === 'page', 'the second page');
+		await until(() => row('50')?.getAttribute('aria-current') === 'true', 'the second page');
 		expect(row('42')!.getAttribute('aria-current')).toBeNull();
 	});
 
@@ -323,5 +325,53 @@ describe('franchise page', () => {
 			{ label: 'Saga: Second Arc', href: `/anime/${KITSU_ID}` },
 			{ label: m.watchorder_franchise_eyebrow() }
 		]);
+	});
+
+	it('says the show has nothing around it, with no Try again, when the answer lists nothing', async () => {
+		useFranchise({
+			franchise: () => HttpResponse.json({ ...FRANCHISE, entries: [], links: [] })
+		});
+		app = mount(FranchisePage, { target });
+		await until(
+			() => target.textContent?.includes(m.watchorder_franchise_none()) ?? false,
+			'the empty answer'
+		);
+		expect(target.textContent).not.toContain(m.watchorder_franchise_failed());
+		expect(button(m.watchorder_franchise_retry())).toBeUndefined();
+	});
+
+	it('keeps the latest read when an older one for the same show answers after it', async () => {
+		// To Final Arc and back: the first read for Second Arc fails, late.
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		let calls = 0;
+		let lateAnswered = false;
+		useFranchise();
+		const OTHER = '50';
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, async () => {
+				calls++;
+				if (calls === 1) {
+					await held;
+					lateAnswered = true;
+					return new HttpResponse(null, { status: 503 });
+				}
+				return HttpResponse.json(FRANCHISE);
+			}),
+			http.get(`${API_BASE}/api/kitsu/franchise/${OTHER}`, () =>
+				HttpResponse.json({ ...FRANCHISE, anchor: OTHER })
+			)
+		);
+		app = mount(FranchisePage, { target });
+		await until(() => calls === 1, 'the first read');
+		setParams({ id: OTHER });
+		await until(() => row('50')?.getAttribute('aria-current') === 'true', 'the other show');
+		setParams({ id: KITSU_ID });
+		await until(() => row('42')?.getAttribute('aria-current') === 'true', 'the show again');
+		release();
+		await until(() => lateAnswered, 'the late answer');
+		await new Promise((r) => setTimeout(r, 100));
+		expect(target.textContent).not.toContain(m.watchorder_franchise_failed());
+		expect(row('42')!.getAttribute('aria-current')).toBe('true');
 	});
 });
