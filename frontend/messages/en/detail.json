@@ -130,7 +130,7 @@
 	"link_candidates_empty": "No shows found. Try another search.",
 	"link_shown_now": "On this page",
 	"link_confirm_heading": "Is it {title}?",
-	"link_confirm_body": "It plays as this show from now on, from where you left off.",
+	"link_confirm_body": "From now on it opens as this show, from where you left off.",
 	"link_warning_season": "The saved title and this show name different seasons.",
 	"link_warning_episode": "Your history is at episode {episode}, but this show lists {count} episodes.",
 	"link_confirm_button": "Yes, that’s it",

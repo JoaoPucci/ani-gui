@@ -203,6 +203,7 @@
 	import { noteSwitch, sessionRow } from '$lib/history/guess-slip';
 	import { appLinkDeps } from '$lib/history/link-deps';
 	import { switchShow } from '$lib/play/switch-show';
+	import { carryRate, takeRate } from '$lib/play/rate-carry';
 	import { holdPlayback } from '$lib/play/hold-playback';
 	import GuessSlip from '$lib/components/GuessSlip.svelte';
 	import GuessMark from '$lib/components/GuessMark.svelte';
@@ -291,10 +292,10 @@
 	const UI_PAGE_SIZE = 5;
 	const KITSU_PAGE_SIZE = 20;
 	// Per-show — the id-change $effect below drops it on /play/A →
-	// /play/B (defensive: no in-app path triggers that today, but
-	// browser back/forward + URL-bar edits can, and a stale page-1
-	// would serve A's thumbnails for B's first paint). See
-	// lib/detail/episode-page-cache.
+	// /play/B (defensive: the route mounts a new page for another show,
+	// ./+layout.svelte, so only a page mounted without that layout
+	// would see the id change, and a stale page-1 would serve A's
+	// thumbnails for B's first paint). See lib/detail/episode-page-cache.
 	const kitsuPageCache = createEpisodePageCache();
 	let theaterMode = $state(false);
 	let similar = $state<KitsuAnimeRef[] | null>(null);
@@ -1125,10 +1126,12 @@
 	 * Which visit to this route the answer belongs to.
 	 *
 	 * The show and the mode describe the ROW being asked about, and
-	 * both come back when the user does. SvelteKit reuses this
-	 * component across an A→B→A round trip, so nothing is destroyed
-	 * and a click abandoned two navigations ago finds the context it
-	 * left behind and acts on it. This advances on every id
+	 * both come back when the user does. The route mounts a new page
+	 * for another show (./+layout.svelte), but this guard predates that
+	 * and still holds for any page that sees the id change: one reused
+	 * across an A→B→A round trip destroys nothing, and a click
+	 * abandoned two navigations ago would find the context it left
+	 * behind and act on it. This advances on every id
 	 * transition, so a question can only be answered to the page that
 	 * asked it.
 	 *
@@ -1885,6 +1888,14 @@
 		});
 		playerError = null;
 		failedStreamError = null;
+		// A switch from another show's player hands its speed over
+		// ($lib/play/rate-carry); a load resets the rate to the default.
+		const carriedRate = takeRate(id);
+		if (carriedRate !== null) {
+			videoEl.defaultPlaybackRate = carriedRate;
+			videoEl.playbackRate = carriedRate;
+			playbackRate = carriedRate;
+		}
 
 		// One held retry pending per source: a second failure inside
 		// a hold re-arms it rather than adding a second startLoad,
@@ -2296,9 +2307,10 @@
 		if (!title) return;
 		const mode = playMode(config);
 		// The show, visit and flags this switch is for, and its request,
-		// taken at the click ($lib/play/owned-play): the route's component
-		// is reused across shows and across a round trip back, so a late
-		// answer is judged against them. (`detail` loads only on mount.)
+		// taken at the click ($lib/play/owned-play): a late answer is
+		// judged against them, as the visit it was for may be over. (The
+		// route mounts a new page for another show, ./+layout.svelte,
+		// since `detail` loads only on mount.)
 		const here = navigationClaims.claim();
 		const owner = claimPlay(
 			id,
@@ -2499,18 +2511,32 @@
 						),
 					carry: (showId, episode, seconds) => recoveryResume.capture(showId, episode, seconds),
 					noteSwitch,
-					open: async (showId, session, episode, row) => {
+					played: (showId, session, requested) => followPlayed(showId, session, requested),
+					carryRate,
+					open: (showId, session, episode, row) =>
 						/* eslint-disable svelte/no-navigation-without-resolve */
-						await goto(
+						goto(
 							resolve('/play/[id]', { id: showId }) +
 								withRow(buildPlayQuery(session, episode), row),
 							{ replaceState: true }
-						).catch(() => {});
-						/* eslint-enable svelte/no-navigation-without-resolve */
-					},
+						).then(
+							() => true,
+							() => false
+						),
+					/* eslint-enable svelte/no-navigation-without-resolve */
 					isCurrent: () => !gone && here()
 				},
-				{ to: pick.show, episode: episodeNum, at, row: fromRow, mode, quality, version, caption }
+				{
+					to: pick.show,
+					episode: episodeNum,
+					at,
+					row: fromRow,
+					mode,
+					quality,
+					version,
+					caption,
+					rate: videoEl?.playbackRate ?? playbackRate
+				}
 			);
 			if (outcome === 'failed') {
 				toastStore.push({
@@ -4285,8 +4311,9 @@
 			onCancel={() => playLink.cancel()}
 			switchAt={formatTime(currentTime)}
 			onSwitch={async () => {
-				await playLink.confirm();
-				if (playLink.linked) void switchToPick();
+				// Only a pick that was saved: a failed one leaves its error in
+				// the picker, and an earlier pick's switch is not this one.
+				if (await playLink.confirm()) void switchToPick();
 			}}
 		/>
 	{/if}

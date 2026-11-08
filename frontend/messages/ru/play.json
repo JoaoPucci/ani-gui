@@ -145,7 +145,7 @@
 	"test_error_setup_failed": "Ошибка настройки: {detail}",
 	"error_load_failed": "Не удалось загрузить тайтл. {reason}",
 	"play_failure_source_error": "Источник видео ответил ошибкой. Попробуйте позже.",
-	"link_guess_note": "В истории это «{title}». Это нужный тайтл?",
+	"link_guess_note": "В истории записан как «{title}». Это нужный тайтл?",
 	"link_guess_right": "Да",
 	"link_linked_note": "Сохранено как «{title}». Сейчас идёт прежний тайтл.",
 	"link_hide_aria": "Скрыть это уведомление",
@@ -153,12 +153,14 @@
 	"link_menu_item": "Не тот тайтл…",
 	"link_playing_now": "Сейчас играет",
 	"link_change_button": "Нет",
-	"link_dialog_body": "В истории это «{title}». Сейчас идёт серия {episode}.",
+	"link_dialog_body": "В истории записан как «{title}». Сейчас идёт серия {episode}.",
 	"link_warning_episode": "Сейчас идёт серия {episode}, а у этого тайтла серий: {count}.",
-	"link_switch_now": "Переключить сейчас",
+	"link_switch_now": "Переключиться сейчас",
 	"link_keep_watching": "Остаться на этом",
 	"link_switch_heading": "Переключиться на «{title}»?",
 	"link_switch_hint": "Серия {episode} продолжится с {time}.",
 	"link_switched_note": "Сейчас идёт «{title}».",
-	"link_switch_failed": "Не удалось переключиться на «{title}». Попробуйте ещё раз."
+	"link_switch_failed": "Не удалось переключиться на «{title}». Попробуйте ещё раз.",
+	"link_dialog_body_single": "В истории записан как «{title}». Сейчас идёт этот тайтл.",
+	"link_switch_hint_single": "Продолжится с {time}."
 }

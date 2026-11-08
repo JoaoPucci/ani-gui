@@ -22,7 +22,13 @@
 	import { m } from '$lib/paraglide/messages';
 	import { imageProxyUrl } from '$lib/api';
 	import type { LinkCandidate, LinkWarning } from '$lib/history/link-candidates';
-	import { candidateMeta, createDialogFocus, listStatus } from '$lib/history/link-dialog-state';
+	import {
+		candidateMeta,
+		createDialogFocus,
+		listBody,
+		listStatus,
+		switchHint
+	} from '$lib/history/link-dialog-state';
 
 	interface Props {
 		open: boolean;
@@ -166,7 +172,7 @@
 						{m.play_link_switch_heading({ title: chosen.ref.canonical_title })}
 					</h2>
 					<p class="ls-body">
-						{m.play_link_switch_hint({ episode, time: switchAt ?? '' })}
+						{switchHint({ episode, time: switchAt ?? '', to: chosen.ref })}
 					</p>
 				{:else if chosen}
 					<h2 id="ls-title" class="ls-title">
@@ -176,9 +182,12 @@
 				{:else}
 					<h2 id="ls-title" class="ls-title">{m.detail_link_dialog_title()}</h2>
 					<p class="ls-body">
-						{playing
-							? m.play_link_dialog_body({ episode, title: savedTitle })
-							: m.detail_link_dialog_body({ episode, title: savedTitle })}
+						{listBody({
+							playing,
+							episode,
+							savedTitle,
+							current: candidates?.find((c) => c.current)?.ref ?? null
+						})}
 					</p>
 				{/if}
 			</header>

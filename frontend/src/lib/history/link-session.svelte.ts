@@ -101,11 +101,11 @@ export class LinkSession extends LinkPicker {
 		if (!this.busy) this.open = false;
 	}
 
-	/** Link the card's guessed rows to the chosen show. */
-	async confirm(): Promise<void> {
+	/** Link the card's guessed rows to the chosen show; whether it did. */
+	async confirm(): Promise<boolean> {
 		const offer = this.offer;
 		const chosen = this.chosen;
-		if (!offer || !chosen || this.busy) return;
+		if (!offer || !chosen || this.busy) return false;
 		const from = this.#pageId;
 		this.busy = true;
 		this.error = null;
@@ -124,8 +124,10 @@ export class LinkSession extends LinkPicker {
 			// linked, so there is nothing left to offer, nor room to hold.
 			if (chosen.ref.id === from) this.#deps.refresh();
 			this.#deps.showPage(chosen.ref.id, null);
+			return true;
 		} catch (e) {
 			this.error = linkFailure(e);
+			return false;
 		} finally {
 			this.busy = false;
 		}

@@ -146,11 +146,12 @@ export class InPlaceLinkSession extends LinkSession {
 		if (this.error) this.#notify({ kind: 'error', message: this.error });
 	}
 
-	override async confirm(): Promise<void> {
+	/** Save the pick; whether it was saved, so a switch follows only a
+	 *  pick that was. */
+	override async confirm(): Promise<boolean> {
 		const chosen = this.chosen;
 		const offered = this.offer;
-		await super.confirm();
-		if (!offered || !chosen || this.offer || this.error) return;
+		if (!(await super.confirm()) || !offered || !chosen) return false;
 		// Another show: what plays is still the one before, and the slip
 		// says so.
 		this.linked = chosen.current
@@ -163,6 +164,7 @@ export class InPlaceLinkSession extends LinkSession {
 			this.offer = { entry: offered.entry, current: offered.current, saved: chosen.ref.id };
 		}
 		if (chosen.ref.id !== this.#page) this.#refresh();
+		return true;
 	}
 
 	override async undo(outcome: LinkOutcome, from: string, row: string): Promise<void> {

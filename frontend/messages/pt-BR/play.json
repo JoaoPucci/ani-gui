@@ -160,5 +160,7 @@
 	"link_switch_heading": "Mudar para {title}?",
 	"link_switch_hint": "O episódio {episode} continua em {time}.",
 	"link_switched_note": "Agora passando {title}.",
-	"link_switch_failed": "Não foi possível mudar para {title}. Tente de novo."
+	"link_switch_failed": "Não foi possível mudar para {title}. Tente de novo.",
+	"link_dialog_body_single": "Salvo como “{title}” no seu histórico. Está passando agora.",
+	"link_switch_hint_single": "Continua em {time}."
 }

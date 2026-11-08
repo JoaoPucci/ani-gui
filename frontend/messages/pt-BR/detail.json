@@ -171,7 +171,7 @@
 	"link_candidates_empty": "Nenhum anime encontrado. Tente outra busca.",
 	"link_shown_now": "Nesta página",
 	"link_confirm_heading": "É {title}?",
-	"link_confirm_body": "Daqui para a frente ele abre como este anime, de onde você parou.",
+	"link_confirm_body": "Daqui para a frente abre como este anime, de onde você parou.",
 	"link_warning_season": "O título salvo e este anime indicam temporadas diferentes.",
 	"link_warning_episode": "Seu histórico está no episódio {episode}, mas este anime tem {count} episódios.",
 	"link_confirm_button": "Sim, é esse",

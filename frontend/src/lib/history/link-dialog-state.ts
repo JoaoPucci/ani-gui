@@ -14,6 +14,8 @@
  */
 
 import { m } from '$lib/paraglide/messages';
+import type { KitsuAnimeRef } from '$lib/api';
+import { isSingleVideo } from '$lib/detail/play-label';
 import { subtypeLabel } from '$lib/search/subtype-label';
 import type { LinkCandidate } from './link-candidates';
 import { focusBack, openerOf } from './focus-return';
@@ -77,4 +79,37 @@ export function listStatus(candidates: readonly LinkCandidate[] | null, failed: 
 	if (candidates === null) return m.detail_link_candidates_loading();
 	if (failed) return m.detail_link_candidates_failed();
 	return candidates.length === 0 ? m.detail_link_candidates_empty() : '';
+}
+
+/** Whether `show` is a single-video work, whose episode the player never
+ *  names ($lib/detail/play-label). */
+function single(show: KitsuAnimeRef | null): boolean {
+	return show !== null && isSingleVideo(show.subtype, show.episode_count, show.status);
+}
+
+/** The picker's first line: the title the history saved and the
+ *  episode the surface offers. On the player (`playing`) that is the
+ *  episode playing, and none for a single-video work, as the player
+ *  names none; Home's card and the show page name the episode they
+ *  offer whatever the work. `current` is the show the card shows now,
+ *  null while it is not known. */
+export function listBody(o: {
+	playing: boolean;
+	episode: string;
+	savedTitle: string;
+	current: KitsuAnimeRef | null;
+}): string {
+	const title = o.savedTitle;
+	if (!o.playing) return m.detail_link_dialog_body({ episode: o.episode, title });
+	return single(o.current)
+		? m.play_link_dialog_body_single({ title })
+		: m.play_link_dialog_body({ episode: o.episode, title });
+}
+
+/** Where a switch to `to` picks up: the episode and the time, or the
+ *  time alone for a single-video work. */
+export function switchHint(o: { episode: string; time: string; to: KitsuAnimeRef }): string {
+	return single(o.to)
+		? m.play_link_switch_hint_single({ time: o.time })
+		: m.play_link_switch_hint({ episode: o.episode, time: o.time });
 }

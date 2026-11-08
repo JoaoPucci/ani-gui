@@ -154,10 +154,12 @@
 	"link_change_button": "No",
 	"link_dialog_body": "Guardada como «{title}» en tu historial. Se está reproduciendo el episodio {episode}.",
 	"link_warning_episode": "Se está reproduciendo el episodio {episode}, pero esta serie tiene {count} episodios.",
-	"link_switch_now": "Cambiar a esa ahora",
+	"link_switch_now": "Cambiar ahora",
 	"link_keep_watching": "Seguir viendo esta",
 	"link_switch_heading": "¿Cambiar a {title}?",
 	"link_switch_hint": "El episodio {episode} sigue en {time}.",
 	"link_switched_note": "Ahora se reproduce {title}.",
-	"link_switch_failed": "No se pudo cambiar a {title}. Inténtalo de nuevo."
+	"link_switch_failed": "No se pudo cambiar a {title}. Inténtalo de nuevo.",
+	"link_dialog_body_single": "Guardada como «{title}» en tu historial. Se está reproduciendo ahora.",
+	"link_switch_hint_single": "Sigue en {time}."
 }
