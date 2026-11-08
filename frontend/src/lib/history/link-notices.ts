@@ -19,6 +19,17 @@ export function linkedNotice(title: string, onUndo: () => void): LinkNotice {
 	};
 }
 
+/** What the player tells the user (`inPlayer`): failures only, since
+ *  its slip says what a pick did, once. Anywhere else, every notice. */
+export function playerNotify(
+	notify: (notice: LinkNotice) => void,
+	inPlayer: boolean
+): (notice: LinkNotice) => void {
+	return (notice) => {
+		if (!inPlayer || notice.kind === 'error') notify(notice);
+	};
+}
+
 /** Why a link failed, as the picker says it. */
 export function linkFailure(e: unknown): string {
 	return kitsuEntryGone(e) ? m.detail_link_failed_gone() : m.detail_link_failed();

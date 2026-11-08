@@ -193,7 +193,6 @@
 		openedFromRow,
 		recordableId,
 		landedElsewhere,
-		sessionShow,
 		withGuess,
 		withLanding,
 		withRow
@@ -203,6 +202,7 @@
 	import { noteSwitch, sessionRow } from '$lib/history/guess-slip';
 	import { appLinkDeps } from '$lib/history/link-deps';
 	import { switchShow } from '$lib/play/switch-show';
+	import { sessionShow } from '$lib/play/session-show';
 	import { carryRate, rateFor, takeRate } from '$lib/play/rate-carry';
 	import { takeSwitch } from '$lib/history/guess-slip';
 	import { holdPlayback } from '$lib/play/hold-playback';

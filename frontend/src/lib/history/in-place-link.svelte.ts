@@ -26,12 +26,13 @@
 
 import type { KitsuAnimeRef, LinkOutcome } from '$lib/api';
 import { LinkSession, type LinkNotice, type LinkSessionDeps } from './link-session.svelte';
-import { pickedOffer, type LinkDeps, type LinkOffer } from './link-offer';
+import type { LinkDeps, LinkOffer } from './link-offer';
+import { offerAgain } from './picked-offer';
+import { playerNotify } from './link-notices';
 import {
 	hideRow,
 	isRowHidden,
 	notePick,
-	pickedRow,
 	slipState,
 	takeSwitch,
 	type SlipState
@@ -73,9 +74,7 @@ export class InPlaceLinkSession extends LinkSession {
 			...deps,
 			// The player says what a pick did in its slip, once: no
 			// notice, and so no Undo. Failures are still said.
-			notify: (notice) => {
-				if (!inPlayer || notice.kind === 'error') deps.notify(notice);
-			},
+			notify: playerNotify(deps.notify, inPlayer),
 			refresh,
 			// The surface is not left for the linked show's page, so an
 			// undo never navigates either.
@@ -116,9 +115,10 @@ export class InPlaceLinkSession extends LinkSession {
 		row: string | null,
 		pageId: string
 	): Promise<LinkOffer | null> {
-		const offer = await super.findOffer(row, pageId);
-		if (offer || !this.#inPlayer || !row || !pickedRow(row)) return offer;
-		return pickedOffer(this.#linkDeps, row, pageId);
+		return (
+			(await super.findOffer(row, pageId)) ??
+			offerAgain(this.#linkDeps, row, pageId, this.#inPlayer)
+		);
 	}
 
 	/** Hide the slip for this row until the app restarts. */
