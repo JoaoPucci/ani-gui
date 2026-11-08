@@ -7,6 +7,7 @@
  * these on.
  */
 import type { BreadcrumbSegment } from '$lib/breadcrumb';
+import { m } from '$lib/paraglide/messages';
 import type { WatchOrder } from './by-start';
 import { progressOf, progressShare } from './entry';
 import { franchiseName } from './franchise-name';
@@ -157,7 +158,13 @@ export function franchisePage(
  * show it was opened from (a link back to it), then "Franchise".
  */
 export function franchiseTrail(model: FranchisePageModel, id: string): BreadcrumbSegment[] {
-	void model;
-	void id;
-	return [];
+	const r = model.run;
+	const from = [...r.entries, ...r.versions, ...r.films, ...r.sides, ...r.recaps].find(
+		(e) => e.id === id
+	);
+	return [
+		{ label: m.breadcrumb_home(), href: '/' },
+		...(from ? [{ label: from.title, href: `/anime/${id}` }] : []),
+		{ label: m.watchorder_franchise_eyebrow() }
+	];
 }

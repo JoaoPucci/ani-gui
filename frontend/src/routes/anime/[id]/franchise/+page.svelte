@@ -7,10 +7,11 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { historyList, kitsuFranchise, settingsGet, type Config } from '$lib/api';
+	import { pageTrail } from '$lib/page-trail';
 	import { m } from '$lib/paraglide/messages';
 	import FranchiseView from '$lib/watch-order/FranchiseView.svelte';
 	import { localDay } from '$lib/watch-order/entry';
-	import { franchisePage } from '$lib/watch-order/franchise-page';
+	import { franchisePage, franchiseTrail } from '$lib/watch-order/franchise-page';
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
 	import { settledOrder } from '$lib/watch-order/page-model';
 
@@ -38,6 +39,11 @@
 
 	const order = $derived(settledOrder(config, configFailed));
 	const model = $derived(data && order ? franchisePage(data, id, order) : null);
+	// The topbar names the show the page was opened from, once the
+	// franchise has been read.
+	$effect(() => {
+		if (model) pageTrail.name(page.url.pathname, franchiseTrail(model, id));
+	});
 </script>
 
 {#if model}
