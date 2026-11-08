@@ -84,25 +84,27 @@ pub async fn fetch_trusting(
     timeout: Duration,
     keys: &[&str],
 ) -> Option<Document> {
-    let sig_client = client.clone();
+    // Both requests run inside this future, not in a task of their own,
+    // so dropping the attempt drops the signature's request with it.
     let sig_url = format!("{url}{SIGNATURE_SUFFIX}");
-    let mut signature = tokio::spawn(async move {
-        fetch_capped(&sig_client, &sig_url, timeout, MAX_SIGNATURE_BYTES).await
-    });
-    let body = tokio::time::timeout(timeout, fetch_body(client, url, timeout))
-        .await
-        .ok()
-        .flatten();
-    let Some(body) = body else {
-        signature.abort();
-        return None;
-    };
-    let signature = match tokio::time::timeout(SIGNATURE_GRACE, &mut signature).await {
-        Ok(Ok(sig)) => sig,
-        _ => {
-            signature.abort();
-            None
+    let file = tokio::time::timeout(timeout, fetch_body(client, url, timeout));
+    let sig = fetch_capped(client, &sig_url, timeout, MAX_SIGNATURE_BYTES);
+    tokio::pin!(file);
+    tokio::pin!(sig);
+    let mut early_sig = None;
+    let body = loop {
+        tokio::select! {
+            body = &mut file => break body.ok().flatten(),
+            got = &mut sig, if early_sig.is_none() => early_sig = Some(got),
         }
+    };
+    let body = body?;
+    let signature = match early_sig {
+        Some(got) => got,
+        None => tokio::time::timeout(SIGNATURE_GRACE, &mut sig)
+            .await
+            .ok()
+            .flatten(),
     };
     let doc = parse_document(&body)?;
     let signature = signature.and_then(|s| String::from_utf8(s).ok());
