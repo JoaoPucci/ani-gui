@@ -72,6 +72,13 @@ fn permitted(decl: &FlagDecl) -> Vec<FlagValue> {
             .chain(earlier.iter().copied())
             .map(FlagValue::Choice)
             .collect(),
+        FlagKind::Probe { may_switch_on } => {
+            let mut v = vec![FlagValue::Bool(false)];
+            if may_switch_on {
+                v.push(FlagValue::Bool(true));
+            }
+            v
+        }
     }
 }
 

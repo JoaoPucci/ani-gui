@@ -47,6 +47,14 @@ pub enum FlagKind {
         /// select instead.
         earlier: &'static [&'static str],
     },
+    /// A test double for the mechanism: an on/off flag that ships
+    /// off. `may_switch_on` says whether the file may send `true` as
+    /// well as `false`. Never declarable outside the tests.
+    #[cfg(test)]
+    Probe {
+        /// Whether the file may switch the flag on.
+        may_switch_on: bool,
+    },
 }
 
 /// One declared flag.
@@ -70,6 +78,8 @@ impl FlagDecl {
         match self.kind {
             FlagKind::KillSwitch => FlagValue::Bool(true),
             FlagKind::Fallback { current, .. } => FlagValue::Choice(current),
+            #[cfg(test)]
+            FlagKind::Probe { .. } => FlagValue::Bool(true),
         }
     }
 
@@ -81,6 +91,11 @@ impl FlagDecl {
             FlagKind::Fallback { current, earlier } => std::iter::once(current)
                 .chain(earlier.iter().copied())
                 .map(FlagValue::Choice)
+                .collect(),
+            #[cfg(test)]
+            FlagKind::Probe { may_switch_on } => std::iter::once(false)
+                .chain(may_switch_on.then_some(true))
+                .map(FlagValue::Bool)
                 .collect(),
         }
     }

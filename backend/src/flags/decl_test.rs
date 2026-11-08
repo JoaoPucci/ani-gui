@@ -84,7 +84,7 @@ fn an_accepted_choice_is_the_declarations_string_not_the_files() {
     };
     let declared = match FALLBACK.kind {
         FlagKind::Fallback { earlier, .. } => earlier[0],
-        FlagKind::KillSwitch => unreachable!(),
+        _ => unreachable!(),
     };
     assert!(std::ptr::eq(s, declared));
 }
