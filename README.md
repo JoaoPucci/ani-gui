@@ -47,8 +47,36 @@ Platform support tiers:
 <details>
 <summary><strong>Linux</strong> — tier 1 (tested on Ubuntu)</summary>
 
-- **AppImage** — download from the [releases page](https://github.com/JoaoPucci/ani-gui/releases), `chmod +x`, double-click. Its backend carries its own C library, so the AppImage does not need a distribution as new as the one it was built on. Install `ffmpeg` from your distro if you want downloads: the AppImage carries yt-dlp but not ffmpeg, and yt-dlp hands off to it whenever a stream arrives as MPEG-TS and has to be repackaged as MP4. Playback itself needs neither. The bundle launches with Chromium's setuid sandbox disabled (AppImage's read-only FUSE mount can't carry the SUID bit `chrome-sandbox` requires); the localhost-only architecture means the sandbox isn't load-bearing for the threat model. If you'd rather keep the sandbox, install the `.deb` instead.
+- **AppImage** — download from the [releases page](https://github.com/JoaoPucci/ani-gui/releases), `chmod +x`, double-click. Its backend carries its own C library, so the AppImage does not need a distribution as new as the one it was built on. Install `ffmpeg` from your distro if you want downloads: the AppImage carries yt-dlp but not ffmpeg, and yt-dlp hands off to it whenever a stream arrives as MPEG-TS and has to be repackaged as MP4. Playback itself needs neither. Chromium's setuid sandbox can't work from an AppImage (its read-only mount can't carry the SUID bit `chrome-sandbox` needs), but Chromium has a second sandbox, built on user namespaces, that needs no helper. Each launch checks whether that one starts, and runs sandboxed when it does. Where it can't start, the app starts without the sandbox (`--no-sandbox`) and prints one line saying so on the terminal. On Ubuntu 23.10 and later that is the default: see below.
 - **Debian / Ubuntu (`.deb`)** — `sudo apt install ./ani-gui_<version>_amd64.deb`. apt pulls in the recommended `ffmpeg` package (needed for the download feature) along the way; the post-install script sets the `chrome-sandbox` SUID bit Electron needs, so the sandbox stays on. `sudo dpkg -i …` still works but won't auto-install ffmpeg — drop into `apt --fix-broken install` or run `sudo apt install ffmpeg` separately if you used dpkg directly.
+
+**The AppImage on Ubuntu 23.10 and later** runs without Chromium's sandbox. Ubuntu's AppArmor restricts unprivileged user namespaces and grants them per program, and no rule grants them to an AppImage, so the namespace sandbox can't start. You have two ways to keep the sandbox:
+
+- **Install the `.deb` instead.** It keeps the sandbox.
+- **Add an AppArmor rule for the AppImage yourself.** While it runs, the AppImage is mounted at `/tmp/.mount_` followed by the first six characters of its file name (`ani-gu` for the released file name) and six random ones. The rule below lets the app's binary at that path use user namespaces. Run this in a terminal (bash or zsh):
+
+  ```sh
+  sudo tee /etc/apparmor.d/ani-gui-appimage >/dev/null <<'EOF'
+  abi <abi/4.0>,
+  include <tunables/global>
+
+  profile ani-gui-appimage /tmp/.mount_ani-gu*/ani-gui.bin flags=(unconfined) {
+    userns,
+  }
+  EOF
+  sudo apparmor_parser -r /etc/apparmor.d/ani-gui-appimage
+  ```
+
+  The next launch picks the sandbox up by itself. To check, start the AppImage from a terminal: the line `Chromium's sandbox cannot start on this system` no longer appears. The rule matches by path, so if you renamed the AppImage to something that doesn't start with `ani-gu`, or set `TMPDIR`, change the path to match.
+
+  The rule weakens Ubuntu's protection somewhat. Anyone on the machine can create a folder of that name under `/tmp`, so any program placed there as `ani-gui.bin` gets the same exception.
+
+  To remove the rule:
+
+  ```sh
+  sudo apparmor_parser -R /etc/apparmor.d/ani-gui-appimage
+  sudo rm /etc/apparmor.d/ani-gui-appimage
+  ```
 
 </details>
 
