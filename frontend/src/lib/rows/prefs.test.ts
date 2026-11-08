@@ -109,7 +109,7 @@ describe('actionShape', () => {
 	it('draws an inline row’s actions as icons that open on hover and focus', () => {
 		expect(actionShape('inline')).toBe('icon');
 	});
-	it('keeps a banded row’s actions labelled: the band already marks the row out', () => {
+	it('keeps a banded row’s actions labelled: they sit at the header’s end, apart from the title', () => {
 		expect(actionShape('band')).toBe('label');
 	});
 	it('gives every style one of the two shapes, the icon only to inline', () => {
