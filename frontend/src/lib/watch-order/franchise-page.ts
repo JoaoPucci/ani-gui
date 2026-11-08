@@ -55,6 +55,12 @@ export interface FranchisePageModel {
 	readonly partial: boolean;
 }
 
+/** Whether `run` lists `id` and nothing else. */
+function isAlone(run: WatchRun, id: string): boolean {
+	const all = [...run.entries, ...run.versions, ...run.films, ...run.sides, ...run.recaps];
+	return all.length === 1 && all[0].id === id;
+}
+
 /** The page for `id`, or null where there is no franchise to show. */
 export function franchisePage(
 	data: WatchOrderData,
@@ -84,7 +90,7 @@ export function franchisePage(
 		name: franchiseName(art.title, others),
 		art,
 		total: franchiseSummary(run).total,
-		alone: false,
+		alone: isAlone(run, id),
 		resume: now && {
 			entry: now.entry,
 			label: ctx.label(now.entry),

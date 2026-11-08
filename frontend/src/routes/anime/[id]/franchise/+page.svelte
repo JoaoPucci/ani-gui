@@ -49,7 +49,7 @@
 	});
 </script>
 
-{#if model && model.total === 1}
+{#if model?.alone}
 	<p class="none">{m.watchorder_franchise_none()}</p>
 {:else if model}
 	{#key id}

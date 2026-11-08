@@ -60,50 +60,56 @@ function rowOf(ctx: RowContext, entry: WatchEntry, numbered: boolean): Franchise
 	};
 }
 
-/** A title the page can neither number nor say what it leads into. */
-const unexplained = (r: FranchiseRow) => r.position === null && r.leadsInto === null;
-
-/**
- * A line's titles as the page draws them: numbered titles (and titles
- * that say what they lead into) together, and each stretch of titles
- * with neither under its own "no clear place" heading.
- */
-function lineSections(rows: readonly FranchiseRow[]): FranchiseSection[] {
-	const out: { kind: 'line'; rows: FranchiseRow[]; unplaced: boolean }[] = [];
-	for (const r of rows) {
-		const last = out.at(-1);
-		if (last && last.unplaced === unexplained(r)) last.rows.push(r);
-		else out.push({ kind: 'line', rows: [r], unplaced: unexplained(r) });
-	}
-	return out;
-}
-
 /**
  * One segment as the page draws it. A fork left with one way (its
  * other ways start at a join or in a loop) is drawn as a line.
  */
-function sectionsOf(ctx: RowContext, seg: Segment): FranchiseSection[] {
+function sectionOf(ctx: RowContext, seg: Segment): FranchiseSection {
 	if (seg.kind === 'fork' && seg.branches.length > 1)
-		return [{ kind: 'ways', ways: seg.branches.map((b) => b.map((e) => rowOf(ctx, e, false))) }];
+		return { kind: 'ways', ways: seg.branches.map((b) => b.map((e) => rowOf(ctx, e, false))) };
 	if (seg.kind === 'cycle')
-		return [{ kind: 'group', rows: seg.entries.map((e) => rowOf(ctx, e, false)) }];
+		return { kind: 'group', rows: seg.entries.map((e) => rowOf(ctx, e, false)) };
 	const entries = seg.kind === 'fork' ? seg.branches.flat() : seg.entries;
-	return lineSections(entries.map((e) => rowOf(ctx, e, true)));
+	return { kind: 'line', rows: entries.map((e) => rowOf(ctx, e, true)), unplaced: false };
 }
 
-/** Stretches with no clear place that follow each other, under one heading. */
-function joinUnplaced(sections: readonly FranchiseSection[]): FranchiseSection[] {
-	const out: FranchiseSection[] = [];
-	for (const s of sections) {
-		const last = out.at(-1);
-		if (s.kind === 'line' && s.unplaced && last?.kind === 'line' && last.unplaced)
-			out[out.length - 1] = { ...last, rows: [...last.rows, ...s.rows] };
-		else out.push(s);
+/**
+ * The titles of `rows` with no clear place: no number, and either no
+ * note or a note leading into a title with no clear place itself.
+ */
+function noClearPlace(ctx: RowContext, rows: readonly FranchiseRow[]): Set<string> {
+	const leads = new Map<string, string>();
+	for (const r of rows) {
+		const note = pathNote(ctx.run, r.entry.id, ctx.order);
+		if (note?.kind === 'leads-into') leads.set(r.entry.id, note.entry.id);
 	}
-	return out;
+	const unnumbered = rows.filter((r) => r.position === null).map((r) => r.entry.id);
+	const loose = new Set(unnumbered.filter((id) => !leads.has(id)));
+	for (let grew = true; grew; ) {
+		grew = false;
+		for (const id of unnumbered) {
+			if (loose.has(id) || !loose.has(leads.get(id)!)) continue;
+			loose.add(id);
+			grew = true;
+		}
+	}
+	return loose;
 }
 
-/** The main story's sections, from the run's segments. */
+/**
+ * The main story's sections, from the run's segments. The titles with
+ * no clear place leave their lines and gather in one stretch at the
+ * end, under its heading, so nothing numbered follows it.
+ */
 export function mainStory(ctx: RowContext, segs: readonly Segment[]): FranchiseSection[] {
-	return joinUnplaced(segs.flatMap((seg) => sectionsOf(ctx, seg)));
+	const sections = segs.map((seg) => sectionOf(ctx, seg));
+	const lineRows = sections.flatMap((s) => (s.kind === 'line' ? s.rows : []));
+	const loose = noClearPlace(ctx, lineRows);
+	const placed = sections
+		.map((s) =>
+			s.kind === 'line' ? { ...s, rows: s.rows.filter((r) => !loose.has(r.entry.id)) } : s
+		)
+		.filter((s) => s.kind !== 'line' || s.rows.length > 0);
+	const rest = lineRows.filter((r) => loose.has(r.entry.id));
+	return rest.length > 0 ? [...placed, { kind: 'line', rows: rest, unplaced: true }] : placed;
 }
