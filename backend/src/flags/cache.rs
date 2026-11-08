@@ -9,11 +9,20 @@
 //! written by another build, or edited by hand, still resolves only to
 //! values this build declares.
 //!
+//! A `true` the entry holds is kept only if it verified when fetched
+//! (see [`super::signature`]); it is not checked again on reading, so a
+//! hand edit of the user's own cache reaches only that user's own
+//! install. An entry not marked as coming from a verified file (the
+//! `verified` field) is admitted again on reading, as an unsigned file:
+//! that covers an entry written before the signature check, which held
+//! the file as fetched.
+//!
 //! **Why seven days.** Every value a document can resolve to is one
 //! its flag's declaration allows, so a cached document resolves only
-//! to what this build accepts; what its age bounds is how long a value
-//! the maintainer has since changed lingers on a machine that cannot
-//! reach GitHub. A week rides out a run of launches without the
+//! to what this build accepts, and it turns a feature on only if the
+//! maintainer signed that; what its age bounds is how long a value the
+//! maintainer has since changed (a feature turned off again) lingers on
+//! a machine that cannot reach GitHub. A week rides out a run of launches without the
 //! network — a trip, a captive portal, a blocked CDN — so a flag keeps
 //! its value through them, while a changed value clears within a week
 //! even on a machine that never reaches the file again. An entry dated
@@ -26,6 +35,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::resolve::{Document, MAX_BYTES};
+use super::signature::{admit, holds_signed_content, Verdict};
 
 /// How long a cached document stands in for an unreachable file.
 pub const FRESH_FOR: Duration = Duration::from_secs(7 * 24 * 60 * 60);
@@ -37,13 +47,19 @@ pub struct CacheEntry {
     pub fetched_at: u64,
     /// The `flags` object as admitted.
     pub flags: Document,
-    /// Stub.
+    /// Whether `flags` is known to come from a verified file: it holds
+    /// something only a verified file keeps through admission (a
+    /// `true`). [`read`] admits any other entry again, as unsigned. An
+    /// entry without the field (written before the signature check)
+    /// reads as `false`.
     #[serde(default)]
     pub verified: bool,
 }
 
 impl CacheEntry {
-    /// Stub.
+    /// An entry for a document that went through
+    /// [`super::signature::admit`]. Its mark is set by [`write`], from
+    /// the document, as it is written.
     #[must_use]
     pub fn admitted(fetched_at: u64, flags: Document) -> Self {
         Self {
@@ -86,11 +102,20 @@ pub async fn read(path: &Path) -> Option<CacheEntry> {
     if bytes.len() as u64 > MAX_FILE_BYTES {
         return None;
     }
-    serde_json::from_slice(&bytes).ok()
+    let entry: CacheEntry = serde_json::from_slice(&bytes).ok()?;
+    Some(if entry.verified {
+        entry
+    } else {
+        CacheEntry {
+            flags: admit(entry.flags, Verdict::Unsigned),
+            ..entry
+        }
+    })
 }
 
-/// Replace the cache file with `entry`, through a temporary file so a
-/// launch ended mid-write never leaves a torn one. A failure is
+/// Replace the cache file with `entry`, marked verified when its
+/// document holds what only a verified file keeps, through a temporary
+/// file so a launch ended mid-write never leaves a torn one. A failure is
 /// logged and otherwise ignored: the cache is a convenience.
 pub async fn write(path: &Path, entry: &CacheEntry) {
     if let Err(error) = try_write(path, entry).await {
@@ -102,7 +127,12 @@ async fn try_write(path: &Path, entry: &CacheEntry) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-    let bytes = serde_json::to_vec(entry)?;
+    // The mark is the document's own evidence, taken as it is written.
+    let marked = CacheEntry {
+        verified: holds_signed_content(&entry.flags),
+        ..entry.clone()
+    };
+    let bytes = serde_json::to_vec(&marked)?;
     let tmp = path.with_extension("json.tmp");
     tokio::fs::write(&tmp, &bytes).await?;
     tokio::fs::rename(&tmp, path).await

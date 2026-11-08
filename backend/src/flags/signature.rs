@@ -84,6 +84,14 @@ pub fn admit(mut doc: Document, verdict: Verdict) -> Document {
     doc
 }
 
+/// Whether `doc` holds what only a verified file keeps through
+/// [`admit`]: a value that turns a flag on. A document that went
+/// through admission and holds one is known to have verified.
+#[must_use]
+pub fn holds_signed_content(doc: &Document) -> bool {
+    doc.values().any(turns_on)
+}
+
 /// Whether `raw` is the value that turns a flag on.
 fn turns_on(raw: &serde_json::Value) -> bool {
     *raw == serde_json::Value::Bool(true)
