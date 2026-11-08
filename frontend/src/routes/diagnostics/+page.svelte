@@ -18,6 +18,7 @@
 	import { retiredSweepView } from '$lib/diagnostics/retired-sweep';
 	import { cacheReclaimView } from '$lib/diagnostics/cache-reclaim';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs } from '$lib/hero/prefs';
+	import { miniMock } from '$lib/mini/mock/MiniHost.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
 
@@ -113,6 +114,36 @@
 		{:else}
 			<p>{m.diagnostics_app_info_loading()}</p>
 		{/if}
+	</section>
+
+	<!-- Mini-player mockups (0.21.0 design review): whether the
+	     player offers the simulated mini window, and whether its option
+	     switch shows — see $lib/mini/mock. -->
+	<section>
+		<h2>{m.mini_diag_section()}</h2>
+		<p>{m.mini_diag_description()}</p>
+		<p>
+			<label>
+				<input
+					type="checkbox"
+					checked={miniMock.prefs.enabled}
+					onchange={(e) =>
+						miniMock.setPrefs({ enabled: (e.currentTarget as HTMLInputElement).checked })}
+				/>
+				{m.mini_diag_toggle()}
+			</label>
+		</p>
+		<p>
+			<label>
+				<input
+					type="checkbox"
+					checked={miniMock.prefs.switcher}
+					onchange={(e) =>
+						miniMock.setPrefs({ switcher: (e.currentTarget as HTMLInputElement).checked })}
+				/>
+				{m.mini_diag_switcher()}
+			</label>
+		</p>
 	</section>
 
 	{#if cacheReclaim.visible}
