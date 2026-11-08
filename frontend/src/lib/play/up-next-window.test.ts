@@ -46,6 +46,9 @@ describe('inCredits', () => {
 
 	it('decides nothing while the length is unknown and no ending is known', () => {
 		expect(inCredits(5000, Number.NaN, [])).toBe(false);
+		// The player holds a length it has not learned yet as zero.
+		expect(inCredits(0, 0, [])).toBe(false);
+		expect(inCredits(10, 0, [OP])).toBe(false);
 		expect(inCredits(1300, Number.NaN, [ed(1300, 1390)])).toBe(true);
 	});
 
