@@ -325,7 +325,7 @@ session retries the file after 3, 10 and 30 minutes and then hourly.
 Create the branch before the first release that carries this.
 
 **The format.** One JSON object with a `flags` object inside, each flag
-`true` (on) or `false` (off). Flags are default OFF, and any read
+`true` or `false`, as its declaration allows. Flags are default OFF, and any read
 failure means OFF: a flag the file does not mention, or one it gives
 any other value, is off. This build declares no flag, so the file
 changes nothing yet:
@@ -333,7 +333,7 @@ changes nothing yet:
 ```json
 {
   "flags": {
-    "some_feature": true
+    "some_feature": false
   }
 }
 ```
@@ -346,7 +346,7 @@ worktree, in bash:
 cd ../ani-gui-flags
 git pull
 python3 -m json.tool flags.json
-git commit -am "chore: switch some_feature on"
+git commit -am "chore: set some_feature to false"
 git push
 ```
 

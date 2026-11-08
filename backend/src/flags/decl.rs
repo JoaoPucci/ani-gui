@@ -24,7 +24,7 @@ use serde::Serialize;
 #[serde(untagged)]
 pub enum FlagValue {
     /// An on/off flag: `false`, the default, or `true` when the file
-    /// switches it on.
+    /// holds a `true` its declaration allows.
     Bool(bool),
 }
 

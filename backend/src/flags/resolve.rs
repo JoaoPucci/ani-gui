@@ -4,7 +4,7 @@
 //! The file is a JSON object with a `flags` object inside it:
 //!
 //! ```json
-//! { "flags": { "some_feature": true } }
+//! { "flags": { "some_feature": false } }
 //! ```
 //!
 //! Everything that is not a usable value for a declared flag falls
