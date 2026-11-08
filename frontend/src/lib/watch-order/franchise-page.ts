@@ -96,16 +96,19 @@ function rowOf(ctx: RowContext, entry: WatchEntry, numbered: boolean): Franchise
 	};
 }
 
-function sectionOf(ctx: RowContext, seg: Segment, before: Segment | undefined): FranchiseSection {
-	if (seg.kind === 'fork')
+/**
+ * One segment as the page draws it. A fork left with one way (its
+ * other way starts at a join) is drawn as a line. A line after the
+ * first whose titles have no number says it has no clear place.
+ */
+function sectionOf(ctx: RowContext, seg: Segment, first: boolean): FranchiseSection {
+	if (seg.kind === 'fork' && seg.branches.length > 1)
 		return { kind: 'ways', ways: seg.branches.map((b) => b.map((e) => rowOf(ctx, e, false))) };
 	if (seg.kind === 'cycle')
 		return { kind: 'group', rows: seg.entries.map((e) => rowOf(ctx, e, false)) };
-	return {
-		kind: 'line',
-		rows: seg.entries.map((e) => rowOf(ctx, e, true)),
-		unplaced: before?.kind === 'cycle'
-	};
+	const entries = seg.kind === 'fork' ? seg.branches.flat() : seg.entries;
+	const rows = entries.map((e) => rowOf(ctx, e, true));
+	return { kind: 'line', rows, unplaced: !first && rows.every((r) => r.position === null) };
 }
 
 /** The page for `id`, or null where there is no franchise to show. */
@@ -144,7 +147,7 @@ export function franchisePage(
 			position: placement(run, now.entry.id, order).position
 		},
 		start: sequence(run, order)[0],
-		sections: segs.map((seg, i) => sectionOf(ctx, seg, segs[i - 1])),
+		sections: segs.map((seg, i) => sectionOf(ctx, seg, i === 0)),
 		versions: run.versions,
 		films: run.films,
 		sides: run.sides,

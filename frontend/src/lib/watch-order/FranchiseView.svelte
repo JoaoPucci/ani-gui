@@ -92,7 +92,7 @@
 					class:compact={!numbered}
 					href={resolve('/anime/[id]', { id: r.entry.id })}
 					title={r.entry.title}
-					aria-current={r.here ? 'page' : undefined}
+					aria-current={r.here ? 'true' : undefined}
 				>
 					{#if numbered}
 						<span class="row-num" aria-hidden="true"

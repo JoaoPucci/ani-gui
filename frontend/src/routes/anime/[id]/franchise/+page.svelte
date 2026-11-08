@@ -2,7 +2,8 @@
   The franchise page for the show with this id: its franchise and the
   watch history read together ($lib/watch-order/loader), drawn in the
   order the settings choose once that read has settled. A franchise
-  that cannot be read says so, with Try again.
+  that cannot be read says so, with Try again. One that answers with
+  nothing beyond the show says that instead.
 -->
 <script lang="ts">
 	import { page } from '$app/state';
@@ -24,16 +25,18 @@
 		.then((c) => (config = c))
 		.catch(() => (configFailed = true));
 
-	// One read per show and per Try again; an answer for a show the
-	// page has since left is dropped.
+	// One read per show and per Try again. Only the latest read's
+	// answer is drawn, so an older one landing late never replaces it.
 	let data = $state<WatchOrderData | null>(null);
 	let attempt = $state(0);
+	let latest = 0;
 	$effect(() => {
 		const current = id;
 		void attempt;
+		const read = ++latest;
 		data = null;
 		void loadWatchOrder(current, { franchise: kitsuFranchise, history: historyList }).then((d) => {
-			if (current === id) data = d;
+			if (read === latest) data = d;
 		});
 	});
 
@@ -50,6 +53,8 @@
 	{#key id}
 		<FranchiseView {model} {today} />
 	{/key}
+{:else if data && order && data.franchise !== null}
+	<p class="none">{m.watchorder_franchise_none()}</p>
 {:else if data && order}
 	<div class="failed">
 		<p>{m.watchorder_franchise_failed()}</p>
@@ -60,6 +65,11 @@
 {/if}
 
 <style>
+	.none {
+		margin: 0;
+		padding: var(--space-7) var(--space-8);
+		color: var(--bone-300);
+	}
 	.failed {
 		display: grid;
 		justify-items: start;
