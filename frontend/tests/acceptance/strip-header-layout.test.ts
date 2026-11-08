@@ -162,12 +162,18 @@ describe('the band, at rest and under the pointer', () => {
 		]);
 	});
 
-	it('has no other rule that styles a hovered or focused banded row', () => {
+	it('has no other rule in Strip that styles a banded row by its hover or focus', () => {
 		// A rule such as `${BAND}:hover .strip-header { padding: … }` would
 		// move the row when the band shows. The one hover/focus rule is
-		// the surface change above.
+		// the surface change above. Matched: any selector in Strip's own
+		// style naming `data-surface` together with a `:hover` or any
+		// `:focus…` pseudo-class, however quoted. Not seen: a rule in
+		// another file, or one reaching the row without naming
+		// `data-surface`.
 		const selectors = STYLE.match(/[^{}]*\{/g) ?? [];
-		const lit = selectors.filter((sel) => /data-surface='band'\]:(hover|focus-within)/.test(sel));
+		const lit = selectors.filter(
+			(sel) => sel.includes('data-surface') && /:(hover|focus)/.test(sel)
+		);
 		expect(lit.map((sel) => sel.trim())).toEqual([`${BAND}:hover,\n\t${BAND}:focus-within {`]);
 	});
 });
