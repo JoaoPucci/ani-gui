@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
-import { metaLine, numeral, railKeyText, splitMeta } from './meta';
+import { loopGroupText, metaLine, numeral, railKeyText, splitMeta } from './meta';
 import type { WatchEntry, WatchRun } from './types';
 
 const TODAY = '2026-11-02';
@@ -86,5 +86,12 @@ describe('splitMeta', () => {
 
 	it("puts an unaired entry's date on the second line", () => {
 		expect(parts('monogatari', '50013')).toEqual([['SPECIAL'], ['Date not announced']]);
+	});
+});
+
+describe('loopGroupText', () => {
+	it('heads a loop as the group of titles it is', () => {
+		expect(loopGroupText(10)).toBe('10 linked titles, order unclear');
+		expect(loopGroupText(2)).toBe('2 linked titles, order unclear');
 	});
 });
