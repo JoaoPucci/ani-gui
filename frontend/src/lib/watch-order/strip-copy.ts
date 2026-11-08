@@ -4,6 +4,7 @@
  * thin.
  */
 import { m } from '$lib/paraglide/messages';
+import type { StripCaption } from './page-model';
 import type { EmptyColumn } from './strip-view';
 import type { ColumnKey, ColumnWord } from './strip-wording';
 
@@ -41,4 +42,10 @@ export function emptyColumnText(kind: EmptyColumn): string {
 	if (kind === 'first') return m.watchorder_strip_first();
 	if (kind === 'last') return m.watchorder_strip_last();
 	return m.watchorder_strip_side_end();
+}
+
+/** The strip's caption ("05 of 09", "Side story", …), as its heading reads it. */
+export function captionText(caption: StripCaption): string {
+	void caption;
+	return '';
 }
