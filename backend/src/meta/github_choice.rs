@@ -1,7 +1,7 @@
 //! The choice of release to offer, from the releases the update check
 //! read (see the parent module's docs for what is offered and why).
-//! Split from `github.rs` so each file stays inside the CRAP gate's
-//! per-file bar.
+//! Split from `github.rs` so each file stays under the CRAP gate's
+//! high-risk bar.
 
 use serde::Deserialize;
 
@@ -39,7 +39,7 @@ pub(super) struct RawAsset {
 /// Normalise a `RawRelease` into the smaller `ReleaseInfo` or
 /// `None` when load-bearing fields are missing. Drafts are
 /// filtered (badge would link to a release the user can't see).
-pub(super) fn normalise(raw: RawRelease) -> Option<ReleaseInfo> {
+fn normalise(raw: RawRelease) -> Option<ReleaseInfo> {
     if raw.draft {
         return None;
     }
@@ -105,7 +105,7 @@ pub(super) fn offer(
 /// Whether the releases read carry files, and none of them is any
 /// packaged platform's package. A release with no files at all says
 /// nothing about how files are named.
-pub(super) fn naming_unrecognised(page: &[RawRelease], latest: Option<&RawRelease>) -> bool {
+fn naming_unrecognised(page: &[RawRelease], latest: Option<&RawRelease>) -> bool {
     let assets = || page.iter().chain(latest).flat_map(|r| &r.assets);
     assets().next().is_some() && !assets().any(|a| Platform::ALL.iter().any(|p| p.carries(&a.name)))
 }
@@ -116,7 +116,7 @@ pub(super) fn naming_unrecognised(page: &[RawRelease], latest: Option<&RawReleas
 /// files; without, the latest full release alone, as the
 /// `/releases/latest` request it made then. A release carrying no
 /// files has nothing to download and is passed over either way.
-pub(super) fn offer_as_before_files(
+fn offer_as_before_files(
     page: Vec<RawRelease>,
     latest: Option<RawRelease>,
     include_prereleases: bool,
