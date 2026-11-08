@@ -26,10 +26,14 @@ chosen to defer. Correcting an entry so it stays true, or removing it
 when the work lands, needs no such choice — the pull request that does
 it must say so.
 
-An entry is a reminder, not a constraint. A change that builds in an
-area reads the entries that concern it and prefers tackling one over
-building around it; one too large or risky to take on goes to the
-maintainer as a choice, as `AGENTS.md` §14 describes.
+An entry is a reminder, not a constraint. A change considers an entry
+only when tackling it would unblock the change, or when the change
+would otherwise have to be built differently or around it. Then, if
+the entry is still valid and worth doing, the change prefers tackling
+it; one too large or risky to take on goes to the maintainer as a
+choice, as `AGENTS.md` §14 describes. An entry that only shares the
+change's area is not raised, and the log is not scanned by area or
+keyword.
 
 Write an entry about the code, not about the work in flight. An entry
 stands on its own: what is wrong, where it lives, and what should

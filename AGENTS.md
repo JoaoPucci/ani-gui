@@ -332,13 +332,18 @@ package, a helper already extracted, a test glob that already covers
 the directory. More than once the "large refactor" turned out to be
 one new file next to two just like it.
 
-An entry already in the log is an opening, not a boundary. Before
-building in an area, read the deferred-work entries that concern it,
-and prefer tackling one within the change over building around it —
-that is **Do it here**, and the change removes the entry it lands. An
-entry is a reminder, never a constraint the design has to respect. If
+An entry already in the log is considered only when it bears on the
+change directly: tackling it would unblock the change, or without it
+the change would have to be built differently or around it, with a
+workaround the entry's fix would remove. Then check the entry is still
+valid and still worth doing, and prefer tackling it within the change —
+that is **Do it here**, and the change removes the entry it lands. If
 tackling it is genuinely large or risky, put the options to the
-maintainer, as **Ask** describes.
+maintainer, as **Ask** describes. An entry that merely sits in the same
+area is not a reason to raise it, so do not scan the log by area or by
+keyword for work to add. An entry the change makes false is still
+corrected in that change, as above. An entry is a reminder, never a
+constraint the design has to respect.
 
 ### Choosing between options
 
