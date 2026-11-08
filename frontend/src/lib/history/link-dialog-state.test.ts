@@ -7,7 +7,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { KitsuAnimeRef } from '$lib/api';
 import type { LinkCandidate } from './link-candidates';
-import { candidateMeta, createDialogFocus, listStatus } from './link-dialog-state';
+import {
+	candidateMeta,
+	createDialogFocus,
+	listBody,
+	listStatus,
+	switchHint
+} from './link-dialog-state';
 import { m } from '$lib/paraglide/messages';
 import { subtypeLabel } from '$lib/search/subtype-label';
 
@@ -132,5 +138,36 @@ describe('what the list says to assistive tech', () => {
 		expect(listStatus([], true)).toBe(m.detail_link_candidates_failed());
 		expect(listStatus([], false)).toBe(m.detail_link_candidates_empty());
 		expect(listStatus([candidate()], false)).toBe('');
+	});
+});
+
+describe("the picker's words for a single-video work", () => {
+	const movie = candidate({ subtype: 'movie', episode_count: 1 }).ref;
+	const series = candidate({ subtype: 'TV', episode_count: 26 }).ref;
+
+	it('name no episode on a work that has only one, as the rest of the player does', () => {
+		expect(listBody({ playing: true, episode: '1', savedTitle: 'X', current: movie })).toBe(
+			m.play_link_dialog_body_single({ title: 'X' })
+		);
+		expect(listBody({ playing: false, episode: '1', savedTitle: 'X', current: movie })).toBe(
+			m.detail_link_dialog_body_single({ title: 'X' })
+		);
+		expect(switchHint({ episode: '1', time: '0:14', to: movie })).toBe(
+			m.play_link_switch_hint_single({ time: '0:14' })
+		);
+	});
+
+	it('name the episode on a series, and while the show is not known yet', () => {
+		for (const current of [series, null]) {
+			expect(listBody({ playing: true, episode: '2', savedTitle: 'X', current })).toBe(
+				m.play_link_dialog_body({ episode: '2', title: 'X' })
+			);
+			expect(listBody({ playing: false, episode: '2', savedTitle: 'X', current })).toBe(
+				m.detail_link_dialog_body({ episode: '2', title: 'X' })
+			);
+		}
+		expect(switchHint({ episode: '2', time: '0:14', to: series })).toBe(
+			m.play_link_switch_hint({ episode: '2', time: '0:14' })
+		);
 	});
 });

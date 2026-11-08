@@ -75,6 +75,9 @@ const GUESS_TITLE = 'JoJo no Kimyou na Bouken (TV)';
 /** The 2000 OVA: what the card really is. */
 const RIGHT = '4013';
 const RIGHT_TITLE = 'JoJo no Kimyou na Bouken (2000)';
+/** A third show, to pick after a first pick. */
+const THIRD = '9999';
+const THIRD_TITLE = 'JoJo no Kimyou na Bouken (2007)';
 /** The card's own row, and the row its guessed play wrote. */
 const CARD = 'hianime:jojos-bizarre-adventure-2000-5182';
 const PLAYED = 'hianime:jojos-bizarre-adventure-2012-708';
@@ -85,6 +88,8 @@ let app: ReturnType<typeof mount> | null = null;
 
 function show(id: string) {
 	const en = { en: TITLE };
+	if (id === THIRD)
+		return { ...kitsuRef(THIRD, THIRD_TITLE, 1), titles: en, slug: 'jojo-2007', subtype: 'movie' };
 	return id === RIGHT
 		? {
 				...kitsuRef(RIGHT, RIGHT_TITLE, 13),
@@ -119,7 +124,9 @@ function serve() {
 				(new URL(request.url).searchParams.get('title') ?? '').startsWith(TITLE) ? GUESS : null
 			)
 		),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([show(GUESS), show(RIGHT)])),
+		http.post(`${API_BASE}/api/kitsu/search`, () =>
+			HttpResponse.json([show(GUESS), show(RIGHT), show(THIRD)])
+		),
 		http.post(`${API_BASE}/api/availability`, () =>
 			HttpResponse.json({
 				available: true,
@@ -558,6 +565,7 @@ describe('switching to the pick', () => {
 			guess: '1',
 			row: CARD
 		});
+		const consumed = vi.spyOn(recoveryResume, 'consume');
 		app = mount(PlayRoute, { target });
 		await until(
 			() => (target.querySelector('a.np-link')?.textContent ?? '').includes(GUESS_TITLE),
@@ -586,8 +594,41 @@ describe('switching to the pick', () => {
 			'the switched note'
 		);
 		expect(slip()!.querySelector('button:not(.hide)')).toBeNull();
+		// The pick's player, and it alone, resumes from the point carried.
+		const handed = consumed.mock.calls
+			.map((args, i) => [args, consumed.mock.results[i].value] as const)
+			.filter(([, at]) => at !== null);
+		expect(handed).toEqual([[[RIGHT, 2], 74]]);
+		consumed.mockRestore();
 		await moreMenu();
 		expect(button(m.play_link_menu_item())).not.toBeNull();
+	});
+
+	it('never switches to an earlier pick when a later one cannot be saved', async () => {
+		await openPlayer();
+		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+		videoAt(74);
+		await openPicker();
+		await pickAndLink(RIGHT_TITLE);
+		await until(() => button(m.play_link_switch_now(), slip() ?? target) !== null, 'the note');
+		server.use(
+			http.post(`${API_BASE}/api/history/link`, () => new HttpResponse(null, { status: 500 }))
+		);
+		await moreMenu();
+		button(m.play_link_menu_item())!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		const third = () =>
+			Array.from(dialog()!.querySelectorAll<HTMLButtonElement>('li button')).find((b) =>
+				(b.textContent ?? '').includes(THIRD_TITLE)
+			);
+		await until(() => third() !== undefined, 'the third show');
+		third()!.click();
+		await until(() => !button(m.play_link_switch_now(), dialog()!)?.disabled, 'Switch');
+		button(m.play_link_switch_now(), dialog()!)!.click();
+		await until(() => dialog()?.querySelector('[role="alert"]') !== null, 'the error');
+		await settle();
+		expect(pickPlay()).toBeUndefined();
+		expect(vi.mocked(goto)).not.toHaveBeenCalled();
 	});
 
 	it('says so and keeps the player as it was when the pick has no stream', async () => {

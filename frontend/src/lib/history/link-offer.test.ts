@@ -8,6 +8,7 @@ import {
 	guessedGroup,
 	linkOffer,
 	loadCandidates,
+	pickedOffer,
 	searchCandidates,
 	undoLink,
 	type LinkDeps
@@ -195,6 +196,39 @@ describe('guessedGroup, for a card picked again on the player', () => {
 		const d = deps({ history: async () => [picked(CARD), picked(HIDDEN), PLAYED, OTHER] });
 		const offer = { entry: picked(CARD), current: ref(GUESS), saved: '4013' };
 		expect(await guessedGroup(d, offer)).toEqual([CARD.id, HIDDEN.id]);
+	});
+});
+
+describe('pickedOffer', () => {
+	const picked = { ...CARD, kitsu_id: '4013' };
+	const d = (over: Partial<LinkDeps> = {}) => deps({ history: async () => [picked], ...over });
+
+	it("offers to change again the row a pick saved, while it records the page's show", async () => {
+		const offer = await pickedOffer(d(), CARD.id, '4013');
+		expect(offer).toMatchObject({ entry: picked, saved: '4013' });
+		expect(offer?.current.id).toBe('4013');
+	});
+
+	it('offers nothing once the row records another show, or is gone', async () => {
+		expect(await pickedOffer(d(), CARD.id, '7158')).toBeNull();
+		expect(await pickedOffer(d(), 'hianime:gone-1', '4013')).toBeNull();
+	});
+
+	it('offers nothing when the history cannot be read', async () => {
+		expect(
+			await pickedOffer(
+				d({ history: async () => Promise.reject(new Error('io')) }),
+				CARD.id,
+				'4013'
+			)
+		).toBeNull();
+		expect(
+			await pickedOffer(
+				d({ resolve: async () => Promise.reject(new Error('kitsu')) }),
+				CARD.id,
+				'4013'
+			)
+		).toBeNull();
 	});
 });
 

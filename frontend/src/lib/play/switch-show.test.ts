@@ -43,7 +43,14 @@ function deps(over: Partial<SwitchShowDeps> = {}) {
 		record: vi.fn(() => void calls.push('record')),
 		carry: vi.fn(() => void calls.push('carry')),
 		noteSwitch: vi.fn(() => void calls.push('note')),
-		open: vi.fn(async () => void calls.push('open')),
+		open: vi.fn(async () => {
+			calls.push('open');
+			return true;
+		}),
+		played: vi.fn(
+			(_showId: string, _session: CreateSessionResponse, requested: number) => requested
+		),
+		carryRate: vi.fn(),
 		isCurrent: () => true,
 		...over
 	};
@@ -114,6 +121,28 @@ describe('switching to the picked show', () => {
 		await switchShow(d, request({ row: null }));
 		expect(d.noteSwitch).not.toHaveBeenCalled();
 		expect(d.open).toHaveBeenCalledWith(RIGHT.id, SESSION, 2, null);
+	});
+
+	it('follows the episode the session says it plays, for the record, the point and the player', async () => {
+		// The resolve may name the episode by the number it has now: a
+		// recap renumbered from 24.5 to 12.5.
+		const { d } = deps({ played: vi.fn(() => 12.5) });
+		await switchShow(d, request({ episode: 24.5 }));
+		expect(d.played).toHaveBeenCalledWith(RIGHT.id, SESSION, 24.5);
+		expect((vi.mocked(d.record).mock.calls[0][0] as PlayArgs).episode).toBe('12.5');
+		expect(d.carry).toHaveBeenCalledWith(RIGHT.id, 12.5, 14.5);
+		expect(d.open).toHaveBeenCalledWith(RIGHT.id, SESSION, 12.5, CARD);
+	});
+
+	it('keeps the playback speed for the next player', async () => {
+		const { d } = deps();
+		await switchShow(d, request({ rate: 1.5 }));
+		expect(d.carryRate).toHaveBeenCalledWith(RIGHT.id, 1.5);
+	});
+
+	it('fails when the player cannot be opened on the stream', async () => {
+		const { d } = deps({ open: vi.fn(async () => false) });
+		expect(await switchShow(d, request())).toBe('failed');
 	});
 
 	it('carries over exactly the episode and point it was asked for', async () => {

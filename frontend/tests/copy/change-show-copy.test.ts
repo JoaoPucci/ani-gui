@@ -26,10 +26,26 @@ const flow: Record<string, (key: string) => boolean> = {
 
 /** What each locale's words for the app's side of it look like. */
 const unsaid: Record<string, RegExp[]> = {
-	en: [/link/i, /guess/i, /continue watching/i, /continue card/i],
-	'pt-BR': [/vincul/i, /v[íi]nculo/i, /deduz/i, /continuar assistindo/i],
-	'es-419': [/vincul/i, /v[íi]nculo/i, /deduc/i, /dedujo/i],
-	ru: [/связ/i, /угада/i, /продолжить просмотр/i]
+	en: [/link/i, /guess/i, /match/i, /continue watching/i, /continue card/i],
+	'pt-BR': [
+		/vincul/i,
+		/v[íi]nculo/i,
+		/deduz/i,
+		/adivinh/i,
+		/palpite/i,
+		/correspond[êe]ncia/i,
+		/continuar assistindo/i
+	],
+	'es-419': [
+		/vincul/i,
+		/v[íi]nculo/i,
+		/deduc/i,
+		/dedujo/i,
+		/adivin/i,
+		/coincidencia/i,
+		/tarjeta de/i
+	],
+	ru: [/связ/i, /угада/i, /сопостав/i, /продолжить просмотр/i]
 };
 
 function messages(locale: string): [string, string][] {

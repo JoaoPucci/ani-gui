@@ -232,6 +232,21 @@ describe('a pick of another show on the player', () => {
 		expect(f.notices).toEqual([]);
 	});
 
+	it('says whether the pick was saved, so a switch never follows one that was not', async () => {
+		const f = fake(true);
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		await s.start(2);
+		s.choose({ ref: RIGHT, current: false });
+		expect(await s.confirm()).toBe(true);
+		// A second pick that fails: the first one's switch stays as it was.
+		f.deps.link = async () => Promise.reject(new Error('down'));
+		await s.start(2);
+		s.choose({ ref: ref('9999', 'JoJo 2007'), current: false });
+		expect(await s.confirm()).toBe(false);
+		expect(s.linked?.id).toBe(RIGHT.id);
+	});
+
 	it('leaves the slip as it was when the pick cannot be saved', async () => {
 		const f = fake(true);
 		f.deps.link = async () => Promise.reject(new Error('down'));
@@ -239,7 +254,7 @@ describe('a pick of another show on the player', () => {
 		await s.arrive(CARD.id, GUESS.id);
 		await s.start(2);
 		s.choose({ ref: RIGHT, current: false });
-		await s.confirm();
+		expect(await s.confirm()).toBe(false);
 		expect(s.slip).toBe('guess');
 		expect(s.linked).toBeNull();
 		expect(s.error).not.toBeNull();
