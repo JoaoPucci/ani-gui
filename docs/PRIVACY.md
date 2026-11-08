@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-11-03_
+_Last updated: 2026-11-09_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -315,14 +315,17 @@ each kind of request:
   headers that say nothing about you (GitHub's `Accept` and
   API-version headers, and the compression it accepts), the request
   carries only the User-Agent `ani-gui`: not the version you run,
-  which is compared on your machine, and no account information. Which release it asks for follows the
-  "Include pre-releases in update check" setting, and the choice shows
-  in the request's address. With the setting on (the default), it asks
-  for the newest release of any kind
-  (`/repos/JoaoPucci/ani-gui/releases?per_page=1`). With it off, it
-  asks for the newest full release
-  (`/repos/JoaoPucci/ani-gui/releases/latest`). The check cannot be
-  turned off; the setting only chooses between those two requests.
+  which is compared on your machine, and no account information. It
+  asks for the ten newest releases
+  (`/repos/JoaoPucci/ani-gui/releases?per_page=10`) and picks, on your
+  machine, the newest one that has a download for your platform. The
+  "Include pre-releases in update check" setting (on by default)
+  decides whether a pre-release can be that pick. It does not change
+  the request. When none of those ten can be offered, it makes one more
+  request, for the newest full release
+  (`/repos/JoaoPucci/ani-gui/releases/latest`). On a platform the app
+  publishes no download for, it makes no request at all. Otherwise the
+  check cannot be turned off.
 
   Versions before 0.12 made a second automatic request here: the
   bundled copy of the `ani-cli` script fetched its own latest version
