@@ -77,6 +77,11 @@ pub struct LinkedRow {
     pub row: String,
     /// The Kitsu id the row recorded before the link, if any.
     pub previous: Option<String>,
+    /// The id an earlier link of the row named, if one did
+    /// ([`crate::commands::linked_note`]): the undo puts that note back
+    /// with `previous`. A row sent without it had none.
+    #[serde(default)]
+    pub previous_linked: Option<String>,
     /// The row's episode when the link wrote it.
     pub ep_no: String,
     /// The row's watch moment when the link wrote it.
@@ -150,7 +155,8 @@ fn link_held(
 ) -> Result<LinkOutcome> {
     let mut linked = plan_held(&held.rows()?, rows);
     linked.retain(|l| !held.show_removed_since(begun, &l.row));
-    for l in &linked {
+    for l in &mut linked {
+        l.previous_linked = crate::commands::linked_note::linked(state, &l.row);
         held.set_kitsu_id(&l.row, Some(kitsu_id.to_string()))?;
         drop_other_mapping(state, &l.row, kitsu_id)?;
         // The user named the show: a refused watch leaves it on the row.
@@ -185,7 +191,11 @@ pub fn unlink(state: &AppState, args: &UnlinkArgs) -> Result<UnlinkOutcome> {
             .collect();
         for l in &restored {
             held.set_kitsu_id(&l.row, l.previous.clone())?;
-            crate::commands::linked_note::forget(state, &l.row)?;
+            // The note goes back to what an earlier link of the row named.
+            match &l.previous_linked {
+                Some(id) => crate::commands::linked_note::record(state, &l.row, id)?,
+                None => crate::commands::linked_note::forget(state, &l.row)?,
+            }
         }
         let kept = args
             .rows

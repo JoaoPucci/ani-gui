@@ -54,6 +54,7 @@ pub fn plan_held(entries: &[HistoryEntry], rows: &[String]) -> Vec<LinkedRow> {
             planned.push(LinkedRow {
                 row: row.clone(),
                 previous: entry.kitsu_id.clone(),
+                previous_linked: None,
                 ep_no: entry.ep_no.clone(),
                 watched_at: entry.watched_at,
             });
