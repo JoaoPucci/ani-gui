@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { captionText, columnCountText, columnKeyText, emptyColumnText } from './strip-copy';
+import fc from 'fast-check';
+import { FIXTURE_RUNS } from './fixtures/runs';
+import {
+	captionText,
+	columnCountText,
+	columnKeyText,
+	emptyColumnText,
+	stackPartsText
+} from './strip-copy';
+import { franchiseSummary, type FranchiseSummary } from './strip-view';
 import type { ColumnWord } from './strip-wording';
 
 describe('the strip copy', () => {
@@ -44,5 +53,53 @@ describe('the strip copy', () => {
 		expect(captionText({ kind: 'cycle', count: 10 })).toBe('Linked with 9 others, order unclear');
 		expect(captionText({ kind: 'cycle', count: 2 })).toBe('Linked with 1 other, order unclear');
 		expect(captionText({ kind: 'branch' })).toBe('One of the ways to continue');
+	});
+});
+
+describe('stackPartsText', () => {
+	it("lists JoJo's parts: the main story, films and versions, side stories, recaps", () => {
+		const jojo = FIXTURE_RUNS.find((r) => r.key === 'jojo')!;
+		expect(stackPartsText(franchiseSummary(jojo))).toEqual([
+			'9 in the main story',
+			'4 films and versions',
+			'1 side story',
+			'1 recap'
+		]);
+	});
+
+	it('leaves out a part the franchise has none of, never the main story', () => {
+		const summary: FranchiseSummary = {
+			total: 3,
+			main: 3,
+			films: 0,
+			sides: 0,
+			recaps: 0,
+			posters: []
+		};
+		expect(stackPartsText(summary)).toEqual(['3 in the main story']);
+	});
+
+	it('has one part for the main story and one for each other kind the franchise holds', () => {
+		const count = fc.integer({ min: 0, max: 30 });
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 1, max: 30 }),
+				count,
+				count,
+				count,
+				(main, films, sides, recaps) => {
+					const parts = stackPartsText({
+						total: main + films + sides + recaps,
+						main,
+						films,
+						sides,
+						recaps,
+						posters: []
+					});
+					expect(parts[0]).toBe(`${main} in the main story`);
+					expect(parts).toHaveLength(1 + [films, sides, recaps].filter((n) => n > 0).length);
+				}
+			)
+		);
 	});
 });

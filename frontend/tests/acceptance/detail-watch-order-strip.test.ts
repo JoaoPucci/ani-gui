@@ -188,6 +188,25 @@ describe('detail route — the watch-order strip', () => {
 		expect(eyebrow()).toContain(m.watchorder_strip_position({ position: '03', total: '04' }));
 	});
 
+	it("links to the whole franchise from the strip's footer", async () => {
+		useShow();
+		app = mount(DetailPage, { target });
+		await until(() => strip() !== null, 'the strip');
+		const link = strip()!.querySelector(`a[href="/anime/${KITSU_ID}/franchise"]`);
+		expect(link).not.toBeNull();
+		expect(link!.textContent).toContain(m.watchorder_strip_franchise_stack_title());
+		expect(link!.textContent).toContain(m.watchorder_strip_franchise_stack_main({ count: 4 }));
+	});
+
+	it('keeps the franchise link beside the card for the entry being watched', async () => {
+		useShow({
+			history: [{ id: 'hianime:saga-origins', title: 'Saga Origins', ep_no: '3', kitsu_id: '5' }]
+		});
+		app = mount(DetailPage, { target });
+		await until(() => tile('5') !== null, 'the watching card');
+		expect(strip()!.querySelector(`a[href="/anime/${KITSU_ID}/franchise"]`)).not.toBeNull();
+	});
+
 	it('shows no strip and no error when the franchise cannot be read', async () => {
 		const calls = useShow({ franchise: () => new HttpResponse(null, { status: 503 }) });
 		app = mount(DetailPage, { target });
