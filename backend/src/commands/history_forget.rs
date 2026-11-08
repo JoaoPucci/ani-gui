@@ -88,6 +88,7 @@ pub(crate) fn forget_show(
     let pool = &state.cache_pool;
     meta_cache_delete(pool, &watched_at_key(id))?;
     meta_cache_delete(pool, &super::guessed_from::key(id))?;
+    meta_cache_delete(pool, &super::linked_note::key(id))?;
     // Every Kitsu id the player could have asked with for this show:
     // the one the row records, the pages this process saw it played
     // from, and for an older row the ones its mapping and title match

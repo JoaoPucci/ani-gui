@@ -67,7 +67,8 @@ pub(super) fn recorded_id(held: &Held<'_>, show_id: &str) -> crate::error::Resul
 /// entry, so the row does not keep it. An id the row held before is
 /// judged the same way, as the refused mapping write judges the
 /// mapping already stored: kept when the title agrees with it, cleared
-/// when the title disagrees with it too.
+/// when the title disagrees with it too. An id the user linked the row
+/// to is kept whatever the title says.
 pub(super) async fn settle_refused_id(
     state: &AppState,
     watch: &Watch,
@@ -75,6 +76,12 @@ pub(super) async fn settle_refused_id(
     previous: Option<String>,
     begun: Epoch,
 ) {
+    // The id the user linked the row to stands: the link overrules what
+    // the stream's title suggests ([`crate::commands::linked_note`]).
+    let linked = crate::commands::linked_note::linked(state, &watch.show_id);
+    if crate::commands::linked_note::stands(previous.as_deref(), linked.as_deref()) {
+        return;
+    }
     let keep = match previous {
         Some(p)
             if !crate::history::same_kitsu_id(&p, refused)

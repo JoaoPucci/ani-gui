@@ -72,6 +72,7 @@ pub(crate) mod kitsu_search;
 pub mod kitsu_tail;
 pub(crate) mod kitsu_title_words;
 pub mod kitsu_warm;
+pub(crate) mod linked_note;
 pub mod play;
 pub mod play_args;
 pub mod play_cache;

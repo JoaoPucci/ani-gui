@@ -19,7 +19,9 @@
 //! the show stands. A stored mapping that names another
 //! show for a linked row is dropped, since it is the guess the link
 //! replaces; one that names the linked show stays. No played mark is
-//! written: the mark says a play stored the mapping.
+//! written: the mark says a play stored the mapping. The link is noted
+//! beside each row it linked ([`crate::commands::linked_note`]), so a
+//! later watch the cour guard refuses leaves the id the user named.
 //!
 //! The id must be one Kitsu serves: the entry is read first, from the
 //! cache or from Kitsu, and a read Kitsu answers with a 404 or 410
@@ -151,6 +153,8 @@ fn link_held(
     for l in &linked {
         held.set_kitsu_id(&l.row, Some(kitsu_id.to_string()))?;
         drop_other_mapping(state, &l.row, kitsu_id)?;
+        // The user named the show: a refused watch leaves it on the row.
+        crate::commands::linked_note::record(state, &l.row, kitsu_id)?;
     }
     Ok(LinkOutcome {
         kitsu_id: kitsu_id.to_string(),
@@ -181,6 +185,7 @@ pub fn unlink(state: &AppState, args: &UnlinkArgs) -> Result<UnlinkOutcome> {
             .collect();
         for l in &restored {
             held.set_kitsu_id(&l.row, l.previous.clone())?;
+            crate::commands::linked_note::forget(state, &l.row)?;
         }
         let kept = args
             .rows
