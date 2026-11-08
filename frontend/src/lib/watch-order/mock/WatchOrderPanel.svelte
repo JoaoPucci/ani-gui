@@ -18,8 +18,8 @@
 	import { m } from '$lib/paraglide/messages';
 	import MockSwitch from './MockSwitch.svelte';
 	import RunCard from './RunCard.svelte';
-	import StripTrio from './StripTrio.svelte';
-	import StripWatching from './StripWatching.svelte';
+	import StripTrio from '../StripTrio.svelte';
+	import StripWatching from '../StripWatching.svelte';
 	import { numeral, railKeyText } from '../meta';
 	import { loopSize, railItems } from '../order';
 	import type { WatchOrderMockPrefs } from './prefs';

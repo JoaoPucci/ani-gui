@@ -10,7 +10,7 @@
 	import Icon from '$lib/components/Icon.svelte';
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
-	import type { MockEntry } from './types';
+	import type { WatchEntry } from './types';
 
 	let {
 		entry,
@@ -18,9 +18,9 @@
 		label,
 		bare = false
 	}: {
-		entry: MockEntry;
+		entry: WatchEntry;
 		episode: number;
-		label: (e: MockEntry) => string;
+		label: (e: WatchEntry) => string;
 		/** No resting border (the centred footers). */
 		bare?: boolean;
 	} = $props();

@@ -20,14 +20,14 @@
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
 	import MetaLine from './MetaLine.svelte';
-	import StripFranchiseLink from './StripFranchiseLink.svelte';
+	import StripFranchiseLink from './mock/StripFranchiseLink.svelte';
 	import StripWatching from './StripWatching.svelte';
-	import { metaLine, numeral } from '../meta';
-	import type { WatchOrderMockPrefs } from './prefs';
-	import { columnCountText, columnKeyText, emptyColumnText } from '../strip-copy';
-	import { emptyColumn, watchingFor, type StripView } from '../strip-view';
-	import { relationKey } from '../strip-wording';
-	import type { MockEntry, MockRun } from './types';
+	import { metaLine, numeral } from './meta';
+	import type { WatchOrderMockPrefs } from './mock/prefs';
+	import { columnCountText, columnKeyText, emptyColumnText } from './strip-copy';
+	import { emptyColumn, watchingFor, type StripView } from './strip-view';
+	import { relationKey } from './strip-wording';
+	import type { MockEntry, MockRun } from './mock/types';
 
 	let {
 		run,

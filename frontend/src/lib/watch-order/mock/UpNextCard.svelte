@@ -16,7 +16,7 @@
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
 	import { settle } from '$lib/motion/settle';
-	import MetaLine from './MetaLine.svelte';
+	import MetaLine from '../MetaLine.svelte';
 	import { metaLine } from '../meta';
 	import type { MockEntry, MockRun } from './types';
 	import type { UpNext } from './view';

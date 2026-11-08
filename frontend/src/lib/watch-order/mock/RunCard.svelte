@@ -11,7 +11,7 @@
 	import { resolve } from '$app/paths';
 	import { imageProxyUrl } from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
-	import MetaLine from './MetaLine.svelte';
+	import MetaLine from '../MetaLine.svelte';
 	import { metaLine, numeral } from '../meta';
 	import type { MockEntry, MockRun } from './types';
 

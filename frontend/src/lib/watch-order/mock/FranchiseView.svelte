@@ -13,7 +13,7 @@
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
 	import { mastheadArt } from './masthead';
-	import MetaLine from './MetaLine.svelte';
+	import MetaLine from '../MetaLine.svelte';
 	import MockSwitch from './MockSwitch.svelte';
 	import RunCard from './RunCard.svelte';
 	import { metaLine, numeral, railKeyText } from '../meta';
