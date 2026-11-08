@@ -955,7 +955,11 @@
 	// whose finale was played through moves on to the show that comes
 	// next, once that row's series has been read. Only such a row asks
 	// for its series, each once per visit; until it answers, and when it
-	// cannot be read, the row keeps its ordinary card.
+	// cannot be read, the row keeps its ordinary card. A row's
+	// availability probe can answer after the card moved on: when it
+	// finds an episode past Kitsu's count, the card goes back to
+	// offering that episode. The probe may never answer, so the
+	// hand-off does not wait for it.
 	let handoffSeries = $state<Record<string, FranchiseData | null>>({});
 	const handoffReads = createFranchiseReads(kitsuFranchise, (id, franchise) => {
 		handoffSeries = { ...handoffSeries, [id]: franchise };
