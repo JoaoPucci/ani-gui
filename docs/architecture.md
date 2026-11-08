@@ -247,13 +247,10 @@ candidates.
 
 ## Remote flags
 
-A release that breaks something can usually be fixed by the next one.
-The update notifier is the exception: an install whose notifier stops
-announcing releases never hears of the release that fixes it. Remote
-flags cover that gap, and give risky features a kill switch. A flag is
-read at launch from a file on GitHub, so the maintainer can flip it
-without shipping a release. The code is in `backend/src/flags/`. How to
-flip a flag is in [`development.md`](./development.md#remote-flags).
+Remote flags are values a released build reads at launch from a file
+on GitHub, so a flag can change without shipping a release. The code is
+in `backend/src/flags/`. How to edit the file is in
+[`development.md`](./development.md#remote-flags).
 
 **One file, read by the backend.** The file is `flags.json` on the
 repository's `flags` branch:
@@ -269,52 +266,46 @@ launch's flags are decided, with their values and where they came from
 (`origin`: `file`, `cache`, `defaults`, or `test` in a test run).
 
 **Every flag is declared in code**, in `flags::DECLARED`, with a name, a
-kind and a stated reason. The kind fixes the built-in default and the
-only values the file may select:
+kind and a stated reason. The kind fixes the only values the file may
+send.
 
-| Kind | Default | The file may select |
-|---|---|---|
-| Kill switch | `true` (the feature runs) | `false` (the feature is off) |
-| Fallback | the behaviour this build ships | a behaviour an earlier release had, from the list the declaration names |
+**Flags are default OFF, and any read failure means OFF.** Every flag's
+built-in default is off. It stays off when the file sends anything else
+for it (a value the declaration does not allow, the wrong JSON type, or
+no entry at all) and when there is no usable file. Flags the build does
+not declare are ignored. The value resolution returns is the
+declaration's own, never one copied from the file.
 
-A flag takes its built-in default when the file sends anything else for
-it: a value the declaration does not list, the wrong JSON type, or no
-entry at all. Flags the build does not declare are ignored. The value
-resolution returns is the declaration's own string, never one copied
-from the file.
+**This build declares no flag, and has no kind to declare one with.**
+`flags::FlagKind` has no variant outside the tests, so `DECLARED` can
+only be empty, and the unsigned file can change nothing. A kind arrives
+with the change that verifies the file (below).
 
-**Only safe directions.** A flag may only move the app toward the safer
-or older side: switching a feature off, or going back to an earlier
-behaviour. It may never switch off something protective or silence a
-notice. The kinds guarantee half of that: the default is the build's own
-behaviour, and the file can only pick a value the declaration lists. They
-cannot check whether the listed values really are the safer side. For a
-fallback, that depends on which earlier behaviours the declaration names.
-For a kill switch, it depends on which feature the switch gates, and on
-the code that reads it treating `false` as "off". Review carries that
-part, so each declaration states its case in `safe_because`, and a test
-refuses a declaration that leaves it empty. A kill switch on the update
-notifier itself, or on any check or warning, is not a valid flag.
-Consumers read a flag through its declaration (`Resolved::enabled`,
-`Resolved::choice`), never through a name typed out again. A misspelt
-or undeclared flag then reads as its declaration's default.
+**Read through the declaration, on only for `true`.** Consumers read a
+flag through its declaration (`Resolved::enabled`), never through a name
+typed out again, so a misspelt or undeclared flag reads off. The
+renderer reads one through `flagOn(name)` (`frontend/src/lib/flags.ts`),
+which is on only when the window was opened with exactly `true` for it:
+a window opened without flags, a backend that never answered and a flag
+the set does not hold all read off. Whether a flag's other values are
+safe for the feature it gates is not something a type can see, so each
+declaration states its case in `safe_because`, and a test refuses a
+declaration that leaves it empty.
 
 **Every value is tested.** A flag sits at its default until something
-breaks, so the value it is flipped to is the one least likely to have
-run. Each consumer registers a test case for its flag's default and for
-every retreat in `flags::matrix::CASES`, a check that receives the
-flags with that value in force. A test over `DECLARED` fails while any
-value of a declared flag has no case, or a case names a flag or value
-no longer declared.
+changes it, so its other value is the one least likely to have run.
+Each consumer registers a test case for its flag's default and for every
+other value it allows in `flags::matrix::CASES`, a check that receives
+the flags with that value in force. A test over `DECLARED` fails while
+any value of a declared flag has no case, or a case names a flag or
+value no longer declared.
 
-**Why the file is not signed.** With every declaration held to that
-rule, no value the file can select is riskier than the default, so someone who rewrote the file in transit, or got
-write access to the branch, could only switch features off or bring
-back older behaviour. A future flag that needs a riskier value, such as
-turning something on or relaxing a check, must not be declared until
-the file is verified. The verifier to adopt then is the minisign
-signature check proposed for the in-app updater (#342) and the
-notification center (#351).
+**Why the file is not signed.** With no flag declared, no value the file
+sends can take effect, so someone who rewrote the file in transit, or
+got write access to the branch, could change nothing. A flag kind must
+not be added until the file is verified. The verifier to adopt then is
+the minisign signature check proposed for the in-app updater (#342) and
+the notification center (#351).
 
 **Decided once per launch, behind the splash.** The flags are decided
 once, within two seconds of the backend starting its refresh (just
@@ -452,14 +443,14 @@ decide them otherwise. A copy dated in the
 future (a clock set back) counts as too old. The cached copy goes
 through the same resolution as a fetched file, so a cache written by
 another build, or edited by hand, still resolves only to values this
-build declares. Why seven days: every value a document can produce is a
-default or a declared retreat, so a cached copy is never less safe than
-the defaults it stands in for. Its age only limits how long a retreat
-the maintainer has since lifted stays in force on a machine that cannot
+build declares. Why seven days: every value a document can produce is
+one its flag's declaration allows, so a cached copy resolves only to
+what this build accepts. Its age only limits how long a value the
+maintainer has since changed stays in force on a machine that cannot
 reach GitHub. A week covers a stretch of launches without the network,
-such as a trip, a captive portal or a blocked CDN, so a feature switched
-off for a bad release stays off through it. And even on a machine that
-never reaches the file again, a lifted retreat clears within the week.
+such as a trip, a captive portal or a blocked CDN, so a flag keeps its
+value through it. And even on a machine that never reaches the file
+again, a changed value clears within the week.
 
 **Test runs bring their own flags.** A test run is a launch with
 `ANI_GUI_UNATTENDED=1`, which the end-to-end launch helper and the

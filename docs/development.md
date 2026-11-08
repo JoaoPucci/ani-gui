@@ -324,20 +324,21 @@ defaults, which is also what an empty `flags` object does, and each
 session retries the file after 3, 10 and 30 minutes and then hourly.
 Create the branch before the first release that carries this.
 
-**The format.** One JSON object with a `flags` object inside. A kill
-switch takes `false`; a fallback takes the name of one of the earlier
-behaviours its declaration lists:
+**The format.** One JSON object with a `flags` object inside, each flag
+`true` (on) or `false` (off). Flags are default OFF, and any read
+failure means OFF: a flag the file does not mention, or one it gives
+any other value, is off. This build declares no flag, so the file
+changes nothing yet:
 
 ```json
 {
   "flags": {
-    "some_kill_switch": false,
-    "some_fallback": "previous"
+    "some_feature": true
   }
 }
 ```
 
-**Flipping a flag.** Edit `flags.json` on the `flags` branch, either in
+**Changing a flag.** Edit `flags.json` on the `flags` branch, either in
 the worktree above or in GitHub's web editor, and commit. From the
 worktree, in bash:
 
@@ -345,7 +346,7 @@ worktree, in bash:
 cd ../ani-gui-flags
 git pull
 python3 -m json.tool flags.json
-git commit -am "chore: switch some_kill_switch off"
+git commit -am "chore: switch some_feature on"
 git push
 ```
 
@@ -354,17 +355,17 @@ mistakes get past it and fail differently:
 
 - **The wrong shape** (no `flags` object at the top, for example) is
   treated like malformed JSON. Each launch counts it as a failed fetch
-  and keeps the copy it cached, so the change does not apply, and an
-  earlier retreat stays in force for up to seven days.
-- **A wrong name or value** (a misspelt flag, `"false"` as a string, a
-  behaviour the declaration does not list) puts that flag back at its
-  default. That lifts any retreat already in force for it.
+  and keeps the copy it cached, so the change does not apply, and the
+  values that copy holds stay in force for up to seven days.
+- **A wrong name or value** (a misspelt flag, `"true"` as a string, a
+  value the declaration does not allow) puts that flag back at its
+  default, off.
 
 So after pushing, wait out the five-minute CDN cache, launch the app,
 and confirm the values with `GET /api/flags` (below).
 
-**Lifting a retreat.** Set the flag back to its default (`true`, or
-the current behaviour's name), or remove its entry, and push. Removing
+**Setting a flag back.** Set the flag back to its default (`false`), or
+remove its entry, and push. Removing
 the whole file, or the branch, also works in the end. But installs then
 get a 404, which counts as a failed fetch, so each one keeps the copy it
 cached for up to seven days.
@@ -398,8 +399,10 @@ environment variables above).
 
 **Declaring a flag** (for the change that adds one). Declare it as a
 `pub const FlagDecl`, list it in `DECLARED`, read it through that
-constant, and register a test case for its default and for each retreat
-in `flags::matrix::CASES`. A test fails until every value has one.
+constant, and register a test case for its default and for each other
+value it allows in `flags::matrix::CASES`. A test fails until every
+value has one. This build has no kind to declare it with: a kind
+arrives with the change that verifies the file.
 
 ## Code style
 

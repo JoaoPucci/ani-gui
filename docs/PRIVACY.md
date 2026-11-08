@@ -342,8 +342,9 @@ kind of request:
   repository, through GitHub's content server
   (`raw.githubusercontent.com`). If that download fails, it is tried
   again later in the same session (after a few minutes, then at most
-  hourly) until it succeeds. The maintainer uses it to switch off a
-  feature that turned out to be broken, without waiting for a release.
+  hourly) until it succeeds. It lets the maintainer change a feature's
+  setting without waiting for a release. This version declares no such
+  setting, so the file changes nothing yet.
   Like the update check, each request tells GitHub your IP address,
   when it was made, and that it comes from ani-gui.
   Nothing else is sent: no account
