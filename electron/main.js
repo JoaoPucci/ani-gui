@@ -57,6 +57,14 @@ const {
   openFirstPage,
 } = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
+const { KEYRING_HELPER_SWITCH, serveKeyring } = require("./lib/keyring-helper.cjs");
+const {
+  createHelperClient,
+  createKeyring,
+  helperCommand,
+  readToken,
+  writeToken,
+} = require("./lib/keyring.cjs");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
 const VITE_DEV_URL = process.env.VITE_DEV_URL || "http://localhost:5173";
@@ -93,6 +101,27 @@ if (IS_DEV) {
 const APP_NAME = isDevProfile(process.env) ? "ani-gui-dev" : "ani-gui";
 app.setName(APP_NAME);
 process.title = APP_NAME;
+
+// The keyring helper (lib/keyring-helper.cjs): this binary started
+// again by lib/keyring.cjs to make the safeStorage calls the main
+// process must not wait on. After setName, which names the keyring
+// entry, so the helper reads the one the app wrote; before the
+// single-instance claim, the backend and every window, none of which
+// it has. Its Chromium profile is a directory of its own.
+if (process.argv.includes(KEYRING_HELPER_SWITCH)) {
+  // Named for what it is in a process list, where it sits beside the app.
+  process.title = `${APP_NAME}-keyring-helper`;
+  app.setPath("userData", path.join(app.getPath("userData"), "keyring-helper"));
+  app.whenReady().then(() =>
+    serveKeyring({
+      input: process.stdin,
+      write: (line) => process.stdout.write(line),
+      safeStorage,
+      onEnd: () => app.exit(0),
+    }),
+  );
+  return;
+}
 
 // One running instance per profile (see lib/single-instance.cjs). Taken
 // here — after setName, which places userData and with it the lock on
@@ -788,81 +817,52 @@ ipcMain.handle("ani-gui:account:cancel-oauth", () => {
   return false;
 });
 
+// The OS keyring, asked asynchronously and, on Linux, from the keyring
+// helper rather than this process (see lib/keyring.cjs): its first
+// answer can wait on an unlock prompt or an unresponsive secret
+// service, and this process's thread is the one the windows run on.
+const keyringHelper = createHelperClient({
+  spawn,
+  ...helperCommand({
+    execPath: process.execPath,
+    isPackaged: app.isPackaged,
+    appPath: app.getAppPath(),
+    env: process.env,
+  }),
+});
+const keyring = createKeyring({
+  platform: process.platform,
+  safeStorage,
+  helper: keyringHelper,
+});
+// However this process exits; a helper waiting on the keyring answers
+// no signal but SIGKILL, and would outlive the app otherwise. A main
+// process that is killed or crashes runs no exit handler: its helper
+// ends when it next reads its closed input.
+process.on("exit", () => keyringHelper.stop());
+
 /**
  * Encrypt + persist tokens for the given provider. The JSON body
  * (`{access_token, refresh_token, expires_at_epoch_s, user_id}`) is
- * encrypted via safeStorage and written to a per-provider file.
- *
- * Returns true on success. The renderer should treat any false /
- * thrown result as "fall back to disconnected and tell the user".
+ * encrypted with the OS keyring and written to a per-provider file.
+ * Refused as `encryption_unavailable` when the keyring would only
+ * obfuscate it (see `isRealEncryption` in lib/keyring.cjs), so the
+ * renderer can point the user at the missing keyring.
  */
-/**
- * `safeStorage.isEncryptionAvailable()` returns
- * true even when Electron falls back to its hardcoded `basic_text`
- * backend on Linux installs without libsecret/kwallet/gnome-keyring
- * (or in headless test environments). That backend XORs the payload
- * with a fixed string — recoverable by anyone with read access to the
- * token file — and contradicts the privacy promise that OAuth tokens
- * are encrypted by the OS keychain. Reject persistence in that mode
- * so the renderer surfaces `keychain_unavailable` and the user can
- * install the missing keyring before connecting.
- */
-function isRealEncryptionBackend() {
-  if (!safeStorage.isEncryptionAvailable()) return false;
-  // getSelectedStorageBackend exists on Linux only — on macOS/Windows
-  // there's no plaintext fallback to worry about. When the method is
-  // absent (other platforms, older Electron), treat encryption as
-  // legit because isEncryptionAvailable() already gates it.
-  if (typeof safeStorage.getSelectedStorageBackend !== "function") return true;
-  const backend = safeStorage.getSelectedStorageBackend();
-  return backend !== "basic_text" && backend !== "unknown";
-}
-
-ipcMain.handle("ani-gui:account:set-token", async (_event, { provider, payload }) => {
-  if (!isRealEncryptionBackend()) {
-    return { ok: false, kind: "encryption_unavailable" };
-  }
-  if (typeof payload !== "object" || payload == null) {
-    return { ok: false, kind: "bad_request" };
-  }
-  try {
-    const encrypted = safeStorage.encryptString(JSON.stringify(payload));
-    fs.writeFileSync(tokenPathFor(provider), encrypted);
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, kind: "io_error", message: String(err.message || err) };
-  }
-});
+ipcMain.handle("ani-gui:account:set-token", (_event, { provider, payload }) =>
+  writeToken({ file: () => tokenPathFor(provider), fs, keyring, payload }),
+);
 
 /**
  * Decrypt + return the persisted token payload for the given
- * provider. Returns `{ ok: true, payload }` on success, or an
- * `{ ok: false, kind }` for absent file / decryption failure / etc.
- *
- * Synchronous IPC because the renderer calls this on EVERY backend
- * request that needs a bearer; the round-trip cost matters.
+ * provider: `{ ok: true, payload }`, or `{ ok: false, kind }` for an
+ * absent file / unusable keyring / failed decryption. Asynchronous: a
+ * keyring that is locked or not answering holds this call, not the
+ * renderer and not this process.
  */
-ipcMain.on("ani-gui:account:get-token", (event, provider) => {
-  try {
-    const p = tokenPathFor(provider);
-    if (!fs.existsSync(p)) {
-      event.returnValue = { ok: false, kind: "not_found" };
-      return;
-    }
-    if (!isRealEncryptionBackend()) {
-      // The token file exists but the OS keychain that wrote it is no
-      // longer reachable (or never was). Refuse to decrypt rather than
-      // surfacing a plaintext-fallback token.
-      event.returnValue = { ok: false, kind: "encryption_unavailable" };
-      return;
-    }
-    const encrypted = fs.readFileSync(p);
-    const plain = safeStorage.decryptString(encrypted);
-    event.returnValue = { ok: true, payload: JSON.parse(plain) };
-  } catch (err) {
-    event.returnValue = { ok: false, kind: "decrypt_error", message: String(err.message || err) };
-  }
-});
+ipcMain.handle("ani-gui:account:get-token", (_event, provider) =>
+  readToken({ file: () => tokenPathFor(provider), fs, keyring }),
+);
 
 /** Delete the persisted token file for the given provider. */
 ipcMain.handle("ani-gui:account:clear-token", async (_event, provider) => {
