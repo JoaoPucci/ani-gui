@@ -161,6 +161,15 @@ describe('the band, at rest and under the pointer', () => {
 			'--strip-surface: color-mix(in oklab, var(--bone-100) 6.5%, var(--ink-000))'
 		]);
 	});
+
+	it('has no other rule that styles a hovered or focused banded row', () => {
+		// A rule such as `${BAND}:hover .strip-header { padding: … }` would
+		// move the row when the band shows. The one hover/focus rule is
+		// the surface change above.
+		const selectors = STYLE.match(/[^{}]*\{/g) ?? [];
+		const lit = selectors.filter((sel) => /data-surface='band'\]:(hover|focus-within)/.test(sel));
+		expect(lit.map((sel) => sel.trim())).toEqual([`${BAND}:hover,\n\t${BAND}:focus-within {`]);
+	});
 });
 
 describe('a header line in a right-to-left locale', () => {
