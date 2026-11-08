@@ -241,6 +241,30 @@ describe("a guessed Continue card's pill", () => {
 		expect(goto).not.toHaveBeenCalled();
 	});
 
+	it('moves focus to Link on a pick, and back to the picked row on Back', async () => {
+		await openHome();
+		pill(BC_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		const rowOf = () =>
+			Array.from(dialog()?.querySelectorAll<HTMLButtonElement>('li button') ?? []).find((b) =>
+				(b.textContent ?? '').includes(BC_RIGHT_TITLE)
+			);
+		await until(() => rowOf() !== undefined, 'the series among the candidates');
+		const id = rowOf()!.dataset.id!;
+		rowOf()!.click();
+		await until(
+			() => document.activeElement === button(m.detail_link_confirm_button()),
+			'focus on Link'
+		);
+		button(m.detail_link_back_button())!.click();
+		await until(
+			() =>
+				document.activeElement === dialog()?.querySelector(`button[data-id="${CSS.escape(id)}"]`),
+			"focus on the picked show's row"
+		);
+		expect(id).toBe(BC_RIGHT);
+	});
+
 	it("links the card's listing and reads the card again where it stands; Undo puts it back", async () => {
 		await openHome();
 		pill(BC_CARD)!.click();
