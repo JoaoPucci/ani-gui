@@ -1,18 +1,18 @@
 <!--
-  The strip's before-and-after arrangement (mockup, second round): what
-  comes before, this entry's place, and what comes after, mirrored
-  about the centre so the position sits between its neighbours rather
-  than beside one of them. The before column reads towards the centre
-  (poster on its inline-end side, text aligned to it), the after column
-  away from it. The grid has three rows (keys, the join or fork line,
-  the entries), so the three keys share a baseline whatever sits under
-  them. An empty column drops its key and keeps the line saying why it
-  is empty.
+  The show page's watch-order strip: what comes before, this entry's
+  place, and what comes after, mirrored about the centre so the
+  position sits between its neighbours rather than beside one of them.
+  The before column reads towards the centre (poster on its inline-end
+  side, text aligned to it), the after column away from it. The grid
+  has three rows (keys, the join or fork line, the entries), so the
+  three keys share a baseline whatever sits under them. An empty column
+  drops its key and keeps the line saying why it is empty.
 
   Everything sits on a faint band, one step of the page's own ink, so
-  the columns read as one thing without becoming a card. Its footer
-  holds the line for the entry being watched and the way to the
-  franchise page.
+  the columns read as one thing without becoming a card. Its footer,
+  centred, holds the card for the entry being watched elsewhere in the
+  run. Every reading comes from the page model (`./page-model`); this
+  component only draws it.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
@@ -20,42 +20,28 @@
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
 	import MetaLine from './MetaLine.svelte';
-	import StripFranchiseLink from './mock/StripFranchiseLink.svelte';
 	import StripWatching from './StripWatching.svelte';
 	import { metaLine, numeral } from './meta';
-	import type { WatchOrderMockPrefs } from './mock/prefs';
-	import { columnCountText, columnKeyText, emptyColumnText } from './strip-copy';
-	import { emptyColumn, watchingFor, type StripView } from './strip-view';
+	import type { WatchOrderPage } from './page-model';
+	import { shortTitle } from './short-title';
+	import { captionText, columnCountText, columnKeyText, emptyColumnText } from './strip-copy';
+	import { emptyColumn } from './strip-view';
 	import { relationKey } from './strip-wording';
-	import type { MockEntry, MockRun } from './mock/types';
+	import type { WatchEntry } from './types';
 
-	let {
-		run,
-		id,
-		view,
-		prefs,
-		today,
-		caption,
-		label
-	}: {
-		run: MockRun;
-		id: string;
-		view: StripView;
-		prefs: WatchOrderMockPrefs;
-		today: string;
-		caption: string;
-		label: (e: MockEntry) => string;
-	} = $props();
+	let { model, id, today }: { model: WatchOrderPage; id: string; today: string } = $props();
 
-	const watching = $derived(watchingFor(run, run.progress, id, view, prefs.order));
+	const view = $derived(model.view);
+	const caption = $derived(captionText(model.caption));
+	const label = (e: WatchEntry) => shortTitle(e.title, model.titles);
 	const headingId = $props.id();
 	const keyOf = (side: 'before' | 'after') => {
 		const list = side === 'before' ? view.before : view.after;
-		return columnKeyText(relationKey(prefs.order, view.kind, side, list.length));
+		return columnKeyText(relationKey(model.order, view.kind, side, list.length));
 	};
 </script>
 
-{#snippet tile(e: MockEntry, mirror: boolean)}
+{#snippet tile(e: WatchEntry, mirror: boolean)}
 	<a
 		class="tile"
 		class:mirror
@@ -72,7 +58,7 @@
 			<span class="tile-title">{label(e)}</span>
 			{#if label(e) !== e.title}<span class="sr-only">{e.title}</span>{/if}
 			<span class="tile-meta"
-				><MetaLine segments={metaLine(e, run.progress[e.id], today)} stacked /></span
+				><MetaLine segments={metaLine(e, model.progress[e.id], today)} stacked /></span
 			>
 		</span>
 	</a>
@@ -119,27 +105,11 @@
 			</div>
 			{@render column('after')}
 
-			<footer class="trio-footer footer-{prefs.footer}" class:alone={!watching}>
-				{#if watching}
-					<div class="slot slot-watching">
-						<StripWatching
-							entry={watching.entry}
-							episode={watching.episode}
-							{label}
-							bare={prefs.footer !== 'ends'}
-						/>
-					</div>
-				{/if}
-				<div class="slot slot-franchise">
-					<StripFranchiseLink
-						{run}
-						{id}
-						variant={prefs.cta}
-						hover={prefs.stackHover}
-						limit={Number(prefs.stackPosters)}
-					/>
-				</div>
-			</footer>
+			{#if model.watching}
+				<footer class="trio-footer">
+					<StripWatching entry={model.watching.entry} episode={model.watching.episode} {label} />
+				</footer>
+			{/if}
 		</div>
 	</div>
 </section>
@@ -155,10 +125,6 @@
 		padding: var(--space-5) var(--space-5) var(--space-4);
 		border-radius: var(--radius-card);
 		background: color-mix(in oklab, var(--ink-050) 72%, transparent);
-		/* The footer's arrangements ask the band's width. Not the
-		   footer's own: a size container lays its contents out on their
-		   own, which would undo the axis arrangement's subgrid. */
-		container: trio-band / inline-size;
 	}
 	.band > .eyebrow {
 		margin-block-end: var(--space-4);
@@ -334,115 +300,23 @@
 		color: color-mix(in oklab, var(--bone-100) 90%, transparent);
 	}
 
-	/* The footer: the line for the entry being watched and the way to
-	   the franchise page, under a hairline, in one of three
-	   arrangements. It is the grid's fourth row, so the `axis`
-	   arrangement can sit on the strip's own columns. */
+	/* The footer: the card for the entry being watched, under a
+	   hairline, centred at the width the franchise link will share
+	   with it. It is the grid's fourth row. */
 	.trio-footer {
 		grid-column: 1 / -1;
 		grid-row: 4;
+		display: grid;
+		grid-template-columns: minmax(0, 24rem);
+		justify-content: center;
 		margin-block-start: var(--space-5);
 		padding-block-start: var(--space-4);
 		border-block-start: 1px solid var(--ink-200);
 	}
-
-	/* ends: the second round's, the watching line at the start and the
-	   franchise link at the end. wrap-reverse: when the two do not fit
-	   one row, the franchise link (last in reading order) takes the
-	   upper row. */
-	.footer-ends {
-		display: flex;
-		flex-wrap: wrap-reverse;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-3) var(--space-5);
-	}
-	.footer-ends .slot-franchise {
-		margin-inline-start: auto;
-	}
-
-	/* center: the two side by side in the middle, at one width (24rem
-	   where there is room); one above the other where a row cannot
-	   hold both. */
-	.footer-center {
-		display: grid;
-		grid-auto-flow: column;
-		grid-auto-columns: minmax(0, 24rem);
-		justify-content: center;
-		align-items: center;
-		gap: var(--space-4) var(--space-6);
-	}
-	@container trio-band (max-width: 50rem) {
-		.footer-center {
-			grid-auto-flow: row;
-		}
-	}
-
-	/* axis: on the strip's own columns, each against the centre's
-	   hairlines, the watching card under the entries before and the
-	   franchise link under the entries after, at one width. */
-	.footer-axis {
-		display: grid;
-		grid-template-columns: subgrid;
-		align-items: center;
-		row-gap: var(--space-4);
-	}
-	.footer-axis .slot-watching {
-		grid-column: 1;
-		justify-self: end;
-	}
-	.footer-axis .slot-franchise {
-		grid-column: 3;
-		justify-self: start;
-	}
-	.footer-axis.alone .slot-franchise {
-		grid-column: 1 / -1;
-		justify-self: center;
-	}
-	.footer-axis .slot {
-		inline-size: min(100%, 22rem);
-	}
-
-	/* Where the strip's columns are too narrow to hold them, the axis
-	   arrangement falls back to the centred one, one above the other. */
-	@container trio-band (max-width: 56rem) {
-		.footer-axis {
-			grid-template-columns: minmax(0, 24rem);
-			justify-content: center;
-		}
-		.footer-axis .slot-watching,
-		.footer-axis .slot-franchise {
-			grid-column: 1;
-			justify-self: stretch;
-			inline-size: auto;
-		}
-	}
-
-	/* In the centred arrangements each item fills its slot, so the two
-	   read as a matched pair. */
-	.footer-center .slot,
-	.footer-axis .slot {
-		display: grid;
-		min-inline-size: 0;
-	}
-	.footer-center .slot > :global(*),
-	.footer-axis .slot > :global(*) {
+	.trio-footer > :global(*) {
 		inline-size: 100%;
 		max-inline-size: none;
-		margin: 0;
 		box-sizing: border-box;
-	}
-	/* Alone, the stack keeps its own width, so its arrow stays by its
-	   text. */
-	.footer-center.alone,
-	.footer-axis.alone {
-		grid-auto-columns: auto;
-		grid-template-columns: auto;
-		justify-content: center;
-	}
-	.footer-center.alone .slot > :global(*),
-	.footer-axis.alone .slot > :global(*) {
-		inline-size: auto;
 	}
 	.sr-only {
 		position: absolute;

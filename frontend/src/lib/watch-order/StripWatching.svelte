@@ -15,20 +15,17 @@
 	let {
 		entry,
 		episode,
-		label,
-		bare = false
+		label
 	}: {
 		entry: WatchEntry;
 		episode: number;
 		label: (e: WatchEntry) => string;
-		/** No resting border (the centred footers). */
-		bare?: boolean;
 	} = $props();
 
 	const href = $derived(resolve('/anime/[id]', { id: entry.id }));
 </script>
 
-<a class="chip" class:bare {href} style:--accent={accentFor(entry.id)} title={entry.title}>
+<a class="chip" {href} style:--accent={accentFor(entry.id)} title={entry.title}>
 	<span class="chip-poster">
 		{#if imageProxyUrl(entry.poster)}
 			<img src={imageProxyUrl(entry.poster)} alt="" loading="lazy" decoding="async" />
@@ -53,26 +50,13 @@
 		max-inline-size: min(100%, 26rem);
 		padding-block: var(--space-1);
 		padding-inline: var(--space-1) var(--space-3);
-		border: 1px solid var(--ink-300);
 		border-radius: var(--radius-control);
 		color: inherit;
-		transition:
-			border-color var(--dur-fast) var(--ease-out-soft),
-			background-color var(--dur-fast) var(--ease-out-soft);
+		transition: background-color var(--dur-fast) var(--ease-out-soft);
 	}
 	.chip:hover,
 	.chip:focus-visible {
-		border-color: var(--bone-300);
 		background: var(--ink-100);
-	}
-	/* Bare: no resting border, the same plate as the poster stack on
-	   hover and focus, so the two read as one pair in the footer. */
-	.chip.bare {
-		border-color: transparent;
-	}
-	.chip.bare:hover,
-	.chip.bare:focus-visible {
-		border-color: transparent;
 	}
 	.chip:focus-visible {
 		outline: 2px solid var(--bone-100);
