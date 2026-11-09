@@ -37,12 +37,11 @@ const DAY = 24 * HOUR;
 export function watchLaterStatus(
 	stamps: readonly (number | null)[],
 	refreshing: boolean,
-	// Read by the rule that reports a failed load, which lands next.
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	failed = false
 ): WatchLaterStatus | null {
 	if (stamps.length === 0) return null;
 	if (refreshing) return { kind: 'refreshing' };
+	if (failed) return { kind: 'failed' };
 	let oldest = Infinity;
 	for (const s of stamps) {
 		if (s === null) return { kind: 'never' };

@@ -808,7 +808,14 @@
 	const wlStatus = $derived.by(() => {
 		void wlStamped;
 		const providers = Object.keys(buildWatchLaterDeps().credentials) as Provider[];
-		return watchLaterStatus(providers.map(readLastRefreshed), refreshingWatchLater);
+		// A failed load is the rail's last word until one lands: the
+		// line, and the refresh's settled announcement read from it,
+		// then say so instead of how fresh the trackers' pulls are.
+		return watchLaterStatus(
+			providers.map(readLastRefreshed),
+			refreshingWatchLater,
+			watchLaterFailed
+		);
 	});
 	const wlStatusText = $derived(statusLabel(wlStatus, wl.now, getLocale(), wlCopy));
 	// `wl.held` is the label the line had when a refresh started, held
