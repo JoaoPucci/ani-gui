@@ -129,7 +129,15 @@ fn an_open_connection_is_valid_and_not_broken() {
 #[test]
 fn a_pool_over_the_manager_hands_out_working_connections() {
     let dir = tempfile::tempdir().unwrap();
+    // Helpers of its own, under a name of its own: r2d2's default set
+    // is named `r2d2-worker`, which a test of the cache's pools counts
+    // as left behind by them.
+    let helpers = scheduled_thread_pool::ScheduledThreadPool::builder()
+        .num_threads(1)
+        .thread_name_pattern("manager-test-{}")
+        .build();
     let pool = r2d2::Pool::builder()
+        .thread_pool(Arc::new(helpers))
         .max_size(2)
         .build(SqliteConnectionManager::file(dir.path().join("pool.db")))
         .expect("the pool builds");
