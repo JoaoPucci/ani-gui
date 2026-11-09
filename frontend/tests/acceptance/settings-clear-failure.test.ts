@@ -124,4 +124,27 @@ describe('settings — a failed clear', () => {
 		toggle.click();
 		await until(() => alertHeadline() === m.settings_error_save_headline(), 'the save error');
 	});
+
+	it('keeps a clear’s failure up when a save lands, since nothing was cleared', async () => {
+		server.use(http.put(`${API_BASE}/api/settings`, () => new HttpResponse(null, { status: 204 })));
+		app = mount(SettingsPage, { target });
+		await until(() => button(m.settings_clear_history_button()) !== null, 'the page');
+		button(m.settings_clear_history_button())!.click();
+		await until(() => alertHeadline() === m.settings_clear_history_failed(), 'the clear error');
+		let put = false;
+		server.use(
+			http.put(`${API_BASE}/api/settings`, () => {
+				put = true;
+				return new HttpResponse(null, { status: 204 });
+			})
+		);
+		(
+			target.querySelector(
+				`input[aria-label="${m.settings_cache_resolutions_aria_label()}"]`
+			) as HTMLInputElement
+		).click();
+		await until(() => put, 'the save');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(alertHeadline()).toBe(m.settings_clear_history_failed());
+	});
 });
