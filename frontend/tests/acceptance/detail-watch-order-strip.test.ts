@@ -337,7 +337,7 @@ describe('detail route — the watch-order strip', () => {
 		expect(tile('10')).not.toBeNull();
 		expect(tile('50')).not.toBeNull();
 		expect(strip()!.textContent).toContain(m.watchorder_strip_word_parents());
-		expect(strip()!.textContent).toContain(m.watchorder_strip_side_end());
+		expect(strip()!.textContent).toContain(m.watchorder_strip_last());
 		expect(strip()!.textContent).not.toContain(m.watchorder_strip_join({ count: 2 }));
 		expect(eyebrow()).not.toContain(m.watchorder_strip_position({ position: '03', total: '04' }));
 	});

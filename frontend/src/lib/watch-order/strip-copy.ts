@@ -39,10 +39,11 @@ export function columnCountText(
 		: m.watchorder_strip_ways({ count });
 }
 
+/** Why a column is empty: the story starts here, or nothing follows yet.
+ *  The end of the story and a side story's end read the same. */
 export function emptyColumnText(kind: EmptyColumn): string {
 	if (kind === 'first') return m.watchorder_strip_first();
-	if (kind === 'last') return m.watchorder_strip_last();
-	return m.watchorder_strip_side_end();
+	return m.watchorder_strip_last();
 }
 
 /** The strip's caption ("05 of 09", "Side story", …), as its heading reads it. */
