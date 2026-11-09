@@ -42,14 +42,10 @@ pub(crate) fn rekeyed(old: &str) -> Option<String> {
         }
         _ => (rest, None),
     };
-    let mut fields = rest.rsplitn(7, ':');
-    let subtype = fields.next()?;
-    let count = fields.next()?;
-    let year = fields.next()?;
-    let episode = fields.next()?;
-    let quality = fields.next()?;
-    let mode = fields.next()?;
-    let title = fields.next()?;
+    let fields: Vec<&str> = rest.rsplitn(7, ':').collect();
+    let [subtype, count, year, episode, quality, mode, title] = fields[..] else {
+        return None;
+    };
     if quality != crate::scraper::hls::MASTER || !matches!(mode, "sub" | "dub") {
         return None;
     }
