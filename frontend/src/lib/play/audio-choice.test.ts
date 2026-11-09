@@ -4,6 +4,7 @@ import fc from 'fast-check';
 import {
 	audioFor,
 	defaultStorage,
+	pickAudio,
 	rememberAudio,
 	storedAudio,
 	type AudioChoiceStorage
@@ -109,5 +110,28 @@ describe('the default store', () => {
 		} finally {
 			if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor);
 		}
+	});
+});
+
+describe('pickAudio — what a pick on the show page leaves in force', () => {
+	it('is the pick, once the storage took it', () => {
+		const s = memory();
+		expect(pickAudio('42', 'dub', s)).toBe('dub');
+		expect(storedAudio('42', s)).toBe('dub');
+	});
+
+	it('is what was kept before, when the storage refuses the write', () => {
+		// The player reads the show's audio back from storage: the page
+		// must not play one audio while the player asks for another.
+		const s = memory();
+		rememberAudio('42', 'sub', s);
+		const full: AudioChoiceStorage = {
+			getItem: s.getItem,
+			setItem: () => {
+				throw new Error('quota');
+			}
+		};
+		expect(pickAudio('42', 'dub', full)).toBe('sub');
+		expect(pickAudio('43', 'dub', full)).toBeUndefined();
 	});
 });
