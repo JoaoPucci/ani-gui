@@ -1,6 +1,13 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { audioFor, rememberAudio, storedAudio, type AudioChoiceStorage } from './audio-choice';
+import {
+	audioFor,
+	defaultStorage,
+	rememberAudio,
+	storedAudio,
+	type AudioChoiceStorage
+} from './audio-choice';
 
 function memory(): AudioChoiceStorage & { raw: Map<string, string> } {
 	const raw = new Map<string, string>();
@@ -82,5 +89,25 @@ describe('per-show audio', () => {
 				}
 			)
 		);
+	});
+});
+
+describe('the default store', () => {
+	it("is the renderer's local storage, and none where reading it throws", () => {
+		expect(defaultStorage()).toBe(globalThis.localStorage);
+		const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+		Object.defineProperty(globalThis, 'localStorage', {
+			configurable: true,
+			get() {
+				throw new Error('denied');
+			}
+		});
+		try {
+			expect(defaultStorage()).toBeNull();
+			expect(audioFor('42', 'dub')).toBe('dub');
+			expect(rememberAudio('42', 'sub')).toBe(false);
+		} finally {
+			if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor);
+		}
 	});
 });
