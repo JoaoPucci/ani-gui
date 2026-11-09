@@ -850,10 +850,11 @@
 	// names the other audio when the cache has the title there, never
 	// for a music title — see $lib/detail/unavailable-copy), and its episode count caps the tiles.
 	//
-	// Its own effect, reading the mode directly, because the mode
-	// arrives after the page does: settings resolve late, so the first
-	// lookup goes out with the fallback `sub`, and a sub count says
-	// nothing about the dub catalogue. Reading the mode inside the
+	// Its own effect, reading the mode directly, because the mode can
+	// change after the page lands: a show with no audio of its own
+	// waits on the settings, which resolve late, so its first lookup
+	// goes out with the fallback `sub`; and a pick on the page changes
+	// it too. A sub count says nothing about the dub catalogue. Reading the mode inside the
 	// load callback made it invisible to the effect, so nothing
 	// reissued the question and the page kept no cap at all — every
 	// aired dub tile playable until the user navigated. The play route already worked this way.
@@ -1242,7 +1243,7 @@
 	});
 
 	// Background prefetch: as soon as we have the show title + the
-	// user's current audio mode, fire a play() for the default
+	// show's audio mode, fire a play() for the default
 	// episode in the background so the eventual hero-button click is
 	// instant. The play-cache dedupes against the click handler — both
 	// share the same promise, so there's never a duplicate
