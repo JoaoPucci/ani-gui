@@ -89,4 +89,39 @@ describe('settings — a failed clear', () => {
 			expect(alertHeadline()).not.toBe(m.settings_error_save_headline());
 		});
 	}
+
+	it('takes a clear’s failure down when a later clear lands', async () => {
+		let failing = true;
+		server.use(
+			http.delete(`${API_BASE}/api/history`, () =>
+				failing ? refused() : new HttpResponse(null, { status: 204 })
+			)
+		);
+		app = mount(SettingsPage, { target });
+		const label = () => m.settings_clear_history_button();
+		await until(() => button(label()) !== null, 'the clear history button');
+		button(label())!.click();
+		await until(() => alertHeadline() !== null, 'the error block');
+		failing = false;
+		await until(() => button(label()) !== null && !button(label())!.disabled, 'the button back');
+		button(label())!.click();
+		await until(
+			() => button(m.settings_clear_history_cleared()) !== null,
+			'the cleared confirmation'
+		);
+		expect(alertHeadline()).toBeNull();
+	});
+
+	it('heads a failed save with the save, after a failed clear', async () => {
+		server.use(http.put(`${API_BASE}/api/settings`, refused));
+		app = mount(SettingsPage, { target });
+		await until(() => button(m.settings_clear_history_button()) !== null, 'the page');
+		button(m.settings_clear_history_button())!.click();
+		await until(() => alertHeadline() === m.settings_clear_history_failed(), 'the clear error');
+		const toggle = target.querySelector(
+			`input[aria-label="${m.settings_cache_resolutions_aria_label()}"]`
+		) as HTMLInputElement;
+		toggle.click();
+		await until(() => alertHeadline() === m.settings_error_save_headline(), 'the save error');
+	});
 });
