@@ -357,4 +357,30 @@ describe('Home’s history dialogs while a request is out', () => {
 		expect(deletes).toEqual(['allanime-1']);
 		expect(clears).toBe(0);
 	});
+
+	it('keeps the dialog on the clear that is out: a card’s chip opens nothing', async () => {
+		let release: () => void = () => {};
+		const held = new Promise<void>((r) => (release = r));
+		serve({
+			clear: async () => {
+				await held;
+				return refused();
+			}
+		});
+		await mountHome();
+		await openClear();
+		const asked = dialogTitle();
+		dialogButton(m.home_clear_confirm_button())!.click();
+		await until(() => clears === 1, 'the clear to go out');
+
+		removeChip()!.click();
+		await settle();
+		expect(target.querySelectorAll('[role="dialog"]').length).toBe(1);
+		expect(dialogTitle()).toBe(asked);
+
+		release();
+		await until(() => dialog() === null, 'the dialog to close');
+		expect(errorToasts()).toEqual([m.home_clear_history_failed()]);
+		expect(deletes).toEqual([]);
+	});
 });
