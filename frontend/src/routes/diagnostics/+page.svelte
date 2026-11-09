@@ -65,6 +65,9 @@
 	async function refresh() {
 		infoError = null;
 		historyError = null;
+		// A message is about the last action: a refresh replaces an
+		// earlier clear's failure with what the load finds.
+		historyClearError = null;
 		try {
 			info = await appInfo();
 		} catch (e) {
