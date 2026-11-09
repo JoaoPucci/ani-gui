@@ -200,7 +200,8 @@ mod tests {
             end_time: 90.0,
         }];
         let body = serde_json::to_string(&intervals).expect("serialize");
-        crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:12:21:1", &body, 3600).unwrap();
+        crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:12:21:1:1440", &body, 3600)
+            .unwrap();
 
         let v = aniskip_get(&state, "12", "1", 1440.0).await.expect("ok");
         assert_eq!(v.len(), 1);
@@ -278,14 +279,80 @@ mod tests {
     }
 
     #[test]
-    fn cache_key_includes_kitsu_mal_and_episode() {
+    fn cache_key_includes_kitsu_mal_episode_and_length() {
         // Stable key shape — the lookup chain depends on it, and
         // removing a show from history finds its rows by the Kitsu id
-        // that leads it.
-        assert_eq!(cache_key("12", 21, "1", 1440.0), "aniskip:v2:12:21:1");
+        // that leads it. The length is the one aniskip is asked with:
+        // its answer depends on it.
+        assert_eq!(cache_key("12", 21, "1", 1440.0), "aniskip:v2:12:21:1:1440");
         assert_eq!(
-            cache_key("49877", 59970, "12", 1440.0),
-            "aniskip:v2:49877:59970:12"
+            cache_key("49877", 59970, "12", 1417.7),
+            "aniskip:v2:49877:59970:12:1418"
+        );
+    }
+
+    proptest::proptest! {
+        /// Two lookups share a cached answer exactly when aniskip
+        /// would have been asked the same question: the same episode
+        /// with the same length, as the request rounds it.
+        #[test]
+        fn cache_keys_match_exactly_when_the_asked_lengths_do(
+            a in 1.0f32..20_000.0,
+            b in 1.0f32..20_000.0,
+        ) {
+            let same = crate::meta::aniskip::episode_length_param(a)
+                == crate::meta::aniskip::episode_length_param(b);
+            proptest::prop_assert_eq!(cache_key("12", 21, "1", a) == cache_key("12", 21, "1", b), same);
+        }
+
+        /// Whatever the length, the key is led by the family and the
+        /// Kitsu id with its colon, which is how a history removal
+        /// finds a show's rows.
+        #[test]
+        fn cache_keys_stay_found_by_their_kitsu_id(len in 1.0f32..20_000.0) {
+            let key = cache_key("12", 21, "1", len);
+            let lead = format!("{}12:", crate::cache::families::ANISKIP);
+            proptest::prop_assert!(key.starts_with(&lead));
+        }
+    }
+
+    /// The answer cached for one length is not another length's: a
+    /// switch that asked with the last episode's length, or a cut of
+    /// another length, must not decide what this stream is told. The
+    /// lookup goes to aniskip instead, which a client that cannot
+    /// connect turns into an error.
+    #[tokio::test]
+    async fn an_answer_cached_for_another_length_is_not_served() {
+        let kitsu = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/anime/12"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r##"{"data":{"id":"12","type":"anime","attributes":{"canonicalTitle":"X"}},"included":[{"id":"m","type":"mappings","attributes":{"externalSite":"myanimelist/anime","externalId":"21"}}]}"##,
+            ))
+            .mount(&kitsu)
+            .await;
+        let mut state = state_with_kitsu_at(&kitsu.uri());
+        let intervals = vec![SkipInterval {
+            skip_type: "op".into(),
+            start_time: 5.0,
+            end_time: 90.0,
+        }];
+        let body = serde_json::to_string(&intervals).expect("serialize");
+        crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:12:21:1:1420", &body, 3600)
+            .unwrap();
+        state.meta_http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(50))
+            .build()
+            .expect("client");
+        // The kitsu hop above answers from the mock; only aniskip
+        // itself is out of reach.
+        state.kitsu = KitsuClient::with_base(reqwest::Client::new(), kitsu.uri());
+
+        assert!(aniskip_get(&state, "12", "1", 1500.0).await.is_err());
+        // The length it was cached for is still served.
+        assert_eq!(
+            aniskip_get(&state, "12", "1", 1420.0).await.expect("ok"),
+            intervals
         );
     }
 
@@ -326,7 +393,7 @@ mod tests {
         // cache row and let the fall-through path run.
         crate::cache::meta_cache_put(
             &state.cache_pool,
-            "aniskip:v2:12:21:1",
+            "aniskip:v2:12:21:1:1440",
             "{not valid json",
             3600,
         )
