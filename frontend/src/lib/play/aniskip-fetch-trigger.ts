@@ -23,8 +23,9 @@
  *                fetch, so the caller doesn't churn the reactive
  *                `SkipInterval[]` slot.
  *   - `idle`   → no-op; either we're waiting for a usable duration,
- *                the key is unchanged, or the key has been incomplete
- *                since the last clear.
+ *                the key is unchanged, or nothing has been asked for
+ *                since the last clear (the episode may have changed
+ *                again meanwhile: there is nothing on hand to clear).
  */
 
 export type AniskipDecision =

@@ -374,8 +374,9 @@
 	}
 
 	// aniskip skip-times for the current (kitsu_id, episode). Fetched
-	// once `duration` becomes finite (we need the value to disambig
-	// movie-cut vs TV-broadcast runtimes against aniskip's catalog).
+	// once the stream on screen has a usable length of its own (we need
+	// the value to disambig movie-cut vs TV-broadcast runtimes against
+	// aniskip's catalog).
 	// `activeSkip` is the interval the playhead is currently inside;
 	// the Skip OP / Skip Outro overlay binds to it.
 	let skipIntervals = $state<SkipInterval[]>([]);
