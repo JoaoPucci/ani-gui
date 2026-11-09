@@ -50,7 +50,10 @@ export function makeKey(
 	// for this row. The row and the captions choice go before the
 	// version, which stays the key's last axis
 	// (clearBackgroundForOtherVersions).
-	const axes: string[] = [showId, String(episode), mode, quality];
+	// The quality is no axis: the backend resolves the master for every
+	// play, whatever a caller passes.
+	void quality;
+	const axes: string[] = [showId, String(episode), mode];
 	if (guessRow) axes.push(`guess=${encodeURIComponent(guessRow)}`);
 	if (caption) axes.push(`cc=${encodeURIComponent(caption)}`);
 	axes.push(version ?? '');

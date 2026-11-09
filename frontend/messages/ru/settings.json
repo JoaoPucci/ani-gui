@@ -7,7 +7,7 @@
 	"error_headline": "Не удалось загрузить настройки.",
 	"loading": "Загрузка…",
 	"section_playback_title": "Воспроизведение",
-	"section_playback_hint": "значения по умолчанию для каждого потока",
+	"section_playback_hint": "значения по умолчанию для просмотра и загрузок",
 	"field_audio_key": "Аудио",
 	"field_audio_hint": "Sub — японская озвучка с субтитрами. Dub — дублированная озвучка.",
 	"audio_group_aria_label": "Режим аудио",

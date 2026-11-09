@@ -482,6 +482,10 @@ export interface Config {
 	locale: string;
 	mode: string; // "sub" | "dub"
 	quality: string; // "best" | "worst" | "1080" | "720" | "480"
+	/** The quality downloads take: "best" | "worst" | a height such as
+	 *  "720". Downloads only — the player always starts on Auto, and the
+	 *  external players and Syncplay get the master. */
+	download_quality?: string;
 	external_player: string;
 	external_player_kind: ExternalPlayerKind;
 	external_player_custom_args: string;

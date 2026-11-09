@@ -43,7 +43,6 @@ export function buildPlayArgs(input: PlayArgsInput): PlayArgs {
 		title: input.title,
 		episode: String(input.episode),
 		mode: input.mode,
-		quality: input.quality,
 		episode_count: input.show?.episode_count ?? null,
 		year: yearFromKitsuRef(input.show),
 		subtype: input.show?.subtype ?? null,

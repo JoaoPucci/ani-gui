@@ -7,7 +7,7 @@
 	"error_headline": "Não foi possível carregar os ajustes.",
 	"loading": "Carregando…",
 	"section_playback_title": "Reprodução",
-	"section_playback_hint": "padrões aplicados a todo stream",
+	"section_playback_hint": "padrões para assistir e baixar",
 	"field_audio_key": "Áudio",
 	"field_audio_hint": "Sub usa áudio japonês com legendas. Dub usa áudio dublado.",
 	"audio_group_aria_label": "Modo de áudio",

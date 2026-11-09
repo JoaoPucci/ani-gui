@@ -7,7 +7,7 @@
 	"error_headline": "No se pudieron cargar los ajustes.",
 	"loading": "Cargando…",
 	"section_playback_title": "Reproducción",
-	"section_playback_hint": "valores predeterminados aplicados a cada stream",
+	"section_playback_hint": "valores predeterminados para ver y descargar",
 	"field_audio_key": "Audio",
 	"field_audio_hint": "Sub usa audio japonés con subtítulos. Dub usa audio doblado.",
 	"audio_group_aria_label": "Modo de audio",

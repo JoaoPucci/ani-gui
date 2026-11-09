@@ -20,6 +20,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
+	import { DOWNLOAD_QUALITIES, downloadQuality } from '$lib/download/download-quality';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
 	import { applyLocale } from '$lib/settings/apply-locale';
 
@@ -32,16 +33,6 @@
 	let cleared = $state(false);
 	let clearingImages = $state(false);
 	let imagesCleared = $state(false);
-
-	// Labels are message functions, called at render, so a locale
-	// switch relabels the buttons without rebuilding the table.
-	const QUALITIES: Array<{ key: string; label: () => string }> = [
-		{ key: 'best', label: m.app_quality_best },
-		{ key: '1080', label: () => '1080' },
-		{ key: '720', label: () => '720' },
-		{ key: '480', label: () => '480' },
-		{ key: 'worst', label: m.app_quality_worst }
-	];
 
 	// Each locale is named in its own language (an autonym), the same
 	// in every UI locale, so these labels are not translated.
@@ -97,9 +88,9 @@
 		if (!cfg) return;
 		void persist({ ...cfg, mode });
 	}
-	function setQuality(q: string) {
+	function setDownloadQuality(q: string) {
 		if (!cfg) return;
-		void persist({ ...cfg, quality: q });
+		void persist({ ...cfg, download_quality: q });
 	}
 	function setLocale(l: string) {
 		if (!cfg) return;
@@ -319,26 +310,6 @@
 
 			<div class="field">
 				<div class="field-label">
-					<span class="field-key">{m.settings_field_quality_key()}</span>
-					<span class="field-hint">{m.settings_field_quality_hint()}</span>
-				</div>
-				<div class="seg seg-narrow" role="group" aria-label={m.settings_quality_group_aria_label()}>
-					{#each QUALITIES as q (q.key)}
-						<button
-							type="button"
-							class="seg-btn"
-							class:active={cfg.quality === q.key}
-							aria-pressed={cfg.quality === q.key}
-							onclick={() => setQuality(q.key)}
-						>
-							{q.label()}
-						</button>
-					{/each}
-				</div>
-			</div>
-
-			<div class="field">
-				<div class="field-label">
 					<span class="field-key">{m.settings_field_external_player_kind_key()}</span>
 					<span class="field-hint">{m.settings_field_external_player_kind_hint()}</span>
 				</div>
@@ -502,6 +473,30 @@
 							: m.settings_switch_state_off()}</span
 					>
 				</label>
+			</div>
+
+			<div class="field">
+				<div class="field-label">
+					<span class="field-key">{m.settings_field_download_quality_key()}</span>
+					<span class="field-hint">{m.settings_field_download_quality_hint()}</span>
+				</div>
+				<div
+					class="seg seg-narrow"
+					role="group"
+					aria-label={m.settings_field_download_quality_key()}
+				>
+					{#each DOWNLOAD_QUALITIES as q (q.key)}
+						<button
+							type="button"
+							class="seg-btn"
+							class:active={downloadQuality(cfg) === q.key}
+							aria-pressed={downloadQuality(cfg) === q.key}
+							onclick={() => setDownloadQuality(q.key)}
+						>
+							{q.label()}
+						</button>
+					{/each}
+				</div>
 			</div>
 
 			<div class="field">

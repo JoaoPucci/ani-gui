@@ -23,12 +23,13 @@ export const DOWNLOAD_QUALITIES: ReadonlyArray<{ key: string; label: () => strin
 
 /** The quality a download asks for. */
 export function downloadQuality(config: { download_quality?: string } | null | undefined): string {
-	void config;
-	return 'best';
+	return config?.download_quality || 'best';
 }
 
 /** The download quality as Settings names it. */
 export function downloadQualityLabel(quality: string): string {
-	void quality;
-	return m.app_quality_best();
+	const choice = DOWNLOAD_QUALITIES.find((q) => q.key === quality);
+	if (choice) return choice.label();
+	// A height hand-edited into the settings file names itself.
+	return /^[1-9]\d*$/.test(quality) ? quality : m.app_quality_best();
 }

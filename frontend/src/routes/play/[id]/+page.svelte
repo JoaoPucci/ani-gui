@@ -81,6 +81,7 @@
 	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
+	import { downloadQuality } from '$lib/download/download-quality';
 	import { buildMediaUrl } from '$lib/play/media-url';
 	import { applyCaptionPick, type CaptionTarget } from '$lib/play/caption-pick';
 	import { captionEntries } from '$lib/play/caption-label';
@@ -124,8 +125,8 @@
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
-	import { QUALITY_SETTING_WAIT_MS, settledWithin } from '$lib/play/quality-sink';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
+	import { playerSession } from '$lib/play/quality-session';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -698,14 +699,6 @@
 	// stream's quality control publishes them ($lib/play/arm-quality);
 	// the menu is its pure model ($lib/play/quality-menu).
 	let qualityView = $state<QualityView | null>(null);
-	// The quality setting as the settings answer it, once: a stream's
-	// start level waits for it rather than reading a setting not yet
-	// loaded as `best`. Failing settings answer `undefined`, read as
-	// `best` like everywhere else.
-	let answerQualitySetting: (quality: string | undefined) => void = () => {};
-	const qualitySetting = new Promise<string | undefined>((resolve) => {
-		answerQualitySetting = resolve;
-	});
 	let qualityControl: QualityControl | null = null;
 	const qualityMenuModel = $derived(qualityMenu(qualityView));
 	function pickQuality(choice: 'auto' | number) {
@@ -1931,14 +1924,15 @@
 				engine.destroy();
 			});
 			// The level the stream plays is the app's choice, not the
-			// engine's bandwidth estimate: the setting's level from the
-			// start, down a level when playback stalls, back up once it
+			// engine's bandwidth estimate: Auto at the highest level from
+			// the start (or the level picked earlier in the player
+			// session), down a level when playback stalls, back up once it
 			// runs healthy, or the one the viewer picks from the menu.
 			const quality = armQuality({
 				engine,
 				events: Hls.Events,
 				video: videoEl,
-				setting: () => settledWithin(qualitySetting, QUALITY_SETTING_WAIT_MS),
+				setting: () => undefined,
 				holdsStart: true,
 				startAt,
 				onView: (view) => {
@@ -2064,7 +2058,12 @@
 	// went ($lib/play/show-release).
 	const showReleases = createShowReleases(clearForShow);
 	$effect.pre(() => showReleases.showing(() => id));
+	// A level picked in the player lasts for the player session: the
+	// next episode keeps it, and another show or leaving lets it go
+	// ($lib/play/quality-session).
+	$effect.pre(() => playerSession.shows(id));
 	onDestroy(() => {
+		playerSession.ends();
 		// Leaving the page ends playback: the stream's engine and
 		// listeners retire, the element unloads and leaves the page,
 		// and picture-in-picture, which shows it, closes. Abandoned
@@ -2136,11 +2135,9 @@
 		void settingsGet()
 			.then((c) => {
 				config = c;
-				answerQualitySetting(c.quality);
 			})
 			.catch(() => {
 				config = null;
-				answerQualitySetting(undefined);
 			});
 	});
 
@@ -2794,12 +2791,12 @@
 		// total and an All download could range into unaired episodes.
 		if (!detail || airingIsPending) return;
 		const mode = playMode(config);
-		const quality = playQuality(config);
 		downloadArgs = buildDownloadArgs({
 			detail,
 			episode: episodeNum,
 			mode,
-			quality,
+			// The download quality, not a level picked in the player.
+			quality: downloadQuality(config),
 			kitsuId: id,
 			version: storedChoice(id),
 			caption: storedCaption(id)
@@ -4991,6 +4988,11 @@
 	.pc-menu-quality-row,
 	.pc-menu-quality-current {
 		font-variant-numeric: tabular-nums;
+	}
+	/* "Auto · 1080p" is one value: on one line, however long the
+	   locale's word for Auto. */
+	.pc-menu-quality-current {
+		white-space: nowrap;
 	}
 	.pc-menu-check {
 		display: inline-flex;

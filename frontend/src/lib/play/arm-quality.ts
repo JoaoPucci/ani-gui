@@ -15,12 +15,11 @@ import type Hls from 'hls.js';
 import type { BufferedRanges } from './buffer-ahead';
 import { bufferAheadSeconds } from './buffer-ahead';
 import { QualityGovernor } from './quality-governor';
-import { parseQualitySetting } from './quality-ladder';
 import type { QualityView } from './quality-menu';
 import { qualityPin, rememberPick } from './quality-pin';
 import { consoleQualityLog, healthyMove, pageNow, reactTo, readError } from './quality-report';
 import { choosable, pickMove } from './quality-choice';
-import { afterError, engineMover, levelsUpdated, startEngine, whenSettled } from './quality-sink';
+import { afterError, engineMover, levelsUpdated, startEngine } from './quality-sink';
 import { RemapWindow } from './quality-remap';
 import { learnEncoded, learnPicture } from './quality-learn';
 import { QualityTrack } from './quality-track';
@@ -89,23 +88,20 @@ export function armQuality(input: {
 	const apply = engineMover(engine, track, log);
 	const publish = (g: QualityGovernor): void => onView(track.view(g));
 
-	// The start waits for the setting: a level chosen before it is known
-	// would be `best`'s. With `holdsStart` the engine waits too, and is
-	// started here once its start level is set.
-	const begin = (setting: QualitySetting): void => {
+	// The start is Auto at the highest level — or the level picked earlier
+	// in the player session — chosen as the levels arrive. With
+	// `holdsStart` the engine waits for it, and is started here once its
+	// start level is set.
+	const begin = (): void => {
 		const count = track.declared().length;
 		if (retired) return;
-		const g = new QualityGovernor(
-			track.declared(),
-			parseQualitySetting(setting),
-			qualityPin.choice()
-		);
+		const g = new QualityGovernor(track.declared(), { kind: 'best' }, qualityPin.choice());
 		governor = g;
 		const start = g.start();
 		if (start) {
 			engine.startLevel = start.level;
 			apply(start);
-			log(`setting ${setting ?? 'best'}, ${count} levels`);
+			log(`auto, ${count} levels`);
 		} else if (count === 1) {
 			log(`one level, ${track.describe(0)}: nothing to choose`);
 		}
@@ -115,7 +111,7 @@ export function armQuality(input: {
 
 	engine.on(events.MANIFEST_PARSED, (_event, data) => {
 		track.arrive(data.levels);
-		whenSettled(input.setting(), (setting) => begin(setting));
+		begin();
 	});
 
 	engine.on(events.ERROR, (_event, data) => {

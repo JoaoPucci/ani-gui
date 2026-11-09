@@ -26,7 +26,7 @@ export function handoffArgs(input: {
 		title: input.title,
 		episode: input.episode,
 		mode: input.config.mode === 'dub' ? 'dub' : 'sub',
-		quality: input.config.quality || 'best',
+		quality: 'best',
 		show: input.detail,
 		kitsuId: input.kitsuId,
 		version: input.version,

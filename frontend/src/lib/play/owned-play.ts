@@ -107,7 +107,6 @@ export function playArgsFor(input: {
 		title: input.title,
 		episode: String(input.episode),
 		mode: input.mode,
-		quality: input.quality,
 		episode_count: input.show?.episode_count ?? null,
 		year: yearFromKitsuRef(input.show),
 		subtype: input.show?.subtype ?? null,
@@ -143,9 +142,11 @@ export function playMode(config: { mode: string } | null | undefined): 'sub' | '
 	return config?.mode === 'dub' ? 'dub' : 'sub';
 }
 
-/** The quality a play asks for; none set reads as "best". */
-export function playQuality(config: { quality: string } | null | undefined): string {
-	return config?.quality ?? 'best';
+/** The quality a play asks for: always the master, which the backend
+ *  resolves for every play whatever it is asked. */
+export function playQuality(config: object | null | undefined): string {
+	void config;
+	return 'best';
 }
 
 /** Record a played episode for the clicked show: stamp Continue
