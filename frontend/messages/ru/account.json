@@ -37,7 +37,7 @@
 	"watch_later_empty_hint": "Добавили тайтл в трекере? Обновите, чтобы подтянуть его.",
 	"watch_later_failed": "Не удалось загрузить список",
 	"watch_later_failed_hint": "Не удалось загрузить ваш список «В планах». {reason}",
-	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
+	"disconnect_error_token_clear": "Не удалось удалить вход с этого компьютера. Попробуйте снова.",
 	"chip_aria_label": "Меню аккаунта — вход выполнен как {username}",
 	"chip_warning_expired": "Срок сеанса истёк",
 	"chip_warning_error": "Последняя синхронизация не удалась",

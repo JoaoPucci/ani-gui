@@ -37,7 +37,7 @@
 	"watch_later_empty_hint": "Added a title on your tracker? Refresh to pull it in.",
 	"watch_later_failed": "Couldn't load your list",
 	"watch_later_failed_hint": "We couldn't load your Plan-to-Watch list. {reason}",
-	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
+	"disconnect_error_token_clear": "Couldn't remove your sign-in from this computer. Try again.",
 	"chip_aria_label": "Account menu — signed in as {username}",
 	"chip_warning_expired": "Session expired",
 	"chip_warning_error": "Last sync failed",
