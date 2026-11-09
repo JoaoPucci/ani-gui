@@ -1,0 +1,147 @@
+{
+ "data": [
+  {
+   "id": "47083",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kusuriya no Hitorigoto",
+    "titles": {
+     "en": "The Apothecary Diaries",
+     "en_jp": "Kusuriya no Hitorigoto",
+     "ja_jp": "薬屋のひとりごと"
+    },
+    "abbreviatedTitles": [
+     "Drugstore Soliloquy"
+    ],
+    "slug": "kusuriya-no-hitorigoto",
+    "startDate": "2023-10-21",
+    "endDate": "2024-03-23",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48649",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kusuriya no Hitorigoto 2nd Season",
+    "titles": {
+     "en": "The Apothecary Diaries Season 2",
+     "en_jp": "Kusuriya no Hitorigoto 2nd Season",
+     "ja_jp": "薬屋のひとりごと 第2期"
+    },
+    "abbreviatedTitles": [
+     "The Pharmacist's Monologue",
+     "Drugstore Soliloquy"
+    ],
+    "slug": "kusuriya-no-hitorigoto-2nd-season",
+    "startDate": "2025-01-10",
+    "endDate": "2025-07-04",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50021",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kusuriya no Hitorigoto 3rd Season",
+    "titles": {
+     "en": "The Apothecary Diaries Season 3",
+     "en_jp": "Kusuriya no Hitorigoto 3rd Season",
+     "ja_jp": "薬屋のひとりごと 第3期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "Kusuriya-no-Hitorigoto-3rd-season",
+    "startDate": "2026-10-02",
+    "endDate": null,
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "current"
+   }
+  },
+  {
+   "id": "50842",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kusuriya no Hitorigoto: Bouhi no Hihou",
+    "titles": {
+     "en": "The Apothecary Diaries: The Late Lady’s Treasure",
+     "en_jp": "Kusuriya no Hitorigoto: Bouhi no Hihou",
+     "ja_jp": "薬屋のひとりごと 亡妃の秘宝"
+    },
+    "abbreviatedTitles": [
+     "The Apothecary Diaries Movie",
+     "Apothecary Diaries: The Secret Treasure of the Deceased Consort"
+    ],
+    "slug": "Kusuriya-no-Hitorigoto-Bouhi-no-Hihou",
+    "startDate": "2026-12-11",
+    "endDate": "2026-12-11",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "upcoming"
+   }
+  },
+  {
+   "id": "48183",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Maomao no Hitorigoto",
+    "titles": {
+     "en_jp": "Maomao no Hitorigoto",
+     "ja_jp": "猫猫のひとりごと"
+    },
+    "abbreviatedTitles": [
+     "Kusuriya no Hitorigoto Mini Anime",
+     "The Apothecary Diaries Mini Anime",
+     "薬屋のひとりごと ミニアニメ"
+    ],
+    "slug": "maomao-no-hitorigoto",
+    "startDate": "2023-10-23",
+    "endDate": "2024-03-25",
+    "episodeCount": 24,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50896",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kusuriya no Hitorigoto 3rd Season Part 2",
+    "titles": {
+     "en": "The Apothecary Diaries Season 3 Part 2",
+     "en_jp": "Kusuriya no Hitorigoto 3rd Season Part 2",
+     "ja_jp": "薬屋のひとりごと 第3期 第2クール"
+    },
+    "abbreviatedTitles": [],
+    "slug": "Kusuriya-no-Hitorigoto-3rd-Season-Part-2",
+    "startDate": "2027-04-30",
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "unreleased"
+   }
+  },
+  {
+   "id": "50029",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Maomao no Hitorigoto USJ",
+    "titles": {
+     "en_jp": "Maomao no Hitorigoto USJ",
+     "ja_jp": "猫猫のひとりごと USJ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "maomao-no-hitorigoto-usj",
+    "startDate": "2025-06-19",
+    "endDate": "2025-06-26",
+    "episodeCount": 2,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

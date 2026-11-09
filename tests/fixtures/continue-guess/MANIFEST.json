@@ -1,0 +1,994 @@
+{
+ "$comment": "The regression corpus for a Continue row guess (frontend/src/lib/history/continue-guess-corpus.test.ts, backend/src/commands/continue_guess_corpus_test.rs). Kitsu answers recorded from kitsu.io/api/edge on 2026-11-10 with the production User-Agent and the query the app sends (ANIME_FIELDS stands for backend/src/meta/kitsu.rs ANIME_FIELDS), one request each, then reduced to the fields the guess reads: id, type and canonicalTitle, titles, abbreviatedTitles, slug, startDate, endDate, episodeCount, subtype, status. Synopses, images, ratings and paging links are left out.",
+ "captured_at": "2026-11-10",
+ "fixtures": {
+  "cases.json": {
+   "source": "Hand-assembled from the recordings beside it: one case per hianime listing, its show key and card title copied from tests/fixtures/hianime/picker/ (the audited pairings in backend/src/commands/play_native_walk_fixture_test.rs, other cards of the recorded pools) or from a reported Continue card; `right` is the Kitsu entry the listing is, read off the recorded hits; `picks` is what the guess takes at each episode, pinned by the corpus tests.",
+   "size": 27208,
+   "sha256": "ac0b6bbe3c21d62085f18eaba8ede804482642b5b9d4ec9abab6de52fe2ff49a"
+  },
+  "requests.json": {
+   "source": "Which recording answers which request: `search` by the title the renderer searches, `slug` by the slug it looks up, `words` by the show key words the backend searches.",
+   "size": 10788,
+   "sha256": "edb6d19d9f420e1190ed843dc15081039422ad102fc03af9dad9246e1bdafd0d"
+  },
+  "search-0008f5accfc1c462.json": {
+   "request": "GET /anime?filter[text]=Blue Lock&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3027,
+   "sha256": "04de9c904ad739561a86561e57b096abe606f75a6c45d2b6e41a0fcca28ad67a"
+  },
+  "search-003b87947105bddc.json": {
+   "request": "GET /anime?filter[text]=Kaguya-sama: Love is War&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 7054,
+   "sha256": "0f5ece8328bbaba209cb871aeca26734723ffa042ac6e8c70652d9e8c836b184"
+  },
+  "search-035893d5f9fe04f9.json": {
+   "request": "GET /anime?filter[text]=Naruto&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 13089,
+   "sha256": "3d8b6f652c4d859d4c4015f1e1db389c6cb308ace69548a9229a93dc4a75d5bd"
+  },
+  "search-0381e4f517f1594b.json": {
+   "request": "GET /anime?filter[text]=Re:ZERO Starting Life in Another World- Season 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1334,
+   "sha256": "b3257d54b317e92433ac863753f43936930d2d642b42ad2086c0596186bd87ae"
+  },
+  "search-0a2e7d7c1ac52ea2.json": {
+   "request": "GET /anime?filter[text]=JoJo's Bizarre Adventure Part 5: Golden Wind (Uncensored)&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 671,
+   "sha256": "008939ea974742acf51635a9a21cae0ea44ca48f7afdbfb767c49a2bd8543de8"
+  },
+  "search-0c26321f3cf97f64.json": {
+   "request": "GET /anime?filter[text]=Haikyu!! Movie: Battle of the Garbage Dump&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 769,
+   "sha256": "92d7c6186d1fc33c0462981494f1bfc6471a9e46bf82cdefb5dddcde34243014"
+  },
+  "search-0f7227bab5bab13c.json": {
+   "request": "GET /anime?filter[text]=Sword Art Online&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 13043,
+   "sha256": "d878e58acf9498ff2015a4df6e15c9ebf7e1eaaa4e0b563ca140cb3c65592fc1"
+  },
+  "search-1028fa63da64d315.json": {
+   "request": "GET /anime?filter[text]=Gintama&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 10566,
+   "sha256": "516344ec54c0c31592b061a5748106beaa4a06444d7529edca464f709849bd63"
+  },
+  "search-1487f1b80e0e4d0f.json": {
+   "request": "GET /anime?filter[text]=Attack on Titan: The Last Attack&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2261,
+   "sha256": "b6942817221de3ac83fa5ee1568faccdc05e61a5ac94050b387d43a90a7faeae"
+  },
+  "search-16b7a98c701f5267.json": {
+   "request": "GET /anime?filter[text]=Dr. Stone&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 8530,
+   "sha256": "5345cbf081f37411551d254ac21a6d839f75cb5b8dbd02c8bc4b8a5790b26b23"
+  },
+  "search-19ca055b92992c0e.json": {
+   "request": "GET /anime?filter[text]=Jujutsu Kaisen 0 Movie&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 550,
+   "sha256": "ad56e816aa6b1323cb294fad6569fba5660847095025b93f243c286d48b53610"
+  },
+  "search-19f13b1b8d52c344.json": {
+   "request": "GET /anime?filter[text]=Demon Slayer: Kimetsu no Yaiba&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 9574,
+   "sha256": "84ccfff5b14316615543125b4209e0c7424af909b4bca89bada02c42893b95ee"
+  },
+  "search-1e29aa5cab11804d.json": {
+   "request": "GET /anime?filter[text]=Attack on Titan&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 11994,
+   "sha256": "388731d58d253d14c2fcdaf1c8bb343c802c1cea977db4bee02e43ed4101acd5"
+  },
+  "search-1e56767c5f9119ca.json": {
+   "request": "GET /anime?filter[text]=Overlord&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 10152,
+   "sha256": "1a37f72d00fac0f34ad47ec8f31467c592ce793f4bc215c3d1c5129e4e9ddc01"
+  },
+  "search-1e77ff2ba2757ea4.json": {
+   "request": "GET /anime?filter[text]=The Apothecary Diaries&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3768,
+   "sha256": "956ae496297fe7248711570a3966307e514000840ac6d21c0199739273571383"
+  },
+  "search-23cef5f7d9b06f9b.json": {
+   "request": "GET /anime?filter[text]=Vinland Saga&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2551,
+   "sha256": "47c5a8b6dd47052fdeeeeb63d0c2aec7c8c0db4371d6fa1eb0c56425f58d736b"
+  },
+  "search-24f4f89f76d21047.json": {
+   "request": "GET /anime?filter[text]=JoJo's Bizarre Adventure Part 6: Stone Ocean&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 700,
+   "sha256": "d7846dbe83ce3244b9b3f7bbe778ac4f995a736bc9ed3a272d6df5cd81862ac2"
+  },
+  "search-2a9533b9b6361750.json": {
+   "request": "GET /anime?filter[text]=Mobile Suit Gundam: The Witch from Mercury Season 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1105,
+   "sha256": "d8989177ae20a5dff5a23dd8e0912f7e6edd3959756d7c02b1b895daeba3f86d"
+  },
+  "search-2d1f591cdd3e63f5.json": {
+   "request": "GET /anime?filter[text]=Frieren: Beyond Journey's End&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2386,
+   "sha256": "0efef491873ccf58edb6abad8ff626cbc7047ca056fb3e6c4abc10b4b29b1dc7"
+  },
+  "search-2d684f14c3a76164.json": {
+   "request": "GET /anime?filter[text]=JoJo's Bizarre Adventure (Uncensored)&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 10390,
+   "sha256": "385089f46a297d030b6da8ca168b938ba84aa3bce75b086014192e043239cc56"
+  },
+  "search-2dc4ce49fc4e3c12.json": {
+   "request": "GET /anime?filter[text]=Gintama.: Silver Soul Arc Second Half War&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 520,
+   "sha256": "33cdbe6e37e8c0fbd18a2f24082cb53988ff36c0d309060fdd7658d20b481c9e"
+  },
+  "search-2f43c7c4c6d75900.json": {
+   "request": "GET /anime?filter[text]=Chained Soldier [Uncensored]&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1017,
+   "sha256": "233e834227e954c092b2fadcb4f431152d89718a661778b2d66784fb9e565870"
+  },
+  "search-3175c2b04573d75e.json": {
+   "request": "GET /anime?filter[text]=Boruto: Naruto the Movie&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1190,
+   "sha256": "88521e9dc1695775a5aa19afa854be5e6551041caa40cfdcb2b18f2e93b965c0"
+  },
+  "search-32a4c7bf7bfa35c0.json": {
+   "request": "GET /anime?filter[text]=Jujutsu Kaisen (TV)&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 973,
+   "sha256": "8a2251ba072c097ac23ce514b8ebb27d2e8e6525493748817d90213af5072633"
+  },
+  "search-34190836f50c55cb.json": {
+   "request": "GET /anime?filter[text]=My Star&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 10443,
+   "sha256": "2f78e364b2adc50c460cfd94fd15415cb4f0542bdadd0c9302993d305fbab3c7"
+  },
+  "search-362988cad4be1ef4.json": {
+   "request": "GET /anime?filter[text]=Demon Slayer: Entertainment District Arc&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1379,
+   "sha256": "83ebfa8a3d7b30056566e16e84f3a5052511d14f722c933699fb9ac6d46729d9"
+  },
+  "search-363c95c41a83e3dc.json": {
+   "request": "GET /anime?filter[text]=Steel Ball Run: JoJo's Bizarre Adventure&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1307,
+   "sha256": "d104d23e83b70bac6bd0cf7d8aa22efdfd0eb93c719d13e08b53db165203b514"
+  },
+  "search-370a13dbbdb70d32.json": {
+   "request": "GET /anime?filter[text]=Mushoku Tensei: Jobless Reincarnation Season 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2617,
+   "sha256": "fb4ac39a2ca25682d0c3ca15517298d8baaa97a3fdc3c59437aa5f2d79ddc8c6"
+  },
+  "search-38d3b384219fcf69.json": {
+   "request": "GET /anime?filter[text]=Attack on Titan: Final Season, Part 1&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2307,
+   "sha256": "84a55c8c7f853f264cc795024ee511d89524453fb4b7fb337356a4529559d4ba"
+  },
+  "search-3a008807e33c5220.json": {
+   "request": "GET /anime?filter[text]=Bleach: Thousand-Year Blood War The Separation&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1431,
+   "sha256": "e5e665ee26d758166fab1dc4063628244b9b9e0a0f2cd15a5e1ca4552943e3ef"
+  },
+  "search-3cd9a90178afb3f5.json": {
+   "request": "GET /anime?filter[text]=Astro Boy (1980)&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1021,
+   "sha256": "ed6f5ae2171948ce509d903c1411184d93ffbf8f9c92823c8f7f2525e8cdb633"
+  },
+  "search-3d693e4694135f7e.json": {
+   "request": "GET /anime?filter[text]=Mushoku Tensei: Jobless Reincarnation Part 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2827,
+   "sha256": "e87e0a99bd9641f934b543131027ab692e54930e4287a486eff6e85ce822e976"
+  },
+  "search-40f106475716caa9.json": {
+   "request": "GET /anime?filter[text]=Demon Slayer Movie: Mugen Train&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2261,
+   "sha256": "346a9f145a765a1a89d81fccf950b135f08c213ed99d1b5d16c367235f810941"
+  },
+  "search-41ae81285be8b71d.json": {
+   "request": "GET /anime?filter[text]=Sword Art Online the Movie Ordinal Scale-&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1292,
+   "sha256": "8d2177447d9ae133f49933875142fe67e1e66ede1c0f4cd9effea253b28974b2"
+  },
+  "search-42d85b9c795d7d51.json": {
+   "request": "GET /anime?filter[text]=Haikyuu!!: To the Top (Part 1+2)&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 484,
+   "sha256": "1a216d18866b2ca7c0d66b179f468ea33c54aeaf0d600a5a85c2f4df10524a26"
+  },
+  "search-434c9b5ae514646b.json": {
+   "request": "GET /anime?filter[text]=86&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3663,
+   "sha256": "8b29ec12a479577d69901a3b52965675e2ff7f1c12cf9f3748c41d794e23eab3"
+  },
+  "search-44bc7de174008527.json": {
+   "request": "GET /anime?filter[text]=One Piece&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 12254,
+   "sha256": "a9065c2e6065663fbb0b171da1d555c91f0c5ac8da6f6561915223c830984017"
+  },
+  "search-480dd5da77b630d5.json": {
+   "request": "GET /anime?filter[text]=Attack on Titan Season 3&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3308,
+   "sha256": "e3caf8efdb3c7ad0b2d87ef54f8bc79d1f24b04b5989a44cbbfe0b4e584dcc82"
+  },
+  "search-49573c5c7d6cad6b.json": {
+   "request": "GET /anime?filter[text]=Bleach: Thousand-Year Blood War Arc&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3911,
+   "sha256": "86521cd35e71c1ceb51aac69984018c93dc3d42f46484d8d452d8c8b83810e3d"
+  },
+  "search-49e2015c046efb60.json": {
+   "request": "GET /anime?filter[text]=Black Clover&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3539,
+   "sha256": "d7d5cd940ba7db99197637d0cd767a9e201f633daac45829c4d8ad2baf20ac76"
+  },
+  "search-4b25e763223b39b7.json": {
+   "request": "GET /anime?filter[text]=Dr. Stone: New World&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1607,
+   "sha256": "ad9f22a5849b710de0ab7a63c51d720eddf5a12d635af03f2381677c17fe8c1a"
+  },
+  "search-4dbef00ea8c13282.json": {
+   "request": "GET /anime?filter[text]=The Outcast 6&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 533,
+   "sha256": "cf15c0f544161570f469b7473c6b759fd160320821fde3821810da806dfcd0a8"
+  },
+  "search-50edbd2aa61ec79f.json": {
+   "request": "GET /anime?filter[text]=That Time I Got Reincarnated as a Slime 2nd Season Part 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2800,
+   "sha256": "9457d9568fefb81af580f0c34b370a7b29cdc804ec9b8ae15a757eeae26da3fe"
+  },
+  "search-522c0b648bed7906.json": {
+   "request": "GET /anime?filter[text]=JoJo's Bizarre Adventure: Stone Ocean Part 3&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 674,
+   "sha256": "78cb896042c068ac3d1c325a69c6c11f76755bd558cc18a8718c371952ddca98"
+  },
+  "search-527b53d18e26dc48.json": {
+   "request": "GET /anime?filter[text]=JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 700,
+   "sha256": "d7846dbe83ce3244b9b3f7bbe778ac4f995a736bc9ed3a272d6df5cd81862ac2"
+  },
+  "search-58b2b78a861d07e5.json": {
+   "request": "GET /anime?filter[text]=Gintama Season 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2610,
+   "sha256": "516624673e40b758994480151d0cd37220374c870b2889a0bb6840a69a4c7bb5"
+  },
+  "search-5947787c236205e2.json": {
+   "request": "GET /anime?filter[text]=Mashle: Magic and Muscles&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3683,
+   "sha256": "21573c980bb80d499fe4f9ce98c2d9ae23b2b5b9ec1627540c0a365ab61bb874"
+  },
+  "search-5a1101b50c8a983d.json": {
+   "request": "GET /anime?filter[text]=Ranma 1/2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 9433,
+   "sha256": "1f54dfd9b807aad91fdde80ad31a637762798ec5ccd064c7eff1ffde6e3a2464"
+  },
+  "search-5bb8712eb8c54d58.json": {
+   "request": "GET /anime?filter[text]=Spy x Family Season 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 464,
+   "sha256": "77cdc06e01a4098a9bfc68fb5500de36f73d683f5e01f97019548f3cbd801bdd"
+  },
+  "search-5d290541a178d032.json": {
+   "request": "GET /anime?filter[text]=Mob Psycho 100&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 4044,
+   "sha256": "0d16a50074ab5a576def4d05aac4237d5f416b4ff5960da84536cea7852bcf62"
+  },
+  "search-625e4182b02bb88f.json": {
+   "request": "GET /anime?filter[text]=One Piece: The Movie 14 Stampede&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 10255,
+   "sha256": "0e3effd8f131b5a97357d6882e7e13834614f61bc78edddd376675b545276cbb"
+  },
+  "search-6aaf54ec56a4bf07.json": {
+   "request": "GET /anime?filter[text]=Sword Art Online: Extra Edition&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1226,
+   "sha256": "e9eaf0fa7597ddcdd0718520fe8c8c7cd31130be16feb908ebe048e23a73d061"
+  },
+  "search-6af8ce1b8e27b98c.json": {
+   "request": "GET /anime?filter[text]=Dragon Ball Super&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 12006,
+   "sha256": "87c3457800e769264b3873d6605f3c9d1cfe629259d929c6ca8cdbc15fdf4d45"
+  },
+  "search-6e1285d2e1e38436.json": {
+   "request": "GET /anime?filter[text]=Spy x Family, Part 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 549,
+   "sha256": "d500d20af07b46426f456bde70441a5250a21134d90296679bc7ecb0207122d6"
+  },
+  "search-6e73fb388de1b5ea.json": {
+   "request": "GET /anime?filter[text]=Haikyuu!!: To the Top 2nd Season&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1403,
+   "sha256": "4cab7d5df86364e6be97c0c4ffdd05eab5738b5be99908f10fc17a25b0425029"
+  },
+  "search-775856f59ac1abab.json": {
+   "request": "GET /anime?filter[text]=Naruto: Shippuden the Movie&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2101,
+   "sha256": "b45a45ab70e88a95c9be01ea74836924aa4cebe11d4846b3901ec4ebde4b47a7"
+  },
+  "search-793cc928e0d453e2.json": {
+   "request": "GET /anime?filter[text]=Overlord II&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1782,
+   "sha256": "cbe1e61909c52d34b6d23cb11a8ae61d9a2203b9ad7551add1764ecdced06d38"
+  },
+  "search-7948570c3c30bc48.json": {
+   "request": "GET /anime?filter[text]=JoJo's Bizarre Adventure Part 3: Stardust Crusaders 2nd Season (Uncensored)&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 837,
+   "sha256": "685fb2f46a2fd987052054cd7779723998dd10af5440ff13c6f3807309ace30e"
+  },
+  "search-79f74dc3dddb5490.json": {
+   "request": "GET /anime?filter[text]=That Time I Got Reincarnated as a Slime the Movie: Tears of the Azure Sea&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 921,
+   "sha256": "ec9a9abd3eb4e386ca738bb3a515758825b8d485ad69bbe487cf9a7ea25caea1"
+  },
+  "search-7ae9f54e280cdbfb.json": {
+   "request": "GET /anime?filter[text]=Boruto: Jump Festa 2016 Special&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 478,
+   "sha256": "48be56c206025a00f8b30bf91ed8c897139d1794d2b45aaedc68d49ba668bbb5"
+  },
+  "search-7d98f506bf3df290.json": {
+   "request": "GET /anime?filter[text]=Tokyo Ghoul&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3299,
+   "sha256": "18259c5a2a28277e55e07f651cc33106aafe2006c66188920436350aa7da9bfd"
+  },
+  "search-7e3226a244bc833a.json": {
+   "request": "GET /anime?filter[text]=JoJo's Bizarre Adventure Part 2: Stardust Crusaders (Uncensored)&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 674,
+   "sha256": "567119475c7515aa01fade8d7d3624042ad94488eb1f9fcf5221c21049980dd5"
+  },
+  "search-7f41d304fdd9f035.json": {
+   "request": "GET /anime?filter[text]=JoJo's Bizarre Adventure: Phantom Blood&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1273,
+   "sha256": "1f667fd08389561c5e54ee6e7c5cb76c6df20d4645224027ea4b9b17f5aa11d6"
+  },
+  "search-7fb4f336b13a29ae.json": {
+   "request": "GET /anime?filter[text]=The Rising of the Shield Hero&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2707,
+   "sha256": "36773c12ac6d4641f5fd83b377edcfa138f86db05b822283b641040a89c7d69e"
+  },
+  "search-813ef9a9cd871c7f.json": {
+   "request": "GET /anime?filter[text]=That Time I Got Reincarnated as a Slime Season 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 5102,
+   "sha256": "36fcdf4efb3c9e16cc389b0c2a80b78d32cc2943873f1a00735d4cc5f97dfb06"
+  },
+  "search-832f85c875482f37.json": {
+   "request": "GET /anime?filter[text]=Kaguya-sama: Love is War OVA&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 646,
+   "sha256": "cb026650d78215ab997280f7f6943b17798b87aaf7426186fbd53f1cd65f68ee"
+  },
+  "search-8580c4edb2456524.json": {
+   "request": "GET /anime?filter[text]=Kaiju No. 8&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3085,
+   "sha256": "13d2815dbcef1077915a20a3f963798306ff8cb221d24881da73f8c83b7a3cd4"
+  },
+  "search-8815ca157eea159a.json": {
+   "request": "GET /anime?filter[text]=86 EIGHTY-SIX Season 2 Recap&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2613,
+   "sha256": "2716b9bf9cc5e4e5d3681cfbaf09434248d3d076a519569c26d2b77c96c4b712"
+  },
+  "search-8a6b367459faa78b.json": {
+   "request": "GET /anime?filter[text]=Solo Leveling&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3524,
+   "sha256": "d17ab326dab2c1d7fe35bbcb06a7a7c1970dd5f03ed37a0aca39691e8e9b3ba2"
+  },
+  "search-8b255a425b3a13a5.json": {
+   "request": "GET /anime?filter[text]=Dragon Ball Super: Beerus&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1701,
+   "sha256": "e26c1453906f5c7c522ac1d61f61a4e4f789c93faa6ef4f702e22fb79a66ce58"
+  },
+  "search-8b611fac40cec365.json": {
+   "request": "GET /anime?filter[text]=Boruto: Naruto Next Generations&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1570,
+   "sha256": "6745323715567d2fa96c97498e4537d4cc3580c7c6c14f205abd94afa037e052"
+  },
+  "search-8c121b8b45974461.json": {
+   "request": "GET /anime?filter[text]=Spy x Family Code: White&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1764,
+   "sha256": "3b1becfea42e90e5c3e18056ac07a25f3897e3f2644b49821fbffa43f4e93974"
+  },
+  "search-8d0aa697c0619f11.json": {
+   "request": "GET /anime?filter[text]=Attack on Titan: Lost Girls&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 543,
+   "sha256": "aa8605c7340aa4eabd18d94e17e4d4845b25426484742b209c1691879d8e3bdd"
+  },
+  "search-8d65d6aa39e6eb26.json": {
+   "request": "GET /anime?filter[text]=Fire Force&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 10570,
+   "sha256": "876a4b91226faef334be04025758025aff5628a7b91705ffe509e869688306ff"
+  },
+  "search-9cc8175ff06ee956.json": {
+   "request": "GET /anime?filter[text]=Fate/Zero Season 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 546,
+   "sha256": "233b696b967c49cc69d778b8bf8d81c3a02781d8a043d516e9f7a75d4af5214c"
+  },
+  "search-9e436cabcc7f8406.json": {
+   "request": "GET /anime?filter[text]=Astro Boy (2003)&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 978,
+   "sha256": "0c7a0b06cb9734c49513ac8fb84c2740bf7eabf3e2af57a2c5ebe7db8326bd6a"
+  },
+  "search-9fc48330cac2320e.json": {
+   "request": "GET /anime?filter[text]=JoJo's Bizarre Adventure&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 10390,
+   "sha256": "385089f46a297d030b6da8ca168b938ba84aa3bce75b086014192e043239cc56"
+  },
+  "search-a18631301e8b51af.json": {
+   "request": "GET /anime?filter[text]=Chained Soldier Season 2 [Uncensored]&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 516,
+   "sha256": "fadeff03b153a9a152f888e1a6e88c3b73ded91607c595db336c5335d9e37c24"
+  },
+  "search-a4895bb726e6b15b.json": {
+   "request": "GET /anime?filter[text]=Fate/Zero&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 6291,
+   "sha256": "c664142bde84199b31191b88503107789e52126a9f675f1f6e61076825840c9c"
+  },
+  "search-a958a13720b53924.json": {
+   "request": "GET /anime?filter[text]=My Star Season 3&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 499,
+   "sha256": "68b421d18988785a356c139314f93903da14fdc4e5818b3beb68a9e9fd8c8c06"
+  },
+  "search-ab4ca6763ea5627a.json": {
+   "request": "GET /anime?filter[text]=One Piece Film: Red&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 4041,
+   "sha256": "17baa0c5c18c11baace650e71d9751ad01e336ca6cadace678cfd73bfeea1131"
+  },
+  "search-ad1d2359d3908427.json": {
+   "request": "GET /anime?filter[text]=Golden Kamuy Season 4&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 477,
+   "sha256": "6f04f60e0eab1f92ca5ca764a531c7397d82349fe955b913d01e083af22e3453"
+  },
+  "search-aeb1ed00b1a419e5.json": {
+   "request": "GET /anime?filter[text]=My Star: Season 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 499,
+   "sha256": "68b421d18988785a356c139314f93903da14fdc4e5818b3beb68a9e9fd8c8c06"
+  },
+  "search-b1f57d7ad64647f9.json": {
+   "request": "GET /anime?filter[text]=Solo Leveling Season 2: Arise from the Shadow&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1338,
+   "sha256": "cb54c933e42ba026e1d30f992500b1111e9946474b07e126d441eaf0b4f80e02"
+  },
+  "search-b2d9a44cb2631fea.json": {
+   "request": "GET /anime?filter[text]=Dandadan&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1804,
+   "sha256": "0e6db3207836bb8e2e047625e52aeb8753a2ae401a0a2e7e19f7e4764a96bf3d"
+  },
+  "search-b6b0d55e9e852675.json": {
+   "request": "GET /anime?filter[text]=Spy x Family&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3701,
+   "sha256": "8a3869b5196748d1949fcecb7012d9cec0db2f53ed9dc8cf320e4a10f48702cd"
+  },
+  "search-b7712cff0a738388.json": {
+   "request": "GET /anime?filter[text]=Dragon Ball Z: Broly – The Legendary Super Saiyan&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2346,
+   "sha256": "417fe67248625818d50d5bbca44ce9f409c20bda35036fd0a9b9918325faa529"
+  },
+  "search-bbbe489fa76ae0d1.json": {
+   "request": "GET /anime?filter[text]=Attack on Titan: No Regrets&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 600,
+   "sha256": "e3273c9de5c1218b87c7dae7295ef944c3411796f78bf653a3a64d87ad46c28c"
+  },
+  "search-bcd05948b5bb8707.json": {
+   "request": "GET /anime?filter[text]=Attack on Titan Season 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 4356,
+   "sha256": "306017f7ff53b2ab7a2fef8902f5bf8a5e15948cd8c010533f73058e82091a0e"
+  },
+  "search-bcdba073ead70e63.json": {
+   "request": "GET /anime?filter[text]=Jujutsu Kaisen 2nd Season&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1211,
+   "sha256": "6608af506b87f9af5d11d53e9b7e8d134797a606aea41024674124c1d4984861"
+  },
+  "search-be8c7a6d430592e8.json": {
+   "request": "GET /anime?filter[text]=Re:ZERO Starting Life in Another World-&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 7870,
+   "sha256": "5b64d035ea1c147aecd2be16c14b796d40dad8871af8f9399a8c554a83b61ffa"
+  },
+  "search-c1b9c628d4c325b9.json": {
+   "request": "GET /anime?filter[text]=Mushoku Tensei: Jobless Reincarnation&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 5520,
+   "sha256": "9fd540c34e10adea1aeb34fd0fc3440a8f0bb2d0e03929f796d04df4ab246d59"
+  },
+  "search-c6869aaf47d7f579.json": {
+   "request": "GET /anime?filter[text]=Attack on Titan OVA&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1126,
+   "sha256": "91ad617592c0c3e1632fe0cb087947158b503c575fdc715d00099415df1dcf99"
+  },
+  "search-c7276e3208b78ef0.json": {
+   "request": "GET /anime?filter[text]=Attack on Titan: Final Season, Part 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3267,
+   "sha256": "8c98f4a6f73f0876d1c3fd4d6106b68a91d3b8134ec3c978d57ce1fcc54272a0"
+  },
+  "search-ccd2f3b5e6e268ca.json": {
+   "request": "GET /anime?filter[text]=Attack on Titan Season 3 Part 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 516,
+   "sha256": "e60b3790bb1e17c4249e83ed3e186e48944cde04e0d16482c25d0aa9fd1797de"
+  },
+  "search-cd824474502ad61d.json": {
+   "request": "GET /anime?filter[text]=Golden Kamuy&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 6246,
+   "sha256": "467e2facd724d4300fb556c4692f67d6eaa69e57e43758d05a2b002c28fc6e94"
+  },
+  "search-d430297dd7767b1f.json": {
+   "request": "GET /anime?filter[text]=Dragon Ball Super: Super Hero&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2934,
+   "sha256": "dd9759a8f9b6b451a58c01928fba95cb371386f5c8429e35bf83cb5381ea3010"
+  },
+  "search-d63532b9eb7f0f59.json": {
+   "request": "GET /anime?filter[text]=Gintama.: Silver Soul Arc&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1476,
+   "sha256": "6741697a186cded3c7d479f3794a00daf6e8d337895243b94b5a82e6762ef6cb"
+  },
+  "search-d6f6b2761502ba9e.json": {
+   "request": "GET /anime?filter[text]=A Silent Voice&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 995,
+   "sha256": "c14d0ffb627bf517015c94110766ca0970851b2d5a7badd41ff90b1c684df384"
+  },
+  "search-d76ee1d0e92aec6a.json": {
+   "request": "GET /anime?filter[text]=Ranma ½ OVA&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2019,
+   "sha256": "7a1bda569ba8619330aa7e77d66630a5605fdca7e2b9094bb8d2cd83903eaa35"
+  },
+  "search-d8f038e74eaf9a4b.json": {
+   "request": "GET /anime?filter[text]=Mob Psycho 100 II&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1078,
+   "sha256": "e9300b65810b233ef329e2af2737a70419868152e78d76604698220fc6291878"
+  },
+  "search-d8f06bcd7d46a8fe.json": {
+   "request": "GET /anime?filter[text]=The Last: Naruto the Movie&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1818,
+   "sha256": "d2e1fe43c46d50837883aed3ad786c3a2ce8159f66453353b0492224305eb0a8"
+  },
+  "search-da9a3ee718012c6b.json": {
+   "request": "GET /anime?filter[text]=Haikyuu!! (OVA)&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2978,
+   "sha256": "f9f575ac2fe601776c60f6ea12942b5124380e0e018a614f25a707792c4a2c31"
+  },
+  "search-db44f48e0f21bea2.json": {
+   "request": "GET /anime?filter[text]=Mobile Suit Gundam: The Witch from Mercury&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3196,
+   "sha256": "c65ffa900089e8f49aa2c7b03df88dd0837e3cf6b4bc6fc18a0293d7a805b1e4"
+  },
+  "search-e06f515276f7673f.json": {
+   "request": "GET /anime?filter[text]=My Star: Specials&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 6400,
+   "sha256": "103ef8e5a7721438c6453321cffaad93957b12e02a7b68200c90afc63c629dfb"
+  },
+  "search-e3882c619d2016ca.json": {
+   "request": "GET /anime?filter[text]=Re:ZERO Starting Life in Another World- Season 4&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 596,
+   "sha256": "ee9c8d891bea1669035cb26af55d1787d4d45a382b1733ab280e7b20e46538ea"
+  },
+  "search-e39cb0a69f5dcaca.json": {
+   "request": "GET /anime?filter[text]=Naruto: Shippuden&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3318,
+   "sha256": "ff3766b28a04fec133e2d66b33f6216a32399ad0a2c66fccf1fbd35ce1f946ba"
+  },
+  "search-e75bbc9ec92aa5da.json": {
+   "request": "GET /anime?filter[text]=Re:Zero Starting Life in Another World 2nd Season (Part 2)&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 714,
+   "sha256": "66119c201b2eb382345106d3f4e4b84ced2aac29dc1909d4bea03f85425a535b"
+  },
+  "search-e8a4a7dc2a68b805.json": {
+   "request": "GET /anime?filter[text]=Bakemonogatari (The Monogatari Series)&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 785,
+   "sha256": "3860d4f4765b78f51ac8e053dee7205102a5c86ca71420734e5c0805ac32f79d"
+  },
+  "search-e9370999729c3730.json": {
+   "request": "GET /anime?filter[text]=JoJo's Bizarre Adventure Part 4: Diamond is Unbreakable (Uncensored)&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 774,
+   "sha256": "eb1a8f998306db4cdc4aac09ad0761ec655084fc5b3193d7d71a144ec453ad82"
+  },
+  "search-ebda609e2f46383c.json": {
+   "request": "GET /anime?filter[text]=Ranma ½&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 8810,
+   "sha256": "fa16dd0266d51cf9efab3b2cb315cc4c4f7b3b75ffd6fb40c52b836242d34ac6"
+  },
+  "search-ed463fa0f4086d83.json": {
+   "request": "GET /anime?filter[text]=Bleach: Thousand-Year Blood War The Conflict&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 711,
+   "sha256": "17ea8f60e201534cac0895b2cea633029f38e4a28301eaedbdd335a42d3756fa"
+  },
+  "search-ed576090149cb630.json": {
+   "request": "GET /anime?filter[text]=There Is Also a Hole in the Student Organization!&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 597,
+   "sha256": "2f34823c362ca37235634861e6254b43a86d82c9d866d5bf8404b6d7f9fd25e6"
+  },
+  "search-f16ce7fb4690c9a3.json": {
+   "request": "GET /anime?filter[text]=Gintama: The Final&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2552,
+   "sha256": "233a756762ddbde0e789526eb470158044900a502d681564635357ecd3a67197"
+  },
+  "search-f5aadf2f867d5b57.json": {
+   "request": "GET /anime?filter[text]=Re:Zero kara Hajimeru Isekai Seikatsu Memory Snow&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2792,
+   "sha256": "7ce01c8b1e16bb6c3d54cd192701361413cb9168bfd8e13fd233513aef266014"
+  },
+  "search-f5c827c3a10ba51b.json": {
+   "request": "GET /anime?filter[text]=Kaguya-sama: Love is War Season 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2828,
+   "sha256": "f2d2cb20a644e76000a429d981d0685246796e97c523e35669193d4738e8c977"
+  },
+  "search-f9f9e6355938e202.json": {
+   "request": "GET /anime?filter[text]=Tokyo Ghoul: \"Jack\"&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 486,
+   "sha256": "09d3fc37deaa189bcd2eee9fbdd6de06d4b194514a9b60f84402d3bad748fad7"
+  },
+  "search-fa51ad7005eb3fd8.json": {
+   "request": "GET /anime?filter[text]=Dragon Ball Super: Broly&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 3970,
+   "sha256": "454456ac80087c18daed2d85298c99e93baa6cc20611326cea381c0165eee75f"
+  },
+  "search-fac1faaf9eb5f4a4.json": {
+   "request": "GET /anime?filter[text]=Jujutsu Kaisen: Specials&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1980,
+   "sha256": "70fa508961da3992f08e6aa47446c70196d81455c940e7641121bd6b01677cdf"
+  },
+  "search-fb6028e66bae1022.json": {
+   "request": "GET /anime?filter[text]=Eighty Six: 2nd Season&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2613,
+   "sha256": "2b0d43848606be5bd6a481fecd3620de18c41ea34e77a78bea88644f41d54b73"
+  },
+  "search-fc87f4273f466b80.json": {
+   "request": "GET /anime?filter[text]=Vinland Saga: 2nd Season&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2551,
+   "sha256": "14dc72da12b0092aa36538b440e02007bfcd805f15ba5efcc4637370820efa6b"
+  },
+  "search-fe85249f191dba53.json": {
+   "request": "GET /anime?filter[text]=Naruto (Shinsaku Anime)&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 539,
+   "sha256": "0c9e7bff477160b8be156ac46ab589e3db60f3be40a55e748ea36c94608a1816"
+  },
+  "search-feb06b2573664013.json": {
+   "request": "GET /anime?filter[text]=Tokyo Ghoul:re&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1868,
+   "sha256": "3aed093bbf3d86b2eebd8e8d35583ceeb2a91587fca36b107bcd5e15b71daa5c"
+  },
+  "slug-02d14a00bb551be3.json": {
+   "request": "GET /anime?filter[slug]=that-time-i-got-reincarnated-as-a-slime-season-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-06d6f17e960a1ffa.json": {
+   "request": "GET /anime?filter[slug]=mushoku-tensei-jobless-reincarnation-season-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-0c4548e749c1970b.json": {
+   "request": "GET /anime?filter[slug]=jojo-s-bizarre-adventure-part-6-stone-ocean-part-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-18ef210ec90421a6.json": {
+   "request": "GET /anime?filter[slug]=that-time-i-got-reincarnated-as-a-slime-2nd-season-part-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-1b1ccecb2993b91e.json": {
+   "request": "GET /anime?filter[slug]=jujutsu-kaisen-2nd-season&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-1e4e8e8e2ce2e9ed.json": {
+   "request": "GET /anime?filter[slug]=fate-zero-season-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-32e697446b272214.json": {
+   "request": "GET /anime?filter[slug]=gintama-season-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-5892e87710af8f4e.json": {
+   "request": "GET /anime?filter[slug]=re-zero-starting-life-in-another-world-season-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-679379aaa27dc984.json": {
+   "request": "GET /anime?filter[slug]=attack-on-titan-season-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-68f81c8862c3bcc1.json": {
+   "request": "GET /anime?filter[slug]=haikyuu-to-the-top-2nd-season&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-783276b88cafedfd.json": {
+   "request": "GET /anime?filter[slug]=mushoku-tensei-jobless-reincarnation-part-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-8e84832dd0fbd074.json": {
+   "request": "GET /anime?filter[slug]=vinland-saga-2nd-season&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-9e9fe4437b5f942b.json": {
+   "request": "GET /anime?filter[slug]=golden-kamuy-season-4&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-a908124bbac843f5.json": {
+   "request": "GET /anime?filter[slug]=attack-on-titan-season-3&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-b17800523980b627.json": {
+   "request": "GET /anime?filter[slug]=attack-on-titan-season-3-part-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-b4a5a766b983a73d.json": {
+   "request": "GET /anime?filter[slug]=my-star-season-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-b8a44f338895ae18.json": {
+   "request": "GET /anime?filter[slug]=spy-x-family-season-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 464,
+   "sha256": "77cdc06e01a4098a9bfc68fb5500de36f73d683f5e01f97019548f3cbd801bdd"
+  },
+  "slug-c07da824b5dc176d.json": {
+   "request": "GET /anime?filter[slug]=re-zero-starting-life-in-another-world-season-4&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-c0f9f1c087fadc6e.json": {
+   "request": "GET /anime?filter[slug]=mobile-suit-gundam-the-witch-from-mercury-season-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-d76c4ea5f27a82e4.json": {
+   "request": "GET /anime?filter[slug]=jojo-s-bizarre-adventure-stone-ocean-part-3&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-e60ccadd386eef14.json": {
+   "request": "GET /anime?filter[slug]=attack-on-titan-final-season-part-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-e88a67d1c9cd590a.json": {
+   "request": "GET /anime?filter[slug]=spy-x-family-part-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 549,
+   "sha256": "d500d20af07b46426f456bde70441a5250a21134d90296679bc7ecb0207122d6"
+  },
+  "slug-ee9f6947485d0394.json": {
+   "request": "GET /anime?filter[slug]=kaguya-sama-love-is-war-season-2&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-f31722b218b04ba7.json": {
+   "request": "GET /anime?filter[slug]=eighty-six-2nd-season&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "slug-fa0ee8b86c8d2ab1.json": {
+   "request": "GET /anime?filter[slug]=my-star-season-3&page[limit]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 16,
+   "sha256": "02e415e2c23199047d2e7557d3a41c2a13822f5f001ec5b66694b40e415265db"
+  },
+  "words-0c066416aa0be774.json": {
+   "request": "GET /anime?filter[text]=jojos bizarre adventure stardust crusaders&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 1580,
+   "sha256": "56ccda2287e50ded5e16b5d089ec2346f13a0342a73e9dc6e5e0d5aaf894fde4"
+  },
+  "words-2f349cdb92cd172f.json": {
+   "request": "GET /anime?filter[text]=oshi no ko season 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 921,
+   "sha256": "53bfe00dd8b6b780e19237a1f8e5e07542bf8b784559ce51b4f11cf9d697fe92"
+  },
+  "words-3262a4c00f5f00be.json": {
+   "request": "GET /anime?filter[text]=jojos bizarre adventure stone ocean part 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 674,
+   "sha256": "567119475c7515aa01fade8d7d3624042ad94488eb1f9fcf5221c21049980dd5"
+  },
+  "words-5f8239e8f6ca2639.json": {
+   "request": "GET /anime?filter[text]=bakemonogatari&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2071,
+   "sha256": "023d920161a93a2d905bdc8addf1f5fa9e020fb0536c5948403275fa441b04ea"
+  },
+  "words-61939e620bf14788.json": {
+   "request": "GET /anime?filter[text]=oshi no ko season 3&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 861,
+   "sha256": "0171c0bd3d6783a7bf0f1d233860b7a4a1f4387295d1732dc8bd77bdad5a6ab7"
+  },
+  "words-8cbf4e9fab6bcd40.json": {
+   "request": "GET /anime?filter[text]=haikyu movie the dumpster battle&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 750,
+   "sha256": "50f2138265d7433f41f2ec77ea2aa1213f4d3c6196cd830801d187e036a283b1"
+  },
+  "words-981bdfdbe1a55449.json": {
+   "request": "GET /anime?filter[text]=one piece stampede&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 489,
+   "sha256": "dae2d379c0fc340b15c14b711d7cc6e4ed680d02bb63871535ddb0f26d63c087"
+  },
+  "words-a1bcd3af4d013f38.json": {
+   "request": "GET /anime?filter[text]=jujutsu kaisen 0&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 981,
+   "sha256": "320136749faff15d1c95c291bf2791e6933d1279fb29381159d0de85749ea404"
+  },
+  "words-a46e206ec30f1459.json": {
+   "request": "GET /anime?filter[text]=jojos bizarre adventure&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 10390,
+   "sha256": "385089f46a297d030b6da8ca168b938ba84aa3bce75b086014192e043239cc56"
+  },
+  "words-a9e59f90d02e0999.json": {
+   "request": "GET /anime?filter[text]=jujutsu kaisen season 2 recaps&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 550,
+   "sha256": "ad56e816aa6b1323cb294fad6569fba5660847095025b93f243c286d48b53610"
+  },
+  "words-b4b8207130e1cf0d.json": {
+   "request": "GET /anime?filter[text]=my star specials&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 6400,
+   "sha256": "103ef8e5a7721438c6453321cffaad93957b12e02a7b68200c90afc63c629dfb"
+  },
+  "words-bd87165d0624b907.json": {
+   "request": "GET /anime?filter[text]=attack on titan final season&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 6654,
+   "sha256": "134894fd5d379ced86781ffc3f50671f3aaeddb80021ef407d741ff8a0b3a226"
+  },
+  "words-c9cc5d59cd91898a.json": {
+   "request": "GET /anime?filter[text]=jujutsu kaisen&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 7292,
+   "sha256": "13535fa20010925ca78025cd3a1794737427649ce777c06d33f4d71f6765585f"
+  },
+  "words-d7d22756c852a1a5.json": {
+   "request": "GET /anime?filter[text]=oshi no ko&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 2870,
+   "sha256": "540fe20cf68fca4c6985876d959f5dd7c2924f10b9f63edd0772cf8f57890372"
+  },
+  "words-fe0166c34d37c57c.json": {
+   "request": "GET /anime?filter[text]=that time i got reincarnated as a slime season 2&page[size]=20&page[number]=1&fields[anime]=ANIME_FIELDS",
+   "captured_at": "2026-11-09",
+   "size": 5102,
+   "sha256": "36fcdf4efb3c9e16cc389b0c2a80b78d32cc2943873f1a00735d4cc5f97dfb06"
+  }
+ }
+}
