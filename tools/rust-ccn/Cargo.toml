@@ -2,7 +2,7 @@
 name = "rust-ccn"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.92"
 description = "Per-function cyclomatic complexity for the CRAP gate, measured on syn's parse of each file"
 license = "GPL-3.0"
 publish = false

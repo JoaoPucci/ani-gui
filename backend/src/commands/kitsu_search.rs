@@ -73,7 +73,7 @@ pub async fn kitsu_search_page_ordered(
     offset: u32,
     order: SearchOrder,
 ) -> Result<KitsuSearchPage> {
-    if offset % u32::from(SEARCH_PAGE_LIMIT) != 0 || offset > MAX_SEARCH_OFFSET {
+    if !offset.is_multiple_of(u32::from(SEARCH_PAGE_LIMIT)) || offset > MAX_SEARCH_OFFSET {
         return Err(AniError::InvalidSearchOffset);
     }
     // The page is kept under the text Kitsu is sent, so two queries
