@@ -20,6 +20,7 @@ mod played_marks;
 pub mod put_observer;
 pub mod reclaim;
 pub mod schema;
+pub mod sqlite_manager;
 pub mod ttl;
 
 pub use db::{
