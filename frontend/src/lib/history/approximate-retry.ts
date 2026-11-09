@@ -76,6 +76,10 @@ export interface ApproximateRetryDeps {
 	} | null>;
 	/** Already resolved by the time the first pass finished. */
 	mode: 'sub' | 'dub';
+	/** The audio a row's show is asked about, given `mode` as the
+	 *  default (`audioFor` in `$lib/play/audio-choice`). Omitted, every
+	 *  row is asked about in `mode`. */
+	modeFor?: (kitsuId: string, fallback: 'sub' | 'dub') => 'sub' | 'dub';
 	/** Fired only for a cap the retry confirmed. */
 	onRefined: (entryId: string, count: number, approximate: boolean) => void;
 	/** Injected so tests don't sit out real minutes. */
