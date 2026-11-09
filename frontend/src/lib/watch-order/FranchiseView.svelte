@@ -147,9 +147,6 @@
 						<div class="branches">
 							{#each section.ways as way, w (w)}
 								<div class="branch">
-									<p class="branch-key">
-										{m.watchorder_strip_way({ n: w + 1, count: section.ways.length })}
-									</p>
 									<ol class="story-list">
 										{#each way as r (r.entry.id)}{@render row(r, false)}{/each}
 									</ol>
@@ -371,17 +368,13 @@
 		padding-inline-start: var(--space-5);
 		border-inline-start: 1px solid var(--ink-300);
 	}
-	.group-key,
-	.branch-key {
+	.group-key {
 		margin: 0 0 var(--space-3);
 		font-size: var(--type-micro);
 		font-weight: 600;
 		letter-spacing: var(--tracking-micro);
 		text-transform: uppercase;
 		color: var(--bone-200);
-	}
-	.branch-key {
-		color: var(--bone-300);
 	}
 	.unplaced-key {
 		margin-block-start: var(--space-5);

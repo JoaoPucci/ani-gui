@@ -106,7 +106,6 @@
 		}
 	],
 	"strip_watching_key": "You're watching",
-	"strip_way": "Way {n} of {count}",
 	"strip_ways": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

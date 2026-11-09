@@ -85,7 +85,6 @@
 		}
 	],
 	"strip_watching_key": "Вы смотрите",
-	"strip_way": "Вариант {n} из {count}",
 	"strip_ways": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
