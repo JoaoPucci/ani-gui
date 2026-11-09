@@ -31,12 +31,12 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 m3u8-rs = "6.0"
 
 # SQLite cache
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 r2d2 = "0.8"
 # The helper threads r2d2 pools run their background work on; named
 # here so every pool can share one set (cache::db).
 scheduled-thread-pool = "0.2"
-refinery = { version = "0.8", features = ["rusqlite"] }
+refinery = { version = "0.10", features = ["rusqlite"] }
 
 # Serde + JSON + TOML
 serde = { version = "1.0", features = ["derive"] }
