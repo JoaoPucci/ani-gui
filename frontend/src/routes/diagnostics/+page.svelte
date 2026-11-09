@@ -6,14 +6,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
+	import { appInfo, historyClear, historyList, metaCacheClear } from '$lib/api';
 	import {
-		appInfo,
-		historyClear,
-		historyList,
-		metaCacheClear,
-		type AppInfo,
-		type HistoryEntry
-	} from '$lib/api';
+		createDiagnosticsActions,
+		INITIAL_DIAGNOSTICS,
+		type DiagnosticsState
+	} from '$lib/diagnostics/history-actions';
 	import { legacySweepView } from '$lib/diagnostics/legacy-sweep';
 	import { retiredSweepView } from '$lib/diagnostics/retired-sweep';
 	import { cacheReclaimView } from '$lib/diagnostics/cache-reclaim';
@@ -22,16 +20,19 @@
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
 
-	let info = $state<AppInfo | null>(null);
-	let history = $state<HistoryEntry[] | null>(null);
-	let infoError = $state<string | null>(null);
-	let historyError = $state<string | null>(null);
-	// A failed Clear history, apart from a failed load: the list it had
-	// loaded stays on show.
-	let historyClearError = $state<string | null>(null);
-	let busy = $state(false);
-	let cacheStatus = $state<string | null>(null);
-	let cacheError = $state<string | null>(null);
+	// The page's actions and what they leave on show live in
+	// $lib/diagnostics/history-actions; this renders its state.
+	let view = $state<DiagnosticsState>({ ...INITIAL_DIAGNOSTICS });
+	const actions = createDiagnosticsActions({
+		appInfo,
+		historyList,
+		historyClear,
+		metaCacheClear,
+		describe: describeError,
+		changed: (next) => (view = next)
+	});
+	const info = $derived(view.info);
+	const history = $derived(view.history);
 
 	// What the backend's boot sweep removed, if anything. Present only
 	// on the launch that upgraded from a version which kept its own
@@ -62,62 +63,7 @@
 		saveRowPrefs(browserStorage(), rowPrefs);
 	}
 
-	async function refresh() {
-		// Busy while it reads, so no clear starts under it: a list read
-		// before a clear and answered after would bring the rows back.
-		busy = true;
-		infoError = null;
-		historyError = null;
-		// A message is about the last action: a refresh replaces an
-		// earlier clear's failure with what the load finds.
-		historyClearError = null;
-		try {
-			try {
-				info = await appInfo();
-			} catch (e) {
-				infoError = describeError(e);
-			}
-			try {
-				history = await historyList();
-			} catch (e) {
-				historyError = describeError(e);
-			}
-		} finally {
-			busy = false;
-		}
-	}
-
-	async function clearHistory() {
-		busy = true;
-		historyClearError = null;
-		try {
-			await historyClear();
-			// The list is now known empty, so a load's earlier failure goes
-			// with it. A clear that fails leaves it: there is still no list.
-			historyError = null;
-			history = [];
-		} catch (e) {
-			historyClearError = describeError(e);
-		} finally {
-			busy = false;
-		}
-	}
-
-	async function clearMetaCache() {
-		busy = true;
-		cacheStatus = null;
-		cacheError = null;
-		try {
-			await metaCacheClear();
-			cacheStatus = m.diagnostics_cache_clear_success();
-		} catch (e) {
-			cacheError = describeError(e);
-		} finally {
-			busy = false;
-		}
-	}
-
-	onMount(refresh);
+	onMount(() => void actions.refresh());
 </script>
 
 <main class="page">
@@ -125,8 +71,8 @@
 
 	<section>
 		<h2>{m.diagnostics_section_app_info()}</h2>
-		{#if infoError}
-			<p>{m.diagnostics_app_info_error()} {infoError}</p>
+		{#if view.infoError}
+			<p>{m.diagnostics_app_info_error()} {view.infoError}</p>
 		{:else if info}
 			<dl>
 				<dt>{m.diagnostics_app_info_version()}</dt>
@@ -201,8 +147,8 @@
 				{m.diagnostics_section_history_title({ count: history.length })}
 			{/if}
 		</h2>
-		{#if historyError}
-			<p>{m.diagnostics_history_error()} {historyError}</p>
+		{#if view.historyError}
+			<p>{m.diagnostics_history_error()} {view.historyError}</p>
 		{:else if history === null}
 			<p>{m.diagnostics_history_loading()}</p>
 		{:else if history.length === 0}
@@ -220,15 +166,19 @@
 				{/each}
 			</ul>
 		{/if}
-		{#if historyClearError}<p>
+		{#if view.historyClearError}<p>
 				{m.diagnostics_history_clear_error()}
-				{historyClearError}
+				{view.historyClearError}
 			</p>{/if}
 		<p>
-			<button type="button" onclick={refresh} disabled={busy}
+			<button type="button" onclick={() => actions.refresh()} disabled={view.busy}
 				>{m.diagnostics_refresh_button()}</button
 			>
-			<button type="button" onclick={clearHistory} disabled={busy || history?.length === 0}>
+			<button
+				type="button"
+				onclick={() => actions.clearHistory()}
+				disabled={view.busy || history?.length === 0}
+			>
 				{m.diagnostics_clear_history_button()}
 			</button>
 		</p>
@@ -240,12 +190,12 @@
 			{m.diagnostics_metadata_cache_description()}
 		</p>
 		<p>
-			<button type="button" onclick={clearMetaCache} disabled={busy}
+			<button type="button" onclick={() => actions.clearCache()} disabled={view.busy}
 				>{m.diagnostics_clear_metadata_cache_button()}</button
 			>
 		</p>
-		{#if cacheStatus}<p>{cacheStatus}</p>{/if}
-		{#if cacheError}<p>{m.diagnostics_cache_clear_error()} {cacheError}</p>{/if}
+		{#if view.cacheCleared}<p>{m.diagnostics_cache_clear_success()}</p>{/if}
+		{#if view.cacheError}<p>{m.diagnostics_cache_clear_error()} {view.cacheError}</p>{/if}
 	</section>
 
 	<section>
