@@ -156,6 +156,11 @@ const status = () =>
 		?.textContent?.trim() ?? '';
 /** What the page has announced to assistive technology. */
 const announced = () => target.querySelector('[role="status"]')?.textContent?.trim() ?? '';
+/** What a refresh announced once it settled, or null while none has. */
+const settledAnnouncement = () => {
+	const said = announced();
+	return said === '' || said === m.account_watch_later_refreshing() ? null : said;
+};
 const short = (n: number, unit: 'minute' | 'hour') =>
 	new Intl.RelativeTimeFormat('en', { numeric: 'always', style: 'short' }).format(-n, unit);
 
@@ -405,6 +410,76 @@ for (const style of ['inline', 'band'] as const) {
 			);
 			expect(action(WL(), REFRESH())).toBe(refresh);
 			expect(document.activeElement).toBe(refresh);
+		});
+
+		it('announces a failed row, not freshness, when the pull lands but the rail does not', async () => {
+			connect('anilist');
+			markRefreshed('anilist', Date.now() - 12 * MIN);
+			serve(ok);
+			let failing = true;
+			server.use(
+				http.get(`${API_BASE}/api/account/list/:provider/cached`, ({ params }) =>
+					failing
+						? HttpResponse.json(
+								{ key: 'error.network.upstream', kind: 'upstream' },
+								{ status: 502 }
+							)
+						: HttpResponse.json([planned(params.provider as Provider)])
+				)
+			);
+			localStorage.setItem(ROW_PREFS_STORAGE_KEY, JSON.stringify({ style, controls: false }));
+			app = mount(HomePage, { target });
+			await until(
+				() => (header(WL())?.textContent ?? '').includes(m.account_watch_later_failed()),
+				'the failed row'
+			);
+			action(WL(), REFRESH())!.click();
+			await until(() => settledAnnouncement() !== null, 'the settled refresh');
+			// The pull itself landed, so the tracker's time moved on. The
+			// row it was meant to fill is still the failed one.
+			expect(pulls).toEqual(['anilist']);
+			expect(Date.now() - readLastRefreshed('anilist')!).toBeLessThan(MIN);
+			expect(header(WL()).textContent).toContain(m.account_watch_later_failed());
+			expect(announced()).toBe(m.account_watch_later_failed());
+			failing = false;
+		});
+
+		it('says a populated rail failed to load again instead of vouching for the cards it kept', async () => {
+			connect('anilist');
+			markRefreshed('anilist', Date.now() - 12 * MIN);
+			serve(ok);
+			let failing = false;
+			server.use(
+				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () =>
+					failing
+						? HttpResponse.json(
+								{ key: 'error.network.upstream', kind: 'upstream' },
+								{ status: 502 }
+							)
+						: HttpResponse.json([kitsuRef(String(PLANNED.malId), PLANNED.title, 12)])
+				)
+			);
+			await mountHome(style);
+			await until(
+				() => (header(WL())?.textContent ?? '').includes(m.account_watch_later_caption()),
+				'the loaded row'
+			);
+			failing = true;
+			action(WL(), REFRESH())!.click();
+			await until(() => settledAnnouncement() !== null, 'the settled refresh');
+			// The cards it had stay, but neither the line nor the
+			// announcement says they are fresh.
+			expect(pulls).toEqual(['anilist']);
+			expect(header(WL()).textContent).toContain(m.account_watch_later_caption());
+			expect(row(WL())!.querySelector('[data-anime-id]')).not.toBeNull();
+			expect(status()).toBe(m.account_watch_later_failed());
+			expect(announced()).toBe(m.account_watch_later_failed());
+
+			// The next load that lands vouches for the rail again.
+			failing = false;
+			action(WL(), REFRESH())!.click();
+			await until(() => status() === m.account_watch_later_updated_now(), 'the just-updated state');
+			expect(announced()).toBe(m.account_watch_later_updated_now());
 		});
 
 		it('is not yet updated when a tracker has never been pulled and the pull fails', async () => {

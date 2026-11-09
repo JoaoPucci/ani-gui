@@ -41,6 +41,23 @@ describe('watchLaterStatus, by property', () => {
 		);
 	});
 
+	it('is failed exactly when the rail failed to load, a tracker is connected, and no pull is under way', () => {
+		fc.assert(
+			fc.property(
+				fc.array(maybeStamp, { maxLength: 4 }),
+				fc.boolean(),
+				fc.boolean(),
+				(stamps, refreshing, failed) => {
+					const status = watchLaterStatus(stamps, refreshing, failed);
+					expect(status?.kind === 'failed').toBe(failed && !refreshing && stamps.length > 0);
+					// A failed load changes nothing else the line would say.
+					if (!(failed && !refreshing))
+						expect(status).toEqual(watchLaterStatus(stamps, refreshing));
+				}
+			)
+		);
+	});
+
 	it('is never once any tracker lacks a stamp, unless a pull is under way', () => {
 		fc.assert(
 			fc.property(
@@ -117,6 +134,7 @@ describe('statusPhrases, by property', () => {
 	};
 	const status = fc.oneof(
 		fc.constant({ kind: 'refreshing' as const }),
+		fc.constant({ kind: 'failed' as const }),
 		fc.constant({ kind: 'never' as const }),
 		stamp.map((at) => ({ kind: 'updated' as const, at }))
 	);

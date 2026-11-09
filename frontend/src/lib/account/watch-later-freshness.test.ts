@@ -65,7 +65,12 @@ describe('the age timer', () => {
 	it('holds no timer while the line shows no age', () => {
 		const { clock, freshness } = setup();
 		freshness.track({ kind: 'updated', at: NOW });
-		for (const status of [{ kind: 'refreshing' } as const, { kind: 'never' } as const, null]) {
+		for (const status of [
+			{ kind: 'refreshing' } as const,
+			{ kind: 'never' } as const,
+			{ kind: 'failed' } as const,
+			null
+		]) {
 			freshness.track(status);
 			expect(clock.pending.size, String(status?.kind)).toBe(0);
 		}

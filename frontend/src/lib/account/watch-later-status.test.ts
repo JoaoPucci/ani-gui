@@ -51,6 +51,19 @@ describe('watchLaterStatus', () => {
 			at: NOW - 3 * HOUR
 		});
 	});
+
+	it('vouches for no freshness once the rail failed to load, whatever the trackers’ times', () => {
+		expect(watchLaterStatus([NOW - MIN], false, true)).toEqual({ kind: 'failed' });
+		expect(watchLaterStatus([null], false, true)).toEqual({ kind: 'failed' });
+		expect(watchLaterStatus([NOW - MIN, NOW - 3 * HOUR], false, true)).toEqual({
+			kind: 'failed'
+		});
+	});
+
+	it('reports a pull under way over a failed load, and nothing with no tracker', () => {
+		expect(watchLaterStatus([NOW - MIN], true, true)).toEqual({ kind: 'refreshing' });
+		expect(watchLaterStatus([], false, true)).toBeNull();
+	});
 });
 
 describe('ageOf', () => {
@@ -105,6 +118,10 @@ describe('statusLabel', () => {
 	it('names the refreshing and never states in the caller’s words', () => {
 		expect(statusLabel({ kind: 'refreshing' }, NOW, 'en', copy)).toBe('Refreshing…');
 		expect(statusLabel({ kind: 'never' }, NOW, 'en', copy)).toBe('Not updated yet');
+	});
+
+	it('says the rail failed to load, in the caller’s words', () => {
+		expect(statusLabel({ kind: 'failed' }, NOW, 'en', copy)).toBe("Couldn't load your list");
 	});
 
 	it('says just now inside the first minute', () => {
