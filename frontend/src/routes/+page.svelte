@@ -702,8 +702,10 @@
 		// stamps the freshness line reads, so it reads them again.
 		wlFreshness.stampsChanged();
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const ticket = watchLaterLoads.start(false);
 		const deps = buildWatchLaterDeps();
+		// Nothing between taking the ticket and the `try` may throw: the
+		// `finally` reports the load finished, which a refresh waits on.
+		const ticket = watchLaterLoads.start(false);
 		try {
 			const refs = await loadWatchLater(deps);
 			const filtered = await filterAvailable(refs, filterMode);
