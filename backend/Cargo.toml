@@ -2,7 +2,7 @@
 name = "ani-gui"
 version = "0.17.0"
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.92"
 description = "Headless backend for the ani-gui Electron desktop app"
 license = "GPL-3.0"
 publish = false

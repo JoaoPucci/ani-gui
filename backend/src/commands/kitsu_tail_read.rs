@@ -23,7 +23,7 @@ pub(super) fn page_of(n: u32) -> u32 {
 pub fn tail_pages(count: u32) -> Vec<u32> {
     let first = count.saturating_sub(ALIGNED - 1).max(1);
     let mut pages: Vec<u32> = (page_of(first)..=page_of(count)).collect();
-    if count % KITSU_PAGE == 0 {
+    if count.is_multiple_of(KITSU_PAGE) {
         pages.push(page_of(count) + 1);
     }
     pages
