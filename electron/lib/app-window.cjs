@@ -20,12 +20,14 @@ const APP_READY_CHANNEL = "ani-gui:app-ready";
 /** The longest the reveal waits for that word, counted from the
  *  window's creation: past it, the window is revealed anyway, on the
  *  dark background, never white. It is a safety net for a page that
- *  never says it rendered, not the time a render is expected to take:
- *  until then the splash stays up, its stall line saying it is starting
- *  up, because a window revealed before its page has painted shows
- *  black. It used to be 4 s, and a cold dev start (a session whose
- *  Vite took 29.6 s to start) rendered its first page later than that:
- *  the splash closed and the window stayed black until it did. */
+ *  never says it rendered, not the time a render is expected to take,
+ *  because a window revealed before its page has painted shows black.
+ *  During the boot the splash stays up meanwhile, and once the page's
+ *  step has been pending a moment (STALL_MS) its stall line says it is
+ *  starting up. A later window has no splash, and stays hidden while it
+ *  waits. The bound used to be 4 s, and a cold dev start rendered its
+ *  first page later than that: the splash closed and the window stayed
+ *  black until the page painted. */
 const APP_READY_WAIT_MS = 15_000;
 
 /** The app window's options. */
