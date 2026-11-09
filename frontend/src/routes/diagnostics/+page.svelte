@@ -89,12 +89,12 @@
 
 	async function clearHistory() {
 		busy = true;
-		// A message is about the last action, the clear now: an earlier
-		// load's failure or clear's failure goes.
-		historyError = null;
 		historyClearError = null;
 		try {
 			await historyClear();
+			// The list is now known empty, so a load's earlier failure goes
+			// with it. A clear that fails leaves it: there is still no list.
+			historyError = null;
 			history = [];
 		} catch (e) {
 			historyClearError = describeError(e);
