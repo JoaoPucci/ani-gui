@@ -407,10 +407,10 @@ starting it, and delete it when you find it done.
   its title (`pickKitsuMatch` in `frontend/src/lib/history/resolve.ts`,
   narrowed first by `frontend/src/lib/history/pick-rank.ts`, after the
   hits the row itself rules out are withheld,
-  `backend/src/commands/continue_guess.rs`). Over the season picker's
-  recorded cases these still pick another entry, and a click on the
-  card opens that one, playing whatever the provider lists for it, if
-  anything:
+  `backend/src/commands/continue_guess.rs`). Of the hianime listings the
+  season picker's audit paired with their Kitsu entries, these still
+  pick another entry, and a click on the card opens that one, playing
+  whatever the provider lists for it, if anything:
 
   - "Haikyuu!!: To the Top (Part 1+2)" takes To the Top 2.
   - "Attack on Titan: Final Season, Part 1" takes the Final Chapters'
