@@ -95,7 +95,12 @@ export function armQuality(input: {
 		if (start) {
 			engine.startLevel = start.level;
 			apply(start);
-			log(`auto, ${count} levels`);
+			const pinned = g.pinnedLevel;
+			log(
+				pinned === null
+					? `auto, ${count} levels`
+					: `pinned ${track.describe(pinned)}, ${count} levels`
+			);
 		} else if (count === 1) {
 			log(`one level, ${track.describe(0)}: nothing to choose`);
 		}
