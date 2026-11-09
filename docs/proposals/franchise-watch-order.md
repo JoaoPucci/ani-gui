@@ -1270,8 +1270,9 @@ The rules below hold on every surface:
   second "01". The key line is reserved on every card, so titles share
   one baseline.
 - **Missing data.** No run: no strip, no position in the masthead.
-  First or last entry: "Nothing comes before this", "Nothing comes
-  after this" in the empty column. Unknown date: "Date not announced"
+  First or last entry: "The story starts here", "Nothing after this
+  yet" in the empty column; a side story's end reads the same as the
+  last entry's. Unknown date: "Date not announced"
   in place of the year and count. An entry the provider lacks looks
   like any other.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
@@ -1393,8 +1394,8 @@ variant below is one of the switch's options.
   grid has three rows (the keys, the join or fork line, the entries),
   so the three keys share one baseline whatever sits under them, and
   the centre's two hairlines run through all three rows. An empty side
-  keeps its column, drops its key and says why it is empty ("Nothing
-  comes before this", "Nothing comes after this"), so the numeral does
+  keeps its column, drops its key and says why it is empty ("The story
+  starts here", "Nothing after this yet"), so the numeral does
   not move at either end of a run. The centre column stays at every
   window width; the first round hid it below 1100 px.
 - **The band.** The strip sits on one faint band: the page's own ink,
