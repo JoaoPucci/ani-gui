@@ -27,6 +27,14 @@
 	let info = $state<AppInfo | null>(null);
 	let loadError = $state<string | null>(null);
 	let saveError = $state<string | null>(null);
+	// What the error block is about: a save, or one of the clears, each
+	// headed by its own failure.
+	let errorAction = $state<'save' | 'clear_history' | 'clear_images'>('save');
+	const errorHeadline = {
+		save: () => m.settings_error_save_headline(),
+		clear_history: () => m.settings_clear_history_failed(),
+		clear_images: () => m.settings_clear_images_failed()
+	};
 	let savedAt = $state<number | null>(null);
 	let clearing = $state(false);
 	let cleared = $state(false);
@@ -84,6 +92,7 @@
 			savedAt = Date.now();
 			saveError = null;
 		} catch (e) {
+			errorAction = 'save';
 			saveError = describeSettingsFailure(e);
 		}
 	}
@@ -230,6 +239,7 @@
 			cleared = true;
 			setTimeout(() => (cleared = false), 2400);
 		} catch (e) {
+			errorAction = 'clear_history';
 			saveError = describeError(e);
 		} finally {
 			clearing = false;
@@ -243,6 +253,7 @@
 			imagesCleared = true;
 			setTimeout(() => (imagesCleared = false), 2400);
 		} catch (e) {
+			errorAction = 'clear_images';
 			saveError = describeError(e);
 		} finally {
 			clearingImages = false;
@@ -713,7 +724,7 @@
 
 		{#if saveError}
 			<div class="state state-error" role="alert">
-				<p class="state-headline">{m.settings_error_save_headline()}</p>
+				<p class="state-headline">{errorHeadline[errorAction]()}</p>
 				<p class="state-detail">{saveError}</p>
 			</div>
 		{/if}
