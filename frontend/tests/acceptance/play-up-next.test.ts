@@ -1,16 +1,18 @@
 // Acceptance: the player's "Up next" card at a finale.
 //
 // On the last episode of an entry that has finished airing, once the
-// ending credits begin, the Skip Ending pill's corner holds a card
-// naming the entry that comes next in the run, in the order the
-// setting chooses. It links to that entry's page and waits there: the
-// end of the video plays nothing further, and the next-episode button
-// stays within the entry. The card names the next entry without
-// asking the provider anything about it. A fork lists the ways on; a
-// next entry that has not aired shows when it airs and links nowhere.
-// Esc dismisses the card while it has focus. It stays clear of the
-// controls that hide in fullscreen, and under reduced motion it simply
-// appears.
+// video ends, the Skip Ending pill's corner holds a card naming the
+// entry that comes next in the run, in the order the setting chooses.
+// Through the credits the pill behaves as on any episode. The card
+// links to that entry's page and waits there: the end of the video
+// plays nothing further, and the next-episode button stays within the
+// entry. A playhead a moment short of the length counts as the end
+// too. A seek back puts the card away, and the end brings it back. The
+// card names the next entry without asking the provider anything about
+// it. A fork lists the ways on; a next entry that has not aired shows
+// when it airs and links nowhere. Esc dismisses the card while it has
+// focus. It stays clear of the controls that hide in fullscreen, and
+// under reduced motion it simply appears.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -231,6 +233,15 @@ async function playTo(video: HTMLVideoElement, at: number) {
 	await new Promise((r) => setTimeout(r, 0));
 }
 
+/** Plays the video to its end: the playhead reaches the length and the
+ *  element fires `ended`. The DOM here holds the element's own `ended`
+ *  property at false; the cases that need it set it themselves. */
+async function playToEnd(video: HTMLVideoElement) {
+	await playTo(video, LENGTH);
+	video.dispatchEvent(new Event('ended'));
+	await new Promise((r) => setTimeout(r, 0));
+}
+
 const card = () => target.querySelector<HTMLElement>('.up-next');
 const cardLinks = () => [...(card()?.querySelectorAll<HTMLAnchorElement>('a') ?? [])];
 const skipPill = () => target.querySelector('.player-skip-btn');
@@ -273,11 +284,19 @@ function setFullscreen(el: Element | null) {
 }
 
 describe('the Up next card at a finale', () => {
-	it("names the next entry once the credits begin, in the Skip Ending pill's place", async () => {
+	it("names the next entry once the video ends, in the Skip Ending pill's place", async () => {
 		const { video } = await openEpisode();
 		await playTo(video, 1000);
 		expect(card()).toBeNull();
+		// Through the credits the pill shows as on any episode, and the
+		// card waits for the end.
 		await playTo(video, 1300);
+		await until(() => skipPill() !== null, 'the Skip Ending pill');
+		expect(card()).toBeNull();
+		await playTo(video, 1395);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(card()).toBeNull();
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		expect(card()!.textContent).toContain(m.watchorder_upnext_eyebrow());
 		expect(card()!.textContent).toContain('Saga: Final Arc');
@@ -296,24 +315,109 @@ describe('the Up next card at a finale', () => {
 		expect(card()!.contains(document.activeElement)).toBe(false);
 	});
 
-	it('stays through the credits, past them and at the end, and goes on a seek back', async () => {
+	it('stays at the end, goes on a seek back, and comes back at the end', async () => {
 		const { video } = await openEpisode();
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(card()).not.toBeNull();
+		await playTo(video, 1300);
+		await until(() => card() === null, 'the card to go on a seek back into the credits');
 		await playTo(video, 1395);
-		expect(card()).not.toBeNull();
-		await playTo(video, LENGTH);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(card()).toBeNull();
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card back at the end');
+	});
+
+	it('goes as soon as a seek back starts, before the stream there has loaded', async () => {
+		const { video } = await openEpisode();
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card');
+		// The seek is under way: Chromium reports the new point on
+		// `seeking`, and its `timeupdate` waits for the media there.
+		video.currentTime = 600;
+		video.dispatchEvent(new Event('seeking'));
+		await until(() => card() === null, 'the card to go as the seek starts');
+	});
+
+	it('shows when the stream stops a moment short of its length without ending', async () => {
+		const { video } = await openEpisode();
+		// A precaution: where a stream has less media than the length it
+		// declared, the playhead can stop just short of it, and the
+		// element would never say it has ended.
+		await playTo(video, LENGTH - 2);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(card()).toBeNull();
+		await playTo(video, LENGTH - 0.3);
+		await until(() => card() !== null, 'the card at the stalled end');
+	});
+
+	it('shows when the element says it has ended, with a length it never learned', async () => {
+		const { video } = await openEpisode();
+		// The length is unknown, so the playhead alone decides nothing:
+		// only the element's own end can bring the card.
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => Number.NaN });
+		video.dispatchEvent(new Event('durationchange'));
+		await playTo(video, 1300);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(card()).toBeNull();
 		video.dispatchEvent(new Event('ended'));
-		await new Promise((r) => setTimeout(r, 0));
-		expect(card()).not.toBeNull();
+		await until(() => card() !== null, 'the card on the ended event');
+	});
+
+	it("reads the element's ended state as it plays, and leaves it on a seek back", async () => {
+		const { video } = await openEpisode();
+		let ended = false;
+		Object.defineProperty(video, 'ended', { configurable: true, get: () => ended });
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => Number.NaN });
+		video.dispatchEvent(new Event('durationchange'));
+		ended = true;
+		await playTo(video, 1400);
+		await until(() => card() !== null, 'the card from the ended state');
+		ended = false;
 		await playTo(video, 600);
 		await until(() => card() === null, 'the card to go on a seek back');
+	});
+
+	it("drops the last episode's end with its stream on a switch", async () => {
+		const { video } = await openEpisode({ episode: 11 });
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => Number.NaN });
+		video.dispatchEvent(new Event('durationchange'));
+		await playTo(video, 1400);
+		video.dispatchEvent(new Event('ended'));
+		await new Promise((r) => setTimeout(r, 0));
+		const mounts = countMounts();
+		try {
+			setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '12', kind: 'mp4' });
+			await until(
+				() => (video.getAttribute('src') ?? '').includes('session-2'),
+				'session-2 attached'
+			);
+			await new Promise((r) => setTimeout(r, 100));
+			expect(mounts.count).toBe(0);
+		} finally {
+			mounts.stop();
+		}
+	});
+
+	it('shows in the frame fullscreen the player controls use', async () => {
+		const { video } = await openEpisode();
+		const frame = target.querySelector('section.player-frame')!;
+		try {
+			setFullscreen(frame);
+			await playToEnd(video);
+			await until(() => card() !== null, 'the card in fullscreen');
+			expect(frame.contains(card())).toBe(true);
+		} finally {
+			setFullscreen(null);
+		}
 	});
 
 	it('names the next entry without asking the provider about it', async () => {
 		const { video, fetches } = await openEpisode();
 		const sentBefore = fetches.sent.length;
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		await fetches.settled('anything the card set off');
 		const asked = fetches.sent.filter(
@@ -331,11 +435,10 @@ describe('the Up next card at a finale', () => {
 
 	it('plays nothing further at the end, even with auto-play on', async () => {
 		const { video, fetches } = await openEpisode({ autoPlayNext: true });
-		await playTo(video, 1300);
-		await until(() => card() !== null, 'the card');
+		await playTo(video, 1395);
 		const before = fetches.sent.length;
-		await playTo(video, LENGTH);
-		video.dispatchEvent(new Event('ended'));
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card');
 		await fetches.settled('anything the end set off');
 		expect(fetches.sent.slice(before).filter((f) => f.path.startsWith('/api/play'))).toEqual([]);
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
@@ -344,7 +447,7 @@ describe('the Up next card at a finale', () => {
 
 	it('leaves the next-episode button within the entry', async () => {
 		const { video } = await openEpisode();
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		const next = target.querySelector<HTMLButtonElement>(
 			`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
@@ -355,19 +458,22 @@ describe('the Up next card at a finale', () => {
 
 	it('is dismissed by Esc while it has focus, for the rest of the episode', async () => {
 		const { video } = await openEpisode();
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		const link = cardLinks()[0];
 		link.focus();
 		link.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 		await until(() => card() === null, 'the card to be dismissed');
+		// Back into the credits and to the end again: still dismissed.
 		await playTo(video, 1320);
+		await playToEnd(video);
+		await new Promise((r) => setTimeout(r, 50));
 		expect(card()).toBeNull();
 	});
 
 	it('is dismissed by its own button', async () => {
 		const { video } = await openEpisode();
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		card()!
 			.querySelector<HTMLButtonElement>(`button[aria-label="${m.watchorder_upnext_dismiss()}"]`)!
@@ -380,19 +486,23 @@ describe('the Up next card at a finale', () => {
 		await playTo(video, 1300);
 		await until(() => skipPill() !== null, 'the Skip Ending pill');
 		expect(card()).toBeNull();
+		await playToEnd(video);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(card()).toBeNull();
 	});
 
-	it('without skip times, waits for the last minutes', async () => {
+	it('without skip times, shows at the end, not in the last minutes', async () => {
 		const { video } = await openEpisode({ skips: [] });
-		await playTo(video, 1300);
-		expect(card()).toBeNull();
 		await playTo(video, LENGTH - 60);
-		await until(() => card() !== null, 'the card in the last minutes');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(card()).toBeNull();
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card at the end');
 	});
 
 	it('follows the order setting', async () => {
 		const { video } = await openEpisode({ order: 'released' });
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		expect(cardLinks().map((a) => a.getAttribute('href'))).toEqual(['/anime/5']);
 		expect(card()!.textContent).toContain('Saga: Origins');
@@ -410,7 +520,7 @@ describe('the Up next card at a finale', () => {
 				]
 			})
 		});
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		expect(card()!.textContent).toContain(m.watchorder_upnext_choices());
 		expect(cardLinks().map((a) => a.getAttribute('href'))).toEqual(['/anime/50', '/anime/60']);
@@ -421,7 +531,7 @@ describe('the Up next card at a finale', () => {
 		const { video } = await openEpisode({
 			franchise: franchise({ entries: [SAGA, SECOND, LATER] })
 		});
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		expect(card()!.textContent).toContain(m.watchorder_upnext_coming());
 		expect(card()!.textContent).toContain('Saga: Final Arc');
@@ -433,6 +543,8 @@ describe('the Up next card at a finale', () => {
 		const { video } = await openEpisode({ franchise: null });
 		await playTo(video, 1300);
 		await until(() => skipPill() !== null, 'the Skip Ending pill');
+		await playToEnd(video);
+		await new Promise((r) => setTimeout(r, 50));
 		expect(card()).toBeNull();
 	});
 
@@ -448,12 +560,14 @@ describe('the Up next card at a finale', () => {
 		});
 		await playTo(video, 1300);
 		await until(() => skipPill() !== null, 'the Skip Ending pill');
+		await playToEnd(video);
+		await new Promise((r) => setTimeout(r, 50));
 		expect(card()).toBeNull();
 	});
 
 	it("shows with the browser's own controls too", async () => {
 		const { video } = await openEpisode({ nativeControls: true });
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 	});
 
@@ -461,7 +575,7 @@ describe('the Up next card at a finale', () => {
 		const { video } = await openEpisode();
 		Object.defineProperty(video, 'paused', { configurable: true, get: () => false });
 		video.dispatchEvent(new Event('play'));
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		const frame = target.querySelector('section.player-frame')!;
 		try {
@@ -478,7 +592,7 @@ describe('the Up next card at a finale', () => {
 		const { video } = await openEpisode();
 		try {
 			setFullscreen(video);
-			await playTo(video, 1300);
+			await playToEnd(video);
 			await new Promise((r) => setTimeout(r, 50));
 			expect(card()).toBeNull();
 		} finally {
@@ -495,7 +609,7 @@ describe('the Up next card at a finale', () => {
 		const motion = recordMotion();
 		try {
 			const { video } = await openEpisode();
-			await playTo(video, 1300);
+			await playToEnd(video);
 			await until(() => card() !== null, 'the card');
 			// A transition starts on the next frame.
 			await new Promise((r) => setTimeout(r, 100));
@@ -511,6 +625,8 @@ describe('the Up next card at a finale', () => {
 		const { video } = await openEpisode({ sourceEpisodes: 13 });
 		await playTo(video, 1300);
 		await until(() => skipPill() !== null, 'the Skip Ending pill');
+		await playToEnd(video);
+		await new Promise((r) => setTimeout(r, 50));
 		expect(card()).toBeNull();
 		const next = target.querySelector<HTMLButtonElement>(
 			`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
@@ -520,13 +636,13 @@ describe('the Up next card at a finale', () => {
 
 	it('shows on the episode past the count once nothing in the entry follows', async () => {
 		const { video } = await openEpisode({ sourceEpisodes: 13, episode: 13 });
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 	});
 
 	it('does not flash on a finale opened from the previous episode’s end', async () => {
 		const { video } = await openEpisode({ episode: 11 });
-		await playTo(video, LENGTH - 5);
+		await playToEnd(video);
 		const mounts = countMounts();
 		try {
 			await switchTo(video, 12, 'session-2');
@@ -535,11 +651,35 @@ describe('the Up next card at a finale', () => {
 		} finally {
 			mounts.stop();
 		}
+		// The finale's own end brings it.
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card at the finale’s end');
+	});
+
+	it('waits for the resume hold, even at the end', async () => {
+		const { video } = await openEpisode();
+		// A point kept to resume from, as playback leaves one.
+		await playTo(video, 1000);
+		video.dispatchEvent(new Event('pause'));
+		await switchTo(video, 12, 'session-2');
+		const frame = target.querySelector('section.player-frame')!;
+		await until(() => frame.getAttribute('aria-busy') === 'true', 'the resume hold');
+		// The playhead reads the end while the hold is still on.
+		await playToEnd(video);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(card()).toBeNull();
+		// The resume lands at its point, and playback goes on to the end.
+		await playTo(video, 1000);
+		video.dispatchEvent(new Event('seeked'));
+		video.dispatchEvent(new Event('playing'));
+		await until(() => frame.getAttribute('aria-busy') !== 'true', 'the resume to land');
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card once the hold is over');
 	});
 
 	it('comes back when the episode is played again after a dismissal', async () => {
 		const { video } = await openEpisode();
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		card()!
 			.querySelector<HTMLButtonElement>(`button[aria-label="${m.watchorder_upnext_dismiss()}"]`)!
@@ -550,19 +690,19 @@ describe('the Up next card at a finale', () => {
 		// back until playback is under way again.
 		window.localStorage.clear();
 		await switchTo(video, 12, 'session-3');
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card on the new viewing');
 	});
 
 	it('is announced once per viewing, not again on its way back', async () => {
 		const { video } = await openEpisode();
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		const said = m.watchorder_upnext_announce({ title: 'Saga: Final Arc' });
 		await until(() => announcement() === said, 'the announcement');
 		await playTo(video, 600);
 		await until(() => card() === null, 'the card to go');
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card again');
 		await new Promise((r) => setTimeout(r, 50));
 		expect(announcement()).toBe('');
@@ -570,7 +710,7 @@ describe('the Up next card at a finale', () => {
 
 	it('gives focus back where it came from when Esc dismisses it', async () => {
 		const { video } = await openEpisode();
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		const before = target.querySelector<HTMLButtonElement>(
 			`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
@@ -587,12 +727,15 @@ describe('the Up next card at a finale', () => {
 		const { video, fetches } = await openEpisode({ episode: 12.5, extras: ['12.5'] });
 		expect(fetches.sent.some((f) => f.path.startsWith('/api/aniskip/'))).toBe(false);
 		await playTo(video, LENGTH - 60);
-		await until(() => card() !== null, 'the card on the extra');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(card()).toBeNull();
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card at the extra’s end');
 	});
 
 	it('leaves focus alone when the close button is clicked with the mouse', async () => {
 		const { video } = await openEpisode();
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		const control = target.querySelector<HTMLButtonElement>('.player-controls button')!;
 		control.focus();
@@ -607,7 +750,7 @@ describe('the Up next card at a finale', () => {
 
 	it('stays dismissed, and unannounced, when the same episode is opened again by a recovery', async () => {
 		const { video } = await openEpisode();
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		card()!
 			.querySelector<HTMLButtonElement>(`button[aria-label="${m.watchorder_upnext_dismiss()}"]`)!
@@ -619,7 +762,7 @@ describe('the Up next card at a finale', () => {
 		video.dispatchEvent(new Event('playing'));
 		const frame = target.querySelector('section.player-frame')!;
 		await until(() => frame.getAttribute('aria-busy') !== 'true', 'the resume to land');
-		await playTo(video, 1300);
+		await playToEnd(video);
 		await new Promise((r) => setTimeout(r, 50));
 		expect(frame.classList.contains('player-resuming')).toBe(false);
 		expect(card()).toBeNull();

@@ -30,9 +30,9 @@ describe('the strip copy', () => {
 	});
 
 	it('says why a column is empty', () => {
-		expect(emptyColumnText('first')).toBe('Nothing comes before this');
-		expect(emptyColumnText('last')).toBe('Nothing comes after this');
-		expect(emptyColumnText('side_end')).toBe('Nothing comes after this');
+		expect(emptyColumnText('first')).toBe('The story starts here');
+		expect(emptyColumnText('last')).toBe('Nothing after this yet');
+		expect(emptyColumnText('side_end')).toBe('Nothing after this yet');
 	});
 
 	it("reads the strip's caption", () => {

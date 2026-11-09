@@ -748,14 +748,13 @@ first.**
 
 **How it looks.**
 
-- *In the player*: when the last episode of an entry reaches its
-  ending credits (the point the existing "Skip Ending" button already
-  knows from skip data, else the last minute and a half), the button
-  becomes an end card — the sequel's poster, its title, its year and
-  format,
-  under "Up next". The card waits for a click. It does not count down
-  or play the sequel by itself, whatever the auto-play setting:
-  auto-play stays within one entry, as it does today.
+- *In the player*: when the last episode of an entry ends (the video's
+  ended state; "Decisions recorded: the Up next card's timing"), the
+  "Skip Ending" corner holds an end card — the sequel's poster, its
+  title, its year and format, under "Up next". The card waits for a
+  click. It does not count down or play the sequel by itself, whatever
+  the auto-play setting: auto-play stays within one entry, as it does
+  today.
 - *On Continue Watching*: once the finale has been played through,
   the card stops offering the finale again and shows the sequel —
   its art, its title, "Up next".
@@ -1069,14 +1068,17 @@ them introduces a new widget style.
   pill into a small card: the sequel's poster, an "Up next" eyebrow,
   the title clamped to three lines (the card is narrow, and the words
   that tell entries apart come last), and a format and year line. The
-  reason for this spot: it is where the eye already goes at the
-  credits, and it does not cover the picture's centre. Unlike the
-  pill, which shows for five seconds, the card stays through the
-  credits and after the video ends, until it is used or dismissed.
-  With no skip data, it appears in the last minute and a half
-  instead, where the app already counts an episode as finished. It
-  waits for the player's own last step: where the source lists an
-  episode past Kitsu's count, the card shows on that one. Showing
+  reason for this spot: it is where the eye already goes at the end
+  of an episode, and it does not cover the picture's centre. It
+  appears once the video ends, so the credits and anything after
+  them (a closing scene, the next episode's preview) play uncovered
+  but for their last second at most, with the "Skip Ending" pill
+  behaving as on any episode. A playhead within a second of the
+  length counts as the end. Unlike the pill, which shows for five
+  seconds, the card stays until it is used or dismissed; a seek back
+  puts it away and the end brings it back. It waits for the player's
+  own last step: where the source lists an episode past Kitsu's
+  count, the card shows on that one. Showing
   the sequel in the now-playing header's "next" button (below the
   player) on a finale was decided: no, the button stays within the
   entry ("Decisions recorded", 3).
@@ -1276,10 +1278,10 @@ The rules below hold on every surface:
   second "01". The key line is reserved on every card, so titles share
   one baseline.
 - **Missing data.** No run: no strip, no position in the masthead.
-  First or last entry: "Nothing comes before this", "Nothing comes
-  after this" in the empty column. Unknown date: "Date not announced"
-  in place of the year and count. An entry the provider lacks looks
-  like any other.
+  First or last entry: "The story starts here", "Nothing after this
+  yet" in the empty column; a side story's end reads the same as the
+  last entry's. Unknown date: "Date not announced" in place of the
+  year and count. An entry the provider lacks looks like any other.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
   keys page it); every card and tile is a link with the poster card's
   bone focus ring; the entry being viewed is not a link. The line for
@@ -1299,7 +1301,7 @@ The rules below hold on every surface:
   aired: "Next, when it airs", its date or "Date not announced", and
   no link. None: no card. The mockup showed the card from the start
   of a last episode, so a screenshot could catch it; the player shows
-  it from the credits.
+  it once the video ends.
 - **Keyboard and screen readers.** The card never takes focus; Esc
   dismisses it while it has focus; the dismiss button is its own tab
   stop. The announcement is written into a polite live region after
@@ -1399,10 +1401,10 @@ variant below is one of the switch's options.
   grid has three rows (the keys, the join or fork line, the entries),
   so the three keys share one baseline whatever sits under them, and
   the centre's two hairlines run through all three rows. An empty side
-  keeps its column, drops its key and says why it is empty ("Nothing
-  comes before this", "Nothing comes after this"), so the numeral does
-  not move at either end of a run. The centre column stays at every
-  window width; the first round hid it below 1100 px.
+  keeps its column, drops its key and says why it is empty ("The story
+  starts here", "Nothing after this yet"), so the numeral does not
+  move at either end of a run. The centre column stays at every window
+  width; the first round hid it below 1100 px.
 - **The band.** The strip sits on one faint band: the page's own ink,
   one step up (`--ink-050`), at 72 % opacity, with the card corner
   radius. No border, blur, shadow or gradient. Its footer, under a
@@ -1561,6 +1563,22 @@ The third round revises the strip's footer only.
   short. Without the card (on *Stone Ocean Part 3*, where *Steel Ball
   Run* is already a tile) the stack sits alone in the middle, at its
   own width.
+
+### Decisions recorded: the Up next card's timing
+
+The card first appeared from the start of the ending credits that the
+skip data knows, or in the last minute and a half without skip data.
+The maintainer found that too early: it covered the credits and any
+closing scene or next-episode preview after them. The card now
+appears once the video ends, and stays until it is used or
+dismissed. A seek back puts it away and the end brings it back,
+unless it was dismissed. Through the credits the "Skip Ending" pill
+behaves as on any episode. A playhead within a second of the length
+counts as the end, as well as the video's own ended state. That is a
+precaution: where a stream played through hls.js has less media than
+the length it declared, the playhead can stop just short of it and the
+video never reports its end, so the card would never come. On a stream
+that ends normally it shows the card up to a second early.
 
 ### Open design questions
 

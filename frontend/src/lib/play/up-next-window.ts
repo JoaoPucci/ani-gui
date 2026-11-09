@@ -1,39 +1,28 @@
 /**
- * When the player's "Up next" card shows over a finale: from the start
- * of its ending credits, the point the Skip Ending pill already knows
- * from aniskip, and without that from the last minutes the app counts
- * an episode as finished by (`isFinishedAt`). It stays through the
- * credits and after the video ends; a seek back before that point
- * puts it away again.
+ * When the player's "Up next" card shows over a finale: once the video
+ * has ended. Through the credits, and any scene or preview after them,
+ * the player behaves as on any episode. A seek back puts the card away
+ * again, and the end brings it back.
+ *
+ * "Ended" is the element's own ended state, or a playhead within
+ * `END_SLACK_S` of a known length. The slack is a precaution: where the
+ * media buffered for a stream played through hls.js ends short of the
+ * length the stream declared, the playhead can stop a fraction of a
+ * second before `duration` and the element never reports its end, so
+ * the card would never come. On a stream that ends normally it costs
+ * the card showing up to a second before the last frame.
  */
-import type { SkipInterval } from '$lib/api';
-import { isFinishedAt } from './watch-position';
 
-/** Where the ending credits start, from the latest ending interval, or null. */
-export function creditsStart(skips: readonly SkipInterval[]): number | null {
-	let start: number | null = null;
-	for (const s of skips) {
-		if (s.skip_type !== 'ed' && s.skip_type !== 'mixed-ed') continue;
-		if (start === null || s.start_time > start) start = s.start_time;
-	}
-	return start;
-}
+/** How far short of its length a stream may stop and still count as
+ *  ended. */
+export const END_SLACK_S = 1;
 
-/**
- * Whether the playhead is in a finale's credits, or past them. `skips`
- * is null while the skip times have not answered: the last-minutes
- * rule waits for them, so a late answer cannot take the card back.
- */
-export function inCredits(
-	currentTime: number,
-	duration: number,
-	skips: readonly SkipInterval[] | null
-): boolean {
-	if (skips === null) return false;
-	const start = creditsStart(skips);
-	if (start !== null) return currentTime >= start;
-	// The play page holds a length it has not learned as zero.
-	return duration > 0 && isFinishedAt(currentTime, duration);
+/** Whether the video has ended: the element says so, or the playhead is
+ *  within `END_SLACK_S` of a known length. The play page holds a length
+ *  it has not learned as zero, and that decides nothing. */
+export function atVideoEnd(currentTime: number, duration: number, ended: boolean): boolean {
+	if (ended) return true;
+	return Number.isFinite(duration) && duration > 0 && duration - currentTime <= END_SLACK_S;
 }
 
 /** What the play page knows when it decides whether the card shows. */
@@ -46,7 +35,8 @@ export interface UpNextState {
 	readonly dismissed: boolean;
 	/** The <video> itself is fullscreen: nothing else on the page is drawn. */
 	readonly videoFullscreen: boolean;
-	readonly inCredits: boolean;
+	/** The video has ended (`atVideoEnd`). */
+	readonly atEnd: boolean;
 }
 
 /** Whether the Up next card shows. */
@@ -57,6 +47,6 @@ export function upNextShown(state: UpNextState): boolean {
 		!state.resumeHolding &&
 		!state.dismissed &&
 		!state.videoFullscreen &&
-		state.inCredits
+		state.atEnd
 	);
 }
