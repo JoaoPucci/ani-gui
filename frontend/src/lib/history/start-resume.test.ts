@@ -752,4 +752,31 @@ describe('makeStartResume (moved on while a failure is worded)', () => {
 		holds = false;
 		expect(current?.()).toBe(false);
 	});
+
+	it("plays the clicked show in its own audio, the settings' mode the default", async () => {
+		const h = makeHarness({
+			modeFor: (kitsuId, fallback) => (kitsuId === 'k1' ? 'dub' : fallback)
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '12', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ mode: 'dub' }),
+			expect.any(Function)
+		);
+		expect(h.deps.fetchInteractiveCount).toHaveBeenCalledWith(expect.anything(), 'dub');
+
+		const other = makeHarness({
+			modeFor: (kitsuId, fallback) => (kitsuId === 'k1' ? 'dub' : fallback)
+		});
+		await makeStartResume(other.deps)(
+			makeEntry('h2', '3', 'Other'),
+			makeMatch('k2', 24),
+			24,
+			false
+		);
+		expect(other.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ mode: 'sub' }),
+			expect.any(Function)
+		);
+	});
 });
