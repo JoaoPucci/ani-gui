@@ -271,8 +271,13 @@ describe('franchise page', () => {
 		await until(() => rows().length === 5, 'the main story');
 		const text = mainStory()!.textContent ?? '';
 		expect(text).toContain(m.watchorder_strip_ways({ count: 2 }));
-		expect(text).toContain(m.watchorder_strip_way({ n: 1, count: 2 }));
-		expect(text).toContain(m.watchorder_strip_way({ n: 2, count: 2 }));
+		// One column per way, under the one heading: no column of its own
+		// says which way it is.
+		const branches = [...mainStory()!.querySelectorAll('.branch')];
+		expect(branches).toHaveLength(2);
+		expect(branches.map((b) => b.querySelectorAll('li').length)).toEqual([1, 1]);
+		expect(mainStory()!.querySelector('.branch-key')).toBeNull();
+		expect(text).not.toMatch(/Way \d+ of \d+/);
 	});
 
 	it('says when there may be more titles than it shows', async () => {
