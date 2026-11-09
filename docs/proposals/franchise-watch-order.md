@@ -751,9 +751,10 @@ first.**
 - *In the player*: when the last episode of an entry ends (the video's
   ended state; "Decisions recorded: the Up next card's timing"), the
   "Skip Ending" corner holds an end card — the sequel's poster, its
-  title, its year and format, under "Up next". The card waits for a click. It does not count down
-  or play the sequel by itself, whatever the auto-play setting:
-  auto-play stays within one entry, as it does today.
+  title, its year and format, under "Up next". The card waits for a
+  click. It does not count down or play the sequel by itself, whatever
+  the auto-play setting: auto-play stays within one entry, as it does
+  today.
 - *On Continue Watching*: once the finale has been played through,
   the card stops offering the finale again and shows the sequel —
   its art, its title, "Up next".
@@ -1070,13 +1071,14 @@ them introduces a new widget style.
   reason for this spot: it is where the eye already goes at the end
   of an episode, and it does not cover the picture's centre. It
   appears once the video ends, so the credits and anything after
-  them (a closing scene, the next episode's preview) play uncovered,
-  with the "Skip Ending" pill behaving as on any episode. A stream
-  that stops within a second of its length without reporting its end
-  counts as ended. Unlike the pill, which shows for five seconds, the
-  card stays until it is used or dismissed; a seek back puts it away
-  and the end brings it back. It waits for the player's own last step: where the source lists an
-  episode past Kitsu's count, the card shows on that one. Showing
+  them (a closing scene, the next episode's preview) play uncovered
+  but for their last second at most, with the "Skip Ending" pill
+  behaving as on any episode. A playhead within a second of the
+  length counts as the end. Unlike the pill, which shows for five
+  seconds, the card stays until it is used or dismissed; a seek back
+  puts it away and the end brings it back. It waits for the player's
+  own last step: where the source lists an episode past Kitsu's
+  count, the card shows on that one. Showing
   the sequel in the now-playing header's "next" button (below the
   player) on a finale was decided: no, the button stays within the
   entry ("Decisions recorded", 3).
@@ -1571,9 +1573,12 @@ closing scene or next-episode preview after them. The card now
 appears once the video ends, and stays until it is used or
 dismissed. A seek back puts it away and the end brings it back,
 unless it was dismissed. Through the credits the "Skip Ending" pill
-behaves as on any episode. A stream that stops within a second of its
-length without reporting its end (hls.js can stall that short of the
-length it declared) counts as ended.
+behaves as on any episode. A playhead within a second of the length
+counts as the end, as well as the video's own ended state. That is a
+precaution: where a stream played through hls.js has less media than
+the length it declared, the playhead can stop just short of it and the
+video never reports its end, so the card would never come. On a stream
+that ends normally it shows the card up to a second early.
 
 ### Open design questions
 
