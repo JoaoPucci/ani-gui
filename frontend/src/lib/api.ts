@@ -1489,17 +1489,18 @@ export function kitsuResolveAllmangaShowId(
 
 /**
  * The ids of the `hits` a Continue row's guess may not take: the
- * backend reads the row's search title and the episode it reached
- * against each hit (`backend/src/commands/continue_guess.rs`). No
- * request leaves the app; the hits are the ones the row's own search
- * or slug lookup returned.
+ * backend reads the row's search title, the episode it reached and its
+ * show key against each hit (`backend/src/commands/continue_guess.rs`).
+ * The call itself asks nothing of Kitsu or the provider; the hits are
+ * the ones the row's own search or slug lookup returned.
  */
 export function kitsuGuessRuledOut(
 	title: string,
 	episode: number,
-	hits: KitsuAnimeRef[]
+	hits: KitsuAnimeRef[],
+	key = ''
 ): Promise<string[]> {
-	return postJson<string[]>('/api/history/guess/ruled-out', { title, episode, hits });
+	return postJson<string[]>('/api/history/guess/ruled-out', { key, title, episode, hits });
 }
 
 /**

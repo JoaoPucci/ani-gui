@@ -313,7 +313,8 @@ describe('a guessed Continue card for hianime\'s "Jujutsu Kaisen (TV)"', () => {
 			en: 'Jujutsu Kaisen',
 			en_jp: 'Jujutsu Kaisen'
 		});
-		let asked: { title: string; episode: number; hits: { id: string }[] } | null = null;
+		let asked: { key: string; title: string; episode: number; hits: { id: string }[] } | null =
+			null;
 		const play = await playTheCard(
 			{ ep_no: '12', id: 'hianime:jujutsu-kaisen-237', title: 'Jujutsu Kaisen (TV)' },
 			[special],
@@ -329,6 +330,7 @@ describe('a guessed Continue card for hianime\'s "Jujutsu Kaisen (TV)"', () => {
 			]
 		);
 		expect(asked).toMatchObject({
+			key: 'hianime:jujutsu-kaisen-237',
 			title: 'Jujutsu Kaisen (TV)',
 			episode: 12,
 			hits: [{ id: '43886' }]

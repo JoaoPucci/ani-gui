@@ -143,9 +143,9 @@ beforeEach(() => {
 		}
 		return hitsOf(file)[0] ?? null;
 	});
-	vi.mocked(kitsuGuessRuledOut).mockImplementation(async (title, episode, hits) => {
-		if (title !== current.title || episode !== parseFloat(currentEp)) {
-			unrecorded.push(`rules for ${title} at ${episode}`);
+	vi.mocked(kitsuGuessRuledOut).mockImplementation(async (title, episode, hits, key) => {
+		if (title !== current.title || episode !== parseFloat(currentEp) || key !== current.key) {
+			unrecorded.push(`rules for ${key} ${title} at ${episode}`);
 		}
 		const out = new Set(current.ruled_out?.[currentEp] ?? []);
 		return hits.filter((h) => out.has(h.id)).map((h) => h.id);

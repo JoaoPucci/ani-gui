@@ -1027,13 +1027,18 @@ describe('the hits a row rules out', () => {
 		subtype: 'special'
 	});
 
-	it("asks with the row's search title and episode, and the search's hits", async () => {
+	it("asks with the row's search title, episode and show key, and the search's hits", async () => {
 		mockedGetMatch.mockResolvedValue(null);
 		mockedSearch.mockResolvedValue([special()]);
 
 		await resolveKitsuMatch(jjk());
 
-		expect(mockedRuledOut).toHaveBeenCalledWith('Jujutsu Kaisen (TV)', 24, [special()]);
+		expect(mockedRuledOut).toHaveBeenCalledWith(
+			'Jujutsu Kaisen (TV)',
+			24,
+			[special()],
+			'hianime:jujutsu-kaisen-237'
+		);
 	});
 
 	it('never offers a hit the row rules out, and goes on to the show key', async () => {

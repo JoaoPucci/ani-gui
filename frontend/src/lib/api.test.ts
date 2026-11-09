@@ -1069,11 +1069,17 @@ describe('kitsuGuessRuledOut', () => {
 			id: '43886',
 			canonical_title: "Jujutsu Kaisen New Year's Special"
 		} as KitsuAnimeRef;
-		const ids = await kitsuGuessRuledOut('Jujutsu Kaisen (TV)', 24, [hit]);
+		const ids = await kitsuGuessRuledOut(
+			'Jujutsu Kaisen (TV)',
+			24,
+			[hit],
+			'hianime:jujutsu-kaisen-237'
+		);
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/history/guess/ruled-out`);
 		expect(init?.method).toBe('POST');
 		expect(JSON.parse(init?.body as string)).toEqual({
+			key: 'hianime:jujutsu-kaisen-237',
 			title: 'Jujutsu Kaisen (TV)',
 			episode: 24,
 			hits: [hit]

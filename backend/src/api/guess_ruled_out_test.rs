@@ -30,10 +30,10 @@ async fn post(body: serde_json::Value) -> (StatusCode, String) {
 #[tokio::test]
 async fn the_route_answers_the_ids_the_row_rules_out() {
     // hianime's "Jujutsu Kaisen (TV)" at its last episode, against the
-    // two hits Kitsu's search returned for it, written as the renderer
-    // holds them: the special is out, the music video is never a
-    // series either.
+    // special Kitsu's search returned for it and the series, written as
+    // the renderer holds them: the special is out.
     let (status, body) = post(serde_json::json!({
+        "key": "hianime:jujutsu-kaisen-237",
         "title": "Jujutsu Kaisen (TV)",
         "episode": 24,
         "hits": [
@@ -69,6 +69,7 @@ async fn a_hit_missing_its_optional_fields_is_read_as_carrying_none() {
     // kept carries no `titles` or `abbreviated_titles`; it is judged on
     // what it carries rather than refused as malformed.
     let (status, body) = post(serde_json::json!({
+        "key": "hianime:black-clover-949",
         "title": "Black Clover",
         "episode": 100,
         "hits": [
@@ -80,4 +81,43 @@ async fn a_hit_missing_its_optional_fields_is_read_as_carrying_none() {
     assert_eq!(status, StatusCode::OK, "{body}");
     let ids: Vec<String> = serde_json::from_str(&body).expect("ids");
     assert_eq!(ids, vec!["12625"]);
+}
+
+#[tokio::test]
+async fn a_row_a_retired_provider_wrote_is_never_past_a_hit() {
+    // anidb.app listed a later cour on the franchise's numbering, and a
+    // row it wrote with no numbering stamp still speaks that number:
+    // episode 55 of a cour Kitsu counts 10 episodes. Only a row a
+    // provider the app walks wrote, which numbers each listing from its
+    // first episode, says how far into the hit it got.
+    let later_cour = serde_json::json!({
+        "id": "7",
+        "canonical_title": "Show Part 2",
+        "slug": "show-part-2",
+        "episode_count": 10,
+        "subtype": "TV"
+    });
+    let (status, body) = post(serde_json::json!({
+        "key": "show-part-2-3687",
+        "title": "Show Part 2",
+        "episode": 55,
+        "hits": [later_cour.clone()]
+    }))
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let ids: Vec<String> = serde_json::from_str(&body).expect("ids");
+    assert!(
+        ids.is_empty(),
+        "a bare key's episode rules nothing out: {ids:?}"
+    );
+    // The same row from a walked provider is past it.
+    let (_, body) = post(serde_json::json!({
+        "key": "hianime:show-part-2-1",
+        "title": "Show Part 2",
+        "episode": 55,
+        "hits": [later_cour]
+    }))
+    .await;
+    let ids: Vec<String> = serde_json::from_str(&body).expect("ids");
+    assert_eq!(ids, vec!["7"]);
 }
