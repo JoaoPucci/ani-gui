@@ -44,7 +44,7 @@ describe('applyLocale', () => {
 	test('passes the new locale through to persist alongside the rest of the config', async () => {
 		const persist = vi.fn(async () => {});
 		const setRuntimeLocale = vi.fn();
-		const base = { ...cfg(), mode: 'dub' as const, quality: 'worst' };
+		const base = { ...cfg(), mode: 'dub' as const, download_quality: '720' };
 		await applyLocale('ru', base, { persist, setRuntimeLocale });
 		expect(persist).toHaveBeenCalledWith({ ...base, locale: 'ru' });
 	});
