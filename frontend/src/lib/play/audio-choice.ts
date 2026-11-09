@@ -67,6 +67,19 @@ export function rememberAudio(
 	}
 }
 
+/** Pick `mode` for the show, and answer what is in force after: the
+ *  pick once the storage took it, else what was kept before. The
+ *  player reads the choice back from storage, so the show page follows
+ *  what is stored rather than a pick that was not kept. */
+export function pickAudio(
+	kitsuId: string,
+	mode: AudioMode,
+	storage: AudioChoiceStorage | null = defaultStorage()
+): AudioMode | undefined {
+	rememberAudio(kitsuId, mode, storage);
+	return storedAudio(kitsuId, storage);
+}
+
 /** The audio a show plays in: its own choice, else `fallback`, the
  *  Settings default. */
 export function audioFor(

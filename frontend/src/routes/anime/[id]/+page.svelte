@@ -115,7 +115,7 @@
 		versionsInMode
 	} from '$lib/versions/version-choice';
 	import { storedCaption } from '$lib/play/caption-choice';
-	import { rememberAudio, storedAudio } from '$lib/play/audio-choice';
+	import { pickAudio, storedAudio } from '$lib/play/audio-choice';
 	import { handleRadioKey } from '$lib/versions/radio-keys';
 	import { versionLabel } from '$lib/versions/version-label';
 	import { followPlayed } from '$lib/play/played-episode';
@@ -1445,8 +1445,9 @@
 	// ($lib/play/audio-choice); the settings are not written.
 	function setMode(mode: 'sub' | 'dub') {
 		if (!id) return;
-		rememberAudio(id, mode);
-		chosenAudio = mode;
+		// What the storage kept: the player reads the show's audio back
+		// from it, so a pick the storage refused changes nothing here.
+		chosenAudio = pickAudio(id, mode);
 	}
 
 	function notify(msg: string) {
