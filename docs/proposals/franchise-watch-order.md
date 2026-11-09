@@ -831,8 +831,8 @@ smaller.
 
 **How it looks.** `/anime/<id>/franchise`, reached from the strip's
 trailing link. (Search results were also proposed as a way in; that
-was dropped, and a study of making franchises findable is in the
-deferred-work log, "Decisions recorded (after the build)".) A
+was dropped, see "Decisions recorded (after the build)" below, and a
+study of making franchises findable is in the deferred-work log.) A
 header named after the run's first entry, with your position: "05 ·
 *Golden Wind* · EP 12" (with a total only for a run with no fork, join
 or cycle) and a Resume button; its hero and accent are set in the
@@ -1586,6 +1586,17 @@ The third round revises the strip's footer only.
   Run* is already a tile) the stack sits alone in the middle, at its
   own width.
 
+### Decisions recorded (third review round)
+
+1. **The stack's highlight: surface.** It is the only one of the
+   three that marks the whole link as one target, and it is the hover
+   the strip's own tiles already use.
+2. **The footer: centred.** It holds at every width; the centre-line
+   arrangement fits side by side only from about a 1210 px window.
+3. **The watching card's border: none at rest** in the centred
+   footer, so the card and the stack pair as two bare items that
+   take the same plate on hover and focus.
+
 ### Decisions recorded: the Up next card's timing
 
 The card first appeared from the start of the ending credits that the
@@ -1602,17 +1613,6 @@ the length it declared, the playhead can stop just short of it and the
 video never reports its end, so the card would never come. On a stream
 that ends normally it shows the card up to a second early.
 
-### Decisions recorded (third review round)
-
-1. **The stack's highlight: surface.** It is the only one of the
-   three that marks the whole link as one target, and it is the hover
-   the strip's own tiles already use.
-2. **The footer: centred.** It holds at every width; the centre-line
-   arrangement fits side by side only from about a 1210 px window.
-3. **The watching card's border: none at rest** in the centred
-   footer, so the card and the stack pair as two bare items that
-   take the same plate on hover and focus.
-
 ### Decisions recorded (after the build)
 
 1. **The fork's columns carry no label.** The franchise page's
@@ -1620,7 +1620,7 @@ that ends normally it shows the card up to a second early.
    heading; the "Way n of N" label each column carried is gone.
 2. **No entry from search results.** The franchise page is reached
    from the strip. How to make franchises findable gracefully (a
-   franchise search, or something like it) is a study of its own, in
+   franchise search, or a similar mechanic) is a study of its own, in
    the deferred-work log.
 
 ## 6. Recommendation and plan for 0.19.0

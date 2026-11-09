@@ -474,13 +474,10 @@ starting it, and delete it when you find it done.
 - **A franchise is found only from one of its shows.** The franchise
   page (`/anime/<id>/franchise`) is reached from the watch-order strip
   on a show page, so a viewer has to find one show of the franchise
-  first. Linking it from search results was proposed and dropped by
-  the maintainer in favour of a study; telling which results belong to
-  a franchise would take a franchise read per result. What is wanted
-  first is a study of how to make franchises findable
-  gracefully, such as a franchise search or a cheaper signal that a
-  title belongs to one, compared with how other catalogues let people
-  browse a series.
+  first. The proposal also named search results as a way in; the
+  maintainer dropped it in favour of a study of how to make franchises
+  findable gracefully, such as a franchise search or a similar
+  mechanic.
 - **Localised content fetch** — synopsis and episode titles.
 - **Search has no sort *direction* control.** Sorting by relevance,
   year and rating ships, as do subtype filter chips; only
