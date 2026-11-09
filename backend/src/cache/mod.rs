@@ -1,8 +1,9 @@
 //! SQLite metadata cache + on-disk image cache.
 //!
-//! Schema is embedded via `refinery` migrations; the connection pool uses
-//! `r2d2_sqlite`. Cache reads are sync — wrap calls in
-//! `tokio::task::spawn_blocking` from async contexts.
+//! Schema is embedded via `refinery` migrations; the connection pool is
+//! r2d2 over the cache's own manager (`sqlite_manager`). Cache reads
+//! are sync — wrap calls in `tokio::task::spawn_blocking` from async
+//! contexts.
 //!
 //! Tables (defined in `schema.rs` once M2 lands):
 //!
@@ -20,6 +21,7 @@ mod played_marks;
 pub mod put_observer;
 pub mod reclaim;
 pub mod schema;
+pub mod sqlite_manager;
 pub mod ttl;
 
 pub use db::{

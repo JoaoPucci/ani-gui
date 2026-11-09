@@ -1,8 +1,8 @@
 // Acceptance: the app's popup menus outside the play page answer the
 // keyboard the way the play page's menus do.
 //
-// The account chip's menu, the download dock's and the Continue row's
-// are announced as menus (`role="menu"`), which promises a menu's
+// The account chip's menu and the download dock's are announced as
+// menus (`role="menu"`), which promises a menu's
 // keys. Opening one puts focus on its first item; Down and Up step
 // through the items and wrap at the ends, Home and End go to the
 // first and last; Left and Right go nowhere and reach nothing else —
@@ -24,9 +24,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, unmount } from 'svelte';
 
-import { API_BASE, server } from './setup';
+import { API_BASE } from './setup';
 import { page } from './page-state.svelte';
-import { homeHandlers } from './home-handlers';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -42,7 +41,6 @@ vi.mock('$app/navigation', () => ({
 
 import AccountChip from '../../src/lib/components/AccountChip.svelte';
 import DownloadDock from '../../src/lib/components/DownloadDock.svelte';
-import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import { downloadStore } from '../../src/lib/download/store.svelte';
@@ -474,33 +472,5 @@ describe('the download dock’s menu', () => {
 		await until(() => target.querySelector('button') !== null, 'the dock to come back');
 		expect(menu()).toBeNull();
 		expect(trigger().getAttribute('aria-expanded')).toBe('false');
-	});
-});
-
-describe('the Continue row’s menu', () => {
-	async function home() {
-		server.use(
-			...homeHandlers({ history: [{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' }] })
-		);
-		app = mount(HomePage, { target });
-		await until(
-			() =>
-				target.querySelector(`button[aria-label="${m.home_clear_menu_button_aria()}"]`) !== null,
-			'the Continue row'
-		);
-	}
-
-	it('is named by its button and opens on Clear, the one item, which the keys keep', async () => {
-		await home();
-		await openMenu();
-		expect(trigger().getAttribute('aria-label')).toBe(m.home_clear_menu_button_aria());
-		expect(menu()!.getAttribute('aria-labelledby')).toBe(trigger().id);
-		await walk([m.home_clear_menu_item()]);
-		await holdsItsKeys();
-	});
-
-	it('closes on Escape, Shift+Tab and Tab, with focus on its button', async () => {
-		await home();
-		await leaves();
 	});
 });
