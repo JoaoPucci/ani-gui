@@ -72,9 +72,7 @@ export async function executeKitsuGroupDelete(
 	const groupIds = kitsuGroupSiblingIds(clickedId, deps.history, deps.matches);
 	// Read before the deletes: removing a row takes its stamped mapping.
 	const shows = await removedShows(groupIds, deps);
-	for (const id of groupIds) {
-		await deps.historyDelete(id);
-	}
+	await deleteInTurn(groupIds, deps);
 	// What is kept from here on is the user's since the removal.
 	const snapshot = deps.snapshotPositions?.();
 	const since: [] | [number] = snapshot === undefined ? [] : [snapshot];
@@ -89,6 +87,27 @@ export async function executeKitsuGroupDelete(
 		() => {}
 	);
 	return { removedIds: groupIds, remainingHistory, forgetting };
+}
+
+/** Deletes `ids` one after another. When one fails, the rows deleted
+ *  before it are gone from the backend, so they are taken off the strip
+ *  before the failure goes on, and the strip holds what the backend
+ *  does. No positions are forgotten then, as for any failed delete:
+ *  the row that failed is of the same show, so the show still has a
+ *  row. */
+async function deleteInTurn(ids: string[], deps: ConfirmDeleteDeps): Promise<void> {
+	const landed: string[] = [];
+	try {
+		for (const id of ids) {
+			await deps.historyDelete(id);
+			landed.push(id);
+		}
+	} catch (error) {
+		if (landed.length > 0) {
+			deps.applyRemaining?.(remainingOf(deps.currentHistory?.() ?? deps.history, landed), landed);
+		}
+		throw error;
+	}
 }
 
 /** Forgets the positions of each removed row's show that no remaining

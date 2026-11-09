@@ -18,26 +18,60 @@ export interface ConfirmRunDeps {
 export interface ConfirmRun {
 	/** Whether an action is out. */
 	readonly busy: boolean;
-	/** Runs `action` for a press of the dialog's confirm button. */
+	/** Runs `action` for a press of the dialog's confirm button. A press
+	 *  while an action is out starts nothing and settles with it. A
+	 *  failure is handed to `failed` before the dialog closes, so the
+	 *  message is up as focus goes back to the control that opened the
+	 *  dialog; it never escapes, and the returned promise always
+	 *  resolves. */
 	confirm(action: () => Promise<unknown>, failed: (error: unknown) => void): Promise<void>;
-	/** A press of Cancel, Esc or the backdrop. */
+	/** A press of Cancel, Esc or the backdrop. Nothing while an action
+	 *  is out: closing then would hide how it ends. */
 	cancel(): void;
 }
 
 export function createConfirmRun(deps: ConfirmRunDeps): ConfirmRun {
+	let inFlight: Promise<void> | null = null;
 	return {
-		busy: false,
-		async confirm(action) {
+		get busy() {
+			return inFlight !== null;
+		},
+		confirm(action, failed) {
+			if (inFlight) return inFlight;
 			deps.setBusy(true);
-			try {
-				await action();
-			} finally {
-				deps.setBusy(false);
-				deps.close();
-			}
+			inFlight = started(action)
+				.then(
+					() => {},
+					(error) => report(failed, error)
+				)
+				.finally(() => {
+					inFlight = null;
+					deps.setBusy(false);
+					deps.close();
+				});
+			return inFlight;
 		},
 		cancel() {
+			if (inFlight) return;
 			deps.close();
 		}
 	};
+}
+
+/** The action, called now; one that throws as it is called is a
+ *  rejected one, so the run settles after `confirm` has noted it. */
+function started(action: () => Promise<unknown>): Promise<unknown> {
+	try {
+		return Promise.resolve(action());
+	} catch (error) {
+		return Promise.reject(error);
+	}
+}
+
+function report(failed: (error: unknown) => void, error: unknown): void {
+	try {
+		failed(error);
+	} catch {
+		// A report that breaks must not keep the dialog open.
+	}
 }

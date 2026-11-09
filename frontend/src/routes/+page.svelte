@@ -124,6 +124,7 @@
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { createConfirmRun } from '$lib/history/confirm-run';
+	import { toastStore } from '$lib/toasts/store.svelte';
 	import { nextHeroIndex, startHeroRotation } from '$lib/hero-rotation';
 	import {
 		failedHeroImages,
@@ -375,56 +376,68 @@
 	function openDeleteFor(entry: HistoryEntry, displayTitle: string) {
 		deleteCandidate = { entry, displayTitle };
 	}
+	// Each dialog's run ($lib/history/confirm-run): one request per
+	// confirm however often it is pressed, the dialog held open while
+	// it is out, and a failure said in an error toast, the way the app
+	// reports other failed actions, with the cards left as they are.
+	const deleteRun = createConfirmRun({
+		setBusy: (busy) => (deleteBusy = busy),
+		close: () => (deleteCandidate = null)
+	});
 	function cancelDelete() {
-		deleteCandidate = null;
+		deleteRun.cancel();
 	}
-	async function confirmDelete() {
-		if (!deleteCandidate) return;
-		deleteBusy = true;
-		try {
-			// Decision + transition logic lives in the helper per
-			// AGENTS.md §2: group expansion +
-			// serialized backend deletes + filtered-history compute,
-			// all unit-covered in delete-controller.test.ts. The
-			// component stays as modal/busy glue.
-			// Snapshot the visible order BEFORE the IPC so we can
-			// hand the gate the exact set of ids this delete
-			// touches: the removed rows themselves + every survivor
-			// whose position shifts left to fill the gap. A
-			// concurrent dedupe firing during the gate's window has
-			// different ids and short-circuits.
-			const snapshot = dedupedHistory.map((e) => e.id);
-			await executeKitsuGroupDelete(deleteCandidate.entry.id, {
-				history: history ?? [],
-				currentHistory: () => history ?? [],
-				// Open the gate IMMEDIATELY before the optimistic mutation
-				// so the 350ms auto-close window starts when Svelte's
-				// out-transition factory is about to fire — not when the
-				// click was first received. See $lib/history/animation-gate
-				// for the per-id scope + Svelte-batched-reset story.
-				applyRemaining: (rows, removedIds) => {
-					deleteAnimationGate.open(removedIds, shiftedSurvivorIds(snapshot, removedIds));
-					history = rows;
-				},
-				matches: historyMatches,
-				historyDelete,
-				snapshotPositions,
-				forgetPositions: (kitsuId, since) => clearShowPositions(kitsuId, undefined, since),
-				forgetRowPositions: (rows, keep, since) => clearRowPositions(rows, undefined, keep, since),
-				kitsuIdOf: allmangaKitsuMapGet,
-				// Read the way the Continue resolver reads a recorded id.
-				recordedGone: (id) =>
-					kitsuAnimeDetail(id).then(
-						() => false,
-						(e) => (kitsuEntryGone(e) ? true : Promise.reject(e))
-					)
-			});
-		} finally {
-			deleteBusy = false;
-			deleteCandidate = null;
-		}
+	function confirmDelete() {
+		const candidate = deleteCandidate;
+		if (!candidate) return;
+		return deleteRun.confirm(
+			() => removeCard(candidate.entry),
+			() =>
+				toastStore.push({
+					kind: 'error',
+					message: m.home_delete_failed({ title: candidate.displayTitle })
+				})
+		);
 	}
-	// The clear's run around the dialog ($lib/history/confirm-run).
+	async function removeCard(entry: HistoryEntry) {
+		// Decision + transition logic lives in the helper per
+		// AGENTS.md §2: group expansion +
+		// serialized backend deletes + filtered-history compute,
+		// all unit-covered in delete-controller.test.ts. The
+		// component stays as modal/busy glue.
+		// Snapshot the visible order BEFORE the IPC so we can
+		// hand the gate the exact set of ids this delete
+		// touches: the removed rows themselves + every survivor
+		// whose position shifts left to fill the gap. A
+		// concurrent dedupe firing during the gate's window has
+		// different ids and short-circuits.
+		const snapshot = dedupedHistory.map((e) => e.id);
+		await executeKitsuGroupDelete(entry.id, {
+			history: history ?? [],
+			currentHistory: () => history ?? [],
+			// Open the gate IMMEDIATELY before the optimistic mutation
+			// so the 350ms auto-close window starts when Svelte's
+			// out-transition factory is about to fire — not when the
+			// click was first received. See $lib/history/animation-gate
+			// for the per-id scope + Svelte-batched-reset story.
+			applyRemaining: (rows, removedIds) => {
+				deleteAnimationGate.open(removedIds, shiftedSurvivorIds(snapshot, removedIds));
+				history = rows;
+			},
+			matches: historyMatches,
+			historyDelete,
+			snapshotPositions,
+			forgetPositions: (kitsuId, since) => clearShowPositions(kitsuId, undefined, since),
+			forgetRowPositions: (rows, keep, since) => clearRowPositions(rows, undefined, keep, since),
+			kitsuIdOf: allmangaKitsuMapGet,
+			// Read the way the Continue resolver reads a recorded id.
+			recordedGone: (id) =>
+				kitsuAnimeDetail(id).then(
+					() => false,
+					(e) => (kitsuEntryGone(e) ? true : Promise.reject(e))
+				)
+		});
+	}
 	const clearRun = createConfirmRun({
 		setBusy: (busy) => (clearBusy = busy),
 		close: () => (clearConfirmOpen = false)
@@ -441,7 +454,7 @@
 				await historyClear();
 				history = [];
 			},
-			() => {}
+			() => toastStore.push({ kind: 'error', message: m.home_clear_history_failed() })
 		);
 	}
 	let trendingError = $state<string | null>(null);
