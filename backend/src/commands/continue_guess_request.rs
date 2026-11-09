@@ -57,7 +57,9 @@ impl From<SentHit> for KitsuAnimeRef {
 /// reached, and the hits its search or slug lookup returned.
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct RuledOutRequest {
-    /// The row's show key (`hianime:jujutsu-kaisen-237`).
+    /// The row's show key (`hianime:jujutsu-kaisen-237`). A request
+    /// without one is read as a bare row's: its episode rules nothing
+    /// out. The renderer always sends it.
     #[serde(default)]
     pub key: String,
     /// The row's search title.
