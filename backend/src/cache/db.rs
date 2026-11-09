@@ -1,6 +1,6 @@
 //! Connection pool + typed repos for the SQLite metadata cache.
 //!
-//! The pool wraps `r2d2_sqlite::SqliteConnectionManager`. On open, all
+//! The pool wraps the cache's own [`SqliteConnectionManager`]. On open, all
 //! pending refinery migrations are applied (idempotent). Repos are free
 //! functions that take `&SqlitePool` so they don't have to thread a
 //! connection through the call site.
@@ -28,11 +28,11 @@ use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension};
 use scheduled_thread_pool::ScheduledThreadPool;
 
 use crate::cache::schema::run_migrations;
+use crate::cache::sqlite_manager::SqliteConnectionManager;
 use crate::error::{AniError, Result};
 
 /// Convenience type alias for the pool.
