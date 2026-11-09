@@ -41,7 +41,7 @@
 	"watch_later_empty_hint": "Adicionou um título no seu rastreador? Recarregue para trazê-lo.",
 	"watch_later_failed": "Não foi possível carregar sua lista",
 	"watch_later_failed_hint": "Não conseguimos carregar sua lista de Planejados. {reason}",
-	"disconnect_error_token_clear": "Couldn't clear the local token. Try again or check ani-gui logs.",
+	"disconnect_error_token_clear": "Não foi possível remover seu login deste computador. Tente de novo.",
 	"chip_aria_label": "Menu da conta — conectado como {username}",
 	"chip_warning_expired": "Sessão expirada",
 	"chip_warning_error": "Falha na última sincronização",
