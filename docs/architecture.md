@@ -518,7 +518,7 @@ User-editable settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Setti
 
 | Field | Default | Effect |
 |---|---|---|
-| `mode` | `"sub"` | Audio mode for new play / download calls — `"sub"` or `"dub"`. |
+| `mode` | `"sub"` | The default audio — `"sub"` or `"dub"` — for shows never chosen on. Picking Sub or Dub on a show's page remembers it for that show, in the renderer's local storage (`ani-gui.audio-choices`, the 500 most recent shows), and every play, warm, availability question, download and hand-off for the show asks for it; the setting is not written. Continue Watching probes and plays each card's show in its own audio. The Home rails and the top bar's live search filter by this default. |
 | `download_quality` | `"best"` | The quality downloads take — `"best"`, `"1080"`, `"720"`, `"480"`, `"worst"`. Downloads only: the built-in player starts each visit on Auto, and external players and Syncplay get the master. It replaced `quality`, which a config written by 0.17.0 or earlier still carries; that key is not read, so those configs come up on Best, and the next save drops it. |
 | `locale` | `"en"` | UI locale (the four MVP locales — see [`i18n.md`](./i18n.md)). |
 | `external_player` | `"mpv"` | Command launched by "Open in external player". |
