@@ -19,6 +19,7 @@
 		type ExternalPlayerKind
 	} from '$lib/api';
 	import { m } from '$lib/paraglide/messages';
+	import { failed, landed, type ErrorBlock } from '$lib/settings/error-block';
 	import { describeError } from '$lib/play/error-copy';
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
@@ -27,10 +28,9 @@
 	let cfg = $state<Config | null>(null);
 	let info = $state<AppInfo | null>(null);
 	let loadError = $state<string | null>(null);
-	let saveError = $state<string | null>(null);
-	// What the error block is about: a save, or one of the clears, each
-	// headed by its own failure.
-	let errorAction = $state<'save' | 'clear_history' | 'clear_images'>('save');
+	// The error block: the last failure of a save or a clear, until its
+	// own action lands ($lib/settings/error-block).
+	let errorBlock = $state<ErrorBlock>(null);
 	const errorHeadline = {
 		save: () => m.settings_error_save_headline(),
 		clear_history: () => m.settings_clear_history_failed(),
@@ -91,11 +91,9 @@
 		try {
 			await settingsPut(next);
 			savedAt = Date.now();
-			// Only a save's own failure: a clear's stays until a clear lands.
-			if (errorAction === 'save') saveError = null;
+			errorBlock = landed(errorBlock, 'save');
 		} catch (e) {
-			errorAction = 'save';
-			saveError = describeSettingsFailure(e);
+			errorBlock = failed(errorBlock, 'save', describeSettingsFailure(e));
 		}
 	}
 	function persistDebounced(next: Config) {
@@ -238,12 +236,11 @@
 		clearing = true;
 		try {
 			await historyClear();
-			if (errorAction === 'clear_history') saveError = null;
+			errorBlock = landed(errorBlock, 'clear_history');
 			cleared = true;
 			setTimeout(() => (cleared = false), 2400);
 		} catch (e) {
-			errorAction = 'clear_history';
-			saveError = describeError(e);
+			errorBlock = failed(errorBlock, 'clear_history', describeError(e));
 		} finally {
 			clearing = false;
 		}
@@ -253,12 +250,11 @@
 		clearingImages = true;
 		try {
 			await imageCacheClear();
-			if (errorAction === 'clear_images') saveError = null;
+			errorBlock = landed(errorBlock, 'clear_images');
 			imagesCleared = true;
 			setTimeout(() => (imagesCleared = false), 2400);
 		} catch (e) {
-			errorAction = 'clear_images';
-			saveError = describeError(e);
+			errorBlock = failed(errorBlock, 'clear_images', describeError(e));
 		} finally {
 			clearingImages = false;
 		}
@@ -726,10 +722,10 @@
 			</div>
 		</section>
 
-		{#if saveError}
+		{#if errorBlock}
 			<div class="state state-error" role="alert">
-				<p class="state-headline">{errorHeadline[errorAction]()}</p>
-				<p class="state-detail">{saveError}</p>
+				<p class="state-headline">{errorHeadline[errorBlock.action]()}</p>
+				<p class="state-detail">{errorBlock.detail}</p>
 			</div>
 		{/if}
 
