@@ -93,7 +93,7 @@
 	import { followPlayed } from '$lib/play/played-episode';
 	import { decideAutoPlayNext } from '$lib/play/auto-play-next';
 	import { pickActiveSkip } from '$lib/play/aniskip-active';
-	import { createAniskipFetchTrigger } from '$lib/play/aniskip-fetch-trigger';
+	import { createAniskipFetchTrigger, lengthReady } from '$lib/play/aniskip-fetch-trigger';
 	import { shouldShowSkipButton } from '$lib/play/skip-button-window';
 	import { decidePlayerKeyAction } from '$lib/play/keyboard';
 	import { createVolumeReveal } from '$lib/play/volume-reveal';
@@ -287,6 +287,10 @@
 	// The URL the element's stream was attached from; hls.js gives the
 	// element a blob: URL of its own, so the element cannot say.
 	let attachedUrl: string | null = null;
+	// The session whose stream `duration` describes, set as one
+	// attaches: across a switch the URL names the new session before
+	// its stream is on the element.
+	let lengthFor = $state<string | null>(null);
 
 	// Settings-driven: whether to use our custom controls bar in
 	// place of Chromium's native one. Custom gives the timeline
@@ -370,8 +374,9 @@
 	}
 
 	// aniskip skip-times for the current (kitsu_id, episode). Fetched
-	// once `duration` becomes finite (we need the value to disambig
-	// movie-cut vs TV-broadcast runtimes against aniskip's catalog).
+	// once the stream on screen has a usable length of its own (we need
+	// the value to disambig movie-cut vs TV-broadcast runtimes against
+	// aniskip's catalog).
 	// `activeSkip` is the interval the playhead is currently inside;
 	// the Skip OP / Skip Outro overlay binds to it.
 	let skipIntervals = $state<SkipInterval[]>([]);
@@ -415,15 +420,20 @@
 	// value is read once at fetch time via `untrack` so its sub-µs
 	// tick stream stays off the effect's dependency set.
 	const aniskipFetchKey = $derived(id && episodeNum > 0 ? `${id}|${episodeNum}` : null);
-	const aniskipDurationReady = $derived(Number.isFinite(duration) && duration > 0);
+	// Across a switch the length still holds the last stream's until the
+	// new one attaches and reports its own: aniskip is asked with the
+	// length of the stream on screen ($lib/play/aniskip-fetch-trigger).
+	const aniskipDurationReady = $derived(lengthReady(lengthFor, sessionId, duration));
 	const aniskipTrigger = createAniskipFetchTrigger();
 	$effect(() => {
 		// Subscribing to the fetch-key derived re-runs the effect on
 		// episode boundaries; subscribing to the readiness boolean
-		// re-runs it the moment duration first becomes usable, then
-		// stops propagating since `true === true`. The captured `key`
-		// is reused below to detect an episode change between issuing
-		// and resolving the request.
+		// re-runs it the moment the stream on screen has a usable
+		// length, then stops propagating since `true === true`. The
+		// captured `key` is reused below to detect an episode change
+		// between issuing and resolving the request. A clear comes as
+		// soon as the episode changes, while the new one's times wait
+		// for its stream's length: the last episode's are not this one's.
 		const key = aniskipFetchKey;
 		const decision = aniskipTrigger.step(id, episodeNum, aniskipDurationReady);
 		if (decision.kind === 'clear') {
@@ -432,18 +442,22 @@
 		}
 		if (decision.kind !== 'fetch') return;
 		const len = untrack(() => duration);
+		const ask = aniskipTrigger.asked();
 		// Clear stale data before the fetch so a previous episode's
 		// intervals can't briefly drive `activeSkip` against the new
 		// episode's currentTime.
 		skipIntervals = [];
+		// An answer counts only for the episode on screen, and only while
+		// no later request or clear has happened: the same episode asked
+		// again, after a switch away and back, with its stream's length.
 		void aniskipGet(decision.showId, decision.episode, len)
 			.then((v) => {
-				if (aniskipFetchKey === key) {
+				if (aniskipFetchKey === key && aniskipTrigger.answers(ask)) {
 					skipIntervals = v;
 				}
 			})
 			.catch(() => {
-				if (aniskipFetchKey === key) {
+				if (aniskipFetchKey === key && aniskipTrigger.answers(ask)) {
 					skipIntervals = [];
 				}
 			});
@@ -1677,6 +1691,10 @@
 		// fresh one.
 		hls = null;
 		attachedUrl = null;
+		// The last stream's length is not the next one's, and the
+		// element does not report the change: unloading it fires no
+		// `durationchange`.
+		duration = 0;
 		if (videoEl) {
 			videoEl.removeAttribute('src');
 			videoEl.load();
@@ -1819,6 +1837,7 @@
 		sourceScope.flush();
 		teardown();
 		attachedUrl = mediaUrl;
+		lengthFor = untrack(() => sessionId);
 		// Source-scoped listeners — the resume seek, the progress
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
