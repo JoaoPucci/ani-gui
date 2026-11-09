@@ -19,8 +19,11 @@ export interface RailLoads {
 	 *  check that load owed. A check whose loads all fail stays owed
 	 *  until the next load lands. Once per check asked for. */
 	landed(ticket: LoadTicket): boolean;
-	/** `ticket`'s load finished, landed or failed or superseded. Every
-	 *  load calls it exactly once, or {@link settled} never resolves. */
+	/** `ticket`'s load finished, landed or failed or superseded. A
+	 *  second call changes nothing. Only the latest load's call settles
+	 *  a wait: until it calls, or a newer load starts and calls,
+	 *  {@link settled} keeps waiting. A superseded load's call never
+	 *  matters. */
 	finish(ticket: LoadTicket): void;
 	/** Resolves once the latest load has finished, waiting on through
 	 *  any newer load that starts meanwhile: a refresh whose own reload
