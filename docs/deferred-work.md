@@ -608,8 +608,8 @@ starting it, and delete it when you find it done.
 - **Arrow keys in the app's other menus.** The play page's three
   menus (the ⋯ menu, the in-player menu and the captions menu) move
   focus between their items with the arrow keys, Home and End. The
-  other `role="menu"` popovers do not: the account chip's, the
-  download dock's, and the Continue card's on Home. A screen reader
+  other `role="menu"` popovers do not: the account chip's and the
+  download dock's. A screen reader
   announces each one as a menu, which promises those keys. The
   download dock can be open over the play page, where the arrows reach
   the player's volume and seek keys instead. `menuKeyStep`
