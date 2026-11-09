@@ -247,3 +247,33 @@ fn a_version_row_is_carried_under_its_version() {
         None
     );
 }
+
+#[test]
+fn a_row_that_cannot_be_read_is_left_and_the_cache_still_opens() {
+    // Carrying is an optimisation: a row SQLite holds in a shape the
+    // read refuses (a blob body) is skipped, the rows beside it are
+    // carried, and opening the cache does not fail over it.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    {
+        let mut conn = Connection::open(&path).unwrap();
+        crate::cache::schema::run_migrations(&mut conn).unwrap();
+        conn.execute(
+            "INSERT INTO meta_cache(key, body, fetched_at, ttl_seconds) VALUES (?1, X'00ff', 1000, ?2)",
+            rusqlite::params![old_key("Odd", "sub", "best", "1", plain(), None), TTL],
+        )
+        .unwrap();
+        put(
+            &conn,
+            &old_key("Show", "sub", "best", "5", plain(), None),
+            "master",
+            1_000,
+        );
+    }
+    let pool = crate::cache::open_pool(&path).expect("the cache opens");
+    let conn = pool.get().unwrap();
+    assert_eq!(
+        row(&conn, &new_key("Show", "sub", "5", plain(), None)),
+        Some(("master".to_string(), 1_000, TTL))
+    );
+}
