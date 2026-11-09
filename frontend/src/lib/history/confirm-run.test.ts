@@ -108,6 +108,43 @@ describe('createConfirmRun', () => {
 		expect(failed).toHaveBeenCalledTimes(1);
 	});
 
+	test('opens the dialog when nothing is out', () => {
+		const { run } = harness();
+		const show = vi.fn();
+		run.open(show);
+		expect(show).toHaveBeenCalledTimes(1);
+	});
+
+	test('opens nothing while an action is out, so the dialog cannot change under it', async () => {
+		const { run } = harness();
+		const h = held();
+		const done = run.confirm(() => h.promise, vi.fn());
+		const show = vi.fn();
+		run.open(show);
+		expect(show).not.toHaveBeenCalled();
+		h.resolve();
+		await done;
+		run.open(show);
+		expect(show).toHaveBeenCalledTimes(1);
+	});
+
+	test('a report that throws is logged, not swallowed', async () => {
+		const { run } = harness();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const broke = new Error('report broke');
+		try {
+			await run.confirm(
+				() => Promise.reject(new Error('down')),
+				() => {
+					throw broke;
+				}
+			);
+			expect(logged).toHaveBeenCalledWith(expect.anything(), broke);
+		} finally {
+			logged.mockRestore();
+		}
+	});
+
 	test('a report that throws still leaves the dialog closed and the run free', async () => {
 		const { log, run } = harness();
 		await run.confirm(

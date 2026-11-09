@@ -295,3 +295,66 @@ describe('Removing a Continue card on Home, when the remove fails', () => {
 		expect(errorToasts()).toEqual([]);
 	});
 });
+
+describe('Home’s history dialogs while a request is out', () => {
+	const OTHER = 'Trigun';
+	const chipFor = (title: string) =>
+		(Array.from(target.querySelectorAll('button')).find(
+			(b) => b.getAttribute('aria-label') === m.home_delete_card_aria_label({ title })
+		) as HTMLButtonElement | undefined) ?? null;
+	const dialogTitle = () => dialog()?.querySelector('h2')?.textContent ?? null;
+
+	it('keeps the dialog on the remove that is out: another chip or Clear history opens nothing', async () => {
+		let release: () => void = () => {};
+		const held = new Promise<void>((r) => (release = r));
+		server.use(
+			...homeHandlers(
+				{
+					history: [
+						{ ep_no: '3', id: 'allanime-1', title: TITLE },
+						{ ep_no: '3', id: 'allanime-2', title: OTHER }
+					]
+				},
+				[
+					http.post(`${API_BASE}/api/kitsu/search`, async ({ request }) => {
+						const { query } = (await request.json()) as { query: string };
+						return HttpResponse.json(
+							query === OTHER ? [kitsuRef('2', OTHER, 26)] : [kitsuRef('1', TITLE, 26)]
+						);
+					}),
+					http.delete(`${API_BASE}/api/history`, () => {
+						clears += 1;
+						return done();
+					}),
+					http.delete(`${API_BASE}/api/history/:id`, async ({ params }) => {
+						deletes.push(String(params.id));
+						await held;
+						return refused();
+					})
+				]
+			)
+		);
+		app = mount(HomePage, { target });
+		await until(() => chipFor(TITLE) !== null && chipFor(OTHER) !== null, 'both cards');
+
+		chipFor(TITLE)!.click();
+		await until(() => dialog() !== null, 'the confirm dialog');
+		const asked = dialogTitle();
+		dialogButton(m.home_delete_confirm_button())!.click();
+		await until(() => deletes.length === 1, 'the remove to go out');
+
+		// The backdrop stops a pointer, not the keyboard: a chip or the
+		// row's action can still be pressed while the remove is out.
+		chipFor(OTHER)!.click();
+		clearAction()!.click();
+		await settle();
+		expect(target.querySelectorAll('[role="dialog"]').length).toBe(1);
+		expect(dialogTitle()).toBe(asked);
+
+		release();
+		await until(() => dialog() === null, 'the dialog to close');
+		expect(errorToasts()).toEqual([m.home_delete_failed({ title: TITLE })]);
+		expect(deletes).toEqual(['allanime-1']);
+		expect(clears).toBe(0);
+	});
+});
