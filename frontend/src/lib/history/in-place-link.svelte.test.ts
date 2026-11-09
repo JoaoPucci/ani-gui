@@ -377,6 +377,33 @@ describe('a pick that lands after the player moved to another card', () => {
 		expect(s.offer?.saved).toBeUndefined();
 		expect(s.slip).toBe('guess');
 	});
+
+	it('on Home, still reads the cards again', async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		const other: HistoryEntry = { ...CARD, id: 'hianime:other-1' };
+		const f = fake();
+		f.rows = [CARD, other];
+		f.deps.group = async (card) => [card];
+		const link = f.deps.link;
+		f.deps.link = async (card, rows, kitsuId) => {
+			await held;
+			return link(card, rows, kitsuId);
+		};
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		await s.start(2);
+		s.choose({ ref: RIGHT, current: false });
+		const confirming = s.confirm();
+		// Another card's offer checked meanwhile (a failed resume's).
+		await s.arrive(other.id, GUESS.id);
+		release();
+		await confirming;
+		expect(f.refreshed).toBe(1);
+		expect(f.notices.map((n) => n.message)).toEqual([
+			m.detail_link_done_toast({ title: RIGHT.canonical_title })
+		]);
+	});
 });
 
 describe('a "Yes" that fails', () => {

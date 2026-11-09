@@ -447,6 +447,32 @@ describe('LinkSession', () => {
 		expect(s.offer?.entry.id).toBe(other.id);
 		expect(f.pages).toEqual([]);
 		expect(f.notices[0].message).toBe(m.detail_link_done_toast({ title: 'Gintama' }));
+		// Still on the page, whose history the link changed: it reads it
+		// again.
+		expect(f.refreshed).toBe(1);
+	});
+
+	it('says a link that failed after a later arrival in a notice, not in the new picker', async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		const other: HistoryEntry = { ...CARD, id: 'hianime:other-1' };
+		const f = fake();
+		f.rows = [CARD, other];
+		f.deps.link = async () => {
+			await held;
+			throw new Error('down');
+		};
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start();
+		s.choose(s.candidates![0]);
+		const confirming = s.confirm();
+		await s.arrive(other.id, GUESS);
+		await s.start();
+		release();
+		expect(await confirming).toBe(false);
+		expect(s.error).toBeNull();
+		expect(f.notices).toEqual([{ kind: 'error', message: m.detail_link_failed() }]);
 	});
 
 	it('leaves the user where they went while the undo was out', async () => {
