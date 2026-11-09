@@ -715,9 +715,7 @@ fn a_cache_the_0_17_0_code_made_opens_unchanged() {
     assert_eq!(before[0].len(), 2, "the fixture carries both migrations");
     assert_eq!(before[4].len(), 1, "the fixture carries a meta_cache row");
     assert!(
-        crate::cache::families::live()
-            .iter()
-            .any(|f| f.holds(&before[4][0][0])),
+        crate::cache::families::declared(&before[4][0][0]),
         "the fixture's meta_cache key {} is in no family this build reads, so the launch \
          reclaim deletes it: regenerate tests/fixtures/cache/ with a key a family still holds \
          (its MANIFEST.json says how)",
