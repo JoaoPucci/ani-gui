@@ -10,6 +10,7 @@
 	"section_playback_hint": "значения по умолчанию для просмотра и загрузок",
 	"field_audio_key": "Аудио",
 	"field_audio_hint": "Sub — японская озвучка с субтитрами. Dub — дублированная озвучка.",
+	"field_audio_default_hint": "Для каждого аниме сохраняется выбор с его страницы.",
 	"audio_group_aria_label": "Режим аудио",
 	"field_external_player_key": "Внешний плеер",
 	"field_external_player_hint_prefix": "Команда, запускаемая из «Открыть во внешнем плеере». По умолчанию ",

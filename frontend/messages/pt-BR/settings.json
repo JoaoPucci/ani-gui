@@ -10,6 +10,7 @@
 	"section_playback_hint": "padrões para assistir e baixar",
 	"field_audio_key": "Áudio",
 	"field_audio_hint": "Sub usa áudio japonês com legendas. Dub usa áudio dublado.",
+	"field_audio_default_hint": "Cada anime guarda o que você escolher na página dele.",
 	"audio_group_aria_label": "Modo de áudio",
 	"field_external_player_key": "Player externo",
 	"field_external_player_hint_prefix": "Comando executado por \"Abrir em player externo\". Padrão: ",
