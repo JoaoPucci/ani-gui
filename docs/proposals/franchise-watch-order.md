@@ -748,12 +748,10 @@ first.**
 
 **How it looks.**
 
-- *In the player*: when the last episode of an entry reaches its
-  ending credits (the point the existing "Skip Ending" button already
-  knows from skip data, else the last minute and a half), the button
-  becomes an end card — the sequel's poster, its title, its year and
-  format,
-  under "Up next". The card waits for a click. It does not count down
+- *In the player*: when the last episode of an entry ends (the video's
+  ended state; "Decisions recorded: the Up next card's timing"), the
+  "Skip Ending" corner holds an end card — the sequel's poster, its
+  title, its year and format, under "Up next". The card waits for a click. It does not count down
   or play the sequel by itself, whatever the auto-play setting:
   auto-play stays within one entry, as it does today.
 - *On Continue Watching*: once the finale has been played through,
@@ -1069,13 +1067,15 @@ them introduces a new widget style.
   pill into a small card: the sequel's poster, an "Up next" eyebrow,
   the title clamped to three lines (the card is narrow, and the words
   that tell entries apart come last), and a format and year line. The
-  reason for this spot: it is where the eye already goes at the
-  credits, and it does not cover the picture's centre. Unlike the
-  pill, which shows for five seconds, the card stays through the
-  credits and after the video ends, until it is used or dismissed.
-  With no skip data, it appears in the last minute and a half
-  instead, where the app already counts an episode as finished. It
-  waits for the player's own last step: where the source lists an
+  reason for this spot: it is where the eye already goes at the end
+  of an episode, and it does not cover the picture's centre. It
+  appears once the video ends, so the credits and anything after
+  them (a closing scene, the next episode's preview) play uncovered,
+  with the "Skip Ending" pill behaving as on any episode. A stream
+  that stops within a second of its length without reporting its end
+  counts as ended. Unlike the pill, which shows for five seconds, the
+  card stays until it is used or dismissed; a seek back puts it away
+  and the end brings it back. It waits for the player's own last step: where the source lists an
   episode past Kitsu's count, the card shows on that one. Showing
   the sequel in the now-playing header's "next" button (below the
   player) on a finale was decided: no, the button stays within the
@@ -1299,7 +1299,7 @@ The rules below hold on every surface:
   aired: "Next, when it airs", its date or "Date not announced", and
   no link. None: no card. The mockup showed the card from the start
   of a last episode, so a screenshot could catch it; the player shows
-  it from the credits.
+  it once the video ends.
 - **Keyboard and screen readers.** The card never takes focus; Esc
   dismisses it while it has focus; the dismiss button is its own tab
   stop. The announcement is written into a polite live region after
@@ -1561,6 +1561,19 @@ The third round revises the strip's footer only.
   short. Without the card (on *Stone Ocean Part 3*, where *Steel Ball
   Run* is already a tile) the stack sits alone in the middle, at its
   own width.
+
+### Decisions recorded: the Up next card's timing
+
+The card first appeared from the start of the ending credits that the
+skip data knows, or in the last minute and a half without skip data.
+The maintainer found that too early: it covered the credits and any
+closing scene or next-episode preview after them. The card now
+appears once the video ends, and stays until it is used or
+dismissed. A seek back puts it away and the end brings it back,
+unless it was dismissed. Through the credits the "Skip Ending" pill
+behaves as on any episode. A stream that stops within a second of its
+length without reporting its end (hls.js can stall that short of the
+length it declared) counts as ended.
 
 ### Open design questions
 
