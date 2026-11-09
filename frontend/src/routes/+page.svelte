@@ -365,23 +365,26 @@
 
 	// Delete confirmation: holds the entry pending user confirm. Null
 	// means no modal open. The modal pops over the rail; cancelling
-	// just nulls this back out, confirming fires historyDelete + local
-	// state update (optimistic — no reload to keep the deletion crisp).
+	// nulls this back out (not while a remove is out), and confirming
+	// fires historyDelete, taking the rows off the strip once the
+	// deletes land, with no reload of the history.
 	let deleteCandidate = $state<{ entry: HistoryEntry; displayTitle: string } | null>(null);
 	let deleteBusy = $state(false);
 	// Clear-all confirmation modal open state.
 	let clearConfirmOpen = $state(false);
 	let clearBusy = $state(false);
 
-	// Each dialog's run ($lib/history/confirm-run): one request per
-	// confirm however often it is pressed, the dialog held open while
-	// it is out, and a failure said in an error toast, the way the app
-	// reports other failed actions, with the cards left as they are.
+	// Each dialog's run ($lib/history/confirm-run): it runs once however
+	// often confirm is pressed, the dialog is held open while it is out
+	// and neither dialog opens over it, and a failure is said in an
+	// error toast, the way the app reports other failed actions, with
+	// the cards left as the backend holds them.
 	const deleteRun = createConfirmRun({
 		setBusy: (busy) => (deleteBusy = busy),
 		close: () => (deleteCandidate = null)
 	});
 	function openDeleteFor(entry: HistoryEntry, displayTitle: string) {
+		if (clearRun.busy) return;
 		deleteRun.open(() => (deleteCandidate = { entry, displayTitle }));
 	}
 	function cancelDelete() {
@@ -404,7 +407,7 @@
 		// AGENTS.md §2: group expansion +
 		// serialized backend deletes + filtered-history compute,
 		// all unit-covered in delete-controller.test.ts. The
-		// component stays as modal/busy glue.
+		// dialog's run is $lib/history/confirm-run's.
 		// Snapshot the visible order BEFORE the IPC so we can
 		// hand the gate the exact set of ids this delete
 		// touches: the removed rows themselves + every survivor
@@ -443,6 +446,7 @@
 		close: () => (clearConfirmOpen = false)
 	});
 	function openClearConfirm() {
+		if (deleteRun.busy) return;
 		clearRun.open(() => (clearConfirmOpen = true));
 	}
 	function cancelClear() {
@@ -1327,23 +1331,17 @@
 							)
 			})}
 			{@const initials = (card.text?.show ?? target.displayTitle).slice(0, 2).toUpperCase()}
-			<!-- Both transitions are gated on `deleteBusy` so they only
-		     run for user-confirmed deletes. On home re-mount,
-		     `dedupeHistoryByKitsuId` collapses Kitsu-group siblings
-		     as their matches resolve, which would otherwise fire
-		     out:scale on every dedupe-removed row + animate:flip on
-		     every survivor — the resize-flicker users see when
-		     navigating Detail → back → Home. Duration 0 makes those
-		     transitions instant (no animation) during load; during
-		     `confirmDelete`, `deleteBusy=true` re-enables the smooth
-		     shrink + slide.
-
-		     Params are FUNCTIONS, not object literals, because
-		     Svelte caches the object form at element mount — by
-		     fire time, the cached duration is still the
-		     `deleteBusy=false` value and the user delete won't
-		     animate. The function form re-evaluates on every
-		     fire, so the gate reads the live state. -->
+			<!-- Both transitions are gated on `deleteAnimationGate` so
+		     they only run for user-confirmed deletes. On home
+		     re-mount, `dedupeHistoryByKitsuId` collapses Kitsu-group
+		     siblings as their matches resolve, which would otherwise
+		     fire out:scale on every dedupe-removed row + animate:flip
+		     on every survivor — the resize-flicker users see when
+		     navigating Detail → back → Home. A row the gate was not
+		     opened for leaves and shifts instantly; a confirmed
+		     remove opens it for the removed rows and the survivors
+		     they shift, just before the strip changes. The factories
+		     read the gate when they fire, per id. -->
 			<div
 				class="resume-cell"
 				style="--accent: {accent};"

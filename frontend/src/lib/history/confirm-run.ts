@@ -21,11 +21,13 @@ export interface ConfirmRun {
 	/** Runs `action` for a press of the dialog's confirm button. A press
 	 *  while an action is out starts nothing and settles with it. A
 	 *  failure is handed to `failed` before the dialog closes, so the
-	 *  message is up as focus goes back to the control that opened the
-	 *  dialog; it never escapes, and the returned promise always
-	 *  resolves. */
+	 *  message is up as the dialog gives focus back to the control that
+	 *  opened it, when that control is still there; it never escapes,
+	 *  and the returned promise always resolves. */
 	confirm(action: () => Promise<unknown>, failed: (error: unknown) => void): Promise<void>;
-	/** Opens the dialog, through `show`. */
+	/** Opens the dialog, through `show`. Nothing while an action is out:
+	 *  the backdrop stops a pointer but not the keyboard, and a dialog
+	 *  swapped under a running action would confirm nothing. */
 	open(show: () => void): void;
 	/** A press of Cancel, Esc or the backdrop. Nothing while an action
 	 *  is out: closing then would hide how it ends. */
@@ -54,6 +56,7 @@ export function createConfirmRun(deps: ConfirmRunDeps): ConfirmRun {
 			return inFlight;
 		},
 		open(show) {
+			if (inFlight) return;
 			show();
 		},
 		cancel() {
@@ -76,7 +79,9 @@ function started(action: () => Promise<unknown>): Promise<unknown> {
 function report(failed: (error: unknown) => void, error: unknown): void {
 	try {
 		failed(error);
-	} catch {
-		// A report that breaks must not keep the dialog open.
+	} catch (broke) {
+		// A report that breaks must not keep the dialog open, nor go
+		// unseen.
+		console.error('confirm-run: the failure report threw', broke);
 	}
 }
