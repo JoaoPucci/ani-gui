@@ -238,17 +238,19 @@ authority directed, never a route an agent picks for itself:
 - **Milestones are decoupled from the version file.** After a tag, create the next-minor GitHub milestone for tracking and assign new PRs to it explicitly — do **not** infer the milestone from the in-tree version.
 - **Releases publish as pre-releases** (`gh release create --prerelease`); pre-1.0, none are promoted to "Latest".
 
-### New features ship switched off
+### A flagged feature ships switched off
 
-The remote flags file (`flags.json` on the `flags` branch, read by `backend/src/flags/`) is not signed. **Flags are default OFF, and any read failure means OFF.** A flag's built-in default is off, and no file, a broken one, a value its declaration does not allow and a flag the file does not mention all leave it off (`backend/src/flags/decl.rs`). The renderer reads a flag through `flagOn` (`frontend/src/lib/flags.ts`), which is on only for exactly `true`. This build declares no flag and has no kind one could be declared with, so the unsigned file can change nothing. A kind arrives with the change that verifies the file. The rule follows from that:
+The remote flags file (`flags.json` on the `flags` branch, read by `backend/src/flags/`) is not signed. **Flags are default OFF, and any read failure means OFF.** A flag's built-in default is off, and no file, a broken one, a value its declaration does not allow and a flag the file does not mention all leave it off (`backend/src/flags/decl.rs`). The renderer reads a flag through `flagOn` (`frontend/src/lib/flags.ts`), which is on only for exactly `true`. This build declares no flag and has no kind one could be declared with, so the unsigned file can change nothing. A kind arrives with the change that verifies the file. The rules for a flagged feature follow from that:
 
-- **Every new user-facing feature ships off by default.** In the release that introduces it, the gate is a build-time default that is off. There is no flag kind to declare it with.
-- **A release switches it on after a grace period, never the remote file.** The release that turns a feature on comes about four released versions after the one that introduced it. Turning it on is a change to its build-time default, shipped in a release like any other change. The grace period is a policy that review holds; nothing in the code counts releases.
+- **A flagged feature ships with its flag off.** Until a flag kind exists, that flag is a build-time default, off in the release that introduces the feature.
+- **A release switches it on after a grace period, never the remote file.** The release that turns a flagged feature on comes about four released versions after the one that introduced it. Turning it on is a change to its build-time default, shipped in a release like any other change. The grace period is a policy that review holds; nothing in the code counts releases.
 - **Both states are tested.** While the feature ships off, its tests cover it off and on. That is a review rule; nothing checks it unless the feature is declared as a flag. A declared flag is held by the flag matrix (`backend/src/flags/matrix.rs`) to a case for every value it allows.
 
-The rule covers user-facing features, not the flags mechanism itself. The launch splash, including its progress rail and stall line (`electron/lib/splash.cjs`, `electron/lib/splash-progress.cjs`, `electron/splash/`), is part of that mechanism. It is what is on screen while the backend starts and the launch's flags are decided, so gating it would put the flags mechanism behind a feature flag of its own. It is the only exemption. Every other user-facing feature follows the rule.
+**Whether a feature gets a flag is the maintainer's decision.** A feature without one ships as any other change does, and needs no exception from anything here. An agent that thinks a feature should be behind a flag asks (§14, **Ask**) and does not add one on its own judgement.
 
-Once `flags.json` is signed and the app verifies it, switching a feature on remotely becomes possible, and this rule is to be revised then.
+The launch splash, including its progress rail and stall line (`electron/lib/splash.cjs`, `electron/lib/splash-progress.cjs`, `electron/splash/`), is part of the flags mechanism and is not behind a flag. It is what is on screen while the backend starts and the launch's flags are decided, so gating it would put the flags mechanism behind a feature flag of its own.
+
+Once `flags.json` is signed and the app verifies it, switching a feature on remotely becomes possible, and the rules for a flagged feature are to be revised then.
 
 ## 14. Scope is negotiable, delivery is not
 
@@ -274,7 +276,15 @@ mid-task, exactly one of these is an acceptable outcome:
   body, a commit or a doc that leaves known work undone with no PR
   opened now to carry it. Keeping an entry true is not a deferral: when
   a change makes part of one false, correct it in that change, or
-  remove it when the work lands, and say so in the PR body.
+  remove it when the work lands, and say so in the PR body. An entry
+  is false only when something it states no longer holds, or never
+  did; a view that the work is not worth doing never makes it false.
+  An entry that is wholly false is removed as its correction. Removing
+  an entry, or part of one, for any other reason, such as work that
+  still holds but that you think is not worth doing, is the
+  maintainer's choice, however you came to it: put it to them as a
+  choice to drop it. Where only part of an entry is false, correct
+  that part; the rest stays unless the maintainer chooses to drop it.
 
   Once the maintainer has chosen it, link the entry wherever the work
   was deferred. An unwritten deferral is a dropped one, and a deferral
@@ -330,13 +340,19 @@ package, a helper already extracted, a test glob that already covers
 the directory. More than once the "large refactor" turned out to be
 one new file next to two just like it.
 
-An entry already in the log is an opening, not a boundary. Before
-building in an area, read the deferred-work entries that concern it,
-and prefer tackling one within the change over building around it —
-that is **Do it here**, and the change removes the entry it lands. An
-entry is a reminder, never a constraint the design has to respect. If
+An entry already in the log is considered only when it bears on the
+change directly: tackling it would unblock the change, or without it
+the change would have to be built differently or around it, with a
+workaround the entry's fix would remove. Then check the entry is still
+true and still worth doing, and prefer tackling it within the change —
+that is **Do it here**, and the change removes the entry it lands. If
 tackling it is genuinely large or risky, put the options to the
-maintainer, as **Ask** describes.
+maintainer, as **Ask** describes. An entry you think is not worth
+doing is also the maintainer's to drop, as above. An entry that merely
+sits in the same area is not a reason to raise it, so do not scan the
+log by area or by keyword for work to add. An entry the change makes
+false is still corrected in that change, as above. An entry is a
+reminder, never a constraint the design has to respect.
 
 ### Choosing between options
 

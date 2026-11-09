@@ -24,12 +24,23 @@ pull request, and it is the one an agent never takes alone: an entry
 is added, or widened to defer more, only when the maintainer has
 chosen to defer. Correcting an entry so it stays true, or removing it
 when the work lands, needs no such choice — the pull request that does
-it must say so.
+it must say so. An entry is false only when something it states no
+longer holds, or never did; a view that the work is not worth doing
+never makes it false. An entry that is wholly false is removed as its
+correction. Removing an entry, or part of one, for any other reason,
+such as work that still holds but seems not worth doing, is the
+maintainer's choice too, however it was reached. Where only part of an
+entry is false, the change corrects that part, and the rest stays
+unless the maintainer chooses to drop it.
 
-An entry is a reminder, not a constraint. A change that builds in an
-area reads the entries that concern it and prefers tackling one over
-building around it; one too large or risky to take on goes to the
-maintainer as a choice, as `AGENTS.md` §14 describes.
+An entry is a reminder, not a constraint. A change considers an entry
+only when tackling it would unblock the change, or when the change
+would otherwise have to be built differently or around it. Then, if
+the entry is still true and worth doing, the change prefers tackling
+it; one too large or risky to take on goes to the maintainer as a
+choice, as `AGENTS.md` §14 describes, and so does one that seems not
+worth doing, as above. An entry that only shares the change's area is
+not raised, and the log is not scanned by area or keyword.
 
 Write an entry about the code, not about the work in flight. An entry
 stands on its own: what is wrong, where it lives, and what should
@@ -680,7 +691,8 @@ starting it, and delete it when you find it done.
   the number the card shows beforehand, where it shows one, is not
   always the episode played. Nothing else on the card or the row
   leads to the show either: the chip on a card removes it, the
-  row's menu clears the row whole, the strip's arrows scroll it.
+  row's Clear history action clears it whole, the strip's arrows
+  scroll it.
   (An entry the matcher could not place renders as a link to search
   instead, and has no show to route to; one whose match came back
   without a title renders as a card whose click does nothing. This
