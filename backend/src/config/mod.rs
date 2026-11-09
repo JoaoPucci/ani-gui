@@ -1,6 +1,6 @@
 //! Settings persisted to `$XDG_CONFIG_HOME/ani-gui/config.toml`.
 //!
-//! User-overridable values: locale, default quality, sub/dub mode,
+//! User-overridable values: locale, download quality, sub/dub mode,
 //! external player command, image cache cap, etc.
 
 pub mod paths;
@@ -25,8 +25,15 @@ pub struct Config {
     pub locale: String,
     /// `"sub"` or `"dub"`.
     pub mode: String,
-    /// Quality token: `"best"`, `"worst"`, `"1080"`, etc.
-    pub quality: String,
+    /// The quality downloads take: `"best"`, `"worst"`, or a height
+    /// such as `"720"`. Downloads only — the built-in player always
+    /// gets the whole master and starts on Auto, and the external
+    /// players and Syncplay get the master too and adapt themselves.
+    /// It replaced `quality`, which configs written by 0.17.0 and
+    /// earlier still carry and which is not read: its value was picked
+    /// for streaming, so everyone comes up on Best, and the next write
+    /// drops the old key.
+    pub download_quality: String,
     /// External-player command for the escape hatch. Default `"mpv"`.
     pub external_player: String,
     /// Which player flag syntax `build_argv` should emit. Default
@@ -111,7 +118,7 @@ impl Default for Config {
         Self {
             locale: "en".into(),
             mode: "sub".into(),
-            quality: "best".into(),
+            download_quality: "best".into(),
             external_player: "mpv".into(),
             external_player_kind: ExternalPlayerKind::Mpv,
             external_player_custom_args: String::new(),
