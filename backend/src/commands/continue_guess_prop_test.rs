@@ -123,4 +123,44 @@ proptest! {
             .collect();
         prop_assert_eq!(ruled_out_ids(&t, Some(e), &hits), want);
     }
+
+    /// A row whose episode says nothing (a bare key's) is judged as one
+    /// at no episode: only the reach reads the episode.
+    #[test]
+    fn no_episode_is_the_same_as_none_reached(
+        t in title(),
+        sub in subtype(),
+        count in prop::option::of(0u32..300),
+    ) {
+        let h = hit("Something Else", sub, count);
+        prop_assert_eq!(ruled_out(&t, None, &h), ruled_out(&t, Some(0.0), &h));
+    }
+
+    /// A bare key's answer does not depend on the episode it sends.
+    #[test]
+    fn a_bare_key_s_answer_ignores_the_episode(
+        t in title(),
+        e in 0.0f64..5000.0,
+        hits in prop::collection::vec((title(), subtype(), prop::option::of(0u32..50)), 0..6),
+    ) {
+        let req = |episode: f64| RuledOutRequest {
+            key: "show-part-2-3687".into(),
+            title: t.clone(),
+            episode,
+            hits: hits
+                .iter()
+                .enumerate()
+                .map(|(i, (c, s, n))| SentHit {
+                    id: i.to_string(),
+                    canonical_title: c.clone(),
+                    titles: HashMap::new(),
+                    abbreviated_titles: Vec::new(),
+                    slug: None,
+                    episode_count: *n,
+                    subtype: Some((*s).to_string()),
+                })
+                .collect(),
+        };
+        prop_assert_eq!(answer(req(e)), answer(req(0.0)));
+    }
 }

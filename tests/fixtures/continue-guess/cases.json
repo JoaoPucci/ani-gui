@@ -1628,9 +1628,15 @@
   "key_year": null,
   "right": "50497",
   "picks": {
-   "1": "50497"
+   "1": "50497",
+   "19": "50497"
   },
-  "source": "picker pairing"
+  "source": "picker pairing",
+  "ruled_out": {
+   "19": [
+    "7176"
+   ]
+  }
  },
  {
   "key": "hianime:naruto-shinsaku-anime-1984",
@@ -1853,9 +1859,16 @@
   "key_year": 2000,
   "right": "7730",
   "picks": {
-   "1": "7730"
+   "1": "7730",
+   "7": "7730"
   },
-  "source": "pool card"
+  "source": "pool card",
+  "ruled_out": {
+   "7": [
+    "3136",
+    "46393"
+   ]
+  }
  },
  {
   "key": "hianime:jojos-bizarre-adventure-706",
@@ -1863,9 +1876,16 @@
   "key_year": null,
   "right": "610",
   "picks": {
-   "1": "7158"
+   "1": "7158",
+   "6": "7158"
   },
-  "source": "pool card"
+  "source": "pool card",
+  "ruled_out": {
+   "6": [
+    "3136",
+    "46393"
+   ]
+  }
  },
  {
   "key": "hianime:attack-on-titan-no-regrets-908",
@@ -1873,7 +1893,8 @@
   "key_year": null,
   "right": "8674",
   "picks": {
-   "1": "8674"
+   "1": "8674",
+   "2": "8674"
   },
   "source": "pool card"
  },
@@ -1883,7 +1904,8 @@
   "key_year": null,
   "right": "13718",
   "picks": {
-   "1": "13718"
+   "1": "13718",
+   "3": "13718"
   },
   "source": "pool card"
  },
@@ -1893,7 +1915,8 @@
   "key_year": null,
   "right": "7694",
   "picks": {
-   "1": "7694"
+   "1": "7694",
+   "3": "7694"
   },
   "source": "pool card"
  },
@@ -1913,9 +1936,18 @@
   "key_year": null,
   "right": "42574",
   "picks": {
-   "1": "42574"
+   "1": "42574",
+   "10": "42574"
   },
-  "source": "pool card"
+  "source": "pool card",
+  "ruled_out": {
+   "10": [
+    "42502",
+    "41556",
+    "8626",
+    "11374"
+   ]
+  }
  },
  {
   "key": "hianime:tokyo-ghoul-jack-2773",
@@ -1933,9 +1965,15 @@
   "key_year": null,
   "right": "897",
   "picks": {
-   "1": "897"
+   "1": "897",
+   "6": "897"
   },
-  "source": "pool card"
+  "source": "pool card",
+  "ruled_out": {
+   "6": [
+    "4123"
+   ]
+  }
  },
  {
   "key": "hianime:jujutsu-kaisen-season-2-recaps-3513",
@@ -1943,7 +1981,8 @@
   "key_year": null,
   "right": "47880",
   "picks": {
-   "1": "43886"
+   "1": "43886",
+   "2": "43886"
   },
   "source": "pool card"
  },
@@ -1953,7 +1992,8 @@
   "key_year": null,
   "right": "45545",
   "picks": {
-   "1": "45545"
+   "1": "45545",
+   "2": "45545"
   },
   "source": "pool card"
  },
@@ -2031,10 +2071,25 @@
   "key_year": 2024,
   "right": "48981",
   "picks": {
-   "1": "48981"
+   "1": "48981",
+   "12": "48981"
   },
   "ruled_out": {
    "1": [
+    "4612"
+   ],
+   "12": [
+    "901",
+    "382",
+    "898",
+    "707",
+    "900",
+    "4681",
+    "6372",
+    "6366",
+    "6369",
+    "6371",
+    "6370",
     "4612"
    ]
   },
@@ -2046,7 +2101,8 @@
   "key_year": null,
   "right": "49847",
   "picks": {
-   "1": "49847"
+   "1": "49847",
+   "12": "49847"
   },
   "source": "pool card"
  },
@@ -2056,9 +2112,20 @@
   "key_year": null,
   "right": "13209",
   "picks": {
-   "1": "13209"
+   "1": "13209",
+   "170": "13209"
   },
-  "source": "reported"
+  "source": "reported",
+  "ruled_out": {
+   "170": [
+    "44242",
+    "12625",
+    "42035",
+    "50024",
+    "47442",
+    "42426"
+   ]
+  }
  },
  {
   "key": "hianime:rezero-starting-life-in-another-world-season-4-4587",
@@ -2066,7 +2133,8 @@
   "key_year": null,
   "right": "49746",
   "picks": {
-   "1": "49746"
+   "1": "49746",
+   "19": "49746"
   },
   "source": "reported"
  },
@@ -2076,7 +2144,8 @@
   "key_year": null,
   "right": "49877",
   "picks": {
-   "1": "49877"
+   "1": "49877",
+   "12": "49877"
   },
   "source": "reported"
  }
