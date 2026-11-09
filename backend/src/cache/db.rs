@@ -107,7 +107,11 @@ fn open_then<T>(
     let _turn = migration_lock(path)?;
     run_migrations(&mut conn)?;
     crate::cache::played_marks::mark_earlier_plays(&mut conn)?;
-    crate::cache::play_rekey::carry_play_rows(&mut conn)?;
+    // Carrying is an optimisation: a refusal leaves every row where it
+    // is, for the reclaim, and the cache still opens.
+    if let Err(e) = crate::cache::play_rekey::carry_play_rows(&mut conn) {
+        tracing::warn!(error = ?e, "play row carry refused; nothing carried");
+    }
     let out = then(&mut conn);
     drop(conn);
     Ok((pool, out))
