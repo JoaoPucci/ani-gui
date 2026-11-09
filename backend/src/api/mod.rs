@@ -815,8 +815,7 @@ async fn get_watched_at_all(
     Ok(Json(crate::commands::history::watched_at_all(&state)?))
 }
 
-/// Evict the cached play resolution for `(title, mode, quality,
-/// episode)`. Idempotent — returns 204 even if no row matched.
+/// Evict the cached play resolution for `(title, mode, episode)`. Idempotent — returns 204 even if no row matched.
 ///
 /// Frontend feedback path: when the player errors loading a cached
 /// upstream URL (URL rotated *after* our HEAD validated, or the CDN
@@ -1616,7 +1615,7 @@ mod tests {
         let history_path = state.history_path.clone();
         // Seed a v2 cache row with the show_id explicitly empty —
         // the on-disk shape a legacy v1 row would deserialize into.
-        let key = cache_key("Legacy Show", "sub", "best", "3", None, None, None);
+        let key = cache_key("Legacy Show", "sub", "3", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1667,7 +1666,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         let history_path = state.history_path.clone();
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1738,7 +1737,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         let history_path = state.history_path.clone();
-        let key = cache_key("The Show", "sub", "best", "4", None, None, None);
+        let key = cache_key("The Show", "sub", "4", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1799,7 +1798,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         let history_path = state.history_path.clone();
-        let key = cache_key("The Show", "sub", "best", "4", None, None, None);
+        let key = cache_key("The Show", "sub", "4", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1863,7 +1862,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1926,7 +1925,7 @@ mod tests {
         ] {
             put(
                 &state.cache_pool,
-                &cache_key(title, "sub", "best", "1", None, None, None),
+                &cache_key(title, "sub", "1", None, None, None),
                 &CachedResolution {
                     upstream_url: "https://video.example/master.m3u8".into(),
                     referer: String::new(),
@@ -2002,15 +2001,7 @@ mod tests {
         // Cached resolution: The provider's Part 2 show, derived from
         // searching "Stone Ocean" (Part 1's canonical title) — the
         // picker mis-pick the user reported.
-        let key = cache_key(
-            "Stone Ocean",
-            "sub",
-            "best",
-            "1",
-            Some(2021),
-            Some(12),
-            None,
-        );
+        let key = cache_key("Stone Ocean", "sub", "1", Some(2021), Some(12), None);
         put(
             &state.cache_pool,
             &key,
@@ -2110,15 +2101,7 @@ mod tests {
         let state = test_app_state(&td);
 
         // show_title has no Part/Cour/Season suffix → cour_from_title=None.
-        let key = cache_key(
-            "Some Sequel",
-            "sub",
-            "best",
-            "1",
-            Some(2024),
-            Some(12),
-            None,
-        );
+        let key = cache_key("Some Sequel", "sub", "1", Some(2024), Some(12), None);
         put(
             &state.cache_pool,
             &key,
@@ -2209,15 +2192,7 @@ mod tests {
         let state = test_app_state(&td);
 
         // The provider title carries Part 2 → cour_from_title=Some(2).
-        let key = cache_key(
-            "Some Sequel",
-            "sub",
-            "best",
-            "1",
-            Some(2024),
-            Some(12),
-            None,
-        );
+        let key = cache_key("Some Sequel", "sub", "1", Some(2024), Some(12), None);
         put(
             &state.cache_pool,
             &key,
@@ -2318,15 +2293,7 @@ mod tests {
         // unreachable port), so `kitsu_anime_detail` returns Err.
         // Per the guard's docstring, that should be treated as
         // "agree" and the reverse-mapping write must still happen.
-        let key = cache_key(
-            "Stone Ocean",
-            "sub",
-            "best",
-            "1",
-            Some(2021),
-            Some(12),
-            None,
-        );
+        let key = cache_key("Stone Ocean", "sub", "1", Some(2021), Some(12), None);
         put(
             &state.cache_pool,
             &key,
@@ -2440,7 +2407,7 @@ mod tests {
         let state = test_app_state(&td);
         std::fs::create_dir_all(&state.history_path)
             .expect("a directory where the history file should be");
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -2501,7 +2468,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -2635,7 +2602,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Some Show", "sub", "best", "5", None, None, None);
+        let key = cache_key("Some Show", "sub", "5", None, None, None);
         put(
             &state.cache_pool,
             &key,

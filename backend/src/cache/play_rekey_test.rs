@@ -36,7 +36,7 @@ fn new_key(
     (year, count, subtype): (Option<u32>, Option<u32>, Option<&str>),
     version: Option<VersionKind>,
 ) -> String {
-    cache_key_for_version(title, mode, "best", episode, year, count, subtype, version)
+    cache_key_for_version(title, mode, episode, year, count, subtype, version)
 }
 
 #[allow(clippy::type_complexity)]
