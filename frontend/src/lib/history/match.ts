@@ -99,7 +99,10 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 		if (cachedId) {
 			try {
 				const cached = await kitsuAnimeDetail(cachedId);
-				if (cachedBindingVerdict(cached, preliminary, false) === 'trust') {
+				// The match was picked at the row's episode then; the rules
+				// read the row as it is now, and a failed call trusts it.
+				const standing = (await admitted(preliminary, [cached], { failed: false })).length > 0;
+				if (standing && cachedBindingVerdict(cached, preliminary, false) === 'trust') {
 					return cached;
 				}
 				// Incompatible / implausible / cross-cour → fall through and re-resolve
