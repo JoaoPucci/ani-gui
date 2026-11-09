@@ -18,7 +18,6 @@
 import {
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
-	kitsuGuessRuledOut,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
 	kitsuTitleMatchGet,
@@ -28,6 +27,7 @@ import {
 import { providerOfShowId } from './show-key';
 import { cachedBindingVerdict, deriveSlug, pickKitsuMatch, type ResumeTarget } from './resolve';
 import { storedBinding } from './match-stored';
+import { admitted } from './guess-rules';
 
 /** Whether a failed Kitsu read is Kitsu answering that the entry is
  *  gone — a 404 or 410, which the backend passes on as an upstream
@@ -206,36 +206,4 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 	}
 
 	return match;
-}
-
-/** `hits` less the ones the row rules out: hits past the episode it
- *  reached (for a row a provider the app walks wrote), of another
- *  format than its title names, carrying none of its title's first
- *  word, or of another season than its title names
- *  (backend/src/commands/continue_guess.rs). A hit ruled out is never
- *  offered, even when none is left, and the row goes on to the resolve
- *  from its show key's words. A failed call rules none out, so the
- *  guess picks as it did before the rules, and marks `check` failed so
- *  the pick is not stored. */
-async function admitted(
-	preliminary: ResumeTarget,
-	hits: KitsuAnimeRef[],
-	check: { failed: boolean }
-): Promise<KitsuAnimeRef[]> {
-	if (hits.length === 0) return hits;
-	let out: Set<string>;
-	try {
-		out = new Set(
-			await kitsuGuessRuledOut(
-				preliminary.searchTitle,
-				preliminary.displayEpisode,
-				hits,
-				preliminary.allmangaShowId
-			)
-		);
-	} catch {
-		check.failed = true;
-		return hits;
-	}
-	return hits.filter((h) => !out.has(h.id));
 }
