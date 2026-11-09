@@ -713,7 +713,7 @@ describe('armQuality — the edges', () => {
 			engine.emit(E.MANIFEST_PARSED, { levels: MASTER });
 			expect(engine.loads).toEqual([2]);
 			expect(debug).toHaveBeenCalledWith(expect.stringMatching(/^\[play\] quality: start: 1080p/));
-			expect(debug).toHaveBeenCalledWith('[play] quality: setting best, 3 levels');
+			expect(debug).toHaveBeenCalledWith('[play] quality: auto, 3 levels');
 			// The clock is the page's own when none is given.
 			engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
 			expect(engine.loads).toEqual([2, 1]);
@@ -956,7 +956,10 @@ describe('armQuality — levels hls.js removes', () => {
 	});
 
 	it('a removal after the choice was released says the hold was not held', () => {
-		const s = armObjects('worst');
+		// The lowest level, reached by a pick: the start is always the
+		// highest.
+		const s = armObjects();
+		s.control.pick(0);
 		s.engine.manual = -1;
 		s.engine.emit(E.ERROR, {
 			details: D.FRAG_LOAD_ERROR,
@@ -1172,7 +1175,8 @@ describe('armQuality — levels hls.js removes', () => {
 	});
 
 	it('several removals in one dispatch are read from the list the error named', () => {
-		const s = armObjects('worst', LADDER5);
+		const s = armObjects('best', LADDER5);
+		s.control.pick(0);
 		s.engine.manual = -1;
 		s.remove(3, 1);
 		// The audio buffer refused its codec: hls.js switched to what was

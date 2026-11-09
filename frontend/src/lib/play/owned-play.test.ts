@@ -220,7 +220,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: '5',
 			mode: 'dub',
-			quality: '1080',
 			episode_count: 12,
 			year: 2019,
 			subtype: 'TV',
@@ -228,6 +227,8 @@ describe('playArgsFor', () => {
 		});
 		expect(args.alt_titles).toEqual(altTitlesFromKitsu(show));
 		expect(args.alt_titles).toContain('Show EN');
+		// No quality: the backend resolves the master for every play.
+		expect('quality' in args).toBe(false);
 	});
 
 	it('carries no Kitsu id when the play records none', () => {
