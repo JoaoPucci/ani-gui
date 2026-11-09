@@ -215,7 +215,13 @@ use crate::proxy::MediaKind;
 // nor the row names, so a row holding the cap's worth of tracks is
 // never replayed (`play_cache::cached_row_may_be_cut`) — no listing
 // seen comes near the cap.
-pub(crate) const SCHEMA: &str = "v28";
+// v29: the quality left the key. Every play — the built-in player, a
+// hand-off, Syncplay — resolves the master, so a row is the same answer
+// whatever quality a request names. The v28 rows kept for `best` are
+// carried to their v29 key when the cache opens
+// (`crate::cache::play_rekey`); the rest held one rendition each and
+// are left to the launch's reclaim.
+pub(crate) const SCHEMA: &str = "v29";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -312,11 +318,13 @@ pub fn cache_key(
     // key. Subtype is an axis for the same reason year and count are:
     // the picker consumes it, so entries differing by it must not
     // share a row.
+    // Every play resolves the master, so the quality is no axis.
+    let _ = quality;
     let y = year.map_or_else(|| "-".to_string(), |v| v.to_string());
     let e = episode_count.map_or_else(|| "-".to_string(), |v| v.to_string());
     let s = subtype.unwrap_or("-");
     format!(
-        "{}{title}:{mode}:{quality}:{episode}:{y}:{e}:{s}",
+        "{}{title}:{mode}:{episode}:{y}:{e}:{s}",
         crate::cache::families::play()
     )
 }
