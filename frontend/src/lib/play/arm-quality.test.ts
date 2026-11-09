@@ -1132,10 +1132,10 @@ describe('armQuality — levels hls.js removes', () => {
 	});
 
 	it('a switch followed after the hold was re-seated blames no level', () => {
-		// 480p is held for a `480` setting; the audio codec of 480p and
-		// 240p is refused. hls.js removes both, the hold re-seats on 360p,
-		// and the error's switch goes to 600p. 360p never failed: it must
-		// stay a level to step down to.
+		// 480p is held after a stall stepped down from 600p; the audio
+		// codec of 480p and 240p is refused. hls.js removes both, the hold
+		// re-seats on 360p, and the error's switch goes to 600p. 360p never
+		// failed: it must stay a level to step down to.
 		const ladder = [
 			{ height: 240, bitrate: 400_000 },
 			{ height: 360, bitrate: 800_000 },
@@ -1143,8 +1143,12 @@ describe('armQuality — levels hls.js removes', () => {
 			{ height: 600, bitrate: 2_000_000 }
 		];
 		const s = armObjects(ladder);
+		s.at(10_000);
+		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
+		expect(s.engine.loads).toEqual([3, 2]);
 		s.engine.manual = -1;
 		s.remove(2, 0);
+		expect(s.logs.join('\n')).toMatch(/holding 360p/);
 		s.engine.emit(E.ERROR, {
 			details: D.BUFFER_ADD_CODEC_ERROR,
 			fatal: false,
