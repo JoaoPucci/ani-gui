@@ -12,8 +12,8 @@
  *   - The clock moves only when the age on screen next changes
  *     (`nextAgeChange`), by one timer re-armed each time it fires, so
  *     the page re-renders once per change instead of on a fixed tick.
- *     A status that shows no age (refreshing, never, nothing to
- *     report) holds no timer.
+ *     A status that shows no age (refreshing, never, failed, nothing
+ *     to report) holds no timer.
  *   - A refresh starting holds the line's current label and announces
  *     itself; settling moves the clock, has the times read again,
  *     releases the held label, and announces the line as it then
