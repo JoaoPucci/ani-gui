@@ -48,6 +48,8 @@
 	"switch_state_off": "Off",
 	"field_download_bar_key": "Show download progress strip",
 	"field_download_bar_hint": "Slim accent strip across the bottom while downloads run. Disabled = downloads still work, but progress is only visible from the topbar download icon.",
+	"field_download_quality_key": "Download quality",
+	"field_download_quality_hint": "Used for downloads only. The player always starts on Auto.",
 	"download_bar_aria_label": "Show download progress strip",
 	"field_auto_skip_op_key": "Auto-skip openings",
 	"field_auto_skip_op_hint": "Jump past the OP automatically when one is detected. Off by default — you can still use the manual Skip button. Powered by aniskip's crowd-sourced timestamps.",

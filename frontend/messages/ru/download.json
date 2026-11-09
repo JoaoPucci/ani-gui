@@ -91,6 +91,7 @@
 	"hint_filename_prefix": "Файлы сохраняются как ",
 	"hint_filename_template": "{title} Episode N.mp4",
 	"hint_filename_suffix": " — схема именования не настраивается.",
+	"hint_quality": "Качество: {quality}. Меняется в настройках.",
 	"button_cancel": "Отмена",
 	"button_confirm": "Начать загрузку",
 	"button_confirming": "Запуск…",

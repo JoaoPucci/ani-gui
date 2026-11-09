@@ -48,6 +48,8 @@
 	"switch_state_off": "Desactivado",
 	"field_download_bar_key": "Mostrar barra de progreso de descargas",
 	"field_download_bar_hint": "Franja de acento delgada en la parte inferior mientras corren las descargas. Desactivada = las descargas siguen funcionando, pero el progreso solo se ve desde el icono de descargas en la barra superior.",
+	"field_download_quality_key": "Calidad de descarga",
+	"field_download_quality_hint": "Solo se usa en las descargas. El reproductor siempre empieza en Automática.",
 	"download_bar_aria_label": "Mostrar barra de progreso de descargas",
 	"field_auto_skip_op_key": "Saltar openings automáticamente",
 	"field_auto_skip_op_hint": "Salta el opening automáticamente cuando se detecta uno. Desactivado por defecto — aún puedes usar el botón Saltar manual. Impulsado por las marcas de tiempo colaborativas de aniskip.",
