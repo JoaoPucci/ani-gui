@@ -1,0 +1,255 @@
+<!--
+  RowAction — a labelled action in a home row's header (Strip's
+  `headerActions`). One shape for every row: a hairline pill set in the
+  eyebrow's type, so it reads as part of the row's title line rather
+  than as a toolbar button parked at the window's edge.
+
+  The visible label is the accessible name: no aria-label or title
+  stands in for it, so what a screen reader announces is what a voice
+  user says and a sighted user reads (WCAG 2.5.3).
+
+  `tone="quiet"` is for an action that removes something: it rests in
+  the caption's colour so it never outshouts the row, and warms to the
+  destructive accent on hover. `busy` makes the action unavailable and
+  turns its icon; where the row has a status line the page says there
+  what is happening (a failed row has none, and relies on the page's
+  announcement). Unavailable is aria-disabled, not `disabled`: a
+  disabled button drops keyboard focus to the page in Chromium, so a
+  keyboard user who pressed it would start again from the top.
+
+  `shape` comes from the row style ($lib/rows/prefs `actionShape`).
+  `label` is the pill above. `icon` rests on the icon alone, in a 32px
+  circle, and widens to that same pill on hover and on keyboard focus,
+  the icon shrinking to its size in the pill as it goes. The label is
+  in the button throughout, clipped at rest, never hidden, so the
+  accessible name is the full label whether or not it is on show.
+  The `icon` shape needs an `icon`: without one it would rest as an
+  empty circle. Both home rows pass one.
+
+  The open width is reserved, not overlaid: the slot is as wide as the
+  open pill (its ::after sets the label from `data-label`, unpainted)
+  and the button opens over it, positioned out of flow. The header
+  decides how its line wraps from the widths it measures; with the
+  width held, opening changes no width, so the title and the status
+  never move and no line rewraps under the pointer. The cost is that
+  the line wraps as early as it did for the labelled pill, and the
+  slot's unpainted rest of the width trails the line, where nothing
+  follows it. Only the button takes the pointer, so the reserve never
+  opens it or takes a click.
+
+  A busy action still opens on hover and focus, to say what it is; it
+  only keeps the resting colours, as a busy labelled pill does.
+-->
+<script lang="ts">
+	import Icon from './Icon.svelte';
+	import type { RowActionShape } from '$lib/rows/prefs';
+
+	let {
+		label,
+		icon = null,
+		tone = 'default',
+		busy = false,
+		shape = 'label',
+		onclick
+	}: {
+		label: string;
+		icon?: 'refresh' | 'clear-history' | null;
+		tone?: 'default' | 'quiet';
+		busy?: boolean;
+		shape?: RowActionShape;
+		onclick: () => void;
+	} = $props();
+
+	/** The icon's size, in px. The slot passes it to its CSS as
+	 *  `--ra-icon`, so the room held for the open pill counts the icon
+	 *  at the size it is drawn. */
+	const ICON_PX = 14;
+</script>
+
+<span class="row-action-slot" data-shape={shape} data-label={label} style="--ra-icon: {ICON_PX}px"
+	><button
+		type="button"
+		class="row-action"
+		class:quiet={tone === 'quiet'}
+		class:busy
+		aria-disabled={busy ? 'true' : undefined}
+		onclick={() => {
+			if (!busy) onclick();
+		}}
+	>
+		{#if icon}<Icon name={icon} size={ICON_PX} />{/if}
+		<span class="row-action-label">{label}</span>
+	</button></span
+>
+
+<style>
+	/* The pill's measures and type, declared once: the button reads them,
+	   and so does the icon shape's sizer, which holds the open pill's
+	   width. Shared, the two cannot drift apart. The type is the
+	   eyebrow's (tokens.css .eyebrow), so the header line reads as one
+	   voice. `--ra-icon` comes from the markup, from the size the icon is
+	   drawn at. */
+	.row-action-slot {
+		--ra-pad: var(--space-3);
+		--ra-gap: var(--space-2);
+		--ra-face: var(--font-body);
+		--ra-type-size: 0.8125rem;
+		--ra-weight: 600;
+		--ra-tracking: 0.14em;
+		--ra-case: uppercase;
+		--ra-border: 1px;
+	}
+	.row-action {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--ra-gap);
+		/* 32px: the smallest hit area the row headers allow. The header
+		   reserves this height on every row, so a row with an action
+		   and a row without one start their cards at the same depth. */
+		block-size: var(--space-6);
+		padding-inline: var(--ra-pad);
+		/* The edge is what marks this as a button on a line of uppercase
+		   text: 40% bone is about 3.4:1 on the page and on a band. */
+		--row-action-border: color-mix(in oklab, var(--bone-100) 40%, transparent);
+		border: var(--ra-border) solid var(--row-action-border);
+		border-radius: var(--radius-pill);
+		background: transparent;
+		color: var(--bone-200);
+		font-family: var(--ra-face);
+		font-size: var(--ra-type-size);
+		font-weight: var(--ra-weight);
+		letter-spacing: var(--ra-tracking);
+		line-height: 1;
+		text-transform: var(--ra-case);
+		white-space: nowrap;
+		cursor: pointer;
+		/* --dur-fast is 0ms under prefers-reduced-motion (tokens.css). */
+		transition:
+			background-color var(--dur-fast) var(--ease-out-soft),
+			border-color var(--dur-fast) var(--ease-out-soft),
+			color var(--dur-fast) var(--ease-out-soft);
+	}
+	.row-action:hover:not([aria-disabled='true']),
+	[data-shape='icon'] .row-action:focus-visible:not([aria-disabled='true']) {
+		background: var(--bone-100);
+		border-color: var(--bone-100);
+		color: var(--ink-000);
+	}
+	.row-action.quiet {
+		color: color-mix(in oklab, var(--bone-100) 70%, transparent);
+	}
+	.row-action.quiet:hover:not([aria-disabled='true']),
+	[data-shape='icon'] .row-action.quiet:focus-visible:not([aria-disabled='true']) {
+		background: color-mix(in oklab, var(--accent-oxblood) 18%, transparent);
+		border-color: var(--accent-oxblood);
+		color: var(--bone-100);
+	}
+	.row-action[aria-disabled='true'] {
+		cursor: default;
+		opacity: 0.7;
+	}
+	/* The icon shape: at rest a 32px circle over the slot's reserved
+	   width, open on hover and keyboard focus. The slot is the button's
+	   containing block, so the open button's 100% is the reserve. */
+	.row-action-slot[data-shape='icon'] {
+		position: relative;
+		display: inline-block;
+		flex: none;
+		block-size: var(--space-6);
+	}
+	/* The open pill's width, in flow and never painted. visibility keeps
+	   the generated words out of the accessibility tree: the name is
+	   the button's own label, read once. */
+	.row-action-slot[data-shape='icon']::after {
+		content: attr(data-label);
+		display: block;
+		visibility: hidden;
+		box-sizing: border-box;
+		block-size: var(--space-6);
+		padding-inline: calc(var(--ra-pad) + var(--ra-icon) + var(--ra-gap)) var(--ra-pad);
+		border: var(--ra-border) solid transparent;
+		font-family: var(--ra-face);
+		font-size: var(--ra-type-size);
+		font-weight: var(--ra-weight);
+		letter-spacing: var(--ra-tracking);
+		line-height: calc(var(--space-6) - 2px);
+		text-transform: var(--ra-case);
+		white-space: nowrap;
+	}
+	/* At rest. Its transitions are the closing ones: the shape waits for
+	   the label's fade (below) to finish, then draws in on an in-out
+	   curve whose slow start keeps a pointer grazing off and back from
+	   making it flicker.
+
+	   Under reduced motion the app's rule in tokens.css zeroes every
+	   transition's duration and stops the busy spin, but keeps each
+	   delay. The delays here are built from the duration tokens, which
+	   that rule's block sets to 0ms, so they go too: the pill opens and
+	   its label shows the moment it is hovered or focused. A literal
+	   delay would keep the label waiting on a pill already open. */
+	.row-action-slot[data-shape='icon'] .row-action {
+		position: absolute;
+		inset-block: 0;
+		inset-inline-start: 0;
+		inline-size: var(--space-6);
+		/* 8px start puts the icon's 14px layout box at 9–23px, centred in
+		   the 32px circle; `scale` leaves layout alone, so the 16px glyph
+		   drawn at rest spans 8–24px around the same centre. */
+		padding-inline: var(--space-2) var(--ra-pad);
+		gap: var(--ra-gap);
+		justify-content: flex-start;
+		overflow: hidden;
+		transition:
+			inline-size var(--dur-med) var(--ease-in-out) calc(var(--dur-fast) / 2),
+			padding-inline-start var(--dur-med) var(--ease-in-out) calc(var(--dur-fast) / 2),
+			background-color var(--dur-fast) var(--ease-out-soft),
+			border-color var(--dur-fast) var(--ease-out-soft),
+			color var(--dur-fast) var(--ease-out-soft);
+	}
+	/* 16/14: the icon reads at 16px alone, and settles to the pill's
+	   14px as the label arrives. `scale`, not `transform`, so the busy
+	   spin (a transform) turns it at either size. */
+	.row-action-slot[data-shape='icon'] .row-action :global(svg) {
+		flex: none;
+		scale: 1.1429;
+		transition: scale var(--dur-med) var(--ease-in-out) calc(var(--dur-fast) / 2);
+	}
+	/* Closing, the label fades in half the hover time, and the shape
+	   holds still for that long, so the label is gone before the edge
+	   moves. */
+	.row-action-slot[data-shape='icon'] .row-action-label {
+		flex: none;
+		opacity: 0;
+		transition: opacity calc(var(--dur-fast) / 2) var(--ease-out-soft);
+	}
+	/* Open. The shape leads; the label fades in over the last part of
+	   the width, so the pill reveals it rather than the words overtaking
+	   it. No elastic overshoot here: it would paint past the reserve. */
+	.row-action-slot[data-shape='icon'] .row-action:is(:hover, :focus-visible) {
+		inline-size: 100%;
+		padding-inline-start: var(--ra-pad);
+		transition:
+			inline-size var(--dur-med) var(--ease-out-soft),
+			padding-inline-start var(--dur-med) var(--ease-out-soft),
+			background-color var(--dur-fast) var(--ease-out-soft),
+			border-color var(--dur-fast) var(--ease-out-soft),
+			color var(--dur-fast) var(--ease-out-soft);
+	}
+	.row-action-slot[data-shape='icon'] .row-action:is(:hover, :focus-visible) :global(svg) {
+		scale: 1;
+		transition: scale var(--dur-med) var(--ease-out-soft);
+	}
+	.row-action-slot[data-shape='icon'] .row-action:is(:hover, :focus-visible) .row-action-label {
+		opacity: 1;
+		transition: opacity var(--dur-fast) var(--ease-out-soft) calc(var(--dur-med) - var(--dur-fast));
+	}
+	/* Keyboard focus takes the app's global ring (tokens.css). */
+	.row-action.busy :global(svg) {
+		animation: row-action-spin 0.8s linear infinite;
+	}
+	@keyframes row-action-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+</style>
