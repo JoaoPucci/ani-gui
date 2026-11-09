@@ -51,6 +51,12 @@ export class LinkSession extends LinkPicker {
 	#groupAsk = 0;
 	#pageId = '';
 
+	/** How many arrivals the page has had: a link answered after a
+	 *  later one leaves that one's state alone. */
+	protected get arrivals(): number {
+		return this.#arrival;
+	}
+
 	constructor(deps: LinkSessionDeps) {
 		super(deps);
 		this.#deps = deps;
@@ -109,15 +115,20 @@ export class LinkSession extends LinkPicker {
 		if (!offer || !chosen || this.busy) return false;
 		const from = this.#pageId;
 		// Where the user is as the link starts: one who leaves while it
-		// is out is not brought back.
+		// is out, or whose page moved on to another card, is not brought
+		// back, and the new visit's state is not touched.
 		const at = this.#deps.here();
+		const arrival = this.#arrival;
 		this.busy = true;
 		this.error = null;
 		try {
 			const rows = this.group ?? (await guessedGroup(this.#deps, offer));
 			const outcome = await this.#deps.link(offer.entry.id, rows, chosen.ref.id);
-			this.open = false;
-			this.offer = null;
+			const stayed = arrival === this.#arrival && this.#deps.here() === at;
+			if (stayed) {
+				this.open = false;
+				this.offer = null;
+			}
 			this.#deps.notify(
 				linkedNotice(
 					chosen.ref.canonical_title,
@@ -126,7 +137,7 @@ export class LinkSession extends LinkPicker {
 			);
 			// Gone while the link was out: it is saved, and its notice says
 			// so, but the page they left neither refreshes nor calls them back.
-			if (this.#deps.here() !== at) return true;
+			if (!stayed) return true;
 			// The page is opened again without the card's row: the row is
 			// linked, so there is nothing left to offer, nor room to hold.
 			if (chosen.ref.id === from) this.#deps.refresh();

@@ -151,7 +151,15 @@ export class InPlaceLinkSession extends LinkSession {
 	override async confirm(): Promise<boolean> {
 		const chosen = this.chosen;
 		const offered = this.offer;
+		const arrival = this.arrivals;
 		if (!(await super.confirm()) || !offered || !chosen) return false;
+		// The surface moved on to another card meanwhile: the pick is
+		// saved for its own card, whose sessions keep the way to change it
+		// again, and the new card's session is left as it is.
+		if (arrival !== this.arrivals) {
+			if (this.#inPlayer) notePick(offered.entry.id);
+			return true;
+		}
 		// Another show: what plays is still the one before, and the slip
 		// says so.
 		this.linked = chosen.current
