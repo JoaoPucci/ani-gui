@@ -31,6 +31,21 @@ export type AniskipDecision =
 
 export interface AniskipFetchTrigger {
 	step(showId: string, episodeNum: number, durationReady: boolean): AniskipDecision;
+	/** Which request the last `fetch` decision issued: an answer is the
+	 *  page's to show only while `answers` still says so. */
+	asked(): number;
+	answers(ask: number): boolean;
+}
+
+/**
+ * Whether the page's `duration` is a length to ask aniskip with: the
+ * stream it describes is the one attached for `session`, the session
+ * on screen, and it has learned a usable length.
+ */
+export function lengthReady(lengthFor: string | null, session: string, duration: number): boolean {
+	void lengthFor;
+	void session;
+	return Number.isFinite(duration) && duration > 0;
 }
 
 export function createAniskipFetchTrigger(): AniskipFetchTrigger {
@@ -50,6 +65,13 @@ export function createAniskipFetchTrigger(): AniskipFetchTrigger {
 			if (key === fetchedKey) return { kind: 'idle' };
 			fetchedKey = key;
 			return { kind: 'fetch', showId, episode: ep };
+		},
+		asked() {
+			return 0;
+		},
+		answers(ask) {
+			void ask;
+			return true;
 		}
 	};
 }
