@@ -91,9 +91,9 @@ pub fn open_pool(path: &Path) -> Result<SqlitePool> {
     open_then(path, |_| ()).map(|(pool, ())| pool)
 }
 
-/// Open the pool, run the migrations and the played-marks pass under
-/// the migration lock, then `then` on the same connection, still under
-/// it.
+/// Open the pool, run the migrations, the played-marks pass and the
+/// carry of re-keyed play rows (`play_rekey`) under the migration lock,
+/// then `then` on the same connection, still under it.
 fn open_then<T>(
     path: &Path,
     then: impl FnOnce(&mut rusqlite::Connection) -> T,
@@ -107,6 +107,7 @@ fn open_then<T>(
     let _turn = migration_lock(path)?;
     run_migrations(&mut conn)?;
     crate::cache::played_marks::mark_earlier_plays(&mut conn)?;
+    crate::cache::play_rekey::carry_play_rows(&mut conn)?;
     let out = then(&mut conn);
     drop(conn);
     Ok((pool, out))

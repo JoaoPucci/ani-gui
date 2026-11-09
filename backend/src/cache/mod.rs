@@ -15,6 +15,7 @@
 
 pub mod db;
 pub mod families;
+mod play_rekey;
 mod played_marks;
 #[cfg(test)]
 pub mod put_observer;
