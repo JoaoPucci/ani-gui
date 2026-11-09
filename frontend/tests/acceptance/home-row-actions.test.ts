@@ -416,15 +416,9 @@ for (const style of ['inline', 'band'] as const) {
 			connect('anilist');
 			markRefreshed('anilist', Date.now() - 12 * MIN);
 			serve(ok);
-			let failing = true;
 			server.use(
-				http.get(`${API_BASE}/api/account/list/:provider/cached`, ({ params }) =>
-					failing
-						? HttpResponse.json(
-								{ key: 'error.network.upstream', kind: 'upstream' },
-								{ status: 502 }
-							)
-						: HttpResponse.json([planned(params.provider as Provider)])
+				http.get(`${API_BASE}/api/account/list/:provider/cached`, () =>
+					HttpResponse.json({ key: 'error.network.upstream', kind: 'upstream' }, { status: 502 })
 				)
 			);
 			localStorage.setItem(ROW_PREFS_STORAGE_KEY, JSON.stringify({ style, controls: false }));
@@ -441,7 +435,6 @@ for (const style of ['inline', 'band'] as const) {
 			expect(Date.now() - readLastRefreshed('anilist')!).toBeLessThan(MIN);
 			expect(header(WL()).textContent).toContain(m.account_watch_later_failed());
 			expect(announced()).toBe(m.account_watch_later_failed());
-			failing = false;
 		});
 
 		it('says a populated rail failed to load again instead of vouching for the cards it kept', async () => {
@@ -480,6 +473,62 @@ for (const style of ['inline', 'band'] as const) {
 			action(WL(), REFRESH())!.click();
 			await until(() => status() === m.account_watch_later_updated_now(), 'the just-updated state');
 			expect(announced()).toBe(m.account_watch_later_updated_now());
+		});
+
+		it('announces the load that superseded its own, once that one settles', async () => {
+			connect('anilist');
+			markRefreshed('anilist', Date.now() - 12 * MIN);
+			serve(ok);
+			// The rail's cached-list reads: the opening one answers, the
+			// refresh's own waits on `refreshRead`, and a reread that
+			// starts while it waits fails once `rereadRead` lets it.
+			let phase: 'mount' | 'refresh' | 'reread' = 'mount';
+			let refreshAsked = false;
+			let releaseRefresh: () => void = () => {};
+			const refreshRead = new Promise<void>((r) => (releaseRefresh = r));
+			let releaseReread: () => void = () => {};
+			const rereadRead = new Promise<void>((r) => (releaseReread = r));
+			server.use(
+				http.get(`${API_BASE}/api/account/list/:provider/cached`, async ({ params }) => {
+					if (phase === 'refresh') {
+						refreshAsked = true;
+						await refreshRead;
+					} else if (phase === 'reread') {
+						await rereadRead;
+						return HttpResponse.json(
+							{ key: 'error.network.upstream', kind: 'upstream' },
+							{ status: 502 }
+						);
+					}
+					return HttpResponse.json([planned(params.provider as Provider)]);
+				})
+			);
+			await mountHome(style);
+			await until(
+				() => (header(WL())?.textContent ?? '').includes(m.account_watch_later_caption()),
+				'the loaded row'
+			);
+			phase = 'refresh';
+			action(WL(), REFRESH())!.click();
+			await until(() => refreshAsked, 'the refresh’s own read of the rail');
+			// A tracker write settles meanwhile, and the row reads its list
+			// again: that load is now the latest.
+			phase = 'reread';
+			listChanges.announce({
+				kitsuId: String(PLANNED.malId),
+				providers: ['anilist'],
+				landed: ['anilist'],
+				source: 'editor'
+			});
+			releaseRefresh();
+			await new Promise((r) => setTimeout(r, 50));
+			// The refresh's own read landed, but it was superseded: the
+			// refresh has nothing of its own to say yet.
+			expect(settledAnnouncement()).toBeNull();
+			releaseReread();
+			await until(() => settledAnnouncement() !== null, 'the settled refresh');
+			expect(status()).toBe(m.account_watch_later_failed());
+			expect(announced()).toBe(m.account_watch_later_failed());
 		});
 
 		it('is not yet updated when a tracker has never been pulled and the pull fails', async () => {
