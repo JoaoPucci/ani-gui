@@ -54,6 +54,12 @@ describe('createConfirmRun', () => {
 		}, failed);
 		expect(failed).toHaveBeenCalledTimes(1);
 		expect(log).toEqual(['busy:true', 'busy:false', 'close']);
+		// The run is free again: a throw as the action is called settles
+		// after the run is noted, so it cannot leave the run marked out.
+		expect(run.busy).toBe(false);
+		const next = vi.fn(async () => {});
+		await run.confirm(next, failed);
+		expect(next).toHaveBeenCalledTimes(1);
 	});
 
 	test('a second confirm while the first is in flight starts nothing', async () => {
