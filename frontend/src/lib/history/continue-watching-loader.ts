@@ -176,7 +176,8 @@ export async function loadContinueWatchingState(
 			}
 			const job = queue.shift();
 			if (!job) break;
-			const mode = await modePromise;
+			const configured = await modePromise;
+			const mode = deps.modeFor ? deps.modeFor(job.match.id, configured) : configured;
 			let count: number | null;
 			// Whether that count came from the search hit rather than the
 			// detail fetch. Forwarded explicitly — see finalizeRow.

@@ -15,6 +15,26 @@ export type AudioMode = 'sub' | 'dub';
 
 export type AudioChoiceStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
+/** How many shows' choices are kept; the oldest go first. */
+export const MAX_AUDIO_CHOICES = 500;
+
+const KEY = 'ani-gui.audio-choices';
+
+/** `[kitsuId, mode]` entries, oldest write first. */
+type Choices = [string, AudioMode][];
+
+const isEntry = (c: unknown): c is [string, AudioMode] =>
+	Array.isArray(c) && typeof c[0] === 'string' && (c[1] === 'sub' || c[1] === 'dub');
+
+function load(storage: AudioChoiceStorage | null): Choices {
+	try {
+		const parsed: unknown = JSON.parse(storage?.getItem(KEY) ?? '[]');
+		return Array.isArray(parsed) ? parsed.filter(isEntry) : [];
+	} catch {
+		return [];
+	}
+}
+
 export function defaultStorage(): AudioChoiceStorage | null {
 	try {
 		return globalThis.localStorage ?? null;
@@ -28,9 +48,7 @@ export function storedAudio(
 	kitsuId: string,
 	storage: AudioChoiceStorage | null = defaultStorage()
 ): AudioMode | undefined {
-	void kitsuId;
-	void storage;
-	return undefined;
+	return load(storage).find(([id]) => id === kitsuId)?.[1];
 }
 
 /** Remember `mode` for the show. Whether the storage took it. */
@@ -39,10 +57,14 @@ export function rememberAudio(
 	mode: AudioMode,
 	storage: AudioChoiceStorage | null = defaultStorage()
 ): boolean {
-	void kitsuId;
-	void mode;
-	void storage;
-	return false;
+	if (!kitsuId || !storage) return false;
+	const next: Choices = [...load(storage).filter(([id]) => id !== kitsuId), [kitsuId, mode]];
+	try {
+		storage.setItem(KEY, JSON.stringify(next.slice(-MAX_AUDIO_CHOICES)));
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 /** The audio a show plays in: its own choice, else `fallback`, the
@@ -52,7 +74,5 @@ export function audioFor(
 	fallback: AudioMode,
 	storage: AudioChoiceStorage | null = defaultStorage()
 ): AudioMode {
-	void kitsuId;
-	void storage;
-	return fallback;
+	return (kitsuId ? storedAudio(kitsuId, storage) : undefined) ?? fallback;
 }

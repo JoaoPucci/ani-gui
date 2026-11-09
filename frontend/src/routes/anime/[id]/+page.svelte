@@ -41,7 +41,6 @@
 		playStream,
 		airingGet,
 		settingsGet,
-		settingsPut,
 		type AiringStatus,
 		type Config,
 		type HistoryEntry,
@@ -115,6 +114,7 @@
 		versionsInMode
 	} from '$lib/versions/version-choice';
 	import { storedCaption } from '$lib/play/caption-choice';
+	import { rememberAudio, storedAudio } from '$lib/play/audio-choice';
 	import { handleRadioKey } from '$lib/versions/radio-keys';
 	import { versionLabel } from '$lib/versions/version-label';
 	import { followPlayed } from '$lib/play/played-episode';
@@ -149,6 +149,11 @@
 	let detail = $state<KitsuAnimeRef | null>(null);
 	let config = $state<Config | null>(null);
 	const id = $derived(page.params.id ?? '');
+	// The show's own Sub or Dub, read whenever the page turns to a show
+	// ($lib/play/audio-choice); a show never chosen on plays the
+	// Settings value, which is only the default.
+	let chosenAudio = $derived<'sub' | 'dub' | undefined>(storedAudio(id));
+	const audio = $derived(chosenAudio ?? playMode(config));
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 	let error = $state<{ headline: string; detail: string | null } | null>(null);
 	let scrollY = $state(0);
@@ -175,7 +180,7 @@
 	// about one audio says nothing about the other. A music title is
 	// unavailable in both by this page's own rule, asked or not.
 	let availabilityRow = $state<AvailabilityRow | null>(null);
-	const rowKey = $derived(audioKey(detail?.id, playMode(config)));
+	const rowKey = $derived(audioKey(detail?.id, audio));
 	const knownRow = $derived(rowFor(availabilityRow, rowKey));
 	const availability = $derived(isMusicSubtype(detail?.subtype ?? null) ? false : knownRow.listed);
 	// True once the availability probe settled (result, error, or the
@@ -247,7 +252,7 @@
 	 * the page does, so a click in that gap asks with the fallback and
 	 * the real mode can arrive while the answer is out.
 	 */
-	const capGateMode = (): 'sub' | 'dub' => playMode(config);
+	const capGateMode = (): 'sub' | 'dub' => audio;
 	/**
 	 * The context once this page is gone.
 	 *
@@ -833,7 +838,7 @@
 	// unchanged, and a derived that compares equal does not wake its
 	// dependents — so the common case costs one lookup, not two
 	// identical ones against a source that rate-limits.
-	const availabilityMode = $derived(playMode(config));
+	const availabilityMode = $derived(audio);
 
 	// Availability against the provider. Result gates the Play + Download
 	// CTAs so titles outside the catalogue (Western animation, etc.)
@@ -931,7 +936,7 @@
 		const d = detail;
 		const title = playTitle();
 		if (!d || !title) return Promise.resolve();
-		const mode = playMode(config);
+		const mode = audio;
 		// The version a click on the row would play: its warm puts that
 		// copy's numbering right and keeps its stream under the key the
 		// click reads.
@@ -1196,7 +1201,7 @@
 						.then((hits) => {
 							if (id !== currentId) return null;
 							const trimmed = hits.filter((h) => h.id !== d.id).slice(0, 12);
-							const mode: 'sub' | 'dub' = playMode(config);
+							const mode: 'sub' | 'dub' = audio;
 							return filterAvailable(trimmed, mode);
 						})
 						.then((filtered) => {
@@ -1256,7 +1261,7 @@
 		// cap as unbounded, so the warm would resolve
 		// aired-but-uncatalogued padded tiles.
 		if (!availabilityResolved) return;
-		const mode = playMode(config);
+		const mode = audio;
 		// Read here so a new choice re-warms under its own keys; the
 		// other version's warmed sessions are never served for it.
 		const version = versionChoice;
@@ -1429,15 +1434,12 @@
 		return heroParallaxTransform(y, isCover, reducedMotion.current);
 	}
 
-	async function setMode(mode: 'sub' | 'dub') {
-		if (!config || config.mode === mode) return;
-		const next: Config = { ...config, mode };
-		config = next;
-		try {
-			await settingsPut(next);
-		} catch (e) {
-			configError = describeSettingsFailure(e);
-		}
+	// Sub or Dub is the show's own once picked here, remembered per show
+	// ($lib/play/audio-choice); the settings are not written.
+	function setMode(mode: 'sub' | 'dub') {
+		if (!id) return;
+		rememberAudio(id, mode);
+		chosenAudio = mode;
 	}
 
 	function notify(msg: string) {
@@ -1517,7 +1519,7 @@
 			notify(m.detail_notify_no_title());
 			return;
 		}
-		const mode = playMode(config);
+		const mode = audio;
 		const version = versionChoice;
 		// The show and visit this play is for, and its request, taken at
 		// the click ($lib/play/owned-play): a late answer is judged
@@ -1660,7 +1662,7 @@
 		if (!detail || nothingAiredYet || airingIsPending) return;
 		if (resumeRefresh.refreshing() && !(await resumeRowSettled())) return;
 		if (!detail || nothingAiredYet || airingIsPending) return;
-		const mode = playMode(config);
+		const mode = audio;
 		const quality = downloadQuality(config);
 		// `episode_count` must stay Kitsu's announced total — that's
 		// what the backend picker compares against the provider's planned
@@ -1862,17 +1864,23 @@
 						</div>
 					{/if}
 
-					<!-- Sub/Dub control. Reads/writes ani-gui config. -->
+					<!-- Sub/Dub control: the show's own choice once picked, the
+					     Settings default until then. The label says when the
+					     show has a choice of its own. -->
 					<div class="controls">
 						<div class="seg-group" role="group" aria-label={m.detail_audio_group_aria_label()}>
-							<span class="seg-label">{m.detail_audio_group_label()}</span>
+							<span class="seg-label"
+								>{m.detail_audio_group_label()}{#if chosenAudio}<span class="seg-scope"
+										>&nbsp;·&nbsp;{m.detail_audio_note_show()}</span
+									>{/if}</span
+							>
 							<div class="seg">
 								{#each ['sub', 'dub'] as mode (mode)}
 									<button
 										type="button"
 										class="seg-btn"
-										class:active={config?.mode === mode}
-										aria-pressed={config?.mode === mode}
+										class:active={audio === mode}
+										aria-pressed={audio === mode}
 										disabled={!config}
 										onclick={() => setMode(mode as 'sub' | 'dub')}
 									>
@@ -2785,6 +2793,7 @@
 	.seg-group {
 		display: inline-flex;
 		flex-direction: column;
+		align-items: flex-start;
 		gap: var(--space-2);
 	}
 	.seg-label {
@@ -2827,6 +2836,9 @@
 	.seg-btn:disabled {
 		opacity: 0.5;
 		cursor: progress;
+	}
+	.seg-scope {
+		color: var(--accent, var(--bone-300));
 	}
 	.seg-error {
 		font-family: var(--font-mono);

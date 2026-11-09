@@ -162,7 +162,8 @@ export function makeStartResume(
 		deps.onBusy(match.id);
 		deps.onProgress(null);
 
-		const { mode } = await deps.getSettings();
+		const settings = await deps.getSettings();
+		const mode = deps.modeFor ? deps.modeFor(match.id, settings.mode) : settings.mode;
 		// The viewer moved on while settings loaded: nothing of the
 		// click's provider work, the cap lookup included, is theirs.
 		if (!stillHere()) {
