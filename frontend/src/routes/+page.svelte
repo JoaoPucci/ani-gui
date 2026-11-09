@@ -802,7 +802,8 @@
 		refreshing: () => m.account_watch_later_refreshing(),
 		never: () => m.account_watch_later_not_updated(),
 		justNow: () => m.account_watch_later_updated_now(),
-		updated: (when) => m.account_watch_later_updated({ when })
+		updated: (when) => m.account_watch_later_updated({ when }),
+		failed: () => m.account_watch_later_failed()
 	};
 	const wlStatus = $derived.by(() => {
 		void wlStamped;

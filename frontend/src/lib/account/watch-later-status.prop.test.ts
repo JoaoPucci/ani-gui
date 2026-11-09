@@ -112,7 +112,8 @@ describe('statusPhrases, by property', () => {
 		refreshing: () => 'Refreshing…',
 		never: () => 'Not updated yet',
 		justNow: () => 'Updated just now',
-		updated: (when) => `Updated ${when}`
+		updated: (when) => `Updated ${when}`,
+		failed: () => "Couldn't load your list"
 	};
 	const status = fc.oneof(
 		fc.constant({ kind: 'refreshing' as const }),

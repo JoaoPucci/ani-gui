@@ -19,7 +19,8 @@ const copy: StatusCopy = {
 	refreshing: () => 'Refreshing…',
 	never: () => 'Not updated yet',
 	justNow: () => 'Updated just now',
-	updated: (when) => `Updated ${when}`
+	updated: (when) => `Updated ${when}`,
+	failed: () => "Couldn't load your list"
 };
 
 describe('watchLaterStatus', () => {

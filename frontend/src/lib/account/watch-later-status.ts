@@ -11,7 +11,10 @@
  *                    sync invalidated it, so the rail cannot vouch for
  *                    that part of the list;
  *   - `updated`    — every tracker has a time; the rail is as fresh
- *                    as the OLDEST of them, which is the one it shows.
+ *                    as the OLDEST of them, which is the one it shows;
+ *   - `failed`     — the rail's last load did not land, so the cards on
+ *                    screen (if any) are not the snapshot the times
+ *                    describe, and the rail vouches for no freshness.
  *
  * The age is bucketed the way a person reads it — just now, minutes,
  * hours, days — and `nextAgeChange` says when the bucket rolls over,
@@ -21,17 +24,22 @@
 export type WatchLaterStatus =
 	| { kind: 'refreshing' }
 	| { kind: 'never' }
-	| { kind: 'updated'; at: number };
+	| { kind: 'updated'; at: number }
+	| { kind: 'failed' };
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-/** The status for the connected trackers' last-pulled times, or
- *  `null` when no tracker is connected (there is nothing to report). */
+/** The status for the connected trackers' last-pulled times and
+ *  whether the rail's last load failed, or `null` when no tracker is
+ *  connected (there is nothing to report). */
 export function watchLaterStatus(
 	stamps: readonly (number | null)[],
-	refreshing: boolean
+	refreshing: boolean,
+	// Read by the rule that reports a failed load, which lands next.
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	failed = false
 ): WatchLaterStatus | null {
 	if (stamps.length === 0) return null;
 	if (refreshing) return { kind: 'refreshing' };
@@ -74,6 +82,7 @@ export interface StatusCopy {
 	never(): string;
 	justNow(): string;
 	updated(when: string): string;
+	failed(): string;
 }
 
 /** The text the rail's header shows for `status` at `now`. */
@@ -86,6 +95,7 @@ export function statusLabel(
 	if (status === null) return null;
 	if (status.kind === 'refreshing') return copy.refreshing();
 	if (status.kind === 'never') return copy.never();
+	if (status.kind === 'failed') return copy.failed();
 	const age = ageOf(status.at, now);
 	if (age.unit === 'now') return copy.justNow();
 	const when = new Intl.RelativeTimeFormat(locale, { numeric: 'always', style: 'short' }).format(
