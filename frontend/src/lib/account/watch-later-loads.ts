@@ -18,6 +18,10 @@ export interface RailLoads {
 	 *  check that load owed. A check whose loads all fail stays owed
 	 *  until the next load lands. Once per check asked for. */
 	landed(ticket: LoadTicket): boolean;
+	/** `ticket`'s load finished, landed or failed or superseded. */
+	finish(ticket: LoadTicket): void;
+	/** Resolves once the latest load has finished. */
+	settled(): Promise<void>;
 }
 
 export function createRailLoads(): RailLoads {
@@ -34,6 +38,8 @@ export function createRailLoads(): RailLoads {
 			if (ticket.seq !== seq || !checkOwed) return false;
 			checkOwed = false;
 			return true;
-		}
+		},
+		finish() {},
+		settled: () => Promise.resolve()
 	};
 }

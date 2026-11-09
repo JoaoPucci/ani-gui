@@ -642,7 +642,8 @@
 				if (!watchLaterLoads.current(ticket)) return;
 				watchLaterError = e;
 				watchLaterFailed = true;
-			});
+			})
+			.finally(() => watchLaterLoads.finish(ticket));
 	});
 
 	// Hero auto-advance. The rules and the interval live in
@@ -726,6 +727,8 @@
 			if (!watchLaterLoads.current(ticket)) return;
 			watchLaterError = e;
 			watchLaterFailed = true;
+		} finally {
+			watchLaterLoads.finish(ticket);
 		}
 	}
 
@@ -772,6 +775,9 @@
 				})
 			);
 			await reloadWatchLaterRail();
+			// A load that started meanwhile superseded this one, so what
+			// the refresh announces is that load's result.
+			await watchLaterLoads.settled();
 		} finally {
 			refreshingWatchLater = false;
 			wlFreshness.refreshSettled(() => wlStatusText);
