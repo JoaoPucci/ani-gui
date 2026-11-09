@@ -397,7 +397,9 @@ where
     // The play as it was asked for, for the writes it makes once the
     // stream is resolved.
     let asked = crate::history::guard::Asked::now(&state.history_path, args.kitsu_id.as_deref());
-    let quality = args.quality.as_deref().unwrap_or("best");
+    // The built-in player gets the whole master and starts on Auto; a
+    // pick in its Quality menu chooses among the master's levels.
+    let quality = crate::scraper::hls::MASTER;
 
     // Resolution caching is the user's call (Config::cache_resolutions,
     // default off): a cached row can pin a day-one master URL — and so
