@@ -39,7 +39,15 @@ describe('makeKey', () => {
 		expect(makeKey('show-2', 1, 'sub', 'best')).not.toBe(base);
 		expect(makeKey('show-1', 2, 'sub', 'best')).not.toBe(base);
 		expect(makeKey('show-1', 1, 'dub', 'best')).not.toBe(base);
-		expect(makeKey('show-1', 1, 'sub', '1080')).not.toBe(base);
+	});
+
+	it('is the same whatever quality a caller passes: every play gets the master', () => {
+		// A warm fired under one quality answers a click under another,
+		// since the backend resolves the master for both.
+		const base = makeKey('show-1', 1, 'sub', 'best');
+		for (const quality of ['1080', '720', '480', 'worst']) {
+			expect(makeKey('show-1', 1, 'sub', quality)).toBe(base);
+		}
 	});
 
 	it('keeps a session warmed for one version from serving another', () => {

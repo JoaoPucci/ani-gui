@@ -28,7 +28,6 @@ describe('handoffArgs', () => {
 			title: 'The Show',
 			episode: '3',
 			mode: 'dub',
-			quality: '720',
 			episode_count: 12,
 			year: yearFromKitsuRef(detail),
 			subtype: 'TV',
@@ -81,7 +80,7 @@ describe('handoffArgs', () => {
 		).toBe(false);
 	});
 
-	it('defaults to sub and best, and sends no id when the page has none', () => {
+	it('defaults to sub, names no quality, and sends no id when the page has none', () => {
 		const args = handoffArgs({
 			title: 'The Show',
 			episode: 1,
@@ -90,7 +89,7 @@ describe('handoffArgs', () => {
 			detail: null
 		});
 		expect(args.mode).toBe('sub');
-		expect(args.quality).toBe('best');
+		expect('quality' in args).toBe(false);
 		expect(args.episode_count).toBeNull();
 		expect(args.subtype).toBeNull();
 		expect(args.alt_titles).toEqual([]);

@@ -5,7 +5,6 @@ import {
 	playArgsFor,
 	playedRecord,
 	playMode,
-	playQuality,
 	recordPlayed,
 	runOwnedPlay
 } from './owned-play';
@@ -363,14 +362,12 @@ describe('playArgsFor — warms', () => {
 	});
 });
 
-describe('playMode / playQuality', () => {
-	it('reads anything but dub as sub, and a missing quality as best', () => {
+describe('playMode', () => {
+	it('reads anything but dub as sub', () => {
 		expect(playMode({ mode: 'dub' })).toBe('dub');
 		expect(playMode({ mode: 'sub' })).toBe('sub');
 		expect(playMode({ mode: 'weird' })).toBe('sub');
 		expect(playMode(null)).toBe('sub');
-		expect(playQuality({ quality: '720' })).toBe('720');
-		expect(playQuality(null)).toBe('best');
 	});
 });
 

@@ -30,13 +30,22 @@ describe('buildPlayArgs', () => {
 			title: 'The Show',
 			episode: '3',
 			mode: 'dub',
-			quality: '720',
 			episode_count: 12,
 			year: yearFromKitsuRef(show),
 			subtype: 'TV',
 			alt_titles: altTitlesFromKitsu(show),
 			kitsu_id: '42'
 		});
+	});
+
+	it('names no quality, whatever the caller holds: every play gets the master', () => {
+		// The built-in player starts on Auto with every level the master
+		// lists, and the hand-offs adapt to it themselves; the backend
+		// resolves the master for all of them.
+		for (const quality of ['best', '1080', '720', '480', 'worst']) {
+			const args = buildPlayArgs({ title: 'The Show', episode: 1, mode: 'sub', quality, show });
+			expect('quality' in args).toBe(false);
+		}
 	});
 
 	it("names the guessed card's row when a guess asks, and only then", () => {

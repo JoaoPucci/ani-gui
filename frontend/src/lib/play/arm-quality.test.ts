@@ -123,11 +123,10 @@ function arm(setting = 'best', levels = MASTER) {
 afterEach(() => qualityPin.clear());
 
 describe('armQuality — the start', () => {
-	it('best starts the engine at the highest level, read when the levels arrive', () => {
+	it('starts the engine at the highest level as the levels arrive, reading no setting', () => {
 		const s = arm('best');
-		expect(s.settingReads()).toBe(0);
 		s.parse();
-		expect(s.settingReads()).toBe(1);
+		expect(s.settingReads()).toBe(0);
 		expect(s.engine.startLevel).toBe(2);
 		expect(s.engine.loads).toEqual([2]);
 		expect(s.engine.autoLevelEnabled).toBe(false);
@@ -140,10 +139,15 @@ describe('armQuality — the start', () => {
 		});
 	});
 
-	it('worst starts it at the lowest', () => {
-		const s = arm('worst');
-		s.parse();
-		expect(s.engine.loads).toEqual([0]);
+	it('starts on Auto at the highest level whatever setting a caller still passes', () => {
+		// The player always starts on Auto with the whole master; the
+		// only quality setting left is the download's.
+		for (const setting of ['worst', '480', '720']) {
+			const s = arm(setting);
+			s.parse();
+			expect(s.engine.loads).toEqual([2]);
+			expect(s.lastView()?.pinned).toBeNull();
+		}
 	});
 
 	it('leaves a stream of one level to the engine, and says so', () => {
@@ -484,8 +488,12 @@ describe('armQuality — trouble', () => {
 	});
 
 	it('hands the choice to the engine for good once nothing below a failing level is left', () => {
-		const s = arm('worst');
+		// The lowest level, reached by a pick: the start is always the
+		// highest.
+		const s = arm('best');
 		s.parse();
+		s.control.pick(0);
+		const loads = [...s.engine.loads];
 		s.engine.manual = -1;
 		s.engine.emit(E.ERROR, {
 			details: D.FRAG_LOAD_ERROR,
@@ -493,11 +501,11 @@ describe('armQuality — trouble', () => {
 			errorAction: SWITCHED(1),
 			frag: { type: 'main', level: 0 }
 		});
-		expect(s.engine.loads).toEqual([0]);
+		expect(s.engine.loads).toEqual(loads);
 		expect(s.engine.autoLevelEnabled).toBe(true);
 		expect(s.logs.join('\n')).toMatch(/released/);
 		s.engine.emit(E.ERROR, { details: D.FRAG_LOAD_ERROR, fatal: false, frag: { type: 'main' } });
-		expect(s.engine.loads).toEqual([0]);
+		expect(s.engine.loads).toEqual(loads);
 	});
 });
 
@@ -1064,8 +1072,9 @@ describe('armQuality — levels hls.js removes', () => {
 	});
 
 	it('picking the level held after a release takes the choice back from the engine', () => {
-		const s = arm('worst', [MASTER[0], MASTER[1]]);
+		const s = arm('best', [MASTER[0], MASTER[1]]);
 		s.parse();
+		s.control.pick(0);
 		s.engine.emit(E.FRAG_CHANGED, { frag: { type: 'main', level: 0 } });
 		s.engine.manual = -1;
 		s.engine.emit(E.ERROR, {
@@ -1082,8 +1091,9 @@ describe('armQuality — levels hls.js removes', () => {
 	});
 
 	it('Auto after a release takes the choice back from the engine', () => {
-		const s = arm('worst', [MASTER[0], MASTER[1]]);
+		const s = arm('best', [MASTER[0], MASTER[1]]);
 		s.parse();
+		s.control.pick(0);
 		s.engine.manual = -1;
 		s.engine.emit(E.ERROR, {
 			details: D.FRAG_LOAD_ERROR,
@@ -1189,29 +1199,6 @@ describe('armQuality — levels hls.js removes', () => {
 		t.remove(0);
 		await tickOver();
 		expect(t.engine.loads.at(-1)).toBe(1);
-	});
-
-	it('a removal while the settings are on their way is in the levels the start is chosen from', async () => {
-		let answer: (q: string) => void = () => {};
-		const engine = new FakeEngine();
-		const objects = MASTER.map((l) => ({ ...l }));
-		armQuality({
-			engine: engine as unknown as Hls,
-			events: E,
-			video: new FakeVideo(),
-			setting: () => new Promise<string>((r) => (answer = r)),
-			holdsStart: true,
-			onView: () => {},
-			now: () => 1_000,
-			log: () => {}
-		});
-		engine.levels = objects;
-		engine.emit(E.MANIFEST_PARSED, { levels: objects });
-		removeFrom(engine, [2]);
-		answer('best');
-		await tickOver();
-		expect(engine.startLevel).toBe(1);
-		expect(engine.loads).toEqual([1]);
 	});
 
 	it('keeps holding the same level under its new index', () => {
@@ -1334,7 +1321,7 @@ describe('armQuality — levels hls.js removes', () => {
 	});
 });
 
-describe('armQuality — settings still on their way', () => {
+describe('armQuality — the start waits for nothing', () => {
 	function armHeld(setting: () => string | null | undefined | Promise<string | null | undefined>) {
 		const engine = new FakeEngine();
 		const views: (QualityView | null)[] = [];
@@ -1351,20 +1338,12 @@ describe('armQuality — settings still on their way', () => {
 		const parse = (levels = MASTER) => engine.emit(E.MANIFEST_PARSED, { levels });
 		return { engine, views, control, parse };
 	}
-	const settle = () => new Promise((r) => setTimeout(r, 0));
 
-	it('chooses the start level once the setting arrives, and only then starts the engine', async () => {
-		let answer: (q: string) => void = () => {};
-		const s = armHeld(() => new Promise((r) => (answer = r)));
+	it('chooses the start level and starts the engine as the levels arrive, with settings never answering', () => {
+		const s = armHeld(() => new Promise(() => {}));
 		s.parse();
-		await settle();
-		expect(s.engine.loads).toEqual([]);
-		expect(s.engine.starts).toBe(0);
-		expect(s.views).toEqual([]);
-		answer('worst');
-		await settle();
-		expect(s.engine.startLevel).toBe(0);
-		expect(s.engine.loads).toEqual([0]);
+		expect(s.engine.startLevel).toBe(2);
+		expect(s.engine.loads).toEqual([2]);
 		expect(s.engine.starts).toBe(1);
 		expect(s.views.at(-1)?.levels).toEqual(MASTER);
 	});
@@ -1392,18 +1371,10 @@ describe('armQuality — settings still on their way', () => {
 		expect(plain.engine.startsAt).toEqual([undefined]);
 	});
 
-	it('settings that fail read as best', async () => {
-		const s = armHeld(() => Promise.reject(new Error('settings down')));
-		s.parse();
-		await settle();
-		expect(s.engine.loads).toEqual([2]);
-		expect(s.engine.starts).toBe(1);
-	});
-
-	it('a setting in hand starts the engine at once, and a stream of one level is started too', () => {
+	it('a stream of several levels or of one is started as its levels arrive', () => {
 		const s = armHeld(() => '720');
 		s.parse();
-		expect(s.engine.loads).toEqual([1]);
+		expect(s.engine.loads).toEqual([2]);
 		expect(s.engine.starts).toBe(1);
 		const one = armHeld(() => 'best');
 		one.parse([MASTER[1]]);
@@ -1411,13 +1382,10 @@ describe('armQuality — settings still on their way', () => {
 		expect(one.engine.starts).toBe(1);
 	});
 
-	it('a stream retired before the setting arrives starts nothing', async () => {
-		let answer: (q: string) => void = () => {};
-		const s = armHeld(() => new Promise((r) => (answer = r)));
-		s.parse();
+	it('a stream retired before its levels arrive starts nothing', () => {
+		const s = armHeld(() => 'best');
 		s.control.dispose();
-		answer('best');
-		await settle();
+		s.parse();
 		expect(s.engine.loads).toEqual([]);
 		expect(s.engine.starts).toBe(0);
 	});
