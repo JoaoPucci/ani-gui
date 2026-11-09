@@ -27,6 +27,7 @@ pub(crate) mod availability_ttl;
 mod availability_unread;
 pub(crate) mod availability_warm;
 pub mod command_line;
+pub mod continue_guess;
 pub mod cour;
 mod cour_keyword_form;
 mod cour_ordinal_form;

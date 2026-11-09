@@ -114,6 +114,9 @@ export function homeHandlers(
 		// accident.
 		http.get(`${API_BASE}/api/kitsu/resolve-allmanga/:showId`, () => HttpResponse.json(null)),
 		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		// The hits a guessed row rules out, asked of the backend between
+		// the search and the pick: none, unless a scenario says.
+		http.post(`${API_BASE}/api/history/guess/ruled-out`, () => HttpResponse.json([])),
 		http.post(`${API_BASE}/api/availability`, () =>
 			HttpResponse.json({ available: true, episode_count: 26, approximate: false })
 		)

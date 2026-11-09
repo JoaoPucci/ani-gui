@@ -7,11 +7,15 @@
 //
 // The guess runs here as Continue runs it, from the row (`resolveHistoryEntry`)
 // through `resolveKitsuMatchWithTrust`, with nothing stored: no mapping
-// and no title match, so every case reaches the search. The step after
-// the search, the backend's resolve from the show key's words, answers
-// what the case's `enrichment` records; a guess that reaches it for a
-// case recording no answer fails, as does any request the recordings
-// do not hold.
+// and no title match, so every case reaches the search. The hits the
+// row rules out are the ones the case's `ruled_out` lists for the
+// episode, which the backend's half of the corpus
+// (backend/src/commands/continue_guess_corpus_test.rs) checks its rules
+// against. The step after the search, the backend's resolve from the
+// show key's words, answers what the case's `enrichment` records, which
+// the backend's half checks too; a guess that reaches it for a case
+// recording no answer fails, as does any request the recordings do not
+// hold.
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -23,6 +27,7 @@ import {
 	allmangaKitsuMapGet,
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
+	kitsuGuessRuledOut,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
 	kitsuTitleMatchGet,
@@ -36,6 +41,7 @@ vi.mock('$lib/api', () => ({
 	allmangaKitsuMapPlayed: vi.fn(),
 	kitsuAnimeBySlug: vi.fn(),
 	kitsuAnimeDetail: vi.fn(),
+	kitsuGuessRuledOut: vi.fn(),
 	kitsuResolveAllmangaShowId: vi.fn(),
 	kitsuSearch: vi.fn(),
 	kitsuTitleMatchGet: vi.fn(),
@@ -48,6 +54,7 @@ interface Case {
 	key_year: number | null;
 	right: string | null;
 	picks: Record<string, string | null>;
+	ruled_out?: Record<string, string[]>;
 	enrichment?: string | null;
 	source: string;
 }
@@ -109,6 +116,7 @@ function hitsOf(file: string): KitsuAnimeRef[] {
 /** Requests the guess made that the recording does not hold. */
 let unrecorded: string[] = [];
 let current: Case;
+let currentEp: string;
 
 beforeEach(() => {
 	unrecorded = [];
@@ -135,6 +143,13 @@ beforeEach(() => {
 		}
 		return hitsOf(file)[0] ?? null;
 	});
+	vi.mocked(kitsuGuessRuledOut).mockImplementation(async (title, episode, hits) => {
+		if (title !== current.title || episode !== parseFloat(currentEp)) {
+			unrecorded.push(`rules for ${title} at ${episode}`);
+		}
+		const out = new Set(current.ruled_out?.[currentEp] ?? []);
+		return hits.filter((h) => out.has(h.id)).map((h) => h.id);
+	});
 	vi.mocked(kitsuResolveAllmangaShowId).mockImplementation(async (id) => {
 		if (current.enrichment === undefined) {
 			unrecorded.push(`enrichment ${id}`);
@@ -146,6 +161,7 @@ beforeEach(() => {
 
 async function guess(c: Case, ep: string): Promise<string | null> {
 	current = c;
+	currentEp = ep;
 	const row = resolveHistoryEntry(
 		{ ep_no: ep, id: c.key, title: c.title, key_year: c.key_year ?? undefined },
 		null

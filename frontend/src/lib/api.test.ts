@@ -27,6 +27,7 @@ import {
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
 	kitsuEpisodes,
+	kitsuGuessRuledOut,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
 	kitsuSearchPage,
@@ -1057,6 +1058,27 @@ describe('kitsuSearch', () => {
 		expect(JSON.parse(init?.body as string)).toEqual({ query: 'one piece' });
 		expect(hits).toHaveLength(1);
 		expect(hits[0].canonical_title).toBe('One Piece');
+	});
+});
+
+describe('kitsuGuessRuledOut', () => {
+	it('POSTs the row and its hits and returns the ids the row rules out', async () => {
+		const fetchMock = mockFetchOnce(['43886']);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const hit = {
+			id: '43886',
+			canonical_title: "Jujutsu Kaisen New Year's Special"
+		} as KitsuAnimeRef;
+		const ids = await kitsuGuessRuledOut('Jujutsu Kaisen (TV)', 24, [hit]);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/guess/ruled-out`);
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(init?.body as string)).toEqual({
+			title: 'Jujutsu Kaisen (TV)',
+			episode: 24,
+			hits: [hit]
+		});
+		expect(ids).toEqual(['43886']);
 	});
 });
 

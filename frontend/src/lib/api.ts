@@ -1488,6 +1488,21 @@ export function kitsuResolveAllmangaShowId(
 }
 
 /**
+ * The ids of the `hits` a Continue row's guess may not take: the
+ * backend reads the row's search title and the episode it reached
+ * against each hit (`backend/src/commands/continue_guess.rs`). No
+ * request leaves the app; the hits are the ones the row's own search
+ * or slug lookup returned.
+ */
+export function kitsuGuessRuledOut(
+	title: string,
+	episode: number,
+	hits: KitsuAnimeRef[]
+): Promise<string[]> {
+	return postJson<string[]>('/api/history/guess/ruled-out', { title, episode, hits });
+}
+
+/**
  * Per-show last-watched millis-since-epoch map. Populated by the
  * backend's `mark-watched` handler whenever the user clicks an
  * episode; a play that never reaches it leaves no stamp. Drives the home

@@ -3,9 +3,9 @@
  "captured_at": "2026-11-10",
  "fixtures": {
   "cases.json": {
-   "source": "Hand-assembled from the recordings beside it: one case per hianime listing, its show key and card title copied from tests/fixtures/hianime/picker/ (the audited pairings in backend/src/commands/play_native_walk_fixture_test.rs, other cards of the recorded pools) or from a reported Continue card; `right` is the Kitsu entry the listing is, read off the recorded hits; `picks` is what the guess takes at each episode, pinned by the corpus tests.",
-   "size": 27208,
-   "sha256": "ac0b6bbe3c21d62085f18eaba8ede804482642b5b9d4ec9abab6de52fe2ff49a"
+   "source": "Hand-assembled from the recordings beside it: one case per hianime listing, its show key and card title copied from tests/fixtures/hianime/picker/ (the audited pairings in backend/src/commands/play_native_walk_fixture_test.rs, other cards of the recorded pools) or from a reported Continue card; `right` is the Kitsu entry the listing is, read off the recorded hits; `picks` is what the guess takes at each episode, `ruled_out` the recorded hits the row rules out at each episode, and `enrichment` what the resolve from the show key's words answers for a row whose guess reaches it, all pinned by the corpus tests.",
+   "size": 35601,
+   "sha256": "9aa010b85163fd7535f3e6af54e8d5ec6edacedd20e2851b26b48b87f6d8e850"
   },
   "requests.json": {
    "source": "Which recording answers which request: `search` by the title the renderer searches, `slug` by the slug it looks up, `words` by the show key words the backend searches.",
