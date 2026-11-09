@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-11-03_
+_Last updated: 2026-11-10_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -154,6 +154,16 @@ ani-gui keeps the following on your computer only:
   playing the show again afterwards keeps its positions again, and
   where its stream stood while recovering, the same way the history
   records a show played again after removing it.
+- **Choices you make for a show** — the subtitle language you last
+  picked for it (or Off), and, for a show the streaming site lists
+  twice, the version you chose. Kept in the app's local browser
+  storage (under your OS user-data directory), keyed by the show's
+  Kitsu id, at most 500 shows for each kind of choice, the oldest
+  dropped first. Choosing the uncensored version, which is what plays
+  when nothing is chosen, forgets the version choice for that show.
+  These are preferences for the show rather than history, so clearing
+  your watch history or removing the show from Continue Watching
+  leaves them.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
