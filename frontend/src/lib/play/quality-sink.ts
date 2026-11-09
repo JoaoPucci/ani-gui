@@ -1,6 +1,6 @@
 /**
  * The engine side of the quality control: a move made on the engine
- * and logged, and a setting that may still be on its way.
+ * and logged, and the engine started once the start is chosen.
  */
 
 import type Hls from 'hls.js';

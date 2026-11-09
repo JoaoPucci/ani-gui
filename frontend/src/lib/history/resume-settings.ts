@@ -2,7 +2,7 @@
  * Resolve the audio mode a Continue Watching click should play
  * with. Cards can release (and be clicked) before settingsGet has
  * resolved — a cached Kitsu match is near-instant, settings are an
- * IPC away — and capturing the sub/best fallbacks at that instant
+ * IPC away — and capturing the sub fallback at that instant
  * would hand a DUB user the wrong variant for both the click-time
  * cap lookup and playback. So the click awaits the same shared
  * settings promise the loader's getMode uses; the fallbacks apply

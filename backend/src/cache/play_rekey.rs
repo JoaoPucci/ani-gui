@@ -16,10 +16,12 @@ use rusqlite::{params, Connection};
 use crate::commands::play_native_versions::VersionKind;
 use crate::error::{AniError, Result};
 
-/// The play family as 0.17.0 keyed it: `play:v28:<title>:<mode>:
-/// <quality>:<episode>:<year>:<count>:<subtype>`, then `:<version>` for
-/// a request naming one. v29 took the quality out, since every play
-/// resolves the master.
+/// The play family at v28: `play:v28:<title>:<mode>:<quality>:
+/// <episode>:<year>:<count>:<subtype>`, then `:<version>` for a request
+/// naming one. v29 took the quality out, since every play resolves the
+/// master. v28 never shipped in a release (0.17.0 keyed its rows at
+/// v26), so only builds made from master since then carry such rows;
+/// a released install's rows go to the reclaim and resolve afresh.
 const QUALITY_KEYED: &str = "play:v28:";
 
 /// The key this build reads for the play row an earlier build kept at

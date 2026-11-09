@@ -2446,7 +2446,7 @@
 		if (toast) toastStore.push(toast);
 		const title = detail.canonical_title;
 		// Settings is intentionally NOT a precondition — falling back to
-		// sub/best matches switchToEpisode's pattern. A permanently null
+		// sub matches switchToEpisode's pattern. A permanently null
 		// config (settingsGet rejected) shouldn't leave Reload no-op.
 		const mode = playMode(config);
 		console.info('[play] stale-stream recovery:', reason);

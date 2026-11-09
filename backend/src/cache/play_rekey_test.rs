@@ -6,7 +6,7 @@ use super::*;
 use crate::commands::play_native_versions::VersionKind;
 use crate::commands::play_resolution_cache::cache_key_for_version;
 
-/// The key 0.17.0 wrote a play row under, quality and all.
+/// The key a v28 build wrote a play row under, quality and all.
 fn old_key(
     title: &str,
     mode: &str,

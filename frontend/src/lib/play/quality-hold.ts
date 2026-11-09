@@ -41,7 +41,8 @@ export interface QualityMove {
 export abstract class QualityHold {
 	/** Level indices, lowest first. */
 	protected ladder: number[];
-	/** The setting's level: auto never climbs above it. */
+	/** The target's level, the highest for Auto: auto never climbs
+	 *  above it. */
 	protected ceiling: number;
 	protected current: number;
 	/** The level the viewer pinned, or null while the choice is Auto. */

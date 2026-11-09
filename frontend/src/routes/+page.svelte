@@ -437,7 +437,7 @@
 	// Shared settings load — created on mount, awaited by BOTH the
 	// loader's getMode and startResume. Cards can release (and be
 	// clicked) before this resolves; the click awaits it via
-	// resolveResumeSettings so a DUB user never plays the sub/best
+	// resolveResumeSettings so a DUB user never plays the sub
 	// fallback just because they clicked fast.
 	let settingsPromise: Promise<Config | null> = Promise.resolve(null);
 	let resumeBusy = $state<string | null>(null);
