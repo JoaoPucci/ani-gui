@@ -1100,4 +1100,37 @@ describe('the hits a row rules out', () => {
 
 		expect(got?.id).toBe('43886');
 	});
+
+	it('stores no pick the rules could not check, so the next load asks again', async () => {
+		// With the rules unanswered, this load still shows a card, but
+		// the pick is one the rules may refuse: stored as the title
+		// match, it would stand for the match's whole lifetime without
+		// the rules ever being asked again.
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([special()]);
+		mockedRuledOut.mockRejectedValueOnce(new Error('down'));
+
+		await resolveKitsuMatch(jjk());
+		expect(mockedPutMatch).not.toHaveBeenCalled();
+
+		mockedRuledOut.mockResolvedValue(['43886']);
+		mockedResolveAllmanga.mockResolvedValue(stubKitsu('42765', 'Jujutsu Kaisen', 24));
+		const again = await resolveKitsuMatch(jjk());
+		expect(again?.id).toBe('42765');
+	});
+
+	it("stores no pick when the slug lookup's check failed", async () => {
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:show-season-2-1', ep_no: '1', title: 'Show Season 2' },
+			null
+		);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSlug.mockResolvedValue({ ...stubKitsu('7', 'Show Season 2', 12), slug: 'show-season-2' });
+		mockedRuledOut.mockRejectedValueOnce(new Error('down'));
+
+		const got = await resolveKitsuMatch(row);
+
+		expect(got?.id).toBe('7');
+		expect(mockedPutMatch).not.toHaveBeenCalled();
+	});
 });
