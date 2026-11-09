@@ -1121,6 +1121,7 @@ describe('the hits a row rules out', () => {
 
 		await resolveKitsuMatch(jjk());
 		expect(mockedPutMatch).not.toHaveBeenCalled();
+		expect(stored).toBeNull();
 
 		mockedRuledOut.mockResolvedValue(['43886']);
 		mockedResolveAllmanga.mockResolvedValue(stubKitsu('42765', 'Jujutsu Kaisen', 24));
