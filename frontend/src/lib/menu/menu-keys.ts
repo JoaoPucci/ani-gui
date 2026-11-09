@@ -1,7 +1,7 @@
 /**
  * What a key does in one of the app's popup menus (`role="menu"`):
- * the account chip's, the download dock's, the Continue row's, and,
- * for the vertical keys, Tab and typed characters, the play page's.
+ * the account chip's, the download dock's, and, for the vertical
+ * keys, Tab and typed characters, the play page's.
  *
  * Down and Up move through the menu's items and wrap at the ends, Home
  * and End go to the first and last; Left and Right are held in the
