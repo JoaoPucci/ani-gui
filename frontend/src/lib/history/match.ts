@@ -114,6 +114,8 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 	}
 
 	let match: KitsuAnimeRef | null = null;
+	// Whether a rule-out call failed this load, leaving its hits unchecked.
+	const check = { failed: false };
 
 	// 2) Slug-first for multi-cour entries. Kitsu's `filter[text]`
 	//    ranks the most-popular sibling and drops sequels with
@@ -130,7 +132,7 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 		if (slug.length >= 4) {
 			try {
 				const bySlug = await kitsuAnimeBySlug(slug);
-				match = bySlug ? ((await admitted(preliminary, [bySlug]))[0] ?? null) : null;
+				match = bySlug ? ((await admitted(preliminary, [bySlug], check))[0] ?? null) : null;
 			} catch {
 				// Slug-fetch failure is non-fatal; fall through to search.
 			}
@@ -143,7 +145,7 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 	//    the slug lookup's above).
 	if (!match) {
 		try {
-			const hits = await admitted(preliminary, await kitsuSearch(preliminary.searchTitle));
+			const hits = await admitted(preliminary, await kitsuSearch(preliminary.searchTitle), check);
 			match = pickKitsuMatch(hits, preliminary);
 		} catch {
 			return null;
@@ -183,8 +185,10 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 	// 5) Persist on success so the next session bypasses the lookup.
 	//    The backend stores it only while a history row still carries
 	//    this title: a row removed while this resolution was out
-	//    leaves nothing to match.
-	if (match) {
+	//    leaves nothing to match. A pick made while the rules could not
+	//    be asked is not stored: it may be one they refuse, and a stored
+	//    match is read without asking them again.
+	if (match && !check.failed) {
 		try {
 			await kitsuTitleMatchPut(
 				preliminary.searchTitle,
@@ -208,10 +212,12 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
  *  (backend/src/commands/continue_guess.rs). A hit ruled out is never
  *  offered, even when none is left, and the row goes on to the resolve
  *  from its show key's words. A failed call rules none out, so the
- *  guess picks as it did before the rules. */
+ *  guess picks as it did before the rules, and marks `check` failed so
+ *  the pick is not stored. */
 async function admitted(
 	preliminary: ResumeTarget,
-	hits: KitsuAnimeRef[]
+	hits: KitsuAnimeRef[],
+	check: { failed: boolean }
 ): Promise<KitsuAnimeRef[]> {
 	if (hits.length === 0) return hits;
 	let out: Set<string>;
@@ -225,6 +231,7 @@ async function admitted(
 			)
 		);
 	} catch {
+		check.failed = true;
 		return hits;
 	}
 	return hits.filter((h) => !out.has(h.id));
