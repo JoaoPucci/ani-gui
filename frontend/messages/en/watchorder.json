@@ -63,7 +63,7 @@
 	"setting_linked": "As linked",
 	"setting_released": "As released",
 	"strip_eyebrow": "Watch order",
-	"strip_first": "Nothing comes before this",
+	"strip_first": "The story starts here",
 	"strip_franchise_link": "Whole franchise",
 	"strip_franchise_stack_films": [
 		{
@@ -98,12 +98,11 @@
 	],
 	"strip_franchise_stack_title": "See the whole franchise",
 	"strip_join": "Comes after these {count}",
-	"strip_last": "Nothing comes after this",
+	"strip_last": "Nothing after this yet",
 	"strip_leads_into": "Leads into {title}",
 	"strip_of_total": "of {total}",
 	"strip_position": "{position} of {total}",
 	"strip_position_open": "Position {position}",
-	"strip_side_end": "Nothing comes after this",
 	"strip_side_story": "Side story",
 	"strip_unnumbered_branch": "One of the ways to continue",
 	"strip_unnumbered_cycle": [

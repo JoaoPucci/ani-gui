@@ -63,7 +63,7 @@
 	"setting_linked": "Según enlaces",
 	"setting_released": "Por estreno",
 	"strip_eyebrow": "Orden para ver",
-	"strip_first": "No hay nada antes de este",
+	"strip_first": "La historia empieza aquí",
 	"strip_franchise_link": "Franquicia completa",
 	"strip_franchise_stack_films": [
 		{
@@ -98,12 +98,11 @@
 	],
 	"strip_franchise_stack_title": "Ver la franquicia completa",
 	"strip_join": "Va después de estos {count}",
-	"strip_last": "No hay nada después de este",
+	"strip_last": "Todavía no hay nada después",
 	"strip_leads_into": "Lleva a {title}",
 	"strip_of_total": "de {total}",
 	"strip_position": "{position} de {total}",
 	"strip_position_open": "Posición {position}",
-	"strip_side_end": "No hay nada después de este",
 	"strip_side_story": "Historia paralela",
 	"strip_unnumbered_branch": "Una de las formas de continuar",
 	"strip_unnumbered_cycle": [
