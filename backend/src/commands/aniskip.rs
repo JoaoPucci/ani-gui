@@ -347,10 +347,12 @@ mod tests {
         crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:12:21:1:1420", &body, 3600)
             .unwrap();
         state.meta_http = reqwest::Client::builder()
-            // aniskip's host resolves to this machine's loopback, so the
-            // request never reaches the network: nothing serving
-            // aniskip's TLS answers there, and the timeout bounds the
-            // rest. (reqwest keeps the URL's port, 443.)
+            // aniskip's host resolves to this machine's loopback, and no
+            // proxy from the environment is used, so the request never
+            // reaches the network: nothing serving aniskip's TLS answers
+            // there, and the timeout bounds the rest. (reqwest keeps the
+            // URL's port, 443.)
+            .no_proxy()
             .resolve(
                 "api.aniskip.com",
                 std::net::SocketAddr::from(([127, 0, 0, 1], 443)),
@@ -441,13 +443,15 @@ mod tests {
         // The corrupt-row path still touches: meta_cache_get OK
         // branch, the inner from_str Err arm, then continues to
         // fetch_skip_times which makes a real HTTP call —
-        // suppress it by setting proxy_http to a client whose
+        // suppress it by setting meta_http to a client whose
         // resolver fails fast.
         state.meta_http = reqwest::Client::builder()
-            // aniskip's host resolves to this machine's loopback, so the
-            // request never reaches the network: nothing serving
-            // aniskip's TLS answers there, and the timeout bounds the
-            // rest. (reqwest keeps the URL's port, 443.)
+            // aniskip's host resolves to this machine's loopback, and no
+            // proxy from the environment is used, so the request never
+            // reaches the network: nothing serving aniskip's TLS answers
+            // there, and the timeout bounds the rest. (reqwest keeps the
+            // URL's port, 443.)
+            .no_proxy()
             .resolve(
                 "api.aniskip.com",
                 std::net::SocketAddr::from(([127, 0, 0, 1], 443)),
