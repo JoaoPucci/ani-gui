@@ -519,7 +519,7 @@ User-editable settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Setti
 | Field | Default | Effect |
 |---|---|---|
 | `mode` | `"sub"` | Audio mode for new play / download calls — `"sub"` or `"dub"`. |
-| `download_quality` | `"best"` | The quality downloads take — `"best"`, `"1080"`, `"720"`, `"480"`, `"worst"`. Downloads only: the built-in player always starts on Auto, and external players and Syncplay get the master. It replaced `quality`, which a config written by 0.17.0 or earlier still carries; that key is not read, so those configs come up on Best, and the next save drops it. |
+| `download_quality` | `"best"` | The quality downloads take — `"best"`, `"1080"`, `"720"`, `"480"`, `"worst"`. Downloads only: the built-in player starts each visit on Auto, and external players and Syncplay get the master. It replaced `quality`, which a config written by 0.17.0 or earlier still carries; that key is not read, so those configs come up on Best, and the next save drops it. |
 | `locale` | `"en"` | UI locale (the four MVP locales — see [`i18n.md`](./i18n.md)). |
 | `external_player` | `"mpv"` | Command launched by "Open in external player". |
 | `image_cache_cap_mb` | `500` | Cap for the on-disk image cache; LRU evicts above this. |
