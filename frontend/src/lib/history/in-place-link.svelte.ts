@@ -9,10 +9,10 @@
  * comes back.
  *
  * The player (`inPlayer`) asks "Is this the show you meant?". Yes
- * records the show playing on the row, which stops being a guess for
- * good, and says nothing. Where the play landed on another listing
- * than the card's, recording it would put that listing's show on the
- * card's line, so Yes sets the question aside instead. A pick of
+ * records the show playing on the card's row, which stops being a
+ * guess for good, and says nothing — also where the play landed on
+ * another listing than the card's: the user is believed, as a pick of
+ * that show in the picker is. A pick of
  * another show is recorded the same way while the episode goes on
  * playing, and the slip alone says so, with the way to switch to it
  * (`linked`): the player gives no notice, so no Undo. The offer stays
@@ -127,13 +127,13 @@ export class InPlaceLinkSession extends LinkSession {
 		this.aside = true;
 	}
 
-	/** "Yes" to "Is this the show you meant?": record the show playing,
-	 *  where the play landed on the card's own listing (`canKeep`);
-	 *  elsewhere, set the question aside, recording nothing. */
-	async answerYes(canKeep: boolean): Promise<void> {
+	/** "Yes" to "Is this the show you meant?": record the show playing
+	 *  on the card's line, wherever the play landed — the user is
+	 *  believed, and a pick of the same show in the picker writes the
+	 *  same. */
+	async answerYes(): Promise<void> {
 		if (!this.offer) return;
-		if (canKeep) await this.confirmCurrent();
-		else this.hide();
+		await this.confirmCurrent();
 	}
 
 	/** Link the card to the show it is guessed as. */

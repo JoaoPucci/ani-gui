@@ -192,7 +192,6 @@
 		openedFromGuess,
 		openedFromRow,
 		recordableId,
-		landedElsewhere,
 		withGuess,
 		withLanding,
 		withRow
@@ -3733,7 +3732,7 @@
 				busy={playLink.busy}
 				switching={switchBusy}
 				onchange={() => void playLink.start(episodeNum)}
-				onright={() => void playLink.answerYes(!landedElsewhere(page.url.searchParams))}
+				onright={() => void playLink.answerYes()}
 				onswitch={() => void switchToPick()}
 				onhide={() => playLink.hide()}
 			/>
