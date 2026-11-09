@@ -193,7 +193,6 @@ async function launchAppWithContinueStubsOnce(
 				title: u.searchParams.get('title'),
 				episode: u.searchParams.get('episode'),
 				mode: u.searchParams.get('mode'),
-				quality: u.searchParams.get('quality'),
 				prefetch: u.searchParams.get('prefetch')
 			};
 			opts.onPlay?.(body);
