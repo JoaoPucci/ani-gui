@@ -1115,7 +1115,7 @@ mod tests {
                     .uri("/api/settings")
                     .header("content-type", "application/json")
                     .body(Body::from(
-                        r#"{"locale":"pt-BR","mode":"dub","quality":"1080","external_player":"vlc","image_cache_cap_mb":1000}"#,
+                        r#"{"locale":"pt-BR","mode":"dub","download_quality":"720","quality":"1080","external_player":"vlc","image_cache_cap_mb":1000}"#,
                     ))
                     .expect("req"),
             )
@@ -1137,6 +1137,13 @@ mod tests {
         let body = body_string(get).await;
         assert!(body.contains("\"locale\":\"pt-BR\""), "body: {body}");
         assert!(body.contains("\"mode\":\"dub\""), "body: {body}");
+        // The download quality round-trips; the quality an older
+        // renderer still sends is not kept.
+        assert!(
+            body.contains("\"download_quality\":\"720\""),
+            "body: {body}"
+        );
+        assert!(!body.contains("\"quality\":"), "body: {body}");
     }
 
     #[tokio::test]
