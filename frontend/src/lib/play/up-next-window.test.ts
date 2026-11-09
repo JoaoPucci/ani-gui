@@ -12,8 +12,9 @@ describe('atVideoEnd', () => {
 	});
 
 	it('holds when the playhead stops just short of the length, as a stream can', () => {
-		// hls.js can stall a fraction of a second before `duration`, so
-		// `ended` never fires there.
+		// A precaution: where a stream has less media than the length it
+		// declared, the playhead can stop just short of it and `ended`
+		// would never fire there.
 		expect(atVideoEnd(LENGTH - 0.3, LENGTH, false)).toBe(true);
 		expect(atVideoEnd(LENGTH - END_SLACK_S, LENGTH, false)).toBe(true);
 		expect(atVideoEnd(LENGTH, LENGTH, false)).toBe(true);

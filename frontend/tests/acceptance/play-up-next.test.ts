@@ -9,11 +9,10 @@
 // entry. A playhead a moment short of the length counts as the end
 // too. A seek back puts the card away, and the end brings it back. The
 // card names the next entry without asking the provider anything about
-// it. A fork lists the ways on; a
-// next entry that has not aired shows when it airs and links nowhere.
-// Esc dismisses the card while it has focus. It stays clear of the
-// controls that hide in fullscreen, and under reduced motion it simply
-// appears.
+// it. A fork lists the ways on; a next entry that has not aired shows
+// when it airs and links nowhere. Esc dismisses the card while it has
+// focus. It stays clear of the controls that hide in fullscreen, and
+// under reduced motion it simply appears.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -344,8 +343,9 @@ describe('the Up next card at a finale', () => {
 
 	it('shows when the stream stops a moment short of its length without ending', async () => {
 		const { video } = await openEpisode();
-		// hls.js can stall a fraction of a second before the length, and
-		// the element then never says it has ended.
+		// A precaution: where a stream has less media than the length it
+		// declared, the playhead can stop just short of it, and the
+		// element would never say it has ended.
 		await playTo(video, LENGTH - 2);
 		await new Promise((r) => setTimeout(r, 50));
 		expect(card()).toBeNull();
