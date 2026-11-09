@@ -27,6 +27,14 @@ describe('cardRow — the line a Continue card stands for', () => {
 		expect(cardRow(rows[1], rows, matches)).toBe(CARD);
 	});
 
+	it("once the 2000 line records the 2012 series, the user's Yes on the player, the card stays the 2000 line", () => {
+		// The 2012 row is still a guess; the line the user answered for
+		// records the same show, so the one card is that line, no guess.
+		const rows = [row(PLAYED, CARD), row(CARD)];
+		const matches = { [PLAYED]: { id: SERIES_2012 }, [CARD]: { id: SERIES_2012 } };
+		expect(cardRow(rows[0], rows, matches, (id) => id !== CARD)).toBe(CARD);
+	});
+
 	it('is the row itself when the line it came from is gone, or not matched yet', () => {
 		const played = row(PLAYED, CARD);
 		expect(cardRow(played, [played], { [PLAYED]: { id: SERIES_2012 } })).toBe(PLAYED);

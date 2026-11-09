@@ -243,34 +243,6 @@ describe('the slip of a guessed session', () => {
 		expect(dialog()).toBeNull();
 	});
 
-	it("records the show playing on the card's line on Yes, even where the play landed on another listing", async () => {
-		// The JoJo card's play landed on the 2012 listing. The user says
-		// the 2012 series is the show meant, and is believed: the 2000
-		// line records it, as a pick of it in the picker records it.
-		await openPlayer({ guess: '1', row: CARD, landed: 'other' });
-		await until(() => slipText().includes(guessNote()), 'the slip');
-		button(m.play_link_guess_right(), slip()!)!.click();
-		await until(() => backend.linkCalls.length === 1, 'the record');
-		expect(backend.linkCalls[0]).toMatchObject({ card: CARD, kitsu_id: GUESS });
-		expect(backend.rows.find((r) => r.id === CARD)?.kitsu_id).toBe(GUESS);
-		// The 2012 listing's own row is that series' history, untouched.
-		expect(backend.rows.find((r) => r.id === PLAYED)?.kitsu_id).toBeUndefined();
-		await until(() => slip() === null, 'the slip to go');
-		expect(toastStore.items).toEqual([]);
-		const yes = backend.linkCalls[0];
-
-		// The same session, the playing show picked in the picker instead.
-		unmount(app!);
-		app = null;
-		backend.rows = backend.rows.map((r) => (r.id === CARD ? { ...r, kitsu_id: undefined } : r));
-		backend.linkCalls.length = 0;
-		__resetHiddenRowsForTests();
-		await openPlayer({ guess: '1', row: CARD, landed: 'other' });
-		await openPicker();
-		await pickAndLink(GUESS_TITLE, m.detail_link_confirm_button());
-		expect(backend.linkCalls).toEqual([yes]);
-	});
-
 	it('holds its room with nothing in it while the guess is decided, and goes if there is none', async () => {
 		// The card's row records its show by now: nothing to offer.
 		backend.rows = backend.rows.map((r) => (r.id === CARD ? { ...r, kitsu_id: RIGHT } : r));
@@ -701,6 +673,31 @@ describe('"Yes"', () => {
 		expect(backend.rows.find((r) => r.id === CARD)?.kitsu_id).toBe(GUESS);
 		await until(() => slip() === null, 'the slip to go');
 		expect(toastStore.items).toEqual([]);
+	});
+
+	it('is believed where the play landed on another listing, and writes what a pick of the show writes', async () => {
+		// The card's line is the 2000 OVA's listing; the play landed on
+		// the 2012 listing. The user says the 2012 series is the show
+		// meant: the 2000 line records it, and the 2012 listing's own
+		// row, that series' history, is left as it was.
+		await openPlayer();
+		await until(() => slipText().includes(guessNote()), 'the slip');
+		button(m.play_link_guess_right(), slip()!)!.click();
+		await until(() => backend.linkCalls.length === 1, 'the record');
+		expect(backend.rows.find((r) => r.id === CARD)?.kitsu_id).toBe(GUESS);
+		expect(backend.rows.find((r) => r.id === PLAYED)?.kitsu_id).toBeUndefined();
+		const yes = backend.linkCalls[0];
+
+		// The same session, the playing show picked in the picker instead.
+		unmount(app!);
+		app = null;
+		backend.rows = backend.rows.map((r) => (r.id === CARD ? { ...r, kitsu_id: undefined } : r));
+		backend.linkCalls.length = 0;
+		await openPlayer();
+		await openPicker();
+		await pickAndLink(GUESS_TITLE, m.detail_link_confirm_button());
+		expect(backend.linkCalls).toEqual([yes]);
+		expect(backend.rows.find((r) => r.id === CARD)?.kitsu_id).toBe(GUESS);
 	});
 });
 
