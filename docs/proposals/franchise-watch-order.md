@@ -1375,9 +1375,8 @@ The maintainer answered the eight questions the first mockups asked:
    not its first episode, as the mockup already does: the viewer
    arrives where the strip, the synopsis and the episode list say what
    they are about to start. Its art stays the mockup's, the next
-   entry's banner or else its poster; the maintainer chose that over
-   its first episode's still, which would cost one more Kitsu read per
-   card.
+   entry's banner or else its poster, rather than its first episode's
+   still.
 6. **Franchise page** as a list.
 7. **The setting** uses buttons. Its hint adds that the links
    generally follow the story but are maintained by each database's
