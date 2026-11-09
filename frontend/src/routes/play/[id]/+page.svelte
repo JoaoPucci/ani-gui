@@ -1788,6 +1788,12 @@
 			// A seek back, or playing again, leaves the ended state.
 			videoEnded = v.ended;
 		};
+		// A seek reports its new point at once; its `timeupdate` waits
+		// for the media there. The Up next card goes as the seek starts.
+		const onSeeking = () => {
+			currentTime = v.currentTime;
+			videoEnded = v.ended;
+		};
 		const onDuration = () => {
 			duration = isFinite(v.duration) ? v.duration : 0;
 		};
@@ -1847,6 +1853,7 @@
 		v.textTracks.addEventListener('change', onTextTracksMutate);
 
 		v.addEventListener('timeupdate', onTime);
+		v.addEventListener('seeking', onSeeking);
 		v.addEventListener('timeupdate', onProg);
 		v.addEventListener('progress', onProg);
 		v.addEventListener('durationchange', onDuration);
@@ -1861,6 +1868,7 @@
 
 		return () => {
 			v.removeEventListener('timeupdate', onTime);
+			v.removeEventListener('seeking', onSeeking);
 			v.removeEventListener('timeupdate', onProg);
 			v.removeEventListener('progress', onProg);
 			v.removeEventListener('durationchange', onDuration);
