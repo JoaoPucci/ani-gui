@@ -277,3 +277,31 @@ fn a_row_that_cannot_be_read_is_left_and_the_cache_still_opens() {
         Some(("master".to_string(), 1_000, TTL))
     );
 }
+
+#[test]
+fn a_carry_sqlite_refuses_rolls_back_and_the_cache_still_opens() {
+    // A write the carry cannot make fails the whole pass: nothing is
+    // carried, the rows stay where they were for the reclaim, and
+    // opening the cache goes on, as it does when the reclaim is refused.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    let old = old_key("Show", "sub", "best", "6", plain(), None);
+    {
+        let mut conn = Connection::open(&path).unwrap();
+        crate::cache::schema::run_migrations(&mut conn).unwrap();
+        put(&conn, &old, "master", 1_000);
+        conn.execute_batch(
+            "CREATE TRIGGER refuse_carry BEFORE INSERT ON meta_cache \
+             WHEN substr(NEW.key, 1, 9) = 'play:v29:' \
+             BEGIN SELECT RAISE(ABORT, 'refused'); END;",
+        )
+        .unwrap();
+    }
+    let pool = crate::cache::open_pool(&path).expect("the cache opens");
+    let conn = pool.get().unwrap();
+    assert_eq!(
+        row(&conn, &new_key("Show", "sub", "6", plain(), None)),
+        None
+    );
+    assert_eq!(row(&conn, &old), Some(("master".to_string(), 1_000, TTL)));
+}
