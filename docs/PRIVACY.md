@@ -213,7 +213,7 @@ kind of request:
   pages for every aired and playable episode in view (the detail page's
   grid, the play page's episode strip); the warm follows the page rather
   than running once on opening, so paging the grid or the strip to new
-  episodes, or changing the audio mode or quality setting, resolves
+  episodes, or changing the audio mode, resolves
   what is newly in view. These requests carry the search terms you
   typed or the anime IDs you're browsing, and no account identifier.
   MyAnimeList is reached only as your tracker, and reading a show's
@@ -279,13 +279,14 @@ kind of request:
   resolution is reused: a resolve — a page warm, a play or hand-off
   that finds nothing cached, or a download, which always resolves
   afresh — fetches the episode's master playlist, to
-  check that what the page named is a playlist, and, when the quality
-  setting is not "best" and the master offers a rendition matching
-  it whose address resolves against the master's, that rendition's
-  playlist as well — a second fetch, at whatever host the master
-  names for it; a master with no such rendition, or one whose
-  matching rendition's address does not resolve, is kept as it is,
-  with no second fetch; and any play served from the
+  check that what the page named is a playlist, and, for a download
+  whose download quality is not "Best" when the master offers a
+  rendition matching it whose address resolves against the master's,
+  that rendition's playlist as well — a second fetch, at whatever host
+  the master names for it; a play or hand-off, and a download whose
+  master has no such rendition, or whose matching rendition's address
+  does not resolve, keeps the master as it is, with no second fetch;
+  and any play served from the
   resolution cache — a page warm,
   a play in the app, or a hand-off to an external player or Syncplay —
   checks the cached stream and each of its subtitle tracks at the CDN

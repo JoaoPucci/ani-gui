@@ -356,10 +356,11 @@ starting it, and delete it when you find it done.
   did — and the routing changes how a working handoff behaves.
 
 - **The resolver's requests to a CDN pass the host's budget.** A
-  fresh resolve fetches the master playlist — and the variant, for a
-  quality other than best — through the impersonating transport, ahead
-  of the player's own fetches of the same host, and the budget does not
-  count them. Downloads running past the budget are held to what their
+  fresh resolve fetches the master playlist through the impersonating
+  transport — and the variant too, for a download whose download
+  quality is not Best; a play or hand-off fetches the master alone —
+  ahead of the player's own fetches of the same host, and the budget
+  does not count them. Downloads running past the budget are held to what their
   requests in flight leave and a cached row's liveness check waits
   for its tokens; the resolver is not counted, because it runs in
   the providers, which hold no budget, and its other requests go to the
