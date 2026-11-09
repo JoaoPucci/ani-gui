@@ -418,7 +418,7 @@
 		await executeKitsuGroupDelete(entry.id, {
 			history: history ?? [],
 			currentHistory: () => history ?? [],
-			// Open the gate IMMEDIATELY before the optimistic mutation
+			// Open the gate IMMEDIATELY before the strip changes
 			// so the 350ms auto-close window starts when Svelte's
 			// out-transition factory is about to fire — not when the
 			// click was first received. See $lib/history/animation-gate

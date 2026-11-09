@@ -39,8 +39,8 @@ export interface ConfirmDeleteResult {
 	/** Every id deleted from the backend — the clicked row plus
 	 *  any Kitsu-group siblings the dedupe was hiding behind it. */
 	removedIds: string[];
-	/** History minus the removed group, suitable for an optimistic
-	 *  local-state update. */
+	/** History minus the removed group, read off the strip once the
+	 *  deletes have landed. */
 	remainingHistory: HistoryEntry[];
 	/** Settles once the removed shows' kept positions are forgotten,
 	 *  or found to stay. Never rejects. */
