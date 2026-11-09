@@ -198,12 +198,14 @@ const step: fc.Arbitrary<Step> = fc.oneof(
 );
 
 describe('createDiagnosticsActions — property', () => {
-	test('over any run of actions and outcomes, the section says what the last action left', async () => {
+	test('over any run of refreshes, clears and cache clears, the page shows what the last action left', async () => {
 		await fc.assert(
 			fc.asyncProperty(fc.array(step, { maxLength: 12 }), async (steps) => {
 				const b = backend();
 				const a = createDiagnosticsActions(b.deps);
 				// A model of what should be on show.
+				let info: AppInfo | null = null;
+				let infoError: string | null = null;
 				let history: HistoryEntry[] | null = null;
 				let historyError: string | null = null;
 				let clearError: string | null = null;
@@ -215,6 +217,8 @@ describe('createDiagnosticsActions — property', () => {
 						b.answers.list = s.list;
 						await a.refresh();
 						clearError = null;
+						infoError = s.info ? null : 'info down';
+						if (s.info) info = INFO;
 						historyError = s.list ? null : 'list down';
 						if (s.list) history = [ROW];
 					} else if (s.kind === 'clear') {
@@ -232,6 +236,8 @@ describe('createDiagnosticsActions — property', () => {
 						cacheError = s.ok ? null : 'cache down';
 					}
 					expect(a.state).toMatchObject({
+						info,
+						infoError,
 						history,
 						historyError,
 						historyClearError: clearError,
