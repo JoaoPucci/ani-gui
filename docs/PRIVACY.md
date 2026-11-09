@@ -155,15 +155,17 @@ ani-gui keeps the following on your computer only:
   where its stream stood while recovering, the same way the history
   records a show played again after removing it.
 - **Choices you make for a show** — the subtitle language you last
-  picked for it (or Off), and, for a show the streaming site lists
-  twice, the version you chose. Kept in the app's local browser
-  storage (under your OS user-data directory), keyed by the show's
-  Kitsu id, at most 500 shows for each kind of choice, the oldest
-  dropped first. Choosing the uncensored version, which is what plays
-  when nothing is chosen, forgets the version choice for that show.
-  These are preferences for the show rather than history, so clearing
-  your watch history or removing the show from Continue Watching
-  leaves them.
+  picked for it (or Off; a track of unknown language, or a play
+  opened from a guessed Continue card, leaves it as it was), and, for
+  a show the streaming site lists twice, the version you chose. Kept
+  in the app's local browser storage (under your OS user-data
+  directory), keyed by the show's Kitsu id, at most 500 shows for each
+  kind of choice, the least recently chosen dropped first. Choosing
+  the uncensored version, which is what plays when nothing is chosen,
+  forgets the version choice for that show. These are preferences for
+  the show rather than history, so clearing your watch history or
+  removing the show from Continue Watching leaves them; otherwise they
+  stay until newer choices push them out.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
