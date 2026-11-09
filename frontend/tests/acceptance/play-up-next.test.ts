@@ -234,7 +234,8 @@ async function playTo(video: HTMLVideoElement, at: number) {
 }
 
 /** Plays the video to its end: the playhead reaches the length and the
- *  element says it has ended. */
+ *  element fires `ended`. The DOM here holds the element's own `ended`
+ *  property at false; the cases that need it set it themselves. */
 async function playToEnd(video: HTMLVideoElement) {
 	await playTo(video, LENGTH);
 	video.dispatchEvent(new Event('ended'));
@@ -338,6 +339,54 @@ describe('the Up next card at a finale', () => {
 		expect(card()).toBeNull();
 		await playTo(video, LENGTH - 0.3);
 		await until(() => card() !== null, 'the card at the stalled end');
+	});
+
+	it('shows when the element says it has ended, with a length it never learned', async () => {
+		const { video } = await openEpisode();
+		// The length is unknown, so the playhead alone decides nothing:
+		// only the element's own end can bring the card.
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => Number.NaN });
+		video.dispatchEvent(new Event('durationchange'));
+		await playTo(video, 1300);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(card()).toBeNull();
+		video.dispatchEvent(new Event('ended'));
+		await until(() => card() !== null, 'the card on the ended event');
+	});
+
+	it("reads the element's ended state as it plays, and leaves it on a seek back", async () => {
+		const { video } = await openEpisode();
+		let ended = false;
+		Object.defineProperty(video, 'ended', { configurable: true, get: () => ended });
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => Number.NaN });
+		video.dispatchEvent(new Event('durationchange'));
+		ended = true;
+		await playTo(video, 1400);
+		await until(() => card() !== null, 'the card from the ended state');
+		ended = false;
+		await playTo(video, 600);
+		await until(() => card() === null, 'the card to go on a seek back');
+	});
+
+	it("drops the last episode's end with its stream on a switch", async () => {
+		const { video } = await openEpisode({ episode: 11 });
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => Number.NaN });
+		video.dispatchEvent(new Event('durationchange'));
+		await playTo(video, 1400);
+		video.dispatchEvent(new Event('ended'));
+		await new Promise((r) => setTimeout(r, 0));
+		const mounts = countMounts();
+		try {
+			setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '12', kind: 'mp4' });
+			await until(
+				() => (video.getAttribute('src') ?? '').includes('session-2'),
+				'session-2 attached'
+			);
+			await new Promise((r) => setTimeout(r, 100));
+			expect(mounts.count).toBe(0);
+		} finally {
+			mounts.stop();
+		}
 	});
 
 	it('shows in the frame fullscreen the player controls use', async () => {
