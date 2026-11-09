@@ -507,6 +507,42 @@ describe('play route — skip times across an episode switch', () => {
 		expect(skipPill()).not.toBeNull();
 	});
 
+	it('uses the times asked with the stream on screen, not a late answer from before a switch away and back', async () => {
+		// Episode 11's first request is still out when the viewer moves
+		// to 12 and back; its answer lands after the second one's.
+		let releaseFirst: () => void = () => {};
+		const first = new Promise<void>((r) => (releaseFirst = r));
+		let elevens = 0;
+		const video = await openEpisode({
+			episode: 11,
+			autoSkipOp: true,
+			skips: {
+				11: async () => {
+					elevens += 1;
+					if (elevens === 1) {
+						await first;
+						return HttpResponse.json([op(300, 400)]);
+					}
+					return HttpResponse.json([op(30, 120)]);
+				},
+				12: []
+			}
+		});
+		await switchBy('next', video, 12);
+		learnLength(video, lengthOf(12));
+		await until(() => asks.some((a) => a.episode === '12'), "episode 12's times asked");
+		await switchBy('prev', video, 11);
+		learnLength(video, 1395);
+		await until(() => elevens === 2, "11's asked again");
+		await settle();
+		releaseFirst();
+		await settle();
+		await playTo(video, 310);
+		expect(video.currentTime).toBe(310);
+		await playTo(video, 31);
+		expect(video.currentTime).toBeCloseTo(120.05);
+	});
+
 	it('keeps the times of an episode a recovery opens again, without asking again', async () => {
 		const video = await openEpisode({ episode: 11, skips: { 11: [op(30, 120)] } });
 		// A recovery lands the same episode on a new session.

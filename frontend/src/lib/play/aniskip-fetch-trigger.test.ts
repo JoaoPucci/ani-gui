@@ -210,21 +210,36 @@ describe('createAniskipFetchTrigger — whose answer is shown', () => {
 		expect(t.answers(ask)).toBe(true);
 	});
 
-	it('only ever shows the answer to the latest request, over any run of steps', () => {
+	it('over any run of steps, shows an answer only for the episode on screen, and always asks for it', () => {
 		const step = fc.record({
 			episode: fc.constantFrom(0, 11, 12, 12.5),
 			ready: fc.boolean()
 		});
 		fc.assert(
-			fc.property(fc.array(step, { maxLength: 30 }), (steps) => {
+			fc.property(fc.array(step, { minLength: 1, maxLength: 30 }), (steps) => {
 				const t = createAniskipFetchTrigger();
-				const asks: number[] = [];
+				// The episode each request asked for, by its ask.
+				const asked = new Map<number, number>();
+				let sinceChange = 0;
+				let prev: number | null = null;
 				for (const s of steps) {
-					if (t.step('42', s.episode, s.ready).kind === 'fetch') asks.push(t.asked());
+					if (s.episode !== prev) sinceChange = 0;
+					prev = s.episode;
+					if (t.step('42', s.episode, s.ready).kind === 'fetch') {
+						asked.set(t.asked(), s.episode);
+						sinceChange += 1;
+					}
 				}
-				const live = asks.filter((a) => t.answers(a));
-				expect(live.length).toBeLessThanOrEqual(1);
-				if (live.length === 1) expect(live[0]).toBe(asks.at(-1));
+				const last = steps.at(-1)!;
+				const live = [...asked].filter(([a]) => t.answers(a));
+				// Never an answer for another episode, or one asked before
+				// the episode on screen was last switched to.
+				for (const [, episode] of live) expect(episode).toBe(last.episode);
+				expect(live.length).toBeLessThanOrEqual(sinceChange);
+				// A whole episode whose length is ready has been asked for.
+				const whole = last.episode > 0 && Number.isInteger(last.episode);
+				if (whole && last.ready) expect(live.length).toBe(1);
+				if (!whole) expect(live).toEqual([]);
 			})
 		);
 	});

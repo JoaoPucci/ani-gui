@@ -325,8 +325,8 @@ mod tests {
     /// The answer cached for one length is not another length's: a
     /// switch that asked with the last episode's length, or a cut of
     /// another length, must not decide what this stream is told. The
-    /// lookup goes to aniskip instead, which a client that cannot
-    /// connect turns into an error.
+    /// lookup goes to aniskip instead, which the client here cannot
+    /// reach, so it fails rather than answering from the cache.
     #[tokio::test]
     async fn an_answer_cached_for_another_length_is_not_served() {
         let kitsu = MockServer::start().await;
@@ -347,6 +347,14 @@ mod tests {
         crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:12:21:1:1420", &body, 3600)
             .unwrap();
         state.meta_http = reqwest::Client::builder()
+            // aniskip's host resolves to this machine's loopback, so the
+            // request never reaches the network: nothing serving
+            // aniskip's TLS answers there, and the timeout bounds the
+            // rest. (reqwest keeps the URL's port, 443.)
+            .resolve(
+                "api.aniskip.com",
+                std::net::SocketAddr::from(([127, 0, 0, 1], 443)),
+            )
             .timeout(std::time::Duration::from_millis(50))
             .build()
             .expect("client");
@@ -436,6 +444,14 @@ mod tests {
         // suppress it by setting proxy_http to a client whose
         // resolver fails fast.
         state.meta_http = reqwest::Client::builder()
+            // aniskip's host resolves to this machine's loopback, so the
+            // request never reaches the network: nothing serving
+            // aniskip's TLS answers there, and the timeout bounds the
+            // rest. (reqwest keeps the URL's port, 443.)
+            .resolve(
+                "api.aniskip.com",
+                std::net::SocketAddr::from(([127, 0, 0, 1], 443)),
+            )
             .timeout(std::time::Duration::from_millis(50))
             .build()
             .expect("client");
