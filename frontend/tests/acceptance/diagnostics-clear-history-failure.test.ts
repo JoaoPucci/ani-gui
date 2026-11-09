@@ -31,6 +31,7 @@ import { m } from '../../src/lib/paraglide/messages';
 const ROW = { ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' };
 let failing = true;
 let listFails = false;
+let listHeld: Promise<void> | null = null;
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
@@ -40,6 +41,7 @@ beforeEach(() => {
 	localStorage.clear();
 	failing = true;
 	listFails = false;
+	listHeld = null;
 	server.use(
 		http.get(`${API_BASE}/api/app-info`, () =>
 			HttpResponse.json({
@@ -49,11 +51,12 @@ beforeEach(() => {
 				removed_legacy_paths: []
 			})
 		),
-		http.get(`${API_BASE}/api/history`, () =>
-			listFails
+		http.get(`${API_BASE}/api/history`, async () => {
+			if (listHeld) await listHeld;
+			return listFails
 				? HttpResponse.json({ key: 'error.io.generic', kind: 'io' }, { status: 500 })
-				: HttpResponse.json([ROW])
-		),
+				: HttpResponse.json([ROW]);
+		}),
 		http.delete(`${API_BASE}/api/history`, () =>
 			failing
 				? HttpResponse.json({ key: 'error.io.generic', kind: 'io' }, { status: 500 })
@@ -134,5 +137,29 @@ describe('diagnostics — a failed Clear history', () => {
 		refreshButton()!.click();
 		await until(() => text().includes(m.diagnostics_history_error()), 'the load error');
 		expect(text()).not.toContain(m.diagnostics_history_clear_error());
+	});
+
+	it('takes a failed load’s error down when a clear lands after it', async () => {
+		app = mount(DiagnosticsPage, { target });
+		await until(() => listed() && clearButton() !== null, 'the history list');
+		listFails = true;
+		refreshButton()!.click();
+		await until(() => text().includes(m.diagnostics_history_error()), 'the load error');
+		failing = false;
+		clearButton()!.click();
+		await until(() => text().includes(m.diagnostics_history_empty()), 'the empty history');
+		expect(text()).not.toContain(m.diagnostics_history_error());
+	});
+
+	it('holds Clear history while a refresh is out', async () => {
+		app = mount(DiagnosticsPage, { target });
+		await until(() => listed() && clearButton() !== null, 'the history list');
+		let release: () => void = () => {};
+		listHeld = new Promise<void>((r) => (release = r));
+		refreshButton()!.click();
+		await new Promise((r) => setTimeout(r, 30));
+		expect(clearButton()!.disabled).toBe(true);
+		release();
+		await until(() => !clearButton()!.disabled, 'Clear history back');
 	});
 });
