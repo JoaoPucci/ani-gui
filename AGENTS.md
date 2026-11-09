@@ -276,7 +276,15 @@ mid-task, exactly one of these is an acceptable outcome:
   body, a commit or a doc that leaves known work undone with no PR
   opened now to carry it. Keeping an entry true is not a deferral: when
   a change makes part of one false, correct it in that change, or
-  remove it when the work lands, and say so in the PR body.
+  remove it when the work lands, and say so in the PR body. An entry
+  is false only when something it states no longer holds, or never
+  did; a view that the work is not worth doing never makes it false.
+  An entry that is wholly false is removed as its correction. Removing
+  an entry, or part of one, for any other reason, such as work that
+  still holds but that you think is not worth doing, is the
+  maintainer's choice, however you came to it: put it to them as a
+  choice to drop it. Where only part of an entry is false, correct
+  that part; the rest stays unless the maintainer chooses to drop it.
 
   Once the maintainer has chosen it, link the entry wherever the work
   was deferred. An unwritten deferral is a dropped one, and a deferral
@@ -336,14 +344,15 @@ An entry already in the log is considered only when it bears on the
 change directly: tackling it would unblock the change, or without it
 the change would have to be built differently or around it, with a
 workaround the entry's fix would remove. Then check the entry is still
-valid and still worth doing, and prefer tackling it within the change —
+true and still worth doing, and prefer tackling it within the change —
 that is **Do it here**, and the change removes the entry it lands. If
 tackling it is genuinely large or risky, put the options to the
-maintainer, as **Ask** describes. An entry that merely sits in the same
-area is not a reason to raise it, so do not scan the log by area or by
-keyword for work to add. An entry the change makes false is still
-corrected in that change, as above. An entry is a reminder, never a
-constraint the design has to respect.
+maintainer, as **Ask** describes. An entry you think is not worth
+doing is also the maintainer's to drop, as above. An entry that merely
+sits in the same area is not a reason to raise it, so do not scan the
+log by area or by keyword for work to add. An entry the change makes
+false is still corrected in that change, as above. An entry is a
+reminder, never a constraint the design has to respect.
 
 ### Choosing between options
 
