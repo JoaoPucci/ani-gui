@@ -6,7 +6,7 @@ function cfg(): Config {
 	return {
 		locale: 'en',
 		mode: 'sub',
-		quality: 'best'
+		download_quality: 'best'
 	} as Config;
 }
 

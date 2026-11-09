@@ -18,7 +18,6 @@ export interface PlayArgsInput {
 	title: string;
 	episode: number;
 	mode: 'sub' | 'dub';
-	quality: string;
 	/** The Kitsu record the play is for, when the page has it. */
 	show: KitsuAnimeRef | null;
 	/** The Kitsu id to record the watch under; omitted when empty. */

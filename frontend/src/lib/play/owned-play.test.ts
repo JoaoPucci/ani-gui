@@ -212,7 +212,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: 5,
 			mode: 'dub',
-			quality: '1080',
 			show,
 			kitsuId: '42'
 		});
@@ -236,7 +235,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: 5,
 			mode: 'sub',
-			quality: 'best',
 			show,
 			kitsuId: undefined
 		});
@@ -248,7 +246,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: 1,
 			mode: 'sub' as const,
-			quality: 'best',
 			show,
 			kitsuId: '42'
 		};
@@ -261,7 +258,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: 1,
 			mode: 'sub' as const,
-			quality: 'best',
 			show,
 			kitsuId: '42'
 		};
@@ -274,7 +270,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: 1,
 			mode: 'sub',
-			quality: 'best',
 			show: null,
 			kitsuId: '42'
 		});
@@ -287,7 +282,6 @@ describe("playArgsFor — a guessed card's row", () => {
 		title: 'Show',
 		episode: 3,
 		mode: 'sub' as const,
-		quality: 'best',
 		show: null,
 		kitsuId: undefined
 	};
@@ -306,7 +300,7 @@ describe("playArgsFor — a guessed card's row", () => {
 });
 
 describe('playedRecord', () => {
-	const args = { title: 'Show', episode: '5', mode: 'sub', quality: 'best' } as const;
+	const args = { title: 'Show', episode: '5', mode: 'sub' } as const;
 
 	it('records and mirrors a play no guess opened under the show', () => {
 		expect(playedRecord(args, '42', false, {})).toEqual({
@@ -342,7 +336,6 @@ describe('playArgsFor — warms', () => {
 			title: 'Show',
 			episode: 3,
 			mode: 'sub',
-			quality: 'best',
 			show: null,
 			kitsuId: '42',
 			prefetch: true
@@ -355,7 +348,6 @@ describe('playArgsFor — warms', () => {
 			title: 'Show',
 			episode: 3,
 			mode: 'sub',
-			quality: 'best',
 			show: null,
 			kitsuId: '42'
 		});
@@ -374,7 +366,7 @@ describe('playMode', () => {
 
 describe('recordPlayed', () => {
 	const show = { episode_count: 12, status: 'finished' } as unknown as KitsuAnimeRef;
-	const args = { title: 'Show', episode: '5', mode: 'sub', quality: 'best' } as const;
+	const args = { title: 'Show', episode: '5', mode: 'sub' } as const;
 
 	it('stamps the watch and mirrors it to the trackers for the clicked show', async () => {
 		const markWatched = vi.fn(async () => {});

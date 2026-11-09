@@ -105,27 +105,8 @@ function putBack(
 	log(`held at ${track.describe(governor.level)} after the levels changed`);
 }
 
-/** Hands `then` the value, at once when it is in hand and once it
- *  settles when it is a promise; a promise that fails hands over
- *  `undefined`. */
-export function whenSettled<T>(value: T | Promise<T>, then: (value: T | undefined) => void): void {
-	if (value instanceof Promise) void value.then(then, () => then(undefined));
-	else then(value);
-}
-
 /** Starts the engine loading at `at`, or at its own start without one. */
 export function startEngine(engine: Pick<Hls, 'startLoad'>, at: number | null | undefined): void {
 	if (typeof at === 'number') engine.startLoad(at);
 	else engine.startLoad();
-}
-
-/** How long a stream's start waits for the settings. */
-export const QUALITY_SETTING_WAIT_MS = 3_000;
-
-/** The value, or undefined when it fails or does not come within
- *  `ms`: settings that never answer cost the start level, not the
- *  start. */
-export function settledWithin<T>(value: Promise<T>, ms: number): Promise<T | undefined> {
-	const bound = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), ms));
-	return Promise.race([value.catch(() => undefined), bound]);
 }

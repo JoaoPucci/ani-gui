@@ -469,8 +469,8 @@
 			.then((t) => filterAvailable(t, filterMode))
 			.then((t) => (topRated = t))
 			.catch((e) => (topRatedError = describeError(e)));
-		// Settings drive mode/quality for the Continue Watching click
-		// handler. Default {sub, best} when settings haven't loaded
+		// Settings drive the audio mode for the Continue Watching click
+		// handler. Default sub when settings haven't loaded
 		// yet — same fallback the click handler uses on /anime/[id].
 		// The shared promise lets the Continue Watching loader await
 		// the configured mode before firing its batch availability
@@ -799,7 +799,6 @@
 			title: a.title,
 			episode: a.episode,
 			mode: a.mode,
-			quality: a.quality,
 			show: a.match,
 			kitsuId: recordableId(a.match.id, a.guess === true),
 			// The version remembered for the show, as its detail page
@@ -876,7 +875,7 @@
 		resolvePlay: (a, onProgress) => {
 			const args = playArgsFor(a);
 			return getOrFire(
-				makeKey(a.match.id, a.episode, a.mode, a.quality, args.version, a.row, args.caption),
+				makeKey(a.match.id, a.episode, a.mode, args.version, a.row, args.caption),
 				(emit, signal) => playStream(args, emit, signal),
 				(p) => onProgress(progressLabel(p))
 			);

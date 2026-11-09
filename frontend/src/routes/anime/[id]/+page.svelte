@@ -65,7 +65,6 @@
 		claimPlay,
 		playArgsFor,
 		playMode,
-		playQuality,
 		recordPlayed,
 		runOwnedPlay
 	} from '$lib/play/owned-play';
@@ -933,7 +932,6 @@
 		const title = playTitle();
 		if (!d || !title) return Promise.resolve();
 		const mode = playMode(config);
-		const quality = playQuality(config);
 		// The version a click on the row would play: its warm puts that
 		// copy's numbering right and keeps its stream under the key the
 		// click reads.
@@ -942,13 +940,12 @@
 			title,
 			episode: ep,
 			mode,
-			quality,
 			show: d,
 			kitsuId: d.id,
 			version,
 			caption: storedCaption(d.id)
 		});
-		return warmResumeEpisode({ showId, episode: ep, mode, quality, version }, args, playStream);
+		return warmResumeEpisode({ showId, episode: ep, mode, version }, args, playStream);
 	}
 
 	// Synopsis collapse/expand. Default collapsed (long synopses are
@@ -1234,7 +1231,7 @@
 	});
 
 	// Background prefetch: as soon as we have the show title + the
-	// user's current mode/quality, fire a play() for the default
+	// user's current audio mode, fire a play() for the default
 	// episode in the background so the eventual hero-button click is
 	// instant. The play-cache dedupes against the click handler — both
 	// share the same promise, so there's never a duplicate
@@ -1260,7 +1257,6 @@
 		// aired-but-uncatalogued padded tiles.
 		if (!availabilityResolved) return;
 		const mode = playMode(config);
-		const quality = playQuality(config);
 		// Read here so a new choice re-warms under its own keys; the
 		// other version's warmed sessions are never served for it.
 		const version = versionChoice;
@@ -1300,7 +1296,6 @@
 				title,
 				episode: ep,
 				mode,
-				quality,
 				show: detail,
 				kitsuId: id,
 				prefetch: true,
@@ -1309,7 +1304,7 @@
 			});
 			const warmedVisit = visit;
 			const warm = getOrFire(
-				makeKey(id, ep, mode, quality, version, undefined, args.caption),
+				makeKey(id, ep, mode, version, undefined, args.caption),
 				(emit, signal) => playStream(args, emit, signal)
 			);
 			// The warm paid for a listing: the resume row is read again —
@@ -1523,7 +1518,6 @@
 			return;
 		}
 		const mode = playMode(config);
-		const quality = playQuality(config);
 		const version = versionChoice;
 		// The show and visit this play is for, and its request, taken at
 		// the click ($lib/play/owned-play): a late answer is judged
@@ -1539,7 +1533,6 @@
 			title,
 			episode: ep,
 			mode,
-			quality,
 			show,
 			kitsuId: owner.showId,
 			version,
@@ -1557,14 +1550,14 @@
 		actionNotice = null;
 		actionProgress = null;
 		// Hits the play-cache: a prefetch from onMount or an earlier
-		// click against the same (show, ep, mode, quality, version)
+		// click against the same (show, ep, mode, version)
 		// completes instantly here. The streaming variant feeds progress
 		// events into the overlay so the user sees `<provider> ✓` ticks.
 		const outcome = await runOwnedPlay(
 			owner,
 			() =>
 				getOrFire(
-					makeKey(owner.showId, ep, mode, quality, version, undefined, playArgs.caption),
+					makeKey(owner.showId, ep, mode, version, undefined, playArgs.caption),
 					(emit, signal) => playStream(playArgs, emit, signal),
 					(p) => {
 						actionProgress = progressLabel(p);

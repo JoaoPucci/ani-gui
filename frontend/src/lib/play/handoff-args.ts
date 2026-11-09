@@ -14,7 +14,7 @@ export function handoffArgs(input: {
 	title: string;
 	episode: number;
 	kitsuId: string;
-	config: { mode: string; quality: string };
+	config: { mode: string };
 	detail: KitsuAnimeRef | null;
 	/** The version the embedded play names for the show. */
 	version?: VersionKind;
@@ -26,7 +26,6 @@ export function handoffArgs(input: {
 		title: input.title,
 		episode: input.episode,
 		mode: input.config.mode === 'dub' ? 'dub' : 'sub',
-		quality: 'best',
 		show: input.detail,
 		kitsuId: input.kitsuId,
 		version: input.version,

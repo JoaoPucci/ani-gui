@@ -1,5 +1,5 @@
 /**
- * Resolve the mode/quality a Continue Watching click should play
+ * Resolve the audio mode a Continue Watching click should play
  * with. Cards can release (and be clicked) before settingsGet has
  * resolved — a cached Kitsu match is near-instant, settings are an
  * IPC away — and capturing the sub/best fallbacks at that instant
@@ -14,7 +14,7 @@ import type { Config } from '$lib/api';
 export async function resolveResumeSettings(
 	config: Config | null,
 	settingsPromise: Promise<Config | null>
-): Promise<{ mode: 'sub' | 'dub'; quality: string }> {
+): Promise<{ mode: 'sub' | 'dub' }> {
 	let c = config;
 	if (!c) {
 		try {
@@ -23,8 +23,5 @@ export async function resolveResumeSettings(
 			c = null;
 		}
 	}
-	return {
-		mode: c?.mode === 'dub' ? 'dub' : 'sub',
-		quality: c?.quality ?? 'best'
-	};
+	return { mode: c?.mode === 'dub' ? 'dub' : 'sub' };
 }

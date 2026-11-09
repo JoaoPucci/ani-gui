@@ -4,7 +4,7 @@ import { __resetPlayCacheForTests, clearForShow, getOrFire, makeKey } from '$lib
 import { warmResumeEpisode, type ResumeWarmStream } from './resume-warm';
 
 const key = { showId: '42', episode: 12.5, mode: 'sub', quality: 'best' };
-const args: PlayArgs = { title: 'Show', episode: '12.5', mode: 'sub', quality: 'best' };
+const args: PlayArgs = { title: 'Show', episode: '12.5', mode: 'sub' };
 const session: CreateSessionResponse = {
 	session_id: 's',
 	media_url: 'http://x/s/s/master.m3u8',
@@ -26,7 +26,7 @@ function heldStream() {
  *  answer. */
 function fillPrefetchSlots() {
 	for (const ep of [1, 2]) {
-		getOrFire(makeKey('other', ep, 'sub', 'best'), () => new Promise(() => {}));
+		getOrFire(makeKey('other', ep, 'sub'), () => new Promise(() => {}));
 	}
 }
 
@@ -64,11 +64,7 @@ describe('warmResumeEpisode', () => {
 		calls[0].answer();
 		await warm;
 		const click = vi.fn(() => Promise.resolve(session));
-		const played = await getOrFire(
-			makeKey(key.showId, key.episode, key.mode, key.quality),
-			click,
-			() => {}
-		);
+		const played = await getOrFire(makeKey(key.showId, key.episode, key.mode), click, () => {});
 		expect(played).toBe(session);
 		expect(click).not.toHaveBeenCalled();
 	});
@@ -84,14 +80,10 @@ describe('warmResumeEpisode', () => {
 		calls[0].answer();
 		await warm;
 		const same = vi.fn(() => Promise.resolve(session));
-		await getOrFire(
-			makeKey(key.showId, key.episode, key.mode, key.quality, 'standard'),
-			same,
-			() => {}
-		);
+		await getOrFire(makeKey(key.showId, key.episode, key.mode, 'standard'), same, () => {});
 		expect(same).not.toHaveBeenCalled();
 		const other = vi.fn(() => Promise.resolve(session));
-		await getOrFire(makeKey(key.showId, key.episode, key.mode, key.quality), other, () => {});
+		await getOrFire(makeKey(key.showId, key.episode, key.mode), other, () => {});
 		expect(other).toHaveBeenCalledTimes(1);
 	});
 
@@ -104,11 +96,7 @@ describe('warmResumeEpisode', () => {
 		await settle();
 		expect(calls).toHaveLength(1);
 		const click = vi.fn(() => Promise.resolve(session));
-		const played = await getOrFire(
-			makeKey(key.showId, key.episode, key.mode, key.quality),
-			click,
-			() => {}
-		);
+		const played = await getOrFire(makeKey(key.showId, key.episode, key.mode), click, () => {});
 		expect(played).toBe(session);
 		expect(click).toHaveBeenCalledTimes(1);
 	});

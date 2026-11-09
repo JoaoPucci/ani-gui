@@ -82,21 +82,16 @@ const MASTER = [
 	{ height: 1080, bitrate: 5_000_000 }
 ];
 
-function arm(setting = 'best', levels = MASTER) {
+function arm(levels = MASTER) {
 	const engine = new FakeEngine();
 	const video = new FakeVideo();
 	const logs: string[] = [];
 	const views: (QualityView | null)[] = [];
 	let now = 1_000;
-	let settingReads = 0;
 	const control = armQuality({
 		engine: engine as unknown as Hls,
 		events: E,
 		video,
-		setting: () => {
-			settingReads += 1;
-			return setting;
-		},
 		onView: (v) => views.push(v),
 		now: () => now,
 		log: (msg) => logs.push(msg)
@@ -112,7 +107,6 @@ function arm(setting = 'best', levels = MASTER) {
 		views,
 		control,
 		parse,
-		settingReads: () => settingReads,
 		at: (t: number) => {
 			now = t;
 		},
@@ -123,10 +117,9 @@ function arm(setting = 'best', levels = MASTER) {
 afterEach(() => qualityPin.clear());
 
 describe('armQuality — the start', () => {
-	it('starts the engine at the highest level as the levels arrive, reading no setting', () => {
-		const s = arm('best');
+	it('starts the engine on Auto at the highest level as the levels arrive', () => {
+		const s = arm();
 		s.parse();
-		expect(s.settingReads()).toBe(0);
 		expect(s.engine.startLevel).toBe(2);
 		expect(s.engine.loads).toEqual([2]);
 		expect(s.engine.autoLevelEnabled).toBe(false);
@@ -139,19 +132,8 @@ describe('armQuality — the start', () => {
 		});
 	});
 
-	it('starts on Auto at the highest level whatever setting a caller still passes', () => {
-		// The player always starts on Auto with the whole master; the
-		// only quality setting left is the download's.
-		for (const setting of ['worst', '480', '720']) {
-			const s = arm(setting);
-			s.parse();
-			expect(s.engine.loads).toEqual([2]);
-			expect(s.lastView()?.pinned).toBeNull();
-		}
-	});
-
 	it('leaves a stream of one level to the engine, and says so', () => {
-		const s = arm('best', [MASTER[1]]);
+		const s = arm([MASTER[1]]);
 		s.parse();
 		expect(s.engine.loads).toEqual([]);
 		expect(s.engine.autoLevelEnabled).toBe(true);
@@ -161,7 +143,7 @@ describe('armQuality — the start', () => {
 	it('shows a stream of one level in the menu, and its one entry chooses nothing', () => {
 		// A pin carried from a master lands on the lone level below it.
 		qualityPin.set(1080);
-		const s = arm('best', [MASTER[1]]);
+		const s = arm([MASTER[1]]);
 		s.parse();
 		const menu = qualityMenu(s.lastView() ?? null);
 		expect(menu?.items.map((i) => [i.key, i.checked])).toEqual([[0, true]]);
@@ -176,7 +158,7 @@ describe('armQuality — the start', () => {
 	});
 
 	it('names a lone level that lists no height once a segment of it is parsed', () => {
-		const s = arm('720', [{ height: 0, bitrate: 0 }]);
+		const s = arm([{ height: 0, bitrate: 0 }]);
 		s.parse();
 		expect(qualityMenu(s.lastView() ?? null)).toBeNull();
 		s.engine.emit(E.FRAG_PARSING_INIT_SEGMENT, {
@@ -192,7 +174,7 @@ describe('armQuality — the start', () => {
 		// hls.js reports no picture size for an fMP4 init segment; the
 		// video element knows it once its metadata has loaded.
 		for (const event of ['loadedmetadata', 'resize']) {
-			const s = arm('720', [{ height: 0, bitrate: 0 }]);
+			const s = arm([{ height: 0, bitrate: 0 }]);
 			s.parse();
 			s.engine.emit(E.FRAG_PARSING_INIT_SEGMENT, {
 				frag: { type: 'main', level: 0 },
@@ -209,12 +191,12 @@ describe('armQuality — the start', () => {
 	});
 
 	it("reads the picture's height for a lone level only, and only while the stream is live", () => {
-		const before = arm('best', [{ height: 0, bitrate: 0 }]);
+		const before = arm([{ height: 0, bitrate: 0 }]);
 		before.video.videoHeight = 1080;
 		before.video.dispatchEvent(new Event('resize'));
 		expect(before.views).toEqual([]);
 
-		const multi = arm('best');
+		const multi = arm();
 		multi.parse();
 		const published = multi.views.length;
 		multi.video.videoHeight = 480;
@@ -222,7 +204,7 @@ describe('armQuality — the start', () => {
 		expect(multi.views.length).toBe(published);
 		expect(multi.lastView()?.levels.map((l) => l.height)).toEqual([360, 720, 1080]);
 
-		const lone = arm('720', [{ height: 0, bitrate: 0 }]);
+		const lone = arm([{ height: 0, bitrate: 0 }]);
 		lone.parse();
 		// No picture yet: the element reports a height of zero.
 		lone.video.dispatchEvent(new Event('resize'));
@@ -236,7 +218,7 @@ describe('armQuality — the start', () => {
 
 	it('starts at the height pinned earlier in the run', () => {
 		qualityPin.set(720);
-		const s = arm('best');
+		const s = arm();
 		s.parse();
 		expect(s.engine.loads).toEqual([1]);
 		expect(s.lastView()?.pinned).toBe(1);
@@ -490,7 +472,7 @@ describe('armQuality — trouble', () => {
 	it('hands the choice to the engine for good once nothing below a failing level is left', () => {
 		// The lowest level, reached by a pick: the start is always the
 		// highest.
-		const s = arm('best');
+		const s = arm();
 		s.parse();
 		s.control.pick(0);
 		const loads = [...s.engine.loads];
@@ -660,13 +642,13 @@ describe('armQuality — the viewer chooses', () => {
 			{ height: 0, bitrate: 800_000 },
 			{ height: 0, bitrate: 5_000_000 }
 		];
-		const s = arm('best', unnamed);
+		const s = arm(unnamed);
 		s.parse();
 		s.control.pick(0);
 		expect(qualityPin.get()).toBeNull();
 		expect(qualityPin.choice()).toEqual({ rank: 1 });
 		// The next stream starts at the level of that rank, pinned.
-		const next = arm('best', unnamed);
+		const next = arm(unnamed);
 		next.parse();
 		expect(next.engine.loads).toEqual([0]);
 		expect(next.lastView()?.pinned).toBe(0);
@@ -707,7 +689,6 @@ describe('armQuality — the edges', () => {
 				engine: engine as unknown as Hls,
 				events: E,
 				video: new FakeVideo(),
-				setting: () => undefined,
 				onView: () => {}
 			});
 			engine.emit(E.MANIFEST_PARSED, { levels: MASTER });
@@ -723,7 +704,7 @@ describe('armQuality — the edges', () => {
 	});
 
 	it('a level whose playlist lists no height learns one without claiming the playlist said 0p', () => {
-		const s = arm('best', [
+		const s = arm([
 			{ height: 0, bitrate: 800_000 },
 			{ height: 0, bitrate: 2_000_000 }
 		]);
@@ -737,7 +718,7 @@ describe('armQuality — the edges', () => {
 	});
 
 	it('a manifest of no levels sets nothing', () => {
-		const s = arm('best', []);
+		const s = arm([]);
 		s.parse();
 		expect(s.engine.loads).toEqual([]);
 		expect(s.logs).toEqual([]);
@@ -795,8 +776,8 @@ describe('armQuality — levels hls.js removes', () => {
 		return left;
 	}
 
-	function armObjects(setting = 'best', levels = MASTER) {
-		const s = arm(setting, levels);
+	function armObjects(levels = MASTER) {
+		const s = arm(levels);
 		const objects = levels.map((l) => ({ ...l }));
 		s.engine.levels = objects;
 		s.engine.emit(E.MANIFEST_PARSED, { levels: objects });
@@ -817,7 +798,7 @@ describe('armQuality — levels hls.js removes', () => {
 		// The codec of 1080p and 360p is refused: hls.js removes both and
 		// the hold re-seats on 720p, the best level left. The error that
 		// caused it is no failure of 720p.
-		const s = armObjects('best', LADDER5);
+		const s = armObjects(LADDER5);
 		s.engine.manual = -1;
 		s.remove(4, 1);
 		s.engine.emit(E.ERROR, {
@@ -832,7 +813,7 @@ describe('armQuality — levels hls.js removes', () => {
 	});
 
 	it('the policy keeps reading playlist heights after a removal, whatever a segment revealed', () => {
-		// Two variants tagged 720p; the one the setting holds is removed,
+		// Two variants tagged 720p; the one the start holds is removed,
 		// and the survivor's segments turned out to be encoded at 1080p.
 		// The ceiling is the 720p-tagged survivor, so after a stall Auto
 		// climbs back to it.
@@ -841,7 +822,7 @@ describe('armQuality — levels hls.js removes', () => {
 			{ height: 720, bitrate: 2_000_000 },
 			{ height: 720, bitrate: 3_000_000 }
 		];
-		const s = armObjects('720', ladder);
+		const s = armObjects(ladder);
 		expect(s.engine.loads).toEqual([2]);
 		s.engine.emit(E.FRAG_PARSING_INIT_SEGMENT, {
 			frag: { type: 'main', level: 1 },
@@ -869,7 +850,7 @@ describe('armQuality — levels hls.js removes', () => {
 			{ height: 720, bitrate: 2_000_000 },
 			{ height: 720, bitrate: 3_000_000 }
 		];
-		const s = armObjects('best', ladder);
+		const s = armObjects(ladder);
 		for (const [level, height] of [
 			[1, 720],
 			[2, 480]
@@ -1046,7 +1027,7 @@ describe('armQuality — levels hls.js removes', () => {
 		expect(qualityPin.get()).toBe(360);
 	});
 
-	it('a stepped-down hold removed re-seats below it, not back at the setting', () => {
+	it('a stepped-down hold removed re-seats below it, not back at the start', () => {
 		const s = armObjects();
 		s.at(10_000);
 		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
@@ -1061,7 +1042,7 @@ describe('armQuality — levels hls.js removes', () => {
 			{ height: 720, bitrate: 2_500_000 },
 			{ height: 1080, bitrate: 5_000_000 }
 		];
-		const s = armObjects('worst', ladder);
+		const s = armObjects(ladder);
 		s.engine.emit(E.ERROR, {
 			details: D.LEVEL_LOAD_ERROR,
 			fatal: false,
@@ -1075,7 +1056,7 @@ describe('armQuality — levels hls.js removes', () => {
 	});
 
 	it('picking the level held after a release takes the choice back from the engine', () => {
-		const s = arm('best', [MASTER[0], MASTER[1]]);
+		const s = arm([MASTER[0], MASTER[1]]);
 		s.parse();
 		s.control.pick(0);
 		s.engine.emit(E.FRAG_CHANGED, { frag: { type: 'main', level: 0 } });
@@ -1094,7 +1075,7 @@ describe('armQuality — levels hls.js removes', () => {
 	});
 
 	it('Auto after a release takes the choice back from the engine', () => {
-		const s = arm('best', [MASTER[0], MASTER[1]]);
+		const s = arm([MASTER[0], MASTER[1]]);
 		s.parse();
 		s.control.pick(0);
 		s.engine.manual = -1;
@@ -1109,7 +1090,7 @@ describe('armQuality — levels hls.js removes', () => {
 	});
 
 	it('levels all replaced keep the stream pinned at the pinned height among the new ones', async () => {
-		const s = armObjects('best', [MASTER[0], { height: 480, bitrate: 1_400_000 }, MASTER[2]]);
+		const s = armObjects([MASTER[0], { height: 480, bitrate: 1_400_000 }, MASTER[2]]);
 		s.control.pick(1);
 		const fresh = s.engine.levels.map((l) => ({ ...l }));
 		s.engine.levels = fresh;
@@ -1130,7 +1111,7 @@ describe('armQuality — levels hls.js removes', () => {
 
 	it('a run pin below every level of the next stream starts it as Auto, not pinned above', () => {
 		qualityPin.set(240);
-		const s = arm('best');
+		const s = arm();
 		s.parse();
 		expect(s.lastView()?.pinned).toBeNull();
 		expect(s.engine.loads).toEqual([2]);
@@ -1161,7 +1142,7 @@ describe('armQuality — levels hls.js removes', () => {
 			{ height: 480, bitrate: 1_400_000 },
 			{ height: 600, bitrate: 2_000_000 }
 		];
-		const s = armObjects('480', ladder);
+		const s = armObjects(ladder);
 		s.engine.manual = -1;
 		s.remove(2, 0);
 		s.engine.emit(E.ERROR, {
@@ -1175,7 +1156,7 @@ describe('armQuality — levels hls.js removes', () => {
 	});
 
 	it('several removals in one dispatch are read from the list the error named', () => {
-		const s = armObjects('best', LADDER5);
+		const s = armObjects(LADDER5);
 		s.control.pick(0);
 		s.engine.manual = -1;
 		s.remove(3, 1);
@@ -1325,15 +1306,14 @@ describe('armQuality — levels hls.js removes', () => {
 	});
 });
 
-describe('armQuality — the start waits for nothing', () => {
-	function armHeld(setting: () => string | null | undefined | Promise<string | null | undefined>) {
+describe('armQuality — a start the control holds the engine for', () => {
+	function armHeld() {
 		const engine = new FakeEngine();
 		const views: (QualityView | null)[] = [];
 		const control = armQuality({
 			engine: engine as unknown as Hls,
 			events: E,
 			video: new FakeVideo(),
-			setting,
 			holdsStart: true,
 			onView: (v) => views.push(v),
 			now: () => 1_000,
@@ -1343,8 +1323,8 @@ describe('armQuality — the start waits for nothing', () => {
 		return { engine, views, control, parse };
 	}
 
-	it('chooses the start level and starts the engine as the levels arrive, with settings never answering', () => {
-		const s = armHeld(() => new Promise(() => {}));
+	it('chooses the start level and starts the engine as the levels arrive', () => {
+		const s = armHeld();
 		s.parse();
 		expect(s.engine.startLevel).toBe(2);
 		expect(s.engine.loads).toEqual([2]);
@@ -1361,7 +1341,6 @@ describe('armQuality — the start waits for nothing', () => {
 			engine: engine as unknown as Hls,
 			events: E,
 			video: new FakeVideo(),
-			setting: () => 'best',
 			holdsStart: true,
 			startAt: 612.5,
 			onView: () => {},
@@ -1370,24 +1349,20 @@ describe('armQuality — the start waits for nothing', () => {
 		});
 		engine.emit(E.MANIFEST_PARSED, { levels: MASTER });
 		expect(engine.startsAt).toEqual([612.5]);
-		const plain = armHeld(() => 'best');
+		const plain = armHeld();
 		plain.parse();
 		expect(plain.engine.startsAt).toEqual([undefined]);
 	});
 
-	it('a stream of several levels or of one is started as its levels arrive', () => {
-		const s = armHeld(() => '720');
-		s.parse();
-		expect(s.engine.loads).toEqual([2]);
-		expect(s.engine.starts).toBe(1);
-		const one = armHeld(() => 'best');
+	it('a stream of one level is started too, its level left to the engine', () => {
+		const one = armHeld();
 		one.parse([MASTER[1]]);
 		expect(one.engine.loads).toEqual([]);
 		expect(one.engine.starts).toBe(1);
 	});
 
 	it('a stream retired before its levels arrive starts nothing', () => {
-		const s = armHeld(() => 'best');
+		const s = armHeld();
 		s.control.dispose();
 		s.parse();
 		expect(s.engine.loads).toEqual([]);
@@ -1395,7 +1370,7 @@ describe('armQuality — the start waits for nothing', () => {
 	});
 
 	it('without the option the engine is left to start itself', () => {
-		const s = arm('best');
+		const s = arm();
 		s.parse();
 		expect(s.engine.starts).toBe(0);
 	});

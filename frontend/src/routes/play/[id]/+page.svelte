@@ -162,7 +162,6 @@
 		playArgsFor,
 		playedRecord,
 		playMode,
-		playQuality,
 		recordPlayed,
 		runOwnedPlay
 	} from '$lib/play/owned-play';
@@ -1915,7 +1914,7 @@
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
 			// The quality control starts the engine once it has chosen the
-			// start level, which waits for the settings ($lib/play/arm-quality).
+			// start level as the levels arrive ($lib/play/arm-quality).
 			hls = new Hls({ lowLatencyMode: false, autoStartLoad: false, ...HLS_STALL_LOAD_POLICY });
 			// The engine retires with its source: the next attach's
 			// flush, or the page leaving.
@@ -1932,7 +1931,6 @@
 				engine,
 				events: Hls.Events,
 				video: videoEl,
-				setting: () => undefined,
 				holdsStart: true,
 				startAt,
 				onView: (view) => {
@@ -2158,7 +2156,7 @@
 	// Background prefetch: warm every episode visible in the strip
 	// concurrently so any click in the page is instant. Re-runs when
 	// the strip page changes (different `episodes` array) or settings
-	// flip mode/quality. The play-cache dedupes across calls — duplicate
+	// flip the audio mode. The play-cache dedupes across calls — duplicate
 	// keys share a single in-flight promise, so reloading the same page
 	// after a swap doesn't refire requests already resolved.
 	//
@@ -2185,7 +2183,6 @@
 		const title = detail.canonical_title;
 		if (!title) return;
 		const mode = playMode(config);
-		const quality = playQuality(config);
 		// The version remembered for the show on its detail page — the
 		// one the session playing here was resolved for.
 		const version = storedChoice(id);
@@ -2208,7 +2205,6 @@
 				title,
 				episode: targetEp,
 				mode,
-				quality,
 				show: detail,
 				kitsuId: recordableId(id, fromGuess),
 				prefetch: true,
@@ -2220,7 +2216,7 @@
 				guessId: guessedId(fromGuess, id)
 			});
 			void getOrFire(
-				makeKey(id, targetEp, mode, quality, version, args.guess_row, args.caption),
+				makeKey(id, targetEp, mode, version, args.guess_row, args.caption),
 				(emit, signal) => playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
@@ -2268,13 +2264,11 @@
 		const show = detail;
 		const guess = fromGuess;
 		const row = fromRow;
-		const quality = playQuality(config);
 		const version = storedChoice(owner.showId);
 		const playArgs = playArgsFor({
 			title,
 			episode: targetEp,
 			mode,
-			quality,
 			show,
 			kitsuId: recordableId(owner.showId, guess),
 			version,
@@ -2304,15 +2298,7 @@
 				owner,
 				() =>
 					getOrFire(
-						makeKey(
-							owner.showId,
-							targetEp,
-							mode,
-							quality,
-							version,
-							playArgs.guess_row,
-							playArgs.caption
-						),
+						makeKey(owner.showId, targetEp, mode, version, playArgs.guess_row, playArgs.caption),
 						(emit, signal) => playStream(playArgs, emit, signal),
 						(p) => {
 							switchProgress = progressLabel(p);
@@ -2463,7 +2449,6 @@
 		// sub/best matches switchToEpisode's pattern. A permanently null
 		// config (settingsGet rejected) shouldn't leave Reload no-op.
 		const mode = playMode(config);
-		const quality = playQuality(config);
 		console.info('[play] stale-stream recovery:', reason);
 		try {
 			// The resolution cache keys on the version, so the eviction
@@ -2475,7 +2460,6 @@
 					title,
 					episode: episodeNum,
 					mode,
-					quality,
 					show: detail,
 					kitsuId: undefined,
 					version: storedChoice(id),

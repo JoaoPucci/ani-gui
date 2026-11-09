@@ -46,9 +46,6 @@ export interface QualityVideo extends EventTarget {
 	readonly videoHeight: number;
 }
 
-/** The quality setting's value, unknown when the settings failed. */
-export type QualitySetting = string | null | undefined;
-
 export interface QualityControl {
 	/** The viewer chose a level, or "Auto", from the menu. */
 	pick(choice: 'auto' | number): void;
@@ -60,9 +57,6 @@ export function armQuality(input: {
 	engine: Hls;
 	events: QualityEvents;
 	video: QualityVideo;
-	/** The quality setting, read when the master's levels arrive — or
-	 *  the settings still on their way, answering with it. */
-	setting: () => QualitySetting | Promise<QualitySetting>;
 	/** Whether the control starts the engine's loading once it has
 	 *  chosen the start level; the page then makes the engine with
 	 *  `autoStartLoad: false`. */
