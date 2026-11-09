@@ -414,13 +414,16 @@ test("the app's window paints the app's dark background and is revealed once its
         return main.require("./lib/app-window.cjs").lastAppReady();
       });
     // Wait out the reveal: the splash gone, and the wait for the
-    // renderer settled either way.
-    await expect.poll(() => app.windows().length, { timeout: 5_000 }).toBe(1);
+    // renderer settled either way. Past the wait's own bound
+    // (APP_READY_WAIT_MS, 15 s), so a renderer that never says it
+    // rendered fails on the record below, which says so, rather than
+    // on a poll that ran out first.
+    await expect.poll(() => app.windows().length, { timeout: 20_000 }).toBe(1);
     await expect
       .poll(async () => {
         const r = await readyRecord();
         return r.rendered || r.gaveUp;
-      }, { timeout: 5_000 })
+      }, { timeout: 20_000 })
       .toBe(true);
     const backgrounds = await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
