@@ -831,7 +831,9 @@ smaller.
 ### (c) A franchise page
 
 **How it looks.** `/anime/<id>/franchise`, reached from the strip's
-trailing link and from search results that belong to a franchise. A
+trailing link. (Search results were also proposed as a way in; that
+was dropped, and a study of making franchises findable is in the
+deferred-work log, "Decisions recorded (after the build)".) A
 header named after the run's first entry, with your position: "05 ·
 *Golden Wind* · EP 12" (with a total only for a run with no fork, join
 or cycle) and a Resume button; its hero and accent are set in the
@@ -1347,7 +1349,7 @@ The rules below hold on every surface:
   end under "No clear place in the order", since nothing gives it a
   single place. A fork is a group
   under "2 ways to continue", its branches side by side as unnumbered
-  columns, each under "Way n of N". A loop is a group under "10
+  columns with no label of their own. A loop is a group under "10
   linked titles, order unclear" with one sentence on why it has no
   clear order; its entries are listed along their links. In release
   order every one of these is a single numbered line.
@@ -1589,6 +1591,16 @@ The third round revises the strip's footer only.
 3. **The watching card's border: none at rest** in the centred
    footer, so the card and the stack pair as two bare items that
    take the same plate on hover and focus.
+
+### Decisions recorded (after the build)
+
+1. **The fork's columns carry no label.** The franchise page's
+   branches sit side by side under the one "N ways to continue"
+   heading; the "Way n of N" label each column carried is gone.
+2. **No entry from search results.** The franchise page is reached
+   from the strip. How to make franchises findable gracefully (a
+   franchise search, or something like it) is a study of its own, in
+   the deferred-work log.
 
 ## 6. Recommendation and plan for 0.19.0
 

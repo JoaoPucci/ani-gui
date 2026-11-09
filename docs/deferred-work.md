@@ -471,6 +471,16 @@ starting it, and delete it when you find it done.
   credits as a hint, or no length where the sources disagree. That
   work is finding the causes, counting the occurrences across the
   catalogue, and choosing a source the list can trust.
+- **A franchise is found only from one of its shows.** The franchise
+  page (`/anime/<id>/franchise`) is reached from the watch-order strip
+  on a show page, so a viewer has to find one show of the franchise
+  first. Linking it from search results was proposed and dropped by
+  the maintainer: telling which results belong to a franchise costs a
+  franchise read per result, which a results page cannot afford. What
+  is wanted first is a study of how to make franchises findable
+  gracefully, such as a franchise search or a cheaper signal that a
+  title belongs to one, compared with how other catalogues let people
+  browse a series.
 - **Localised content fetch** — synopsis and episode titles.
 - **Search has no sort *direction* control.** Sorting by relevance,
   year and rating ships, as do subtype filter chips; only
