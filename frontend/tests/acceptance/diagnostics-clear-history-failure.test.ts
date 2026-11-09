@@ -162,4 +162,15 @@ describe('diagnostics — a failed Clear history', () => {
 		release();
 		await until(() => !clearButton()!.disabled, 'Clear history back');
 	});
+
+	it('leaves no loading state behind a clear when the first load failed', async () => {
+		listFails = true;
+		app = mount(DiagnosticsPage, { target });
+		await until(() => text().includes(m.diagnostics_history_error()), 'the load error');
+		clearButton()!.click();
+		await until(() => text().includes(m.diagnostics_history_clear_error()), 'the clear error');
+		expect(text()).not.toContain(m.diagnostics_history_loading());
+		// With no list, the load's error stays beside the clear's.
+		expect(text()).toContain(m.diagnostics_history_error());
+	});
 });
