@@ -1278,9 +1278,8 @@ The rules below hold on every surface:
 - **Missing data.** No run: no strip, no position in the masthead.
   First or last entry: "The story starts here", "Nothing after this
   yet" in the empty column; a side story's end reads the same as the
-  last entry's. Unknown date: "Date not announced"
-  in place of the year and count. An entry the provider lacks looks
-  like any other.
+  last entry's. Unknown date: "Date not announced" in place of the
+  year and count. An entry the provider lacks looks like any other.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
   keys page it); every card and tile is a link with the poster card's
   bone focus ring; the entry being viewed is not a link. The line for
@@ -1401,9 +1400,9 @@ variant below is one of the switch's options.
   so the three keys share one baseline whatever sits under them, and
   the centre's two hairlines run through all three rows. An empty side
   keeps its column, drops its key and says why it is empty ("The story
-  starts here", "Nothing after this yet"), so the numeral does
-  not move at either end of a run. The centre column stays at every
-  window width; the first round hid it below 1100 px.
+  starts here", "Nothing after this yet"), so the numeral does not
+  move at either end of a run. The centre column stays at every window
+  width; the first round hid it below 1100 px.
 - **The band.** The strip sits on one faint band: the page's own ink,
   one step up (`--ink-050`), at 72 % opacity, with the card corner
   radius. No border, blur, shadow or gradient. Its footer, under a
