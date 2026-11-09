@@ -91,7 +91,8 @@
 		try {
 			await settingsPut(next);
 			savedAt = Date.now();
-			saveError = null;
+			// Only a save's own failure: a clear's stays until a clear lands.
+			if (errorAction === 'save') saveError = null;
 		} catch (e) {
 			errorAction = 'save';
 			saveError = describeSettingsFailure(e);
