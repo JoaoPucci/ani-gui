@@ -1094,8 +1094,8 @@ them introduces a new widget style.
 - **Motion.** It enters with the settle transition the skip pill
   uses. Under reduced motion it simply appears.
 - **On Continue Watching.** The card keeps its 16:9 shape, so the rail
-  stays even. Its frame shows the sequel's art: its first episode's
-  still where Kitsu has one, otherwise its banner or cover. The
+  stays even. Its frame shows the sequel's art: its banner, or its
+  poster where it has no banner ("Decisions recorded", 5). The
   oversized tag reads "NEXT" in place of "EP N". The small line reads
   "After *<finished entry>*", which says why the card changed, with
   the finished entry named by the words that set it apart; the large
@@ -1374,7 +1374,10 @@ The maintainer answered the eight questions the first mockups asked:
    **NEXT** tag. The hand-off card opens the next entry's show page,
    not its first episode, as the mockup already does: the viewer
    arrives where the strip, the synopsis and the episode list say what
-   they are about to start.
+   they are about to start. Its art stays the mockup's, the next
+   entry's banner or else its poster; the maintainer chose that over
+   its first episode's still, which would cost one more Kitsu read per
+   card.
 6. **Franchise page** as a list.
 7. **The setting** uses buttons. Its hint adds that the links
    generally follow the story but are maintained by each database's
