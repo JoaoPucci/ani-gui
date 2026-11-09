@@ -361,9 +361,9 @@ kind of request:
   up from its Kitsu entry, the episode number, and the episode's
   length in seconds. A show with no MyAnimeList id, a play with no
   Kitsu entry, and an episode numbered 0 or with a fractional number
-  are not asked about. No account information is sent. Answers are cached, so
-  playing the episode again does not ask again while the cached times
-  last. The auto-skip settings do not stop the request, and no setting
+  are not asked about. No account information is sent. Answers are cached per episode and length, so
+  playing the episode again at the same length does not ask again
+  while the cached times last. The auto-skip settings do not stop the request, and no setting
   does.
 
 There is no analytics or telemetry: no request reports how you use
