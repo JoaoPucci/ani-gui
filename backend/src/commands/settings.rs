@@ -74,7 +74,6 @@ mod tests {
         let state = state_with_config_at(dir.path().join("config.toml"));
         let new_cfg = Config {
             mode: "dub".into(),
-            quality: "720".into(),
             external_player: "vlc".into(),
             ..Config::default()
         };
