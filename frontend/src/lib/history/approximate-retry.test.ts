@@ -557,4 +557,20 @@ describe('rowWorthRetrying', () => {
 
 		expect(refined).toEqual([['e1', 4]]);
 	});
+
+	it("asks about each row in its show's own audio, the mode the default", async () => {
+		const { modes, probes, fetchAvailability } = answers({ count: 12, approximate: false });
+		const clock = fakeClock();
+		await retryApproximateCaps([row('dubbed'), row('plain')], {
+			fetchAvailability,
+			mode: 'sub',
+			modeFor: (kitsuId, fallback) => (kitsuId === 'dubbed' ? 'dub' : fallback),
+			onRefined: () => {},
+			wait: clock.wait,
+			backoffMs: [0]
+		});
+		const asked = probes.map((id, i) => [id, modes[i]]);
+		expect(asked).toContainEqual(['dubbed', 'dub']);
+		expect(asked).toContainEqual(['plain', 'sub']);
+	});
 });

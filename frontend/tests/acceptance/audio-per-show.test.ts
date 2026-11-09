@@ -287,6 +287,47 @@ describe('detail route — Sub or Dub per show', () => {
 	});
 });
 
+describe('detail route — lists of other shows keep the default', () => {
+	it("the similar titles are filtered by the Settings default, not this show's audio", async () => {
+		rememberAudio(KITSU_ID, 'dub');
+		const batchModes: string[] = [];
+		setParams({ id: KITSU_ID });
+		const h = useShowHandlers({ mode: 'sub' });
+		server.use(
+			http.post(`${API_BASE}/api/kitsu/search`, () =>
+				HttpResponse.json([kitsuRef('777', 'Similar Show', 12)])
+			),
+			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
+				batchModes.push(((await request.json()) as { mode: string }).mode);
+				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+			}),
+			http.post(`${API_BASE}/api/availability/warm`, () => new HttpResponse(null, { status: 202 }))
+		);
+		app = mount(DetailPage, { target });
+		await until(() => h.probes() > 0, 'the page-load availability lookup');
+		await until(() => batchModes.length > 0, 'the similar titles filter');
+		expect(batchModes).toEqual(['sub']);
+	});
+});
+
+describe('detail route — the audio control without the settings', () => {
+	it('picks and remembers the audio even when the settings cannot be read', async () => {
+		setParams({ id: KITSU_ID });
+		const h = useShowHandlers({ mode: 'sub' });
+		server.use(http.get(`${API_BASE}/api/settings`, () => new HttpResponse(null, { status: 500 })));
+		app = mount(DetailPage, { target });
+		await until(() => h.probes() > 0, 'the page-load availability lookup');
+		await until(() => audioButton('DUB') !== null, 'the audio control');
+		// With neither a default nor a choice, neither audio reads as picked.
+		expect(audioButton('SUB')?.getAttribute('aria-pressed')).toBe('false');
+		expect(audioButton('DUB')?.disabled).toBe(false);
+		audioButton('DUB')!.click();
+		flushSync();
+		expect(audioButton('DUB')?.getAttribute('aria-pressed')).toBe('true');
+		expect(audioLabel()).toContain(m.detail_audio_note_show());
+	});
+});
+
 // ------------------------------------------------------------------ play
 
 const moreButton = () =>
