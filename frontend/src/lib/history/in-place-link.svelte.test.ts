@@ -349,6 +349,36 @@ describe('a surface that reads nothing from the history', () => {
 	});
 });
 
+describe('a pick that lands after the player moved to another card', () => {
+	it('is saved for its own card, and leaves the new session as it is', async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		const other: HistoryEntry = { ...CARD, id: 'hianime:other-1' };
+		const f = fake(true);
+		f.rows = [CARD, other];
+		f.deps.group = async (card) => [card];
+		const link = f.deps.link;
+		f.deps.link = async (card, rows, kitsuId) => {
+			await held;
+			return link(card, rows, kitsuId);
+		};
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		await s.start(2);
+		s.choose({ ref: RIGHT, current: false });
+		const confirming = s.confirm();
+		await s.arrive(other.id, GUESS.id);
+		release();
+		await confirming;
+		expect(f.rows.find((r) => r.id === CARD.id)?.kitsu_id).toBe(RIGHT.id);
+		// The new card's session plays as its own guess, not the old pick.
+		expect(s.linked).toBeNull();
+		expect(s.offer?.entry.id).toBe(other.id);
+		expect(s.offer?.saved).toBeUndefined();
+		expect(s.slip).toBe('guess');
+	});
+});
+
 describe('a "Yes" that fails', () => {
 	it('says so in a notice, since the picker that shows errors is closed', async () => {
 		const f = fake(true);

@@ -420,6 +420,35 @@ describe('LinkSession', () => {
 		}
 	});
 
+	it('leaves a later arrival on the same page as it is when an earlier link lands', async () => {
+		// The page component stays across a move to the same show from
+		// another card: the earlier link is saved, but neither closes the
+		// new arrival's offer nor takes the user away from it.
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		const other: HistoryEntry = { ...CARD, id: 'hianime:other-1' };
+		const f = fake();
+		f.rows = [CARD, other];
+		const link = f.deps.link;
+		f.deps.link = async (card, rows, kitsuId) => {
+			await held;
+			return link(card, rows, kitsuId);
+		};
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start();
+		await s.search('gintama');
+		s.choose(s.candidates![0]);
+		const confirming = s.confirm();
+		await s.arrive(other.id, GUESS);
+		release();
+		expect(await confirming).toBe(true);
+		expect(f.rows[0].kitsu_id).toBe(RIGHT.id);
+		expect(s.offer?.entry.id).toBe(other.id);
+		expect(f.pages).toEqual([]);
+		expect(f.notices[0].message).toBe(m.detail_link_done_toast({ title: 'Gintama' }));
+	});
+
 	it('leaves the user where they went while the undo was out', async () => {
 		let release!: () => void;
 		const held = new Promise<void>((r) => (release = r));
