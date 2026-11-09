@@ -40,7 +40,7 @@
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
 	import { settledOrder } from '$lib/watch-order/page-model';
 	import { finaleCard } from '$lib/watch-order/up-next';
-	import { inCredits, upNextShown as upNextShownFor } from '$lib/play/up-next-window';
+	import { atVideoEnd, upNextShown as upNextShownFor } from '$lib/play/up-next-window';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
@@ -315,6 +315,9 @@
 	let isPaused = $state(true);
 	let currentTime = $state(0);
 	let duration = $state(0);
+	// The element has said `ended` and has not played or been sought
+	// since: the Up next card reads it ($lib/play/up-next-window).
+	let videoEnded = $state(false);
 	let videoVolume = $state(1);
 	let isMuted = $state(false);
 	// Captions selector for the custom controls. Reads the live
@@ -386,10 +389,6 @@
 	// `activeSkip` is the interval the playhead is currently inside;
 	// the Skip OP / Skip Outro overlay binds to it.
 	let skipIntervals = $state<SkipInterval[]>([]);
-	// The episode whose skip times have answered (or failed), as the
-	// fetch key names it: the Up next card's last-minutes rule waits for
-	// this episode's, and a previous episode's answer is not this one's.
-	let skipsFor = $state<string | null>(null);
 	const activeSkip = $derived(pickActiveSkip(skipIntervals, currentTime));
 
 	// Auto-skip: when a skip becomes active AND the user has the
@@ -452,12 +451,10 @@
 		if (key !== skipsKey) {
 			skipsKey = key;
 			skipIntervals = [];
-			skipsFor = null;
 		}
 		const decision = aniskipTrigger.step(id, episodeNum, aniskipDurationReady);
 		if (decision.kind === 'clear') {
 			skipIntervals = [];
-			skipsFor = null;
 			return;
 		}
 		if (decision.kind !== 'fetch') return;
@@ -466,18 +463,15 @@
 		// intervals can't briefly drive `activeSkip` against the new
 		// episode's currentTime.
 		skipIntervals = [];
-		skipsFor = null;
 		void aniskipGet(decision.showId, decision.episode, len)
 			.then((v) => {
 				if (aniskipFetchKey === key) {
 					skipIntervals = v;
-					skipsFor = key;
 				}
 			})
 			.catch(() => {
 				if (aniskipFetchKey === key) {
 					skipIntervals = [];
-					skipsFor = key;
 				}
 			});
 	});
@@ -1520,8 +1514,8 @@
 
 	// The "Up next" card at a finale: on the last episode of an entry
 	// that has finished airing, with no further episode of the entry to
-	// step to, from the start of its credits, it names the entry the
-	// order setting puts next and waits for a click
+	// step to, once the video has ended, it names the entry the order
+	// setting puts next and waits for a click
 	// ($lib/watch-order/up-next, $lib/play/up-next-window). Nothing
 	// asks the provider about that entry, and the card plays nothing:
 	// auto-play only ever steps within the entry. Dismissed, it stays
@@ -1540,11 +1534,6 @@
 			detail ? { status: detail.status, episodes: detail.episode_count } : null
 		)
 	);
-	// The skip times the card waits for: none to wait for on a
-	// fractional extra, which aniskip has no times for.
-	const upNextSkips = $derived(
-		!Number.isInteger(episodeNum) ? [] : skipsFor === aniskipFetchKey ? skipIntervals : null
-	);
 	let upNextDismissed = $state(false);
 	let upNextAnnounced = $state(false);
 	$effect(() => {
@@ -1561,10 +1550,10 @@
 			resumeHolding,
 			dismissed: upNextDismissed,
 			videoFullscreen,
-			// The playhead and the skip times count only once they belong
-			// to the source and the episode on screen: across a switch
-			// both still hold the last episode's until it is replaced.
-			atEnd: playheadOnScreen && inCredits(currentTime, duration, upNextSkips)
+			// The playhead counts only once it belongs to the stream on
+			// screen: across a switch it still holds the last episode's
+			// until that one is replaced.
+			atEnd: playheadOnScreen && atVideoEnd(currentTime, duration, videoEnded)
 		})
 	);
 	$effect(() => {
@@ -1763,10 +1752,11 @@
 		// fresh one.
 		hls = null;
 		attachedUrl = null;
-		// The last source's playhead and length are not this one's: the
-		// Up next card judges a finale's credits by them.
+		// The last source's playhead, length and end are not this one's:
+		// the Up next card judges a finale's end by them.
 		currentTime = 0;
 		duration = 0;
+		videoEnded = false;
 		if (videoEl) {
 			videoEl.removeAttribute('src');
 			videoEl.load();
@@ -1786,6 +1776,7 @@
 		// (after an error overlay) with the stream already playing.
 		currentTime = v.currentTime;
 		duration = isFinite(v.duration) ? v.duration : 0;
+		videoEnded = v.ended;
 		isPaused = v.paused;
 		videoVolume = v.volume;
 		isMuted = v.muted;
@@ -1793,6 +1784,8 @@
 
 		const onTime = () => {
 			currentTime = v.currentTime;
+			// A seek back, or playing again, leaves the ended state.
+			videoEnded = v.ended;
 		};
 		const onDuration = () => {
 			duration = isFinite(v.duration) ? v.duration : 0;
@@ -1817,6 +1810,7 @@
 			duration = isFinite(v.duration) ? v.duration : 0;
 		};
 		const onEnded = () => {
+			videoEnded = true;
 			onVideoEnded();
 		};
 		// Single-click → play/pause; double-click → toggle fullscreen.
