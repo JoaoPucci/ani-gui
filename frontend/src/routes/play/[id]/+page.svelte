@@ -315,8 +315,9 @@
 	let isPaused = $state(true);
 	let currentTime = $state(0);
 	let duration = $state(0);
-	// The element has said `ended` and has not played or been sought
-	// since: the Up next card reads it ($lib/play/up-next-window).
+	// The element is in its ended state, as its `ended` event and every
+	// `timeupdate` report it: the Up next card reads it
+	// ($lib/play/up-next-window).
 	let videoEnded = $state(false);
 	let videoVolume = $state(1);
 	let isMuted = $state(false);

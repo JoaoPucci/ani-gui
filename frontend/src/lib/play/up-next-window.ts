@@ -5,12 +5,12 @@
  * again, and the end brings it back.
  *
  * "Ended" is the element's own ended state, or a playhead within
- * `END_SLACK_S` of a known length. A stream played through hls.js can
- * stall a fraction of a second short of `duration` (the playlist's
- * declared length runs past the media actually buffered), and the
- * element then never fires `ended`. The slack covers that stall, and
- * costs at most a second of the card showing over the video's last
- * frames.
+ * `END_SLACK_S` of a known length. The slack is a precaution: where the
+ * media buffered for a stream played through hls.js ends short of the
+ * length the stream declared, the playhead can stop a fraction of a
+ * second before `duration` and the element never reports its end, so
+ * the card would never come. On a stream that ends normally it costs
+ * the card showing up to a second before the last frame.
  */
 
 /** How far short of its length a stream may stop and still count as

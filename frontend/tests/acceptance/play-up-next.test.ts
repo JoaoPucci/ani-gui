@@ -6,9 +6,10 @@
 // Through the credits the pill behaves as on any episode. The card
 // links to that entry's page and waits there: the end of the video
 // plays nothing further, and the next-episode button stays within the
-// entry. A stream that stalls a moment short of its length has ended
-// too. A seek back puts the card away, and the end brings it back. The card names the next entry without
-// asking the provider anything about it. A fork lists the ways on; a
+// entry. A playhead a moment short of the length counts as the end
+// too. A seek back puts the card away, and the end brings it back. The
+// card names the next entry without asking the provider anything about
+// it. A fork lists the ways on; a
 // next entry that has not aired shows when it airs and links nowhere.
 // Esc dismisses the card while it has focus. It stays clear of the
 // controls that hide in fullscreen, and under reduced motion it simply
