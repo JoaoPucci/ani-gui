@@ -754,6 +754,13 @@ export interface PlayArgs {
 	 *  overwrite the user's actual click. Click handlers leave this
 	 *  unset (defaults to false on the wire). */
 	prefetch?: boolean;
+	/** `true` when the caller records the watch itself once its player
+	 *  opened on the stream (mark-watched): the resolve writes no
+	 *  history row, while still running at a click's priority, which a
+	 *  prefetch does not. The player's switch to a picked show sets it,
+	 *  so a viewer who leaves, or a player that cannot open, leaves the
+	 *  history as it was. */
+	record_later?: boolean;
 	/** Kitsu id of the anime the user is playing. Frontend passes the
 	 *  id from `/anime/[kitsu_id]`'s URL so the backend can persist
 	 *  an `(provider show_id → kitsu_id)` reverse mapping. The home
@@ -915,6 +922,7 @@ export function playStream(
 	if (args.alt_titles && args.alt_titles.length > 0)
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.prefetch === true) params.set('prefetch', '1');
+	if (args.record_later === true) params.set('record_later', '1');
 	if (args.version) params.set('version', args.version);
 	if (args.guess_row) params.set('guess_row', args.guess_row);
 	if (args.guess_id) params.set('guess_id', args.guess_id);

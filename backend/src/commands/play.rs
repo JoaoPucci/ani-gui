@@ -95,6 +95,18 @@ pub struct PlayArgs {
         deserialize_with = "crate::commands::play_args::deserialize_loose_bool"
     )]
     pub prefetch: bool,
+    /// `true` when the caller records the watch itself once its player
+    /// has opened on the stream (mark-watched), so this resolve writes
+    /// no history row, fresh or replayed. Unlike [`Self::prefetch`] it
+    /// is still a user waiting on a click, at interactive priority: the
+    /// player's switch to the show the user picked for a card, which a
+    /// viewer may leave, or a player may fail to open, before anything
+    /// was watched.
+    #[serde(
+        default,
+        deserialize_with = "crate::commands::play_args::deserialize_loose_bool"
+    )]
+    pub record_later: bool,
     /// Kitsu id of the anime the user is playing. The frontend knows
     /// it (the user came from `/anime/[kitsu_id]`); we don't, until
     /// the user passes it in. Recording the
@@ -145,6 +157,14 @@ pub struct PlayArgs {
 }
 
 impl PlayArgs {
+    /// Whether this play's resolve writes its history row: not a warm
+    /// ([`Self::prefetch`]), nor a play its caller records once its
+    /// player opened ([`Self::record_later`]).
+    #[must_use]
+    pub fn writes_history(&self) -> bool {
+        !self.prefetch && !self.record_later
+    }
+
     /// Whether this play, asked from a guessed Continue card, landed
     /// on the card's own listing — the show key `played`
     /// ([`crate::scraper::provider::same_listing`]). False for a play
@@ -261,7 +281,8 @@ impl PlayArgs {
 /// `play_native_record::write_history`. A hit never reaches that
 /// path, so the row is written here instead. No-op on prefetch calls
 /// (the page-mount loop fires concurrently and whichever finishes
-/// last would otherwise overwrite the user's real click) and on
+/// last would otherwise overwrite the user's real click), on plays
+/// their caller records once the player opened (`record_later`), and on
 /// legacy rows missing show_id.
 fn write_history_on_cache_hit(
     state: &AppState,
@@ -269,7 +290,7 @@ fn write_history_on_cache_hit(
     cached: &CachedResolution,
     asked: crate::history::guard::Asked<'_>,
 ) {
-    if args.prefetch || cached.show_id.is_empty() {
+    if !args.writes_history() || cached.show_id.is_empty() {
         return;
     }
     crate::commands::guessed_from::record(state, args.guess_row.as_deref(), &cached.show_id);
@@ -534,11 +555,12 @@ where
             return Err(ne.error);
         }
     };
-    // A prefetch stamps the numbering and stays out of the user's
-    // history; a play records its watch. Either puts the numbering right
+    // A prefetch, or a play its caller records later, stamps the
+    // numbering and stays out of the user's history; a play records its
+    // watch. Either puts the numbering right
     // before the rows this play caches: a probe that takes the fresh
     // availability row fetches no listing to repair it from.
-    if args.prefetch {
+    if !args.writes_history() {
         crate::commands::play_native_record::stamp_numbering(state, &native, asked);
     } else {
         crate::commands::play_native_record::record_fresh_watch(
@@ -739,6 +761,7 @@ pub(crate) mod tests {
                 year,
                 alt_titles: vec![],
                 prefetch,
+                record_later: false,
                 kitsu_id,
                 version: None,
                 guess_row: None,
@@ -810,6 +833,7 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("42".into()),
             version: None,
             guess_row: None,
@@ -884,6 +908,7 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("42".into()),
             version: None,
             guess_row: None,
@@ -947,6 +972,7 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
@@ -1009,6 +1035,7 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
@@ -1291,6 +1318,7 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
@@ -1608,6 +1636,7 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
@@ -1764,6 +1793,7 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
@@ -1813,6 +1843,7 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
@@ -2270,6 +2301,7 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
@@ -2425,6 +2457,7 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("race-1".into()),
             version: None,
             guess_row: None,
@@ -2493,6 +2526,7 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("cap-1".into()),
             version: None,
             guess_row: None,
@@ -2548,6 +2582,7 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("dub-2".into()),
             version: None,
             guess_row: None,
@@ -2608,6 +2643,7 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("dub-1".into()),
             version: None,
             guess_row: None,

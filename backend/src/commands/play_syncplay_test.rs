@@ -75,6 +75,7 @@ fn play_args() -> PlayArgs {
         year: None,
         alt_titles: Vec::new(),
         prefetch: false,
+        record_later: false,
         kitsu_id: None,
         version: None,
         guess_row: None,

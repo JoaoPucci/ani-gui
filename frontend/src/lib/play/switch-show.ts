@@ -16,7 +16,9 @@
  * The episode is the one the session says it plays, which a renumbered
  * recap may name by another number than the one asked for, and the
  * playback speed goes along ($lib/play/rate-carry). The watch is
- * recorded once the player opened on the stream. A stream that cannot
+ * recorded once the player opened on the stream, and only then: the
+ * resolve asks the backend to write no history (`record_later`), at a
+ * click's priority. A stream that cannot
  * be had, or a player that cannot be opened on it, is a failed switch
  * that records nothing and leaves nothing for a later page: the
  * episode on screen goes on, and the caller says so. A viewer who left the player while
@@ -97,7 +99,9 @@ export async function switchShow(deps: SwitchShowDeps, req: SwitchRequest): Prom
 	});
 	let session: CreateSessionResponse;
 	try {
-		session = await deps.resolve(args);
+		// The backend writes no history as it resolves: the watch is
+		// recorded below, once the player opened on the stream.
+		session = await deps.resolve({ ...args, record_later: true });
 	} catch {
 		return 'failed';
 	}

@@ -94,6 +94,7 @@ async fn an_episode_the_remembered_fallback_does_not_serve_does_not_write_the_pr
         year: None,
         alt_titles: vec![],
         prefetch: false,
+        record_later: false,
         kitsu_id: Some("580".into()),
         version: None,
         guess_row: None,
