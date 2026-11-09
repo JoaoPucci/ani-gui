@@ -37,11 +37,13 @@ export interface ContinueWatchingLoaderDeps {
 		signal: AbortSignal
 	) => Promise<{ episode_count: number | null; episode_count_approximate?: boolean } | null>;
 	/**
-	 * Resolves to the configured availability mode. Async because the
-	 * home page bootstraps settingsGet() in parallel with historyList()
-	 * — the loader must hold on per-row probes until the configured
-	 * mode is known, otherwise it would read the wrong (sub vs. dub)
-	 * playable count while startResume later uses the loaded mode.
+	 * Resolves to the configured availability mode, the default for a
+	 * show with no audio of its own (`modeFor`). Async because the home
+	 * page bootstraps settingsGet() in parallel with historyList() — the
+	 * loader must hold on per-row probes until the default is known,
+	 * otherwise it would read the wrong (sub vs. dub) playable count
+	 * while startResume later plays in the show's mode, which falls back
+	 * to the same default.
 	 */
 	getMode: () => Promise<'sub' | 'dub'>;
 	/**

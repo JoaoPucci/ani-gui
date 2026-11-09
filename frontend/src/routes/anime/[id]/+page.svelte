@@ -8,7 +8,8 @@
       Episodes panel (12 placeholder tiles with per-anime accent on hover).
       Vertical accent-tinted hairline divides the columns.
   CLI features represented even when wiring is M2:
-    Mode (sub/dub) persists via settingsGet/settingsPut today.
+    Mode (sub/dub) is the show's own once picked here (local storage), the
+    Settings default until then.
     Play / Download / External are wired to TODOs with inline notice.
 -->
 <script lang="ts">
