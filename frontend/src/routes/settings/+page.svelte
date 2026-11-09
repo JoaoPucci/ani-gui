@@ -2,7 +2,8 @@
   Settings — editorial register, sectioned. Loads via settingsGet on mount,
   saves via settingsPut on blur (or on segmented-button click), debounced
   300ms for free-text inputs to avoid hammering the IPC channel. The
-  oxblood "Clear history" button is the page's only destructive action.
+  oxblood "Clear history" and "Clear image cache" buttons are the page's
+  destructive actions.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -236,6 +237,7 @@
 		clearing = true;
 		try {
 			await historyClear();
+			if (errorAction === 'clear_history') saveError = null;
 			cleared = true;
 			setTimeout(() => (cleared = false), 2400);
 		} catch (e) {
@@ -250,6 +252,7 @@
 		clearingImages = true;
 		try {
 			await imageCacheClear();
+			if (errorAction === 'clear_images') saveError = null;
 			imagesCleared = true;
 			setTimeout(() => (imagesCleared = false), 2400);
 		} catch (e) {

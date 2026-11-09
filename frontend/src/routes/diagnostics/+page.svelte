@@ -26,6 +26,9 @@
 	let history = $state<HistoryEntry[] | null>(null);
 	let infoError = $state<string | null>(null);
 	let historyError = $state<string | null>(null);
+	// A failed Clear history, apart from a failed load: the list it had
+	// loaded stays on show.
+	let historyClearError = $state<string | null>(null);
 	let busy = $state(false);
 	let cacheStatus = $state<string | null>(null);
 	let cacheError = $state<string | null>(null);
@@ -76,11 +79,12 @@
 
 	async function clearHistory() {
 		busy = true;
+		historyClearError = null;
 		try {
 			await historyClear();
 			history = [];
 		} catch (e) {
-			historyError = describeError(e);
+			historyClearError = describeError(e);
 		} finally {
 			busy = false;
 		}
@@ -203,6 +207,10 @@
 				{/each}
 			</ul>
 		{/if}
+		{#if historyClearError}<p>
+				{m.diagnostics_history_clear_error()}
+				{historyClearError}
+			</p>{/if}
 		<p>
 			<button type="button" onclick={refresh} disabled={busy}
 				>{m.diagnostics_refresh_button()}</button
