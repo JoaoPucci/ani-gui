@@ -1564,7 +1564,7 @@
 			// The playhead and the skip times count only once they belong
 			// to the source and the episode on screen: across a switch
 			// both still hold the last episode's until it is replaced.
-			inCredits: playheadOnScreen && inCredits(currentTime, duration, upNextSkips)
+			atEnd: playheadOnScreen && inCredits(currentTime, duration, upNextSkips)
 		})
 	);
 	$effect(() => {

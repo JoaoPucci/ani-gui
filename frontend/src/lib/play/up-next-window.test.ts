@@ -91,7 +91,7 @@ describe('upNextShown', () => {
 		resumeHolding: false,
 		dismissed: false,
 		videoFullscreen: false,
-		inCredits: true
+		atEnd: true
 	};
 
 	it('shows at a finale in its credits', () => {
@@ -107,7 +107,7 @@ describe('upNextShown', () => {
 					resumeHolding: fc.boolean(),
 					dismissed: fc.boolean(),
 					videoFullscreen: fc.boolean(),
-					inCredits: fc.boolean()
+					atEnd: fc.boolean()
 				}),
 				(state) => {
 					const want =
@@ -116,7 +116,7 @@ describe('upNextShown', () => {
 						!state.resumeHolding &&
 						!state.dismissed &&
 						!state.videoFullscreen &&
-						state.inCredits;
+						state.atEnd;
 					expect(upNextShown(state)).toBe(want);
 				}
 			)

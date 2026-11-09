@@ -36,6 +36,15 @@ export function inCredits(
 	return duration > 0 && isFinishedAt(currentTime, duration);
 }
 
+/** How far short of its length a stream may stop and still count as
+ *  ended. */
+export const END_SLACK_S = 1;
+
+/** Whether the video has ended: the element's own ended state. */
+export function atVideoEnd(_currentTime: number, _duration: number, ended: boolean): boolean {
+	return ended;
+}
+
 /** What the play page knows when it decides whether the card shows. */
 export interface UpNextState {
 	/** `finaleCard` found something to name. */
@@ -46,7 +55,8 @@ export interface UpNextState {
 	readonly dismissed: boolean;
 	/** The <video> itself is fullscreen: nothing else on the page is drawn. */
 	readonly videoFullscreen: boolean;
-	readonly inCredits: boolean;
+	/** The point the card waits for has been reached. */
+	readonly atEnd: boolean;
 }
 
 /** Whether the Up next card shows. */
@@ -57,6 +67,6 @@ export function upNextShown(state: UpNextState): boolean {
 		!state.resumeHolding &&
 		!state.dismissed &&
 		!state.videoFullscreen &&
-		state.inCredits
+		state.atEnd
 	);
 }
