@@ -390,6 +390,36 @@ describe('LinkSession', () => {
 		expect(s.group).toEqual([CARD.id, HIDDEN.id]);
 	});
 
+	it('leaves the user where they went while the link was out, and keeps the link', async () => {
+		for (const pick of ['gintama', null] as const) {
+			let release!: () => void;
+			const held = new Promise<void>((r) => (release = r));
+			const f = fake();
+			const link = f.deps.link;
+			f.deps.link = async (card, rows, kitsuId) => {
+				await held;
+				return link(card, rows, kitsuId);
+			};
+			const s = new LinkSession(f.deps);
+			await s.arrive(CARD.id, GUESS);
+			await s.start();
+			// Another show, or the page's own, which would refresh it.
+			if (pick) await s.search(pick);
+			s.choose(s.candidates![0]);
+			const confirming = s.confirm();
+			f.path = '/';
+			release();
+			expect(await confirming).toBe(true);
+			expect(f.rows[0].kitsu_id).toBe(pick ? RIGHT.id : GUESS);
+			expect(f.pages).toEqual([]);
+			expect(f.refreshed).toBe(0);
+			// The saved link still says so, with its Undo.
+			expect(f.notices[0].message).toBe(
+				m.detail_link_done_toast({ title: pick ? 'Gintama' : s.chosen!.ref.canonical_title })
+			);
+		}
+	});
+
 	it('leaves the user where they went while the undo was out', async () => {
 		let release!: () => void;
 		const held = new Promise<void>((r) => (release = r));

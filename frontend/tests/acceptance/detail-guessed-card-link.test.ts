@@ -331,6 +331,29 @@ describe('changing the show', () => {
 		expect(await homeCards()).toEqual([TITLE]);
 	});
 
+	it('leaves the user where they went while the link was out, and keeps the link', async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		server.use(
+			http.post(`${API_BASE}/api/history/link`, async ({ request }) => {
+				const body = (await request.json()) as { card: string; rows: string[]; kitsu_id: string };
+				linkCalls.push(body);
+				await held;
+				return HttpResponse.json({ kitsu_id: body.kitsu_id, linked: [] });
+			})
+		);
+		await linkToTheRightShow();
+		// Back, while the link is out.
+		setUrl('/');
+		release();
+		await until(
+			() => toastStore.items.some((t) => t.actionLabel === m.detail_link_undo()),
+			'the saved notice'
+		);
+		await settle();
+		expect(vi.mocked(goto)).not.toHaveBeenCalled();
+	});
+
 	it('undoes the link and comes back to the page, which offers it again', async () => {
 		await linkToTheRightShow();
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the show page');
