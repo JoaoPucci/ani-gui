@@ -14,8 +14,8 @@
  *     earlier failure of the history section, the clear's included, and
  *     shows what the load finds. A clear takes down its own earlier
  *     failure as it starts; when it lands the list is known empty, so a
- *     load's earlier failure goes too. A clear that fails while there is
- *     no list leaves the load's failure beside its own.
+ *     load's earlier failure goes too. A clear that fails leaves an
+ *     earlier load's failure in place, beside its own.
  *   - The metadata cache clear keeps its own outcome, taken down when
  *     it starts again.
  */
