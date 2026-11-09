@@ -87,6 +87,19 @@ describe('switching to the picked show', () => {
 		expect(args.guess_id).toBeUndefined();
 	});
 
+	it("asks the backend to write no history on resolving, at a click's priority", async () => {
+		// A viewer who leaves before the player opens, or a player that
+		// cannot open, leaves the history as it was: the watch is recorded
+		// once the player opened. Not a warm, so not a prefetch.
+		const { d } = deps();
+		await switchShow(d, request());
+		const args = vi.mocked(d.resolve).mock.calls[0][0] as PlayArgs;
+		expect(args.record_later).toBe(true);
+		expect(args.prefetch).toBeUndefined();
+		const recorded = vi.mocked(d.record).mock.calls[0][0] as PlayArgs;
+		expect(recorded.record_later).toBeUndefined();
+	});
+
 	it('records the play, carries the point over, tells the next session, then opens it', async () => {
 		const { d, calls } = deps();
 		await switchShow(d, request());

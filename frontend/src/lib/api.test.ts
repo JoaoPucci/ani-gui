@@ -547,6 +547,26 @@ describe('playStream', () => {
 		await promise;
 	});
 
+	it('appends record_later=1 when the caller records the watch itself, and only then', async () => {
+		const promise = playStream(
+			{ title: 'X', episode: '5', mode: 'sub', record_later: true },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(es.url).toContain('record_later=1');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+		const plain = playStream({ title: 'X', episode: '5', mode: 'sub' }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const es2 = FakeEventSource.instances[1];
+		expect(es2.url).not.toContain('record_later');
+		es2.dispatch('done', JSON.stringify(donePayload()));
+		await plain;
+	});
+
 	it('names the version to play in the query when one is set, and only then', async () => {
 		// The SSE endpoint reads the version from its query string; a
 		// show whose pick has versions plays the uncensored one when
