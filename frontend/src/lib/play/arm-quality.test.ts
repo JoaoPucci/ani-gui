@@ -1109,6 +1109,15 @@ describe('armQuality — levels hls.js removes', () => {
 		expect(s.lastView()?.pinned).toBeNull();
 	});
 
+	it("logs a start the session's pick seeded as pinned, not as Auto", () => {
+		qualityPin.set(720);
+		const s = arm();
+		s.parse();
+		expect(s.engine.loads).toEqual([1]);
+		expect(s.logs.join('\n')).toMatch(/pinned 720p.*, 3 levels/);
+		expect(s.logs.join('\n')).not.toMatch(/auto, 3 levels/);
+	});
+
 	it('a run pin below every level of the next stream starts it as Auto, not pinned above', () => {
 		qualityPin.set(240);
 		const s = arm();
