@@ -135,8 +135,21 @@ fn names_a_whole_season(title: &str) -> bool {
 /// rules `hit` out.
 #[must_use]
 pub fn ruled_out(title: &str, episode: f64, hit: &KitsuAnimeRef) -> bool {
-    let _ = (title, episode, hit);
-    false
+    if past_reach(episode, hit.episode_count) {
+        return true;
+    }
+    if names_series(title) && !is_series(hit.subtype.as_deref()) {
+        return true;
+    }
+    if !carries_first_word(title, hit) {
+        return true;
+    }
+    if let Some(cour) = super::cour::cour_from_title(title).filter(|c| *c >= 2) {
+        if !names_cour(title, cour, hit) {
+            return true;
+        }
+    }
+    names_a_whole_season(title) && names(hit).any(later_part_of_a_season)
 }
 
 /// The ids of the `hits` the row rules out, in their order.

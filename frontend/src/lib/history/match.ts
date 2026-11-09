@@ -18,6 +18,7 @@
 import {
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
+	kitsuGuessRuledOut,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
 	kitsuTitleMatchGet,
@@ -128,7 +129,8 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 		const slug = deriveSlug(preliminary.searchTitle);
 		if (slug.length >= 4) {
 			try {
-				match = await kitsuAnimeBySlug(slug);
+				const bySlug = await kitsuAnimeBySlug(slug);
+				match = bySlug ? ((await admitted(preliminary, [bySlug]))[0] ?? null) : null;
 			} catch {
 				// Slug-fetch failure is non-fatal; fall through to search.
 			}
@@ -137,10 +139,11 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 
 	// 3) Live search + pick. Either the slug fallback didn't apply
 	//    (cour 1) or it didn't find an entry; let the picker work the
-	//    text-search hits.
+	//    text-search hits the row does not rule out (`admitted`, like
+	//    the slug lookup's above).
 	if (!match) {
 		try {
-			const hits = await kitsuSearch(preliminary.searchTitle);
+			const hits = await admitted(preliminary, await kitsuSearch(preliminary.searchTitle));
 			match = pickKitsuMatch(hits, preliminary);
 		} catch {
 			return null;
@@ -196,4 +199,27 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 	}
 
 	return match;
+}
+
+/** `hits` less the ones the row rules out: hits past the episode it
+ *  reached, of another format than its title names, carrying none of
+ *  its title's first word, or of another season than its title names
+ *  (backend/src/commands/continue_guess.rs). A hit ruled out is never
+ *  offered, even when none is left, and the row goes on to the resolve
+ *  from its show key's words. A failed call rules none out, so the
+ *  guess picks as it did before the rules. */
+async function admitted(
+	preliminary: ResumeTarget,
+	hits: KitsuAnimeRef[]
+): Promise<KitsuAnimeRef[]> {
+	if (hits.length === 0) return hits;
+	let out: Set<string>;
+	try {
+		out = new Set(
+			await kitsuGuessRuledOut(preliminary.searchTitle, preliminary.displayEpisode, hits)
+		);
+	} catch {
+		return hits;
+	}
+	return hits.filter((h) => !out.has(h.id));
 }
