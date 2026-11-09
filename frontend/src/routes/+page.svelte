@@ -373,9 +373,6 @@
 	let clearConfirmOpen = $state(false);
 	let clearBusy = $state(false);
 
-	function openDeleteFor(entry: HistoryEntry, displayTitle: string) {
-		deleteCandidate = { entry, displayTitle };
-	}
 	// Each dialog's run ($lib/history/confirm-run): one request per
 	// confirm however often it is pressed, the dialog held open while
 	// it is out, and a failure said in an error toast, the way the app
@@ -384,6 +381,9 @@
 		setBusy: (busy) => (deleteBusy = busy),
 		close: () => (deleteCandidate = null)
 	});
+	function openDeleteFor(entry: HistoryEntry, displayTitle: string) {
+		deleteRun.open(() => (deleteCandidate = { entry, displayTitle }));
+	}
 	function cancelDelete() {
 		deleteRun.cancel();
 	}
@@ -443,7 +443,7 @@
 		close: () => (clearConfirmOpen = false)
 	});
 	function openClearConfirm() {
-		clearConfirmOpen = true;
+		clearRun.open(() => (clearConfirmOpen = true));
 	}
 	function cancelClear() {
 		clearRun.cancel();

@@ -25,6 +25,8 @@ export interface ConfirmRun {
 	 *  dialog; it never escapes, and the returned promise always
 	 *  resolves. */
 	confirm(action: () => Promise<unknown>, failed: (error: unknown) => void): Promise<void>;
+	/** Opens the dialog, through `show`. */
+	open(show: () => void): void;
 	/** A press of Cancel, Esc or the backdrop. Nothing while an action
 	 *  is out: closing then would hide how it ends. */
 	cancel(): void;
@@ -50,6 +52,9 @@ export function createConfirmRun(deps: ConfirmRunDeps): ConfirmRun {
 					deps.close();
 				});
 			return inFlight;
+		},
+		open(show) {
+			show();
 		},
 		cancel() {
 			if (inFlight) return;
