@@ -104,3 +104,42 @@ fn a_play_recorded_later_is_still_a_user_waiting() {
         crate::scraper::gate::ScrapePriority::Interactive
     ));
 }
+
+#[test]
+fn the_play_url_carries_it_as_the_renderer_sends_it() {
+    // The renderer's SSE GET sends `record_later=1`; absent, a play
+    // writes its history as it always did.
+    let asked: PlayArgs =
+        serde_urlencoded::from_str("title=X&episode=1&mode=sub&record_later=1").expect("parses");
+    assert!(asked.record_later);
+    assert!(!asked.writes_history());
+    let plain: PlayArgs = serde_urlencoded::from_str("title=X&episode=1&mode=sub").expect("parses");
+    assert!(!plain.record_later);
+    assert!(plain.writes_history());
+}
+
+proptest::proptest! {
+    /// A play writes its history unless it is a warm or its caller
+    /// records it later, and only a warm is background traffic.
+    #[test]
+    fn history_and_priority_each_follow_their_own_flag(
+        prefetch in proptest::bool::ANY,
+        record_later in proptest::bool::ANY,
+        episode in "[0-9]{1,4}",
+    ) {
+        let asked: PlayArgs = serde_json::from_value(serde_json::json!({
+            "title": "X",
+            "episode": episode,
+            "mode": "sub",
+            "prefetch": prefetch,
+            "record_later": record_later,
+        }))
+        .expect("args");
+        proptest::prop_assert_eq!(asked.writes_history(), !prefetch && !record_later);
+        let background = matches!(
+            scrape_priority(&asked),
+            crate::scraper::gate::ScrapePriority::Background
+        );
+        proptest::prop_assert_eq!(background, prefetch);
+    }
+}
