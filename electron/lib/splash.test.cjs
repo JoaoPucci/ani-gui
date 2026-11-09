@@ -1428,11 +1428,18 @@ async function splashBeforeAPage(t) {
   const ipc = new EventEmitter();
   const contents = { id: 1 };
   const waiter = appReadyWaiter(contents, ipc);
-  const gate = painted.watch(revealGate(painted.splash, waiter));
+  // The reveal closes the splash as the window shows (main.js
+  // revealMaximized's afterShow).
+  const gate = painted.watch(revealGate(painted.splash, waiter).then(() => painted.splash.close()));
+  // The clock moves in short steps, each followed by the promises it
+  // settles, so a timer one step schedules fires in the next.
   const later = async (ms) => {
-    painted.at(painted.now() + ms);
-    t.mock.timers.tick(ms);
-    await painted.flush();
+    for (let left = ms; left > 0; left -= 50) {
+      const step = Math.min(50, left);
+      painted.at(painted.now() + step);
+      t.mock.timers.tick(step);
+      await painted.flush();
+    }
   };
   const rendered = () => ipc.emit(APP_READY_CHANNEL, { sender: contents });
   const rail = () => painted.win.calls.filter((c) => c.includes("splashProgress")).at(-1);
