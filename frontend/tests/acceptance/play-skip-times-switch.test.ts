@@ -230,6 +230,18 @@ async function openEpisode(options: Options) {
 	await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
 	const video = playerVideo();
 	video.play = (() => Promise.resolve()) as unknown as HTMLVideoElement['play'];
+	// The element as Chromium's behaves across a switch: unloading it
+	// forgets its stream's length, and neither that nor a new source
+	// fires `durationchange` (happy-dom fires one as `src` is set); the
+	// new stream reports its length once it has learned it.
+	video.load = () => {
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => Number.NaN });
+	};
+	Object.defineProperty(video, 'src', {
+		configurable: true,
+		get: () => video.getAttribute('src') ?? '',
+		set: (src: string) => video.setAttribute('src', src)
+	});
 	learnLength(video, lengthOf(options.episode));
 	await until(
 		() => asks.some((a) => a.episode === String(options.episode)),
