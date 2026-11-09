@@ -63,25 +63,35 @@
 	}
 
 	async function refresh() {
+		// Busy while it reads, so no clear starts under it: a list read
+		// before a clear and answered after would bring the rows back.
+		busy = true;
 		infoError = null;
 		historyError = null;
 		// A message is about the last action: a refresh replaces an
 		// earlier clear's failure with what the load finds.
 		historyClearError = null;
 		try {
-			info = await appInfo();
-		} catch (e) {
-			infoError = describeError(e);
-		}
-		try {
-			history = await historyList();
-		} catch (e) {
-			historyError = describeError(e);
+			try {
+				info = await appInfo();
+			} catch (e) {
+				infoError = describeError(e);
+			}
+			try {
+				history = await historyList();
+			} catch (e) {
+				historyError = describeError(e);
+			}
+		} finally {
+			busy = false;
 		}
 	}
 
 	async function clearHistory() {
 		busy = true;
+		// A message is about the last action, the clear now: an earlier
+		// load's failure or clear's failure goes.
+		historyError = null;
 		historyClearError = null;
 		try {
 			await historyClear();
