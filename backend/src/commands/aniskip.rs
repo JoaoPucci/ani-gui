@@ -1,7 +1,8 @@
 //! aniskip command — bridges Kitsu id → MAL id → aniskip skip
-//! times. The intervals are cached by Kitsu id, MAL id and episode, so
-//! a repeat visit skips the aniskip request; the MAL id comes from
-//! the show's cached external ids ([`super::external_ids`]).
+//! times. The intervals are cached by Kitsu id, MAL id, episode and
+//! the length they were asked with, so a repeat visit skips the
+//! aniskip request; the MAL id comes from the show's cached external
+//! ids ([`super::external_ids`]).
 //!
 //! The frontend player uses this on `loadedmetadata` to learn
 //! when to render the Skip OP / Skip Outro overlay buttons.
@@ -18,9 +19,9 @@ const ANISKIP_TTL_SECS: u64 = 7 * 24 * 60 * 60;
 /// Fetch the aniskip skip-time list for a given Kitsu id +
 /// episode + episode length (seconds). Resolves the MAL id
 /// transparently via Kitsu's mappings; caches the result as
-/// `aniskip:v2:<kitsu_id>:<mal_id>:<episode>` so repeat visits to the
-/// same episode reuse the lookup, and removing the show from history
-/// finds the rows by its Kitsu id.
+/// `aniskip:v2:<kitsu_id>:<mal_id>:<episode>:<length>` so repeat visits
+/// to the same episode at the same length reuse the lookup, and
+/// removing the show from history finds the rows by its Kitsu id.
 ///
 /// Returns `Ok(empty Vec)` when:
 ///   - Kitsu has no MAL mapping for this anime, or
@@ -96,15 +97,20 @@ fn store_skip_times(
     });
 }
 
-/// Cache key for `(mal_id, episode)` lookups, led by the Kitsu id the
-/// player asked with so removing a show from history can find its
-/// rows without asking Kitsu for the MAL id. Schema v2; v1 keys carried
-/// the MAL id alone and are no longer read.
+/// Cache key for `(mal_id, episode, length)` lookups, led by the Kitsu
+/// id the player asked with so removing a show from history can find
+/// its rows without asking Kitsu for the MAL id. The length is the one
+/// aniskip is asked with: it matches its submissions to it, so an
+/// answer for one length is not another's. Schema v2; v1 keys carried
+/// the MAL id alone and are no longer read. The v2 rows keyed without a
+/// length are not read either: one may hold the answer a switch asked
+/// with the previous episode's length. They are declared still, so they
+/// wait out their lifetime, which the launch's reclaim then ends.
 fn cache_key(kitsu_id: &str, mal_id: u32, episode: &str, episode_length: f32) -> String {
-    let _ = episode_length;
     format!(
-        "{}{kitsu_id}:{mal_id}:{episode}",
-        crate::cache::families::ANISKIP
+        "{}{kitsu_id}:{mal_id}:{episode}:{}",
+        crate::cache::families::ANISKIP,
+        crate::meta::aniskip::episode_length_param(episode_length)
     )
 }
 
