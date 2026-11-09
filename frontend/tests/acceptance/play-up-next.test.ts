@@ -331,6 +331,17 @@ describe('the Up next card at a finale', () => {
 		await until(() => card() !== null, 'the card back at the end');
 	});
 
+	it('goes as soon as a seek back starts, before the stream there has loaded', async () => {
+		const { video } = await openEpisode();
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card');
+		// The seek is under way: Chromium reports the new point on
+		// `seeking`, and its `timeupdate` waits for the media there.
+		video.currentTime = 600;
+		video.dispatchEvent(new Event('seeking'));
+		await until(() => card() === null, 'the card to go as the seek starts');
+	});
+
 	it('shows when the stream stops a moment short of its length without ending', async () => {
 		const { video } = await openEpisode();
 		// hls.js can stall a fraction of a second before the length, and
