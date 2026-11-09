@@ -123,6 +123,7 @@
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
+	import { createConfirmRun } from '$lib/history/confirm-run';
 	import { nextHeroIndex, startHeroRotation } from '$lib/hero-rotation';
 	import {
 		failedHeroImages,
@@ -423,21 +424,25 @@
 			deleteCandidate = null;
 		}
 	}
+	// The clear's run around the dialog ($lib/history/confirm-run).
+	const clearRun = createConfirmRun({
+		setBusy: (busy) => (clearBusy = busy),
+		close: () => (clearConfirmOpen = false)
+	});
 	function openClearConfirm() {
 		clearConfirmOpen = true;
 	}
 	function cancelClear() {
-		clearConfirmOpen = false;
+		clearRun.cancel();
 	}
-	async function confirmClear() {
-		clearBusy = true;
-		try {
-			await historyClear();
-			history = [];
-		} finally {
-			clearBusy = false;
-			clearConfirmOpen = false;
-		}
+	function confirmClear() {
+		return clearRun.confirm(
+			async () => {
+				await historyClear();
+				history = [];
+			},
+			() => {}
+		);
 	}
 	let trendingError = $state<string | null>(null);
 	let topRatedError = $state<string | null>(null);
