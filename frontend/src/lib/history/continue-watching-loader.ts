@@ -45,6 +45,12 @@ export interface ContinueWatchingLoaderDeps {
 	 */
 	getMode: () => Promise<'sub' | 'dub'>;
 	/**
+	 * The audio a row's show plays in, given the configured mode as the
+	 * default (`audioFor` in `$lib/play/audio-choice`). Omitted, every
+	 * row reads the configured mode.
+	 */
+	modeFor?: (kitsuId: string, fallback: 'sub' | 'dub') => 'sub' | 'dub';
+	/**
 	 * Fired per entry the moment its match is known — WITHOUT waiting
 	 * on the availability probe — and a second time if a probe later
 	 * refines the playable cap. The page uses this to write its

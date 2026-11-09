@@ -63,6 +63,10 @@ export interface StartResumeDeps {
 	) => void | Promise<void>;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
 	getSettings: () => Promise<{ mode: 'sub' | 'dub' }>;
+	/** The audio the clicked show plays in, given the settings' mode as
+	 *  the default (`audioFor` in `$lib/play/audio-choice`). Omitted,
+	 *  the settings' mode plays. */
+	modeFor?: (kitsuId: string, fallback: 'sub' | 'dub') => 'sub' | 'dub';
 	getPlayableCount: (entryId: string) => number | null;
 	/** Whether the stored cap came from the search hit rather than the
 	 *  detail fetch. An approximate cap is revalidated before use —
