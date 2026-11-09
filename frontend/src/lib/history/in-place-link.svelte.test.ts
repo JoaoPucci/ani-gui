@@ -134,7 +134,7 @@ describe('"Yes" on the player', () => {
 		const f = fake(true);
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
-		await s.answerYes(true);
+		await s.answerYes();
 		expect(f.rows[0].kitsu_id).toBe(GUESS.id);
 		expect(s.slip).toBe('none');
 		expect(s.linked).toBeNull();
@@ -144,22 +144,43 @@ describe('"Yes" on the player', () => {
 		expect(s.offer?.saved).toBe(GUESS.id);
 	});
 
-	it('records nothing where the play landed on another listing, and sets the slip aside', async () => {
-		const f = fake(true);
-		const s = new InPlaceLinkSession(f.deps);
-		await s.arrive(CARD.id, GUESS.id);
-		await s.answerYes(false);
-		expect(f.rows[0].kitsu_id).toBeUndefined();
-		expect(s.slip).toBe('none');
-		expect(f.notices).toEqual([]);
-		expect(s.offer).not.toBeNull();
+	it('writes on the line what a pick of the show playing writes, wherever the play landed', async () => {
+		// The user is believed: the JoJo 2000 line, played as the 2012
+		// series on the 2012 listing, records the 2012 series on Yes, as
+		// a pick of it in the picker records it.
+		const writes = async (answer: (s: InPlaceLinkSession) => Promise<unknown>) => {
+			const f = fake(true);
+			const calls: unknown[] = [];
+			const link = f.deps.link;
+			f.deps.link = (...args) => {
+				calls.push(args);
+				return link(...args);
+			};
+			const s = new InPlaceLinkSession(f.deps);
+			await s.arrive(CARD.id, GUESS.id);
+			await answer(s);
+			return { calls, rows: f.rows, slip: s.slip, notices: f.notices, saved: s.offer?.saved };
+		};
+		const yes = await writes((s) => s.answerYes());
+		const picked = await writes(async (s) => {
+			await s.start(2);
+			s.choose({ ref: GUESS, current: true });
+			return s.confirm();
+		});
+		expect(yes.calls).toEqual([[CARD.id, [CARD.id], GUESS.id]]);
+		expect(yes.calls).toEqual(picked.calls);
+		expect(yes.rows).toEqual(picked.rows);
+		expect(yes.rows[0].kitsu_id).toBe(GUESS.id);
+		expect(yes.saved).toBe(GUESS.id);
+		expect(yes.slip).toBe('none');
+		expect(yes.notices).toEqual([]);
 	});
 
 	it('does nothing without an offer', async () => {
 		const f = fake(true);
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(null, GUESS.id);
-		await s.answerYes(true);
+		await s.answerYes();
 		expect(f.notices).toEqual([]);
 	});
 });
@@ -334,7 +355,7 @@ describe('a "Yes" that fails', () => {
 		f.deps.link = async () => Promise.reject(new Error('down'));
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
-		await s.answerYes(true);
+		await s.answerYes();
 		expect(f.notices.at(-1)).toEqual({ kind: 'error', message: m.detail_link_failed() });
 		expect(s.slip).toBe('guess');
 	});
