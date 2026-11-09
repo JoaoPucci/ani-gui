@@ -315,9 +315,9 @@
 	let isPaused = $state(true);
 	let currentTime = $state(0);
 	let duration = $state(0);
-	// The element is in its ended state, as its `ended` event and every
-	// `timeupdate` report it: the Up next card reads it
-	// ($lib/play/up-next-window).
+	// The element is in its ended state, as its `ended` event, every
+	// `timeupdate` and the start of every seek report it: the Up next
+	// card reads it ($lib/play/up-next-window).
 	let videoEnded = $state(false);
 	let videoVolume = $state(1);
 	let isMuted = $state(false);
@@ -970,11 +970,11 @@
 		if (t instanceof HTMLElement) t.blur();
 		// Defer clearing dragPreviewFraction until the video reports
 		// the seek complete (`seeked`). Also sync `currentTime` from
-		// the video in the same step — `timeupdate` lags `seeked`
-		// (especially on backward seeks) so without this the bound
-		// fallback briefly shows the pre-drag time before catching
-		// up. The 500 ms safety timer keeps the preview from
-		// sticking forever if `seeked` never fires.
+		// the video in the same step: `seeking` has already moved it
+		// to the release point, but a newer drag's live seek may have
+		// moved it since, and the element's own value is the one the
+		// bar settles on. The 500 ms safety timer keeps the preview
+		// from sticking forever if `seeked` never fires.
 		if (videoEl) {
 			const v = videoEl;
 			// Capture the current drag's generation so the callbacks
