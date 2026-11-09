@@ -53,7 +53,7 @@ pub async fn aniskip_get(
         return Ok(Vec::new());
     };
 
-    let key = cache_key(kitsu_id, mal_id, episode);
+    let key = cache_key(kitsu_id, mal_id, episode, episode_length);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(intervals) = serde_json::from_str::<Vec<SkipInterval>>(&body) {
             return Ok(intervals);
@@ -100,7 +100,8 @@ fn store_skip_times(
 /// player asked with so removing a show from history can find its
 /// rows without asking Kitsu for the MAL id. Schema v2; v1 keys carried
 /// the MAL id alone and are no longer read.
-fn cache_key(kitsu_id: &str, mal_id: u32, episode: &str) -> String {
+fn cache_key(kitsu_id: &str, mal_id: u32, episode: &str, episode_length: f32) -> String {
+    let _ = episode_length;
     format!(
         "{}{kitsu_id}:{mal_id}:{episode}",
         crate::cache::families::ANISKIP
@@ -281,8 +282,11 @@ mod tests {
         // Stable key shape — the lookup chain depends on it, and
         // removing a show from history finds its rows by the Kitsu id
         // that leads it.
-        assert_eq!(cache_key("12", 21, "1"), "aniskip:v2:12:21:1");
-        assert_eq!(cache_key("49877", 59970, "12"), "aniskip:v2:49877:59970:12");
+        assert_eq!(cache_key("12", 21, "1", 1440.0), "aniskip:v2:12:21:1");
+        assert_eq!(
+            cache_key("49877", 59970, "12", 1440.0),
+            "aniskip:v2:49877:59970:12"
+        );
     }
 
     /// Cache MISS path: walk the full chain end-to-end. Mocks both
