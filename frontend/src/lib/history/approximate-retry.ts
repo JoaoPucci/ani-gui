@@ -248,7 +248,8 @@ async function probe(
 	row: ApproximateRow
 ): Promise<{ count: number | null; approximate: boolean; refused: boolean } | null> {
 	try {
-		const r = await deps.fetchAvailability(row.match, deps.mode);
+		const mode = deps.modeFor ? deps.modeFor(row.match.id, deps.mode) : deps.mode;
+		const r = await deps.fetchAvailability(row.match, mode);
 		if (!r) return null;
 		return {
 			count: r.episode_count ?? null,

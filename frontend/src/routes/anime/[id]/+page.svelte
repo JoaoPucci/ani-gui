@@ -154,6 +154,9 @@
 	// Settings value, which is only the default.
 	let chosenAudio = $derived<'sub' | 'dub' | undefined>(storedAudio(id));
 	const audio = $derived(chosenAudio ?? playMode(config));
+	// What the control shows as picked: nothing while neither a choice
+	// nor the settings are known.
+	const pickedAudio = $derived(chosenAudio ?? (config ? playMode(config) : null));
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 	let error = $state<{ headline: string; detail: string | null } | null>(null);
 	let scrollY = $state(0);
@@ -1201,7 +1204,9 @@
 						.then((hits) => {
 							if (id !== currentId) return null;
 							const trimmed = hits.filter((h) => h.id !== d.id).slice(0, 12);
-							const mode: 'sub' | 'dub' = audio;
+							// A list of other shows: the Settings default, not
+							// this show's own audio.
+							const mode: 'sub' | 'dub' = playMode(config);
 							return filterAvailable(trimmed, mode);
 						})
 						.then((filtered) => {
@@ -1879,9 +1884,9 @@
 									<button
 										type="button"
 										class="seg-btn"
-										class:active={audio === mode}
-										aria-pressed={audio === mode}
-										disabled={!config}
+										class:active={pickedAudio === mode}
+										aria-pressed={pickedAudio === mode}
+										disabled={!id}
 										onclick={() => setMode(mode as 'sub' | 'dub')}
 									>
 										{mode.toUpperCase()}

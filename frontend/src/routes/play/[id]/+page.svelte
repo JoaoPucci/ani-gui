@@ -2642,7 +2642,8 @@
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
 		const cfg = config;
-		const launch = { kitsuId: id, mode: chosenAudio ?? playMode(cfg), episode: ep };
+		const mode = audio;
+		const launch = { kitsuId: id, mode, episode: ep };
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on (another show, or away and back) is
 		// not shown to them, and asks the cache nothing.
@@ -2666,7 +2667,7 @@
 							title,
 							episode: ep,
 							kitsuId: recordableId(id, fromGuess) ?? '',
-							config: { mode: chosenAudio ?? playMode(cfg) },
+							config: { mode },
 							detail,
 							version: storedChoice(id),
 							caption: storedCaption(id)
@@ -2712,8 +2713,8 @@
 		// switch while a slow launch is out must not re-head its failure,
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
-		const cfg = config;
-		const launch = { kitsuId: id, mode: chosenAudio ?? playMode(cfg), episode: ep };
+		const mode = audio;
+		const launch = { kitsuId: id, mode, episode: ep };
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on is not shown to them.
 		const owner = claimPlay(
@@ -2735,7 +2736,7 @@
 							title,
 							episode: ep,
 							kitsuId: recordableId(id, fromGuess) ?? '',
-							config: { mode: chosenAudio ?? playMode(cfg) },
+							config: { mode },
 							detail,
 							version: storedChoice(id),
 							caption: storedCaption(id)

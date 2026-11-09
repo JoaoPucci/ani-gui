@@ -559,6 +559,8 @@
 						fetchAvailability: (m, mode) =>
 							makeFetchAvailability(checkAvailability)(m, mode, continueProbes.signal),
 						mode,
+						// A show with its own audio is asked about in it.
+						modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
 						// The retry pays for the listing the first probe
 						// did not: read the row again after it.
 						onRefined: (id, count) => {
