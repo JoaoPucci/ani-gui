@@ -108,47 +108,54 @@ export class LinkSession extends LinkPicker {
 		if (!this.busy) this.open = false;
 	}
 
-	/** Link the card's guessed rows to the chosen show; whether it did. */
+	/** Link the card's guessed rows to the chosen show; whether it did.
+	 *  True means saved, not saved for the visit now on screen: a link
+	 *  that lands after a later arrival leaves that visit as it is. */
 	async confirm(): Promise<boolean> {
 		const offer = this.offer;
 		const chosen = this.chosen;
 		if (!offer || !chosen || this.busy) return false;
 		const from = this.#pageId;
-		// Where the user is as the link starts: one who leaves while it
-		// is out, or whose page moved on to another card, is not brought
-		// back, and the new visit's state is not touched.
+		// Where the user is as the link starts. One who leaves while it is
+		// out is not brought back; a surface that moved on to another card
+		// meanwhile keeps that card's state, and only reads its history
+		// again.
 		const at = this.#deps.here();
 		const arrival = this.#arrival;
+		const onSurface = () => this.#deps.here() === at;
+		const stayed = () => arrival === this.#arrival && onSurface();
 		this.busy = true;
 		this.error = null;
 		try {
 			const rows = this.group ?? (await guessedGroup(this.#deps, offer));
 			const outcome = await this.#deps.link(offer.entry.id, rows, chosen.ref.id);
-			const stayed = arrival === this.#arrival && this.#deps.here() === at;
-			if (stayed) {
-				this.open = false;
-				this.offer = null;
-			}
 			this.#deps.notify(
 				linkedNotice(
 					chosen.ref.canonical_title,
 					() => void this.undo(outcome, from, offer.entry.id)
 				)
 			);
-			// Gone while the link was out: it is saved, and its notice says
-			// so, but the page they left neither refreshes nor calls them back.
-			if (!stayed) return true;
-			// The page is opened again without the card's row: the row is
-			// linked, so there is nothing left to offer, nor room to hold.
-			if (chosen.ref.id === from) this.#deps.refresh();
-			this.#deps.showPage(chosen.ref.id, null);
+			if (stayed()) this.#landed(chosen.ref.id, from);
+			else if (onSurface()) this.#deps.refresh();
 			return true;
 		} catch (e) {
-			this.error = linkFailure(e);
+			if (stayed()) this.error = linkFailure(e);
+			else this.#deps.notify({ kind: 'error', message: linkFailure(e) });
 			return false;
 		} finally {
 			this.busy = false;
 		}
+	}
+
+	/** A link to `to` made and answered on the page `from`, the visit
+	 *  still on screen: the page is opened again without the card's row,
+	 *  since the row is linked and there is nothing left to offer, nor
+	 *  room to hold. */
+	#landed(to: string, from: string): void {
+		this.open = false;
+		this.offer = null;
+		if (to === from) this.#deps.refresh();
+		this.#deps.showPage(to, null);
 	}
 
 	/** Undo `outcome`, made on the page `from` for the card row `row`
