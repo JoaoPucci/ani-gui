@@ -52,10 +52,12 @@ fn axis() -> impl proptest::strategy::Strategy<
 
 proptest::proptest! {
     /// Determinism and axis separation: two keys agree exactly
-    /// when every axis agrees. Colons in the title cannot forge
-    /// another tuple's key — every non-title field is colon-free,
-    /// so keys with differing colon counts differ as strings and
-    /// keys with equal counts align positionally.
+    /// when every axis but the quality agrees. Colons in the title
+    /// cannot forge another tuple's key — every non-title field is
+    /// colon-free, so keys with differing colon counts differ as
+    /// strings and keys with equal counts align positionally. The
+    /// quality is no axis: every play resolves the master, whatever a
+    /// caller passes.
     #[test]
     fn keys_are_deterministic_and_separate_every_axis(a in axis(), b in axis()) {
         let key = |x: &(
@@ -69,8 +71,17 @@ proptest::proptest! {
         )| {
             cache_key(&x.0, &x.1, &x.2, &x.3, x.4, x.5, x.6.as_deref())
         };
+        let but_quality = |x: &(
+            String,
+            String,
+            String,
+            String,
+            Option<u32>,
+            Option<u32>,
+            Option<String>,
+        )| (x.0.clone(), x.1.clone(), x.3.clone(), x.4, x.5, x.6.clone());
         proptest::prop_assert_eq!(key(&a), key(&a));
-        proptest::prop_assert_eq!(key(&a) == key(&b), a == b);
+        proptest::prop_assert_eq!(key(&a) == key(&b), but_quality(&a) == but_quality(&b));
     }
 }
 
@@ -153,7 +164,8 @@ fn cache_key_differs_across_each_axis() {
         cache_key("One Piece", "dub", "best", "1", None, None, None),
         base
     );
-    assert_ne!(
+    // Not the quality: every play resolves the master.
+    assert_eq!(
         cache_key("One Piece", "sub", "1080", "1", None, None, None),
         base
     );
@@ -206,7 +218,20 @@ fn cache_key_includes_schema_version_so_v0_entries_are_unreachable() {
     // shape so a typo in SCHEMA doesn't silently produce keys
     // that collide with the prior version.
     let k = cache_key("X", "sub", "best", "1", None, None, None);
-    assert!(k.starts_with("play:v28:"), "got {k}");
+    assert!(k.starts_with("play:v29:"), "got {k}");
+}
+
+#[test]
+fn the_key_names_no_quality() {
+    // Every play — the built-in player, a hand-off, Syncplay — resolves
+    // the master, so a row keyed by the quality it was asked at would
+    // split one answer across keys. v28 keys named it; the rows kept
+    // for `best` are carried to this key at launch
+    // (`crate::cache::play_rekey`).
+    assert_eq!(
+        cache_key("One Piece", "sub", "720", "1", None, Some(12), Some("TV")),
+        format!("{}One Piece:sub:1:-:12:TV", crate::cache::families::play())
+    );
 }
 
 #[test]

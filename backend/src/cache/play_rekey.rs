@@ -33,3 +33,7 @@ pub(crate) fn carry_play_rows(conn: &mut Connection) -> Result<()> {
     let _ = conn;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "play_rekey_test.rs"]
+mod tests;
