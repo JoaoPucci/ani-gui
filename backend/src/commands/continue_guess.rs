@@ -48,88 +48,16 @@
 
 use crate::meta::kitsu::KitsuAnimeRef;
 
-/// A row's title words: runs of ASCII letters and digits, lowercase,
-/// the articles left out.
-fn words(title: &str) -> Vec<String> {
-    title
-        .to_ascii_lowercase()
-        .split(|c: char| !(c.is_ascii_lowercase() || c.is_ascii_digit()))
-        .filter(|w| !w.is_empty() && !matches!(*w, "the" | "a" | "an"))
-        .map(str::to_owned)
-        .collect()
-}
+#[path = "continue_guess_words.rs"]
+mod words;
+pub use words::{carries_first_word, is_series, names_series, past_reach};
 
-/// Every title a hit carries: canonical, localized, abbreviated.
-fn names(hit: &KitsuAnimeRef) -> impl Iterator<Item = &str> {
-    std::iter::once(hit.canonical_title.as_str())
-        .chain(hit.titles.values().map(String::as_str))
-        .chain(hit.abbreviated_titles.iter().map(String::as_str))
-}
+#[path = "continue_guess_season.rs"]
+mod season;
 
-/// Whether a row at `episode` is past what `count` episodes hold under
-/// the provider's numbering: past twice the count and two more. A hit
-/// with no count is never past.
-#[must_use]
-pub fn past_reach(episode: f64, count: Option<u32>) -> bool {
-    count.is_some_and(|n| episode > f64::from(n) * 2.0 + 2.0)
-}
-
-/// Whether a title names a series: it carries "TV" as a word.
-#[must_use]
-pub fn names_series(title: &str) -> bool {
-    words(title).iter().any(|w| w == "tv")
-}
-
-/// Whether a Kitsu `subtype` is a series: TV, or a web series (ONA).
-#[must_use]
-pub fn is_series(subtype: Option<&str>) -> bool {
-    subtype.is_some_and(|s| s.eq_ignore_ascii_case("tv") || s.eq_ignore_ascii_case("ona"))
-}
-
-/// Whether one of `hit`'s titles, or its slug's words, carries the
-/// first word of `title`. A title with no words is carried by every
-/// hit.
-#[must_use]
-pub fn carries_first_word(title: &str, hit: &KitsuAnimeRef) -> bool {
-    let Some(lead) = words(title).into_iter().next() else {
-        return true;
-    };
-    let slug = hit.slug.as_deref().map(|s| s.replace('-', " "));
-    let carried = names(hit)
-        .chain(slug.as_deref())
-        .any(|t| words(t).contains(&lead));
-    carried
-}
-
-/// Whether `hit` names cour `cour`: a title ending in it, a slug
-/// ending in it or in the bare number, or a title that is `title`.
-fn names_cour(title: &str, cour: u32, hit: &KitsuAnimeRef) -> bool {
-    super::cour_same_name::names_the_entry(title, names(hit))
-        || names(hit).any(|t| super::cour::cour_from_title(t) == Some(cour))
-        || hit.slug.as_deref().is_some_and(|slug| {
-            super::cour::cour_from_slug(slug) == Some(cour)
-                || slug
-                    .rsplit_once('-')
-                    .is_some_and(|(_, tail)| tail == cour.to_string())
-        })
-}
-
-/// Whether `t` ends in a part after the first of a season: "… Season
-/// Part 2", "… 2nd Season Part 3", "… Season 2 Part 2".
-fn later_part_of_a_season(t: &str) -> bool {
-    let w = words(t);
-    let n = w.len();
-    n >= 3
-        && w[n - 2] == "part"
-        && w[n - 1].parse::<u32>().is_ok_and(|p| p >= 2)
-        && w[..n - 2].iter().any(|x| x == "season")
-}
-
-/// Whether `title` names a season and no part of one.
-fn names_a_whole_season(title: &str) -> bool {
-    let w = words(title);
-    w.iter().any(|x| x == "season") && !w.iter().any(|x| x == "part")
-}
+#[path = "continue_guess_request.rs"]
+mod request;
+pub use request::{answer, RuledOutRequest, SentHit};
 
 /// Whether the row — its search title and the episode it reached —
 /// rules `hit` out.
@@ -145,11 +73,11 @@ pub fn ruled_out(title: &str, episode: f64, hit: &KitsuAnimeRef) -> bool {
         return true;
     }
     if let Some(cour) = super::cour::cour_from_title(title).filter(|c| *c >= 2) {
-        if !names_cour(title, cour, hit) {
+        if !season::names_cour(title, cour, hit) {
             return true;
         }
     }
-    names_a_whole_season(title) && names(hit).any(later_part_of_a_season)
+    season::names_a_whole_season(title) && words::names(hit).any(season::later_part_of_a_season)
 }
 
 /// The ids of the `hits` the row rules out, in their order.
@@ -159,76 +87,6 @@ pub fn ruled_out_ids(title: &str, episode: f64, hits: &[KitsuAnimeRef]) -> Vec<S
         .filter(|h| ruled_out(title, episode, h))
         .map(|h| h.id.clone())
         .collect()
-}
-
-/// A hit as the renderer sends it: the fields the rules read, any of
-/// them but the id absent on an answer cached before Kitsu's titles
-/// were kept, and then read as carrying none.
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct SentHit {
-    /// The Kitsu id.
-    pub id: String,
-    /// The canonical title.
-    #[serde(default)]
-    pub canonical_title: String,
-    /// The localized titles.
-    #[serde(default)]
-    pub titles: std::collections::HashMap<String, String>,
-    /// The abbreviations.
-    #[serde(default)]
-    pub abbreviated_titles: Vec<String>,
-    /// The slug.
-    #[serde(default)]
-    pub slug: Option<String>,
-    /// The episode count.
-    #[serde(default)]
-    pub episode_count: Option<u32>,
-    /// The subtype.
-    #[serde(default)]
-    pub subtype: Option<String>,
-}
-
-impl From<SentHit> for KitsuAnimeRef {
-    fn from(h: SentHit) -> Self {
-        Self {
-            id: h.id,
-            canonical_title: h.canonical_title,
-            titles: h.titles,
-            abbreviated_titles: h.abbreviated_titles,
-            slug: h.slug,
-            synopsis: None,
-            start_date: None,
-            end_date: None,
-            episode_count: h.episode_count,
-            average_rating: None,
-            subtype: h.subtype,
-            status: None,
-            age_rating: None,
-            popularity_rank: None,
-            poster_image: None,
-            cover_image: None,
-            anilist_banner: None,
-        }
-    }
-}
-
-/// What the renderer asks: the row's search title, the episode it
-/// reached, and the hits its search or slug lookup returned.
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct RuledOutRequest {
-    /// The row's search title.
-    pub title: String,
-    /// The episode the row reached, in the provider's numbering.
-    pub episode: f64,
-    /// The hits.
-    pub hits: Vec<SentHit>,
-}
-
-/// The ids of the request's hits its row rules out.
-#[must_use]
-pub fn answer(req: RuledOutRequest) -> Vec<String> {
-    let hits: Vec<KitsuAnimeRef> = req.hits.into_iter().map(Into::into).collect();
-    ruled_out_ids(&req.title, req.episode, &hits)
 }
 
 #[cfg(test)]
