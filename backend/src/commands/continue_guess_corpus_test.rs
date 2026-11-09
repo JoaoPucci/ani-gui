@@ -80,6 +80,19 @@ fn hits_for(req: &Requests, title: &str) -> Vec<KitsuAnimeRef> {
     all
 }
 
+/// A recorded hit as the renderer would send it.
+fn sent(h: &KitsuAnimeRef) -> SentHit {
+    SentHit {
+        id: h.id.clone(),
+        canonical_title: h.canonical_title.clone(),
+        titles: h.titles.clone(),
+        abbreviated_titles: h.abbreviated_titles.clone(),
+        slug: h.slug.clone(),
+        episode_count: h.episode_count,
+        subtype: h.subtype.clone(),
+    }
+}
+
 #[test]
 fn every_row_rules_out_the_hits_the_corpus_records() {
     let cases: Vec<Case> = read("cases.json");
@@ -89,7 +102,12 @@ fn every_row_rules_out_the_hits_the_corpus_records() {
         let all = hits_for(&req, &c.title);
         for ep in c.picks.keys() {
             let episode: f64 = ep.parse().expect("episode");
-            let mut got = ruled_out_ids(&c.title, episode, &all);
+            let mut got = answer(RuledOutRequest {
+                key: c.key.clone(),
+                title: c.title.clone(),
+                episode,
+                hits: all.iter().map(sent).collect(),
+            });
             got.dedup();
             let want = c.ruled_out.get(ep).cloned().unwrap_or_default();
             if got != want {

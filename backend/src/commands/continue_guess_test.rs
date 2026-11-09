@@ -59,7 +59,7 @@ fn a_listing_spanning_two_cours_keeps_the_first() {
         "TV",
         Some(12),
     );
-    assert!(!ruled_out("Attack on Titan Season 3", 22.0, &s3));
+    assert!(!ruled_out("Attack on Titan Season 3", Some(22.0), &s3));
 }
 
 #[test]
@@ -74,7 +74,7 @@ fn a_recap_is_out_for_a_row_past_it() {
         ),
         "Jujutsu Kaisen 2nd Season Recap",
     );
-    assert!(ruled_out("Jujutsu Kaisen 2nd Season", 23.0, &recap));
+    assert!(ruled_out("Jujutsu Kaisen 2nd Season", Some(23.0), &recap));
 }
 
 #[test]
@@ -117,9 +117,9 @@ fn a_series_title_rules_out_a_special() {
         ),
         "Jujutsu Kaisen New Year's Special",
     );
-    assert!(ruled_out("Jujutsu Kaisen (TV)", 1.0, &special));
+    assert!(ruled_out("Jujutsu Kaisen (TV)", Some(1.0), &special));
     // Without the mark, the special stands at the row's first episode.
-    assert!(!ruled_out("Jujutsu Kaisen", 1.0, &special));
+    assert!(!ruled_out("Jujutsu Kaisen", Some(1.0), &special));
 }
 
 // — The title's first word ——————————————————————————————————————
@@ -155,7 +155,7 @@ fn a_hit_none_of_whose_titles_carries_the_first_word_is_out() {
     );
     assert!(ruled_out(
         "Bakemonogatari (The Monogatari Series)",
-        1.0,
+        Some(1.0),
         &off
     ));
 }
@@ -179,7 +179,7 @@ fn an_article_is_not_a_first_word() {
 fn a_title_with_no_words_rules_nothing_out() {
     let any = hit("1", "Anything", "anything", "TV", Some(12));
     assert!(carries_first_word("！？", &any));
-    assert!(!ruled_out("", 1.0, &any));
+    assert!(!ruled_out("", Some(1.0), &any));
 }
 
 // — A later season ——————————————————————————————————————————————
@@ -196,7 +196,7 @@ fn a_season_row_takes_a_hit_ending_in_its_season_in_any_form() {
         ),
         "Jujutsu Kaisen Season 2",
     );
-    assert!(!ruled_out("Jujutsu Kaisen 2nd Season", 1.0, &s2));
+    assert!(!ruled_out("Jujutsu Kaisen 2nd Season", Some(1.0), &s2));
     let fourth = hit(
         "45556",
         "Golden Kamuy 4th Season",
@@ -204,7 +204,7 @@ fn a_season_row_takes_a_hit_ending_in_its_season_in_any_form() {
         "TV",
         Some(13),
     );
-    assert!(!ruled_out("Golden Kamuy Season 4", 1.0, &fourth));
+    assert!(!ruled_out("Golden Kamuy Season 4", Some(1.0), &fourth));
 }
 
 #[test]
@@ -221,7 +221,7 @@ fn a_bare_trailing_number_on_the_slug_names_the_season() {
     );
     assert!(!ruled_out(
         "That Time I Got Reincarnated as a Slime Season 2",
-        1.0,
+        Some(1.0),
         &slime
     ));
 }
@@ -239,7 +239,11 @@ fn a_season_row_rules_out_the_first_season() {
         ),
         "Haikyuu!! To the Top",
     );
-    assert!(ruled_out("Haikyuu!!: To the Top 2nd Season", 1.0, &first));
+    assert!(ruled_out(
+        "Haikyuu!!: To the Top 2nd Season",
+        Some(1.0),
+        &first
+    ));
     let part1 = titled(
         hit(
             "44294",
@@ -252,7 +256,7 @@ fn a_season_row_rules_out_the_first_season() {
     );
     assert!(ruled_out(
         "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2",
-        1.0,
+        Some(1.0),
         &part1
     ));
 }
@@ -261,7 +265,7 @@ fn a_season_row_rules_out_the_first_season() {
 fn a_hit_titled_as_the_row_names_its_season_whatever_its_slug() {
     let mut gintama = hit("5971", "Gintama'", "gintama-second", "TV", Some(51));
     gintama.abbreviated_titles.push("Gintama Season 2".into());
-    assert!(!ruled_out("Gintama Season 2", 1.0, &gintama));
+    assert!(!ruled_out("Gintama Season 2", Some(1.0), &gintama));
 }
 
 #[test]
@@ -279,7 +283,7 @@ fn a_mid_title_part_is_no_season() {
     );
     assert!(!ruled_out(
         "JoJo's Bizarre Adventure Part 6: Stone Ocean",
-        1.0,
+        Some(1.0),
         &so
     ));
 }
@@ -297,7 +301,7 @@ fn a_whole_season_row_rules_out_the_season_s_second_part() {
     );
     assert!(ruled_out(
         "That Time I Got Reincarnated as a Slime Season 2",
-        1.0,
+        Some(1.0),
         &part2
     ));
 }
@@ -316,7 +320,7 @@ fn a_row_naming_a_part_keeps_the_part() {
     );
     assert!(!ruled_out(
         "Re:Zero - Starting Life in Another World 2nd Season (Part 2)",
-        1.0,
+        Some(1.0),
         &part2
     ));
 }
@@ -328,7 +332,7 @@ fn a_part_with_no_season_is_not_a_later_part_of_one() {
         hit("44398", "86 Part 2", "86-part-2", "TV", Some(12)),
         "86 EIGHTY-SIX Part 2",
     );
-    assert!(!ruled_out("Eighty Six: 2nd Season", 1.0, &p2));
+    assert!(!ruled_out("Eighty Six: 2nd Season", Some(1.0), &p2));
 }
 
 #[test]
@@ -338,6 +342,6 @@ fn ruled_out_ids_keeps_the_order_of_the_hits() {
         hit("2", "Show", "show", "TV", Some(24)),
         hit("3", "Show Recap", "show-recap", "special", Some(1)),
     ];
-    assert_eq!(ruled_out_ids("Show", 20.0, &hits), vec!["1", "3"]);
-    assert!(ruled_out_ids("Show", 1.0, &hits).is_empty());
+    assert_eq!(ruled_out_ids("Show", Some(20.0), &hits), vec!["1", "3"]);
+    assert!(ruled_out_ids("Show", Some(1.0), &hits).is_empty());
 }

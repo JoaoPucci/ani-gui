@@ -1498,7 +1498,7 @@ export function kitsuGuessRuledOut(
 	title: string,
 	episode: number,
 	hits: KitsuAnimeRef[],
-	key = ''
+	key: string
 ): Promise<string[]> {
 	return postJson<string[]>('/api/history/guess/ruled-out', { key, title, episode, hits });
 }

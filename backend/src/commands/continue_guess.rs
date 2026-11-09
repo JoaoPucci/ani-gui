@@ -11,12 +11,18 @@
 //!
 //! The row says more about its show than the search reads, and the
 //! rules here rule hits out before the picker sees them. Each rests on
-//! something the row carries — the episode it reached and its title —
-//! so the guess makes no request it did not make before. A hit is out
-//! when:
+//! something the row carries — the episode it reached, its title and
+//! its show key — and they ask nothing of Kitsu or the provider. A row
+//! they leave with no hit makes the requests the steps after the
+//! search always made for a row with none: the search after a later
+//! season's slug lookup, then the search by its show key's words. A
+//! hit is out when:
 //!
 //! - **the row's episode is past it**: past twice the hit's episode
-//!   count and two more. The provider sometimes lists two of Kitsu's
+//!   count and two more, for a row a provider the app walks wrote,
+//!   which numbers each listing from its first episode (a row a retired
+//!   provider wrote can speak a franchise's numbering, and is never
+//!   past a hit). The provider sometimes lists two of Kitsu's
 //!   cours as one show ("Attack on Titan Season 3", 22 episodes, is
 //!   Kitsu's 12 and 10) and appends extras after the last episode, so
 //!   only a row well past the count says the hit is another show — a
@@ -27,7 +33,9 @@
 //! - **none of the hit's titles carries the title's first word**: its
 //!   canonical, localized and abbreviated titles and its slug's words.
 //!   Kitsu answers a title it does not know with entries that share its
-//!   later, commoner words;
+//!   later, commoner words. Words are runs of ASCII letters and digits,
+//!   as in the shared title-words rule, so an accented letter splits
+//!   one ("Ōkami-san" leads with "kami");
 //! - **the title names a later season the hit does not**: a title
 //!   ending in a cour ("Season 2", "2nd Season", "Part 2") takes a hit
 //!   only when one of its titles ends in the same cour, its slug does
@@ -59,11 +67,11 @@ mod season;
 mod request;
 pub use request::{answer, RuledOutRequest, SentHit};
 
-/// Whether the row — its search title and the episode it reached —
-/// rules `hit` out.
+/// Whether the row — its search title, and the episode it reached when
+/// that says how far into a hit it got — rules `hit` out.
 #[must_use]
-pub fn ruled_out(title: &str, episode: f64, hit: &KitsuAnimeRef) -> bool {
-    if past_reach(episode, hit.episode_count) {
+pub fn ruled_out(title: &str, episode: Option<f64>, hit: &KitsuAnimeRef) -> bool {
+    if episode.is_some_and(|e| past_reach(e, hit.episode_count)) {
         return true;
     }
     if names_series(title) && !is_series(hit.subtype.as_deref()) {
@@ -82,7 +90,7 @@ pub fn ruled_out(title: &str, episode: f64, hit: &KitsuAnimeRef) -> bool {
 
 /// The ids of the `hits` the row rules out, in their order.
 #[must_use]
-pub fn ruled_out_ids(title: &str, episode: f64, hits: &[KitsuAnimeRef]) -> Vec<String> {
+pub fn ruled_out_ids(title: &str, episode: Option<f64>, hits: &[KitsuAnimeRef]) -> Vec<String> {
     hits.iter()
         .filter(|h| ruled_out(title, episode, h))
         .map(|h| h.id.clone())

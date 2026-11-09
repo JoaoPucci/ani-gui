@@ -22,9 +22,9 @@ pub(super) fn names(hit: &KitsuAnimeRef) -> impl Iterator<Item = &str> {
         .chain(hit.abbreviated_titles.iter().map(String::as_str))
 }
 
-/// Whether a row at `episode` is past what `count` episodes hold under
-/// the provider's numbering: past twice the count and two more. A hit
-/// with no count is never past.
+/// Whether a row at `episode` is past what `count` episodes hold, the
+/// episode numbered on the listing from its first: past twice the
+/// count and two more. A hit with no count is never past.
 #[must_use]
 pub fn past_reach(episode: f64, count: Option<u32>) -> bool {
     count.is_some_and(|n| episode > f64::from(n) * 2.0 + 2.0)

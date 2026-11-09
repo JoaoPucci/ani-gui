@@ -62,15 +62,25 @@ pub struct RuledOutRequest {
     pub key: String,
     /// The row's search title.
     pub title: String,
-    /// The episode the row reached, in the provider's numbering.
+    /// The episode the row reached, as the history route reads it: the
+    /// listing's own number, or the Kitsu entry's where the row's
+    /// numbering was stamped.
     pub episode: f64,
     /// The hits.
     pub hits: Vec<SentHit>,
 }
 
-/// The ids of the request's hits its row rules out.
+/// The ids of the request's hits its row rules out. The episode counts
+/// only for a row a provider the app walks wrote: hianime numbers each
+/// listing from its first episode, where anidb.app numbered a later cour
+/// on the franchise's count, and a bare row it wrote still speaks that
+/// number unless its numbering was stamped.
 #[must_use]
 pub fn answer(req: RuledOutRequest) -> Vec<String> {
+    let walked = crate::scraper::provider::ShowKey::parse(&req.key)
+        .provider
+        .is_some();
+    let episode = walked.then_some(req.episode);
     let hits: Vec<KitsuAnimeRef> = req.hits.into_iter().map(Into::into).collect();
-    super::ruled_out_ids(&req.title, req.episode, &hits)
+    super::ruled_out_ids(&req.title, episode, &hits)
 }

@@ -74,8 +74,8 @@ proptest! {
         more in 0.0f64..600.0,
     ) {
         let h = hit("Something Else", sub, count);
-        if ruled_out(&t, e, &h) {
-            prop_assert!(ruled_out(&t, e + more, &h));
+        if ruled_out(&t, Some(e), &h) {
+            prop_assert!(ruled_out(&t, Some(e + more), &h));
         }
     }
 
@@ -87,7 +87,7 @@ proptest! {
         sub in prop::sample::select(vec!["TV", "ONA"]),
         e in 0.0f64..10_000.0,
     ) {
-        prop_assert!(!ruled_out(&t, e, &hit(&t, sub, None)));
+        prop_assert!(!ruled_out(&t, Some(e), &hit(&t, sub, None)));
     }
 
     /// The first-word rule never refuses a hit titled as the row.
@@ -118,9 +118,9 @@ proptest! {
             .collect();
         let want: Vec<String> = hits
             .iter()
-            .filter(|h| ruled_out(&t, e, h))
+            .filter(|h| ruled_out(&t, Some(e), h))
             .map(|h| h.id.clone())
             .collect();
-        prop_assert_eq!(ruled_out_ids(&t, e, &hits), want);
+        prop_assert_eq!(ruled_out_ids(&t, Some(e), &hits), want);
     }
 }
