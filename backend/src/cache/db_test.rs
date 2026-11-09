@@ -677,7 +677,8 @@ fn rows_as_text(conn: &rusqlite::Connection, sql: &str) -> Vec<Vec<String>> {
 
 /// What an upgrade must leave alone in a cache: its migrations' history
 /// (versions, names, when each was applied and refinery's checksum of
-/// it), its schema, its `user_version` and its title matches.
+/// it), its schema, its `user_version`, its title matches and the
+/// meta_cache rows the launch reclaim keeps.
 fn upgrade_invariants(path: &std::path::Path) -> Vec<Vec<Vec<String>>> {
     let conn = rusqlite::Connection::open(path).unwrap();
     [
@@ -685,14 +686,15 @@ fn upgrade_invariants(path: &std::path::Path) -> Vec<Vec<Vec<String>>> {
         "SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY type, name",
         "PRAGMA user_version",
         "SELECT query_norm, kitsu_id, anilist_id, fetched_at FROM title_match ORDER BY query_norm",
+        "SELECT key, body, fetched_at, ttl_seconds FROM meta_cache ORDER BY key",
     ]
     .iter()
     .map(|sql| rows_as_text(&conn, sql))
     .collect()
 }
 
-/// A cache the 0.17.0 code made (tests/fixtures/cache/) opens with this
-/// build's, as the app's launch opens it, and its schema, its
+/// A cache the 0.17.0 release made (tests/fixtures/cache/) opens with
+/// this build's code, as the app's launch opens it, and its schema, its
 /// migrations' history and its rows come through unchanged: nothing is
 /// re-applied, nothing is refused as diverged, and nothing is lost.
 #[test]
@@ -711,6 +713,7 @@ fn a_cache_the_0_17_0_code_made_opens_unchanged() {
     std::fs::write(&path, bytes).unwrap();
     let before = upgrade_invariants(&path);
     assert_eq!(before[0].len(), 2, "the fixture carries both migrations");
+    assert_eq!(before[4].len(), 1, "the fixture carries a meta_cache row");
 
     let (pool, _) = open_pool_reclaiming(&path).expect("the 0.17.0 cache opens");
     assert_eq!(

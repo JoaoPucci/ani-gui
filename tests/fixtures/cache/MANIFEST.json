@@ -1,13 +1,13 @@
 {
-  "$comment": "A metadata cache as an earlier release's code leaves one on disk, for the test that opens it with the current code (backend/src/cache/db_test.rs). Generated, not recorded: nothing here came from a network. Committed as base64 text (.b64) so a reviewer can diff it; `size` and `sha256` are of the decoded database.",
+  "$comment": "A metadata cache as the 0.17.0 release leaves one on disk, for the test that opens it with the current code (backend/src/cache/db_test.rs). Generated, not recorded: nothing here came from a network. Committed as base64 text (.b64) so a reviewer can diff it; `size` and `sha256` are of the decoded database.",
   "captured_at": "2026-11-10",
   "fixtures": {
     "metadata-0.17.0.db.b64": {
-      "source": "master at 02962e4ac (version 0.17.0: rusqlite 0.32 with SQLite 3.46.0 bundled, refinery 0.8.16, r2d2_sqlite 0.25): ani_gui::cache::open_pool_reclaiming on a fresh path, then title_match_put(\"sousou no frieren\", Some(\"46474\"), Some(154587)), the pool dropped, and open_pool_reclaiming again, as a second launch would; then base64 -w 76",
+      "source": "the v0.17.0 release (tag v0.17.0, 6a2385700: rusqlite 0.32 with SQLite 3.46.0 bundled, refinery 0.8.16, r2d2_sqlite 0.25): ani_gui::cache::open_pool on a fresh path, then title_match_put(\"sousou no frieren\", Some(\"46474\"), Some(154587)) and meta_cache_put(\"kitsu:v5:anime:46474\", \"{\\\"id\\\":\\\"46474\\\"}\", 3_153_600_000), the pool dropped, and open_pool again, as a second launch would; then base64 -w 76",
       "encoding": "base64",
       "size": 61440,
-      "sha256": "bec190f0a6b21eb39fff284f93b3a191cdb94e532ab88a70e412c1680e06233d",
-      "notes": "Rollback-journal mode, both migrations applied (V001 initial, V002 user_list_cache) with refinery's history rows and checksums, user_version 2 (the played-marks pass), one title_match row and an empty meta_cache."
+      "sha256": "39b0e608612d694f578fcca1a3bf01bfe9a23c561a67ec05a180062c0d76df2e",
+      "notes": "Rollback-journal mode, both migrations applied (V001 initial, V002 user_list_cache) with refinery's history rows and checksums, user_version 2 (the played-marks pass), one title_match row and one meta_cache row, in a family the current build still reads and with a hundred-year TTL, so the launch reclaim keeps it."
     }
   }
 }
