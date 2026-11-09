@@ -3,7 +3,7 @@ import type { CreateSessionResponse, PlayArgs } from '$lib/api';
 import { __resetPlayCacheForTests, clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 import { warmResumeEpisode, type ResumeWarmStream } from './resume-warm';
 
-const key = { showId: '42', episode: 12.5, mode: 'sub', quality: 'best' };
+const key = { showId: '42', episode: 12.5, mode: 'sub' };
 const args: PlayArgs = { title: 'Show', episode: '12.5', mode: 'sub' };
 const session: CreateSessionResponse = {
 	session_id: 's',

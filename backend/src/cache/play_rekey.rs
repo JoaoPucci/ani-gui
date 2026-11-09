@@ -66,11 +66,12 @@ pub(crate) fn rekeyed(old: &str) -> Option<String> {
 /// Copy every carried play row to its key under this build's family,
 /// with its moment and lifetime, keeping a row this build already
 /// wrote there. The rows left behind — those not carried, and any the
-/// read refuses — are deleted by the launch's reclaim, which no longer
-/// declares their family.
+/// scan cannot read — are deleted by the launch's reclaim, which no
+/// longer declares their family.
 ///
 /// # Errors
-/// [`AniError::Cache`] when SQLite refuses the read or a write.
+/// [`AniError::Cache`] when SQLite refuses to prepare the scan, or a
+/// write, which rolls the carry back.
 pub(crate) fn carry_play_rows(conn: &mut Connection) -> Result<()> {
     let rows: Vec<(String, String, i64, i64)> = {
         let mut stmt = conn
@@ -84,8 +85,10 @@ pub(crate) fn carry_play_rows(conn: &mut Connection) -> Result<()> {
                 Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
             })
             .map_err(|_| AniError::Cache)?;
-        // A row the read refuses (a body stored as a blob) is left for
-        // the reclaim, like any row that is not carried.
+        // Carrying is an optimisation, so whatever the scan cannot read
+        // is left for the reclaim like any row not carried: a row whose
+        // body comes back in a shape the read refuses (a blob), and, if
+        // SQLite fails a step, the rows the scan had not reached.
         found.filter_map(std::result::Result::ok).collect()
     };
     let tx = conn.transaction().map_err(|_| AniError::Cache)?;

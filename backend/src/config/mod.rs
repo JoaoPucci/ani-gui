@@ -27,7 +27,7 @@ pub struct Config {
     pub mode: String,
     /// The quality downloads take: `"best"`, `"worst"`, or a height
     /// such as `"720"`. Downloads only — the built-in player always
-    /// gets the whole master and starts on Auto, and the external
+    /// gets the whole master and starts each visit on Auto, and the external
     /// players and Syncplay get the master too and adapt themselves.
     /// It replaced `quality`, which configs written by 0.17.0 and
     /// earlier still carry and which is not read: its value was picked
