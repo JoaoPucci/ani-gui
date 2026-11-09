@@ -7,7 +7,8 @@
  * what it reads from the history — and renders its state. Arriving on
  * a page decides the offer; a later arrival outdates an earlier one
  * still out. A link opens the chosen show's page without the card's
- * row, refreshing it first when it is the page the link was made on.
+ * row, refreshing it first when it is the page the link was made on,
+ * unless the user left the page while the link was out.
  * An undo gives the rows back and, while the user is still on the page
  * the link left them on, returns to the page it was made from, which
  * then offers it again ($lib/history/link-notices.ts).
@@ -107,6 +108,9 @@ export class LinkSession extends LinkPicker {
 		const chosen = this.chosen;
 		if (!offer || !chosen || this.busy) return false;
 		const from = this.#pageId;
+		// Where the user is as the link starts: one who leaves while it
+		// is out is not brought back.
+		const at = this.#deps.here();
 		this.busy = true;
 		this.error = null;
 		try {
@@ -120,6 +124,9 @@ export class LinkSession extends LinkPicker {
 					() => void this.undo(outcome, from, offer.entry.id)
 				)
 			);
+			// Gone while the link was out: it is saved, and its notice says
+			// so, but the page they left neither refreshes nor calls them back.
+			if (this.#deps.here() !== at) return true;
 			// The page is opened again without the card's row: the row is
 			// linked, so there is nothing left to offer, nor room to hold.
 			if (chosen.ref.id === from) this.#deps.refresh();
