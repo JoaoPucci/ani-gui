@@ -87,6 +87,14 @@ fn the_flags_given_are_the_flags_a_connection_opens_with() {
 fn without_the_create_flag_a_missing_file_is_not_made() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("missing.db");
+    // The same flags open the file once it exists: the refusal is the
+    // missing create flag's.
+    let present = dir.path().join("present.db");
+    Connection::open(&present).unwrap();
+    assert!(SqliteConnectionManager::file(&present)
+        .with_flags(OpenFlags::SQLITE_OPEN_READ_WRITE)
+        .connect()
+        .is_ok());
     let manager =
         SqliteConnectionManager::file(&path).with_flags(OpenFlags::SQLITE_OPEN_READ_WRITE);
     assert!(manager.connect().is_err());
@@ -113,8 +121,19 @@ fn init_runs_on_every_connection_the_manager_opens() {
 
 #[test]
 fn an_init_that_fails_fails_the_connection() {
-    let manager =
-        SqliteConnectionManager::memory().with_init(|c| c.execute_batch("THIS IS NOT SQL"));
+    // The same init, failing only when told to: the refusal is the
+    // init's, not a manager that opens nothing.
+    let fail = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let told = Arc::clone(&fail);
+    let manager = SqliteConnectionManager::memory().with_init(move |c| {
+        if told.load(Ordering::SeqCst) {
+            c.execute_batch("THIS IS NOT SQL")
+        } else {
+            Ok(())
+        }
+    });
+    assert!(manager.connect().is_ok());
+    fail.store(true, Ordering::SeqCst);
     assert!(manager.connect().is_err());
 }
 
@@ -152,13 +171,14 @@ fn a_pool_over_the_manager_hands_out_working_connections() {
 }
 
 #[test]
-fn the_debug_form_names_the_source_and_never_the_init() {
+fn the_debug_form_names_the_source_and_stands_in_for_the_init() {
     let shown = format!(
         "{:?}",
         SqliteConnectionManager::file("/x/metadata.db").with_init(|_| Ok(()))
     );
     assert!(shown.contains("SqliteConnectionManager"), "{shown}");
     assert!(shown.contains("metadata.db"), "{shown}");
+    assert!(shown.contains("InitFn"), "{shown}");
 }
 
 proptest::proptest! {
