@@ -1106,7 +1106,16 @@ describe('the hits a row rules out', () => {
 		// the pick is one the rules may refuse: stored as the title
 		// match, it would stand for the match's whole lifetime without
 		// the rules ever being asked again.
-		mockedGetMatch.mockResolvedValue(null);
+		// The title-match store as the backend keeps it: what a load
+		// puts, the next load gets.
+		let stored: string | null = null;
+		mockedGetMatch.mockImplementation(async () => stored);
+		mockedPutMatch.mockImplementation(async (_t, _c, id) => {
+			stored = id;
+		});
+		mockedDetail.mockImplementation(async (id) =>
+			id === '43886' ? special() : stubKitsu(id, 'Jujutsu Kaisen', 24)
+		);
 		mockedSearch.mockResolvedValue([special()]);
 		mockedRuledOut.mockRejectedValueOnce(new Error('down'));
 
@@ -1117,6 +1126,39 @@ describe('the hits a row rules out', () => {
 		mockedResolveAllmanga.mockResolvedValue(stubKitsu('42765', 'Jujutsu Kaisen', 24));
 		const again = await resolveKitsuMatch(jjk());
 		expect(again?.id).toBe('42765');
+	});
+
+	it('passes over a stored match the row now rules out, and picks again', async () => {
+		// A match stored while the row was at its first episode can be a
+		// hit the row rules out further on: the special stands at episode
+		// 1 of "Jujutsu Kaisen (TV)" but not at 24. The stored entry goes
+		// through the rules like a search hit before it is trusted.
+		mockedGetMatch.mockResolvedValue('43886');
+		mockedDetail.mockResolvedValue(special());
+		mockedSearch.mockResolvedValue([special()]);
+		mockedRuledOut.mockResolvedValue(['43886']);
+		mockedResolveAllmanga.mockResolvedValue(stubKitsu('42765', 'Jujutsu Kaisen', 24));
+
+		const got = await resolveKitsuMatch(jjk());
+
+		expect(got?.id).toBe('42765');
+		expect(mockedRuledOut).toHaveBeenCalledWith(
+			'Jujutsu Kaisen (TV)',
+			24,
+			[special()],
+			'hianime:jujutsu-kaisen-237'
+		);
+	});
+
+	it('trusts a stored match as before when the rules cannot answer', async () => {
+		mockedGetMatch.mockResolvedValue('43886');
+		mockedDetail.mockResolvedValue(special());
+		mockedRuledOut.mockRejectedValue(new Error('down'));
+
+		const got = await resolveKitsuMatch(jjk());
+
+		expect(got?.id).toBe('43886');
+		expect(mockedSearch).not.toHaveBeenCalled();
 	});
 
 	it("stores no pick when the slug lookup's check failed", async () => {
