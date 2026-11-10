@@ -1211,11 +1211,14 @@
 		<div class="hero-skel" aria-busy="true">
 			<div class="hero-skel-img"></div>
 		</div>
-		<div class="hero-body">
-			<p class="eyebrow"><span class="eyebrow-key">{m.home_hero_skeleton_eyebrow_key()}</span></p>
-			<div class="line line-skel" style="inline-size: 50%; block-size: 3rem;"></div>
-			<div class="line line-skel" style="inline-size: 70%;"></div>
-			<div class="line line-skel" style="inline-size: 60%;"></div>
+		<!-- Low in the banner, where the text it stands in for will sit. -->
+		<div class="hero-layer">
+			<div class="hero-body hero-body-skel">
+				<p class="eyebrow"><span class="eyebrow-key">{m.home_hero_skeleton_eyebrow_key()}</span></p>
+				<div class="line line-skel" style="inline-size: 50%; block-size: 3rem;"></div>
+				<div class="line line-skel" style="inline-size: 70%;"></div>
+				<div class="line line-skel" style="inline-size: 60%;"></div>
+			</div>
 		</div>
 	{/if}
 </section>
@@ -1970,6 +1973,12 @@
 	.hero-skel {
 		position: absolute;
 		inset: 0;
+	}
+	/* In the flex layer the body shrinks to its content, which for
+	   the placeholder is only the eyebrow, and the lines' percentage
+	   widths would resolve against that. Take the full measure. */
+	.hero-body-skel {
+		flex: 1;
 	}
 	.hero-skel-img {
 		inline-size: 100%;
