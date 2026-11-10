@@ -129,20 +129,31 @@ enum SubFlag {
 ///   doesn't point at an executable). Carries the configured binary
 ///   name so the UI can name it in the error toast.
 pub fn open_external_player(args: &LaunchArgs) -> Result<()> {
-    if args.player_command.trim().is_empty() {
+    let Some(program) = player_program(&args.player_command, args.player_kind) else {
         return Err(AniError::PlayerSpawnFailed {
             binary: args.player_command.clone(),
         });
-    }
+    };
     let argv = build_argv(args);
-    let mut cmd = std::process::Command::new(&args.player_command);
+    let mut cmd = std::process::Command::new(program);
     cmd.args(&argv)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     spawn_detached(&mut cmd).map_err(|_| AniError::PlayerSpawnFailed {
-        binary: args.player_command.clone(),
+        binary: program.to_string(),
     })
+}
+
+/// The program a launch runs: the command the user configured, or
+/// none when it is blank.
+#[must_use]
+pub fn player_program(command: &str, _kind: ExternalPlayerKind) -> Option<&str> {
+    if command.trim().is_empty() {
+        None
+    } else {
+        Some(command)
+    }
 }
 
 /// Spawn with a short retry on ETXTBSY: exec of a freshly written
