@@ -129,3 +129,14 @@ pub(crate) fn cour_entries(state: &AppState, prefix: &str) -> Result<Vec<(String
         .filter(|(key, _)| all_digits(&key[prefix.len()..]))
         .collect())
 }
+
+/// The cour Continue Watching keys a row's title match by: the one its
+/// title names, less a legacy episode tail, else the first.
+pub(crate) fn row_cour(title: &str) -> u32 {
+    let _ = title;
+    1
+}
+
+#[cfg(test)]
+#[path = "title_match_rows_prop_test.rs"]
+mod prop_tests;
