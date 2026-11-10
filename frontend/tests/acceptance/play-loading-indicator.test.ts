@@ -1,7 +1,9 @@
 // Acceptance: the player's loading indicator never sits over its
 // error.
 //
-// The indicator shows while an episode switch is on its way. A
+// In fullscreen the indicator is the start veil, which shows the next
+// episode while a switch is on its way (windowed, the page-wide
+// loading overlay has the switch, and the frame draws nothing). A
 // playback error can land inside that window — the old stream is
 // still attached, and a switch in flight rules out the automatic
 // recovery — and the frame then shows the error in place of the
@@ -129,12 +131,24 @@ function useShowHandlers() {
 	);
 }
 
-// The indicator stays mounted across a switch and the hold that
-// follows it and is toggled on and off, so a short gap between the two
-// never restarts it; `player-spinner-on` is its showing state. An
-// error unmounts it outright.
-const indicator = () => target.querySelector('.player-spinner');
-const indicatorOn = () => target.querySelector('.player-spinner.player-spinner-on');
+// The frame names the veil's mode on `data-start-veil`, which a fading
+// veil does not outlive; an error unmounts the veil outright.
+const frame = () => target.querySelector('section.player-frame') as HTMLElement | null;
+const indicator = () => target.querySelector('.start-veil');
+const indicatorOn = () =>
+	(frame()?.getAttribute('data-start-veil') ?? 'off') !== 'off' ? frame() : null;
+
+/** The player frame goes fullscreen, as its fullscreen button does. */
+function frameFullscreen() {
+	Object.defineProperty(document, 'fullscreenElement', {
+		configurable: true,
+		get: () => frame()
+	});
+	document.dispatchEvent(new Event('fullscreenchange'));
+}
+afterEach(() => {
+	delete (document as unknown as { fullscreenElement?: unknown }).fullscreenElement;
+});
 const errorPanel = () => target.querySelector('.player-error');
 
 const session = (id: string) =>
@@ -156,6 +170,7 @@ describe('play route — the loading indicator never sits over the error', () =>
 
 		// The switch's stream never answers, so the switch stays on
 		// its way for the rest of the scenario.
+		frameFullscreen();
 		(target.querySelector('li[data-ep-num="3"] button') as HTMLButtonElement).click();
 		await until(() => indicatorOn() !== null, 'the indicator during the switch');
 
@@ -203,6 +218,7 @@ describe('play route — the loading indicator runs from a switch into the hold 
 					land = r;
 				})
 		);
+		frameFullscreen();
 		(target.querySelector('li[data-ep-num="2"] button') as HTMLButtonElement).click();
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
 		await new Promise((r) => setTimeout(r, 20));
