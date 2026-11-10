@@ -484,7 +484,9 @@ test("property: the stuck state comes exactly when the page is 15 s late, and th
         choice: fc.constantFrom("restart", "quit"),
       }),
       async ({ paintAt, landAt, clickAt, choice }) => {
-        mock.timers.enable({ apis: ["setTimeout"] });
+        // The controller's clock is the mocked Date, so it reads the
+        // same instant the mocked timers fire at.
+        mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
         try {
           let now = 0;
           const win = stuckWindow();
@@ -493,7 +495,7 @@ test("property: the stuck state comes exactly when the page is 15 s late, and th
           const splash = splashController({
             createWindow: () => win,
             logError: () => {},
-            clock: () => now,
+            clock: () => Date.now(),
             onDismissed: () => (quits += 1),
             onRestart: () => (restarts += 1),
           });
