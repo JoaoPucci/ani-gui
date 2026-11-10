@@ -204,6 +204,18 @@ describe('a pick on Home', () => {
 		expect(s.slip).toBe('guess');
 	});
 
+	it('says the show was saved in a plain notice, with no Undo', async () => {
+		const f = fake();
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		await s.start(2);
+		s.choose({ ref: RIGHT, current: false });
+		await s.confirm();
+		expect(f.notices).toEqual([
+			{ kind: 'success', message: m.detail_link_done_toast({ title: RIGHT.canonical_title }) }
+		]);
+	});
+
 	it('keeps no offer once the card is saved, as the card is read again', async () => {
 		const f = fake();
 		const s = new InPlaceLinkSession(f.deps);

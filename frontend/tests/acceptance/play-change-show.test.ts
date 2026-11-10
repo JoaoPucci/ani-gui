@@ -218,6 +218,19 @@ async function pickAndLink(title: string, answer = m.play_link_keep_watching()) 
 	await until(() => backend.linkCalls.length > 0, 'the link');
 }
 
+/** Pick `title` and answer "Keep watching this", the save held. */
+async function pickAndLinkHeld(title: string) {
+	const row = () =>
+		Array.from(dialog()?.querySelectorAll<HTMLButtonElement>('li button') ?? []).find((b) =>
+			(b.textContent ?? '').includes(title)
+		);
+	await until(() => row() !== undefined, `${title} among the candidates`);
+	row()!.click();
+	const keep = () => button(m.play_link_keep_watching(), dialog()!);
+	await until(() => keep() !== null && !keep()!.disabled, 'Keep watching this');
+	keep()!.click();
+}
+
 const moreMenu = async () => {
 	target
 		.querySelector<HTMLButtonElement>(`button[aria-label="${m.play_more_aria_label()}"]`)!
@@ -623,6 +636,31 @@ describe('switching to the pick', () => {
 		await settle();
 		expect(pickPlay()).toBeUndefined();
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
+	});
+
+	it('says a pick saved after the viewer left in a plain notice, with no Undo', async () => {
+		let release: () => void = () => {};
+		const saved = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		server.use(
+			http.post(`${API_BASE}/api/history/link`, async () => {
+				await saved;
+			})
+		);
+		await openPlayer();
+		await openPicker();
+		await pickAndLinkHeld(RIGHT_TITLE);
+		unmount(app!);
+		app = null;
+		release();
+		await until(
+			() => toastWith(m.detail_link_done_toast({ title: RIGHT_TITLE })) !== undefined,
+			'the saved notice'
+		);
+		const done = toastWith(m.detail_link_done_toast({ title: RIGHT_TITLE }))!;
+		expect(done.actionLabel).toBeNull();
+		expect(done.onAction).toBeNull();
 	});
 
 	it('asks for no stream of the pick when the viewer left the player while it was being saved', async () => {

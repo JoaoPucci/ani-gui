@@ -193,6 +193,21 @@ describe('LinkSession', () => {
 		expect(f.notices[1].message).toBe(m.detail_link_undone_toast());
 	});
 
+	it('says the show was saved in a plain notice, with no Undo', async () => {
+		// Maintainer's decision: the answer is "is this my show or not",
+		// recorded once given; the ⋯ "Not this show?" changes it again.
+		const f = fake();
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start();
+		await s.search('gintama');
+		s.choose(s.candidates![0]);
+		await s.confirm();
+		expect(f.notices).toEqual([
+			{ kind: 'success', message: m.detail_link_done_toast({ title: 'Gintama' }) }
+		]);
+	});
+
 	it('linking to the page’s own show refreshes the page in place', async () => {
 		const f = fake();
 		const s = new LinkSession(f.deps);

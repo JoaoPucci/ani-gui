@@ -332,6 +332,17 @@ describe('changing the show', () => {
 		expect(await homeCards()).toEqual([TITLE]);
 	});
 
+	it('says the show was saved, with no Undo on the notice', async () => {
+		await linkToTheRightShow();
+		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the show page');
+		const done = toastStore.items.find(
+			(t) => t.message === m.detail_link_done_toast({ title: TITLE })
+		);
+		expect(done).toBeDefined();
+		expect(done!.actionLabel).toBeNull();
+		expect(done!.onAction).toBeNull();
+	});
+
 	it('leaves the user where they went while the link was out, and keeps the link', async () => {
 		let release!: () => void;
 		const held = new Promise<void>((r) => (release = r));

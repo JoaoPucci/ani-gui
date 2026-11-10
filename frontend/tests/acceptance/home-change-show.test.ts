@@ -286,6 +286,20 @@ describe("a guessed Continue card's pill", () => {
 		await until(() => showLine(BC_CARD).includes(BC_GUESS_TITLE), 'the card as the guess again');
 	});
 
+	it('says the show was saved, with no Undo on the notice', async () => {
+		await openHome();
+		pill(BC_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(BC_RIGHT_TITLE);
+		await until(
+			() => toastWith(m.detail_link_done_toast({ title: BC_RIGHT_TITLE })) !== undefined,
+			'the saved notice'
+		);
+		const toast = toastWith(m.detail_link_done_toast({ title: BC_RIGHT_TITLE }))!;
+		expect(toast.actionLabel).toBeNull();
+		expect(toast.onAction).toBeNull();
+	});
+
 	it('links only the JoJo card, and the 2012 row comes out as a card of its own', async () => {
 		await openHome();
 		expect(cell(JOJO_PLAYED)).toBeNull();
