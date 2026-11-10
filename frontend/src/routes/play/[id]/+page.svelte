@@ -2679,8 +2679,9 @@
 		// Handed to another player while the eviction was out: resolving
 		// again would only load the episode behind it. The failed stream's
 		// error comes back, with its Reload, for when the viewer does. A
-		// Reload is the viewer's own, and goes on.
-		if (handoff.handedOff && reason !== 'manual reload') {
+		// Reload goes on while it is still the viewer's latest word: a
+		// handoff since it was pressed clears the pick it made.
+		if (handoff.handedOff && !(reason === 'manual reload' && replacingHandoff)) {
 			playerError = restore;
 			return;
 		}
