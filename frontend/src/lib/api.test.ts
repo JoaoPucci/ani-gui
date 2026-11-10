@@ -29,6 +29,7 @@ import {
 	kitsuAnimeDetail,
 	kitsuEpisodes,
 	kitsuFranchise,
+	kitsuFranchiseFirstHop,
 	kitsuGuessRuledOut,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
@@ -1896,6 +1897,16 @@ describe('kitsuFranchise', () => {
 		const got = await kitsuFranchise('kid 7730');
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/franchise/kid%207730`);
 		expect(got).toEqual(franchise);
+	});
+});
+
+describe('kitsuFranchiseFirstHop', () => {
+	it('GETs /api/kitsu/franchise/<kitsuId>/first-hop and returns its signal', async () => {
+		const fetchMock = mockFetchOnce({ signal: 'link' });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const got = await kitsuFranchiseFirstHop('kid 7730');
+		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/franchise/kid%207730/first-hop`);
+		expect(got).toBe('link');
 	});
 });
 
