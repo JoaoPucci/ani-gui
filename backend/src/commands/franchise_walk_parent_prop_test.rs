@@ -26,17 +26,20 @@ fn beneath(known: &BTreeMap<String, FranchiseListing>, id: &str) -> usize {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// A side-story anchor is placed only under entries that name at
-    /// least as many side stories, spin-offs and recaps as it does: an
-    /// entry the anchor names as its parent story that has fewer is the
-    /// anchor's own spin-off, listed the wrong way round.
+    /// A side-story anchor is placed only under entries that started
+    /// before it or name at least as many side stories, spin-offs and
+    /// recaps as it does: a later entry the anchor names as its parent
+    /// story that has fewer is the anchor's own spin-off, listed the
+    /// wrong way round.
     #[test]
-    fn an_anchor_is_never_placed_under_a_smaller_entry((cat, anchor) in catalogue()) {
+    fn an_anchor_is_never_placed_under_a_later_smaller_entry((cat, anchor) in catalogue()) {
         let (f, _) = drive_with(&anchor, &cat, &[]);
         let own = beneath(&cat.listings, &anchor);
+        let start = |id: &str| cat.entries[id].start.clone();
         for p in f.parents.get(&anchor).into_iter().flatten() {
+            let earlier = matches!((start(p), start(&anchor)), (Some(a), Some(b)) if a < b);
             prop_assert!(
-                beneath(&cat.listings, p) >= own,
+                earlier || beneath(&cat.listings, p) >= own,
                 "{} placed under {}", anchor, p
             );
         }

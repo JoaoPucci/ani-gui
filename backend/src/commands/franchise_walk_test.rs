@@ -466,3 +466,24 @@ fn an_earlier_side_story_that_does_not_name_the_anchor_back_is_not_its_parent() 
     assert_eq!(ids(&f.entries), ["2"]);
     assert_eq!(f.parents.get("1").cloned(), Some(vec!["2".to_string()]));
 }
+
+/// A named parent story that started before the anchor is its parent
+/// even when the anchor names more entries beneath it: a side story
+/// with recaps of its own is still a side story. Only a parent that
+/// started after the anchor and names fewer is taken as the pair
+/// listed the wrong way round.
+#[test]
+fn a_parent_that_started_first_is_the_parent_whatever_it_names() {
+    let mut c = Catalogue::default();
+    c.add("1", "OVA", Some("2010-01-01"))
+        .add("2", "TV", Some("2005-01-01"))
+        .add("3", "special", Some("2011-01-01"))
+        .add("4", "special", Some("2012-01-01"));
+    c.rel("1", "parent_story", "2")
+        .rel("1", "summary", "3")
+        .rel("1", "summary", "4")
+        .rel("2", "side_story", "1");
+    let f = drive("1", &c);
+    assert_eq!(ids(&f.entries), ["2"]);
+    assert_eq!(f.parents.get("1").cloned(), Some(vec!["2".to_string()]));
+}
