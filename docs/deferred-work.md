@@ -810,6 +810,22 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
+- **The Home banner's message states have no artwork.** When there is
+  no show to feature (the trending list came back empty, every show in
+  it was filtered out as unavailable, or the fetch failed), the banner
+  shows a short message and an Open Search button as plain text on a
+  dark band, at the banner's full height. It works, but it looks
+  unfinished next to a banner with art. A placeholder image or
+  illustration for those states would let them look finished. It
+  waits on a design study, held to the guard rails in `AGENTS.md` §7.
+  [`proposals/luma-custom-assets.md`](proposals/luma-custom-assets.md)
+  plans original illustrations for empty, loading and error states
+  elsewhere in the app (the "Illustrated brand assets" entry above is
+  that same work); the banner would be one more surface for it,
+  though the proposal does not list it. The proposal also rules out
+  generated art standing in for a licensed show's banner, so the
+  artwork here would be the app's own, not a substitute for a show.
+
 ## A second provider, and what it would allow
 
 - **Add a second provider when one is worth having.** One provider
