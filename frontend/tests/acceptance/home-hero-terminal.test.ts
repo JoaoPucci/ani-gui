@@ -145,4 +145,21 @@ describe('home hero, when there is no show to feature', () => {
 		await vi.waitFor(() => expect(heroTitle()).toBe('Featured'), { timeout: 3000 });
 		expect(layerOf('.hero-body')).not.toBeNull();
 	});
+
+	it('keeps the loading placeholder in that same layer, so its text does not jump down', async () => {
+		let release: () => void = () => {};
+		const held = new Promise<void>((r) => (release = r));
+		server.use(
+			...homeHandlers({}, [
+				http.get(`${API_BASE}/api/kitsu/trending-anilist`, async () => {
+					await held;
+					return HttpResponse.json([]);
+				})
+			])
+		);
+		app = mount(HomePage, { target });
+		await vi.waitFor(() => expect(busy()).toBe(true), { timeout: 3000 });
+		expect(layerOf('.hero-body')).not.toBeNull();
+		release();
+	});
 });
