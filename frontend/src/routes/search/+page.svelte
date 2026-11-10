@@ -82,8 +82,6 @@
 	const discovery = $derived(discoveryView(rowLoads));
 	const trendingSlot = $derived(discovery.slots[0]);
 	const topRatedSlot = $derived(discovery.slots[1]);
-	// The sub/dub mode the rows are filtered for, read once on mount.
-	let discoveryMode: 'sub' | 'dub' = 'sub';
 
 	// User settings — only `mode` matters here, used to scope the
 	// availability filter to the user's sub/dub preference. Settings
@@ -174,30 +172,28 @@
 		};
 	}
 
-	onMount(async () => {
-		// Resolve settings before kicking off the discovery requests
-		// so the filter calls below see the user's actual mode. Naive
-		// parallel start would race — trending could resolve first
-		// and call filterAvailable(t, pickAvailabilityMode(null))
-		// which falls back to 'sub' and never reflects the real mode.
-		// settingsGet is a single fast IPC; awaiting once on mount is
-		// cheap.
-		try {
-			config = await settingsGet();
-		} catch {
-			// Settings fetch failed — fall through with config null;
-			// pickAvailabilityMode handles that with 'sub' default.
-		}
-		discoveryMode = pickAvailabilityMode(config);
-		loadDiscovery();
-	});
+	onMount(() => void loadDiscovery());
 
 	/** Ask for both discovery rows; each lands in its own slot. Also
 	 *  the notice's retry, which is offered only once both have
-	 *  settled, so no earlier answer is still on its way. */
-	function loadDiscovery() {
-		const mode = discoveryMode;
+	 *  settled, so no earlier answer is still on its way.
+	 *
+	 *  The settings are resolved first so the availability filter sees
+	 *  the user's actual sub/dub mode; started in parallel, a row could
+	 *  be filtered with pickAvailabilityMode(null)'s 'sub' default. When
+	 *  they could not be read, they are asked again on the retry: they
+	 *  come from the same local backend as the rows, so a page that
+	 *  reached the notice has usually lost them too. */
+	async function loadDiscovery() {
 		rowLoads = [LOADING, LOADING];
+		if (config === null) {
+			try {
+				config = await settingsGet();
+			} catch {
+				// Still unreadable: pickAvailabilityMode falls back to 'sub'.
+			}
+		}
+		const mode = pickAvailabilityMode(config);
 		void settleRow(kitsuTrending().then((t) => filterAvailable(t, mode))).then(
 			(row) => (rowLoads[0] = row)
 		);
@@ -308,7 +304,7 @@
 	const searchRunner = createSearchRunner({
 		searchPage: kitsuSearchPage,
 		getConfig: async () => {
-			// Same race as onMount: a fast ?q= deeplink can fire before
+			// Same race as loadDiscovery: a fast ?q= deeplink can fire before
 			// settingsGet has resolved on first load. The runner caches
 			// the result so DUB users never search under the 'sub'
 			// fallback twice.
@@ -395,16 +391,18 @@
 
 <!-- A discovery row still loading: its header, and placeholder cards
      that take the room the cards they stand in for will take — a
-     poster, then a one-line title and the meta line, laid out on the
-     same line boxes as PosterCard's — so the row does not change height
-     when it fills in. -->
+     poster, a title wrapped to two lines (PosterCard clamps there, and a
+     strip is as tall as its tallest card, which in a row of twenty
+     almost always has a wrapped title) and the meta line, on the same
+     line boxes as PosterCard's. -->
 {#snippet skeletonRow(eyebrow: string, caption: string)}
 	<Strip {eyebrow} {caption}>
 		{#each Array.from({ length: 8 }, (_, k) => k) as i (i)}
 			<div class="skel-card" aria-hidden="true">
 				<div class="skel-poster"></div>
 				<div class="skel-body">
-					<span class="skel-title">&nbsp;</span>
+					<span class="skel-title" style="--bar: 85%;">&nbsp;</span>
+					<span class="skel-title" style="--bar: 55%;">&nbsp;</span>
 					<span class="skel-meta">&nbsp;</span>
 				</div>
 			</div>
@@ -534,15 +532,19 @@
 		<!-- No query yet: the discovery rows. A row keeps a skeleton in
 		     its place until it and every row above it have landed, so a
 		     row on screen is never pushed down ($lib/search/discovery). -->
-		{#if discovery.nothing}
-			<div class="state state-empty" role="status">
-				<p class="state-headline">{m.search_discovery_nothing_headline()}</p>
-				<p class="state-detail">{m.search_discovery_nothing_detail()}</p>
-				<button type="button" class="folio-action state-action" onclick={() => loadDiscovery()}>
-					{m.search_discovery_retry()}
-				</button>
-			</div>
-		{/if}
+		<!-- Mounted with the rows, so the notice lands in a live region
+		     that is already in place and is announced. -->
+		<div role="status">
+			{#if discovery.nothing}
+				<div class="state state-empty">
+					<p class="state-headline">{m.search_discovery_nothing_headline()}</p>
+					<p class="state-detail">{m.search_discovery_nothing_detail()}</p>
+					<button type="button" class="folio-action state-action" onclick={() => loadDiscovery()}>
+						{m.search_discovery_retry()}
+					</button>
+				</div>
+			{/if}
+		</div>
 		{#if trendingSlot.kind === 'skeleton'}
 			{@render skeletonRow(
 				m.search_discovery_trending_eyebrow(),
@@ -963,7 +965,8 @@
 	/* A discovery row's placeholder card. The strip sizes it like the
 	   cards it stands in for; the body repeats PosterCard's card-body,
 	   card-title and card-meta boxes (padding, font size, line height),
-	   with a pulsing bar drawn inside each line instead of text. */
+	   each line carried by a non-breaking space with a pulsing bar
+	   drawn over it from the line's start edge. */
 	.skel-card {
 		display: block;
 	}
@@ -973,7 +976,17 @@
 	}
 	.skel-title,
 	.skel-meta {
-		background: linear-gradient(var(--ink-100), var(--ink-100)) no-repeat left center;
+		position: relative;
+	}
+	.skel-title::before,
+	.skel-meta::before {
+		content: '';
+		position: absolute;
+		inset-inline-start: 0;
+		inset-block-start: 50%;
+		translate: 0 -50%;
+		inline-size: var(--bar, 100%);
+		background: var(--ink-100);
 		border-radius: 2px;
 		animation: pulse 1.6s var(--ease-in-out) infinite;
 	}
@@ -981,14 +994,18 @@
 		display: block;
 		font-size: 0.9375rem;
 		line-height: 1.3;
-		background-size: 80% 0.75rem;
+	}
+	.skel-title::before {
+		block-size: 0.75rem;
 	}
 	.skel-meta {
 		display: inline-flex;
 		inline-size: 40%;
 		margin-block-start: var(--space-2);
 		font-size: 0.75rem;
-		background-size: 100% 0.6rem;
+	}
+	.skel-meta::before {
+		block-size: 0.6rem;
 	}
 	.skel-poster {
 		aspect-ratio: var(--poster-aspect);
