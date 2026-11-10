@@ -126,8 +126,9 @@ async fn a_row_a_retired_provider_wrote_is_never_past_a_hit() {
 async fn the_route_reads_the_season_the_show_key_names() {
     // hianime's "Jujutsu Kaisen: Specials" is
     // `jujutsu-kaisen-season-2-recaps`: its key names the second season
-    // and its title none, so the New Year's Special Kitsu's search
-    // returns for the title is out and the second season's recap is not.
+    // and its title none, so the New Year's Special and the third season
+    // Kitsu's search returns for the title are both refuted, and with
+    // nothing left standing both are withheld.
     let (status, body) = post(serde_json::json!({
         "key": "hianime:jujutsu-kaisen-season-2-recaps-3513",
         "title": "Jujutsu Kaisen: Specials",
@@ -143,18 +144,18 @@ async fn the_route_reads_the_season_the_show_key_names() {
                 "subtype": "special"
             },
             {
-                "id": "47880",
-                "canonical_title": "Jujutsu Kaisen 2nd Season Recap",
-                "titles": { "en": "Jujutsu Kaisen Season 2 Recap" },
-                "abbreviated_titles": ["Jujutsu Kaisen Season 2 + Movie Recap"],
-                "slug": "jujutsu-kaisen-2nd-season-recap",
-                "episode_count": 2,
-                "subtype": "special"
+                "id": "48363",
+                "canonical_title": "Jujutsu Kaisen: Shimetsu Kaiyū Zenpen",
+                "titles": { "en": "Jujutsu Kaisen Season 3: The Culling Game Part 1" },
+                "abbreviated_titles": ["Jujutsu Kaisen 3rd Season"],
+                "slug": "Jujutsu-Kaisen-3",
+                "episode_count": 12,
+                "subtype": "TV"
             }
         ]
     }))
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let ids: Vec<String> = serde_json::from_str(&body).expect("ids");
-    assert_eq!(ids, vec!["43886"]);
+    assert_eq!(ids, vec!["43886", "48363"]);
 }

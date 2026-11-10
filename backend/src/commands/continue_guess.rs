@@ -116,18 +116,17 @@ pub fn ruled_out(title: &str, episode: Option<f64>, hit: &KitsuAnimeRef) -> bool
     season::names_a_whole_season(title) && words::names(hit).any(season::later_part_of_a_season)
 }
 
-/// Whether the row's title and its show key's words (empty for a key
-/// that carries none) rule `hit` out together: a recap neither names,
-/// or a later season the key names and the title and hit do not.
+/// Whether the row refutes `hit` as the answer to its search, on its
+/// title and its show key's words (empty for a key that carries none).
 #[must_use]
-pub fn ruled_out_by_key(title: &str, key_words: &str, hit: &KitsuAnimeRef) -> bool {
+pub fn refutes(title: &str, key_words: &str, hit: &KitsuAnimeRef) -> bool {
     kind::a_recap_the_row_does_not_name(title, key_words, hit)
         || key_season::a_season_the_key_names_and_the_hit_does_not(title, key_words, hit)
 }
 
 /// The ids of the `hits` the row rules out, in their order: by its
 /// title and episode ([`ruled_out`]), or by its title and its show
-/// key's words ([`ruled_out_by_key`]).
+/// key's words ([`refutes`]).
 #[must_use]
 pub fn ruled_out_ids(
     title: &str,
@@ -136,7 +135,7 @@ pub fn ruled_out_ids(
     hits: &[KitsuAnimeRef],
 ) -> Vec<String> {
     hits.iter()
-        .filter(|h| ruled_out(title, episode, h) || ruled_out_by_key(title, key_words, h))
+        .filter(|h| ruled_out(title, episode, h) || refutes(title, key_words, h))
         .map(|h| h.id.clone())
         .collect()
 }

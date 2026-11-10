@@ -348,12 +348,41 @@ fn ruled_out_ids_keeps_the_order_of_the_hits() {
 
 #[test]
 fn ruled_out_ids_reads_the_key_s_words_too() {
+    let recap = vec![hit("1", "Show Recap", "show-recap", "special", Some(1))];
+    assert_eq!(ruled_out_ids("Show", "show", Some(1.0), &recap), vec!["1"]);
+    assert!(ruled_out_ids("Show", "show recaps", Some(1.0), &recap).is_empty());
+}
+
+#[test]
+fn a_refuted_hit_beside_one_that_stands_is_left_to_the_picker() {
+    // Kitsu files some films as specials and tags some movies "Recap"
+    // in an alternate title alone, so a refuted hit may be the row's
+    // own show: with another hit standing, the search answered the row,
+    // and the picker chooses among them all.
     let hits = vec![
         hit("1", "Show Recap", "show-recap", "special", Some(1)),
         hit("2", "Show", "show", "TV", Some(24)),
     ];
-    assert_eq!(ruled_out_ids("Show", "show", Some(1.0), &hits), vec!["1"]);
-    assert!(ruled_out_ids("Show", "show recaps", Some(1.0), &hits).is_empty());
+    assert!(refutes("Show", "show", &hits[0]));
+    assert!(ruled_out_ids("Show", "show", Some(1.0), &hits).is_empty());
+}
+
+#[test]
+fn a_refuted_hit_is_withheld_when_every_other_is_ruled_out() {
+    // The special is past the row; the recap is refuted; nothing stands,
+    // so the search missed and both are withheld.
+    let hits = vec![
+        hit("1", "Show Special", "show-special", "special", Some(1)),
+        hit("2", "Show Recap", "show-recap", "special", None),
+    ];
+    assert!(ruled_out("Show", Some(20.0), &hits[0]));
+    assert!(!ruled_out("Show", Some(20.0), &hits[1]));
+    assert_eq!(
+        ruled_out_ids("Show", "show", Some(20.0), &hits),
+        vec!["1", "2"]
+    );
+    // At the first episode the special stands, and the recap is kept.
+    assert!(ruled_out_ids("Show", "show", Some(1.0), &hits).is_empty());
 }
 
 // — A movie ————————————————————————————————————————————————————
@@ -373,7 +402,7 @@ fn only_a_movie_word_names_a_movie() {
 }
 
 #[test]
-fn a_movie_title_rules_out_what_is_no_movie() {
+fn a_movie_title_refutes_what_is_no_movie() {
     // hianime's "Jujutsu Kaisen 0 Movie" brings back the second
     // season's recap alone, a two-episode special.
     let recap = titled(
@@ -386,7 +415,7 @@ fn a_movie_title_rules_out_what_is_no_movie() {
         ),
         "Jujutsu Kaisen Season 2 Recap",
     );
-    assert!(ruled_out("Jujutsu Kaisen 0 Movie", Some(1.0), &recap));
+    assert!(refutes("Jujutsu Kaisen 0 Movie", "", &recap));
     let movie = titled(
         hit(
             "44212",
@@ -397,7 +426,7 @@ fn a_movie_title_rules_out_what_is_no_movie() {
         ),
         "Jujutsu Kaisen 0",
     );
-    assert!(!ruled_out("Jujutsu Kaisen 0 Movie", Some(1.0), &movie));
+    assert!(!refutes("Jujutsu Kaisen 0 Movie", "", &movie));
 }
 
 #[test]
@@ -412,7 +441,7 @@ fn the_number_after_movie_numbers_it() {
 }
 
 #[test]
-fn a_numbered_movie_rules_out_a_movie_numbered_otherwise() {
+fn a_numbered_movie_refutes_a_movie_numbered_otherwise() {
     // hianime's "One Piece: The Movie 14 - Stampede" brings back the
     // first thirteen and none of Stampede.
     let first = hit(
@@ -422,11 +451,7 @@ fn a_numbered_movie_rules_out_a_movie_numbered_otherwise() {
         "movie",
         Some(1),
     );
-    assert!(ruled_out(
-        "One Piece: The Movie 14 - Stampede",
-        Some(1.0),
-        &first
-    ));
+    assert!(refutes("One Piece: The Movie 14 - Stampede", "", &first));
     // Numbered in an abbreviation alone.
     let mut z = hit(
         "6827",
@@ -451,15 +476,15 @@ fn a_numbered_movie_rules_out_a_movie_numbered_otherwise() {
         ),
         "One Piece: Stampede",
     );
-    assert!(!ruled_out(
+    assert!(!refutes(
         "One Piece: The Movie 14 - Stampede",
-        Some(1.0),
+        "",
         &stampede
     ));
 }
 
 #[test]
-fn a_numbered_movie_rules_out_an_ova() {
+fn a_numbered_movie_refutes_an_ova() {
     let prologue = hit(
         "10047",
         "One Piece: Episode of Alabasta - Prologue",
@@ -467,11 +492,7 @@ fn a_numbered_movie_rules_out_an_ova() {
         "OVA",
         Some(1),
     );
-    assert!(ruled_out(
-        "One Piece: The Movie 14 - Stampede",
-        Some(1.0),
-        &prologue
-    ));
+    assert!(refutes("One Piece: The Movie 14 - Stampede", "", &prologue));
 }
 
 #[test]
@@ -501,7 +522,7 @@ fn a_row_naming_no_recap_rules_out_a_recap() {
     );
     concept.abbreviated_titles.push("Haikyuu!! Recap 4".into());
     assert!(names_recap("Haikyuu!! Recap 4"));
-    assert!(ruled_out_by_key(
+    assert!(refutes(
         "Haikyu!! Movie: Battle of the Garbage Dump",
         "haikyu movie the dumpster battle",
         &concept
@@ -576,7 +597,7 @@ fn a_key_naming_a_season_the_title_does_not_rules_out_a_hit_naming_none() {
         "Jujutsu Kaisen New Year's Special",
     );
     let key = "jujutsu kaisen season 2 recaps";
-    assert!(ruled_out_by_key("Jujutsu Kaisen: Specials", key, &ny));
+    assert!(refutes("Jujutsu Kaisen: Specials", key, &ny));
     let mut third = titled(
         hit(
             "48363",
@@ -590,7 +611,7 @@ fn a_key_naming_a_season_the_title_does_not_rules_out_a_hit_naming_none() {
     third
         .abbreviated_titles
         .push("Jujutsu Kaisen 3rd Season".into());
-    assert!(ruled_out_by_key("Jujutsu Kaisen: Specials", key, &third));
+    assert!(refutes("Jujutsu Kaisen: Specials", key, &third));
     let recap = titled(
         hit(
             "47880",
@@ -601,9 +622,9 @@ fn a_key_naming_a_season_the_title_does_not_rules_out_a_hit_naming_none() {
         ),
         "Jujutsu Kaisen Season 2 Recap",
     );
-    assert!(!ruled_out_by_key("Jujutsu Kaisen: Specials", key, &recap));
+    assert!(!refutes("Jujutsu Kaisen: Specials", key, &recap));
     // Without the key's season, the special stands.
-    assert!(!ruled_out_by_key(
+    assert!(!refutes(
         "Jujutsu Kaisen: Specials",
         "jujutsu kaisen specials",
         &ny
@@ -619,12 +640,12 @@ fn a_title_naming_a_season_is_not_judged_by_its_key() {
         "movie",
         Some(1),
     );
-    assert!(!ruled_out_by_key(
+    assert!(!refutes(
         "Solo Leveling Season 2: Arise from the Shadow",
         "solo leveling season 2 arise from the shadow",
         &other
     ));
-    assert!(!ruled_out_by_key(
+    assert!(!refutes(
         "Show Season 3",
         "show season 2",
         &hit("1", "Show", "show", "TV", Some(12))
@@ -633,7 +654,7 @@ fn a_title_naming_a_season_is_not_judged_by_its_key() {
 
 #[test]
 fn a_key_naming_the_first_season_rules_nothing_out() {
-    assert!(!ruled_out_by_key(
+    assert!(!refutes(
         "Show: Extras",
         "show season 1 extras",
         &hit("1", "Show Special", "show-special", "special", Some(1))

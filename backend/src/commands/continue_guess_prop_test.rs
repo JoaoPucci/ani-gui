@@ -80,15 +80,13 @@ proptest! {
     }
 
     /// A series titled exactly as the row, with no count, is never
-    /// ruled out: it is the show the row names, unless the title names
-    /// a movie.
+    /// ruled out: it is the show the row names.
     #[test]
     fn the_series_the_row_names_is_never_ruled_out(
         t in title(),
         sub in prop::sample::select(vec!["TV", "ONA"]),
         e in 0.0f64..10_000.0,
     ) {
-        prop_assume!(!names_movie(&t));
         prop_assert!(!ruled_out(&t, Some(e), &hit(&t, sub, None)));
     }
 
@@ -106,8 +104,8 @@ proptest! {
         prop_assert_eq!(names_series(&t), named);
     }
 
-    /// `ruled_out_ids` is the hits `ruled_out` or `ruled_out_by_key`
-    /// refuses, in their order.
+    /// `ruled_out_ids` is the hits `ruled_out` refuses, in their order,
+    /// and every hit when `refutes` refuses the rest.
     #[test]
     fn ruled_out_ids_lists_the_refused_hits_in_order(
         t in title(),
@@ -120,9 +118,10 @@ proptest! {
             .enumerate()
             .map(|(i, (c, s, n))| KitsuAnimeRef { id: i.to_string(), ..hit(c, s, *n) })
             .collect();
+        let missed = hits.iter().all(|h| ruled_out(&t, Some(e), h) || refutes(&t, &k, h));
         let want: Vec<String> = hits
             .iter()
-            .filter(|h| ruled_out(&t, Some(e), h) || ruled_out_by_key(&t, &k, h))
+            .filter(|h| missed || ruled_out(&t, Some(e), h))
             .map(|h| h.id.clone())
             .collect();
         prop_assert_eq!(ruled_out_ids(&t, &k, Some(e), &hits), want);
@@ -151,7 +150,7 @@ proptest! {
         prop_assume!(!names_series(&t));
         let h = hit(&t, "movie", None);
         prop_assert!(!ruled_out(&t, Some(e), &h));
-        prop_assert!(!ruled_out_by_key(&t, &t, &h));
+        prop_assert!(!refutes(&t, &t, &h));
     }
 
     /// A hit that numbers no movie is never numbered as another.
@@ -287,5 +286,30 @@ proptest! {
                 .collect(),
         };
         prop_assert_eq!(answer(req(e)), answer(req(0.0)));
+    }
+
+    /// A hit neither rule refuses keeps every hit only `refutes`
+    /// refuses: the search answered the row.
+    #[test]
+    fn a_standing_hit_keeps_the_refuted_ones(
+        t in title(),
+        k in title(),
+        e in 0.0f64..100.0,
+        hits in prop::collection::vec((title(), subtype(), prop::option::of(0u32..50)), 0..6),
+    ) {
+        let mut hits: Vec<KitsuAnimeRef> = hits
+            .iter()
+            .enumerate()
+            .map(|(i, (c, s, n))| KitsuAnimeRef { id: i.to_string(), ..hit(c, s, *n) })
+            .collect();
+        let standing = KitsuAnimeRef { id: "standing".into(), ..hit(&t, "TV", None) };
+        prop_assume!(!ruled_out(&t, Some(e), &standing) && !refutes(&t, &k, &standing));
+        hits.push(standing);
+        let want: Vec<String> = hits
+            .iter()
+            .filter(|h| ruled_out(&t, Some(e), h))
+            .map(|h| h.id.clone())
+            .collect();
+        prop_assert_eq!(ruled_out_ids(&t, &k, Some(e), &hits), want);
     }
 }
