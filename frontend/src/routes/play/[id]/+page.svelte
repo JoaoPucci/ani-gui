@@ -1564,7 +1564,10 @@
 	const upNextReads = latestRead<WatchOrderData>((w) => (upNextData = w));
 	$effect(() => {
 		const showId = id;
-		if (!showId) return upNextReads.stop();
+		if (!showId) {
+			upNextReads.stop();
+			return;
+		}
 		upNextReads.start(() =>
 			loadWatchOrder(showId, { franchise: kitsuFranchise, history: historyList })
 		);

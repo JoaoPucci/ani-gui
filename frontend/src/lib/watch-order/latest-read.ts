@@ -1,8 +1,8 @@
 /**
- * One read at a time for a page that reads per show and per Try
- * again: each read supersedes the ones still out, and only the latest
- * read's answer is shown, so an older one landing late never replaces
- * it.
+ * One read at a time for a page that reads per show, and per retry
+ * where it offers one: each read supersedes the ones still out, and
+ * only the latest read's answer is shown, so an older one landing late
+ * never replaces it.
  *
  * `show` is called with null as a read starts or the reads stop, and
  * with the latest read's answer when it lands. A read must not reject
