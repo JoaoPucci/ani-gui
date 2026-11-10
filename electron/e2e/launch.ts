@@ -57,14 +57,17 @@ export const testRunEnv = { ANI_GUI_UNATTENDED: '1' } as const;
 
 /** Launch the packaged app with `env` as its whole environment, as a
  *  test run — unless that environment leads to a display someone may
- *  be looking at, which throws, saying how to run the suite instead. */
+ *  be looking at, which throws, saying how to run the suite instead.
+ *  `binary` is another copy of the packaged tree's launcher, for a spec
+ *  that ships the app a frontend of its own (splash-stuck.spec.ts). */
 export function launchPackagedApp(
-	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env']
+	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env'],
+	{ binary = packagedBinary }: { binary?: string } = {}
 ): Promise<ElectronApplication> {
 	const refusal = launchRefusal(env ?? {});
 	if (refusal) throw new Error(refusal);
 	return _electron.launch({
-		executablePath: packagedBinary,
+		executablePath: binary,
 		args: [...testLaunchSwitches],
 		env: { ...env, ...testRunEnv }
 	});
@@ -86,6 +89,20 @@ export function splashState(app: ElectronApplication): Promise<Record<string, bo
 async function isSplash(app: ElectronApplication, page: Page): Promise<boolean> {
 	const win = await app.browserWindow(page);
 	return win.evaluate((w) => (w as unknown as Record<string, unknown>).aniGuiSplash === true);
+}
+
+/** The splash's page, while it is up: a launch whose first page is
+ *  late keeps it on screen long enough to look at (splash-stuck.spec.ts). */
+export async function splashWindow(app: ElectronApplication, timeoutMs = 30_000): Promise<Page> {
+	const deadline = Date.now() + timeoutMs;
+	for (;;) {
+		for (const page of app.windows()) {
+			if (page.isClosed()) continue;
+			if (await isSplash(app, page).catch(() => false)) return page;
+		}
+		if (Date.now() > deadline) throw new Error(`no splash within ${timeoutMs} ms`);
+		await new Promise((resolve) => setTimeout(resolve, 25));
+	}
 }
 
 /** The app's window — not the splash, which opens first and closes

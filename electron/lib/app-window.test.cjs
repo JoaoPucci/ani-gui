@@ -13,6 +13,7 @@ const {
   APP_BACKGROUND,
   APP_READY_CHANNEL,
   APP_READY_WAIT_MS,
+  appReadyBound,
   appReadyWaiter,
   appWindowOptions,
   lastAppReady,
@@ -213,4 +214,62 @@ test("a page that rendered has the splash complete its rail the same way", async
   release();
   for (let i = 0; i < 5; i++) await Promise.resolve();
   assert.equal(open, true);
+});
+
+// The splash's stuck state (lib/splash-stuck.cjs) stands in for the
+// window while its page is late, so the wait for the page has no bound
+// then: past one the window was revealed whether or not it had
+// rendered, and sometimes it had not.
+test("with no bound the wait never gives up, and the word still counts however late", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const waiter = appReadyWaiter(contents, ipc, { timeoutMs: null });
+  let ready = null;
+  waiter.ready.then((v) => (ready = v));
+  t.mock.timers.tick(APP_READY_WAIT_MS * 100);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(ready, null);
+  ipc.emit(APP_READY_CHANNEL, { sender: contents });
+  assert.equal(await waiter.ready, true);
+});
+
+test("a renderer that goes, or a window destroyed, ends the wait without a render and without completing the rail", async () => {
+  for (const event of ["render-process-gone", "destroyed"]) {
+    const ipc = new EventEmitter();
+    const contents = Object.assign(new EventEmitter(), sender());
+    const waiter = appReadyWaiter(contents, ipc, { timeoutMs: null });
+    contents.emit(event, {}, { reason: "crashed" });
+    assert.equal(await waiter.ready, false, event);
+    assert.equal(waiter.gone(), true, event);
+    assert.deepEqual(lastAppReady(), { rendered: false, gaveUp: false, beforeReveal: false }, event);
+    // Nothing listens any more.
+    assert.equal(ipc.listenerCount(APP_READY_CHANNEL), 0, event);
+    assert.equal(contents.listenerCount("render-process-gone"), 0, event);
+    assert.equal(contents.listenerCount("destroyed"), 0, event);
+    // The rail is not completed for a page that is gone: the boot is
+    // about to fail (lib/startup.cjs waitBeforeShow).
+    const splash = gateSplash(Promise.resolve());
+    await revealGate(splash, waiter);
+    assert.deepEqual(splash.told, [], event);
+  }
+});
+
+test("a word, or the bound, takes the renderer's listeners down too", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ipc = new EventEmitter();
+  const contents = Object.assign(new EventEmitter(), sender());
+  const waiter = appReadyWaiter(contents, ipc, { timeoutMs: 50 });
+  ipc.emit(APP_READY_CHANNEL, { sender: contents });
+  assert.equal(await waiter.ready, true);
+  assert.equal(waiter.gone(), false);
+  assert.equal(contents.listenerCount("render-process-gone"), 0);
+  assert.equal(contents.listenerCount("destroyed"), 0);
+});
+
+test("the wait is unbounded exactly while a splash stands in for the window", () => {
+  assert.equal(appReadyBound({ standsIn: () => true }), null);
+  // No splash (a later window, or one that could not be made): the
+  // bound stays, so the window is not left hidden for good.
+  assert.equal(appReadyBound({ standsIn: () => false }), APP_READY_WAIT_MS);
 });

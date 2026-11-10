@@ -23,7 +23,7 @@ const {
 } = require("./splash.cjs");
 const { STALL_MS, STEPS, stallTexts } = require("./splash-progress.cjs");
 const { LOCALES, messagesFor } = require("./main-messages.cjs");
-const { APP_READY_CHANNEL, APP_READY_WAIT_MS, appReadyWaiter, revealGate } = require("./app-window.cjs");
+const { APP_READY_CHANNEL, APP_READY_WAIT_MS, appReadyBound, appReadyWaiter, revealGate } = require("./app-window.cjs");
 
 test("the splash is a small frameless window above everything, shown once painted", () => {
   const o = splashWindowOptions();
@@ -807,18 +807,18 @@ test("what happened to the launch's splash can be read back afterwards", async (
   // reads this instead.
   const win = fakeSplash();
   const splash = splashController({ createWindow: () => win, logError: () => {} });
-  assert.deepEqual(lastSplashState(), { opened: false, shown: false, closed: false, suppressed: false, version: "", steps: 0, railLit: 0 });
+  assert.deepEqual(lastSplashState(), { opened: false, shown: false, closed: false, suppressed: false, version: "", steps: 0, railLit: 0, stuck: false, choice: null });
   splash.show();
-  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: false, version: "", steps: 0, railLit: 0 });
+  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: false, version: "", steps: 0, railLit: 0, stuck: false, choice: null });
   win.emit("ready-to-show");
   splash.motionPreference(false);
   await tick();
   splash.close();
-  assert.deepEqual(lastSplashState(), { opened: true, shown: true, closed: true, suppressed: false, version: "", steps: 0, railLit: 0 });
+  assert.deepEqual(lastSplashState(), { opened: true, shown: true, closed: true, suppressed: false, version: "", steps: 0, railLit: 0, stuck: false, choice: null });
   const failed = splashController({ createWindow: () => fakeSplash(), logError: () => {} });
   failed.show();
   failed.suppress();
-  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: true, version: "", steps: 0, railLit: 0 });
+  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: true, version: "", steps: 0, railLit: 0, stuck: false, choice: null });
 });
 
 test("the app's window can wait for the splash to be on screen, for a bounded time", async (t) => {
@@ -1420,14 +1420,16 @@ test("a page that never says it rendered still completes the rail, and the revea
 
 /** The splash and the app window's wait for its renderer, through the
  *  reveal's gate (lib/app-window.cjs), as main.js wires them. */
-async function splashBeforeAPage(t) {
+async function splashBeforeAPage(t, { bound = false } = {}) {
   const logs = [];
   const painted = await paintedSplash(t, { log: (line) => logs.push(line) });
   await painted.splash.progress("backend");
   await painted.splash.progress("flags");
   const ipc = new EventEmitter();
   const contents = { id: 1 };
-  const waiter = appReadyWaiter(contents, ipc);
+  // `bound`: the wait main.js makes, with no bound while the splash
+  // stands in.
+  const waiter = appReadyWaiter(contents, ipc, bound ? { timeoutMs: appReadyBound(painted.splash) } : undefined);
   // The reveal closes the splash as the window shows (main.js
   // revealMaximized's afterShow).
   const gate = painted.watch(revealGate(painted.splash, waiter).then(() => painted.splash.close()));
@@ -1464,18 +1466,17 @@ test("a page that renders late in a cold start keeps the splash up, its last str
   splash.close();
 });
 
-test("a page that never says it rendered keeps the splash up until the bound, then completes the rail and opens the reveal", async (t) => {
-  const { splash, logs, gate, later, rail, gone } = await splashBeforeAPage(t);
-  await later(APP_READY_WAIT_MS - 1);
+test("a page that never says it rendered keeps the splash up past the old bound, its last stretch pending, and opens no reveal", async (t) => {
+  // The wait used to give up at APP_READY_WAIT_MS and reveal the window
+  // whether or not it had rendered. While the splash stands in, it has
+  // no bound (appReadyBound): the splash goes stuck instead
+  // (lib/splash-stuck.test.cjs).
+  const { splash, logs, gate, later, rail, gone } = await splashBeforeAPage(t, { bound: true });
+  await later(APP_READY_WAIT_MS * 3);
   assert.equal(gate.done, false);
   assert.deepEqual(gone(), [], "the splash is still up");
   assert.equal(rail(), "js:window.splashProgress && window.splashProgress.set(2)");
-  await later(1);
-  assert.equal(rail(), "js:window.splashProgress && window.splashProgress.set(3)");
-  assert.equal(logs.filter((l) => l.includes("did not say it rendered")).length, 1);
-  assert.equal(gate.done, false, "held for the completed rail");
-  await later(SPLASH_COMPLETE_HOLD_MS);
-  assert.equal(gate.done, true);
+  assert.equal(logs.filter((l) => l.includes("did not say it rendered")).length, 0);
   splash.close();
 });
 
