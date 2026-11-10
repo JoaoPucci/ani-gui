@@ -112,9 +112,10 @@ The session has its own runtime directory, D-Bus session, HOME and XDG
 directories, and no `DISPLAY`, so the app's windows open on a
 compositor nobody can see, and a setting changed on the desktop does
 not reach it. It needs `gnome-shell`, `dbus-run-session`,
-`dbus-update-activation-environment`, `setsid`, `systemd-run` and a
-systemd user service manager: the whole session runs in a transient
-scope of its own (`ani-gui-wl-<suffix>.scope`), and what is still
+`dbus-update-activation-environment`, `setsid`, and systemd 254 or later
+(`systemd-run`, `systemctl`) with a user service manager running: the
+whole session runs in a transient scope of its own (the tool prints its
+name, `ani-gui-wl-<suffix>.scope`), and what is still
 running in it at the end — a service that daemonized, a process that
 made a session of its own — is stopped by stopping that one scope. The command
 runs without a terminal, so the tool is for the suite, not for an
@@ -136,10 +137,12 @@ turn its exit is reported; after that nothing is signalled, since an
 emptied group's id can be handed to someone else. The backend runs
 outside that group and stops itself when the app's end of its stdin
 closes. No test or tool picks a process out of the process table — by
-name, path, command line, environment, or parent — which
-`tests/arch/own_processes.sh` holds: a test that walked from a
-relaunched app to its parent once signalled the user's service manager
-and ended the desktop session.
+name, path, command line, environment, or parent: a test that walked
+from a relaunched app to its parent once signalled the user's service
+manager and ended the desktop session. `tests/arch/own_processes.sh`
+catches the usual spellings of such a selection (the selecting tools,
+the parent-pid field's name, listings of `/proc`); its header lists
+what it cannot see.
 
 CI runs the same suite on X11, under Xvfb (`xvfb-run`): GitHub's
 runners have no Wayland. Wayland behaviour is covered by local runs
