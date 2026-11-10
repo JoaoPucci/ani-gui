@@ -72,6 +72,20 @@ describe('the show question', () => {
 		});
 	}
 
+	// One word per idea: in this flow Spanish calls the show "anime", as
+	// the show page does, never "serie", and Russian asks to try again
+	// with «снова», not «ещё раз».
+	const elsewhere: Record<string, RegExp[]> = {
+		'es-419': [/\bseries?\b/i],
+		ru: [/ещё раз/i, /еще раз/i]
+	};
+	for (const [locale, words] of Object.entries(elsewhere)) {
+		it(`uses the app's one word for each idea in ${locale}`, () => {
+			const said = messages(locale).filter(([, text]) => words.some((w) => w.test(text)));
+			expect(said).toEqual([]);
+		});
+	}
+
 	it('has every message of it in every locale', () => {
 		const keys = (l: string) => messages(l).map(([k]) => k);
 		for (const locale of Object.keys(unsaid))
