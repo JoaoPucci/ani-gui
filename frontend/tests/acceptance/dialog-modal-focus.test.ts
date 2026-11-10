@@ -135,6 +135,18 @@ describe('the update dialog', () => {
 		expect(inert(opener)).toBe(true);
 	});
 
+	it('lets Tab reach the release notes, so a long one scrolls from the keyboard', async () => {
+		await openFromBadge();
+		const notes = dialog()!.querySelector<HTMLElement>('.update-dialog-body')!;
+		const seen = new Set<Element | null>();
+		for (let i = 0; i < 4; i++) {
+			press('Tab');
+			seen.add(active());
+		}
+		expect(seen.has(notes)).toBe(true);
+		expect(notes.getAttribute('aria-label')).toBe(m.update_dialog_notes_aria_label());
+	});
+
 	it('closes on Escape and gives focus back to the badge', async () => {
 		const opener = await openFromBadge();
 		expect(press('Escape')).toBe(true);

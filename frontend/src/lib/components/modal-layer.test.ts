@@ -248,6 +248,18 @@ describe('modals on top of each other', () => {
 		expect(document.activeElement).toBe(opener);
 	});
 
+	it('returns focus into the one beneath when the upper opened with focus nowhere', () => {
+		// A busy confirm's disabled button drops focus to the body; a
+		// modal that opens then has no opener of its own.
+		const lower = dialog('<button id="l1">l1</button>');
+		const below = mountIn(page, lower);
+		(document.activeElement as HTMLElement).blur();
+		const above = mountIn(page, dialog('<button id="u1">u1</button>'));
+		below.close();
+		above.close();
+		expect(document.activeElement).toBe(opener);
+	});
+
 	it('enters the one beneath when the closing one’s opener has gone', () => {
 		const lower = dialog('<button id="l1">l1</button>');
 		mountIn(page, lower);
