@@ -281,16 +281,45 @@ fn the_registry_query_follows_the_subprocess_convention() {
     assert_eq!(got, args);
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 #[test]
 fn a_registry_query_that_hangs_is_given_up_on() {
     // A reg.exe that never answers must not hold Settings or a launch:
     // the run gives up at its limit and kills the process it started.
-    let cmd = registry::reg_command("sh", &strings(&["-c", "sleep 30"]));
+    let dir = tempfile::tempdir().expect("tmp");
+    let pid_file = dir.path().join("pid");
+    let cmd = registry::reg_command(
+        "sh",
+        &strings(&[
+            "-c",
+            "echo $$ > \"$1\"; exec sleep 30",
+            "sh",
+            &pid_file.display().to_string(),
+        ]),
+    );
     let started = std::time::Instant::now();
-    let out = registry::reg_output(cmd, std::time::Duration::from_millis(200));
+    let out = registry::reg_output(cmd, std::time::Duration::from_millis(300));
     assert!(out.is_none());
     assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    // The process it started is gone, or a zombie waiting to be reaped:
+    // killed, not left running.
+    let pid = std::fs::read_to_string(&pid_file).expect("the child wrote its pid");
+    let stat = format!("/proc/{}/stat", pid.trim());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let state = std::fs::read_to_string(&stat)
+            .ok()
+            .and_then(|s| s.rsplit(')').next().map(|r| r.trim().chars().next()))
+            .flatten();
+        if matches!(state, None | Some('Z')) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the hung query is still running: {state:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
 }
 
 #[cfg(unix)]
