@@ -510,6 +510,17 @@ describe('the audio a correction carries', () => {
 		expect(storedAudio(RIGHT_ID)).toBeUndefined();
 	});
 
+	it('saves nothing when the show picked is the one shown: there is nothing to carry', async () => {
+		const f = fake();
+		f.deps.audioInForce = () => 'dub';
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start();
+		s.choose({ ref: s.offer!.current, current: true });
+		expect(await s.confirm()).toBe(true);
+		expect(storedAudio(GUESS)).toBeUndefined();
+	});
+
 	it('keeps the link when the storage refuses the choice', async () => {
 		refuse = true;
 		const { saved } = await pick('dub');

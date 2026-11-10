@@ -603,6 +603,62 @@ describe('switching to the pick', () => {
 		expect(recoveryResume.consume(RIGHT, 2)).toBe(30);
 	});
 
+	it('keeps the audio watched in for the switched session when the choice cannot be kept', async () => {
+		rememberAudio(GUESS, 'dub');
+		const storage = window.localStorage;
+		const write = storage.setItem.bind(storage);
+		const setItem = vi.spyOn(storage, 'setItem').mockImplementation((key, value) => {
+			if (key === AUDIO_KEY) throw new Error('quota');
+			write(key, value);
+		});
+		const modes: string[] = [];
+		server.use(
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { kitsu_id?: string; mode?: string };
+				if (body.kitsu_id === RIGHT) modes.push(String(body.mode));
+				return HttpResponse.json({
+					available: true,
+					episode_count: 26,
+					extra_episodes: [],
+					episode_count_approximate: false
+				});
+			})
+		);
+		try {
+			setParams({ id: GUESS });
+			setUrl(`/play/${GUESS}`, {
+				session: 'session-1',
+				kind: 'mp4',
+				episode: '2',
+				guess: '1',
+				row: CARD
+			});
+			app = mount(PlayRoute, { target });
+			await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+			videoAt(74);
+			await openPicker();
+			await pickAndLink(RIGHT_TITLE, m.play_link_switch_now());
+			await until(() => pickPlay() !== undefined, 'the play of the pick');
+			vi.mocked(goto).mockImplementationOnce(async (href) => {
+				const next = new URL(String(href), 'http://127.0.0.1:31337');
+				setParams({ id: next.pathname.split('/').at(-1)! });
+				setUrl(next.pathname, Object.fromEntries(next.searchParams));
+			});
+			pickPlay()!.dispatch(
+				'done',
+				JSON.stringify({ session_id: 'session-9', master_url: '/s/u/file.mp4', media_kind: 'mp4' })
+			);
+			await until(
+				() => (target.querySelector('a.np-link')?.textContent ?? '').includes(RIGHT_TITLE),
+				"the pick's player"
+			);
+			await until(() => modes.length > 0, "the pick's player asking what it can play");
+			expect(modes.every((m) => m === 'dub')).toBe(true);
+		} finally {
+			setItem.mockRestore();
+		}
+	});
+
 	it('opens a session that says once what plays now, with the ⋯ entry to change it again', async () => {
 		// The route as SvelteKit renders it, its layout around the page,
 		// and a navigation that moves the route param as SvelteKit's does:

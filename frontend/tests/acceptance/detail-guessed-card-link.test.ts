@@ -45,6 +45,7 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { appLinkDeps } from '../../src/lib/history/link-deps';
+import { rememberAudio, storedAudio } from '../../src/lib/play/audio-choice';
 
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
@@ -540,5 +541,43 @@ describe('a show page on screen when a link answers elsewhere', () => {
 		await settle();
 		expect(target.textContent).not.toContain(m.detail_play_button_continue());
 		expect(target.textContent).toContain(m.detail_play_button_episode_one());
+	});
+});
+
+describe('the audio a correction from the show page carries', () => {
+	it('is the shown show’s, even when the link answers on another show’s page', async () => {
+		rememberAudio(GUESS, 'dub');
+		rememberAudio('777', 'sub');
+		let release: () => void = () => {};
+		const saved = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		server.use(
+			http.post(`${API_BASE}/api/history/link`, async () => {
+				await saved;
+			})
+		);
+		await openShowPage(GUESS, { guessed: CARD });
+		await until(hasNote, 'the matched-from line');
+		button(m.detail_link_change())!.click();
+		await until(() => target.querySelector('dialog') !== null, 'the picker');
+		const row = () =>
+			Array.from(target.querySelectorAll('dialog li button')).find((b) =>
+				/^Black Clover\s+2017\b/.test((b.textContent ?? '').trim())
+			) as HTMLButtonElement | undefined;
+		await until(() => row() !== undefined, 'the right show among the candidates');
+		row()!.click();
+		await until(
+			() => button(m.detail_link_confirm_button())?.disabled === false,
+			'the Link button'
+		);
+		button(m.detail_link_confirm_button())!.click();
+		// Another show's page opens while the link is out.
+		setUrl('/anime/777');
+		setParams({ id: '777' });
+		release();
+		await until(() => linkCalls.length === 1, 'the link');
+		await until(() => storedAudio(RIGHT) !== undefined, 'the audio carried');
+		expect(storedAudio(RIGHT)).toBe('dub');
 	});
 });
