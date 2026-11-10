@@ -18,6 +18,7 @@
 <script lang="ts">
 	import '$lib/design/tokens.css';
 	import { onDestroy, onMount } from 'svelte';
+	import { visitSeries } from '$lib/navigation/visit';
 	import { signalAppReady } from '$lib/app-ready';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -293,8 +294,16 @@
 		}
 	}
 
+	// Each live search, cancelled once the query moves on: its answer
+	// would be dropped, and it holds an API connection until Kitsu
+	// answers. A search cancelled so answers nothing, not a failure
+	// ($lib/navigation/visit).
+	const liveReads = visitSeries();
+	onDestroy(liveReads.end);
+
 	function scheduleLive(q: string) {
 		if (liveDebounce) clearTimeout(liveDebounce);
+		liveReads.end();
 		if (q.length < LIVE_MIN_CHARS) {
 			liveResults = null;
 			liveBusy = false;
@@ -304,8 +313,9 @@
 		liveDebounce = setTimeout(async () => {
 			liveBusy = true;
 			liveError = false;
+			const reads = liveReads.next();
 			try {
-				const hits = await kitsuSearch(q);
+				const hits = await reads.keep(kitsuSearch(q, { signal: reads.signal }));
 				// If the user kept typing past this query, ignore stale results.
 				if (q !== topbarQuery.trim()) return;
 				const trimmed = hits.slice(0, LIVE_MAX_HITS);
@@ -320,7 +330,9 @@
 				// over-fetching to backfill is deliberately not done — the
 				// dropdown is a quick-jump, not a complete listing.
 				const mode: 'sub' | 'dub' = config?.mode === 'dub' ? 'dub' : 'sub';
-				const filtered = await filterAvailableCacheOnly(trimmed, mode);
+				const filtered = await reads.keep(
+					filterAvailableCacheOnly(trimmed, mode, { signal: reads.signal })
+				);
 				// Re-check after the async filter — the user may have kept
 				// typing while it ran.
 				if (q !== topbarQuery.trim()) return;
