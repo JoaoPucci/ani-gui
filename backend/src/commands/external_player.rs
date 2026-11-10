@@ -189,3 +189,7 @@ mod tests;
 #[cfg(test)]
 #[path = "external_player_subtitles_test.rs"]
 mod subtitle_tests;
+
+#[cfg(test)]
+#[path = "external_player_prop_test.rs"]
+mod prop_tests;

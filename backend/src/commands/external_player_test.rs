@@ -160,8 +160,12 @@ fn launch_args_decode_without_player_kind_field_for_back_compat() {
 
 #[test]
 fn open_external_player_with_blank_command_returns_player_spawn_failed() {
+    // Only Custom: a blank command for mpv, VLC or IINA runs that
+    // type's standard program (see `player_program`), and spawning a
+    // real player is not something a test may do.
     let mut a = args("https://example.com/v.mp4");
     a.player_command = String::new();
+    a.player_kind = ExternalPlayerKind::Custom;
     let r = open_external_player(&a);
     match r {
         Err(AniError::PlayerSpawnFailed { binary }) => assert!(binary.is_empty()),
@@ -238,4 +242,36 @@ fn a_busy_executable_is_waited_out_rather_than_failed() {
     // give it that moment before the tempdir (and the script it is
     // about to open) goes away.
     std::thread::sleep(std::time::Duration::from_millis(50));
+}
+
+#[test]
+fn a_blank_command_runs_the_types_standard_program() {
+    for blank in ["", "   ", "\t"] {
+        assert_eq!(player_program(blank, ExternalPlayerKind::Mpv), Some("mpv"));
+        assert_eq!(player_program(blank, ExternalPlayerKind::Vlc), Some("vlc"));
+        assert_eq!(
+            player_program(blank, ExternalPlayerKind::Iina),
+            Some("iina")
+        );
+    }
+}
+
+#[test]
+fn a_blank_command_for_custom_runs_nothing() {
+    // Custom has no standard program: the user names one.
+    assert_eq!(player_program("", ExternalPlayerKind::Custom), None);
+    assert_eq!(player_program("  ", ExternalPlayerKind::Custom), None);
+}
+
+#[test]
+fn a_written_command_runs_as_written_for_every_type() {
+    for kind in [
+        ExternalPlayerKind::Mpv,
+        ExternalPlayerKind::Vlc,
+        ExternalPlayerKind::Iina,
+        ExternalPlayerKind::Custom,
+    ] {
+        assert_eq!(player_program("/usr/bin/mpv", kind), Some("/usr/bin/mpv"));
+        assert_eq!(player_program("vlc", kind), Some("vlc"));
+    }
 }

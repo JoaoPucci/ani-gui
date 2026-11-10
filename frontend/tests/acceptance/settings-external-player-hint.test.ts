@@ -2,6 +2,11 @@
 // button the play page shows, and that button names the configured
 // player flavour. Switching the player flavour changes the quoted button with
 // it, so the hint never names a button the user cannot find.
+//
+// A blank command runs the flavour's standard program (mpv, vlc,
+// iina), so the hint and the field's greyed placeholder name that
+// program, not mpv for every flavour. Custom has no standard program,
+// and says so.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -76,8 +81,11 @@ async function settle() {
 
 const hint = () =>
 	Array.from(target.querySelectorAll('.field-hint')).find((h) =>
-		(h.textContent ?? '').includes('Command launched by')
+		(h.textContent ?? '').includes('Command that')
 	)?.textContent ?? '';
+
+const field = () =>
+	target.querySelector('input[aria-label="External player"]') as HTMLInputElement | null;
 
 const flavour = (label: string) =>
 	Array.from(target.querySelectorAll('button[aria-pressed]')).find(
@@ -98,5 +106,30 @@ describe('settings — the external player hint', () => {
 		await settle();
 		expect(hint()).toContain('"Open in external player"');
 		expect(hint()).not.toContain('Open in VLC');
+	});
+
+	it("names the flavour's own program in the hint and the blank field", async () => {
+		app = mount(SettingsPage, { target });
+		await settle();
+		expect(field()!.value).toBe('');
+		expect(hint()).toContain('Leave it blank to use mpv.');
+		expect(field()!.placeholder).toBe('mpv');
+
+		for (const [label, program] of [
+			['VLC', 'vlc'],
+			['IINA', 'iina'],
+			['mpv', 'mpv']
+		]) {
+			flavour(label)!.click();
+			await settle();
+			expect(hint(), label).toContain(`Leave it blank to use ${program}.`);
+			expect(field()!.placeholder, label).toBe(program);
+		}
+
+		flavour('Custom')!.click();
+		await settle();
+		expect(hint()).not.toContain('Leave it blank');
+		expect(hint()).toContain('Custom has no standard program');
+		expect(field()!.placeholder).toBe('');
 	});
 });
