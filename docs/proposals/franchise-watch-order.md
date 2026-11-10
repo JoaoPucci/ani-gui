@@ -996,7 +996,8 @@ them introduces a new widget style.
 - **Placement.** The strip comes right after the masthead, above the
   synopsis, under its own eyebrow ("Watch order"), as what comes
   before this entry, its position ("05"; a total, "of 05", only for a
-  run with no fork, join or cycle) and what comes after (the
+  run with no fork, join or cycle; neither for a franchise read only
+  in part, as "Missing data" below says) and what comes after (the
   maintainer chose this arrangement over a rail of the whole run;
   "The strip, second round" below has its layout). The
   masthead's eyebrow gains the position in its value
@@ -1277,9 +1278,9 @@ The rules below hold on every surface:
   A franchise read only in part (the walk reached its bound, or a
   listing came back cut short) may be missing entries on either side
   of the show, so the strip makes no claim that needs the whole: no
-  position, in the strip or the masthead, no total, no join or fork
-  count, and an empty column stays blank. A loop, a branch and a side
-  story keep their captions.
+  position, in the strip or the masthead, no total, no fork or loop
+  caption, no join or fork count, and an empty column stays blank. A
+  side story keeps its caption.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
   keys page it); every card and tile is a link with the poster card's
   bone focus ring; the entry being viewed is not a link. The line for
@@ -1496,7 +1497,8 @@ The maintainer answered the second round's six questions:
    repeat "Similar titles"; what that row does with a franchise's side
    stories is a separate discussion.
 5. **No "of N" at forks, joins and loops** stays. In "As released"
-   order every run is one line, and the strip says "N of total" there:
+   order every run is one line, and the strip says "N of total" there
+   (for a franchise read whole; see "Missing data" above):
    *Nisemonogatari* is "02 of 16", and *Off & Monster Season Shin
    Episode*, which has no date and sorts last, "16 of 16".
 6. **The franchise page's masthead** takes its artwork from the entry
