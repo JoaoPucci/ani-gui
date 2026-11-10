@@ -205,16 +205,27 @@ describe('loadDiscoveryRows', () => {
 
 	it('hands each row to its own slot, a failure as a failed row, and resolves once all settle', async () => {
 		const rows: [number, RowLoad<string>][] = [];
-		await expect(
-			loadDiscoveryRows<string, Config>({
-				config: () => null,
-				readConfig: () => Promise.reject(new Error('offline')),
-				keepConfig: () => {},
-				pickMode,
-				rows: [() => Promise.reject(new Error('503')), async () => ['r1']],
-				onRow: (i, row) => rows.push([i, row])
-			})
-		).resolves.toBeUndefined();
+		let answer: (items: string[]) => void = () => {};
+		const held = new Promise<string[]>((resolve) => {
+			answer = resolve;
+		});
+		let done = false;
+		const loading = loadDiscoveryRows<string, Config>({
+			config: () => null,
+			readConfig: () => Promise.reject(new Error('offline')),
+			keepConfig: () => {},
+			pickMode,
+			rows: [() => Promise.reject(new Error('503')), () => held],
+			onRow: (i, row) => rows.push([i, row])
+		}).then(() => (done = true));
+
+		for (let k = 0; k < 10; k++) await Promise.resolve();
+		expect(done).toBe(false);
+		expect(rows).toEqual([[0, FAILED]]);
+
+		answer(['r1']);
+		await loading;
+		expect(done).toBe(true);
 		expect(new Map(rows)).toEqual(
 			new Map<number, RowLoad<string>>([
 				[0, FAILED],
