@@ -119,9 +119,7 @@ class AccountStore {
 	 * again CTA rather than letting the next API call fail with 401).
 	 */
 	hydrate(): Promise<void> {
-		return hydrateAccounts(this, () => {
-			this.readsSettled = true;
-		});
+		return hydrateAccounts(this);
 	}
 
 	/**

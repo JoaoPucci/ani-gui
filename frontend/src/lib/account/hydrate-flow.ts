@@ -86,19 +86,20 @@ async function firstRead(
  * AND the account page) must do that, so the hydrate owns it rather
  * than each caller remembering.
  *
- * `onReadsSettled` is called once every provider's first read has
- * settled, before the refresh: from then on the store holds what the
- * keyring holds, not the signed-out state it starts in. It is called
- * when a read rejects too, so nobody waits on it for good.
+ * Once every provider's first read has settled, before the refresh,
+ * it sets `readsSettled`: from then on the store holds what the reads
+ * found (or what a change under way made of a provider), not the
+ * signed-out state it starts in. A read that rejects settles it too,
+ * so nobody waits on it for good.
  */
-export function hydrateAccounts(
-	target: HydrateTarget,
-	onReadsSettled: () => void = () => {}
-): Promise<void> {
+export function hydrateAccounts(target: HydrateTarget): Promise<void> {
 	const wait = waitFor(target);
 	const hydrate: HydrateRun = { settled: false };
 	const settled = Promise.all(PROVIDERS.map((p) => firstRead(target, p, wait, hydrate)));
-	void settled.then(onReadsSettled, onReadsSettled);
+	const readsSettled = () => {
+		target.readsSettled = true;
+	};
+	void settled.then(readsSettled, readsSettled);
 	return settled.then(() => {
 		hydrate.settled = true;
 		return target.refreshExpired();
