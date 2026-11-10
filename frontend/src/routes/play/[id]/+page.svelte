@@ -350,17 +350,11 @@
 	// recoveries, retries and auto-play stand down. Coming back is the
 	// element's own `play` (its button, Space, a click, a media key,
 	// picture-in-picture), picking an episode, or Reload.
-	// Restarts only an engine the page started and nothing stopped for
-	// good since (the fragment-loop guard): one not started yet starts
-	// when its levels arrive, through the gate.
-	let engineStarted = false;
-	const handoff = new HandoffGate(() => {
-		if (engineStarted) hls?.startLoad();
-	});
-	// Set by a viewer's pick of another stream while handed off: the
-	// stream it brings ends the handoff as it attaches, and the one it
-	// replaces is not started again meanwhile.
-	let replacingHandoff = false;
+	// The handoff's state ($lib/play/handoff-gate): the episode handed
+	// off, a start held for the viewer, a pick waiting for its stream,
+	// and whether the attached engine was started. The page only wires
+	// it to the element and the engine.
+	const handoff = new HandoffGate(() => hls?.startLoad());
 	/** The episode went to another player: a hold ends without
 	 *  starting anything, a start stops, the engine stops loading, and
 	 *  the element no longer starts on its own. A stream the element
@@ -372,18 +366,15 @@
 		ownVideo.autoplay = false;
 		startWatch.cancel();
 		hls?.stopLoad();
-		replacingHandoff = false;
 		handoff.handOff();
 	}
 	/** The viewer picked another stream from here (an episode, Reload). */
 	function comeBackWith() {
-		if (handoff.handedOff) replacingHandoff = true;
+		handoff.picked();
 	}
 	/** The viewer is back on the embedded player. */
 	function comeBack() {
-		replacingHandoff = false;
-		if (!handoff.handedOff) return;
-		ownVideo.autoplay = true;
+		if (handoff.handedOff) ownVideo.autoplay = true;
 		handoff.comeBack();
 	}
 	ownVideo.addEventListener('play', comeBack);
@@ -1973,14 +1964,10 @@
 		teardown();
 		attachedUrl = mediaUrl;
 		lengthFor = untrack(() => sessionId);
-		// A stream the viewer picked while the episode was handed off
-		// ends the handoff: it plays here, as any pick does.
-		if (replacingHandoff) {
-			replacingHandoff = false;
-			handoff.forget();
-			ownVideo.autoplay = true;
-		}
-		engineStarted = false;
+		// A new engine, not started yet; and a stream the viewer picked
+		// while the episode was handed off ends the handoff: it plays
+		// here, as any pick does.
+		if (handoff.attaching()) ownVideo.autoplay = true;
 		// The unload above set the element paused without a `pause`
 		// event; the stream attaching now is on its way. Told before the
 		// resume hold, below, takes the element's autoplay off.
@@ -2122,7 +2109,7 @@
 			// once, or, with the episode handed to another player, when
 			// the viewer comes back.
 			const startHere = () => {
-				engineStarted = true;
+				handoff.engineStarted();
 				startEngine(engine, startAt);
 			};
 			hls.on(Hls.Events.MANIFEST_PARSED, () => handoff.whenWatching(startHere));
@@ -2139,7 +2126,7 @@
 				stallMachine.fragmentLoaded(data);
 				if (!loopGuard.loaded(fragmentLoopKey(data.frag))) return;
 				engine.stopLoad();
-				engineStarted = false;
+				handoff.engineStopped();
 				dropHeldRetry();
 				console.warn('[play] fragment loop guard: engine stopped on fragment', data.frag.sn);
 				playerError = fragmentLoopOverlayMessage();
@@ -2681,7 +2668,7 @@
 		// error comes back, with its Reload, for when the viewer does. A
 		// Reload goes on while it is still the viewer's latest word: a
 		// handoff since it was pressed clears the pick it made.
-		if (handoff.handedOff && !(reason === 'manual reload' && replacingHandoff)) {
+		if (handoff.recoveryStandsDown(reason === 'manual reload')) {
 			playerError = restore;
 			return;
 		}
