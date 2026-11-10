@@ -11,7 +11,7 @@
  */
 export interface LatestRead<T> {
 	/** Start a read, superseding any still out; the shown value is null until it answers. */
-	start(read: () => Promise<T>): void;
+	start(read: (signal: AbortSignal) => Promise<T>): void;
 	/** Supersede any read still out without starting another; the shown value is null. */
 	stop(): void;
 }
@@ -22,7 +22,7 @@ export function latestRead<T>(show: (value: T | null) => void): LatestRead<T> {
 		start(read) {
 			const mine = ++latest;
 			show(null);
-			void read().then((value) => {
+			void read(new AbortController().signal).then((value) => {
 				if (mine === latest) show(value);
 			});
 		},
