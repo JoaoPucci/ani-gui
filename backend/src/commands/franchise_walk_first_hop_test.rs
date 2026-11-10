@@ -218,14 +218,17 @@ fn catalogue() -> BoxedStrategy<(Catalogue, String)> {
         .boxed()
 }
 
-/// Whether a listing other than `anchor`'s relates anything as an
-/// alternative version or setting.
-fn alternatives_beyond(c: &Catalogue, anchor: &str) -> bool {
-    c.listings
-        .iter()
-        .filter(|(id, _)| id.as_str() != anchor)
-        .flat_map(|(_, l)| &l.relations)
-        .any(|r| ALTERNATIVES.contains(&r.role.as_str()))
+/// `c` with every alternative relation dropped from the listings other
+/// than `anchor`'s.
+fn alternatives_only_from(mut c: Catalogue, anchor: &str) -> Catalogue {
+    for (id, listing) in &mut c.listings {
+        if id != anchor {
+            listing
+                .relations
+                .retain(|r| !ALTERNATIVES.contains(&r.role.as_str()));
+        }
+    }
+    c
 }
 
 proptest! {
@@ -247,7 +250,7 @@ proptest! {
     /// walk's outcome.
     #[test]
     fn the_first_hop_is_the_walks_outcome((c, anchor) in catalogue()) {
-        prop_assume!(!alternatives_beyond(&c, &anchor));
+        let c = alternatives_only_from(c, &anchor);
         let (hop, walked) = both(&c, &anchor);
         prop_assert_eq!(hop, walked);
     }
