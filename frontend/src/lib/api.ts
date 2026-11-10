@@ -202,14 +202,16 @@ async function expect2xx<T>(resp: Response): Promise<T> {
 }
 
 async function getJson<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-	const resp = await fetch(await url(path, opts.lane));
+	const at = await url(path, opts.lane);
+	const resp = await (opts.signal ? fetch(at, { signal: opts.signal }) : fetch(at));
 	return expect2xx<T>(resp);
 }
 
 /** A GET's JSON body, with the tickets of the refills it was served
- *  without (`$lib/refill/refill`). */
-async function getJsonServed<T>(path: string): Promise<Served<T>> {
-	const resp = await fetch(await url(path));
+ *  without (`$lib/refill/refill`). `signal` cancels the request. */
+async function getJsonServed<T>(path: string, signal?: AbortSignal): Promise<Served<T>> {
+	const at = await url(path);
+	const resp = await (signal ? fetch(at, { signal }) : fetch(at));
 	const data = await expect2xx<T>(resp);
 	// A response built without headers (a test's stand-in) has none.
 	const headers = resp.headers as Headers | undefined;
@@ -234,7 +236,7 @@ const refillWaiter = new RefillWaiter(refillsWait, undefined, refillsRelease);
 
 /** What a read the page waits on a refill for takes: what to do with
  *  the read fetched once more after the refill landed, and what says
- *  the page has gone. */
+ *  the page has gone — which cancels the read itself too. */
 export interface RefillOptions<T> {
 	onRefill?: (data: T) => void;
 	signal?: AbortSignal;
@@ -248,7 +250,7 @@ async function getJsonRefilled<T>(
 	refetchPath: string,
 	opts: RefillOptions<T>
 ): Promise<T> {
-	const served = await getJsonServed<T>(path);
+	const served = await getJsonServed<T>(path, opts.signal);
 	const apply = opts.onRefill;
 	if (apply) {
 		void refetchOnRefill(served, {
@@ -1215,8 +1217,11 @@ export function availabilityBatch(
 	mode: string,
 	opts: ReadOptions = {}
 ): Promise<AvailabilityBatchResponse> {
-	void opts;
-	return postJson<AvailabilityBatchResponse>('/api/availability/batch', { kitsu_ids, mode });
+	return postJson<AvailabilityBatchResponse>(
+		'/api/availability/batch',
+		{ kitsu_ids, mode },
+		{ signal: opts.signal }
+	);
 }
 
 /** Fire-and-forget cache warmer. Hands the backend a list of titles
@@ -1227,8 +1232,7 @@ export function availabilityWarm(items: AvailabilityArgs[]): Promise<void> {
 }
 
 export function kitsuSearch(query: string, opts: ReadOptions = {}): Promise<KitsuAnimeRef[]> {
-	void opts;
-	return postJson<KitsuAnimeRef[]>('/api/kitsu/search', { query });
+	return postJson<KitsuAnimeRef[]>('/api/kitsu/search', { query }, { signal: opts.signal });
 }
 
 /** One page of a Kitsu text search: its hits, and the offset the
@@ -1252,8 +1256,7 @@ export function kitsuSearchPage(
 	// Kitsu's ranking is the route's default, so a ranked request
 	// carries no order.
 	const body = order === 'relevance' ? { query, offset } : { query, offset, sort: order };
-	void opts;
-	return postJson<KitsuSearchPage>('/api/kitsu/search/page', body);
+	return postJson<KitsuSearchPage>('/api/kitsu/search/page', body, { signal: opts.signal });
 }
 
 /** One show's detail. A page showing its banner passes `onRefill`: when
@@ -1319,7 +1322,7 @@ export async function kitsuByMalIds(
 	const secret = typeof window !== 'undefined' ? window.aniGui?.internalSecret : undefined;
 	if (secret) headers['x-ani-gui-internal-secret'] = secret;
 	const init: RequestInit = { method: 'POST', headers, body: JSON.stringify({ mal_ids: malIds }) };
-	void opts;
+	if (opts.signal) init.signal = opts.signal;
 	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), init);
 	return expect2xx<KitsuAnimeRef[]>(resp);
 }
@@ -1544,8 +1547,11 @@ export function kitsuGuessRuledOut(
 	search: boolean,
 	opts: ReadOptions = {}
 ): Promise<string[]> {
-	void opts;
-	return postJson<string[]>('/api/history/guess/ruled-out', { key, title, episode, hits, search });
+	return postJson<string[]>(
+		'/api/history/guess/ruled-out',
+		{ key, title, episode, hits, search },
+		{ signal: opts.signal }
+	);
 }
 
 /**
