@@ -11,7 +11,8 @@
 //   toggle included.
 // - The plan-to-watch status is "Quero assistir" and "Por ver"
 //   wherever a message names it.
-// - A message that means the show says "anime", not "título". Where
+// - A message that means the show says "anime", not "título" or
+//   "serie"/"série" (those keep only a franchise's run of shows). Where
 //   "título" means a name (an episode title, a title typed into
 //   search), it stays, so the rule lists the show-meaning keys.
 // - Russian headings end without a full stop.
@@ -161,6 +162,27 @@ describe('a message about the show says "anime"', () => {
 	for (const locale of ['pt-BR', 'es-419']) {
 		it(`${locale} show messages do not call it "título"`, () => {
 			expect(offenders(locale, (s) => /(^|[^\p{L}])t[íi]tulo/iu.test(s), SHOW_KEYS)).toEqual([]);
+		});
+	}
+});
+
+describe('the show is "anime", not "serie"', () => {
+	/** Messages where the word means a run of shows, not the show. */
+	const SERIES_ALLOWED: Record<string, string[]> = {
+		// Watch order: how the seasons, films and specials of a
+		// franchise are ordered, which is a series of anime.
+		'es-419': ['watchorder.setting_hint'],
+		'pt-BR': ['watchorder.setting_hint']
+	};
+	const word = {
+		'es-419': /(^|[^\p{L}])series?([^\p{L}]|$)/iu,
+		'pt-BR': /(^|[^\p{L}])s[ée]ries?([^\p{L}]|$)/iu
+	};
+	for (const [locale, pattern] of Object.entries(word)) {
+		it(`${locale} calls the show "anime"`, () => {
+			const allowed = new Set(SERIES_ALLOWED[locale]);
+			const found = offenders(locale, (s) => pattern.test(s)).filter((k) => !allowed.has(k));
+			expect(found).toEqual([]);
 		});
 	}
 });
