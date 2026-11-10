@@ -180,9 +180,12 @@ pub enum AniError {
     /// can name the failed command in the error toast.
     #[error("player spawn failed: {binary}")]
     PlayerSpawnFailed {
-        /// The player command the user configured (e.g. `"vlc"`,
-        /// `"/usr/bin/mpv"`). Surfaced verbatim in the localized
-        /// error message via the `{binary}` placeholder.
+        /// The program that was tried (e.g. `"vlc"`, `"/usr/bin/mpv"`):
+        /// the configured command, or the type's standard program when
+        /// the command is blank. Blank for a blank Custom command, which
+        /// the UI answers with "set a program in Settings". Surfaced
+        /// verbatim in the localized error message via the `{binary}`
+        /// placeholder.
         binary: String,
     },
 

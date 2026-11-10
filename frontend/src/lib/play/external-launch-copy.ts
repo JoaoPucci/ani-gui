@@ -8,8 +8,9 @@ import { m } from '$lib/paraglide/messages';
 import { describePlayFailure, type OtherAudio } from './error-copy';
 
 /** User-facing copy for a failed external-player launch. The
- *  common case is a `player_spawn_failed` payload — the configured
- *  binary isn't on PATH or doesn't exist. Other resolve-step
+ *  common case is a `player_spawn_failed` payload: the program isn't
+ *  on PATH or doesn't exist, or (an empty `binary`) a blank Custom
+ *  command left no program to run. Other resolve-step
  *  failures (scraper / timeout / network) reuse `describePlayFailure`
  *  so the user doesn't get a debug-y "External player failed:
  *  scraper" string.

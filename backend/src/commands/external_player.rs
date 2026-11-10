@@ -127,8 +127,10 @@ enum SubFlag {
 /// # Errors
 /// - [`AniError::PlayerSpawnFailed`] if the configured player command
 ///   can't be spawned (usually means it's not on PATH or the path
-///   doesn't point at an executable). Carries the configured binary
-///   name so the UI can name it in the error toast.
+///   doesn't point at an executable). Carries the program that was
+///   tried, the type's standard one for a blank command, so the UI can
+///   name it in the error toast. A blank Custom command carries the
+///   blank: there is no program to name.
 pub fn open_external_player(args: &LaunchArgs) -> Result<()> {
     let Some(program) = player_program(&args.player_command, args.player_kind) else {
         return Err(AniError::PlayerSpawnFailed {
