@@ -45,6 +45,9 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { rememberAudio, storedAudio } from '../../src/lib/play/audio-choice';
+
+/** Where the per-show Sub or Dub choices are kept ($lib/play/audio-choice). */
+const AUDIO_KEY = 'ani-gui.audio-choices';
 import { __resetHiddenRowsForTests } from '../../src/lib/history/in-place-link.svelte';
 import { recoveryResume } from '../../src/lib/play/resume-after-recovery';
 
@@ -686,8 +689,13 @@ describe('switching to the pick', () => {
 
 	it('switches in the audio watched in when the choice cannot be kept, claiming none', async () => {
 		rememberAudio(GUESS, 'dub');
-		const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-			throw new Error('quota');
+		// The audio choices' storage refuses the write; the rest of the
+		// app's storage is left as it is.
+		const storage = window.localStorage;
+		const write = storage.setItem.bind(storage);
+		const setItem = vi.spyOn(storage, 'setItem').mockImplementation((key, value) => {
+			if (key === AUDIO_KEY) throw new Error('quota');
+			write(key, value);
 		});
 		try {
 			await openPlayer();
