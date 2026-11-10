@@ -69,13 +69,15 @@ export async function launchPackagedApp(
 ): Promise<ElectronApplication> {
 	const refusal = launchRefusal(env ?? {});
 	if (refusal) throw new Error(refusal);
+	// The launcher script execs the binary beside it in the same process;
+	// resolved before the launch, so a launched app is always recorded.
+	const exe = fs.realpathSync(`${binary}.bin`);
 	const app = await _electron.launch({
 		executablePath: binary,
 		args: [...testLaunchSwitches],
 		env: { ...env, ...testRunEnv }
 	});
-	// The launcher script execs the binary beside it in the same process.
-	launched.set(app, { child: app.process(), exe: fs.realpathSync(`${binary}.bin`) });
+	launched.set(app, { child: app.process(), exe });
 	return app;
 }
 
@@ -88,9 +90,9 @@ const launched = new WeakMap<ElectronApplication, { child: ChildProcess; exe: st
  *  process group Playwright created for it, SIGKILL to the same group if
  *  it is still there after `termMs`, and only while that group is
  *  provably the app's — the main process unreaped, leading its group,
- *  running the binary it was launched from (lib/own-group.cjs). Then Playwright's
- *  close, which settles once the process has gone, whatever the stop
- *  did. An app that has already exited is closed without a signal.
+ *  running the binary it was launched from (lib/own-group.cjs). Then
+ *  Playwright's close, which settles once the process has gone,
+ *  whatever the stop did. An app that has already exited is closed without a signal.
  *
  *  The backend is not in that group. It stops itself once the app's end
  *  of its stdin closes (lib/backend-spawn.cjs), and nothing here

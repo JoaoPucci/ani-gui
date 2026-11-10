@@ -138,7 +138,8 @@ function lockHolder(config: string): number | null {
 function ours(pid: number | null | undefined, binary: string): pid is number {
 	if (!Number.isInteger(pid) || (pid as number) <= 1) return false;
 	try {
-		return fs.readlinkSync(`/proc/${pid}/exe`) === `${binary}.bin`;
+		// Both sides canonical, as launch.ts records the launched binary.
+		return fs.readlinkSync(`/proc/${pid}/exe`) === fs.realpathSync(`${binary}.bin`);
 	} catch {
 		return false;
 	}
@@ -224,9 +225,14 @@ test('a first page that never says it rendered: the splash offers Restart and Qu
 		await new Promise((r) => setTimeout(r, 3_000));
 		expect(ours(lockHolder(config), binary)).toBe(false);
 	} finally {
-		await stopApp(app);
-		await stopOurs(lockHolder(config), binary);
-		fs.rmSync(tmp, { recursive: true, force: true });
+		// A stop that refuses (lib/own-group.cjs) fails the test, but the
+		// rest of the cleanup still runs.
+		try {
+			await stopApp(app);
+		} finally {
+			await stopOurs(lockHolder(config), binary);
+			fs.rmSync(tmp, { recursive: true, force: true });
+		}
 	}
 });
 
@@ -269,11 +275,14 @@ test('Restart, in the app’s language, starts the app again: this process exits
 		expect(ours(relaunched, binary)).toBe(true);
 	} finally {
 		await stopOurs(relaunched, binary);
-		await stopApp(app);
-		// A relaunch that took the lock after the poll gave up is still
-		// this test's: the lock in its own profile names it.
-		await stopOurs(lockHolder(config), binary);
-		fs.rmSync(tmp, { recursive: true, force: true });
+		try {
+			await stopApp(app);
+		} finally {
+			// A relaunch that took the lock after the poll gave up is still
+			// this test's: the lock in its own profile names it.
+			await stopOurs(lockHolder(config), binary);
+			fs.rmSync(tmp, { recursive: true, force: true });
+		}
 	}
 });
 
@@ -282,7 +291,6 @@ test('a first page that renders after the stuck state hands over as usual: the w
 	const binary = packagedWithPage('late', 'late');
 	const { tmp, env } = profileEnv();
 	const app = await launchPackagedApp(env, { binary });
-	const pid = app.process().pid!;
 	try {
 		const splash = await splashWindow(app);
 		await expect(splash.locator('.actions')).toBeVisible({ timeout: 30_000 });
@@ -296,7 +304,10 @@ test('a first page that renders after the stuck state hands over as usual: the w
 		});
 		expect(ready).toEqual({ rendered: true, gaveUp: false, beforeReveal: true });
 	} finally {
-		await stopApp(app);
-		fs.rmSync(tmp, { recursive: true, force: true });
+		try {
+			await stopApp(app);
+		} finally {
+			fs.rmSync(tmp, { recursive: true, force: true });
+		}
 	}
 });
