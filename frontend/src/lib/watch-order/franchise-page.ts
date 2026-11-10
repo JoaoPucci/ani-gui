@@ -20,7 +20,6 @@ import {
 	type RowContext
 } from './franchise-sections';
 import { progressFromHistory } from './progress';
-import { shortTitle } from './short-title';
 import { runOf } from './strip-model';
 import { currentIn, franchiseSummary } from './strip-view';
 import type { WatchEntry, WatchRun } from './types';
@@ -44,7 +43,6 @@ export interface FranchisePageModel {
 	/** The title the viewer is part-way through, where Resume goes. */
 	readonly resume: {
 		readonly entry: WatchEntry;
-		readonly label: string;
 		readonly episode: number;
 		readonly position: number | null;
 	} | null;
@@ -91,13 +89,11 @@ export function franchisePage(
 	if (data.franchise === null || data.franchise.anchor !== id) return null;
 	const run = runOf(data.franchise);
 	if (run === null) return null;
-	const titles = run.entries.map((e) => e.title);
 	const ctx: RowContext = {
 		run,
 		order,
 		id,
-		progress: progressFromHistory(data.rows, run.entries),
-		label: (e) => shortTitle(e.title, titles)
+		progress: progressFromHistory(data.rows, run.entries)
 	};
 	// Read in part, the walk may have missed titles before the first one
 	// it reached: nothing counted from that title is sure.
@@ -117,7 +113,6 @@ export function franchisePage(
 		alone: whole && isAlone(run, id),
 		resume: now && {
 			entry: now.entry,
-			label: ctx.label(now.entry),
 			episode: now.episode,
 			position: whole ? placement(run, now.entry.id, order).position : null
 		},

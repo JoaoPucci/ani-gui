@@ -29,7 +29,6 @@
 	let { model, today }: { model: FranchisePageModel; today: string } = $props();
 
 	const accent = $derived(accentFor(model.art.id));
-	let recapsOpen = $state(false);
 </script>
 
 <div class="franchise" style:--accent={accent}>
@@ -77,7 +76,7 @@
 									>{numeral(model.resume.position)}</span
 								>{/if}
 							<span class="caption-title" title={model.resume.entry.title}
-								>{model.resume.label}</span
+								>{model.resume.entry.title}</span
 							>
 							<span class="caption-ep"
 								>{m.watchorder_meta_progress_open({ episode: model.resume.episode })}</span
@@ -121,12 +120,7 @@
 					</span>
 					<span class="row-text">
 						{#if r.here}<span class="here-key">{m.watchorder_franchise_here()}</span>{/if}
-						{#if r.label !== r.entry.title}
-							<span class="sr-only">{r.entry.title}</span>
-							<span class="row-title" aria-hidden="true">{r.label}</span>
-						{:else}
-							<span class="row-title">{r.entry.title}</span>
-						{/if}
+						<span class="row-title">{r.entry.title}</span>
 						<MetaLine segments={metaLine(r.entry, undefined, today)} />
 						{#if r.leadsInto !== null}
 							<span class="row-note">{m.watchorder_strip_leads_into({ title: r.leadsInto })}</span>
@@ -231,21 +225,10 @@
 							<span class="eyebrow-value">{model.recapCount}</span>
 						{/if}
 					</h2>
-					<button
-						type="button"
-						class="recaps-toggle"
-						aria-expanded={recapsOpen}
-						onclick={() => (recapsOpen = !recapsOpen)}
-						>{recapsOpen
-							? m.watchorder_franchise_recaps_hide()
-							: m.watchorder_franchise_recaps_show()}</button
-					>
 				</div>
-				{#if recapsOpen}
-					<Strip eyebrow={m.watchorder_franchise_recaps()} headless>
-						{#each model.recaps as e (e.id)}<PosterCard anime={asRef(e)} />{/each}
-					</Strip>
-				{/if}
+				<Strip eyebrow={m.watchorder_franchise_recaps()} headless>
+					{#each model.recaps as e (e.id)}<PosterCard anime={asRef(e)} />{/each}
+				</Strip>
 			</section>
 		{/if}
 	</div>
@@ -566,21 +549,6 @@
 		gap: var(--space-5);
 		padding-inline: var(--space-8);
 		margin-block-end: var(--space-4);
-	}
-	.recaps-toggle {
-		font-size: var(--type-meta);
-		font-weight: 600;
-		text-decoration: underline;
-		text-decoration-color: color-mix(in oklab, var(--bone-100) 30%, transparent);
-		text-underline-offset: 0.25em;
-	}
-	.sr-only {
-		position: absolute;
-		inline-size: 1px;
-		block-size: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
 	}
 	@media (max-width: 1100px) {
 		.masthead {

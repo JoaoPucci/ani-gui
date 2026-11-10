@@ -4,8 +4,8 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} título",
-				"countPlural=*": "{count} títulos"
+				"countPlural=one": "{count} anime",
+				"countPlural=*": "{count} animes"
 			}
 		}
 	],
@@ -19,21 +19,19 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} título enlazado, sin orden claro",
-				"countPlural=*": "{count} títulos enlazados, sin orden claro"
+				"countPlural=one": "{count} anime enlazado, sin orden claro",
+				"countPlural=*": "{count} animes enlazados, sin orden claro"
 			}
 		}
 	],
-	"franchise_loop_group_partial": "Títulos enlazados, sin orden claro",
+	"franchise_loop_group_partial": "Animes enlazados, sin orden claro",
 	"franchise_main": "Historia principal",
-	"franchise_none": "Este anime no tiene otras temporadas ni títulos relacionados.",
+	"franchise_none": "Este anime no tiene otras temporadas ni animes relacionados.",
 	"franchise_order_change": "Cambiar en Ajustes",
 	"franchise_order_note_linked": "En el orden en que las bases de datos de anime los enlazan.",
 	"franchise_order_note_released": "En orden de estreno.",
-	"franchise_partial": "Puede haber más títulos además de los que aparecen aquí.",
+	"franchise_partial": "Puede haber más animes además de los que aparecen aquí.",
 	"franchise_recaps": "Resúmenes",
-	"franchise_recaps_hide": "Ocultar resúmenes",
-	"franchise_recaps_show": "Mostrar resúmenes",
 	"franchise_resume": "Reanudar",
 	"franchise_retry": "Reintentar",
 	"franchise_sides": "Historias paralelas y especiales",
@@ -100,8 +98,8 @@
 			"declarations": ["input others", "local countPlural = others: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "Enlazado con {others} título más, sin orden claro",
-				"countPlural=*": "Enlazado con otros {others} títulos, sin orden claro"
+				"countPlural=one": "Enlazado con {others} anime más, sin orden claro",
+				"countPlural=*": "Enlazado con otros {others} animes, sin orden claro"
 			}
 		}
 	],

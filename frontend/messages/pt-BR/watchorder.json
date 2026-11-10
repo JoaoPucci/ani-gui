@@ -4,8 +4,8 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} título",
-				"countPlural=*": "{count} títulos"
+				"countPlural=one": "{count} anime",
+				"countPlural=*": "{count} animes"
 			}
 		}
 	],
@@ -19,21 +19,19 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} título vinculado, ordem incerta",
-				"countPlural=*": "{count} títulos vinculados, ordem incerta"
+				"countPlural=one": "{count} anime vinculado, ordem incerta",
+				"countPlural=*": "{count} animes vinculados, ordem incerta"
 			}
 		}
 	],
-	"franchise_loop_group_partial": "Títulos vinculados, ordem incerta",
+	"franchise_loop_group_partial": "Animes vinculados, ordem incerta",
 	"franchise_main": "História principal",
-	"franchise_none": "Este anime não tem outras temporadas nem títulos relacionados.",
-	"franchise_order_change": "Alterar em Configurações",
+	"franchise_none": "Este anime não tem outras temporadas nem animes relacionados.",
+	"franchise_order_change": "Alterar em Ajustes",
 	"franchise_order_note_linked": "Na ordem em que as bases de dados de anime os vinculam.",
 	"franchise_order_note_released": "Em ordem de lançamento.",
-	"franchise_partial": "Pode haver mais títulos além dos listados aqui.",
+	"franchise_partial": "Pode haver mais animes além dos listados aqui.",
 	"franchise_recaps": "Recapitulações",
-	"franchise_recaps_hide": "Ocultar recapitulações",
-	"franchise_recaps_show": "Mostrar recapitulações",
 	"franchise_resume": "Continuar",
 	"franchise_retry": "Tentar de novo",
 	"franchise_sides": "Histórias paralelas e especiais",

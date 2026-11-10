@@ -140,25 +140,28 @@ fn jojo() -> Catalogue {
 /// From the 2000 OVA, the run is the 2012 series → the 2000 OVA → the
 /// 1993 OVA: Stardust Crusaders lists the OVA as another version, so
 /// rule 3 leaves it out, and it is listed with the rest of the versions.
+/// The Phantom Blood film is a film.
 #[test]
 fn from_the_2000_jojo_ova_the_run_is_the_ovas_after_the_2012_series() {
     let f = drive("7730", &jojo());
     assert_eq!(ids(&f.entries), ["610", "7730", "7158"]);
     assert_eq!(f.links, [pair("7158", "7730"), pair("7730", "610")]);
-    assert_eq!(ids(&f.versions), ["3136", "13306", "8063", "8739"]);
-    assert!(f.films.is_empty() && f.sides.is_empty() && f.recaps.is_empty());
+    assert_eq!(ids(&f.versions), ["13306", "8063", "8739"]);
+    assert_eq!(ids(&f.films), ["3136"]);
+    assert!(f.sides.is_empty() && f.recaps.is_empty());
     assert!(f.parents.is_empty());
     assert!(f.complete);
 }
 
 /// From a TV part, no member lists either OVA as a prequel or sequel:
-/// both are other versions, not members.
+/// both are other versions, not members. The film is a film.
 #[test]
 fn from_a_jojo_tv_part_the_ovas_are_other_versions() {
     let f = drive("8063", &jojo());
     assert_eq!(ids(&f.entries), ["7158", "8063", "8739"]);
     assert_eq!(f.links, [pair("7158", "8063"), pair("8063", "8739")]);
-    assert_eq!(ids(&f.versions), ["610", "7730", "3136", "13306"]);
+    assert_eq!(ids(&f.versions), ["610", "7730", "13306"]);
+    assert_eq!(ids(&f.films), ["3136"]);
 }
 
 /// Fate as Kitsu relates it around Fate/Zero, with a same-world series
@@ -212,7 +215,7 @@ fn fate() -> Catalogue {
 
 /// Fate/Zero 2nd Season lists four sequels. The 2006 series and the two
 /// films list one another as versions: the series, in the same format,
-/// is the one added, and the films are other versions. The prologue is
+/// is the one added, and the films, other versions of it, are films. The prologue is
 /// no version of them, so the run forks after the 2nd season. The
 /// same-world series is listed nowhere; the recap, the film and the
 /// side story sit around the run.
@@ -225,20 +228,22 @@ fn fate_zero_forks_and_the_same_format_series_wins_its_group() {
     );
     assert!(f.links.contains(&pair("7658", "323")));
     assert!(f.links.contains(&pair("7658", "9718")));
-    assert_eq!(ids(&f.versions), ["4788", "8675"]);
+    assert!(f.versions.is_empty());
     assert_eq!(ids(&f.recaps), ["6906"]);
-    assert_eq!(ids(&f.films), ["7873"]);
+    assert_eq!(ids(&f.films), ["4788", "7873", "8675"]);
     assert_eq!(ids(&f.sides), ["6928"]);
     assert!(f.parents.is_empty());
 }
 
 /// From the UBW series, the 2006 series it lists as a version is left
-/// out of the run by rule 3 and listed as a version.
+/// out of the run by rule 3 and listed as a version; the films listed
+/// as versions are films.
 #[test]
 fn from_unlimited_blade_works_the_2006_series_is_a_version() {
     let f = drive("7882", &fate());
     assert_eq!(ids(&f.entries), ["6028", "7658", "9718", "7882", "10052"]);
-    assert_eq!(ids(&f.versions), ["323", "4788", "8675"]);
+    assert_eq!(ids(&f.versions), ["323"]);
+    assert_eq!(ids(&f.films), ["4788", "7873", "8675"]);
 }
 
 /// A side story with two parents walks from the earlier parent; it is
@@ -415,4 +420,70 @@ fn versions_met_in_one_step_through_different_entries_keep_one() {
         members.contains(&"95004") != members.contains(&"95005"),
         "{members:?}"
     );
+}
+
+/// A named parent story whose listing names fewer entries beneath it
+/// than the anchor's is not taken; but its listing was read to decide
+/// that, and a listing cut short there makes the answer incomplete.
+#[test]
+fn a_rejected_parent_read_in_part_makes_it_incomplete() {
+    let mut c = Catalogue::default();
+    c.add("1", "TV", Some("1999-10-20"))
+        .add("2", "ONA", Some("2026-09-29"))
+        .add("3", "special", Some("2005-01-01"))
+        .add("4", "special", Some("2006-01-01"));
+    c.rel("1", "parent_story", "2")
+        .rel("1", "side_story", "3")
+        .rel("1", "summary", "4")
+        .rel("2", "side_story", "1");
+    c.listings.get_mut("2").expect("listing").complete = false;
+    let f = drive("1", &c);
+    assert_eq!(ids(&f.entries), ["1"]);
+    assert!(f.parents.is_empty());
+    assert!(!f.complete);
+}
+
+/// An earlier side story that names more entries beneath it is the
+/// anchor's parent only when it names the anchor back as its parent
+/// story: one that does not is no sign of a pair listed the wrong way
+/// round.
+#[test]
+fn an_earlier_side_story_that_does_not_name_the_anchor_back_is_not_its_parent() {
+    let mut c = Catalogue::default();
+    c.add("1", "OVA", Some("2010-01-01"))
+        .add("2", "TV", Some("2000-01-01"))
+        .add("3", "special", Some("2001-01-01"))
+        .add("4", "special", Some("2002-01-01"));
+    c.rel("1", "side_story", "2")
+        .rel("2", "side_story", "3")
+        .rel("2", "summary", "4");
+    let f = drive("1", &c);
+    assert_eq!(ids(&f.entries), ["1"]);
+    assert!(f.parents.is_empty());
+    // Named back, it is the parent.
+    c.rel("2", "parent_story", "1");
+    let f = drive("1", &c);
+    assert_eq!(ids(&f.entries), ["2"]);
+    assert_eq!(f.parents.get("1").cloned(), Some(vec!["2".to_string()]));
+}
+
+/// A named parent story that started before the anchor is its parent
+/// even when the anchor names more entries beneath it: a side story
+/// with recaps of its own is still a side story. Only a parent that
+/// started after the anchor and names fewer is taken as the pair
+/// listed the wrong way round.
+#[test]
+fn a_parent_that_started_first_is_the_parent_whatever_it_names() {
+    let mut c = Catalogue::default();
+    c.add("1", "OVA", Some("2010-01-01"))
+        .add("2", "TV", Some("2005-01-01"))
+        .add("3", "special", Some("2011-01-01"))
+        .add("4", "special", Some("2012-01-01"));
+    c.rel("1", "parent_story", "2")
+        .rel("1", "summary", "3")
+        .rel("1", "summary", "4")
+        .rel("2", "side_story", "1");
+    let f = drive("1", &c);
+    assert_eq!(ids(&f.entries), ["2"]);
+    assert_eq!(f.parents.get("1").cloned(), Some(vec!["2".to_string()]));
 }

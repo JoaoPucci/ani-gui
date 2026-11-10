@@ -270,6 +270,11 @@ describe('Continue Watching after a finale', () => {
 		);
 		expect(card.textContent).toContain(m.watchorder_handoff_next());
 		expect(card.textContent).toContain(SECOND);
+		// The finished show by its whole title, as the rest of the app
+		// names it: no words cut because the next show shares them.
+		expect(card.querySelector('.show')?.textContent).toBe(
+			m.watchorder_handoff_after({ title: FIRST })
+		);
 		// The hand-off takes the finished show's place: no card offers
 		// its finale again.
 		expect(resumeFor(FIRST)).toBeNull();

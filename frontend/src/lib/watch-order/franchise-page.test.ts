@@ -90,7 +90,7 @@ describe('franchisePage', () => {
 		];
 		const page = franchisePage(data('jojo', '41410', rows), '41410', 'linked')!;
 		expect(page.resume).toMatchObject({ entry: { id: '49847' }, episode: 1, position: 9 });
-		expect(page.resume!.label).not.toBe('');
+		expect(page.resume!.entry.title).not.toBe('');
 	});
 
 	it('has nothing to resume when nothing is part-way, and starts from the first title', () => {
@@ -102,6 +102,19 @@ describe('franchisePage', () => {
 	it('starts from the earliest release in release order', () => {
 		// Fate/stay night (2006) came out before Fate/Zero (2011).
 		expect(franchisePage(data('fate', '6028'), '6028', 'released')!.start?.id).toBe('323');
+	});
+
+	it('says which title a stray one leads into by its whole title', () => {
+		for (const r of FIXTURE_RUNS) {
+			for (const e of r.entries) {
+				const rows: HistoryRow[] = [{ ep_no: '1', kitsu_id: e.id }];
+				const page = franchisePage(data(r.key, e.id, rows), e.id, 'linked');
+				if (page === null) continue;
+				const titles = new Set(r.entries.map((x) => x.title));
+				for (const row of rowsOf(page))
+					if (row.leadsInto !== null) expect(titles.has(row.leadsInto)).toBe(true);
+			}
+		}
 	});
 
 	it('numbers a straight run of seasons from 01, marking the title it was opened from', () => {
@@ -149,7 +162,7 @@ describe('franchisePage', () => {
 		// Gintama: The Semi-Final leads into The Final from outside the main line.
 		const page = franchisePage(data('gintama', '818'), '818', 'linked')!;
 		const semi = rowsOf(page).find((r) => r.entry.id === '43829')!;
-		expect(semi.leadsInto).toBe(rowsOf(page).find((r) => r.entry.id === '43683')!.label);
+		expect(semi.leadsInto).toBe(rowsOf(page).find((r) => r.entry.id === '43683')!.entry.title);
 	});
 
 	/** A payload of `ids` linked by `links`, anchored on the first. */

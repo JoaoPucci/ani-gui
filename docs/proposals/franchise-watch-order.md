@@ -551,7 +551,30 @@ is defined from the entry being viewed — the anchor — by these rules
    `alternative_setting` is not listed: Kitsu uses it for separate
    series in the same world (*Fate/stay night* lists *Apocrypha*,
    *Prisma☆Illya* and *Grand Order* that way). Manga and novels are
-   never listed.
+   never listed. A movie among them is listed with the films instead:
+   *Boruto: Naruto the Movie*, left out beside the *Boruto* series it
+   is a version of, is a film on Naruto's franchise page, not an
+   other version. The same holds for a recap that is a movie. A TV
+   series a member lists as its summary is a version of it, not a
+   recap: *Dragon Ball Super: Beerus*, a 19-episode re-edit of
+   *Super*'s opening arc, is listed beside both *Kai* series.
+
+**Side stories.** An anchor whose own run is itself alone, and that
+names a parent story, is walked from its earliest parent story
+instead, and listed beside that run (with the films, if it is a movie)
+with its parents named. Kitsu sometimes lists a pair the wrong way
+round, from both sides: [data] on 2026-11-11 *One Piece* (12) named
+*LEGO ONE PIECE* (50656), a two-episode ONA from 2026, as its parent
+story, and *LEGO ONE PIECE* named *One Piece* as its side story. So
+an entry the anchor names as its parent story is refused when it did
+not start before the anchor and its own listing names fewer side
+stories, spin-offs and recaps than the anchor's; and an entry the
+anchor names as its side story or spin-off is taken as its parent
+story when it started before the anchor, names the anchor back as its
+parent story, and names more of them. A listing read for this counts
+toward the bound on what the walk reads after it, and one cut short
+makes the answer incomplete. *One Piece* names sixty-three;
+*LEGO ONE PIECE* names one.
 
 With these tie-breaks every entry has one path and one decision, so
 the result does not depend on the order the walk happens to read
@@ -622,10 +645,10 @@ Where they differ, entry by entry:
 - **JoJo, from the 2000 OVA.** Link order: *JoJo* (TV, 2012) → 2000 OVA
   → 1993 OVA. Release order: 1993 OVA → 2000 OVA → 2012 series. All
   three entries' neighbours change. Other versions: both *Stardust
-  Crusaders* seasons, the 2007 *Phantom Blood* film and the 2012
-  re-edit special. From any TV part, the run is the nine entries from
-  the 2012 series to *Steel Ball Run* (an ONA), the same in both
-  orders. No entry in it lists either OVA as a prequel or sequel, so
+  Crusaders* seasons and the 2012 re-edit special; the 2007 *Phantom
+  Blood* film is listed with the films. From any TV part, the run is
+  the nine entries from the 2012 series to *Steel Ball Run* (an ONA),
+  the same in both orders. No entry in it lists either OVA as a prequel or sequel, so
   the walk never meets them; both are other versions by rule 4, since
   run members list them as `alternative_version`.
 - **Fate, from *Fate/Zero*.** Link order: *Fate/Zero* → *2nd Season* →
@@ -633,10 +656,11 @@ Where they differ, entry by entry:
   season. Release order: *Fate/stay night* (2006) → *Fate/Zero* → *2nd
   Season* → prologue → UBW → UBW 2nd season. They differ at *Fate/stay
   night* (2006), *Fate/Zero* and its 2nd season. The 2010 UBW film and
-  the first *Heaven's Feel* film are other versions: with *Fate/stay
-  night* (2006) they list one another as versions, and the TV series
-  wins (rule 2). Rule 4 adds *Fate/Prototype* and a UBW 2nd-season
-  special, which run members list as versions; the same-world series
+  the first *Heaven's Feel* film are left out: with *Fate/stay night*
+  (2006) they list one another as versions, and the TV series wins
+  (rule 2). Being movies, they are listed with the films. Rule 4 adds
+  *Fate/Prototype* and a UBW 2nd-season special, which run members
+  list as versions; the same-world series
   (*Apocrypha* and the rest) are not listed. From the UBW series' own
   page, the run is *Fate/Zero* → *2nd Season* → prologue → UBW → UBW
   2nd season in both orders; *Fate/stay night* (2006) is then an other
@@ -845,16 +869,16 @@ design section. Below it, sections:
    unnumbered beside the numbered path, each entry's progress and a
    "you are here" marker.
 2. **Other versions** — section 4's rule 4: from the JoJo TV run, both
-   OVAs; from the UBW run, the 2006 *Fate/stay night*, the 2010 film
-   and the first *Heaven's Feel* film among them; *Gintama*'s
-   retelling films.
-3. From `around`, by role first and format second: **Recaps**
-   (`summary`, collapsed by default — *Attack on Titan: Chronicle*
-   lands here though it is a film), then **Films** (movies among the
-   rest) and **Side stories & specials** (everything else: side
-   stories, parent stories, spin-offs, `other`). Links of the
-   `character` and `adaptation` roles are not shown: they tie
-   unrelated series together (*Gintama* to *Saiki Kusuo*).
+   OVAs; from the UBW run, the 2006 *Fate/stay night*. Movies are not
+   listed here but under Films: the 2010 UBW film and the first
+   *Heaven's Feel* film, *Gintama*'s retelling films.
+3. From `around`: **Films** (every movie around the run, whatever its
+   role: a version, a recap or a side story), **Side stories &
+   specials** (everything else: side stories, parent stories,
+   spin-offs, `other`) and **Recaps** (`summary`, a TV series aside,
+   which is an other version). Links of the `character` and `adaptation`
+   roles are not shown: they tie unrelated series together (*Gintama*
+   to *Saiki Kusuo*).
 
 There is no order switch on the page; the app-wide setting applies.
 
@@ -1175,11 +1199,13 @@ them introduces a new widget style.
     current entry.
   - **Films, side stories and other versions:** standard `Strip` rails
     of poster cards, each under the app's eyebrow.
-  - **Recaps:** a collapsed section under the same eyebrow.
+  - **Recaps:** a rail like the others, under its eyebrow and count,
+    shown from the start (decision 3 below).
 - **At a glance versus on hover.** Each row shows the numeral, the
-  short title, the format, the year, the episode count and the
-  progress. The full title is the row's tooltip on hover and what a
-  screen reader reads, as on the show page's strip.
+  whole title (decision 4 below), the format, the year, the
+  episode count and the progress. The title is also the row's tooltip
+  on hover and what a screen reader reads, as on the show page's
+  strip.
 - **Keyboard and motion.** The list is a list of links in reading
   order. There is no order switch (section 4). The page enters like the
   show page. Under reduced motion it does not
@@ -1302,13 +1328,15 @@ The rules below hold on every surface:
   checks the preference itself. Nothing moves on a timer.
 - **Logical properties** only, so a right-to-left locale is a
   translation.
-- **Titles.** A card clamps its title to two lines (the player's
-  narrower Up next card, three) and keeps the full title as its
-  tooltip and accessible name. The "short titles" option
-  drops the leading words another entry of the run shares, up to a
-  separator (": ", " - "): *JoJo no Kimyou na Bouken: Stone Ocean Part
-  3* becomes *Stone Ocean Part 3*. A title with no shared part, such
-  as *Steel Ball Run: JoJo no Kimyou na Bouken*, stays whole.
+- **Titles.** A card shows the entry's whole title, the one the rest
+  of the app shows ("BLEACH: Sennen Kessen-hen", "Boruto: Naruto Next
+  Generations"), clamped to two lines (the player's narrower Up next
+  card, three), with the full title as its tooltip and accessible name.
+  The first round's short titles, which dropped the words another
+  entry of the run shares ("Sennen Kessen-hen"), were reversed after
+  the build: a title cut that way reads as an unfamiliar show, and a
+  shared prefix that is not the franchise's name ("Boruto:") renamed
+  the show.
 
 #### The watch-order strip (show page)
 
@@ -1430,8 +1458,7 @@ The rules below hold on every surface:
   series' name); the entry being watched has its own line beside the
   Resume button. A note under the button says which order the list
   follows, with a link to Settings.
-- **Missing data and keyboard** as on the show page; the recaps stay
-  folded behind a "Show recaps" button that reports its state.
+- **Missing data and keyboard** as on the show page.
 
 #### The setting
 
@@ -1449,7 +1476,8 @@ The maintainer answered the eight questions the first mockups asked:
    was liked, but forks and joins break it up. The strip needed a
    second round, below.
 2. **Short titles** on cards: yes, with the full title as tooltip and
-   accessible name.
+   accessible name. Reversed after the build: every card shows the
+   whole title (see Titles in section 5).
 3. **The player's "next episode" button** stays within the entry; only
    the Up next card crosses to another entry.
 4. **Accents.** Each entry keeps its own accent.
@@ -1689,6 +1717,19 @@ that ends normally it shows the card up to a second early.
    where the show has no strip). How to make franchises findable gracefully (a
    franchise search, or a similar mechanic) is a study of its own, in
    the deferred-work log.
+3. **Recaps are not hidden.** The franchise page shows its recaps as a
+   rail like the other sections; the "Show recaps" button that folded
+   them away is gone.
+4. **Whole titles everywhere.** The strip, the franchise page and
+   Continue Watching's hand-off name each entry by the full title the
+   rest of the app shows ("BLEACH: Sennen Kessen-hen", "Boruto: Naruto
+   Next Generations"), never a short title cut against the rest of the
+   run; this reverses the first round's short titles.
+5. **An entry's own format places it.** Every movie around the run is
+   listed under Films, whatever role Kitsu gives it (*Boruto: Naruto
+   the Movie*, Dragon Ball's first four films), and a TV series Kitsu
+   lists as a summary is an other version, not a recap (*Dragon Ball
+   Super: Beerus*, beside both *Kai* series).
 
 ### Decisions recorded: progress and the strip's arrival
 

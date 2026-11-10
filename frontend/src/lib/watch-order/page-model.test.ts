@@ -70,7 +70,6 @@ describe('watchOrderPage', () => {
 		expect(got.eyebrow).toEqual({ position: 4, total: 5 });
 		expect(ids(got.view.before)).toEqual(['46903']);
 		expect(ids(got.view.after)).toEqual(['49444']);
-		expect(got.titles).toEqual(run('bleach').entries.map((e) => e.title));
 	});
 
 	it('numbers a loop member nowhere, and says the size of its loop', () => {

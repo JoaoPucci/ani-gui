@@ -28,7 +28,6 @@
 	import StripWatching from './StripWatching.svelte';
 	import { metaLine, numeral } from './meta';
 	import type { WatchOrderPage } from './page-model';
-	import { shortTitle } from './short-title';
 	import { captionText, columnCountText, columnKeyText, emptyColumnText } from './strip-copy';
 	import { emptyColumn } from './strip-view';
 	import { relationKey } from './strip-wording';
@@ -38,7 +37,6 @@
 
 	const view = $derived(model.view);
 	const caption = $derived(captionText(model.caption));
-	const label = (e: WatchEntry) => shortTitle(e.title, model.titles);
 	const headingId = $props.id();
 	const keyOf = (side: 'before' | 'after') => {
 		const list = side === 'before' ? view.before : view.after;
@@ -60,12 +58,7 @@
 			{/if}
 		</span>
 		<span class="tile-text">
-			{#if label(e) !== e.title}
-				<span class="sr-only">{e.title}</span>
-				<span class="tile-title" aria-hidden="true">{label(e)}</span>
-			{:else}
-				<span class="tile-title">{e.title}</span>
-			{/if}
+			<span class="tile-title">{e.title}</span>
 			<span class="tile-meta"
 				><MetaLine segments={metaLine(e, model.progress[e.id], today)} stacked /></span
 			>
@@ -116,7 +109,7 @@
 			<footer class="trio-footer" class:alone={!model.watching}>
 				{#if model.watching}
 					<div class="slot">
-						<StripWatching entry={model.watching.entry} episode={model.watching.episode} {label} />
+						<StripWatching entry={model.watching.entry} episode={model.watching.episode} />
 					</div>
 				{/if}
 				<div class="slot">

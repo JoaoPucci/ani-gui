@@ -61,6 +61,48 @@
       "size": 136708,
       "sha256": "829dad2cfa83b4c74ea3c8e5021e1f2f413407bf0c22fbb9e7e239405a95ca8b",
       "notes": "120 shows: Bleach, Naruto, One Piece, the 27 franchises a development profile had cached, and every entry of the six franchises in the frontend's watch-order fixtures; 122 listings. Posters and covers are dropped (null), as nothing that reads this looks at artwork. The first hop's corpus test walks each anchor over these listings and compares the first hop with what the show page draws."
+    },
+    "franchise_rel_12_o0.json": {
+      "request": "GET /anime/12/media-relationships?include=destination&fields[anime]=canonicalTitle,subtype,status,episodeCount,startDate,posterImage,coverImage&fields[manga]=subtype&page[limit]=20&page[offset]=0&sort=id",
+      "captured_at": "2026-11-11",
+      "size": 35201,
+      "sha256": "93edeec24b9844cc994b75d1610dc932a6e986b1a456bff7fcfa552e4a8cbb3a",
+      "notes": "Page 1 of 5 of One Piece's (anime/12) franchise read, meta.count 88."
+    },
+    "franchise_rel_12_o20.json": {
+      "request": "GET /anime/12/media-relationships?include=destination&fields[anime]=canonicalTitle,subtype,status,episodeCount,startDate,posterImage,coverImage&fields[manga]=subtype&page[limit]=20&page[offset]=20&sort=id",
+      "captured_at": "2026-11-11",
+      "size": 35421,
+      "sha256": "06771aa81e419ba2911049af7297481c4af08f05e1c0645ffaad3e0222d964eb",
+      "notes": "Page 2 of 5 of One Piece's (anime/12) franchise read, meta.count 88."
+    },
+    "franchise_rel_12_o40.json": {
+      "request": "GET /anime/12/media-relationships?include=destination&fields[anime]=canonicalTitle,subtype,status,episodeCount,startDate,posterImage,coverImage&fields[manga]=subtype&page[limit]=20&page[offset]=40&sort=id",
+      "captured_at": "2026-11-11",
+      "size": 40865,
+      "sha256": "4ad6f09c994cfc65ee29fc0be3b7937baa4c1112fb90305af6481859e4569808",
+      "notes": "Page 3 of 5 of One Piece's (anime/12) franchise read, meta.count 88."
+    },
+    "franchise_rel_12_o60.json": {
+      "request": "GET /anime/12/media-relationships?include=destination&fields[anime]=canonicalTitle,subtype,status,episodeCount,startDate,posterImage,coverImage&fields[manga]=subtype&page[limit]=20&page[offset]=60&sort=id",
+      "captured_at": "2026-11-11",
+      "size": 36757,
+      "sha256": "f3e8eec0ffefe70fc59b7037e56c22f31b140f7ffb1fc662c552d85507caf93a",
+      "notes": "Page 4 of 5 of One Piece's (anime/12) franchise read, meta.count 88."
+    },
+    "franchise_rel_12_o80.json": {
+      "request": "GET /anime/12/media-relationships?include=destination&fields[anime]=canonicalTitle,subtype,status,episodeCount,startDate,posterImage,coverImage&fields[manga]=subtype&page[limit]=20&page[offset]=80&sort=id",
+      "captured_at": "2026-11-11",
+      "size": 14489,
+      "sha256": "e3145a683f49787064b2c205906776e458a22a1f79c90ccdcc548c71f4268413",
+      "notes": "Page 5 of 5 of One Piece's (anime/12) franchise read, meta.count 88. Holds LEGO ONE PIECE (50656) as parent_story: Kitsu lists the series' two-episode spin-off as its parent story."
+    },
+    "franchise_rel_50656.json": {
+      "request": "GET /anime/50656/media-relationships?include=destination&fields[anime]=canonicalTitle,subtype,status,episodeCount,startDate,posterImage,coverImage&fields[manga]=subtype&page[limit]=20&page[offset]=0&sort=id",
+      "captured_at": "2026-11-11",
+      "size": 2485,
+      "sha256": "5bd5d3d51f1369e7a340eb11a0fae0582f80f3e73f2deb9660cb4fb8707b2dbe",
+      "notes": "LEGO ONE PIECE's franchise read (anime/50656): One Piece (12) as side_story, the other half of the inverted pair; meta.count 1."
     }
   }
 }

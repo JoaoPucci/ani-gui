@@ -110,11 +110,10 @@ describe('handoffAsk', () => {
 describe('handoffFrom', () => {
 	const none = new Set<string>();
 
-	it("moves on to the one entry that comes next, with the series' titles", () => {
+	it('moves on to the one entry that comes next', () => {
 		const got = handoffFrom(payload('bleach', '43078'), '43078', 'linked', TODAY, none);
 		expect(got?.finished.id).toBe('43078');
 		expect(got?.next.id).toBe('46903');
-		expect(got?.titles).toEqual(run('bleach').entries.map((e) => e.title));
 	});
 
 	it('keeps the ordinary card for a franchise read only in part: the next entry may be missing', () => {
@@ -172,7 +171,6 @@ describe('handoffFrom', () => {
 					if (franchise.complete && up?.kind === 'one' && !played.has(up.entry.id)) {
 						expect(got?.finished.id).toBe(id);
 						expect(got?.next).toEqual(up.entry);
-						expect(got?.titles).toEqual(r!.entries.map((e) => e.title));
 					} else {
 						expect(got).toBeNull();
 					}
@@ -255,8 +253,7 @@ describe('railHandoffs', () => {
 		(next: string) =>
 		(kitsuId: string): Handoff => ({
 			finished: entry(kitsuId),
-			next: entry(next),
-			titles: []
+			next: entry(next)
 		});
 
 	it('gives each asking row its hand-off, in rail order', () => {
@@ -320,7 +317,7 @@ describe('unclaimedHandoff', () => {
 		poster: null,
 		cover: null
 	});
-	const handoff: Handoff = { finished: entry('10'), next: entry('20'), titles: [] };
+	const handoff: Handoff = { finished: entry('10'), next: entry('20') };
 
 	it('moves on once the resume lookup answers that no row resumes the next entry', () => {
 		expect(unclaimedHandoff(handoff, false)).toBe(handoff);

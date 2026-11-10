@@ -6,14 +6,14 @@
 // watched (or a way to start from the beginning), then the main story
 // as a numbered list in the order the setting chooses, the show it was
 // opened from marked, and the other versions, films and side stories
-// on rails, the recaps folded away. A franchise that cannot be read
+// on rails, the recaps too. A franchise that cannot be read
 // says so and offers to try again.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { flushSync, mount, unmount } from 'svelte';
+import { mount, unmount } from 'svelte';
 import { get } from 'svelte/store';
 
 import { API_BASE, server } from './setup';
@@ -194,8 +194,9 @@ describe('franchise page', () => {
 		expect(row('42')!.getAttribute('aria-current')).toBe('true');
 		expect(row('42')!.textContent).toContain(m.watchorder_franchise_here());
 		expect(row('10')!.getAttribute('aria-current')).toBeNull();
-		// Short titles on the rows, the full title as the tooltip.
-		expect(row('50')!.textContent).toContain('Final Arc');
+		// Each row by the title the rest of the app shows for it: the
+		// words it shares with the others are not cut.
+		expect(row('50')!.querySelector('.row-title')?.textContent).toBe('Saga: Final Arc');
 		expect(row('50')!.getAttribute('title')).toBe('Saga: Final Arc');
 		expect(target.textContent).toContain(m.watchorder_franchise_order_note_linked());
 		expect(target.querySelector('a[href="/settings"]')).not.toBeNull();
@@ -228,7 +229,7 @@ describe('franchise page', () => {
 		expect(resumeLink()!.getAttribute('href')).toBe('/anime/50');
 		const masthead = resumeLink()!.parentElement!;
 		expect(masthead.textContent).toContain('04');
-		expect(masthead.textContent).toContain('Final Arc');
+		expect(masthead.querySelector('.caption-title')?.textContent?.trim()).toBe('Saga: Final Arc');
 		expect(masthead.textContent).toContain(m.watchorder_meta_progress_open({ episode: 3 }));
 		// Saga is watched to the end, and its row says so.
 		expect(row('10')!.textContent).toContain(m.watchorder_meta_watched());
@@ -257,7 +258,7 @@ describe('franchise page', () => {
 		expect(resumeLink()!.getAttribute('href')).toBe('/anime/5');
 	});
 
-	it('puts other versions, films and side stories on rails, and folds the recaps away', async () => {
+	it('puts other versions, films, side stories and recaps on rails', async () => {
 		useFranchise();
 		app = mount(FranchisePage, { target });
 		await until(() => rows().length === 4, 'the main story');
@@ -270,14 +271,13 @@ describe('franchise page', () => {
 		expect(
 			rail(m.watchorder_franchise_sides())?.querySelector('a[href="/anime/80"]')
 		).not.toBeNull();
-		const show = button(m.watchorder_franchise_recaps_show())!;
-		expect(show.getAttribute('aria-expanded')).toBe('false');
-		expect(target.querySelector('a[href="/anime/90"]')).toBeNull();
-		show.click();
-		flushSync();
-		expect(target.querySelector('a[href="/anime/90"]')).not.toBeNull();
-		const hide = button(m.watchorder_franchise_recaps_hide())!;
-		expect(hide.getAttribute('aria-expanded')).toBe('true');
+		// Recaps show like every other section: nothing to open first.
+		expect(
+			rail(m.watchorder_franchise_recaps())?.querySelector('a[href="/anime/90"]')
+		).not.toBeNull();
+		expect(
+			rail(m.watchorder_franchise_recaps())!.querySelector('button[aria-expanded]')
+		).toBeNull();
 	});
 
 	it('leaves out the rails the franchise has nothing for', async () => {
@@ -290,7 +290,7 @@ describe('franchise page', () => {
 		expect(rail(m.watchorder_franchise_versions())).toBeNull();
 		expect(rail(m.watchorder_franchise_films())).toBeNull();
 		expect(rail(m.watchorder_franchise_sides())).toBeNull();
-		expect(button(m.watchorder_franchise_recaps_show())).toBeUndefined();
+		expect(rail(m.watchorder_franchise_recaps())).toBeNull();
 		expect(target.textContent).toContain(m.watchorder_franchise_count({ count: 4 }));
 	});
 
@@ -409,14 +409,14 @@ describe('franchise page', () => {
 	it('counts the recaps only when the franchise was read whole', async () => {
 		useFranchise();
 		app = mount(FranchisePage, { target });
-		await until(() => button(m.watchorder_franchise_recaps_show()) !== undefined, 'the recaps');
+		await until(() => rail(m.watchorder_franchise_recaps()) !== null, 'the recaps');
 		expect(target.querySelector('.recaps .eyebrow-value')?.textContent?.trim()).toBe('1');
 	});
 
 	it('gives the recaps no count when there may be more titles', async () => {
 		useFranchise({ franchise: () => HttpResponse.json({ ...FRANCHISE, complete: false }) });
 		app = mount(FranchisePage, { target });
-		await until(() => button(m.watchorder_franchise_recaps_show()) !== undefined, 'the recaps');
+		await until(() => rail(m.watchorder_franchise_recaps()) !== null, 'the recaps');
 		expect(target.querySelector('.recaps h2')?.textContent?.trim()).toBe(
 			m.watchorder_franchise_recaps()
 		);
