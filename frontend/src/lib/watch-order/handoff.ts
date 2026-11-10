@@ -69,6 +69,8 @@ export function handoffFrom(
 ): Handoff | null {
 	if (played === null) return null;
 	if (franchise === null || order === null || franchise.anchor !== id) return null;
+	// Read only in part, the entry that really comes next may be missing.
+	if (!franchise.complete) return null;
 	const run = runOf(franchise);
 	const entry = run?.entries.find((e) => e.id === id);
 	if (!run || !entry) return null;
@@ -84,10 +86,12 @@ export interface PlayedRow {
 }
 
 /**
- * The Kitsu ids with a history row: each row's recorded id, else the
- * id its match found (rows written before history recorded one).
- * Null while such a row is still being matched: until then a show it
- * played could look unplayed.
+ * The Kitsu ids with a history row: each row's recorded id, and the id
+ * its match found. The two differ for a row whose recorded entry Kitsu
+ * has deleted, which is matched again and shows the replacement
+ * ($lib/history/match), and a row written before history recorded an
+ * id has only its match. Null while any row is still being matched:
+ * until then a show it played could look unplayed.
  */
 export function playedIds(
 	rows: readonly PlayedRow[],
@@ -95,10 +99,7 @@ export function playedIds(
 ): Set<string> | null {
 	const out = new Set<string>();
 	for (const row of rows) {
-		if (row.kitsu_id !== undefined) {
-			out.add(row.kitsu_id);
-			continue;
-		}
+		if (row.kitsu_id !== undefined) out.add(row.kitsu_id);
 		const match = matches[row.id];
 		if (match === undefined) return null;
 		if (match !== null) out.add(match.id);
