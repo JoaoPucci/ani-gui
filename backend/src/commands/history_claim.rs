@@ -49,7 +49,9 @@ impl RowIdentity {
     /// The identity of a row with these parts, keeping only what
     /// [`names`] reads: a recorded id that stands decides alone, so the
     /// mapping and title matches are dropped for it, and a row that
-    /// recorded no id is never named by a title match.
+    /// recorded no id is never named by a title match. What it drops it
+    /// does not read: the closures are called only where `names` uses
+    /// their answer.
     fn of(
         recorded: Option<(String, bool)>,
         mapped: impl FnOnce() -> Result<Option<(String, bool)>>,
