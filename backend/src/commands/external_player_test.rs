@@ -275,3 +275,19 @@ fn a_written_command_runs_as_written_for_every_type() {
         assert_eq!(player_program("vlc", kind), Some("vlc"));
     }
 }
+
+#[test]
+fn a_blank_command_fits_its_subtitles_to_the_program_that_runs() {
+    // The Windows command-line budget is measured for the program that
+    // launches. A blank mpv command launches mpv, so it keeps exactly
+    // the tracks the command "mpv" keeps, at every length near the edge.
+    for len in 400..600 {
+        let url = format!("https://cdn.example/{}", "s".repeat(len));
+        let mut blank = args("https://example.com/v.m3u8");
+        blank.player_command = String::new();
+        blank.subtitle_urls = vec![url; 40];
+        let mut named = args("https://example.com/v.m3u8");
+        named.subtitle_urls = blank.subtitle_urls.clone();
+        assert_eq!(build_argv(&blank), build_argv(&named), "url length {len}");
+    }
+}

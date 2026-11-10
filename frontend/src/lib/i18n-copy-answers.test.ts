@@ -20,6 +20,8 @@
 //   раз»).
 // - Russian calls the streaming source «Источник стриминга», never
 //   «Источник видео».
+// - Spanish says "stream", never "transmisión". Russian writes «в
+//   настройках» in lower case, as its other messages do.
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -229,6 +231,14 @@ describe('one phrase per term', () => {
 		expect(again.test('Не удалось. Попробуйте ещё раз.')).toBe(true);
 		expect(again.test('Не удалось. Попробуйте еще раз.')).toBe(true);
 		expect(again.test('Не удалось. Попробуйте снова.')).toBe(false);
+	});
+
+	it('Spanish says "stream", never "transmisión"', () => {
+		expect(offenders('es-419', (s) => /transmisi[oó]n/i.test(s))).toEqual([]);
+	});
+
+	it('Russian names the settings page «настройки» in lower case mid-sentence', () => {
+		expect(offenders('ru', (s) => /\sв Настройк/.test(s))).toEqual([]);
 	});
 
 	it('Russian never calls the streaming source «Источник видео»', () => {

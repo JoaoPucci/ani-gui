@@ -57,4 +57,12 @@ describe('describeExternalLaunchFailure', () => {
 			describeExternalLaunchFailure({ kind: 'player_spawn_failed', binary: '' }, null)
 		).toMatch(/Couldn't start this episode right now/);
 	});
+
+	it('says to set a command when none is set, rather than to try later', () => {
+		// A blank Custom command: there is no program to name, and
+		// waiting does not help.
+		const msg = describeExternalLaunchFailure({ kind: 'player_spawn_failed', binary: '' }, null);
+		expect(msg).toMatch(/Settings/);
+		expect(msg).not.toMatch(/few minutes/);
+	});
 });

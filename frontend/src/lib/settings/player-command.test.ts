@@ -59,6 +59,12 @@ describe('the command after a change of player type', () => {
 		expect(commandAfterKindChange('iina', 'iina', 'mpv')).toBe('mpv');
 	});
 
+	it("follows the type while it is the previous type's name as typed: any case, .exe", () => {
+		expect(commandAfterKindChange('mpv.exe', 'mpv', 'vlc')).toBe('vlc');
+		expect(commandAfterKindChange(' MPV ', 'mpv', 'iina')).toBe('iina');
+		expect(commandAfterKindChange('VLC.EXE', 'vlc', 'mpv')).toBe('mpv');
+	});
+
 	it('is never touched once the user changed it: a path, a wrapper, a blank', () => {
 		expect(commandAfterKindChange('/usr/bin/mpv', 'mpv', 'vlc')).toBe('/usr/bin/mpv');
 		expect(commandAfterKindChange('flatpak run io.mpv.Mpv', 'mpv', 'iina')).toBe(
@@ -117,7 +123,7 @@ describe('the command after a change of player type', () => {
 		);
 	});
 
-	it("changes only the previous type's exact bare command, or a bare name leaving Custom", () => {
+	it("changes only the previous type's bare name, or a bare name leaving Custom", () => {
 		fc.assert(
 			fc.property(command, kind, kind, (cmd, from, to) => {
 				const next = commandAfterKindChange(cmd, from, to);
@@ -127,7 +133,13 @@ describe('the command after a change of player type', () => {
 					expect(next).toBe('');
 					expect(isBareProgramName(cmd)).toBe(true);
 				} else {
-					expect(cmd).toBe(bareCommand(from));
+					expect(isBareProgramName(cmd)).toBe(true);
+					expect(
+						cmd
+							.trim()
+							.toLowerCase()
+							.replace(/\.exe$/, '')
+					).toBe(bareCommand(from));
 					expect(next).toBe(bareCommand(to));
 				}
 			})
