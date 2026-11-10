@@ -261,7 +261,14 @@ describe('/search with no query: the discovery rows', () => {
 			(b) => b.textContent?.trim() === m.search_discovery_retry()
 		);
 		expect(retry).toBeDefined();
+		retry!.focus();
 		retry!.click();
+		// The button leaves as the rows start loading again. Focus that
+		// sat on it stays on the page instead of falling to its body.
+		await until(() => !target.contains(retry!), 'Try again to leave');
+		await settle();
+		expect(document.activeElement).not.toBe(document.body);
+		expect(target.contains(document.activeElement)).toBe(true);
 
 		await until(
 			() => screen().includes('Airing One') && screen().includes('Classic One'),
