@@ -3,9 +3,11 @@
 // now above Top rated, without one row appearing and then another
 // pushing it down.
 //
-// The two rows are separate requests. Top rated is cached for six
-// hours and Trending for one, so on most visits Top rated answers
-// first. Drawn as it landed, it took the top of the page, and when
+// The two rows are separate requests. Trending is the home page's
+// AniList list (/api/kitsu/trending-anilist; the Kitsu-only
+// /api/kitsu/trending is not asked, and an unhandled request fails the
+// scenario). Top rated is cached for six hours and Trending for one,
+// so on most visits Top rated answers first. Drawn as it landed, it took the top of the page, and when
 // Trending arrived a moment later it was inserted above and the row
 // the reader was looking at slid down. These scenarios hold each
 // request in turn and look at the page in between.
@@ -87,7 +89,7 @@ function handlers(opts: {
 }) {
 	return [
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(CONFIG)),
-		http.get(`${API_BASE}/api/kitsu/trending`, async () => {
+		http.get(`${API_BASE}/api/kitsu/trending-anilist`, async () => {
 			await opts.trending;
 			return opts.trendingFails
 				? HttpResponse.json({ error: 'error.network' }, { status: 503 })
@@ -254,6 +256,8 @@ describe('/search with no query: the discovery rows', () => {
 		);
 		expect(screen()).toContain(m.search_discovery_nothing_detail());
 		expect(skeletons()).toBe(0);
+		// The caption above names rows that are not there.
+		expect(screen()).not.toContain(m.search_empty_caption());
 
 		// The catalogue answers again.
 		server.use(...handlers({}));
@@ -275,6 +279,7 @@ describe('/search with no query: the discovery rows', () => {
 			'both rows after trying again'
 		);
 		expect(screen()).not.toContain(m.search_discovery_nothing_headline());
+		expect(screen()).toContain(m.search_empty_caption());
 		expect(above('Airing One', 'Classic One')).toBe(true);
 	});
 

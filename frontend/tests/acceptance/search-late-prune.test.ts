@@ -69,7 +69,7 @@ const CONFIG = {
 function baseHandlers() {
 	return [
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(CONFIG)),
-		http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
 		http.post(`${API_BASE}/api/availability/batch`, () =>
 			HttpResponse.json({ cached: {}, playable_episode_counts: {} })
