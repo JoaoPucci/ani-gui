@@ -56,9 +56,11 @@ export function handoffAsk(
 
 /**
  * The hand-off from `id`, the entry a row played through, or null: the
- * series not read (or read for another id), the settings not settled
- * (`order` null), `id` outside the series, a fork, an entry not aired
- * yet, nothing after it, or an entry after it that `played` holds.
+ * played set not known yet (`played` null), the series not read (or
+ * read for another id, or read only in part), the settings not
+ * settled (`order` null), `id` outside the series, a fork, an entry
+ * not aired yet, nothing after it, or an entry after it that `played`
+ * holds.
  */
 export function handoffFrom(
 	franchise: FranchiseData | null,
