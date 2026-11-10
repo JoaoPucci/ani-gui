@@ -45,7 +45,8 @@ export interface CardRelinkDeps {
 
 export interface CardRelink {
 	/** Whether the card for `row`, shown as `matchId`, is still a guess.
-	 *  A row that is not settles, and the cards are read again. */
+	 *  A row that is not settles, and the cards are read again; a check
+	 *  a later one overtook answers no and settles nothing. */
 	stillGuessed: (row: string, matchId: string) => Promise<boolean>;
 	/** Reads the cards again where they stand. */
 	reread: () => Promise<void>;
@@ -100,7 +101,11 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 
 	return {
 		stillGuessed: async (row, matchId) => {
-			if (await deps.offerStands(row, matchId)) return true;
+			const stands = await deps.offerStands(row, matchId);
+			if (stands) return true;
+			// A later check overtook this one, and answers for itself: this
+			// card is not known to be settled.
+			if (stands === null) return false;
 			deps.settled.add(row);
 			void reread().catch(() => {});
 			return false;

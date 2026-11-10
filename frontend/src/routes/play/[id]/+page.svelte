@@ -237,6 +237,9 @@
 			toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined }),
 		inPlayer: true
 	});
+	// A pick saved after the viewer left is still saved, and switches to
+	// nothing.
+	onDestroy(() => playLink.leave());
 	$effect(() => void playLink.arrive(sessionRow(fromGuess, fromRow), id));
 	// What the session's plays name as their show: its page's, its guess
 	// named apart, or once the card was linked from here, the link

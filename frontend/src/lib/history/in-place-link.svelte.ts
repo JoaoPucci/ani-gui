@@ -22,6 +22,15 @@
  *
  * Hide sets the player's slip aside for the card's row until the app
  * restarts.
+ *
+ * An answer can land after the surface moved on. A link that lands
+ * after another card arrived is saved for its own card and leaves the
+ * newer one's state alone; an Undo from Home's notice gives back the
+ * card the link was made on and offers it again only while that card
+ * is still the one on screen, else it reads the cards again and leaves
+ * the newer card's offer and pick as they are. Once the surface is
+ * left (`leave`), a late link or Undo is still saved and still said,
+ * and reads nothing and switches to nothing for the page that is gone.
  */
 
 import type { KitsuAnimeRef, LinkOutcome } from '$lib/api';
@@ -62,6 +71,7 @@ export class InPlaceLinkSession extends LinkSession {
 
 	#row = $state<string | null>(null);
 	#page = '';
+	#surface: { gone: boolean };
 	#refresh: () => void;
 	#notify: (notice: LinkNotice) => void;
 	#inPlayer: boolean;
@@ -70,6 +80,7 @@ export class InPlaceLinkSession extends LinkSession {
 	constructor(deps: InPlaceLinkDeps) {
 		const refresh = deps.refresh ?? noRefresh;
 		const inPlayer = deps.inPlayer === true;
+		const surface = { gone: false };
 		super({
 			...deps,
 			// The player says what a pick did in its slip, once: no
@@ -77,10 +88,12 @@ export class InPlaceLinkSession extends LinkSession {
 			notify: playerNotify(deps.notify, inPlayer),
 			refresh,
 			// The surface is not left for the linked show's page, so an
-			// undo never navigates either.
+			// undo never navigates either. It is somewhere else only once
+			// it is gone: a link answered then reads nothing again.
 			showPage: () => {},
-			here: () => ''
+			here: () => (surface.gone ? 'gone' : '')
 		} satisfies LinkSessionDeps);
+		this.#surface = surface;
 		this.#refresh = refresh;
 		this.#notify = deps.notify;
 		this.#inPlayer = inPlayer;
@@ -109,8 +122,13 @@ export class InPlaceLinkSession extends LinkSession {
 		return super.arrive(row, pageId);
 	}
 
-	/** The surface is gone: the page was left. */
-	leave(): void {}
+	/** The surface is gone: the page was left. Whatever is still out
+	 *  answers to nothing on it, and leaves no pick to switch to. */
+	leave(): void {
+		this.#surface.gone = true;
+		this.linked = null;
+		this.supersede();
+	}
 
 	/** A guessed row's offer; on the player, else the way to change the
 	 *  show again of a row the viewer picked a show for there. */
@@ -178,14 +196,25 @@ export class InPlaceLinkSession extends LinkSession {
 		return true;
 	}
 
+	/** Undo `outcome`, made on the page `from` for the card row `row`.
+	 *  The rows are given back wherever the user is; what follows is
+	 *  for the card the link was made on, while it is the one on screen. */
 	override async undo(outcome: LinkOutcome, from: string, row: string): Promise<void> {
-		// The note about the link goes now; the slip holds its room
-		// until the offer is decided again.
-		this.linked = null;
-		this.settled = false;
+		const arrival = this.arrivals;
+		const onCard = () => !this.#surface.gone && this.#row === row;
+		if (onCard()) {
+			// The note about the link goes now; the slip holds its room
+			// until the offer is decided again.
+			this.linked = null;
+			this.settled = false;
+		}
+		// Says what the undo did, or that it failed, wherever the user is.
 		await super.undo(outcome, from, row);
+		if (this.#surface.gone) return;
+		// The history is the truth, whatever the undo answered.
 		this.#refresh();
-		await this.arrive(this.#row, this.#page);
+		// Another card arrived meanwhile: its offer and pick are its own.
+		if (arrival === this.arrivals && onCard()) await this.arrive(row, this.#page);
 	}
 }
 

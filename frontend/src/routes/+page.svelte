@@ -480,6 +480,8 @@
 			toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined }),
 		refresh: () => void relink.reread().catch(() => {})
 	});
+	// A link or Undo answered after the user left Home reads nothing for it.
+	onDestroy(() => cardLink.leave());
 	async function openCardLink(row: string, matchId: string, episode: number) {
 		resumeFailure = null;
 		if (await relink.stillGuessed(row, matchId)) void cardLink.start(episode);
@@ -488,10 +490,9 @@
 	// goes rather than open nothing ($lib/history/card-relink.ts).
 	const settledRows = new SvelteSet<string>();
 	const relink = createCardRelink({
-		offerStands: async (row, matchId) => {
-			await cardLink.arrive(row, matchId);
-			return Boolean(cardLink.offer);
-		},
+		// A check another card's overtook answers for nothing.
+		offerStands: async (row, matchId) =>
+			(await cardLink.arrive(row, matchId)) ? Boolean(cardLink.offer) : null,
 		settled: settledRows,
 		current: () => history ?? [],
 		list: historyList,

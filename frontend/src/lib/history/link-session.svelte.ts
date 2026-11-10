@@ -62,6 +62,12 @@ export class LinkSession extends LinkPicker {
 		this.#deps = deps;
 	}
 
+	/** Outdate every arrival still out, and every link answered after
+	 *  this, as a later arrival does. */
+	protected supersede(): void {
+		++this.#arrival;
+	}
+
 	/** The page `pageId` was opened, from the guessed card's row `row`
 	 *  or from anywhere else (null). Whether its offer stands as the
 	 *  session's: no when a later arrival overtook it. */
