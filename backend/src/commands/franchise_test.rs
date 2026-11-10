@@ -288,3 +288,81 @@ mod listing_lifetime {
         }
     }
 }
+
+/// One Piece's shape: a series that lists no prequel or sequel, names
+/// its two-episode spin-off as its parent story, and has a side story
+/// that started before it. Seeds the series' detail row.
+fn seed_series_detail(state: &AppState) {
+    let detail = json!({
+        "id": "12", "canonical_title": "One Piece",
+        "titles": {}, "abbreviated_titles": [], "slug": null, "synopsis": null,
+        "start_date": "1999-10-20", "end_date": null, "episode_count": null,
+        "average_rating": null, "subtype": "TV", "status": "current",
+        "age_rating": null, "popularity_rank": null,
+        "poster_image": null, "cover_image": null
+    });
+    meta_cache_put(
+        &state.cache_pool,
+        &crate::commands::kitsu::anime_detail_key("12"),
+        &detail.to_string(),
+        3600,
+    )
+    .expect("seed detail");
+}
+
+const SERIES: To = ("12", "TV", "1999-10-20");
+const SPIN_OFF: To = ("50656", "ONA", "2026-09-29");
+const EARLY_OVA: To = ("428", "OVA", "1998-07-26");
+const RECAP: To = ("5225", "OVA", "2010-03-17");
+
+fn series_page() -> Value {
+    page(
+        &[
+            ("parent_story", SPIN_OFF),
+            ("side_story", EARLY_OVA),
+            ("summary", RECAP),
+        ],
+        3,
+    )
+}
+
+/// The parent check reads the listing of the entry the series names as
+/// its parent story and of its earlier side story, once each, and
+/// takes neither: the series is the main story, both sit beside it.
+#[tokio::test]
+async fn the_parent_check_reads_its_candidates_once() {
+    let server = MockServer::start().await;
+    serve(&server, "12", "0", series_page()).await;
+    serve(&server, "50656", "0", page(&[("side_story", SERIES)], 1)).await;
+    serve(&server, "428", "0", page(&[("parent_story", SERIES)], 1)).await;
+    let state = state_with_kitsu(&server.uri());
+    seed_series_detail(&state);
+
+    let f = franchise(&state, "12").await.expect("franchise");
+    let ids = |l: &[crate::meta::kitsu::FranchiseEntry]| {
+        l.iter().map(|e| e.id.clone()).collect::<Vec<_>>()
+    };
+    assert_eq!(ids(&f.entries), ["12"]);
+    assert_eq!(ids(&f.sides), ["428", "50656"]);
+    assert!(f.parents.is_empty());
+    assert!(f.complete);
+}
+
+/// A candidate's listing that cannot be read fails the franchise, as
+/// any listing the walk needs does: the walk answers whole or not at
+/// all.
+#[tokio::test]
+async fn a_candidate_that_cannot_be_read_fails_the_franchise() {
+    let server = MockServer::start().await;
+    serve(&server, "12", "0", series_page()).await;
+    serve(&server, "428", "0", page(&[("parent_story", SERIES)], 1)).await;
+    Mock::given(method("GET"))
+        .and(path("/anime/50656/media-relationships"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let state = state_with_kitsu(&server.uri());
+    seed_series_detail(&state);
+
+    assert!(franchise(&state, "12").await.is_err());
+}

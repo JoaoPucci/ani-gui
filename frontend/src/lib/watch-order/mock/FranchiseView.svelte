@@ -145,7 +145,6 @@
 					<span class="row-text">
 						{#if e.id === id}<span class="here-key">{m.watchorder_franchise_here()}</span>{/if}
 						<span class="row-title">{label(e)}</span>
-						{#if label(e) !== e.title}<span class="sr-only">{e.title}</span>{/if}
 						<MetaLine segments={metaLine(e, run.progress[e.id], today)} />
 						{#if note?.kind === 'leads-into'}
 							<span class="row-note"
@@ -564,14 +563,6 @@
 		text-decoration: underline;
 		text-decoration-color: color-mix(in oklab, var(--bone-100) 30%, transparent);
 		text-underline-offset: 0.25em;
-	}
-	.sr-only {
-		position: absolute;
-		inline-size: 1px;
-		block-size: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
 	}
 	@media (max-width: 1100px) {
 		.masthead {
