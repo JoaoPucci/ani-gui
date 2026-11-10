@@ -2,9 +2,12 @@
 // its command along with it while the command is the previous type's
 // bare default ("mpv", "vlc", "iina"), and never touches a command the
 // user wrote: a full path, a wrapper, a blank. Custom has no command of
-// its own, so going to it or coming from it keeps the command. No path
-// is guessed and nothing is looked up: on Windows a bare `vlc` may not
-// be found, and the user browses to it, as before.
+// its own, so going to it keeps the command. Leaving it clears a
+// command that is only a standard program's name ("mpv", "vlc",
+// "iina") to blank, and a blank command runs the new type's own
+// program. A command with a path or flags is kept. No path is guessed
+// and nothing is looked up: on Windows a bare `vlc` may not be found,
+// and the user browses to it, as before.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -121,13 +124,28 @@ describe('settings — the external player command follows its type', () => {
 		expect(command().value).toBe('mpv');
 	});
 
-	it('keeps the command going to Custom, and coming back from it', async () => {
+	it('keeps the command going to Custom, and clears a bare name coming back from it', async () => {
 		await open({ external_player: 'vlc', external_player_kind: 'vlc' });
 		await choose(m.settings_external_player_kind_custom());
 		expect(command().value).toBe('vlc');
 		expect(saved.at(-1)).toMatchObject({ external_player_kind: 'custom', external_player: 'vlc' });
+		// Leaving Custom: "vlc" is only a standard program's name, so it
+		// clears, and the blank field runs mpv, the new type's program.
 		await choose(m.settings_external_player_kind_mpv());
-		expect(command().value).toBe('vlc');
+		expect(command().value).toBe('');
+		expect(command().placeholder).toBe('mpv');
+		expect(saved.at(-1)).toMatchObject({ external_player_kind: 'mpv', external_player: '' });
+	});
+
+	it('keeps a command with a path or flags when leaving Custom', async () => {
+		for (const written of ['/opt/mpv/bin/mpv', 'mpv --fs', 'flatpak run org.videolan.VLC']) {
+			await open({ external_player: written, external_player_kind: 'custom' });
+			await choose(m.settings_external_player_kind_vlc());
+			expect(command().value).toBe(written);
+			expect(saved.at(-1)).toMatchObject({ external_player_kind: 'vlc', external_player: written });
+			unmount(app!);
+			app = null;
+		}
 	});
 
 	it('never touches a full path, a wrapper or a blank', async () => {
