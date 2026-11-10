@@ -403,7 +403,12 @@ fn settings_learns_what_a_blank_command_runs_here() {
         }
     );
     assert_eq!(
-        standard_program_found(ExternalPlayerKind::Iina, &installed),
+        // On macOS, where IINA exists: the next test covers elsewhere.
+        standard_program_found_on(
+            crate::commands::player_locate::Os::MacOs,
+            ExternalPlayerKind::Iina,
+            &installed
+        ),
         StandardProgram {
             name: Some("iina"),
             path: None,
