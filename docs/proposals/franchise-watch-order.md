@@ -4,10 +4,10 @@
 product questions are decided (section 6); the design questions are
 open (section 5). Built so far: the backend's franchise read, `GET
 /api/kitsu/franchise/:kitsu_id` (section 4 describes it as built), the
-watch-order strip on the show page, the "Watch order" setting and the
-player's Up next card at a finale. Not built yet: Continue Watching's
-hand-off and the franchise page, which exist only as design mockups
-drawn from fixture data, behind a Diagnostics switch. The research
+watch-order strip on the show page, the "Watch order" setting, the
+player's Up next card at a finale and Continue Watching's hand-off.
+Not built yet: the franchise page, which exists only as a design
+mockup drawn from fixture data, behind a Diagnostics switch. The research
 was done on 2026-11-01; the live samples it quotes describe the
 catalogues on that day and will drift.
 
