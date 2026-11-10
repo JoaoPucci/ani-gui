@@ -143,10 +143,19 @@ pub struct ByKitsuEachArgs {
 /// # Errors
 /// As [`history_by_kitsu`].
 pub fn history_by_kitsu_each(
-    _state: &crate::app::AppState,
-    _ids: &[String],
+    state: &crate::app::AppState,
+    ids: &[String],
 ) -> Result<std::collections::BTreeMap<String, Option<HistoryEntry>>> {
-    Ok(std::collections::BTreeMap::new())
+    if ids.is_empty() {
+        return Ok(std::collections::BTreeMap::new());
+    }
+    crate::history::guard::hold(&state.history_path, |_| {
+        let entries = read_all(&state.history_path)?;
+        let numbering = Numbering::read(&state.history_path);
+        ids.iter()
+            .map(|id| Ok((id.clone(), resumed_from(state, &entries, &numbering, id)?)))
+            .collect()
+    })
 }
 
 fn history_by_kitsu_held(
