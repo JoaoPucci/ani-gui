@@ -853,3 +853,97 @@ describe('a card the user named a show for, after the app restarted', () => {
 		expect(pill(KNOWN)).toBeNull();
 	});
 });
+
+describe('a resume clicked while a later answer is still matching the card', () => {
+	// JoJo's card is named as the OVA from its pill, then answered again
+	// as the 2012 series. While the card is matched as the series (its
+	// detail held), it still shows the OVA and is clicked: the click
+	// resumes the OVA, whose cap lookup (held too) answers 1 only once
+	// the card is the series. That cap is the OVA's: the series' next
+	// resume must not replay episode 1 because of it.
+	let holdDetail = false;
+	let releaseDetail: () => void = () => {};
+	let releaseLookup: () => void = () => {};
+	let detailAsks = 0;
+	let lookupAsked = false;
+	beforeEach(() => {
+		holdDetail = false;
+		detailAsks = 0;
+		lookupAsked = false;
+		const detail = new Promise<void>((resolve) => {
+			releaseDetail = resolve;
+		});
+		const lookup = new Promise<void>((resolve) => {
+			releaseLookup = resolve;
+		});
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/anime/:id`, async ({ params }) => {
+				if (String(params.id) === JOJO_GUESS && holdDetail) {
+					detailAsks++;
+					await detail;
+				}
+				return HttpResponse.json(show(String(params.id)));
+			}),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const { kitsu_id, background } = (await request.json()) as {
+					kitsu_id?: string;
+					background?: boolean;
+				};
+				if (kitsu_id === JOJO_RIGHT && background === false) {
+					lookupAsked = true;
+					await lookup;
+					return HttpResponse.json({ available: true, episode_count: 1 });
+				}
+				return HttpResponse.json({ available: true, episode_count: 26 });
+			})
+		);
+	});
+
+	it("does not keep the OVA's cap on the card once it is the series", async () => {
+		await openHome();
+		pill(JOJO_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(JOJO_RIGHT_TITLE);
+		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the card as the OVA');
+		await settle();
+		// Answered again: the series, matched with its detail held.
+		await until(() => pill(JOJO_CARD) !== null, 'the pill, to change it again');
+		pill(JOJO_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker again');
+		holdDetail = true;
+		const calls = backend.linkCalls.length;
+		const series = () =>
+			Array.from(dialog()?.querySelectorAll<HTMLButtonElement>('li button') ?? []).find((b) =>
+				(b.textContent ?? '').includes(JOJO_GUESS_TITLE)
+			);
+		await until(() => series() !== undefined, 'the series among the candidates');
+		series()!.click();
+		await until(() => !button(m.detail_link_confirm_button())?.disabled, 'the Link button');
+		button(m.detail_link_confirm_button())!.click();
+		await until(() => backend.linkCalls.length > calls, 'the second link');
+		await until(() => detailAsks > 0, 'the card being matched again');
+		// The card still shows the OVA, and is clicked.
+		const card = () => cell(JOJO_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!;
+		card().click();
+		await until(() => lookupAsked, "the click's cap lookup");
+		releaseDetail();
+		await until(() => showLine(JOJO_CARD).includes(JOJO_GUESS_TITLE), 'the card as the series');
+		releaseLookup();
+		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+		FakeEventSource.instances
+			.at(-1)!
+			.dispatch('error', JSON.stringify({ kind: 'no_results', message: 'not found' }));
+		await until(
+			() => target.querySelector('[role="alertdialog"]') !== null,
+			'the failed resume overlay'
+		);
+		await settle();
+		// The series' resume goes on to episode 2.
+		const before = FakeEventSource.instances.length;
+		card().click();
+		await until(() => FakeEventSource.instances.length > before, 'the second resume');
+		const url = new URL(FakeEventSource.instances.at(-1)!.url, 'http://x');
+		expect(url.searchParams.get('kitsu_id')).toBe(JOJO_GUESS);
+		expect(url.searchParams.get('episode')).toBe('2');
+	});
+});
