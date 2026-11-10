@@ -28,6 +28,7 @@ use tower_http::cors::CorsLayer;
 
 mod account;
 mod airing;
+mod flags;
 mod franchise;
 mod refill;
 mod sse_abort;
@@ -100,6 +101,10 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/history/by-kitsu", post(post_history_by_kitsu_each))
         .route("/api/history/by-kitsu/:kitsu_id", get(get_history_by_kitsu))
         .route("/api/history/:id/number", get(get_history_number))
+        .route(
+            "/api/history/guess/ruled-out",
+            post(post_history_guess_ruled_out),
+        )
         .route("/api/history/:id", delete(delete_history_entry))
         .route("/api/external-player", post(post_external_player))
         .route("/api/sessions", post(post_session))
@@ -117,6 +122,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/kitsu/by-mal-ids", post(post_kitsu_by_mal_ids))
         .route("/api/aniskip/:kitsu_id/:episode", get(get_aniskip))
         .route("/api/update-check", get(update::get_update_check))
+        .route("/api/flags", get(flags::get_flags))
         .route("/api/kitsu/top-rated", get(get_kitsu_top_rated))
         .route(
             "/api/title-match",
@@ -272,6 +278,15 @@ async fn post_session(
 #[derive(Deserialize)]
 struct SearchBody {
     query: String,
+}
+
+/// Which of a Continue row's search hits the row rules out
+/// ([`crate::commands::continue_guess`]). Reads only the body: no
+/// request leaves the app.
+async fn post_history_guess_ruled_out(
+    Json(body): Json<crate::commands::continue_guess::RuledOutRequest>,
+) -> Json<Vec<String>> {
+    Json(crate::commands::continue_guess::answer(body))
 }
 
 async fn post_kitsu_search(
@@ -824,8 +839,7 @@ async fn get_watched_at_all(
     Ok(Json(crate::commands::history::watched_at_all(&state)?))
 }
 
-/// Evict the cached play resolution for `(title, mode, quality,
-/// episode)`. Idempotent — returns 204 even if no row matched.
+/// Evict the cached play resolution for `(title, mode, episode)`. Idempotent — returns 204 even if no row matched.
 ///
 /// Frontend feedback path: when the player errors loading a cached
 /// upstream URL (URL rotated *after* our HEAD validated, or the CDN
@@ -844,6 +858,10 @@ async fn post_play_cache_evict(
 #[cfg(test)]
 #[path = "kitsu_map_test.rs"]
 mod kitsu_map_tests;
+
+#[cfg(test)]
+#[path = "guess_ruled_out_test.rs"]
+mod guess_ruled_out_tests;
 
 #[cfg(test)]
 #[path = "history_key_year_test.rs"]
@@ -868,6 +886,10 @@ mod error_envelope_test;
 #[cfg(test)]
 #[path = "kitsu_search_page_test.rs"]
 mod kitsu_search_page_test;
+
+#[cfg(test)]
+#[path = "flags_test.rs"]
+mod flags_tests;
 
 #[cfg(test)]
 mod tests {
@@ -935,6 +957,7 @@ mod tests {
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+            flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
         }
     }
 
@@ -1120,7 +1143,7 @@ mod tests {
                     .uri("/api/settings")
                     .header("content-type", "application/json")
                     .body(Body::from(
-                        r#"{"locale":"pt-BR","mode":"dub","quality":"1080","external_player":"vlc","image_cache_cap_mb":1000}"#,
+                        r#"{"locale":"pt-BR","mode":"dub","download_quality":"720","quality":"1080","external_player":"vlc","image_cache_cap_mb":1000}"#,
                     ))
                     .expect("req"),
             )
@@ -1142,6 +1165,13 @@ mod tests {
         let body = body_string(get).await;
         assert!(body.contains("\"locale\":\"pt-BR\""), "body: {body}");
         assert!(body.contains("\"mode\":\"dub\""), "body: {body}");
+        // The download quality round-trips; the quality an older
+        // renderer still sends is not kept.
+        assert!(
+            body.contains("\"download_quality\":\"720\""),
+            "body: {body}"
+        );
+        assert!(!body.contains("\"quality\":"), "body: {body}");
     }
 
     #[tokio::test]
@@ -1620,7 +1650,7 @@ mod tests {
         let history_path = state.history_path.clone();
         // Seed a v2 cache row with the show_id explicitly empty —
         // the on-disk shape a legacy v1 row would deserialize into.
-        let key = cache_key("Legacy Show", "sub", "best", "3", None, None, None);
+        let key = cache_key("Legacy Show", "sub", "3", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1671,7 +1701,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         let history_path = state.history_path.clone();
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1742,7 +1772,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         let history_path = state.history_path.clone();
-        let key = cache_key("The Show", "sub", "best", "4", None, None, None);
+        let key = cache_key("The Show", "sub", "4", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1803,7 +1833,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         let history_path = state.history_path.clone();
-        let key = cache_key("The Show", "sub", "best", "4", None, None, None);
+        let key = cache_key("The Show", "sub", "4", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1867,7 +1897,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -1930,7 +1960,7 @@ mod tests {
         ] {
             put(
                 &state.cache_pool,
-                &cache_key(title, "sub", "best", "1", None, None, None),
+                &cache_key(title, "sub", "1", None, None, None),
                 &CachedResolution {
                     upstream_url: "https://video.example/master.m3u8".into(),
                     referer: String::new(),
@@ -2006,15 +2036,7 @@ mod tests {
         // Cached resolution: The provider's Part 2 show, derived from
         // searching "Stone Ocean" (Part 1's canonical title) — the
         // picker mis-pick the user reported.
-        let key = cache_key(
-            "Stone Ocean",
-            "sub",
-            "best",
-            "1",
-            Some(2021),
-            Some(12),
-            None,
-        );
+        let key = cache_key("Stone Ocean", "sub", "1", Some(2021), Some(12), None);
         put(
             &state.cache_pool,
             &key,
@@ -2114,15 +2136,7 @@ mod tests {
         let state = test_app_state(&td);
 
         // show_title has no Part/Cour/Season suffix → cour_from_title=None.
-        let key = cache_key(
-            "Some Sequel",
-            "sub",
-            "best",
-            "1",
-            Some(2024),
-            Some(12),
-            None,
-        );
+        let key = cache_key("Some Sequel", "sub", "1", Some(2024), Some(12), None);
         put(
             &state.cache_pool,
             &key,
@@ -2213,15 +2227,7 @@ mod tests {
         let state = test_app_state(&td);
 
         // The provider title carries Part 2 → cour_from_title=Some(2).
-        let key = cache_key(
-            "Some Sequel",
-            "sub",
-            "best",
-            "1",
-            Some(2024),
-            Some(12),
-            None,
-        );
+        let key = cache_key("Some Sequel", "sub", "1", Some(2024), Some(12), None);
         put(
             &state.cache_pool,
             &key,
@@ -2322,15 +2328,7 @@ mod tests {
         // unreachable port), so `kitsu_anime_detail` returns Err.
         // Per the guard's docstring, that should be treated as
         // "agree" and the reverse-mapping write must still happen.
-        let key = cache_key(
-            "Stone Ocean",
-            "sub",
-            "best",
-            "1",
-            Some(2021),
-            Some(12),
-            None,
-        );
+        let key = cache_key("Stone Ocean", "sub", "1", Some(2021), Some(12), None);
         put(
             &state.cache_pool,
             &key,
@@ -2444,7 +2442,7 @@ mod tests {
         let state = test_app_state(&td);
         std::fs::create_dir_all(&state.history_path)
             .expect("a directory where the history file should be");
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -2505,7 +2503,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
+        let key = cache_key("Naruto: Shippuuden", "sub", "150", None, None, None);
         put(
             &state.cache_pool,
             &key,
@@ -2639,7 +2637,7 @@ mod tests {
 
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        let key = cache_key("Some Show", "sub", "best", "5", None, None, None);
+        let key = cache_key("Some Show", "sub", "5", None, None, None);
         put(
             &state.cache_pool,
             &key,

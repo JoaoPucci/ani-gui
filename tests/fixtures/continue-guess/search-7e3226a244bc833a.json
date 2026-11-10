@@ -1,0 +1,24 @@
+{
+ "data": [
+  {
+   "id": "46010",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Stone Ocean Part 2",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Stone Ocean Part 2",
+     "en_jp": "JoJo no Kimyou na Bouken: Stone Ocean Part 2",
+     "en_us": "JoJo's Bizarre Adventure STONE OCEAN Part 2",
+     "ja_jp": "ジョジョの奇妙な冒険 ストーンオーシャン 2クール"
+    },
+    "abbreviatedTitles": [],
+    "slug": "jojo-no-kimyou-na-bouken-part-6-stone-ocean-part-2",
+    "startDate": "2022-09-01",
+    "endDate": "2022-09-01",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

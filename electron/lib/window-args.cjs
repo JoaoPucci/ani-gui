@@ -15,9 +15,15 @@ const ORIGIN = /^\S+$/;
  * `backend` is what the handshake resolved with (`apiBase`,
  * `internalSecret`, `lanes`); `locale` is the one config.toml names,
  * or null. A missing locale or secret is left out rather than sent
- * empty, so the preload falls through to its own default.
+ * empty, so the preload falls through to its own default — for the
+ * locale, Paraglide's own resolution (localStorage, preferred language,
+ * base locale).
+ *
+ * `launchFlags` is the backend's flags answer (lib/launch-flags.cjs),
+ * or null. The flags go URI-encoded JSON in one argument, so no
+ * character of a name or value can split it.
  */
-function windowArguments(backend, locale) {
+function windowArguments(backend, locale, launchFlags = null) {
   const args = [`--ani-gui-api-base=${backend.apiBase}`];
   if (locale) args.push(`--ani-gui-locale=${locale}`);
   if (backend.internalSecret) {
@@ -27,6 +33,10 @@ function windowArguments(backend, locale) {
     if (LANE_NAME.test(name) && typeof origin === "string" && ORIGIN.test(origin)) {
       args.push(`--ani-gui-lane-${name}=${origin}`);
     }
+  }
+  if (launchFlags) {
+    args.push(`--ani-gui-flags=${encodeURIComponent(JSON.stringify(launchFlags.flags))}`);
+    args.push(`--ani-gui-flags-origin=${encodeURIComponent(launchFlags.origin)}`);
   }
   return args;
 }

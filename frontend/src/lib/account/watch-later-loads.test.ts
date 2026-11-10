@@ -43,3 +43,51 @@ describe('createRailLoads', () => {
 		expect(loads.landed(loads.start(false))).toBe(false);
 	});
 });
+
+describe('settled', () => {
+	/** Whether `p` has resolved once pending callbacks have run. */
+	async function resolved(p: Promise<void>) {
+		let done = false;
+		void p.then(() => (done = true));
+		await new Promise((r) => setTimeout(r, 0));
+		return done;
+	}
+
+	it('waits for the latest load to finish', async () => {
+		const loads = createRailLoads();
+		const load = loads.start(false);
+		const settled = loads.settled();
+		expect(await resolved(settled)).toBe(false);
+		loads.finish(load);
+		expect(await resolved(settled)).toBe(true);
+	});
+
+	it('waits past a load that finished superseded, for the one that superseded it', async () => {
+		const loads = createRailLoads();
+		const refresh = loads.start(false);
+		const reread = loads.start(false);
+		const settled = loads.settled();
+		loads.finish(refresh);
+		expect(await resolved(settled)).toBe(false);
+		loads.finish(reread);
+		expect(await resolved(settled)).toBe(true);
+	});
+
+	it('waits for a load that starts while it waits', async () => {
+		const loads = createRailLoads();
+		const first = loads.start(false);
+		const settled = loads.settled();
+		const second = loads.start(false);
+		loads.finish(first);
+		expect(await resolved(settled)).toBe(false);
+		loads.finish(second);
+		expect(await resolved(settled)).toBe(true);
+	});
+
+	it('resolves at once when the latest load has already finished, or none has started', async () => {
+		const loads = createRailLoads();
+		expect(await resolved(loads.settled())).toBe(true);
+		loads.finish(loads.start(false));
+		expect(await resolved(loads.settled())).toBe(true);
+	});
+});

@@ -1,0 +1,133 @@
+{
+ "data": [
+  {
+   "id": "46300",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaijuu 8-gou",
+    "titles": {
+     "en": "Kaiju No. 8",
+     "en_jp": "Kaijuu 8-gou",
+     "ja_jp": "怪獣８号"
+    },
+    "abbreviatedTitles": [
+     "Monster #8",
+     "KAIJU No. EIGHT",
+     "8Kaijuu"
+    ],
+    "slug": "kaijuu-8-gou",
+    "startDate": "2024-04-13",
+    "endDate": "2024-06-29",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48994",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaijuu 8-gou 2nd Season",
+    "titles": {
+     "en": "Kaiju No.8 Season 2",
+     "en_jp": "Kaijuu 8-gou 2nd Season",
+     "ja_jp": "怪獣８号 第２期"
+    },
+    "abbreviatedTitles": [
+     "KAIJU No. EIGHT 2",
+     "Kaiju No.8 SEASON 2"
+    ],
+    "slug": "Kaiju-No8-SEASON-2",
+    "startDate": "2025-07-19",
+    "endDate": "2025-09-27",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49102",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaijuu 8-gou Movie",
+    "titles": {
+     "en": "Kaiju No. 8: Mission Recon",
+     "en_jp": "Kaijuu 8-gou Movie",
+     "ja_jp": "怪獣8号 第1期総集編"
+    },
+    "abbreviatedTitles": [
+     "Kaiju No. 8 Movie",
+     "Kaijuu 8-gou Recap",
+     "Kaiju No. 8 Season 1 Compilation"
+    ],
+    "slug": "kaijuu-8-gou-movie",
+    "startDate": "2025-03-28",
+    "endDate": "2025-03-28",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50400",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaijuu 8-gou: Kanketsu-hen",
+    "titles": {
+     "en": "Kaiju No. 8: The Final Mission",
+     "en_jp": "Kaijuu 8-gou: Kanketsu-hen",
+     "ja_jp": "劇場版 怪獣８号"
+    },
+    "abbreviatedTitles": [
+     "KAIJU No. EIGHT Final Chapter",
+     "Kaiju No. 8: Final Chapter",
+     "Kaiju No.8 Season 3"
+    ],
+    "slug": "Kaijuu-8gou-Kanketsuhen",
+    "startDate": "2027-12-31",
+    "endDate": "2027-12-31",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "unreleased"
+   }
+  },
+  {
+   "id": "50452",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaijuu 8-gou: Narumi no Heijitsu",
+    "titles": {
+     "en": "Kaiju No. 8: Narumi's Week at Work",
+     "en_jp": "Kaijuu 8-gou: Narumi no Heijitsu",
+     "ja_jp": "怪獣8号 鳴海の平日"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kaijuu-8-gou-narumi-no-heijitsu",
+    "startDate": "2026-09-05",
+    "endDate": "2026-09-26",
+    "episodeCount": 4,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50564",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Minute! Kaijuu 8-gou",
+    "titles": {
+     "en": "Minute! Kaiju No. 8",
+     "en_jp": "Minute! Kaijuu 8-gou",
+     "ja_jp": "ミニっと！かいじゅう８号"
+    },
+    "abbreviatedTitles": [],
+    "slug": "minute-kaijuu-8-gou",
+    "startDate": "2024-12-06",
+    "endDate": "2025-07-04",
+    "episodeCount": 31,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

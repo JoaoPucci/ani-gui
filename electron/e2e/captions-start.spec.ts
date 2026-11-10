@@ -40,7 +40,7 @@ import {
   continueKitsuMatch,
   defaultSettings,
 } from "./fixtures/kitsu";
-import { launchPackagedApp, packagedBinary } from "./launch";
+import { appWindow, launchPackagedApp, packagedBinary } from "./launch";
 
 const mediaDir = path.join(__dirname, "fixtures", "captions");
 
@@ -62,7 +62,7 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
     XDG_DATA_HOME: path.join(tmp, "data"),
     ANI_GUI_UNATTENDED: "1",
   });
-  const page = await app.firstWindow();
+  const page = await appWindow(app);
   return { app, page };
 }
 

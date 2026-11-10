@@ -20,7 +20,7 @@ use bridge::bridge_answered;
 /// Pipeline:
 ///   1. Fetch AniList trending (top N).
 ///   2. For each entry, bridge MAL id → Kitsu anime via Kitsu's
-///      /mappings endpoint, concurrent with bounded parallelism.
+///      /mappings endpoint, every lookup at once.
 ///   3. Drop entries that don't bridge (rare — AniList show without
 ///      a Kitsu mapping). Preserve the AniList ranking for the rest.
 ///   4. Cache the resulting `Vec<KitsuAnimeRef>` for [`TRENDING_TTL`]
@@ -148,7 +148,7 @@ fn without_gone_banner(pool: &crate::cache::SqlitePool, mut r: KitsuAnimeRef) ->
 }
 
 /// AniList trending page size — N entries fetched, then bridged to
-/// Kitsu. We render the hero from items 0..5 and the Trending strip
-/// from the rest, so 25 leaves comfortable headroom for shows that
-/// fail to bridge (rare; a couple per page at most).
+/// Kitsu. The home hero takes the first three with art and the
+/// Trending strip the rest, so 25 leaves comfortable headroom for
+/// shows that fail to bridge (rare; a couple per page at most).
 const ANILIST_TRENDING_LIMIT: u8 = 25;

@@ -1,0 +1,23 @@
+{
+ "data": [
+  {
+   "id": "41079",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama.: Shirogane no Tamashii-hen 2",
+    "titles": {
+     "en": "Gintama.: Silver Soul Arc 2",
+     "en_jp": "Gintama.: Shirogane no Tamashii-hen 2",
+     "ja_jp": "銀魂. 銀ノ魂篇 2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "gintama-shirogane-no-tamashii-hen-2",
+    "startDate": "2018-07-09",
+    "endDate": "2018-10-08",
+    "episodeCount": 14,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

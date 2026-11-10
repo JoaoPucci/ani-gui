@@ -1,0 +1,46 @@
+{
+ "data": [
+  {
+   "id": "42198",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu 2",
+    "titles": {
+     "en": "Re:ZERO -Starting Life in Another World- Season 2",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu 2",
+     "en_us": "Re:ZERO -Starting Life in Another World- Season 2",
+     "ja_jp": "Re:ゼロから始める異世界生活２"
+    },
+    "abbreviatedTitles": [],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-2",
+    "startDate": "2020-07-08",
+    "endDate": "2020-09-30",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43247",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season Part 2",
+    "titles": {
+     "en": "Re:ZERO -Starting Life in Another World- Season 2 Part 2",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season Part 2",
+     "ja_jp": "ゼロから始める異世界生活"
+    },
+    "abbreviatedTitles": [
+     "Re:Zero - Starting Life in Another World 2 Part 2",
+     "Re: Life in a different world from zero 2nd Season Part 2"
+    ],
+    "slug": "rezero-season-2-part-2",
+    "startDate": "2021-01-06",
+    "endDate": "2021-03-24",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

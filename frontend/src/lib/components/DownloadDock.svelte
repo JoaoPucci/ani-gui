@@ -12,16 +12,26 @@
       item with progress / status / per-row actions.
 -->
 <script lang="ts">
+	import { flushSync } from 'svelte';
 	import { slide } from '$lib/motion/transitions';
 	import { cubicOut } from 'svelte/easing';
 	import { downloadStore, type DownloadItem } from '$lib/download/store.svelte';
 	import { progressTitle, terminalReportText } from '$lib/download/report-copy';
+	import { rowState } from '$lib/download/row-state';
 	import { formatSpeed, totalSpeed } from '$lib/download/speed';
 	import { dockLabel } from '$lib/download/dock-label';
+	import {
+		focusAfter,
+		focusFirstItem,
+		focusedIndex,
+		onMenuKey,
+		refocusMenu
+	} from '$lib/menu/menu-dom';
 	import { m } from '$lib/paraglide/messages';
 
 	let open = $state(false);
 	let trigger = $state<HTMLButtonElement | null>(null);
+	let wrap = $state<HTMLElement | null>(null);
 
 	const itemsView = $derived(downloadStore.items as DownloadItem[]);
 	const activeCount = $derived(downloadStore.active.length);
@@ -40,8 +50,43 @@
 		if (open) downloadStore.markAllSeen();
 	});
 
+	// A dock that goes with its last row takes its menu with it, and
+	// the next download's dock comes back closed. Focus in it moves on,
+	// before it goes, to the next tab stop after it ($lib/menu/menu-dom).
+	$effect.pre(() => {
+		if (hasItems || !wrap) return;
+		if (wrap.contains(document.activeElement)) focusAfter(wrap);
+	});
+	$effect(() => {
+		if (!hasItems) open = false;
+	});
+
+	// The rows' actions are the menu's items, and they change while it
+	// is open: a download that ends swaps Cancel for Reveal and Dismiss,
+	// a dismissed row takes its actions with it. Read before the rows
+	// redraw, the place focus was on; after, focus that went with its
+	// item moves to the item now at that place ($lib/menu/menu-dom).
+	const rowShape = $derived(itemsView.map((i) => `${i.id}:${i.status}`).join(' '));
+	let focusWas: number | null = null;
+	$effect.pre(() => {
+		void rowShape;
+		focusWas = open ? focusedIndex(document.getElementById('dl-dock-pop')) : null;
+	});
+	$effect(() => {
+		void rowShape;
+		if (open) refocusMenu(document.getElementById('dl-dock-pop'), focusWas, trigger);
+	});
+
+	// The menu's keys ($lib/menu/menu-keys): arrows, Home and End move
+	// between the items; Escape, Tab and Shift+Tab close it.
+	function onMenuKeydown(e: KeyboardEvent) {
+		onMenuKey(e, { anchor: trigger, close: () => flushSync(() => (open = false)) });
+	}
+
 	$effect(() => {
 		if (!open) return;
+		// Opened: focus goes to the first item, as the play page's menus do.
+		focusFirstItem(document.getElementById('dl-dock-pop'));
 		const onPointerDown = (e: PointerEvent) => {
 			const target = e.target as Node | null;
 			if (!target) return;
@@ -80,7 +125,11 @@
 </script>
 
 {#if hasItems}
-	<div class="dl-dock-wrap" transition:slide={{ axis: 'x', duration: 220, easing: cubicOut }}>
+	<div
+		class="dl-dock-wrap"
+		bind:this={wrap}
+		transition:slide={{ axis: 'x', duration: 220, easing: cubicOut }}
+	>
 		<button
 			bind:this={trigger}
 			type="button"
@@ -92,6 +141,7 @@
 			onclick={() => (open = !open)}
 			aria-haspopup="menu"
 			aria-expanded={open}
+			aria-controls="dl-dock-pop"
 			aria-label={triggerLabel.kind === 'active-queued'
 				? m.download_dock_active_queued_speed_label({
 						count: triggerLabel.count,
@@ -133,11 +183,20 @@
 		</button>
 
 		{#if open}
-			<div id="dl-dock-pop" class="dl-dock-pop" role="menu" aria-label={m.download_dock_title()}>
+			<div
+				id="dl-dock-pop"
+				class="dl-dock-pop"
+				role="menu"
+				aria-label={m.download_dock_title()}
+				tabindex="-1"
+				onkeydown={onMenuKeydown}
+			>
 				{#if itemsView.length === 0}
 					<p class="dl-dock-empty">{m.download_dock_empty()}</p>
 				{:else}
-					<ul class="dl-dock-list">
+					<!-- A menu holds items, not a list: the rows step aside for
+					     their actions. -->
+					<ul class="dl-dock-list" role="none">
 						{#each itemsView as item (item.id)}
 							{@const epLabel =
 								item.rangeTotal && item.currentEp != null
@@ -148,12 +207,34 @@
 									: item.rangeTotal
 										? m.download_dock_ep_label_range_static({ episode: item.episode })
 										: m.download_dock_ep_label_single({ episode: item.episode })}
-							<li class="dl-row dl-row-{item.status}" title={item.title}>
-								<span class="dl-row-text">
+							<!-- Each action is described by its row: the title and
+							     episode, where the download stands
+							     ($lib/download/row-state), then the report a
+							     finished row carries. Read when the item is
+							     reached. Nothing here is a live region, though a
+							     screen reader may speak a large change to the item
+							     that has focus. -->
+							{@const standing = rowState(item)}
+							{@const described = [
+								`${item.id}-text`,
+								`${item.id}-state`,
+								standing.note !== null ? `${item.id}-note` : null,
+								(item.status === 'done' || item.status === 'error') && terminalReportText(item)
+									? `${item.id}-report`
+									: null
+							]
+								.filter((id) => id !== null)
+								.join(' ')}
+							<li class="dl-row dl-row-{item.status}" title={item.title} role="none">
+								<span class="dl-row-text" id="{item.id}-text">
 									<span class="dl-row-title">{item.title}</span>
 									<span class="dl-row-sep" aria-hidden="true">·</span>
 									<span class="dl-row-ep">{epLabel}</span>
 								</span>
+								<span class="dl-sr" id="{item.id}-state">{standing.state}</span>
+								{#if standing.note !== null}
+									<span class="dl-sr" id="{item.id}-note">{standing.note}</span>
+								{/if}
 
 								<!-- Active/pending: thin indeterminate bar fills the
 								     remaining inline space + a single cancel (X).
@@ -162,7 +243,7 @@
 									{#if item.status === 'queued'}
 										<!-- Waiting for one of the downloads running at once
 										     to end ($lib/download/queue). -->
-										<span class="dl-row-queued">{m.download_dock_queued()}</span>
+										<span class="dl-row-queued" aria-hidden="true">{m.download_dock_queued()}</span>
 									{:else}
 										<span
 											class="dl-row-bar dl-row-bar-indet"
@@ -175,6 +256,8 @@
 									<button
 										type="button"
 										class="dl-row-act"
+										role="menuitem"
+										aria-describedby={described}
 										onclick={() => confirmCancel(item)}
 										aria-label={m.download_dock_cancel_aria_label()}
 										title={m.download_dock_cancel_title()}
@@ -193,6 +276,8 @@
 									<button
 										type="button"
 										class="dl-row-act"
+										role="menuitem"
+										aria-describedby={described}
 										onclick={() => reveal(item.destDir)}
 										aria-label={m.download_dock_reveal_aria_label()}
 										title={m.download_dock_reveal_title()}
@@ -211,6 +296,8 @@
 									<button
 										type="button"
 										class="dl-row-act"
+										role="menuitem"
+										aria-describedby={described}
 										onclick={() => downloadStore.dismiss(item.id)}
 										aria-label={m.download_dock_dismiss_aria_label()}
 										title={m.download_dock_dismiss_title()}
@@ -226,11 +313,16 @@
 										</svg>
 									</button>
 								{:else}
-									<span class="dl-row-error" title={item.error ?? m.errors_failed_default()}>!</span
+									<span
+										class="dl-row-error"
+										aria-hidden="true"
+										title={item.error ?? m.errors_failed_default()}>!</span
 									>
 									<button
 										type="button"
 										class="dl-row-act"
+										role="menuitem"
+										aria-describedby={described}
 										onclick={() => downloadStore.dismiss(item.id)}
 										aria-label={m.download_dock_dismiss_aria_label()}
 										title={m.download_dock_dismiss_title()}
@@ -247,7 +339,8 @@
 									</button>
 								{/if}
 								{#if (item.status === 'done' || item.status === 'error') && terminalReportText(item)}
-									<span class="dl-row-report">{terminalReportText(item)}</span>
+									<span class="dl-row-report" id="{item.id}-report">{terminalReportText(item)}</span
+									>
 								{/if}
 							</li>
 						{/each}
@@ -441,6 +534,19 @@
 		color: var(--brand);
 		white-space: nowrap;
 		flex-shrink: 0;
+	}
+	/* Read by assistive technology, not shown: the row's bar, its Queued
+	   label and its failure mark say the same to the eye. */
+	.dl-sr {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+		border: 0;
 	}
 	.dl-row-queued {
 		flex-shrink: 0;

@@ -20,7 +20,27 @@ else is able to read.
 
 Adding an entry is not a way to avoid the work. `AGENTS.md` §14 lists
 it third of four options, after doing it here and doing it in its own
-pull request.
+pull request, and it is the one an agent never takes alone: an entry
+is added, or widened to defer more, only when the maintainer has
+chosen to defer. Correcting an entry so it stays true, or removing it
+when the work lands, needs no such choice — the pull request that does
+it must say so. An entry is false only when something it states no
+longer holds, or never did; a view that the work is not worth doing
+never makes it false. An entry that is wholly false is removed as its
+correction. Removing an entry, or part of one, for any other reason,
+such as work that still holds but seems not worth doing, is the
+maintainer's choice too, however it was reached. Where only part of an
+entry is false, the change corrects that part, and the rest stays
+unless the maintainer chooses to drop it.
+
+An entry is a reminder, not a constraint. A change considers an entry
+only when tackling it would unblock the change, or when the change
+would otherwise have to be built differently or around it. Then, if
+the entry is still true and worth doing, the change prefers tackling
+it; one too large or risky to take on goes to the maintainer as a
+choice, as `AGENTS.md` §14 describes, and so does one that seems not
+worth doing, as above. An entry that only shares the change's area is
+not raised, and the log is not scanned by area or keyword.
 
 Write an entry about the code, not about the work in flight. An entry
 stands on its own: what is wrong, where it lives, and what should
@@ -269,23 +289,6 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app (continued)
 
-- **A connect or disconnect whose bridge call rejects leaves the
-  provider changing for good.** The account page's `connect()` and
-  `disconnect()` and the chip's disconnect
-  (`frontend/src/lib/account/chip-disconnect.ts`) await
-  `connectAccount` / `disconnectAccount` with no catch, and those let a
-  rejected preload call (`openOAuth`, `persistAccount`,
-  `clearPersistedAccount`) through. The main-process handlers catch
-  their own failures, so it takes an IPC failure in the renderer; then
-  the provider stays `connecting` (its card stuck on "Signing in…") or
-  in an account change until a reload. Since the keyring reads wait
-  for a change under way to land (`$lib/account/hydrate-flow`), a
-  provider stuck that way also keeps one waiting read per hydrate
-  alive; the hydrate itself and the other providers are not held.
-  The fix is a catch that restores the pre-click state, as a failed
-  connect already does, or sets the error state, as a failed clear
-  does.
-
 - **A stamp repair can land inside an older instance's play.** The
   repair that puts a legacy history row's display stamp back on its
   slot (the rule in `numbering_offset_drift.rs`, the repair in
@@ -347,10 +350,11 @@ starting it, and delete it when you find it done.
   did — and the routing changes how a working handoff behaves.
 
 - **The resolver's requests to a CDN pass the host's budget.** A
-  fresh resolve fetches the master playlist — and the variant, for a
-  quality other than best — through the impersonating transport, ahead
-  of the player's own fetches of the same host, and the budget does not
-  count them. Downloads running past the budget are held to what their
+  fresh resolve fetches the master playlist through the impersonating
+  transport — and the variant too, for a download whose download
+  quality is not Best; a play or hand-off fetches the master alone —
+  ahead of the player's own fetches of the same host, and the budget
+  does not count them. Downloads running past the budget are held to what their
   requests in flight leave and a cached row's liveness check waits
   for its tokens; the resolver is not counted, because it runs in
   the providers, which hold no budget, and its other requests go to the
@@ -402,37 +406,43 @@ starting it, and delete it when you find it done.
 - **Some guessed Continue cards still open the wrong show.** A
   Continue row that recorded no show is matched by a Kitsu search for
   its title (`pickKitsuMatch` in `frontend/src/lib/history/resolve.ts`,
-  narrowed first by `frontend/src/lib/history/pick-rank.ts`). Over the
-  season picker's recorded cases these still pick another entry, and a
-  click on the card opens that one, playing whatever the provider lists
-  for it, if anything:
+  narrowed first by `frontend/src/lib/history/pick-rank.ts`, after the
+  hits the row itself rules out are withheld,
+  `backend/src/commands/continue_guess.rs`). Of the hianime listings the
+  season picker's audit paired with their Kitsu entries, these still
+  pick another entry, and a click on the card opens that one, playing
+  whatever the provider lists for it, if anything:
 
-  - [Oshi no Ko], which hianime titles "My Star": "My Star" takes Fuyu
-    no Suta-furu-tsu, and "My Star: Season 2" and "My Star Season 3"
-    take My Hero Academia 7.
-  - "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2" takes Part 1,
-    the only hit Kitsu's search returns for it.
-  - "Jujutsu Kaisen (TV)" takes the New Year's Special, and "Jujutsu
-    Kaisen 2nd Season" its recap.
-  - "Haikyuu!!: To the Top (Part 1+2)" takes To the Top 2, and
-    "Haikyuu!!: To the Top 2nd Season" takes To the Top.
-  - "That Time I Got Reincarnated as a Slime Season 2" takes the 2nd
-    Season's Part 2.
+  - "Haikyuu!!: To the Top (Part 1+2)" takes To the Top 2.
   - "Attack on Titan: Final Season, Part 1" takes the Final Chapters'
-    Part 1.
-  - "Bakemonogatari (The Monogatari Series)" takes Off & Monster
-    Season.
+    Part 1: at the row's first episode nothing rules that one-episode
+    special out, and past it the resolve from the show key's words
+    answers the same entry.
   - "JoJo's Bizarre Adventure Part 2: Stardust Crusaders (Uncensored)"
-    takes Stone Ocean Part 2.
+    takes Stone Ocean Part 2, the only hit Kitsu's search returns for
+    it, which carries the title's first word and no season.
 
-  It waited because no rule tried fixed these without breaking picks
-  that are right. Refusing a season row any hit that does not carry
-  its season, rather than falling back to Kitsu's first hit, emptied
-  the pick for Gintama Season 2, 4 and 5 and for Kaguya-sama's second
-  season, whose Kitsu slugs do not spell the season the way that rule
-  reads one (Gintama' is `gintama-2`). Preferring a
-  season hit with no extra Part number sent Attack on Titan Season 3 to
-  its specials and the Slime season to a recap. Stripping "(TV)",
+  Two of the corpus's other cards pick another entry too, and nothing
+  the row carries can settle them:
+
+  - The 1993 "JoJo's Bizarre Adventure" OVA takes the 2012 series: the
+    provider lists the OVA under the bare title, as it does the 2000
+    OVA, and the OVA's show key (`jojos-bizarre-adventure-706`) names
+    no year.
+  - "My Star: Specials" takes [Oshi no Ko]: neither Kitsu's answer for
+    its title nor the one for its show key's words holds the specials.
+
+  What corrects these two is the user rather than a rule, where Kitsu
+  holds the entry at all: the player's "Is this the show you meant?"
+  on a guessed play, once it ships, or a play of the show from its own
+  page, below.
+
+  The first three waited because no rule tried fixed them without
+  breaking picks that are right. Ruling out a hit whose titles and the
+  row's each carry a word the other lacks would refuse Stone Ocean Part
+  2 here, but it also refused the right entry for "86 EIGHTY-SIX Season
+  2 Recap", which Kitsu titles "86 Part 2 Recaps", and it would refuse
+  any entry Kitsu titles only in romanized Japanese. Stripping "(TV)",
   "(Uncensored)" and "(Part 1+2)" before comparing titles changed no
   pick.
 
@@ -442,9 +452,10 @@ starting it, and delete it when you find it done.
   from then on — unless the cross-cour guard refuses the record, as it
   does for the Slime season (the entry on a later season Kitsu titles
   only with a bare number). Worth revisiting when the guess can read
-  more of the provider's listing than its title and the year its key
-  names — the year it aired, or its episode count — or when another
-  wrong pick on a user's card is reported.
+  more of the provider's listing than its title, the year and words its
+  key names and the episode it reached — the year it aired, its
+  format, or its episode count — or when another wrong pick on a
+  user's card is reported.
 
 ## Interface
 
@@ -456,6 +467,21 @@ starting it, and delete it when you find it done.
   still plays. What Electron reported matched the older switch, not the
   new preference. The preference could be read another way and handed
   to the renderer, or a later Electron may expose it to the query.
+
+- **Small text over a thumbnail can fall below WCAG AA on a bright
+  frame.** The "EP" key and number set over an episode thumbnail (the
+  show page's tiles, the Continue cards) rely on a bottom scrim that
+  fades from transparent to the page ink at 75%, drawn at 0.85 until
+  hover. The text sits partway up that gradient, so over a near-white
+  frame the 11–12px key falls well under 4.5:1; over a typical frame
+  it clears with room. The text tiers themselves meet AA on every ink
+  surface, which `frontend/tests/lint/text-contrast.test.ts` holds,
+  but nothing measures text against imagery. Closing it means a scrim
+  strong enough at the text's height to hold AA over white, which
+  darkens the lower part of every thumbnail, or a local protection
+  behind the text alone; either changes how the thumbnails look, so
+  it waits on a design choice. The hero's eyebrow over its banner is
+  in the same position.
 
 - **An episode's listed length can disagree with the video.** The
   detail page's episode list shows the length Kitsu gives each
@@ -578,10 +604,12 @@ starting it, and delete it when you find it done.
   and Chromium's native ones, which Settings swaps in when "Custom
   player controls" (`use_custom_player_controls`, on by default) is
   turned off. Every player feature has to work through
-  both, so it is built twice. The per-show subtitle memory is the
-  latest case: a pick in the app's captions menu is recorded as it
+  both, so it is built twice. The per-show subtitle memory is one
+  case: a pick in the app's captions menu is recorded as it
   is made, while a pick in the browser's menu has to be inferred from
-  the video's text-track changes.
+  the video's text-track changes. The quality picker is another: the
+  native bar has none, so with it the picker is in the page's ⋯ menu,
+  as Watch together is.
 
   Investigate choosing one. Before deciding, measure what the native
   path still offers that the custom one does not — the setting's own
@@ -675,7 +703,8 @@ starting it, and delete it when you find it done.
   the number the card shows beforehand, where it shows one, is not
   always the episode played. Nothing else on the card or the row
   leads to the show either: the chip on a card removes it, the
-  row's menu clears the row whole, the strip's arrows scroll it.
+  row's Clear history action clears it whole, the strip's arrows
+  scroll it.
   (An entry the matcher could not place renders as a link to search
   instead, and has no show to route to; one whose match came back
   without a title renders as a card whose click does nothing. This
