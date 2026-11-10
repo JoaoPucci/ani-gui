@@ -65,34 +65,45 @@ describe('latestRead', () => {
 		expect(shown).toEqual([null, null]);
 	});
 
-	it('shows only the latest read, whatever order the answers land in', async () => {
+	it('shows only the latest read through any run of starts, stops and answers', async () => {
+		type Op = { kind: 'start' } | { kind: 'stop' } | { kind: 'answer'; pick: number };
+		const opArb: fc.Arbitrary<Op> = fc.oneof(
+			fc.constant({ kind: 'start' as const }),
+			fc.constant({ kind: 'stop' as const }),
+			fc.nat().map((pick) => ({ kind: 'answer' as const, pick }))
+		);
 		await fc.assert(
-			fc.asyncProperty(
-				fc.integer({ min: 1, max: 6 }),
-				fc.array(fc.nat(), { minLength: 6, maxLength: 6 }),
-				fc.boolean(),
-				async (count, order, stopAtEnd) => {
-					const { reads, now } = harness();
-					const pending = Array.from({ length: count }, () => deferred<string>());
-					pending.forEach((d) => reads.start(() => d.promise));
-					if (stopAtEnd) reads.stop();
-					// Answer every read, in an order the arbitrary picks.
-					const left = pending.map((d, i) => ({ d, i }));
-					for (const n of order) {
-						if (left.length === 0) break;
-						const [{ d, i }] = left.splice(n % left.length, 1);
-						d.answer(`read ${i}`);
+			fc.asyncProperty(fc.array(opArb, { maxLength: 12 }), async (ops) => {
+				const { reads, now } = harness();
+				const pending: { d: ReturnType<typeof deferred<string>>; n: number }[] = [];
+				let started = 0;
+				// The read whose answer may be shown: the latest start, unless a
+				// stop came after it.
+				let live: number | null = null;
+				const answered = new Set<number>();
+				for (const op of ops) {
+					if (op.kind === 'start') {
+						const d = deferred<string>();
+						const n = started++;
+						pending.push({ d, n });
+						reads.start(() => d.promise);
+						live = n;
+						expect(now()).toBeNull();
+					} else if (op.kind === 'stop') {
+						reads.stop();
+						live = null;
+						expect(now()).toBeNull();
+					} else if (pending.length > 0) {
+						const [{ d, n }] = pending.splice(op.pick % pending.length, 1);
+						d.answer(`read ${n}`);
 						await settle();
-						if (stopAtEnd) expect(now()).toBeNull();
-						else if (i === count - 1) expect(now()).toBe(`read ${i}`);
-						else expect([null, `read ${count - 1}`]).toContain(now());
+						answered.add(n);
 					}
-					for (const { d, i } of left) d.answer(`read ${i}`);
-					await settle();
-					expect(now()).toBe(stopAtEnd ? null : `read ${count - 1}`);
+					// Shown: the live read's answer once it has landed, else nothing.
+					expect(now()).toBe(live !== null && answered.has(live) ? `read ${live}` : null);
 				}
-			),
-			{ numRuns: 50 }
+			}),
+			{ numRuns: 100 }
 		);
 	});
 });
