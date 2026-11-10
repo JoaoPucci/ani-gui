@@ -71,7 +71,7 @@ function englishFor(key: string): string {
 function failingSearch(failure: object = FAILURE) {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(CONFIG)),
-		http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
 		http.post(`${API_BASE}/api/kitsu/search/page`, () =>
 			HttpResponse.json(failure, { status: 502 })

@@ -1,8 +1,9 @@
 /**
  * Hands focus on when a control leaves while holding it. The search
- * page's paging buttons unmount with the phase they belong to — Try
- * again as its page loads, Load more at the search's end — and focus
- * that sat on one would otherwise fall to the page body.
+ * page's buttons unmount with the state they belong to — the paging
+ * folio's Try again as its page loads and Load more at the search's
+ * end, the discovery notice's Try again as the rows load again — and
+ * focus that sat on one would otherwise fall to the page body.
  */
 
 /** A control that can report focus, and a destination that takes it. */
