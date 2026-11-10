@@ -112,6 +112,19 @@ async fn a_deleted_recorded_entry_gives_way_to_the_rows_live_mapping() {
 }
 
 #[tokio::test]
+async fn a_lookup_of_several_ids_names_a_deleted_entry_s_row_by_what_stands_in_for_it() {
+    let (_tmp, _mock, state) = row_recording("999", 404).await;
+    crate::commands::kitsu::allmanga_kitsu_put(&state, SHOW, "999").unwrap();
+    title_match(&state, "1");
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    let ids = vec!["1".to_owned(), "999".to_owned()];
+    let each = history_by_kitsu_each(&state, &ids).unwrap();
+    assert_eq!(each["1"].as_ref().map(|e| e.id.as_str()), Some(SHOW));
+    assert!(each["999"].is_none());
+}
+
+#[tokio::test]
 async fn a_deleted_recorded_entry_gives_way_to_the_title_match_past_a_dead_mapping() {
     // A play stamps the mapping with the id it records, so the common
     // case is a mapping naming the same deleted entry: that mapping is

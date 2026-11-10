@@ -1556,7 +1556,13 @@
 			return;
 		}
 		upNextReads.start(() =>
-			loadWatchOrder(showId, { franchise: kitsuFranchise, history: historyList })
+			loadWatchOrder(showId, {
+				franchise: kitsuFranchise,
+				named: (ids) =>
+					historyList().then((rows) =>
+						Object.fromEntries(ids.map((k) => [k, rows.find((r) => r.kitsu_id === k) ?? null]))
+					)
+			})
 		);
 	});
 
