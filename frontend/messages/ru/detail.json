@@ -156,7 +156,7 @@
 	"link_search_submit": "Найти",
 	"link_candidates_aria": "Тайтлы на выбор",
 	"link_candidates_loading": "Ищем тайтлы…",
-	"link_candidates_failed": "Kitsu не отвечает. Попробуйте поискать ещё раз.",
+	"link_candidates_failed": "Kitsu не отвечает. Попробуйте поискать снова.",
 	"link_candidates_empty": "Ничего не найдено. Попробуйте другой запрос.",
 	"link_shown_now": "На этой странице",
 	"link_confirm_heading": "Это «{title}»?",
@@ -168,7 +168,7 @@
 	"link_cancel_button": "Отмена",
 	"link_done_toast": "Сохранено как «{title}».",
 	"link_failed_gone": "Этого тайтла больше нет на Kitsu.",
-	"link_failed": "Не удалось сохранить тайтл. Попробуйте ещё раз.",
+	"link_failed": "Не удалось сохранить тайтл. Попробуйте снова.",
 	"link_linking": "Сохраняем…",
 	"link_confirm_rows": "Другие записи этого тайтла в истории тоже изменятся."
 }

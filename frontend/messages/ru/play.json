@@ -160,7 +160,7 @@
 	"link_switch_heading": "Переключиться на «{title}»?",
 	"link_switch_hint": "Серия {episode} продолжится с {time}.",
 	"link_switched_note": "Сейчас идёт «{title}».",
-	"link_switch_failed": "Не удалось переключиться на «{title}». Попробуйте ещё раз.",
+	"link_switch_failed": "Не удалось переключиться на «{title}». Попробуйте снова.",
 	"link_dialog_body_single": "В истории записан как «{title}». Сейчас идёт этот тайтл.",
 	"link_switch_hint_single": "Продолжится с {time}."
 }
