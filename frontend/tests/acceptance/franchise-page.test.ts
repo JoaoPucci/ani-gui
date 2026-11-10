@@ -100,10 +100,18 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
+type HistoryRowFixture = { ep_no: string; id: string; title: string; kitsu_id?: string };
+
 interface Options {
 	order?: string;
 	franchise?: () => Response;
-	history?: { ep_no: string; id: string; title: string; kitsu_id?: string }[];
+	history?: HistoryRowFixture[];
+	/**
+	 * The row the backend names for an id where it is not the row that
+	 * recorded it (`history_claim::names`): a row whose recorded entry
+	 * Kitsu deleted, named by its stored mapping or title match.
+	 */
+	named?: Record<string, HistoryRowFixture>;
 }
 
 function useFranchise(opts: Options = {}) {
@@ -116,7 +124,18 @@ function useFranchise(opts: Options = {}) {
 			calls.franchise++;
 			return opts.franchise ? opts.franchise() : HttpResponse.json(FRANCHISE);
 		}),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json(opts.history ?? []))
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json(opts.history ?? [])),
+		// The rows the franchise's entries resume from, as the resume
+		// lookup names them.
+		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
+			const { ids } = (await request.json()) as { ids: string[] };
+			const rows = opts.history ?? [];
+			return HttpResponse.json(
+				Object.fromEntries(
+					ids.map((k) => [k, opts.named?.[k] ?? rows.find((r) => r.kitsu_id === k) ?? null])
+				)
+			);
+		})
 	);
 	return calls;
 }
@@ -210,6 +229,21 @@ describe('franchise page', () => {
 		expect(masthead.textContent).toContain(m.watchorder_meta_progress_open({ episode: 3 }));
 		// Saga is watched to the end, and its row says so.
 		expect(row('10')!.textContent).toContain(m.watchorder_meta_watched());
+	});
+
+	it('resumes the title a row is named for when Kitsu deleted the entry the row recorded', async () => {
+		// The row recorded entry 4, which Kitsu has since deleted; the
+		// backend names it for Final Arc (50), the entry its Continue
+		// Watching card was matched to, as the resume lookup does.
+		const ROW = { id: 'hianime:saga-final', title: 'Saga Final', ep_no: '3', kitsu_id: '4' };
+		useFranchise({ history: [ROW], named: { '50': ROW } });
+		app = mount(FranchisePage, { target });
+		await until(() => resumeLink() !== null && rows().length === 4, 'the masthead and list');
+		expect(resumeLink()!.textContent?.trim()).toBe(m.watchorder_franchise_resume());
+		expect(resumeLink()!.getAttribute('href')).toBe('/anime/50');
+		expect(resumeLink()!.parentElement!.textContent).toContain(
+			m.watchorder_meta_progress_open({ episode: 3 })
+		);
 	});
 
 	it('offers to start from the first title when nothing is part-way', async () => {
