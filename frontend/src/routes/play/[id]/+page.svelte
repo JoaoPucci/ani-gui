@@ -108,6 +108,7 @@
 	import { clearBackgroundForShow, clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { createShowReleases } from '$lib/play/show-release';
 	import { createNavigationClaims } from '$lib/navigation/claims';
+	import { beginVisit, visitSeries, type Visit } from '$lib/navigation/visit';
 	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
 	import { createSourceScope } from '$lib/play/source-scope';
 	import { markStarted } from '$lib/play/watch-position';
@@ -446,6 +447,10 @@
 	// length of the stream on screen ($lib/play/aniskip-fetch-trigger).
 	const aniskipDurationReady = $derived(lengthReady(lengthFor, sessionId, duration));
 	const aniskipTrigger = createAniskipFetchTrigger();
+	// Each ask for skip times, cancelled by the next ask, a clear, or
+	// the page going ($lib/navigation/visit).
+	const aniskipReads = visitSeries();
+	onDestroy(aniskipReads.end);
 	$effect(() => {
 		// Subscribing to the fetch-key derived re-runs the effect on
 		// episode boundaries; subscribing to the readiness boolean
@@ -458,6 +463,7 @@
 		const key = aniskipFetchKey;
 		const decision = aniskipTrigger.step(id, episodeNum, aniskipDurationReady);
 		if (decision.kind === 'clear') {
+			aniskipReads.end();
 			skipIntervals = [];
 			return;
 		}
@@ -471,7 +477,10 @@
 		// An answer counts only for the episode on screen, and only while
 		// no later request or clear has happened: the same episode asked
 		// again, after a switch away and back, with its stream's length.
-		void aniskipGet(decision.showId, decision.episode, len)
+		// The ask before is cancelled: its answer would be dropped.
+		const reads = aniskipReads.next();
+		void reads
+			.keep(aniskipGet(decision.showId, decision.episode, len, { signal: reads.signal }))
 			.then((v) => {
 				if (aniskipFetchKey === key && aniskipTrigger.answers(ask)) {
 					skipIntervals = v;
@@ -1454,20 +1463,21 @@
 			airingResolved = true;
 			return;
 		}
-		let cancelled = false;
-		void airingGet(currentId)
+		// Asked again for another show or status: the read before is
+		// cancelled, and nothing of it is applied ($lib/navigation/visit).
+		const reads = beginVisit();
+		void reads
+			.keep(airingGet(currentId, { signal: reads.signal }))
 			.then((a) => {
-				if (!cancelled) airingSchedule = a;
+				airingSchedule = a;
 			})
 			.catch(() => {
 				/* unknown airing data → tiles stay ungated */
 			})
 			.finally(() => {
-				if (!cancelled) airingResolved = true;
+				airingResolved = true;
 			});
-		return () => {
-			cancelled = true;
-		};
+		return reads.end;
 	});
 	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
 	/** What the page knows about episode `n`, for the plays it refuses
@@ -1618,18 +1628,24 @@
 		return out;
 	}
 
-	// What says the show this page shows has gone — the page closed, or
-	// moved to another show: a refill landing after it is not fetched
-	// ($lib/refill/refill). Renewed per show below.
-	let refills = new AbortController();
-	onDestroy(() => refills.abort());
+	// The reads the page makes once, ended when the page goes; and the
+	// reads of the show it plays, ended when the page closes or moves to
+	// another show, renewed per show below. Each read holds an API
+	// connection until it answers, so a read nobody will look at is
+	// cancelled, and its answer, or its failure, never reaches the page
+	// ($lib/navigation/visit). A refill landing after the show's visit
+	// is not fetched either ($lib/refill/refill).
+	const pageReads = beginVisit();
+	onDestroy(pageReads.end);
+	let showReads: Visit = beginVisit();
+	onDestroy(() => showReads.end());
 
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
 		const eps = await kitsuEpisodes(id, p, {
-			signal: refills.signal,
+			signal: showReads.signal,
 			// Thumbnails AniList's pacing held back, filled in once
 			// they land.
 			onRefill: (filled) => {
@@ -1648,11 +1664,15 @@
 
 	async function fetchEpisodesPage(page: number, gen: number, opts: { initial?: boolean } = {}) {
 		if (!id) return;
+		// A show left meanwhile answers nothing here, not even a failure.
+		const reads = showReads;
 		episodesLoading = true;
 		try {
 			const start = (page - 1) * UI_PAGE_SIZE + 1;
 			const end = page * UI_PAGE_SIZE;
-			const merged = (await Promise.all(kitsuPagesForUiPage(page).map(getKitsuPage))).flat();
+			const merged = (
+				await reads.keep(Promise.all(kitsuPagesForUiPage(page).map(getKitsuPage)))
+			).flat();
 			if (!stripPager.completed(gen)) return;
 			rawWindowed = merged.filter((ep) => {
 				const n = ep.number ?? ep.relative_number ?? -1;
@@ -2186,8 +2206,8 @@
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		id;
 		resetEpisodePageCache(kitsuPageCache);
-		refills.abort();
-		refills = new AbortController();
+		showReads.end();
+		showReads = beginVisit();
 	});
 
 	onMount(() => {
@@ -2195,12 +2215,14 @@
 			detailError = m.play_error_no_show_id();
 			return;
 		}
-		void kitsuAnimeDetail(id)
+		void pageReads
+			.keep(kitsuAnimeDetail(id, { signal: pageReads.signal }))
 			.then((d) => {
 				detail = d;
 				const seed = (d.canonical_title ?? '').split(/\s+/).slice(0, 2).join(' ').trim();
 				if (seed.length >= 2) {
-					void kitsuSearch(seed)
+					void pageReads
+						.keep(kitsuSearch(seed, { signal: pageReads.signal }))
 						.then((hits) => {
 							similar = hits.filter((h) => h.id !== d.id).slice(0, 12);
 						})
@@ -2221,7 +2243,8 @@
 		const startReq = stripPager.open(stripPager.pageOf(episodeNum));
 		if (startReq.fetch) void fetchEpisodesPage(startReq.page, startReq.gen, { initial: true });
 
-		void settingsGet()
+		void pageReads
+			.keep(settingsGet({ signal: pageReads.signal }))
 			.then((c) => {
 				config = c;
 			})
@@ -2945,7 +2968,8 @@
 	let downloadArgs = $state<DownloadArgs | null>(null);
 	let downloadDefaultDir = $state('');
 
-	void downloadDefaultDirApi()
+	void pageReads
+		.keep(downloadDefaultDirApi({ signal: pageReads.signal }))
 		.then((d) => {
 			if (d) downloadDefaultDir = d;
 		})
