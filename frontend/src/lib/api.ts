@@ -645,8 +645,7 @@ export function historyByKitsu(kitsuId: string): Promise<HistoryEntry | null> {
 export function historyByKitsuEach(
 	ids: readonly string[]
 ): Promise<Record<string, HistoryEntry | null>> {
-	void ids;
-	return Promise.resolve({});
+	return postJson<Record<string, HistoryEntry | null>>('/api/history/by-kitsu', { ids });
 }
 
 /** The episode one history row reads as now, and the number it read as
