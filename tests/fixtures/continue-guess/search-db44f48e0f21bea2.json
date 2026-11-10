@@ -1,0 +1,121 @@
+{
+ "data": [
+  {
+   "id": "45217",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kidou Senshi Gundam: Suisei no Majo",
+    "titles": {
+     "en": "Mobile Suit Gundam: THE WITCH FROM MERCURY",
+     "en_jp": "Kidou Senshi Gundam: Suisei no Majo",
+     "ja_jp": "機動戦士ガンダム 水星の魔女"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kidou-senshi-gundam-suisei-no-majo",
+    "startDate": "2022-10-02",
+    "endDate": "2023-01-08",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47301",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mobile Suit Gundam: The Witch from Mercury Recap",
+    "titles": {
+     "en": "Mobile Suit Gundam: The Witch from Mercury Recap",
+     "en_jp": "Kidou Senshi Gundam: Suisei no Majo Recap",
+     "ja_jp": "機動戦士ガンダム 水星の魔女総集編"
+    },
+    "abbreviatedTitles": [],
+    "slug": "mobile-suit-gundam-the-witch-from-mercury-recap",
+    "startDate": "2022-11-13",
+    "endDate": "2022-11-13",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46561",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kidou Senshi Gundam: Suisei no Majo Season 2",
+    "titles": {
+     "en": "Mobile Suit Gundam: The Witch from Mercury Season 2",
+     "en_jp": "Kidou Senshi Gundam: Suisei no Majo Season 2",
+     "ja_jp": "機動戦士ガンダム 水星の魔女 Season2"
+    },
+    "abbreviatedTitles": [
+     "G-Witch 2",
+     "Mobile Suit Gundam: The Witch from Mercury Cour 2",
+     "Kidou Senshi Gundam: Suisei no Majo Part 2",
+     "機動戦士ガンダム 水星の魔女 2クール"
+    ],
+    "slug": "kidou-senshi-gundam-suisei-no-majo-2",
+    "startDate": "2023-04-09",
+    "endDate": "2023-07-02",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46291",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kidou Senshi Gundam: Suisei no Majo - PROLOGUE",
+    "titles": {
+     "en": "Mobile Suit Gundam: The Witch from Mercury - Prologue",
+     "en_jp": "Kidou Senshi Gundam: Suisei no Majo - PROLOGUE",
+     "ja_jp": "機動戦士ガンダム 水星の魔女 PROLOGUE"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kidou-senshi-gundam-suisei-no-majo-prologue",
+    "startDate": "2022-07-14",
+    "endDate": "2022-07-14",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47128",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Shukufuku",
+    "titles": {
+     "en": "The Blessing",
+     "en_jp": "Shukufuku",
+     "ja_jp": "祝福"
+    },
+    "abbreviatedTitles": [],
+    "slug": "shukufuku",
+    "startDate": "2022-10-02",
+    "endDate": "2022-10-02",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47488",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Slash",
+    "titles": {
+     "en_jp": "Slash"
+    },
+    "abbreviatedTitles": [],
+    "slug": "slash",
+    "startDate": "2023-05-22",
+    "endDate": "2023-05-22",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  }
+ ]
+}

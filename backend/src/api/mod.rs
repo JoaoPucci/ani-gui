@@ -99,6 +99,10 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/history", get(get_history).delete(delete_history))
         .route("/api/history/by-kitsu/:kitsu_id", get(get_history_by_kitsu))
         .route("/api/history/:id/number", get(get_history_number))
+        .route(
+            "/api/history/guess/ruled-out",
+            post(post_history_guess_ruled_out),
+        )
         .route("/api/history/:id", delete(delete_history_entry))
         .route("/api/external-player", post(post_external_player))
         .route("/api/sessions", post(post_session))
@@ -263,6 +267,15 @@ async fn post_session(
 #[derive(Deserialize)]
 struct SearchBody {
     query: String,
+}
+
+/// Which of a Continue row's search hits the row rules out
+/// ([`crate::commands::continue_guess`]). Reads only the body: no
+/// request leaves the app.
+async fn post_history_guess_ruled_out(
+    Json(body): Json<crate::commands::continue_guess::RuledOutRequest>,
+) -> Json<Vec<String>> {
+    Json(crate::commands::continue_guess::answer(body))
 }
 
 async fn post_kitsu_search(
@@ -834,6 +847,10 @@ async fn post_play_cache_evict(
 #[cfg(test)]
 #[path = "kitsu_map_test.rs"]
 mod kitsu_map_tests;
+
+#[cfg(test)]
+#[path = "guess_ruled_out_test.rs"]
+mod guess_ruled_out_tests;
 
 #[cfg(test)]
 #[path = "history_key_year_test.rs"]

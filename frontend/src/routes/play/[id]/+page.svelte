@@ -78,6 +78,7 @@
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { captionChoiceOf, storedCaption } from '$lib/play/caption-choice';
+	import { storedAudio } from '$lib/play/audio-choice';
 	import { rememberPickMoved } from '$lib/play/caption-repick';
 	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
@@ -274,6 +275,11 @@
 	let theaterMode = $state(false);
 	let similar = $state<KitsuAnimeRef[] | null>(null);
 	let config = $state<Config | null>(null);
+	// The show's own Sub or Dub, read whenever the page turns to a show
+	// ($lib/play/audio-choice); a show never chosen on plays the
+	// Settings value, which is only the default.
+	let chosenAudio = $derived<'sub' | 'dub' | undefined>(storedAudio(id));
+	const audio = $derived(chosenAudio ?? playMode(config));
 	let detailError = $state<string | null>(null);
 	let playerError = $state<string | null>(null);
 	let switchBusy = $state(false);
@@ -1119,7 +1125,7 @@
 	// ($lib/availability/row), which every accepted answer writes
 	// and which is read for the show and audio on screen.
 	let availabilityRow = $state<AvailabilityRow | null>(null);
-	const rowKey = $derived(audioKey(detail?.id, playMode(config)));
+	const rowKey = $derived(audioKey(detail?.id, audio));
 	const knownRow = $derived(rowFor(availabilityRow, rowKey));
 	const playableEpisodeCount = $derived(knownRow.count);
 	/**
@@ -1142,7 +1148,7 @@
 	 * the page does, so a click in that gap asks with the fallback and
 	 * the real mode can arrive while the answer is out.
 	 */
-	const capGateMode = (): 'sub' | 'dub' => playMode(config);
+	const capGateMode = (): 'sub' | 'dub' => audio;
 	/**
 	 * The context once this page is gone.
 	 *
@@ -1391,7 +1397,7 @@
 	// unchanged, and a derived that compares equal does not wake its
 	// dependents — so the common case costs one lookup, not two
 	// identical ones against a source that rate-limits.
-	const availabilityMode = $derived(playMode(config));
+	const availabilityMode = $derived(audio);
 
 	$effect(() => {
 		const d = detail;
@@ -2266,7 +2272,7 @@
 		if (!availabilityResolved) return;
 		const title = detail.canonical_title;
 		if (!title) return;
-		const mode = playMode(config);
+		const mode = audio;
 		// The version remembered for the show on its detail page — the
 		// one the session playing here was resolved for.
 		const version = storedChoice(id);
@@ -2334,7 +2340,7 @@
 		if (airingIsPending || deadEnd(standingOf(targetEp)) !== null) return;
 		const title = detail.canonical_title;
 		if (!title) return;
-		const mode = playMode(config);
+		const mode = audio;
 		// The show, visit and flags this switch is for, and its request,
 		// taken at the click ($lib/play/owned-play): the route's component
 		// is reused across shows and across a round trip back, so a late
@@ -2532,7 +2538,7 @@
 		// Settings is intentionally NOT a precondition — falling back to
 		// sub matches switchToEpisode's pattern. A permanently null
 		// config (settingsGet rejected) shouldn't leave Reload no-op.
-		const mode = playMode(config);
+		const mode = audio;
 		console.info('[play] stale-stream recovery:', reason);
 		try {
 			// The resolution cache keys on the version, so the eviction
@@ -2810,7 +2816,8 @@
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
 		const cfg = config;
-		const launch = { kitsuId: id, mode: playMode(cfg), episode: ep };
+		const mode = audio;
+		const launch = { kitsuId: id, mode, episode: ep };
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on (another show, or away and back) is
 		// not shown to them, and asks the cache nothing.
@@ -2834,7 +2841,7 @@
 							title,
 							episode: ep,
 							kitsuId: recordableId(id, fromGuess) ?? '',
-							config: cfg,
+							config: { mode },
 							detail,
 							version: storedChoice(id),
 							caption: storedCaption(id)
@@ -2880,8 +2887,8 @@
 		// switch while a slow launch is out must not re-head its failure,
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
-		const cfg = config;
-		const launch = { kitsuId: id, mode: playMode(cfg), episode: ep };
+		const mode = audio;
+		const launch = { kitsuId: id, mode, episode: ep };
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on is not shown to them.
 		const owner = claimPlay(
@@ -2903,7 +2910,7 @@
 							title,
 							episode: ep,
 							kitsuId: recordableId(id, fromGuess) ?? '',
-							config: cfg,
+							config: { mode },
 							detail,
 							version: storedChoice(id),
 							caption: storedCaption(id)
@@ -2948,7 +2955,7 @@
 		// flight the modal's cap would fall back to the announced
 		// total and an All download could range into unaired episodes.
 		if (!detail || airingIsPending) return;
-		const mode = playMode(config);
+		const mode = audio;
 		downloadArgs = buildDownloadArgs({
 			detail,
 			episode: episodeNum,

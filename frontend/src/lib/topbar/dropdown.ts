@@ -75,10 +75,10 @@ export interface DropdownVisibilityState {
 }
 
 /** Re-pull settings before the dropdown's next cache filter pass so
- *  it sees the user's current Sub/Dub pick. Settings + the detail
- *  page mutate their page-local config and call settingsPut, but the
- *  layout's copy never refreshes — without this, the topbar keeps
- *  filtering with the older mode until a reload. Falls back to the
+ *  it sees the current default Sub/Dub. The Settings page mutates its
+ *  page-local config and calls settingsPut, but the layout's copy
+ *  never refreshes — without this, the topbar keeps filtering with the
+ *  older default until a reload. Falls back to the
  *  last-known config on IPC failure so the dropdown stays usable. */
 export async function freshConfigOrLast(last: Config | null): Promise<Config | null> {
 	try {

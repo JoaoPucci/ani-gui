@@ -345,7 +345,13 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 ///   wrong — a pick among the hits Kitsu returned for Re:ZERO without
 ///   "Starting", or Season 2 Part 2 for Re:ZERO Season 2; re-keying
 ///   lets the next load re-derive it.
-pub(crate) const TITLE_MATCH_VERSION: u32 = 5;
+/// - v6: the guess no longer offers the picker a hit the row rules out
+///   by the episode it reached or its title
+///   ([`crate::commands::continue_guess`]). A v5 row can hold one of
+///   those — the New Year's Special for "Jujutsu Kaisen (TV)", Fuyu no
+///   Suta-furu-tsu for hianime's "My Star" — so v5 rows are not read
+///   and the next load picks again.
+pub(crate) const TITLE_MATCH_VERSION: u32 = 6;
 
 /// The first version whose keys name the provider segment
 /// ([`title_match_prefix`]); the versions before it keyed the title

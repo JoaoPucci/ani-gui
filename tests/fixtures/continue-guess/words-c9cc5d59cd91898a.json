@@ -1,0 +1,295 @@
+{
+ "data": [
+  {
+   "id": "42765",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen",
+    "titles": {
+     "en_jp": "Jujutsu Kaisen",
+     "ja_jp": "呪術廻戦"
+    },
+    "abbreviatedTitles": [
+     "Sorcery Fight"
+    ],
+    "slug": "jujutsu-kaisen",
+    "startDate": "2020-10-03",
+    "endDate": "2021-03-27",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43748",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen",
+    "titles": {
+     "en_jp": "Jujutsu Kaisen",
+     "ja_jp": "呪術廻戦"
+    },
+    "abbreviatedTitles": [
+     "Sorcery Fight"
+    ],
+    "slug": "jujutsu-kaisen-ona",
+    "startDate": "2018-12-03",
+    "endDate": "2018-12-08",
+    "episodeCount": 3,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45857",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen Season 2",
+    "titles": {
+     "en": "Jujutsu Kaisen Season 2",
+     "en_jp": "Jujutsu Kaisen Season 2",
+     "ja_jp": "呪術廻戦 第2期"
+    },
+    "abbreviatedTitles": [
+     "JJK2",
+     "Jujutsu Kaisen 2nd Season",
+     "Jujutsu Kaisen: Kaigyoku Gyokusetsu / Shibuya Jihen",
+     "Jujutsu Kaisen: Hidden Inventory / Premature Death",
+     "Jujutsu Kaisen: Shibuya Incident"
+    ],
+    "slug": "jujutsu-kaisen-2",
+    "startDate": "2023-07-06",
+    "endDate": "2023-12-28",
+    "episodeCount": 23,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44212",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen 0",
+    "titles": {
+     "en": "Jujutsu Kaisen 0",
+     "en_jp": "Jujutsu Kaisen 0",
+     "ja_jp": "呪術廻戦 0"
+    },
+    "abbreviatedTitles": [],
+    "slug": "jujutsu-kaisen-movie-0",
+    "startDate": "2021-12-24",
+    "endDate": "2021-12-24",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43886",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen New Year's Special",
+    "titles": {
+     "en": "Jujutsu Kaisen New Year's Special",
+     "en_jp": "Jujutsu Kaisen New Year's Special",
+     "ja_jp": "呪術廻戦"
+    },
+    "abbreviatedTitles": [
+     "Jujutsu Kaisen (TV) Recap",
+     "Sorcery Fight Recap"
+    ],
+    "slug": "jujutsu-kaisen-new-year-s-special",
+    "startDate": "2021-01-08",
+    "endDate": "2021-01-08",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48363",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen: Shimetsu Kaiyū Zenpen",
+    "titles": {
+     "en": "Jujutsu Kaisen Season 3: The Culling Game Part 1",
+     "en_jp": "Jujutsu Kaisen: Shimetsu Kaiyū Zenpen",
+     "ja_jp": "呪術廻戦 第3期: 死滅回游 前編"
+    },
+    "abbreviatedTitles": [
+     "JJK3",
+     "Jujutsu Kaisen Season 3",
+     "Jujutsu Kaisen 3rd Season",
+     "Jujutsu Kaisen: The Culling Game Part 1"
+    ],
+    "slug": "Jujutsu-Kaisen-3",
+    "startDate": "2026-01-08",
+    "endDate": "2026-03-26",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43814",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaikai Kitan",
+    "titles": {
+     "en_jp": "Kaikai Kitan",
+     "ja_jp": "廻廻奇譚"
+    },
+    "abbreviatedTitles": [
+     "KAIKAIKITAN",
+     "Eve"
+    ],
+    "slug": "kaikai-kitan",
+    "startDate": "2020-11-20",
+    "endDate": "2020-11-20",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47880",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen 2nd Season Recap",
+    "titles": {
+     "en": "Jujutsu Kaisen Season 2 Recap",
+     "en_jp": "Jujutsu Kaisen 2nd Season Recap",
+     "ja_jp": "呪術廻戦"
+    },
+    "abbreviatedTitles": [
+     "Jujutsu Kaisen Season 2 + Movie Recap"
+    ],
+    "slug": "jujutsu-kaisen-2nd-season-recap",
+    "startDate": "2023-08-11",
+    "endDate": "2023-08-17",
+    "episodeCount": 2,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49148",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen: Kaigyoku/Gyokusetsu",
+    "titles": {
+     "en": "Jujutsu Kaisen: Hidden Inventory/Premature Death",
+     "en_jp": "Jujutsu Kaisen: Kaigyoku/Gyokusetsu",
+     "en_us": "JUJUTSU KAISEN: Hidden Inventory / Premature Death – The Movie",
+     "ja_jp": "呪術廻戦 懐玉・玉折"
+    },
+    "abbreviatedTitles": [],
+    "slug": "Jujutsu_Kaisen-Kaigyoku-Gyokusetsu",
+    "startDate": "2025-05-30",
+    "endDate": "2025-05-30",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50627",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen: Shimetsu Kaiyū Kōhen",
+    "titles": {
+     "en": "Jujutsu Kaisen Season 4: The Culling Game Part 2",
+     "en_jp": "Jujutsu Kaisen: Shimetsu Kaiyū Kōhen",
+     "ja_jp": "呪術廻戦 第4期: 死滅回游 後編"
+    },
+    "abbreviatedTitles": [
+     "JJK4",
+     "Jujutsu Kaisen Season 4",
+     "Jujutsu Kaisen 4th Season",
+     "Jujutsu Kaisen: The Culling Game Part 2"
+    ],
+    "slug": "Jujutsu-Kaisen-4",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "tba"
+   }
+  },
+  {
+   "id": "50373",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen: Shibuya Jihen Tokubetsu Henshu-ban x Shimetsu Kaiyu Senkou Jouei",
+    "titles": {
+     "en": "Jujutsu Kaisen: Execution - Shibuya Incident x The Culling Game Begins",
+     "en_jp": "Jujutsu Kaisen: Shibuya Jihen Tokubetsu Henshu-ban x Shimetsu Kaiyu Senkou Jouei",
+     "ja_jp": "劇場版 呪術廻戦「#渋谷事変 特別編集版」 ×「死滅回游 先行上映」"
+    },
+    "abbreviatedTitles": [],
+    "slug": "jujutsu-kaisen-shibuya-jihen-tokubetsu-henshu-ban-x-shimetsu-kaiyu-senkou-jouei",
+    "startDate": "2025-11-07",
+    "endDate": "2025-11-07",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50696",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen Modulo PV",
+    "titles": {
+     "en_jp": "Jujutsu Kaisen Modulo PV",
+     "ja_jp": "呪術廻戦≡ PV"
+    },
+    "abbreviatedTitles": [],
+    "slug": "Jujutsu-Kaisen-Modulo-PV",
+    "startDate": "2026-05-01",
+    "endDate": "2026-05-01",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46400",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Vivid Vice",
+    "titles": {
+     "en": "Vivid Vice",
+     "en_jp": "Vivid Vice",
+     "ja_jp": "VIVID VICE"
+    },
+    "abbreviatedTitles": [],
+    "slug": "vivid-vice",
+    "startDate": "2021-01-29",
+    "endDate": "2021-01-29",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48255",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Avant",
+    "titles": {
+     "en": "Avant",
+     "en_jp": "Avant",
+     "ja_jp": "アヴァン"
+    },
+    "abbreviatedTitles": [],
+    "slug": "avant",
+    "startDate": "2023-11-23",
+    "endDate": "2023-11-23",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  }
+ ]
+}
