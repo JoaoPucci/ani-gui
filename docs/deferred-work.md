@@ -1008,6 +1008,75 @@ starting it, and delete it when you find it done.
   acceptable is the decision, which is why it is a version call and
   not a cleanup.
 
+## Retiring the Continue-card title guess — the v1.0 marker
+
+- **Remove everything that exists only for history rows that record
+  no Kitsu id.** That is the title guess — the rules that rule hits
+  out (`backend/src/commands/continue_guess*.rs`) and the route the
+  renderer asks them through, `/api/history/guess/ruled-out`; the
+  regression corpus under `tests/fixtures/continue-guess/`; the stored
+  title matches and their version; and `/api/kitsu/resolve-allmanga/`,
+  whose one caller is the guess and whose mappings, stored without a
+  play, come back as the guess's first answer — and, once the
+  guessed-card linking work lands, the player's "Is this the show you
+  meant?" and its slip, the rows' `guessed_from` notes, the failure
+  overlay's "Pick the right show", and the "Which show is it?" picker
+  with "Not this show?" and the marks on rows named through it. A row
+  a normal play wrote records the show it was played from, so the
+  card cannot name the wrong show and needs no correcting. The entry
+  "Some guessed Continue cards still open the wrong show" goes with
+  it. The maintainer has tied this removal to v1.0, with the two
+  above.
+
+  What stays: the rematch of a row whose recorded Kitsu entry Kitsu
+  has since deleted, still needed because Kitsu deletes and merges
+  entries. It is not separate code today. Home matches such a row
+  exactly as a row with no id (`resolveKitsuMatchWithTrust` in
+  `frontend/src/lib/history/match.ts`), and the detail page's resume
+  lookup finds it by the title match Home stored
+  (`backend/src/commands/history_claim.rs`). So the title matches,
+  and the mappings `/api/kitsu/resolve-allmanga/` stores, serve this
+  rematch as well, and it needs a route of its own before they go. The launch sweep of a retired
+  source's rows also reads a row's title matches to judge which show
+  it stands for.
+
+  Decided for v1.0: a row with no id still present stays on Continue
+  Watching with its title, the one the streaming site listed it
+  under, and its episode. A click on it opens the search page with
+  that title filled in; the site's title can differ from the
+  catalogue's ("My Star" for [Oshi no Ko]), so the viewer may have to
+  edit it. Nothing is deleted on the viewer's behalf. Rows are keyed
+  by the listing, so a play of the same listing writes the Kitsu id
+  onto the old row, while a play that lands on another listing (the
+  show now listed elsewhere, or a retired source's row) writes a new
+  row and leaves the old one; only a retired source's row can go on
+  its own, through the launch sweep, once the new row resumes over
+  it. So a small bridge goes with it: the search opened from such a
+  card remembers the row it came from, and the first play started
+  from that search replaces that row, leaving one line, on the right
+  show. What the app tracks today is the page behind a page, not the
+  row a search came from, so that part is new.
+
+  Decided for v2.0: the bridge goes too. A row with no id still
+  present then only opens the search with its title, and if the play
+  lands on another listing the viewer removes the old card by hand.
+
+  Why it waits: the guess is how such rows are shown today, and the
+  removal is a version call. The guess's own writer of rows with no
+  id — a guessed card's play that lands on a listing other than the
+  card's — goes with it. A play from a show's page records the show's
+  Kitsu id, except when the cour check refuses the pairing, or when
+  the id waits for the watch and the window closes first; both write
+  a row without one and go on doing so after v1.0, and such a row is
+  answered by the same search. The marks on named rows are what keep
+  a refused watch from clearing an id the viewer chose, so once they
+  go, a refused watch of such a show joins those rows too. A change of
+  streaming source creates no such rows of itself, since the id names
+  the show, not the listing, though a source that names its seasons
+  its own way can add cour refusals. Moving off Kitsu as the catalogue
+  would be its own migration, through the cross-catalogue id mappings
+  first, and is no reason to keep the guess.
+
 ## Recovering a download's abandoned claim automatically
 
 - **Take back the empty file an interrupted download left at an
