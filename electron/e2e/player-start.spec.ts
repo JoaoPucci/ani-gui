@@ -242,8 +242,8 @@ test("a stream on its way reads Pause with the loading indicator on, until its f
 /* Gintama's own titles, from Kitsu: the longest show title and the
  * longest episode title among its entries, on its 367th episode. The
  * title card must keep them inside the frame, above the controls, the
- * episode title on two lines at most and the loader in sight, in every
- * locale's caption. */
+ * episode title on two lines at most and the loader in sight, with each
+ * locale's own caption. */
 const longShow = {
   ...continueKitsuMatch,
   canonical_title:
@@ -258,7 +258,14 @@ const longEpisode = {
     "Do Something Uncharacteristic, and Something Uncharacteristic Will Happen",
 };
 
-for (const locale of ["en", "pt-BR", "ru"]) {
+const startingCaption: Record<string, string> = {
+  en: "Loading episode 367",
+  "pt-BR": "Carregando episódio 367",
+  "es-419": "Cargando episodio 367",
+  ru: "Загрузка серии 367",
+};
+
+for (const locale of ["en", "pt-BR", "es-419", "ru"]) {
   test(`the title card keeps Gintama's longest titles inside the frame (${locale})`, async () => {
     test.setTimeout(120_000);
     // Fragments held past the test: the start stays on screen.
@@ -309,9 +316,16 @@ for (const locale of ["en", "pt-BR", "ru"]) {
             document.querySelector(".start-veil .card-status .strip")!,
           ).opacity,
           titleLines: title.getBoundingClientRect().height / lineHeight,
+          // The clamp is what holds the title to two lines: it must be
+          // cutting text off, not just finding room.
+          titleClamped: title.scrollHeight > title.clientHeight + 1,
+          showShown: show.getBoundingClientRect().height > 0,
           showOneLine:
             show.getBoundingClientRect().height <
             parseFloat(getComputedStyle(show).lineHeight) * 1.5,
+          caption:
+            document.querySelector(".start-veil .card-caption")?.textContent ??
+            "",
         };
       });
       const inside = (b: typeof layout.card) =>
@@ -325,7 +339,32 @@ for (const locale of ["en", "pt-BR", "ru"]) {
       expect(layout.strip.height).toBeGreaterThan(0);
       expect(Number(layout.stripOpacity)).toBeGreaterThan(0.9);
       expect(layout.titleLines).toBeLessThanOrEqual(2.1);
+      expect(layout.titleClamped).toBe(true);
+      expect(layout.showShown).toBe(true);
       expect(layout.showOneLine).toBe(true);
+      expect(layout.caption).toBe(startingCaption[locale]);
+
+      // The controls are out of sight, but a control the keyboard
+      // reaches shows above the veil, not under it.
+      const play = page.locator(".pc-buttons-row .pc-btn").first();
+      await play.focus();
+      // The veil lets the pointer through, so a hit test would skip it:
+      // for the measurement only, it takes the pointer, and the hit test
+      // returns whatever is painted on top.
+      await page.addStyleTag({
+        content:
+          ".start-veil, .start-veil * { pointer-events: auto !important; }",
+      });
+      await page.waitForTimeout(400);
+      const onTop = await play.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          r.left + r.width / 2,
+          r.top + r.height / 2,
+        );
+        return hit === el || el.contains(hit);
+      });
+      expect(onTop).toBe(true);
     } finally {
       await app.close();
       media.close();

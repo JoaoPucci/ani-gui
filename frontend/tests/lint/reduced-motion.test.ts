@@ -525,4 +525,27 @@ describe('reduced motion: the film-strip loader', () => {
 		expect(lit).toHaveLength(1);
 		expect(lit[0]).not.toBe('transparent');
 	});
+
+	// The strip, its caption and the stall's pill wait a beat before
+	// they show, so a quick start never flashes them. Reduced motion
+	// takes every animation off and keeps a transition's delay (see
+	// tokens.css), so the beat is a transition delay: an animation's
+	// delay would go with the animation, and the loader would flash on
+	// every micro-stall.
+	it.each(['.strip', '.centre-caption', '.pill'])(
+		'lib/play/StartVeil.svelte waits its beat on %s with a transition delay',
+		(selector) => {
+			const path = join(SRC, 'lib/play/StartVeil.svelte');
+			const style = componentStyle(asts.get(path)!);
+			const transitions: string[] = [];
+			const animations: string[] = [];
+			postcss.parse(style!.css).walkRules((rule) => {
+				if (!rule.selectors.map((sel) => sel.trim()).includes(selector)) return;
+				rule.walkDecls('transition', (decl) => void transitions.push(decl.value));
+				rule.walkDecls('animation', (decl) => void animations.push(decl.value));
+			});
+			expect(transitions.some((v) => v.includes('var(--loader-beat)'))).toBe(true);
+			expect(animations.some((v) => v.includes('var(--loader-beat)'))).toBe(false);
+		}
+	);
 });

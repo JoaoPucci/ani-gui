@@ -203,7 +203,8 @@ async function openMounted(sessionId: string, episode: string) {
 
 const veil = () => target.querySelector('.start-veil') as HTMLElement | null;
 const mode = () => frame()?.getAttribute('data-start-veil');
-const announced = () => target.querySelector('[role="status"] .vh')?.textContent ?? '';
+const announcer = () => target.querySelector('.start-announce[role="status"]');
+const announced = () => announcer()?.textContent?.trim() ?? '';
 const controlsInert = () => target.querySelector('.player-controls')?.closest('[inert]') != null;
 
 describe('play route — the start veil', () => {
@@ -295,5 +296,34 @@ describe('play route — the start veil', () => {
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'mp4' });
 		app = mount(PlayPage, { target });
 		await until(() => mode() === 'start', 'the resume hold to show the veil');
+	});
+
+	it('announces the start from outside the busy frame, which a screen reader would hold it back in', async () => {
+		await openEpisode();
+		expect(frame().getAttribute('aria-busy')).toBe('true');
+		expect(announced()).toBe(m.playstart_loading_aria());
+		expect(announcer()?.closest('[aria-busy="true"]')).toBeNull();
+	});
+
+	it("with Chromium's own controls, the Skip button still waits for the first frame", async () => {
+		useShowHandlers({
+			nativeControls: true,
+			skips: [{ skip_type: 'op', start_time: 0, end_time: 90 }]
+		});
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(() => readPosition(KITSU_ID, 1) === 0, 'the stream to attach');
+		const media = controlled(playerVideo());
+		const video = playerVideo();
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => 1420 });
+		video.dispatchEvent(new Event('loadedmetadata'));
+		video.dispatchEvent(new Event('durationchange'));
+		await new Promise((r) => setTimeout(r, 200));
+		expect(target.querySelector('.player-skip-btn')).toBeNull();
+
+		media.firstFrame();
+		video.dispatchEvent(new Event('timeupdate'));
+		await until(() => target.querySelector('.player-skip-btn') !== null, 'the Skip button');
 	});
 });
