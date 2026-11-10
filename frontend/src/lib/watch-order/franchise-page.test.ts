@@ -384,6 +384,16 @@ describe('franchisePage', () => {
 		expect(shape(part)).toEqual(shape(whole));
 	});
 
+	it('heads no stretch "No clear place in the order" when read in part: its place may lie past the cut', () => {
+		fc.assert(
+			fc.property(anyPage, ({ f, id, order, rows }) => {
+				const page = franchisePage({ franchise: f, rows }, id, order);
+				if (!page || f.complete) return;
+				for (const s of page.sections) if (s.kind === 'line') expect(s.unplaced).toBe(false);
+			})
+		);
+	});
+
 	it('is never alone when read in part: the walk may have missed the rest', () => {
 		const self = {
 			...payload('jojo', '7158', false),

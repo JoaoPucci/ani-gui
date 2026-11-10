@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
-import { loopGroupText, metaLine, numeral, splitMeta } from './meta';
+import { loopGroupText, metaLine, numeral, splitMeta, waysKeyText } from './meta';
 import type { WatchEntry, WatchRun } from './types';
 
 const TODAY = '2026-11-02';
@@ -65,6 +65,13 @@ describe('splitMeta', () => {
 
 	it("puts an unaired entry's date on the second line", () => {
 		expect(parts('monogatari', '50013')).toEqual([['SPECIAL'], ['Date not announced']]);
+	});
+});
+
+describe('waysKeyText', () => {
+	it('counts the ways on, except for a franchise read in part', () => {
+		expect(waysKeyText(2, true)).toBe('2 ways to continue');
+		expect(waysKeyText(2, false)).toBe('Ways to continue');
 	});
 });
 

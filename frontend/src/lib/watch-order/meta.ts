@@ -76,6 +76,15 @@ export function loopGroupText(count: number): string {
 	return m.watchorder_franchise_loop_group({ count });
 }
 
+/**
+ * The heading over a group of ways on: their count, or no count for a
+ * franchise read in part (`complete` false), where it may be short.
+ */
+export function waysKeyText(count: number, complete: boolean): string {
+	void complete;
+	return m.watchorder_strip_ways({ count });
+}
+
 /** "05": positions read as oversized two-digit numerals. */
 export function numeral(position: number): string {
 	return String(position).padStart(2, '0');

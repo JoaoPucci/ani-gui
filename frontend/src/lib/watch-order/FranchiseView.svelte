@@ -17,7 +17,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import MetaLine from './MetaLine.svelte';
 	import type { FranchisePageModel, FranchiseRow } from './franchise-page';
-	import { loopGroupText, metaLine, numeral } from './meta';
+	import { loopGroupText, metaLine, numeral, waysKeyText } from './meta';
 	import { asRef } from './poster-ref';
 
 	let { model, today }: { model: FranchisePageModel; today: string } = $props();
@@ -148,7 +148,7 @@
 					</ol>
 				{:else if section.kind === 'ways'}
 					<div class="fork">
-						<p class="group-key">{m.watchorder_strip_ways({ count: section.ways.length })}</p>
+						<p class="group-key">{waysKeyText(section.ways.length, !model.partial)}</p>
 						<div class="branches">
 							{#each section.ways as way, w (w)}
 								<div class="branch">

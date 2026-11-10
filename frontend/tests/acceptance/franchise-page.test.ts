@@ -298,6 +298,36 @@ describe('franchise page', () => {
 		expect(text).not.toContain(m.watchorder_franchise_start());
 	});
 
+	it('still resumes the title being watched when there may be more titles, with no place', async () => {
+		useFranchise({
+			franchise: () => HttpResponse.json({ ...FRANCHISE, complete: false }),
+			history: [{ id: 'hianime:saga-final', title: 'Saga Final', ep_no: '3', kitsu_id: '50' }]
+		});
+		app = mount(FranchisePage, { target });
+		await until(() => resumeLink() !== null && rows().length === 4, 'the masthead and list');
+		expect(resumeLink()!.textContent?.trim()).toBe(m.watchorder_franchise_resume());
+		expect(resumeLink()!.getAttribute('href')).toBe('/anime/50');
+		expect(resumeLink()!.parentElement!.textContent).not.toMatch(/\b0\d\b/);
+	});
+
+	it('heads ways on without a count when there may be more titles', async () => {
+		const ALT = entry('51', 'Saga: Final Arc Alternate', 'TV', '2014-06-01');
+		useFranchise({
+			franchise: () =>
+				HttpResponse.json({
+					...FRANCHISE,
+					entries: [...FRANCHISE.entries, ALT],
+					links: [...FRANCHISE.links, ['42', '51']],
+					complete: false
+				})
+		});
+		app = mount(FranchisePage, { target });
+		await until(() => rows().length === 5, 'the main story');
+		const text = mainStory()!.textContent ?? '';
+		expect(text).toContain(m.watchorder_upnext_choices());
+		expect(text).not.toContain(m.watchorder_strip_ways({ count: 2 }));
+	});
+
 	it('says the franchise could not be loaded, and loads it on Try again', async () => {
 		let fail = true;
 		const calls = useFranchise({
