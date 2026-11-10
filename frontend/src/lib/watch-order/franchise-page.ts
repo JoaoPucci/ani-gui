@@ -127,7 +127,7 @@ export function franchisePage(
 		films: run.films,
 		sides: run.sides,
 		recaps: run.recaps,
-		recapCount: run.recaps.length,
+		recapCount: whole ? run.recaps.length : null,
 		partial: !data.franchise.complete
 	};
 }
