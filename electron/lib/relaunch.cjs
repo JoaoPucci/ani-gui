@@ -17,7 +17,11 @@
 //   the parent's handle) and then runs this binary with this process's
 //   arguments, in its environment. The binary is on disk for good, and
 //   the .deb's launcher environment and switches carry over as they
-//   are. Under `pnpm dev` the new Electron is no longer attached to the
+//   are: the new process starts on the same display platform as this
+//   one. (The relaunch build-resources/after-pack.cjs warns about
+//   switched platforms, XWayland to Wayland, inside one launch; this
+//   one switches nothing. The end-to-end suite restarts the unpacked
+//   tree this way under Wayland with IBus running.) Under `pnpm dev` the new Electron is no longer attached to the
 //   dev script's terminal, and the Vite server it loads from has to be
 //   still running.
 // - The AppImage. Its binary sits on a FUSE mount that goes away the
@@ -28,7 +32,11 @@
 //   with the person's own arguments: the ones the launcher adds
 //   (LAUNCHER_SWITCHES) are dropped, because the new AppImage's
 //   launcher adds them again. The dying mount's $APPDIR is left out of
-//   its environment.
+//   its environment (the new runtime sets its own). The other variables
+//   the old AppRun prefixed with the mount (PATH, LD_LIBRARY_PATH,
+//   XDG_DATA_DIRS, GSETTINGS_SCHEMA_DIR) pass through: the new AppRun
+//   prefixes its own mount ahead of them, and a directory that no
+//   longer exists is skipped.
 //
 // The AppImage is recognised by $APPIMAGE and $APPDIR together with
 // this binary living under $APPDIR: another AppImage (an editor run as
@@ -46,13 +54,24 @@ const LAUNCHER_SWITCHES = ["--enable-wayland-ime", "--no-sandbox"];
  *  run once it is gone. Nothing is interpolated into the script. */
 const WAIT_THEN_EXEC = 'pid=$1; shift; while kill -0 "$pid" 2>/dev/null; do sleep 0.1; done; exec "$@"';
 
-/** The AppImage file this process runs from, or null. */
-function appImageOf({ platform, env, execPath }) {
+/** `p` resolved through symlinks, or as it is when it cannot be. */
+function resolved(p, realpath) {
+  try {
+    return realpath(p);
+  } catch {
+    return p;
+  }
+}
+
+/** The AppImage file this process runs from, or null. Paths are
+ *  compared resolved: the runtime sets $APPDIR as it mounted it, and
+ *  this binary's path is resolved, so a symlinked /tmp tells them apart. */
+function appImageOf({ platform, env, execPath, realpath = fs.realpathSync }) {
   if (platform !== "linux") return null;
   const image = env.APPIMAGE;
   const dir = env.APPDIR;
   if (!image || !dir || !execPath) return null;
-  const inside = path.posix.relative(dir, execPath);
+  const inside = path.posix.relative(resolved(dir, realpath), resolved(execPath, realpath));
   if (!inside || inside.startsWith("..") || path.posix.isAbsolute(inside)) return null;
   return image;
 }
@@ -71,8 +90,8 @@ function userArgs(argv) {
  * relaunch, or `{ kind: "spawn", command, args, env }` for the
  * AppImage's waiter.
  */
-function relaunchPlan({ platform, env, execPath, argv, pid }) {
-  const image = appImageOf({ platform, env, execPath });
+function relaunchPlan({ platform, env, execPath, argv, pid, realpath }) {
+  const image = appImageOf({ platform, env, execPath, realpath });
   if (!image) return { kind: "relaunch" };
   const { APPDIR: _mount, ...rest } = env;
   return {

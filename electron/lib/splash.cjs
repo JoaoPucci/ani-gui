@@ -195,7 +195,9 @@ function splashController({
   });
   const choose = (choice) => {
     if (over || chosen || !alive()) {
-      log(`[main] splash: ${choice} came after the boot was past the splash, and changes nothing (${since()})`);
+      const label = choice === "restart" ? "Restart" : "Quit";
+      const why = dismissedByUser || chosen ? "the splash had closed" : "the boot was past the splash";
+      log(`[main] splash: ${label} came after ${why}, and changes nothing (${since()})`);
       return;
     }
     if (choice === "restart") {
@@ -338,6 +340,14 @@ function splashController({
       backstop = setTimeout(() => stuck.arm(), SPLASH_SHOW_WAIT_MS);
       splash.webContents.on("did-finish-load", () => {
         if (steps > 0) sendSteps();
+        // A page reloaded after a crash shows the stuck state again.
+        stuck.offerAgain();
+      });
+      // A splash page whose renderer dies comes back: while it stands
+      // in for the window, it is the only way out of a late page.
+      splash.webContents.on("render-process-gone", (_event, details) => {
+        log(`[main] splash's page went (${details && details.reason}) (${since()})`);
+        if (!over && !chosen && win === splash && !splash.isDestroyed()) splash.webContents.reload();
       });
       Promise.resolve(splash.loadFile(SPLASH_PAGE, { query })).catch((err) =>
         logError("[main] the splash failed to load:", err),
@@ -462,7 +472,8 @@ function splashController({
 
 /** What the most recently made controller's splash went through:
  *  opened, shown on screen, closed after the boot's window showed, or
- *  suppressed by a failed boot. Read by the end-to-end suite, which
+ *  suppressed by a failed boot; its version, the steps it was told and
+ *  lit; and whether it went stuck, with the choice made there. Read by the end-to-end suite, which
  *  cannot catch the splash on screen in a test run's fast start. */
 let current = fresh();
 

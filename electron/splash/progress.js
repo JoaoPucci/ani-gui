@@ -100,6 +100,8 @@
           segments[i].classList.add('lit');
         }
         done = to;
+        // The pulse moves to the stretch now pending.
+        if (stuckOn && done < segments.length) segments[done].classList.add('late');
         if (stuckOn && done >= segments.length) settle();
         watch();
       }
