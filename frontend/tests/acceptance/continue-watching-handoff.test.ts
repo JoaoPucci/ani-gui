@@ -138,6 +138,7 @@ interface Scenario {
 /** Mounts Home over `history`, the first show's series answered by `franchise`. */
 function mountHome(s: Scenario) {
 	const asked: string[] = [];
+	const removed = new Set<string>();
 	server.use(
 		...homeHandlers({ history: s.history }, [
 			http.get(`${API_BASE}/api/settings`, () =>
@@ -174,13 +175,28 @@ function mountHome(s: Scenario) {
 					{ status: 502 }
 				)
 			),
-			// The backend's resume lookup: the row each id resumes from.
+			// A row the scenario's own show stands for, matched by its id.
+			http.get(`${API_BASE}/api/kitsu/anime/77`, () =>
+				HttpResponse.json(kitsuRef('77', OTHER, 13))
+			),
+			// Removing a row: the backend's history no longer holds it.
+			http.delete(`${API_BASE}/api/history/:id`, ({ params }) => {
+				removed.add(String(params.id));
+				return new HttpResponse(null, { status: 204 });
+			}),
+			// The backend's resume lookup: the row each id resumes from,
+			// among the rows still in history.
 			http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
 				if (s.namedFails) return new HttpResponse(null, { status: 503 });
 				const { ids } = (await request.json()) as { ids: string[] };
+				const kept = (r: ReturnType<typeof row> | undefined) =>
+					r && !removed.has(r.id) ? r : null;
 				return HttpResponse.json(
 					Object.fromEntries(
-						ids.map((k) => [k, s.named?.[k] ?? s.history.find((r) => r.kitsu_id === k) ?? null])
+						ids.map((k) => [
+							k,
+							kept(s.named?.[k]) ?? kept(s.history.find((r) => r.kitsu_id === k)) ?? null
+						])
 					)
 				);
 			}),
@@ -216,6 +232,24 @@ async function settled(asked: readonly string[]) {
 	await until(() => handoffTo('40') !== null, 'the other series to move on');
 	await until(() => asked.includes('10'), "the first show's series read");
 	await new Promise((r) => setTimeout(r, 50));
+}
+
+const OTHER = 'Something Else';
+
+/** Removes the card titled `title` as a viewer does: its remove chip, then the confirm. */
+async function removeCard(title: string) {
+	const button = (pred: (b: HTMLButtonElement) => boolean) =>
+		Array.from(target.querySelectorAll('button')).find(pred) ?? null;
+	const chip = button(
+		(b) => b.getAttribute('aria-label') === m.home_delete_card_aria_label({ title })
+	);
+	expect(chip, 'the remove chip').not.toBeNull();
+	chip!.click();
+	await until(
+		() => button((b) => (b.textContent ?? '').includes(m.home_delete_confirm_button())) !== null,
+		'the remove confirmation'
+	);
+	button((b) => (b.textContent ?? '').includes(m.home_delete_confirm_button()))!.click();
 }
 
 const handoffTo = (id: string) =>
@@ -337,13 +371,38 @@ describe('Continue Watching after a finale', () => {
 		// Home matched the row to another show, but the backend's resume
 		// lookup, which the next show's own page goes by, names it for
 		// the next show (its stored mapping, which Home passed over).
-		const other = row('4', 'p-other', '77', 'Something Else');
+		const other = row('4', 'p-other', '77', OTHER);
 		mountHome({ history: [row('13'), controlRow()], named: { '20': other } });
 		const movedOn = everHeld(() => handoffTo('20') !== null);
 		await until(() => handoffTo('40') !== null, 'the other series to move on');
 		await new Promise((r) => setTimeout(r, 50));
 		expect(movedOn()).toBe(false);
 		expect(resumeFor(FIRST)).not.toBeNull();
+	});
+
+	it("moves on once the row the next show's page would resume from is removed", async () => {
+		const other = row('4', 'p-other', '77', OTHER);
+		mountHome({ history: [row('13'), other, controlRow()], named: { '20': other } });
+		await until(() => handoffTo('40') !== null, 'the other series to move on');
+		await until(() => resumeFor(OTHER) !== null, "the other row's card");
+		expect(handoffTo('20')).toBeNull();
+		await removeCard(OTHER);
+		await until(() => handoffTo('20') !== null, 'the card to move on once the row is gone');
+	});
+
+	it('keeps a moved-on card in place while another row is removed', async () => {
+		const other = row('4', 'p-other', '77', OTHER);
+		mountHome({ history: [row('13'), other, controlRow()] });
+		await until(
+			() => handoffTo('20') !== null && handoffTo('40') !== null,
+			'both cards to move on'
+		);
+		const leftAlone = everHeld(() => handoffTo('20') === null);
+		await removeCard(OTHER);
+		await until(() => resumeFor(OTHER) === null, 'the removed card to go');
+		await new Promise((r) => setTimeout(r, 100));
+		expect(leftAlone()).toBe(false);
+		expect(handoffTo('20')).not.toBeNull();
 	});
 
 	it('keeps the ordinary card when the resume lookup cannot be read', async () => {
