@@ -28,8 +28,9 @@ export type CacheKey = string & { readonly __brand: 'PlayCacheKey' };
 /**
  * Build a stable, deterministic key from the axes that decide
  * whether two `play()` requests would resolve to the same session.
- * Mode + quality matter because the backend resolves a different
- * embed URL for each; the version because each version of a show is
+ * The mode matters because the backend resolves a different embed URL
+ * for each — the quality does not, since every play gets the master;
+ * the version because each version of a show is
  * its own listing, so a session warmed for one must never answer a
  * request naming another — or naming none. The captions choice because
  * the backend keeps the subtitle tracks a listing past its cap has room
@@ -40,7 +41,6 @@ export function makeKey(
 	showId: string,
 	episode: number,
 	mode: string,
-	quality: string,
 	version?: VersionKind,
 	guessRow?: string,
 	caption?: string
@@ -50,7 +50,7 @@ export function makeKey(
 	// for this row. The row and the captions choice go before the
 	// version, which stays the key's last axis
 	// (clearBackgroundForOtherVersions).
-	const axes: string[] = [showId, String(episode), mode, quality];
+	const axes: string[] = [showId, String(episode), mode];
 	if (guessRow) axes.push(`guess=${encodeURIComponent(guessRow)}`);
 	if (caption) axes.push(`cc=${encodeURIComponent(caption)}`);
 	axes.push(version ?? '');

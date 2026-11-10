@@ -124,7 +124,7 @@ fn a_play_and_a_download_ask_for_the_version_they_name() {
     .expect("play args");
     assert_eq!(play.version, Some(VersionKind::Standard));
     assert_eq!(
-        play.native_request("best", "en", None, None).version,
+        play.native_request("en", None, None).version,
         Some(VersionKind::Standard)
     );
     let download: crate::commands::download::DownloadArgs =
@@ -153,30 +153,11 @@ fn the_stream_endpoints_read_a_version_from_the_query() {
 #[test]
 fn the_resolution_cache_keys_a_version_apart() {
     use crate::commands::play_resolution_cache::{cache_key, cache_key_for_version};
-    let at = |v| {
-        cache_key_for_version(
-            "The Show",
-            "sub",
-            "best",
-            "2",
-            Some(YEAR),
-            Some(3),
-            Some("TV"),
-            v,
-        )
-    };
+    let at = |v| cache_key_for_version("The Show", "sub", "2", Some(YEAR), Some(3), Some("TV"), v);
     // A request naming no version keeps the key it had.
     assert_eq!(
         at(None),
-        cache_key(
-            "The Show",
-            "sub",
-            "best",
-            "2",
-            Some(YEAR),
-            Some(3),
-            Some("TV")
-        )
+        cache_key("The Show", "sub", "2", Some(YEAR), Some(3), Some("TV"))
     );
     let standard = at(Some(VersionKind::Standard));
     let uncensored = at(Some(VersionKind::Uncensored));
@@ -193,9 +174,7 @@ fn the_resolution_cache_keys_a_version_apart() {
 /// versions, so this key is past both.
 #[test]
 fn a_row_resolved_before_versions_is_not_read() {
-    let key = crate::commands::play_resolution_cache::cache_key(
-        "t", "sub", "best", "1", None, None, None,
-    );
+    let key = crate::commands::play_resolution_cache::cache_key("t", "sub", "1", None, None, None);
     for before in ["play:v20:", "play:v21:", "play:v22:"] {
         assert!(
             !key.starts_with(before),

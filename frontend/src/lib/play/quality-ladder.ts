@@ -1,16 +1,15 @@
 /**
- * The quality setting read against a stream's levels.
+ * A stream's levels as the player chooses among them.
  *
- * The setting (`best`, `worst`, or a height such as `1080`) chooses
- * the stream the backend resolves: a height or `worst` asks it for
- * that one rendition, and `best` keeps the master playlist, which
- * lists every level. Once a master reaches the player — `best`, or a
- * height the master does not serve, which the backend answers with
- * the master too — the level it plays is the player's choice, and
- * this is what the setting asks of that choice.
+ * The backend resolves the master for every play, so the level a
+ * stream plays is the player's choice: Auto starts at the highest, a
+ * pick in the menu pins one (`./quality-pin`), and the hold never
+ * climbs above its target (`./quality-hold`).
  */
 
-/** What the setting asks of a stream's levels. */
+/** What a hold aims at among a stream's levels: the highest (Auto),
+ *  the lowest, or a height — the level of that height, or the nearest
+ *  below it. */
 export type QualityTarget =
 	| { kind: 'best' }
 	| { kind: 'worst' }
@@ -42,14 +41,6 @@ export function pinnedLevel(pin: QualityPinChoice, levels: readonly LadderLevel[
 	}
 	const ladder = ladderOrder(levels);
 	return ladder[Math.max(0, ladder.length - 1 - pin.rank)] ?? -1;
-}
-
-/** The setting's target. Anything that is neither `worst` nor a
- *  height reads as `best`, the backend's own default. */
-export function parseQualitySetting(setting: string | null | undefined): QualityTarget {
-	if (setting === 'worst') return { kind: 'worst' };
-	if (setting && /^[1-9]\d*$/.test(setting)) return { kind: 'height', height: Number(setting) };
-	return { kind: 'best' };
 }
 
 /** The levels' indices, lowest first: by height, then by bitrate. */
