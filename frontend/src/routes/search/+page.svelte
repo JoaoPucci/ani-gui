@@ -159,6 +159,10 @@
 	// focus moves to the folio's anchor rather than falling to the page
 	// body ($lib/search/keep-focus.ts).
 	const keepFocusInFolio = (node: HTMLElement) => keepFocus(node, () => focusAnchor);
+	// The same for the discovery notice's Try again, which leaves as the
+	// rows start loading again.
+	let discoveryAnchor = $state<HTMLElement | null>(null);
+	const keepFocusOnPage = (node: HTMLElement) => keepFocus(node, () => discoveryAnchor);
 
 	function sentinel(node: HTMLElement) {
 		const watch = watchSentinel(node, (inReach) => (reach = measured(inReach)));
@@ -530,16 +534,25 @@
 		</div>
 	{:else if !submitted}
 		<!-- No query yet: the discovery rows. A row keeps a skeleton in
-		     its place until it and every row above it have landed, so a
-		     row on screen is never pushed down ($lib/search/discovery). -->
-		<!-- Mounted with the rows, so the notice lands in a live region
-		     that is already in place and is announced. -->
+		     its place until every row above it has settled, so a row on
+		     screen is never pushed down; a row that failed or came back
+		     empty is dropped ($lib/search/discovery). -->
+		<!-- Mounted with the rows, so a notice that appears once the rows
+		     have been asked for lands in a live region already in place
+		     and is announced. Focus on its Try again, which leaves as the
+		     rows load again, moves to the silent anchor before it. -->
+		<span class="discovery-anchor" tabindex="-1" bind:this={discoveryAnchor}></span>
 		<div role="status">
 			{#if discovery.nothing}
 				<div class="state state-empty">
 					<p class="state-headline">{m.search_discovery_nothing_headline()}</p>
 					<p class="state-detail">{m.search_discovery_nothing_detail()}</p>
-					<button type="button" class="folio-action state-action" onclick={() => loadDiscovery()}>
+					<button
+						type="button"
+						class="folio-action state-action"
+						use:keepFocusOnPage
+						onclick={() => loadDiscovery()}
+					>
 						{m.search_discovery_retry()}
 					</button>
 				</div>
@@ -983,8 +996,8 @@
 		content: '';
 		position: absolute;
 		inset-inline-start: 0;
-		inset-block-start: 50%;
-		translate: 0 -50%;
+		inset-block: 0;
+		margin-block: auto;
 		inline-size: var(--bar, 100%);
 		background: var(--ink-100);
 		border-radius: 2px;
@@ -1217,6 +1230,13 @@
 	}
 	.state-action {
 		margin-block-start: var(--space-4);
+	}
+	.discovery-anchor {
+		display: block;
+		block-size: 0;
+	}
+	.discovery-anchor:focus {
+		outline: none;
 	}
 
 	/* Sort + filter controls — match settings' .field grouping so
