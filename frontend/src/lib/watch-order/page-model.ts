@@ -17,7 +17,7 @@ import type { Progress, WatchEntry, WatchRun } from './types';
 export type StripCaption =
 	| { readonly kind: 'position'; readonly position: number; readonly total: number }
 	| { readonly kind: 'numeral'; readonly position: number }
-	/** A numbered place in a franchise read in part: no number is sure. */
+	/** A run member's place in a franchise read in part: nothing about it is sure. */
 	| { readonly kind: 'partial' }
 	| { readonly kind: 'side' }
 	| { readonly kind: 'cycle'; readonly count: number }
@@ -62,11 +62,13 @@ export function settledOrder(
 /**
  * The caption for a view; `loop` is the size of the cycle `view` sits
  * in, if any. `complete` is false for a franchise read in part: its
- * walk may have missed entries before this one, so no number is sure.
+ * walk may have missed entries on either side of this one, so no
+ * number, fork or loop size is sure, and a run member's caption is
+ * `partial`.
  */
 export function captionOf(view: StripView, loop: number, complete: boolean): StripCaption {
 	if (view.kind === 'side') return { kind: 'side' };
-	if (view.position !== null && !complete) return { kind: 'partial' };
+	if (!complete) return { kind: 'partial' };
 	if (view.position !== null && view.total !== null)
 		return { kind: 'position', position: view.position, total: view.total };
 	if (view.position !== null) return { kind: 'numeral', position: view.position };
