@@ -2,8 +2,8 @@
  * The reads behind Continue Watching's hand-offs, however often the
  * rail re-renders: each Kitsu id's franchise, asked once per page, and
  * whether a history row resumes the entry a card would move on to,
- * asked once per id until the history changes. A read that fails settles as null (the row keeps its ordinary
- * card, with no error).
+ * asked once per id until the history changes. A read that fails
+ * settles as null (the row keeps its ordinary card, with no error).
  */
 import type { FranchiseData } from './types';
 
