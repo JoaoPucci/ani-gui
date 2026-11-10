@@ -299,7 +299,8 @@ describe("a guessed Continue card's pill", () => {
 
 	it('carries the card’s audio to the show picked for it, when that show has none', async () => {
 		rememberAudio(BC_GUESS, 'dub');
-		rememberAudio(JOJO_RIGHT, 'sub');
+		// The OVA's own choice differs from what JoJo's card plays in.
+		rememberAudio(JOJO_RIGHT, 'dub');
 		await openHome();
 		pill(BC_CARD)!.click();
 		await until(() => dialog()?.open === true, 'the picker');
@@ -324,7 +325,7 @@ describe("a guessed Continue card's pill", () => {
 		button(m.detail_link_confirm_button())!.click();
 		await until(() => backend.linkCalls.length > linked, 'the second link');
 		await settle();
-		expect(storedAudio(JOJO_RIGHT)).toBe('sub');
+		expect(storedAudio(JOJO_RIGHT)).toBe('dub');
 	});
 
 	it('links only the JoJo card, and the 2012 row comes out as a card of its own', async () => {
