@@ -659,8 +659,10 @@ export function historyByKitsu(kitsuId: string): Promise<HistoryEntry | null> {
  *  history: each id with the row it resumes from, or null. A value
  *  that is not a Kitsu id is left out of the answer. */
 export function historyByKitsuEach(
-	ids: readonly string[]
+	ids: readonly string[],
+	opts: { signal?: AbortSignal } = {}
 ): Promise<Record<string, HistoryEntry | null>> {
+	void opts;
 	return postJson<Record<string, HistoryEntry | null>>('/api/history/by-kitsu', { ids });
 }
 
@@ -1413,7 +1415,11 @@ export interface Franchise {
 
 /** The franchise around `kitsuId`: the run it belongs to and what sits
  *  around it. */
-export function kitsuFranchise(kitsuId: string): Promise<Franchise> {
+export function kitsuFranchise(
+	kitsuId: string,
+	opts: { signal?: AbortSignal } = {}
+): Promise<Franchise> {
+	void opts;
 	return getJson<Franchise>(`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}`);
 }
 

@@ -6,6 +6,6 @@ import { historyByKitsuEach, kitsuFranchise } from '$lib/api';
 import type { WatchOrderSources } from './loader';
 
 export const watchOrderSources: WatchOrderSources = {
-	franchise: kitsuFranchise,
-	named: historyByKitsuEach
+	franchise: (id) => kitsuFranchise(id),
+	named: (ids) => historyByKitsuEach(ids)
 };

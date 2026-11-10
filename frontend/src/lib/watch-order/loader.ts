@@ -19,9 +19,12 @@ import type { FranchiseData } from './types';
 
 /** Where the reads come from: `./sources` on the pages, stubs in tests. */
 export interface WatchOrderSources {
-	readonly franchise: (id: string) => Promise<FranchiseData>;
+	readonly franchise: (id: string, signal?: AbortSignal) => Promise<FranchiseData>;
 	/** Each of `ids` with the history row it resumes from, or null. */
-	readonly named: (ids: readonly string[]) => Promise<Record<string, HistoryRow | null>>;
+	readonly named: (
+		ids: readonly string[],
+		signal?: AbortSignal
+	) => Promise<Record<string, HistoryRow | null>>;
 }
 
 export interface WatchOrderData {
@@ -39,8 +42,10 @@ function idsOf(f: FranchiseData): string[] {
 /** The franchise, then its entries' rows. Never rejects. */
 export async function loadWatchOrder(
 	id: string,
-	sources: WatchOrderSources
+	sources: WatchOrderSources,
+	signal?: AbortSignal
 ): Promise<WatchOrderData> {
+	void signal;
 	const franchise = await sources.franchise(id).catch(() => null);
 	if (!franchise) return { franchise, rows: [] };
 	const named = await sources.named(idsOf(franchise)).catch(() => ({}));
