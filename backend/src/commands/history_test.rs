@@ -195,9 +195,22 @@ fn by_kitsu_each_answers_each_id_as_by_kitsu_does() {
 }
 
 #[test]
-fn by_kitsu_each_of_no_ids_reads_nothing() {
+fn by_kitsu_each_of_no_ids_answers_nothing() {
     let tmp = tempfile::tempdir().unwrap();
-    let s = make_state(tmp.path().join("history"));
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[HistoryEntry {
+            ep_no: "3".into(),
+            id: "the-first-1".into(),
+            title: "The First".into(),
+            watched_at: None,
+            kitsu_id: Some("1001".into()),
+            own_number: false,
+        }],
+    )
+    .unwrap();
     assert!(history_by_kitsu_each(&s, &[]).unwrap().is_empty());
 }
 
