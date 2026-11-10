@@ -42,6 +42,8 @@
 	],
 	"clear_confirm_body": "Isso apaga o histórico de reprodução do ani-gui. Não pode ser desfeito.",
 	"clear_confirm_button": "Limpar tudo",
+	"clear_history_failed": "Não foi possível limpar o histórico. Tente de novo.",
+	"delete_failed": "Não foi possível remover \"{title}\" do histórico. Tente de novo.",
 	"hero_error_eyebrow_value": "Sem resposta do Kitsu",
 	"resume_guess_note": "Talvez este não seja o anime que você queria. No seu histórico ele está como “{title}”.",
 	"link_pick_button": "Escolher o anime certo",

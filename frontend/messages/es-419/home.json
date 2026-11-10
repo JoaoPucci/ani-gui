@@ -41,6 +41,8 @@
 	],
 	"clear_confirm_body": "Esto borra el historial de reproducción de ani-gui. No se puede deshacer.",
 	"clear_confirm_button": "Borrar todo",
+	"clear_history_failed": "No se pudo borrar el historial. Inténtalo de nuevo.",
+	"delete_failed": "No se pudo quitar \"{title}\" del historial. Inténtalo de nuevo.",
 	"hero_error_eyebrow_value": "Sin respuesta de Kitsu",
 	"resume_guess_note": "Puede que no sea la serie que buscabas. En tu historial está como «{title}».",
 	"link_pick_button": "Elegir la serie correcta",

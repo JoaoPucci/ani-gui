@@ -41,6 +41,8 @@
 	],
 	"clear_confirm_body": "This clears ani-gui's watch history. Cannot be undone.",
 	"clear_confirm_button": "Clear all",
+	"clear_history_failed": "Couldn't clear your history. Try again.",
+	"delete_failed": "Couldn't remove \"{title}\" from history. Try again.",
 	"hero_error_eyebrow_value": "No answer from Kitsu",
 	"resume_guess_note": "This may not be the show you meant. It’s saved in your history as “{title}”.",
 	"link_pick_button": "Pick the right show",
