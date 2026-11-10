@@ -140,6 +140,7 @@
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
 	import { splitTrending } from '$lib/hero/rotation';
 	import { homeRows, keepShown, type HomeRows } from '$lib/home/rows';
+	import { loadDiscoveryRows, LOADING, type RowLoad } from '$lib/rows/discovery';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayArgs } from '$lib/play/play-args';
@@ -194,8 +195,13 @@
 	// carousels" in the marketing-page sense; this is a programmed
 	// marquee.
 
-	let trending = $state<KitsuAnimeRef[] | null>(null);
-	let topRated = $state<KitsuAnimeRef[] | null>(null);
+	// The two catalogue rows, Trending then Top rated, as their requests
+	// stand ($lib/rows/discovery). The hero is drawn from Trending's.
+	let catalogue = $state<[RowLoad<KitsuAnimeRef>, RowLoad<KitsuAnimeRef>]>([LOADING, LOADING]);
+	const listOf = (row: RowLoad<KitsuAnimeRef>) => (row.kind === 'ready' ? row.items : null);
+	const trending = $derived(listOf(catalogue[0]));
+	const topRated = $derived(listOf(catalogue[1]));
+	const trendingFailed = $derived(catalogue[0].kind === 'failed');
 	let history = $state<HistoryEntry[] | null>(null);
 	// The watched-at stamps the strip is sorted by, kept for the
 	// dedupe: the card for a show is the row watched last, as the
@@ -492,8 +498,6 @@
 			() => toastStore.push({ kind: 'error', message: m.home_clear_history_failed() })
 		);
 	}
-	let trendingError = $state<string | null>(null);
-	let topRatedError = $state<string | null>(null);
 	let scrollY = $state(0);
 	// Continue Watching click handler state. The card resolves the
 	// play directly (via getOrFire/playStream) and navigates to
@@ -541,9 +545,9 @@
 				},
 				trending: {
 					items: trending === null ? null : trendingTail,
-					failed: trendingError !== null
+					failed: trendingFailed
 				},
-				topRated: { items: topRated, failed: topRatedError !== null }
+				topRated: { items: topRated, failed: catalogue[1].kind === 'failed' }
 			})
 		);
 		return lastRows;
@@ -555,22 +559,27 @@
 			if (c) config = c;
 			settingsRead = true;
 		});
-		// Fire both catalogue rows in parallel; what each draws as it
-		// lands is $lib/home/rows'. Each list runs through filterAvailable,
-		// in the viewer's sub/dub mode once the settings have answered:
-		// cards we KNOW are unavailable get dropped, cards we don't know
-		// about get rendered AND queued for a background warm. The next
-		// visit reads a fuller cache and filters more aggressively.
-		const inViewersMode = async (list: KitsuAnimeRef[]) =>
-			filterAvailable(list, pickAvailabilityMode(await settingsPromise));
-		kitsuTrendingAnilist()
-			.then(inViewersMode)
-			.then((t) => (trending = t))
-			.catch((e) => (trendingError = describeError(e)));
-		kitsuTopRated()
-			.then(inViewersMode)
-			.then((t) => (topRated = t))
-			.catch((e) => (topRatedError = describeError(e)));
+		// Both catalogue rows, loaded as the search page loads its own
+		// ($lib/rows/discovery: loadDiscoveryRows): in the viewer's sub/dub
+		// mode once the settings have answered (the read above, shared
+		// with the rest of the page), each landing in its own slot; what
+		// each draws as it lands is $lib/home/rows'. filterAvailable drops
+		// the cards we KNOW are unavailable and renders the ones we don't
+		// know about, queuing them for a background warm, so the next
+		// visit filters more aggressively.
+		void loadDiscoveryRows<KitsuAnimeRef, Config | null>({
+			config: () => null,
+			readConfig: () => settingsPromise,
+			keepConfig: () => {},
+			pickMode: pickAvailabilityMode,
+			rows: [
+				(mode) => kitsuTrendingAnilist().then((t) => filterAvailable(t, mode)),
+				(mode) => kitsuTopRated().then((t) => filterAvailable(t, mode))
+			],
+			onRow: (index, row) => {
+				catalogue[index] = row;
+			}
+		});
 		// Settings drive the audio mode for the Continue Watching click
 		// handler. Default sub when settings haven't loaded
 		// yet — same fallback the click handler uses on /anime/[id].
@@ -1228,7 +1237,7 @@
 				{/each}
 			</div>
 		{/if}
-	{:else if trendingError}
+	{:else if trendingFailed}
 		<div class="hero-empty">
 			<p class="eyebrow">
 				<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
