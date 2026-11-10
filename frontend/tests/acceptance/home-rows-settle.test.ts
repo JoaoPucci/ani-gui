@@ -425,4 +425,33 @@ describe('Home: the rows below the hero', () => {
 		expect(new Set(modes)).toEqual(new Set(['dub']));
 		expect(listReads).toBe(1);
 	});
+
+	it('draws the rows without Continue watching once a hung history read runs past its wait', async () => {
+		// The history read does not answer. Past the wait the rows below
+		// the hero are drawn as if there were no history yet.
+		const history = hold();
+		server.use(...handlers({ history: history.gate, historyRows: HISTORY }));
+
+		app = mount(HomePage, { target });
+		await until(() => filtered.has('r1') && filtered.has('t4'), 'both catalogue rows');
+		await settle();
+		expect(drawn()).toEqual([]);
+
+		await until(() => screen().includes('Classic One'), 'the rows past the wait', 6000);
+		expect(drawn()).toEqual([TRENDING_ROW, TOP_RATED_ROW]);
+		expect(row(CONTINUE)).toBeNull();
+	});
+
+	it('brings Continue watching in above the rows when the history answers after the wait, keeping them shown', async () => {
+		const history = hold();
+		server.use(...handlers({ history: history.gate, historyRows: HISTORY }));
+
+		app = mount(HomePage, { target });
+		await until(() => screen().includes('Classic One'), 'the rows past the wait', 6000);
+
+		history.release();
+		await until(() => row(CONTINUE) !== null, 'Continue watching');
+		await settle();
+		expect(drawn()).toEqual([CONTINUE, TRENDING_ROW, TOP_RATED_ROW]);
+	});
 });

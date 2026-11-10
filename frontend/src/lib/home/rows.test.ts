@@ -36,6 +36,21 @@ describe('homeRows', () => {
 		expect(kinds({ ...settled, history: null })).toEqual(['held', 'held', 'held', 'held']);
 	});
 
+	it('draws the rows below once the history read has run past its wait', () => {
+		// A read that hangs must not hold the page for good: past the
+		// wait, Continue watching is left out until the history answers.
+		expect(kinds({ ...settled, history: null, historyWaitOver: true })).toEqual([
+			'absent',
+			'shown',
+			'shown',
+			'shown'
+		]);
+	});
+
+	it('brings Continue watching in when a history read past its wait answers', () => {
+		expect(kinds({ ...settled, history: ['h1'], historyWaitOver: true })[0]).toBe('shown');
+	});
+
 	it('leaves Continue watching out when there is no history', () => {
 		expect(kinds({ ...settled, history: [] })).toEqual(['absent', 'shown', 'shown', 'shown']);
 	});
@@ -232,14 +247,24 @@ describe('keepShown', () => {
 	});
 });
 
-describe('the page drawn through keepShown, with a sign-in read after the keyring notice', () => {
+describe('the page drawn through keepShown, with a sign-in read after the keyring notice and a history read past its wait', () => {
 	// The sign-ins count as known once the keyring notice goes up (the
 	// row loads with none: an empty list), and a sign-in can be read
 	// after that; its list then lands. The other rows land in any order
 	// around them.
 	// 'clear' empties the history afterwards (Clear history), so a row
 	// can lose what it showed.
-	type Event = 'history' | 'notice' | 'signIn' | 'list' | 'trending' | 'topRated' | 'clear';
+	// 'historyWait' is the history read running past its wait, which
+	// can come before or after the read answers.
+	type Event =
+		| 'history'
+		| 'historyWait'
+		| 'notice'
+		| 'signIn'
+		| 'list'
+		| 'trending'
+		| 'topRated'
+		| 'clear';
 	type Load = { items: string[] | null; failed: boolean };
 	const load = (item: string) =>
 		fc.constantFrom<Load>(
@@ -257,7 +282,16 @@ describe('the page drawn through keepShown, with a sign-in read after the keyrin
 		trending: load('t1'),
 		topRated: load('r1')
 	});
-	const events: Event[] = ['history', 'notice', 'signIn', 'list', 'trending', 'topRated', 'clear'];
+	const events: Event[] = [
+		'history',
+		'historyWait',
+		'notice',
+		'signIn',
+		'list',
+		'trending',
+		'topRated',
+		'clear'
+	];
 	const run = fc
 		.tuple(
 			finals,
@@ -275,6 +309,7 @@ describe('the page drawn through keepShown, with a sign-in read after the keyrin
 		const signedIn = done.has('signIn');
 		return {
 			history: done.has('clear') ? [] : done.has('history') ? f.history : null,
+			historyWaitOver: done.has('historyWait'),
 			watchLater: {
 				accountsKnown: done.has('notice'),
 				signedIn,
