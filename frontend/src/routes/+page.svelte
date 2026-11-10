@@ -1167,35 +1167,43 @@
 			</div>
 		{/if}
 	{:else if heroView.kind === 'failed'}
-		<div class="hero-empty">
-			<p class="eyebrow">
-				<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
-				<span class="eyebrow-rule" aria-hidden="true"></span>
-				<span class="eyebrow-value">{m.home_hero_error_eyebrow_value()}</span>
-			</p>
-			<h1 class="hero-title">{m.home_hero_error_title()}</h1>
-			<p class="hero-snippet">{m.home_hero_error_body()}</p>
-			<div class="hero-actions">
-				<a class="btn btn-primary" href={resolve('/search')}>
-					<span>{m.home_hero_error_cta()}</span>
-					<span aria-hidden="true">→</span>
-				</a>
+		<!-- In a .hero-layer like the featured text, so the message
+		     sits low in the banner rather than under the topbar. -->
+		<div class="hero-layer">
+			<div class="hero-empty">
+				<p class="eyebrow">
+					<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
+					<span class="eyebrow-rule" aria-hidden="true"></span>
+					<span class="eyebrow-value">{m.home_hero_error_eyebrow_value()}</span>
+				</p>
+				<h1 class="hero-title">{m.home_hero_error_title()}</h1>
+				<p class="hero-snippet">{m.home_hero_error_body()}</p>
+				<div class="hero-actions">
+					<a class="btn btn-primary" href={resolve('/search')}>
+						<span>{m.home_hero_error_cta()}</span>
+						<span aria-hidden="true">→</span>
+					</a>
+				</div>
 			</div>
 		</div>
 	{:else if heroView.kind === 'empty'}
 		<!-- Trending answered with no show to feature. Kitsu did answer,
 		     so the failure's "no answer" line is left out. -->
-		<div class="hero-empty">
-			<p class="eyebrow">
-				<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
-			</p>
-			<h1 class="hero-title">{m.home_hero_empty_title()}</h1>
-			<p class="hero-snippet">{m.home_hero_empty_body()}</p>
-			<div class="hero-actions">
-				<a class="btn btn-primary" href={resolve('/search')}>
-					<span>{m.home_hero_error_cta()}</span>
-					<span aria-hidden="true">→</span>
-				</a>
+		<!-- In a .hero-layer like the featured text, so the message
+		     sits low in the banner rather than under the topbar. -->
+		<div class="hero-layer">
+			<div class="hero-empty">
+				<p class="eyebrow">
+					<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
+				</p>
+				<h1 class="hero-title">{m.home_hero_empty_title()}</h1>
+				<p class="hero-snippet">{m.home_hero_empty_body()}</p>
+				<div class="hero-actions">
+					<a class="btn btn-primary" href={resolve('/search')}>
+						<span>{m.home_hero_error_cta()}</span>
+						<span aria-hidden="true">→</span>
+					</a>
+				</div>
 			</div>
 		</div>
 	{:else}
