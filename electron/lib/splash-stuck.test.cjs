@@ -550,6 +550,27 @@ test("the splash never navigates away or opens windows; a page that leaves anywa
   made.splash.suppress();
 });
 
+test("a splash window closed before the boot is past it is lost as well as cancelling the launch", async (t) => {
+  const made = await watchedLoss(t);
+  made.win.close();
+  await flush();
+  assert.equal(made.dismissed(), 1);
+  assert.match(String(made.lost), /closed/);
+});
+
+test("a splash closed by the boot, or after a choice, is not lost", async (t) => {
+  const byBoot = await watchedLoss(t);
+  byBoot.splash.close();
+  await flush();
+  assert.equal(byBoot.lost, null);
+  t.mock.timers.reset();
+  const byChoice = await watchedLoss(t);
+  await byChoice.later(SPLASH_STUCK_MS);
+  byChoice.win.choose("quit");
+  await flush();
+  assert.equal(byChoice.lost, null);
+});
+
 test("a splash page that crashes before it ever loaded is reloaded, then lost, like any crash", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const win = stuckWindow();
@@ -563,6 +584,17 @@ test("a splash page that crashes before it ever loaded is reloaded, then lost, l
   assert.equal(win.calls.filter((c) => c === "reload").length, SPLASH_RELOADS);
   assert.match(String(lost), /crashed/);
   splash.suppress();
+});
+
+test("however many ways a splash loses its page, the loss is reported once", async (t) => {
+  const made = await watchedLoss(t);
+  made.win.webContents.emit("did-fail-load", {}, -6, "ERR_FILE_NOT_FOUND", "file:///x", true);
+  made.win.webContents.emit("did-navigate", {}, "file:///elsewhere");
+  for (let i = 0; i <= SPLASH_RELOADS; i++) made.win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  made.win.close();
+  await flush();
+  assert.equal(made.losses(), 1);
+  assert.match(String(made.lost), /could not load/, "the first cause is the one reported");
 });
 
 test("a splash that is never lost never says so, and crashes past the boot do not count", async (t) => {
