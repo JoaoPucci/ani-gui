@@ -360,6 +360,9 @@ function splashController({
           stuck.stop();
         }
         const byUser = win === splash && !over;
+        // The page goes with the window: a loss too, unless the boot was
+        // past the splash or a choice closed it (lose() checks both).
+        if (byUser) lose("closed with its window");
         if (win === splash) win = null;
         if (byUser) {
           log(
