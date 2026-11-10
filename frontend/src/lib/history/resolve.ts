@@ -45,7 +45,7 @@
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { sharesWords } from './title-words';
 import { namedCandidates, rowYear } from './pick-rank';
-import { entryNames, namesTheEntry } from './same-name';
+import { courNumber, entryNames, namesTheEntry } from './same-name';
 
 /** Kitsu's `page[limit]` hard cap on the episodes endpoint. */
 export const EPISODES_KITSU_PAGE_SIZE = 20;
@@ -140,10 +140,11 @@ const ORDINAL_TO_NUMBER: Record<string, number> = {
 /** Detect the cour index from a (tail-stripped) title. Recognizes "Season 2",
  *  "2nd Season", and "Second Season" (plus Part/Cour); 1 when none match. */
 function parseCour(stripped: string): number {
+	// A number past what the backend holds is no cour there: the first.
 	const numeric = stripped.match(COUR_SUFFIX_RE);
-	if (numeric) return parseInt(numeric[1], 10);
+	if (numeric) return courNumber(numeric[1]) ?? 1;
 	const ordinalNum = stripped.match(COUR_ORDINAL_NUM_RE);
-	if (ordinalNum) return parseInt(ordinalNum[1], 10);
+	if (ordinalNum) return courNumber(ordinalNum[1]) ?? 1;
 	const ordinalWord = stripped.match(COUR_ORDINAL_WORD_RE);
 	if (ordinalWord) return ORDINAL_TO_NUMBER[ordinalWord[1].toLowerCase()] ?? 1;
 	return 1;
