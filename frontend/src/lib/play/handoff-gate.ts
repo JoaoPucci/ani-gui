@@ -51,6 +51,30 @@ export class HandoffGate {
 		this.held = null;
 	}
 
+	/** The viewer picked another stream from the embedded player (an
+	 *  episode, Reload). (Signature only so far.) */
+	picked(): void {}
+
+	/** A stream attaches. Whether a pick ended the handoff with it.
+	 *  (Signature only so far.) */
+	attaching(): boolean {
+		return false;
+	}
+
+	/** The page started the engine of the attached stream. (Signature
+	 *  only so far.) */
+	engineStarted(): void {}
+
+	/** Something stopped that engine for good. (Signature only so far.) */
+	engineStopped(): void {}
+
+	/** Whether a recovery whose eviction has answered stands down.
+	 *  (Signature only so far.) */
+	recoveryStandsDown(manualReload: boolean): boolean {
+		void manualReload;
+		return false;
+	}
+
 	/** Forgets `start` if it is the one held: its stream is gone. */
 	drop(start: () => void): void {
 		if (this.held === start) this.held = null;
