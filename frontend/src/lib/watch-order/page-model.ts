@@ -128,9 +128,10 @@ export interface FranchiseLink {
 
 /**
  * The franchise link the page shows on its own: where `id` has no
- * strip (nothing before or after it, no parent story) but the
- * franchise page would list titles beside it, such as films, other
- * versions, side stories or recaps. Null where the strip shows, which
+ * strip (it is its run alone, or a film, version, recap or side story
+ * outside the run with no parent story in it) but the franchise page
+ * would list other titles, such as films, other versions, side
+ * stories, recaps or the run itself. Null where the strip shows, which
  * carries the link itself, and where the franchise page would list the
  * show alone, read whole or in part.
  */

@@ -829,8 +829,9 @@ smaller.
 
 ### (c) A franchise page
 
-**How it looks.** `/anime/<id>/franchise`, reached from the strip's
-trailing link. (Search results were also proposed as a way in; that
+**How it looks.** `/anime/<id>/franchise`, reached from the show
+page's franchise link: the strip's trailing link, or the same link on
+its own where the show has no strip. (Search results were also proposed as a way in; that
 was dropped, see "Decisions recorded (after the build)" below, and a
 study of making franchises findable is in the deferred-work log.) A
 header named after the run's first entry, with your position: "05 ·
@@ -1068,7 +1069,8 @@ them introduces a new widget style.
     eyebrow, and no empty state. The page looks as it does today.
   - Nothing before or after the show, but the franchise page lists
     other titles beside it (films, other versions, side stories or
-    recaps): no strip, and the strip's franchise link stands on its
+    recaps), or the show is itself a film, version, recap or side
+    story outside the run with no parent story in it: no strip, and the strip's franchise link stands on its
     own under the hero, with the same counts (none for a franchise
     read in part). "Similar titles" leaves out what that page lists,
     as it does beside a strip.
@@ -1665,7 +1667,8 @@ that ends normally it shows the card up to a second early.
    branches sit side by side under the one "N ways to continue"
    heading; the "Way n of N" label each column carried is gone.
 2. **No entry from search results.** The franchise page is reached
-   from the strip. How to make franchises findable gracefully (a
+   from a show page's franchise link (in the strip, or on its own
+   where the show has no strip). How to make franchises findable gracefully (a
    franchise search, or a similar mechanic) is a study of its own, in
    the deferred-work log.
 
