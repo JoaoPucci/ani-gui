@@ -125,9 +125,9 @@ enum SubFlag {
 /// On Windows, `Command::spawn` without `Wait()` already detaches.
 ///
 /// # Errors
-/// - [`AniError::PlayerSpawnFailed`] if the configured player command
-///   can't be spawned (usually means it's not on PATH or the path
-///   doesn't point at an executable). Carries the program that was
+/// - [`AniError::PlayerSpawnFailed`] if the program can't be spawned
+///   (it was not found where it is installed, or the path doesn't
+///   point at an executable). Carries the program that was
 ///   tried: the full path when the standard program was found
 ///   installed, its bare name when it was not, the command as written
 ///   otherwise. The UI names it in the error toast. A blank Custom command carries the
@@ -185,18 +185,18 @@ pub async fn open_external_player_off_workers(args: LaunchArgs) -> Result<()> {
 #[must_use]
 pub fn launch_task_failure(args: &LaunchArgs) -> AniError {
     AniError::PlayerSpawnFailed {
-        binary: args.player_command.clone(),
+        binary: player_program(&args.player_command, args.player_kind)
+            .unwrap_or_default()
+            .to_string(),
     }
 }
 
 /// Settings' answer when the lookup task dies before answering.
 #[must_use]
 pub fn standard_program_unknown(kind: ExternalPlayerKind) -> StandardProgram {
-    StandardProgram {
-        name: kind.standard_program(),
-        path: None,
-        supported: true,
-    }
+    standard_program_found_on(crate::commands::player_locate::current_os(), kind, &|_| {
+        None
+    })
 }
 
 /// The program a launch spawns: [`player_program`], with a standard

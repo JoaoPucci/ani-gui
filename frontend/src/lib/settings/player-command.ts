@@ -14,9 +14,9 @@
  * clears a command that is only a standard program's name ("mpv",
  * "vlc", "iina") to blank, and the new type runs its own: "mpv" left
  * over from Custom would otherwise run mpv under the VLC type. A
- * command with a path or flags is kept. No path is guessed and nothing
- * is looked up: on Windows a bare `vlc` may not be found on the PATH,
- * and the user browses to the program, as before.
+ * command with a path or flags is kept. This module guesses no path:
+ * where a bare name is installed is the backend's lookup
+ * (`backend/src/commands/player_locate.rs`).
  */
 
 import type { ExternalPlayerKind } from '$lib/api';
