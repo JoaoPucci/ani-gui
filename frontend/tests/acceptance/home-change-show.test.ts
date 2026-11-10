@@ -1045,6 +1045,13 @@ describe('the picker holds the keyboard while it is up', () => {
 		await until(() => dialog() === null || dialog()?.open === false, 'the picker to close');
 		expect(isModalOpen()).toBe(false);
 		expect(inert(cell(JOJO_CARD))).toBe(false);
+		// Focus back on what opened it: the pill, or its card while the
+		// pill shows on hover or focus only.
+		const card = cell(BC_CARD)!.querySelector<HTMLElement>('.resume-card')!;
+		await until(
+			() => document.activeElement === opener || document.activeElement === card,
+			'focus back on the card'
+		);
 	});
 
 	it('opened from a failed resume, one modal at a time', async () => {
