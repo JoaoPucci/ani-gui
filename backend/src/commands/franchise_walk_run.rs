@@ -1,11 +1,12 @@
 //! The walk's driver: a run from its root, and the anchor's run, from
-//! its earliest parent story when it is a side story alone.
+//! its earliest parent story when it is a side story alone (which
+//! entries are its parent stories: `franchise_walk_parents.rs`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::alt::listed;
+use super::parents::parent_stories;
 use super::rules::Walk;
-use super::{order_key, Lookup};
+use super::Lookup;
 
 /// A decided run.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,6 +21,8 @@ pub(crate) struct Run {
     pub(crate) complete: bool,
     /// Whether the run is the anchor's parent's, the anchor a side story.
     pub(crate) side_anchor: bool,
+    /// A side-story anchor's parent stories in the run, in start order.
+    pub(crate) parents: Vec<String>,
 }
 
 /// Walk from `root`, the listings in `consulted` already counted.
@@ -57,6 +60,7 @@ pub(crate) fn walk(
         consulted: w.consulted,
         complete: w.complete,
         side_anchor: false,
+        parents: Vec::new(),
     })
 }
 
@@ -70,15 +74,24 @@ pub(crate) fn run(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>> {
     if own.members.len() > 1 {
         return Ok(own);
     }
-    let parent = listed(look, anchor, &["parent_story"])
-        .min_by_key(|r| order_key(r.entry.as_ref().and_then(|e| e.start.as_deref()), &r.id));
-    let Some(parent) = parent else {
+    let parents = parent_stories(anchor, look)?;
+    let Some(parent) = parents.first() else {
         return Ok(own);
     };
-    let theirs = walk(&parent.id, look, own.consulted.clone())?;
+    let theirs = walk(parent, look, own.consulted.clone())?;
+    let side_anchor = !theirs.members.contains_key(anchor);
+    let parents = if side_anchor {
+        parents
+            .into_iter()
+            .filter(|p| theirs.members.contains_key(p))
+            .collect()
+    } else {
+        Vec::new()
+    };
     Ok(Run {
         complete: own.complete && theirs.complete,
-        side_anchor: !theirs.members.contains_key(anchor),
+        side_anchor,
+        parents,
         ..theirs
     })
 }
