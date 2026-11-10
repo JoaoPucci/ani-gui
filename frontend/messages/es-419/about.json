@@ -3,7 +3,7 @@
 	"title": "Acerca de ani-gui",
 	"tagline": "Explora y mira anime",
 	"version_prefix": "Versión",
-	"intro": "ani-gui encuentra y reproduce anime por su cuenta. Kitsu aporta la información de cada anime, AniList la fila de tendencias del inicio y aniskip marca los openings y endings. Los episodios se ven en el reproductor integrado o, si lo prefieres, en uno externo.",
+	"intro": "ani-gui encuentra y reproduce anime por su cuenta. Kitsu aporta la información de cada anime, AniList la fila de tendencias de la página de inicio y aniskip marca los openings y endings. Los episodios se ven en el reproductor integrado o, si lo prefieres, en uno externo.",
 	"section_donate_title": "Apoyo",
 	"section_donate_hint": "ETH en mainnet",
 	"donate_intro": "Si ani-gui te ha ahorrado tiempo, una propina ayuda a mantener el desarrollo. Haz clic en la dirección para copiarla y pégala luego en tu billetera.",
