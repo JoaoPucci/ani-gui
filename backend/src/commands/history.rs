@@ -133,6 +133,17 @@ fn history_by_kitsu_held(
     kitsu_id: &str,
 ) -> Result<Option<HistoryEntry>> {
     let entries = read_all(&state.history_path)?;
+    let numbering = Numbering::read(&state.history_path);
+    resumed_from(state, &entries, &numbering, kitsu_id)
+}
+
+/// The row of `entries` that `kitsu_id` resumes from, in its numbering.
+fn resumed_from(
+    state: &crate::app::AppState,
+    entries: &[HistoryEntry],
+    numbering: &Numbering,
+    kitsu_id: &str,
+) -> Result<Option<HistoryEntry>> {
     // Two providers can leave two rows for one show, one under each
     // provider's id. The one the user watched last is the one to
     // resume from, by the rule the Continue Watching strip applies to
@@ -151,20 +162,19 @@ fn history_by_kitsu_held(
     // moment beside the row, so a cache that refused the stamp still
     // leaves the row ranked as the watch it was.
     let mut best: Option<(HistoryEntry, Option<i64>)> = None;
-    let numbering = Numbering::read(&state.history_path);
     for entry in entries {
         // The id the row records is the show the user played; the
         // reverse mapping stands in only for a row without one, or one
         // whose recorded entry Kitsu has since deleted
         // ([`super::history_claim::names`]).
-        if !super::history_claim::row_names(state, &entry, kitsu_id)? {
+        if !super::history_claim::row_names(state, entry, kitsu_id)? {
             continue;
         }
         let stamp = super::history_resume::latest_of(
             entry.watched_at,
             crate::commands::kitsu::watched_at_get(state, &entry.id)?,
         );
-        let entry = to_kitsu_numbering(state, &numbering, entry, Some(kitsu_id));
+        let entry = to_kitsu_numbering(state, numbering, entry.clone(), Some(kitsu_id));
         let newer = match &best {
             None => true,
             Some((current, current_stamp)) => super::history_resume::resumes_over(
