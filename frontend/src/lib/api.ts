@@ -345,6 +345,9 @@ export interface HistoryEntry {
 	 *  wrote. Home's card stands for that line while both show as the
 	 *  same show ($lib/history/card-row.ts). */
 	guessed_from?: string;
+	/** The row records a show the user named for it (a pick in the
+	 *  picker, or Yes): every surface offers to change it again. */
+	named?: boolean;
 }
 
 /** Input to `cmd_create_session`. */
