@@ -62,4 +62,13 @@ describe('describeExternalLaunchFailure', () => {
 		expect(msg).toMatch(/Settings/);
 		expect(msg).not.toMatch(/few minutes/);
 	});
+
+	it('points at the External player field, not at PATH, when a program would not start', () => {
+		// The app looks for the player beyond PATH, so "put it on your
+		// PATH" is no longer the fix. The field in Settings is.
+		const msg = describeExternalLaunchFailure({ kind: 'player_spawn_failed', binary: 'vlc' }, null);
+		expect(msg).toMatch(/vlc/);
+		expect(msg).toMatch(/External player/);
+		expect(msg).not.toMatch(/PATH/);
+	});
 });

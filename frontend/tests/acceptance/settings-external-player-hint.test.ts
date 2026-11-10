@@ -6,7 +6,10 @@
 // A blank command runs the flavour's standard program (mpv, vlc,
 // iina), so the hint and the field's greyed placeholder name that
 // program, not mpv for every flavour. Custom has no standard program,
-// and says so.
+// and says so. The backend says where that program is installed on
+// this computer, if anywhere, and the hint says so too: the found
+// path, or that it wasn't found. When the backend can't be asked, the
+// hint names the program alone.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -55,6 +58,10 @@ const APP_INFO = {
 	removed_legacy_paths: []
 };
 
+/** The backend's answer about each type's standard program; a type
+ *  it has no entry for answers 500, as an unreachable backend would. */
+let standard: Record<string, { name: string | null; path: string | null }> = {};
+
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
@@ -63,8 +70,14 @@ beforeEach(() => {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(CONFIG)),
 		http.put(`${API_BASE}/api/settings`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO))
+		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO)),
+		http.get(`${API_BASE}/api/external-player/standard`, ({ request }) => {
+			const kind = new URL(request.url).searchParams.get('kind') ?? '';
+			const answer = standard[kind];
+			return answer ? HttpResponse.json(answer) : new HttpResponse(null, { status: 500 });
+		})
 	);
+	standard = {};
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -131,5 +144,33 @@ describe('settings — the external player hint', () => {
 		expect(hint()).not.toContain('Leave it blank');
 		expect(hint()).toContain('Custom has no standard program');
 		expect(field()!.placeholder).toBe('');
+	});
+
+	it('says where the program was found on this computer', async () => {
+		standard = {
+			vlc: { name: 'vlc', path: 'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe' },
+			mpv: { name: 'mpv', path: null },
+			custom: { name: null, path: null }
+		};
+		app = mount(SettingsPage, { target });
+		await settle();
+		expect(hint()).toContain("Leave it blank to use mpv, but it wasn't found on this computer.");
+		expect(hint()).toContain('choose its program file with Browse');
+		expect(field()!.placeholder).toBe('mpv');
+
+		flavour('VLC')!.click();
+		await settle();
+		expect(hint()).toContain(
+			'Leave it blank to use VLC, found at C:\\Program Files\\VideoLAN\\VLC\\vlc.exe.'
+		);
+		expect(field()!.placeholder).toBe('C:\\Program Files\\VideoLAN\\VLC\\vlc.exe');
+
+		// Asked again for each type: an answer for another type is
+		// never shown.
+		flavour('IINA')!.click();
+		await settle();
+		expect(hint()).toContain('Leave it blank to use iina.');
+		expect(hint()).not.toContain('VideoLAN');
+		expect(field()!.placeholder).toBe('iina');
 	});
 });

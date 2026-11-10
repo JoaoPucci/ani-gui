@@ -46,16 +46,16 @@ fn launch() -> LaunchArgs {
 }
 
 #[test]
-fn a_blank_player_command_wraps_the_types_standard_program() {
-    // Syncplay gets the program the "Open in …" item would run, so a
-    // blank command is the type's standard one there too.
-    for (kind, program) in [
-        (ExternalPlayerKind::Mpv, "mpv"),
-        (ExternalPlayerKind::Vlc, "vlc"),
-        (ExternalPlayerKind::Iina, "iina"),
+fn a_blank_player_command_leaves_the_player_to_syncplay() {
+    // Syncplay opens the player configured in Syncplay itself, for
+    // every type, as it did before blank had a meaning of its own.
+    for kind in [
+        ExternalPlayerKind::Mpv,
+        ExternalPlayerKind::Vlc,
+        ExternalPlayerKind::Iina,
     ] {
         let args = syncplay_launch_for(launch(), "syncplay".into(), kind, "  ".into());
-        assert_eq!(args.player_binary, program, "{kind:?}");
+        assert_eq!(args.player_binary, "", "{kind:?}");
     }
 }
 

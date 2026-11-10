@@ -68,7 +68,12 @@ function serve(over: Partial<typeof CONFIG> = {}) {
 			saved.push((await request.json()) as Record<string, unknown>);
 			return new HttpResponse(null, { status: 204 });
 		}),
-		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO))
+		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO)),
+		// Where each type's program is installed: nowhere, here.
+		http.get(`${API_BASE}/api/external-player/standard`, ({ request }) => {
+			const kind = new URL(request.url).searchParams.get('kind');
+			return HttpResponse.json({ name: kind === 'custom' ? null : kind, path: null });
+		})
 	);
 }
 

@@ -291,3 +291,129 @@ fn a_blank_command_fits_its_subtitles_to_the_program_that_runs() {
         assert_eq!(build_argv(&blank), build_argv(&named), "url length {len}");
     }
 }
+
+/// A stand-in for the installed-program search: VLC and mpv are
+/// installed, IINA is not.
+fn installed(name: &str) -> Option<String> {
+    match name {
+        "vlc" => Some("C:\\Program Files\\VideoLAN\\VLC\\vlc.exe".into()),
+        "mpv" => Some("/usr/bin/mpv".into()),
+        _ => None,
+    }
+}
+
+#[test]
+fn a_blank_command_launches_the_installed_standard_program() {
+    assert_eq!(
+        launch_program_with("", ExternalPlayerKind::Vlc, &installed).as_deref(),
+        Some("C:\\Program Files\\VideoLAN\\VLC\\vlc.exe")
+    );
+    assert_eq!(
+        launch_program_with("  ", ExternalPlayerKind::Mpv, &installed).as_deref(),
+        Some("/usr/bin/mpv")
+    );
+}
+
+#[test]
+fn a_bare_standard_name_launches_that_program_where_it_is_installed() {
+    // The name decides, not the type: "vlc" under the mpv type is VLC.
+    assert_eq!(
+        launch_program_with(" VLC.exe ", ExternalPlayerKind::Mpv, &installed).as_deref(),
+        Some("C:\\Program Files\\VideoLAN\\VLC\\vlc.exe")
+    );
+    assert_eq!(
+        launch_program_with("mpv", ExternalPlayerKind::Mpv, &installed).as_deref(),
+        Some("/usr/bin/mpv")
+    );
+}
+
+#[test]
+fn a_program_that_is_not_found_is_launched_by_its_name_as_before() {
+    assert_eq!(
+        launch_program_with("", ExternalPlayerKind::Iina, &installed).as_deref(),
+        Some("iina")
+    );
+    assert_eq!(
+        launch_program_with("iina", ExternalPlayerKind::Iina, &installed).as_deref(),
+        Some("iina")
+    );
+}
+
+#[test]
+fn a_written_command_is_launched_as_written_and_never_looked_up() {
+    let never = |_: &str| -> Option<String> { panic!("a written command is not looked up") };
+    for written in [
+        "/opt/mpv/mpv",
+        "C:\\Tools\\mpv.exe",
+        "celluloid",
+        "mpv --fs",
+    ] {
+        assert_eq!(
+            launch_program_with(written, ExternalPlayerKind::Mpv, &never).as_deref(),
+            Some(written)
+        );
+    }
+    assert_eq!(
+        launch_program_with("", ExternalPlayerKind::Custom, &never),
+        None
+    );
+}
+
+#[test]
+fn syncplay_keeps_its_own_player_for_a_blank_command() {
+    // A blank field passes no --player-path: Syncplay opens the player
+    // configured in Syncplay itself, as it always did.
+    let never = |_: &str| -> Option<String> { panic!("a blank field is not looked up") };
+    for kind in [
+        ExternalPlayerKind::Mpv,
+        ExternalPlayerKind::Vlc,
+        ExternalPlayerKind::Iina,
+        ExternalPlayerKind::Custom,
+    ] {
+        assert_eq!(syncplay_player_with("", kind, &never), "");
+        assert_eq!(syncplay_player_with("   ", kind, &never), "");
+    }
+}
+
+#[test]
+fn syncplay_gets_a_bare_name_as_the_installed_program() {
+    assert_eq!(
+        syncplay_player_with("vlc", ExternalPlayerKind::Vlc, &installed),
+        "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe"
+    );
+    // Not found: the name, as before, for Syncplay's own PATH walk.
+    assert_eq!(
+        syncplay_player_with("iina", ExternalPlayerKind::Iina, &installed),
+        "iina"
+    );
+    assert_eq!(
+        syncplay_player_with("/opt/vlc/vlc", ExternalPlayerKind::Vlc, &installed),
+        "/opt/vlc/vlc"
+    );
+}
+
+#[test]
+fn settings_learns_what_a_blank_command_runs_here() {
+    assert_eq!(
+        standard_program_found(ExternalPlayerKind::Vlc, &installed),
+        StandardProgram {
+            name: Some("vlc"),
+            path: Some("C:\\Program Files\\VideoLAN\\VLC\\vlc.exe".into()),
+        }
+    );
+    assert_eq!(
+        standard_program_found(ExternalPlayerKind::Iina, &installed),
+        StandardProgram {
+            name: Some("iina"),
+            path: None
+        }
+    );
+    let never = |_: &str| -> Option<String> { panic!("Custom has nothing to look up") };
+    assert_eq!(
+        standard_program_found(ExternalPlayerKind::Custom, &never),
+        StandardProgram {
+            name: None,
+            path: None
+        }
+    );
+}

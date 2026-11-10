@@ -48,3 +48,43 @@ proptest! {
         prop_assert!(program == Some(command.as_str()) || program == standard(kind));
     }
 }
+
+proptest! {
+    /// Never worse than before the lookup: with nothing found, a
+    /// launch spawns exactly what `player_program` named.
+    #[test]
+    fn with_nothing_installed_a_launch_is_what_it_was(
+        command in ".{0,24}",
+        kind in kind(),
+    ) {
+        let nothing = |_: &str| None;
+        prop_assert_eq!(
+            launch_program_with(&command, kind, &nothing),
+            player_program(&command, kind).map(str::to_string)
+        );
+    }
+
+    /// Only a blank field or a bare standard name is ever looked up,
+    /// and what is found is what launches.
+    #[test]
+    fn only_a_blank_or_bare_name_is_replaced_by_what_is_found(
+        command in prop_oneof![
+            Just(String::new()),
+            Just("mpv".to_string()),
+            Just(" VLC ".to_string()),
+            Just("iina.exe".to_string()),
+            ".{0,24}",
+        ],
+        kind in kind(),
+    ) {
+        let found = |n: &str| Some(format!("/found/{n}"));
+        let got = launch_program_with(&command, kind, &found);
+        let looked_up = command.trim().is_empty() && kind.standard_program().is_some()
+            || crate::commands::player_locate::standard_name(&command).is_some();
+        if looked_up {
+            prop_assert!(got.as_deref().is_some_and(|g| g.starts_with("/found/")));
+        } else {
+            prop_assert_eq!(got, player_program(&command, kind).map(str::to_string));
+        }
+    }
+}

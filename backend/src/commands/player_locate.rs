@@ -73,3 +73,11 @@ pub fn parse_reg_default(_output: &str) -> Option<String> {
 pub fn locate_installed(_name: &str) -> Option<String> {
     None
 }
+
+#[cfg(test)]
+#[path = "player_locate_test.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "player_locate_prop_test.rs"]
+mod prop_tests;
