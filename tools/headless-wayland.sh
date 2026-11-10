@@ -41,11 +41,13 @@
 # daemonized, a process that made a session of its own — is stopped by
 # stopping that one scope. Nothing is picked out of the process table:
 # processes are stopped by the pid this tool recorded or that the
-# session's own shell reported, by a group or session this tool
-# created, or by its scope. The command has no terminal and reads
-# nothing. A SIGKILL to this tool leaves the whole session running; it
-# has to be stopped by hand (`systemctl --user stop` on the scope named
-# when the session starts).
+# session's own shell reported, or by a group this tool created, each
+# only once /proc/<pid>/stat shows it still in the session this tool
+# made; or by the scope. It needs systemd 254 or later and a user
+# service manager. The command has no terminal and reads nothing. A
+# SIGKILL to this tool leaves the whole session running; it has to be
+# stopped by hand (`systemctl --user stop` on the scope it names as the
+# session starts).
 #
 # What the session still shares with the desktop is the system bus.
 # gnome-shell needs it: without one its startup throws and it aborts on
@@ -79,15 +81,37 @@ show_log() {
     fi
 }
 
-# Wait until process $1 is gone, $2 tenths of a second at most
-# ($STOP_TIMEOUT_TENTHS by default); fail if it is still there.
+# Whether process $1 belongs to session $2: the session field of its
+# /proc/<pid>/stat line, counted from after the command name, which may hold
+# spaces. A session is not joined from outside, so a member is one this
+# tool started. A pid this tool recorded is checked this way before every
+# signal: the shell reaps a background child as soon as it exits, even
+# while it waits on something else, and from then on the pid, and a
+# group id it led, may be anyone's.
+in_session() {
+    { stat=$(cat "/proc/$1/stat"); } 2>/dev/null || return 1
+    # shellcheck disable=SC2086 # the fields, split
+    set -- "$2" ${stat##*) }
+    [ "${5-}" = "$1" ]
+}
+
+# The session process $1 belongs to, read as in_session reads it.
+session_of() {
+    { stat=$(cat "/proc/$1/stat"); } 2>/dev/null || return 1
+    # shellcheck disable=SC2086 # the fields, split
+    set -- ${stat##*) }
+    printf '%s\n' "$4"
+}
+
+# Wait until process $1 has left session $2, $3 tenths of a second at
+# most ($STOP_TIMEOUT_TENTHS by default); fail if it is still there.
 await_exit() {
     n=0
-    while kill -0 "$1" 2>/dev/null && [ "$n" -lt "${2:-$STOP_TIMEOUT_TENTHS}" ]; do
+    while in_session "$1" "$2" && [ "$n" -lt "${3:-$STOP_TIMEOUT_TENTHS}" ]; do
         sleep 0.1
         n=$((n + 1))
     done
-    ! kill -0 "$1" 2>/dev/null
+    ! in_session "$1" "$2"
 }
 
 # --- inside the private D-Bus session ---------------------------------
@@ -133,23 +157,26 @@ EOF
     shell=$!
     group=''
     logged=''
+    # This shell's own session, which the compositor shares.
+    here=$(session_of "$$")
 
     teardown() {
-        # The command's whole process group, whether its leader is still
-        # there or left something behind.
-        if [ -n "$group" ] && kill -s TERM -- "-$group" 2>/dev/null; then
-            n=0
-            while kill -s 0 -- "-$group" 2>/dev/null && [ "$n" -lt "$STOP_TIMEOUT_TENTHS" ]; do
-                sleep 0.1
-                n=$((n + 1))
-            done
-            if kill -s 0 -- "-$group" 2>/dev/null; then kill -s KILL -- "-$group" 2>/dev/null || true; fi
+        # The command's whole process group, while its leader is there to
+        # show the group id is still the command's: the leader leads its
+        # own session (setsid), so it is in the session its pid names.
+        # What the command leaves in its group after the leader has gone
+        # is stopped with the session's scope.
+        if [ -n "$group" ] && in_session "$group" "$group" &&
+            kill -s TERM -- "-$group" 2>/dev/null; then
+            await_exit "$group" "$group" || {
+                ! in_session "$group" "$group" || kill -s KILL -- "-$group" 2>/dev/null || true
+            }
         fi
-        if kill -0 "$shell" 2>/dev/null; then
+        if in_session "$shell" "$here"; then
             kill -TERM "$shell" 2>/dev/null || true
-            if ! await_exit "$shell"; then
+            if ! await_exit "$shell" "$here"; then
                 say "the compositor did not stop on TERM; killing it"
-                kill -KILL "$shell" 2>/dev/null || true
+                ! in_session "$shell" "$here" || kill -KILL "$shell" 2>/dev/null || true
             fi
         fi
         code=0
@@ -166,7 +193,7 @@ EOF
 
     n=0
     until [ -S "$socket" ] && grep -q 'GNOME Shell started' "$log"; do
-        if ! kill -0 "$shell" 2>/dev/null; then
+        if ! in_session "$shell" "$here"; then
             say "the compositor exited before it was ready"
             show_log "$log"
             logged=1
@@ -195,7 +222,7 @@ EOF
     status=0
     wait "$group" || status=$?
 
-    if ! kill -0 "$shell" 2>/dev/null; then
+    if ! in_session "$shell" "$here"; then
         say "the compositor exited while the command ran"
         show_log "$log"
         logged=1
@@ -232,40 +259,33 @@ self="$dir/${0##*/}"
 rt=$(mktemp -d /tmp/ani-gui-wl.XXXXXX)
 chmod 700 "$rt"
 session=''
-reaped=''
 # The scope's name carries the runtime directory's unique suffix.
 unit="ani-gui-wl-${rt##*.}.scope"
-
-# Whether process $1 belongs to session $2: the session field of its
-# /proc stat line, counted from after the command name, which may hold
-# spaces. A session is not joined from outside, so a member is ours.
-in_session() {
-    { stat=$(cat "/proc/$1/stat"); } 2>/dev/null || return 1
-    # shellcheck disable=SC2086 # the fields, split
-    set -- "$2" ${stat##*) }
-    [ "${5-}" = "$1" ]
-}
 
 # Stop what is still running in this session. The inner shell first, by
 # the pid it reported, once it is shown to be in this session: it stops
 # the command, then the compositor while its bus is still there. Then
 # everything left in the session's scope. The session leader is
-# signalled only while it is unreaped (until `wait` has returned for it),
-# when its pid, and the group id with it, are still its own.
+# signalled only while it is shown to lead this session.
 reap() {
-    if [ -n "$session" ] && [ -z "$reaped" ]; then
+    if [ -n "$session" ] && in_session "$session" "$session"; then
         inner=$(cat "$rt/inner.pid" 2>/dev/null || true)
         if [ -n "$inner" ] && in_session "$inner" "$session"; then
             kill -TERM "$inner" 2>/dev/null || true
         fi
         # The inner shell may take a stop timeout for the command and
         # another for the compositor.
-        await_exit "$session" $((STOP_TIMEOUT_TENTHS * 2 + 50)) ||
-            kill -s KILL -- "-$session" 2>/dev/null || true
+        await_exit "$session" "$session" $((STOP_TIMEOUT_TENTHS * 2 + 50)) || {
+            ! in_session "$session" "$session" || kill -s KILL -- "-$session" 2>/dev/null || true
+        }
     fi
     # TERM to everything left in the scope, KILL to what is still there
     # after its stop timeout. A scope that has emptied is gone already.
-    systemctl --user stop "$unit" 2>/dev/null || true
+    # Only a scope this run made: the inner shell, which wrote its pid,
+    # ran inside it, so systemd-run had created it under this name.
+    if [ -e "$rt/inner.pid" ]; then
+        systemctl --user stop "$unit" 2>/dev/null || true
+    fi
 }
 
 cleanup() {
@@ -285,6 +305,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 mkdir -p "$rt/home" "$rt/config" "$rt/data" "$rt/cache" "$rt/state"
+say "session scope: $unit"
 
 # A session of its own, so a Ctrl-C at the terminal reaches this shell
 # alone, and the teardown above stops the rest in order; inside a scope
@@ -304,5 +325,4 @@ setsid systemd-run --user --scope --quiet --collect --unit="$unit" \
 session=$!
 status=0
 wait "$session" || status=$?
-reaped=1
 exit "$status"

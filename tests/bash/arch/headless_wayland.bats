@@ -20,8 +20,9 @@
 # one is reported on the desktop of whoever ran the suite. The D-Bus
 # session is real (dbus-run-session). So is the session's systemd user
 # scope, where a user service manager answers; where none does, stand-ins
-# run the session without a scope, and the one case that needs the scope
-# — a process that left the session — is skipped, saying so.
+# run the session without a scope, and the cases that need the scope —
+# a process that outlived its group's leader, one that left the session —
+# are skipped, saying so.
 
 load '../helpers/loader'
 
@@ -177,8 +178,11 @@ runtime_dir() {
 
 @test "a process the command leaves in its group is stopped, even one with an empty environment" {
     # `env -i` empties the environment, as Chromium's children overwrite
-    # theirs: nothing about it says which session it came from, and the
-    # signal to the command's process group reaches it all the same.
+    # theirs: nothing about it says which session it came from. Its group's
+    # leader has exited by the time the session ends, so the group id no
+    # longer shows whose it is; the session's scope still holds it.
+    [ -z "${NO_USER_MANAGER-}" ] ||
+        skip 'no systemd user service manager here: the scope that stops what outlived its group leader needs one'
     left="$STUB_DIR/hidden.pid"
     run sh "$TOOL" sh -c "(exec env -i sleep 60 </dev/null >/dev/null 2>&1) & echo \$! >'$left'"
     [ "$status" -eq 0 ]
