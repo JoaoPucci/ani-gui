@@ -445,4 +445,34 @@ describe('play route — an episode handed to another player stays stopped here'
 		expect(next.startLoadCalls).toBe(0);
 		expect(playerVideo().autoplay).toBe(false);
 	});
+
+	it('a Reload handed off again before its eviction answers stands down too', async () => {
+		let release: () => void = () => {};
+		const evicted = new Promise<void>((r) => {
+			release = r;
+		});
+		const hls = await mountPlayingHls(() =>
+			server.use(
+				http.post(`${API_BASE}/api/play/cache/evict`, async () => {
+					await evicted;
+					return new HttpResponse(null, { status: 204 });
+				})
+			)
+		);
+		await handToExternal();
+		// The stream fails while handed off: no recovery, its Reload offered.
+		bufferedTo(playerVideo(), 10.5, 10);
+		hls.emit(ERROR, NETWORK_FATAL);
+		hls.emit(ERROR, NETWORK_FATAL);
+		hls.emit(ERROR, NETWORK_FATAL);
+		await until(() => target.querySelector('.player-error-reload') !== null, 'the Reload');
+		const before = resolves();
+		// The viewer reloads, then hands off again before the eviction answers.
+		(target.querySelector('.player-error-reload') as HTMLButtonElement).click();
+		await settle();
+		await handToExternal();
+		release();
+		await new Promise((r) => setTimeout(r, 300));
+		expect(resolves()).toBe(before);
+	});
 });
