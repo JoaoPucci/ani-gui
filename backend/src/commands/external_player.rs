@@ -160,6 +160,31 @@ pub fn player_program(command: &str, kind: ExternalPlayerKind) -> Option<&str> {
     }
 }
 
+/// The program a launch spawns: [`player_program`], with a standard
+/// program's bare name replaced by where `locate` finds it installed.
+/// A name `locate` cannot find is spawned as it is.
+#[must_use]
+pub fn launch_program_with(
+    command: &str,
+    kind: ExternalPlayerKind,
+    _locate: &dyn Fn(&str) -> Option<String>,
+) -> Option<String> {
+    player_program(command, kind).map(str::to_string)
+}
+
+/// The player Syncplay is told to wrap (`--player-path`), from the
+/// configured command.
+#[must_use]
+pub fn syncplay_player_with(
+    command: &str,
+    kind: ExternalPlayerKind,
+    _locate: &dyn Fn(&str) -> Option<String>,
+) -> String {
+    player_program(command, kind)
+        .unwrap_or_default()
+        .to_string()
+}
+
 impl ExternalPlayerKind {
     /// The program this type runs when the user wrote no command:
     /// its own name, found on the PATH. None for Custom.
