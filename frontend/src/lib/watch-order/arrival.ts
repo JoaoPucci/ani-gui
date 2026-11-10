@@ -47,8 +47,9 @@ export const LEAVE_COLLAPSE_MS = 260;
 /**
  * The details, with the first hop if it answered by the time they did
  * or within `FIRST_HOP_CAP_MS` after; null if not, if it failed, or if
- * `walked` (on the page, the walk and the order setting) settled
- * first. Rejects only as `details` does.
+ * `walked` settled first: on the page, the walk and the order setting,
+ * or, for a show remembered this session, the order setting alone.
+ * Rejects only as `details` does.
  */
 export async function withFirstHop<T>(
 	details: Promise<T>,

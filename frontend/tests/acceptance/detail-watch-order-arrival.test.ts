@@ -334,6 +334,7 @@ describe('detail route — the watch-order strip arriving', () => {
 		try {
 			// The walk answers (from a warm cache) before the details do.
 			await until(() => calls.walked > 0, 'the walk answered');
+			// The stand-in has answered; a moment for the page to read it.
 			await new Promise((r) => setTimeout(r, 20));
 			const opened = Date.now();
 			details.open();
@@ -358,6 +359,7 @@ describe('detail route — the watch-order strip arriving', () => {
 		app = mount(DetailPage, { target });
 		try {
 			await until(() => calls.walked > 0 && calls.hop > 0, 'the walk answered, the hop asked');
+			// The stand-in has answered; a moment for the page to read it.
 			await new Promise((r) => setTimeout(r, 20));
 			// The walk has answered; the hop answers just after the details.
 			details.open();
