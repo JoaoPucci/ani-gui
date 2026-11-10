@@ -367,9 +367,9 @@
 	/** The episode went to another player: a hold ends without
 	 *  starting anything, a start stops, the engine stops loading, and
 	 *  the element no longer starts on its own. A stream the element
-	 *  plays from its `src` (mp4, or HLS without hls.js) has no loader
-	 *  the page can stop: it stays paused, and nothing starts it, but
-	 *  the browser may go on buffering it. */
+	 *  plays from its `src` (mp4, or HLS without hls.js), which has no
+	 *  engine to stop, is unloaded, and attached again on the viewer's
+	 *  return, exactly where it was. */
 	function stopForHandoff() {
 		endResumeHold();
 		ownVideo.autoplay = false;
@@ -387,6 +387,11 @@
 		// again as a resume: at its kept point, with its subtitles.
 		if (hls === null && attachedUrl !== null) {
 			unloadedFor = attachedUrl;
+			// The return goes back to the playhead itself, as a recovery
+			// does: the kept position reads the first seconds as the start
+			// and the last stretch as finished.
+			const at = videoEl?.currentTime ?? 0;
+			if (at > 0) recoveryResume.capture(id, episodeNum, at);
 			sourceScope.flush();
 			teardown();
 		}
