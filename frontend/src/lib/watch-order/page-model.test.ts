@@ -200,7 +200,7 @@ describe('watchOrderPage', () => {
 				expect(got.complete).toBe(f.complete);
 				if (!f.complete) {
 					expect(got.caption.kind).not.toBe('position');
-					expect(got.caption.kind).not.toBe('numeral');
+					if (got.view.kind === 'run') expect(got.caption).toEqual({ kind: 'partial' });
 					expect(got.eyebrow).toBeNull();
 				}
 			})
@@ -244,8 +244,10 @@ describe('captionOf', () => {
 	it('reads no number for a franchise read in part: entries may be missing on either side', () => {
 		expect(captionOf({ ...view, position: 3, total: 9 }, 0, false)).toEqual({ kind: 'partial' });
 		expect(captionOf({ ...view, position: 3 }, 0, false)).toEqual({ kind: 'partial' });
-		expect(captionOf(view, 0, false)).toEqual({ kind: 'branch' });
-		expect(captionOf({ ...view, inCycle: true }, 10, false)).toEqual({ kind: 'cycle', count: 10 });
+		// A cut walk can leave the show off any fork it really sits on, and
+		// leave a loop's count short.
+		expect(captionOf(view, 0, false)).toEqual({ kind: 'partial' });
+		expect(captionOf({ ...view, inCycle: true }, 10, false)).toEqual({ kind: 'partial' });
 		expect(captionOf({ ...view, kind: 'side' }, 0, false)).toEqual({ kind: 'side' });
 	});
 

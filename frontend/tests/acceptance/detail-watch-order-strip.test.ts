@@ -316,7 +316,7 @@ describe('detail route — the watch-order strip', () => {
 		expect(text).not.toContain(m.watchorder_strip_position_open({ position: '02' }));
 		expect(text).not.toContain(m.watchorder_strip_last());
 		expect(text).not.toContain(m.watchorder_strip_first());
-		expect(eyebrow()).not.toContain(m.watchorder_strip_position({ position: '02', total: '02' }));
+		expect(eyebrow()).not.toMatch(/\b0\d\b/);
 	});
 
 	it("names a side story's parent stories, and nothing after it", async () => {
