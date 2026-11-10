@@ -178,6 +178,20 @@ describe('LinkSession', () => {
 		expect(f.pages).toEqual([[RIGHT.id, null]]);
 	});
 
+	it("offers to change again a row the user named a show for, recording the page's show", async () => {
+		const f = fake();
+		f.rows = [{ ...CARD, kitsu_id: RIGHT.id, named: true }];
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, RIGHT.id);
+		expect(s.offer?.entry.id).toBe(CARD.id);
+		expect(s.offer?.current.id).toBe(RIGHT.id);
+		expect(s.offer?.saved).toBe(RIGHT.id);
+		// One the app recorded from a play, with no naming, is not offered.
+		f.rows = [{ ...CARD, kitsu_id: RIGHT.id }];
+		await s.arrive(CARD.id, RIGHT.id);
+		expect(s.offer).toBeNull();
+	});
+
 	it('says the show was saved in a plain notice, with no Undo', async () => {
 		// Maintainer's decision: the answer is "is this my show or not",
 		// recorded once given; the ⋯ "Not this show?" changes it again.

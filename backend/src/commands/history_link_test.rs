@@ -486,3 +486,57 @@ async fn clearing_the_history_drops_every_link_note() {
         );
     }
 }
+
+/// The history route says which rows record a show the user named, so
+/// every surface can offer to change it again, across restarts: the
+/// link's note stands while the row records the id it noted.
+#[tokio::test]
+async fn the_history_route_marks_the_rows_the_user_named_a_show_for() {
+    use axum::body::Body;
+    use axum::http::Request;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    let (_tmp, _mock, state) = setup(200).await;
+    link(&state, &args(&["black-clover-77"], LINKED))
+        .await
+        .expect("link");
+    let history = state.history_path.clone();
+    let router = crate::api::build_api_router(Arc::new(state));
+    let named = |router: axum::Router| async move {
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/api/history")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let rows: Vec<serde_json::Value> = serde_json::from_slice(&bytes).unwrap();
+        rows.iter()
+            .filter(|r| r["named"] == serde_json::Value::Bool(true))
+            .map(|r| r["id"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+    // The linked row is named; a row whose id a play recorded is not.
+    assert_eq!(named(router.clone()).await, vec!["black-clover-77"]);
+
+    // A play from another show's page records another id on the row:
+    // the note no longer speaks for it.
+    crate::history::upsert_and_write(
+        &history,
+        row(
+            "4",
+            "black-clover-77",
+            "Black Clover",
+            Some(1_793_000_000_000),
+            Some("999"),
+        ),
+    )
+    .unwrap();
+    assert!(named(router).await.is_empty());
+}

@@ -180,6 +180,15 @@ describe('"Yes" on the player', () => {
 });
 
 describe('a pick on Home', () => {
+	it('offers to change again a card the user named a show for, after a restart too', async () => {
+		const f = fake();
+		f.rows = [{ ...CARD, kitsu_id: RIGHT.id, named: true }];
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, RIGHT.id);
+		expect(s.offer?.current.id).toBe(RIGHT.id);
+		expect(s.offer?.saved).toBe(RIGHT.id);
+	});
+
 	it('says the show was saved in a plain notice, with no Undo', async () => {
 		const f = fake();
 		const s = new InPlaceLinkSession(f.deps);

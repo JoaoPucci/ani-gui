@@ -277,8 +277,9 @@ describe("a guessed Continue card's pill", () => {
 			BC_HIDDEN
 		]);
 		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'the card as the linked show');
-		expect(pill(BC_CARD)).toBeNull();
 		expect(goto).not.toHaveBeenCalled();
+		// The card keeps its pill, to change the show again.
+		await until(() => pill(BC_CARD) !== null, 'the pill, to change it again');
 	});
 
 	it('says the show was saved, with no Undo on the notice', async () => {
@@ -831,5 +832,24 @@ describe('the picker while Clear history runs', () => {
 		releaseClear();
 		await until(() => cell(BC_CARD) === null, 'the cards cleared');
 		expect(dialog()?.open).not.toBe(true);
+	});
+});
+
+describe('a card the user named a show for, after the app restarted', () => {
+	it('keeps its pill, which opens the picker on the show it was named', async () => {
+		backend.rows = backend.rows.map((r) =>
+			r.id === BC_CARD || r.id === BC_HIDDEN ? { ...r, kitsu_id: BC_RIGHT, named: true } : r
+		);
+		app = mount(HomePage, { target });
+		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'the card as the named show');
+		await settle();
+		pill(BC_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await until(
+			() => (dialog()!.textContent ?? '').includes(BC_RIGHT_TITLE),
+			'the named show in the picker'
+		);
+		// A card whose show a play recorded, with no naming, has none.
+		expect(pill(KNOWN)).toBeNull();
 	});
 });

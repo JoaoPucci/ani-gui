@@ -83,6 +83,7 @@ interface Row {
 	id: string;
 	title: string;
 	kitsu_id?: string;
+	named?: boolean;
 }
 
 let rows: Row[];
@@ -178,7 +179,9 @@ function serveBackend() {
 						ep_no: r.ep_no,
 						watched_at: null
 					}));
-				rows = rows.map((r) => (body.rows.includes(r.id) ? { ...r, kitsu_id: body.kitsu_id } : r));
+				rows = rows.map((r) =>
+					body.rows.includes(r.id) ? { ...r, kitsu_id: body.kitsu_id, named: true } : r
+				);
 				return HttpResponse.json({ kitsu_id: body.kitsu_id, linked });
 			}),
 			// Both rows are Black Clover's one listing: the card's own and
@@ -294,6 +297,15 @@ async function homeCards(): Promise<string[]> {
 		(e) => e.textContent ?? ''
 	);
 }
+
+describe('the show page of a line the user named a show for', () => {
+	it('carries the line and its Change, opened from the player of that line', async () => {
+		rows = rows.map((r) => ({ ...r, kitsu_id: RIGHT, named: true }));
+		await openShowPage(RIGHT, { guessed: CARD });
+		await until(hasNote, 'the matched-from line');
+		expect(button(m.detail_link_change())).not.toBeNull();
+	});
+});
 
 describe('changing the show', () => {
 	it('links every guessed row of the card, goes to the show, and Home follows', async () => {

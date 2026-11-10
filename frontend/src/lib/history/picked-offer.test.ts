@@ -63,3 +63,22 @@ describe('offerAgain', () => {
 		expect(await offerAgain(d(), null, '4013', true)).toBeNull();
 	});
 });
+
+describe('a row the user named a show for', () => {
+	// The note of the user's naming outlives the app's restart, so every
+	// surface offers to change it again: Home, the show page, the player.
+	const named = { ...CARD, kitsu_id: '4013', named: true };
+
+	it("is offered again on every surface, while it records the page's show", async () => {
+		const n = d({ history: async () => [named] });
+		for (const inPlayer of [true, false]) {
+			const offer = await offerAgain(n, CARD.id, '4013', inPlayer);
+			expect(offer).toMatchObject({ entry: named, saved: '4013' });
+		}
+		expect(await offerAgain(n, CARD.id, '7158', false)).toBeNull();
+	});
+
+	it('is not, for a row the app recorded from a play with no naming', async () => {
+		expect(await offerAgain(d(), CARD.id, '4013', false)).toBeNull();
+	});
+});

@@ -332,6 +332,31 @@ describe('the ⋯ menu of a guessed session', () => {
 	});
 });
 
+describe('the player of a line the user named a show for', () => {
+	// The naming outlives the app's restart: a later session of the
+	// line, opened as no guess, still offers to change the show again.
+	it('offers "Not this show…" in the ⋯ menu, and its link up carries the line', async () => {
+		backend.rows = backend.rows.map((r) =>
+			r.id === CARD ? { ...r, kitsu_id: GUESS, named: true } : r
+		);
+		await openPlayer({ row: CARD });
+		await moreMenu();
+		await until(() => button(m.play_link_menu_item()) !== null, 'the menu entry');
+		const up = target.querySelector<HTMLAnchorElement>('a.np-link')!;
+		expect(new URL(up.href, 'http://x').searchParams.get('guessed')).toBe(CARD);
+		// It asks nothing: the slip is not shown.
+		expect(slipText()).not.toContain(guessNote());
+	});
+
+	it('offers nothing for a line a play recorded, with no naming', async () => {
+		backend.rows = backend.rows.map((r) => (r.id === CARD ? { ...r, kitsu_id: GUESS } : r));
+		await openPlayer({ row: CARD });
+		await settle();
+		await moreMenu();
+		expect(button(m.play_link_menu_item())).toBeNull();
+	});
+});
+
 describe('the picker on the player', () => {
 	function video(playing: boolean) {
 		const v = target.querySelector<HTMLVideoElement>('.player-video-slot video')!;

@@ -19,6 +19,8 @@ export interface Row {
 	kitsu_id?: string;
 	/** The card whose guessed play wrote this row on another listing. */
 	guessed_from?: string;
+	/** The row records a show the user named for it. */
+	named?: boolean;
 }
 
 export interface LinkBackend {
@@ -74,7 +76,9 @@ export function linkBackendHandlers(b: LinkBackend): HttpHandler[] {
 					ep_no: r.ep_no,
 					watched_at: null
 				}));
-			b.rows = b.rows.map((r) => (ids.includes(r.id) ? { ...r, kitsu_id: body.kitsu_id } : r));
+			b.rows = b.rows.map((r) =>
+				ids.includes(r.id) ? { ...r, kitsu_id: body.kitsu_id, named: true } : r
+			);
 			return HttpResponse.json({ kitsu_id: body.kitsu_id, linked });
 		})
 	];
