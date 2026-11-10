@@ -10,6 +10,7 @@
 	import { resolve } from '$app/paths';
 	import {
 		appInfo,
+		externalPlayerStandard,
 		historyClear,
 		imageCacheClear,
 		settingsGet,
@@ -143,6 +144,26 @@
 	// The program a blank command runs: the selected type's own
 	// (mpv, vlc, iina). Custom has none.
 	const standardProgram = $derived(cfg ? bareCommand(cfg.external_player_kind) : null);
+	// Where that program is installed here, as the backend found it,
+	// for the type it was asked about. No answer (still asking, or the
+	// backend couldn't be asked) shows the program's name alone.
+	let found = $state<{ kind: ExternalPlayerKind; path: string | null } | null>(null);
+	$effect(() => {
+		const kind = cfg?.external_player_kind;
+		if (!kind || kind === 'custom') return;
+		externalPlayerStandard(kind)
+			.then((answer) => (found = { kind, path: answer.path }))
+			.catch(() => (found = null));
+	});
+	const foundHere = $derived(
+		cfg && found && found.kind === cfg.external_player_kind ? found : null
+	);
+	const PROGRAM_LABELS: Record<ExternalPlayerKind, () => string> = {
+		mpv: m.settings_external_player_kind_mpv,
+		vlc: m.settings_external_player_kind_vlc,
+		iina: m.settings_external_player_kind_iina,
+		custom: m.settings_external_player_kind_custom
+	};
 	function setExternalPlayerKind(kind: ExternalPlayerKind) {
 		if (!cfg) return;
 		// The command follows the type while it is the previous type's
@@ -369,7 +390,17 @@
 				<div class="field-label">
 					<span class="field-key">{m.settings_field_external_player_key()}</span>
 					<span class="field-hint">
-						{#if standardProgram}
+						{#if standardProgram && foundHere?.path}
+							{m.settings_field_external_player_hint_found({
+								button: externalOpenLabel(cfg.external_player_kind),
+								program: PROGRAM_LABELS[cfg.external_player_kind]()
+							})}<code>{foundHere.path}</code>{m.settings_field_external_player_hint_suffix()}
+						{:else if standardProgram && foundHere}
+							{m.settings_field_external_player_hint_missing({
+								button: externalOpenLabel(cfg.external_player_kind),
+								program: PROGRAM_LABELS[cfg.external_player_kind]()
+							})}
+						{:else if standardProgram}
 							{m.settings_field_external_player_hint_prefix({
 								button: externalOpenLabel(cfg.external_player_kind)
 							})}<code>{standardProgram}</code>{m.settings_field_external_player_hint_suffix()}
@@ -386,7 +417,7 @@
 						type="text"
 						value={cfg.external_player}
 						oninput={(e) => setExternalPlayer((e.currentTarget as HTMLInputElement).value)}
-						placeholder={standardProgram ?? ''}
+						placeholder={foundHere?.path ?? standardProgram ?? ''}
 						spellcheck="false"
 						autocomplete="off"
 						aria-label={m.settings_field_external_player_key()}

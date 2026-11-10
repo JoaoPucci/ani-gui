@@ -16,6 +16,8 @@
 	"field_external_player_hint_prefix": "Comando que o botão \"{button}\" executa. Deixe em branco para usar o ",
 	"field_external_player_hint_suffix": ".",
 	"field_external_player_hint_custom": "Comando que o botão \"{button}\" executa. O Personalizado não tem um programa padrão, então informe um.",
+	"field_external_player_hint_found": "Comando que o botão \"{button}\" executa. Deixe em branco para usar o {program}, que está em ",
+	"field_external_player_hint_missing": "Comando que o botão \"{button}\" executa. Deixe em branco para usar o {program}, mas ele não foi encontrado neste computador. Instale-o ou escolha o arquivo do programa em Procurar.",
 	"field_external_player_kind_key": "Tipo de player",
 	"field_external_player_kind_hint": "Cada player aceita opções de um jeito diferente. Escolha o mais parecido, ou Personalizado para escrever seu próprio template de argv. Assistir junto também usa essa escolha para o player que o Syncplay abre.",
 	"external_player_kind_aria_label": "Tipo de player",

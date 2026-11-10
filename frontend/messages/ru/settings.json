@@ -16,6 +16,8 @@
 	"field_external_player_hint_prefix": "Команда для кнопки «{button}». Оставьте поле пустым, чтобы запускался ",
 	"field_external_player_hint_suffix": ".",
 	"field_external_player_hint_custom": "Команда для кнопки «{button}». У варианта «Свой» нет стандартной программы, поэтому укажите её.",
+	"field_external_player_hint_found": "Команда для кнопки «{button}». Оставьте поле пустым, чтобы запускался {program}. Он найден здесь: ",
+	"field_external_player_hint_missing": "Команда для кнопки «{button}». Оставьте поле пустым, чтобы запускался {program}, но на этом компьютере он не найден. Установите его или выберите файл программы кнопкой «Обзор…».",
 	"field_external_player_kind_key": "Тип плеера",
 	"field_external_player_kind_hint": "Разные плееры принимают параметры по-разному. Выберите ближайший вариант или «Свой», чтобы задать собственный шаблон argv. Этот же выбор используется для плеера, который открывает Syncplay при совместном просмотре.",
 	"external_player_kind_aria_label": "Тип плеера",

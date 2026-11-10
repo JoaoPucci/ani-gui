@@ -69,7 +69,7 @@
 	"external_sent_toast": "Episódio {episode} aberto em {player}.",
 	"external_sent_toast_single": "Aberto em {player}.",
 	"external_player_custom_label": "player externo",
-	"external_spawn_failed_named": "Não foi possível abrir {binary}. Verifique se ele está instalado e no PATH, ou escolha o caminho completo em Ajustes.",
+	"external_spawn_failed_named": "Não foi possível abrir {binary}. Verifique se ele está instalado ou escolha o arquivo do programa em Ajustes, no campo Player externo.",
 	"external_spawn_failed_unset": "O Personalizado não tem um programa definido. Informe um em Ajustes, no campo Player externo.",
 	"episodes_section_heading": "Episódios",
 	"episodes_range_pagination": "{epStart}–{epEnd} de {total}",

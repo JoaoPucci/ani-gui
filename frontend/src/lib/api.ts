@@ -426,6 +426,19 @@ export interface VersionInfo {
  *  emits on the backend. Snake_case to match the Rust serde tag. */
 export type ExternalPlayerKind = 'mpv' | 'vlc' | 'iina' | 'custom';
 
+/** What a blank External player command runs for a type on this
+ *  computer: the standard program's name (none for Custom), and where
+ *  it is installed (none when it wasn't found). */
+export interface StandardProgram {
+	name: string | null;
+	path: string | null;
+}
+
+/** Ask the backend where a type's standard program is installed. */
+export function externalPlayerStandard(kind: ExternalPlayerKind): Promise<StandardProgram> {
+	return getJson<StandardProgram>(`/api/external-player/standard?kind=${encodeURIComponent(kind)}`);
+}
+
 /** Input to `cmd_open_external_player`. */
 export interface LaunchExternalPlayerArgs {
 	stream_url: string;

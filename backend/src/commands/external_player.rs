@@ -36,7 +36,7 @@ pub enum ExternalPlayerKind {
 /// Arguments to the command. Frontend supplies the resolved stream URL +
 /// optional referer. The player command itself comes from the user's
 /// config (default `mpv`).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct LaunchArgs {
     /// The resolved stream URL (mp4 or m3u8).
     pub stream_url: String,
@@ -128,24 +128,32 @@ enum SubFlag {
 /// - [`AniError::PlayerSpawnFailed`] if the configured player command
 ///   can't be spawned (usually means it's not on PATH or the path
 ///   doesn't point at an executable). Carries the program that was
-///   tried, the type's standard one for a blank command, so the UI can
-///   name it in the error toast. A blank Custom command carries the
+///   tried: the full path when the standard program was found
+///   installed, its bare name when it was not, the command as written
+///   otherwise. The UI names it in the error toast. A blank Custom command carries the
 ///   blank: there is no program to name.
 pub fn open_external_player(args: &LaunchArgs) -> Result<()> {
-    let Some(program) = player_program(&args.player_command, args.player_kind) else {
+    let Some(program) = launch_program_with(
+        &args.player_command,
+        args.player_kind,
+        &crate::commands::player_locate::locate_installed,
+    ) else {
         return Err(AniError::PlayerSpawnFailed {
             binary: args.player_command.clone(),
         });
     };
-    let argv = build_argv(args);
-    let mut cmd = std::process::Command::new(program);
+    // The argv is fitted to the program that launches.
+    let launching = LaunchArgs {
+        player_command: program.clone(),
+        ..args.clone()
+    };
+    let argv = build_argv(&launching);
+    let mut cmd = std::process::Command::new(&program);
     cmd.args(&argv)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    spawn_detached(&mut cmd).map_err(|_| AniError::PlayerSpawnFailed {
-        binary: program.to_string(),
-    })
+    spawn_detached(&mut cmd).map_err(|_| AniError::PlayerSpawnFailed { binary: program })
 }
 
 /// The program a launch runs: the command the user configured, or,
@@ -167,9 +175,18 @@ pub fn player_program(command: &str, kind: ExternalPlayerKind) -> Option<&str> {
 pub fn launch_program_with(
     command: &str,
     kind: ExternalPlayerKind,
-    _locate: &dyn Fn(&str) -> Option<String>,
+    locate: &dyn Fn(&str) -> Option<String>,
 ) -> Option<String> {
-    player_program(command, kind).map(str::to_string)
+    let program = player_program(command, kind)?;
+    Some(installed_or_as_is(program, locate))
+}
+
+/// `program` as `locate` finds it installed, when it is a standard
+/// program's bare name. Otherwise, or when nothing is found, as it is.
+fn installed_or_as_is(program: &str, locate: &dyn Fn(&str) -> Option<String>) -> String {
+    crate::commands::player_locate::standard_name(program)
+        .and_then(locate)
+        .unwrap_or_else(|| program.to_string())
 }
 
 /// The player Syncplay is told to wrap (`--player-path`), from the
@@ -177,12 +194,15 @@ pub fn launch_program_with(
 #[must_use]
 pub fn syncplay_player_with(
     command: &str,
-    kind: ExternalPlayerKind,
-    _locate: &dyn Fn(&str) -> Option<String>,
+    _kind: ExternalPlayerKind,
+    locate: &dyn Fn(&str) -> Option<String>,
 ) -> String {
-    player_program(command, kind)
-        .unwrap_or_default()
-        .to_string()
+    // Blank: no --player-path, so Syncplay opens the player configured
+    // in Syncplay itself, as it always did.
+    if command.trim().is_empty() {
+        return String::new();
+    }
+    installed_or_as_is(command, locate)
 }
 
 /// What a blank command runs for `kind` on this computer: the standard
@@ -200,11 +220,12 @@ pub struct StandardProgram {
 #[must_use]
 pub fn standard_program_found(
     kind: ExternalPlayerKind,
-    _locate: &dyn Fn(&str) -> Option<String>,
+    locate: &dyn Fn(&str) -> Option<String>,
 ) -> StandardProgram {
+    let name = kind.standard_program();
     StandardProgram {
-        name: kind.standard_program(),
-        path: None,
+        name,
+        path: name.and_then(locate),
     }
 }
 

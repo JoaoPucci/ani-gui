@@ -55,7 +55,12 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
             launch,
             cfg.syncplay_binary,
             player_kind,
-            cfg.external_player,
+            // A bare standard name is the program installed here.
+            crate::commands::external_player::syncplay_player_with(
+                &cfg.external_player,
+                player_kind,
+                &crate::commands::player_locate::locate_installed,
+            ),
         ))?;
         crate::commands::play_native_record::record_watch_requested_at(
             state,
@@ -73,7 +78,12 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         launch,
         cfg.syncplay_binary,
         player_kind,
-        cfg.external_player,
+        // A bare standard name is the program installed here.
+        crate::commands::external_player::syncplay_player_with(
+            &cfg.external_player,
+            player_kind,
+            &crate::commands::player_locate::locate_installed,
+        ),
     ))?;
     // The spawn is the watch: recorded once Syncplay has started.
     crate::commands::play_native_record::record_watch_requested_at(
@@ -100,15 +110,13 @@ pub(crate) fn syncplay_launch_for(
         binary,
         referer: launch.referer,
         player_kind,
-        // The program the "Open in …" item would run: a blank command
-        // is the type's standard one, and a blank Custom one is left
-        // to Syncplay's own setting.
-        player_binary: crate::commands::external_player::player_program(
-            &player_binary,
-            player_kind,
-        )
-        .unwrap_or_default()
-        .to_string(),
+        // A blank field passes no --player-path: Syncplay opens the
+        // player configured in Syncplay itself.
+        player_binary: if player_binary.trim().is_empty() {
+            String::new()
+        } else {
+            player_binary
+        },
         subtitle_urls: launch.subtitle_urls,
         subtitles_off: launch.subtitles_off,
     }
