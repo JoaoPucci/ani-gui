@@ -35,7 +35,10 @@ export interface FranchisePageModel {
 	readonly art: WatchEntry;
 	/** Every title the page lists; null for a franchise read in part. */
 	readonly total: number | null;
-	/** The franchise is the show alone: it lists the show and nothing else. */
+	/**
+	 * The franchise is the show alone: it lists the show and nothing
+	 * else, from a read whole.
+	 */
 	readonly alone: boolean;
 	/** The title the viewer is part-way through, where Resume goes. */
 	readonly resume: {
@@ -57,6 +60,16 @@ export interface FranchisePageModel {
 	readonly recaps: readonly WatchEntry[];
 	/** The franchise read stopped early, so there may be more titles. */
 	readonly partial: boolean;
+}
+
+/**
+ * `section` without its numbers. The layout is made with them, so a
+ * title keeps its stretch rather than moving into "No clear place".
+ */
+function unnumbered(section: FranchiseSection): FranchiseSection {
+	const blank = (r: FranchiseRow): FranchiseRow => ({ ...r, position: null });
+	if (section.kind === 'ways') return { ...section, ways: section.ways.map((w) => w.map(blank)) };
+	return { ...section, rows: section.rows.map(blank) };
 }
 
 /** Whether `run` lists `id` and nothing else. */
@@ -82,6 +95,9 @@ export function franchisePage(
 		progress: progressFromHistory(data.rows, run.entries),
 		label: (e) => shortTitle(e.title, titles)
 	};
+	// Read in part, the walk may have missed titles before the first one
+	// it reached: nothing counted from that title is sure.
+	const whole = data.franchise.complete;
 	const art = run.entries.find((e) => e.id === run.nameId)!;
 	const others = [...run.entries, ...run.versions, ...run.films, ...run.sides, ...run.recaps]
 		.filter((e) => e.id !== art.id)
@@ -93,16 +109,16 @@ export function franchisePage(
 		run,
 		name: franchiseName(art.title, others),
 		art,
-		total: franchiseSummary(run).total,
-		alone: isAlone(run, id),
+		total: whole ? franchiseSummary(run).total : null,
+		alone: whole && isAlone(run, id),
 		resume: now && {
 			entry: now.entry,
 			label: ctx.label(now.entry),
 			episode: now.episode,
-			position: placement(run, now.entry.id, order).position
+			position: whole ? placement(run, now.entry.id, order).position : null
 		},
-		start: sequence(run, order)[0],
-		sections: mainStory(ctx, segs),
+		start: whole ? sequence(run, order)[0] : null,
+		sections: whole ? mainStory(ctx, segs) : mainStory(ctx, segs).map(unnumbered),
 		versions: run.versions,
 		films: run.films,
 		sides: run.sides,
