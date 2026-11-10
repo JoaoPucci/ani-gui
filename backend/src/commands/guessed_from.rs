@@ -23,8 +23,11 @@
 //! Every play that records a row — in the player, an external player or
 //! Syncplay — settles the note for it: a guessed card's play of another
 //! listing sets it, any other play takes it away,
-//! since the row's latest play is then its own. Removing the row takes
-//! it with the row's other cache rows.
+//! since the row's latest play is then its own. It is settled in the
+//! history guard's step, with the row's write, and only when the guard
+//! accepts it: a play begun before a newer watch of the listing writes
+//! no row, and leaves the newer play's note as it is. Removing the row
+//! takes it with the row's other cache rows.
 
 use std::collections::HashMap;
 use std::time::Duration;

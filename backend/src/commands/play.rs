@@ -275,7 +275,7 @@ impl PlayArgs {
 /// Update Continue Watching on a play-cache hit.
 ///
 /// A cache miss records the row on its way through
-/// `play_native_record::write_history`. A hit never reaches that
+/// `play_native_record::write_history_then`. A hit never reaches that
 /// path, so the row is written here instead. No-op on prefetch calls
 /// (the page-mount loop fires concurrently and whichever finishes
 /// last would otherwise overwrite the user's real click), on plays
@@ -290,7 +290,6 @@ fn write_history_on_cache_hit(
     if !args.writes_history() || cached.show_id.is_empty() {
         return;
     }
-    crate::commands::guessed_from::record(state, args.guess_row.as_deref(), &cached.show_id);
     let entry = crate::history::HistoryEntry {
         // The episode played, as the app numbers it — the one the
         // cached resolve matched, or the request on a row from before
@@ -326,6 +325,9 @@ fn write_history_on_cache_hit(
         }
         held.upsert_resolved(entry)?;
         held.played_from(&cached.show_id, asked.page);
+        // Which card the row's play came from, settled with the row: a
+        // write the guard turns away settles none.
+        crate::commands::guessed_from::record(state, args.guess_row.as_deref(), &cached.show_id);
         Ok::<_, AniError>(())
     });
     if let Err(e) = wrote {
@@ -615,7 +617,7 @@ where
     // skips the provider round-trips (subject to TTL + HEAD
     // validation). show_id is the provider's slug, and storing it is
     // what lets a cache hit write the same history row a fresh
-    // resolve would: `play_native_record::write_history` has the slug
+    // resolve would: `play_native_record::write_history_then` has the slug
     // in hand from the walk, `write_history_on_cache_hit` reads it
     // back from here. Nothing outside this app writes that file.
     // Written whatever cache_resolutions says: the row doubles as the

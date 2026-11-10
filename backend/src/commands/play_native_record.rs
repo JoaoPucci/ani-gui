@@ -73,8 +73,11 @@ pub(crate) fn record_fresh_watch(
     guess_row: Option<&str>,
 ) {
     stamp_numbering(state, native, asked);
-    write_history(state, native, requested, asked, kitsu_id);
-    crate::commands::guessed_from::record(state, guess_row, &native.slug);
+    // The card note goes with the row, in the guard's step: a write the
+    // guard turns away settles none.
+    write_history_then(state, native, requested, asked, kitsu_id, || {
+        crate::commands::guessed_from::record(state, guess_row, &native.slug);
+    });
 }
 
 /// The wall clock's moment, in milliseconds since the epoch.
@@ -186,8 +189,7 @@ pub(crate) async fn record_watch_requested_at(
     requested: Epoch,
     guess_row: Option<&str>,
 ) {
-    record_watch_at(state, watch, kitsu_id, requested).await;
-    crate::commands::guessed_from::record(state, guess_row, &watch.show_id);
+    record_watch_at(state, watch, kitsu_id, requested, guess_row).await;
 }
 
 async fn record_watch_at(
@@ -195,6 +197,7 @@ async fn record_watch_at(
     watch: &Watch,
     kitsu_id: Option<&str>,
     requested: Epoch,
+    guess_row: Option<&str>,
 ) {
     if watch.show_id.is_empty() {
         return;
@@ -238,6 +241,9 @@ async fn record_watch_at(
         // removal before then still has to know it.
         held.played_from(&watch.show_id, given);
         stamp_watched_at(state, &watch.show_id, now);
+        // The card note goes with the row it is about: a watch the
+        // guard turned away settles none.
+        crate::commands::guessed_from::record(state, guess_row, &watch.show_id);
         Ok::<_, crate::error::AniError>(Some((held.epoch(), previous)))
     });
     let (begun, previous) = match recorded {
@@ -290,12 +296,17 @@ async fn record_watch_at(
 /// whose watch is never recorded — the window closed before
 /// mark-watched — still names its show. Otherwise the row keeps the id
 /// it had, and the watch settles it.
-pub(crate) fn write_history(
+///
+/// `then` runs in the guard's step once the row is written, and only
+/// then: what is settled with the row — the card note — is settled
+/// only for a row the guard accepted.
+pub(crate) fn write_history_then(
     state: &AppState,
     native: &NativeResolved,
     requested: &str,
     asked: Asked<'_>,
     kitsu_id: Option<&str>,
+    then: impl FnOnce(),
 ) {
     let entry = crate::history::HistoryEntry {
         ep_no: matched_episode(native, requested),
@@ -313,6 +324,7 @@ pub(crate) fn write_history(
         }
         held.upsert_resolved(entry)?;
         held.played_from(&native.slug, asked.page);
+        then();
         Ok::<_, crate::error::AniError>(())
     });
     if let Err(e) = wrote {
@@ -341,3 +353,16 @@ mod tests;
 #[cfg(test)]
 #[path = "play_native_record_ids_test.rs"]
 mod ids_tests;
+
+/// [`write_history_then`] with nothing settled beside the row — the
+/// form the tests write with; the play's own path settles the card note.
+#[cfg(test)]
+pub(crate) fn write_history(
+    state: &AppState,
+    native: &NativeResolved,
+    requested: &str,
+    asked: Asked<'_>,
+    kitsu_id: Option<&str>,
+) {
+    write_history_then(state, native, requested, asked, kitsu_id, || {});
+}
