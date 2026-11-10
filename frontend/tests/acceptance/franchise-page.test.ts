@@ -727,6 +727,16 @@ describe('franchise page progress colours', () => {
 		expect(style).not.toMatch(/\.row-line[^{]*\{[^}]*--row-accent/);
 	});
 
+	it('gives the unnumbered rows’ caption column the numbered rows’ width', () => {
+		// "ЭП 1000 ИЗ 1100" in uppercase tracking needs the wider column.
+		expect(rule('.story-row')).toContain(
+			'grid-template-columns: 4.5rem 3.5rem minmax(0, 1fr) 9rem;'
+		);
+		expect(rule('.story-row.compact')).toContain(
+			'grid-template-columns: 3rem minmax(0, 1fr) 9rem;'
+		);
+	});
+
 	it('keeps the show’s accent on the "You are here" rule', () => {
 		expect(rule('.here .story-row')).toContain('border-inline-start-color: var(--row-accent);');
 	});

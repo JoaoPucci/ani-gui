@@ -83,6 +83,15 @@ describe('waiting for the first hop with the details', () => {
 		expect(got).toEqual({ details: 'd', hop: null });
 	});
 
+	it('stops waiting for the first hop once the walk has answered', async () => {
+		// Nothing will be held then, so the page need not wait.
+		const w = waits();
+		const hop = deferred<FirstHop>();
+		const got = await withFirstHop(Promise.resolve('d'), hop.promise, w.wait, Promise.resolve());
+		expect(got).toEqual({ details: 'd', hop: null });
+		hop.resolve('strip');
+	});
+
 	it('fails as the details do', async () => {
 		const w = waits();
 		await expect(
