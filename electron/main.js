@@ -607,7 +607,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // The window loads hidden; at ready-to-show it waits for two
     // things: the splash — up to a second for it to have rendered a
     // frame, then what is left of its minimum time on screen — and its
-    // own renderer's word that the first page has rendered (at most four
+    // own renderer's word that the first page has rendered (at most 15
     // seconds from the window's creation, lib/app-window.cjs). Only then
     // is it mapped (maximized) and shown, and the splash put away. The
     // two are never on screen competing, on any platform. A later window
