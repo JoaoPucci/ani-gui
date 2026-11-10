@@ -92,8 +92,22 @@ export function homeRows(input: HomeRowsInput): HomeRows {
 	return { continue: cw, watchLater: wl, trending, topRated };
 }
 
-/** What the page draws now, given what it drew before. Unchanged in
- *  this commit: the next draw as it comes. */
-export function keepShown(_before: HomeRows | null, next: HomeRows): HomeRows {
-	return next;
+/** What the page draws now, given what it drew before: a row already
+ *  shown stays shown unless it is dropped. The slot rule takes a row
+ *  back to a skeleton when a row above it is loading again, which on
+ *  first load cannot happen to a shown row; it can when a row comes in
+ *  late above it (Watch later, for a sign-in read after the keyring
+ *  notice), and the rows on screen then stay as they are. */
+export function keepShown(before: HomeRows | null, next: HomeRows): HomeRows {
+	if (before === null) return next;
+	const keep = (row: keyof HomeRows): HomeRowKind =>
+		before[row] === 'shown' && (next[row] === 'skeleton' || next[row] === 'held')
+			? 'shown'
+			: next[row];
+	return {
+		continue: keep('continue'),
+		watchLater: keep('watchLater'),
+		trending: keep('trending'),
+		topRated: keep('topRated')
+	};
 }

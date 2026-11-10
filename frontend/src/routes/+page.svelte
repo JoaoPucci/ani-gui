@@ -139,7 +139,7 @@
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
 	import { splitTrending } from '$lib/hero/rotation';
-	import { homeRows } from '$lib/home/rows';
+	import { homeRows, keepShown, type HomeRows } from '$lib/home/rows';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayArgs } from '$lib/play/play-args';
@@ -207,11 +207,13 @@
 	// without ($lib/home/rows). Non-empty = render with the bridged
 	// Kitsu refs.
 	let watchLater = $state<KitsuAnimeRef[] | null>(null);
-	// Which trackers' lists `watchLater` was loaded for. A load for a
-	// different set (a sign-in read after the keyring notice, a connect,
-	// a disconnect) starts from no list, so the row shows its skeleton
-	// rather than the last set's list while the new one loads.
-	let watchLaterLoadedFor: string | null = null;
+	// Which trackers' lists `watchLater` (or its failure) is the answer
+	// for. When the set the row reads changes (a sign-in read after the
+	// keyring notice, a connect, a disconnect), what is held answers for
+	// another set: the row takes it as not loaded yet, a skeleton, rather
+	// than draw the last set's list — least of all the empty one read
+	// with no sign-in — while the new one loads.
+	let watchLaterFor = $state<string | null>(null);
 	// True when the most recent rail load failed (bridge/availability),
 	// as opposed to succeeding with an empty list — so a connected user
 	// sees a retry affordance instead of a false "nothing planned".
@@ -221,7 +223,9 @@
 	// cached list is still served. A renewal that turns an expired
 	// sign-in back into a connected one does not change it, so the row
 	// does not come and go with it.
-	const wlSignedIn = $derived(Object.keys(buildWatchLaterDeps().credentials).length > 0);
+	const wlReads = $derived(credentialSet(buildWatchLaterDeps()));
+	const wlSignedIn = $derived(wlReads !== '');
+	const wlCurrent = $derived(watchLaterFor === wlReads);
 	// The row shows its failed state when the last load failed and there
 	// are no cards to keep showing (a populated rail keeps its cards).
 	const wlFailedRow = $derived(
@@ -519,20 +523,30 @@
 	const trendingTail = $derived(trendingSplit.row);
 	const featuredAccent = $derived(featured ? accentFor(featured.id) : 'var(--accent-ink)');
 
-	// What each row below the hero draws ($lib/home/rows).
-	const rows = $derived(
-		homeRows({
-			history,
-			watchLater: {
-				accountsKnown,
-				signedIn: wlSignedIn,
-				cards: watchLater,
-				failed: watchLaterFailed
-			},
-			trending: { items: trending === null ? null : trendingTail, failed: trendingError !== null },
-			topRated: { items: topRated, failed: topRatedError !== null }
-		})
-	);
+	// What each row below the hero draws ($lib/home/rows), keeping a row
+	// shown once it is (keepShown). The last draw is plumbing for that,
+	// never rendered from, hence not state.
+	let lastRows: HomeRows | null = null;
+	const rows = $derived.by(() => {
+		lastRows = keepShown(
+			lastRows,
+			homeRows({
+				history,
+				watchLater: {
+					accountsKnown,
+					signedIn: wlSignedIn,
+					cards: wlCurrent ? watchLater : null,
+					failed: wlCurrent && watchLaterFailed
+				},
+				trending: {
+					items: trending === null ? null : trendingTail,
+					failed: trendingError !== null
+				},
+				topRated: { items: topRated, failed: topRatedError !== null }
+			})
+		);
+		return lastRows;
+	});
 
 	onMount(() => {
 		settingsPromise = settingsGet().catch(() => null as Config | null);
@@ -698,12 +712,6 @@
 		if (!accountsKnown || !settingsRead) return;
 		const filterMode = pickAvailabilityMode(config);
 		const deps = buildWatchLaterDeps();
-		const loadingFor = Object.keys(deps.credentials).sort().join(',');
-		if (loadingFor !== watchLaterLoadedFor) {
-			watchLaterLoadedFor = loadingFor;
-			watchLater = null;
-			watchLaterFailed = false;
-		}
 		const ticket = watchLaterLoads.start(true);
 		void loadWatchLater(deps)
 			.then((refs) => filterAvailable(refs, filterMode))
@@ -711,6 +719,7 @@
 				if (!watchLaterLoads.current(ticket)) return; // a newer load superseded this one
 				watchLater = refs;
 				watchLaterFailed = false;
+				watchLaterFor = credentialSet(deps);
 				if (watchLaterLoads.landed(ticket)) maybeAutoRefreshWatchLater(deps);
 			})
 			.catch((e: unknown) => {
@@ -722,6 +731,7 @@
 				if (!watchLaterLoads.current(ticket)) return;
 				watchLaterError = e;
 				watchLaterFailed = true;
+				watchLaterFor = credentialSet(deps);
 			})
 			.finally(() => watchLaterLoads.finish(ticket));
 	});
@@ -742,6 +752,11 @@
 			}
 		)
 	);
+
+	/** The trackers a Watch later load reads, as one comparable value. */
+	function credentialSet(deps: { credentials: Partial<Record<Provider, unknown>> }): string {
+		return Object.keys(deps.credentials).sort().join(',');
+	}
 
 	/**
 	 * Pluck bearer + user_id pairs from every provider whose stored
@@ -803,6 +818,7 @@
 			}
 			watchLater = filtered;
 			watchLaterFailed = false;
+			watchLaterFor = credentialSet(deps);
 			if (watchLaterLoads.landed(ticket)) maybeAutoRefreshWatchLater(deps);
 		} catch (e) {
 			// Refresh-path reload failed (bridge / availability). Flag it
@@ -812,6 +828,7 @@
 			if (!watchLaterLoads.current(ticket)) return;
 			watchLaterError = e;
 			watchLaterFailed = true;
+			watchLaterFor = credentialSet(deps);
 		} finally {
 			watchLaterLoads.finish(ticket);
 		}
