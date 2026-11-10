@@ -2,7 +2,8 @@
 //! walk run against live Kitsu from every anchor `cases.json` names,
 //! every listing and detail it asked for kept in `listings.json`. The
 //! test is ignored and run by hand; it writes the fixture and asserts
-//! nothing about the walk.
+//! nothing about the walk. A second ignored test writes the payloads
+//! the frontend's tests read (`served-<id>.json`) from the corpus.
 //!
 //! A listing or detail already in `listings.json` is answered from it,
 //! so a recording can be re-run after the walk changes and asks only
@@ -13,6 +14,7 @@
 //! ```sh
 //! cd "$ROOT/backend"
 //! cargo test --lib record_the_franchise_corpus -- --ignored
+//! cargo test --lib write_the_served_payloads -- --ignored
 //! ```
 
 use std::path::PathBuf;
@@ -79,5 +81,16 @@ async fn record_the_franchise_corpus() {
             }
         }
         std::fs::write(&path, super::corpus_tests::to_lines(&corpus)).expect("write");
+    }
+}
+
+#[test]
+#[ignore = "writes the served payloads of the corpus"]
+fn write_the_served_payloads() {
+    let c = super::corpus_tests::corpus();
+    for anchor in super::corpus_tests::SERVED {
+        let f = super::corpus_tests::walk(&c, anchor);
+        let body = serde_json::to_string_pretty(&f).expect("json") + "\n";
+        std::fs::write(dir().join(format!("served-{anchor}.json")), body).expect("write");
     }
 }

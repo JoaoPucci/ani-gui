@@ -3,14 +3,34 @@
  "fixtures": {
   "cases.json": {
    "source": "Hand-written: one case per anchor, what the walk must answer for it (the title of the run's first entry by start, which section holds the anchor, a side story's parent stories, ids a section must hold), pinned by backend/src/commands/franchise_corpus_test.rs.",
-   "size": 3547,
-   "sha256": "af91b51f3a9df65a414b2b3d497bfe7d6951ccf18f449c6e0a39f5f66676e32c"
+   "size": 4039,
+   "sha256": "e278f15c5176c0ba7b14ceba9643da7c5c22f6fa9712f58e52c583a6847fd93e"
   },
   "listings.json": {
    "source": "Recorded by backend/src/commands/franchise_corpus_record_test.rs: the franchise walk run from every anchor in cases.json, each listing it asked for read with the app's query (KitsuClient::franchise_relations) and each detail with KitsuClient::anime_detail, artwork dropped (the walk never reads it).",
    "captured_at": "2026-11-11",
    "size": 187743,
    "sha256": "6f003fe10c6db7c7288021086707e91c454550820b560a8334e354f6892c66f9"
+  },
+  "served-12.json": {
+   "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from One Piece (anime/12) over listings.json, as GET /api/kitsu/franchise/12 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
+   "size": 18772,
+   "sha256": "2c73df992d8db52189f5c4ab50affbfe442a1af2dac857f51acbbed6773ba43f"
+  },
+  "served-50656.json": {
+   "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from LEGO ONE PIECE (anime/50656) over listings.json, as GET /api/kitsu/franchise/50656 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
+   "size": 18810,
+   "sha256": "51eda84ddf0790f4b2b38976398cfb71a52f9a16151978e0d0d8c94215bfa1dd"
+  },
+  "served-11.json": {
+   "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Naruto (anime/11) over listings.json, as GET /api/kitsu/franchise/11 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
+   "size": 6223,
+   "sha256": "0ab288a01e264d2b9e4ee9bb0ea6bf882f4eed49d655a143012b7d7d2a96da84"
+  },
+  "served-244.json": {
+   "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from BLEACH (anime/244) over listings.json, as GET /api/kitsu/franchise/244 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
+   "size": 4119,
+   "sha256": "09a3a4896ee13d2308d295e8c30b12876deb816dd7e2c8f0f92543318a0e5643"
   }
  }
 }

@@ -201,3 +201,18 @@ fn the_corpus_holds_what_kitsu_served_for_one_piece_and_lego_one_piece() {
     assert_eq!(role("12", "50656").as_deref(), Some("parent_story"));
     assert_eq!(role("50656", "12").as_deref(), Some("side_story"));
 }
+
+/// Anchors whose answers are kept as `GET /api/kitsu/franchise/:id`
+/// serves them (`served-<id>.json`), for the frontend's tests: One
+/// Piece and its spin-off LEGO ONE PIECE, Naruto, and Bleach.
+pub(super) const SERVED: [&str; 4] = ["12", "50656", "11", "244"];
+
+#[test]
+fn the_served_payloads_are_the_walks_answers() {
+    let c = corpus();
+    for anchor in SERVED {
+        let kept: Franchise =
+            serde_json::from_slice(&fixture(&format!("served-{anchor}.json"))).expect("served");
+        assert_eq!(walk(&c, anchor), kept, "served-{anchor}.json");
+    }
+}
