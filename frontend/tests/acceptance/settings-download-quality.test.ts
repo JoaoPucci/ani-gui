@@ -149,3 +149,13 @@ describe('settings — the download quality', () => {
 		expect(target.textContent).toContain('defaults for watching and downloading');
 	});
 });
+
+describe('settings — the audio default', () => {
+	it('says each show remembers the audio picked on its page', async () => {
+		mountSettings({});
+		await until(() => field(m.settings_field_audio_key()) !== undefined, 'the Audio field');
+		expect(field(m.settings_field_audio_key())?.textContent).toContain(
+			m.settings_field_audio_default_hint()
+		);
+	});
+});
