@@ -21,11 +21,12 @@
 //! nothing of it. A lost note only lets the guard clear the id again,
 //! as it did before the note existed.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::app::AppState;
 use crate::cache::families::LINKED;
-use crate::cache::{meta_cache_get, meta_cache_put};
+use crate::cache::{meta_cache_get, meta_cache_list_prefix, meta_cache_put};
 use crate::error::Result;
 
 /// How long a note lasts. A link is meant for as long as the row
@@ -57,4 +58,15 @@ pub(crate) fn record(state: &AppState, row: &str, kitsu_id: &str) -> Result<()> 
 /// would without the note.
 pub(crate) fn linked(state: &AppState, row: &str) -> Option<String> {
     meta_cache_get(&state.cache_pool, &key(row)).ok().flatten()
+}
+
+/// Every note: the row, and the id the user linked it to.
+///
+/// # Errors
+/// SQLite errors propagate.
+pub(crate) fn all(state: &AppState) -> Result<HashMap<String, String>> {
+    Ok(meta_cache_list_prefix(&state.cache_pool, LINKED)?
+        .into_iter()
+        .filter_map(|(k, id)| Some((k.strip_prefix(LINKED)?.to_owned(), id)))
+        .collect())
 }

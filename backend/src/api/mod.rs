@@ -193,6 +193,11 @@ struct HistoryRow {
     /// the card for that line while both show as the same show.
     #[serde(skip_serializing_if = "Option::is_none")]
     guessed_from: Option<String>,
+    /// The row records a show the user named for it: its link's note
+    /// ([`crate::commands::linked_note`]) still stands, so every surface
+    /// offers to change it again.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    named: bool,
 }
 
 async fn get_history(
@@ -201,12 +206,18 @@ async fn get_history(
     // A cache that cannot list the notes leaves every card standing for
     // its newer row, as before the notes existed.
     let mut from = crate::commands::guessed_from::all(&state).unwrap_or_default();
+    // One that cannot list the link notes offers no row to change again.
+    let notes = crate::commands::linked_note::all(&state).unwrap_or_default();
     Ok(Json(
         h_inner::history_list(&state)?
             .into_iter()
             .map(|entry| HistoryRow {
                 key_year: crate::scraper::provider::key_year(&entry.id),
                 guessed_from: from.remove(&entry.id),
+                named: crate::commands::linked_note::stands(
+                    entry.kitsu_id.as_deref(),
+                    notes.get(&entry.id).map(String::as_str),
+                ),
                 entry,
             })
             .collect(),

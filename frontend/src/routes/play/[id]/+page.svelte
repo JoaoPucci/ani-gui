@@ -197,7 +197,7 @@
 	} from '$lib/play/play-origin';
 	import { guessedQuery } from '$lib/history/guessed-context';
 	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
-	import { noteSwitch, sessionRow } from '$lib/history/guess-slip';
+	import { noteSwitch } from '$lib/history/guess-slip';
 	import { appLinkDeps } from '$lib/history/link-deps';
 	import { switchShow } from '$lib/play/switch-show';
 	import { sessionShow } from '$lib/play/session-show';
@@ -221,7 +221,6 @@
 	const fromRow = $derived(openedFromRow(page.url.searchParams));
 	// The show page a guessed card's session goes up to says which
 	// history title the card was matched from ($lib/history/guessed-context).
-	const showHref = $derived(resolve('/anime/[id]', { id }) + guessedQuery(fromGuess, fromRow));
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
 	// A guessed session's slip, its ⋯ entry and the picker they open
 	// ($lib/history/in-place-link.svelte.ts): "Is this the show you
@@ -240,7 +239,15 @@
 	// A pick saved after the viewer left is still saved, and switches to
 	// nothing.
 	onDestroy(() => playLink.leave());
-	$effect(() => void playLink.arrive(sessionRow(fromGuess, fromRow), id));
+	// Every session of a card's line arrives with it: its offer decides
+	// whether the line is asked about (a guess) or can be changed again
+	// (a line the user named a show for, $lib/history/picked-offer).
+	$effect(() => void playLink.arrive(fromRow, id, fromGuess));
+	// The line goes up with the link while the session can ask about it:
+	// a guess, or a line the user named a show for ($lib/history/picked-offer).
+	const showHref = $derived(
+		resolve('/anime/[id]', { id }) + guessedQuery(fromGuess || playLink.offer !== null, fromRow)
+	);
 	// What the session's plays name as their show: its page's, its guess
 	// named apart, or once the card was linked from here, the link
 	// ($lib/play/play-origin).

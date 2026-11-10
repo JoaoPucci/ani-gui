@@ -548,6 +548,10 @@
 		publish: (id, match) => publishLoaderCap(id, match, match?.episode_count ?? null, true),
 		writes: () => historyWrites
 	});
+	/** Whether the card for the history row `row` offers its pill. */
+	function askable(row: string): boolean {
+		return rowTrust.isGuess(row) || historyById.get(row)?.named === true;
+	}
 	/** The card that stands for the history row `row`. */
 	function cardButton(row: string): HTMLElement | null {
 		return document.querySelector<HTMLElement>(
@@ -1433,8 +1437,10 @@
 			<!-- The line the card stands for: a row its guessed play wrote on
 			     another listing stands for the line clicked ($lib/history/card-row). -->
 			{@const line = cardRow(entry, history ?? [], historyMatches, (id) => rowTrust.isGuess(id))}
+			<!-- A guess, or a line the user named a show for, which can be
+			     changed again ($lib/history/picked-offer). -->
 			{@const guessed =
-				resumable && match && rowTrust.isGuess(line) && !settledRows.has(line) ? match : null}
+				resumable && match && askable(line) && !settledRows.has(line) ? match : null}
 			<!-- Both transitions are gated on `deleteAnimationGate` so
 		     they only run for user-confirmed deletes. On home
 		     re-mount, `dedupeHistoryByKitsuId` collapses Kitsu-group

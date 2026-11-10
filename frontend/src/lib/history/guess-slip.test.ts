@@ -9,7 +9,6 @@ import {
 	notePick,
 	noteSwitch,
 	pickedRow,
-	sessionRow,
 	slipState,
 	takeSwitch,
 	type SlipInputs
@@ -73,34 +72,14 @@ describe('slipState', () => {
 });
 
 describe('rows picked on the player', () => {
-	it('carry their session on, without a guess, until the app restarts', () => {
-		expect(sessionRow(true, 'hianime:a-1')).toBe('hianime:a-1');
-		expect(sessionRow(false, 'hianime:a-1')).toBeNull();
+	it('are remembered until the app restarts', () => {
+		expect(pickedRow('hianime:a-1')).toBe(false);
 		notePick('hianime:a-1');
 		expect(pickedRow('hianime:a-1')).toBe(true);
 		expect(pickedRow('b-2')).toBe(false);
-		expect(sessionRow(false, 'hianime:a-1')).toBe('hianime:a-1');
-		expect(sessionRow(false, null)).toBeNull();
+		expect(pickedRow(null)).toBe(false);
 		__resetHiddenRowsForTests();
-		expect(sessionRow(false, 'hianime:a-1')).toBeNull();
-	});
-
-	it('are a row of the session opened from the card, whatever else is noted', () => {
-		fc.assert(
-			fc.property(
-				fc.boolean(),
-				fc.option(fc.constantFrom('hianime:a-1', 'b-2'), { nil: null }),
-				fc.array(fc.constantFrom('hianime:a-1', 'b-2')),
-				(guess, row, picked) => {
-					__resetHiddenRowsForTests();
-					for (const p of picked) notePick(p);
-					const got = sessionRow(guess, row);
-					expect(got === null || got === row).toBe(true);
-					if (guess && row !== null) expect(got).toBe(row);
-					if (row === null) expect(got).toBeNull();
-				}
-			)
-		);
+		expect(pickedRow('hianime:a-1')).toBe(false);
 	});
 });
 

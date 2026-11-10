@@ -69,12 +69,6 @@ export function pickedRow(row: string | null): boolean {
 	return row !== null && pickedRows.has(row);
 }
 
-/** The card row a player session is about: the guessed card's, or one
- *  the viewer picked a show for on the player; null otherwise. */
-export function sessionRow(guess: boolean, row: string | null): string | null {
-	return row !== null && (guess || pickedRow(row)) ? row : null;
-}
-
 /** Tell the next session of `row`, the one a switch opens, that it
  *  plays `title` now. */
 export function noteSwitch(row: string, title: string): void {

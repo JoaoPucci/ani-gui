@@ -17,7 +17,8 @@
 
 import { linkedNotice, linkFailure } from './link-notices';
 import { LinkPicker } from './link-picker.svelte';
-import { guessedGroup, linkOffer, type LinkDeps } from './link-offer';
+import { guessedGroup, linkOffer, type LinkDeps, type LinkOffer } from './link-offer';
+import { offerAgain } from './picked-offer';
 
 /** A notice to the user. */
 export interface LinkNotice {
@@ -83,9 +84,23 @@ export class LinkSession extends LinkPicker {
 		return true;
 	}
 
-	/** The offer the page `pageId` makes for the card row `row`. */
-	protected findOffer(row: string | null, pageId: string) {
-		return linkOffer(this.#deps, row, pageId);
+	/** The offer the page `pageId` makes for the card row `row`: a
+	 *  guess's, else the way to change again a row the user named a show
+	 *  for ($lib/history/picked-offer.ts). */
+	protected async findOffer(row: string | null, pageId: string): Promise<LinkOffer | null> {
+		const guess = this.asksGuess ? await linkOffer(this.#deps, row, pageId) : null;
+		return guess ?? offerAgain(this.#deps, row, pageId, this.inPlayer);
+	}
+
+	/** Whether the arrival may ask about a guess: a session no guess
+	 *  opened only changes again a show the user named. */
+	protected get asksGuess(): boolean {
+		return true;
+	}
+
+	/** Whether the session is the player's. */
+	protected get inPlayer(): boolean {
+		return false;
 	}
 
 	/** Open the picker on the offer's candidates, naming `episode` —

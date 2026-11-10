@@ -34,8 +34,7 @@
 
 import type { KitsuAnimeRef } from '$lib/api';
 import { LinkSession, type LinkNotice, type LinkSessionDeps } from './link-session.svelte';
-import type { LinkDeps, LinkOffer } from './link-offer';
-import { offerAgain } from './picked-offer';
+import type { LinkDeps } from './link-offer';
 import { playerNotify } from './link-notices';
 import { surface, type Surface } from './surface';
 import {
@@ -69,12 +68,12 @@ export class InPlaceLinkSession extends LinkSession {
 	switchedTitle = $state<string | null>(null);
 
 	#row = $state<string | null>(null);
+	#guess = true;
 	#page = '';
 	#surface: Surface;
 	#refresh: () => void;
 	#notify: (notice: LinkNotice) => void;
 	#inPlayer: boolean;
-	#linkDeps: LinkDeps;
 
 	constructor(deps: InPlaceLinkDeps) {
 		const refresh = deps.refresh ?? noRefresh;
@@ -97,7 +96,6 @@ export class InPlaceLinkSession extends LinkSession {
 		this.#refresh = refresh;
 		this.#notify = deps.notify;
 		this.#inPlayer = inPlayer;
-		this.#linkDeps = deps;
 	}
 
 	/** What the slip shows now. */
@@ -113,7 +111,11 @@ export class InPlaceLinkSession extends LinkSession {
 		});
 	}
 
-	override arrive(row: string | null, pageId: string): Promise<boolean> {
+	/** The surface shows `pageId` for the card row `row`; on the player,
+	 *  `guess` says whether a guess opened the session, else it only
+	 *  offers to change again a show the user named. */
+	override arrive(row: string | null, pageId: string, guess = true): Promise<boolean> {
+		this.#guess = guess;
 		this.#row = row;
 		this.#page = pageId;
 		this.aside = isRowHidden(row);
@@ -130,16 +132,12 @@ export class InPlaceLinkSession extends LinkSession {
 		this.supersede();
 	}
 
-	/** A guessed row's offer; on the player, else the way to change the
-	 *  show again of a row the viewer picked a show for there. */
-	protected override async findOffer(
-		row: string | null,
-		pageId: string
-	): Promise<LinkOffer | null> {
-		return (
-			(await super.findOffer(row, pageId)) ??
-			offerAgain(this.#linkDeps, row, pageId, this.#inPlayer)
-		);
+	protected override get inPlayer(): boolean {
+		return this.#inPlayer;
+	}
+
+	protected override get asksGuess(): boolean {
+		return this.#guess;
 	}
 
 	/** Hide the slip for this row until the app restarts. */
