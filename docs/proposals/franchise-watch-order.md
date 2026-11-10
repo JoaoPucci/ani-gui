@@ -7,8 +7,9 @@ open (section 5). Built so far: the backend's franchise read, `GET
 watch-order strip on the show page and the "Watch order" setting. Not
 built yet: the Up next card, Continue Watching's hand-off and the
 franchise page, which exist only as design mockups drawn from fixture
-data, behind a Diagnostics switch. The research was done on 2026-11-01; the live
-samples it quotes describe the catalogues on that day and will drift.
+data, behind a Diagnostics switch. The research was done on
+2026-11-01; the live samples it quotes describe the catalogues on that
+day and will drift.
 
 ## The problem in plain terms
 
