@@ -214,6 +214,9 @@ pub struct StandardProgram {
     pub name: Option<&'static str>,
     /// Where it is installed; none when it was not found.
     pub path: Option<String>,
+    /// Whether the program exists for this OS at all (IINA is
+    /// macOS-only).
+    pub supported: bool,
 }
 
 /// [`StandardProgram`] for `kind`, found by `locate`.
@@ -222,10 +225,21 @@ pub fn standard_program_found(
     kind: ExternalPlayerKind,
     locate: &dyn Fn(&str) -> Option<String>,
 ) -> StandardProgram {
+    standard_program_found_on(crate::commands::player_locate::current_os(), kind, locate)
+}
+
+/// [`standard_program_found`] on `os`.
+#[must_use]
+pub fn standard_program_found_on(
+    _os: crate::commands::player_locate::Os,
+    kind: ExternalPlayerKind,
+    locate: &dyn Fn(&str) -> Option<String>,
+) -> StandardProgram {
     let name = kind.standard_program();
     StandardProgram {
         name,
         path: name.and_then(locate),
+        supported: true,
     }
 }
 

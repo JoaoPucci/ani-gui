@@ -212,7 +212,28 @@ pub fn locate_installed(name: &str) -> Option<String> {
     locate(name, current_os(), &var, &exists, &registered_app_path)
 }
 
-fn current_os() -> Os {
+/// The program Syncplay is told to wrap for a bare standard name, on
+/// `os`. Not looked up on Linux, where a sandboxed Syncplay (flatpak,
+/// snap) cannot reach a host path, and where its own PATH lookup is
+/// what master relied on.
+#[must_use]
+pub fn syncplay_locate_on(
+    _os: Os,
+    name: &str,
+    locate: &dyn Fn(&str) -> Option<String>,
+) -> Option<String> {
+    locate(name)
+}
+
+/// [`syncplay_locate_on`] for this computer.
+#[must_use]
+pub fn locate_for_syncplay(name: &str) -> Option<String> {
+    syncplay_locate_on(current_os(), name, &locate_installed)
+}
+
+/// The OS this build runs on.
+#[must_use]
+pub fn current_os() -> Os {
     if cfg!(windows) {
         Os::Windows
     } else if cfg!(target_os = "macos") {

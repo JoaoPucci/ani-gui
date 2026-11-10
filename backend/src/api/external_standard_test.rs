@@ -34,7 +34,10 @@ async fn custom_has_no_standard_program() {
     let (status, body) = ask("custom").await;
     assert_eq!(status, StatusCode::OK);
     let v: serde_json::Value = serde_json::from_str(&body).expect("json");
-    assert_eq!(v, serde_json::json!({ "name": null, "path": null }));
+    assert_eq!(
+        v,
+        serde_json::json!({ "name": null, "path": null, "supported": true })
+    );
 }
 
 #[tokio::test]

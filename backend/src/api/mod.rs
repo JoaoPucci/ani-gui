@@ -274,6 +274,7 @@ async fn get_external_player_standard(
         .unwrap_or(external_player::StandardProgram {
             name: q.kind.standard_program(),
             path: None,
+            supported: true,
         }),
     )
 }

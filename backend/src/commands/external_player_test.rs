@@ -399,13 +399,15 @@ fn settings_learns_what_a_blank_command_runs_here() {
         StandardProgram {
             name: Some("vlc"),
             path: Some("C:\\Program Files\\VideoLAN\\VLC\\vlc.exe".into()),
+            supported: true,
         }
     );
     assert_eq!(
         standard_program_found(ExternalPlayerKind::Iina, &installed),
         StandardProgram {
             name: Some("iina"),
-            path: None
+            path: None,
+            supported: true,
         }
     );
     let never = |_: &str| -> Option<String> { panic!("Custom has nothing to look up") };
@@ -413,7 +415,8 @@ fn settings_learns_what_a_blank_command_runs_here() {
         standard_program_found(ExternalPlayerKind::Custom, &never),
         StandardProgram {
             name: None,
-            path: None
+            path: None,
+            supported: true,
         }
     );
 }
