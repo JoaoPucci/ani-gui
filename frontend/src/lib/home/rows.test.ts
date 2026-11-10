@@ -231,3 +231,106 @@ describe('keepShown', () => {
 		expect(keepShown(null, all('skeleton'))).toEqual(all('skeleton'));
 	});
 });
+
+describe('the page drawn through keepShown, with a sign-in read after the keyring notice', () => {
+	// The sign-ins count as known once the keyring notice goes up (the
+	// row loads with none: an empty list), and a sign-in can be read
+	// after that; its list then lands. The other rows land in any order
+	// around them.
+	type Event = 'history' | 'notice' | 'signIn' | 'list' | 'trending' | 'topRated';
+	type Load = { items: string[] | null; failed: boolean };
+	const load = (item: string) =>
+		fc.constantFrom<Load>(
+			{ items: [], failed: false },
+			{ items: [item], failed: false },
+			{ items: null, failed: true }
+		);
+	const finals = fc.record({
+		history: fc.constantFrom<string[]>([], ['h1']),
+		list: fc.constantFrom<{ cards: string[] | null; failed: boolean }>(
+			{ cards: [], failed: false },
+			{ cards: ['w1'], failed: false },
+			{ cards: null, failed: true }
+		),
+		trending: load('t1'),
+		topRated: load('r1')
+	});
+	const events: Event[] = ['history', 'notice', 'signIn', 'list', 'trending', 'topRated'];
+	const run = fc
+		.tuple(
+			finals,
+			fc.shuffledSubarray(events, { minLength: events.length, maxLength: events.length })
+		)
+		.filter(
+			([, o]) =>
+				o.indexOf('notice') < o.indexOf('signIn') && o.indexOf('signIn') < o.indexOf('list')
+		);
+	type Finals = typeof finals extends fc.Arbitrary<infer F> ? F : never;
+
+	function build(f: Finals, done: Set<Event>): HomeRowsInput {
+		const signedIn = done.has('signIn');
+		return {
+			history: done.has('history') ? f.history : null,
+			watchLater: {
+				accountsKnown: done.has('notice'),
+				signedIn,
+				// Signed out, the load finds nothing at once; signed in, the
+				// list for the old set does not count until the new one lands.
+				cards: !done.has('notice') ? null : !signedIn ? [] : done.has('list') ? f.list.cards : null,
+				failed: done.has('list') && f.list.failed
+			},
+			trending: done.has('trending') ? f.trending : { items: null, failed: false },
+			topRated: done.has('topRated') ? f.topRated : { items: null, failed: false }
+		};
+	}
+	function views(f: Finals, order: Event[]) {
+		const done = new Set<Event>();
+		let drawn = keepShown(null, homeRows(build(f, done)));
+		const seen = [{ drawn, input: build(f, done) }];
+		for (const e of order) {
+			done.add(e);
+			const input = build(f, done);
+			drawn = keepShown(drawn, homeRows(input));
+			seen.push({ drawn, input });
+		}
+		return seen;
+	}
+	const ROWS = ['continue', 'watchLater', 'trending', 'topRated'] as const;
+
+	it('never takes a shown row back to a skeleton or an empty slot', () => {
+		fc.assert(
+			fc.property(run, ([f, order]) => {
+				const seen = views(f, order);
+				seen.forEach(({ drawn }, k) => {
+					for (const row of ROWS) {
+						if (drawn[row] !== 'shown') continue;
+						for (const later of seen.slice(k + 1)) {
+							expect(['shown', 'absent']).toContain(later.drawn[row]);
+						}
+					}
+				});
+			})
+		);
+	});
+
+	it('keeps a catalogue or history row shown only while it has something in it', () => {
+		fc.assert(
+			fc.property(run, ([f, order]) => {
+				for (const { drawn, input } of views(f, order)) {
+					if (drawn.continue === 'shown') expect(input.history?.length).toBeGreaterThan(0);
+					if (drawn.trending === 'shown') expect(input.trending.items?.length).toBeGreaterThan(0);
+					if (drawn.topRated === 'shown') expect(input.topRated.items?.length).toBeGreaterThan(0);
+				}
+			})
+		);
+	});
+
+	it('ends as the page would be drawn from scratch', () => {
+		fc.assert(
+			fc.property(run, ([f, order]) => {
+				const last = views(f, order).at(-1)!;
+				expect(last.drawn).toEqual(homeRows(last.input));
+			})
+		);
+	});
+});
