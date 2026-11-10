@@ -368,6 +368,22 @@ describe('franchisePage', () => {
 		}
 	});
 
+	it('keeps the layout of a franchise read whole, only without its numbers, when read in part', () => {
+		// The numbers go, not the stretches they made: an unnumbered title
+		// does not move into "No clear place in the order".
+		const whole = franchisePage(data('jojo', '46598'), '46598', 'linked')!;
+		const part = franchisePage(
+			{ franchise: payload('jojo', '46598', false), rows: [] },
+			'46598',
+			'linked'
+		)!;
+		const shape = (p: typeof whole) =>
+			p.sections.map((s) =>
+				s.kind === 'line' ? [s.kind, s.unplaced, ids(s.rows.map((r) => r.entry))] : [s.kind]
+			);
+		expect(shape(part)).toEqual(shape(whole));
+	});
+
 	it('is never alone when read in part: the walk may have missed the rest', () => {
 		const self = {
 			...payload('jojo', '7158', false),
@@ -418,7 +434,7 @@ describe('franchisePage', () => {
 		);
 	});
 
-	it('lists each title of the run once, numbered as its placement says', () => {
+	it('lists each title of the run once, numbered as its placement says when read whole', () => {
 		fc.assert(
 			fc.property(anyPage, ({ f, id, order, rows }) => {
 				const page = franchisePage({ franchise: f, rows }, id, order);
@@ -429,7 +445,9 @@ describe('franchisePage', () => {
 				for (const s of page.sections) {
 					if (s.kind !== 'line') continue;
 					for (const r of s.rows) {
-						expect(r.position).toBe(placement(page.run, r.entry.id, order).position);
+						expect(r.position).toBe(
+							f.complete ? placement(page.run, r.entry.id, order).position : null
+						);
 					}
 				}
 				for (const r of listed) {
@@ -484,9 +502,9 @@ describe('franchisePage', () => {
 					if (s.kind === 'ways') expect(s.ways.length).toBeGreaterThan(1);
 					if (s.kind !== 'line' || s.unplaced) continue;
 					// Outside it, a title with no number leads into a title
-					// that has a place.
+					// that has a place (read in part, no title is numbered).
 					for (const r of s.rows) {
-						if (r.position !== null) continue;
+						if (r.position !== null || !f.complete) continue;
 						const note = pathNote(page.run, r.entry.id, order);
 						expect(note?.kind).toBe('leads-into');
 						const target = note?.kind === 'leads-into' ? note.entry.id : '';
