@@ -65,6 +65,51 @@ describe('latestRead', () => {
 		expect(shown).toEqual([null, null]);
 	});
 
+	it('cancels a read it supersedes, and leaves the new one running', () => {
+		const { reads } = harness();
+		const signals: AbortSignal[] = [];
+		reads.start((signal) => (signals.push(signal), new Promise<string>(() => {})));
+		reads.start((signal) => (signals.push(signal), new Promise<string>(() => {})));
+		expect(signals.map((s) => s.aborted)).toEqual([true, false]);
+	});
+
+	it('cancels the read still out when stopped', () => {
+		const { reads } = harness();
+		let signal: AbortSignal | null = null;
+		reads.start((s) => ((signal = s), new Promise<string>(() => {})));
+		reads.stop();
+		expect(signal!.aborted).toBe(true);
+	});
+
+	it('leaves a read that answered alone', async () => {
+		const { reads, now } = harness();
+		let signal: AbortSignal | null = null;
+		reads.start((s) => ((signal = s), Promise.resolve('show A')));
+		await settle();
+		expect(now()).toBe('show A');
+		expect(signal!.aborted).toBe(false);
+	});
+
+	it('keeps only the latest unstopped read uncancelled, through any run of starts and stops', () => {
+		fc.assert(
+			fc.property(fc.array(fc.boolean(), { maxLength: 12 }), (ops) => {
+				const { reads } = harness();
+				const signals: AbortSignal[] = [];
+				let live: number | null = null;
+				for (const isStart of ops) {
+					if (isStart) {
+						reads.start((s) => (signals.push(s), new Promise<string>(() => {})));
+						live = signals.length - 1;
+					} else {
+						reads.stop();
+						live = null;
+					}
+					expect(signals.map((s) => s.aborted)).toEqual(signals.map((_, i) => i !== live));
+				}
+			})
+		);
+	});
+
 	it('shows only the latest read through any run of starts, stops and answers', async () => {
 		type Op = { kind: 'start' } | { kind: 'stop' } | { kind: 'answer'; pick: number };
 		const opArb: fc.Arbitrary<Op> = fc.oneof(

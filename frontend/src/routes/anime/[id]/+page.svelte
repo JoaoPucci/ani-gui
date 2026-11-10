@@ -1182,8 +1182,11 @@
 			});
 		// The watch-order strip: neither read rejects, and a franchise
 		// that cannot be read shows no strip ($lib/watch-order/loader).
-		void loadWatchOrder(currentId, watchOrderSources).then((w) => {
-			if (id === currentId) watchOrderData = w;
+		// Leaving the show cancels both, so a walk Kitsu is slow to
+		// answer does not hold an API connection for nobody.
+		const watchOrderVisit = new AbortController();
+		void loadWatchOrder(currentId, watchOrderSources, watchOrderVisit.signal).then((w) => {
+			if (id === currentId && !watchOrderVisit.signal.aborted) watchOrderData = w;
 		});
 		void detailServed
 			.then((d) => {
@@ -1246,6 +1249,7 @@
 		// when the id moved: this effect also re-runs on the same show.
 		return () => {
 			refills.abort();
+			watchOrderVisit.abort();
 			if (id !== currentId) clearBackgroundForShow(currentId);
 		};
 	});

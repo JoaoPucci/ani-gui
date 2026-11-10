@@ -57,6 +57,78 @@ describe('createFranchiseReads', () => {
 	});
 });
 
+describe('createFranchiseReads, when the page goes', () => {
+	it('cancels every read still out, and hands on no answer after', async () => {
+		const signals: AbortSignal[] = [];
+		const answers: Array<(f: FranchiseData) => void> = [];
+		const read = (id: string, signal: AbortSignal) => {
+			void id;
+			signals.push(signal);
+			return new Promise<FranchiseData>((r) => answers.push(r));
+		};
+		const settled = vi.fn();
+		const reads = createFranchiseReads(read, settled);
+		reads.want('7');
+		reads.want('8');
+		reads.stop();
+		expect(signals.map((s) => s.aborted)).toEqual([true, true]);
+		answers[0](franchise('7'));
+		await flush();
+		expect(settled).not.toHaveBeenCalled();
+	});
+
+	it('leaves the reads running until then', () => {
+		const signals: AbortSignal[] = [];
+		const reads = createFranchiseReads(
+			(id, signal) => (signals.push(signal), new Promise<FranchiseData>(() => {})),
+			vi.fn()
+		);
+		reads.want('7');
+		expect(signals[0].aborted).toBe(false);
+	});
+});
+
+describe('createNamedReads, when the page goes or the history changes', () => {
+	const hanging = () => {
+		const signals: AbortSignal[] = [];
+		const read = (ids: readonly string[], signal: AbortSignal) => {
+			void ids;
+			signals.push(signal);
+			return new Promise<Record<string, unknown>>(() => {});
+		};
+		return { signals, read };
+	};
+
+	it('cancels the lookups still out when the page goes', () => {
+		const { signals, read } = hanging();
+		const reads = createNamedReads(read, vi.fn());
+		reads.want('20');
+		reads.want('30');
+		reads.stop();
+		expect(signals.map((s) => s.aborted)).toEqual([true, true]);
+	});
+
+	it('cancels the lookups whose answers forgetting drops, and leaves the next ones running', () => {
+		const { signals, read } = hanging();
+		const reads = createNamedReads(read, vi.fn());
+		reads.want('20');
+		reads.forget();
+		reads.want('20');
+		expect(signals.map((s) => s.aborted)).toEqual([true, false]);
+	});
+
+	it('hands on no answer once stopped', async () => {
+		const settled = vi.fn();
+		let answer!: (rows: Record<string, unknown>) => void;
+		const reads = createNamedReads(() => new Promise((r) => (answer = r)), settled);
+		reads.want('20');
+		reads.stop();
+		answer({ '20': { ep_no: '1' } });
+		await flush();
+		expect(settled).not.toHaveBeenCalled();
+	});
+});
+
 describe('createNamedReads', () => {
 	it('asks the resume lookup about an id once, and says whether a row resumes it', async () => {
 		const read = vi.fn(async (ids: readonly string[]) =>
@@ -71,7 +143,7 @@ describe('createNamedReads', () => {
 		reads.want('20');
 		await flush();
 		expect(read).toHaveBeenCalledTimes(2);
-		expect(read).toHaveBeenCalledWith(['20']);
+		expect(read.mock.calls[0][0]).toEqual(['20']);
 		expect(settled).toHaveBeenCalledWith('20', true);
 		expect(settled).toHaveBeenCalledWith('30', false);
 	});
