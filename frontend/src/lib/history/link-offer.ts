@@ -39,10 +39,10 @@ export interface LinkDeps {
 	group: (card: string, rows: string[]) => Promise<string[]>;
 }
 
-/** The offer: the card's row, and the show it is guessed as. On the
- *  player, once the viewer picked a show for the row, the offer stays
- *  as the way to change it again: `current` is then the show playing,
- *  and `saved` the id the row records now. */
+/** The offer: the card's row, and the show it is guessed as. For a
+ *  row the user named a show for, the offer stays as the way to change
+ *  it again ($lib/history/picked-offer.ts): `current` is then the show
+ *  the surface shows, and `saved` the id the row records now. */
 export interface LinkOffer {
 	entry: HistoryEntry;
 	current: KitsuAnimeRef;
@@ -105,8 +105,8 @@ export async function searchCandidates(
  *  other row Continue Watching guesses as the same show on the card's
  *  own listing. The rows are asked side by side, as Continue Watching
  *  asks them; a row whose match cannot be read is left out. For a card
- *  picked on the player (`saved`), the rows are those recorded as the
- *  pick: the pick moved them all, and no guess matches them now. */
+ *  the user named a show for (`saved`), the rows are those recorded as
+ *  that show: the naming moved them all, and no guess matches them now. */
 export async function guessedGroup(deps: LinkDeps, offer: LinkOffer): Promise<string[]> {
 	const others = (await deps.history()).filter((e) => e.id !== offer.entry.id);
 	const saved = offer.saved;

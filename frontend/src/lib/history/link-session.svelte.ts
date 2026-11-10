@@ -1,6 +1,7 @@
 /**
- * The show page's link session: the quiet offer a guessed Continue
- * card's page makes, the picker it opens, and the link.
+ * The show page's link session: the quiet offer the page a Continue
+ * card's player opened makes — for a guess, or a line the user named a
+ * show for — the picker it opens, and the link.
  *
  * The page hands it what the app provides ($lib/history/link-offer.ts)
  * and three effects of its own — a notice, a navigation, a refresh of

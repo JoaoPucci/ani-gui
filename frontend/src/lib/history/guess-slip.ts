@@ -4,10 +4,12 @@
  * player — split from $lib/history/in-place-link.svelte.ts for the
  * per-file complexity bar.
  *
- * Hide lasts until the app restarts, and so does a pick's way to change
- * the show again: both are module-level sets, which live as long as the
- * renderer. A switch to a pick tells the session it opens once
- * (`noteSwitch`, `takeSwitch`).
+ * Hide lasts until the app restarts: a module-level set, which lives as
+ * long as the renderer. So does the set of rows picked on the player,
+ * which keeps a pick's way to change the show again until the history
+ * marks the row as named (the link's note, which outlives a restart:
+ * $lib/history/picked-offer.ts). A switch to a pick tells the session it
+ * opens once (`noteSwitch`, `takeSwitch`).
  */
 
 /** What the slip shows: nothing, its held room while the offer is

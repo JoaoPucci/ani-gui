@@ -1,6 +1,7 @@
 /**
  * The link session of a surface that stays where it is: the player of
- * a guessed session and Home's Continue cards.
+ * a card's line and Home's Continue cards — for a guess, or a line the
+ * user named a show for.
  *
  * The show page's session ($lib/history/link-session.svelte.ts) leaves
  * for the linked show's page after a link. These do not: Home reads

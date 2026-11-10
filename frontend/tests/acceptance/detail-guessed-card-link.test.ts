@@ -299,7 +299,8 @@ async function homeCards(): Promise<string[]> {
 }
 
 describe('the show page of a line the user named a show for', () => {
-	it('carries the line and its Change, opened from the player of that line', async () => {
+	it('shows the Change line, opened with the line as its player links up', async () => {
+		// The player's link up carries the line (play-change-show).
 		rows = rows.map((r) => ({ ...r, kitsu_id: RIGHT, named: true }));
 		await openShowPage(RIGHT, { guessed: CARD });
 		await until(hasNote, 'the matched-from line');
