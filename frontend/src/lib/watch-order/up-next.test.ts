@@ -112,6 +112,13 @@ describe('finaleCard', () => {
 		expect(finaleCard(data('bleach', '244'), '43078', 'linked', TODAY, 13, null)).toBeNull();
 	});
 
+	it('shows no card for a franchise read only in part: the next entry may be missing', () => {
+		const d = data('bleach', '43078');
+		const part = { ...d, franchise: { ...d.franchise!, complete: false } };
+		expect(finaleCard(part, '43078', 'linked', TODAY, 13, null)).toBeNull();
+		expect(finaleCard(part, '43078', 'released', TODAY, 13, null)).toBeNull();
+	});
+
 	it('shows no card for a side story outside the run', () => {
 		expect(finaleCard(data('fate', '6928'), '6928', 'linked', TODAY, 1, null)).toBeNull();
 		expect(finaleCard(data('fate', '6928'), '6928', 'released', TODAY, 1, null)).toBeNull();
@@ -189,7 +196,7 @@ describe('finaleCard', () => {
 		);
 	});
 
-	it('shows a card wherever the rule names something at a finished finale', () => {
+	it('shows a card wherever the rule names something at a finished finale of a franchise read whole', () => {
 		fc.assert(
 			fc.property(
 				franchiseArb(),
@@ -201,7 +208,7 @@ describe('finaleCard', () => {
 					const self = { status: 'finished', episodes: 3 };
 					const card = finaleCard({ franchise, rows: [] }, id, order, TODAY, 3, self);
 					const rule = upNextFor(r, id, order, TODAY);
-					expect(card === null).toBe(rule.kind === 'none');
+					expect(card === null).toBe(rule.kind === 'none' || !franchise.complete);
 				}
 			)
 		);
