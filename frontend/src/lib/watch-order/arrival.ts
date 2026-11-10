@@ -51,8 +51,10 @@ export const LEAVE_COLLAPSE_MS = 260;
 export async function withFirstHop<T>(
 	details: Promise<T>,
 	hop: Promise<FirstHop>,
-	wait: (ms: number) => Promise<void>
+	wait: (ms: number) => Promise<void>,
+	walked: Promise<unknown> = new Promise<never>(() => {})
 ): Promise<{ details: T; hop: FirstHop | null }> {
+	void walked;
 	// Read now, so a hop that answers before the details is not lost,
 	// and a hop that fails is no hop rather than a failure.
 	const answered = hop.then(
