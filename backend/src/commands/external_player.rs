@@ -173,7 +173,8 @@ pub fn player_program(command: &str, kind: ExternalPlayerKind) -> Option<&str> {
 ///
 /// # Errors
 /// As [`open_external_player`]. A launch task that dies reads as a
-/// spawn failure for the configured command.
+/// spawn failure for the program the launch meant
+/// ([`launch_task_failure`]).
 pub async fn open_external_player_off_workers(args: LaunchArgs) -> Result<()> {
     let failure = launch_task_failure(&args);
     tokio::task::spawn_blocking(move || open_external_player(&args))

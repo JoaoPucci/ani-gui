@@ -85,7 +85,7 @@ declare global {
 			}) => Promise<string | null>;
 			/** Open a native file picker dialog. Used by the settings
 			 *  page to let the user point at an external-player
-			 *  executable that isn't on PATH. Returns the chosen
+			 *  executable the lookup can't find. Returns the chosen
 			 *  absolute path or null on cancel. `filters` follows the
 			 *  Electron OpenDialog shape:
 			 *    [{ name: 'Executables', extensions: ['exe'] }] */

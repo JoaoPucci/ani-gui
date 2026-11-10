@@ -215,7 +215,7 @@ pub fn locate_installed(name: &str) -> Option<String> {
 /// The program Syncplay is told to wrap for a bare standard name, on
 /// `os`. Not looked up on Linux, where a sandboxed Syncplay (flatpak,
 /// snap) cannot reach a host path, and where its own PATH lookup is
-/// what master relied on.
+/// what Watch together always relied on.
 #[must_use]
 pub fn syncplay_locate_on(
     os: Os,
