@@ -34,10 +34,18 @@ export function createFranchiseReads(
  * (`read`, `historyByKitsuEach`): true or false, or null when the read
  * failed. Asked once per id.
  */
+export interface NamedReads extends FranchiseReads {
+	/**
+	 * Forgets every answer and drops those still out: the history
+	 * changed, so a row may now resume an entry no row resumed before.
+	 */
+	forget(): void;
+}
+
 export function createNamedReads(
 	read: (ids: readonly string[]) => Promise<Readonly<Record<string, unknown>>>,
 	settled: (id: string, named: boolean | null) => void
-): FranchiseReads {
+): NamedReads {
 	const asked = new Set<string>();
 	return {
 		want(id) {
@@ -47,6 +55,7 @@ export function createNamedReads(
 				(rows) => settled(id, rows[id] != null),
 				() => settled(id, null)
 			);
-		}
+		},
+		forget() {}
 	};
 }
