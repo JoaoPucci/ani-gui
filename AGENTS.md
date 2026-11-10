@@ -15,7 +15,9 @@ Read first:
 - `docs/development.md` — dev environment, build, debug
 - `docs/i18n.md` — adding a locale
 - `docs/title-resolution.md` — the cross-API bridge (Kitsu ↔ the streaming provider ↔ MAL ↔ aniskip / AniList) and how disambiguation by episode count works
-- `docs/proposals/` — future-feature proposals (Cast/multi-viewer, etc.)
+- `docs/proposals/` — plans for features nobody is building yet
+
+A proposal exists so that a plan made well before it is built is remembered until it is actually built. It lives in `docs/proposals/` only until its feature ships. The change that ships the feature moves what is still true of it and still useful — the design rationale, the privacy reasoning, the constraints the feature works under — into `docs/architecture.md`, or into the document that covers that area, and deletes the proposal. A proposal that covers several features loses each part as that part ships, and the change that ships the last part deletes the file. A proposal written for a feature that is already being built does not land on its own; the build's pull requests carry the final docs. So a file in `docs/proposals/` always describes something the app does not do yet, and a shipped feature is described in one place.
 
 ## 2. Test discipline (non-negotiable, TDD)
 
@@ -498,4 +500,4 @@ what makes external review affordable.
 - `docs/testing.md` — test pyramid, fixture management, coverage targets
 - `docs/development.md` — dev setup
 - `docs/i18n.md` — locale-addition guide
-- `docs/proposals/cast-multiviewer.md` — Cast/multi-viewer future-feature proposal
+- `docs/proposals/` — plans for features not yet built, kept until they ship (§1)
