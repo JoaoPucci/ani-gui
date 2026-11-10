@@ -422,12 +422,27 @@ starting it, and delete it when you find it done.
     takes Stone Ocean Part 2, the only hit Kitsu's search returns for
     it, which carries the title's first word and no season.
 
-  It waited because no rule tried fixed these without breaking picks
-  that are right. Ruling out a hit whose titles and the row's each carry
-  a word the other lacks would refuse Stone Ocean Part 2 here, but it
-  also refused the right entry for "86 EIGHTY-SIX Season 2 Recap",
-  which Kitsu titles "86 Part 2 Recaps", and it would refuse any entry
-  Kitsu titles only in romanized Japanese. Stripping "(TV)",
+  Two of the corpus's other cards pick another entry too, and nothing
+  the row carries can settle them:
+
+  - The 1993 "JoJo's Bizarre Adventure" OVA takes the 2012 series: the
+    provider lists the OVA under the bare title, as it does the 2000
+    OVA, and the OVA's show key (`jojos-bizarre-adventure-706`) names
+    no year.
+  - "My Star: Specials" takes [Oshi no Ko]: neither Kitsu's answer for
+    its title nor the one for its show key's words holds the specials.
+
+  What corrects these two is the user rather than a rule, where Kitsu
+  holds the entry at all: the player's "Is this the show you meant?"
+  on a guessed play, the other ways to correct a card by hand, or a
+  play of the show from its own page, all below.
+
+  The first three waited because no rule tried fixed them without
+  breaking picks that are right. Ruling out a hit whose titles and the
+  row's each carry a word the other lacks would refuse Stone Ocean Part
+  2 here, but it also refused the right entry for "86 EIGHTY-SIX Season
+  2 Recap", which Kitsu titles "86 Part 2 Recaps", and it would refuse
+  any entry Kitsu titles only in romanized Japanese. Stripping "(TV)",
   "(Uncensored)" and "(Part 1+2)" before comparing titles changed no
   pick.
 
@@ -440,10 +455,10 @@ starting it, and delete it when you find it done.
   record, as it does for the Slime season (the entry on a later season
   Kitsu titles only with a bare number). The guess itself is what
   waits, and it is worth revisiting when the guess can read
-  more of the provider's listing than its title, the year its key names
-  and the episode it reached — the year it aired, its format, or its
-  episode count — or when another wrong pick on a user's card is
-  reported.
+  more of the provider's listing than its title, the year and words its
+  key names and the episode it reached — the year it aired, its
+  format, or its episode count — or when another wrong pick on a
+  user's card is reported.
 
 ## Interface
 

@@ -1091,7 +1091,8 @@ describe('kitsuGuessRuledOut', () => {
 			'Jujutsu Kaisen (TV)',
 			24,
 			[hit],
-			'hianime:jujutsu-kaisen-237'
+			'hianime:jujutsu-kaisen-237',
+			true
 		);
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/history/guess/ruled-out`);
@@ -1100,7 +1101,8 @@ describe('kitsuGuessRuledOut', () => {
 			key: 'hianime:jujutsu-kaisen-237',
 			title: 'Jujutsu Kaisen (TV)',
 			episode: 24,
-			hits: [hit]
+			hits: [hit],
+			search: true
 		});
 		expect(ids).toEqual(['43886']);
 	});

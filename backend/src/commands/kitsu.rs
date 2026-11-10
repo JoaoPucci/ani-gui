@@ -351,7 +351,15 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 ///   those — the New Year's Special for "Jujutsu Kaisen (TV)", Fuyu no
 ///   Suta-furu-tsu for hianime's "My Star" — so v5 rows are not read
 ///   and the next load picks again.
-pub(crate) const TITLE_MATCH_VERSION: u32 = 6;
+/// - v7: when the row refutes every hit its title search returns — a
+///   movie the title names that the hit is not, a recap neither its
+///   title nor its show key names, a later season its key names — the
+///   guess withholds them all and goes on to the show key's words
+///   ([`crate::commands::continue_guess::refutes`]). A v6 row can hold
+///   one of those — One Piece Movie 1 for "One Piece: The Movie 14 -
+///   Stampede" — and a v6 match is checked alone, which the refuting
+///   rules do not judge, so v6 rows are not read.
+pub(crate) const TITLE_MATCH_VERSION: u32 = 7;
 
 /// The first version whose keys name the provider segment
 /// ([`title_match_prefix`]); the versions before it keyed the title
