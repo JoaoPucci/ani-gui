@@ -443,11 +443,14 @@ describe('the Up next card at a finale', () => {
 		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		await fetches.settled('anything the card set off');
+		// The local history lookup names every entry of the franchise
+		// once it is read, which asks nothing of the provider.
 		const asked = fetches.sent.filter(
 			(f) =>
-				f.path.includes('/50') ||
-				JSON.stringify(f.body).includes('Final Arc') ||
-				JSON.stringify(f.body).includes('"50"')
+				f.path !== '/api/history/by-kitsu' &&
+				(f.path.includes('/50') ||
+					JSON.stringify(f.body).includes('Final Arc') ||
+					JSON.stringify(f.body).includes('"50"'))
 		);
 		expect(asked).toEqual([]);
 		const after = fetches.sent.slice(sentBefore);
