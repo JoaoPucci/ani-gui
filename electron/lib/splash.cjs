@@ -185,6 +185,9 @@ function splashController({
   let markLost = () => {};
   const lostSignal = new Promise((_resolve, reject) => (markLost = reject));
   lostSignal.catch(() => {});
+  // Why the splash lost its page, once it has: every way it can end up
+  // without one reports here, and only the first is reported.
+  let lostReason = null;
   let suppressed = false;
   // Set when the splash closes by any hand but the boot's: the user,
   // or a quit already under way.
@@ -194,6 +197,16 @@ function splashController({
   // The stuck state's choice, once one has been carried out.
   let chosen = null;
   const alive = () => win && !win.isDestroyed();
+  // The splash can no longer offer a way out: no page, or one that
+  // keeps crashing. While the boot still relies on it, the app page
+  // gets its bounded wait back (main.js, abortWhenLost). Once only; not
+  // when the boot is past the splash or a choice was made.
+  const lose = (reason) => {
+    if (lostReason !== null || over || chosen) return;
+    lostReason = reason;
+    log(`[main] splash lost: its page ${reason} (${since()})`);
+    markLost(new Error(`the launch splash's page ${reason}`));
+  };
   const stuck = stuckWatch({
     window: () => win,
     pending: () => (over || chosen || !alive() || steps >= STEPS.length ? null : STEPS[steps]),
@@ -369,17 +382,24 @@ function splashController({
         if (over || chosen || win !== splash || splash.isDestroyed() || NOT_A_CRASH.has(reason)) return;
         if (reloads >= SPLASH_RELOADS) {
           log(`[main] splash's page crashed ${reloads + 1} times: not reloaded again (${since()})`);
-          // It can no longer offer a way out: the page gets its bound
-          // back (main.js, abortWhenLost).
-          markLost(new Error(`the launch splash's page crashed ${reloads + 1} times`));
+          lose(`crashed ${reloads + 1} times`);
           return;
         }
         reloads += 1;
         splash.webContents.reload();
       });
-      Promise.resolve(splash.loadFile(SPLASH_PAGE, { query })).catch((err) =>
-        logError("[main] the splash failed to load:", err),
-      );
+      // A page that fails to load, on the first load or a reload, is a
+      // splash with no way out. A load superseded by another (a reload
+      // after a crash, which reports its own outcome) is not.
+      splash.webContents.on("did-fail-load", (_event, code, description, _url, isMainFrame) => {
+        if (isMainFrame && code !== ERR_ABORTED) lose(`could not load (${code} ${description})`);
+      });
+      Promise.resolve(splash.loadFile(SPLASH_PAGE, { query })).catch((err) => {
+        logError("[main] the splash failed to load:", err);
+        if (reloads === 0 && !(err && err.code === "ERR_ABORTED")) {
+          lose(`could not load (${(err && err.code) || err})`);
+        }
+      });
     },
     close() {
       over = true;
@@ -544,6 +564,9 @@ function splashPageQuery({ version, stallTexts = [], generic = "", words = {} })
   }
   return query;
 }
+
+/** Chromium's error code for a load superseded by another. */
+const ERR_ABORTED = -3;
 
 /** The longest a step waits for the splash page to answer it. */
 const STEP_ANSWER_WAIT_MS = 150;
