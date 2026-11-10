@@ -18,7 +18,10 @@
 # for, reports that the shell has started, and stops on TERM. The real
 # one is not started here — CI runners have none, and a crash of a real
 # one is reported on the desktop of whoever ran the suite. The D-Bus
-# session is real (dbus-run-session).
+# session is real (dbus-run-session). So is the session's systemd user
+# scope, where a user service manager answers; where none does, stand-ins
+# run the session without a scope, and the one case that needs the scope
+# — a process that left the session — is skipped, saying so.
 
 load '../helpers/loader'
 
@@ -66,6 +69,23 @@ while True:
     time.sleep(0.1)
 EOF
     chmod +x "$STUB_DIR/bin/gnome-shell"
+    if ! systemctl --user show-environment >/dev/null 2>&1; then
+        NO_USER_MANAGER=1
+        # Runs the command as the real one would, minus the scope.
+        cat >"$STUB_DIR/bin/systemd-run" <<'STUB'
+#!/bin/sh
+while [ "$#" -gt 0 ]; do
+    case $1 in
+        -p) shift 2 ;;
+        -*) shift ;;
+        *) break ;;
+    esac
+done
+exec "$@"
+STUB
+        printf '#!/bin/sh\nexit 0\n' >"$STUB_DIR/bin/systemctl"
+        chmod +x "$STUB_DIR/bin/systemd-run" "$STUB_DIR/bin/systemctl"
+    fi
     PATH="$STUB_DIR/bin:$PATH"
     export PATH
     # The caller's own session, as a desktop terminal carries it.
@@ -166,11 +186,37 @@ runtime_dir() {
 }
 
 @test "a process the command leaves behind is stopped" {
+    # It leaves the command's group and the session both: only the
+    # session's scope still holds it.
+    [ -z "${NO_USER_MANAGER-}" ] ||
+        skip 'no systemd user service manager here: the scope that stops a process which left the session needs one'
     left="$STUB_DIR/left.pid"
     run sh "$TOOL" sh -c "setsid sleep 60 </dev/null >/dev/null 2>&1 & echo \$! >'$left'"
     [ "$status" -eq 0 ]
     [ -s "$left" ]
     run ! kill -0 "$(cat "$left")" 2>/dev/null
+}
+
+@test "a process outside the session that only names its runtime directory is left alone" {
+    # Nothing is picked out of the process table: a process this session
+    # did not start is not stopped, whatever its environment says.
+    go="$STUB_DIR/go"
+    rtfile="$STUB_DIR/rt"
+    sh "$TOOL" sh -c "echo \"\$XDG_RUNTIME_DIR\" >'$rtfile'
+        n=0; until [ -e '$go' ] || [ \$n -ge 150 ]; do sleep 0.1; n=\$((n + 1)); done" 3>&- &
+    tool=$!
+    n=0
+    until [ -s "$rtfile" ]; do
+        n=$((n + 1))
+        [ "$n" -le 150 ] || return 1
+        sleep 0.1
+    done
+    XDG_RUNTIME_DIR=$(cat "$rtfile") setsid sleep 60 </dev/null >/dev/null 2>&1 3>&- &
+    stranger=$!
+    touch "$go"
+    wait "$tool"
+    kill -0 "$stranger"
+    kill -KILL "$stranger"
 }
 
 @test "the command's status comes back, and the session is torn down after a failure" {
