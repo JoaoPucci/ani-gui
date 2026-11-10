@@ -798,15 +798,11 @@ async fn post_play_mark_watched(
                     args.recordable_kitsu_id(&cached.show_id),
                 ),
                 begun,
+                // Which card the row's play came from, when a guessed
+                // card's play landed on another listing; none otherwise.
+                args.guess_row.as_deref(),
             )
             .await;
-            // Which card the row's play came from, when a guessed card's
-            // play landed on another listing; none otherwise.
-            crate::commands::guessed_from::record(
-                &state,
-                args.guess_row.as_deref(),
-                &cached.show_id,
-            );
         }
     }
     StatusCode::NO_CONTENT

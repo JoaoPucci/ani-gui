@@ -495,7 +495,7 @@ async fn a_handoff_whose_show_was_removed_under_another_key_records_nothing() {
         title: "The Show".into(),
         ep_no: "1".into(),
     };
-    record_watch_requested_at(&state, &watch, Some("77"), requested).await;
+    record_watch_requested_at(&state, &watch, Some("77"), requested, None).await;
 
     assert_eq!(left_behind(&state, "the-show-77"), Vec::<String>::new());
 }
@@ -606,7 +606,7 @@ async fn an_earlier_request_does_not_replace_a_later_watch() {
         ep_no: "3".into(),
         ..part_two()
     };
-    record_watch_requested_at(&state, &a, None, requested).await;
+    record_watch_requested_at(&state, &a, None, requested, None).await;
 
     let row = row_of(&state, &b.show_id);
     assert_eq!(row.ep_no, "5", "the row keeps the later watch's episode");
@@ -647,7 +647,7 @@ async fn a_resolve_written_while_a_watch_waits_does_not_drop_it() {
     )
     .expect("resolve row");
 
-    record_watch_requested_at(&state, &watch, None, requested).await;
+    record_watch_requested_at(&state, &watch, None, requested, None).await;
 
     let row = row_of(&state, &watch.show_id);
     assert_eq!(row.ep_no, "3");
@@ -711,7 +711,7 @@ async fn a_history_unreadable_before_the_write_keeps_the_rows_id() {
     });
     held.recv().expect("held");
 
-    record_watch_requested_at(&state, &watch, Some("44294"), begun).await;
+    record_watch_requested_at(&state, &watch, Some("44294"), begun, None).await;
     holder.join().expect("holder");
 
     assert_eq!(row_id(&state, &watch.show_id).as_deref(), Some("45412"));

@@ -44,10 +44,10 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
             &watch,
             args.kitsu_id.as_deref(),
             asked.begun,
+            // A play of the row itself: no guessed card's.
+            None,
         )
         .await;
-        // A play of the row itself: no guessed card's.
-        crate::commands::guessed_from::record(state, None, &watch.show_id);
         return Ok(());
     }
 
@@ -60,9 +60,10 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
         &watch,
         args.kitsu_id.as_deref(),
         asked.begun,
+        // A play of the row itself: no guessed card's.
+        None,
     )
     .await;
-    crate::commands::guessed_from::record(state, None, &watch.show_id);
     Ok(())
 }
 

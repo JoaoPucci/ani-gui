@@ -70,9 +70,11 @@ pub(crate) fn record_fresh_watch(
     requested: &str,
     asked: Asked<'_>,
     kitsu_id: Option<&str>,
+    guess_row: Option<&str>,
 ) {
     stamp_numbering(state, native, asked);
     write_history(state, native, requested, asked, kitsu_id);
+    crate::commands::guessed_from::record(state, guess_row, &native.slug);
 }
 
 /// The wall clock's moment, in milliseconds since the epoch.
@@ -173,7 +175,22 @@ impl Watch {
 /// stay, and this watch writes nothing. That is not a failure — the
 /// show's latest watch is on the row — so it returns quietly, like
 /// every other outcome of a recording.
+///
+/// `guess_row` is the guessed card whose play this is, or none: the
+/// note of which card the row came from ([`crate::commands::guessed_from`])
+/// is settled with the watch.
 pub(crate) async fn record_watch_requested_at(
+    state: &AppState,
+    watch: &Watch,
+    kitsu_id: Option<&str>,
+    requested: Epoch,
+    guess_row: Option<&str>,
+) {
+    record_watch_at(state, watch, kitsu_id, requested).await;
+    crate::commands::guessed_from::record(state, guess_row, &watch.show_id);
+}
+
+async fn record_watch_at(
     state: &AppState,
     watch: &Watch,
     kitsu_id: Option<&str>,
@@ -314,7 +331,7 @@ pub(crate) fn write_history(
 #[cfg(test)]
 pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Option<&str>) {
     let now = crate::history::guard::epoch(&state.history_path);
-    record_watch_requested_at(state, watch, kitsu_id, now).await;
+    record_watch_requested_at(state, watch, kitsu_id, now, None).await;
 }
 
 #[cfg(test)]

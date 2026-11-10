@@ -568,8 +568,8 @@ where
                 &native.slug,
                 args.resolve_kitsu_id(&native.slug),
             ),
+            args.guess_row.as_deref(),
         );
-        crate::commands::guessed_from::record(state, args.guess_row.as_deref(), &native.slug);
     }
     // A successful resolve is a positive availability fact, same
     // guard — carrying the episode cap the native episodes list
