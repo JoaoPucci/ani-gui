@@ -432,6 +432,8 @@ export type ExternalPlayerKind = 'mpv' | 'vlc' | 'iina' | 'custom';
 export interface StandardProgram {
 	name: string | null;
 	path: string | null;
+	/** False where the program does not exist (IINA off macOS). */
+	supported: boolean;
 }
 
 /** Ask the backend where a type's standard program is installed. */

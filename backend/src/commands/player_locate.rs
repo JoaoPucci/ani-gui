@@ -218,11 +218,14 @@ pub fn locate_installed(name: &str) -> Option<String> {
 /// what master relied on.
 #[must_use]
 pub fn syncplay_locate_on(
-    _os: Os,
+    os: Os,
     name: &str,
     locate: &dyn Fn(&str) -> Option<String>,
 ) -> Option<String> {
-    locate(name)
+    match os {
+        Os::Linux => None,
+        Os::Windows | Os::MacOs => locate(name),
+    }
 }
 
 /// [`syncplay_locate_on`] for this computer.

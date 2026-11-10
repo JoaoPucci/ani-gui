@@ -231,21 +231,29 @@ pub fn standard_program_found(
 /// [`standard_program_found`] on `os`.
 #[must_use]
 pub fn standard_program_found_on(
-    _os: crate::commands::player_locate::Os,
+    os: crate::commands::player_locate::Os,
     kind: ExternalPlayerKind,
     locate: &dyn Fn(&str) -> Option<String>,
 ) -> StandardProgram {
     let name = kind.standard_program();
+    // IINA is a macOS app: there is nothing to find anywhere else.
+    let supported =
+        !(kind == ExternalPlayerKind::Iina && os != crate::commands::player_locate::Os::MacOs);
     StandardProgram {
         name,
-        path: name.and_then(locate),
-        supported: true,
+        path: if supported {
+            name.and_then(locate)
+        } else {
+            None
+        },
+        supported,
     }
 }
 
 impl ExternalPlayerKind {
-    /// The program this type runs when the user wrote no command:
-    /// its own name, found on the PATH. None for Custom.
+    /// The program this type runs when the user wrote no command: its
+    /// own name, looked for where it is installed
+    /// ([`crate::commands::player_locate`]). None for Custom.
     #[must_use]
     pub fn standard_program(self) -> Option<&'static str> {
         match self {

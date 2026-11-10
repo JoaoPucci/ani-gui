@@ -18,6 +18,7 @@
 	"field_external_player_hint_custom": "Comando que ejecuta “{button}”. Personalizado no tiene un programa estándar, así que indica uno.",
 	"field_external_player_hint_found": "Comando que ejecuta “{button}”. Déjalo vacío para usar {program}, que está en ",
 	"field_external_player_hint_missing": "Comando que ejecuta “{button}”. Déjalo vacío para usar {program}, pero no se encontró en esta computadora. Instálalo o elige el archivo del programa con Examinar.",
+	"field_external_player_hint_unsupported": "Comando que ejecuta “{button}”. IINA solo existe para macOS. Elige otro tipo o Personalizado.",
 	"field_external_player_kind_key": "Tipo de reproductor",
 	"field_external_player_kind_hint": "Cada reproductor recibe sus opciones de forma distinta. Elige el más parecido o Personalizado para escribir tu propia plantilla de argv. Ver juntos también usa esta elección para el reproductor que abre Syncplay.",
 	"external_player_kind_aria_label": "Tipo de reproductor",

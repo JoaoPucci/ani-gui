@@ -18,6 +18,7 @@
 	"field_external_player_hint_custom": "Command that \"{button}\" runs. Custom has no standard program, so enter one.",
 	"field_external_player_hint_found": "Command that \"{button}\" runs. Leave it blank to use {program}, found at ",
 	"field_external_player_hint_missing": "Command that \"{button}\" runs. Leave it blank to use {program}, but it wasn't found on this computer. Install it, or choose its program file with Browse.",
+	"field_external_player_hint_unsupported": "Command that \"{button}\" runs. IINA runs only on macOS. Pick another type, or Custom.",
 	"field_external_player_kind_key": "Player flavour",
 	"field_external_player_kind_hint": "Players take their options in different ways. Pick the closest match, or Custom to write your own argv template. Watch together uses this choice too, for the player Syncplay opens.",
 	"external_player_kind_aria_label": "Player flavour",

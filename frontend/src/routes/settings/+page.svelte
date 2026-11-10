@@ -147,13 +147,26 @@
 	// Where that program is installed here, as the backend found it,
 	// for the type it was asked about. No answer (still asking, or the
 	// backend couldn't be asked) shows the program's name alone.
-	let found = $state<{ kind: ExternalPlayerKind; path: string | null } | null>(null);
+	// Asked once per type: the effect reads only the type, so typing in
+	// a field or saving does not ask again. An answer that arrives after
+	// the type changed is dropped.
+	let found = $state<{
+		kind: ExternalPlayerKind;
+		path: string | null;
+		supported: boolean;
+	} | null>(null);
+	const playerKind = $derived(cfg?.external_player_kind);
 	$effect(() => {
-		const kind = cfg?.external_player_kind;
+		const kind = playerKind;
 		if (!kind || kind === 'custom') return;
 		externalPlayerStandard(kind)
-			.then((answer) => (found = { kind, path: answer.path }))
-			.catch(() => (found = null));
+			.then((answer) => {
+				if (playerKind === kind)
+					found = { kind, path: answer.path, supported: answer.supported !== false };
+			})
+			.catch(() => {
+				if (playerKind === kind) found = null;
+			});
 	});
 	const foundHere = $derived(
 		cfg && found && found.kind === cfg.external_player_kind ? found : null
@@ -390,7 +403,11 @@
 				<div class="field-label">
 					<span class="field-key">{m.settings_field_external_player_key()}</span>
 					<span class="field-hint">
-						{#if standardProgram && foundHere?.path}
+						{#if standardProgram && foundHere && !foundHere.supported}
+							{m.settings_field_external_player_hint_unsupported({
+								button: externalOpenLabel(cfg.external_player_kind)
+							})}
+						{:else if standardProgram && foundHere?.path}
 							{m.settings_field_external_player_hint_found({
 								button: externalOpenLabel(cfg.external_player_kind),
 								program: PROGRAM_LABELS[cfg.external_player_kind]()

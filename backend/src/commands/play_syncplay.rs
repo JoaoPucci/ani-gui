@@ -55,11 +55,12 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
             launch,
             cfg.syncplay_binary,
             player_kind,
-            // A bare standard name is the program installed here.
+            // A bare standard name: the program installed here on Windows and
+            // macOS, the name as typed on Linux (see `syncplay_locate_on`).
             crate::commands::external_player::syncplay_player_with(
                 &cfg.external_player,
                 player_kind,
-                &crate::commands::player_locate::locate_installed,
+                &crate::commands::player_locate::locate_for_syncplay,
             ),
         ))?;
         crate::commands::play_native_record::record_watch_requested_at(
@@ -78,11 +79,12 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         launch,
         cfg.syncplay_binary,
         player_kind,
-        // A bare standard name is the program installed here.
+        // A bare standard name: the program installed here on Windows and
+        // macOS, the name as typed on Linux (see `syncplay_locate_on`).
         crate::commands::external_player::syncplay_player_with(
             &cfg.external_player,
             player_kind,
-            &crate::commands::player_locate::locate_installed,
+            &crate::commands::player_locate::locate_for_syncplay,
         ),
     ))?;
     // The spawn is the watch: recorded once Syncplay has started.
