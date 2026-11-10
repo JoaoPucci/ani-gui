@@ -287,8 +287,7 @@ describe('play', () => {
 		const resp = await play({
 			title: 'Cowboy Bebop',
 			episode: '5',
-			mode: 'sub',
-			quality: 'best'
+			mode: 'sub'
 		});
 		expect(resp).toEqual(sessionResponse);
 		const { url, init } = lastCall(fetchMock);
@@ -299,7 +298,6 @@ describe('play', () => {
 			title: 'Cowboy Bebop',
 			episode: '5',
 			mode: 'sub',
-			quality: 'best',
 			locale: getLocale()
 		});
 	});
@@ -396,8 +394,7 @@ describe('markWatched', () => {
 		await markWatched({
 			title: 'Naruto: Shippuuden',
 			episode: '150',
-			mode: 'sub',
-			quality: 'best'
+			mode: 'sub'
 		});
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/play/mark-watched`);
@@ -420,8 +417,7 @@ describe('evictPlayCache', () => {
 		await evictPlayCache({
 			title: 'Stone Ocean',
 			episode: '1',
-			mode: 'sub',
-			quality: 'best'
+			mode: 'sub'
 		});
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/play/cache/evict`);
@@ -482,10 +478,10 @@ describe('playStream', () => {
 		};
 	}
 
-	it('opens an SSE URL with title/episode/mode/quality/episode_count query params', async () => {
+	it('opens an SSE URL with title/episode/mode/episode_count query params', async () => {
 		const onProgress = vi.fn();
 		const promise = playStream(
-			{ title: 'One Piece', episode: '1', mode: 'sub', quality: 'best', episode_count: 1100 },
+			{ title: 'One Piece', episode: '1', mode: 'sub', episode_count: 1100 },
 			onProgress
 		);
 		// `apiBase()` is async — give the promise chain one tick to construct
@@ -495,7 +491,7 @@ describe('playStream', () => {
 		const es = FakeEventSource.instances[0];
 		expect(es).toBeTruthy();
 		expect(es.url).toBe(
-			`${BASE}/api/play/stream?title=One+Piece&episode=1&mode=sub&quality=best&episode_count=1100&locale=${getLocale()}`
+			`${BASE}/api/play/stream?title=One+Piece&episode=1&mode=sub&episode_count=1100&locale=${getLocale()}`
 		);
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
@@ -614,7 +610,7 @@ describe('playStream', () => {
 		await promise;
 	});
 
-	it('omits quality and episode_count when not provided', async () => {
+	it('omits episode_count when not provided', async () => {
 		const promise = playStream({ title: 'X', episode: '2', mode: 'dub' }, () => {});
 		await Promise.resolve();
 		await Promise.resolve();
@@ -1444,7 +1440,7 @@ describe('settingsGet', () => {
 		const cfg: Config = {
 			locale: 'en',
 			mode: 'sub',
-			quality: 'best',
+			download_quality: 'best',
 			external_player: 'mpv',
 			external_player_kind: 'mpv',
 			external_player_custom_args: '',
@@ -1472,7 +1468,7 @@ describe('settingsPut', () => {
 		const cfg: Config = {
 			locale: 'pt-BR',
 			mode: 'dub',
-			quality: '1080',
+			download_quality: '1080',
 			external_player: 'vlc',
 			external_player_kind: 'vlc',
 			external_player_custom_args: '',

@@ -22,7 +22,7 @@ async fn recorded_id(guess_row: Option<&str>) -> Option<String> {
     let state = test_app_state(&td);
     put(
         &state.cache_pool,
-        &cache_key(TITLE, "sub", "best", "1", None, None, None),
+        &cache_key(TITLE, "sub", "1", None, None, None),
         &CachedResolution {
             upstream_url: "https://video.example/master.m3u8".into(),
             referer: String::new(),

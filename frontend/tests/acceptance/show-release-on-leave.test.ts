@@ -186,7 +186,7 @@ describe('leaving the player', () => {
 
 		// The other show's page is already warming its own play when
 		// the player goes.
-		const othersKey = makeKey(OTHER, 1, 'sub', 'best');
+		const othersKey = makeKey(OTHER, 1, 'sub');
 		const othersWarm = getOrFire(othersKey, () => new Promise(() => {}));
 		// No flush between the route change and the unmount: SvelteKit
 		// destroys the leaving page's branch before that page's effects
