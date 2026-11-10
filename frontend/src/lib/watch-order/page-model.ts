@@ -61,11 +61,13 @@ export function settledOrder(
 
 /**
  * The caption for a view; `loop` is the size of the cycle `view` sits
- * in, if any. `complete` is false for a franchise read in part.
+ * in, if any. `complete` is false for a franchise read in part: its
+ * walk may have missed entries before this one, so no number is sure.
  */
 export function captionOf(view: StripView, loop: number, complete: boolean): StripCaption {
 	if (view.kind === 'side') return { kind: 'side' };
-	if (view.position !== null && view.total !== null && complete)
+	if (view.position !== null && !complete) return { kind: 'partial' };
+	if (view.position !== null && view.total !== null)
 		return { kind: 'position', position: view.position, total: view.total };
 	if (view.position !== null) return { kind: 'numeral', position: view.position };
 	return view.inCycle ? { kind: 'cycle', count: loop } : { kind: 'branch' };

@@ -71,7 +71,7 @@ export interface StripModel {
 	/**
 	 * False when the backend's walk stopped at its bound or read a
 	 * listing cut short: entries may be missing on either side, so the
-	 * strip claims no total and no end.
+	 * strip claims no place, no total and no end.
 	 */
 	readonly complete: boolean;
 }

@@ -7,7 +7,9 @@
   first three rows are the keys, the join or fork line and the
   entries, so the three keys share a baseline whatever sits under
   them; the footer is its fourth. An empty column
-  drops its key and keeps the line saying why it is empty.
+  drops its key and keeps the line saying why it is empty, except in a
+  franchise read in part, where it may only be missing its entries and
+  stays blank, as does the centre's place.
 
   Everything sits on a faint band, one step of the page's own ink, so
   the columns read as one thing without becoming a card. Its footer,
@@ -103,7 +105,7 @@
 							{m.watchorder_strip_of_total({ total: numeral(model.caption.total) })}
 						</p>
 					{/if}
-				{:else}
+				{:else if caption}
 					<p class="here-word">{caption}</p>
 				{/if}
 			</div>
