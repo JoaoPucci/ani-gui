@@ -997,11 +997,13 @@ them introduces a new widget style.
   synopsis, under its own eyebrow ("Watch order"), as what comes
   before this entry, its position ("05"; a total, "of 05", only for a
   run with no fork, join or cycle; neither for a franchise read only
-  in part, as "Missing data" below says) and what comes after (the
-  maintainer chose this arrangement over a rail of the whole run;
+  in part, as the list of missing data below says) and what comes
+  after (the maintainer chose this arrangement over a rail of the
+  whole run;
   "The strip, second round" below has its layout). The
   masthead's eyebrow gains the position in its value
-  slot ("TV · Finished · 05 of 09"), only for a run that is one line:
+  slot ("TV · Finished · 05 of 09"), only for a run that is one line
+  and read whole:
   a bare "05" there reads as nothing in particular. The reason
   for this spot: "where am I, and did I miss something" is answered
   before choosing an episode, not after scrolling past them. The strip
@@ -1060,6 +1062,9 @@ them introduces a new widget style.
     neighbours like any other, without a position number.
   - An unaired entry: a card with its date in the meta line ("Coming
     January 2027") and no episode count.
+  - A franchise read only in part: no position, no total, no fork or
+    loop caption, no join or fork count, and blank empty columns (see
+    "Missing data" under Phase 0's watch-order strip, below).
 
 ### The "Up next" card (player and Continue Watching)
 
