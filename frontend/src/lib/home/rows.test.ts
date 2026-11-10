@@ -237,7 +237,9 @@ describe('the page drawn through keepShown, with a sign-in read after the keyrin
 	// row loads with none: an empty list), and a sign-in can be read
 	// after that; its list then lands. The other rows land in any order
 	// around them.
-	type Event = 'history' | 'notice' | 'signIn' | 'list' | 'trending' | 'topRated';
+	// 'clear' empties the history afterwards (Clear history), so a row
+	// can lose what it showed.
+	type Event = 'history' | 'notice' | 'signIn' | 'list' | 'trending' | 'topRated' | 'clear';
 	type Load = { items: string[] | null; failed: boolean };
 	const load = (item: string) =>
 		fc.constantFrom<Load>(
@@ -255,7 +257,7 @@ describe('the page drawn through keepShown, with a sign-in read after the keyrin
 		trending: load('t1'),
 		topRated: load('r1')
 	});
-	const events: Event[] = ['history', 'notice', 'signIn', 'list', 'trending', 'topRated'];
+	const events: Event[] = ['history', 'notice', 'signIn', 'list', 'trending', 'topRated', 'clear'];
 	const run = fc
 		.tuple(
 			finals,
@@ -263,14 +265,16 @@ describe('the page drawn through keepShown, with a sign-in read after the keyrin
 		)
 		.filter(
 			([, o]) =>
-				o.indexOf('notice') < o.indexOf('signIn') && o.indexOf('signIn') < o.indexOf('list')
+				o.indexOf('notice') < o.indexOf('signIn') &&
+				o.indexOf('signIn') < o.indexOf('list') &&
+				o.indexOf('history') < o.indexOf('clear')
 		);
 	type Finals = typeof finals extends fc.Arbitrary<infer F> ? F : never;
 
 	function build(f: Finals, done: Set<Event>): HomeRowsInput {
 		const signedIn = done.has('signIn');
 		return {
-			history: done.has('history') ? f.history : null,
+			history: done.has('clear') ? [] : done.has('history') ? f.history : null,
 			watchLater: {
 				accountsKnown: done.has('notice'),
 				signedIn,
@@ -297,7 +301,7 @@ describe('the page drawn through keepShown, with a sign-in read after the keyrin
 	}
 	const ROWS = ['continue', 'watchLater', 'trending', 'topRated'] as const;
 
-	it('never takes a shown row back to a skeleton or an empty slot', () => {
+	it('never takes a shown row back to a skeleton or a held slot (only dropping it)', () => {
 		fc.assert(
 			fc.property(run, ([f, order]) => {
 				const seen = views(f, order);
