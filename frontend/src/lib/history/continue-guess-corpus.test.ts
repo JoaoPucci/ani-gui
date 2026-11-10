@@ -143,6 +143,11 @@ beforeEach(() => {
 		}
 		return hitsOf(file)[0] ?? null;
 	});
+	// The case's `ruled_out` is the backend's answer for the search's and
+	// the slug lookup's hits sent together as a search's answer, and a
+	// lone hit is answered from it too. That matches the app as long as
+	// no row whose search is refuted as a whole also looks a slug up, and
+	// none does.
 	vi.mocked(kitsuGuessRuledOut).mockImplementation(async (title, episode, hits, key) => {
 		if (title !== current.title || episode !== parseFloat(currentEp) || key !== current.key) {
 			unrecorded.push(`rules for ${key} ${title} at ${episode}`);
