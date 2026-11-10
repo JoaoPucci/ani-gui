@@ -1194,8 +1194,8 @@
 		// that cannot be read shows no strip ($lib/watch-order/loader),
 		// unless an earlier read this session could
 		// ($lib/watch-order/session-memo). Leaving the show cancels both,
-		// so a walk Kitsu is slow to answer does not hold an API
-		// connection for nobody.
+		// and the first hop below, so a walk Kitsu is slow to answer does
+		// not hold an API connection for nobody.
 		const watchOrderVisit = new AbortController();
 		const walked = loadWatchOrder(currentId, watchOrderSources, watchOrderVisit.signal).then(
 			(w) => {
@@ -1216,7 +1216,7 @@
 				? withFirstHop(detailServed, new Promise<FirstHop>(() => {}), wait, settingsSettled)
 				: withFirstHop(
 						detailServed,
-						kitsuFranchiseFirstHop(currentId),
+						kitsuFranchiseFirstHop(currentId, { signal: watchOrderVisit.signal }),
 						wait,
 						Promise.all([walked, settingsSettled])
 					);

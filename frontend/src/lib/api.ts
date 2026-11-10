@@ -1440,14 +1440,16 @@ export function kitsuFranchise(
 export type FirstHop = 'strip' | 'link' | 'none';
 
 /** The first hop of `kitsuId`'s franchise walk, read through the
- *  walk's own reads and caches so the two never disagree on the data. */
+ *  walk's own reads and caches so the two never disagree on the data.
+ *  It waits on Kitsu as the walk does, so the page that asked passes
+ *  `signal` and cancels it when the viewer leaves. */
 export async function kitsuFranchiseFirstHop(
 	kitsuId: string,
 	opts: { signal?: AbortSignal } = {}
 ): Promise<FirstHop> {
-	void opts;
 	const { signal } = await getJson<{ signal: FirstHop }>(
-		`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}/first-hop`
+		`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}/first-hop`,
+		{ signal: opts.signal }
 	);
 	return signal;
 }
