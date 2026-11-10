@@ -330,20 +330,27 @@ kind of request:
     - AniList: <https://anilist.co/terms>
     - MyAnimeList: <https://myanimelist.net/about/privacy_policy>
 - **Update check (automatic, on launch)** — ani-gui asks GitHub's
-  public releases API (`api.github.com`) for the project's newest
-  release, so it can tell you when a new version is out. It asks again
+  public releases API (`api.github.com`) for the project's recent
+  releases, so it can tell you when a new version is out. It asks again
   when changing the language reloads the window. Besides standard
   headers that say nothing about you (GitHub's `Accept` and
-  API-version headers, and the compression it accepts), the request
+  API-version headers, and the compression it accepts), each request
   carries only the User-Agent `ani-gui`: not the version you run,
-  which is compared on your machine, and no account information. Which release it asks for follows the
-  "Include pre-releases in update check" setting, and the choice shows
-  in the request's address. With the setting on (the default), it asks
-  for the newest release of any kind
-  (`/repos/JoaoPucci/ani-gui/releases?per_page=1`). With it off, it
-  asks for the newest full release
-  (`/repos/JoaoPucci/ani-gui/releases/latest`). The check cannot be
-  turned off; the setting only chooses between those two requests.
+  which is compared on your machine, and no account information. It
+  asks for the ten newest releases
+  (`/repos/JoaoPucci/ani-gui/releases?per_page=10`) and picks, on your
+  machine, the newest one that has a download for your platform.
+  Should none of the files it read be named the way the app expects,
+  it picks as it did before it looked at files: the newest release, or
+  with pre-releases excluded, the newest full release. The
+  "Include pre-releases in update check" setting (on by default)
+  decides whether a pre-release can be that pick. It does not change
+  the request. When that list arrives but none of it can be offered,
+  or it cannot be read, it makes one more request, for the newest full
+  release (`/repos/JoaoPucci/ani-gui/releases/latest`). When the first
+  request fails, nothing more is asked. On a platform the app
+  publishes no download for, it makes no request at all. Otherwise the
+  check cannot be turned off.
 
   Versions before 0.12 made a second automatic request here: the
   bundled copy of the `ani-cli` script fetched its own latest version
