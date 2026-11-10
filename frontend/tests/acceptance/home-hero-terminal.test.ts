@@ -103,4 +103,46 @@ describe('home hero, when there is no show to feature', () => {
 		expect(busy()).toBe(false);
 		expect(searchLink()?.getAttribute('href')).toMatch(/\/search$/);
 	});
+
+	// jsdom has no layout, so the placement is asserted as structure:
+	// the featured show's text sits in a .hero-layer, a full-bleed
+	// flex box that puts its content at the bottom of the banner, and
+	// a message state's text has to sit in one too.
+	const showWithArt = {
+		...kitsuRef('1', 'Featured', 12),
+		cover_image: { large: 'https://media.kitsu.app/anime/1/cover_image/large.jpg' }
+	};
+	const layerOf = (selector: string) => {
+		const el = hero()?.querySelector(selector);
+		const layer = el?.parentElement;
+		return layer?.classList.contains('hero-layer') && layer.parentElement === hero() ? layer : null;
+	};
+
+	it.each([
+		['empty list', () => HttpResponse.json([]), () => m.home_hero_empty_title()],
+		[
+			'failed fetch',
+			() => HttpResponse.json(null, { status: 500 }),
+			() => m.home_hero_error_title()
+		]
+	])(
+		'places the %s message low in the banner, where the featured text sits',
+		async (_, answer, title) => {
+			server.use(...homeHandlers({}, [http.get(`${API_BASE}/api/kitsu/trending-anilist`, answer)]));
+			app = mount(HomePage, { target });
+			await vi.waitFor(() => expect(heroTitle()).toBe(title()), { timeout: 3000 });
+			expect(layerOf('.hero-empty')).not.toBeNull();
+		}
+	);
+
+	it('keeps the featured text in that same layer', async () => {
+		server.use(
+			...homeHandlers({}, [
+				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([showWithArt]))
+			])
+		);
+		app = mount(HomePage, { target });
+		await vi.waitFor(() => expect(heroTitle()).toBe('Featured'), { timeout: 3000 });
+		expect(layerOf('.hero-body')).not.toBeNull();
+	});
 });
