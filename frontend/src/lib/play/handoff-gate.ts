@@ -6,10 +6,11 @@
  * Once the episode is handed off nothing may start the embedded video
  * again by itself: the page stops the engine loading, and an engine
  * start that comes meanwhile (a stream attaching, whatever attached
- * it) is held here rather than run. The viewer coming back — playing
- * the embedded video, picking an episode, reloading — runs the held
- * start, the latest one only; with none held it restarts what the
- * handoff stopped.
+ * it) is held here rather than run. The viewer coming back by playing
+ * the embedded video runs the held start, the latest one only; with
+ * none held it restarts what the handoff stopped. A stream the viewer
+ * picks instead (an episode, Reload) replaces this one: the handoff is
+ * forgotten as it attaches, and nothing held runs.
  */
 export class HandoffGate {
 	private off = false;

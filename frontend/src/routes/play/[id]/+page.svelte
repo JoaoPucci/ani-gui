@@ -372,6 +372,7 @@
 		ownVideo.autoplay = false;
 		startWatch.cancel();
 		hls?.stopLoad();
+		replacingHandoff = false;
 		handoff.handOff();
 	}
 	/** The viewer picked another stream from here (an episode, Reload). */
@@ -380,6 +381,7 @@
 	}
 	/** The viewer is back on the embedded player. */
 	function comeBack() {
+		replacingHandoff = false;
 		if (!handoff.handedOff) return;
 		ownVideo.autoplay = true;
 		handoff.comeBack();
@@ -2664,10 +2666,6 @@
 		// The viewer left while the eviction was out: a fresh resolve
 		// would only navigate them back. Or a switch overtook it, and its
 		// session is the one on its way.
-		// Handed to another player while the eviction was out: resolving
-		// again would only load the episode behind it. A Reload is the
-		// viewer, and was let through above.
-		if (handoff.handedOff && !replacingHandoff) return;
 		const turn = recoveryAfterEviction({
 			left: !owner.isCurrent(),
 			switchedSince: switchesStarted !== atSwitch,
@@ -2678,6 +2676,14 @@
 		// Reload, or with the dead end it is at.
 		if (turn === 'offer-reload') playerError = restore;
 		if (turn !== 'resolve') return;
+		// Handed to another player while the eviction was out: resolving
+		// again would only load the episode behind it. The failed stream's
+		// error comes back, with its Reload, for when the viewer does. A
+		// Reload is the viewer's own, and goes on.
+		if (handoff.handedOff && reason !== 'manual reload') {
+			playerError = restore;
+			return;
+		}
 		clearForShow(id);
 		// The error went off screen as the recovery began; a fresh
 		// resolve that fails leaves the failed stream, so it comes back.
