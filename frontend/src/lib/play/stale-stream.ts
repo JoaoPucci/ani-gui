@@ -182,7 +182,7 @@ export function canRecoverFromStaleStream(args: {
 	/** The episode was handed to another player. */
 	handedOff?: boolean;
 }): boolean {
-	return args.detail !== null && !args.switchBusy;
+	return args.detail !== null && !args.switchBusy && !args.handedOff;
 }
 
 /** What a recovery's eviction answered into. */
