@@ -6,7 +6,10 @@
   continue stand side by side and titles with no clear order form one
   group, both unnumbered. A franchise read in part has no numbers,
   title count or recap count. The title the page was opened from is
-  "You are here".
+  "You are here". A row says how far it is watched in its right
+  column: a caption, with a line under it only for a title part-way
+  through a known total (`./row-progress`), in the one list-progress
+  colour; the meta line keeps the episode count.
   Every reading comes from the page model (`./franchise-page`); this
   component only draws it.
 -->
@@ -21,6 +24,7 @@
 	import type { FranchisePageModel, FranchiseRow } from './franchise-page';
 	import { loopGroupText, metaLine, numeral, waysKeyText } from './meta';
 	import { asRef } from './poster-ref';
+	import { captionParts, rowProgress } from './row-progress';
 
 	let { model, today }: { model: FranchisePageModel; today: string } = $props();
 
@@ -93,6 +97,7 @@
 		</section>
 
 		{#snippet row(r: FranchiseRow, numbered: boolean)}
+			{@const p = rowProgress(r)}
 			<li class:here={r.here} style:--row-accent={accentFor(r.entry.id)}>
 				<a
 					class="story-row"
@@ -122,14 +127,39 @@
 						{:else}
 							<span class="row-title">{r.entry.title}</span>
 						{/if}
-						<MetaLine segments={metaLine(r.entry, r.progress, today)} />
+						<MetaLine segments={metaLine(r.entry, undefined, today)} />
 						{#if r.leadsInto !== null}
 							<span class="row-note">{m.watchorder_strip_leads_into({ title: r.leadsInto })}</span>
 						{/if}
 					</span>
-					{#if r.share > 0}
-						<span class="row-progress" aria-hidden="true">
-							<span class="row-progress-fill" style:inline-size={`${r.share * 100}%`}></span>
+					{#if p.kind !== 'none'}
+						<span class="row-progress" class:done={p.kind === 'watched'}>
+							<span class="row-caption"
+								>{#if p.kind === 'watched'}<svg
+										viewBox="0 0 16 16"
+										width="11"
+										height="11"
+										aria-hidden="true"
+										><path
+											d="M3 8.5l3 3 7-7"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/></svg
+									>{/if}{#each captionParts(p.caption) as part, k (k)}{#if part.digits}<span
+											class="n">{part.text}</span
+										>{:else}{part.text}{/if}{/each}</span
+							>
+							{#if p.kind === 'partway'}
+								<span class="row-line" aria-hidden="true">
+									<span class="row-line-fill" style:inline-size={`${p.share * 100}%`}></span>
+								</span>
+							{:else}
+								<!-- The line's place, so every caption sits on one baseline. -->
+								<span class="row-line slot" aria-hidden="true"></span>
+							{/if}
 						</span>
 					{/if}
 				</a>
@@ -405,7 +435,7 @@
 	.story-row {
 		position: relative;
 		display: grid;
-		grid-template-columns: 4.5rem 3.5rem minmax(0, 1fr) 7rem;
+		grid-template-columns: 4.5rem 3.5rem minmax(0, 1fr) 9rem;
 		gap: var(--space-4);
 		align-items: center;
 		padding-block: var(--space-3);
@@ -418,7 +448,7 @@
 		background: var(--ink-050);
 	}
 	.story-row.compact {
-		grid-template-columns: 3rem minmax(0, 1fr) 5rem;
+		grid-template-columns: 3rem minmax(0, 1fr) 8rem;
 	}
 	.here .story-row {
 		background: color-mix(in oklab, var(--row-accent) 8%, var(--ink-050));
@@ -482,17 +512,50 @@
 		font-size: var(--type-micro);
 		color: var(--bone-300);
 	}
+	/* How far the row is watched: a caption, and a line under it only
+	   where the line measures something. */
 	.row-progress {
 		grid-column: -2;
+		display: grid;
+		gap: var(--space-2);
+		justify-items: end;
+		min-inline-size: 0;
+	}
+	.row-caption {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3em;
+		font-variant-numeric: tabular-nums lining-nums;
+		font-size: var(--type-micro);
+		font-weight: 500;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		white-space: nowrap;
+		color: var(--bone-100);
+	}
+	.row-progress.done .row-caption {
+		color: var(--bone-200);
+	}
+	.row-caption .n {
+		font-family: var(--font-mono);
+		font-weight: 700;
+		letter-spacing: 0.04em;
+	}
+	.row-line {
+		inline-size: 100%;
 		block-size: 3px;
 		border-radius: var(--radius-pill);
-		background: var(--ink-200);
+		background: var(--progress-track);
 		overflow: hidden;
 	}
-	.row-progress-fill {
+	.row-line.slot {
+		visibility: hidden;
+	}
+	.row-line-fill {
 		display: block;
 		block-size: 100%;
-		background: var(--row-accent);
+		min-inline-size: 3px;
+		background: var(--progress-fill);
 	}
 	.recaps {
 		margin-block-start: var(--space-7);

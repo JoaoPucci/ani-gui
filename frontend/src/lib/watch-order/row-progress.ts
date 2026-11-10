@@ -14,6 +14,8 @@
  * The caption is real text inside the row's link, so a screen reader
  * reads it with the title; the line is decoration.
  */
+import { m } from '$lib/paraglide/messages';
+import { progressOf } from './entry';
 import type { FranchiseRow } from './franchise-sections';
 
 export type RowProgress =
@@ -30,11 +32,22 @@ export interface CaptionPart {
 
 /** What `row`'s right column shows. */
 export function rowProgress(row: Pick<FranchiseRow, 'entry' | 'progress' | 'share'>): RowProgress {
-	void row;
-	return { kind: 'none' };
+	const view = progressOf(row.entry, row.progress);
+	if (view.kind === 'none') return { kind: 'none' };
+	if (view.kind === 'watched') return { kind: 'watched', caption: m.watchorder_meta_watched() };
+	if (view.total === null)
+		return { kind: 'open', caption: m.watchorder_meta_progress_open({ episode: view.episode }) };
+	return {
+		kind: 'partway',
+		caption: m.watchorder_meta_progress({ episode: view.episode, total: view.total }),
+		share: row.share
+	};
 }
 
 /** `caption` in runs of digits and of everything else, in order. */
 export function captionParts(caption: string): CaptionPart[] {
-	return [{ text: caption, digits: false }];
+	return caption
+		.split(/(\d+)/)
+		.filter((text) => text !== '')
+		.map((text) => ({ text, digits: /^\d/.test(text) }));
 }
