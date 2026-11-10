@@ -453,7 +453,8 @@
 			     gone behind the notice. It stays in the page with its words,
 			     so it keeps its height (wrapped or not) and a row already
 			     shown below never moves up, and the live region it sits in
-			     sees no change of text. -->
+			     sees no change of text (it is announced again only when it
+			     returns, after a retry has loaded the rows). -->
 			<p
 				class="eyebrow-caption"
 				class:caption-hidden={!bothRowsThere}
