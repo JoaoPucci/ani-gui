@@ -92,6 +92,19 @@ describe('waiting for the first hop with the details', () => {
 		hop.resolve('strip');
 	});
 
+	it('stops waiting too when the walk failed, and still draws the details', async () => {
+		const w = waits();
+		const hop = deferred<FirstHop>();
+		const got = await withFirstHop(
+			Promise.resolve('d'),
+			hop.promise,
+			w.wait,
+			Promise.reject(new Error('offline'))
+		);
+		expect(got).toEqual({ details: 'd', hop: null });
+		hop.resolve('strip');
+	});
+
 	it('fails as the details do', async () => {
 		const w = waits();
 		await expect(
