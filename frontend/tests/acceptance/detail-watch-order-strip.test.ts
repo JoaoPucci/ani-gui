@@ -147,11 +147,6 @@ function useShow(opts: ShowOptions = {}) {
 		),
 		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
-		http.get(`${API_BASE}/api/history`, () =>
-			opts.history === null
-				? new HttpResponse(null, { status: 503 })
-				: HttpResponse.json(opts.history ?? [])
-		),
 		// The rows the franchise's entries resume from, as the resume
 		// lookup names them.
 		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
