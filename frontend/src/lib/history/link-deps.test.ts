@@ -71,6 +71,20 @@ describe('a link or undo, once answered', () => {
 		expect(heard).toEqual([1]);
 	});
 
+	it('answers as the write did, whatever a listener does', async () => {
+		const heard: number[] = [];
+		unsubscribe.push(
+			onHistoryLinked(() => {
+				throw new Error('listener');
+			})
+		);
+		unsubscribe.push(onHistoryLinked(() => heard.push(1)));
+		const outcome = { kitsu_id: '1', linked: [] };
+		api.historyLink.mockResolvedValue(outcome);
+		expect(await appLinkDeps().link('card', ['card'], '1')).toBe(outcome);
+		expect(heard).toEqual([1]);
+	});
+
 	it('is not announced to a listener that left', async () => {
 		const heard: number[] = [];
 		onHistoryLinked(() => heard.push(1))();

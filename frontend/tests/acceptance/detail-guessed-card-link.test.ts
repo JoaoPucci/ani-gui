@@ -44,6 +44,7 @@ import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
+import { appLinkDeps } from '../../src/lib/history/link-deps';
 
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
@@ -503,5 +504,27 @@ describe('from Home to a relinked card', () => {
 
 		// Home again: the card is the right show.
 		expect(await homeCards()).toEqual([TITLE]);
+	});
+});
+
+describe('a show page on screen when a link or undo answers elsewhere', () => {
+	// The Undo of Home's notice outlives Home: pressed on the linked
+	// show's page, it gives the rows back, and the page's Continue,
+	// read from the rows before, would play the show onto them again.
+	it("reads the show's history again, and Continue goes with the link", async () => {
+		rows = rows.map((r) => ({ ...r, kitsu_id: RIGHT }));
+		await openShowPage(RIGHT);
+		await until(
+			() => (target.textContent ?? '').includes(m.detail_play_button_continue()),
+			'Continue from the linked rows'
+		);
+		await appLinkDeps().unlink(RIGHT, [
+			{ row: CARD, previous: null, ep_no: '5', watched_at: null },
+			{ row: HIDDEN, previous: null, ep_no: '3', watched_at: null }
+		]);
+		await until(
+			() => (target.textContent ?? '').includes(m.detail_play_button_episode_one()),
+			'Play from episode 1'
+		);
 	});
 });
