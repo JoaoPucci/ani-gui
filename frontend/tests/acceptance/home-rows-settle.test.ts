@@ -18,7 +18,7 @@ import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
-import { homeHandlers, kitsuRef } from './home-handlers';
+import { appConfig, homeHandlers, kitsuRef } from './home-handlers';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -36,6 +36,7 @@ import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import { markRefreshed } from '../../src/lib/account/watch-later-refresh';
+import { listChanges } from '../../src/lib/account/list-changes';
 import { m } from '../../src/lib/paraglide/messages';
 
 // Eight trending shows: the hero takes the first three, the row lists
@@ -76,6 +77,7 @@ interface Scenario {
 	topRated?: Promise<void>;
 	history?: Promise<void>;
 	list?: Promise<void>;
+	settings?: Promise<void>;
 	trendingFails?: boolean;
 	trendingShows?: typeof TRENDING;
 	planned?: typeof PLANNED;
@@ -85,6 +87,10 @@ interface Scenario {
 
 function handlers(s: Scenario): HttpHandler[] {
 	return homeHandlers({ history: s.historyRows ?? [], mode: s.mode }, [
+		http.get(`${API_BASE}/api/settings`, async () => {
+			await s.settings;
+			return HttpResponse.json(appConfig(s.mode));
+		}),
 		http.get(`${API_BASE}/api/history`, async () => {
 			await s.history;
 			return HttpResponse.json(s.historyRows ?? []);
@@ -389,6 +395,31 @@ describe('Home: the rows below the hero', () => {
 		);
 		await settle();
 		expect(modes.length).toBeGreaterThan(0);
+		expect(new Set(modes)).toEqual(new Set(['dub']));
+		expect(listReads).toBe(1);
+	});
+
+	it("leaves a list change before the settings answer to the first load, in the viewer's mode", async () => {
+		// A tracker write that settles while Home is still starting asks
+		// the row to read its list again. Read then, before the settings,
+		// it would be filtered for sub and read twice.
+		accountStore.setConnected('anilist', SIGN_IN);
+		markRefreshed('anilist', Date.now());
+		const settings = hold();
+		server.use(...handlers({ mode: 'dub', settings: settings.gate }));
+
+		app = mount(HomePage, { target });
+		await settle();
+		listChanges.announce({
+			kitsuId: 'w1',
+			providers: ['anilist'],
+			landed: ['anilist'],
+			source: 'editor'
+		});
+		await settle();
+		settings.release();
+		await until(() => screen().includes('Planned One'), 'Watch later');
+		await settle();
 		expect(new Set(modes)).toEqual(new Set(['dub']));
 		expect(listReads).toBe(1);
 	});
