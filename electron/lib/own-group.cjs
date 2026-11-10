@@ -13,17 +13,21 @@
 //
 // A group id is only worth signalling while it is provably the app's:
 //
-//   - While Node has not reaped the main process. Node reaps its own
-//     child and reports the exit in the same turn (`exitCode` and
-//     `signalCode` stay null until then), and an unreaped pid — the
-//     group's id with it — is not handed to anything else. Before every
-//     signal the main process is also checked in /proc: it still leads
-//     its group, and runs the binary the test launched.
-//   - At the moment it is reaped. The 'exit' handler runs in that same
-//     turn, and a group id is not given out while anything is left in
-//     the group, so a signal sent there reaches only what the app left
-//     behind. lib/backend-spawn.cjs's reapOnExit stops the backend's
-//     group on the same reasoning.
+//   - While Node has not reaped the main process. `exitCode` and
+//     `signalCode` stay null until Node reports the exit, and an
+//     unreaped pid — the group's id with it — is not handed to anything
+//     else. Before every signal the main process is also checked in
+//     /proc: it still leads its group, and runs the binary the test
+//     launched. libuv reaps every exited child before it reports any of
+//     them, so for a moment a reaped child can still read as unreaped;
+//     its /proc/<pid> entry is gone by then, and the check refuses to
+//     signal.
+//   - As its exit is reported. The 'exit' handler runs right after the
+//     reap, before anything else in the test runs, and a group id is
+//     not given out while anything is left in the group, so a signal
+//     sent there reaches only what the app left behind.
+//     lib/backend-spawn.cjs's reapOnExit stops the backend's group on
+//     the same reasoning.
 //   - Never after. Once the group empties its id is free, and a later
 //     signal could reach whoever is handed it.
 //
@@ -59,7 +63,8 @@ function exited(child) {
 /**
  * Whether `child` is still the group leader the test launched: unreaped,
  * leading its own group, running `exe` (when given). 'exited' once Node
- * has reaped it; 'zombie' when it has died and awaits that reap. Throws
+ * has reaped it; 'zombie' when it has died and awaits that reap, or is
+ * exiting (its executable already released). Throws
  * when the process is not one this module may signal.
  */
 function leaderState(child, { exe, readFile, readLink }) {
@@ -82,8 +87,13 @@ function leaderState(child, { exe, readFile, readLink }) {
 		try {
 			running = readLink(`/proc/${pid}/exe`);
 		} catch {
-			running = null;
+			// Unreaped, leading its group, and its executable already
+			// released: it is exiting, and its reap will sweep the group.
+			return 'zombie';
 		}
+		// The binary rebuilt under it since the launch: still the process
+		// the test started, from the same path.
+		running = running.replace(/ \(deleted\)$/, '');
 		if (running !== exe) {
 			throw new Error(`process ${pid} runs ${running}, not ${exe}; not signalled`);
 		}
@@ -109,7 +119,8 @@ function within(promise, ms) {
  *     signalled; its group id can no longer be shown to be the app's.
  *   - 'stopped': it exited after SIGTERM to the group.
  *   - 'killed': it outlived SIGTERM by `termMs`, and exited after
- *     SIGKILL to the same group.
+ *     SIGKILL to the same group — or, found exiting by then, without
+ *     one.
  *
  * Whatever the app leaves in its group when it exits is killed in the
  * turn its exit is reported. Throws, signalling nothing further, when
@@ -156,8 +167,9 @@ async function stopOwnGroup(
 	});
 	if (first === 'running') signal('SIGTERM');
 	if (await within(gone, termMs)) return 'stopped';
-	if (leaderState(child, io) === 'exited') return 'stopped';
-	signal('SIGKILL');
+	const second = leaderState(child, io);
+	if (second === 'exited') return 'stopped';
+	if (second === 'running') signal('SIGKILL');
 	if (await within(gone, killMs)) return 'killed';
 	throw new Error(`process group ${pid} outlived SIGKILL by ${killMs} ms`);
 }

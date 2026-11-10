@@ -77,6 +77,15 @@ function cleanup(child, ...outside) {
 	}
 }
 
+/** Whether process `pid` runs a binary whose path ends in `name`. */
+function runs(pid, name) {
+	try {
+		return fs.readlinkSync(`/proc/${pid}/exe`).endsWith(name);
+	} catch {
+		return false;
+	}
+}
+
 /** A kill that records instead of signalling. */
 function spyKill() {
 	const calls = [];
@@ -134,14 +143,7 @@ test('what the leader leaves in its group when it exits is killed as it exits', 
 	const member = Number(line);
 	try {
 		// It ignores SIGTERM once it runs sleep, which it execs after the trap.
-		const sleeping = () => {
-			try {
-				return fs.realpathSync(`/proc/${member}/exe`).endsWith('sleep');
-			} catch {
-				return false;
-			}
-		};
-		assert.equal(await until(sleeping), true);
+		assert.equal(await until(() => runs(member, 'sleep')), true);
 		assert.equal(await stopOwnGroup(child, { exe: shExe() }), 'stopped');
 		assert.equal(await until(() => !alive(member)), true, 'the member is gone');
 	} finally {
@@ -188,6 +190,8 @@ test('a leader running another binary than the one launched is not signalled', l
 	const { child } = await leader('echo ready; exec sleep 300');
 	const spy = spyKill();
 	try {
+		// "ready" comes before the exec; it runs sleep once the exec is done.
+		assert.equal(await until(() => runs(child.pid, 'sleep')), true);
 		await assert.rejects(stopOwnGroup(child, { exe: shExe(), kill: spy.kill }), /not signalled/);
 		assert.deepEqual(spy.calls, []);
 		assert.equal(alive(child.pid), true);
@@ -204,13 +208,57 @@ test('a leader already reaped is not signalled: its group id may be anyone’s b
 	assert.deepEqual(spy.calls, []);
 });
 
+test('a leader whose executable is already released is left to its reap, not signalled again', async () => {
+	const { EventEmitter } = require('node:events');
+	const child = Object.assign(new EventEmitter(), { pid: 4244, exitCode: null, signalCode: null });
+	const spy = spyKill();
+	const stop = stopOwnGroup(child, {
+		exe: '/opt/app/bin',
+		termMs: 10,
+		killMs: 1000,
+		kill: spy.kill,
+		readFile: () => '4244 (app) S 1 4244 4244 0 -1',
+		readLink: () => {
+			if (spy.calls.length > 0) throw Object.assign(new Error('gone'), { code: 'ENOENT' });
+			return '/opt/app/bin';
+		},
+	});
+	setTimeout(() => {
+		child.exitCode = 0;
+		child.emit('exit', 0, null);
+	}, 50);
+	assert.equal(await stop, 'killed');
+	assert.deepEqual(spy.calls, [
+		[-4244, 'SIGTERM'],
+		[-4244, 'SIGKILL'],
+	]);
+});
+
+test('a leader whose binary was rebuilt under it is still the one launched', async () => {
+	const { EventEmitter } = require('node:events');
+	const child = Object.assign(new EventEmitter(), { pid: 4245, exitCode: null, signalCode: null });
+	const spy = spyKill();
+	const stop = stopOwnGroup(child, {
+		exe: '/opt/app/bin',
+		kill: (pid, signal) => {
+			spy.kill(pid, signal);
+			child.exitCode = 0;
+			child.emit('exit', 0, null);
+		},
+		readFile: () => '4245 (app) S 1 4245 4245 0 -1',
+		readLink: () => '/opt/app/bin (deleted)',
+	});
+	assert.equal(await stop, 'stopped');
+	assert.deepEqual(spy.calls[0], [-4245, 'SIGTERM']);
+});
+
 function exitedAlready(child) {
 	return child.exitCode !== null || child.signalCode !== null;
 }
 
 test('a group that outlives SIGKILL fails the stop', async () => {
 	// A stand-in that never reports an exit, as a process stuck in the
-	// kernel would not; every check in /proc passes.
+	// kernel would not; every check of /proc/<pid> passes.
 	const { EventEmitter } = require('node:events');
 	const child = Object.assign(new EventEmitter(), { pid: 4242, exitCode: null, signalCode: null });
 	const spy = spyKill();

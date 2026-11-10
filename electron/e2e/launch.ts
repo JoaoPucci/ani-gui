@@ -85,8 +85,8 @@ const launched = new WeakMap<ElectronApplication, ChildProcess>();
  *  it is still there after `termMs`, and only while that group is
  *  provably the app's — the main process unreaped, leading its group,
  *  running the packaged binary (lib/own-group.cjs). Then Playwright's
- *  close, which settles once the process has gone. An app that has
- *  already exited is closed without a signal.
+ *  close, which settles once the process has gone, whatever the stop
+ *  did. An app that has already exited is closed without a signal.
  *
  *  The backend is not in that group. It stops itself once the app's end
  *  of its stdin closes (lib/backend-spawn.cjs), and nothing here
@@ -99,8 +99,15 @@ export async function stopApp(
 	const exe = fs.realpathSync(path.join(path.dirname(packagedBinary), 'ani-gui.bin'));
 	const child = launched.get(app);
 	if (!child) throw new Error('stopApp: not an app launchPackagedApp started');
-	await stopOwnGroup(child, { exe, termMs, killMs });
-	await app.close();
+	try {
+		await stopOwnGroup(child, { exe, termMs, killMs });
+	} finally {
+		// Playwright's close signals nothing: it asks the app to quit and
+		// waits for the process to go. A stop that refused to signal still
+		// releases Playwright's side, and the refusal is what the spec
+		// reports.
+		await app.close();
+	}
 }
 
 /** stopApp for the cold-launch retry's cleanup (lib/cold-launch.cjs),
