@@ -24,7 +24,13 @@
 	import { failed, landed, type ErrorBlock } from '$lib/settings/error-block';
 	import { describeError } from '$lib/play/error-copy';
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
-	import { bareCommand, commandAfterKindChange } from '$lib/settings/player-command';
+	import { commandAfterKindChange } from '$lib/settings/player-command';
+	import {
+		createStandardLookup,
+		standardHint,
+		standardPlaceholder,
+		type Found
+	} from '$lib/settings/standard-program';
 	import { DOWNLOAD_QUALITIES, downloadQuality } from '$lib/download/download-quality';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
 	import { applyLocale } from '$lib/settings/apply-locale';
@@ -141,36 +147,14 @@
 		{ key: 'iina' },
 		{ key: 'custom' }
 	];
-	// The program a blank command runs: the selected type's own
-	// (mpv, vlc, iina). Custom has none.
-	const standardProgram = $derived(cfg ? bareCommand(cfg.external_player_kind) : null);
-	// Where that program is installed here, as the backend found it,
-	// for the type it was asked about. No answer (still asking, or the
-	// backend couldn't be asked) shows the program's name alone.
-	// Asked once per type: the effect reads only the type, so typing in
-	// a field or saving does not ask again. An answer that arrives after
-	// the type changed is dropped.
-	let found = $state<{
-		kind: ExternalPlayerKind;
-		path: string | null;
-		supported: boolean;
-	} | null>(null);
+	// Where the type's standard program is installed here, asked once
+	// per type, and the hint and placeholder that follow from it
+	// ($lib/settings/standard-program.ts).
+	let found = $state<Found | null>(null);
+	const lookup = createStandardLookup(externalPlayerStandard, (answer) => (found = answer));
 	const playerKind = $derived(cfg?.external_player_kind);
-	$effect(() => {
-		const kind = playerKind;
-		if (!kind || kind === 'custom') return;
-		externalPlayerStandard(kind)
-			.then((answer) => {
-				if (playerKind === kind)
-					found = { kind, path: answer.path, supported: answer.supported !== false };
-			})
-			.catch(() => {
-				if (playerKind === kind) found = null;
-			});
-	});
-	const foundHere = $derived(
-		cfg && found && found.kind === cfg.external_player_kind ? found : null
-	);
+	$effect(() => lookup(playerKind));
+	const hint = $derived(cfg ? standardHint(cfg.external_player_kind, found) : null);
 	const PROGRAM_LABELS: Record<ExternalPlayerKind, () => string> = {
 		mpv: m.settings_external_player_kind_mpv,
 		vlc: m.settings_external_player_kind_vlc,
@@ -403,24 +387,24 @@
 				<div class="field-label">
 					<span class="field-key">{m.settings_field_external_player_key()}</span>
 					<span class="field-hint">
-						{#if standardProgram && foundHere && !foundHere.supported}
+						{#if hint?.variant === 'unsupported'}
 							{m.settings_field_external_player_hint_unsupported({
 								button: externalOpenLabel(cfg.external_player_kind)
 							})}
-						{:else if standardProgram && foundHere?.path}
+						{:else if hint?.variant === 'found'}
 							{m.settings_field_external_player_hint_found({
 								button: externalOpenLabel(cfg.external_player_kind),
 								program: PROGRAM_LABELS[cfg.external_player_kind]()
-							})}<code>{foundHere.path}</code>{m.settings_field_external_player_hint_suffix()}
-						{:else if standardProgram && foundHere}
+							})}<code>{hint.path}</code>{m.settings_field_external_player_hint_suffix()}
+						{:else if hint?.variant === 'missing'}
 							{m.settings_field_external_player_hint_missing({
 								button: externalOpenLabel(cfg.external_player_kind),
 								program: PROGRAM_LABELS[cfg.external_player_kind]()
 							})}
-						{:else if standardProgram}
+						{:else if hint?.variant === 'unknown'}
 							{m.settings_field_external_player_hint_prefix({
 								button: externalOpenLabel(cfg.external_player_kind)
-							})}<code>{standardProgram}</code>{m.settings_field_external_player_hint_suffix()}
+							})}<code>{hint.program}</code>{m.settings_field_external_player_hint_suffix()}
 						{:else}
 							{m.settings_field_external_player_hint_custom({
 								button: externalOpenLabel(cfg.external_player_kind)
@@ -434,7 +418,7 @@
 						type="text"
 						value={cfg.external_player}
 						oninput={(e) => setExternalPlayer((e.currentTarget as HTMLInputElement).value)}
-						placeholder={foundHere?.path ?? standardProgram ?? ''}
+						placeholder={standardPlaceholder(cfg.external_player_kind, found)}
 						spellcheck="false"
 						autocomplete="off"
 						aria-label={m.settings_field_external_player_key()}

@@ -11,6 +11,7 @@
  */
 
 import type { ExternalPlayerKind, StandardProgram } from '$lib/api';
+import { bareCommand } from './player-command';
 
 /** The backend's answer for a type, as the page keeps it. */
 export interface Found {
@@ -28,9 +29,20 @@ export function createStandardLookup(
 	ask: (kind: ExternalPlayerKind) => Promise<StandardProgram>,
 	show: (found: Found | null) => void
 ): (kind: ExternalPlayerKind | null | undefined) => void {
-	void ask;
-	void show;
-	return () => {};
+	let latest: ExternalPlayerKind | null = null;
+	return (kind) => {
+		latest = kind ?? null;
+		if (!kind || kind === 'custom') return;
+		ask(kind).then(
+			(answer) => {
+				if (latest === kind)
+					show({ kind, path: answer.path, supported: answer.supported !== false });
+			},
+			() => {
+				if (latest === kind) show(null);
+			}
+		);
+	};
 }
 
 /** What the hint under the field says. */
@@ -41,16 +53,24 @@ export type StandardHint =
 	| { variant: 'missing' }
 	| { variant: 'unknown'; program: string };
 
-/** The hint for `kind`, given the answer the page holds. */
-export function standardHint(kind: ExternalPlayerKind, found: Found | null): StandardHint {
-	void kind;
-	void found;
-	return { variant: 'custom' };
+/** The answer the page holds, if it is for `kind`. */
+function answerFor(kind: ExternalPlayerKind, found: Found | null): Found | null {
+	return found && found.kind === kind ? found : null;
 }
 
-/** The field's greyed placeholder for `kind`. */
+/** The hint for `kind`, given the answer the page holds. */
+export function standardHint(kind: ExternalPlayerKind, found: Found | null): StandardHint {
+	const program = bareCommand(kind);
+	if (program === null) return { variant: 'custom' };
+	const answer = answerFor(kind, found);
+	if (!answer) return { variant: 'unknown', program };
+	if (!answer.supported) return { variant: 'unsupported' };
+	return answer.path ? { variant: 'found', path: answer.path } : { variant: 'missing' };
+}
+
+/** The field's greyed placeholder for `kind`: the found path, else the
+ *  program's name, and nothing for Custom. */
 export function standardPlaceholder(kind: ExternalPlayerKind, found: Found | null): string {
-	void kind;
-	void found;
-	return '';
+	const answer = answerFor(kind, found);
+	return (answer?.supported ? answer.path : null) ?? bareCommand(kind) ?? '';
 }
