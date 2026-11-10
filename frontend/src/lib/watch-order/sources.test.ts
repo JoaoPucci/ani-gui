@@ -12,6 +12,6 @@ describe('watchOrderSources', () => {
 	it('reads the franchise route, and the rows its entries resume from', () => {
 		expect(watchOrderSources.franchise).toBe(kitsuFranchise);
 		expect(watchOrderSources.named).toBe(historyByKitsuEach);
-		expect(watchOrderSources.history).toBeUndefined();
+		expect(Object.keys(watchOrderSources).sort()).toEqual(['franchise', 'named']);
 	});
 });
