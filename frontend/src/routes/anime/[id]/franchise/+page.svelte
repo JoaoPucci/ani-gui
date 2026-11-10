@@ -7,7 +7,7 @@
 -->
 <script lang="ts">
 	import { page } from '$app/state';
-	import { historyList, kitsuFranchise, settingsGet, type Config } from '$lib/api';
+	import { settingsGet, type Config } from '$lib/api';
 	import { pageTrail } from '$lib/page-trail';
 	import { m } from '$lib/paraglide/messages';
 	import FranchiseView from '$lib/watch-order/FranchiseView.svelte';
@@ -15,6 +15,7 @@
 	import { franchisePage, franchiseTrail } from '$lib/watch-order/franchise-page';
 	import { latestRead } from '$lib/watch-order/latest-read';
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
+	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { settledOrder } from '$lib/watch-order/page-model';
 
 	const id = $derived(page.params.id ?? '');
@@ -35,15 +36,7 @@
 	$effect(() => {
 		const current = id;
 		void attempt;
-		reads.start(() =>
-			loadWatchOrder(current, {
-				franchise: kitsuFranchise,
-				named: (ids) =>
-					historyList().then((rows) =>
-						Object.fromEntries(ids.map((k) => [k, rows.find((r) => r.kitsu_id === k) ?? null]))
-					)
-			})
-		);
+		reads.start(() => loadWatchOrder(current, watchOrderSources));
 	});
 
 	const order = $derived(settledOrder(config, configFailed));
