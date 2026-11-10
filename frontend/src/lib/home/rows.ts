@@ -10,6 +10,11 @@
 
 import { discoveryView, LOADING, PENDING, type RowLoad } from '$lib/rows/discovery';
 
+/** How long the rows below the hero wait for the history read before
+ *  they are drawn without Continue watching (the keyring's notice waits
+ *  as long for the sign-ins). */
+export const HISTORY_WAIT_MS = 2000;
+
 /** What a draw of one row comes to: nothing yet, a skeleton, the row,
  *  or nothing at all ($lib/rows/discovery). */
 export type HomeRowKind = 'held' | 'skeleton' | 'shown' | 'absent';
@@ -36,6 +41,8 @@ export interface WatchLaterInput {
 export interface HomeRowsInput {
 	/** The history rows; null until the read has answered. */
 	history: readonly unknown[] | null;
+	/** Whether the history read has run past HISTORY_WAIT_MS unanswered. */
+	historyWaitOver?: boolean;
 	watchLater: WatchLaterInput;
 	/** The trending shows the row lists (the hero's are not among them). */
 	trending: ListInput;

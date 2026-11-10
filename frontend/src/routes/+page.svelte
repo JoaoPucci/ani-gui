@@ -139,7 +139,7 @@
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
 	import { splitTrending } from '$lib/hero/rotation';
-	import { homeRows, keepShown, type HomeRows } from '$lib/home/rows';
+	import { HISTORY_WAIT_MS, homeRows, keepShown, type HomeRows } from '$lib/home/rows';
 	import { loadDiscoveryRows, LOADING, type RowLoad } from '$lib/rows/discovery';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
@@ -203,6 +203,9 @@
 	const topRated = $derived(listOf(catalogue[1]));
 	const trendingFailed = $derived(catalogue[0].kind === 'failed');
 	let history = $state<HistoryEntry[] | null>(null);
+	// Whether the history read has run past HISTORY_WAIT_MS unanswered
+	// ($lib/home/rows).
+	let historyWaitOver = $state(false);
 	// The watched-at stamps the strip is sorted by, kept for the
 	// dedupe: the card for a show is the row watched last, as the
 	// detail page resumes it.
@@ -537,6 +540,7 @@
 			lastRows,
 			homeRows({
 				history,
+				historyWaitOver,
 				watchLater: {
 					accountsKnown,
 					signedIn: wlSignedIn,
@@ -592,6 +596,7 @@
 		// probes, ended when the page unmounts: the strip's probes stop
 		// with it.
 		const continueProbes = probeScope.begin();
+		const historyWait = setTimeout(() => (historyWaitOver = true), HISTORY_WAIT_MS);
 		Promise.all([historyList(), watchedAtAll().catch(() => ({}) as Record<string, number>)])
 			.then(([h, watchedAt]) => {
 				// Continue Watching ordering: stamped rows on top,
@@ -698,6 +703,7 @@
 		// and navigates on. Leaving it running would keep asking
 		// the provider about a strip that is no longer mounted.
 		return () => {
+			clearTimeout(historyWait);
 			continueRetryCancelled = true;
 			continueProbes.end();
 		};
