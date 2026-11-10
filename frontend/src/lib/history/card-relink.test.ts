@@ -92,6 +92,14 @@ describe('whether a guessed card still stands', () => {
 		await h.relink.stillGuessed('a', 'g');
 		expect(offerStands).toHaveBeenCalledWith('a', 'g');
 	});
+
+	it('answers no for a check a later one overtook, settling nothing and reading nothing', async () => {
+		const h = home([row('a')], [], { offerStands: async () => null });
+		expect(await h.relink.stillGuessed('a', 'g')).toBe(false);
+		await flush();
+		expect(h.settled.has('a')).toBe(false);
+		expect(h.deps.list).not.toHaveBeenCalled();
+	});
 });
 
 describe('reading the cards again', () => {

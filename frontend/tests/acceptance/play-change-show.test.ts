@@ -625,6 +625,40 @@ describe('switching to the pick', () => {
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
 	});
 
+	it('asks for no stream of the pick when the viewer left the player while it was being saved', async () => {
+		let release: () => void = () => {};
+		const saved = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		// Held, then answered by the fake backend's own route.
+		server.use(
+			http.post(`${API_BASE}/api/history/link`, async () => {
+				await saved;
+			})
+		);
+		await openPlayer();
+		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+		videoAt(74);
+		await openPicker();
+		const row = () =>
+			Array.from(dialog()?.querySelectorAll<HTMLButtonElement>('li button') ?? []).find((b) =>
+				(b.textContent ?? '').includes(RIGHT_TITLE)
+			);
+		await until(() => row() !== undefined, 'the pick among the candidates');
+		row()!.click();
+		await until(() => !button(m.play_link_switch_now(), dialog()!)?.disabled, 'Switch');
+		button(m.play_link_switch_now(), dialog()!)!.click();
+		// The viewer leaves the player while the pick is being saved.
+		unmount(app!);
+		app = null;
+		release();
+		await until(() => backend.linkCalls.length === 1, 'the link');
+		await settle();
+		expect(backend.rows.find((r) => r.id === CARD)?.kitsu_id).toBe(RIGHT);
+		expect(pickPlay()).toBeUndefined();
+		expect(vi.mocked(goto)).not.toHaveBeenCalled();
+	});
+
 	it('names no episode of a single-video work on the player, from its first line', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
