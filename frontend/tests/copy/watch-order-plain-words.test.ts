@@ -3,6 +3,9 @@
 // app, and viewers did not understand them on screen, so no message a
 // viewer sees or hears may use them, in any locale. Portuguese also
 // keeps "ligado" out: next to "Por vínculo" it reads as "switched on".
+// Portuguese and Spanish call a show "anime", never "título" (a
+// title is its name, and no message here means the name), and
+// Portuguese calls Settings "Ajustes", never "Configurações".
 //
 // The lists name the words known to have been used, with their
 // plurals; they are not a full vocabulary check, so a new synonym of
@@ -27,10 +30,10 @@ const stem = (stems: string) => new RegExp(`(?<!\\p{L})(${stems})`, 'iu');
 const BANNED: Record<(typeof LOCALES)[number], RegExp> = {
 	en: word('runs?|entry|entries|loops?|forks?|joins?'),
 	'pt-BR': word(
-		'sequências?|ciclos?|entradas?|ligad[oa]s?|bifurca\\p{L}*|ramifica\\p{L}*|junç(ão|ões)'
+		'sequências?|ciclos?|entradas?|ligad[oa]s?|bifurca\\p{L}*|ramifica\\p{L}*|junç(ão|ões)|títulos?|configurações'
 	),
 	'es-419': word(
-		'secuencias?|ciclos?|bucles?|entradas?|bifurca\\p{L}*|ramifica\\p{L}*|unión|uniones'
+		'secuencias?|ciclos?|bucles?|entradas?|bifurca\\p{L}*|ramifica\\p{L}*|unión|uniones|títulos?'
 	),
 	ru: stem('цепоч|круг|цикл|петл|развилк|запис')
 };
