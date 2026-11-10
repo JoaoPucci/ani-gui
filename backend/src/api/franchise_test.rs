@@ -167,9 +167,10 @@ async fn first_hop_route_answers_from_the_shows_own_listing() {
     seed(&state, "3", vec![rel("character", &film)]);
     // A show with a side story: the first hop reads its detail to know
     // whether the side story started before it (the walk's parent check).
+    // It started first, so no other listing is read.
     let detail = json!({
         "id": "2", "canonical_title": "A show", "titles": {}, "abbreviated_titles": [],
-        "slug": null, "synopsis": null, "start_date": "2010-01-01", "end_date": null,
+        "slug": null, "synopsis": null, "start_date": "2001-01-01", "end_date": null,
         "episode_count": 12, "average_rating": null, "subtype": "TV", "status": "finished",
         "age_rating": null, "popularity_rank": null, "poster_image": null, "cover_image": null
     });
