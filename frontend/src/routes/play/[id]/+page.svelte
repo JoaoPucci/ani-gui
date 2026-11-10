@@ -2202,12 +2202,23 @@
 	// id-change reset enforces. Episode changes within the same show
 	// keep the cache (id stable → effect doesn't refire), so prev/next
 	// pagination stays instant.
+	// A show change under the page cancels the old show's reads, so the
+	// strip is opened again for the new show: nothing else would read it.
+	// The show the strip was opened for at mount.
+	let stripShow = untrack(() => id);
 	$effect(() => {
-		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
-		id;
+		const current = id;
 		resetEpisodePageCache(kitsuPageCache);
 		showReads.end();
 		showReads = beginVisit();
+		if (current === stripShow) return;
+		stripShow = current;
+		untrack(() => {
+			rawWindowed = null;
+			episodesError = null;
+			const req = stripPager.open(stripPager.pageOf(episodeNum));
+			if (req.fetch) void fetchEpisodesPage(req.page, req.gen, { initial: true });
+		});
 	});
 
 	onMount(() => {

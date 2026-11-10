@@ -301,9 +301,15 @@
 	const liveReads = visitSeries();
 	onDestroy(liveReads.end);
 
-	function scheduleLive(q: string) {
+	/** No live search goes on: none waiting on its pause, none out. */
+	function stopLive() {
 		if (liveDebounce) clearTimeout(liveDebounce);
+		liveDebounce = null;
 		liveReads.end();
+	}
+
+	function scheduleLive(q: string) {
+		stopLive();
 		if (q.length < LIVE_MIN_CHARS) {
 			liveResults = null;
 			liveBusy = false;
@@ -434,6 +440,8 @@
 
 	function navigateToHit(hit: KitsuAnimeRef) {
 		dropdownOpen = false;
+		stopLive();
+		liveBusy = false;
 		void goto(resolve('/anime/[id]', { id: hit.id }));
 	}
 
@@ -443,6 +451,9 @@
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		void goto(target);
 		dropdownOpen = false;
+		// The dropdown has closed: a live search would answer nobody.
+		stopLive();
+		liveBusy = false;
 	}
 
 	// Double-click-to-maximize on the frameless titlebar is handled by the
