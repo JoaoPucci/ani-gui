@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { modal, openModal, type ModalHandle } from './modal-layer';
+import { isModalOpen, modal, openModal, type ModalHandle } from './modal-layer';
 
 // A page shaped like the app's: a header beside the content, the
 // content holding a section and the modal's mount point.
@@ -134,6 +134,14 @@ describe('a modal', () => {
 		press('Escape');
 		expect(first).not.toHaveBeenCalled();
 		expect(second).toHaveBeenCalledTimes(1);
+	});
+
+	it('says the page is held while it is up, and only then', () => {
+		expect(isModalOpen()).toBe(false);
+		const h = mountIn(page, dialog());
+		expect(isModalOpen()).toBe(true);
+		h.close();
+		expect(isModalOpen()).toBe(false);
 	});
 
 	it('gives the page and focus back as it closes', () => {

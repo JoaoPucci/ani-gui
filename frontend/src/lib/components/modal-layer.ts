@@ -12,6 +12,9 @@
  * - closing it gives focus back to what held it when it opened, if that
  *   is still on the page.
  *
+ * While one is up, `isModalOpen()` is true, and the page's own
+ * window-level shortcuts stand down.
+ *
  * Modals stack: only the topmost one is live, and closing it hands the
  * page back to the one beneath. A modal that closes from under another
  * passes its return target up, so focus still ends where the first of
@@ -87,15 +90,21 @@ function close(layer: Layer): void {
 	else if (top()) enter(top()!.root);
 }
 
+/** Whether a modal holds the page. A page's own window-level
+ *  shortcuts — the player's, the topbar's — stand down while it does:
+ *  the modal is the only keyboard target. */
+export function isModalOpen(): boolean {
+	return stack.length > 0;
+}
+
 /** Make `root` the topmost modal on its page. */
 export function openModal(root: HTMLElement, opts: ModalOptions = {}): ModalHandle {
 	const doc = root.ownerDocument;
 	const active = doc.activeElement;
-	const layer: Layer = {
-		root,
-		opts,
-		returnTo: active instanceof HTMLElement && active !== doc.body ? active : null
-	};
+	// Focus on nothing as a modal opens over another (a busy confirm's
+	// disabled button drops it) returns into the one beneath.
+	const held = active instanceof HTMLElement && active !== doc.body ? active : null;
+	const layer: Layer = { root, opts, returnTo: held ?? top()?.root ?? null };
 	if (stack.length === 0) doc.addEventListener('keydown', onKeydown, true);
 	stack.push(layer);
 	leaveHidingFullscreen(doc, root);

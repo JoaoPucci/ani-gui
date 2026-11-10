@@ -98,6 +98,7 @@
 	import { createAniskipFetchTrigger, lengthReady } from '$lib/play/aniskip-fetch-trigger';
 	import { shouldShowSkipButton } from '$lib/play/skip-button-window';
 	import { decidePlayerKeyAction } from '$lib/play/keyboard';
+	import { isModalOpen } from '$lib/components/modal-layer';
 	import { createVolumeReveal } from '$lib/play/volume-reveal';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import {
@@ -2981,6 +2982,9 @@
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const onKey = (e: KeyboardEvent) => {
+			// A modal over the player (a play failure, the download
+			// dialog) is the only keyboard target while it is up.
+			if (isModalOpen()) return;
 			const t = e.target as HTMLElement | null;
 			const inField =
 				!!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);

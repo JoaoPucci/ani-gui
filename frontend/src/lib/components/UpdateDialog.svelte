@@ -72,7 +72,14 @@
 			</dl>
 
 			{#if release.body}
-				<pre class="update-dialog-body">{release.body}</pre>
+				<!-- The notes scroll in a capped box; a tab stop lets the
+				     keyboard reach and scroll them, as Chromium does for a
+				     scroll container. -->
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<pre
+					class="update-dialog-body"
+					tabindex="0"
+					aria-label={m.update_dialog_notes_aria_label()}>{release.body}</pre>
 			{/if}
 
 			<footer class="update-dialog-foot">
@@ -221,6 +228,7 @@
 	.dlg-btn-primary:hover {
 		background: color-mix(in oklab, var(--brand) 80%, var(--bone-100));
 	}
+	.update-dialog-body:focus-visible,
 	.dlg-btn:focus-visible {
 		outline: 2px solid var(--brand);
 		outline-offset: 2px;
