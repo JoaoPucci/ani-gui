@@ -6,10 +6,16 @@
  * "vlc", "iina"), it becomes the new type's: a user who never wrote one
  * gets the player they picked. A command the user wrote (a full path, a
  * wrapper, a blank, another type's name) is theirs, and is never
- * touched. Custom has no command of its own, so a change to it or from
- * it keeps the command. No path is guessed and nothing is looked up: on
- * Windows a bare `vlc` may not be found on the PATH, and the user
- * browses to the program, as before.
+ * touched. Custom has no command of its own, so a change to it keeps
+ * the command.
+ *
+ * A blank command runs the type's standard program. So leaving Custom
+ * clears a command that is only a standard program's name ("mpv",
+ * "vlc", "iina") to blank, and the new type runs its own: "mpv" left
+ * over from Custom would otherwise run mpv under the VLC type. A
+ * command with a path or flags is kept. No path is guessed and nothing
+ * is looked up: on Windows a bare `vlc` may not be found on the PATH,
+ * and the user browses to the program, as before.
  */
 
 import type { ExternalPlayerKind } from '$lib/api';
@@ -38,7 +44,9 @@ export function commandAfterKindChange(
 ): string {
 	const previous = bareCommand(from);
 	const next = bareCommand(to);
-	return previous !== null && next !== null && command === previous ? next : command;
+	if (next === null) return command;
+	if (previous === null) return isBareProgramName(command) ? '' : command;
+	return command === previous ? next : command;
 }
 
 /**
