@@ -1274,6 +1274,11 @@ The rules below hold on every surface:
   yet" in the empty column; a side story's end reads the same as the
   last entry's. Unknown date: "Date not announced" in place of the
   year and count. An entry the provider lacks looks like any other.
+  A franchise read only in part (the walk reached its bound, or a
+  listing came back cut short) may be missing entries on either side
+  of the show, so the strip makes no claim that needs the whole: the
+  position has no total and the masthead no position, no column gets
+  a join or fork count, and an empty column stays blank.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
   keys page it); every card and tile is a link with the poster card's
   bone focus ring; the entry being viewed is not a link. The line for
