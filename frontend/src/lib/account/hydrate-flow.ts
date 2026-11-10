@@ -86,7 +86,7 @@ async function firstRead(
  * AND the account page) must do that, so the hydrate owns it rather
  * than each caller remembering.
  *
- * Once every provider's first read has settled, before the refresh,
+ * Once every provider's first read has settled, as the refresh starts,
  * it sets `readsSettled`: from then on the store holds what the reads
  * found (or what a change under way made of a provider), not the
  * signed-out state it starts in. A read that rejects settles it too,
@@ -95,11 +95,17 @@ async function firstRead(
 export function hydrateAccounts(target: HydrateTarget): Promise<void> {
 	const wait = waitFor(target);
 	const hydrate: HydrateRun = { settled: false };
-	const settled = Promise.all(PROVIDERS.map((p) => firstRead(target, p, wait, hydrate)));
+	const reads = Object.fromEntries(
+		PROVIDERS.map((p) => [p, firstRead(target, p, wait, hydrate)])
+	) as Record<Provider, Promise<void>>;
+	const settled = Promise.all(PROVIDERS.map((p) => reads[p]));
 	const readsSettled = () => {
 		target.readsSettled = true;
 	};
-	void settled.then(readsSettled, readsSettled);
+	// Every read, not the first to reject: Promise.all would settle on it
+	// with the others still out. (The reads catch their own failures, so
+	// none rejects today; this keeps the flag honest if one ever does.)
+	void Promise.allSettled(PROVIDERS.map((p) => reads[p])).then(readsSettled);
 	return settled.then(() => {
 		hydrate.settled = true;
 		return target.refreshExpired();
