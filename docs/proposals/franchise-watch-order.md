@@ -1579,8 +1579,9 @@ The third round revises the strip's footer only.
   three blank frames in the same fan, the front one carrying the
   number of entries the franchise page lists (none for a franchise
   read only in part), upright, in the strip's numeral face. The
-  posters the stack fans are only entries that have one, and a poster that fails to load is drawn as a blank frame, so
-  a missing image never leaves an empty card among real ones.
+  posters the stack fans are only entries that have one, and a
+  poster that fails to load is drawn as a blank frame, so a missing
+  image never leaves an empty card among real ones.
 - **The whole link is the target.** The link's padding is the area a
   highlight marks; three options:
   - *Surface*: a faint plate one step up the page's ink appears under
