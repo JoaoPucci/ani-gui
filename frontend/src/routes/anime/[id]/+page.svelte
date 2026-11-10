@@ -1208,7 +1208,9 @@
 						detailServed,
 						kitsuFranchiseFirstHop(currentId),
 						(ms) => new Promise<void>((r) => setTimeout(r, ms)),
-						walked
+						// Nothing is held once the walk and the order setting
+						// have both answered, so the wait ends then too.
+						Promise.all([walked, settingsSettled])
 					);
 		void detailShown
 			.then(({ details: d, hop }) => {
@@ -1276,10 +1278,15 @@
 		};
 	});
 
+	// Settled once the settings read has answered or failed: the
+	// watch-order strip waits for the order setting.
+	let settingsRead!: () => void;
+	const settingsSettled = new Promise<void>((r) => (settingsRead = r));
 	onMount(() => {
 		void settingsGet()
 			.then((c) => (config = c))
-			.catch((e) => (configError = describeSettingsFailure(e)));
+			.catch((e) => (configError = describeSettingsFailure(e)))
+			.finally(() => settingsRead());
 	});
 
 	// Background prefetch: as soon as we have the show title + the

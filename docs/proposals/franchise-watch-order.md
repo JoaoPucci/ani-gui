@@ -1764,7 +1764,8 @@ was accepted.
    shows, and on the walk's own regression corpus, it matched the walk
    every time.
 5. **The page waits for the first hop with the show's details**, at
-   most about 300 ms past them; a slower hop is not used, and the
+   most about 300 ms past them, and not at all once the walk and the
+   order setting have answered; a slower hop is not used, and the
    strip arrives as before.
 6. **The held room is a static outline** of the strip's measured
    layout under the real "Watch order" label, or of the link, with no

@@ -10,9 +10,10 @@
  * what is coming (`kitsuFranchiseFirstHop`), so:
  *
  * - The page waits for that first hop together with the show's
- *   details, but never more than `FIRST_HOP_CAP_MS` past the details;
- *   a first hop that answers later is not used, and the strip arrives
- *   as it always did.
+ *   details, but never more than `FIRST_HOP_CAP_MS` past the details,
+ *   and no longer once the walk (and the order setting) have answered,
+ *   when nothing would be held; a first hop that answers later is not
+ *   used, and the strip arrives as it always did.
  * - While the walk runs, the page holds the room of what the first hop
  *   foretold (`heldShape`): a quiet outline of the strip, or of the
  *   link. Nothing is held when it foretold nothing.
@@ -46,8 +47,8 @@ export const LEAVE_COLLAPSE_MS = 260;
 /**
  * The details, with the first hop if it answered by the time they did
  * or within `FIRST_HOP_CAP_MS` after; null if not, if it failed, or if
- * `walked` (the walk itself) answered first. Rejects only as `details`
- * does.
+ * `walked` (on the page, the walk and the order setting) settled
+ * first. Rejects only as `details` does.
  */
 export async function withFirstHop<T>(
 	details: Promise<T>,
@@ -63,7 +64,7 @@ export async function withFirstHop<T>(
 	);
 	const shown = await details;
 	const capped = wait(FIRST_HOP_CAP_MS).then(() => null);
-	// Once the walk has answered nothing is held, so nothing is waited for.
+	// Once `walked` settles nothing is held, so nothing is waited for.
 	const moot = walked.then(
 		() => null,
 		() => null
