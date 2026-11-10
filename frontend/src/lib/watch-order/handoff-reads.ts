@@ -10,6 +10,8 @@
  * a franchise read holds its response open while the backend walks the
  * franchise, on the API lane every page shares (`$lib/backend/lanes`),
  * so a read whose answer nobody will use must not hold a connection.
+ * For the same reason the series are walked a few at a time
+ * (`HANDOFF_WALKS_AT_ONCE`), in the order the rows ask for them.
  */
 import type { FranchiseData } from './types';
 
@@ -20,26 +22,52 @@ export interface FranchiseReads {
 	stop(): void;
 }
 
+/**
+ * How many series walks Home keeps out at once. Chromium gives the API
+ * lane six connections, the refill wait can hold one, and Home's own
+ * calls need the rest: a Continue card's resume reads its row again
+ * before it plays, and a removal writes. Two walks leave three once
+ * Home's own first reads have answered.
+ */
+export const HANDOFF_WALKS_AT_ONCE = 2;
+
 export function createFranchiseReads(
 	read: (id: string, signal: AbortSignal) => Promise<FranchiseData>,
 	settled: (id: string, franchise: FranchiseData | null) => void
 ): FranchiseReads {
 	const asked = new Set<string>();
 	const page = new AbortController();
+	// Wanted ids not yet read, in the order they were wanted.
+	const waiting: string[] = [];
+	let out = 0;
 	const hand = (id: string, franchise: FranchiseData | null) => {
-		if (!page.signal.aborted) settled(id, franchise);
+		out -= 1;
+		if (page.signal.aborted) return;
+		// The next walk starts first, so an answer that cannot be
+		// handed on never holds up the rest.
+		next();
+		settled(id, franchise);
+	};
+	const next = () => {
+		while (out < HANDOFF_WALKS_AT_ONCE && waiting.length > 0) {
+			const id = waiting.shift()!;
+			out += 1;
+			read(id, page.signal).then(
+				(franchise) => hand(id, franchise),
+				() => hand(id, null)
+			);
+		}
 	};
 	return {
 		want(id) {
 			if (asked.has(id) || page.signal.aborted) return;
 			asked.add(id);
-			read(id, page.signal).then(
-				(franchise) => hand(id, franchise),
-				() => hand(id, null)
-			);
+			waiting.push(id);
+			next();
 		},
 		stop() {
 			page.abort();
+			waiting.length = 0;
 		}
 	};
 }
