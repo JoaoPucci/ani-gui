@@ -17,6 +17,7 @@ import {
 	downloadStream,
 	evictPlayCache,
 	historyByKitsu,
+	historyByKitsuEach,
 	historyClear,
 	historyDelete,
 	historyList,
@@ -1648,6 +1649,20 @@ describe('historyByKitsu', () => {
 		const fetchMock = mockFetchOnce(null);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		expect(await historyByKitsu('kid-unknown')).toBeNull();
+	});
+});
+
+describe('historyByKitsuEach', () => {
+	it('POSTs the ids to /api/history/by-kitsu and returns each id with its row', async () => {
+		const answer = { '7': { id: 'hianime:x-1', title: 'X', ep_no: '3' }, '8': null };
+		const fetchMock = mockFetchOnce(answer);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const got = await historyByKitsuEach(['7', '8']);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/by-kitsu`);
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(String(init?.body))).toEqual({ ids: ['7', '8'] });
+		expect(got).toEqual(answer);
 	});
 });
 

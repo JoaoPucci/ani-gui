@@ -639,6 +639,16 @@ export function historyByKitsu(kitsuId: string): Promise<HistoryEntry | null> {
 	return getJson<HistoryEntry | null>(`/api/history/by-kitsu/${encodeURIComponent(kitsuId)}`);
 }
 
+/** `historyByKitsu` for each of `ids` at once, from one read of the
+ *  history: each id with the row it resumes from, or null. A value
+ *  that is not a Kitsu id is left out of the answer. */
+export function historyByKitsuEach(
+	ids: readonly string[]
+): Promise<Record<string, HistoryEntry | null>> {
+	void ids;
+	return Promise.resolve({});
+}
+
 /** The episode one history row reads as now, and the number it read as
  *  before its show's numbering was put right. */
 export interface HistoryNumber {

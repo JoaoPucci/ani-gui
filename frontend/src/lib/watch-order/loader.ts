@@ -8,10 +8,12 @@
 import type { HistoryRow } from './progress';
 import type { FranchiseData } from './types';
 
-/** Where the two reads come from: `$lib/api` on the page, stubs in tests. */
+/** Where the reads come from: `./sources` on the pages, stubs in tests. */
 export interface WatchOrderSources {
 	readonly franchise: (id: string) => Promise<FranchiseData>;
-	readonly history: () => Promise<readonly HistoryRow[]>;
+	readonly history?: () => Promise<readonly HistoryRow[]>;
+	/** Each of `ids` with the history row it resumes from, or null. */
+	readonly named?: (ids: readonly string[]) => Promise<Record<string, HistoryRow | null>>;
 }
 
 export interface WatchOrderData {
@@ -27,7 +29,7 @@ export async function loadWatchOrder(
 ): Promise<WatchOrderData> {
 	const [franchise, rows] = await Promise.all([
 		sources.franchise(id).catch(() => null),
-		sources.history().catch(() => [])
+		(sources.history ?? (() => Promise.resolve([])))().catch(() => [])
 	]);
 	return { franchise, rows };
 }
