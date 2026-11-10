@@ -4,7 +4,7 @@
 //! complexity bar.
 
 use crate::app::AppState;
-use crate::cache::meta_cache_entries_prefix;
+use crate::cache::{meta_cache_entries_prefix, meta_cache_get};
 use crate::commands::kitsu::{
     title_match_prefix_at, FIRST_SEGMENTED_TITLE_MATCH_VERSION,
     FIRST_YEAR_KEYED_TITLE_MATCH_VERSION, TITLE_MATCH_VERSION,
@@ -83,29 +83,30 @@ fn prefixes_at(version: u32, id: &str, title: &str) -> Vec<String> {
     prefixes
 }
 
-/// The Kitsu ids the row's title matches name under the current
-/// version's key alone — the ones Continue Watching reads now. A match
-/// an earlier version stored is a pick that version made, which Home
-/// no longer reads, so the detail page's resume lookup does not read
-/// it either; a removal still does, to find every id the show was
-/// known by.
+/// The Kitsu id the row's title match names under the current
+/// version's key — the one key Continue Watching reads and writes for
+/// the row: its title less a legacy episode tail, keyed by the year
+/// the row names, at the row's own cour ([`row_cour`]). A match an
+/// earlier version stored is a pick that version made, which Home no
+/// longer reads, so the detail page's resume lookup does not read it
+/// either; a removal still does, to find every id the show was known
+/// by. Nor does it read a match under another cour of the title,
+/// which is another row's guess.
 ///
 /// # Errors
 /// Cache failures propagate.
-pub(crate) fn current_title_match_ids(
+pub(crate) fn current_title_match_id(
     state: &AppState,
     id: &str,
     title: &str,
-) -> Result<Vec<String>> {
-    let mut found = Vec::new();
-    for prefix in current_prefixes(id, title) {
-        found.extend(
-            cour_entries(state, &prefix)?
-                .into_iter()
-                .map(|(_, body)| body),
-        );
-    }
-    Ok(found)
+) -> Result<Option<String>> {
+    let key = ShowKey::parse(id);
+    let year = crate::commands::title_match_year::title_year(title)
+        .or_else(|| crate::scraper::provider::key_year(id));
+    let searched =
+        crate::commands::title_match_year::keyed_title(without_episode_tail(title), year);
+    let prefix = title_match_prefix_at(TITLE_MATCH_VERSION, key.provider, &searched);
+    meta_cache_get(&state.cache_pool, &format!("{prefix}{}", row_cour(title)))
 }
 
 /// The Kitsu ids the title-match rows of the row `id` titled `title`
@@ -129,3 +130,13 @@ pub(crate) fn cour_entries(state: &AppState, prefix: &str) -> Result<Vec<(String
         .filter(|(key, _)| all_digits(&key[prefix.len()..]))
         .collect())
 }
+
+/// The cour Continue Watching keys a row's title match by: the one its
+/// title names, less a legacy episode tail, else the first.
+pub(crate) fn row_cour(title: &str) -> u32 {
+    crate::commands::cour::cour_from_title(without_episode_tail(title)).unwrap_or(1)
+}
+
+#[cfg(test)]
+#[path = "title_match_rows_prop_test.rs"]
+mod prop_tests;

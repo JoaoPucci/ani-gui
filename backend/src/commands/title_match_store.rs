@@ -56,9 +56,13 @@ pub(crate) fn store_title_match_for_year(
     })
 }
 
-/// Whether Continue Watching searches `title` for the row `entry`: the
-/// row's title as listed or less a legacy episode tail, on the row's
-/// provider, compared the way the cache key folds a title.
+/// Whether `title` is one a history row `entry` could be searched by:
+/// the row's title as listed or less a legacy episode tail, on the
+/// row's provider, compared the way the cache key folds a title.
+/// Continue Watching sends the title less the tail, the only form the
+/// resume lookup reads ([`super::title_match_rows::current_title_match_id`]);
+/// a write of the title as listed is let through and read by nothing
+/// but a removal.
 fn searches(entry: &HistoryEntry, provider: Option<ProviderId>, title: &str) -> bool {
     let wanted = title.trim().to_lowercase();
     ShowKey::parse(&entry.id).provider == provider
