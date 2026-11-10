@@ -842,7 +842,7 @@ design section. Below it, sections:
 
 1. **Main story** — the run (section 4's rules), in the order the
    setting chooses, numbered as section 4 describes, with branches
-   unnumbered beside the numbered path, progress bars per entry and a
+   unnumbered beside the numbered path, each entry's progress and a
    "you are here" marker.
 2. **Other versions** — section 4's rule 4: from the JoJo TV run, both
    OVAs; from the UBW run, the 2006 *Fate/stay night*, the 2010 film
@@ -1065,6 +1065,15 @@ them introduces a new widget style.
   then after. The line for the entry being watched and the franchise
   link are separate tab stops. Under reduced motion there is no lift and no
   entrance; the tokens already do this.
+- **Arriving.** The walk can take a second or two on a first visit,
+  so the page holds the strip's room rather than letting it push the
+  page when it lands. The walk's first read, the show's own relation
+  listing, already says whether a strip, the franchise link alone or
+  nothing is coming (`GET /api/kitsu/franchise/:id/first-hop`); the
+  page waits for that answer with the show's details, never more
+  than about 300 ms past them, and holds a static outline of what is
+  coming until the walk answers. "Decisions recorded: progress and
+  the strip's arrival" has the details.
 - **When data is missing.**
   - No relations, or Kitsu unreachable: no strip, no position in the
     eyebrow, and no empty state. The page looks as it does today.
@@ -1156,14 +1165,19 @@ them introduces a new widget style.
     have room, numbered along the path from the run's first entry
     (section 4, "Position numbers"). Each row shows the oversized mono
     numeral, a small poster, the title in the body face, a format,
-    year and episode-count line, and a thin progress bar in that
-    entry's own accent. A "You are here" marker sits on the current
-    entry.
+    year and episode-count line, and its progress in the right
+    column: a caption ("EP 6 of 14") with a thin line under it in
+    the one list-progress colour, only where the entry is part-way
+    through a known total; "Watched" with a check, and no line, for
+    a finished entry; "EP 5" alone where the total is not known
+    ("Decisions recorded: progress and the strip's arrival", below).
+    A "You are here" marker, in the entry's accent, sits on the
+    current entry.
   - **Films, side stories and other versions:** standard `Strip` rails
     of poster cards, each under the app's eyebrow.
   - **Recaps:** a collapsed section under the same eyebrow.
 - **At a glance versus on hover.** Each row shows the numeral, the
-  short title, the format, the year, and the episode count or the
+  short title, the format, the year, the episode count and the
   progress. The full title is the row's tooltip on hover and what a
   screen reader reads, as on the show page's strip.
 - **Keyboard and motion.** The list is a list of links in reading
@@ -1388,8 +1402,10 @@ The rules below hold on every surface:
 #### The franchise page
 
 - **Options.** *List*: one row per entry, the oversized numeral, a
-  small poster, the title, the meta line and a progress bar in the
-  entry's accent (only where something was watched). *Shelf*: the
+  small poster, the title, the meta line and the entry's progress
+  (first drawn as a line in the entry's accent, only where something
+  was watched; see "Decisions recorded: progress and the strip's
+  arrival"). *Shelf*: the
   rail's cards in a grid. **Recommended: list.** Long titles have the
   width they need, and the fork and the loop can be laid out as what
   they are.
@@ -1673,6 +1689,50 @@ that ends normally it shows the card up to a second early.
    where the show has no strip). How to make franchises findable gracefully (a
    franchise search, or a similar mechanic) is a study of its own, in
    the deferred-work log.
+
+### Decisions recorded: progress and the strip's arrival
+
+A study after the build looked at two things the maintainer raised:
+the franchise page's progress lines read as random marks, and the
+strip arrived late and pushed the page down. Every recommendation
+was accepted.
+
+1. **Progress on the franchise page's rows** is said in words. A row
+   part-way through a known total shows "EP 6 of 14" in its right
+   column with a line under it; a finished row shows a check and
+   "Watched" with no line; a row with no known total shows "EP 5"
+   with no line; a row not started shows nothing. The meta line gives
+   the episode count again. The caption is text in the row's link;
+   the line is hidden from screen readers.
+2. **One colour for list progress**, named once as tokens
+   (`--progress-fill`, `--progress-track`), whatever show the row is.
+   The player's scrubber keeps the show's accent, and so does the "You
+   are here" rule, which means "this show, here".
+3. **The strip, the "You're watching" card and the Up next card** keep
+   their text-only progress.
+4. **The strip's room is held while the walk runs**, from the walk's
+   first hop: the show's own relation listing, read through the
+   walk's own cache. A prequel or sequel the show does not list as
+   another version, or a parent story, means the strip; any other
+   relation the franchise page lists means the link alone; none means
+   nothing is held. Only a foretold strip can be wrong (a sequel whose
+   own listing names the show as its other version), and the walk's
+   answer then replaces the outline. On the study's 120 shows it
+   matched the walk every time.
+5. **The page waits for the first hop with the show's details**, at
+   most about 300 ms past them; a slower hop is not used, and the
+   strip arrives as before.
+6. **The held room is a static outline** of the strip's measured
+   layout under the real "Watch order" label, or of the link, with no
+   shimmer. The strip fades in where it stood (220 ms); when nothing
+   comes, the outline fades (100 ms) and folds away (260 ms); above
+   the viewport it goes at once and the scroll position is kept.
+   Reduced motion makes every step instant. The outline waits for the
+   walk, with no timeout of its own.
+7. **A show visited again in the session** draws its strip with its
+   first frame, from the last answer kept for it.
+8. **Growing the strip into place, or drawing it under the episodes,
+   were dropped.**
 
 ## 6. Recommendation and plan for 0.19.0
 
