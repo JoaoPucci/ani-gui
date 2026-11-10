@@ -6,6 +6,7 @@
   Try again. A franchise that is the show alone says that instead.
 -->
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { settingsGet, type Config } from '$lib/api';
 	import { pageTrail } from '$lib/page-trail';
@@ -28,16 +29,18 @@
 		.catch(() => (configFailed = true));
 
 	// One read per show and per Try again. Only the latest read's
-	// answer is drawn, so an older one landing late never replaces it
-	// ($lib/watch-order/latest-read).
+	// answer is drawn, so an older one landing late never replaces it,
+	// and a read superseded, or still out when the page goes, is
+	// cancelled ($lib/watch-order/latest-read).
 	let data = $state<WatchOrderData | null>(null);
 	let attempt = $state(0);
 	const reads = latestRead<WatchOrderData>((d) => (data = d));
 	$effect(() => {
 		const current = id;
 		void attempt;
-		reads.start(() => loadWatchOrder(current, watchOrderSources));
+		reads.start((signal) => loadWatchOrder(current, watchOrderSources, signal));
 	});
+	onDestroy(() => reads.stop());
 
 	const order = $derived(settledOrder(config, configFailed));
 	const model = $derived(data && order ? franchisePage(data, id, order) : null);
