@@ -71,12 +71,13 @@
 
 {#snippet column(side: 'before' | 'after')}
 	{@const list = side === 'before' ? view.before : view.after}
-	{@const count = columnCountText(view.kind, side, list.length)}
+	{@const count = columnCountText(view.kind, side, list.length, model.complete)}
+	{@const empty = emptyColumn(view, side, model.complete)}
 	<p class="col-key key-{side}">{list.length > 0 ? keyOf(side) : ''}</p>
 	<p class="col-count key-{side}">{count ?? ''}</p>
 	<div class="col col-{side}">
 		{#each list as e (e.id)}{@render tile(e, side === 'before')}{:else}
-			<p class="col-empty">{emptyColumnText(emptyColumn(view, side))}</p>
+			{#if empty}<p class="col-empty">{emptyColumnText(empty)}</p>{/if}
 		{/each}
 	</div>
 {/snippet}

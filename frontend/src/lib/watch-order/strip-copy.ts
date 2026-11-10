@@ -26,13 +26,17 @@ export function columnKeyText(key: ColumnKey): string {
 
 /**
  * The line under a key where a column holds several entries: a join or
- * a fork. A side story's several parents are neither, and get none.
+ * a fork. A side story's several parents are neither, and get none, and
+ * a franchise read in part (`complete` false) gets none: its count may
+ * be short.
  */
 export function columnCountText(
 	kind: 'run' | 'side',
 	side: 'before' | 'after',
-	count: number
+	count: number,
+	complete: boolean
 ): string | null {
+	void complete;
 	if (kind === 'side' || count < 2) return null;
 	return side === 'before'
 		? m.watchorder_strip_join({ count })

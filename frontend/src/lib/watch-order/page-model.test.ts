@@ -172,7 +172,7 @@ describe('watchOrderPage', () => {
 		);
 	});
 
-	it('puts a position in the eyebrow only with a total, and always in release order', () => {
+	it('puts a position in the eyebrow only with a total, and always in release order when read whole', () => {
 		fc.assert(
 			fc.property(anyPage, ({ f, id, order, rows }) => {
 				const got = watchOrderPage({ franchise: f, rows }, id, order);
@@ -182,11 +182,25 @@ describe('watchOrderPage', () => {
 					expect(got.eyebrow.position).toBeGreaterThanOrEqual(1);
 					expect(got.eyebrow.position).toBeLessThanOrEqual(got.eyebrow.total);
 				}
-				if (order === 'released' && got.view.kind === 'run') {
+				if (order === 'released' && got.view.kind === 'run' && f.complete) {
 					expect(got.eyebrow).toEqual({
 						position: expect.any(Number),
 						total: got.run.entries.length
 					});
+				}
+			})
+		);
+	});
+
+	it('carries the read being partial, and then claims no total anywhere', () => {
+		fc.assert(
+			fc.property(anyPage, ({ f, id, order, rows }) => {
+				const got = watchOrderPage({ franchise: f, rows }, id, order);
+				if (!got) return;
+				expect(got.complete).toBe(f.complete);
+				if (!f.complete) {
+					expect(got.caption.kind).not.toBe('position');
+					expect(got.eyebrow).toBeNull();
 				}
 			})
 		);
@@ -218,17 +232,26 @@ describe('captionOf', () => {
 	};
 
 	it('reads a numbered place, with or without a total', () => {
-		expect(captionOf({ ...view, position: 3, total: 9 }, 0)).toEqual({
+		expect(captionOf({ ...view, position: 3, total: 9 }, 0, true)).toEqual({
 			kind: 'position',
 			position: 3,
 			total: 9
 		});
-		expect(captionOf({ ...view, position: 3 }, 0)).toEqual({ kind: 'numeral', position: 3 });
+		expect(captionOf({ ...view, position: 3 }, 0, true)).toEqual({ kind: 'numeral', position: 3 });
+	});
+
+	it('reads no total for a franchise read in part: entries may be missing', () => {
+		expect(captionOf({ ...view, position: 3, total: 9 }, 0, false)).toEqual({
+			kind: 'numeral',
+			position: 3
+		});
+		expect(captionOf({ ...view, inCycle: true }, 10, false)).toEqual({ kind: 'cycle', count: 10 });
+		expect(captionOf({ ...view, kind: 'side' }, 0, false)).toEqual({ kind: 'side' });
 	});
 
 	it('reads an unnumbered place as a loop or a branch, and a side story as one', () => {
-		expect(captionOf({ ...view, inCycle: true }, 10)).toEqual({ kind: 'cycle', count: 10 });
-		expect(captionOf(view, 0)).toEqual({ kind: 'branch' });
-		expect(captionOf({ ...view, kind: 'side' }, 0)).toEqual({ kind: 'side' });
+		expect(captionOf({ ...view, inCycle: true }, 10, true)).toEqual({ kind: 'cycle', count: 10 });
+		expect(captionOf(view, 0, true)).toEqual({ kind: 'branch' });
+		expect(captionOf({ ...view, kind: 'side' }, 0, true)).toEqual({ kind: 'side' });
 	});
 });

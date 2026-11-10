@@ -294,6 +294,29 @@ describe('detail route — the watch-order strip', () => {
 		expect(strip()!.textContent).not.toContain(m.watchorder_strip_watching_key());
 	});
 
+	it('claims no total and no end for a franchise the backend read only in part', async () => {
+		// The walk stopped at its bound: Second Arc is the last entry it
+		// reached, which says nothing about whether another follows.
+		useShow({
+			franchise: () =>
+				HttpResponse.json({
+					...FRANCHISE,
+					entries: [SAGA, SECOND],
+					links: [['10', '42']],
+					complete: false
+				})
+		});
+		app = mount(DetailPage, { target });
+		await until(() => strip() !== null, 'the strip');
+		expect(tile('10')).not.toBeNull();
+		const text = strip()!.textContent ?? '';
+		expect(text).toContain(m.watchorder_strip_position_open({ position: '02' }));
+		expect(text).not.toContain(m.watchorder_strip_of_total({ total: '02' }));
+		expect(text).not.toContain(m.watchorder_strip_last());
+		expect(text).not.toContain(m.watchorder_strip_first());
+		expect(eyebrow()).not.toContain(m.watchorder_strip_position({ position: '02', total: '02' }));
+	});
+
 	it("names a side story's parent stories, and nothing after it", async () => {
 		useShow({
 			franchise: () =>
