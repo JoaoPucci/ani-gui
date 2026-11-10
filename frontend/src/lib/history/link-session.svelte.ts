@@ -18,6 +18,7 @@
  */
 
 import { linkedNotice, linkFailure } from './link-notices';
+import { carryAudio } from './carry-audio';
 import { LinkPicker } from './link-picker.svelte';
 import { guessedGroup, linkOffer, type LinkDeps, type LinkOffer } from './link-offer';
 import { offerAgain } from './picked-offer';
@@ -156,6 +157,9 @@ export class LinkSession extends LinkPicker {
 		try {
 			const rows = this.group ?? (await guessedGroup(this.#deps, offer));
 			await this.#deps.link(offer.entry.id, rows, chosen.ref.id);
+			// A picked show with no Sub or Dub of its own takes the one the
+			// viewer was watching in ($lib/history/carry-audio.ts).
+			carryAudio(this.#deps, offer.current.id, chosen.ref.id);
 			this.#deps.notify(linkedNotice(chosen.ref.canonical_title));
 			if (stayed()) this.#landed(chosen.ref.id, from);
 			else if (onSurface()) this.#deps.refresh();

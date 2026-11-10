@@ -56,6 +56,9 @@ export interface InPlaceLinkDeps extends LinkDeps {
 	/** The player's session: a pick is said in its slip, not a notice,
 	 *  and its offer stays to change the show again. */
 	inPlayer?: boolean;
+	/** The Sub or Dub the viewer watches the shown show in
+	 *  ($lib/history/carry-audio.ts). */
+	audioInForce?: LinkSessionDeps['audioInForce'];
 }
 
 export class InPlaceLinkSession extends LinkSession {

@@ -247,6 +247,8 @@
 	const playLink = new InPlaceLinkSession({
 		...appLinkDeps(),
 		notify: (notice) => toastStore.push(notice),
+		// The Sub or Dub the session plays in.
+		audioInForce: () => audio,
 		inPlayer: true
 	});
 	// A pick saved after the viewer left is still saved, and switches to
@@ -2564,8 +2566,9 @@
 		const at = videoEl?.currentTime ?? currentTime;
 		const wasPlaying = videoEl ? !videoEl.paused : false;
 		videoEl?.pause();
-		// The pick's own Sub or Dub; the Settings value only the default.
-		const mode = storedAudio(pick.id) ?? playMode(config);
+		// The pick's own Sub or Dub, which the pick took from the session
+		// when it had none; the session's when the storage refused it.
+		const mode = storedAudio(pick.id) ?? audio;
 		const version = storedChoice(pick.id);
 		const caption = storedCaption(pick.id);
 		const here = navigationClaims.claim();

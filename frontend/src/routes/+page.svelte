@@ -504,7 +504,10 @@
 	// ($lib/history/link-deps.ts) — so the session itself reads nothing.
 	const cardLink = new InPlaceLinkSession({
 		...appLinkDeps(),
-		notify: (notice) => toastStore.push(notice)
+		notify: (notice) => toastStore.push(notice),
+		// The card's show's own Sub or Dub, else the Settings default, as
+		// its resume plays it; none known before the settings are read.
+		audioInForce: (shown) => (config ? audioFor(shown, pickAvailabilityMode(config)) : null)
 	});
 	const stopHearing = onHistoryLinked(() => void relink.reread().catch(() => {}));
 	// A link answered after the user left Home does nothing here.

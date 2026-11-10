@@ -1709,6 +1709,8 @@
 				replaceState: true
 			}),
 		/* eslint-enable svelte/no-navigation-without-resolve */
+		// The page's show's own Sub or Dub, else the Settings default.
+		audioInForce: () => pickedAudio,
 		here: () => page.url.pathname,
 		// The page's own links are heard below, as every other one is.
 		refresh: () => {}
