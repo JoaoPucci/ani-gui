@@ -68,7 +68,11 @@ test("the reveal waits for the renderer's word that its first page has rendered"
 
 test("a renderer that never says so holds the reveal no longer than the bound", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  assert.equal(APP_READY_WAIT_MS, 4000);
+  // A safety net for a page that never says it rendered, not the time a
+  // render is expected to take: a cold Vite start on the maintainer's
+  // machine had the first page render past the 4 s this used to be, and
+  // the window showed black after the splash.
+  assert.equal(APP_READY_WAIT_MS, 15_000);
   const ipc = new EventEmitter();
   const waiter = appReadyWaiter(sender(), ipc);
   let ready = null;
@@ -79,6 +83,35 @@ test("a renderer that never says so holds the reveal no longer than the bound", 
   t.mock.timers.tick(1);
   assert.equal(await waiter.ready, false);
   assert.equal(ipc.listenerCount(APP_READY_CHANNEL), 0);
+  assert.deepEqual(lastAppReady(), { rendered: false, gaveUp: true, beforeReveal: false });
+});
+
+test("a word that comes late, inside the bound, still counts as rendered", async (t) => {
+  // A cold dev start: Vite compiles the first page for many seconds.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const waiter = appReadyWaiter(contents, ipc);
+  let ready = null;
+  waiter.ready.then((v) => (ready = v));
+  t.mock.timers.tick(APP_READY_WAIT_MS - 1);
+  await Promise.resolve();
+  assert.equal(ready, null, "still waiting one millisecond before the bound");
+  ipc.emit(APP_READY_CHANNEL, { sender: contents });
+  assert.equal(await waiter.ready, true);
+  t.mock.timers.tick(1);
+  assert.deepEqual(lastAppReady(), { rendered: true, gaveUp: false, beforeReveal: true });
+});
+
+test("a word that comes after the wait gave up changes nothing", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const waiter = appReadyWaiter(contents, ipc);
+  t.mock.timers.tick(APP_READY_WAIT_MS);
+  assert.equal(await waiter.ready, false);
+  ipc.emit(APP_READY_CHANNEL, { sender: contents });
+  assert.equal(await waiter.ready, false);
   assert.deepEqual(lastAppReady(), { rendered: false, gaveUp: true, beforeReveal: false });
 });
 

@@ -346,8 +346,12 @@ three-second limit below.
    nothing white shows before a stylesheet loads. It loads and paints
    its first page hidden, and its renderer says when that page has
    rendered (two animation frames after the root layout mounts); the
-   reveal waits for that word, at most four seconds from the window's
-   creation, past which the window is revealed anyway, on the dark
+   reveal waits for that word, at most 15 seconds from the window's
+   creation, with the splash up and, once the page's step has been
+   pending for 700 ms, its stall line. That bound is a safety net for
+   a page that never says it rendered, not an expected duration (a
+   cold Vite start in development has rendered the first page past
+   four seconds): past it, the window is revealed anyway, on the dark
    background. Once it is ready to show, it also waits up
    to a second for the splash to answer that it has rendered a frame,
    then until the splash has been on screen for 500 ms since that paint
