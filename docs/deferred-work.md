@@ -818,7 +818,7 @@ starting it, and delete it when you find it done.
   label are all written for several, so a second is mostly a client
   behind the `Provider` trait; the recipe in
   `backend/src/provider_set.rs` lists every place it has to be named.
-  The survey in [`proposals/additional-providers.md`](./proposals/additional-providers.md)
+  The survey in [`architecture.md`](./architecture.md#adding-a-provider)
   is the starting list; it rots quickly, so re-verify every row.
 
   anidb.app, which shipped first, left in October 2026 after its
