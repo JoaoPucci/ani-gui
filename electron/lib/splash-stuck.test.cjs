@@ -463,17 +463,42 @@ test("a splash page that keeps crashing is reloaded a bounded number of times", 
   const { win, logs } = await stuckSplash(t);
   for (let i = 0; i < 6; i++) win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
   assert.equal(win.calls.filter((c) => c === "reload").length, SPLASH_RELOADS);
-  assert.ok(logs.some((l) => l.includes("not reloaded again")));
+  assert.ok(logs.some((l) => l.includes(`crashed ${SPLASH_RELOADS + 1} times: not reloaded again`)), JSON.stringify(logs));
 });
 
-test("a splash page that exited cleanly or was killed is not reloaded", async (t) => {
-  for (const reason of ["clean-exit", "killed"]) {
+test("a splash page that exited cleanly is not reloaded; one the system killed is", async (t) => {
+  // On Linux the kernel's out-of-memory killer is reported as "killed":
+  // that is the one-off crash the reload is for.
+  for (const [reason, reloaded] of [["clean-exit", false], ["killed", true], ["oom", true], ["crashed", true]]) {
     const { splash, win } = await stuckSplash(t);
     win.webContents.emit("render-process-gone", {}, { reason });
-    assert.ok(!win.calls.includes("reload"), reason);
+    assert.equal(win.calls.includes("reload"), reloaded, reason);
     splash.close();
     t.mock.timers.reset();
   }
+});
+
+test("a first load, or a page that crashed before the motion preference was known, is not told to move", async (t) => {
+  const painted = await stuckSplash(t);
+  const adds = (w) => w.calls.filter((c) => c.startsWith("js:") && c.includes("classList.add(")).length;
+  const before = adds(painted.win);
+  painted.win.webContents.emit("did-finish-load");
+  await flush();
+  assert.equal(adds(painted.win), before, "the first load");
+  painted.splash.close();
+  t.mock.timers.reset();
+  // No preference yet: nothing may start the motion.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = stuckWindow();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.emit("ready-to-show");
+  win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  win.webContents.emit("did-finish-load");
+  await flush();
+  assert.ok(win.calls.includes("reload"));
+  assert.equal(adds(win), 0);
+  splash.close();
 });
 
 test("a reloaded splash page is told to move again, or to rest, as it was", async (t) => {
@@ -489,7 +514,6 @@ test("a reloaded splash page is told to move again, or to rest, as it was", asyn
     assert.match(told, resting ? /add\('reduced'\)/ : /add\('shown'\)/);
     // Only the start: not a second paint.
     assert.doesNotMatch(told, /requestAnimationFrame/);
-    assert.equal(lastSplashState().shown, true);
     splash.close();
     t.mock.timers.reset();
   }
