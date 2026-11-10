@@ -336,4 +336,24 @@ describe('play route — a src stream handed to another player is unloaded, and 
 			'the resume hold'
 		);
 	});
+
+	for (const [where, at] of [
+		['in its first seconds', 10],
+		['in its last minute and a half', 1360]
+	] as const) {
+		it(`a stream handed off ${where} comes back exactly where it was`, async () => {
+			// The kept position would read these as the start, or as
+			// finished; the return goes back to the playhead itself.
+			const media = await openEpisode();
+			playingAt(media, at);
+			await handToExternal();
+			expect(src()).toBe('');
+
+			playerVideo().dispatchEvent(new Event('play'));
+			await until(() => src().includes('session-1'), 'the stream attached again');
+			playerVideo().currentTime = 0;
+			playerVideo().dispatchEvent(new Event('loadedmetadata'));
+			expect(playerVideo().currentTime).toBe(at);
+		});
+	}
 });

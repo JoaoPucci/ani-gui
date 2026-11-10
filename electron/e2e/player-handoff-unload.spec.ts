@@ -69,16 +69,32 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
   return { app, page };
 }
 
-/** A host for the clip: answers byte ranges, and counts requests. */
+/** A host for the clip: answers byte ranges, slowly (about 20 KB/s,
+ *  so the download is still under way when the episode is handed off),
+ *  and counts the bytes it sends. */
 async function clipServer(): Promise<{
   origin: string;
-  requests: () => number;
+  sent: () => number;
   close: () => void;
 }> {
   const body = fs.readFileSync(clip);
-  let count = 0;
+  let sent = 0;
+  const trickle = (res: http.ServerResponse, bytes: Buffer) => {
+    let at = 0;
+    const step = () => {
+      if (res.destroyed || at >= bytes.length) {
+        res.end();
+        return;
+      }
+      const chunk = bytes.subarray(at, at + 2048);
+      at += chunk.length;
+      sent += chunk.length;
+      res.write(chunk);
+      setTimeout(step, 100);
+    };
+    step();
+  };
   const server = http.createServer((req, res) => {
-    count += 1;
     const range = /bytes=(\d+)-(\d*)/.exec(req.headers.range ?? "");
     if (!range) {
       res.writeHead(200, {
@@ -86,7 +102,7 @@ async function clipServer(): Promise<{
         "content-length": body.length,
         "accept-ranges": "bytes",
       });
-      res.end(body);
+      trickle(res, body);
       return;
     }
     const start = Number(range[1]);
@@ -97,13 +113,13 @@ async function clipServer(): Promise<{
       "content-range": `bytes ${start}-${end}/${body.length}`,
       "accept-ranges": "bytes",
     });
-    res.end(body.subarray(start, end + 1));
+    trickle(res, body.subarray(start, end + 1));
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const { port } = server.address() as net.AddressInfo;
   return {
     origin: `http://127.0.0.1:${port}`,
-    requests: () => count,
+    sent: () => sent,
     close: () => server.close(),
   };
 }
@@ -214,10 +230,13 @@ test("an mp4 handed to the external player is let go of, and comes back where it
     });
     expect(left).toBeGreaterThan(20);
 
-    // Nobody watches it here: the host is asked for nothing more.
-    const asked = host.requests();
+    // Nobody watches it here: the host sends nothing more, though the
+    // download was still under way (what is in flight settles first).
+    await page.waitForTimeout(1000);
+    const sentAt = host.sent();
+    expect(sentAt).toBeLessThan(fs.statSync(clip).size);
     await page.waitForTimeout(3000);
-    expect(host.requests()).toBe(asked);
+    expect(host.sent()).toBe(sentAt);
 
     // The stub's answer is no launch the app knows, so it says the
     // external player did not start, as it does when a player fails to:
