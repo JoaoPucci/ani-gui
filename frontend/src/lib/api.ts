@@ -1425,9 +1425,11 @@ export type FirstHop = 'strip' | 'link' | 'none';
 
 /** The first hop of `kitsuId`'s franchise walk, read from the walk's
  *  own first listing so the two never disagree on the data. */
-export function kitsuFranchiseFirstHop(kitsuId: string): Promise<FirstHop> {
-	void kitsuId;
-	return Promise.resolve('none');
+export async function kitsuFranchiseFirstHop(kitsuId: string): Promise<FirstHop> {
+	const { signal } = await getJson<{ signal: FirstHop }>(
+		`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}/first-hop`
+	);
+	return signal;
 }
 
 export function kitsuTopRated(): Promise<KitsuAnimeRef[]> {

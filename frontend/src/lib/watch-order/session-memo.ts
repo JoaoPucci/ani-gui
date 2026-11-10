@@ -9,10 +9,21 @@ import type { WatchOrderData } from './loader';
 /** The most shows remembered; the least recently used goes first. */
 export const MEMO_LIMIT = 200;
 
+/** In use order: the least recently used first. */
+const answers = new Map<string, WatchOrderData>();
+
+function keep(id: string, data: WatchOrderData): void {
+	answers.delete(id);
+	answers.set(id, data);
+	if (answers.size > MEMO_LIMIT) answers.delete(answers.keys().next().value!);
+}
+
 /** The answer remembered for `id`, or null. */
 export function rememberedAnswer(id: string): WatchOrderData | null {
-	void id;
-	return null;
+	const data = answers.get(id);
+	if (data === undefined) return null;
+	keep(id, data);
+	return data;
 }
 
 /**
@@ -21,9 +32,13 @@ export function rememberedAnswer(id: string): WatchOrderData | null {
  * could, which then stays (a failed read does not take a strip away).
  */
 export function settledAnswer(id: string, fresh: WatchOrderData): WatchOrderData {
-	void id;
-	return fresh;
+	const earlier = answers.get(id);
+	const shown = fresh.franchise === null && earlier !== undefined ? earlier : fresh;
+	if (shown.franchise !== null) keep(id, shown);
+	return shown;
 }
 
 /** Forgets every answer. */
-export function forgetAnswers(): void {}
+export function forgetAnswers(): void {
+	answers.clear();
+}

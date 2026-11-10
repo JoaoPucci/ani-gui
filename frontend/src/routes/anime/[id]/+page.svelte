@@ -24,8 +24,9 @@
 	import { refillEpisodes, refilledImages } from '$lib/refill/apply';
 	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
-	import StripFranchiseLink from '$lib/watch-order/StripFranchiseLink.svelte';
-	import StripTrio from '$lib/watch-order/StripTrio.svelte';
+	import WatchOrderArrival from '$lib/watch-order/WatchOrderArrival.svelte';
+	import { withFirstHop, type FirstHop } from '$lib/watch-order/arrival';
+	import { rememberedAnswer, settledAnswer } from '$lib/watch-order/session-memo';
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
 	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { localDay } from '$lib/watch-order/entry';
@@ -43,6 +44,7 @@
 		historyNumber,
 		imageProxyUrl,
 		kitsuAnimeDetail,
+		kitsuFranchiseFirstHop,
 		kitsuEpisodes,
 		kitsuSearch,
 		markWatched,
@@ -504,6 +506,10 @@
 	// we don't propose an episode that doesn't exist yet.
 	let resumeEntry = $state<HistoryEntry | null>(null);
 	let watchOrderData = $state<WatchOrderData | null>(null);
+	// The franchise walk's first hop, when it came with the details:
+	// what the page holds room for while the walk runs
+	// ($lib/watch-order/arrival).
+	let watchOrderHop = $state<FirstHop | null>(null);
 
 	// Episode list — fetched in parallel with the detail. Holds the
 	// CURRENT page only (not concatenated) so a 500-episode show doesn't
@@ -1157,7 +1163,11 @@
 		showVersions = [];
 		versionChoice = storedChoice(currentId);
 		resumeEntry = null;
-		watchOrderData = null;
+		// A show seen earlier this session draws its last answer with
+		// its first frame, and is read again behind it.
+		const remembered = rememberedAnswer(currentId);
+		watchOrderData = remembered;
+		watchOrderHop = null;
 		resumeRefresh.reset();
 		resetEpisodePageCache(kitsuPageCache);
 		const refills = new AbortController();
@@ -1181,16 +1191,31 @@
 				// Resume is a hint, not load-bearing — drop silently.
 			});
 		// The watch-order strip: neither read rejects, and a franchise
-		// that cannot be read shows no strip ($lib/watch-order/loader).
+		// that cannot be read shows no strip ($lib/watch-order/loader),
+		// unless an earlier read this session could
+		// ($lib/watch-order/session-memo).
 		void loadWatchOrder(currentId, watchOrderSources).then((w) => {
-			if (id === currentId) watchOrderData = w;
+			const shown = settledAnswer(currentId, w);
+			if (id === currentId) watchOrderData = shown;
 		});
-		void detailServed
-			.then((d) => {
+		// The details wait a moment for the walk's first hop, so the
+		// room the strip will take is held from the page's first frame;
+		// a show whose answer is remembered needs none.
+		const detailShown =
+			remembered !== null
+				? detailServed.then((details) => ({ details, hop: null }))
+				: withFirstHop(
+						detailServed,
+						kitsuFranchiseFirstHop(currentId),
+						(ms) => new Promise<void>((r) => setTimeout(r, ms))
+					);
+		void detailShown
+			.then(({ details: d, hop }) => {
 				// Navigation raced ahead: another show, or another page
 				// altogether (the player keeps the same id), whose trail
 				// this show must not name.
 				if (id !== currentId || refills.signal.aborted) return;
+				watchOrderHop = hop;
 				detail = d;
 				if (isMusicSubtype(d.subtype)) {
 					// Music videos (a YOASOBI MV, say) never exist on the provider —
@@ -2022,15 +2047,16 @@
 				</div>
 			{/if}
 
-			{#if watchModel}
-				<div class="watch-order">
-					<StripTrio model={watchModel} {id} today={watchToday} />
-				</div>
-			{:else if watchLink}
-				<div class="watch-order watch-order-link">
-					<StripFranchiseLink run={watchLink.run} {id} complete={watchLink.complete} />
-				</div>
-			{/if}
+			{#key id}
+				<WatchOrderArrival
+					model={watchModel}
+					link={watchLink}
+					hop={watchOrderHop}
+					answered={watchOrderData !== null && watchOrder !== null}
+					{id}
+					today={watchToday}
+				/>
+			{/key}
 
 			<!-- Body: synopsis + episodes stacked vertically. The previous
 		     side-by-side layout looked unbalanced when one was much taller
@@ -3655,17 +3681,6 @@
 
 	/* — Similar titles strip below the body. Inherits Strip's gutter
 	     (--strip-pad = --space-8) so the row aligns with the page rhythm. */
-	.watch-order {
-		margin-block-start: var(--space-7);
-	}
-	/* The franchise link without a strip: on the page's text column,
-	   its hover plate reaching a little past it as the strip's band does. */
-	.watch-order-link {
-		padding-inline: var(--space-8);
-	}
-	.watch-order-link > :global(.stack) {
-		margin-inline-start: calc(-1 * var(--space-3));
-	}
 	.similar {
 		margin-block-start: var(--space-8);
 	}

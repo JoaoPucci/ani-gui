@@ -53,16 +53,21 @@ export async function withFirstHop<T>(
 	hop: Promise<FirstHop>,
 	wait: (ms: number) => Promise<void>
 ): Promise<{ details: T; hop: FirstHop | null }> {
-	void hop;
-	void wait;
-	return { details: await details, hop: null };
+	// Read now, so a hop that answers before the details is not lost,
+	// and a hop that fails is no hop rather than a failure.
+	const answered = hop.then(
+		(h): FirstHop | null => h,
+		() => null
+	);
+	const shown = await details;
+	const capped = wait(FIRST_HOP_CAP_MS).then(() => null);
+	return { details: shown, hop: await Promise.race([answered, capped]) };
 }
 
 /** The room held while the walk has not answered, or null. */
 export function heldShape(hop: FirstHop | null, answered: boolean): Shape | null {
-	void hop;
-	void answered;
-	return null;
+	if (answered || hop === null || hop === 'none') return null;
+	return hop;
 }
 
 /** Where the held room was, in the viewport, when the walk answered. */
@@ -79,9 +84,8 @@ export interface Leave {
 
 /** How the held room goes: at once where something takes its place or it is above the viewport. */
 export function leaveOf(drawn: boolean, gone: Gone | null): Leave {
-	void drawn;
-	void gone;
-	return { fade: 0, collapse: 0 };
+	if (drawn || above(gone)) return { fade: 0, collapse: 0 };
+	return { fade: LEAVE_FADE_MS, collapse: LEAVE_COLLAPSE_MS };
 }
 
 /** What was drawn arriving: a fade, from the held room's height. */
@@ -92,20 +96,23 @@ export interface Arrive {
 
 /** How the strip or link arrives: where nothing was held, or the room was above the viewport, at once. */
 export function arriveOf(gone: Gone | null): Arrive {
-	void gone;
-	return { fade: 0, from: null };
+	if (gone === null || above(gone)) return { fade: 0, from: null };
+	return { fade: ARRIVE_MS, from: gone.height };
 }
 
 /** The arriving block's style at `t` (0 to 1), growing or shrinking from `from` to `to` pixels. */
 export function arriveCss(from: number | null, to: number, t: number): string {
-	void from;
-	void to;
-	return `opacity: ${t};`;
+	const opacity = `opacity: ${t};`;
+	if (from === null || from === to) return opacity;
+	return `${opacity} block-size: ${from + (to - from) * t}px; overflow: hidden;`;
 }
 
 /** How far to scroll once the held room has gone, so what is read under it stays put. */
 export function scrollBack(gone: Gone | null, drawnHeight: number): number {
-	void gone;
-	void drawnHeight;
-	return 0;
+	return gone !== null && above(gone) ? drawnHeight - gone.height : 0;
+}
+
+/** Whether the held room starts above the viewport. */
+function above(gone: Gone | null): boolean {
+	return gone !== null && gone.top < 0;
 }
