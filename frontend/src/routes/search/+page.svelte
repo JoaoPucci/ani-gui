@@ -14,7 +14,7 @@
 		imageProxyUrl,
 		kitsuSearchPage,
 		kitsuTopRated,
-		kitsuTrending,
+		kitsuTrendingAnilist,
 		settingsGet,
 		type Config,
 		type KitsuAnimeRef,
@@ -75,7 +75,9 @@
 	}
 
 	// Discovery rows for the empty state, so users have something to
-	// browse when they arrive without a query. Trending is drawn first,
+	// browse when they arrive without a query. Trending is the home
+	// page's AniList list (kitsuTrendingAnilist, cached by the backend
+	// for an hour) and is drawn first,
 	// Top rated below it; what each slot shows is decided in
 	// $lib/search/discovery.ts.
 	let rowLoads = $state<[RowLoad<KitsuAnimeRef>, RowLoad<KitsuAnimeRef>]>([LOADING, LOADING]);
@@ -198,7 +200,7 @@
 			}
 		}
 		const mode = pickAvailabilityMode(config);
-		void settleRow(kitsuTrending().then((t) => filterAvailable(t, mode))).then(
+		void settleRow(kitsuTrendingAnilist().then((t) => filterAvailable(t, mode))).then(
 			(row) => (rowLoads[0] = row)
 		);
 		void settleRow(kitsuTopRated().then((t) => filterAvailable(t, mode))).then(
@@ -445,7 +447,11 @@
 				<span class="eyebrow-rule" aria-hidden="true"></span>
 				<span class="eyebrow-value">{m.search_eyebrow_value_empty()}</span>
 			</p>
-			<p class="eyebrow-caption">{m.search_empty_caption()}</p>
+			<!-- Names the rows below, so it goes while the page says
+			     there are none. -->
+			{#if !discovery.nothing}
+				<p class="eyebrow-caption">{m.search_empty_caption()}</p>
+			{/if}
 		{/if}
 	</section>
 
