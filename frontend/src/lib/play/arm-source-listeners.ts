@@ -29,6 +29,10 @@ const SAVE_EVERY_S = 5;
  *  loading there. Null starts it where it starts on its own. */
 export interface SourceStart {
 	startAt: number | null;
+	/** Ends the resume hold, if there is one, without starting
+	 *  anything: the viewer took the episode to another player, and
+	 *  the hold must not start this one once its seek lands. */
+	endHold(): void;
 }
 
 export function armSourceScopedListeners(input: {
@@ -173,5 +177,5 @@ export function armSourceScopedListeners(input: {
 	video.addEventListener('timeupdate', onTime);
 	video.addEventListener('pause', save);
 	video.addEventListener('ended', onEnded);
-	return { startAt };
+	return { startAt, endHold: () => hold?.end() };
 }

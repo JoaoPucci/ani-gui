@@ -339,6 +339,14 @@
 	// Watches the page's own video for as long as the page has it, not
 	// the slot the video sits in: a stream can attach while the error
 	// panel stands in for the slot.
+	// Ends the attached stream's resume hold, if it has one.
+	let endResumeHold: () => void = () => {};
+	/** The episode went to another player: a hold ends without
+	 *  starting anything, and a start stops. */
+	function stopForHandoff() {
+		endResumeHold();
+		startWatch.cancel();
+	}
 	const startWatch: StartWatch = watchStart(ownVideo, (phase) => {
 		startPhase = phase;
 	});
@@ -1932,7 +1940,7 @@
 		// It also says where the stream starts: an hls engine begins
 		// loading at a resume point's fragment, below, so nothing
 		// before that fragment is fetched or shown.
-		const { startAt } = armSourceScopedListeners({
+		const { startAt, endHold } = armSourceScopedListeners({
 			video: videoEl,
 			showId: id,
 			episode: episodeNum,
@@ -1944,6 +1952,7 @@
 			// Only hls.js is handed the start, below.
 			startedAtPoint: mediaKind !== 'mp4' && Hls.isSupported()
 		});
+		endResumeHold = endHold;
 		playerError = null;
 		failedStreamError = null;
 
@@ -2847,7 +2856,7 @@
 		// instances simultaneously. The notice/launch flow continues
 		// regardless; if the external player fails to start the user
 		// can press space (or click the embedded player) to resume.
-		startWatch.cancel();
+		stopForHandoff();
 		externalBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
@@ -2916,7 +2925,7 @@
 		// Same pause-the-embedded-video logic as the external flow:
 		// Syncplay opens its own player window so two instances would
 		// otherwise stack audio.
-		startWatch.cancel();
+		stopForHandoff();
 		syncplayBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
