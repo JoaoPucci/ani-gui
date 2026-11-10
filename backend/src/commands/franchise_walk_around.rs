@@ -107,7 +107,7 @@ pub(super) fn assemble(anchor: &str, run: &Run, look: &Lookup<'_>) -> Franchise 
         sides: entries(&s.sides, run, look),
         recaps: entries(&s.recaps, run, look),
         links: links(run, look),
-        parents: parents(anchor, run, look),
+        parents: parents(anchor, run),
         complete: run.complete
             && run
                 .consulted
