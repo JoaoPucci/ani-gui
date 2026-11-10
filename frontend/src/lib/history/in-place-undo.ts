@@ -10,9 +10,10 @@
  * follows is for the card the link was made on, and only while it is
  * still the one on screen with no other card arrived since: its note
  * goes, and once the undo answered it is offered again. Another card
- * on screen keeps its offer and pick, and the surface reads its history
- * again (Home hears of the undo from the app instead,
- * $lib/history/link-deps.ts). A surface the user left gets nothing.
+ * on screen keeps its offer and pick, and the surface's `refresh` runs
+ * (a no-op on Home, which hears of every undo from the app and reads
+ * its cards again then, $lib/history/link-deps.ts). A surface the user
+ * left gets nothing.
  */
 
 /** Where an in-place session is: on its surface, or gone from it. */

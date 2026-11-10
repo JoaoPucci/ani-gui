@@ -4,7 +4,9 @@
  *
  * The page hands it what the app provides ($lib/history/link-offer.ts)
  * and three effects of its own — a notice, a navigation, a refresh of
- * what it reads from the history — and renders its state. Arriving on
+ * what it reads from the history (empty on the show page, which hears
+ * of every link and undo from the app instead, $lib/history/link-deps.ts)
+ * — and renders its state. Arriving on
  * a page decides the offer; a later arrival outdates an earlier one
  * still out. A link opens the chosen show's page without the card's
  * row, refreshing it first when it is the page the link was made on,
