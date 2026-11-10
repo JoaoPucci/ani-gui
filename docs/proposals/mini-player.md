@@ -46,26 +46,26 @@ claim nobody has checked yet, with the check that would settle it.
 ### The code paths
 
 - **[data]** The custom controls' "more" menu has a
-  "Picture-in-picture" item (`frontend/src/routes/play/[id]/+page.svelte:3255`)
-  that calls `onPip` (`:650`): `requestPictureInPicture()` on the
+  "Picture-in-picture" item (`frontend/src/routes/play/[id]/+page.svelte:3625`)
+  that calls `onPip` (`:848`): `requestPictureInPicture()` on the
   page's video, or `exitPictureInPicture()` when something is already
   in it. Failures are swallowed.
 - **[data]** The custom controls are the default
-  (`backend/src/config/mod.rs:125`, `use_custom_player_controls: true`).
-  The comment at `+page.svelte:281` still says native is the default;
-  it predates that change. With the setting off, Chromium's own
+  (`backend/src/config/mod.rs:132`, `use_custom_player_controls: true`).
+  With the setting off, Chromium's own
   controls show and offer their own picture-in-picture button.
 - **[data]** The page owns its video element and releases it when the
   page goes; releasing closes picture-in-picture first when the
-  element is in it (`frontend/src/lib/play/player-video.ts:47`). So
+  element is in it (`frontend/src/lib/play/player-video.ts:48`). So
   picture-in-picture ends the moment the viewer leaves the player, as
   `docs/architecture.md` ("Leaving the player") says.
 - **[data]** Subtitles are text tracks on that element: the tracks
   inside an HLS playlist, which hls.js exposes, and sidecar `.vtt`
   files the provider lists beside the stream, one `<track>` each
-  (`frontend/src/lib/play/sidecar-tracks.ts:73`), served by the proxy
+  (`frontend/src/lib/play/sidecar-tracks.ts:115`), served by the proxy
   on the stream lane. A pick in the captions menu sets one track to
-  `showing` and the rest to `hidden` (`+page.svelte:509`).
+  `showing` and the rest to `disabled`, so only the track shown is
+  loaded (`frontend/src/lib/play/caption-pick.ts:45`).
 
 ### What was there before 0.16.0
 
@@ -165,52 +165,53 @@ playback ends.
 from the same SvelteKit build: `app://localhost/mini/…` in a packaged
 build, the Vite server in development. **[data]** Nothing new is
 needed to serve it: the `app://` handler hands `index.html` to any
-extensionless path (`electron/main.js:558`), and SvelteKit's client
+extensionless path (`electron/main.js:683`), and SvelteKit's client
 router takes the route from there.
 
 The window gets the same preload and the same `additionalArguments`
-as the main one (`electron/main.js:401`, `windowArguments(backend, …)`),
+as the main one (`electron/main.js:457`, `windowArguments(backend, …)`),
 so it sees the same backend handshake: `window.aniGui.apiBase`, the
-secret and the six loopback lanes. **[data]** The main process already
+secret and the six loopback lanes, with the configured locale and the
+launch's flags. **[data]** The main process already
 keeps that handshake for a later window: `keeper.booted(backend)`
 records it for the single-instance reopen path
 (`electron/lib/single-instance.cjs:70`). Both windows share Electron's
 default session, so they share `localStorage` and with it the kept
-watch positions (`ani-gui.watch-positions`) and, once #330 lands, the
-per-show caption choice (`ani-gui.caption-choices`). They also share
+watch positions (`ani-gui.watch-positions`) and the per-show caption
+choice (`ani-gui.caption-choices`). They also share
 Chromium's six-connection pool per lane: one profile, one network
 context.
 
 **[data]** The stream session needs no new resolve. The play page
 builds its media URL from the session id and the stream lane
-(`+page.svelte:904`), and a proxy session lives four hours
+(`+page.svelte:1102`), and a proxy session lives four hours
 (`backend/src/proxy/token.rs:49`, `DEFAULT_SESSION_TTL`). The mini page
 builds the same URL from the same id.
 
 **[proposal]** The mini route must not mount the root layout's app
 chrome, but it needs part of what that layout sets up.
 `frontend/src/routes/+layout.svelte` imports the design tokens (`:19`),
-holds the top bar, the rail, the download dock, the toast host (`:676`)
+holds the top bar, the rail, the download dock, the toast host (`:714`)
 and the update badge, and on mount hydrates accounts and checks for
-updates (`:231`, `:245`). The layout splits in two: a thin root that
+updates (`:260`, `:275`). The layout splits in two: a thin root that
 keeps the tokens, the account hydration and a toast surface, and a
 route group for the app chrome, which the mini route is outside of.
 
 - **[data]** Account hydration is needed, not duplicated: the play
   page sends a watched episode to the connected trackers through
-  `syncWatchedToTrackers` (`+page.svelte:2220`), which reads
+  `syncWatchedToTrackers` (`+page.svelte:2458`), which reads
   `accountStore.connected` (`$lib/account/push-watched.ts:145`). A mini
   window that never hydrated would skip those writes in silence.
 - **[data]** The play page raises stall and recovery toasts
-  (`+page.svelte:1894`, `:2298`); with no toast host they would show
+  (`+page.svelte:2106`, `:2536`); with no toast host they would show
   nowhere. The mini window needs a compact one, sized for the window.
 
 Two of the layout's effects would be wrong in a second window:
 
 - **[data]** It pushes the active-download count to the main process on
-  every change (`+layout.svelte:77–80`), and the main process keeps
+  every change (`+layout.svelte:80–88`), and the main process keeps
   only the last value it received, from any window
-  (`electron/main.js:641–644`). A mini window mounting that layout
+  (`electron/main.js:763–766`). A mini window mounting that layout
   would report 0 and switch off the quit prompt while a download runs
   in the main window. The fix is in two places: the mini route is
   outside the chrome group that reports the count, and the main
@@ -223,14 +224,14 @@ Two of the layout's effects would be wrong in a second window:
 
 AGENTS.md §6 says hls.js is a singleton inside `Player.svelte`.
 **[data]** No `Player.svelte` exists. The engine is constructed in the
-play page (`+page.svelte:1798`) and, separately, in the `/play`
+play page (`+page.svelte:2009`) and, separately, in the `/play`
 diagnostic page that plays a pasted URL
 (`frontend/src/routes/play/+page.svelte:35`). The rule's intent holds:
 one engine per player surface, never one built ad hoc.
 
 **[proposal]** The play page's attach path (engine, sidecar tracks,
 quality control, resume hold, stall recovery, position writing) moves
-into a module both routes call. The play page is 5,644 lines; the
+into a module both routes call. The play page is 6,248 lines; the
 pieces already sit in `$lib/play/` (`arm-quality.ts`, `resume-hold.ts`,
 `stall-machine.ts`, `sidecar-tracks.ts`, `watch-position.ts`, …), so
 the extraction gathers wiring that lives in the page today. The §6
@@ -239,7 +240,7 @@ two-window rule: at most one engine plays across the app.
 
 **[proposal]** The module must not assume the play route. The
 stale-stream recovery and the episode switch swap the stream by
-navigating to `/play/…` (the `goto` at `+page.svelte:2235`); in the
+navigating to `/play/…` (the `goto` at `+page.svelte:2473`); in the
 mini window they stay on `/mini/…`.
 
 ### What is handed over
@@ -247,10 +248,10 @@ mini window they stay on `/mini/…`.
 | State | How it travels | Notes |
 |---|---|---|
 | Position | explicit, in the handover message | **[data]** The kept-position rules would lose it: a point under 15 s reopens at the start, one in the last 90 s is forgotten (`docs/architecture.md`, "Leaving the player"). The handover carries the point the way a stale-stream recovery's pending point does, which already outranks the kept one. |
-| Show, episode, session, media kind | the mini URL | The same parameters the play URL carries, including the guess and Continue-row flags (`+page.svelte:193–197`). |
-| Subtitle track | explicit: the track's language and label, or "off" | Not the index: the mini page attaches its own `<track>` elements, and their order depends on when the listing lands. #330's per-show memory picks the same track on its own when the viewer chose one, but not for a guessed session, whose pick is not remembered. |
+| Show, episode, session, media kind | the mini URL | The same parameters the play URL carries, including the guess and Continue-row flags (`+page.svelte:221–234`). |
+| Subtitle track | explicit: the track's language and label, or "off" | Not the index: the mini page attaches its own `<track>` elements, and their order depends on when the listing lands. The per-show memory (`$lib/play/caption-choice.ts`) picks a track of the same language on its own when the viewer chose one, but not for a guessed session, whose pick is not remembered. |
 | Volume and mute | explicit | **[data]** Carried today in module state inside one renderer (`player-video.ts:10–11`), which a second window does not share. |
-| Playback rate | explicit | Page state today (`+page.svelte:562`). |
+| Playback rate | explicit | Page state today (`+page.svelte:732`). |
 | Quality pin | explicit | The level the quality control holds (`$lib/play/quality-pin.ts`), so the mini window does not start a ladder from its setting again. |
 | Playing or paused | explicit | |
 | Audio | nothing | Sub or dub is a property of the session, chosen at resolve; the app does not switch HLS audio renditions. |
@@ -308,9 +309,9 @@ seconds on the live source. It is made invisible rather than removed:
   element (10–60 ms and about 45 KB as a JPEG at 720p in the spike),
   and the mini window shows it as a still under the player's loading
   treatment until its own first frame lands at the point. The resume
-  hold (`$lib/play/resume-hold.ts`) is that treatment. Once #305 lands,
-  the engine starts loading at the point, so no earlier frame is
-  fetched; until then the hold hides it.
+  hold (`$lib/play/resume-hold.ts`) is that treatment. An HLS engine
+  already starts loading at the point (#305), so no earlier frame is
+  fetched; for an mp4 stream the hold hides it.
 - The mini window is kept warm: created hidden once the play page
   opens, so the page is loaded when the viewer clicks.
 
@@ -328,7 +329,7 @@ cues on the second and third handover, in all three environments.
 **[inference]** Tracks created per attach avoid it: the spike's cold
 windows, each a fresh document, always showed cues, though no run
 created tracks per attach in a reused window. The app already attaches sidecar tracks per stream and
-removes them when the stream retires (`sidecar-tracks.ts:73–89`); the
+removes them when the stream retires (`sidecar-tracks.ts:115–151`); the
 mini page keeps doing that.
 
 ## 4. The window on each platform
@@ -341,10 +342,10 @@ mini page keeps doing that.
 metadata is in, `skipTaskbar: true` (it takes effect on Windows only, see below),
 `backgroundColor: '#000'`, and **no `parent`**. The page draws its own
 drag strip with `-webkit-app-region: drag`, as the main window's title
-bar does (`+layout.svelte:1157`).
+bar does (`+layout.svelte:1197`).
 
 **[data]** A drag region takes every pointer event
-(`+layout.svelte:405` cites electron/electron#1354), so the whole
+(`+layout.svelte:438` cites electron/electron#1354), so the whole
 picture cannot be both draggable and clickable. The drag strip is the
 top edge of the chrome; a click on the picture toggles play.
 
@@ -379,7 +380,7 @@ script in the appendix.
 **[data]** The app runs native Wayland under a Wayland session: the
 launcher exports `ELECTRON_OZONE_PLATFORM_HINT=auto` before Electron
 starts (`electron/build-resources/after-pack.cjs:45`, comment at
-`electron/main.js:73`), and the maintainer's logs show
+`electron/main.js:93`), and the maintainer's logs show
 `--ozone-platform=wayland`.
 
 **[data]** Wayland has no always-on-top for application windows:
@@ -412,8 +413,8 @@ frameless windows did not support CSD at all, so they looked like
 featureless rectangles on Wayland", and client-side decorations are
 what supply "drop shadows, even resize handles". The app is on Electron
 33. **[unverified]** Whether the mini window can be resized from its
-edges on GNOME Wayland, as the main window's comment expects for its
-own frameless window (`electron/main.js:381–388`): appendix step 2. If
+edges on GNOME Wayland, as the main window's options expect for its
+own frameless window (`electron/lib/app-window.cjs:43–44`): appendix step 2. If
 it cannot, the mini window draws its own resize grip, or resizing on
 Wayland waits for Electron 41.
 
@@ -450,7 +451,7 @@ cannot run on XWayland while the other runs natively. The choices are:
    honours a value already set (`after-pack.cjs:45`).
 3. **A second Electron process for the mini window on XWayland.**
    Rejected: it would need its own profile under the single-instance
-   lock (`electron/main.js:116`), so it would not share `localStorage`
+   lock (`electron/main.js:137`), so it would not share `localStorage`
    (positions, caption choices), and the handover would cross
    processes.
 
@@ -478,10 +479,12 @@ spawns and probes nothing, so neither fetcher changes and
 
 **[proposal]** Remember the mini window's size everywhere and its
 position where the platform allows it (X11, XWayland, Windows): the
-bounds and the display they were on. **[data]** Nothing persists window
-bounds today: the main window always opens maximized at the work area's
-size (`electron/main.js:369`). So this needs a small store of its own
-in the app's user-data directory, written by the main process. On open, a remembered position on a display that is no longer
+bounds and the display they were on. **[data]** The one window geometry
+kept today is the main window's maximized size, per display, in
+`window-geometry.json` under the app's user-data directory, written by
+the main process (`electron/lib/window-geometry.cjs`, `electron/main.js:425`);
+the main window always opens maximized. No position is kept. So the
+mini window needs a store of its own beside it, written the same way. On open, a remembered position on a display that is no longer
 attached, or one that falls outside every work area, falls back to the
 bottom-right corner of the main window's display, 24 px in from the
 work area's edges. On Wayland only the size applies; the compositor
@@ -536,7 +539,7 @@ like there, they look like here.
 
 - **[proposal]** The look is the main player's custom controls, cut
   down: the per-show accent on the timeline (`accentFor(id)`,
-  `+page.svelte:214`), tabular numerals for the time and the episode
+  `+page.svelte:242`), tabular numerals for the time and the episode
   number, the same icon set. A solid scrim gradient under the controls,
   not frosted glass (AGENTS.md §7). The window has no rounded corners
   or shadow of its own beyond what the platform draws.
@@ -564,7 +567,7 @@ end playback. Focus is visible on every control.
 **[proposal]** The chrome fades in and out over the shortest duration
 (140 ms); under `prefers-reduced-motion` it appears and disappears at
 once, through the single reduced-motion reading and the
-`$lib/motion` transitions that #339 introduces; this part waits on it. The window's own opening is the
+`$lib/motion` transitions that #339 introduced. The window's own opening is the
 compositor's animation, which the app cannot change on any platform.
 
 ### Closing, returning, and the main window
@@ -578,21 +581,21 @@ compositor's animation, which the app cannot change on any platform.
 | Minimizing the main window | The mini window stays. | — |
 
 **[data]** The close prompt is attached to the main window only
-(`electron/main.js:495`), so closing the mini window never prompts.
+(`electron/main.js:567`), so closing the mini window never prompts.
 
 **[data]** Closing the main window quits the app today only because it
 is the last window: `window-all-closed` calls `app.quit()`
-(`electron/main.js:989`). A mini window, visible or kept warm and
+(`electron/main.js:1117`). A mini window, visible or kept warm and
 hidden, would keep the app running with no library window. The
 prompt's "Quit anyway" also closes only the window it was given
-(`electron/main.js:907–911`), which the quit path picks as the focused
-window or the first one (`:1001–1002`) and could be the mini window.
+(`electron/main.js:1000–1004`), which the quit path picks as the focused
+window or the first one (`:1129–1130`) and could be the mini window.
 **[proposal]** So the main process quits explicitly when the main
 window closes, closing the mini window first, and the single-instance
 keeper never records the mini window as the window to bring forward
 (`electron/lib/single-instance.cjs:73`).
 **[proposal]** The quit path's prompt is parented to the focused window
-today (`electron/main.js:1001`); it is parented to the main window
+today (`electron/main.js:1129`); it is parented to the main window
 instead, so a quit while the mini window has focus does not show the
 dialog over a 480-pixel window.
 
@@ -692,8 +695,8 @@ behind the previous one. Effort is rough, in working days.
    the controls and keyboard, reduced motion, captions carried, the
    menu item and button, Chromium's picture-in-picture removed (the
    deferred-work entry about an mp4 resume flashing in
-   picture-in-picture, which #305 adds, goes with it). The end to end
-   case. Waits on #305 and #339.
+   picture-in-picture, which #305 added, goes with it). The end to end
+   case.
 4. **Episodes in the mini window (2–3 days).** Previous, next,
    auto-play, the end state, skip buttons.
 5. **Platform answers and docs (1–2 days).** The Wayland hint (or the
