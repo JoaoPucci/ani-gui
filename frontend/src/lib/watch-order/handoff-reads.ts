@@ -11,7 +11,7 @@
  * franchise, on the API lane every page shares (`$lib/backend/lanes`),
  * so a read whose answer nobody will use must not hold a connection.
  * For the same reason the series are walked a few at a time
- * (`HANDOFF_WALKS_AT_ONCE`), in the order the rail wants them.
+ * (`HANDOFF_WALKS_AT_ONCE`), in the order the rows ask for them.
  */
 import type { FranchiseData } from './types';
 
@@ -26,7 +26,8 @@ export interface FranchiseReads {
  * How many series walks Home keeps out at once. Chromium gives the API
  * lane six connections, the refill wait can hold one, and Home's own
  * calls need the rest: a Continue card's resume reads its row again
- * before it plays, and a removal writes. Two walks leave three.
+ * before it plays, and a removal writes. Two walks leave three once
+ * Home's own first reads have answered.
  */
 export const HANDOFF_WALKS_AT_ONCE = 2;
 
@@ -42,8 +43,10 @@ export function createFranchiseReads(
 	const hand = (id: string, franchise: FranchiseData | null) => {
 		out -= 1;
 		if (page.signal.aborted) return;
-		settled(id, franchise);
+		// The next walk starts first, so an answer that cannot be
+		// handed on never holds up the rest.
 		next();
+		settled(id, franchise);
 	};
 	const next = () => {
 		while (out < HANDOFF_WALKS_AT_ONCE && waiting.length > 0) {
