@@ -55,8 +55,10 @@ function stuckWindow() {
   };
   win.setAlwaysOnTop = (flag) => win.calls.push(`onTop:${flag}`);
   win.flashFrame = (flag) => win.calls.push(`flash:${flag}`);
+  win.loadFails = null;
   win.loadFile = async (_file, options) => {
     win.loadOptions = options;
+    if (win.loadFails) throw win.loadFails;
   };
   let painted = () => {};
   let chosen = null;
@@ -72,6 +74,7 @@ function stuckWindow() {
   win.asked = () => win.calls.filter((c) => c === `js:${STUCK_CALL}`).length;
   win.webContents = Object.assign(new EventEmitter(), {
     reload: () => win.calls.push("reload"),
+    setWindowOpenHandler: (fn) => (win.openHandler = fn),
     executeJavaScript: (code) => {
       win.calls.push(`js:${code}`);
       const m = /splashProgress\.set\((\d+)\)/.exec(code);
@@ -479,6 +482,70 @@ test("a splash whose crash recovery runs out says it is lost, so the boot can fa
   await flush();
   assert.ok(lost instanceof Error);
   assert.match(lost.message, new RegExp(`crashed ${SPLASH_RELOADS + 1} times`));
+  splash.suppress();
+});
+
+/** A painted stuck-ready splash whose loss is watched. */
+async function watchedLoss(t, options) {
+  const made = await stuckSplash(t, options);
+  made.lost = null;
+  made.losses = () => made.logs.filter((l) => l.includes("[main] splash lost")).length;
+  made.splash.lost().catch((err) => (made.lost = err));
+  return made;
+}
+
+test("a splash page that fails to load is lost, so the page gets its bounded wait", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = stuckWindow();
+  win.loadFails = Object.assign(new Error("ERR_FILE_NOT_FOUND (-6) loading 'file:///…/index.html'"), { code: "ERR_FILE_NOT_FOUND" });
+  const logs = [];
+  const splash = splashController({ createWindow: () => win, logError: () => {}, log: (l) => logs.push(l) });
+  let lost = null;
+  splash.lost().catch((err) => (lost = err));
+  splash.show();
+  await flush();
+  assert.match(String(lost), /could not load/);
+  assert.equal(logs.filter((l) => l.includes("[main] splash lost")).length, 1);
+  splash.suppress();
+});
+
+test("a superseded load is not a lost splash", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = stuckWindow();
+  win.loadFails = Object.assign(new Error("ERR_ABORTED (-3)"), { code: "ERR_ABORTED" });
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  let lost = null;
+  splash.lost().catch((err) => (lost = err));
+  splash.show();
+  await flush();
+  assert.equal(lost, null);
+  splash.suppress();
+});
+
+test("a main-frame load failure is a lost splash; a subframe's, or an aborted one, is not", async (t) => {
+  const made = await watchedLoss(t);
+  made.win.webContents.emit("did-fail-load", {}, -3, "ERR_ABORTED", "file:///x", true);
+  made.win.webContents.emit("did-fail-load", {}, -6, "ERR_FILE_NOT_FOUND", "file:///y", false);
+  await flush();
+  assert.equal(made.lost, null);
+  made.win.webContents.emit("did-fail-load", {}, -6, "ERR_FILE_NOT_FOUND", "file:///x", true);
+  await flush();
+  assert.match(String(made.lost), /could not load/);
+  made.splash.suppress();
+});
+
+test("a splash page that crashes before it ever loaded is reloaded, then lost, like any crash", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = stuckWindow();
+  const logs = [];
+  const splash = splashController({ createWindow: () => win, logError: () => {}, log: (l) => logs.push(l) });
+  let lost = null;
+  splash.lost().catch((err) => (lost = err));
+  splash.show();
+  for (let i = 0; i <= SPLASH_RELOADS; i++) win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  await flush();
+  assert.equal(win.calls.filter((c) => c === "reload").length, SPLASH_RELOADS);
+  assert.match(String(lost), /crashed/);
   splash.suppress();
 });
 
