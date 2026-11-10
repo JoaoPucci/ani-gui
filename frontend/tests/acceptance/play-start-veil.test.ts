@@ -207,7 +207,7 @@ const announced = () => target.querySelector('[role="status"] .vh')?.textContent
 const controlsInert = () => target.querySelector('.player-controls')?.closest('[inert]') != null;
 
 describe('play route — the start veil', () => {
-	it('a start shows the episode still under a loader and its caption, with the controls away', async () => {
+	it('a start shows the episode still under a loader and its caption, with the controls out of sight', async () => {
 		const media = await openEpisode();
 		expect(mode()).toBe('start');
 		expect(veil()?.getAttribute('data-look')).toBe('still');
@@ -215,7 +215,8 @@ describe('play route — the start veil', () => {
 		expect(veil()?.querySelector('.strip')).not.toBeNull();
 		expect(veil()?.textContent).toContain(m.playstart_starting({ n: '1' }));
 		expect(frame().classList.contains('player-starting')).toBe(true);
-		expect(controlsInert()).toBe(true);
+		// Out of sight, not out of the keyboard's reach.
+		expect(controlsInert()).toBe(false);
 		expect(announced()).toBe(m.playstart_loading_aria());
 
 		media.firstFrame();

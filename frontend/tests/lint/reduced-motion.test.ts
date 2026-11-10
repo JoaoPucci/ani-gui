@@ -35,7 +35,8 @@
 //   the rules are configured and fire.
 //
 // A last section holds the indeterminate progress bars, a fixed list,
-// to a still full-width bar under reduced motion; see its own comment.
+// to a still full-width bar under reduced motion, and the player's
+// film-strip loader to a strip lit throughout; see their own comments.
 //
 // What it does not see, deliberately:
 //
@@ -484,7 +485,6 @@ describe('reduced motion: script', () => {
 describe('reduced motion: indeterminate progress bars', () => {
 	const bars: [string, string][] = [
 		['lib/components/SearchProgress.svelte', '.search-progress-bar'],
-		['routes/play/[id]/+page.svelte', '.player-spinner-sweep'],
 		['lib/components/DownloadBar.svelte', '.dl-bar-progress span'],
 		['lib/components/DownloadDock.svelte', '.dl-row-bar-indet span']
 	];
@@ -501,5 +501,28 @@ describe('reduced motion: indeterminate progress bars', () => {
 			});
 		});
 		expect(widths).toEqual(['100%']);
+	});
+});
+
+// The player's start veil loads with a film strip: one lit frame
+// travels along five. With the animation taken off, no frame would be
+// lit, or the one the strip stopped on, and the strip would read as
+// empty or stuck. Under reduced motion every frame therefore takes a
+// light of its own. The same syntactic constraint as the bars: the
+// strip's `.cell` sets a `background` in a reduced-motion block.
+describe('reduced motion: the film-strip loader', () => {
+	it('lib/play/StartVeil.svelte lights every frame of its strip', () => {
+		const path = join(SRC, 'lib/play/StartVeil.svelte');
+		const style = componentStyle(asts.get(path)!);
+		expect(style, 'StartVeil.svelte has no <style>').not.toBeNull();
+		const lit: string[] = [];
+		postcss.parse(style!.css).walkRules((rule) => {
+			if (!rule.selectors.map((sel) => sel.trim()).includes('.cell')) return;
+			rule.walkDecls('background', (decl) => {
+				if (insideReduceBlock(decl)) lit.push(decl.value.trim());
+			});
+		});
+		expect(lit).toHaveLength(1);
+		expect(lit[0]).not.toBe('transparent');
 	});
 });
