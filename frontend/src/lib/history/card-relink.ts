@@ -14,7 +14,8 @@
  * kept for the former one: a cap a failed resume of a one-episode
  * special pinned as exact would hold the linked series at episode 1.
  * And whatever was still on its way about the former show — the first
- * load's probe, an earlier rematch — lands without putting it back.
+ * load's probe, an earlier rematch — lands without putting it back. A
+ * read whose list a remove or clear overtook reads again.
  *
  * The component holds the state; this decides what happens to it.
  */
@@ -86,12 +87,17 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 		void deps.resolveMatch(h).then(settle, () => settle(null));
 	};
 
-	const readOnce = async () => {
+	const writes = deps.writes ?? (() => 0);
+	// A list that went out before a remove or clear landed answers with
+	// the cards that write took away: read again rather than put them back.
+	const readOnce = async (): Promise<void> => {
+		const at = writes();
 		const next = await rereadLinked(deps.current(), {
 			list: deps.list,
 			order: deps.order,
 			rematch
 		});
+		if (writes() !== at) return readOnce();
 		deps.setHistory(next);
 	};
 

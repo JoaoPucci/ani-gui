@@ -433,6 +433,7 @@
 			applyRemaining: (rows, removedIds) => {
 				deleteAnimationGate.open(removedIds, shiftedSurvivorIds(snapshot, removedIds));
 				history = rows;
+				historyWrites++;
 			},
 			matches: historyMatches,
 			historyDelete,
@@ -464,6 +465,7 @@
 			async () => {
 				await historyClear();
 				history = [];
+				historyWrites++;
 			},
 			() => toastStore.push({ kind: 'error', message: m.home_clear_history_failed() })
 		);
@@ -510,12 +512,17 @@
 		cardLink.leave();
 	});
 	async function openCardLink(row: string, matchId: string, episode: number) {
+		// A remove or clear holds its dialog while it is out, with none
+		// over it ($lib/history/confirm-run).
+		if (deleteRun.busy || clearRun.busy) return;
 		resumeFailure = null;
 		if (await relink.stillGuessed(row, matchId)) void cardLink.start(episode);
 	}
 	// Rows found no longer guessed since the cards were read: their pill
 	// goes rather than open nothing ($lib/history/card-relink.ts).
 	const settledRows = new SvelteSet<string>();
+	// Removes and clears landed: a card read out before one answers again.
+	let historyWrites = 0;
 	const relink = createCardRelink({
 		// A check another card's overtook answers for nothing.
 		offerStands: async (row, matchId) =>
@@ -536,7 +543,8 @@
 			void _former;
 			historyPlayableCounts = counts;
 		},
-		publish: (id, match) => publishLoaderCap(id, match, match?.episode_count ?? null, true)
+		publish: (id, match) => publishLoaderCap(id, match, match?.episode_count ?? null, true),
+		writes: () => historyWrites
 	});
 	/** The card that stands for the history row `row`. */
 	function cardButton(row: string): HTMLElement | null {
@@ -1501,7 +1509,7 @@
 					<button
 						type="button"
 						class="resume-link"
-						disabled={resumeBusy !== null}
+						disabled={resumeBusy !== null || deleteBusy || clearBusy}
 						onclick={(e) => {
 							e.preventDefault();
 							e.stopPropagation();
