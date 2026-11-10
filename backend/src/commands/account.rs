@@ -1089,6 +1089,10 @@ mod tests;
 mod key_tests;
 
 #[cfg(test)]
+#[path = "account_rail_cards_test.rs"]
+mod rail_cards_tests;
+
+#[cfg(test)]
 #[path = "account_reconcile_for_test.rs"]
 mod reconcile_for_tests;
 
