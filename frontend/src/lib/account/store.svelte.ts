@@ -6,7 +6,8 @@
  * connect / disconnect / sync actions, and read by:
  *
  *   - /account page — surface state per provider
- *   - home Watch Later rail — which sign-ins it reads, and readsSettled
+ *   - home Watch Later rail — which sign-ins it reads, readsSettled and
+ *     keyringWaiting (whether the sign-ins are known yet)
  *   - AccountChip — avatar + amber dot
  */
 
