@@ -1,0 +1,45 @@
+{
+ "data": [
+  {
+   "id": "3136",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Phantom Blood",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Phantom Blood",
+     "en_jp": "JoJo no Kimyou na Bouken: Phantom Blood",
+     "en_us": "JoJo's Bizarre Adventure: Phantom Blood",
+     "ja_jp": "ジョジョの奇妙な冒険 ファントム ブラッド"
+    },
+    "abbreviatedTitles": [
+     "JoJo's Bizarre Adventure: Phantom Blood"
+    ],
+    "slug": "jojo-s-bizarre-adventure-phantom-blood",
+    "startDate": "2007-02-17",
+    "endDate": "2007-02-17",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46393",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Phantom Blood Pilot",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Phantom Blood Pilot",
+     "en_jp": "JoJo no Kimyou na Bouken: Phantom Blood Pilot",
+     "ja_jp": "ジョジョの奇妙な冒険 ファントム ブラッド"
+    },
+    "abbreviatedTitles": [],
+    "slug": "jojo-no-kimyou-na-bouken-phantom-blood-pilot",
+    "startDate": "2004-03-28",
+    "endDate": "2004-03-28",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

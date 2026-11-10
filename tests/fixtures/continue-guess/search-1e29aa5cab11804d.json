@@ -1,0 +1,429 @@
+{
+ "data": [
+  {
+   "id": "7442",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan",
+    "titles": {
+     "en": "Attack on Titan",
+     "en_jp": "Shingeki no Kyojin",
+     "en_us": "Attack on Titan",
+     "ja_jp": "進撃の巨人"
+    },
+    "abbreviatedTitles": [
+     "AoT"
+    ],
+    "slug": "attack-on-titan",
+    "startDate": "2013-04-07",
+    "endDate": "2013-09-29",
+    "episodeCount": 25,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8671",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan Season 2",
+    "titles": {
+     "en": "Attack on Titan Season 2",
+     "en_jp": "Shingeki no Kyojin Season 2",
+     "ja_jp": "進撃の巨人 Season 2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "shingeki-no-kyojin-2",
+    "startDate": "2017-04-01",
+    "endDate": "2017-06-17",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "13569",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan Season 3",
+    "titles": {
+     "en": "Attack on Titan Season 3",
+     "en_jp": "Shingeki no Kyojin Season 3",
+     "ja_jp": "進撃の巨人 Season 3"
+    },
+    "abbreviatedTitles": [],
+    "slug": "shingeki-no-kyojin-3",
+    "startDate": "2018-07-23",
+    "endDate": "2018-10-15",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41982",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan Season 3 Part 2",
+    "titles": {
+     "en": "Attack on Titan Season 3 Part 2",
+     "en_jp": "Shingeki no Kyojin Season 3 Part 2",
+     "ja_jp": "進撃の巨人 Season 3 Part 2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "shingeki-no-kyojin-3-part-2",
+    "startDate": "2019-04-29",
+    "endDate": "2019-07-01",
+    "episodeCount": 10,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41538",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Shingeki no Kyotou",
+    "titles": {
+     "en_jp": "Shingeki no Kyotou",
+     "en_us": "Attack on Skytree",
+     "ja_jp": "進撃の巨塔"
+    },
+    "abbreviatedTitles": [
+     "Shingeki no Kyojin: Attack on Skytree",
+     "Attack on Titan"
+    ],
+    "slug": "shingeki-no-kyotou",
+    "startDate": "2017-04-10",
+    "endDate": "2017-04-10",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42422",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: The Final Season",
+    "titles": {
+     "en": "Attack on Titan: The Final Season",
+     "en_jp": "Shingeki no Kyojin The Final Season",
+     "ja_jp": "進撃の巨人 The Final Season"
+    },
+    "abbreviatedTitles": [
+     "Shingeki no Kyojin Season 4",
+     "Attack on Titan Season 4"
+    ],
+    "slug": "shingeki-no-kyojin-the-final-season",
+    "startDate": "2020-12-07",
+    "endDate": "2021-03-29",
+    "episodeCount": 16,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8674",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: No Regrets",
+    "titles": {
+     "en": "Attack on Titan: No Regrets",
+     "en_jp": "Shingeki no Kyojin: Kuinaki Sentaku",
+     "ja_jp": "進撃の巨人 悔いなき選択"
+    },
+    "abbreviatedTitles": [
+     "Shingeki no Kyojin: Birth of Levi",
+     "Attack on Titan: No Regrets"
+    ],
+    "slug": "shingeki-no-kyojin-kuinaki-sentaku",
+    "startDate": "2014-12-09",
+    "endDate": "2015-04-09",
+    "episodeCount": 2,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42247",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan Season 3 Specials",
+    "titles": {
+     "en": "Attack on Titan Season 3 Specials",
+     "en_jp": "Shingeki no Kyojin Season 3 Specials",
+     "ja_jp": "｢進撃の巨人｣ちみキャラ劇場”とんでけ！新生リヴァイ班”"
+    },
+    "abbreviatedTitles": [
+     "Shingeki no Kyojin: Chimi Chara Gekijou \"Tondeke! Shinsei Levi Han\""
+    ],
+    "slug": "shingeki-no-kyojin-season-3-specials",
+    "startDate": "2018-10-17",
+    "endDate": "2019-09-18",
+    "episodeCount": 7,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41487",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: Roar of Awakening",
+    "titles": {
+     "en": "Attack on Titan: Roar of Awakening",
+     "en_jp": "Shingeki no Kyojin Movie 3: Kakusei no Houkou",
+     "ja_jp": "劇場版 進撃の巨人 覚醒の咆哮"
+    },
+    "abbreviatedTitles": [],
+    "slug": "shingeki-no-kyojin-movie-3-kakusei-no-houkou",
+    "startDate": "2018-01-13",
+    "endDate": "2018-01-13",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8673",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: Wings of Freedom",
+    "titles": {
+     "en": "Attack on Titan: Wings of Freedom",
+     "en_jp": "Shingeki no Kyojin Movie 2: Jiyuu no Tsubasa",
+     "en_us": "Attack on Titan: Wings of Freedom",
+     "ja_jp": "劇場版「進撃の巨人」後編～自由の翼～"
+    },
+    "abbreviatedTitles": [],
+    "slug": "shingeki-no-kyojin-movie-2-jiyuu-no-tsubasa",
+    "startDate": "2015-06-27",
+    "endDate": "2015-06-27",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44240",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: The Final Season Part 2",
+    "titles": {
+     "en": "Attack on Titan: The Final Season Part 2",
+     "en_jp": "Shingeki no Kyojin The Final Season Part 2",
+     "ja_jp": "進撃の巨人 The Final Season Part 2"
+    },
+    "abbreviatedTitles": [
+     "Shingeki no Kyojin Season 4 Part 2",
+     "Attack on Titan Season 4 Part 2"
+    ],
+    "slug": "shingeki-no-kyojin-the-final-season-part-2",
+    "startDate": "2022-01-09",
+    "endDate": "2022-04-03",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43212",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: Chronicle",
+    "titles": {
+     "en": "Attack on Titan: Chronicle",
+     "en_jp": "Shingeki no Kyojin: Chronicle",
+     "ja_jp": "進撃の巨人 〜クロニクル〜"
+    },
+    "abbreviatedTitles": [],
+    "slug": "shingeki-no-kyojin-chronicle",
+    "startDate": "2020-07-17",
+    "endDate": "2020-07-17",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7694",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan OVA",
+    "titles": {
+     "en": "Attack on Titan OVA",
+     "en_jp": "Shingeki no Kyojin OVA",
+     "ja_jp": "進撃の巨人ＯＡＤ"
+    },
+    "abbreviatedTitles": [
+     "Shingeki no Kyojin: Ilse no Techou",
+     "Attack on Titan: Ilse's Journal",
+     "進撃の巨人 「イルゼの手帳」"
+    ],
+    "slug": "attack-on-titan-ova",
+    "startDate": "2013-12-09",
+    "endDate": "2014-08-08",
+    "episodeCount": 3,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "13718",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: Lost Girls",
+    "titles": {
+     "en": "Attack on Titan: Lost Girls",
+     "en_jp": "Shingeki no Kyojin: Lost Girls",
+     "en_us": "Attack on Titan: Lost Girls",
+     "ja_jp": "進撃の巨人 LOST GIRLS"
+    },
+    "abbreviatedTitles": [],
+    "slug": "attack-on-titan-lost-girls",
+    "startDate": "2017-12-08",
+    "endDate": "2018-08-09",
+    "episodeCount": 3,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "11315",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: Junior High",
+    "titles": {
+     "en": "Attack on Titan: Junior High",
+     "en_jp": "Shingeki! Kyojin Chuugakkou",
+     "en_us": "Attack on Titan: Junior High",
+     "ja_jp": "進撃！巨人中学校"
+    },
+    "abbreviatedTitles": [
+     "Attack! Titan Junior High"
+    ],
+    "slug": "shingeki-kyojin-chuugakkou",
+    "startDate": "2015-10-04",
+    "endDate": "2015-12-20",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46038",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: The Final Season - Final Chapters Part 1",
+    "titles": {
+     "en": "Attack on Titan: The Final Season - Final Chapters Part 1",
+     "en_jp": "Shingeki no Kyojin: The Final Season Kanketsu-Hen (Zenpen)",
+     "ja_jp": "進撃の巨人 The Final Season 完結編 (前編)"
+    },
+    "abbreviatedTitles": [
+     "Shingeki no Kyojin: The Final Season Final Edition",
+     "Shingeki no Kyojin: The Final Season Part 3",
+     "Attack on Titan: The Final Season Part 3",
+     "Attack on Titan The Final Season Final Arc",
+     "Attack on Titan Season 4 Part 3",
+     "Attack on Titan Season 4 - Final Edition (Part 1)",
+     "Attack on Titan: The Final Season - Final Edition (Part 1)",
+     "Attack on Titan Final Season THE FINAL CHAPTERS Special 1"
+    ],
+    "slug": "shingeki-no-kyojin-the-final-season-part-3",
+    "startDate": "2023-03-03",
+    "endDate": "2023-03-03",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7838",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: Since That Day",
+    "titles": {
+     "en": "Attack on Titan: Since That Day",
+     "en_jp": "Shingeki no Kyojin: Ano Hi Kara",
+     "en_us": "Attack on Titan: Since That Day",
+     "ja_jp": "進撃の巨人 総集編「あの日から」"
+    },
+    "abbreviatedTitles": [
+     "Shingeki no Kyojin Episode 13.5"
+    ],
+    "slug": "attack-on-titan-since-that-day",
+    "startDate": "2013-07-07",
+    "endDate": "2013-07-07",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8672",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: Crimson Bow and Arrow",
+    "titles": {
+     "en": "Attack on Titan: Crimson Bow and Arrow",
+     "en_jp": "Shingeki no Kyojin Movie 1: Guren no Yumiya",
+     "en_us": "Attack on Titan: Crimson Bow and Arrow",
+     "ja_jp": "劇場版「進撃の巨人」前編～紅蓮の弓矢～"
+    },
+    "abbreviatedTitles": [],
+    "slug": "shingeki-no-kyojin-movie-1-guren-no-yumiya",
+    "startDate": "2014-11-22",
+    "endDate": "2014-11-22",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47132",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: The Final Season - Final Chapters Part 2",
+    "titles": {
+     "en": "Attack on Titan: The Final Season - Final Chapters Part 2",
+     "en_jp": "Shingeki no Kyojin: The Final Season Kanketsu-Hen (Kouhen)",
+     "ja_jp": "進撃の巨人 The Final Season 完結編 (後編）"
+    },
+    "abbreviatedTitles": [
+     "Attack on Titan Season 4 Part 4, Attack on Titan Season 4 - Final Edition (Part 2), Attack on Titan: The Final Season - Final Edition (Part 2)",
+     "Attack on Titan Final Season THE FINAL CHAPTERS Special 2",
+     "Attack on Titan: The Final Season Part 4"
+    ],
+    "slug": "shingeki-no-kyojin-the-final-season-part-4",
+    "startDate": "2023-11-04",
+    "endDate": "2023-11-04",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41550",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Shingeki no Kyojin-ten 360° Taikan Theater",
+    "titles": {
+     "en_jp": "Shingeki no Kyojin-ten 360° Taikan Theater",
+     "ja_jp": "進撃の巨人展360°体感シアター“哮\""
+    },
+    "abbreviatedTitles": [
+     "Attack on Titan Exhibition 360-degree: Experience Theater \"Roar\"",
+     "Taikan Theater \"Hoeru\""
+    ],
+    "slug": "shingeki-no-kyojin-ten-360-taikan-theater",
+    "startDate": "2017-06-21",
+    "endDate": "2017-08-18",
+    "episodeCount": 3,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

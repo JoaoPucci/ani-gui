@@ -1,0 +1,44 @@
+{
+ "data": [
+  {
+   "id": "45512",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mato Seihei no Slave",
+    "titles": {
+     "en": "Chained Soldier",
+     "en_jp": "Mato Seihei no Slave",
+     "ja_jp": "魔都精兵のスレイブ"
+    },
+    "abbreviatedTitles": [
+     "Slave of the Magic Capital's Elite Troops"
+    ],
+    "slug": "mato-seihei-no-slave",
+    "startDate": "2024-01-04",
+    "endDate": "2024-03-21",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48639",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mato Seihei no Slave 2nd Season",
+    "titles": {
+     "en": "Chained Soldier Season 2",
+     "en_jp": "Mato Seihei no Slave 2nd Season",
+     "ja_jp": "魔都精兵のスレイブ 第２期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "Mato-Seihei-no-Slave-2nd-Season",
+    "startDate": "2026-01-08",
+    "endDate": "2026-03-26",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}
