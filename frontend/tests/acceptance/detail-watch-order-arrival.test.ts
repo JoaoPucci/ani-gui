@@ -396,6 +396,29 @@ describe('detail route — the watch-order strip arriving', () => {
 		}
 	});
 
+	it('draws a show visited again with its strip even when the order setting is read last', async () => {
+		useShow();
+		app = mount(DetailPage, { target });
+		await until(() => strip() !== null, 'the strip, first visit');
+		unmount(app);
+		app = null;
+
+		const settings = gate();
+		const walk = gate();
+		useShow({ settingsGate: settings.opened, walkGate: walk.opened });
+		app = mount(DetailPage, { target });
+		try {
+			await new Promise((r) => setTimeout(r, 100));
+			settings.open();
+			await until(() => title() !== '', 'the page, second visit');
+			// The page waited for the setting, so the strip came with it.
+			expect(strip()).not.toBeNull();
+		} finally {
+			settings.open();
+			walk.open();
+		}
+	});
+
 	it('moves nothing under reduced motion', async () => {
 		await setReducedMotion(true);
 		const walk = gate();
