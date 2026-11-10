@@ -18,6 +18,14 @@
 //! and macOS searches are tested on any CI host. [`locate_installed`]
 //! wires in the real ones.
 
+#[path = "player_locate_places.rs"]
+mod places;
+#[path = "player_locate_registry.rs"]
+mod registry;
+use places::installs;
+pub use registry::parse_reg_default;
+use registry::{expand, registered_app_path};
+
 /// The OS whose conventions a search follows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Os {
@@ -74,75 +82,6 @@ fn join(dir: &str, slash: char, file: &str) -> String {
     format!("{}{slash}{file}", dir.trim_end_matches(slash))
 }
 
-/// The places `os`'s installers put `name`, outside PATH. A place
-/// under a variable that is unset is skipped.
-fn installs(name: &str, os: Os, var: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
-    let under = |v: &str, rest: &str| var(v).map(|base| join(&base, sep_of(os), rest));
-    let fixed = |paths: &[&str]| paths.iter().map(|p| Some((*p).to_string())).collect();
-    let found: Vec<Option<String>> = match (os, name) {
-        (Os::Windows, "vlc") => vec![
-            under("ProgramFiles", "VideoLAN\\VLC\\vlc.exe"),
-            under("ProgramFiles(x86)", "VideoLAN\\VLC\\vlc.exe"),
-        ],
-        (Os::Windows, "mpv") => vec![
-            under("ProgramFiles", "mpv\\mpv.exe"),
-            under("ProgramFiles(x86)", "mpv\\mpv.exe"),
-            under("LOCALAPPDATA", "Programs\\mpv\\mpv.exe"),
-            under("USERPROFILE", "scoop\\shims\\mpv.exe"),
-            under("LOCALAPPDATA", "Microsoft\\WinGet\\Links\\mpv.exe"),
-        ],
-        (Os::Linux, "vlc") => flatpak_and_snap("org.videolan.VLC", "vlc", var),
-        (Os::Linux, "mpv") => flatpak_and_snap("io.mpv.Mpv", "mpv", var),
-        (Os::MacOs, "iina") => bundles("IINA.app/Contents/MacOS/iina-cli", var),
-        (Os::MacOs, "vlc") => bundles("VLC.app/Contents/MacOS/VLC", var),
-        (Os::MacOs, "mpv") => {
-            let mut v = bundles("mpv.app/Contents/MacOS/mpv", var);
-            v.extend::<Vec<Option<String>>>(fixed(&[
-                "/opt/homebrew/bin/mpv",
-                "/usr/local/bin/mpv",
-            ]));
-            v
-        }
-        _ => Vec::new(),
-    };
-    found.into_iter().flatten().collect()
-}
-
-fn sep_of(os: Os) -> char {
-    match os {
-        Os::Windows => '\\',
-        Os::Linux | Os::MacOs => '/',
-    }
-}
-
-/// A Linux program's flatpak launchers (system, then per-user) and its
-/// snap launcher.
-fn flatpak_and_snap(
-    app_id: &str,
-    snap: &str,
-    var: &dyn Fn(&str) -> Option<String>,
-) -> Vec<Option<String>> {
-    vec![
-        Some(format!("/var/lib/flatpak/exports/bin/{app_id}")),
-        var("HOME").map(|h| {
-            format!(
-                "{}/.local/share/flatpak/exports/bin/{app_id}",
-                h.trim_end_matches('/')
-            )
-        }),
-        Some(format!("/snap/bin/{snap}")),
-    ]
-}
-
-/// A macOS app's program inside its bundle, in /Applications and in
-/// the user's own Applications folder.
-fn bundles(inner: &str, var: &dyn Fn(&str) -> Option<String>) -> Vec<Option<String>> {
-    vec![
-        Some(format!("/Applications/{inner}")),
-        var("HOME").map(|h| format!("{}/Applications/{inner}", h.trim_end_matches('/'))),
-    ]
-}
-
 /// The first of `name`'s [`candidates`] that `exists`, then, on
 /// Windows, the path its App Paths registration gives (`app_path`,
 /// asked with the program's file name, e.g. `vlc.exe`), with its
@@ -164,44 +103,6 @@ pub fn locate(
     app_path(&format!("{name}.exe"))
         .map(|p| expand(&p, var))
         .filter(|p| exists(p))
-}
-
-/// `%NAME%` replaced by the variable's value; an unknown one is kept.
-fn expand(text: &str, var: &dyn Fn(&str) -> Option<String>) -> String {
-    let mut out = String::new();
-    let mut rest = text;
-    while let Some(start) = rest.find('%') {
-        let after = &rest[start + 1..];
-        let Some(len) = after.find('%') else { break };
-        out.push_str(&rest[..start]);
-        let key = &after[..len];
-        match var(key) {
-            Some(v) if !key.is_empty() => out.push_str(&v),
-            _ => {
-                out.push('%');
-                out.push_str(key);
-                out.push('%');
-            }
-        }
-        rest = &after[len + 1..];
-    }
-    out.push_str(rest);
-    out
-}
-
-/// The default value of a `reg query … /ve` answer: the text after its
-/// `REG_SZ` or `REG_EXPAND_SZ` type, without surrounding quotes. The
-/// value's name column is localized ("(Default)", "(Padrão)", …), so
-/// only the type marks the line.
-#[must_use]
-pub fn parse_reg_default(output: &str) -> Option<String> {
-    output.lines().find_map(|line| {
-        let (_, value) = line
-            .split_once("    REG_EXPAND_SZ    ")
-            .or_else(|| line.split_once("    REG_SZ    "))?;
-        let value = value.trim().trim_matches('"').trim();
-        (!value.is_empty()).then(|| value.to_string())
-    })
 }
 
 /// Where `name` is installed on this computer, if anywhere.
@@ -244,47 +145,6 @@ pub fn current_os() -> Os {
     } else {
         Os::Linux
     }
-}
-
-/// The App Paths registration of `file` (e.g. `vlc.exe`): per-user,
-/// then machine-wide in the 64-bit and the 32-bit view. Asked through
-/// `reg.exe`, without a console window.
-#[cfg(windows)]
-fn registered_app_path(file: &str) -> Option<String> {
-    use std::os::windows::process::CommandExt as _;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let key = format!("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{file}");
-    let reg = std::env::var("SystemRoot")
-        .map(|root| format!("{root}\\System32\\reg.exe"))
-        .unwrap_or_else(|_| "reg.exe".to_string());
-    let queries: [(&str, Option<&str>); 3] = [
-        ("HKCU", None),
-        ("HKLM", Some("/reg:64")),
-        ("HKLM", Some("/reg:32")),
-    ];
-    queries.into_iter().find_map(|(hive, view)| {
-        let mut cmd = std::process::Command::new(&reg);
-        cmd.args(["query", &format!("{hive}\\{key}"), "/ve"]);
-        if let Some(view) = view {
-            cmd.arg(view);
-        }
-        let out = cmd
-            .stdin(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .ok()?;
-        out.status
-            .success()
-            .then(|| parse_reg_default(&String::from_utf8_lossy(&out.stdout)))
-            .flatten()
-    })
-}
-
-/// No registry off Windows.
-#[cfg(not(windows))]
-fn registered_app_path(_file: &str) -> Option<String> {
-    None
 }
 
 #[cfg(test)]
