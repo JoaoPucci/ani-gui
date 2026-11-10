@@ -69,7 +69,8 @@ export interface WatchLaterDeps {
 
 /**
  * Run the rail loader end-to-end. Returns the Kitsu refs in merge
- * order, which the backend bridge preserves slot-for-slot. Empty input (no connected provider) → empty output.
+ * order, less the ids Kitsu can't map and any later card for a show
+ * already listed (two MAL ids can lead to the same one). Empty input (no connected provider) → empty output.
  * A single provider being unreachable is non-fatal — the merge
  * proceeds with whatever else succeeded. But if EVERY connected
  * provider's fetch fails, the loader rejects rather than resolving

@@ -49,7 +49,7 @@ function config(mode: 'sub' | 'dub') {
 	return {
 		locale: 'en',
 		mode,
-		quality: 'best',
+		download_quality: 'best',
 		external_player: '',
 		external_player_kind: 'mpv',
 		external_player_custom_args: '',

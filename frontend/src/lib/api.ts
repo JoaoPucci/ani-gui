@@ -481,7 +481,10 @@ export interface KitsuCoverImage {
 export interface Config {
 	locale: string;
 	mode: string; // "sub" | "dub"
-	quality: string; // "best" | "worst" | "1080" | "720" | "480"
+	/** The quality downloads take: "best" | "worst" | a height such as
+	 *  "720". Downloads only — the player always starts on Auto, and the
+	 *  external players and Syncplay get the master. */
+	download_quality: string;
 	external_player: string;
 	external_player_kind: ExternalPlayerKind;
 	external_player_custom_args: string;
@@ -678,7 +681,6 @@ export interface PlayArgs {
 	title: string;
 	episode: string;
 	mode: 'sub' | 'dub';
-	quality?: string;
 	/** Kitsu's authoritative episode count. The backend uses this to
 	 *  disambiguate the provider candidates that share a title — e.g.
 	 *  picking the 500-ep "Naruto: Shippuden" main show over the
@@ -851,7 +853,6 @@ export function playStream(
 	params.set('title', args.title);
 	params.set('episode', args.episode);
 	params.set('mode', args.mode);
-	if (args.quality) params.set('quality', args.quality);
 	if (typeof args.episode_count === 'number')
 		params.set('episode_count', String(args.episode_count));
 	if (typeof args.year === 'number') params.set('year', String(args.year));
@@ -1276,7 +1277,8 @@ export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
 }
 
 /** Bridge a batch of MAL ids to Kitsu refs in one round-trip.
- *  Order is preserved; ids Kitsu can't map drop out of the response.
+ *  Order is preserved; ids Kitsu can't map drop out of the response,
+ *  and a Kitsu show two ids lead to is listed once, at the first.
  *  Used by the home Watch Later rail to render the merged
  *  Plan-to-Watch list with Kitsu metadata + availability filtering
  *  matching the rest of the home. Empty input → empty

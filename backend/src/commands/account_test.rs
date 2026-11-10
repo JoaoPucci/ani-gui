@@ -1739,3 +1739,57 @@ async fn a_list_read_whose_owner_lookup_spans_a_disconnect_does_not_refill_the_c
         "the disconnected account's list came back"
     );
 }
+
+/// Kitsu's `/mappings` answer for MAL id 22, naming the same Kitsu show
+/// as [`KITSU_MAL_MAPPINGS_HIT_BODY`] does for MAL id 21.
+#[cfg(test)]
+const KITSU_MAL_22_SAME_SHOW_BODY: &str = r#"{
+    "data": [{
+        "id": "9101",
+        "type": "mappings",
+        "attributes": { "externalSite": "myanimelist/anime", "externalId": "22" },
+        "relationships": { "item": { "data": { "type": "anime", "id": "12" } } }
+    }],
+    "included": [{
+        "id": "12",
+        "type": "anime",
+        "attributes": { "canonicalTitle": "One Piece", "titles": { "en": "One Piece" } }
+    }]
+}"#;
+
+#[tokio::test]
+async fn watch_later_bridge_lists_a_show_two_mal_ids_map_to_once() {
+    // Kitsu maps MAL 21 and MAL 22 to the same show. The rail keys its
+    // cards by Kitsu id, so handing it the show twice gives it two
+    // equal keys; the first card stands for the show.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    for (mal, body) in [
+        ("21", KITSU_MAL_MAPPINGS_HIT_BODY),
+        ("22", KITSU_MAL_22_SAME_SHOW_BODY),
+    ] {
+        wiremock::Mock::given(method("GET"))
+            .and(path("/mappings"))
+            .and(query_param("filter[externalSite]", "myanimelist/anime"))
+            .and(query_param("filter[externalId]", mal))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+            // Each MAL id is looked up once, so both cards reach the
+            // bridge's last step: one card here would otherwise also be
+            // what a lookup that silently found nothing leaves.
+            .expect(1)
+            .mount(&kitsu)
+            .await;
+    }
+    let state = state_with_kitsu(&kitsu.uri());
+
+    let refs = kitsu_for_mal_ids_with_anilist_base(&state, vec![21, 22], None).await;
+    kitsu.verify().await;
+
+    assert_eq!(refs.len(), 1, "one card per Kitsu show: {refs:?}");
+    assert_eq!(refs[0].id, "12");
+    assert_eq!(
+        refs[0].episode_count,
+        Some(1100),
+        "the first card stands for the show"
+    );
+}
