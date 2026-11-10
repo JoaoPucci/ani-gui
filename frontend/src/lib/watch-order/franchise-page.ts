@@ -3,8 +3,9 @@
  * franchise payload and the watch history: the masthead (the name, its
  * artwork, the title count and where Resume goes), the main story as
  * numbered stretches, branches side by side and groups with no clear
- * order, and the rails around it. The route and its view only hand
- * these on.
+ * order, and the rails around it. A franchise read in part gets no
+ * count, number or beginning (see `unnumberedStory`). The route and
+ * its view only hand these on.
  */
 import type { BreadcrumbSegment } from '$lib/breadcrumb';
 import { m } from '$lib/paraglide/messages';
