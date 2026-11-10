@@ -124,7 +124,7 @@ interface ShowOptions {
 }
 
 function useShow(opts: ShowOptions = {}) {
-	const calls = { hop: 0, franchise: 0 };
+	const calls = { hop: 0, franchise: 0, walked: 0 };
 	server.use(
 		http.get(`${API_BASE}/api/settings`, async () => {
 			await opts.settingsGate;
@@ -142,6 +142,7 @@ function useShow(opts: ShowOptions = {}) {
 		http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, async () => {
 			calls.franchise++;
 			await opts.walkGate;
+			calls.walked++;
 			return opts.franchise ? opts.franchise() : HttpResponse.json(RUN);
 		}),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
@@ -332,8 +333,8 @@ describe('detail route — the watch-order strip arriving', () => {
 		app = mount(DetailPage, { target });
 		try {
 			// The walk answers (from a warm cache) before the details do.
-			await until(() => strip() === null && calls.franchise > 0, 'the walk asked');
-			await new Promise((r) => setTimeout(r, 50));
+			await until(() => calls.walked > 0, 'the walk answered');
+			await new Promise((r) => setTimeout(r, 20));
 			const opened = Date.now();
 			details.open();
 			await until(() => title() !== '', 'the page');
@@ -356,8 +357,8 @@ describe('detail route — the watch-order strip arriving', () => {
 		});
 		app = mount(DetailPage, { target });
 		try {
-			await until(() => calls.franchise > 0 && calls.hop > 0, 'the walk and the hop asked');
-			await new Promise((r) => setTimeout(r, 50));
+			await until(() => calls.walked > 0 && calls.hop > 0, 'the walk answered, the hop asked');
+			await new Promise((r) => setTimeout(r, 20));
 			// The walk has answered; the hop answers just after the details.
 			details.open();
 			await new Promise((r) => setTimeout(r, 30));
