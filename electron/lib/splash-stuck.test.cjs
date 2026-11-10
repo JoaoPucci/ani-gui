@@ -550,6 +550,26 @@ test("the splash never navigates away or opens windows; a page that leaves anywa
   made.splash.suppress();
 });
 
+test("the splash's own page is recognised in every shape Electron commits it in", async (t) => {
+  // loadFile builds the URL with url.format, which leaves a bare % in a
+  // path as it is; Chromium keeps it so.
+  const urlLib = require("node:url");
+  const shapes = [
+    urlLib.format({ protocol: "file", slashes: true, pathname: "/home/a b/100%/app.asar/splash/index.html", search: "?v=1" }),
+    urlLib.format({ protocol: "file", slashes: true, pathname: "/C:/Users/Jo%ão P/AppData/Local/Programs/ani-gui/resources/app.asar/splash/index.html", search: "?l=pt-BR" }),
+    "file:///C:/Users/100%/splash/index.html",
+    "file:///opt/ani-gui/resources/app.asar/splash/index.html",
+  ];
+  for (const url of shapes) {
+    const made = await watchedLoss(t);
+    made.win.webContents.emit("did-navigate", {}, url);
+    await flush();
+    assert.equal(made.lost, null, url);
+    made.splash.suppress();
+    t.mock.timers.reset();
+  }
+});
+
 test("a splash window closed before the boot is past it is lost as well as cancelling the launch", async (t) => {
   const made = await watchedLoss(t);
   made.win.close();
