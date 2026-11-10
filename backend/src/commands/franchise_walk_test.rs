@@ -421,3 +421,48 @@ fn versions_met_in_one_step_through_different_entries_keep_one() {
         "{members:?}"
     );
 }
+
+/// A named parent story whose listing names fewer entries beneath it
+/// than the anchor's is not taken; but its listing was read to decide
+/// that, and a listing cut short there makes the answer incomplete.
+#[test]
+fn a_rejected_parent_read_in_part_makes_it_incomplete() {
+    let mut c = Catalogue::default();
+    c.add("1", "TV", Some("1999-10-20"))
+        .add("2", "ONA", Some("2026-09-29"))
+        .add("3", "special", Some("2005-01-01"))
+        .add("4", "special", Some("2006-01-01"));
+    c.rel("1", "parent_story", "2")
+        .rel("1", "side_story", "3")
+        .rel("1", "summary", "4")
+        .rel("2", "side_story", "1");
+    c.listings.get_mut("2").expect("listing").complete = false;
+    let f = drive("1", &c);
+    assert_eq!(ids(&f.entries), ["1"]);
+    assert!(f.parents.is_empty());
+    assert!(!f.complete);
+}
+
+/// An earlier side story that names more entries beneath it is the
+/// anchor's parent only when it names the anchor back as its parent
+/// story: one that does not is no sign of a pair listed the wrong way
+/// round.
+#[test]
+fn an_earlier_side_story_that_does_not_name_the_anchor_back_is_not_its_parent() {
+    let mut c = Catalogue::default();
+    c.add("1", "OVA", Some("2010-01-01"))
+        .add("2", "TV", Some("2000-01-01"))
+        .add("3", "special", Some("2001-01-01"))
+        .add("4", "special", Some("2002-01-01"));
+    c.rel("1", "side_story", "2")
+        .rel("2", "side_story", "3")
+        .rel("2", "summary", "4");
+    let f = drive("1", &c);
+    assert_eq!(ids(&f.entries), ["1"]);
+    assert!(f.parents.is_empty());
+    // Named back, it is the parent.
+    c.rel("2", "parent_story", "1");
+    let f = drive("1", &c);
+    assert_eq!(ids(&f.entries), ["2"]);
+    assert_eq!(f.parents.get("1").cloned(), Some(vec!["2".to_string()]));
+}

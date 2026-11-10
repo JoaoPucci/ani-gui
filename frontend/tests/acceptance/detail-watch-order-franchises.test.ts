@@ -79,7 +79,6 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 /** Open `id`'s show page with the walk's answer for it. */
 function openShow(id: string) {
 	const f = served(id);
-	const calls = { franchise: 0 };
 	setParams({ id });
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
@@ -88,16 +87,19 @@ function openShow(id: string) {
 		http.get(`${API_BASE}/api/kitsu/anime/${id}`, () =>
 			HttpResponse.json({ ...kitsuRef(id, titleOf(f, id), 12), subtype: 'TV' })
 		),
-		http.get(`${API_BASE}/api/kitsu/franchise/${id}`, () => {
-			calls.franchise++;
-			return HttpResponse.json(f);
-		}),
+		http.get(`${API_BASE}/api/kitsu/franchise/${id}`, () => HttpResponse.json(f)),
 		http.get(`${API_BASE}/api/kitsu/airing/${id}`, () =>
 			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
 		),
 		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} })),
+		// One similar title, which the page shows only once the strip
+		// (or its absence) is decided.
+		http.post(`${API_BASE}/api/kitsu/search`, () =>
+			HttpResponse.json([kitsuRef('77', 'Similar 77', 12)])
+		),
+		http.post(`${API_BASE}/api/availability/batch`, () =>
+			HttpResponse.json({ cached: { '77': true } })
+		),
 		http.post(`${API_BASE}/api/availability`, () =>
 			HttpResponse.json({
 				available: true,
@@ -115,7 +117,6 @@ function openShow(id: string) {
 		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
 	);
 	app = mount(DetailPage, { target });
-	return calls;
 }
 
 /** The strip: the section headed "Watch order". */
@@ -125,14 +126,16 @@ const strip = (): HTMLElement | null =>
 	) ?? null;
 const tile = (id: string) => strip()?.querySelector(`a[href="/anime/${id}"]`) ?? null;
 const tileTitle = (id: string) => tile(id)?.querySelector('.tile-title')?.textContent ?? null;
-const title = () => target.querySelector('h1.title')?.textContent ?? '';
 
 describe('detail route — the watch-order strip on real franchises', () => {
 	it('never calls One Piece a side story of its spin-off LEGO ONE PIECE', async () => {
-		const calls = openShow('12');
-		await until(() => title().includes('One Piece') && calls.franchise > 0, 'the page');
-		// The franchise has been read and the page has drawn it.
-		await new Promise((r) => setTimeout(r, 50));
+		openShow('12');
+		// "Similar titles" waits for the franchise read and what the page
+		// draws from it, so once it shows, the page has decided.
+		await until(
+			() => target.querySelector('section.similar a[href="/anime/77"]') !== null,
+			'Similar titles'
+		);
 		expect(target.textContent).not.toContain(m.watchorder_strip_side_story());
 		expect(target.querySelector('a[href="/anime/50656"]')).toBeNull();
 	});
