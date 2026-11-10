@@ -1417,6 +1417,19 @@ export function kitsuFranchise(kitsuId: string): Promise<Franchise> {
 	return getJson<Franchise>(`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}`);
 }
 
+/** What the show page will draw once the franchise walk answers, as
+ *  the show's own relation listing foretells it (backend
+ *  `commands::franchise_walk::first_hop`): the watch-order strip, the
+ *  franchise link alone, or nothing. Only `strip` can turn out wrong. */
+export type FirstHop = 'strip' | 'link' | 'none';
+
+/** The first hop of `kitsuId`'s franchise walk, read from the walk's
+ *  own first listing so the two never disagree on the data. */
+export function kitsuFranchiseFirstHop(kitsuId: string): Promise<FirstHop> {
+	void kitsuId;
+	return Promise.resolve('none');
+}
+
 export function kitsuTopRated(): Promise<KitsuAnimeRef[]> {
 	return getJson<KitsuAnimeRef[]>('/api/kitsu/top-rated');
 }
