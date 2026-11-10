@@ -38,6 +38,7 @@ import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
+import { isModalOpen } from '../../src/lib/components/modal-layer';
 import { rememberAudio, storedAudio } from '../../src/lib/play/audio-choice';
 
 type EsHandler = (ev: MessageEvent) => void;
@@ -1011,5 +1012,64 @@ describe("a named card's pill clicked while its new show is still being matched"
 		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'the card as the series');
 		await settle();
 		expect(pill(BC_CARD)).not.toBeNull();
+	});
+});
+
+describe('the picker holds the keyboard while it is up', () => {
+	// As every dialog of the app does ($lib/components/modal-layer): focus
+	// goes in, Tab and Shift+Tab cycle inside it, the page behind it is
+	// inert, Escape closes it, and focus goes back to what opened it.
+	const inert = (el: Element | null) => el !== null && el.closest('[inert]') !== null;
+	function press(key: string, shiftKey = false): boolean {
+		const at = (document.activeElement ?? document.body) as HTMLElement;
+		const ev = new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true });
+		at.dispatchEvent(ev);
+		return ev.defaultPrevented;
+	}
+
+	it('from a pill', async () => {
+		await openHome();
+		const opener = pill(BC_CARD)!;
+		opener.focus();
+		opener.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await until(() => dialog()!.contains(document.activeElement), 'focus in the picker');
+		expect(isModalOpen()).toBe(true);
+		expect(inert(cell(JOJO_CARD))).toBe(true);
+		expect(inert(dialog())).toBe(false);
+		for (const shift of [false, true, false, false, false, false, false, false]) {
+			expect(press('Tab', shift)).toBe(true);
+			expect(dialog()!.contains(document.activeElement)).toBe(true);
+		}
+		expect(press('Escape')).toBe(true);
+		await until(() => dialog() === null || dialog()?.open === false, 'the picker to close');
+		expect(isModalOpen()).toBe(false);
+		expect(inert(cell(JOJO_CARD))).toBe(false);
+	});
+
+	it('opened from a failed resume, one modal at a time', async () => {
+		await openHome();
+		cell(BC_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!.click();
+		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+		FakeEventSource.instances
+			.at(-1)!
+			.dispatch('error', JSON.stringify({ kind: 'no_results', message: 'not found' }));
+		await until(
+			() => target.querySelector('[role="alertdialog"]') !== null,
+			'the failed resume overlay'
+		);
+		const overlay = target.querySelector<HTMLElement>('[role="alertdialog"]')!;
+		button(m.home_link_pick_button(), overlay)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		expect(target.querySelector('[role="alertdialog"]')).toBeNull();
+		await until(() => dialog()!.contains(document.activeElement), 'focus in the picker');
+		expect(isModalOpen()).toBe(true);
+		expect(press('Tab')).toBe(true);
+		expect(dialog()!.contains(document.activeElement)).toBe(true);
+		expect(press('Escape')).toBe(true);
+		await until(() => dialog() === null || dialog()?.open === false, 'the picker to close');
+		const card = cell(BC_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!;
+		await until(() => document.activeElement === card, 'focus back on the card');
+		expect(isModalOpen()).toBe(false);
 	});
 });
