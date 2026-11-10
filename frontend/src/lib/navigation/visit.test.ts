@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
-import { beginVisit, readEnded } from './visit';
+import { beginVisit, readEnded, visitSeries } from './visit';
 
 /** Lets every settled promise run its callbacks. */
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -128,5 +128,26 @@ describe('readEnded', () => {
 		expect(readEnded(new TypeError('Failed to fetch'))).toBe(false);
 		expect(readEnded(null)).toBe(false);
 		expect(readEnded(undefined)).toBe(false);
+	});
+});
+
+describe('visitSeries', () => {
+	it('ends the visit before when the next begins', () => {
+		const series = visitSeries();
+		const first = series.next();
+		const second = series.next();
+		expect(first.ended).toBe(true);
+		expect(second.ended).toBe(false);
+	});
+
+	it('ends the current visit when the page goes', () => {
+		const series = visitSeries();
+		const current = series.next();
+		series.end();
+		expect(current.ended).toBe(true);
+	});
+
+	it('ends nothing when no visit has begun', () => {
+		expect(() => visitSeries().end()).not.toThrow();
 	});
 });
