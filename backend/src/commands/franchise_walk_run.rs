@@ -74,11 +74,14 @@ pub(crate) fn run(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>> {
     if own.members.len() > 1 {
         return Ok(own);
     }
-    let parents = parent_stories(anchor, look)?;
-    let Some(parent) = parents.first() else {
-        return Ok(own);
+    let found = parent_stories(anchor, look)?;
+    let mut consulted = own.consulted.clone();
+    consulted.extend(found.read);
+    let Some(parent) = found.parents.first() else {
+        return Ok(Run { consulted, ..own });
     };
-    let theirs = walk(parent, look, own.consulted.clone())?;
+    let theirs = walk(parent, look, consulted)?;
+    let parents = found.parents;
     let side_anchor = !theirs.members.contains_key(anchor);
     let parents = if side_anchor {
         parents
