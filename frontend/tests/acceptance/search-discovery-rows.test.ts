@@ -157,6 +157,17 @@ function at(text: string): Element {
  *  strip's scroller carries its row's name. The eyebrow text alone is
  *  no evidence, because the page's caption above the rows repeats it. */
 const row = (eyebrow: string) => target.querySelector(`[aria-label="${eyebrow}"]`);
+/** The page caption under the Catalogue eyebrow. It stays in place
+ *  whatever the rows do, keeping its line, and is hidden (from sight and
+ *  from screen readers) when the rows it names are not all there. */
+function caption(): Element {
+	const el = [...target.querySelectorAll('p')].find((p) =>
+		p.textContent?.includes(m.search_empty_caption())
+	);
+	if (!el) throw new Error(`the page caption is not on the page\n--- DOM ---\n${screen()}`);
+	return el;
+}
+const captionShown = () => caption().getAttribute('aria-hidden') !== 'true';
 const above = (a: string, b: string) =>
 	(at(a).compareDocumentPosition(at(b)) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
@@ -245,8 +256,29 @@ describe('/search with no query: the discovery rows', () => {
 		expect(skeletons()).toBe(0);
 		expect(row(m.search_discovery_trending_eyebrow())).toBeNull();
 		// The page caption names both rows, and one of them is not there.
-		expect(screen()).not.toContain(m.search_empty_caption());
+		expect(captionShown()).toBe(false);
 		expect(screen()).not.toContain(m.search_discovery_nothing_headline());
+	});
+
+	it('keeps Trending where it is when Top rated fails after Trending is shown', async () => {
+		const topRated = held();
+		server.use(...handlers({ topRated: topRated.gate, topRatedFails: true }));
+
+		app = mount(SearchPage, { target });
+		await until(() => screen().includes('Airing One'), 'Trending to land');
+		expect(captionShown()).toBe(true);
+		const shownCaption = caption();
+		const trendingRow = row(m.search_discovery_trending_eyebrow());
+
+		topRated.release();
+		await until(() => skeletons() === 0, 'Top rated to be dropped');
+
+		expect(row(m.search_discovery_top_rated_eyebrow())).toBeNull();
+		// Nothing above Trending changed: the caption is the same element,
+		// still holding its line, only hidden; Trending is the same strip.
+		expect(caption()).toBe(shownCaption);
+		expect(captionShown()).toBe(false);
+		expect(row(m.search_discovery_trending_eyebrow())).toBe(trendingRow);
 	});
 
 	it('says there is nothing to browse when both rows fail, and tries again on request', async () => {
@@ -260,7 +292,7 @@ describe('/search with no query: the discovery rows', () => {
 		expect(screen()).toContain(m.search_discovery_nothing_detail());
 		expect(skeletons()).toBe(0);
 		// The caption above names rows that are not there.
-		expect(screen()).not.toContain(m.search_empty_caption());
+		expect(captionShown()).toBe(false);
 
 		// The catalogue answers again.
 		server.use(...handlers({}));
@@ -282,7 +314,7 @@ describe('/search with no query: the discovery rows', () => {
 			'both rows after trying again'
 		);
 		expect(screen()).not.toContain(m.search_discovery_nothing_headline());
-		expect(screen()).toContain(m.search_empty_caption());
+		expect(captionShown()).toBe(true);
 		expect(above('Airing One', 'Classic One')).toBe(true);
 	});
 

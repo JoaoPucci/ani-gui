@@ -82,9 +82,9 @@ async function launchOnce(asked: string[], onLaunch: (app: ElectronApplication) 
 		const p = new URL(r.request().url()).pathname;
 		if (p.endsWith('/api/app-info')) return r.fulfill(json(appInfo));
 		if (p.endsWith('/api/history')) return r.fulfill(json(emptyHistory));
-		// Home asks for trending-anilist; the search page's empty state
-		// still asks for trending.
-		if (p.endsWith('/api/kitsu/trending-anilist') || p.endsWith('/api/kitsu/trending')) {
+		// Home and the search page's empty state both ask for
+		// trending-anilist.
+		if (p.endsWith('/api/kitsu/trending-anilist')) {
 			return r.fulfill(json(trending));
 		}
 		if (p.endsWith('/api/kitsu/top-rated')) {
