@@ -45,7 +45,7 @@
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { sharesWords } from './title-words';
 import { namedCandidates, rowYear } from './pick-rank';
-import { entryNames, namesTheEntry } from './same-name';
+import { courNumber, entryNames, namesTheEntry } from './same-name';
 
 /** Kitsu's `page[limit]` hard cap on the episodes endpoint. */
 export const EPISODES_KITSU_PAGE_SIZE = 20;
@@ -108,12 +108,13 @@ export interface ResumeTarget {
 	year: number | null;
 }
 
-/** Matches a `Part N` / `Cour N` / `Season N` token at the *end* of
+/** Matches a `Part N` / `Cour N` / `Season N` token (a space before the
+ *  number or none, as the backend reads it) at the *end* of
  *  the title. Anchored to end so "JoJo Part 6: Stone Ocean" doesn't
  *  trip on the mid-title "Part 6" — that "Part" refers to the parent
  *  series, not the cour. Only a trailing match is treated as a cour
  *  disambiguator. */
-const COUR_SUFFIX_RE = /(?:^|[\s:])(?:Part|Cour|Season)\s+(\d+)\s*$/i;
+const COUR_SUFFIX_RE = /(?:^|[\s:])(?:Part|Cour|Season)\s*(\d+)\s*$/i;
 
 /** Ordinal-season forms — "Foo 2nd Season", "Foo 4th Part" — where the index
  *  precedes the cour word. */
@@ -139,10 +140,11 @@ const ORDINAL_TO_NUMBER: Record<string, number> = {
 /** Detect the cour index from a (tail-stripped) title. Recognizes "Season 2",
  *  "2nd Season", and "Second Season" (plus Part/Cour); 1 when none match. */
 export function parseCour(stripped: string): number {
+	// A number past what the backend holds is no cour there: the first.
 	const numeric = stripped.match(COUR_SUFFIX_RE);
-	if (numeric) return parseInt(numeric[1], 10);
+	if (numeric) return courNumber(numeric[1]) ?? 1;
 	const ordinalNum = stripped.match(COUR_ORDINAL_NUM_RE);
-	if (ordinalNum) return parseInt(ordinalNum[1], 10);
+	if (ordinalNum) return courNumber(ordinalNum[1]) ?? 1;
 	const ordinalWord = stripped.match(COUR_ORDINAL_WORD_RE);
 	if (ordinalWord) return ORDINAL_TO_NUMBER[ordinalWord[1].toLowerCase()] ?? 1;
 	return 1;

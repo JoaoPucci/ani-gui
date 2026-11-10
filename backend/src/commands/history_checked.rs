@@ -35,10 +35,12 @@ pub(super) fn to_kitsu_numbering_checked(
     if !entry.own_number {
         entry.ep_no = numbering.read_ep_no(&entry.id, &entry.ep_no);
     }
-    let kitsu = match entry
-        .kitsu_id
-        .clone()
-        .or_else(|| claimed_for.map(str::to_string))
+    // The entry a lookup claimed the row for comes first: a row whose
+    // recorded entry Kitsu deleted is claimed for another, and reads in
+    // that one's numbering.
+    let kitsu = match claimed_for
+        .map(str::to_string)
+        .or_else(|| entry.kitsu_id.clone())
     {
         Some(id) => Some(id),
         None => crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id)?,
