@@ -25,7 +25,6 @@
 	let { model, today }: { model: FranchisePageModel; today: string } = $props();
 
 	const accent = $derived(accentFor(model.art.id));
-	let recapsOpen = $state(false);
 </script>
 
 <div class="franchise" style:--accent={accent}>
@@ -201,21 +200,10 @@
 							<span class="eyebrow-value">{model.recapCount}</span>
 						{/if}
 					</h2>
-					<button
-						type="button"
-						class="recaps-toggle"
-						aria-expanded={recapsOpen}
-						onclick={() => (recapsOpen = !recapsOpen)}
-						>{recapsOpen
-							? m.watchorder_franchise_recaps_hide()
-							: m.watchorder_franchise_recaps_show()}</button
-					>
 				</div>
-				{#if recapsOpen}
-					<Strip eyebrow={m.watchorder_franchise_recaps()} headless>
-						{#each model.recaps as e (e.id)}<PosterCard anime={asRef(e)} />{/each}
-					</Strip>
-				{/if}
+				<Strip eyebrow={m.watchorder_franchise_recaps()} headless>
+					{#each model.recaps as e (e.id)}<PosterCard anime={asRef(e)} />{/each}
+				</Strip>
 			</section>
 		{/if}
 	</div>
@@ -503,13 +491,6 @@
 		gap: var(--space-5);
 		padding-inline: var(--space-8);
 		margin-block-end: var(--space-4);
-	}
-	.recaps-toggle {
-		font-size: var(--type-meta);
-		font-weight: 600;
-		text-decoration: underline;
-		text-decoration-color: color-mix(in oklab, var(--bone-100) 30%, transparent);
-		text-underline-offset: 0.25em;
 	}
 	.sr-only {
 		position: absolute;
