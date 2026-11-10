@@ -577,3 +577,126 @@ describe('the captions menu with many languages', () => {
 		expect(document.activeElement).toBe(ccButton());
 	});
 });
+
+// After the episode is handed to another player, an mp4 is let go of
+// and its subtitle tracks with it; coming back attaches them again.
+// The language the viewer picked before the handoff, or Off, is the
+// one showing then, whether they came back by playing it or by Reload.
+describe('the captions picked before a handoff, after the return', () => {
+	function handOffRoutes() {
+		server.use(
+			http.post(`${API_BASE}/api/play/external`, () => new HttpResponse(null, { status: 202 })),
+			http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 }))
+		);
+	}
+
+	async function handToExternal() {
+		document
+			.querySelector<HTMLButtonElement>(`button[aria-label="${m.play_more_aria_label()}"]`)!
+			.click();
+		const item = () =>
+			Array.from(document.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]')).find(
+				(b) => (b.textContent ?? '').includes(m.play_external_label())
+			);
+		await until(() => item() !== undefined, 'the external player menu item');
+		item()!.click();
+		await new Promise((r) => setTimeout(r, 30));
+	}
+
+	/** The stream's metadata is in, and it plays at five minutes. */
+	function playing(video: HTMLVideoElement) {
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => 1420 });
+		video.dispatchEvent(new Event('loadedmetadata'));
+		video.currentTime = 300;
+		video.dispatchEvent(new Event('timeupdate'));
+	}
+
+	for (const [picked, expected] of [
+		[
+			'Portuguese (Brazil)',
+			[
+				['English', 'disabled'],
+				['Português', 'showing'],
+				['Español', 'disabled']
+			]
+		],
+		[
+			'Off',
+			[
+				['English', 'disabled'],
+				['Português', 'disabled'],
+				['Español', 'disabled']
+			]
+		]
+	] as const) {
+		it(`${picked} is what shows after the viewer plays it again`, async () => {
+			handlers();
+			handOffRoutes();
+			const video = await mountAt('session-1', '1');
+			await pick(picked);
+			playing(video);
+			await handToExternal();
+			expect(video.textTracks.length).toBe(0);
+
+			video.dispatchEvent(new Event('play'));
+			await until(() => video.textTracks.length === 3, 'the tracks attached again');
+			expect(modes(video)).toEqual(expected);
+		});
+	}
+
+	it('Portuguese (Brazil) is what shows after Reload brings a fresh stream', async () => {
+		type Handler = (ev: MessageEvent) => void;
+		class FakeEventSource {
+			static instances: FakeEventSource[] = [];
+			url: string;
+			listeners: Record<string, Handler[]> = {};
+			constructor(url: string) {
+				this.url = url;
+				FakeEventSource.instances.push(this);
+			}
+			addEventListener(name: string, handler: Handler) {
+				(this.listeners[name] ??= []).push(handler);
+			}
+			close() {}
+		}
+		const g = globalThis as unknown as { EventSource?: unknown };
+		g.EventSource = FakeEventSource;
+		try {
+			handlers();
+			handOffRoutes();
+			const video = await mountAt('session-1', '1');
+			await pick('Portuguese (Brazil)');
+			playing(video);
+			Object.defineProperty(video, 'error', { value: { code: 3 }, configurable: true });
+			video.dispatchEvent(new Event('error'));
+			await until(() => document.querySelector('.player-error-reload') !== null, 'the Reload');
+			await handToExternal();
+			Object.defineProperty(video, 'error', { value: null, configurable: true });
+
+			const before = FakeEventSource.instances.length;
+			document.querySelector<HTMLButtonElement>('.player-error-reload')!.click();
+			await until(() => FakeEventSource.instances.length > before, 'the fresh resolve');
+			const done = new MessageEvent('done', {
+				data: JSON.stringify({
+					session_id: 'session-2',
+					media_url: `${API_BASE}/s/session-2/file.mp4`,
+					media_kind: 'mp4'
+				})
+			});
+			for (const h of FakeEventSource.instances.at(-1)!.listeners['done'] ?? []) h(done);
+			// The switch's navigation lands on the fresh session.
+			await new Promise((r) => setTimeout(r, 30));
+			setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'mp4' });
+			await until(() => playerVideoInSlot(), 'the video back in its slot');
+			const back = playerVideo();
+			await until(() => back.textTracks.length === 3, 'the fresh stream’s tracks');
+			expect(modes(back)).toEqual([
+				['English', 'disabled'],
+				['Português', 'showing'],
+				['Español', 'disabled']
+			]);
+		} finally {
+			delete g.EventSource;
+		}
+	});
+});
