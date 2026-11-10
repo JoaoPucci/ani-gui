@@ -402,14 +402,17 @@ three-second limit below.
    itself. A page that renders after the stuck state hands over as
    usual: the rail completes, the actions go inert, and the window is
    revealed. A choice that reaches the main process before that wins,
-   and nothing is revealed. There is no new final give-up: a packaged
-   launch keeps its two-minute deadlines for the backend's handshake and
-   the window's first paint, whose failure dialog takes the splash away,
-   and a renderer that dies fails the boot as before. A splash whose own
-   page crashes is reloaded, at most twice per launch, and offers its
-   choices again; one that crashes past that can no longer offer a way
-   out, so the boot fails on it with the same dialog rather than waiting
-   for ever or revealing a window that may be empty. The log has a
+   and nothing is revealed. While the splash can offer its choices,
+   nothing gives up on the person's behalf: a packaged launch keeps its
+   two-minute deadlines for the backend's handshake and the window's
+   first paint, whose failure dialog takes the splash away, and a
+   renderer that dies fails the boot as before. A splash whose own page
+   crashes is reloaded, at most twice per launch, and offers its choices
+   again. One that crashes past that can no longer offer a way out, so
+   the page gets back the 15-second bound it has without a splash: if it
+   renders within it, the window is revealed as usual; if not, the boot
+   fails with the same dialog rather than waiting for ever or revealing
+   a window that may be empty. The log has a
    line for each: the stuck state (which step, how long after the
    paint), the choice, and a page rendering after it (how long after).
 

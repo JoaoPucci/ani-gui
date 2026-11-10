@@ -38,6 +38,39 @@ function appReadyBound(splash) {
   return splash.standsIn() ? null : APP_READY_WAIT_MS;
 }
 
+/**
+ * What fails the window's first open once the splash is `lost`
+ * (lib/splash.cjs): the page gets back the bound it has without a
+ * splash, APP_READY_WAIT_MS from the loss. A page that has rendered, or
+ * renders within it, fails nothing and is revealed as usual; one that
+ * has not by then rejects this with the loss's error, and the boot fails
+ * on it (main.js, openFirstPage's `abort`). Nothing else on screen could
+ * end or continue the launch, and revealing a page that never said it
+ * rendered may show it empty. Never settles otherwise.
+ */
+function abortWhenLost(lost, ready, { graceMs = APP_READY_WAIT_MS } = {}) {
+  let rendered = false;
+  const renderedNow = Promise.resolve(ready).then((r) => {
+    if (r === true) rendered = true;
+    return r === true;
+  });
+  return Promise.resolve(lost).then(
+    () => new Promise(() => {}),
+    (err) => {
+      if (rendered) return new Promise(() => {});
+      let timer;
+      const late = new Promise((resolve) => {
+        timer = setTimeout(() => resolve(false), graceMs);
+      });
+      return Promise.race([renderedNow, late]).then((ok) => {
+        clearTimeout(timer);
+        if (ok) return new Promise(() => {});
+        throw err;
+      });
+    },
+  );
+}
+
 /** The app window's options. */
 function appWindowOptions({ width, height, icon, preload, additionalArguments }) {
   return {
@@ -141,6 +174,7 @@ function revealGate(splash, appReady) {
 }
 
 module.exports = {
+  abortWhenLost,
   revealGate,
   APP_BACKGROUND,
   APP_READY_CHANNEL,

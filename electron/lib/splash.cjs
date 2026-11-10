@@ -369,8 +369,8 @@ function splashController({
         if (over || chosen || win !== splash || splash.isDestroyed() || NOT_A_CRASH.has(reason)) return;
         if (reloads >= SPLASH_RELOADS) {
           log(`[main] splash's page crashed ${reloads + 1} times: not reloaded again (${since()})`);
-          // Nothing on screen can end or continue the launch now: the
-          // boot fails on this (main.js, openFirstPage's `abort`).
+          // It can no longer offer a way out: the page gets its bound
+          // back (main.js, abortWhenLost).
           markLost(new Error(`the launch splash's page crashed ${reloads + 1} times`));
           return;
         }
@@ -447,8 +447,9 @@ function splashController({
       return state.opened && !over && alive() === true;
     },
     // Rejects when the splash's page has crashed past its bounded
-    // reloads while the boot still relies on it (no bound on the wait
-    // for the first page, Restart and Quit its only way out). Never
+    // reloads before the boot was past the splash or a choice was made:
+    // it can no longer stand in for the window (lib/app-window.cjs
+    // abortWhenLost decides what that means for the page). Never
     // settles otherwise.
     lost() {
       return lostSignal;

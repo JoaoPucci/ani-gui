@@ -53,7 +53,7 @@ const { relaunch, relaunchPlan } = require("./lib/relaunch.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
 const { revealMaximized, splashController, splashVersionLabel } = require("./lib/splash.cjs");
-const { appReadyBound, appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
+const { abortWhenLost, appReadyBound, appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
 const {
   grantedSizeRecorder,
   initialSize,
@@ -652,10 +652,11 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     beforeShow: () => revealGate(splash, appReady),
     // While the splash stands in, the wait for the page has no bound and
     // Restart and Quit are the way out. A splash whose page has crashed
-    // past its reloads offers neither, so the boot fails on it: the
-    // failure dialog says why, rather than a launch waiting forever
-    // behind a dead splash or revealing a window that may be empty.
-    abort: splash.lost(),
+    // past its reloads offers neither: the page then gets the 15 s bound
+    // back, and one that has not rendered by then fails the boot with
+    // the failure dialog, rather than a launch waiting forever behind a
+    // dead splash or revealing a window that may be empty.
+    abort: abortWhenLost(splash.lost(), appReady.ready),
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window
     // whose first page failed (lib/startup.cjs).
