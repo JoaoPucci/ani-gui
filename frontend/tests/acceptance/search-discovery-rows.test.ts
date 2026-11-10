@@ -149,6 +149,10 @@ function at(text: string): Element {
 	if (!el) throw new Error(`"${text}" is not on the page\n--- DOM ---\n${screen()}`);
 	return el;
 }
+/** The strip drawn for the row named `eyebrow`, if there is one: a
+ *  strip's scroller carries its row's name. The eyebrow text alone is
+ *  no evidence, because the page's caption above the rows repeats it. */
+const row = (eyebrow: string) => target.querySelector(`[aria-label="${eyebrow}"]`);
 const above = (a: string, b: string) =>
 	(at(a).compareDocumentPosition(at(b)) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
@@ -161,8 +165,8 @@ describe('/search with no query: the discovery rows', () => {
 		app = mount(SearchPage, { target });
 		await until(() => skeletons() > 0, 'skeleton rows while both rows load');
 
-		expect(screen()).toContain(m.search_discovery_trending_eyebrow());
-		expect(screen()).toContain(m.search_discovery_top_rated_eyebrow());
+		expect(row(m.search_discovery_trending_eyebrow())).not.toBeNull();
+		expect(row(m.search_discovery_top_rated_eyebrow())).not.toBeNull();
 		expect(screen()).toContain(m.search_discovery_trending_caption_loading());
 
 		trending.release();
@@ -204,7 +208,11 @@ describe('/search with no query: the discovery rows', () => {
 		expect(screen()).not.toContain('Classic One');
 		// Top rated keeps its place below as a skeleton.
 		expect(skeletons()).toBeGreaterThan(0);
-		expect(above('Airing One', m.search_discovery_top_rated_eyebrow())).toBe(true);
+		const topRatedRow = row(m.search_discovery_top_rated_eyebrow());
+		expect(topRatedRow).not.toBeNull();
+		expect(
+			at('Airing One').compareDocumentPosition(topRatedRow!) & Node.DOCUMENT_POSITION_FOLLOWING
+		).not.toBe(0);
 
 		topRated.release();
 		await until(() => screen().includes('Classic One'), 'Top rated to land');
@@ -220,7 +228,7 @@ describe('/search with no query: the discovery rows', () => {
 		await settle();
 
 		expect(skeletons()).toBe(0);
-		expect(screen()).not.toContain(m.search_discovery_trending_eyebrow());
+		expect(row(m.search_discovery_trending_eyebrow())).toBeNull();
 		expect(screen()).not.toContain(m.search_discovery_nothing_headline());
 	});
 
