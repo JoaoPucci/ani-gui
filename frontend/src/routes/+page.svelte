@@ -1,11 +1,12 @@
 <!--
   Home — the front door. Editorial repertory cinema, programmed by a
   librarian. Composition:
-    1. Hero: kitsuTrendingAnilist()[0], full-bleed cover with parallax + scrim,
+    1. Hero: the first trending shows with art of their own
+       ($lib/hero/rotation), full-bleed cover with parallax + scrim,
        "View" call. NO autoplay, NO carousel.
     2. Continue Watching: hidden when historyList() is empty; otherwise a
        horizontal strip whose cards lean on an oversized mono episode number.
-    3. Trending strip: rest of kitsuTrendingAnilist() (1..n).
+    3. Trending strip: every other trending show, in trending order.
     4. Top Rated: kitsuTopRated().
 -->
 <script lang="ts">
@@ -92,16 +93,28 @@
 		isWatchLaterStale,
 		readLastRefreshed,
 		refreshStamp,
-		markRefreshedSince
+		markRefreshedSince,
+		onWatchLaterInvalidated
 	} from '$lib/account/watch-later-refresh';
+	import {
+		statusLabel,
+		statusPhrases,
+		watchLaterStatus,
+		type StatusCopy
+	} from '$lib/account/watch-later-status';
+	import { createFreshness } from '$lib/account/watch-later-freshness';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
-	import Icon from '$lib/components/Icon.svelte';
+	import RowAction from '$lib/components/RowAction.svelte';
+	import RowStyleSwitch from '$lib/rows/RowStyleSwitch.svelte';
+	import { actionShape, loadRowPrefs, saveRowPrefs, type RowPrefs } from '$lib/rows/prefs';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import type { Provider, ProviderState } from '$lib/account/types';
 	import { accentFor } from '$lib/design/accent';
 	import { resolveHistoryEntry } from '$lib/history/resolve';
 	import { makeFetchAvailability } from '$lib/history/availability-from-match';
 	import { probeScope } from '$lib/availability/probe-scope';
 	import { resolveResumeSettings } from '$lib/history/resume-settings';
+	import { audioFor } from '$lib/play/audio-choice';
 	import { createCapAuthority } from '$lib/history/cap-authority';
 	import { makeStartResume, type ResumePlayArgs } from '$lib/history/start-resume';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
@@ -113,6 +126,8 @@
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
+	import { createConfirmRun } from '$lib/history/confirm-run';
+	import { toastStore } from '$lib/toasts/store.svelte';
 	import { nextHeroIndex, startHeroRotation } from '$lib/hero-rotation';
 	import {
 		failedHeroImages,
@@ -122,6 +137,7 @@
 		type HeroOrigin
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
+	import { splitTrending } from '$lib/hero/rotation';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayArgs } from '$lib/play/play-args';
@@ -176,15 +192,16 @@
 	import { revealWhenDecoded } from '$lib/history/reveal-image';
 	import { m } from '$lib/paraglide/messages';
 
-	// Hero cycles through the top N trending titles. Rotation is slow
-	// (~9s) and pauses while the cursor is over the hero, so it never
-	// snatches a title out from under a user mid-read. Honors
-	// prefers-reduced-motion (cycle disabled, first item shown
-	// statically). Not a carousel — there's no scroll, no auto-advance
-	// faster than read-time, and every item is one click away from the
-	// strip below. AGENTS.md §7 anti-pattern is "auto-rotating carousels"
-	// in the marketing-page sense; this is a programmed marquee.
-	const HERO_ROTATION_COUNT = 3;
+	// Hero cycles through the first N trending titles with art of their
+	// own ($lib/hero/rotation, which also says what the trending row
+	// lists). Rotation is slow (~9s) and pauses while the cursor is over
+	// the hero, so it never snatches a title out from under a user
+	// mid-read. Honors prefers-reduced-motion (cycle disabled, first item
+	// shown statically). Not a carousel — there's no scroll, no
+	// auto-advance faster than read-time, and every item is one click
+	// away on the pager. AGENTS.md §7 anti-pattern is "auto-rotating
+	// carousels" in the marketing-page sense; this is a programmed
+	// marquee.
 
 	let trending = $state<KitsuAnimeRef[] | null>(null);
 	let topRated = $state<KitsuAnimeRef[] | null>(null);
@@ -203,6 +220,11 @@
 	// as opposed to succeeding with an empty list — so a connected user
 	// sees a retry affordance instead of a false "nothing planned".
 	let watchLaterFailed = $state(false);
+	// The row shows its failed state when the last load failed and there
+	// are no cards to keep showing (a populated rail keeps its cards).
+	const wlFailedRow = $derived(
+		accountStore.hasAny && watchLaterFailed && !(watchLater && watchLater.length > 0)
+	);
 	// What the last failed load rejected with, so the rail's hint can
 	// say what went wrong instead of always blaming the connection.
 	let watchLaterError = $state<unknown>(null);
@@ -358,84 +380,101 @@
 
 	// Delete confirmation: holds the entry pending user confirm. Null
 	// means no modal open. The modal pops over the rail; cancelling
-	// just nulls this back out, confirming fires historyDelete + local
-	// state update (optimistic — no reload to keep the deletion crisp).
+	// nulls this back out (not while a remove is out), and confirming
+	// fires historyDelete, taking the rows off the strip once the
+	// deletes land, with no reload of the history.
 	let deleteCandidate = $state<{ entry: HistoryEntry; displayTitle: string } | null>(null);
 	let deleteBusy = $state(false);
-	// Kebab menu open state for the rail header.
-	let clearMenuOpen = $state(false);
 	// Clear-all confirmation modal open state.
 	let clearConfirmOpen = $state(false);
 	let clearBusy = $state(false);
 
+	// Each dialog's run ($lib/history/confirm-run): it runs once however
+	// often confirm is pressed, the dialog is held open while it is out
+	// and neither dialog opens over it, and a failure is said in an
+	// error toast, the way the app reports other failed actions, with
+	// the cards left as the backend holds them.
+	const deleteRun = createConfirmRun({
+		setBusy: (busy) => (deleteBusy = busy),
+		close: () => (deleteCandidate = null)
+	});
 	function openDeleteFor(entry: HistoryEntry, displayTitle: string) {
-		deleteCandidate = { entry, displayTitle };
+		if (clearRun.busy) return;
+		deleteRun.open(() => (deleteCandidate = { entry, displayTitle }));
 	}
 	function cancelDelete() {
-		deleteCandidate = null;
+		deleteRun.cancel();
 	}
-	async function confirmDelete() {
-		if (!deleteCandidate) return;
-		deleteBusy = true;
-		try {
-			// Decision + transition logic lives in the helper per
-			// AGENTS.md §2: group expansion +
-			// serialized backend deletes + filtered-history compute,
-			// all unit-covered in delete-controller.test.ts. The
-			// component stays as modal/busy glue.
-			// Snapshot the visible order BEFORE the IPC so we can
-			// hand the gate the exact set of ids this delete
-			// touches: the removed rows themselves + every survivor
-			// whose position shifts left to fill the gap. A
-			// concurrent dedupe firing during the gate's window has
-			// different ids and short-circuits.
-			const snapshot = dedupedHistory.map((e) => e.id);
-			await executeKitsuGroupDelete(deleteCandidate.entry.id, {
-				history: history ?? [],
-				currentHistory: () => history ?? [],
-				// Open the gate IMMEDIATELY before the optimistic mutation
-				// so the 350ms auto-close window starts when Svelte's
-				// out-transition factory is about to fire — not when the
-				// click was first received. See $lib/history/animation-gate
-				// for the per-id scope + Svelte-batched-reset story.
-				applyRemaining: (rows, removedIds) => {
-					deleteAnimationGate.open(removedIds, shiftedSurvivorIds(snapshot, removedIds));
-					history = rows;
-				},
-				matches: historyMatches,
-				historyDelete,
-				snapshotPositions,
-				forgetPositions: (kitsuId, since) => clearShowPositions(kitsuId, undefined, since),
-				forgetRowPositions: (rows, keep, since) => clearRowPositions(rows, undefined, keep, since),
-				kitsuIdOf: allmangaKitsuMapGet,
-				// Read the way the Continue resolver reads a recorded id.
-				recordedGone: (id) =>
-					kitsuAnimeDetail(id).then(
-						() => false,
-						(e) => (kitsuEntryGone(e) ? true : Promise.reject(e))
-					)
-			});
-		} finally {
-			deleteBusy = false;
-			deleteCandidate = null;
-		}
+	function confirmDelete() {
+		const candidate = deleteCandidate;
+		if (!candidate) return;
+		return deleteRun.confirm(
+			() => removeCard(candidate.entry),
+			() =>
+				toastStore.push({
+					kind: 'error',
+					message: m.home_delete_failed({ title: candidate.displayTitle })
+				})
+		);
 	}
+	async function removeCard(entry: HistoryEntry) {
+		// Decision + transition logic lives in the helper per
+		// AGENTS.md §2: group expansion +
+		// serialized backend deletes + filtered-history compute,
+		// all unit-covered in delete-controller.test.ts. The
+		// dialog's run is $lib/history/confirm-run's.
+		// Snapshot the visible order BEFORE the IPC so we can
+		// hand the gate the exact set of ids this delete
+		// touches: the removed rows themselves + every survivor
+		// whose position shifts left to fill the gap. A
+		// concurrent dedupe firing during the gate's window has
+		// different ids and short-circuits.
+		const snapshot = dedupedHistory.map((e) => e.id);
+		await executeKitsuGroupDelete(entry.id, {
+			history: history ?? [],
+			currentHistory: () => history ?? [],
+			// Open the gate IMMEDIATELY before the strip changes
+			// so the 350ms auto-close window starts when Svelte's
+			// out-transition factory is about to fire — not when the
+			// click was first received. See $lib/history/animation-gate
+			// for the per-id scope + Svelte-batched-reset story.
+			applyRemaining: (rows, removedIds) => {
+				deleteAnimationGate.open(removedIds, shiftedSurvivorIds(snapshot, removedIds));
+				history = rows;
+			},
+			matches: historyMatches,
+			historyDelete,
+			snapshotPositions,
+			forgetPositions: (kitsuId, since) => clearShowPositions(kitsuId, undefined, since),
+			forgetRowPositions: (rows, keep, since) => clearRowPositions(rows, undefined, keep, since),
+			kitsuIdOf: allmangaKitsuMapGet,
+			// Read the way the Continue resolver reads a recorded id.
+			recordedGone: (id) =>
+				kitsuAnimeDetail(id).then(
+					() => false,
+					(e) => (kitsuEntryGone(e) ? true : Promise.reject(e))
+				)
+		});
+	}
+	const clearRun = createConfirmRun({
+		setBusy: (busy) => (clearBusy = busy),
+		close: () => (clearConfirmOpen = false)
+	});
 	function openClearConfirm() {
-		clearMenuOpen = false;
-		clearConfirmOpen = true;
+		if (deleteRun.busy) return;
+		clearRun.open(() => (clearConfirmOpen = true));
 	}
 	function cancelClear() {
-		clearConfirmOpen = false;
+		clearRun.cancel();
 	}
-	async function confirmClear() {
-		clearBusy = true;
-		try {
-			await historyClear();
-			history = [];
-		} finally {
-			clearBusy = false;
-			clearConfirmOpen = false;
-		}
+	function confirmClear() {
+		return clearRun.confirm(
+			async () => {
+				await historyClear();
+				history = [];
+			},
+			() => toastStore.push({ kind: 'error', message: m.home_clear_history_failed() })
+		);
 	}
 	let trendingError = $state<string | null>(null);
 	let topRatedError = $state<string | null>(null);
@@ -451,22 +490,21 @@
 	// Shared settings load — created on mount, awaited by BOTH the
 	// loader's getMode and startResume. Cards can release (and be
 	// clicked) before this resolves; the click awaits it via
-	// resolveResumeSettings so a DUB user never plays the sub/best
+	// resolveResumeSettings so a DUB user never plays the sub
 	// fallback just because they clicked fast.
 	let settingsPromise: Promise<Config | null> = Promise.resolve(null);
 	let resumeBusy = $state<string | null>(null);
 	let resumeProgress = $state<string | null>(null);
 	let resumeFailure = $state<{ title: string; message: string } | null>(null);
 
-	const heroRotation = $derived<KitsuAnimeRef[]>(
-		trending && trending.length > 0 ? trending.slice(0, HERO_ROTATION_COUNT) : []
-	);
+	const trendingSplit = $derived(splitTrending(trending ?? []));
+	const heroRotation = $derived<KitsuAnimeRef[]>(trendingSplit.hero);
 	const featured = $derived(
 		heroRotation.length > 0 ? heroRotation[heroIndex % heroRotation.length] : null
 	);
-	// Tail starts after the rotation set so the user doesn't see the
-	// hero title also pinned as the first card of the row below.
-	const trendingTail = $derived(trending ? trending.slice(HERO_ROTATION_COUNT) : []);
+	// The row leaves out the rotation's shows, so the user doesn't see
+	// the hero title also pinned as a card of the row below.
+	const trendingTail = $derived(trendingSplit.row);
 	const featuredAccent = $derived(featured ? accentFor(featured.id) : 'var(--accent-ink)');
 
 	onMount(() => {
@@ -484,8 +522,8 @@
 			.then((t) => filterAvailable(t, filterMode))
 			.then((t) => (topRated = t))
 			.catch((e) => (topRatedError = describeError(e)));
-		// Settings drive mode/quality for the Continue Watching click
-		// handler. Default {sub, best} when settings haven't loaded
+		// Settings drive the audio mode for the Continue Watching click
+		// handler. Default sub when settings haven't loaded
 		// yet — same fallback the click handler uses on /anime/[id].
 		// The shared promise lets the Continue Watching loader await
 		// the configured mode before firing its batch availability
@@ -539,6 +577,8 @@
 					fetchAvailability: makeFetchAvailability(checkAvailability),
 					signal: continueProbes.signal,
 					getMode: () => settingsPromise.then(pickAvailabilityMode),
+					// A show with its own audio is probed in it.
+					modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
 					// Per-row state mutations are routed through the
 					// component-scope rowReady handler (row-ready.ts) —
 					// shared with startResume so a click-time cap
@@ -572,6 +612,8 @@
 						fetchAvailability: (m, mode) =>
 							makeFetchAvailability(checkAvailability)(m, mode, continueProbes.signal),
 						mode,
+						// A show with its own audio is asked about in it.
+						modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
 						// The retry pays for the listing the first probe
 						// did not: read the row again after it.
 						onRefined: (id, count) => {
@@ -645,7 +687,8 @@
 				if (!watchLaterLoads.current(ticket)) return;
 				watchLaterError = e;
 				watchLaterFailed = true;
-			});
+			})
+			.finally(() => watchLaterLoads.finish(ticket));
 	});
 
 	// Hero auto-advance. The rules and the interval live in
@@ -699,9 +742,15 @@
 	// initial load path, post-refresh, and a settled tracker write — the
 	// one caller that moves the cards it changed (`moved`).
 	async function reloadWatchLaterRail(moved = false) {
+		// Whatever sent the row here — a mount, a pull, a settled write
+		// that invalidated a tracker's last pull — may have changed the
+		// stamps the freshness line reads, so it reads them again.
+		wlFreshness.stampsChanged();
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const ticket = watchLaterLoads.start(false);
 		const deps = buildWatchLaterDeps();
+		// Nothing between taking the ticket and the `try` may throw: the
+		// `finally` reports the load finished, which a refresh waits on.
+		const ticket = watchLaterLoads.start(false);
 		try {
 			const refs = await loadWatchLater(deps);
 			const filtered = await filterAvailable(refs, filterMode);
@@ -725,6 +774,8 @@
 			if (!watchLaterLoads.current(ticket)) return;
 			watchLaterError = e;
 			watchLaterFailed = true;
+		} finally {
+			watchLaterLoads.finish(ticket);
 		}
 	}
 
@@ -746,6 +797,7 @@
 		const deps = buildWatchLaterDeps();
 		const providers = Object.keys(deps.credentials) as Provider[];
 		if (providers.length === 0) return;
+		wlFreshness.refreshStarted(wlStatusText, m.account_watch_later_refreshing());
 		refreshingWatchLater = true;
 		try {
 			await Promise.all(
@@ -770,10 +822,69 @@
 				})
 			);
 			await reloadWatchLaterRail();
+			// A load that started meanwhile superseded this one, so what
+			// the refresh announces is that load's result.
+			await watchLaterLoads.settled();
 		} finally {
 			refreshingWatchLater = false;
+			wlFreshness.refreshSettled(() => wlStatusText);
 		}
 	}
+
+	// The Watch Later rail's freshness line — what it reads is
+	// $lib/account/watch-later-status, and when its inputs move is
+	// $lib/account/watch-later-freshness. The last-pulled times live in
+	// local storage, which nothing reactive watches, so `stamped` moves
+	// whenever a pull may have recorded one, or a write cleared one, and
+	// the times are read again.
+	const wlFreshness = createFreshness(
+		{
+			now: () => Date.now(),
+			schedule: (fn, ms) => setTimeout(fn, ms),
+			cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>)
+		},
+		(next) => (wl = next)
+	);
+	let wl = $state(wlFreshness.state);
+	// A number, so a write that leaves it alone (the clock moving, the
+	// held label) does not have the status recomputed.
+	const wlStamped = $derived(wl.stamped);
+	onDestroy(() => wlFreshness.dispose());
+	$effect(() => onWatchLaterInvalidated(() => wlFreshness.stampsChanged()));
+	const wlCopy: StatusCopy = {
+		refreshing: () => m.account_watch_later_refreshing(),
+		never: () => m.account_watch_later_not_updated(),
+		justNow: () => m.account_watch_later_updated_now(),
+		updated: (when) => m.account_watch_later_updated({ when }),
+		failed: () => m.account_watch_later_failed()
+	};
+	const wlStatus = $derived.by(() => {
+		void wlStamped;
+		const providers = Object.keys(buildWatchLaterDeps().credentials) as Provider[];
+		// A failed load is the rail's last word until one lands: the
+		// line, and the refresh's settled announcement read from it,
+		// then say so instead of how fresh the trackers' pulls are.
+		return watchLaterStatus(
+			providers.map(readLastRefreshed),
+			refreshingWatchLater,
+			watchLaterFailed
+		);
+	});
+	const wlStatusText = $derived(statusLabel(wlStatus, wl.now, getLocale(), wlCopy));
+	// `wl.held` is the label the line had when a refresh started, held
+	// (hidden) for its width until the refresh settles; see statusPhrases.
+	const wlPhrases = $derived(statusPhrases(wlStatus, wl.now, getLocale(), wlCopy, wl.held));
+	$effect(() => wlFreshness.track(wlStatus));
+
+	// Home row style — see $lib/rows/prefs. A choice made in the switch
+	// applies to every row at once and is kept for the next load.
+	let rowPrefs = $state(loadRowPrefs(browserStorage()));
+	function chooseRowPrefs(next: RowPrefs) {
+		rowPrefs = next;
+		saveRowPrefs(browserStorage(), next);
+	}
+	const rowSurface = $derived(rowPrefs.style === 'band' ? 'band' : 'plain');
+	const rowActionShape = $derived(actionShape(rowPrefs.style));
 
 	// One-shot TTL check after the first cached render: if any connected
 	// provider's snapshot is past the TTL, re-pull in the background.
@@ -815,7 +926,6 @@
 			title: a.title,
 			episode: a.episode,
 			mode: a.mode,
-			quality: a.quality,
 			show: a.match,
 			kitsuId: recordableId(a.match.id, a.guess === true),
 			// The version remembered for the show, as its detail page
@@ -867,6 +977,8 @@
 			resumeFailure = { title, message };
 		},
 		getSettings: () => resolveResumeSettings(config, settingsPromise),
+		// A show with its own audio plays in it.
+		modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
 		getPlayableCount: (id) => historyPlayableCounts[id] ?? null,
 		isPlayableCountApproximate: (id) => historyApproximateCaps[id] === true,
 		setPlayableCount: (id, c, approximate) => {
@@ -889,12 +1001,14 @@
 				count: r?.episode_count ?? null,
 				approximate: r?.episode_count_approximate === true
 			})),
-		resolvePlay: (a, onProgress) =>
-			getOrFire(
-				makeKey(a.match.id, a.episode, a.mode, a.quality, storedChoice(a.match.id), a.row),
-				(emit, signal) => playStream(playArgsFor(a), emit, signal),
+		resolvePlay: (a, onProgress) => {
+			const args = playArgsFor(a);
+			return getOrFire(
+				makeKey(a.match.id, a.episode, a.mode, args.version, a.row, args.caption),
+				(emit, signal) => playStream(args, emit, signal),
 				(p) => onProgress(progressLabel(p))
-			),
+			);
+		},
 		markWatched: (a) => markWatched(playArgsFor(a)),
 		// Completion is decided against the FULL finite series total
 		// (mode-independent), NOT the dub/sub playable cap, and only
@@ -1224,53 +1338,34 @@
 	{/if}
 {/snippet}
 
-{#snippet continueHeaderTrailing()}
-	<div class="continue-menu-wrap">
-		<button
-			type="button"
-			class="continue-menu-btn"
-			aria-label={m.home_clear_menu_button_aria()}
-			aria-haspopup="true"
-			aria-expanded={clearMenuOpen}
-			onclick={(e) => {
-				e.stopPropagation();
-				clearMenuOpen = !clearMenuOpen;
-			}}
-		>
-			<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-				<circle cx="5" cy="12" r="1.6" fill="currentColor" />
-				<circle cx="12" cy="12" r="1.6" fill="currentColor" />
-				<circle cx="19" cy="12" r="1.6" fill="currentColor" />
-			</svg>
-		</button>
-		{#if clearMenuOpen}
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="continue-menu-backdrop" onclick={() => (clearMenuOpen = false)}></div>
-			<menu class="continue-menu" role="menu">
-				<li role="presentation">
-					<button
-						type="button"
-						class="continue-menu-item"
-						role="menuitem"
-						onclick={openClearConfirm}
-					>
-						{m.home_clear_menu_item()}
-					</button>
-				</li>
-			</menu>
-		{/if}
-	</div>
+{#snippet continueActions()}
+	<RowAction
+		label={m.home_clear_history_action()}
+		icon="clear-history"
+		tone="quiet"
+		shape={rowActionShape}
+		onclick={openClearConfirm}
+	/>
 {/snippet}
+
+<!-- The row style switch, while the diagnostics page's toggle is on:
+     at the head of the rows it governs, in flow, so it scrolls with them
+     and covers no row's header. -->
+{#if rowPrefs.controls}
+	<div class="row-style-slot">
+		<RowStyleSwitch prefs={rowPrefs} onchoose={chooseRowPrefs} />
+	</div>
+{/if}
 
 <!-- Continue Watching: only when history is non-empty -->
 {#if history && history.length > 0}
 	<Strip
+		surface={rowSurface}
 		eyebrow={m.home_strip_continue_eyebrow()}
 		caption={m.home_strip_continue_caption()}
 		cardWidth="16rem"
 		padBlock="var(--space-4) var(--space-3)"
-		headerTrailing={continueHeaderTrailing}
+		headerActions={continueActions}
 	>
 		{#each dedupedHistory as entry (entry.id)}
 			{@const match = historyMatches[entry.id]}
@@ -1313,23 +1408,17 @@
 							)
 			})}
 			{@const initials = (card.text?.show ?? target.displayTitle).slice(0, 2).toUpperCase()}
-			<!-- Both transitions are gated on `deleteBusy` so they only
-		     run for user-confirmed deletes. On home re-mount,
-		     `dedupeHistoryByKitsuId` collapses Kitsu-group siblings
-		     as their matches resolve, which would otherwise fire
-		     out:scale on every dedupe-removed row + animate:flip on
-		     every survivor — the resize-flicker users see when
-		     navigating Detail → back → Home. Duration 0 makes those
-		     transitions instant (no animation) during load; during
-		     `confirmDelete`, `deleteBusy=true` re-enables the smooth
-		     shrink + slide.
-
-		     Params are FUNCTIONS, not object literals, because
-		     Svelte caches the object form at element mount — by
-		     fire time, the cached duration is still the
-		     `deleteBusy=false` value and the user delete won't
-		     animate. The function form re-evaluates on every
-		     fire, so the gate reads the live state. -->
+			<!-- Both transitions are gated on `deleteAnimationGate` so
+		     they only run for user-confirmed deletes. On home
+		     re-mount, `dedupeHistoryByKitsuId` collapses Kitsu-group
+		     siblings as their matches resolve, which would otherwise
+		     fire out:scale on every dedupe-removed row + animate:flip
+		     on every survivor — the resize-flicker users see when
+		     navigating Detail → back → Home. A row the gate was not
+		     opened for leaves and shifts instantly; a confirmed
+		     remove opens it for the removed rows and the survivors
+		     they shift, just before the strip changes. The factories
+		     read the gate when they fire, per id. -->
 			<div
 				class="resume-cell"
 				style="--accent: {accent};"
@@ -1453,60 +1542,77 @@
        - watchLater === null  → boot, accountStore not hydrated yet
        - watchLater.length === 0 → no provider connected, or every
          connected provider's Plan-to-Watch is empty / un-bridged. -->
-{#snippet watchLaterRefresh()}
-	<button
-		type="button"
-		class="rail-refresh"
-		class:is-refreshing={refreshingWatchLater}
-		disabled={refreshingWatchLater}
-		aria-label={m.account_watch_later_refresh()}
-		title={m.account_watch_later_refresh()}
-		onclick={refreshWatchLater}
-	>
-		<Icon name="update" size={16} />
-	</button>
+{#snippet watchLaterMeta()}
+	<!-- The current phrasing, and through a refresh the one it replaced,
+	     stacked in one cell; only the current one is seen or read. -->
+	<span class="wl-status">
+		{#each wlPhrases as phrase (phrase.text)}
+			<span
+				class="wl-phrase"
+				data-shown={phrase.shown ? '' : undefined}
+				aria-hidden={phrase.shown ? undefined : 'true'}>{phrase.text}</span
+			>
+		{/each}
+	</span>
 {/snippet}
 
-{#if watchLater && (watchLater.length > 0 || (accountStore.hasAny && !watchLaterFailed))}
+{#snippet watchLaterActions()}
+	<RowAction
+		label={m.account_watch_later_refresh_action()}
+		icon="refresh"
+		shape={rowActionShape}
+		busy={refreshingWatchLater}
+		onclick={refreshWatchLater}
+	/>
+{/snippet}
+
+{#if wlFailedRow || (watchLater && (watchLater.length > 0 || (accountStore.hasAny && !watchLaterFailed)))}
 	<!-- The list, or — connected and the cached Plan-to-Watch genuinely
 	     empty — the empty row with its header and refresh, so newly-added
-	     tracker titles can be pulled in before the TTL. One strip for both,
-	     so the first card a settled write adds grows into the row and the
-	     last one it removes shrinks out of it, like any other card. -->
+	     tracker titles can be pulled in before the TTL; or, connected but
+	     the last load failed (bridge/availability down), a retry
+	     affordance rather than a false "nothing planned" — an empty list
+	     and a failed fetch are different states. One strip for all three:
+	     the first card a settled write adds grows into the row and the
+	     last one it removes shrinks out of it, like any other card, and a
+	     refresh that moves the row between failed and loaded leaves the
+	     Refresh the keyboard pressed where it was. A failed row vouches
+	     for no freshness, so it carries no status. -->
 	<Strip
+		surface={rowSurface}
 		eyebrow={m.account_watch_later_title()}
-		caption={watchLater.length > 0
-			? m.account_watch_later_caption()
-			: m.account_watch_later_empty()}
-		headerTrailing={watchLaterRefresh}
+		caption={wlFailedRow
+			? m.account_watch_later_failed()
+			: watchLater && watchLater.length > 0
+				? m.account_watch_later_caption()
+				: m.account_watch_later_empty()}
+		headerMeta={!wlFailedRow && wlStatusText ? watchLaterMeta : undefined}
+		headerActions={watchLaterActions}
 	>
-		{#each watchLater as anime (anime.id)}
-			<div class="watch-later-cell" data-anime-id={anime.id} in:wlIn out:wlOut animate:wlFlip>
-				<PosterCard {anime} />
-			</div>
-		{/each}
-		{#if watchLater.length === 0}
-			<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
+		{#if wlFailedRow}
+			<p class="watch-later-empty">
+				{m.account_watch_later_failed_hint({ reason: describeError(watchLaterError) })}
+			</p>
+		{:else if watchLater}
+			{#each watchLater as anime (anime.id)}
+				<div class="watch-later-cell" data-anime-id={anime.id} in:wlIn out:wlOut animate:wlFlip>
+					<PosterCard {anime} />
+				</div>
+			{/each}
+			{#if watchLater.length === 0}
+				<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
+			{/if}
 		{/if}
 	</Strip>
-{:else if accountStore.hasAny && watchLaterFailed}
-	<!-- Connected but the last load failed (bridge/availability down). Show
-	     a retry affordance rather than a false "nothing planned" — an empty
-	     list and a failed fetch are different states. -->
-	<Strip
-		eyebrow={m.account_watch_later_title()}
-		caption={m.account_watch_later_failed()}
-		headerTrailing={watchLaterRefresh}
-	>
-		<p class="watch-later-empty">
-			{m.account_watch_later_failed_hint({ reason: describeError(watchLaterError) })}
-		</p>
-	</Strip>
 {/if}
+
+<!-- The Watch Later refresh's announcement; see watch-later-freshness. -->
+<p class="wl-announce" role="status">{wl.announce}</p>
 
 <!-- Trending strip (the tail; the head is the hero) -->
 {#if trending === null && !trendingError}
 	<Strip
+		surface={rowSurface}
 		eyebrow={m.home_strip_trending_eyebrow()}
 		caption={m.home_strip_trending_caption_loading()}
 	>
@@ -1519,7 +1625,11 @@
 		{/each}
 	</Strip>
 {:else if trendingTail.length > 0}
-	<Strip eyebrow={m.home_strip_trending_eyebrow()} caption={m.home_strip_trending_caption()}>
+	<Strip
+		surface={rowSurface}
+		eyebrow={m.home_strip_trending_eyebrow()}
+		caption={m.home_strip_trending_caption()}
+	>
 		{#each trendingTail as anime (anime.id)}
 			<PosterCard {anime} />
 		{/each}
@@ -1529,6 +1639,7 @@
 <!-- Top Rated strip -->
 {#if topRated === null && !topRatedError}
 	<Strip
+		surface={rowSurface}
 		eyebrow={m.home_strip_top_rated_eyebrow()}
 		caption={m.home_strip_top_rated_caption_loading()}
 	>
@@ -1541,7 +1652,11 @@
 		{/each}
 	</Strip>
 {:else if topRated && topRated.length > 0}
-	<Strip eyebrow={m.home_strip_top_rated_eyebrow()} caption={m.home_strip_top_rated_caption()}>
+	<Strip
+		surface={rowSurface}
+		eyebrow={m.home_strip_top_rated_eyebrow()}
+		caption={m.home_strip_top_rated_caption()}
+	>
 		{#each topRated as anime (anime.id)}
 			<PosterCard {anime} />
 		{/each}
@@ -1994,25 +2109,39 @@
 		outline-offset: 2px;
 	}
 
-	/* Continue-Watching rail kebab + dropdown. */
-	.continue-menu-wrap {
-		position: relative;
-		display: inline-flex;
+	/* The row style switch's place: the head of the rows, flush with
+	   their end edge (the strips' gutter). */
+	.row-style-slot {
+		display: flex;
+		justify-content: flex-end;
+		padding-inline: var(--space-8);
+		margin-block-end: var(--space-4);
 	}
-	.continue-menu-btn {
+
+	/* The Watch Later status: its phrasings stacked in one grid cell, a
+	   hidden one holding the width through a refresh; digits of one
+	   width, so the minute tick does not nudge the line either. */
+	.wl-status {
 		display: inline-grid;
-		place-items: center;
-		inline-size: 2rem;
-		block-size: 2rem;
+		font-variant-numeric: tabular-nums;
+	}
+	.wl-phrase {
+		grid-area: 1 / 1;
+		white-space: nowrap;
+	}
+	.wl-phrase:not([data-shown]) {
+		visibility: hidden;
+	}
+	.wl-announce {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
 		padding: 0;
-		border: none;
-		border-radius: 999px;
-		background: transparent;
-		color: var(--bone-300);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast) var(--ease-out-soft),
-			color var(--dur-fast) var(--ease-out-soft);
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	/* Empty-state note shown in the Watch Later rail when a provider is
@@ -2023,94 +2152,6 @@
 		font-family: var(--font-body);
 		font-size: var(--type-meta);
 		color: var(--bone-400);
-	}
-
-	/* Watch Later rail refresh button (Strip headerTrailing). */
-	.rail-refresh {
-		display: inline-grid;
-		place-items: center;
-		inline-size: 2rem;
-		block-size: 2rem;
-		padding: 0;
-		border: none;
-		border-radius: 999px;
-		background: transparent;
-		color: var(--bone-300);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast) var(--ease-out-soft),
-			color var(--dur-fast) var(--ease-out-soft);
-	}
-	.rail-refresh:hover:not(:disabled) {
-		background: var(--ink-100);
-		color: var(--bone-100);
-	}
-	.rail-refresh:disabled {
-		cursor: default;
-		opacity: 0.7;
-	}
-	.rail-refresh.is-refreshing :global(svg) {
-		animation: rail-refresh-spin 0.8s linear infinite;
-	}
-	@keyframes rail-refresh-spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-	.continue-menu-btn:hover,
-	.continue-menu-btn[aria-expanded='true'] {
-		background: var(--ink-100);
-		color: var(--bone-100);
-	}
-	.continue-menu-backdrop {
-		position: fixed;
-		inset: 0;
-		z-index: 19;
-	}
-	.continue-menu {
-		position: absolute;
-		inset-block-start: calc(100% + var(--space-2));
-		inset-inline-end: 0;
-		margin: 0;
-		padding: var(--space-2);
-		list-style: none;
-		background: var(--ink-050);
-		border: 1px solid var(--ink-200);
-		border-radius: var(--radius-card);
-		box-shadow: var(--shadow-card-hover);
-		z-index: 20;
-		min-inline-size: 12rem;
-		animation: cm-rise var(--dur-fast) var(--ease-out-soft) both;
-	}
-	@keyframes cm-rise {
-		from {
-			opacity: 0;
-			transform: translateY(-4px);
-		}
-		to {
-			opacity: 1;
-			transform: none;
-		}
-	}
-	.continue-menu-item {
-		display: block;
-		inline-size: 100%;
-		text-align: start;
-		padding: var(--space-2) var(--space-3);
-		border: none;
-		border-radius: calc(var(--radius-card) - 4px);
-		background: transparent;
-		color: var(--bone-200);
-		font: inherit;
-		font-size: var(--type-meta);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast) var(--ease-out-soft),
-			color var(--dur-fast) var(--ease-out-soft);
-	}
-	.continue-menu-item:hover {
-		background: var(--ink-100);
-		color: var(--accent-oxblood);
 	}
 
 	.resume-card {

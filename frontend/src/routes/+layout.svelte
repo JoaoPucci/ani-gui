@@ -18,6 +18,7 @@
 <script lang="ts">
 	import '$lib/design/tokens.css';
 	import { onDestroy, onMount } from 'svelte';
+	import { signalAppReady } from '$lib/app-ready';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { afterNavigate, goto, replaceState } from '$app/navigation';
@@ -61,15 +62,17 @@
 	import { afterNavigation, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
 	import { probeScope } from '$lib/availability/probe-scope';
 	import {
-		RECENT_LIMIT,
-		RECENT_STORAGE_KEY,
 		cycleSelectedIdx,
 		decideEnterAction,
 		freshConfigOrLast,
-		mergeRecents,
-		parseStoredRecents,
 		shouldRenderDropdown
 	} from '$lib/topbar/dropdown';
+	import {
+		RECENT_LIMIT,
+		RECENT_STORAGE_KEY,
+		mergeRecents,
+		parseStoredRecents
+	} from '$lib/topbar/recent-searches';
 
 	let { children } = $props();
 
@@ -219,7 +222,7 @@
 	const LIVE_DEBOUNCE_MS = 250;
 	const LIVE_MIN_CHARS = 2;
 	const LIVE_MAX_HITS = 5;
-	// RECENT_LIMIT + RECENT_STORAGE_KEY come from $lib/topbar/dropdown
+	// RECENT_LIMIT + RECENT_STORAGE_KEY come from $lib/topbar/recent-searches
 	// so the constants live next to the helpers that consume them.
 
 	let liveResults = $state<KitsuAnimeRef[] | null>(null);
@@ -232,6 +235,9 @@
 	let blurDismiss: ReturnType<typeof setTimeout> | null = null;
 
 	onMount(() => {
+		// The layout and its first route have mounted: the window may be
+		// revealed once this frame is drawn (electron/lib/app-window.cjs).
+		signalAppReady();
 		try {
 			recentSearches = parseStoredRecents(window.localStorage.getItem(RECENT_STORAGE_KEY));
 		} catch {
@@ -258,7 +264,8 @@
 		// backend is the documented outbound HTTP boundary
 		// (`docs/architecture.md`). The
 		// `update_include_prereleases` setting (default true)
-		// drives which GitHub endpoint the backend hits.
+		// decides whether the backend counts pre-releases when it
+		// picks the newest release with this platform's package.
 		const localApiBase = window.aniGui?.apiBase ?? '';
 		if (localApiBase) {
 			void settingsGet()
@@ -377,9 +384,9 @@
 			blurDismiss = null;
 		}
 		dropdownOpen = true;
-		// Re-pull config so the next dropdown filter sees the user's
-		// current Sub/Dub pick. Settings + the detail page mutate their
-		// page-local config but don't push it back here, so without
+		// Re-pull config so the next dropdown filter sees the current
+		// default Sub/Dub. The Settings page mutates its page-local
+		// config but doesn't push it back here, so without
 		// this refresh the dropdown filters with whatever mode was set
 		// when the layout first mounted. Bounded work: fires once per
 		// focus, not per keystroke.
@@ -901,12 +908,15 @@
 			flex-wrap: wrap;
 		}
 	}
+	/* The small rail link steps down to the faintest text tier rather
+	   than fading with opacity: bone-300 at 0.6 read 3.8:1, short of
+	   WCAG AA for its label. */
 	.nav li.small .nav-link {
-		opacity: 0.6;
+		color: var(--bone-400);
 	}
 	.nav li.small .nav-link:hover,
 	.nav li.small .nav-link.active {
-		opacity: 1;
+		color: var(--bone-100);
 	}
 
 	.nav-link {
@@ -1289,9 +1299,9 @@
 		display: none;
 	}
 	.topbar-search input::placeholder {
-		/* Lift placeholder from bone-400 to a brighter color-mix so
-		   the call-to-action ("Search anime…") is legible at the
-		   bumped 16px size. */
+		/* The call-to-action ("Search anime…") at the bumped 16px
+		   size. Bone-100 at 55% clears WCAG AA (4.5:1) on every ink
+		   surface; tests/lint/text-contrast.test.ts holds it there. */
 		color: color-mix(in oklab, var(--bone-100) 55%, transparent);
 		font-weight: 400;
 	}

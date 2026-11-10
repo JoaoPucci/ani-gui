@@ -1,0 +1,61 @@
+{
+ "data": [
+  {
+   "id": "13051",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Boruto: Naruto Next Generations",
+    "titles": {
+     "en_jp": "Boruto: Naruto Next Generations",
+     "en_us": "Boruto: Naruto Next Generations",
+     "ja_jp": "BORUTO-ボルト- NARUTO NEXT GENERATIONS"
+    },
+    "abbreviatedTitles": [],
+    "slug": "boruto-naruto-next-generations",
+    "startDate": "2017-04-05",
+    "endDate": "2023-03-26",
+    "episodeCount": 293,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47181",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Boruto: Naruto Next Generations Part 2",
+    "titles": {
+     "en_jp": "Boruto: Naruto Next Generations Part 2",
+     "ja_jp": "BORUTO -NARUTO NEXT GENERATIONS- (第二部)"
+    },
+    "abbreviatedTitles": [],
+    "slug": "boruto-naruto-next-generations-part-2",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "tba"
+   }
+  },
+  {
+   "id": "40971",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kamiusagi Rope x Boruto: Naruto Next Generations",
+    "titles": {
+     "en_jp": "Kamiusagi Rope x Boruto: Naruto Next Generations",
+     "ja_jp": "「紙兎ロぺ」×「BORUTO-ボルト- NARUTO NEXT　GENERATIONS」"
+    },
+    "abbreviatedTitles": [
+     "TOHO Cinemas Ueno"
+    ],
+    "slug": "kamiusagi-rope-x-boruto-naruto-next-generations",
+    "startDate": "2017-10-12",
+    "endDate": "2017-10-12",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

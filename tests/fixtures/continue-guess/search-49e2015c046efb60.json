@@ -1,0 +1,142 @@
+{
+ "data": [
+  {
+   "id": "13209",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Black Clover",
+    "titles": {
+     "en": "Black Clover",
+     "en_jp": "Black Clover",
+     "ja_jp": "ブラッククローバー"
+    },
+    "abbreviatedTitles": [],
+    "slug": "black-clover-tv",
+    "startDate": "2017-10-03",
+    "endDate": "2021-03-30",
+    "episodeCount": 170,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44242",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Black Clover: Mahou Tei no Ken",
+    "titles": {
+     "en": "Black Clover: Sword of the Wizard King",
+     "en_jp": "Black Clover: Mahou Tei no Ken",
+     "ja_jp": "ブラッククローバー 魔法帝の剣"
+    },
+    "abbreviatedTitles": [],
+    "slug": "black-clover-mahou-tei-no-ken",
+    "startDate": "2023-06-16",
+    "endDate": "2023-06-16",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "12625",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Black Clover: Jump Festa 2016 Special",
+    "titles": {
+     "en_jp": "Black Clover: Jump Festa 2016 Special",
+     "ja_jp": "ブラッククローバー"
+    },
+    "abbreviatedTitles": [
+     "Black Clover (2016)"
+    ],
+    "slug": "black-clover",
+    "startDate": "2016-11-27",
+    "endDate": "2016-11-27",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42035",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Black Clover: Jump Festa 2018 Special",
+    "titles": {
+     "en": "Black Clover: The All Magic Knights Thanksgiving Festa",
+     "en_jp": "Black Clover: Jump Festa 2018 Special",
+     "ja_jp": "JSAF2018スペシャルアニメ「オール魔法騎士感謝祭」"
+    },
+    "abbreviatedTitles": [
+     "Black Clover: JSAF2018 Special Anime - All Mahou Kishi Kanshasai"
+    ],
+    "slug": "black-clover-jump-festa-2018-special",
+    "startDate": "2018-11-25",
+    "endDate": "2018-11-25",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50024",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Black Clover 2nd Season",
+    "titles": {
+     "en": "Black Clover Season 2",
+     "en_jp": "Black Clover 2nd Season",
+     "ja_jp": "ブラッククローバー 第2期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "Black-Clover-Season-2",
+    "startDate": "2026-10-03",
+    "endDate": null,
+    "episodeCount": 26,
+    "subtype": "TV",
+    "status": "current"
+   }
+  },
+  {
+   "id": "47442",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Petit Clover Advance",
+    "titles": {
+     "en_jp": "Petit Clover Advance",
+     "ja_jp": "プチット・クローバー あどばんす"
+    },
+    "abbreviatedTitles": [
+     "Black Clover Specials",
+     "Clover Clips: Supersized"
+    ],
+    "slug": "petit-clover-advance",
+    "startDate": "2018-02-28",
+    "endDate": "2021-06-25",
+    "episodeCount": 15,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42426",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mugyutto! Black Clover",
+    "titles": {
+     "en": "Squishy! Black Clover",
+     "en_jp": "Mugyutto! Black Clover",
+     "ja_jp": "むぎゅっと！ブラッククローバー"
+    },
+    "abbreviatedTitles": [],
+    "slug": "mugyutto!-black-clover",
+    "startDate": "2019-07-01",
+    "endDate": "2019-08-19",
+    "episodeCount": 8,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

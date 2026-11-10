@@ -1,0 +1,213 @@
+{
+ "data": [
+  {
+   "id": "41373",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen",
+    "titles": {
+     "en": "Kaguya-sama: Love is War",
+     "en_jp": "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen",
+     "ja_jp": "かぐや様は告らせたい～天才たちの恋愛頭脳戦～"
+    },
+    "abbreviatedTitles": [
+     "Kaguya Wants to be Confessed To: The Geniuses' War of Love and Brains"
+    ],
+    "slug": "kaguya-sama-wa-kokurasetai-tensai-tachi-no-renai-zunousen",
+    "startDate": "2019-01-12",
+    "endDate": "2019-03-30",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42632",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaguya-sama wa Kokurasetai?: Tensaitachi no Renai Zunousen",
+    "titles": {
+     "en": "Kaguya-sama: Love is War?",
+     "en_jp": "Kaguya-sama wa Kokurasetai?: Tensaitachi no Renai Zunousen",
+     "ja_jp": "かぐや様は告らせたい？～天才たちの恋愛頭脳戦～"
+    },
+    "abbreviatedTitles": [
+     "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen 2",
+     "Kaguya-sama: Love is War Season 2",
+     "辉夜大小姐想让我告白～天才们的恋爱头脑战～第二季",
+     "辉夜大小姐想让我告白～天才们的恋爱头脑战～ 2",
+     "Kaguya-sama wa Kokurasetai?: Tensai-tachi no Renai Zunousen",
+     "สารภาพรักกับคุณคางุยะซะดีๆ ~สงครามประสาทความรักของเหล่าอัจฉริยะ~ ภาค 2"
+    ],
+    "slug": "kaguya-sama-wa-kokurasetai-tensai-tachi-no-renai-zunousen-2",
+    "startDate": "2020-04-11",
+    "endDate": "2020-06-27",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43691",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaguya-sama wa Kokurasetai: Ultra Romantic",
+    "titles": {
+     "en": "Kaguya-sama: Love is War - Ultra Romantic -",
+     "en_jp": "Kaguya-sama wa Kokurasetai: Ultra Romantic",
+     "ja_jp": "かぐや様は告らせたい-ウルトラロマンティック-"
+    },
+    "abbreviatedTitles": [
+     "Kaguya-sama: Love is War Season 3",
+     "辉夜大小姐想让我告白～天才们的恋爱头脑战～ 3",
+     "辉夜大小姐想让我告白～天才们的恋爱头脑战～ 第三季",
+     "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen 3"
+    ],
+    "slug": "kaguya-sama-wa-kokurasetai-tensai-tachi-no-renai-zunousen-3",
+    "startDate": "2022-04-09",
+    "endDate": "2022-06-24",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46206",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaguya-sama wa Kokurasetai: First Kiss wa Owaranai",
+    "titles": {
+     "en": "Kaguya-sama: Love is War - The First Kiss Never Ends",
+     "en_jp": "Kaguya-sama wa Kokurasetai: First Kiss wa Owaranai",
+     "ja_jp": "かぐや様は告らせたい -ファーストキッスは終わらない-"
+    },
+    "abbreviatedTitles": [
+     "Kaguya-sama: Love is War -The First Kiss That Never Ends-"
+    ],
+    "slug": "kaguya-sama-wa-kokurasetai-first-kiss-wa-owaranai",
+    "startDate": "2022-12-17",
+    "endDate": "2022-12-17",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43731",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen OVA",
+    "titles": {
+     "en": "Kaguya-sama: Love is War OVA",
+     "en_jp": "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen OVA",
+     "ja_jp": "かぐや様は告らせたい ～天才たちの恋愛頭脳戦～ OVA"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kaguya-sama-wa-kokurasetai-tensai-tachi-no-renai-zunousen-ova",
+    "startDate": "2021-05-19",
+    "endDate": "2021-05-19",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45542",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaguya-sama wa Kokurasetai: Ultra Romantic Teaser PV - Ishigami Yuu wa Kataritai",
+    "titles": {
+     "en": "Kaguya-sama: Love is War - Ultra Romantic \"Yu Ishigami Wants to Chat\"",
+     "en_jp": "Kaguya-sama wa Kokurasetai: Ultra Romantic Teaser PV - Ishigami Yuu wa Kataritai",
+     "ja_jp": "第３期『かぐや様は告らせたい-ウルトラロマンティック-』 / ティザーPV 「石上優は語りたい」"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kaguya-sama-wa-kokurasetai-ultra-romantic-teaser-pv-ishigami-yuu-wa-kataritai",
+    "startDate": "2021-10-21",
+    "endDate": "2021-10-21",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49998",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaguya-sama wa Kokurasetai: Otona e no Kaidan",
+    "titles": {
+     "en": "Kaguya-sama: Love is War -Stairway to Adulthood-",
+     "en_jp": "Kaguya-sama wa Kokurasetai: Otona e no Kaidan",
+     "ja_jp": "かぐや様は告らせたい 大人への階段"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kaguya-sama-wa-kokurasetai-otona-e-no-kaidan",
+    "startDate": "2025-12-31",
+    "endDate": "2025-12-31",
+    "episodeCount": 2,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50446",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaguya-sama wa Kokurasetai Movie",
+    "titles": {
+     "en": "Kaguya-sama: Love is War Movie",
+     "en_jp": "Kaguya-sama wa Kokurasetai Movie",
+     "ja_jp": "劇場版 かぐや様は告らせたい"
+    },
+    "abbreviatedTitles": [
+     "Kaguya Wants to be Confessed To Movie"
+    ],
+    "slug": "kaguya-sama-wa-kokurasetai-movie",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "tba"
+   }
+  },
+  {
+   "id": "44648",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "He Wei Dao x Hui Yeda Xiaojie Xiangyao Wo Gaobai",
+    "titles": {
+     "en_jp": "He Wei Dao x Hui Yeda Xiaojie Xiangyao Wo Gaobai",
+     "ja_jp": "合味道×辉夜大小姐想要我告白"
+    },
+    "abbreviatedTitles": [
+     "Nissin x Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen",
+     "He Wei Dao x Kaguya-sama: Love Is War?"
+    ],
+    "slug": "he-wei-dao-x-hui-yeda-xiaojie-xiangyao-wo-gaobai",
+    "startDate": "2020-10-18",
+    "endDate": "2020-10-29",
+    "episodeCount": 2,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45277",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Hajimemashite no Kimochi wo",
+    "titles": {
+     "en_jp": "Hajimemashite no Kimochi wo",
+     "ja_jp": "はじめましての気持ちを"
+    },
+    "abbreviatedTitles": [],
+    "slug": "hajimemashite-no-kimochi-wo",
+    "startDate": "2019-09-30",
+    "endDate": "2019-09-30",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  }
+ ]
+}
