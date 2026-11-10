@@ -29,6 +29,7 @@ import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
 import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
 import { laneBase, type Lane } from '$lib/backend/lanes';
+import { getLocale } from '$lib/paraglide/runtime';
 import { probeLimiter } from '$lib/availability/probe-limiter';
 import { probeScope } from '$lib/availability/probe-scope';
 import {
@@ -64,6 +65,18 @@ declare global {
 			 *  per OS (e.g. the FfmpegMissing modal). Absent in browser-
 			 *  only dev. */
 			platform?: string;
+			/** The launch's remote flags, decided by the backend before
+			 *  the window opened and fixed for the session
+			 *  (`$lib/flags`). Absent in browser-only dev. */
+			flags?: Readonly<Record<string, boolean>>;
+			/** Where those flags came from: `file`, `cache`,
+			 *  `defaults` or `test`; null when the window opened
+			 *  without them. */
+			flagsOrigin?: string | null;
+			/** Tell the main process the app's first page has rendered,
+			 *  which the window's reveal waits for (`$lib/app-ready`).
+			 *  Absent in browser-only dev. */
+			appReady?: () => void;
 			/** Open a native folder picker dialog. Returns the chosen
 			 *  absolute path or null on cancel. */
 			pickDirectory?: (options?: {
@@ -468,7 +481,10 @@ export interface KitsuCoverImage {
 export interface Config {
 	locale: string;
 	mode: string; // "sub" | "dub"
-	quality: string; // "best" | "worst" | "1080" | "720" | "480"
+	/** The quality downloads take: "best" | "worst" | a height such as
+	 *  "720". Downloads only — the player always starts on Auto, and the
+	 *  external players and Syncplay get the master. */
+	download_quality: string;
 	external_player: string;
 	external_player_kind: ExternalPlayerKind;
 	external_player_custom_args: string;
@@ -665,7 +681,6 @@ export interface PlayArgs {
 	title: string;
 	episode: string;
 	mode: 'sub' | 'dub';
-	quality?: string;
 	/** Kitsu's authoritative episode count. The backend uses this to
 	 *  disambiguate the provider candidates that share a title — e.g.
 	 *  picking the 500-ep "Naruto: Shippuden" main show over the
@@ -726,17 +741,39 @@ export interface PlayArgs {
 	caption?: string;
 }
 
+/** `args` naming the locale the renderer runs in. The backend orders
+ *  the subtitle tracks it hands a player, a download or a cut listing
+ *  by it, so they follow the locale the built-in player starts by
+ *  rather than `config.toml`'s, which the renderer adopts only when it
+ *  is one of the app's own (`$lib/settings/boot-locale.ts`). */
+function withUiLocale<T extends object>(args: T): T & { locale: string } {
+	return { ...args, locale: uiLocale() };
+}
+
+/** The locale the renderer runs in, or an empty one when Paraglide
+ *  can resolve none (it throws then, as `boot-locale.ts` also allows
+ *  for). The play page reads the same empty locale for the built-in
+ *  player, and the backend reads it as no language, as the player
+ *  does — so both orders still agree, and the play does not fail. */
+function uiLocale(): string {
+	try {
+		return getLocale();
+	} catch {
+		return '';
+	}
+}
+
 /** Play an episode in the embedded player. Returns the session URLs
  *  the renderer feeds to hls.js after navigating to /play. */
 export function play(args: PlayArgs): Promise<CreateSessionResponse> {
-	return postJson<CreateSessionResponse>('/api/play', args, { lane: 'resolve' });
+	return postJson<CreateSessionResponse>('/api/play', withUiLocale(args), { lane: 'resolve' });
 }
 
 /** Play an episode in the user's external media player (default mpv).
  *  No session is registered — the player streams from the upstream
  *  directly with the resolved Referer. */
 export function playExternal(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/external', args, { lane: 'resolve' });
+	return postJson<void>('/api/play/external', withUiLocale(args), { lane: 'resolve' });
 }
 
 /** Launch the resolved episode in the user's Syncplay binary. Same
@@ -746,7 +783,7 @@ export function playExternal(args: PlayArgs): Promise<void> {
  *  Syncplay binary can't be spawned — caller surfaces the failure
  *  via the play page's `ErrorOverlay` with a syncplay.pl link. */
 export function playSyncplay(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/syncplay', args, { lane: 'resolve' });
+	return postJson<void>('/api/play/syncplay', withUiLocale(args), { lane: 'resolve' });
 }
 
 /** Drop the cached play resolution for `args` so the next play call
@@ -816,7 +853,6 @@ export function playStream(
 	params.set('title', args.title);
 	params.set('episode', args.episode);
 	params.set('mode', args.mode);
-	if (args.quality) params.set('quality', args.quality);
 	if (typeof args.episode_count === 'number')
 		params.set('episode_count', String(args.episode_count));
 	if (typeof args.year === 'number') params.set('year', String(args.year));
@@ -833,6 +869,7 @@ export function playStream(
 	if (args.guess_row) params.set('guess_row', args.guess_row);
 	if (args.guess_id) params.set('guess_id', args.guess_id);
 	if (args.caption) params.set('caption', args.caption);
+	params.set('locale', uiLocale());
 
 	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
 		(url) =>
@@ -920,6 +957,10 @@ export interface DownloadArgs {
 	download_dir?: string;
 	/** Which version to download — {@link PlayArgs.version}. */
 	version?: VersionKind;
+	/** The captions choice remembered for the show —
+	 *  {@link PlayArgs.caption} — which decides the subtitle tracks a
+	 *  listing past the backend's cap keeps. */
+	caption?: string;
 }
 
 /** SSE progress event body — one line of the download's progress
@@ -966,6 +1007,8 @@ export function downloadStream(
 	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
 	if (args.download_dir) params.set('download_dir', args.download_dir);
 	if (args.version) params.set('version', args.version);
+	if (args.caption) params.set('caption', args.caption);
+	params.set('locale', uiLocale());
 
 	return url(`/api/download/stream?${params.toString()}`, 'download').then(
 		(url) =>
@@ -1234,7 +1277,8 @@ export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
 }
 
 /** Bridge a batch of MAL ids to Kitsu refs in one round-trip.
- *  Order is preserved; ids Kitsu can't map drop out of the response.
+ *  Order is preserved; ids Kitsu can't map drop out of the response,
+ *  and a Kitsu show two ids lead to is listed once, at the first.
  *  Used by the home Watch Later rail to render the merged
  *  Plan-to-Watch list with Kitsu metadata + availability filtering
  *  matching the rest of the home. Empty input → empty
@@ -1443,6 +1487,31 @@ export function kitsuResolveAllmangaShowId(
 	return getJson<KitsuAnimeRef | null>(
 		`/api/kitsu/resolve-allmanga/${encodeURIComponent(showId)}${qs}`
 	);
+}
+
+/**
+ * The ids of the `hits` a Continue row's guess may not take: the
+ * backend reads the row's search title, the episode it reached and its
+ * show key against each hit (`backend/src/commands/continue_guess.rs`).
+ * The call itself asks nothing of Kitsu or the provider; the hits are
+ * the ones the row's own search or slug lookup returned, or its stored
+ * match. `search` says the hits are the title search's whole answer,
+ * which the backend may refute as a whole; a lone hit is judged alone.
+ */
+export function kitsuGuessRuledOut(
+	title: string,
+	episode: number,
+	hits: KitsuAnimeRef[],
+	key: string,
+	search: boolean
+): Promise<string[]> {
+	return postJson<string[]>('/api/history/guess/ruled-out', {
+		key,
+		title,
+		episode,
+		hits,
+		search
+	});
 }
 
 /**

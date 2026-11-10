@@ -11,6 +11,7 @@
 -->
 <script lang="ts">
 	import { startDownload } from '$lib/download/start';
+	import { downloadQualityLabel } from '$lib/download/download-quality';
 	import { defaultRangeOnEnter } from '$lib/download/default-range';
 	import { rangeError as rangeErrorFor } from '$lib/download/range-error';
 	import type { DownloadArgs } from '$lib/api';
@@ -423,6 +424,10 @@
 						>{m.download_hint_filename_template({ title: args.title })}</code
 					>{m.download_hint_filename_suffix()}
 				</p>
+				<!-- The quality is Settings' alone: named here, changed there. -->
+				<p class="dl-hint">
+					{m.download_hint_quality({ quality: downloadQualityLabel(args.quality ?? 'best') })}
+				</p>
 			</div>
 
 			<footer class="dl-foot">
@@ -662,7 +667,7 @@
 		color: var(--bone-300);
 	}
 	.dl-range-faint {
-		color: color-mix(in oklab, var(--bone-300) 60%, transparent);
+		color: var(--bone-400);
 		margin-inline-start: var(--space-1);
 	}
 	.dl-input {

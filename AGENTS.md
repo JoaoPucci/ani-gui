@@ -238,6 +238,20 @@ authority directed, never a route an agent picks for itself:
 - **Milestones are decoupled from the version file.** After a tag, create the next-minor GitHub milestone for tracking and assign new PRs to it explicitly — do **not** infer the milestone from the in-tree version.
 - **Releases publish as pre-releases** (`gh release create --prerelease`); pre-1.0, none are promoted to "Latest".
 
+### A flagged feature ships switched off
+
+The remote flags file (`flags.json` on the `flags` branch, read by `backend/src/flags/`) is not signed. **Flags are default OFF, and any read failure means OFF.** A flag's built-in default is off, and no file, a broken one, a value its declaration does not allow and a flag the file does not mention all leave it off (`backend/src/flags/decl.rs`). The renderer reads a flag through `flagOn` (`frontend/src/lib/flags.ts`), which is on only for exactly `true`. This build declares no flag and has no kind one could be declared with, so the unsigned file can change nothing. A kind arrives with the change that verifies the file. The rules for a flagged feature follow from that:
+
+- **A flagged feature ships with its flag off.** Until a flag kind exists, that flag is a build-time default, off in the release that introduces the feature.
+- **A release switches it on after a grace period, never the remote file.** The release that turns a flagged feature on comes about four released versions after the one that introduced it. Turning it on is a change to its build-time default, shipped in a release like any other change. The grace period is a policy that review holds; nothing in the code counts releases.
+- **Both states are tested.** While the feature ships off, its tests cover it off and on. That is a review rule; nothing checks it unless the feature is declared as a flag. A declared flag is held by the flag matrix (`backend/src/flags/matrix.rs`) to a case for every value it allows.
+
+**Whether a feature gets a flag is the maintainer's decision.** A feature without one ships as any other change does, and needs no exception from anything here. An agent that thinks a feature should be behind a flag asks (§14, **Ask**) and does not add one on its own judgement.
+
+The launch splash, including its progress rail and stall line (`electron/lib/splash.cjs`, `electron/lib/splash-progress.cjs`, `electron/splash/`), is part of the flags mechanism and is not behind a flag. It is what is on screen while the backend starts and the launch's flags are decided, so gating it would put the flags mechanism behind a feature flag of its own.
+
+Once `flags.json` is signed and the app verifies it, switching a feature on remotely becomes possible, and the rules for a flagged feature are to be revised then.
+
 ## 14. Scope is negotiable, delivery is not
 
 Never drop a piece of work on the grounds that it is too large. "Too
@@ -250,10 +264,30 @@ mid-task, exactly one of these is an acceptable outcome:
 - **Do it here.** The default. Estimate the work before declining it —
   an estimate made in order to justify not doing something tends to
   come out high.
-- **Do it in its own PR.** Open the follow-up PR, land it, then update
-  the original. Say on the thread which PR carries it.
-- **Add an entry to the deferred-work log**, and link it wherever you
-  deferred it. An unwritten deferral is a dropped one, and a deferral
+- **Do it in its own PR.** Yours to choose, as long as you open that
+  PR now. Land it, then update the original, and say on the thread
+  which PR carries it.
+- **Add an entry to the deferred-work log — only when the maintainer
+  has chosen it.** A deferral is never yours to pick: **Ask**, below,
+  with do it here, its own PR now, or defer as the options and your
+  recommendation. That covers everything that defers: a new entry, an
+  existing one extended or reworded so it defers more, and a note such
+  as "later", "not covered", "left open" or "out of scope" in a PR
+  body, a commit or a doc that leaves known work undone with no PR
+  opened now to carry it. Keeping an entry true is not a deferral: when
+  a change makes part of one false, correct it in that change, or
+  remove it when the work lands, and say so in the PR body. An entry
+  is false only when something it states no longer holds, or never
+  did; a view that the work is not worth doing never makes it false.
+  An entry that is wholly false is removed as its correction. Removing
+  an entry, or part of one, for any other reason, such as work that
+  still holds but that you think is not worth doing, is the
+  maintainer's choice, however you came to it: put it to them as a
+  choice to drop it. Where only part of an entry is false, correct
+  that part; the rest stays unless the maintainer chooses to drop it.
+
+  Once the maintainer has chosen it, link the entry wherever the work
+  was deferred. An unwritten deferral is a dropped one, and a deferral
   written only where you happen to be standing is the same thing: the
   internal planning directory is ignored by git, so an entry there
   leaves with your checkout and a thread citing it points at a file
@@ -280,7 +314,7 @@ mid-task, exactly one of these is an acceptable outcome:
 
 <!-- record-path: docs/deferred-work.md -->
 - **Ask.** If the tradeoff is genuinely the maintainer's call, put the
-  options to them. Silence is not a way to ask.
+  options to them. A deferral always is. Silence is not a way to ask.
 
 What is never acceptable is the fifth outcome: replying that the fix
 is out of scope or too costly and leaving nothing behind. That reads
@@ -294,17 +328,48 @@ knows about — one it introduced, uncovered, or was told of in
 review — records the gap where it will be read once, as context,
 and then merged past. That defect leaves the change by one of the
 four outcomes above, and the note links whichever carries it: the
-PR, the deferred-work entry, or the question put to the maintainer.
-A reviewer reading such a note with no link beside it treats it as a
-finding, not as a disclosure that settles it. Saying which checks
-were not run, as §10 asks, or describing behaviour that is
-intended, is not such a note.
+PR, the deferred-work entry the maintainer chose, or the question put
+to them, which the change then waits on. A reviewer reading such a
+note with no link beside it treats it as a finding, not as a
+disclosure that settles it. Saying which checks were not run, as §10
+asks, or describing behaviour that is intended, is not such a note.
 
 The same rule applies to your own estimates. Before invoking cost,
 check the cheap path actually is closed: existing conventions in the
 package, a helper already extracted, a test glob that already covers
 the directory. More than once the "large refactor" turned out to be
 one new file next to two just like it.
+
+An entry already in the log is considered only when it bears on the
+change directly: tackling it would unblock the change, or without it
+the change would have to be built differently or around it, with a
+workaround the entry's fix would remove. Then check the entry is still
+true and still worth doing, and prefer tackling it within the change —
+that is **Do it here**, and the change removes the entry it lands. If
+tackling it is genuinely large or risky, put the options to the
+maintainer, as **Ask** describes. An entry you think is not worth
+doing is also the maintainer's to drop, as above. An entry that merely
+sits in the same area is not a reason to raise it, so do not scan the
+log by area or by keyword for work to add. An entry the change makes
+false is still corrected in that change, as above. An entry is a
+reminder, never a constraint the design has to respect.
+
+### Choosing between options
+
+When a change can be made more than one way, rank the options on
+correctness, safety, maintainability and the user's experience,
+weighed together rather than in a fixed order.
+
+"Faster to write" is not an argument on its own. Development effort
+counts only when it would become a real blocker for the schedule.
+Compile time and binary size are different: they are real costs, and
+may be weighed against the rest.
+
+The ranking is how a recommendation is made, not a licence to decide
+alone. When the choice is the maintainer's — anything users see,
+scope (deferring work always is), a new dependency, or a real
+trade-off between these criteria — put the options to them, as
+**Ask** above describes, with the ranking as the recommendation.
 
 ## 15. Every change ships on every platform we package
 
@@ -338,17 +403,31 @@ Windows installer in CI, so on that side the configuration is the only
 thing under guard — which is worth knowing before trusting a green
 run about a platform nobody is building.
 
-When a platform genuinely cannot be served in the same change, the
-obligation moves rather than disappearing, and the half that matters
-is user-facing:
+When a platform genuinely cannot be served in the same change — a
+deferral, so the maintainer's call under §14 — the obligation moves
+rather than disappearing, and the half that matters is user-facing:
 
 - A release announces itself to everyone, not to the platforms it
   carries assets for.
-- The update notifier compares versions and nothing else. It does not
-  read a release's assets and has no concept of platform, so shipping
-  a release with no asset for a platform actively prompts that
-  platform's users toward a page with nothing on it for them. Any
-  change to which platforms a release serves has to answer for that
+- From 0.18.0 the update notifier offers a release to an install only
+  when the release carries a package for that install's platform,
+  matched by file name (`Platform::carries` in
+  `backend/src/meta/github.rs`). A newer release without one is
+  passed over for the newest of the ten most recent releases that
+  carries one, or, failing that, for the newest full release, if that
+  release carries one. The file names are matched by their endings,
+  listed in `backend/src/meta/release_assets.json`, and
+  `electron/lib/release-asset-names.test.cjs` fails when the names
+  electron-builder gives the packages stop ending that way. Should no
+  release read carry a file any packaged platform recognises, the
+  notifier takes the naming to have changed and offers what it offered
+  before it read files: the newest release, or with pre-releases
+  excluded, the latest full release. Installs on 0.17.0 or earlier compare versions
+  and nothing else: they do not read a release's assets and have no
+  concept of platform, so shipping a release with no asset for a
+  platform still prompts those of that platform's users toward a page
+  with nothing on it for them. Any change to which platforms a release
+  serves, or to how their files are named, has to answer for that
   path.
 - Say it in the release notes, and record the gap where the next
   person will find it.

@@ -1,0 +1,22 @@
+{
+ "data": [
+  {
+   "id": "41528",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Boruto: Jump Festa 2016 Special",
+    "titles": {
+     "en_jp": "Boruto: Jump Festa 2016 Special",
+     "ja_jp": "BORUTOジャンプフェスタ 2016"
+    },
+    "abbreviatedTitles": [],
+    "slug": "boruto-jump-festa-2016-special",
+    "startDate": "2016-11-27",
+    "endDate": "2016-11-27",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

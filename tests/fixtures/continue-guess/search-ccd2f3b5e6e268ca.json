@@ -1,0 +1,23 @@
+{
+ "data": [
+  {
+   "id": "41982",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan Season 3 Part 2",
+    "titles": {
+     "en": "Attack on Titan Season 3 Part 2",
+     "en_jp": "Shingeki no Kyojin Season 3 Part 2",
+     "ja_jp": "進撃の巨人 Season 3 Part 2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "shingeki-no-kyojin-3-part-2",
+    "startDate": "2019-04-29",
+    "endDate": "2019-07-01",
+    "episodeCount": 10,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

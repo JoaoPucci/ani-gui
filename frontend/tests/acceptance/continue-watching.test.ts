@@ -32,6 +32,7 @@ vi.mock('$app/navigation', () => ({
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { savePosition } from '../../src/lib/play/watch-position';
+import { rememberAudio } from '../../src/lib/play/audio-choice';
 
 function ref(id: string, title: string, episodeCount: number) {
 	return {
@@ -54,7 +55,7 @@ function config(mode: 'sub' | 'dub') {
 	return {
 		locale: 'en',
 		mode,
-		quality: 'best',
+		download_quality: 'best',
 		external_player: '',
 		external_player_kind: 'mpv',
 		external_player_custom_args: '',
@@ -238,6 +239,53 @@ describe('home Continue Watching', () => {
 			app = mount(HomePage, { target });
 			await until(() => cardEpisode() !== null, 'the resolved card');
 			expect(cardEpisode()).toBe('4');
+		});
+	});
+
+	describe('a show with its own audio', () => {
+		beforeEach(() => {
+			window.localStorage.clear();
+		});
+
+		it('is probed and played in that audio, whatever the Settings default', async () => {
+			rememberAudio('1', 'dub');
+			const probedModes: string[] = [];
+			const playedModes: string[] = [];
+			server.use(
+				http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(config('sub'))),
+				http.get(`${API_BASE}/api/history`, () =>
+					HttpResponse.json([{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' }])
+				),
+				http.get(`${API_BASE}/api/history/allanime-1/number`, () =>
+					HttpResponse.json({ ep_no: '3' })
+				),
+				http.post(`${API_BASE}/api/kitsu/search`, () =>
+					HttpResponse.json([ref('1', 'Cowboy Bebop', 26)])
+				),
+				http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+					const body = (await request.json()) as { mode?: string };
+					probedModes.push(body.mode ?? '(none)');
+					return HttpResponse.json({ available: true, episode_count: 26, approximate: false });
+				}),
+				http.post(`${API_BASE}/api/play`, async ({ request }) => {
+					const body = (await request.json()) as { mode?: string };
+					playedModes.push(body.mode ?? '(none)');
+					return new HttpResponse(null, { status: 500 });
+				}),
+				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
+				http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
+				http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
+				http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(null)),
+				http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json(null)),
+				http.put(`${API_BASE}/api/title-match`, () => new HttpResponse(null, { status: 204 })),
+				http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([]))
+			);
+			app = mount(HomePage, { target });
+			await until(() => probedModes.length > 0, 'the row to be probed');
+			expect(probedModes.every((m) => m === 'dub')).toBe(true);
+			resumeButton()?.click();
+			await until(() => playedModes.length > 0, 'the play');
+			expect(playedModes).toEqual(['dub']);
 		});
 	});
 });

@@ -1,0 +1,437 @@
+{
+ "data": [
+  {
+   "id": "6589",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online",
+    "titles": {
+     "en": "Sword Art Online",
+     "en_jp": "Sword Art Online",
+     "en_us": "Sword Art Online",
+     "ja_jp": "ソードアート・オンライン"
+    },
+    "abbreviatedTitles": [
+     "S.A.O",
+     "SAO"
+    ],
+    "slug": "sword-art-online",
+    "startDate": "2012-07-08",
+    "endDate": "2012-12-23",
+    "episodeCount": 25,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8174",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online II",
+    "titles": {
+     "en": "Sword Art Online II",
+     "en_jp": "Sword Art Online II",
+     "en_us": "Sword Art Online II",
+     "ja_jp": "ソードアート・オンライン II"
+    },
+    "abbreviatedTitles": [
+     "Phantom Bullet",
+     "SAO II",
+     "Sword Art Online 2",
+     "SAO 2"
+    ],
+    "slug": "sword-art-online-ii",
+    "startDate": "2014-07-05",
+    "endDate": "2014-12-20",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "13893",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online: Alicization",
+    "titles": {
+     "en": "Sword Art Online: Alicization",
+     "en_jp": "Sword Art Online: Alicization",
+     "ja_jp": "ソードアート・オンライン アリシゼーション"
+    },
+    "abbreviatedTitles": [
+     "Sword Art Online III",
+     "SAO Alicization"
+    ],
+    "slug": "sword-art-online-alicization",
+    "startDate": "2018-10-07",
+    "endDate": "2019-03-31",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "11423",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online Movie: Ordinal Scale",
+    "titles": {
+     "en": "Sword Art Online the Movie -Ordinal Scale-",
+     "en_jp": "Sword Art Online Movie: Ordinal Scale",
+     "en_us": "Sword Art Online the Movie -Ordinal Scale-",
+     "ja_jp": "劇場版 ソードアート・オンライン -オーディナル・スケール-"
+    },
+    "abbreviatedTitles": [
+     "Gekijouban Sword Art Online"
+    ],
+    "slug": "sword-art-online-ordinal-scale",
+    "startDate": "2017-02-18",
+    "endDate": "2017-02-18",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "13894",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online Alternative: Gun Gale Online",
+    "titles": {
+     "en_jp": "Sword Art Online Alternative: Gun Gale Online",
+     "ja_jp": "ソードアート・オンライン オルタナティブ ガンゲイル・オンライン"
+    },
+    "abbreviatedTitles": [
+     "SAO Alternative Gun Gale Online"
+    ],
+    "slug": "sword-art-online-alternative-gun-gale-online",
+    "startDate": "2018-04-08",
+    "endDate": "2018-07-01",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7914",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online: Extra Edition",
+    "titles": {
+     "en": "Sword Art Online: Extra Edition",
+     "en_jp": "Sword Art Online: Extra Edition",
+     "en_us": "Sword Art Online: Extra Edition",
+     "ja_jp": "ソードアート・オンライン Extra Edition"
+    },
+    "abbreviatedTitles": [
+     "S.A.O: Extra Edition",
+     "SAO: Extra Edition"
+    ],
+    "slug": "sword-art-online-extra-edition",
+    "startDate": "2013-12-31",
+    "endDate": "2013-12-31",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42213",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online: Alicization - War of Underworld",
+    "titles": {
+     "en": "Sword Art Online: Alicization - War of Underworld",
+     "en_jp": "Sword Art Online: Alicization - War of Underworld",
+     "ja_jp": "ソードアート・オンライン アリシゼーション War of Underworld"
+    },
+    "abbreviatedTitles": [
+     "SAO Alicization 2"
+    ],
+    "slug": "sword-art-online-alicization-war-of-underworld",
+    "startDate": "2019-10-13",
+    "endDate": "2019-12-29",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42927",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online Alicization War of Underworld (2nd cour)",
+    "titles": {
+     "en": "Sword Art Online: Alicization - War of Underworld - Part 2",
+     "en_jp": "Sword Art Online Alicization War of Underworld (2nd cour)",
+     "ja_jp": "ソードアート・オンライン アリシゼーション War of Underworld　最終章(2ndクール)"
+    },
+    "abbreviatedTitles": [
+     "Sword Art Online: Alicization 3rd Season",
+     "Sword Art Online III 3rd Season",
+     "SAO Alicization 3rd Season",
+     "Sword Art Online 3 3rd Season",
+     "SAO 3 3rd Season",
+     "SAO III 3rd Season"
+    ],
+    "slug": "sword-art-online-alicization-war-of-underworld-2nd-season",
+    "startDate": "2020-07-12",
+    "endDate": "2020-09-20",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "9784",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online II: Debriefing",
+    "titles": {
+     "en": "Sword Art Online II: Debriefing",
+     "en_jp": "Sword Art Online II: Debriefing",
+     "en_us": "Sword Art Online II: Debriefing",
+     "ja_jp": "ソードアート・オンライン II"
+    },
+    "abbreviatedTitles": [
+     "Sword Art Online II Episode 14.5",
+     "Sword Art Online II Recap",
+     "SAO 2 Recap"
+    ],
+    "slug": "sword-art-online-ii-debriefing",
+    "startDate": "2014-10-11",
+    "endDate": "2014-10-11",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7372",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online: Sword Art Offline",
+    "titles": {
+     "en_jp": "Sword Art Online: Sword Art Offline",
+     "ja_jp": "そーどあーと・おふらいん"
+    },
+    "abbreviatedTitles": [
+     "Sword Art Online Specials",
+     "S.A.O Specials",
+     "SAO Specials"
+    ],
+    "slug": "sword-art-online-sword-art-offline",
+    "startDate": "2012-10-24",
+    "endDate": "2013-06-26",
+    "episodeCount": 9,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43546",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online the Movie -Progressive- Aria of the Starless Night",
+    "titles": {
+     "en": "Sword Art Online the Movie -Progressive- Aria of the Starless Night",
+     "en_jp": "Sword Art Online: Progressive Movie - Hoshi Naki Yoru no Aria",
+     "ja_jp": "ソードアート・オンライン プログレッシブ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "sword-art-online-progressive-movie-hoshi-naki-yoru-no-aria",
+    "startDate": "2021-10-30",
+    "endDate": "2021-10-30",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8196",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online: Sword Art Offline - Extra Edition",
+    "titles": {
+     "en_jp": "Sword Art Online: Sword Art Offline - Extra Edition",
+     "ja_jp": "そーどあーと・おふらいん Extra Edition"
+    },
+    "abbreviatedTitles": [
+     "SAO Special",
+     "S.A.O Special"
+    ],
+    "slug": "sword-art-online-sword-art-offline-extra-edition",
+    "startDate": "2014-04-23",
+    "endDate": "2014-04-23",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "9963",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online II: Sword Art Offline II",
+    "titles": {
+     "en_jp": "Sword Art Online II: Sword Art Offline II",
+     "ja_jp": "そーどあーと・おふらいん つー"
+    },
+    "abbreviatedTitles": [
+     "SAO 2 Specials",
+     "SAO II Specials"
+    ],
+    "slug": "sword-art-online-ii-sword-art-offline-ii",
+    "startDate": "2014-10-22",
+    "endDate": "2015-06-24",
+    "episodeCount": 9,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45400",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online: Progressive - Kuraki Yuuyami no Scherzo",
+    "titles": {
+     "en": "Sword Art Online the Movie -Progressive- Scherzo of Deep Night",
+     "en_jp": "Sword Art Online: Progressive - Kuraki Yuuyami no Scherzo",
+     "ja_jp": "劇場版 ソードアート・オンライン プログレッシブ 冥き夕闇のスケルツォ"
+    },
+    "abbreviatedTitles": [
+     "Sword Art Online: Progressive - Scherzo of Deep Night",
+     "Sword Art Online: Progressive - Scherzo of Dark Night"
+    ],
+    "slug": "sword-art-online-progressive-movie-kuraki-yuuyami-no-scherzo",
+    "startDate": "2022-10-22",
+    "endDate": "2022-10-22",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41273",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online Alternative: Gun Gale Online - Refrain",
+    "titles": {
+     "en_jp": "Sword Art Online Alternative: Gun Gale Online - Refrain",
+     "ja_jp": "ソードアート・オンライン オルタナティブ ガンゲイル・オンライン 5.5話「ルフラン」"
+    },
+    "abbreviatedTitles": [
+     "Sword Art Online Alternative: Gun Gale Online Recap",
+     "Sword Art Online Alternative: Gun Gale Online Episode 5.5"
+    ],
+    "slug": "sword-art-online-alternative-gun-gale-online-refrain",
+    "startDate": "2018-05-13",
+    "endDate": "2018-05-13",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42610",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online: Alicization - War of Underworld Reflection",
+    "titles": {
+     "en_jp": "Sword Art Online: Alicization - War of Underworld Reflection",
+     "ja_jp": "ソードアート・オンライン アリシゼーション War of Underworld 前半戦総集編特番「リフレクション」"
+    },
+    "abbreviatedTitles": [
+     "Sword Art Online: Alicization Recap",
+     "Sword Art Online: Alicization - War of Underworld Episode 0"
+    ],
+    "slug": "sword-art-online-alicization-war-of-underworld-reflection",
+    "startDate": "2019-10-06",
+    "endDate": "2019-10-06",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42154",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online: Alicization - Recollection",
+    "titles": {
+     "en_jp": "Sword Art Online: Alicization - Recollection",
+     "ja_jp": "ソードアート・オンライン アリシゼーション」18.5話「リコレクション」"
+    },
+    "abbreviatedTitles": [
+     "Sword Art Online: Alicization Episode 18.5",
+     "Sword Art Online: Alicization Recap"
+    ],
+    "slug": "sword-art-online-alicization-recollection",
+    "startDate": "2019-02-17",
+    "endDate": "2019-02-17",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "40949",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online Movie: Ordinal Scale - Sword Art Offline",
+    "titles": {
+     "en_jp": "Sword Art Online Movie: Ordinal Scale - Sword Art Offline",
+     "ja_jp": "劇場版 ソードアート・オンライン -オーディナル・スケール- おふらいん"
+    },
+    "abbreviatedTitles": [],
+    "slug": "sword-art-online-movie-ordinal-scale-sword-art-offline",
+    "startDate": "2017-09-27",
+    "endDate": "2017-09-27",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47748",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online Alternative: Gun Gale Online II",
+    "titles": {
+     "en": "Sword Art Online Alternative: Gun Gale Online Season 2",
+     "en_jp": "Sword Art Online Alternative: Gun Gale Online II",
+     "ja_jp": "ソードアート・オンライン オルタナティブ Ⅱ"
+    },
+    "abbreviatedTitles": [
+     "ソードアート・オンライン オルタナティブ 第2期",
+     "Sword Art Online Alternative: Gun Gale Online 2nd Season",
+     "SAO Alternative: Gun Gale Online II"
+    ],
+    "slug": "Sword-Art-Online-Alternative-Gun-Gale-Online-II",
+    "startDate": "2024-10-04",
+    "endDate": "2024-12-20",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43286",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online: Alicization - War of Underworld Recap",
+    "titles": {
+     "en_jp": "Sword Art Online: Alicization - War of Underworld Recap",
+     "ja_jp": "「アリシゼーションWoU」1stクール総集編"
+    },
+    "abbreviatedTitles": [],
+    "slug": "sword-art-online-alicization-war-of-underworld-recap",
+    "startDate": "2020-07-04",
+    "endDate": "2020-07-04",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

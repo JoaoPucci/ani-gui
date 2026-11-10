@@ -117,7 +117,7 @@
 			{caption}
 			cardWidth="9.5rem"
 			padBlock="var(--space-2) var(--space-3)"
-			headerTrailing={trailing}
+			headerActions={trailing}
 		>
 			{#each items as item (item.entry.id)}
 				<RunCard

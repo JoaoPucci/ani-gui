@@ -143,15 +143,19 @@ The landing page shows four rows: **Trending Now**, **Popular This Season**, **T
 
 - **Trending Now** is fetched from AniList's GraphQL endpoint (`Page.media(sort: TRENDING_DESC)`). AniList's trending sort follows recent activity (its `trending` value counts the past hour), which Kitsu's cumulative `userCount` cannot match.
 - **Popular This Season**, **Top Rated**, and **Recently Released** are fetched from Kitsu (REST/JSON:API). Kitsu's posters and banners (sizes verified at build time) are sufficient for these views.
-- Both APIs are hit only when cache misses; cache is SQLite (`$XDG_CACHE_HOME/ani-gui/meta.db`) with TTLs from 1 hour (trending) up to 30 days (title-match cache).
+- Both APIs are hit only when cache misses; cache is SQLite (`$XDG_CACHE_HOME/ani-gui/metadata.sqlite`) with TTLs from 1 hour (trending) up to 30 days (title-match cache).
 
 When a user clicks a discovery card, the backend resolves its title against the provider (searching every available alias from the metadata API: English, Romaji, Native, synonyms) and falls into the same playback flow. The cross-API bridge — including how Kitsu's episode count disambiguates colliding titles on the provider, and how the MAL id is fetched for the aniskip and trending lookups — is documented in [`title-resolution.md`](./title-resolution.md).
 
 When Kitsu's `coverImage` is null (common for shows currently airing — roughly half of the trending row in any given week), the detail-page resolver falls back to AniList: it bridges the Kitsu id through the mappings endpoint to the show's MAL id, then queries AniList for that MAL id's `bannerImage` — or queries AniList by the AniList id the same mappings carry, when Kitsu has no MAL mapping or AniList has no media for the MAL one. Without the fallback the detail page would render a flat colour where the hero banner belongs. A show the trending row has listed skips the query: its banner was remembered from the trending answer (below).
 
+Each home row's actions sit in the row's own header, after its title: Continue Watching has a "Clear history" action, which asks for confirmation, and Watch Later a "Refresh" action, beside a line saying when its lists were last pulled from the trackers: the oldest connected tracker's pull, "Not updated yet" while any connected tracker has no recorded pull (never pulled on this computer, or cleared by a list change since), "Refreshing…" during a pull, and "Couldn't load your list" while the row's last load failed, until one lands. A failed row with no cards to keep says so in its caption and shows no such line. Two arrangements of those headers exist: actions beside the title, the default, and each row with its actions at the end of its header, drawn on a band while the pointer is over the row or focus is in it. The switch between them appears above the rows only while the diagnostics page's "Show row style control" checkbox is on, and the choice is kept with the checkbox in the renderer's local storage (`ani-gui:row-style`), per machine. Clear history and the remove chip on a Continue card each ask in a dialog that stays open while its request is out, runs once however often its confirm is pressed, opens no other dialog over it meanwhile, and closes when it settles. When the request fails, an error toast says the history could not be cleared or the show could not be removed. A failed clear leaves every card, and focus goes back to Clear history. A remove takes every history row of the card's show, one at a time. When one fails, the rows already deleted leave the strip and the show's card stays. If the pressed card's own row was not among them, the card is unchanged and focus goes back to its chip. If it was, the card is now drawn from a row that is left, the pressed chip is gone with its row, and focus is not put back. Either way the user can try again from the cards that stay.
+
 ### The hero banner
 
 The home hero and the detail page's band show one image per show, taken in this order: AniList's `bannerImage`, where the trending feed's one request carried it for the show — it rides beside Kitsu's cover on each trending entry and is remembered per Kitsu id for thirty days, as [`title-resolution.md`](./title-resolution.md) describes, so a detail page for a trending show makes no AniList request of its own; Kitsu's cover; the show's poster, blurred, as a last resort. A sizeable share of any week's trending row has no AniList banner (eight of twenty when measured), so the Kitsu cover is a frequent second. The image fills the band's height: the whole image, centred, over a blurred copy of itself that carries its colour to the band's edges, cropped at the sides only when it is wider than the band. The detail band is 4.8:1 at every window size, so a cover cropped to fill it lost about a third of its height when measured against the covers Kitsu serves — the sized covers are nominally 21:5, which alone would cost an eighth, and the uploads run taller — anchored near the top, before its bottom faded into the page; the home band changes shape with the window, and cropped the sides of a cover at widths up to 1920 px and its height on an ultrawide screen. AniList's banners are drawn for a band of roughly this shape, which is why they come first.
+
+The home hero rotates through three trending shows: the first three, in trending order, that have art of their own — an AniList banner or a Kitsu cover (`frontend/src/lib/hero/rotation.ts`). Taking the plain top three instead could leave most of the rotation on blurred posters: when measured, the first, second and fourth of twenty trending shows had neither. A show the hero passes over is not lost: the Trending strip lists every show the hero did not take, in trending order, so the shows passed over lead it, and no show appears in both. A show the trending answer names more than once — two AniList entries can bridge to the same Kitsu show — counts once, at its first entry, so neither the hero nor the strip shows it twice. When fewer than three shows have art, the first shows without it fill the rest of the rotation, after the ones with art, on their blurred posters. The choice is made from the trending answer, once the shows already known to be unavailable are dropped from it. The answer already carries each entry's banner and cover, so the choice costs no request. An image that then fails to load falls back as below, and does not move its show out of the hero.
 
 Four framings exist — fill height, the default; fit, which never crops and letterboxes the image over its blurred copy; top crop, the previous rendering; centre crop — and the image source can be set to Kitsu's cover alone. The control that changes them is a small group of buttons at the top-right of the band on both pages, with a readout of which image is on screen, and it is hidden until the diagnostics page (**Debug** in the rail) has its "Show banner framing controls" checkbox on. A choice applies at once, without a reload, and is kept with the checkbox in the renderer's local storage (`ani-gui:hero-framing`), per machine; turning the controls off again leaves the chosen framing in place. Nothing of this is in Settings or in the backend's config.
 
@@ -204,7 +208,7 @@ AniList refusing this client, or being down, is no answer: what it would have sa
 | Availability probe (negative — a clean miss, or the requested mode absent, from the provider that answered; served while that provider's gate has been seen answering and every gate ahead of it is refusing) — finished show | SQLite `meta_cache` | 7 days when the probe wrote the row; 24 hours at most when a resolve did (below) |
 | Availability probe (negative) — ongoing show, or one with no airing schedule known | SQLite `meta_cache` | 24 hours at most: with the next airing known — when the row is written, or once the schedule is cached after it — until 3 hours after it when that is sooner, and 1 hour when that airing time has already passed |
 | Availability probe (negative) — unreleased show with a known premiere | SQLite `meta_cache` | until 3 hours after the premiere, within 1 hour to 7 days |
-| aniskip OP/ED skip-time intervals (per Kitsu id + MAL id + episode) | SQLite `meta_cache` | 7 days |
+| aniskip OP/ED skip-time intervals (per Kitsu id + MAL id + episode + episode length) | SQLite `meta_cache` | 7 days |
 | A show's MAL and AniList ids from Kitsu's mappings (per Kitsu id) | SQLite `meta_cache` | 30 days when both are present; 24 hours when either is missing |
 | An id AniList translated to or from MAL's (per id, each direction), and every AniList media recording a MAL id | SQLite `meta_cache` | 30 days; 24 hours for an id AniList does not index, or a MAL id no media records |
 | A show's episode map on one tracker — which of the tracker's entries each Kitsu episode belongs to, under which number (per tracker + Kitsu id + the resolved entry and its total, or `unresolved` for a show Kitsu's mappings resolve to nothing; `tracker-map:v3:`) | SQLite `meta_cache` | 30 days when the counts agree or a rule explained their difference over entries that have all finished airing; 24 hours when a count was unknown, nothing explained it, an entry is still airing, or the show resolves to nothing; nothing for a read that failed |
@@ -214,12 +218,13 @@ AniList refusing this client, or being down, is no answer: what it would have sa
 | AniList banner per Kitsu id (from the trending feed) | SQLite `meta_cache` | 30 days; rewritten or dropped by each trending answer that lists the show, and dropped by a detail read once the image proxy has found the URL gone |
 | Image URL the upstream answered 404 or 410 for | SQLite `meta_cache` | 30 days, or until a fetch of it succeeds |
 | Poster + banner image bytes | Filesystem `images/<shard>/<hash>.<ext>` | LRU, capped at 500 MB |
+| The last good remote flags file ([Remote flags](#remote-flags)) | Filesystem `remote-flags.json` in the cache root | Replaced by every successful fetch, in the launch or later in its session; decides the next launch's flags when the file misses the cap, for 7 days |
 
 Only the probe passes the show's status when it writes an availability row, so a negative row's lifetime, like a positive one's, depends on what wrote it last. A play, a download, a hand-off or a page's warm whose walk ended in a clean miss stamps that miss through the resolve path, which writes without a status, so the negative row it writes — over a probe's row, or where none stood — gets the window of an ongoing show whatever the show's status: 24 hours at most, dated from that operation, a finished show's seven days and an unreleased show's premiere-sized window included. The row is served as any negative row is, under the read rule above, for as long as it lasts, and the status-sized window comes back only when a probe runs and writes the row again.
 
-Image bytes never live in SQLite; they're filesystem-keyed by `sha256(url)[..16]`, sharded two-deep to avoid huge flat directories. The play-resolution cache lives in `meta_cache` as its own `play:` rows — it stores fully-resolved stream URLs keyed by the request tuple `(title, mode, quality, episode, year, episode count, subtype)` so a repeat visit to an episode skips the whole provider walk. Four things retire a row. A cached URL that fails on use is dropped there and then — upstream URLs rotate, so the layer self-heals through a HEAD check before every hit and through the player's own error feedback. A seven-day absolute bound sits on top, which reads do not renew. And the key carries a schema version: when what a row holds changes meaning — a new field its readers depend on, or an existing one that no longer says what it used to — the version moves, no request builds the old keys any more, and those shows resolve afresh. Removing a show from the history deletes its rows too, as [Watch history and removing it](#watch-history-and-removing-it) describes.
+Image bytes never live in SQLite; they're filesystem-keyed by `sha256(url)[..16]`, sharded two-deep to avoid huge flat directories. The play-resolution cache lives in `meta_cache` as its own `play:` rows — it stores fully-resolved stream URLs keyed by the request tuple `(title, mode, episode, year, episode count, subtype)` so a repeat visit to an episode skips the whole provider walk. Four things retire a row. A cached URL that fails on use is dropped there and then — upstream URLs rotate, so the layer self-heals through a HEAD check before every hit and through the player's own error feedback. A seven-day absolute bound sits on top, which reads do not renew. And the key carries a schema version: when what a row holds changes meaning — a new field its readers depend on, or an existing one that no longer says what it used to — the version moves, no request builds the old keys any more, and those shows resolve afresh. When only the key's shape changes and an old row is still the answer, the rows are carried instead: v29 took the quality out of the key, since every play resolves the master, and opening the cache copies each v28 row asked at `best` to its v29 key, with its moment and lifetime, before the reclaim runs (`cache::play_rekey`); a v28 row kept for another quality held one rendition and goes to the reclaim. No release keyed its rows at v28, so a released install's rows (v26) resolve afresh. Removing a show from the history deletes its rows too, as [Watch history and removing it](#watch-history-and-removing-it) describes.
 
-Every key family the cache keeps is declared once, in `backend/src/cache/families.rs`, with the version this build reads, and every key builder takes its prefix from there. Opening the cache at launch deletes, under the migration lock and in one transaction, every row whose key no declared family holds — a family re-keyed or retired, whose old rows no reader of this build asks for — and every row past its lifetime, except in the families a reader takes past it: the availability verdicts (whose window a reschedule rewrites in place), AniList's trending list (served stale while AniList is down), and the current versions of the reverse mappings and title matches (which a history removal and the detail page's lookup for a deleted Kitsu entry read whatever their age; the removal also reads the versions before by prefix, and finds them only until the first launch after each version bump reclaims them, while the lookup reads the current version alone. A removal then finds fewer Kitsu ids for a show known only by an old mapping or match: skip times and stream addresses under those ids wait out their own lifetimes, a note that Kitsu answered such an id gone stays for its year, and the numbering of a key a page of the show resolved under another key stays until the history is cleared, as a rowless key's does. A row whose recorded entry Kitsu answered gone, matched only under an old version, is matched again only if the home page's next load matches it under the current rules; one it cannot match stays unmatched, and the detail page no longer resumes it under the old match). Before, nothing deleted a row once it expired and a re-key only moved the readers to new keys, so both stayed in the file for good. The reclaim keeps no marker — it finds its work in the rows — so a launch with nothing to reclaim reads the keys and deletes nothing, and the diagnostics page counts what a launch deleted. A version bump needs no step of its own: the old version stops being declared when the bump lands, and its rows go at the next launch. Going back to an earlier version after that finds its own families' rows gone; it rebuilds them by use, except the mappings and title matches of history rows from a provider no longer walked, which nothing plays again. In test builds every read and write the app's own code makes of a cache row by its exact key is checked against the registry, so a family that is kept without being declared fails the suite rather than losing its rows at launch. The check covers what the suite exercises; reads by prefix and deletes are not checked, and the registry's own cases cover a builder no case reaches.
+Every key family the cache keeps is declared once, in `backend/src/cache/families.rs`, with the version this build reads, and every key builder takes its prefix from there. Opening the cache at launch deletes, under the migration lock and in one transaction, every row whose key no declared family holds — a family re-keyed or retired, whose old rows no reader of this build asks for — and every row past its lifetime, except in the families a reader takes past it: the availability verdicts (whose window a reschedule rewrites in place), AniList's trending list (served stale while AniList is down), and the current versions of the reverse mappings and title matches (which a history removal and the detail page's lookup for a deleted Kitsu entry read whatever their age; the removal also reads the versions before by prefix, and finds them only until the first launch after each version bump reclaims them, while the lookup reads the current version alone. A removal then finds fewer Kitsu ids for a show known only by an old mapping or match: skip times and stream addresses under those ids wait out their own lifetimes, a note that Kitsu answered such an id gone stays for its year, and the numbering of a key a page of the show resolved under another key stays until the history is cleared, as a rowless key's does. A row whose recorded entry Kitsu answered gone, matched only under an old version, is matched again only if the home page's next load matches it under the current rules; one it cannot match stays unmatched, and the detail page no longer resumes it under the old match). Before, nothing deleted a row once it expired and a re-key only moved the readers to new keys, so both stayed in the file for good. The reclaim keeps no marker — it finds its work in the rows — so a launch with nothing to reclaim reads the keys and deletes nothing, and the diagnostics page counts what a launch deleted. A version bump needs no step of its own: the old version stops being declared when the bump lands, and its rows go at the next launch — unless they are carried to the new keys first, as the play family's v28 rows asked at `best` are. Going back to an earlier version after that finds its own families' rows gone; it rebuilds them by use, except the mappings and title matches of history rows from a provider no longer walked, which nothing plays again. In test builds every read and write the app's own code makes of a cache row by its exact key is checked against the registry, so a family that is kept without being declared fails the suite rather than losing its rows at launch. The check covers what the suite exercises; reads by prefix and deletes are not checked, and the registry's own cases cover a builder no case reaches.
 
 The **availability TTL branches on Kitsu's `status` field**: shows airing weekly need a 24-hour window so a new episode surfaces within a day, but finished shows can hold for 30 days. A positive row for a show still airing is cut further when the airing cache knows its next airing: it expires an hour after that airing (an hour from now when the airing time has already passed), so a count written just before a weekly drop does not outlive the drop by most of a day. A count written just after a drop can be stale in the other direction: AniList has already moved on to the following week while the provider has not listed the new episode. So when the schedule's aired count is one or two ahead of the provider's count — the most a single drop moves it — the row gets the post-drop hour instead; a wider gap means the two number different entries, and the next-airing bound stands. The home warm batch-seeds the schedule for every show on air or to come before it probes, in batched AniList requests — per 50 shows, one by AniList id and one for the shows Kitsu maps to MAL alone, plus the single lookup for a MAL id several AniList media record and two more for each page AniList cuts short, never one per show — so its rows are bounded when written. Elsewhere the schedule can reach the cache after the count — a detail page asks for both at once, and a seed can fail — so every airing write also cuts the show's live positive rows, in both audio modes, the same way, as a local rewrite of their window that makes no request — and every availability write re-reads the cached schedule after its put and cuts the row it wrote, so whichever of the two lands second applies the cut. Negative rows written with the 24-hour window get the same treatment under their own rule, cut to 3 hours past the airing: a current show's negative probed outside the warm fetches no schedule first, and a pre-premiere one whose schedule fetch failed falls back to the day. The rewrite only ever shortens, whatever window the row was written with — so a premiere moved earlier also cuts the negative its old date sized — and a finished show, which has no next airing, is never cut. Unknown / missing status falls back to the short (24h) window — a stale "no episode 1161 yet" is much worse than re-probing too eagerly. The long window belongs to the probe's own row: every other writer — a play, a download, a hand-off, a page's warm — stamps the row without a status, so a finished show's row is rewritten with the ongoing window, dated from that resolve; a play, hand-off or page warm served from the resolution cache writes only where no positive row stands, and leaves a standing one its own window.
 
@@ -244,20 +249,251 @@ file at exactly that path — a directory wearing the name is left
 alone, and the neighbouring image cache and database are never
 candidates.
 
+## Remote flags
+
+Remote flags are values a released build reads at launch from a file
+on GitHub, so a flag can change without shipping a release. The code is
+in `backend/src/flags/`. How to edit the file is in
+[`development.md`](./development.md#remote-flags).
+
+**One file, read by the backend.** The file is `flags.json` on the
+repository's `flags` branch:
+
+```json
+{ "flags": { "some_feature": false } }
+```
+
+The backend reads it from
+`https://raw.githubusercontent.com/JoaoPucci/ani-gui/flags/flags.json`.
+The renderer never fetches it. `GET /api/flags` answers, once the
+launch's flags are decided, with their values and where they came from
+(`origin`: `file`, `cache`, `defaults`, or `test` in a test run).
+
+**Every flag is declared in code**, in `flags::DECLARED`, with a name, a
+kind and a stated reason. The kind fixes the only values the file may
+send.
+
+**Flags are default OFF, and any read failure means OFF.** Every flag's
+built-in default is off. It stays off when the file sends anything else
+for it (a value the declaration does not allow, the wrong JSON type, or
+no entry at all) and when there is no usable file. Flags the build does
+not declare are ignored. The value resolution returns is the
+declaration's own, never one copied from the file.
+
+**This build declares no flag, and has no kind to declare one with.**
+`flags::FlagKind` has no variant outside the tests, so `DECLARED` can
+only be empty, and the unsigned file can change nothing. A kind arrives
+with the change that verifies the file (below).
+
+**Read through the declaration, on only for `true`.** Consumers read a
+flag through its declaration (`Resolved::enabled`), never through a name
+typed out again, so a misspelt or undeclared flag reads off. The
+renderer reads one through `flagOn(name)` (`frontend/src/lib/flags.ts`),
+which is on only when the window was opened with exactly `true` for it:
+a window opened without flags, a backend that never answered and a flag
+the set does not hold all read off. Whether a flag's other values are
+safe for the feature it gates is not something a type can see, so each
+declaration states its case in `safe_because`, and a test refuses a
+declaration that leaves it empty.
+
+**Every value is tested.** A flag sits at its default until something
+changes it, so its other value is the one least likely to have run.
+Each consumer registers a test case for its flag's default and for every
+other value it allows in `flags::matrix::CASES`, a check that receives
+the flags with that value in force. A test over `DECLARED` fails while
+any value of a declared flag has no case, or a case names a flag or
+value no longer declared.
+
+**Why the file is not signed.** With no flag declared, no value the file
+sends can take effect, so someone who rewrote the file in transit, or
+got write access to the branch, could change nothing. A flag kind must
+not be added until the file is verified. The verifier to adopt then is
+the minisign signature check proposed for the in-app updater (#342) and
+the notification center (#351).
+
+**Decided once per launch, behind the splash.** The flags are decided
+once, within two seconds of the backend starting its refresh (just
+after its state is built), and do not change for the rest of the
+session. A cache read slower than that decides when it ends, up to the
+three-second limit below.
+
+1. The Electron main process puts up a splash at once, as the backend
+   starts. It opens before the desktop's reduced-motion setting has
+   been read (within half a second; about 20 ms on GNOME, at once
+   elsewhere), so it holds its first frame until that read settles,
+   and is then told either to start its motion or to rest on its
+   finished still frame: a reduced-motion user never sees it move.
+2. The backend starts the fetch in a task of its own as soon as its
+   state is built, and reads the cached copy beside it. If the file
+   arrives within two seconds of that start (the cap), it decides the
+   flags. Otherwise the cached copy decides them (below), or the
+   defaults when there is none. While a slow cache read is still
+   running, a file that arrives first decides, even past the cap.
+3. Once the backend has announced itself, the main process asks
+   `GET /api/flags`, which answers when the flags are decided. It opens
+   the app's window with them, so the preload puts them on
+   `window.aniGui.flags` before the first page renders. The main process
+   waits at most four seconds for that answer, and opens the window
+   without flags if none comes. The renderer then runs on every flag's
+   default while the backend may have decided otherwise, for the whole
+   session. The preload marks that case with `window.aniGui.flagsOrigin`
+   set to null, so a renderer consumer that must agree with the backend
+   can ask `GET /api/flags` itself.
+4. The splash is on screen first and alone. The app's window, like the
+   splash, is made on the app's own dark background (`--ink-000`), so
+   nothing white shows before a stylesheet loads. It loads and paints
+   its first page hidden, and its renderer says when that page has
+   rendered (two animation frames after the root layout mounts); the
+   reveal waits for that word, at most 15 seconds from the window's
+   creation, with the splash up and, once the page's step has been
+   pending for 700 ms, its stall line. That bound is a safety net for
+   a page that never says it rendered, not an expected duration (a
+   cold Vite start in development has rendered the first page past
+   four seconds): past it, the window is revealed anyway, on the dark
+   background. Once it is ready to show, it also waits up
+   to a second for the splash to answer that it has rendered a frame,
+   then until the splash has been on screen for 500 ms since that paint
+   (300 ms when it rests on its still frame) — long enough for the
+   opening to read — and only then is it mapped, already maximized and
+   painted, and the splash closes. A launch whose window is ready later
+   than that pays nothing for the minimum; a warm one, whose window is
+   ready as soon as the splash has painted, pays up to that half second
+   for it. The rail's completion hold can add to either: a page that
+   renders less than 250 ms before the minimum runs out (150 ms on the
+   still frame), or after it, or after a splash that painted too late
+   for the minimum, holds the reveal until 250 ms (150 ms) after it
+   rendered, so the rail's last stretch is seen lit.
+   The two are never on screen competing, so it does not matter that
+   native Wayland ignores always-on-top. A splash that never paints, or
+   is minimized, holds the window no longer than that first second. The
+   hidden window is made at the size the desktop granted the window when
+   a launch last revealed it maximized on the same display (by id, size
+   and scale), kept in `window-geometry.json` under the app's user data,
+   else at the work area. On Wayland, which reports no work area until a
+   window is on screen, that remembered size is what lets the window
+   appear at its final size. The first launch on a display, or one after
+   the display's size or scale changes, paints at the full screen; one
+   after its top bar changes paints at the old remembered size. Either
+   takes a one-time correction from the compositor as it appears.
+   Closing the splash before the app's window appears cancels the
+   launch. Measured on GNOME under Wayland and on Xvfb; X11 with a real
+   window manager and Windows were not measured.
+
+The splash is a 35mm strip of the app's mark pulled through a lit gate a
+frame at a time, beside the app's name with its version above it
+(`electron/splash/`). The version is the app's own, labelled as the rail
+and About label it (`-dev` in a dev run), and the main process opens the
+page with it. Nothing else on the splash is a number, since any number
+on a screen this brief reads as a count. Under the name, a wordless rail
+of film edge lights one of its three stretches as each step of the boot
+lands: the backend's handshake, the launch's flags decided, the app's
+first page rendered (`electron/lib/splash-progress.cjs`); a launch whose
+wait for that render gave up lights the last stretch as its window is
+about to be revealed anyway, held the same way, so the rail is always
+seen complete. The splash waits at most 150 ms, about a millisecond in
+practice, for its page to take the last step. A last step landing so
+late that the splash's minimum time on screen would not show it then
+holds the splash until 250 ms (150 ms on the still frame) after that
+step landed, so the rail is seen complete before the app's window
+replaces it. A line under the rail, in the app's language, appears only
+once the pending step has taken longer than 700 ms, and then stays until
+the splash closes; only its words change, when the reason does. While
+the flags step stalls it says "Network is slow — starting in a moment…":
+the app is waiting on the flags fetch, for at most its two-second cap,
+and what it starts with (the file if it lands in time, else the saved
+copy or the defaults) is not decided yet. A slow read of the saved copy
+can hold that step too, rarely. Any other stalled step says "Starting
+up…", and once the flags land the network line gives way to it at once.
+The splash's motion starts only when the main process tells it to, once
+the window is on screen and the reduced-motion setting is known; under
+reduced motion it rests on a still frame and its rail lights without a
+wipe, and the page's own fallback timer, for a signal that never comes,
+rests it too rather than starting the motion. The mark is `mark.svg`
+alone, and the layout holds for a mark of another shape, so a new mark
+replaces one file.
+
+The store accepts one decision and refuses every later one. A backend
+consumer reads the flags with `FlagStore::settled()`, which waits for
+that decision. Past three seconds it decides the defaults itself, so no
+reader ever sees a value that changes afterwards. `FlagStore::current()`
+does not wait and is for diagnostics only.
+
+**The cap bounds the wait, not the fetch.** After the cap, the fetch
+goes on in the background. Its whole request, connect to body, has 45
+seconds, 30 of which may go on connecting (DNS, TCP and TLS): the file
+is tiny, so the time goes on the connection and round trips. The flags
+use a client of their own for that, where the metadata client allows
+10 seconds. The connector splits the connect timeout across the
+addresses DNS returns, so with the CDN's four addresses each TCP
+attempt gets about 7.5 seconds before the next address is tried. When
+the file arrives it is cached for the next launch. When that attempt
+fails, the file is fetched again later in the session, after 3, 10 and
+30 minutes and then hourly, until one attempt succeeds and is cached.
+The retries exist to fill the cache, so a launch with no cache
+directory makes the one attempt only. A 404 counts as a failed attempt,
+so until the `flags` branch exists every session retries on that
+schedule. None of this changes the running session's flags. Worst
+case: one launch delay; never stuck unless the file can't be downloaded
+at all during an entire session. On a connection that always misses
+the cap, the cached copy decides the next launch's flags, as long as the
+file arrived at any point during the previous session.
+
+Only a 200 whose body is at most 64 KiB and is a `{"flags": {...}}`
+object counts as the file. Anything else counts as a failed fetch: a
+transport error, the timeout, any other status (404 included), a larger
+body, or malformed JSON.
+
+**The last good copy.** Each successful fetch is cached as
+`remote-flags.json` in the cache root, together with the time it was
+fetched. When the file does not arrive within the cap, the cached copy
+decides the flags if it is at most seven days old, and the defaults
+decide them otherwise. A copy dated in the
+future (a clock set back) counts as too old. The cached copy goes
+through the same resolution as a fetched file, so a cache written by
+another build, or edited by hand, still resolves only to values this
+build declares. Why seven days: every value a document can produce is
+one its flag's declaration allows, so a cached copy resolves only to
+what this build accepts. Its age only limits how long a value the
+maintainer has since changed stays in force on a machine that cannot
+reach GitHub. A week covers a stretch of launches without the network,
+such as a trip, a captive portal or a blocked CDN, so a flag keeps its
+value through it. And even on a machine that never reaches the file
+again, a changed value clears within the week.
+
+**Test runs bring their own flags.** A test run is a launch with
+`ANI_GUI_UNATTENDED=1`, which the end-to-end launch helper and the
+backend's integration tests always set. A test run's backend never
+fetches the live file, so a flipped flag or a slow or rate-limited CDN
+cannot change a test's result. It takes its flags from the file
+`ANI_GUI_TEST_FLAGS_FILE` names, resolved like the live one, or the
+defaults when that names none. `ANI_GUI_TEST_FLAGS_FILE` means nothing
+without `ANI_GUI_UNATTENDED=1`. `backend/tests/flags_launch.rs` proves
+it by watching the network: a test run never asks for
+raw.githubusercontent.com, and a normal launch does. Development runs
+(`pnpm dev`) are normal launches and read the live file.
+
+**Rate limits.** `raw.githubusercontent.com` is GitHub's content CDN,
+not the REST API. The request does not count against the 60 requests
+an hour that GitHub allows unauthenticated REST callers, which the
+update check uses. GitHub publishes no figure for the CDN's own limit.
+One request per launch, and at most one an hour after the first few
+retries of a session whose fetch keeps failing, is far below any
+plausible one. A rate-limited answer is a failed fetch like any other.
+
 ## Embedded playback
 
 Playback happens inside the desktop window — not in a detached `mpv` process. Implementation:
 
 - `<video>` element receives the master.m3u8 URL from the local proxy.
 - `hls.js` handles HLS streams. mp4 streams (some providers) play natively via `<video src=...>`.
-- Subtitles inside the HLS manifest are surfaced by hls.js as `textTracks`. Sidecar tracks — the `.vtt` files a provider lists beside the stream, outside the playlist — ride the session: the proxy lists them at `/s/<id>/subtitles` and serves each at `/s/<id>/sub/<n>.vtt` with the session's referer, and the play page appends one `<track>` per listing. Where the session lists sidecar tracks, the track an episode starts on is the language last picked on the show (Off included) — in the app's captions menu, or in the browser's own when the app's custom controls are turned off — kept per show in the renderer's local storage beside the version choices; else the UI locale's language, its own region first, then its script, then any region; else the track the provider flagged default; else none. A stream whose subtitles exist only inside its own playlist gets no start, whichever controls are on (see "The starting captions on a playlist-only stream" in `docs/deferred-work.md`). External players and Syncplay get the tracks in the same order, so a player that takes one file takes the track the built-in player starts on; where it starts on none — a show remembered Off, or nothing in the viewer's language and no default — mpv and IINA start with subtitles off (`--sid=no`) beside every track, and VLC or a custom template gets none. mpv starts on the first track unless its own configuration (a `slang`, or `subs-match-os-language`) picks another. The player's CC picker selects among both kinds, and loads only the track it shows. It names each track from its language tag in the app's language rather than by the provider's label, marks the tracks for the deaf and hard of hearing with a short tag, and lists the tracks in the language last picked on the show and in the app's language above a divider, the rest alphabetically below; it stays inside the player and below the app's top bar, scrolling instead (a player with less room than two entries still shows two), and two tracks of one language under different provider qualifiers (full and signs-only) read as the language plus that qualifier. Downloads write sidecar tracks beside the media as `<name>.<lang>.vtt` — never over a file already there, which is the user's; external players receive them as subtitle-file arguments, most wanted first and as many as the command line carries, and Syncplay forwards them to the player it wraps the same way.
-- The level an HLS master plays is the app's choice, not hls.js's bandwidth estimate: every segment waits its turn in the proxy's paced line to the host, which the estimate reads as a slow network. When the quality setting leaves the master to the player — `best` always, and any other setting whose rendition the master does not list, or whose rendition the host answers without a playlist, a 404 for one — the player starts at the setting's level, the highest for `best`, the lowest for `worst`, and for a height its own level or the nearest below it (the lowest when every level is above), and holds it while playback is healthy; the engine does not start loading until the settings have answered, so a setting still on its way is never read as `best` — for three seconds at most, after which settings that have not answered read as `best`. A stall with nothing buffered steps it down one level, at most once every eight seconds and never within three seconds of a seek; a level whose playlist the engine gives up on is left for the stream, and a level the engine switches away from for any other error — its segments failing to load, or failing to append — is stepped down from at once rather than put back. A switch the engine makes over an audio or subtitle rendition — a segment, a track playlist, or the audio buffer — is no failure of the video: the player holds the level it moved to, even above the setting's level when the levels below share the failing group, and leaves the level it left for the stream. A retry the engine still has pending is no verdict. When the engine removes levels it cannot play — the variants of a mixed-codec master the browser refuses — the player carries the level it holds, the levels it has left, what it learned of each and the menu over to the levels that remain, re-seats a hold whose level was removed at the nearest loadable level below it that is left (or, with none, the nearest above) without counting anything as a failure, and puts the engine back on the level held; when every level left has failed, the hold and the pin are released rather than the engine put back on a level that failed. A content-steering pathway switch, which replaces every level object, seats the hold at the setting's level, re-pins a pinned stream at the height the viewer picked (or the nearest level below it) among the new levels — as Auto when every new level is above it — and starts the player's knowledge of the levels afresh. After a step down, playback that has run healthy (segments of the level held buffering with fifteen seconds in hand; a segment of the level left, landing late, says nothing) climbs back one level per window — a window any stall outside a seek's grace restarts, under a pin as well as in Auto, as does every move the player did not choose to a level that has proven nothing yet (a failure, a switch the engine made, a removal that took the level held) — never above the setting's level; the window starts at thirty seconds and doubles with every step down, up to four minutes. The player's menu lists Auto and the master's levels, named by the height their segments are encoded at but ordered as the player moves through them — by the height each playlist declares, which every choice the player makes, and the pin, reads; the log names a level by both heights when they differ. A level picked in the menu switches at once — even when it is the level already held, if another still plays from the buffer — no longer moves for stalls, and is kept, by the height its playlist lists (or, for a level that lists none, its rank from the top of the levels), for the rest of the app's run. A pinned level is never exceeded while the menu shows it pinned, and it is where the play returns: a failure of its segments steps the play down and leaves the pin in place, and once playback has run healthy — the same window as Auto's climb, doubling with every fall — the play climbs back toward the pin, never above it, as long as the pinned level can still load. The pin itself moves only when its level cannot load, down to the nearest level that can — or, when the engine leaves the pinned level over a failing audio or subtitle rendition, down to the level the engine chose, since every level between shares what failed; a play already below its pin that the engine moves further down keeps its pin and climbs back. When no level at or below the pin can load, when the engine's own fallback takes over, or when the engine switches above it over a failing audio or subtitle rendition, the stream's pin is let go and the menu shows Auto. The next stream starts at the pinned height or the nearest level below it, and as Auto when every level is above it. A stream of one level — what the backend resolves for `worst` or a height the master serves — has nothing to choose: the player leaves its level to the engine, and the menu's row names that level, listed alone and checked with no Auto, once a height or a bitrate names it (a media playlist served alone lists neither, so its row appears once the player learns the picture's height: from the first parsed segment for MPEG-TS, and from the video element when its metadata has loaded, which fMP4 segments need since hls.js reports no picture size for them); picking it changes nothing, the pin kept for the run included. mp4 streams play as they are.
+- Subtitles inside the HLS manifest are surfaced by hls.js as `textTracks`. Sidecar tracks — the `.vtt` files a provider lists beside the stream, outside the playlist — ride the session: the proxy lists them at `/s/<id>/subtitles` and serves each at `/s/<id>/sub/<n>.vtt` with the session's referer, and the play page appends one `<track>` per listing. Where the session lists sidecar tracks, the track an episode starts on is the language last picked on the show (Off included) — in the app's captions menu, or in the browser's own when the app's custom controls are turned off — kept per show in the renderer's local storage beside the version choices; else the UI locale's language, its own region first, then its script, then any region; else the track the provider flagged default; else none. A stream whose subtitles exist only inside its own playlist gets no start, whichever controls are on (see "The starting captions on a playlist-only stream" in `docs/deferred-work.md`). External players and Syncplay get the tracks in the same order — every play, handoff, next-episode warm and download request names the language last picked on the show and the locale the renderer runs in, and the backend orders by the pick first, then by that locale rather than by `config.toml`'s, which the renderer adopts only when it is one of the app's own — so a player that takes one file takes the track the built-in player starts on; where it starts on none — a show remembered Off, or nothing in the viewer's language and no default — mpv and IINA start with subtitles off (`--sid=no`) beside every track, and VLC or a custom template gets none. mpv starts on the first track unless its own configuration (a `slang`, or `subs-match-os-language`) picks another. The player's CC picker selects among both kinds, and loads only the track it shows. It names each track from its language tag in the app's language rather than by the provider's label, marks the tracks for the deaf and hard of hearing with a short tag, and lists the tracks in the language last picked on the show and in the app's language above a divider, the rest alphabetically below; it stays inside the player and below the app's top bar and grows to at most half the player's height — the screen's in fullscreen — scrolling instead and opening on the ticked entry (a player with less room than two entries still shows two), and two tracks of one language under different provider qualifiers (full and signs-only) read as the language plus that qualifier. Downloads write sidecar tracks beside the media as `<name>.<lang>.vtt` — never over a file already there, which is the user's; external players receive them as subtitle-file arguments, most wanted first and as many as the command line carries, and Syncplay forwards them to the player it wraps the same way.
+- The level an HLS master plays is the app's choice, not hls.js's bandwidth estimate: every segment waits its turn in the proxy's paced line to the host, which the estimate reads as a slow network. The backend resolves the master for every play, so the player gets every level the master lists; no setting caps it (the one quality setting, `download_quality`, is for downloads). It starts on Auto at the highest level — or at the level picked earlier in the player session (below) — as soon as the levels arrive, and holds it while playback is healthy. A stall with nothing buffered steps it down one level, at most once every eight seconds and never within three seconds of a seek; a level whose playlist the engine gives up on is left for the stream, and a level the engine switches away from for any other error — its segments failing to load, or failing to append — is stepped down from at once rather than put back. A switch the engine makes over an audio or subtitle rendition — a segment, a track playlist, or the audio buffer — is no failure of the video: the player holds the level it moved to, and leaves the level it left for the stream. A retry the engine still has pending is no verdict. When the engine removes levels it cannot play — the variants of a mixed-codec master the browser refuses — the player carries the level it holds, the levels it has left, what it learned of each and the menu over to the levels that remain, re-seats a hold whose level was removed at the nearest loadable level below it that is left (or, with none, the nearest above) without counting anything as a failure, and puts the engine back on the level held; when every level left has failed, the hold and the pin are released rather than the engine put back on a level that failed. A content-steering pathway switch, which replaces every level object, seats the hold at the highest level, re-pins a pinned stream at the height the viewer picked (or the nearest level below it) among the new levels — as Auto when every new level is above it — and starts the player's knowledge of the levels afresh. After a step down, playback that has run healthy (segments of the level held buffering with fifteen seconds in hand; a segment of the level left, landing late, says nothing) climbs back one level per window — a window any stall outside a seek's grace restarts, under a pin as well as in Auto, as does every move the player did not choose to a level that has proven nothing yet (a failure, a switch the engine made, a removal that took the level held); the window starts at thirty seconds and doubles with every step down, up to four minutes. The player's menu lists Auto and the master's levels — the in-player menu with the app's custom controls, and the ⋯ menu below the player with them off, since Chromium's native controls have no quality menu; with the custom controls on, the ⋯ menu offers none — named by the height their segments are encoded at but ordered as the player moves through them — by the height each playlist declares, which every choice the player makes, and the pin, reads; the log names a level by both heights when they differ. A level picked in the menu switches at once — even when it is the level already held, if another still plays from the buffer — no longer moves for stalls, and is kept, by the height its playlist lists (or, for a level that lists none, its rank from the top of the levels), for the rest of the player session: the next episode keeps it, and it is let go when the player is left or turns to another show, so the next visit, and every other show, starts on Auto. It is never saved, and downloads, external players and Syncplay never read it. A pinned level is never exceeded while the menu shows it pinned, and it is where the play returns: a failure of its segments steps the play down and leaves the pin in place, and once playback has run healthy — the same window as Auto's climb, doubling with every fall — the play climbs back toward the pin, never above it, as long as the pinned level can still load. The pin itself moves only when its level cannot load, down to the nearest level that can — or, when the engine leaves the pinned level over a failing audio or subtitle rendition, down to the level the engine chose, since every level between shares what failed; a play already below its pin that the engine moves further down keeps its pin and climbs back. When no level at or below the pin can load, when the engine's own fallback takes over, or when the engine switches above it over a failing audio or subtitle rendition, the stream's pin is let go and the menu shows Auto. The next stream in the session starts at the pinned height or the nearest level below it, and as Auto when every level is above it. A stream of one level — a master that lists one, or the media playlist a source serves in its place — has nothing to choose: the player leaves its level to the engine, and the menu's row names that level — in the in-player menu listed alone and checked with no Auto, in the ⋯ menu with nothing to open — once a height or a bitrate names it (a media playlist served alone lists neither, so its row appears once the player learns the picture's height: from the first parsed segment for MPEG-TS, and from the video element when its metadata has loaded, which fMP4 segments need since hls.js reports no picture size for them); picking it changes nothing, the pin kept for the session included. mp4 streams play as they are.
 
 An "Open in external player" button on the player chrome launches the user's `mpv` (or platform default) with the natively resolved master-playlist URL. This is a user choice, never an automatic fallback — silent fallback would be confusing.
 
 ### Skip OP / ED via aniskip
 
-The player surfaces "Skip Opening" / "Skip Outro" buttons during their respective intervals. The skip times come from [aniskip.com](https://aniskip.com)'s community-submitted database, keyed by MyAnimeList id rather than Kitsu. The backend bridges Kitsu → MAL using Kitsu's mappings endpoint, then asks aniskip for `(mal_id, episode)` skip intervals and caches the response for 7 days (skip times stabilize quickly once submitted). The cached row is keyed by the Kitsu id the player asked with as well as the MAL id and episode, so two Kitsu entries that map to the same MAL entry keep separate rows, and removing a show from history finds its skip times by its Kitsu id without asking Kitsu for the MAL id again. When auto-skip is enabled in settings, the player jumps the playhead past the interval automatically; otherwise it just shows the button.
+The player surfaces "Skip Opening" / "Skip Outro" buttons during their respective intervals. The skip times come from [aniskip.com](https://aniskip.com)'s community-submitted database, keyed by MyAnimeList id rather than Kitsu. The backend bridges Kitsu → MAL using Kitsu's mappings endpoint, then asks aniskip for `(mal_id, episode)` skip intervals with the episode's length, which aniskip matches its submissions to, and caches the response for 7 days (skip times stabilize quickly once submitted). The player asks once the stream on screen has learned its length, so after an episode switch it asks with the new stream's length, and the previous episode's times are gone from the player as soon as the episode changes. The cached row is keyed by the Kitsu id the player asked with as well as the MAL id, the episode and the length in whole seconds, so an answer for one length is never served for another, two Kitsu entries that map to the same MAL entry keep separate rows, and removing a show from history finds its skip times by its Kitsu id without asking Kitsu for the MAL id again. When auto-skip is enabled in settings, the player jumps the playhead past the interval automatically; otherwise it just shows the button.
 
 ### Leaving the player
 
@@ -276,7 +512,7 @@ Two prefetch surfaces warm play data ahead of demand so episode boundaries don't
 - **Adjacent-episode warm.** When the play page mounts, it warms `episode + 1` (and on the detail page, `episode 1`) through the same play-resolution path the click would take. Hits land in the long-term resolution cache. If the current playback ends and auto-play-next is on, the next episode usually plays from cache instead of waiting on a fresh provider walk.
 - **Visible-page warm.** The episode strip's currently-rendered Kitsu page is warmed in parallel so episode tiles get titles and thumbnails before the user scrolls.
 
-Both flow through `play-cache.getOrFire` — keyed by show id + episode + mode + quality + version — which dedupes concurrent calls and keeps each answer until the show's entries are cleared or the resolve fails. The 4-hour lifetime is the backend session table's. At most two run at once; a click cuts the queue. Cancellation goes through `clearForShow(showId)`, which drops every entry for that show and aborts those still resolving or queued, a click's included.
+Both flow through `play-cache.getOrFire` — keyed by show id + episode + mode + version — which dedupes concurrent calls and keeps each answer until the show's entries are cleared or the resolve fails. The 4-hour lifetime is the backend session table's. At most two run at once; a click cuts the queue. Cancellation goes through `clearForShow(showId)`, which drops every entry for that show and aborts those still resolving or queued, a click's included.
 
 The detail page's resume warm uses the same cache. When no listing stood behind the page's availability answer and the history row reads as a fractional episode, the page resolves that episode as a prefetch so the listing puts the row right. It cuts the queue like a click (`getOrFireNow`), since a click on Play waits for it.
 
@@ -288,15 +524,15 @@ User-editable settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Setti
 
 | Field | Default | Effect |
 |---|---|---|
-| `mode` | `"sub"` | Audio mode for new play / download calls — `"sub"` or `"dub"`. |
-| `quality` | `"best"` | Quality bucket — `"best"`, `"1080"`, `"720"`, `"480"`, `"worst"`. |
+| `mode` | `"sub"` | The default audio — `"sub"` or `"dub"` — for shows never chosen on. Picking Sub or Dub on a show's page remembers it for that show, in the renderer's local storage (`ani-gui.audio-choices`, the 500 most recent shows), and every play, warm, availability question, download and hand-off for the show asks for it; the setting is not written. Continue Watching probes and plays each card's show in its own audio. The Home rails, the top bar's live search and a show page's similar titles filter by this default. |
+| `download_quality` | `"best"` | The quality downloads take — `"best"`, `"1080"`, `"720"`, `"480"`, `"worst"`. Downloads only: the built-in player starts each visit on Auto, and external players and Syncplay get the master. It replaced `quality`, which a config written by 0.17.0 or earlier still carries; that key is not read, so those configs come up on Best, and the next save drops it. |
 | `locale` | `"en"` | UI locale (the four MVP locales — see [`i18n.md`](./i18n.md)). |
 | `external_player` | `"mpv"` | Command launched by "Open in external player". |
 | `image_cache_cap_mb` | `500` | Cap for the on-disk image cache; LRU evicts above this. |
 | `auto_play_next` | `false` | When the current episode ends, automatically resolve and play the next one. |
 | `auto_skip_op` | `false` | When aniskip has an OP interval, jump past it automatically. |
 | `auto_skip_ed` | `false` | Same as above, for the ED. |
-| `use_custom_player_controls` | `true` | Replace the browser's native controls with the in-app two-row bar. The native bar gives free PiP/captions menus; the custom bar keeps the Skip OP/ED button visible during fullscreen. |
+| `use_custom_player_controls` | `true` | Replace the browser's native controls with the in-app two-row bar. The native bar gives free PiP/captions menus; the custom bar keeps the Skip OP/ED button visible during fullscreen. With the native bar, the quality picker is in the ⋯ menu below the player. |
 | `download_bottom_bar_enabled` | `true` | Show the per-download progress dock at the bottom of the window when downloads are active. |
 
 ## Reduced motion
