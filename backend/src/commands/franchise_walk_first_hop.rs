@@ -22,8 +22,8 @@
 //! - **none**: else.
 //!
 //! Only the strip can be wrong, and only from what the show's listing
-//! cannot see: a sequel whose own listing names the show as its other
-//! version, or sequels that are versions of one another. The walk then
+//! cannot see: a prequel or sequel whose own listing names the show as
+//! its alternative version or setting (rule 3). The walk then
 //! draws the link or nothing, and the page's placeholder gives way to
 //! it. Where the first hop says link or nothing, the walk agrees.
 

@@ -1418,13 +1418,14 @@ export function kitsuFranchise(kitsuId: string): Promise<Franchise> {
 }
 
 /** What the show page will draw once the franchise walk answers, as
- *  the show's own relation listing foretells it (backend
+ *  the show's own relation listing (and, where needed, the walk's
+ *  parent check) foretells it (backend
  *  `commands::franchise_walk::first_hop`): the watch-order strip, the
  *  franchise link alone, or nothing. Only `strip` can turn out wrong. */
 export type FirstHop = 'strip' | 'link' | 'none';
 
-/** The first hop of `kitsuId`'s franchise walk, read from the walk's
- *  own first listing so the two never disagree on the data. */
+/** The first hop of `kitsuId`'s franchise walk, read through the
+ *  walk's own reads and caches so the two never disagree on the data. */
 export async function kitsuFranchiseFirstHop(kitsuId: string): Promise<FirstHop> {
 	const { signal } = await getJson<{ signal: FirstHop }>(
 		`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}/first-hop`

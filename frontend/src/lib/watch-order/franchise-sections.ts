@@ -17,7 +17,7 @@ export interface FranchiseRow {
 	/** The oversized numeral, on numbered stretches only. */
 	readonly position: number | null;
 	readonly progress: EntryProgress | undefined;
-	/** Share watched, 0–1, for the progress bar. */
+	/** Share watched, 0–1, for the progress line. */
 	readonly share: number;
 	/** The short title this one leads into, where it only leads into another. */
 	readonly leadsInto: string | null;
