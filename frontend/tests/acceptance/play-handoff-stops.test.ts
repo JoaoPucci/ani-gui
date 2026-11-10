@@ -319,11 +319,13 @@ describe('play route — an episode handed to another player stays stopped here'
 
 	it('playing the embedded video again restarts the loading the handoff stopped', async () => {
 		const hls = await mountPlayingHls();
-		await handToExternal();
-		expect(hls.startLoadCalls).toBe(0);
-		playerVideo().dispatchEvent(new Event('play'));
+		hls.emit(MANIFEST_PARSED, LEVELS);
 		await settle();
 		expect(hls.startLoadCalls).toBe(1);
+		await handToExternal();
+		playerVideo().dispatchEvent(new Event('play'));
+		await settle();
+		expect(hls.startLoadCalls).toBe(2);
 		expect(playerVideo().autoplay).toBe(true);
 	});
 
@@ -340,5 +342,67 @@ describe('play route — an episode handed to another player stays stopped here'
 		await settle();
 		// A switch would be on its way: the frame busy with it.
 		expect(target.querySelector('section.player-frame.player-busy')).toBeNull();
+	});
+
+	it('coming back before the stream has its levels starts it once, where the page starts it', async () => {
+		const hls = await mountPlayingHls();
+		await handToExternal();
+		playerVideo().dispatchEvent(new Event('play'));
+		await settle();
+		// Nothing was started, so nothing restarts.
+		expect(hls.startLoadCalls).toBe(0);
+		hls.emit(MANIFEST_PARSED, LEVELS);
+		await settle();
+		expect(hls.startLoadCalls).toBe(1);
+	});
+
+	it('Next while handed off replaces the stream without starting the old one again', async () => {
+		const hls = await mountPlayingHls();
+		hls.emit(MANIFEST_PARSED, LEVELS);
+		await settle();
+		await handToExternal();
+		const nextButton = () =>
+			target.querySelector<HTMLButtonElement>(
+				`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
+			);
+		await until(() => nextButton()?.disabled === false, 'Next enabled');
+		nextButton()!.click();
+		await settle();
+		// The switch is on its way: the old stream stays stopped.
+		expect(hls.startLoadCalls).toBe(1);
+		expect(playerVideo().autoplay).toBe(false);
+
+		// The switch lands on the next session: that stream starts, and
+		// plays on its own.
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '2', kind: 'hls' });
+		await until(() => hlsInstances().length > 1, 'the next engine');
+		const next = hlsInstances()[hlsInstances().length - 1];
+		next.emit(MANIFEST_PARSED, LEVELS);
+		await settle();
+		expect(next.startLoadCalls).toBe(1);
+		expect(playerVideo().autoplay).toBe(true);
+	});
+
+	it('a recovery already evicting when the episode is handed off stands down', async () => {
+		let release: () => void = () => {};
+		const evicted = new Promise<void>((r) => {
+			release = r;
+		});
+		const hls = await mountPlayingHls(() =>
+			server.use(
+				http.post(`${API_BASE}/api/play/cache/evict`, async () => {
+					await evicted;
+					return new HttpResponse(null, { status: 204 });
+				})
+			)
+		);
+		bufferedTo(playerVideo(), 10.5, 10);
+		const before = resolves();
+		hls.emit(ERROR, NETWORK_FATAL);
+		await settle();
+		await handToExternal();
+		release();
+		await new Promise((r) => setTimeout(r, 300));
+		expect(resolves()).toBe(before);
 	});
 });

@@ -85,3 +85,22 @@ describe('HandoffGate', () => {
 		);
 	});
 });
+
+describe('HandoffGate — the viewer picks another stream', () => {
+	it('forgets the handoff and the held start without running anything', () => {
+		const restart = vi.fn();
+		const gate = new HandoffGate(restart);
+		gate.handOff();
+		const start = vi.fn();
+		gate.whenWatching(start);
+		gate.forget();
+		expect(gate.handedOff).toBe(false);
+		expect(start).not.toHaveBeenCalled();
+		expect(restart).not.toHaveBeenCalled();
+		// And nothing is left to run later.
+		gate.handOff();
+		gate.comeBack();
+		expect(start).not.toHaveBeenCalled();
+		expect(restart).toHaveBeenCalledTimes(1);
+	});
+});
