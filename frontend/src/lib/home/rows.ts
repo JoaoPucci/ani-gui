@@ -69,9 +69,10 @@ function listLoad(input: ListInput): RowLoad<true> {
 
 /** Continue watching has no skeleton: most viewers with no history
  *  would see one come and go. Until the read answers it is not known
- *  to be there. */
-function continueLoad(history: readonly unknown[] | null): RowLoad<true> {
-	if (history === null) return PENDING;
+ *  to be there; once the read has run past its wait, it is left out
+ *  until it answers, so a read that hangs holds nothing for good. */
+function continueLoad(history: readonly unknown[] | null, waitOver: boolean): RowLoad<true> {
+	if (history === null) return waitOver ? NOT_THERE : PENDING;
 	return history.length > 0 ? THERE : NOT_THERE;
 }
 
@@ -91,7 +92,7 @@ function watchLaterLoad(wl: WatchLaterInput): RowLoad<true> {
 /** What the home page draws for each row. */
 export function homeRows(input: HomeRowsInput): HomeRows {
 	const [cw, wl, trending, topRated] = discoveryView([
-		continueLoad(input.history),
+		continueLoad(input.history, input.historyWaitOver === true),
 		watchLaterLoad(input.watchLater),
 		listLoad(input.trending),
 		listLoad(input.topRated)
