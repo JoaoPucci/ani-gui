@@ -12,7 +12,8 @@ pub(crate) struct RowIds<'a> {
     /// The row's stored `(show id → kitsu_id)` mapping, and whether
     /// Kitsu answered that id gone.
     pub mapped: Option<(&'a str, bool)>,
-    /// The ids the title-match rows stored for the row's title name.
+    /// The id the title match Home stored for the row names, at most
+    /// one ([`super::title_match_rows::current_title_match_id`]).
     pub title_matched: &'a [String],
 }
 
