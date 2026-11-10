@@ -68,6 +68,39 @@ describe('splitTrending', () => {
 	it('rotates through three shows', () => {
 		expect(HERO_ROTATION_COUNT).toBe(3);
 	});
+
+	it('takes a show listed twice in the first three once, and the next show with art instead', () => {
+		const t = [cover('1'), banner('1'), cover('2'), cover('3'), bare('4')];
+		const s = splitTrending(t);
+		expect(ids(s.hero)).toEqual(['1', '2', '3']);
+		expect(ids(s.row)).toEqual(['4']);
+	});
+
+	it('leaves out of the row a show the hero already took', () => {
+		const t = [cover('1'), cover('2'), cover('3'), bare('4'), cover('2'), bare('5')];
+		const s = splitTrending(t);
+		expect(ids(s.hero)).toEqual(['1', '2', '3']);
+		expect(ids(s.row)).toEqual(['4', '5']);
+	});
+
+	it('lists a show repeated in the row once, in its first place', () => {
+		const t = [cover('1'), cover('2'), cover('3'), bare('4'), bare('5'), bare('4')];
+		expect(ids(splitTrending(t).row)).toEqual(['4', '5']);
+	});
+
+	it('keeps one show when every entry is the same show', () => {
+		const t = [cover('1'), cover('1'), banner('1')];
+		const s = splitTrending(t);
+		expect(s.hero).toEqual([t[0]]);
+		expect(s.row).toEqual([]);
+	});
+
+	it('keeps the first entry of a repeated show, even when a later one has art', () => {
+		const t = [bare('1'), cover('2'), cover('1'), cover('3'), cover('4')];
+		const s = splitTrending(t);
+		expect(ids(s.hero)).toEqual(['2', '3', '4']);
+		expect(s.row).toEqual([t[0]]);
+	});
 });
 
 type Art = 'banner' | 'cover' | 'whole' | 'small' | 'both' | 'empty-cover' | 'none';
@@ -157,6 +190,49 @@ describe('splitTrending properties', () => {
 				const cut = rank(last as Show);
 				const skipped = t.filter((s) => rank(s) < cut && !hero.includes(s));
 				expect(ids(row.slice(0, skipped.length))).toEqual(ids(skipped));
+			})
+		);
+	});
+});
+
+/** Trending lists whose shows may repeat: ids come from a small pool,
+ *  and each entry carries its own art, so a repeat can differ from its
+ *  first entry. */
+const repeatingList = fc
+	.array(fc.tuple(fc.constantFrom(...ART), fc.integer({ min: 0, max: 7 })), { maxLength: 30 })
+	.map((entries) => entries.map(([art, id]) => make(art, String(id))));
+
+/** Each show's first entry, in trending order. */
+const firstEntries = (t: readonly Show[]) =>
+	t.filter((s, i) => t.findIndex((o) => o.id === s.id) === i);
+
+describe('splitTrending properties with repeated shows', () => {
+	it('shows no show twice across the hero and the row', () => {
+		fc.assert(
+			fc.property(repeatingList, fc.integer({ min: 0, max: 6 }), (t, n) => {
+				const { hero, row } = splitTrending(t, n);
+				const all = ids([...hero, ...row]);
+				expect(new Set(all).size).toBe(all.length);
+			})
+		);
+	});
+
+	it('keeps every show, as its first entry, and drops only the repeats', () => {
+		fc.assert(
+			fc.property(repeatingList, fc.integer({ min: 0, max: 6 }), (t, n) => {
+				const { hero, row } = splitTrending(t, n);
+				const all = [...hero, ...row];
+				const firsts = firstEntries(t);
+				expect(all.length).toBe(firsts.length);
+				for (const s of firsts) expect(all).toContain(s);
+			})
+		);
+	});
+
+	it('splits as if each show were listed once, at its first place', () => {
+		fc.assert(
+			fc.property(repeatingList, fc.integer({ min: 0, max: 6 }), (t, n) => {
+				expect(splitTrending(t, n)).toEqual(splitTrending(firstEntries(t), n));
 			})
 		);
 	});

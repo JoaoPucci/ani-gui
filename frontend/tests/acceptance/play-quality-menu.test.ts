@@ -1,5 +1,5 @@
-// Acceptance: the player starts a master at the level the quality
-// setting names, and its menu lets the viewer choose another.
+// Acceptance: the player starts a master on Auto at its highest level,
+// and its menu lets the viewer choose another for the player session.
 //
 // The policy has its own specs; this drives the page wiring. The
 // mocked engine announces a master of three levels the way hls.js
@@ -203,7 +203,24 @@ function qualityRow(): HTMLElement | undefined {
 	return menuItems().find((el) => el.textContent?.includes(m.play_controls_menu_quality_label()));
 }
 
-describe('play route — the quality the setting names, and the menu that changes it', () => {
+/** Pick `height` from the player's Quality menu. */
+async function pick(height: number) {
+	menuButton().click();
+	await until(() => qualityRow() !== undefined, 'the quality row');
+	qualityRow()?.click();
+	await until(
+		() => menuItems().some((el) => el.textContent?.includes(label(height))),
+		'the levels'
+	);
+	menuItems()
+		.find(
+			(el) => el.getAttribute('role') === 'menuitemradio' && el.textContent?.includes(label(height))
+		)
+		?.click();
+	await until(() => target.querySelector('#pc-overflow-menu') === null, 'the menu to close');
+}
+
+describe('play route — the player starts on Auto, and its menu picks a level for the session', () => {
 	it('starts a master at its highest level and lets the viewer pin another', async () => {
 		const hls = await mountHls();
 		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
@@ -248,38 +265,11 @@ describe('play route — the quality the setting names, and the menu that change
 		expect(qualityRow()?.textContent).not.toContain(m.play_quality_auto());
 	});
 
-	it("waits for the settings before choosing the start level, and the setting's level is where it starts", async () => {
-		// The settings answer after the master's levels have arrived: the
-		// engine is made not to start on its own, and starts once the
-		// setting — `worst` here — has chosen its level.
-		let release: () => void = () => {};
-		const gate = new Promise<void>((r) => (release = r));
-		useShowHandlers();
-		server.use(
-			http.get(`${API_BASE}/api/settings`, async () => {
-				await gate;
-				return HttpResponse.json({ ...appConfig(), quality: 'worst' });
-			})
-		);
-		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });
-		app = mount(PlayPage, { target });
-		await until(() => hlsInstances().length > 0, 'the hls engine to attach');
-		const hls = hlsInstances()[hlsInstances().length - 1];
-		expect(hls.config.autoStartLoad).toBe(false);
-		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
-		await tick();
-		expect(hls.loads).toEqual([]);
-		expect(hls.starts).toBe(0);
-		release();
-		await until(() => hls.starts === 1, 'the engine to start');
-		expect(hls.loads).toEqual([0]);
-		expect(hls.startLevel).toBe(0);
-	});
-
-	it('settings that never answer hold the start back only for a bound, then read as best', async () => {
-		// The settings are held through every assertion, so the start is
-		// chosen without them; then they are answered, so that the request
-		// does not outlive the page.
+	it('starts on Auto at the highest level as the levels arrive, whatever the settings hold, before they answer', async () => {
+		// The player always starts on Auto with the whole master. Nothing
+		// in the settings caps it — not the download quality, and not
+		// the quality an older version wrote — and the engine does not
+		// wait for them.
 		let release: () => void = () => {};
 		const gate = new Promise<void>((r) => (release = r));
 		let answered = false;
@@ -288,7 +278,7 @@ describe('play route — the quality the setting names, and the menu that change
 			http.get(`${API_BASE}/api/settings`, async () => {
 				await gate;
 				answered = true;
-				return HttpResponse.json(appConfig());
+				return HttpResponse.json({ ...appConfig(), quality: 'worst', download_quality: '480' });
 			})
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });
@@ -296,10 +286,77 @@ describe('play route — the quality the setting names, and the menu that change
 		await until(() => hlsInstances().length > 0, 'the hls engine to attach');
 		const hls = hlsInstances()[hlsInstances().length - 1];
 		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
-		await until(() => hls.starts === 1, 'the engine to start without the settings', 10_000);
+		await until(() => hls.starts === 1, 'the engine to start without the settings', 1000);
 		expect(hls.loads).toEqual([2]);
 		release();
 		await until(() => answered, 'the held settings to be answered');
+		await tick();
+		expect(hls.loads).toEqual([2]);
+	});
+
+	it('a level picked in the player carries to the next episode', async () => {
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		await pick(720);
+		expect(hls.nexts).toEqual([1]);
+
+		const engines = hlsInstances().length;
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '2', kind: 'hls' });
+		await until(() => hlsInstances().length > engines, "the next episode's engine");
+		const next = hlsInstances()[hlsInstances().length - 1];
+		next.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => next.starts === 1, "the next episode's engine to start");
+		expect(next.startLevel).toBe(1);
+	});
+
+	it('leaving the player lets a picked level go: the next visit starts on Auto', async () => {
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		await pick(720);
+		if (app) unmount(app);
+		app = null;
+
+		const again = await mountHls();
+		again.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => again.starts === 1, 'the engine to start again');
+		expect(again.startLevel).toBe(2);
+		expect(again.loads).toEqual([2]);
+		menuButton().click();
+		await until(() => qualityRow() !== undefined, 'the quality row');
+		qualityRow()?.click();
+		await until(
+			() => menuItems().some((el) => el.getAttribute('role') === 'menuitemradio'),
+			'the levels'
+		);
+		const auto = menuItems().find((el) => el.textContent?.includes(m.play_quality_auto()));
+		expect(auto?.getAttribute('aria-checked')).toBe('true');
+	});
+
+	it('another show in the player starts on Auto, whatever was picked on the last', async () => {
+		const hls = await mountHls();
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start');
+		await pick(720);
+
+		const OTHER = '43';
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/anime/${OTHER}`, () =>
+				HttpResponse.json({ ...kitsuRef(OTHER, 'Other Show', 12), status: 'finished' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${OTHER}`, () =>
+				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+			)
+		);
+		const engines = hlsInstances().length;
+		setParams({ id: OTHER });
+		setUrl(`/play/${OTHER}`, { session: 'session-3', episode: '1', kind: 'hls' });
+		await until(() => hlsInstances().length > engines, "the other show's engine");
+		const other = hlsInstances()[hlsInstances().length - 1];
+		other.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => other.starts === 1, "the other show's engine to start");
+		expect(other.startLevel).toBe(2);
 	});
 
 	it('shows the one level of a single-level stream, checked, with no Auto', async () => {
