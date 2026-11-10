@@ -42,24 +42,34 @@ export function cycleSelectedIdx(current: number, direction: 1 | -1, total: numb
 	return (start + direction + total) % total;
 }
 
+/** The search a recent entry stands for: its text trimmed, lowercased
+ *  and with its spacing collapsed. The backend's search key ignores
+ *  case and spacing too (`normalize_query`), so entries with the same
+ *  key get the same results. (It also ignores exclusion dashes, which
+ *  this key keeps apart.) */
+function searchKey(q: string): string {
+	return q.trim().toLowerCase().split(/\s+/).join(' ');
+}
+
 /** Prepend `query` to `existing`, deduplicate (keeping the freshest
  *  occurrence first), cap at `max`. Pure — caller is responsible for
  *  persisting the result.
  *
- *  Deduplication uses a Set rather than a single `!==` filter against
- *  `query`, so duplicates already present in `existing` (a corrupted
- *  localStorage blob, or a freshly-written list that hadn't been
- *  cleaned) are also collapsed. The earliest occurrence wins. */
+ *  Two entries are the same search when they differ only in case or
+ *  spacing (`searchKey`), so a query replaces any such entry. Repeats
+ *  already present in `existing` are collapsed too; the earliest
+ *  occurrence wins. */
 export function mergeRecents(
 	existing: readonly string[],
 	query: string,
 	max: number = RECENT_LIMIT
 ): string[] {
-	const seen = new Set<string>([query]);
+	const seen = new Set<string>([searchKey(query)]);
 	const out: string[] = [query];
 	for (const x of existing) {
-		if (seen.has(x)) continue;
-		seen.add(x);
+		const key = searchKey(x);
+		if (seen.has(key)) continue;
+		seen.add(key);
 		out.push(x);
 	}
 	return out.slice(0, max);
@@ -67,7 +77,9 @@ export function mergeRecents(
 
 /** Defensive parse of a localStorage payload that should be a JSON
  *  array of strings. Anything else (null, throwing JSON, wrong
- *  shape, mixed types) collapses to `[]`. */
+ *  shape) collapses to `[]`. Within an array, non-strings and blank
+ *  entries are dropped, the rest trimmed, and a search listed more
+ *  than once (`searchKey`) keeps its first entry, before the cap. */
 export function parseStoredRecents(raw: string | null, max: number = RECENT_LIMIT): string[] {
 	if (raw === null) return [];
 	let parsed: unknown;
@@ -77,7 +89,17 @@ export function parseStoredRecents(raw: string | null, max: number = RECENT_LIMI
 		return [];
 	}
 	if (!Array.isArray(parsed)) return [];
-	return parsed.filter((x): x is string => typeof x === 'string').slice(0, max);
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const x of parsed) {
+		if (typeof x !== 'string') continue;
+		const q = x.trim();
+		const key = searchKey(q);
+		if (q.length === 0 || seen.has(key)) continue;
+		seen.add(key);
+		out.push(q);
+	}
+	return out.slice(0, max);
 }
 
 /** Outcome the component's submit handler should run. Mapped 1:1 to
