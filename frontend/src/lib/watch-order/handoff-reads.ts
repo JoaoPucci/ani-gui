@@ -38,7 +38,15 @@ export function createNamedReads(
 	read: (ids: readonly string[]) => Promise<Readonly<Record<string, unknown>>>,
 	settled: (id: string, named: boolean | null) => void
 ): FranchiseReads {
-	void read;
-	void settled;
-	return { want() {} };
+	const asked = new Set<string>();
+	return {
+		want(id) {
+			if (asked.has(id)) return;
+			asked.add(id);
+			read([id]).then(
+				(rows) => settled(id, rows[id] != null),
+				() => settled(id, null)
+			);
+		}
+	};
 }

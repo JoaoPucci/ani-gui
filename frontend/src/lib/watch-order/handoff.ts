@@ -93,8 +93,7 @@ export function unclaimedHandoff(
 	handoff: Handoff | null,
 	named: boolean | null | undefined
 ): Handoff | null {
-	void named;
-	return handoff;
+	return named === false ? handoff : null;
 }
 
 /** A history row as the played set reads it. */
