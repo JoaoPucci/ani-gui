@@ -44,7 +44,7 @@ export function emptyColumn(
 	side: 'before' | 'after',
 	complete: boolean
 ): EmptyColumn | null {
-	void complete;
+	if (!complete) return null;
 	if (side === 'before') return 'first';
 	return view.kind === 'side' ? 'side_end' : 'last';
 }

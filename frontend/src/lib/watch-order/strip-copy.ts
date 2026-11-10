@@ -36,8 +36,7 @@ export function columnCountText(
 	count: number,
 	complete: boolean
 ): string | null {
-	void complete;
-	if (kind === 'side' || count < 2) return null;
+	if (kind === 'side' || count < 2 || !complete) return null;
 	return side === 'before'
 		? m.watchorder_strip_join({ count })
 		: m.watchorder_strip_ways({ count });

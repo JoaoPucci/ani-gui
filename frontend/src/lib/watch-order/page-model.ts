@@ -62,9 +62,8 @@ export function settledOrder(
  * in, if any. `complete` is false for a franchise read in part.
  */
 export function captionOf(view: StripView, loop: number, complete: boolean): StripCaption {
-	void complete;
 	if (view.kind === 'side') return { kind: 'side' };
-	if (view.position !== null && view.total !== null)
+	if (view.position !== null && view.total !== null && complete)
 		return { kind: 'position', position: view.position, total: view.total };
 	if (view.position !== null) return { kind: 'numeral', position: view.position };
 	return view.inCycle ? { kind: 'cycle', count: loop } : { kind: 'branch' };
