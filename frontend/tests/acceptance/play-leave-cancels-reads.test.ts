@@ -141,4 +141,42 @@ describe('play route — leaving while its reads are out', () => {
 		app = mount(PlayPage, { target });
 		await until(() => reads.held.length >= 3 * PER_PAGE, "the third player's reads");
 	});
+
+	it('opens the strip for the show it moved to, when the show changes under it', async () => {
+		// The first show's episodes are held; the next show's answer.
+		slowReads(reads);
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/episodes/43`, () =>
+				HttpResponse.json([
+					{
+						id: 'ep-43-1',
+						number: 1,
+						relative_number: 1,
+						canonical_title: 'First of the next show',
+						season_number: 1,
+						length: 24,
+						synopsis: null,
+						airdate: '2019-01-01',
+						thumbnail: null
+					}
+				])
+			)
+		);
+		pool = sixConnections();
+		app = mount(PlayPage, { target });
+		await until(
+			() => reads.held.some((h) => h.endsWith(`/api/kitsu/episodes/${KITSU_ID}`)),
+			"the first show's episodes to be out"
+		);
+		setParams({ id: '43' });
+		setUrl('/play/43', { episode: '1' });
+		await until(
+			() => pool!.cancelled.includes(`/api/kitsu/episodes/${KITSU_ID}`),
+			"the first show's episodes to be cancelled"
+		);
+		await until(
+			() => (target.textContent ?? '').includes('First of the next show'),
+			"the next show's strip"
+		);
+	});
 });

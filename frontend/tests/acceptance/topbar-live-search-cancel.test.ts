@@ -108,8 +108,44 @@ describe('topbar live search — the query moves on', () => {
 		await until(() => reads.held.length === 1, 'the first search to be out');
 		type('frieren');
 		await until(() => pool!.cancelled.includes('/api/kitsu/search'), 'the first search cancelled');
+		// Before the next search answers, the cancelled one shows
+		// nothing: no failure, no empty list.
+		await new Promise((r) => setTimeout(r, 0));
+		expect(target.textContent).not.toContain(m.app_search_error_kitsu());
+		expect(target.textContent).not.toContain(m.app_search_error_no_matches());
 		await until(() => (target.textContent ?? '').includes('Frieren'), "the second search's hit");
 		expect(asked).toEqual(['fri', 'frieren']);
 		expect(target.textContent).not.toContain(m.app_search_error_kitsu());
+	});
+
+	it('cancels the search still out when the viewer submits and goes to the search page', async () => {
+		server.use(http.post(`${API_BASE}/api/kitsu/search`, reads.hang));
+		pool = sixConnections();
+		const children = createRawSnippet(() => ({ render: () => '<div></div>' }));
+		layout = mount(Layout, { target, props: { children } });
+		input().focus();
+		input().dispatchEvent(new FocusEvent('focus'));
+		type('frieren');
+		await until(() => reads.held.length === 1, 'the search to be out');
+		(input().closest('form') as HTMLFormElement).requestSubmit();
+		await until(() => pool!.cancelled.includes('/api/kitsu/search'), 'the search cancelled');
+	});
+
+	it('sends no search the viewer submitted before it went out', async () => {
+		let asked = 0;
+		server.use(
+			http.post(`${API_BASE}/api/kitsu/search`, () => {
+				asked += 1;
+				return HttpResponse.json([]);
+			})
+		);
+		const children = createRawSnippet(() => ({ render: () => '<div></div>' }));
+		layout = mount(Layout, { target, props: { children } });
+		input().focus();
+		input().dispatchEvent(new FocusEvent('focus'));
+		type('frieren');
+		(input().closest('form') as HTMLFormElement).requestSubmit();
+		await new Promise((r) => setTimeout(r, 500));
+		expect(asked).toBe(0);
 	});
 });
