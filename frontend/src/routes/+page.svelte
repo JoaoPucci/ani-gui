@@ -1083,7 +1083,7 @@
 	// hand-off does not wait for it.
 	let handoffSeries = $state<Record<string, FranchiseData | null>>({});
 	const handoffReads = createFranchiseReads(
-		(id) => kitsuFranchise(id),
+		(id, signal) => kitsuFranchise(id, { signal }),
 		(id, franchise) => {
 			handoffSeries = { ...handoffSeries, [id]: franchise };
 		}
@@ -1116,7 +1116,7 @@
 	// ($lib/watch-order/handoff `unclaimedHandoff`).
 	let handoffNamed = $state<Record<string, boolean | null>>({});
 	const namedReads = createNamedReads(
-		(ids) => historyByKitsuEach(ids),
+		(ids, signal) => historyByKitsuEach(ids, { signal }),
 		(id, named) => {
 			handoffNamed = { ...handoffNamed, [id]: named };
 		}
@@ -1132,6 +1132,12 @@
 			namedReads.forget();
 		}
 		for (const h of railHandoffs(handoffAsks, handoffFor).values()) namedReads.want(h.next.id);
+	});
+	// Home going cancels the reads still out: a series read holds its
+	// response open while the backend walks the franchise.
+	onDestroy(() => {
+		handoffReads.stop();
+		namedReads.stop();
 	});
 	const handoffs = $derived(
 		railHandoffs(handoffAsks, (kitsuId) => {

@@ -4,6 +4,12 @@
  * whether a history row resumes the entry a card would move on to,
  * asked once per id until the history changes. A read that fails
  * settles as null (the row keeps its ordinary card, with no error).
+ *
+ * Each read is handed a signal, aborted when the page goes (`stop`)
+ * and, for the resume lookups, when forgetting drops their answers:
+ * a franchise read holds its response open while the backend walks the
+ * franchise, on the API lane every page shares (`$lib/backend/lanes`),
+ * so a read whose answer nobody will use must not hold a connection.
  */
 import type { FranchiseData } from './types';
 
@@ -19,16 +25,22 @@ export function createFranchiseReads(
 	settled: (id: string, franchise: FranchiseData | null) => void
 ): FranchiseReads {
 	const asked = new Set<string>();
+	const page = new AbortController();
+	const hand = (id: string, franchise: FranchiseData | null) => {
+		if (!page.signal.aborted) settled(id, franchise);
+	};
 	return {
 		want(id) {
-			if (asked.has(id)) return;
+			if (asked.has(id) || page.signal.aborted) return;
 			asked.add(id);
-			read(id, new AbortController().signal).then(
-				(franchise) => settled(id, franchise),
-				() => settled(id, null)
+			read(id, page.signal).then(
+				(franchise) => hand(id, franchise),
+				() => hand(id, null)
 			);
 		},
-		stop() {}
+		stop() {
+			page.abort();
+		}
 	};
 }
 
@@ -51,27 +63,33 @@ export function createNamedReads(
 	settled: (id: string, named: boolean | null) => void
 ): NamedReads {
 	let asked = new Set<string>();
-	// Counts every forget: an answer is handed on only while none has
-	// happened since it was asked.
-	let generation = 0;
+	// One per forget: an answer is handed on only while its generation
+	// is the current one, and a forget or a stop cancels the lookups
+	// of the generation it ends.
+	let generation = new AbortController();
+	let stopped = false;
 	return {
 		want(id) {
-			if (asked.has(id)) return;
+			if (asked.has(id) || stopped) return;
 			asked.add(id);
 			const mine = generation;
-			read([id], new AbortController().signal).then(
-				(rows) => {
-					if (mine === generation) settled(id, rows[id] != null);
-				},
-				() => {
-					if (mine === generation) settled(id, null);
-				}
+			const hand = (named: boolean | null) => {
+				if (mine === generation && !mine.signal.aborted) settled(id, named);
+			};
+			read([id], mine.signal).then(
+				(rows) => hand(rows[id] != null),
+				() => hand(null)
 			);
 		},
 		forget() {
-			generation += 1;
+			if (stopped) return;
+			generation.abort();
+			generation = new AbortController();
 			asked = new Set();
 		},
-		stop() {}
+		stop() {
+			stopped = true;
+			generation.abort();
+		}
 	};
 }
