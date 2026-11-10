@@ -53,6 +53,10 @@ describe('discoveryView', () => {
 	});
 
 	it('says there is nothing to browse when every row came back empty', () => {
+		expect(discoveryView([ready(), ready()]).nothing).toBe(true);
+	});
+
+	it('says so when one row came back empty and the other failed', () => {
 		expect(discoveryView([ready(), FAILED]).nothing).toBe(true);
 	});
 

@@ -142,7 +142,8 @@ const settle = () => new Promise((r) => setTimeout(r, 60));
 const screen = () => target.textContent ?? '';
 const skeletons = () => target.querySelectorAll('.skel-card').length;
 
-/** The element showing `text`, deepest first. */
+/** The last element in document order whose text includes `text`:
+ *  the innermost one, as long as `text` sits in a single element. */
 function at(text: string): Element {
 	const all = [...target.querySelectorAll('*')].filter((e) => e.textContent?.includes(text));
 	const el = all.at(-1);
@@ -165,9 +166,20 @@ describe('/search with no query: the discovery rows', () => {
 		app = mount(SearchPage, { target });
 		await until(() => skeletons() > 0, 'skeleton rows while both rows load');
 
-		expect(row(m.search_discovery_trending_eyebrow())).not.toBeNull();
-		expect(row(m.search_discovery_top_rated_eyebrow())).not.toBeNull();
+		const trendingRow = row(m.search_discovery_trending_eyebrow());
+		const topRatedRow = row(m.search_discovery_top_rated_eyebrow());
+		expect(trendingRow).not.toBeNull();
+		expect(topRatedRow).not.toBeNull();
+		// In their final order: Trending above Top rated.
+		expect(
+			trendingRow!.compareDocumentPosition(topRatedRow!) & Node.DOCUMENT_POSITION_FOLLOWING
+		).not.toBe(0);
 		expect(screen()).toContain(m.search_discovery_trending_caption_loading());
+		// A placeholder card keeps room for a title wrapped to two lines,
+		// as most rows of twenty have, so a row does not grow as it fills.
+		for (const card of target.querySelectorAll('.skel-card')) {
+			expect(card.querySelectorAll('.skel-title').length).toBe(2);
+		}
 
 		trending.release();
 		topRated.release();
@@ -257,5 +269,45 @@ describe('/search with no query: the discovery rows', () => {
 		);
 		expect(screen()).not.toContain(m.search_discovery_nothing_headline());
 		expect(above('Airing One', 'Classic One')).toBe(true);
+	});
+
+	it('reads the settings again on Try again when they could not be read before', async () => {
+		// The settings come from the same local backend as both rows, so
+		// the usual way to reach the notice also loses the sub/dub mode.
+		const modes: string[] = [];
+		const recording = (settingsFail: boolean, rowsFail: boolean) => [
+			http.get(`${API_BASE}/api/settings`, () =>
+				settingsFail
+					? HttpResponse.json({ error: 'error.network' }, { status: 503 })
+					: HttpResponse.json({ ...CONFIG, mode: 'dub' })
+			),
+			...handlers({ trendingFails: rowsFail, topRatedFails: rowsFail }).slice(1, 3),
+			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
+				const body = (await request.json()) as { kitsu_ids: string[]; mode: string };
+				modes.push(body.mode);
+				return HttpResponse.json({
+					cached: Object.fromEntries(body.kitsu_ids.map((id) => [id, true])),
+					playable_episode_counts: {}
+				});
+			})
+		];
+		server.use(...recording(true, true));
+
+		app = mount(SearchPage, { target });
+		await until(
+			() => screen().includes(m.search_discovery_nothing_headline()),
+			'the nothing-to-browse notice'
+		);
+
+		server.use(...recording(false, false));
+		[...target.querySelectorAll('button')]
+			.find((b) => b.textContent?.trim() === m.search_discovery_retry())!
+			.click();
+
+		await until(
+			() => screen().includes('Airing One') && screen().includes('Classic One'),
+			'both rows after trying again'
+		);
+		expect(modes).toEqual(['dub', 'dub']);
 	});
 });
