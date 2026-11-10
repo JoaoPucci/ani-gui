@@ -70,6 +70,9 @@ function isChoice(answer) {
  *   stuck: it is logged, taken off always-on-top, shown (without focus)
  *   if it is not on screen, flashed once, and asked for a choice, which
  *   goes to `onChoice`.
+ * - A page that answers with nothing to offer (it never got its words,
+ *   or its script never ran) while still late goes to `onNothing`: the
+ *   splash has no way out to show.
  * - `offerAgain()` asks the page again, after a choice that could not
  *   be carried out.
  * - `landed()` says the page rendered: logged with how long after the
@@ -81,6 +84,9 @@ function stuckWatch({
   pending,
   onChoice,
   onStuck = () => {},
+  // The page answered the stuck call with nothing to offer (null, or
+  // undefined when its script never ran) while still late.
+  onNothing = () => {},
   log = () => {},
   logError = () => {},
   clock = () => Date.now(),
@@ -96,6 +102,7 @@ function stuckWatch({
     Promise.resolve(win.webContents.executeJavaScript(STUCK_CALL)).then(
       (answer) => {
         if (isChoice(answer)) onChoice(answer);
+        else if ((answer === null || answer === undefined) && pending()) onNothing();
       },
       (err) => logError("[main] could not show the splash's stuck state:", err),
     );

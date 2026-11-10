@@ -408,10 +408,10 @@ three-second limit below.
    first paint, whose failure dialog takes the splash away, and a
    renderer that dies fails the boot as before. A splash whose own page
    crashes is reloaded, at most twice per launch, and offers its choices
-   again. One that crashes past that, or whose page fails to load or
-   is navigated away (navigation and new windows are refused on the
-   splash), can no longer offer a way out, so the page gets 15 seconds
-   more, counted from the loss or from the
+   again. One that crashes past that, or whose page fails to load, is
+   navigated away (navigation and new windows are refused on the
+   splash), exits, or loads with nothing to offer, can no longer offer
+   a way out, so the page gets 15 seconds more, counted from the loss or from the
    window's creation if that came later: if it renders within them, the
    window is revealed as usual; if not, the boot fails with the same
    dialog rather than waiting for ever or revealing a window that may

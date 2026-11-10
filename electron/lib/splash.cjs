@@ -194,8 +194,8 @@ function splashController({
   let backstop = null;
   // Reloads of a crashed splash page so far.
   let reloads = 0;
-  // Rejects once the splash's crash recovery has run out while it
-  // stands in for the window (`lost`). Handled here too, so a launch
+  // Rejects once the splash has lost its page while it stands in for
+  // the window (`lost`, lose() below). Handled here too, so a launch
   // that never asks leaves no unhandled rejection.
   let markLost = () => {};
   const lostSignal = new Promise((_resolve, reject) => (markLost = reject));
@@ -227,6 +227,7 @@ function splashController({
     pending: () => (over || chosen || !alive() || steps >= STEPS.length ? null : STEPS[steps]),
     onChoice: (choice) => choose(choice),
     onStuck: () => (state.stuck = true),
+    onNothing: () => lose("has no way out to offer"),
     log,
     logError,
     clock,
@@ -500,11 +501,12 @@ function splashController({
     standsIn() {
       return state.opened && !over && alive() === true;
     },
-    // Rejects when the splash's page has crashed past its bounded
-    // reloads before the boot was past the splash or a choice was made:
-    // it can no longer stand in for the window (lib/app-window.cjs
-    // abortWhenLost decides what that means for the page). Never
-    // settles otherwise.
+    // Rejects when the splash can no longer offer a way out before the
+    // boot was past it or a choice was made: its page failed to load,
+    // left, exited, crashed past its reloads, has nothing to offer, or
+    // went with its window (lose()). It then cannot stand in for the
+    // window (lib/app-window.cjs abortWhenLost decides what that means
+    // for the page). Never settles otherwise.
     lost() {
       return lostSignal;
     },
