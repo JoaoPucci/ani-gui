@@ -17,12 +17,12 @@
  * which the last scenario reads.
  */
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
+import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { appInfo, emptyHistory, topRated, trending } from './fixtures/kitsu';
-import { appWindow, launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -148,8 +148,7 @@ async function launch(asked: string[]) {
 			cleanup: async () => {
 				const dead = pending as ElectronApplication | null;
 				pending = null;
-				const pid = dead?.process().pid;
-				if (pid) killTree(pid);
+				if (dead) await stopDeadApp(dead);
 			}
 		}
 	);

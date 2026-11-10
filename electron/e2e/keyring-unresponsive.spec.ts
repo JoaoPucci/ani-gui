@@ -23,9 +23,9 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { killTree } from "../lib/cold-launch.cjs";
+import { groupEmpty, statFields } from "../lib/own-group.cjs";
 import { appInfo, emptyHistory, topRated, trending } from "./fixtures/kitsu";
-import { appWindow, launchPackagedApp, packagedBinary, routeContext } from "./launch";
+import { appWindow, launchPackagedApp, packagedBinary, routeContext, stopApp } from "./launch";
 
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
@@ -75,8 +75,16 @@ async function busWithSilentSecretService(dir: string) {
   const daemon: ChildProcess = spawn(
     "dbus-daemon",
     [`--config-file=${config}`, "--nofork", "--print-address=1"],
-    { stdio: ["ignore", "pipe", "inherit"], detached: true },
+    { stdio: ["ignore", "pipe", "pipe"], detached: true },
   );
+  // The bus logs each activation with the pid of the connection that
+  // asked for it: the process that is waiting on the keyring, as the
+  // bus itself reports it.
+  let log = "";
+  daemon.stderr!.on("data", (chunk) => {
+    log += chunk;
+    process.stderr.write(chunk);
+  });
   const address = await new Promise<string>((resolve, reject) => {
     let out = "";
     daemon.once("error", reject);
@@ -88,43 +96,24 @@ async function busWithSilentSecretService(dir: string) {
   });
   return {
     address,
+    /** The pids that asked this bus for the secret service. */
+    secretServiceRequesters: (): number[] =>
+      [
+        ...log.matchAll(
+          /Activating service name='org\.freedesktop\.secrets' requested by '[^']*' \(uid=\d+ pid=(\d+)/g,
+        ),
+      ].map((m) => Number(m[1])),
+    // Only while the daemon is unreaped: its group id is then still the
+    // group this spec created (lib/own-group.cjs explains why).
     stop: () => {
+      if (daemon.exitCode !== null || daemon.signalCode !== null) return;
       try {
         process.kill(-daemon.pid!, "SIGKILL");
       } catch {
-        /* already gone */
+        /* nothing left in the group */
       }
     },
   };
-}
-
-/** The keyring helpers the app with main process `pid` started. */
-function keyringHelpersOf(pid: number): number[] {
-  const found: number[] = [];
-  for (const entry of fs.readdirSync("/proc")) {
-    if (!/^\d+$/.test(entry)) continue;
-    try {
-      const stat = fs.readFileSync(`/proc/${entry}/stat`, "utf8");
-      const ppid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]);
-      const cmdline = fs.readFileSync(`/proc/${entry}/cmdline`, "utf8");
-      // Its switch, or the process title it takes, which overwrites it.
-      if (ppid === pid && cmdline.includes("keyring-helper")) {
-        found.push(Number(entry));
-      }
-    } catch {
-      // The process ended between the reads.
-    }
-  }
-  return found;
-}
-
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 test("a secret service that never answers keeps neither the window nor the first page off screen", async () => {
@@ -151,7 +140,7 @@ test("a secret service that never answers keeps neither the window nor the first
     // where the freeze was seen.
     XDG_CURRENT_DESKTOP: "GNOME",
   });
-  const pid = app.process().pid;
+  const pid = app.process().pid!;
   try {
     const context = app.context();
     const json = (body: unknown) => ({
@@ -195,17 +184,24 @@ test("a secret service that never answers keeps neither the window nor the first
     // Nothing gave up on the saved sign-in.
     expect(fs.readFileSync(path.join(tokens, "anilist.bin"))).toEqual(saved);
 
-    // The helper still waiting on the keyring goes with the app.
-    const helpers = keyringHelpersOf(pid);
-    expect(helpers.length).toBe(1);
+    // One process asked the bus for the keyring: a helper of the app's,
+    // not its main process, in the process group Playwright created for
+    // the app.
+    const asked = bus.secretServiceRequesters();
+    expect(asked.length).toBe(1);
+    const [helper] = asked;
+    expect(helper).not.toBe(pid);
+    const stat = statFields(fs.readFileSync(`/proc/${helper}/stat`, "utf8"));
+    expect(stat?.pgrp).toBe(pid);
+
+    // The helper still waiting on the keyring goes with the app: once the
+    // app has quit, nothing is left in its group, the helper included.
     await app.close();
-    await expect
-      .poll(() => helpers.filter(alive), { timeout: 10_000 })
-      .toEqual([]);
+    await expect.poll(() => groupEmpty(pid), { timeout: 10_000 }).toBe(true);
   } finally {
-    // Whatever failed above, nothing is left behind: the tree kill
-    // reaches the backend and the keyring helper.
-    killTree(pid);
+    // Whatever failed above, the app's own group is stopped (nothing,
+    // once it has exited); the backend stops itself with the app.
+    await stopApp(app);
     bus.stop();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
