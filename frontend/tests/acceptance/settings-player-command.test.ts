@@ -5,9 +5,9 @@
 // its own, so going to it keeps the command. Leaving it clears a
 // command that is only a standard program's name ("mpv", "vlc",
 // "iina") to blank, and a blank command runs the new type's own
-// program. A command with a path or flags is kept. No path is guessed
-// and nothing is looked up: on Windows a bare `vlc` may not be found,
-// and the user browses to it, as before.
+// program. A command with a path or flags is kept. Changing the type
+// guesses no path: where a program is installed is the backend's
+// lookup, which these scenarios answer as "not found".
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
