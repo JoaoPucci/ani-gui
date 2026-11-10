@@ -188,6 +188,13 @@ describe('play route — the loading indicator runs from a switch into the hold 
 			.at(-1)!
 			.dispatch('done', session('session-2'));
 		await new Promise((r) => setTimeout(r, 20));
+		// Episode 1 is playing when the viewer switches: a stream still
+		// on its way would keep the indicator on by itself.
+		const video = playerVideo();
+		Object.defineProperty(video, 'paused', { configurable: true, get: () => false });
+		video.dispatchEvent(new Event('playing'));
+		await new Promise((r) => setTimeout(r, 20));
+		expect(indicatorOn()).toBeNull();
 
 		let land: () => void = () => {};
 		vi.mocked(goto).mockImplementationOnce(
