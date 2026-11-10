@@ -35,6 +35,7 @@ vi.mock('$app/navigation', () => ({
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { accountStore } from '../../src/lib/account/store.svelte';
+import { markRefreshed } from '../../src/lib/account/watch-later-refresh';
 import { m } from '../../src/lib/paraglide/messages';
 
 // Eight trending shows: the hero takes the first three, the row lists
@@ -156,6 +157,7 @@ afterEach(async () => {
 	accountStore.setDisconnected('anilist');
 	accountStore.readsSettled = true;
 	accountStore.keyringWaiting = false;
+	localStorage.clear();
 });
 
 async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
@@ -349,6 +351,10 @@ describe('Home: the rows below the hero', () => {
 
 	it("filters every row in the viewer's mode, reading the Watch later list once", async () => {
 		accountStore.setConnected('anilist', SIGN_IN);
+		// Pulled from the tracker a moment ago: the row's freshness check
+		// does not pull it again, which reads the list a second time on
+		// purpose.
+		markRefreshed('anilist', Date.now());
 		server.use(...handlers({ mode: 'dub' }));
 
 		app = mount(HomePage, { target });
