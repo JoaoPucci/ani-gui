@@ -26,7 +26,6 @@
 	import StripWatching from './StripWatching.svelte';
 	import { metaLine, numeral } from './meta';
 	import type { WatchOrderPage } from './page-model';
-	import { shortTitle } from './short-title';
 	import { captionText, columnCountText, columnKeyText, emptyColumnText } from './strip-copy';
 	import { emptyColumn } from './strip-view';
 	import { relationKey } from './strip-wording';
@@ -36,7 +35,7 @@
 
 	const view = $derived(model.view);
 	const caption = $derived(captionText(model.caption));
-	const label = (e: WatchEntry) => shortTitle(e.title, model.titles);
+	const label = (e: WatchEntry) => e.title;
 	const headingId = $props.id();
 	const keyOf = (side: 'before' | 'after') => {
 		const list = side === 'before' ? view.before : view.after;
