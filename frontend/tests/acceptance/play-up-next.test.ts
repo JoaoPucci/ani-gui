@@ -814,4 +814,23 @@ describe('the Up next card at a finale', () => {
 		expect(video.currentTime).toBe(0);
 		expect(skipPill()).toBeNull();
 	});
+
+	it("asks for an episode's skip times again on coming back to it before the next one learned its length", async () => {
+		const { video, fetches } = await openEpisode({ episode: 11 });
+		await playTo(video, 62);
+		await until(() => skipPill() !== null, 'the Skip Intro pill on episode 11');
+		// Episode 12 opens, and leaves before its stream learns its length.
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => Number.NaN });
+		await switchTo(video, 12, 'session-2');
+		await new Promise((r) => setTimeout(r, 20));
+		// Back on episode 11, whose length its stream then learns.
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => LENGTH });
+		await switchTo(video, 11, 'session-3');
+		await fetches.settled('the skip times for episode 11 again');
+		// The episode resumes where it was left: let that land.
+		video.dispatchEvent(new Event('seeked'));
+		video.dispatchEvent(new Event('playing'));
+		await playTo(video, 62);
+		await until(() => skipPill() !== null, 'the Skip Intro pill on episode 11 again');
+	});
 });
