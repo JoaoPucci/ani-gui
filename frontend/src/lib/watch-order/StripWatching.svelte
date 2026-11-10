@@ -14,12 +14,10 @@
 
 	let {
 		entry,
-		episode,
-		label
+		episode
 	}: {
 		entry: WatchEntry;
 		episode: number;
-		label: (e: WatchEntry) => string;
 	} = $props();
 
 	const href = $derived(resolve('/anime/[id]', { id: entry.id }));
@@ -34,12 +32,7 @@
 	<span class="chip-text">
 		<span class="chip-key">{m.watchorder_strip_watching_key()}</span>
 		<span class="chip-line">
-			{#if label(entry) !== entry.title}
-				<span class="sr-only">{entry.title}</span>
-				<span class="chip-title" aria-hidden="true">{label(entry)}</span>
-			{:else}
-				<span class="chip-title">{entry.title}</span>
-			{/if}
+			<span class="chip-title">{entry.title}</span>
 			<span class="chip-ep">{m.watchorder_meta_progress_open({ episode })}</span>
 		</span>
 	</span>
@@ -119,14 +112,6 @@
 		font-size: var(--type-micro);
 		letter-spacing: var(--tracking-micro);
 		color: var(--bone-300);
-	}
-	.sr-only {
-		position: absolute;
-		inline-size: 1px;
-		block-size: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
 	}
 	.arrow {
 		display: inline-flex;

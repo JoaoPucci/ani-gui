@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::rules::{listed, Run};
-use super::{id_key, order_key, Lookup};
+use super::{id_key, Lookup};
 
 /// Every prequel → sequel pair between two members, from either side.
 pub(super) fn links(run: &Run, look: &Lookup<'_>) -> Vec<(String, String)> {
@@ -26,19 +26,9 @@ pub(super) fn links(run: &Run, look: &Lookup<'_>) -> Vec<(String, String)> {
 }
 
 /// The side-story anchor's parents in the run, in start order.
-pub(super) fn parents(anchor: &str, run: &Run, look: &Lookup<'_>) -> BTreeMap<String, Vec<String>> {
+pub(super) fn parents(anchor: &str, run: &Run) -> BTreeMap<String, Vec<String>> {
     if !run.side_anchor {
         return BTreeMap::new();
     }
-    let mut ids: Vec<String> = listed(look, anchor, &["parent_story"])
-        .filter(|r| run.members.contains_key(&r.id))
-        .map(|r| r.id.clone())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    ids.sort_by_key(|id| {
-        let e = look.entry(id, &run.consulted);
-        order_key(e.as_ref().and_then(|e| e.start.as_deref()), id)
-    });
-    BTreeMap::from([(anchor.to_string(), ids)])
+    BTreeMap::from([(anchor.to_string(), run.parents.clone())])
 }

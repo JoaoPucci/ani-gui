@@ -19,7 +19,6 @@
 	import { loopGroupText, metaLine, numeral, railKeyText } from '../meta';
 	import { pathNote, placement, railItems, segments } from '../order';
 	import type { WatchOrderMockPrefs } from './prefs';
-	import { shortTitle } from '../short-title';
 	import { franchiseSummary } from '../strip-view';
 	import type { MockEntry, MockRun } from './types';
 	import { asRef, currentIn, franchiseName, progressOf, progressShare } from './view';
@@ -45,13 +44,12 @@
 	// The artwork is the named entry's; Resume goes to the entry being watched.
 	const heroEntry = $derived(mastheadArt(run, prefs.order));
 	const accent = $derived(accentFor(heroEntry.id));
-	const titles = $derived(run.entries.map((e) => e.title));
 	const franchiseTitles = $derived(
 		[...run.entries, ...run.versions, ...run.films, ...run.sides, ...run.recaps]
 			.filter((e) => e.id !== first.id)
 			.map((e) => e.title)
 	);
-	const label = (e: MockEntry) => shortTitle(e.title, titles);
+	const label = (e: MockEntry) => e.title;
 	const posOf = (e: MockEntry) => placement(run, e.id, prefs.order).position;
 	let recapsOpen = $state(false);
 </script>
