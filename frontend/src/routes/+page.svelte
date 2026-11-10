@@ -136,6 +136,7 @@
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
 	import { splitTrending } from '$lib/hero/rotation';
+	import { heroState } from '$lib/hero/state';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayArgs } from '$lib/play/play-args';
@@ -488,9 +489,14 @@
 
 	const trendingSplit = $derived(splitTrending(trending ?? []));
 	const heroRotation = $derived<KitsuAnimeRef[]>(trendingSplit.hero);
-	const featured = $derived(
-		heroRotation.length > 0 ? heroRotation[heroIndex % heroRotation.length] : null
+	const heroView = $derived(
+		heroState({
+			rotation: trending === null ? null : heroRotation,
+			failed: trendingError !== null,
+			index: heroIndex
+		})
 	);
+	const featured = $derived(heroView.kind === 'featured' ? heroView.show : null);
 	// The row leaves out the rotation's shows, so the user doesn't see
 	// the hero title also pinned as a card of the row below.
 	const trendingTail = $derived(trendingSplit.row);
@@ -1160,7 +1166,7 @@
 				{/each}
 			</div>
 		{/if}
-	{:else if trendingError}
+	{:else if heroView.kind === 'failed'}
 		<div class="hero-empty">
 			<p class="eyebrow">
 				<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
