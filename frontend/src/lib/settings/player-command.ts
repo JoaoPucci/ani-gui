@@ -40,3 +40,16 @@ export function commandAfterKindChange(
 	const next = bareCommand(to);
 	return previous !== null && next !== null && command === previous ? next : command;
 }
+
+/**
+ * Whether a command is only a standard program's name: "mpv", "vlc" or
+ * "iina", in any case, with or without ".exe" and surrounding spaces.
+ * A path, a command with flags, another program or a blank is not.
+ */
+export function isBareProgramName(command: string): boolean {
+	const name = command
+		.trim()
+		.toLowerCase()
+		.replace(/\.exe$/, '');
+	return Object.values(BARE).includes(name);
+}
