@@ -212,8 +212,8 @@ function splashController({
   // The stuck state's choice, once one has been carried out.
   let chosen = null;
   const alive = () => win && !win.isDestroyed();
-  // The splash can no longer offer a way out: no page, or one that
-  // keeps crashing. While the boot still relies on it, the app page
+  // The splash can no longer offer a way out: no page, one that keeps
+  // crashing, or one with nothing to offer. While the boot still relies on it, the app page
   // gets its bounded wait back (main.js, abortWhenLost). Once only; not
   // when the boot is past the splash or a choice was made.
   const lose = (reason) => {
