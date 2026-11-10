@@ -1332,6 +1332,10 @@ The rules below hold on every surface:
 - **Placement.** The hand-off takes the finished entry's place in the
   rail; that entry's own card is not shown beside it. Once the next
   entry has a history row of its own, the hand-off gives way to it.
+  A row counts for the entry it recorded and for the entry its card
+  shows, which differ when Kitsu has deleted the recorded entry and
+  the row was matched again. A franchise read only in part gives no
+  hand-off, as it may be missing the entry that really comes next.
 - **Truncation.** See "On Continue Watching" above: the sequel's
   whole title gets the two-line row.
 
