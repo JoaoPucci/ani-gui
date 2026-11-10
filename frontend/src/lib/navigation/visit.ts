@@ -65,3 +65,16 @@ export function beginVisit(): Visit {
 export function readEnded(e: unknown): boolean {
 	return e instanceof DOMException && e.name === 'AbortError';
 }
+
+/** Visits that follow one another. Not wired yet: beginning one ends
+ *  nothing. */
+export interface VisitSeries {
+	/** Begins the next visit. */
+	next(): Visit;
+	/** The page has gone. */
+	end(): void;
+}
+
+export function visitSeries(): VisitSeries {
+	return { next: beginVisit, end: () => {} };
+}

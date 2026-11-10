@@ -28,8 +28,10 @@ async function getJson<T>(path: string, bearer: string): Promise<T> {
 export function getEntry(
 	provider: Provider,
 	bearer: string,
-	kitsuId: string
+	kitsuId: string,
+	opts: { signal?: AbortSignal } = {}
 ): Promise<EntryView | null> {
+	void opts;
 	return getJson<EntryView | null>(
 		`/api/account/entry/${provider}?kitsu_id=${encodeURIComponent(kitsuId)}`,
 		bearer
