@@ -202,7 +202,9 @@ describe('HandoffGate — every sequence', () => {
 		| 'started'
 		| 'stopped'
 		| 'forget'
-		| 'manifest';
+		| 'manifest'
+		| 'hold'
+		| 'drop';
 	it('matches a model of the transitions: restarts, ends and stand-downs', () => {
 		fc.assert(
 			fc.property(
@@ -214,13 +216,21 @@ describe('HandoffGate — every sequence', () => {
 						'attaching',
 						'started',
 						'stopped',
-						'forget'
+						'forget',
+						'manifest',
+						'hold',
+						'drop'
 					),
 					{ maxLength: 40 }
 				),
 				(ops) => {
 					let restarts = 0;
 					let reloads = 0;
+					let starts = 0;
+					// The start the page hands the gate for the attached stream.
+					const start = () => {
+						starts += 1;
+					};
 					const gate = new HandoffGate(
 						() => {
 							restarts += 1;
@@ -237,7 +247,10 @@ describe('HandoffGate — every sequence', () => {
 						engine: false,
 						manifest: true,
 						restarts: 0,
-						reloads: 0
+						reloads: 0,
+						// A start the gate holds for the viewer.
+						held: false,
+						starts: 0
 					};
 					for (const op of ops) {
 						switch (op) {
@@ -248,8 +261,13 @@ describe('HandoffGate — every sequence', () => {
 								break;
 							case 'comeBack':
 								gate.comeBack();
-								if (model.off && model.engine) model.restarts += 1;
+								// Back from a handoff: a held start is the return;
+								// else a started engine restarts; else a stream
+								// whose manifest was cut off is asked for again.
+								if (model.off && model.held) model.starts += 1;
+								else if (model.off && model.engine) model.restarts += 1;
 								else if (model.off && !model.manifest) model.reloads += 1;
+								model.held = false;
 								model.off = false;
 								model.pick = false;
 								break;
@@ -260,7 +278,10 @@ describe('HandoffGate — every sequence', () => {
 							case 'attaching': {
 								const ended = gate.attaching();
 								expect(ended).toBe(model.pick);
-								if (model.pick) model.off = false;
+								if (model.pick) {
+									model.off = false;
+									model.held = false;
+								}
 								model.pick = false;
 								model.engine = false;
 								model.manifest = false;
@@ -282,11 +303,22 @@ describe('HandoffGate — every sequence', () => {
 								gate.forget();
 								model.off = false;
 								model.pick = false;
+								model.held = false;
+								break;
+							case 'hold':
+								gate.whenWatching(start);
+								if (model.off) model.held = true;
+								else model.starts += 1;
+								break;
+							case 'drop':
+								gate.drop(start);
+								model.held = false;
 								break;
 						}
 						expect(gate.handedOff).toBe(model.off);
 						expect(restarts).toBe(model.restarts);
 						expect(reloads).toBe(model.reloads);
+						expect(starts).toBe(model.starts);
 						expect(gate.recoveryStandsDown(false)).toBe(model.off);
 						expect(gate.recoveryStandsDown(true)).toBe(model.off && !model.pick);
 					}
