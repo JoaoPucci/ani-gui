@@ -664,8 +664,9 @@ impl KitsuClient {
         parse_search_page(&body, index * size, limit)
     }
 
-    /// Currently-airing anime sorted by user count descending — a usable
-    /// proxy for "trending" until the AniList client lands. `limit` caps
+    /// Currently-airing anime sorted by user count descending — the
+    /// trending list's fallback when no AniList trending list was ever
+    /// kept. `limit` caps
     /// `page[limit]`.
     ///
     /// # Errors

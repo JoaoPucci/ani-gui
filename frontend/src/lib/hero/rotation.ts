@@ -28,26 +28,42 @@ export interface TrendingSplit<T> {
 }
 
 /**
+ * `shows` with each show once: a show listed more than once keeps its
+ * first entry, in its first place, and the rest keep their order. Two
+ * entries are the same show when they share an id.
+ */
+export function dropRepeats<T extends { id: string }>(shows: readonly T[]): T[] {
+	const seen = new Set<string>();
+	return shows.filter((s) => {
+		if (seen.has(s.id)) return false;
+		seen.add(s.id);
+		return true;
+	});
+}
+
+/**
  * Split `trending` into the hero's rotation and the row below it.
  *
- * The hero takes the first `count` shows with art, in trending order.
- * When fewer than `count` have art, the first shows without it fill
- * the rest, after the ones with art. The row lists every other show in
- * trending order, so the shows the hero passed over lead it: no show
- * leaves Home and none appears twice.
+ * A show the list names more than once counts once, at its first
+ * entry ({@link dropRepeats}). The hero takes the first `count` shows
+ * with art, in trending order. When fewer than `count` have art, the
+ * first shows without it fill the rest, after the ones with art. The
+ * row lists every other show in trending order, so the shows the hero
+ * passed over lead it: no show leaves Home and none appears twice.
  */
-export function splitTrending<T extends HeroArtInput>(
+export function splitTrending<T extends HeroArtInput & { id: string }>(
 	trending: readonly T[],
 	count: number = HERO_ROTATION_COUNT
 ): TrendingSplit<T> {
-	const ranks = trending.map((_, i) => i);
-	const withArt = ranks.filter((i) => hasRealArt(trending[i])).slice(0, count);
+	const shows = dropRepeats(trending);
+	const ranks = shows.map((_, i) => i);
+	const withArt = ranks.filter((i) => hasRealArt(shows[i])).slice(0, count);
 	const fill = ranks
-		.filter((i) => !hasRealArt(trending[i]))
+		.filter((i) => !hasRealArt(shows[i]))
 		.slice(0, Math.max(0, count - withArt.length));
 	const taken = new Set([...withArt, ...fill]);
 	return {
-		hero: [...withArt, ...fill].map((i) => trending[i]),
-		row: ranks.filter((i) => !taken.has(i)).map((i) => trending[i])
+		hero: [...withArt, ...fill].map((i) => shows[i]),
+		row: ranks.filter((i) => !taken.has(i)).map((i) => shows[i])
 	};
 }

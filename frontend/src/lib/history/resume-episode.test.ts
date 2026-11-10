@@ -115,10 +115,7 @@ describe('acceptance: click-time lookup rides the interactive lane with awaited 
 		// episode is picked against the answered cap.
 		const checkAvailability = vi.fn().mockResolvedValue({ available: true, episode_count: 12 });
 
-		const settings = await resolveResumeSettings(
-			null,
-			Promise.resolve({ mode: 'dub', quality: 'best' } as never)
-		);
+		const settings = await resolveResumeSettings(null, Promise.resolve({ mode: 'dub' } as never));
 		const fetch = makeFetchAvailability(checkAvailability, { background: false });
 		const r = await resolveResumeEpisode(12, null, 24, () =>
 			fetch(makeMatch('k-a', 24), settings.mode).then((res) => ({

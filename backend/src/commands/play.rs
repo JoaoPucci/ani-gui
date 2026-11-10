@@ -39,9 +39,6 @@ pub struct PlayArgs {
     pub episode: String,
     /// `"sub"` or `"dub"`.
     pub mode: String,
-    /// `"best"` / `"worst"` / `"1080"` / etc. Defaults to `"best"`.
-    #[serde(default)]
-    pub quality: Option<String>,
     /// Kitsu's authoritative episode count. Used to disambiguate
     /// the provider candidates that share a title (e.g. the 1-ep
     /// "Konoha Gakuen Den" side-story vs. the 500-ep main "Naruto:
@@ -217,7 +214,6 @@ impl PlayArgs {
         play_resolution_cache::cache_key_for_version(
             &self.title,
             &self.mode,
-            self.quality.as_deref().unwrap_or("best"),
             &self.episode,
             self.year,
             self.episode_count,
@@ -226,11 +222,12 @@ impl PlayArgs {
         )
     }
 
-    /// The native resolve this play asks for, at `quality`.
+    /// The native resolve this play asks for: the master
+    /// ([`crate::scraper::hls::MASTER`]), which the built-in player, the
+    /// external players and Syncplay each choose a level of themselves.
     #[must_use]
     pub fn native_request<'a>(
         &'a self,
-        quality: &'a str,
         locale: &'a str,
         stamps_beside: Option<&'a std::path::Path>,
         tail: Option<&'a dyn super::play_native_appended::TailSource>,
@@ -240,7 +237,7 @@ impl PlayArgs {
             alt_titles: &self.alt_titles,
             episode: &self.episode,
             mode: &self.mode,
-            quality,
+            quality: crate::scraper::hls::MASTER,
             wanted: self.wanted(locale),
             expected_count: self.episode_count,
             year: self.year,
@@ -397,8 +394,6 @@ where
     // The play as it was asked for, for the writes it makes once the
     // stream is resolved.
     let asked = crate::history::guard::Asked::now(&state.history_path, args.kitsu_id.as_deref());
-    let quality = args.quality.as_deref().unwrap_or("best");
-
     // Resolution caching is the user's call (Config::cache_resolutions,
     // default off): a cached row can pin a day-one master URL — and so
     // its worse encode — for up to the TTL, so fresh-every-play is the
@@ -410,7 +405,7 @@ where
     let cache_resolutions = cfg.cache_resolutions;
 
     // Long-term cache check. A successful prior resolution under the
-    // same (title, mode, quality, episode) tuple is replayable for up
+    // same (title, mode, episode) tuple is replayable for up
     // to PLAY_RESOLUTION_TTL — we just have to confirm the upstream
     // URL is still alive (wixmp / sharepoint URLs rotate). HEAD is
     // ~50ms; a full resolve is ~5–7s. Worth the round-trip.
@@ -466,7 +461,6 @@ where
     // Every listing the resolve picks is recorded, served or not.
     let recorder = crate::commands::listing_tags::Recorder::new(state);
     let mut request = args.native_request(
-        quality,
         &cfg.locale,
         Some(&state.history_path),
         tail.as_ref()
@@ -614,7 +608,6 @@ where
             play_resolution_cache::cache_key_for_version(
                 &args.title,
                 &args.mode,
-                quality,
                 &episode,
                 args.year,
                 args.episode_count,
@@ -706,7 +699,6 @@ pub(crate) mod tests {
             title in ".*",
             episode in "[0-9]{1,4}",
             mode in "(sub|dub|weird)",
-            quality in proptest::option::of("[a-z0-9]{1,6}"),
             episode_count in proptest::option::of(proptest::num::u32::ANY),
             year in proptest::option::of(proptest::num::u32::ANY),
             kitsu_id in proptest::option::of("[a-z0-9-]{1,12}"),
@@ -716,7 +708,6 @@ pub(crate) mod tests {
                 title,
                 episode,
                 mode,
-                quality,
                 episode_count,
                 subtype: None,
                 year,
@@ -787,7 +778,6 @@ pub(crate) mod tests {
             title: "x".into(),
             episode: "3".into(),
             mode: "sub".into(),
-            quality: None,
             subtype: None,
             episode_count: None,
             year: None,
@@ -861,7 +851,6 @@ pub(crate) mod tests {
             title: "x".into(),
             episode: "3".into(),
             mode: "sub".into(),
-            quality: None,
             subtype: None,
             episode_count: None,
             year: None,
@@ -924,7 +913,6 @@ pub(crate) mod tests {
             title: title.into(),
             episode: "1".into(),
             mode: "sub".into(),
-            quality: None,
             subtype: None,
             episode_count: None,
             year: None,
@@ -986,7 +974,6 @@ pub(crate) mod tests {
             title: title.into(),
             episode: "1".into(),
             mode: "sub".into(),
-            quality: None,
             subtype: None,
             episode_count: None,
             year: None,
@@ -1004,7 +991,6 @@ pub(crate) mod tests {
         play_resolution_cache::cache_key(
             &args.title,
             &args.mode,
-            args.quality.as_deref().unwrap_or("best"),
             &args.episode,
             args.year,
             args.episode_count,
@@ -1268,7 +1254,6 @@ pub(crate) mod tests {
             title: "The Sequel".into(),
             episode: "1".into(),
             mode: "sub".into(),
-            quality: None,
             subtype: None,
             episode_count: None,
             year: None,
@@ -1585,7 +1570,6 @@ pub(crate) mod tests {
             title: title.into(),
             episode: episode.into(),
             mode: "sub".into(),
-            quality: Some("best".into()),
             subtype: None,
             episode_count: None,
             year: None,
@@ -1621,7 +1605,6 @@ pub(crate) mod tests {
         let key = play_resolution_cache::cache_key(
             &args.title,
             &args.mode,
-            args.quality.as_deref().unwrap_or("best"),
             &args.episode,
             args.year,
             args.episode_count,
@@ -1672,7 +1655,6 @@ pub(crate) mod tests {
         let key = play_resolution_cache::cache_key(
             &args.title,
             &args.mode,
-            args.quality.as_deref().unwrap_or("best"),
             &args.episode,
             args.year,
             args.episode_count,
@@ -1741,7 +1723,6 @@ pub(crate) mod tests {
             title: "Recap Show".into(),
             episode: "3.5".into(),
             mode: "sub".into(),
-            quality: None,
             subtype: None,
             episode_count: None,
             year: None,
@@ -1790,7 +1771,6 @@ pub(crate) mod tests {
             title: "Recap Show".into(),
             episode: "24.5".into(),
             mode: "sub".into(),
-            quality: None,
             subtype: None,
             episode_count: None,
             year: None,
@@ -2015,7 +1995,6 @@ pub(crate) mod tests {
         let key = play_resolution_cache::cache_key(
             &args.title,
             &args.mode,
-            "best",
             &args.episode,
             args.year,
             args.episode_count,
@@ -2090,7 +2069,6 @@ pub(crate) mod tests {
         let key = play_resolution_cache::cache_key(
             &args.title,
             &args.mode,
-            "best",
             &args.episode,
             args.year,
             args.episode_count,
@@ -2120,7 +2098,6 @@ pub(crate) mod tests {
         let key = play_resolution_cache::cache_key(
             &args.title,
             &args.mode,
-            "best",
             &args.episode,
             args.year,
             args.episode_count,
@@ -2196,7 +2173,6 @@ pub(crate) mod tests {
         let key = play_resolution_cache::cache_key(
             &args.title,
             &args.mode,
-            "best",
             &args.episode,
             args.year,
             args.episode_count,
@@ -2238,28 +2214,6 @@ pub(crate) mod tests {
             .await
             .expect("hit");
         assert_eq!(launch.subtitle_urls, vec![sub]);
-    }
-
-    #[test]
-    fn play_args_quality_defaults_to_best() {
-        let args = PlayArgs {
-            locale: None,
-            title: "test".into(),
-            episode: "1".into(),
-            mode: "sub".into(),
-            quality: None,
-            subtype: None,
-            episode_count: None,
-            year: None,
-            alt_titles: vec![],
-            prefetch: false,
-            kitsu_id: None,
-            version: None,
-            guess_row: None,
-            guess_id: None,
-            caption: None,
-        };
-        assert_eq!(args.quality.as_deref().unwrap_or("best"), "best");
     }
 
     #[test]
@@ -2402,7 +2356,6 @@ pub(crate) mod tests {
             title: "Race Show".into(),
             episode: "1".into(),
             mode: "sub".into(),
-            quality: None,
             subtype: None,
             episode_count: None,
             year: None,
@@ -2470,7 +2423,6 @@ pub(crate) mod tests {
             title: "Cap Show".into(),
             episode: "1".into(),
             mode: "sub".into(),
-            quality: None,
             subtype: None,
             episode_count: None,
             year: None,
@@ -2525,7 +2477,6 @@ pub(crate) mod tests {
             title: "Dub Show".into(),
             episode: "1".into(),
             mode: "dub".into(),
-            quality: None,
             subtype: None,
             episode_count: None,
             year: None,
@@ -2585,7 +2536,6 @@ pub(crate) mod tests {
             title: "Dub Show".into(),
             episode: "1".into(),
             mode: "dub".into(),
-            quality: None,
             subtype: None,
             episode_count: None,
             year: None,

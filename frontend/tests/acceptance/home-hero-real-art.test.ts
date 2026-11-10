@@ -2,7 +2,8 @@
 // have art of their own — an AniList banner or a Kitsu cover — in
 // trending order, and the trending row below it starts with the shows
 // the hero passed over, so no show leaves Home. With fewer than three
-// shows with art, the hero fills its rotation with blurred posters.
+// shows with art, the hero fills its rotation with blurred posters. A
+// show the trending list repeats is shown once, in its first place.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -133,5 +134,22 @@ describe('home hero prefers shows with real art', () => {
 			).toBe(true)
 		);
 		await vi.waitFor(() => expect(trendingRow()).toEqual(['Fourth', 'Fifth']));
+	});
+
+	it('shows a show the trending list repeats only once, in its first place', async () => {
+		serve([
+			withBanner('1', 'Hottest'),
+			withCover('1', 'Hottest'),
+			withCover('2', 'Second'),
+			bare('3', 'Third'),
+			withCover('4', 'Fourth'),
+			withCover('2', 'Second'),
+			bare('5', 'Fifth'),
+			bare('3', 'Third')
+		]);
+		app = mount(HomePage, { target });
+		await vi.waitFor(() => expect(heroTitle()).toBe('Hottest'), { timeout: 3000 });
+		expect(pagerTitles()).toEqual(dotLabels(['Hottest', 'Second', 'Fourth']));
+		await vi.waitFor(() => expect(trendingRow()).toEqual(['Third', 'Fifth']));
 	});
 });

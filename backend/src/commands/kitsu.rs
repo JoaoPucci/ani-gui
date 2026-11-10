@@ -32,8 +32,9 @@ use super::kitsu_search::SEARCH_PAGE_LIMIT;
 // Old un-versioned keys become misses on first access and the data
 // re-fetches with the new schema.
 
-/// Currently-airing anime ranked by user count — a usable proxy for
-/// "trending" until the AniList client lands. Cache key: `kitsu:trending`,
+/// Currently-airing anime ranked by user count — the home page's
+/// trending list when no AniList trending list was ever kept
+/// ([`kitsu_trending_anilist`]). Cache key: `kitsu:trending`,
 /// TTL [`TRENDING_TTL`] (1 hour).
 ///
 /// # Errors
@@ -2317,7 +2318,7 @@ mod tests {
 
     #[tokio::test]
     async fn bridge_preserves_anilist_ranking() {
-        // Order matters — home hero takes items 0..5. AniList's
+        // Order matters — home hero takes the first three with art. AniList's
         // TRENDING_DESC is the SOURCE of the ordering; the bridge
         // shouldn't reshuffle.
         let server = MockServer::start().await;
