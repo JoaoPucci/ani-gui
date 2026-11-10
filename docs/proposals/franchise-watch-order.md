@@ -643,9 +643,9 @@ Where they differ, entry by entry:
   → 1993 OVA. Release order: 1993 OVA → 2000 OVA → 2012 series. All
   three entries' neighbours change. Other versions: both *Stardust
   Crusaders* seasons and the 2012 re-edit special; the 2007 *Phantom
-  Blood* film is listed with the films. From any TV part, the run is the nine entries from
-  the 2012 series to *Steel Ball Run* (an ONA), the same in both
-  orders. No entry in it lists either OVA as a prequel or sequel, so
+  Blood* film is listed with the films. From any TV part, the run is
+  the nine entries from the 2012 series to *Steel Ball Run* (an ONA),
+  the same in both orders. No entry in it lists either OVA as a prequel or sequel, so
   the walk never meets them; both are other versions by rule 4, since
   run members list them as `alternative_version`.
 - **Fate, from *Fate/Zero*.** Link order: *Fate/Zero* → *2nd Season* →
@@ -655,8 +655,9 @@ Where they differ, entry by entry:
   night* (2006), *Fate/Zero* and its 2nd season. The 2010 UBW film and
   the first *Heaven's Feel* film are left out: with *Fate/stay night*
   (2006) they list one another as versions, and the TV series wins
-  (rule 2). Being movies, they are listed with the films. Rule 4 adds *Fate/Prototype* and a UBW 2nd-season
-  special, which run members list as versions; the same-world series
+  (rule 2). Being movies, they are listed with the films. Rule 4 adds
+  *Fate/Prototype* and a UBW 2nd-season special, which run members
+  list as versions; the same-world series
   (*Apocrypha* and the rest) are not listed. From the UBW series' own
   page, the run is *Fate/Zero* → *2nd Season* → prologue → UBW → UBW
   2nd season in both orders; *Fate/stay night* (2006) is then an other
@@ -870,10 +871,11 @@ design section. Below it, sections:
    *Heaven's Feel* film, *Gintama*'s retelling films.
 3. From `around`: **Films** (every movie around the run, whatever its
    role: a version, a recap or a side story), **Recaps** (`summary`,
-   a TV series aside, which is an other version) and **Side stories & specials** (everything
-   else: side stories, parent stories, spin-offs, `other`). Links of the
-   `character` and `adaptation` roles are not shown: they tie
-   unrelated series together (*Gintama* to *Saiki Kusuo*).
+   a TV series aside, which is an other version) and **Side stories &
+   specials** (everything else: side stories, parent stories,
+   spin-offs, `other`). Links of the `character` and `adaptation`
+   roles are not shown: they tie unrelated series together (*Gintama*
+   to *Saiki Kusuo*).
 
 There is no order switch on the page; the app-wide setting applies.
 
