@@ -1262,14 +1262,10 @@ export function kitsuAnimeBySlug(slug: string): Promise<KitsuAnimeRef | null> {
 	return getJson<KitsuAnimeRef | null>(`/api/kitsu/anime-by-slug/${encodeURIComponent(slug)}`);
 }
 
-export function kitsuTrending(): Promise<KitsuAnimeRef[]> {
-	return getJson<KitsuAnimeRef[]>('/api/kitsu/trending');
-}
-
 /** AniList-backed trending — recency-weighted (AniList's `trending`
  *  counts viewer activity over the past hour). Backend bridges each AniList entry to a Kitsu
- *  ref via /mappings, so the response shape matches the regular
- *  trending endpoint. When AniList cannot answer, the backend serves
+ *  ref via /mappings, so the response shape matches Kitsu's own
+ *  trending list. When AniList cannot answer, the backend serves
  *  the last list AniList gave, however stale, and Kitsu's own airing
  *  list only when it has none; the page still loads either way. */
 export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {

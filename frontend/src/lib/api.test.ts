@@ -34,7 +34,6 @@ import {
 	kitsuTitleMatchGet,
 	kitsuTitleMatchPut,
 	kitsuTopRated,
-	kitsuTrending,
 	kitsuByMalIds,
 	kitsuTrendingAnilist,
 	markWatched,
@@ -1142,15 +1141,6 @@ describe('kitsuAnimeBySlug', () => {
 		globalThis.fetch = mockFetchOnce(null) as unknown as typeof fetch;
 		await kitsuAnimeBySlug('jojo-stone-ocean-part-2');
 		// no further assertion needed — the URL alone proves shape
-	});
-});
-
-describe('kitsuTrending', () => {
-	it('GETs /api/kitsu/trending', async () => {
-		const fetchMock = mockFetchOnce([]);
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		await kitsuTrending();
-		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/trending`);
 	});
 });
 
