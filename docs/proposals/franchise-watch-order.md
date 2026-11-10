@@ -566,13 +566,14 @@ with its parents named. Kitsu sometimes lists a pair the wrong way
 round, from both sides: [data] on 2026-11-11 *One Piece* (12) named
 *LEGO ONE PIECE* (50656), a two-episode ONA from 2026, as its parent
 story, and *LEGO ONE PIECE* named *One Piece* as its side story. So
-an entry is taken as the anchor's parent story only when its own
-listing names at least as many side stories, spin-offs and recaps as
-the anchor's does; and an entry the anchor names as its side story or
-spin-off is taken as its parent story when it started before the
-anchor, names the anchor back as its parent story, and names more of
-them. Every listing read for this counts toward the walk's bound, and
-one cut short makes the answer incomplete. *One Piece* names sixty-three;
+an entry the anchor names as its parent story is refused when it did
+not start before the anchor and its own listing names fewer side
+stories, spin-offs and recaps than the anchor's; and an entry the
+anchor names as its side story or spin-off is taken as its parent
+story when it started before the anchor, names the anchor back as its
+parent story, and names more of them. A listing read for this counts
+toward the bound on what the walk reads after it, and one cut short
+makes the answer incomplete. *One Piece* names sixty-three;
 *LEGO ONE PIECE* names one.
 
 With these tie-breaks every entry has one path and one decision, so
