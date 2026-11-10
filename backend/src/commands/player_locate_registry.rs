@@ -52,6 +52,27 @@ pub(super) fn registered_app_path(file: &str) -> Option<String> {
     })
 }
 
+/// The `reg.exe` command for one query (AGENTS.md §5): a tokio
+/// command, killed if dropped, with `TERM=dumb` and `NO_COLOR=1`, no
+/// stdin, no console window.
+#[allow(dead_code)] // wired in by the next commits
+pub(super) fn reg_command(program: &str, args: &[String]) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.args(args);
+    cmd
+}
+
+/// The output of `cmd`, or none when it can't start or runs past
+/// `limit`, in which case it is killed. Runs on a thread of its own
+/// with its own small runtime, so it can be called from any context.
+#[allow(dead_code)] // wired in by the next commits
+pub(super) fn reg_output(
+    _cmd: tokio::process::Command,
+    _limit: std::time::Duration,
+) -> Option<std::process::Output> {
+    None
+}
+
 /// No registry off Windows.
 #[cfg(not(windows))]
 pub(super) fn registered_app_path(_file: &str) -> Option<String> {
