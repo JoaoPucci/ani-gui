@@ -52,14 +52,16 @@ function shownSignal(reduced) {
 /** The page the splash loads. */
 const SPLASH_PAGE = path.join(__dirname, "..", "splash", "index.html");
 
-/** Whether `url` is the splash's own page: a file URL ending in
- *  splash/index.html. Compared by its decoded path's ending rather than
- *  in full, so an install path's spaces, non-ASCII letters or drive
- *  letter case cannot make the page look like somewhere else. */
+/** Whether `url` is the splash's own page: a file URL whose path ends
+ *  in splash/index.html. Only that ending is compared, so whatever the
+ *  install path holds (spaces, non-ASCII letters, a bare %, a drive
+ *  letter in either case, encoded or not) cannot make the page look like
+ *  somewhere else. The path is not decoded: the ending is plain ASCII,
+ *  and decoding a bare % throws. */
 function isSplashPage(url) {
   try {
     const u = new URL(url);
-    return u.protocol === "file:" && /\/splash\/index\.html$/i.test(decodeURIComponent(u.pathname));
+    return u.protocol === "file:" && /\/splash\/index\.html$/i.test(u.pathname);
   } catch {
     return false;
   }
