@@ -13,6 +13,7 @@
 	import FranchiseView from '$lib/watch-order/FranchiseView.svelte';
 	import { localDay } from '$lib/watch-order/entry';
 	import { franchisePage, franchiseTrail } from '$lib/watch-order/franchise-page';
+	import { latestRead } from '$lib/watch-order/latest-read';
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
 	import { settledOrder } from '$lib/watch-order/page-model';
 
@@ -26,18 +27,15 @@
 		.catch(() => (configFailed = true));
 
 	// One read per show and per Try again. Only the latest read's
-	// answer is drawn, so an older one landing late never replaces it.
+	// answer is drawn, so an older one landing late never replaces it
+	// ($lib/watch-order/latest-read).
 	let data = $state<WatchOrderData | null>(null);
 	let attempt = $state(0);
-	let latest = 0;
+	const reads = latestRead<WatchOrderData>((d) => (data = d));
 	$effect(() => {
 		const current = id;
 		void attempt;
-		const read = ++latest;
-		data = null;
-		void loadWatchOrder(current, { franchise: kitsuFranchise, history: historyList }).then((d) => {
-			if (read === latest) data = d;
-		});
+		reads.start(() => loadWatchOrder(current, { franchise: kitsuFranchise, history: historyList }));
 	});
 
 	const order = $derived(settledOrder(config, configFailed));
