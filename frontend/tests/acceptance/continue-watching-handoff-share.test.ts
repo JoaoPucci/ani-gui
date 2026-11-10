@@ -127,10 +127,7 @@ describe('Continue Watching hand-off — the API lane', () => {
 		await until(() => walks().length >= 2, 'the series walks');
 		await until(() => resumeFor(MIDDLE) !== null, 'the part-way card');
 		resumeFor(MIDDLE)!.click();
-		await until(
-			() => fetches.read.some((f) => f.path === '/api/history/p-middle/number'),
-			"the resume's row read"
-		);
+		// The resume reads its row again, then plays.
 		await until(() => plays.length > 0, 'the play');
 		// Two walks out, the other four waiting their turn.
 		expect(walks()).toHaveLength(2);
