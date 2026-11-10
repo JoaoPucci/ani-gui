@@ -18,11 +18,13 @@ export function leaveHidingFullscreen(doc: Document, root: HTMLElement): void {
 }
 
 /** A native dialog shown modally sits in the top layer, above every
- *  other modal: it steps out of it while one opens above it, and comes
- *  back once that one closes. */
+ *  other modal: it is closed — hidden, with its backdrop — while one
+ *  opens above it, and shown modally again once that one closes. */
 export function stepAside(below: HTMLElement | undefined): void {
 	if (below instanceof HTMLDialogElement && below.open) below.close();
 }
 export function stepBack(root: HTMLElement): void {
-	if (root instanceof HTMLDialogElement && !root.open) root.showModal();
+	// One gone from the page meanwhile stays gone: a browser refuses to
+	// show it.
+	if (root instanceof HTMLDialogElement && !root.open && root.isConnected) root.showModal();
 }

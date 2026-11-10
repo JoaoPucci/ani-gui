@@ -27,8 +27,8 @@
  * but a <dialog>, which the app only ever shows with showModal(): the
  * top layer shows it above fullscreen (the change-show picker over a
  * fullscreen player). That same top layer would hide a modal opening
- * above such a dialog, so the dialog steps out of it while one is up,
- * and comes back once that one closes.
+ * above such a dialog, so the dialog is hidden while one is up, and
+ * shown again once that one closes.
  */
 
 import { nextInCycle, tabbablesIn } from './focus-cycle';
