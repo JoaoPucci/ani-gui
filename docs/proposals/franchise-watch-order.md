@@ -551,7 +551,24 @@ is defined from the entry being viewed — the anchor — by these rules
    `alternative_setting` is not listed: Kitsu uses it for separate
    series in the same world (*Fate/stay night* lists *Apocrypha*,
    *Prisma☆Illya* and *Grand Order* that way). Manga and novels are
-   never listed.
+   never listed. A movie among them is listed with the films instead:
+   *Boruto: Naruto the Movie*, left out beside the *Boruto* series it
+   is a version of, is a film on Naruto's franchise page, not an
+   other version. The same holds for a recap that is a movie.
+
+**Side stories.** An anchor whose own run is itself alone, and that
+names a parent story, is walked from its earliest parent story
+instead, and listed beside that run (with the films, if it is a movie)
+with its parents named. Kitsu sometimes lists a pair the wrong way
+round, from both sides: [data] on 2026-11-11 *One Piece* (12) named
+*LEGO ONE PIECE* (50656), a two-episode ONA from 2026, as its parent
+story, and *LEGO ONE PIECE* named *One Piece* as its side story. So
+an entry is taken as the anchor's parent story only when its own
+listing names at least as many side stories, spin-offs and recaps as
+the anchor's does; and an entry the anchor names as its side story or
+spin-off is taken as its parent story when it started before the
+anchor and names more of them. *One Piece* names sixty-three;
+*LEGO ONE PIECE* names one.
 
 With these tie-breaks every entry has one path and one decision, so
 the result does not depend on the order the walk happens to read
@@ -622,8 +639,8 @@ Where they differ, entry by entry:
 - **JoJo, from the 2000 OVA.** Link order: *JoJo* (TV, 2012) → 2000 OVA
   → 1993 OVA. Release order: 1993 OVA → 2000 OVA → 2012 series. All
   three entries' neighbours change. Other versions: both *Stardust
-  Crusaders* seasons, the 2007 *Phantom Blood* film and the 2012
-  re-edit special. From any TV part, the run is the nine entries from
+  Crusaders* seasons and the 2012 re-edit special; the 2007 *Phantom
+  Blood* film is listed with the films. From any TV part, the run is the nine entries from
   the 2012 series to *Steel Ball Run* (an ONA), the same in both
   orders. No entry in it lists either OVA as a prequel or sequel, so
   the walk never meets them; both are other versions by rule 4, since
@@ -633,9 +650,9 @@ Where they differ, entry by entry:
   season. Release order: *Fate/stay night* (2006) → *Fate/Zero* → *2nd
   Season* → prologue → UBW → UBW 2nd season. They differ at *Fate/stay
   night* (2006), *Fate/Zero* and its 2nd season. The 2010 UBW film and
-  the first *Heaven's Feel* film are other versions: with *Fate/stay
-  night* (2006) they list one another as versions, and the TV series
-  wins (rule 2). Rule 4 adds *Fate/Prototype* and a UBW 2nd-season
+  the first *Heaven's Feel* film are left out: with *Fate/stay night*
+  (2006) they list one another as versions, and the TV series wins
+  (rule 2). Being movies, they are listed with the films. Rule 4 adds *Fate/Prototype* and a UBW 2nd-season
   special, which run members list as versions; the same-world series
   (*Apocrypha* and the rest) are not listed. From the UBW series' own
   page, the run is *Fate/Zero* → *2nd Season* → prologue → UBW → UBW
@@ -841,14 +858,13 @@ design section. Below it, sections:
    unnumbered beside the numbered path, progress bars per entry and a
    "you are here" marker.
 2. **Other versions** — section 4's rule 4: from the JoJo TV run, both
-   OVAs; from the UBW run, the 2006 *Fate/stay night*, the 2010 film
-   and the first *Heaven's Feel* film among them; *Gintama*'s
-   retelling films.
-3. From `around`, by role first and format second: **Recaps**
-   (`summary`, collapsed by default — *Attack on Titan: Chronicle*
-   lands here though it is a film), then **Films** (movies among the
-   rest) and **Side stories & specials** (everything else: side
-   stories, parent stories, spin-offs, `other`). Links of the
+   OVAs; from the UBW run, the 2006 *Fate/stay night*. Movies are not
+   listed here but under Films: the 2010 UBW film and the first
+   *Heaven's Feel* film, *Gintama*'s retelling films.
+3. From `around`: **Films** (every movie around the run, whatever its
+   role: a version, a recap or a side story), **Recaps** (`summary`,
+   collapsed by default) and **Side stories & specials** (everything
+   else: side stories, parent stories, spin-offs, `other`). Links of the
    `character` and `adaptation` roles are not shown: they tie
    unrelated series together (*Gintama* to *Saiki Kusuo*).
 
