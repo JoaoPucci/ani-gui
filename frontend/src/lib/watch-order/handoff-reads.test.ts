@@ -71,7 +71,7 @@ describe('createNamedReads', () => {
 		reads.want('20');
 		await flush();
 		expect(read).toHaveBeenCalledTimes(2);
-		expect(read).toHaveBeenCalledWith(['20']);
+		expect(read.mock.calls[0][0]).toEqual(['20']);
 		expect(settled).toHaveBeenCalledWith('20', true);
 		expect(settled).toHaveBeenCalledWith('30', false);
 	});
