@@ -10,7 +10,7 @@ samples describe the provider on that day.
 
 ## The problem in plain terms
 
-The player's "Picture-in-picture" menu entry pops the video out into a
+The player's "Picture in picture" menu entry pops the video out into a
 small floating window. On anime that is close to useless, because the
 subtitles do not come with it: they stay behind in the app's window,
 drawn over an empty black box, while the floating window shows a
@@ -46,7 +46,7 @@ claim nobody has checked yet, with the check that would settle it.
 ### The code paths
 
 - **[data]** The custom controls' "more" menu has a
-  "Picture-in-picture" item (`frontend/src/routes/play/[id]/+page.svelte:3625`)
+  "Picture in picture" item (`frontend/src/routes/play/[id]/+page.svelte:3625`)
   that calls `onPip` (`:848`): `requestPictureInPicture()` on the
   page's video, or `exitPictureInPicture()` when something is already
   in it. Failures are swallowed.
@@ -551,7 +551,7 @@ like there, they look like here.
   their size is Chromium's, relative to the video's height. Phase 0
   checks it on real episodes; if they are too small, a `::cue` size for
   the mini window is the smallest fix.
-- **[proposal]** The "Skip opening" button appears in the mini window
+- **[proposal]** The "Skip Opening" button appears in the mini window
   during an interval, as in the main player, and auto-skip applies.
 
 ### Keyboard
@@ -617,7 +617,7 @@ depends on which window plays.
 
 ## 6. Entry points
 
-- **[proposal]** The player's "Picture-in-picture" menu item becomes
+- **[proposal]** The player's "Picture in picture" menu item becomes
   "Mini player" and opens the mini window. A button for it joins the
   control bar's right-hand group, beside fullscreen.
 - **[data]** Entering on leaving the player is what 0.15.x did with
@@ -694,14 +694,17 @@ behind the previous one. Effort is rough, in working days.
    directions of the handover with the frame still and the resume hold,
    the controls and keyboard, reduced motion, captions carried, the
    menu item and button, Chromium's picture-in-picture removed (the
-   deferred-work entry about an mp4 resume flashing in
-   picture-in-picture, which #305 added, goes with it). The end to end
-   case.
+   deferred-work entry about an mp4 resume showing its first frame,
+   which #305 added, narrows to its other case: the `<video>` itself
+   fullscreen, which the player uses while "Custom player controls" is
+   off). The end to end case.
 4. **Episodes in the mini window (2–3 days).** Previous, next,
    auto-play, the end state, skip buttons.
 5. **Platform answers and docs (1–2 days).** The Wayland hint (or the
    setting, per question 1), `docs/architecture.md` ("Leaving the
-   player", "Embedded playback") and the README's feature table.
+   player", "Embedded playback") and the README's feature table. What
+   stays true of this study moves into `docs/architecture.md`, and
+   this file is deleted (AGENTS.md §1).
 
 About 13–21 working days in all.
 
