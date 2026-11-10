@@ -39,13 +39,25 @@ export function settleRow<T>(request: Promise<readonly T[]>): Promise<RowLoad<T>
 	);
 }
 
-/** What the page draws for `rows`, given in the order they are drawn. */
+/** What the page draws for `rows`, given in the order they are drawn.
+ *
+ * A row is shown only once every row above it has settled, so nothing
+ * that is already on screen is ever pushed down by a row landing above
+ * it: until then it keeps a skeleton in its place, the same as a row
+ * still loading. A row that failed, or that the availability filter
+ * emptied, is dropped. Dropping one can move only skeletons, never a
+ * shown row, because a row is shown only when everything above it is
+ * already final. */
 export function discoveryView<T>(rows: readonly RowLoad<T>[]): DiscoveryView<T> {
-	const slots = rows.map(
-		(row): RowSlot<T> =>
-			row.kind === 'ready' && row.items.length > 0
-				? { kind: 'shown', items: row.items }
-				: { kind: 'absent' }
-	);
-	return { slots, nothing: false };
+	let aboveSettled = true;
+	const slots = rows.map((row): RowSlot<T> => {
+		if (row.kind === 'loading') {
+			aboveSettled = false;
+			return { kind: 'skeleton' };
+		}
+		if (row.kind === 'failed' || row.items.length === 0) return { kind: 'absent' };
+		return aboveSettled ? { kind: 'shown', items: row.items } : { kind: 'skeleton' };
+	});
+	const nothing = aboveSettled && slots.every((slot) => slot.kind === 'absent');
+	return { slots, nothing };
 }

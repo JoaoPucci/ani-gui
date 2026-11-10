@@ -82,6 +82,8 @@
 	const discovery = $derived(discoveryView(rowLoads));
 	const trendingSlot = $derived(discovery.slots[0]);
 	const topRatedSlot = $derived(discovery.slots[1]);
+	// The sub/dub mode the rows are filtered for, read once on mount.
+	let discoveryMode: 'sub' | 'dub' = 'sub';
 
 	// User settings — only `mode` matters here, used to scope the
 	// availability filter to the user's sub/dub preference. Settings
@@ -186,11 +188,15 @@
 			// Settings fetch failed — fall through with config null;
 			// pickAvailabilityMode handles that with 'sub' default.
 		}
-		loadDiscovery(pickAvailabilityMode(config));
+		discoveryMode = pickAvailabilityMode(config);
+		loadDiscovery();
 	});
 
-	/** Ask for both discovery rows; each lands in its own slot. */
-	function loadDiscovery(mode: 'sub' | 'dub') {
+	/** Ask for both discovery rows; each lands in its own slot. Also
+	 *  the notice's retry, which is offered only once both have
+	 *  settled, so no earlier answer is still on its way. */
+	function loadDiscovery() {
+		const mode = discoveryMode;
 		rowLoads = [LOADING, LOADING];
 		void settleRow(kitsuTrending().then((t) => filterAvailable(t, mode))).then(
 			(row) => (rowLoads[0] = row)
@@ -387,6 +393,25 @@
 	<title>{m.app_page_title_search()}</title>
 </svelte:head>
 
+<!-- A discovery row still loading: its header, and placeholder cards
+     that take the room the cards they stand in for will take — a
+     poster, then a one-line title and the meta line, laid out on the
+     same line boxes as PosterCard's — so the row does not change height
+     when it fills in. -->
+{#snippet skeletonRow(eyebrow: string, caption: string)}
+	<Strip {eyebrow} {caption}>
+		{#each Array.from({ length: 8 }, (_, k) => k) as i (i)}
+			<div class="skel-card" aria-hidden="true">
+				<div class="skel-poster"></div>
+				<div class="skel-body">
+					<span class="skel-title">&nbsp;</span>
+					<span class="skel-meta">&nbsp;</span>
+				</div>
+			</div>
+		{/each}
+	</Strip>
+{/snippet}
+
 <div class="page" bind:this={pageEl}>
 	<SearchProgress {busy} />
 	<header class="page-header">
@@ -506,8 +531,24 @@
 			</p>
 		</div>
 	{:else if !submitted}
-		<!-- No query yet: surface the same discovery rows the home page uses. -->
-		{#if trendingSlot.kind === 'shown'}
+		<!-- No query yet: the discovery rows. A row keeps a skeleton in
+		     its place until it and every row above it have landed, so a
+		     row on screen is never pushed down ($lib/search/discovery). -->
+		{#if discovery.nothing}
+			<div class="state state-empty" role="status">
+				<p class="state-headline">{m.search_discovery_nothing_headline()}</p>
+				<p class="state-detail">{m.search_discovery_nothing_detail()}</p>
+				<button type="button" class="folio-action state-action" onclick={() => loadDiscovery()}>
+					{m.search_discovery_retry()}
+				</button>
+			</div>
+		{/if}
+		{#if trendingSlot.kind === 'skeleton'}
+			{@render skeletonRow(
+				m.search_discovery_trending_eyebrow(),
+				m.search_discovery_trending_caption_loading()
+			)}
+		{:else if trendingSlot.kind === 'shown'}
 			<Strip
 				eyebrow={m.search_discovery_trending_eyebrow()}
 				caption={m.search_discovery_trending_caption()}
@@ -517,7 +558,12 @@
 				{/each}
 			</Strip>
 		{/if}
-		{#if topRatedSlot.kind === 'shown'}
+		{#if topRatedSlot.kind === 'skeleton'}
+			{@render skeletonRow(
+				m.search_discovery_top_rated_eyebrow(),
+				m.search_discovery_top_rated_caption_loading()
+			)}
+		{:else if topRatedSlot.kind === 'shown'}
 			<Strip
 				eyebrow={m.search_discovery_top_rated_eyebrow()}
 				caption={m.search_discovery_top_rated_caption()}
@@ -914,6 +960,42 @@
 	.line-thin {
 		block-size: 0.6rem;
 	}
+	/* A discovery row's placeholder card. The strip sizes it like the
+	   cards it stands in for; the body repeats PosterCard's card-body,
+	   card-title and card-meta boxes (padding, font size, line height),
+	   with a pulsing bar drawn inside each line instead of text. */
+	.skel-card {
+		display: block;
+	}
+	.skel-body {
+		display: block;
+		padding-block-start: var(--space-3);
+	}
+	.skel-title,
+	.skel-meta {
+		background: linear-gradient(var(--ink-100), var(--ink-100)) no-repeat left center;
+		border-radius: 2px;
+		animation: pulse 1.6s var(--ease-in-out) infinite;
+	}
+	.skel-title {
+		display: block;
+		font-size: 0.9375rem;
+		line-height: 1.3;
+		background-size: 80% 0.75rem;
+	}
+	.skel-meta {
+		display: inline-flex;
+		inline-size: 40%;
+		margin-block-start: var(--space-2);
+		font-size: 0.75rem;
+		background-size: 100% 0.6rem;
+	}
+	.skel-poster {
+		aspect-ratio: var(--poster-aspect);
+		background: var(--ink-100);
+		border-radius: var(--radius-card);
+		animation: pulse 1.6s var(--ease-in-out) infinite;
+	}
 	@keyframes pulse {
 		0%,
 		100% {
@@ -1115,6 +1197,9 @@
 		font-size: var(--type-body);
 		color: var(--bone-300);
 		max-inline-size: 60ch;
+	}
+	.state-action {
+		margin-block-start: var(--space-4);
 	}
 
 	/* Sort + filter controls — match settings' .field grouping so
