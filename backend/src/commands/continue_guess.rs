@@ -46,7 +46,24 @@
 //!   title naming a season and no part takes no hit titled as that
 //!   season's "Part 2" or later — hianime's "That Time I Got
 //!   Reincarnated as a Slime Season 2" is not Kitsu's "2nd Season
-//!   Part 2".
+//!   Part 2";
+//! - **the title names a movie the hit is not**: a title carrying
+//!   "Movie" as a word takes only a movie, and one numbering its movie
+//!   ("One Piece: The Movie 14 - Stampede") takes no hit whose titles
+//!   number other movies and not that one. Kitsu titles the fourteenth
+//!   "One Piece: Stampede", so a hit that numbers no movie is not
+//!   another;
+//! - **the hit is a recap the row does not name**: one of the hit's
+//!   titles carries "Recap", and neither the title nor the show key's
+//!   words do. hianime's "Haikyu!! Movie: Battle of the Garbage Dump"
+//!   brings back the fourth recap movie alone;
+//! - **the show key names a later season the title does not**: a key
+//!   whose words name a season past the first anywhere in them, on a
+//!   row whose title names no season, takes only a hit naming that
+//!   season in a title or its slug, anywhere in it. hianime's
+//!   "Jujutsu Kaisen: Specials" is `jujutsu-kaisen-season-2-recaps`,
+//!   and its title's search brings back the New Year's Special, the
+//!   third season and a movie.
 //!
 //! A hit ruled out is never offered, even when no hit is left: the row
 //! then goes on to the resolve from its show key's words

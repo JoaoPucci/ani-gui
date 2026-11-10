@@ -59,7 +59,8 @@ impl From<SentHit> for KitsuAnimeRef {
 pub struct RuledOutRequest {
     /// The row's show key (`hianime:jujutsu-kaisen-237`). A request
     /// without one is read as a bare row's: its episode rules nothing
-    /// out. The renderer always sends it.
+    /// out, and its key carries no words. The renderer always sends
+    /// it.
     #[serde(default)]
     pub key: String,
     /// The row's search title.
@@ -76,13 +77,13 @@ pub struct RuledOutRequest {
 /// only for a row a provider the app walks wrote: hianime numbers each
 /// listing from its first episode, where anidb.app numbered a later cour
 /// on the franchise's count, and a bare row it wrote still speaks that
-/// number unless its numbering was stamped.
+/// number unless its numbering was stamped. The key's words count for
+/// any key whose slug carries them, as both providers' do.
 #[must_use]
 pub fn answer(req: RuledOutRequest) -> Vec<String> {
-    let walked = crate::scraper::provider::ShowKey::parse(&req.key)
-        .provider
-        .is_some();
-    let episode = walked.then_some(req.episode);
+    let key = crate::scraper::provider::ShowKey::parse(&req.key);
+    let episode = key.provider.is_some().then_some(req.episode);
+    let key_words = key.search_term().unwrap_or_default();
     let hits: Vec<KitsuAnimeRef> = req.hits.into_iter().map(Into::into).collect();
-    super::ruled_out_ids(&req.title, "", episode, &hits)
+    super::ruled_out_ids(&req.title, &key_words, episode, &hits)
 }
