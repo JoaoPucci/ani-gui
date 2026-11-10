@@ -81,6 +81,31 @@ test("everywhere else Electron's own relaunch starts the same binary with the sa
   }
 });
 
+test("the mount is compared by its real path, so a symlinked /tmp still finds the AppImage", () => {
+  const real = { "/tmp/.mount_ani-guXYZ": "/private/tmp/.mount_ani-guXYZ" };
+  const plan = relaunchPlan({
+    platform: "linux",
+    env: appImageEnv,
+    execPath: "/private/tmp/.mount_ani-guXYZ/ani-gui.bin",
+    argv: ["/private/tmp/.mount_ani-guXYZ/ani-gui.bin"],
+    pid: 9,
+    realpath: (p) => real[p] ?? p,
+  });
+  assert.equal(plan.kind, "spawn");
+  // A path that cannot be resolved is compared as it is.
+  const unresolved = relaunchPlan({
+    platform: "linux",
+    env: appImageEnv,
+    execPath: appImageExec,
+    argv: [appImageExec],
+    pid: 9,
+    realpath: () => {
+      throw new Error("ENOENT");
+    },
+  });
+  assert.equal(unresolved.kind, "spawn");
+});
+
 test("a path only beside the mount is not inside it", () => {
   const plan = relaunchPlan({
     platform: "linux",

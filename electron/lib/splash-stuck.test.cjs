@@ -71,6 +71,7 @@ function stuckWindow() {
   };
   win.asked = () => win.calls.filter((c) => c === `js:${STUCK_CALL}`).length;
   win.webContents = Object.assign(new EventEmitter(), {
+    reload: () => win.calls.push("reload"),
     executeJavaScript: (code) => {
       win.calls.push(`js:${code}`);
       const m = /splashProgress\.set\((\d+)\)/.exec(code);
@@ -442,6 +443,39 @@ test("the page is opened with its language, its name, and the stuck state's word
   other.close();
 });
 
+test("a splash whose page crashes is reloaded, and a stuck one offers its choices again", async (t) => {
+  const { splash, win, logs, later } = await stuckSplash(t);
+  win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  assert.ok(win.calls.includes("reload"), "reloaded before the stuck state");
+  assert.ok(logs.some((l) => l.includes("splash's page went (crashed)")));
+  await later(SPLASH_STUCK_MS);
+  assert.equal(win.asked(), 1);
+  win.webContents.emit("render-process-gone", {}, { reason: "oom" });
+  win.webContents.emit("did-finish-load");
+  await flush();
+  assert.equal(win.asked(), 2, "the reloaded page offers the choices again");
+  win.choose("quit");
+  await flush();
+  assert.equal(splash.dismissed(), true);
+});
+
+test("a splash page that crashes once the boot is past the splash is left alone", async (t) => {
+  const { splash, win } = await stuckSplash(t);
+  splash.suppress();
+  win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  assert.ok(!win.calls.includes("reload"));
+});
+
+test("a choice that arrives after the person closed the splash says so in the log", async (t) => {
+  const { win, logs, later } = await stuckSplash(t);
+  await later(SPLASH_STUCK_MS);
+  const pending = win.choose.bind(win);
+  win.close();
+  pending("quit");
+  await flush();
+  assert.ok(logs.some((l) => l.includes("Quit came after the splash had closed")), JSON.stringify(logs));
+});
+
 // The reveal's whole path, as main.js wires it: the app-ready wait has
 // no bound while the splash stands in, so a page that never says it
 // rendered is never revealed.
@@ -699,6 +733,19 @@ test("a page already complete, or opened without the words, offers nothing", () 
   const bare = stuckPage("?st=700");
   assert.equal(bare.progress.stuck(), null);
   assert.equal(bare.actions.hidden, true);
+});
+
+test("the pulse follows the pending stretch when a step lands during the stuck state", () => {
+  const page = stuckPage(stuckQuery);
+  page.progress.stuck();
+  assert.ok(page.segments[0].classList.contains("late"), "the backend's stretch");
+  page.progress.set(1);
+  assert.ok(!page.segments[0].classList.contains("late"));
+  assert.ok(page.segments[0].classList.contains("lit"));
+  assert.ok(page.segments[1].classList.contains("late"), "now the flags' stretch");
+  page.progress.set(2);
+  assert.ok(!page.segments[1].classList.contains("late"));
+  assert.ok(page.segments[2].classList.contains("late"));
 });
 
 test("the stuck line stays: no stall line takes over from it", () => {
