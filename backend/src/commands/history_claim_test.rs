@@ -76,11 +76,8 @@ proptest! {
         titled in proptest::collection::vec(id(), 0..3),
     ) {
         let whole = RowIds { recorded: as_ref(&recorded), mapped: as_ref(&mapped), title_matched: &titled };
-        let identity = if matches!(recorded, Some((_, false))) {
-            RowIdentity { recorded: recorded.clone(), mapped: None, title_matched: Vec::new() }
-        } else {
-            RowIdentity { recorded: recorded.clone(), mapped: mapped.clone(), title_matched: titled.clone() }
-        };
+        let identity =
+            RowIdentity::of(recorded.clone(), || Ok(mapped.clone()), || Ok(titled.clone())).unwrap();
         prop_assert_eq!(identity.names(&asked, asked_gone), names(&asked, asked_gone, &whole));
     }
 }

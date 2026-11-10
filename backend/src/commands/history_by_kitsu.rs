@@ -38,8 +38,9 @@ use crate::history::{read_all, HistoryEntry};
 /// # Errors
 /// Returns [`crate::error::AniError::Io`] when the history file
 /// exists but cannot be read; SQLite errors propagate from the
-/// reverse-cache lookup and from the watched-at stamp's, since a
-/// read that fails says nothing about the row it was for.
+/// gone marks, the reverse-cache lookup, the title matches and the
+/// watched-at stamp's, since a read that fails says nothing about the
+/// row it was for. An empty history reads none of them.
 pub fn history_by_kitsu(
     state: &crate::app::AppState,
     kitsu_id: &str,
@@ -111,6 +112,9 @@ fn resumed_from(
     numbering: &Numbering,
     kitsu_id: &str,
 ) -> Result<Option<HistoryEntry>> {
+    if rows.is_empty() {
+        return Ok(None);
+    }
     let gone = id_gone(state, kitsu_id)?;
     // Two providers can leave two rows for one show, one under each
     // provider's id. The one the user watched last is the one to

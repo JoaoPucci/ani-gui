@@ -46,6 +46,35 @@ pub(crate) struct RowIdentity {
 }
 
 impl RowIdentity {
+    /// The identity of a row with these parts, keeping only what
+    /// [`names`] reads: a recorded id that stands decides alone, so the
+    /// mapping and title matches are dropped for it, and a row that
+    /// recorded no id is never named by a title match.
+    fn of(
+        recorded: Option<(String, bool)>,
+        mapped: impl FnOnce() -> Result<Option<(String, bool)>>,
+        title_matched: impl FnOnce() -> Result<Vec<String>>,
+    ) -> Result<Self> {
+        if let Some((_, false)) = recorded {
+            return Ok(Self {
+                recorded,
+                mapped: None,
+                title_matched: Vec::new(),
+            });
+        }
+        let mapped = mapped()?;
+        let title_matched = if recorded.is_some() {
+            title_matched()?
+        } else {
+            Vec::new()
+        };
+        Ok(Self {
+            recorded,
+            mapped,
+            title_matched,
+        })
+    }
+
     /// [`names`] for `kitsu_id`, which Kitsu answered gone or not.
     pub(crate) fn names(&self, kitsu_id: &str, kitsu_gone: bool) -> bool {
         let row = RowIds {
@@ -80,30 +109,17 @@ pub(crate) fn row_identity(state: &AppState, entry: &HistoryEntry) -> Result<Row
         Some(id) => Some((id.to_owned(), id_gone(state, id)?)),
         None => None,
     };
-    if let Some((_, false)) = recorded {
-        return Ok(RowIdentity {
-            recorded,
-            mapped: None,
-            title_matched: Vec::new(),
-        });
-    }
-    let mapped = match super::kitsu::allmanga_kitsu_get(state, &entry.id)? {
-        Some(id) => {
-            let gone = id_gone(state, &id)?;
-            Some((id, gone))
-        }
-        None => None,
-    };
-    let title_matched = if recorded.is_some() {
-        super::history_forget_titles::current_title_match_ids(state, &entry.id, &entry.title)?
-    } else {
-        Vec::new()
-    };
-    Ok(RowIdentity {
+    RowIdentity::of(
         recorded,
-        mapped,
-        title_matched,
-    })
+        || match super::kitsu::allmanga_kitsu_get(state, &entry.id)? {
+            Some(id) => {
+                let gone = id_gone(state, &id)?;
+                Ok(Some((id, gone)))
+            }
+            None => Ok(None),
+        },
+        || super::history_forget_titles::current_title_match_ids(state, &entry.id, &entry.title),
+    )
 }
 
 #[cfg(test)]
