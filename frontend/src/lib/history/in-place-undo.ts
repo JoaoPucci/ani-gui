@@ -1,7 +1,8 @@
 /**
- * An Undo from Home's notice, and the surface an in-place link session
- * lives on — split from $lib/history/in-place-link.svelte.ts for the
- * per-file complexity bar.
+ * The Undo in an in-place surface's notice (Home's, or the one a pick
+ * saved after the player was left gets), and the surface an in-place
+ * link session lives on. Split from $lib/history/in-place-link.svelte.ts
+ * for the per-file complexity bar.
  *
  * The Undo can be pressed, or answer, after the surface moved on: to
  * another card, or away altogether. The rows of its own link are given
@@ -9,8 +10,9 @@
  * follows is for the card the link was made on, and only while it is
  * still the one on screen with no other card arrived since: its note
  * goes, and once the undo answered it is offered again. Another card
- * on screen keeps its offer and pick, and the cards are read again. A
- * surface the user left gets nothing.
+ * on screen keeps its offer and pick, and the surface reads its history
+ * again (Home hears of the undo from the app instead,
+ * $lib/history/link-deps.ts). A surface the user left gets nothing.
  */
 
 /** Where an in-place session is: on its surface, or gone from it. */

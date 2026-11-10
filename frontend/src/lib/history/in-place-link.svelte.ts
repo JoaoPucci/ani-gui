@@ -15,7 +15,8 @@
  * that show in the picker is. A pick of
  * another show is recorded the same way while the episode goes on
  * playing, and the slip alone says so, with the way to switch to it
- * (`linked`): the player gives no notice, so no Undo. The offer stays
+ * (`linked`): the player gives no notice, so no Undo, while it is on
+ * screen (a pick saved once it is gone is said in one). The offer stays
  * after a pick as the ⋯ entry's way to change the show again, asking
  * nothing, and so does the session a switch opens for the row
  * ($lib/history/guess-slip.ts), which says once what plays now.
