@@ -10,9 +10,8 @@
 // shows browsed while Kitsu is slow, and the seventh show's details
 // would wait behind them.
 //
-// jsdom has no connection limit, so this scenario puts one in front of
-// `fetch`: six requests in flight to the API's origin, the rest queued
-// until one answers, fails or is cancelled, as Chromium does.
+// jsdom has no connection limit, so this scenario puts Chromium's in
+// front of `fetch` (`./connections`).
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -21,6 +20,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { cancelledUnder, sixConnections, type Connections } from './connections';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -37,76 +37,7 @@ vi.mock('$app/navigation', () => ({
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
-/** Chromium's limit on connections to one origin over plain HTTP. */
-const CONNECTIONS = 6;
-
-/** What went through the stand-in connection limit. */
-interface Pool {
-	/** Franchise reads cancelled by the page, by show id. */
-	readonly cancelled: Set<string>;
-	restore(): void;
-}
-
-/** `fetch` behind six connections, freed as a request answers, fails or is cancelled. */
-function sixConnections(): Pool {
-	const real = globalThis.fetch;
-	const cancelled = new Set<string>();
-	const queue: Array<() => void> = [];
-	let open = 0;
-	vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = input instanceof Request ? input.url : String(input);
-		const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
-		return new Promise<Response>((resolve, reject) => {
-			let held = false;
-			let done = false;
-			const release = () => {
-				if (!held) return;
-				held = false;
-				open--;
-				queue.shift()?.();
-			};
-			const start = () => {
-				if (done) return;
-				held = true;
-				open++;
-				real(input, init).then(
-					(r) => {
-						done = true;
-						release();
-						resolve(r);
-					},
-					(e) => {
-						done = true;
-						release();
-						reject(e);
-					}
-				);
-			};
-			signal?.addEventListener(
-				'abort',
-				() => {
-					if (done) return;
-					done = true;
-					const franchise = /\/api\/kitsu\/franchise\/([^/?]+)$/.exec(url);
-					if (franchise) cancelled.add(franchise[1]);
-					const queued = queue.indexOf(start);
-					if (queued >= 0) queue.splice(queued, 1);
-					release();
-					reject(new DOMException('The operation was aborted.', 'AbortError'));
-				},
-				{ once: true }
-			);
-			if (open < CONNECTIONS) start();
-			else queue.push(start);
-		});
-	});
-	return {
-		cancelled,
-		restore: () => {
-			vi.unstubAllGlobals();
-		}
-	};
-}
+const FRANCHISE = '/api/kitsu/franchise/';
 
 /** Franchise reads still held open, ended when the scenario ends. */
 const holding: Array<() => void> = [];
@@ -149,7 +80,7 @@ function slowKitsu() {
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
-let pool: Pool | null = null;
+let pool: Connections | null = null;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
@@ -189,7 +120,7 @@ describe('detail route — leaving a show while its franchise is read', () => {
 			setParams({ id });
 			await until(() => title() === `Show ${id}`, `show ${id}`);
 		}
-		expect([...pool.cancelled].sort()).toEqual(['101', '102', '103', '104', '105']);
+		expect(cancelledUnder(pool, FRANCHISE)).toEqual(['101', '102', '103', '104', '105']);
 		// The seventh show's details come through.
 		setParams({ id: '107' });
 		await until(() => title() === 'Show 107', 'show 107');
@@ -203,6 +134,6 @@ describe('detail route — leaving a show while its franchise is read', () => {
 		await until(() => title() === 'Show 201', 'show 201');
 		unmount(app);
 		app = null;
-		expect([...pool.cancelled]).toEqual(['201']);
+		expect(cancelledUnder(pool, FRANCHISE)).toEqual(['201']);
 	});
 });
