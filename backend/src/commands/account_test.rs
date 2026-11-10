@@ -1773,12 +1773,17 @@ async fn watch_later_bridge_lists_a_show_two_mal_ids_map_to_once() {
             .and(query_param("filter[externalSite]", "myanimelist/anime"))
             .and(query_param("filter[externalId]", mal))
             .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+            // Each MAL id is looked up once, so both cards reach the
+            // bridge's last step: one card here would otherwise also be
+            // what a lookup that silently found nothing leaves.
+            .expect(1)
             .mount(&kitsu)
             .await;
     }
     let state = state_with_kitsu(&kitsu.uri());
 
     let refs = kitsu_for_mal_ids_with_anilist_base(&state, vec![21, 22], None).await;
+    kitsu.verify().await;
 
     assert_eq!(refs.len(), 1, "one card per Kitsu show: {refs:?}");
     assert_eq!(refs[0].id, "12");
