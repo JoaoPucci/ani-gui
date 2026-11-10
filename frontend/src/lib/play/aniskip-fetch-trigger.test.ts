@@ -84,7 +84,7 @@ describe('aniskip fetch trigger', () => {
 		expect(trigger.step('', 5, true)).toEqual({ kind: 'clear' });
 	});
 
-	it('stays idle when the key is incomplete and nothing was previously fetched', () => {
+	it('stays idle while the key stays incomplete', () => {
 		const trigger = createAniskipFetchTrigger();
 		expect(trigger.step('', 5, true)).toEqual({ kind: 'idle' });
 		expect(trigger.step('show-1', 0, true)).toEqual({ kind: 'idle' });
