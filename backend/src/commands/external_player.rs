@@ -148,6 +148,10 @@ pub fn open_external_player(args: &LaunchArgs) -> Result<()> {
         ..args.clone()
     };
     let argv = build_argv(&launching);
+    // std's Command, not tokio's (AGENTS.md §5), on purpose: the media
+    // player is detached and outlives the backend, so it must not be
+    // killed on drop, and it gets the user's own environment, where
+    // TERM and colour settings are the player's business.
     let mut cmd = std::process::Command::new(&program);
     cmd.args(&argv)
         .stdin(std::process::Stdio::null())
@@ -302,6 +306,11 @@ impl ExternalPlayerKind {
 /// write descriptor (the fds are close-on-exec, so the window is
 /// microseconds). Real for just-staged binaries; every other error
 /// surfaces immediately.
+///
+/// The one place the backend spawns with std's Command rather than
+/// tokio's with `kill_on_drop(true)` (AGENTS.md §5): the media player
+/// and Syncplay are the user's programs, detached on purpose, and must
+/// outlive the request that started them.
 pub(crate) fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<()> {
     for _ in 0..5 {
         match cmd.spawn() {
