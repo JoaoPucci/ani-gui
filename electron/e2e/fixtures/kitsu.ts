@@ -72,7 +72,7 @@ export const appInfo = {
 /** Default settings — used by /api/settings stubs. */
 export const defaultSettings = {
 	mode: 'sub',
-	quality: 'best',
+	download_quality: 'best',
 	auto_play_next: false,
 	auto_skip_intro: false,
 	auto_skip_outro: false,

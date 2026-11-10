@@ -28,13 +28,14 @@
   hls.js fails to load the master playlist.
 -->
 <script lang="ts">
-	import { onDestroy, onMount, untrack } from 'svelte';
+	import { flushSync, onDestroy, onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Hls from 'hls.js';
 	import { spotlightEpisode } from '$lib/detail/episode-spotlight';
 	import { settle } from '$lib/motion/settle';
+	import { fade } from '$lib/motion/transitions';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
@@ -77,10 +78,12 @@
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { captionChoiceOf, storedCaption } from '$lib/play/caption-choice';
+	import { storedAudio } from '$lib/play/audio-choice';
 	import { rememberPickMoved } from '$lib/play/caption-repick';
 	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
+	import { downloadQuality } from '$lib/download/download-quality';
 	import { buildMediaUrl } from '$lib/play/media-url';
 	import { applyCaptionPick, type CaptionTarget } from '$lib/play/caption-pick';
 	import { captionEntries } from '$lib/play/caption-label';
@@ -92,9 +95,10 @@
 	import { followPlayed } from '$lib/play/played-episode';
 	import { decideAutoPlayNext } from '$lib/play/auto-play-next';
 	import { pickActiveSkip } from '$lib/play/aniskip-active';
-	import { createAniskipFetchTrigger } from '$lib/play/aniskip-fetch-trigger';
+	import { createAniskipFetchTrigger, lengthReady } from '$lib/play/aniskip-fetch-trigger';
 	import { shouldShowSkipButton } from '$lib/play/skip-button-window';
 	import { decidePlayerKeyAction } from '$lib/play/keyboard';
+	import { isModalOpen } from '$lib/components/modal-layer';
 	import { createVolumeReveal } from '$lib/play/volume-reveal';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import {
@@ -124,8 +128,19 @@
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
-	import { QUALITY_SETTING_WAIT_MS, settledWithin } from '$lib/play/quality-sink';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
+	import { moreMenuQuality } from '$lib/play/more-menu-quality';
+	import {
+		closedDrill,
+		drillArrow,
+		drillStep,
+		type DrillEvent,
+		type DrillFocus,
+		type DrillMenu
+	} from '$lib/play/drill-menu';
+	import { plainKey } from '$lib/play/menu-arrow';
+	import { onMenuTabOrType, stepMenuFocus } from '$lib/menu/menu-dom';
+	import { playerSession } from '$lib/play/quality-session';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -161,7 +176,6 @@
 		playArgsFor,
 		playedRecord,
 		playMode,
-		playQuality,
 		recordPlayed,
 		runOwnedPlay
 	} from '$lib/play/owned-play';
@@ -263,6 +277,11 @@
 	let theaterMode = $state(false);
 	let similar = $state<KitsuAnimeRef[] | null>(null);
 	let config = $state<Config | null>(null);
+	// The show's own Sub or Dub, read whenever the page turns to a show
+	// ($lib/play/audio-choice); a show never chosen on plays the
+	// Settings value, which is only the default.
+	let chosenAudio = $derived<'sub' | 'dub' | undefined>(storedAudio(id));
+	const audio = $derived(chosenAudio ?? playMode(config));
 	let detailError = $state<string | null>(null);
 	let playerError = $state<string | null>(null);
 	let switchBusy = $state(false);
@@ -288,13 +307,19 @@
 	// The URL the element's stream was attached from; hls.js gives the
 	// element a blob: URL of its own, so the element cannot say.
 	let attachedUrl: string | null = null;
+	// The session whose stream `duration` describes, set as one
+	// attaches: across a switch the URL names the new session before
+	// its stream is on the element.
+	let lengthFor = $state<string | null>(null);
 
 	// Settings-driven: whether to use our custom controls bar in
 	// place of Chromium's native one. Custom gives the timeline
 	// the per-show accent color and lets fullscreen target
 	// .player-frame (so the Skip OP/Outro overlay stays visible
 	// in fullscreen). Native is more battle-tested for PiP,
-	// caption picker, and the like. Default is native.
+	// caption picker, and the like. The setting defaults to custom
+	// (`Config::default`, backend/src/config/mod.rs); until the
+	// settings answer, the page reads it as off.
 	const USE_CUSTOM_PLAYER_CONTROLS = $derived(config?.use_custom_player_controls === true);
 
 	// Custom controls — Chromium's native media controls don't
@@ -371,8 +396,9 @@
 	}
 
 	// aniskip skip-times for the current (kitsu_id, episode). Fetched
-	// once `duration` becomes finite (we need the value to disambig
-	// movie-cut vs TV-broadcast runtimes against aniskip's catalog).
+	// once the stream on screen has a usable length of its own (we need
+	// the value to disambig movie-cut vs TV-broadcast runtimes against
+	// aniskip's catalog).
 	// `activeSkip` is the interval the playhead is currently inside;
 	// the Skip OP / Skip Outro overlay binds to it.
 	let skipIntervals = $state<SkipInterval[]>([]);
@@ -416,15 +442,20 @@
 	// value is read once at fetch time via `untrack` so its sub-µs
 	// tick stream stays off the effect's dependency set.
 	const aniskipFetchKey = $derived(id && episodeNum > 0 ? `${id}|${episodeNum}` : null);
-	const aniskipDurationReady = $derived(Number.isFinite(duration) && duration > 0);
+	// Across a switch the length still holds the last stream's until the
+	// new one attaches and reports its own: aniskip is asked with the
+	// length of the stream on screen ($lib/play/aniskip-fetch-trigger).
+	const aniskipDurationReady = $derived(lengthReady(lengthFor, sessionId, duration));
 	const aniskipTrigger = createAniskipFetchTrigger();
 	$effect(() => {
 		// Subscribing to the fetch-key derived re-runs the effect on
 		// episode boundaries; subscribing to the readiness boolean
-		// re-runs it the moment duration first becomes usable, then
-		// stops propagating since `true === true`. The captured `key`
-		// is reused below to detect an episode change between issuing
-		// and resolving the request.
+		// re-runs it the moment the stream on screen has a usable
+		// length, then stops propagating since `true === true`. The
+		// captured `key` is reused below to detect an episode change
+		// between issuing and resolving the request. A clear comes as
+		// soon as the episode changes, while the new one's times wait
+		// for its stream's length: the last episode's are not this one's.
 		const key = aniskipFetchKey;
 		const decision = aniskipTrigger.step(id, episodeNum, aniskipDurationReady);
 		if (decision.kind === 'clear') {
@@ -433,18 +464,22 @@
 		}
 		if (decision.kind !== 'fetch') return;
 		const len = untrack(() => duration);
+		const ask = aniskipTrigger.asked();
 		// Clear stale data before the fetch so a previous episode's
 		// intervals can't briefly drive `activeSkip` against the new
 		// episode's currentTime.
 		skipIntervals = [];
+		// An answer counts only for the episode on screen, and only while
+		// no later request or clear has happened: the same episode asked
+		// again, after a switch away and back, with its stream's length.
 		void aniskipGet(decision.showId, decision.episode, len)
 			.then((v) => {
-				if (aniskipFetchKey === key) {
+				if (aniskipFetchKey === key && aniskipTrigger.answers(ask)) {
 					skipIntervals = v;
 				}
 			})
 			.catch(() => {
-				if (aniskipFetchKey === key) {
+				if (aniskipFetchKey === key && aniskipTrigger.answers(ask)) {
 					skipIntervals = [];
 				}
 			});
@@ -575,9 +610,20 @@
 	 *  entries, and the player's volume shortcuts on the up and down
 	 *  arrows do not see them. */
 	function onCcMenuKey(e: KeyboardEvent) {
+		if (plainKey(e) === null) return;
+		// Tab and Shift+Tab close it, and a typed character stays in it
+		// rather than reach the player's keys ($lib/menu/menu-keys).
+		const close = () => flushSync(() => (ccMenuOpen = false));
+		if (onMenuTabOrType(e, { anchor: ccMenuAnchor, close })) return;
 		const menu = e.currentTarget as HTMLElement;
 		const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]'));
 		const at = items.indexOf(document.activeElement as HTMLElement);
+		// The horizontal arrows stay in the menu rather than seek.
+		if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+			e.preventDefault();
+			e.stopPropagation();
+			return;
+		}
 		const next = menuKeyStep(e.key, at, items.length);
 		if (next === null) return;
 		e.preventDefault();
@@ -676,37 +722,72 @@
 	// bar. Mirrors Chromium's native pattern: Download, Playback
 	// speed, Picture in picture. Open state is component-local;
 	// closes on outside click or Escape.
-	let pcMenuOpen = $state(false);
+	// Its state and focus moves are $lib/play/drill-menu's; this is the
+	// glue that applies them.
+	type PcList = 'speed' | 'quality';
+	let pcMenu = $state.raw<DrillMenu<PcList>>(closedDrill());
+	const pcMenuOpen = $derived(pcMenu.open);
+	const pcSpeedExpanded = $derived(pcMenu.list === 'speed');
+	const pcQualityExpanded = $derived(pcMenu.list === 'quality');
 	let pcMenuAnchor = $state<HTMLButtonElement | null>(null);
-	let pcSpeedExpanded = $state(false);
-	let pcQualityExpanded = $state(false);
 	let playbackRate = $state(1);
 	const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
+	function pcDo(event: DrillEvent<PcList>) {
+		const step = drillStep(pcMenu, event);
+		pcMenu = step.menu;
+		applyDrillFocus(step.focus, 'pc-overflow-menu', pcMenuAnchor);
+	}
 	function togglePcMenu() {
-		pcMenuOpen = !pcMenuOpen;
-		if (!pcMenuOpen) {
-			pcSpeedExpanded = false;
-			pcQualityExpanded = false;
-		}
+		pcDo({ type: 'toggle' });
+	}
+	function openPcList(list: PcList) {
+		pcDo({ type: 'openList', list, choosable: pcListChoosable(list), width: null });
+	}
+	function closePcList() {
+		pcDo({ type: 'back' });
 	}
 	function closePcMenu() {
-		pcMenuOpen = false;
-		pcSpeedExpanded = false;
-		pcQualityExpanded = false;
+		pcDo({ type: 'close' });
+	}
+	/** Whether the in-player menu's list has something to choose: the
+	 *  speeds always, the levels while their model shows any. */
+	function pcListChoosable(list: PcList): boolean {
+		return list === 'speed' || qualityMenuModel !== null;
+	}
+	// The Quality list closes once its model has nothing to show — the
+	// stream retired, or a lone level nothing names or the engine could
+	// not load.
+	$effect(() => {
+		pcDo({ type: 'models', choosable: pcListChoosable });
+	});
+	/** Applies a drill-down menu's focus target ($lib/play/drill-menu)
+	 *  once the menu has redrawn; the menu's own button at once. */
+	function applyDrillFocus<L extends string>(
+		focus: DrillFocus<L> | null,
+		menuId: string,
+		anchor: HTMLElement | null
+	) {
+		if (!focus) return;
+		if (focus.kind === 'anchor') {
+			anchor?.focus();
+			return;
+		}
+		void tick().then(() => {
+			const menu = document.getElementById(menuId);
+			if (focus.kind === 'opener') {
+				menu?.querySelector<HTMLElement>(`[data-opens="${focus.list}"]`)?.focus();
+				return;
+			}
+			const first = menu?.querySelector<HTMLElement>('[role^="menuitem"]:not(:disabled)');
+			if (first) first.focus();
+			else if (focus.kind === 'first-or-anchor') anchor?.focus();
+		});
 	}
 	// The stream's levels and the choice in force, as the attached
 	// stream's quality control publishes them ($lib/play/arm-quality);
 	// the menu is its pure model ($lib/play/quality-menu).
 	let qualityView = $state<QualityView | null>(null);
-	// The quality setting as the settings answer it, once: a stream's
-	// start level waits for it rather than reading a setting not yet
-	// loaded as `best`. Failing settings answer `undefined`, read as
-	// `best` like everywhere else.
-	let answerQualitySetting: (quality: string | undefined) => void = () => {};
-	const qualitySetting = new Promise<string | undefined>((resolve) => {
-		answerQualitySetting = resolve;
-	});
 	let qualityControl: QualityControl | null = null;
 	const qualityMenuModel = $derived(qualityMenu(qualityView));
 	function pickQuality(choice: 'auto' | number) {
@@ -724,10 +805,7 @@
 			closePcMenu();
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				closePcMenu();
-				pcMenuAnchor?.focus();
-			}
+			if (e.key === 'Escape') pcDo({ type: 'dismiss' });
 		};
 		document.addEventListener('pointerdown', onPointerDown);
 		document.addEventListener('keydown', onKey);
@@ -1049,7 +1127,7 @@
 	// ($lib/availability/row), which every accepted answer writes
 	// and which is read for the show and audio on screen.
 	let availabilityRow = $state<AvailabilityRow | null>(null);
-	const rowKey = $derived(audioKey(detail?.id, playMode(config)));
+	const rowKey = $derived(audioKey(detail?.id, audio));
 	const knownRow = $derived(rowFor(availabilityRow, rowKey));
 	const playableEpisodeCount = $derived(knownRow.count);
 	/**
@@ -1072,7 +1150,7 @@
 	 * the page does, so a click in that gap asks with the fallback and
 	 * the real mode can arrive while the answer is out.
 	 */
-	const capGateMode = (): 'sub' | 'dub' => playMode(config);
+	const capGateMode = (): 'sub' | 'dub' => audio;
 	/**
 	 * The context once this page is gone.
 	 *
@@ -1321,7 +1399,7 @@
 	// unchanged, and a derived that compares equal does not wake its
 	// dependents — so the common case costs one lookup, not two
 	// identical ones against a source that rate-limits.
-	const availabilityMode = $derived(playMode(config));
+	const availabilityMode = $derived(audio);
 
 	$effect(() => {
 		const d = detail;
@@ -1686,6 +1764,10 @@
 		// fresh one.
 		hls = null;
 		attachedUrl = null;
+		// The last stream's length is not the next one's, and the
+		// element does not report the change: unloading it fires no
+		// `durationchange`.
+		duration = 0;
 		if (videoEl) {
 			videoEl.removeAttribute('src');
 			videoEl.load();
@@ -1828,6 +1910,7 @@
 		sourceScope.flush();
 		teardown();
 		attachedUrl = mediaUrl;
+		lengthFor = untrack(() => sessionId);
 		// Source-scoped listeners — the resume seek, the progress
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
@@ -1923,7 +2006,7 @@
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
 			// The quality control starts the engine once it has chosen the
-			// start level, which waits for the settings ($lib/play/arm-quality).
+			// start level as the levels arrive ($lib/play/arm-quality).
 			hls = new Hls({ lowLatencyMode: false, autoStartLoad: false, ...HLS_STALL_LOAD_POLICY });
 			// The engine retires with its source: the next attach's
 			// flush, or the page leaving.
@@ -1932,21 +2015,21 @@
 				engine.destroy();
 			});
 			// The level the stream plays is the app's choice, not the
-			// engine's bandwidth estimate: the setting's level from the
-			// start, down a level when playback stalls, back up once it
+			// engine's bandwidth estimate: Auto at the highest level from
+			// the start (or the level picked earlier in the player
+			// session), down a level when playback stalls, back up once it
 			// runs healthy, or the one the viewer picks from the menu.
 			const quality = armQuality({
 				engine,
 				events: Hls.Events,
 				video: videoEl,
-				setting: () => settledWithin(qualitySetting, QUALITY_SETTING_WAIT_MS),
 				holdsStart: true,
 				startAt,
 				onView: (view) => {
+					// A stream retiring takes its levels with it; both menus'
+					// Quality lists follow the model this feeds, and close
+					// (the effects beside closePcMenu and closeMore).
 					qualityView = view;
-					// A stream retiring takes its levels with it; the next
-					// one's menu opens on the main list.
-					if (!view) pcQualityExpanded = false;
 				}
 			});
 			qualityControl = quality;
@@ -2065,7 +2148,12 @@
 	// went ($lib/play/show-release).
 	const showReleases = createShowReleases(clearForShow);
 	$effect.pre(() => showReleases.showing(() => id));
+	// A level picked in the player lasts for the player session: the
+	// next episode keeps it, and another show or leaving lets it go
+	// ($lib/play/quality-session).
+	$effect.pre(() => playerSession.shows(id));
 	onDestroy(() => {
+		playerSession.ends();
 		// Leaving the page ends playback: the stream's engine and
 		// listeners retire, the element unloads and leaves the page,
 		// and picture-in-picture, which shows it, closes. Abandoned
@@ -2137,11 +2225,9 @@
 		void settingsGet()
 			.then((c) => {
 				config = c;
-				answerQualitySetting(c.quality);
 			})
 			.catch(() => {
 				config = null;
-				answerQualitySetting(undefined);
 			});
 	});
 
@@ -2162,7 +2248,7 @@
 	// Background prefetch: warm every episode visible in the strip
 	// concurrently so any click in the page is instant. Re-runs when
 	// the strip page changes (different `episodes` array) or settings
-	// flip mode/quality. The play-cache dedupes across calls — duplicate
+	// flip the audio mode. The play-cache dedupes across calls — duplicate
 	// keys share a single in-flight promise, so reloading the same page
 	// after a swap doesn't refire requests already resolved.
 	//
@@ -2188,8 +2274,7 @@
 		if (!availabilityResolved) return;
 		const title = detail.canonical_title;
 		if (!title) return;
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
 		// The version remembered for the show on its detail page — the
 		// one the session playing here was resolved for.
 		const version = storedChoice(id);
@@ -2212,7 +2297,6 @@
 				title,
 				episode: targetEp,
 				mode,
-				quality,
 				show: detail,
 				kitsuId: recordableId(id, fromGuess),
 				prefetch: true,
@@ -2224,7 +2308,7 @@
 				guessId: guessedId(fromGuess, id)
 			});
 			void getOrFire(
-				makeKey(id, targetEp, mode, quality, version, args.guess_row, args.caption),
+				makeKey(id, targetEp, mode, version, args.guess_row, args.caption),
 				(emit, signal) => playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
@@ -2258,7 +2342,7 @@
 		if (airingIsPending || deadEnd(standingOf(targetEp)) !== null) return;
 		const title = detail.canonical_title;
 		if (!title) return;
-		const mode = playMode(config);
+		const mode = audio;
 		// The show, visit and flags this switch is for, and its request,
 		// taken at the click ($lib/play/owned-play): the route's component
 		// is reused across shows and across a round trip back, so a late
@@ -2272,13 +2356,11 @@
 		const show = detail;
 		const guess = fromGuess;
 		const row = fromRow;
-		const quality = playQuality(config);
 		const version = storedChoice(owner.showId);
 		const playArgs = playArgsFor({
 			title,
 			episode: targetEp,
 			mode,
-			quality,
 			show,
 			kitsuId: recordableId(owner.showId, guess),
 			version,
@@ -2308,15 +2390,7 @@
 				owner,
 				() =>
 					getOrFire(
-						makeKey(
-							owner.showId,
-							targetEp,
-							mode,
-							quality,
-							version,
-							playArgs.guess_row,
-							playArgs.caption
-						),
+						makeKey(owner.showId, targetEp, mode, version, playArgs.guess_row, playArgs.caption),
 						(emit, signal) => playStream(playArgs, emit, signal),
 						(p) => {
 							switchProgress = progressLabel(p);
@@ -2464,10 +2538,9 @@
 		if (toast) toastStore.push(toast);
 		const title = detail.canonical_title;
 		// Settings is intentionally NOT a precondition — falling back to
-		// sub/best matches switchToEpisode's pattern. A permanently null
+		// sub matches switchToEpisode's pattern. A permanently null
 		// config (settingsGet rejected) shouldn't leave Reload no-op.
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
 		console.info('[play] stale-stream recovery:', reason);
 		try {
 			// The resolution cache keys on the version, so the eviction
@@ -2479,7 +2552,6 @@
 					title,
 					episode: episodeNum,
 					mode,
-					quality,
 					show: detail,
 					kitsuId: undefined,
 					version: storedChoice(id),
@@ -2614,13 +2686,106 @@
 	// "Open in …" (the external player) + Download. They were demoted from the np-actions
 	// row to declutter — the primary controls are now ep-nav +
 	// auto-play, with everything else one click deeper.
-	let moreOpen = $state(false);
+	// Its state and focus moves are $lib/play/drill-menu's; this is the
+	// glue that applies them.
+	let moreMenu = $state.raw<DrillMenu<'quality'>>(closedDrill());
+	const moreOpen = $derived(moreMenu.open);
+	const moreQualityOpen = $derived(moreMenu.list === 'quality');
 	let moreAnchor = $state<HTMLButtonElement | null>(null);
+	function moreDo(event: DrillEvent<'quality'>) {
+		const step = drillStep(moreMenu, event);
+		moreMenu = step.menu;
+		applyDrillFocus(step.focus, 'np-more-menu', moreAnchor);
+	}
 	function toggleMore() {
-		moreOpen = !moreOpen;
+		moreDo({ type: 'toggle' });
 	}
 	function closeMore() {
-		moreOpen = false;
+		moreDo({ type: 'close' });
+	}
+	// The quality picker rides the ⋯ menu while the custom controls are
+	// off: the native controls have none, and the in-player menu goes
+	// with the custom bar. Same model, same pick ($lib/play/more-menu-quality).
+	const moreQuality = $derived(moreMenuQuality(qualityMenuModel, USE_CUSTOM_PLAYER_CONTROLS));
+	/** The ⋯ menu's width as it stands, which it keeps while the levels
+	 *  show, so the right-anchored menu does not jump narrower. */
+	function moreMenuWidthNow(): number | null {
+		return document.getElementById('np-more-menu')?.offsetWidth ?? null;
+	}
+	function openMoreQuality() {
+		moreDo({
+			type: 'openList',
+			list: 'quality',
+			choosable: moreQuality?.choosable === true,
+			width: moreMenuWidthNow()
+		});
+	}
+	function closeMoreQuality() {
+		moreDo({ type: 'back' });
+	}
+	function pickMoreQuality(choice: 'auto' | number) {
+		pickQuality(choice);
+		moreDo({ type: 'dismiss' });
+	}
+	// A stream retiring takes the levels with it, and one of a single
+	// level leaves nothing to choose: the menu falls back to its main
+	// list.
+	$effect(() => {
+		moreDo({ type: 'models', choosable: () => moreQuality?.choosable === true });
+	});
+	// The arrow keys move between the menu's items, as a menu's should,
+	// rather than reaching the player's volume and seek keys.
+	// Left and Right open the levels from the Quality row and go back
+	// from them, and otherwise stay in the menu rather than seek.
+	function onMoreMenuKey(e: KeyboardEvent) {
+		// A modified key (Alt+ArrowLeft for history back) is not the menu's.
+		if (plainKey(e) === null) return;
+		// Tab and Shift+Tab close it, and a typed character stays in it
+		// rather than reach the player's keys ($lib/menu/menu-keys).
+		if (onMenuTabOrType(e, { anchor: moreAnchor, close: () => flushSync(closeMore) })) return;
+		const menu = e.currentTarget as HTMLElement;
+		const step = drillArrow(moreMenu, e.key, {
+			rtl: getComputedStyle(menu).direction === 'rtl',
+			opener: focusedOpener(['quality']),
+			choosable: moreQuality?.choosable === true,
+			width: moreMenuWidthNow()
+		});
+		if (step === null) {
+			stepMenuFocus(e);
+			return;
+		}
+		e.preventDefault();
+		e.stopPropagation();
+		moreMenu = step.menu;
+		applyDrillFocus(step.focus, 'np-more-menu', moreAnchor);
+	}
+	/** The list the focused row opens (its `data-opens`), among `lists`. */
+	function focusedOpener<L extends string>(lists: readonly L[]): L | null {
+		const opens = (document.activeElement as HTMLElement | null)?.dataset.opens;
+		return lists.find((l) => l === opens) ?? null;
+	}
+	// The in-player menu steps the same way: Left and Right open Speed
+	// or Quality from its row and go back from the list, and otherwise
+	// stay in the menu rather than seek.
+	function onPcMenuKey(e: KeyboardEvent) {
+		if (plainKey(e) === null) return;
+		if (onMenuTabOrType(e, { anchor: pcMenuAnchor, close: () => flushSync(closePcMenu) })) return;
+		const menu = e.currentTarget as HTMLElement;
+		const opener = focusedOpener<PcList>(['speed', 'quality']);
+		const step = drillArrow(pcMenu, e.key, {
+			rtl: getComputedStyle(menu).direction === 'rtl',
+			opener,
+			choosable: opener !== null && pcListChoosable(opener),
+			width: null
+		});
+		if (step === null) {
+			stepMenuFocus(e);
+			return;
+		}
+		e.preventDefault();
+		e.stopPropagation();
+		pcMenu = step.menu;
+		applyDrillFocus(step.focus, 'pc-overflow-menu', pcMenuAnchor);
 	}
 	$effect(() => {
 		if (!moreOpen) return;
@@ -2636,10 +2801,7 @@
 			closeMore();
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				closeMore();
-				moreAnchor?.focus();
-			}
+			if (e.key === 'Escape') moreDo({ type: 'escape' });
 		};
 		document.addEventListener('pointerdown', onPointerDown);
 		document.addEventListener('keydown', onKey);
@@ -2656,7 +2818,8 @@
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
 		const cfg = config;
-		const launch = { kitsuId: id, mode: playMode(cfg), episode: ep };
+		const mode = audio;
+		const launch = { kitsuId: id, mode, episode: ep };
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on (another show, or away and back) is
 		// not shown to them, and asks the cache nothing.
@@ -2680,7 +2843,7 @@
 							title,
 							episode: ep,
 							kitsuId: recordableId(id, fromGuess) ?? '',
-							config: cfg,
+							config: { mode },
 							detail,
 							version: storedChoice(id),
 							caption: storedCaption(id)
@@ -2726,8 +2889,8 @@
 		// switch while a slow launch is out must not re-head its failure,
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
-		const cfg = config;
-		const launch = { kitsuId: id, mode: playMode(cfg), episode: ep };
+		const mode = audio;
+		const launch = { kitsuId: id, mode, episode: ep };
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on is not shown to them.
 		const owner = claimPlay(
@@ -2749,7 +2912,7 @@
 							title,
 							episode: ep,
 							kitsuId: recordableId(id, fromGuess) ?? '',
-							config: cfg,
+							config: { mode },
 							detail,
 							version: storedChoice(id),
 							caption: storedCaption(id)
@@ -2794,13 +2957,13 @@
 		// flight the modal's cap would fall back to the announced
 		// total and an All download could range into unaired episodes.
 		if (!detail || airingIsPending) return;
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
 		downloadArgs = buildDownloadArgs({
 			detail,
 			episode: episodeNum,
 			mode,
-			quality,
+			// The download quality, not a level picked in the player.
+			quality: downloadQuality(config),
 			kitsuId: id,
 			version: storedChoice(id),
 			caption: storedCaption(id)
@@ -2820,6 +2983,9 @@
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const onKey = (e: KeyboardEvent) => {
+			// A modal over the player (a play failure, the download
+			// dialog) is the only keyboard target while it is up.
+			if (isModalOpen()) return;
 			const t = e.target as HTMLElement | null;
 			const inField =
 				!!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
@@ -3000,7 +3166,7 @@
 			{/if}
 
 			<!-- Custom controls overlay — toggled by the
-				     USE_CUSTOM_PLAYER_CONTROLS feature flag (off by
+				     use_custom_player_controls setting (on by
 				     default). When on, replaces Chromium's native
 				     timeline so the progress bar can take the
 				     per-show accent color. -->
@@ -3161,11 +3327,14 @@
 										id="pc-cc-menu"
 										class="pc-cc-menu"
 										role="menu"
+										aria-labelledby="pc-cc-menu-heading"
 										tabindex="-1"
 										use:fitCcMenu
 										onkeydown={onCcMenuKey}
 									>
-										<p class="pc-cc-menu-heading">{m.play_controls_cc_menu_heading()}</p>
+										<p id="pc-cc-menu-heading" class="pc-cc-menu-heading">
+											{m.play_controls_cc_menu_heading()}
+										</p>
 										<button
 											type="button"
 											class="pc-menu-item pc-cc-item"
@@ -3248,13 +3417,20 @@
 								</svg>
 							</button>
 							{#if pcMenuOpen}
-								<div id="pc-overflow-menu" class="pc-menu" role="menu" tabindex="-1">
+								<div
+									id="pc-overflow-menu"
+									class="pc-menu"
+									role="menu"
+									aria-label={m.play_controls_menu_aria_label()}
+									tabindex="-1"
+									onkeydown={onPcMenuKey}
+								>
 									{#if pcSpeedExpanded}
 										<button
 											type="button"
 											class="pc-menu-item pc-menu-back"
 											role="menuitem"
-											onclick={() => (pcSpeedExpanded = false)}
+											onclick={closePcList}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<path
@@ -3292,7 +3468,7 @@
 											type="button"
 											class="pc-menu-item pc-menu-back"
 											role="menuitem"
-											onclick={() => (pcQualityExpanded = false)}
+											onclick={closePcList}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<path
@@ -3348,7 +3524,8 @@
 											class="pc-menu-item pc-menu-row-arrow"
 											role="menuitem"
 											aria-haspopup="menu"
-											onclick={() => (pcSpeedExpanded = true)}
+											data-opens="speed"
+											onclick={() => openPcList('speed')}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<circle
@@ -3396,7 +3573,8 @@
 												class="pc-menu-item pc-menu-row-arrow"
 												role="menuitem"
 												aria-haspopup="menu"
-												onclick={() => (pcQualityExpanded = true)}
+												data-opens="quality"
+												onclick={() => openPcList('quality')}
 											>
 												<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 													<path
@@ -3749,131 +3927,256 @@
 							class="more-menu"
 							role="menu"
 							aria-label={m.play_more_aria_label()}
+							tabindex="-1"
+							onkeydown={onMoreMenuKey}
+							style:min-inline-size={moreMenu.width === null ? undefined : `${moreMenu.width}px`}
 							transition:settle={{ duration: 120 }}
 						>
-							<button
-								type="button"
-								class="more-item"
-								role="menuitem"
-								onclick={() => {
-									closeMore();
-									void onOpenExternal();
-								}}
-								disabled={switchBusy || externalBusy}
-							>
-								<svg
-									class="more-icon"
-									viewBox="0 0 24 24"
-									width="18"
-									height="18"
-									aria-hidden="true"
-								>
-									<path
-										d="M14 5h5v5M19 5L10 14M5 9v10h10"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								</svg>
-								<span
-									>{externalBusy
-										? m.play_external_launching()
-										: externalOpenLabel(config?.external_player_kind ?? 'custom')}</span
-								>
-							</button>
+							{#if moreQualityOpen && moreQuality}
+								<!-- The levels replace the menu's contents, as in the in-player
+     menu: a back row naming the list, then the levels. -->
+								<div class="more-pane" in:fade={{ duration: 120 }}>
+									<button
+										type="button"
+										class="more-item more-back"
+										role="menuitem"
+										onclick={closeMoreQuality}
+									>
+										<svg
+											class="more-icon more-flip"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<path
+												d="M15 6l-6 6 6 6"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+										<span>{m.play_controls_menu_quality_label()}</span>
+									</button>
+									<div
+										class="more-pane"
+										role="group"
+										aria-label={m.play_controls_menu_quality_label()}
+									>
+										{#each moreQuality.menu.items as item (item.key)}
+											<button
+												type="button"
+												class="more-item more-radio"
+												class:more-radio-on={item.checked}
+												role="menuitemradio"
+												aria-checked={item.checked}
+												onclick={() => pickMoreQuality(item.key)}
+											>
+												<span class="more-check" aria-hidden="true"
+													>{#if item.checked}✓{/if}</span
+												>
+												<span>{item.label}</span>
+											</button>
+										{/each}
+									</div>
+								</div>
+							{:else}
+								<div class="more-pane" in:fade={{ duration: 120 }}>
+									<button
+										type="button"
+										class="more-item"
+										role="menuitem"
+										onclick={() => {
+											closeMore();
+											void onOpenExternal();
+										}}
+										disabled={switchBusy || externalBusy}
+									>
+										<svg
+											class="more-icon"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<path
+												d="M14 5h5v5M19 5L10 14M5 9v10h10"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+										<span
+											>{externalBusy
+												? m.play_external_launching()
+												: externalOpenLabel(config?.external_player_kind ?? 'custom')}</span
+										>
+									</button>
 
-							<button
-								type="button"
-								class="more-item"
-								role="menuitem"
-								onclick={() => {
-									closeMore();
-									onDownload();
-								}}
-								disabled={switchBusy}
-							>
-								<svg
-									class="more-icon"
-									viewBox="0 0 24 24"
-									width="18"
-									height="18"
-									aria-hidden="true"
-								>
-									<path
-										d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								</svg>
-								<span>{m.play_controls_menu_download()}</span>
-							</button>
+									<button
+										type="button"
+										class="more-item"
+										role="menuitem"
+										onclick={() => {
+											closeMore();
+											onDownload();
+										}}
+										disabled={switchBusy}
+									>
+										<svg
+											class="more-icon"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<path
+												d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+										<span>{m.play_controls_menu_download()}</span>
+									</button>
 
-							<!-- "Watch together" lives here in addition to the
+									<!-- "Watch together" lives here in addition to the
 							     in-player hamburger (pc-menu) because the
 							     hamburger is gated on use_custom_player_controls.
 							     When the user opts into Chromium's native
 							     controls the hamburger disappears, and the
 							     more-menu becomes the only reachable surface
 							     for Syncplay launches. -->
-							<button
-								type="button"
-								class="more-item"
-								role="menuitem"
-								disabled={syncplayBusy}
-								onclick={() => {
-									closeMore();
-									void onSyncplay();
-								}}
-							>
-								<svg
-									class="more-icon"
-									viewBox="0 0 24 24"
-									width="18"
-									height="18"
-									aria-hidden="true"
-								>
-									<circle
-										cx="9"
-										cy="8"
-										r="3"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-									/>
-									<path
-										d="M3 19c0-3 3-5 6-5s6 2 6 5"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-									/>
-									<circle
-										cx="17"
-										cy="9"
-										r="2.4"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-									/>
-									<path
-										d="M15 19c0-2 2-3.5 4-3.5s2 1 2 3"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-									/>
-								</svg>
-								<span>
-									{syncplayBusy
-										? m.play_hamburger_syncplay_busy_label()
-										: m.play_hamburger_syncplay_label()}
-								</span>
-							</button>
+									<button
+										type="button"
+										class="more-item"
+										role="menuitem"
+										disabled={syncplayBusy}
+										onclick={() => {
+											closeMore();
+											void onSyncplay();
+										}}
+									>
+										<svg
+											class="more-icon"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<circle
+												cx="9"
+												cy="8"
+												r="3"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+											/>
+											<path
+												d="M3 19c0-3 3-5 6-5s6 2 6 5"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+											/>
+											<circle
+												cx="17"
+												cy="9"
+												r="2.4"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+											/>
+											<path
+												d="M15 19c0-2 2-3.5 4-3.5s2 1 2 3"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+											/>
+										</svg>
+										<span>
+											{syncplayBusy
+												? m.play_hamburger_syncplay_busy_label()
+												: m.play_hamburger_syncplay_label()}
+										</span>
+									</button>
+									<!-- Quality, while the custom controls are off: the native
+     controls have no quality menu and the in-player one goes with
+     the custom bar. Last, so the actions above keep their places.
+     A stream of one level names it with nothing to open. -->
+									{#if moreQuality}
+										<button
+											type="button"
+											class="more-item more-row-value"
+											class:more-row-still={!moreQuality.choosable}
+											role="menuitem"
+											aria-haspopup={moreQuality.choosable ? 'menu' : undefined}
+											aria-disabled={moreQuality.choosable ? undefined : 'true'}
+											data-opens="quality"
+											onclick={openMoreQuality}
+										>
+											<svg
+												class="more-icon"
+												viewBox="0 0 24 24"
+												width="18"
+												height="18"
+												aria-hidden="true"
+											>
+												<path
+													d="M4 7h9m4 0h3M4 17h3m4 0h9"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2.25"
+													stroke-linecap="round"
+												/>
+												<circle
+													cx="15"
+													cy="7"
+													r="2"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2.25"
+												/>
+												<circle
+													cx="9"
+													cy="17"
+													r="2"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2.25"
+												/>
+											</svg>
+											<span>{m.play_controls_menu_quality_label()}</span>
+											<span class="more-value">{moreQuality.menu.current}</span>
+											{#if moreQuality.choosable}
+												<svg
+													class="more-icon more-chev more-flip"
+													viewBox="0 0 24 24"
+													width="16"
+													height="16"
+													aria-hidden="true"
+												>
+													<path
+														d="M9 6l6 6-6 6"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2.25"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+													/>
+												</svg>
+											{/if}
+										</button>
+									{/if}
+								</div>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -4467,6 +4770,62 @@
 	.more-icon {
 		flex-shrink: 0;
 	}
+	/* A pane is the menu's column; opening the levels swaps one pane
+	   for another, so the two never show at once. */
+	.more-pane {
+		display: flex;
+		flex-direction: column;
+	}
+	.more-row-value {
+		inline-size: 100%;
+	}
+	/* One level: the row names it, with nothing to open. */
+	.more-row-still {
+		cursor: default;
+	}
+	.more-item.more-row-still:hover:not(:disabled) {
+		background: transparent;
+	}
+	/* Heights line up down the list: tabular figures, so 1080p and
+	   720p share a column edge rather than wobbling with digit width. */
+	.more-value {
+		margin-inline-start: auto;
+		padding-inline-start: var(--space-3);
+		color: var(--bone-300);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+	.more-chev {
+		color: var(--bone-300);
+		margin-inline-start: calc(var(--space-1) * -1);
+	}
+	.more-back {
+		font-weight: 600;
+		border-block-end: 1px solid color-mix(in oklab, var(--accent) 20%, var(--bone-400));
+		border-end-start-radius: 0;
+		border-end-end-radius: 0;
+		margin-block-end: var(--space-1);
+	}
+	/* The check sits in the icon column, so the level names share one
+	   edge with the back row's label and the main list's. */
+	.more-radio {
+		font-variant-numeric: tabular-nums;
+	}
+	.more-radio-on {
+		background: color-mix(in oklab, var(--accent) 10%, transparent);
+	}
+	.more-check {
+		display: inline-flex;
+		justify-content: center;
+		inline-size: 18px;
+		flex-shrink: 0;
+		font-weight: 700;
+		color: var(--accent);
+	}
+	/* Chevrons point along the inline axis, so they turn round in RTL. */
+	:global([dir='rtl']) .more-flip {
+		transform: scaleX(-1);
+	}
 	.bars {
 		display: inline-flex;
 		align-items: end;
@@ -4997,6 +5356,11 @@
 	.pc-menu-quality-current {
 		font-variant-numeric: tabular-nums;
 	}
+	/* "Auto · 1080p" is one value: on one line, however long the
+	   locale's word for Auto. */
+	.pc-menu-quality-current {
+		white-space: nowrap;
+	}
 	.pc-menu-check {
 		display: inline-flex;
 		align-items: center;
@@ -5279,9 +5643,6 @@
 	   reads as supporting content, not a peer to the player. The
 	   accent rule + bone-300 caption stay so the editorial voice
 	   carries through. */
-	.similar-wrap :global(.strip-header) {
-		justify-content: flex-start;
-	}
 	.similar-wrap :global(.eyebrow) {
 		font-family: var(--font-body);
 		font-size: 1.25rem; /* 20px — matches Episodes toolbar h2 */

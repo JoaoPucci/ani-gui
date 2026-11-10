@@ -27,8 +27,7 @@
 	"delete_confirm_title": "Remover \"{title}\" do histórico?",
 	"delete_confirm_body": "Ele volta se você assistir ao anime de novo.",
 	"delete_confirm_button": "Remover",
-	"clear_menu_button_aria": "Opções do histórico",
-	"clear_menu_item": "Limpar histórico",
+	"clear_history_action": "Limpar histórico",
 	"clear_confirm_eyebrow": "Limpar tudo",
 	"clear_confirm_title": [
 		{
@@ -43,5 +42,7 @@
 	],
 	"clear_confirm_body": "Isso apaga o histórico de reprodução do ani-gui. Essa ação não pode ser desfeita.",
 	"clear_confirm_button": "Limpar tudo",
+	"clear_history_failed": "Não foi possível limpar o histórico. Tente de novo.",
+	"delete_failed": "Não foi possível remover \"{title}\" do histórico. Tente de novo.",
 	"hero_error_eyebrow_value": "Sem resposta do Kitsu"
 }

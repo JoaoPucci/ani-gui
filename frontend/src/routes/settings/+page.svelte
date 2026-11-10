@@ -2,7 +2,8 @@
   Settings — editorial register, sectioned. Loads via settingsGet on mount,
   saves via settingsPut on blur (or on segmented-button click), debounced
   300ms for free-text inputs to avoid hammering the IPC channel. The
-  oxblood "Clear history" button is the page's only destructive action.
+  oxblood "Clear history" and "Clear image cache" buttons are the page's
+  destructive actions.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -19,16 +20,25 @@
 	} from '$lib/api';
 	import { m } from '$lib/paraglide/messages';
 	import { externalOpenLabel } from '$lib/play/external-label';
+	import { failed, landed, type ErrorBlock } from '$lib/settings/error-block';
 	import { describeError } from '$lib/play/error-copy';
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
 	import { commandAfterKindChange } from '$lib/settings/player-command';
+	import { DOWNLOAD_QUALITIES, downloadQuality } from '$lib/download/download-quality';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
 	import { applyLocale } from '$lib/settings/apply-locale';
 
 	let cfg = $state<Config | null>(null);
 	let info = $state<AppInfo | null>(null);
 	let loadError = $state<string | null>(null);
-	let saveError = $state<string | null>(null);
+	// The error block: the last failure of a save or a clear, until its
+	// own action lands ($lib/settings/error-block).
+	let errorBlock = $state<ErrorBlock>(null);
+	const errorHeadline = {
+		save: () => m.settings_error_save_headline(),
+		clear_history: () => m.settings_clear_history_failed(),
+		clear_images: () => m.settings_clear_images_failed()
+	};
 	let savedAt = $state<number | null>(null);
 	let clearing = $state(false);
 	let cleared = $state(false);
@@ -42,16 +52,6 @@
 		sub: m.app_audio_sub,
 		dub: m.app_audio_dub
 	};
-
-	// Labels are message functions, called at render, so a locale
-	// switch relabels the buttons without rebuilding the table.
-	const QUALITIES: Array<{ key: string; label: () => string }> = [
-		{ key: 'best', label: m.app_quality_best },
-		{ key: '1080', label: () => '1080' },
-		{ key: '720', label: () => '720' },
-		{ key: '480', label: () => '480' },
-		{ key: 'worst', label: m.app_quality_worst }
-	];
 
 	// Each locale is named in its own language (an autonym), the same
 	// in every UI locale, so these labels are not translated.
@@ -92,9 +92,9 @@
 		try {
 			await settingsPut(next);
 			savedAt = Date.now();
-			saveError = null;
+			errorBlock = landed(errorBlock, 'save');
 		} catch (e) {
-			saveError = describeSettingsFailure(e);
+			errorBlock = failed(errorBlock, 'save', describeSettingsFailure(e));
 		}
 	}
 	function persistDebounced(next: Config) {
@@ -107,9 +107,9 @@
 		if (!cfg) return;
 		void persist({ ...cfg, mode });
 	}
-	function setQuality(q: string) {
+	function setDownloadQuality(q: string) {
 		if (!cfg) return;
-		void persist({ ...cfg, quality: q });
+		void persist({ ...cfg, download_quality: q });
 	}
 	function setLocale(l: string) {
 		if (!cfg) return;
@@ -244,10 +244,11 @@
 		clearing = true;
 		try {
 			await historyClear();
+			errorBlock = landed(errorBlock, 'clear_history');
 			cleared = true;
 			setTimeout(() => (cleared = false), 2400);
 		} catch (e) {
-			saveError = describeError(e);
+			errorBlock = failed(errorBlock, 'clear_history', describeError(e));
 		} finally {
 			clearing = false;
 		}
@@ -257,10 +258,11 @@
 		clearingImages = true;
 		try {
 			await imageCacheClear();
+			errorBlock = landed(errorBlock, 'clear_images');
 			imagesCleared = true;
 			setTimeout(() => (imagesCleared = false), 2400);
 		} catch (e) {
-			saveError = describeError(e);
+			errorBlock = failed(errorBlock, 'clear_images', describeError(e));
 		} finally {
 			clearingImages = false;
 		}
@@ -317,7 +319,9 @@
 			<div class="field">
 				<div class="field-label">
 					<span class="field-key">{m.settings_field_audio_key()}</span>
-					<span class="field-hint">{m.settings_field_audio_hint()}</span>
+					<span class="field-hint"
+						>{m.settings_field_audio_hint()} {m.settings_field_audio_default_hint()}</span
+					>
 				</div>
 				<div class="seg" role="group" aria-label={m.settings_audio_group_aria_label()}>
 					{#each ['sub', 'dub'] as mode (mode)}
@@ -329,26 +333,6 @@
 							onclick={() => setMode(mode as 'sub' | 'dub')}
 						>
 							{AUDIO_LABELS[mode]()}
-						</button>
-					{/each}
-				</div>
-			</div>
-
-			<div class="field">
-				<div class="field-label">
-					<span class="field-key">{m.settings_field_quality_key()}</span>
-					<span class="field-hint">{m.settings_field_quality_hint()}</span>
-				</div>
-				<div class="seg seg-narrow" role="group" aria-label={m.settings_quality_group_aria_label()}>
-					{#each QUALITIES as q (q.key)}
-						<button
-							type="button"
-							class="seg-btn"
-							class:active={cfg.quality === q.key}
-							aria-pressed={cfg.quality === q.key}
-							onclick={() => setQuality(q.key)}
-						>
-							{q.label()}
 						</button>
 					{/each}
 				</div>
@@ -520,6 +504,30 @@
 							: m.settings_switch_state_off()}</span
 					>
 				</label>
+			</div>
+
+			<div class="field">
+				<div class="field-label">
+					<span class="field-key">{m.settings_field_download_quality_key()}</span>
+					<span class="field-hint">{m.settings_field_download_quality_hint()}</span>
+				</div>
+				<div
+					class="seg seg-narrow"
+					role="group"
+					aria-label={m.settings_field_download_quality_key()}
+				>
+					{#each DOWNLOAD_QUALITIES as q (q.key)}
+						<button
+							type="button"
+							class="seg-btn"
+							class:active={downloadQuality(cfg) === q.key}
+							aria-pressed={downloadQuality(cfg) === q.key}
+							onclick={() => setDownloadQuality(q.key)}
+						>
+							{q.label()}
+						</button>
+					{/each}
+				</div>
 			</div>
 
 			<div class="field">
@@ -729,10 +737,10 @@
 			</div>
 		</section>
 
-		{#if saveError}
+		{#if errorBlock}
 			<div class="state state-error" role="alert">
-				<p class="state-headline">{m.settings_error_save_headline()}</p>
-				<p class="state-detail">{saveError}</p>
+				<p class="state-headline">{errorHeadline[errorBlock.action]()}</p>
+				<p class="state-detail">{errorBlock.detail}</p>
 			</div>
 		{/if}
 

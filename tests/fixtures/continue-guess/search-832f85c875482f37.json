@@ -1,0 +1,23 @@
+{
+ "data": [
+  {
+   "id": "43731",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen OVA",
+    "titles": {
+     "en": "Kaguya-sama: Love is War OVA",
+     "en_jp": "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen OVA",
+     "ja_jp": "かぐや様は告らせたい ～天才たちの恋愛頭脳戦～ OVA"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kaguya-sama-wa-kokurasetai-tensai-tachi-no-renai-zunousen-ova",
+    "startDate": "2021-05-19",
+    "endDate": "2021-05-19",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  }
+ ]
+}

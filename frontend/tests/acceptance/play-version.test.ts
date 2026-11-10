@@ -38,6 +38,7 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { externalOpenLabel } from '../../src/lib/play/external-label';
 import { applyChoice } from '../../src/lib/versions/version-choice';
+import { rememberAudio } from '../../src/lib/play/audio-choice';
 import { rememberCaption } from '../../src/lib/play/caption-choice';
 
 const KITSU_ID = '42';
@@ -304,5 +305,25 @@ describe("play route — the show's remembered captions choice", () => {
 		for (const es of FakeEventSource.instances) {
 			expect(new URL(es.url).searchParams.has('caption')).toBe(false);
 		}
+	});
+});
+
+describe("play route — the show's own audio", () => {
+	it('is asked for by the warms and both hand-offs, whatever the Settings default', async () => {
+		rememberAudio(KITSU_ID, 'dub');
+		const posted = fresh();
+		useHandlers(posted);
+		await mountPlaying();
+
+		for (const es of FakeEventSource.instances) {
+			expect(new URL(es.url).searchParams.get('mode')).toBe('dub');
+		}
+		await clickMenuItem(externalOpenLabel('mpv'));
+		await until(() => posted.external.length === 1, 'the external-player request');
+		expect(posted.external[0].mode).toBe('dub');
+
+		await clickMenuItem(m.play_hamburger_syncplay_label());
+		await until(() => posted.syncplay.length === 1, 'the Syncplay request');
+		expect(posted.syncplay[0].mode).toBe('dub');
 	});
 });

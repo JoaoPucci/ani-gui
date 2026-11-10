@@ -1,0 +1,258 @@
+{
+ "data": [
+  {
+   "id": "11209",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu",
+    "titles": {
+     "en": "Re:ZERO -Starting Life in Another World-",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu",
+     "en_us": "Re:ZERO -Starting Life in Another World-",
+     "ja_jp": "Re：ゼロから始める異世界生活"
+    },
+    "abbreviatedTitles": [
+     "Re: Life in a different world from zero",
+     "ReZero"
+    ],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu",
+    "startDate": "2016-04-04",
+    "endDate": "2016-09-19",
+    "episodeCount": 25,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42633",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "He Wei Dao x Re:Cong Ling Kaishi De Yi Shijie Shenghuo",
+    "titles": {
+     "en_cn": "He Wei Dao x Re:Cong Ling Kaishi De Yi Shijie Shenghuo",
+     "zh_cn": "合味道 X《Re：从零开始的异世界生活》"
+    },
+    "abbreviatedTitles": [
+     "Re:ZERO -Starting Life in Another World-",
+     "Re: Life in a different world from zero",
+     "ReZero",
+     "He Wei Dao Lianhe re0"
+    ],
+    "slug": "he-wei-dao-x-re-cong-ling-kaishi-de-yi-shijie-shenghuo",
+    "startDate": "2018-09-21",
+    "endDate": "2019-03-08",
+    "episodeCount": 3,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42198",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu 2",
+    "titles": {
+     "en": "Re:ZERO -Starting Life in Another World- Season 2",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu 2",
+     "en_us": "Re:ZERO -Starting Life in Another World- Season 2",
+     "ja_jp": "Re:ゼロから始める異世界生活２"
+    },
+    "abbreviatedTitles": [],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-2",
+    "startDate": "2020-07-08",
+    "endDate": "2020-09-30",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43247",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season Part 2",
+    "titles": {
+     "en": "Re:ZERO -Starting Life in Another World- Season 2 Part 2",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season Part 2",
+     "ja_jp": "ゼロから始める異世界生活"
+    },
+    "abbreviatedTitles": [
+     "Re:Zero - Starting Life in Another World 2 Part 2",
+     "Re: Life in a different world from zero 2nd Season Part 2"
+    ],
+    "slug": "rezero-season-2-part-2",
+    "startDate": "2021-01-06",
+    "endDate": "2021-03-24",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "13882",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu: Memory Snow",
+    "titles": {
+     "en": "Re:ZERO -Starting Life in Another World- Memory Snow",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu: Memory Snow",
+     "ja_jp": "Re：ゼロから始める異世界生活 OVA"
+    },
+    "abbreviatedTitles": [
+     "Re:Zero kara Hajimeru Isekai Seikatsu OVA",
+     "Re:ZERO -Starting Life in Another World- OVA",
+     "Re: Life in a different world from zero",
+     "ReZero"
+    ],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-memory-snow",
+    "startDate": "2018-10-06",
+    "endDate": "2018-10-06",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42903",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu: Shin Henshuu-ban",
+    "titles": {
+     "en": "Re:Zero Starting Life in Another World - Director's Cut",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu: Shin Henshuu-ban",
+     "ja_jp": "Re：ゼロから始める異世界生活"
+    },
+    "abbreviatedTitles": [
+     "Re:Zero New Edit Version",
+     "Re:Zero kara Hajimeru Isekai Seikatsu RE_START"
+    ],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-re-start",
+    "startDate": "2020-01-01",
+    "endDate": "2020-04-01",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42006",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu: Hyouketsu no Kizuna",
+    "titles": {
+     "en": "Re:ZERO: -Starting Life in Another World- Frozen Bonds",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu: Hyouketsu no Kizuna",
+     "ja_jp": "Re：ゼロから始める異世界生活『氷結の絆』"
+    },
+    "abbreviatedTitles": [
+     "Re:Zero kara Hajimeru Isekai Seikatsu OVA 2"
+    ],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-hyouketsu-no-kizuna",
+    "startDate": "2019-11-08",
+    "endDate": "2019-11-08",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47235",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu 3",
+    "titles": {
+     "en": "Re:ZERO -Starting Life in Another World- Season 3",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu 3",
+     "ja_jp": "Re:ゼロから始める異世界生活 3"
+    },
+    "abbreviatedTitles": [],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-3",
+    "startDate": "2024-10-02",
+    "endDate": "2025-03-26",
+    "episodeCount": 16,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49746",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+    "titles": {
+     "en": "Re:ZERO -Starting Life in Another World- Season 4",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+     "ja_jp": "Re:ゼロから始める異世界生活 4th season"
+    },
+    "abbreviatedTitles": [],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-4",
+    "startDate": "2026-04-08",
+    "endDate": "2026-09-30",
+    "episodeCount": 19,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43029",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Senyoku no Sigrdrifa",
+    "titles": {
+     "en": "Warlords of Sigrdrifa",
+     "en_jp": "Senyoku no Sigrdrifa",
+     "ja_jp": "戦翼のシグルドリーヴァ"
+    },
+    "abbreviatedTitles": [
+     "Sigururi"
+    ],
+    "slug": "senyoku-no-sigrdrifa",
+    "startDate": "2020-10-03",
+    "endDate": "2020-12-26",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43306",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu - Hyouketsu no Kizuna - Manner Movie",
+    "titles": {
+     "en": "Re:ZERO: Starting Life in Another World - Frozen Bonds - Manner Movie",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu - Hyouketsu no Kizuna - Manner Movie",
+     "ja_jp": "Re:ゼロから始める異世界生活 氷結の絆 マナームービー"
+    },
+    "abbreviatedTitles": [],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-hyouketsu-no-kizuna-manner-movie",
+    "startDate": "2019-11-08",
+    "endDate": "2019-11-08",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46382",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu - Memory Snow Announcement",
+    "titles": {
+     "en": "Re:ZERO -Starting Life in Another World- OVA PV",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu - Memory Snow Announcement",
+     "ja_jp": "『Re:ゼロから始める異世界生活』アニメ新作エピソード制作決定PV"
+    },
+    "abbreviatedTitles": [
+     "Re:Zero kara Hajimeru Isekai Seikatsu OVA PV"
+    ],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-memory-snow-announcement",
+    "startDate": "2017-09-09",
+    "endDate": "2017-09-09",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}
