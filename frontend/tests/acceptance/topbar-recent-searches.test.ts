@@ -4,8 +4,8 @@
 // keyed by the search's text, so a stored list that names a search
 // twice gave the keyed list two equal keys, which Svelte refuses
 // (each_key_duplicate). Searches that differ only in case or spacing
-// are the same search, as the search page treats them, and a new
-// search replaces its earlier entry instead of sitting beside it.
+// are the same search, as the backend's search answers them, and a
+// new search replaces its earlier entry instead of sitting beside it.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -91,6 +91,15 @@ describe('topbar recent searches', () => {
 	});
 
 	it('replaces the entry for a search made again in other case or spacing', async () => {
+		// Typing arms the topbar's live search; it is answered here, and
+		// the scenario waits for it, so no request outlives the test.
+		let liveSearched = false;
+		server.use(
+			http.post(`${API_BASE}/api/kitsu/search`, () => {
+				liveSearched = true;
+				return HttpResponse.json([]);
+			})
+		);
 		localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(['one piece', 'jojo']));
 		await mountLayout();
 		input().value = 'One  Piece';
@@ -102,5 +111,7 @@ describe('topbar recent searches', () => {
 				'jojo'
 			])
 		);
+		await vi.waitFor(() => expect(liveSearched).toBe(true));
+		await settle();
 	});
 });

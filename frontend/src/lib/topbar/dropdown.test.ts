@@ -111,7 +111,7 @@ describe('parseStoredRecents', () => {
 		expect(parseStoredRecents(raw)).toEqual(['naruto', 'jojo', 'bleach']);
 	});
 
-	it('counts entries that differ only in case or spacing as one search, as the search does', () => {
+	it('counts entries that differ only in case or spacing as one search, as the backend does', () => {
 		const raw = JSON.stringify(['One Piece', 'one piece', '  ONE   PIECE ']);
 		expect(parseStoredRecents(raw)).toEqual(['One Piece']);
 	});
@@ -240,8 +240,8 @@ describe('mergeRecents (properties)', () => {
 	});
 });
 
-/** How a search is matched: case aside, with its spacing collapsed —
- *  the rule the backend's search cache keys a query by. Two recent
+/** The search a recent entry stands for: case aside, with its spacing
+ *  collapsed, which the backend's search key ignores too. Two recent
  *  entries with the same key are the same search. */
 const searchKey = (q: string) => q.trim().toLowerCase().split(/\s+/).join(' ');
 
