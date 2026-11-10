@@ -23,8 +23,10 @@ export class HandoffGate {
 	private engine = false;
 	// The attached stream's manifest is in. A handoff's stopLoad() before
 	// it is cuts it off for good (hls.js destroys the playlist loaders),
-	// so a return then asks for the stream again. No stream yet reads as
-	// in: there is nothing to ask for.
+	// so a return then asks for the stream again. Before any stream it
+	// reads as in: there is nothing to ask for. A stream with no engine
+	// (an mp4) never reports one, and the page's reload does nothing for
+	// it.
 	private manifest = true;
 
 	/** `restart` resumes what the handoff stopped, when no start is
