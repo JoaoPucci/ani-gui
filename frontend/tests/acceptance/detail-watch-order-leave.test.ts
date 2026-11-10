@@ -1,4 +1,4 @@
-// Acceptance: leaving a show ends its franchise read.
+// Acceptance: leaving a show ends its franchise read and its first hop.
 //
 // The franchise route holds its response open while the backend walks
 // the franchise's relation listings, several rounds of Kitsu reads
@@ -8,7 +8,9 @@
 // details, the settings and the history. A read the page kept after
 // the viewer moved on would hold one of those six for nothing: six
 // shows browsed while Kitsu is slow, and the seventh show's details
-// would wait behind them.
+// would wait behind them. The walk's first hop, which the page reads
+// beside it to hold the strip's room, waits on Kitsu too and goes the
+// same way.
 //
 // jsdom has no connection limit, so this scenario puts Chromium's in
 // front of `fetch` (`./connections`).
@@ -38,6 +40,14 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
 const FRANCHISE = '/api/kitsu/franchise/';
+const HOP = '/first-hop';
+/** The shows whose franchise walk the page cancelled. */
+const walks = (c: Connections) => cancelledUnder(c, FRANCHISE).filter((p) => !p.endsWith(HOP));
+/** The shows whose first hop the page cancelled. */
+const hops = (c: Connections) =>
+	cancelledUnder(c, FRANCHISE)
+		.filter((p) => p.endsWith(HOP))
+		.map((p) => p.slice(0, -HOP.length));
 
 /** Franchise reads still held open, ended when the scenario ends. */
 const holding: Array<() => void> = [];
@@ -54,6 +64,14 @@ function slowKitsu() {
 		),
 		http.get(
 			`${API_BASE}/api/kitsu/franchise/:id`,
+			() =>
+				new Promise<Response>((resolve) =>
+					holding.push(() => resolve(new HttpResponse(null, { status: 503 })))
+				)
+		),
+		// The walk's first hop waits on Kitsu too.
+		http.get(
+			`${API_BASE}/api/kitsu/franchise/:id/first-hop`,
 			() =>
 				new Promise<Response>((resolve) =>
 					holding.push(() => resolve(new HttpResponse(null, { status: 503 })))
@@ -120,7 +138,8 @@ describe('detail route — leaving a show while its franchise is read', () => {
 			setParams({ id });
 			await until(() => title() === `Show ${id}`, `show ${id}`);
 		}
-		expect(cancelledUnder(pool, FRANCHISE)).toEqual(['101', '102', '103', '104', '105']);
+		expect(walks(pool)).toEqual(['101', '102', '103', '104', '105']);
+		expect(hops(pool)).toEqual(['101', '102', '103', '104', '105']);
 		// The seventh show's details come through.
 		setParams({ id: '107' });
 		await until(() => title() === 'Show 107', 'show 107');
@@ -134,6 +153,7 @@ describe('detail route — leaving a show while its franchise is read', () => {
 		await until(() => title() === 'Show 201', 'show 201');
 		unmount(app);
 		app = null;
-		expect(cancelledUnder(pool, FRANCHISE)).toEqual(['201']);
+		expect(walks(pool)).toEqual(['201']);
+		expect(hops(pool)).toEqual(['201']);
 	});
 });

@@ -1924,6 +1924,14 @@ describe('kitsuFranchiseFirstHop', () => {
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/franchise/kid%207730/first-hop`);
 		expect(got).toBe('link');
 	});
+
+	it('hands its signal to the request: the first hop can take several Kitsu reads', async () => {
+		const fetchMock = mockFetchOnce({ signal: 'strip' });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const visit = new AbortController();
+		await kitsuFranchiseFirstHop('7730', { signal: visit.signal });
+		expect(lastCall(fetchMock).init?.signal).toBe(visit.signal);
+	});
 });
 
 describe('kitsuResolveAllmangaShowId', () => {
