@@ -438,38 +438,31 @@
 		playheadOnScreen && Number.isFinite(duration) && duration > 0
 	);
 	const aniskipTrigger = createAniskipFetchTrigger();
+	// Only the latest request's answer counts ($lib/watch-order/
+	// latest-read): one for an episode left, or an earlier one for the
+	// same episode come back to, never replaces it. Starting or
+	// stopping clears the skip times on hand, so a previous episode's
+	// intervals never drive `activeSkip` against this one's playhead.
+	const skipReads = latestRead<SkipInterval[]>((v) => (skipIntervals = v ?? []));
 	$effect(() => {
 		// Subscribing to the fetch-key derived re-runs the effect on
 		// episode boundaries; subscribing to the readiness boolean
 		// re-runs it the moment duration first becomes usable, then
-		// stops propagating since `true === true`. The captured `key`
-		// is reused below to detect an episode change between issuing
-		// and resolving the request.
-		const key = aniskipFetchKey;
+		// stops propagating since `true === true`.
+		void aniskipFetchKey;
 		// Another episode: the trigger clears the last one's skip times
 		// now, not when this one's length is known and its own are asked.
 		const decision = aniskipTrigger.step(id, episodeNum, aniskipDurationReady);
 		if (decision.kind === 'clear') {
-			skipIntervals = [];
+			skipReads.stop();
 			return;
 		}
 		if (decision.kind !== 'fetch') return;
 		const len = untrack(() => duration);
-		// Clear stale data before the fetch so a previous episode's
-		// intervals can't briefly drive `activeSkip` against the new
-		// episode's currentTime.
-		skipIntervals = [];
-		void aniskipGet(decision.showId, decision.episode, len)
-			.then((v) => {
-				if (aniskipFetchKey === key) {
-					skipIntervals = v;
-				}
-			})
-			.catch(() => {
-				if (aniskipFetchKey === key) {
-					skipIntervals = [];
-				}
-			});
+		// A failed request answers no skip times.
+		skipReads.start(() =>
+			aniskipGet(decision.showId, decision.episode, len).catch((): SkipInterval[] => [])
+		);
 	});
 
 	function onSkipClick() {
