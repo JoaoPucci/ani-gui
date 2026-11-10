@@ -201,8 +201,9 @@ test('a first page that never says it rendered: the splash offers Restart and Qu
 		await splash.keyboard.press('Tab');
 		expect(await focusedAct(splash)).toBe('quit');
 		await splash.keyboard.press('Escape');
-		// Long enough to be past 15 s from the app window's creation too,
-		// which came after the paint.
+		// Past 15 s from the app window's creation too whenever the
+		// backend and the flags took under about four seconds after the
+		// paint, as they do in a test run.
 		await splash.waitForTimeout(4_000);
 		expect(ours(pid, binary)).toBe(true);
 		// Still the stuck splash, and the app's window still hidden, well
