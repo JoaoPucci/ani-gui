@@ -13,7 +13,7 @@ Read first:
 - `docs/architecture.md` — components, data flow, why a local desktop app exists at all
 - `docs/testing.md` — test pyramid and how to run each layer
 - `docs/development.md` — dev environment, build, debug
-- `docs/i18n.md` — adding a locale
+- `docs/i18n.md` — the copy rules every user-visible string follows, in every locale, and adding a locale
 - `docs/title-resolution.md` — the cross-API bridge (Kitsu ↔ the streaming provider ↔ MAL ↔ aniskip / AniList) and how disambiguation by episode count works
 - `docs/proposals/` — plans for features nobody is building yet
 
@@ -135,6 +135,7 @@ Mechanical rules, enforced by `tests/arch/no_reacquired_script.sh` and `tests/ar
 ## 6. Frontend conventions (`frontend/`)
 
 - Every user-visible string goes through Paraglide. The `no-hardcoded-strings` ESLint rule enforces this; it allowlists only `aria-*`, `data-testid`, and dev-only strings.
+- Every user-visible string, in every locale, follows the copy rules in `docs/i18n.md` ("Writing the copy"): short sentences, no semicolons joining them, no em-dash asides, native phrasing per locale, one phrase per term.
 - Use logical CSS properties (`margin-inline-start`, not `margin-left`) so adding RTL locales later is translation-only.
 - No DOM-snapshot tests. Assert behavior: rendered text via `i18n.m`, role queries, user events.
 - hls.js is used as a singleton inside `Player.svelte`; no `new Hls()` outside that component.
@@ -499,5 +500,5 @@ what makes external review affordable.
 - `docs/architecture.md` — public architecture
 - `docs/testing.md` — test pyramid, fixture management, coverage targets
 - `docs/development.md` — dev setup
-- `docs/i18n.md` — locale-addition guide
+- `docs/i18n.md` — copy rules and locale-addition guide
 - `docs/proposals/` — plans for features not yet built, kept until they ship (§1)
