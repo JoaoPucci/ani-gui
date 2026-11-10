@@ -1,3 +1,5 @@
+import { SrcLetGo } from './src-letgo';
+
 /**
  * Whether the episode on the play page has been handed to another
  * player (the external player, Syncplay), and what waits for the
@@ -28,11 +30,9 @@ export class HandoffGate {
 	// (an mp4) never reports one, and the page's reload does nothing for
 	// it.
 	private manifest = true;
-	// A stream the element plays from its src, let go of at the handoff
-	// (unloaded, so the browser stops buffering it for nobody), and the
-	// playhead it was at: the return resumes there, wherever it falls.
-	private unloaded: string | null = null;
-	private at: number | null = null;
+	// A stream the element plays from its src, let go of at the handoff,
+	// and the playhead it was at ($lib/play/src-letgo).
+	private readonly src = new SrcLetGo();
 
 	/** `restart` resumes what the handoff stopped, when no start is
 	 *  held. `reload` asks again for a stream whose manifest the handoff
@@ -59,9 +59,7 @@ export class HandoffGate {
 	/** The viewer is back on the embedded player. Answers the playhead
 	 *  a stream let go of is to resume at, if one was let go of. */
 	comeBack(): number | null {
-		const point = this.unloaded !== null ? this.at : null;
-		this.unloaded = null;
-		this.at = null;
+		const point = this.src.take();
 		this.pick = false;
 		if (!this.off) return point;
 		this.off = false;
@@ -130,25 +128,20 @@ export class HandoffGate {
 	 *  `playhead`; a playhead at zero (before the first frame) gives
 	 *  nothing back. */
 	letGo(url: string, playhead: number): void {
-		this.unloaded = url;
-		this.at = playhead > 0 ? playhead : null;
+		this.src.letGo(url, playhead);
 	}
 
 	/** Whether an attach of `url` waits for the viewer: it is the stream
 	 *  let go of. Another stream (a pick, a Reload's fresh session) ends
 	 *  the wait and forgets the playhead. */
 	attachWaits(url: string): boolean {
-		if (this.unloaded === null) return false;
-		if (url === this.unloaded) return true;
-		this.unloaded = null;
-		this.at = null;
-		return false;
+		return this.src.attachWaits(url);
 	}
 
 	/** The point a Reload resumes at: the playhead a stream was let go
 	 *  of at, in place of the unloaded element's zero. */
 	reloadPoint(current: number): number {
-		return this.at ?? current;
+		return this.src.reloadPoint(current);
 	}
 
 	/** Forgets `start` if it is the one held: its stream is gone. */
