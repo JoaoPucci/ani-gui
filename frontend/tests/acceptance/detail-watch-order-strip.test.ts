@@ -344,6 +344,9 @@ describe('detail route — the watch-order strip', () => {
 		expect(text).not.toContain(m.watchorder_strip_last());
 		expect(text).not.toContain(m.watchorder_strip_first());
 		expect(eyebrow()).not.toMatch(/\b\d{2}\b/);
+		// The way to the franchise page stays, without counts it may get wrong.
+		expect(text).toContain(m.watchorder_strip_franchise_stack_title());
+		expect(text).not.toContain(m.watchorder_strip_franchise_stack_main({ count: 2 }));
 	});
 
 	it("names a side story's parent stories, and nothing after it", async () => {

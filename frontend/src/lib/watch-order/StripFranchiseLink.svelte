@@ -15,15 +15,25 @@
 	import { reducedMotion } from '$lib/motion/reduced-motion.svelte';
 	import { numeral } from './meta';
 	import { FAN_RADIUS_REM, fanPoses, stackCards } from './stack-fan';
-	import { stackPartsText } from './strip-copy';
+	import { stackPartsText, stackTotal } from './strip-copy';
 	import { franchiseSummary } from './strip-view';
 	import { m } from '$lib/paraglide/messages';
 	import type { WatchRun } from './types';
 
-	let { run, id }: { run: WatchRun; id: string } = $props();
+	let {
+		run,
+		id,
+		complete
+	}: {
+		run: WatchRun;
+		id: string;
+		/** False for a franchise read in part: the stack gives no counts. */
+		complete: boolean;
+	} = $props();
 
 	const summary = $derived(franchiseSummary(run));
-	const parts = $derived(stackPartsText(summary));
+	const parts = $derived(stackPartsText(summary, complete));
+	const total = $derived(stackTotal(summary, complete));
 	const cards = $derived(stackCards(summary.posters, 3));
 	const open = $derived(fanPoses(cards.length, 'open'));
 	const rest = $derived(reducedMotion.current ? open : fanPoses(cards.length, 'rest'));
@@ -52,8 +62,8 @@
 						decoding="async"
 						onerror={() => (broken = { ...broken, [card.entry.id]: true })}
 					/>
-				{:else if card.kind === 'blank' && i === cards.length - 1}
-					<span class="blank-count">{numeral(summary.total)}</span>
+				{:else if card.kind === 'blank' && i === cards.length - 1 && total !== null}
+					<span class="blank-count">{numeral(total)}</span>
 				{/if}
 			</span>
 		{/each}

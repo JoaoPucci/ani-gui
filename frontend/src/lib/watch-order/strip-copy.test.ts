@@ -6,7 +6,8 @@ import {
 	columnCountText,
 	columnKeyText,
 	emptyColumnText,
-	stackPartsText
+	stackPartsText,
+	stackTotal
 } from './strip-copy';
 import { franchiseSummary, type FranchiseSummary } from './strip-view';
 import type { ColumnWord } from './strip-wording';
@@ -66,12 +67,19 @@ describe('the strip copy', () => {
 describe('stackPartsText', () => {
 	it("lists JoJo's parts: the main story, films and versions, side stories, recaps", () => {
 		const jojo = FIXTURE_RUNS.find((r) => r.key === 'jojo')!;
-		expect(stackPartsText(franchiseSummary(jojo))).toEqual([
+		expect(stackPartsText(franchiseSummary(jojo), true)).toEqual([
 			'9 in the main story',
 			'4 films and versions',
 			'1 side story',
 			'1 recap'
 		]);
+	});
+
+	it('gives no counts for a franchise read in part: they may be short', () => {
+		const jojo = FIXTURE_RUNS.find((r) => r.key === 'jojo')!;
+		expect(stackPartsText(franchiseSummary(jojo), false)).toEqual([]);
+		expect(stackTotal(franchiseSummary(jojo), false)).toBeNull();
+		expect(stackTotal(franchiseSummary(jojo), true)).toBe(15);
 	});
 
 	it('leaves out a part the franchise has none of, never the main story', () => {
@@ -83,7 +91,7 @@ describe('stackPartsText', () => {
 			recaps: 0,
 			posters: []
 		};
-		expect(stackPartsText(summary)).toEqual(['3 in the main story']);
+		expect(stackPartsText(summary, true)).toEqual(['3 in the main story']);
 	});
 
 	it('has one part for the main story and one for each other kind the franchise holds', () => {
@@ -95,14 +103,17 @@ describe('stackPartsText', () => {
 				count,
 				count,
 				(main, films, sides, recaps) => {
-					const parts = stackPartsText({
-						total: main + films + sides + recaps,
-						main,
-						films,
-						sides,
-						recaps,
-						posters: []
-					});
+					const parts = stackPartsText(
+						{
+							total: main + films + sides + recaps,
+							main,
+							films,
+							sides,
+							recaps,
+							posters: []
+						},
+						true
+					);
 					expect(parts[0]).toBe(`${main} in the main story`);
 					expect(parts).toHaveLength(1 + [films, sides, recaps].filter((n) => n > 0).length);
 				}

@@ -71,11 +71,23 @@ export function captionText(caption: StripCaption): string {
 }
 
 /**
+ * The count the stack's last blank card carries: every title the
+ * franchise page lists, or null for a franchise read in part, whose
+ * count may be short.
+ */
+export function stackTotal(summary: FranchiseSummary, complete: boolean): number | null {
+	void complete;
+	return summary.total;
+}
+
+/**
  * What the franchise page holds, as the strip's link to it lists it
  * under "See the whole franchise": the main story, then films and
  * other versions, side stories and recaps, each only where there is one.
+ * None for a franchise read in part, whose counts may be short.
  */
-export function stackPartsText(summary: FranchiseSummary): string[] {
+export function stackPartsText(summary: FranchiseSummary, complete: boolean): string[] {
+	void complete;
 	const parts = [m.watchorder_strip_franchise_stack_main({ count: summary.main })];
 	if (summary.films > 0)
 		parts.push(m.watchorder_strip_franchise_stack_films({ count: summary.films }));

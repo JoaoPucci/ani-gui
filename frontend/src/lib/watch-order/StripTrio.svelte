@@ -120,7 +120,7 @@
 					</div>
 				{/if}
 				<div class="slot">
-					<StripFranchiseLink run={model.run} {id} />
+					<StripFranchiseLink run={model.run} {id} complete={model.complete} />
 				</div>
 			</footer>
 		</div>
