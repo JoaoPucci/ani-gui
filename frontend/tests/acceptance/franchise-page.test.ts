@@ -190,8 +190,9 @@ describe('franchise page', () => {
 		expect(row('42')!.getAttribute('aria-current')).toBe('true');
 		expect(row('42')!.textContent).toContain(m.watchorder_franchise_here());
 		expect(row('10')!.getAttribute('aria-current')).toBeNull();
-		// Short titles on the rows, the full title as the tooltip.
-		expect(row('50')!.textContent).toContain('Final Arc');
+		// Each row by the title the rest of the app shows for it: the
+		// words it shares with the others are not cut.
+		expect(row('50')!.querySelector('.row-title')?.textContent).toBe('Saga: Final Arc');
 		expect(row('50')!.getAttribute('title')).toBe('Saga: Final Arc');
 		expect(target.textContent).toContain(m.watchorder_franchise_order_note_linked());
 		expect(target.querySelector('a[href="/settings"]')).not.toBeNull();
@@ -224,7 +225,7 @@ describe('franchise page', () => {
 		expect(resumeLink()!.getAttribute('href')).toBe('/anime/50');
 		const masthead = resumeLink()!.parentElement!;
 		expect(masthead.textContent).toContain('04');
-		expect(masthead.textContent).toContain('Final Arc');
+		expect(masthead.querySelector('.caption-title')?.textContent?.trim()).toBe('Saga: Final Arc');
 		expect(masthead.textContent).toContain(m.watchorder_meta_progress_open({ episode: 3 }));
 		// Saga is watched to the end, and its row says so.
 		expect(row('10')!.textContent).toContain(m.watchorder_meta_watched());

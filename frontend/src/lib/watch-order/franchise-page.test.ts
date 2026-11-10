@@ -104,6 +104,18 @@ describe('franchisePage', () => {
 		expect(franchisePage(data('fate', '6028'), '6028', 'released')!.start?.id).toBe('323');
 	});
 
+	it('names every title by its whole title, the resume place included', () => {
+		for (const r of FIXTURE_RUNS) {
+			for (const e of r.entries) {
+				const rows: HistoryRow[] = [{ ep_no: '1', kitsu_id: e.id }];
+				const page = franchisePage(data(r.key, e.id, rows), e.id, 'linked');
+				if (page === null) continue;
+				for (const row of rowsOf(page)) expect(row.label).toBe(row.entry.title);
+				if (page.resume) expect(page.resume.label).toBe(page.resume.entry.title);
+			}
+		}
+	});
+
 	it('numbers a straight run of seasons from 01, marking the title it was opened from', () => {
 		const page = franchisePage(data('jojo', '46598'), '46598', 'linked')!;
 		expect(page.sections.map((s) => s.kind)).toEqual(['line']);
