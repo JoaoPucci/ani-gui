@@ -79,6 +79,7 @@
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { captionChoiceOf, storedCaption } from '$lib/play/caption-choice';
 	import { storedAudio } from '$lib/play/audio-choice';
+	import { carrySwitchAudio, takeSwitchAudio } from '$lib/play/switch-audio';
 	import { rememberPickMoved } from '$lib/play/caption-repick';
 	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
@@ -328,7 +329,10 @@
 	// ($lib/play/audio-choice); a show never chosen on plays the
 	// Settings value, which is only the default.
 	let chosenAudio = $derived<'sub' | 'dub' | undefined>(storedAudio(id));
-	const audio = $derived(chosenAudio ?? playMode(config));
+	// The audio a switch to this show carried, kept for the session when
+	// the storage refused it as the show's choice ($lib/play/switch-audio).
+	const switchedAudio = takeSwitchAudio(untrack(() => id));
+	const audio = $derived(chosenAudio ?? switchedAudio ?? playMode(config));
 	let detailError = $state<string | null>(null);
 	let playerError = $state<string | null>(null);
 	let switchBusy = $state(false);
@@ -2569,6 +2573,7 @@
 		// The pick's own Sub or Dub, which the pick took from the session
 		// when it had none; the session's when the storage refused it.
 		const mode = storedAudio(pick.id) ?? audio;
+		carrySwitchAudio(pick.id, mode);
 		const version = storedChoice(pick.id);
 		const caption = storedCaption(pick.id);
 		const here = navigationClaims.claim();
@@ -2630,6 +2635,8 @@
 					rate: videoEl?.playbackRate ?? playbackRate
 				}
 			);
+			// No player of the pick opened: nothing takes the audio.
+			if (outcome !== 'switched') takeSwitchAudio(pick.id);
 			if (outcome === 'failed') {
 				toastStore.push({
 					kind: 'error',

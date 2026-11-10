@@ -115,7 +115,7 @@
 		versionsInMode
 	} from '$lib/versions/version-choice';
 	import { storedCaption } from '$lib/play/caption-choice';
-	import { pickAudio, storedAudio } from '$lib/play/audio-choice';
+	import { audioFor, pickAudio, storedAudio } from '$lib/play/audio-choice';
 	import { handleRadioKey } from '$lib/versions/radio-keys';
 	import { versionLabel } from '$lib/versions/version-label';
 	import { followPlayed } from '$lib/play/played-episode';
@@ -1709,8 +1709,10 @@
 				replaceState: true
 			}),
 		/* eslint-enable svelte/no-navigation-without-resolve */
-		// The page's show's own Sub or Dub, else the Settings default.
-		audioInForce: () => pickedAudio,
+		// The shown show's own Sub or Dub, else the Settings default —
+		// asked of the show the link was made for, which the page may have
+		// moved on from when the link answers.
+		audioInForce: (shown) => (config ? audioFor(shown, playMode(config)) : null),
 		here: () => page.url.pathname,
 		// The page's own links are heard below, as every other one is.
 		refresh: () => {}

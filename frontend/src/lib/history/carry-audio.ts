@@ -6,7 +6,8 @@
  * Dub of its own, the audio the viewer was watching in — the shown
  * show's own choice, else the Settings default as played — becomes the
  * picked show's choice ($lib/play/audio-choice.ts), so it plays in it.
- * A picked show with its own choice keeps it. No audio known yet saves
+ * A picked show with its own choice keeps it, and the show shown picked
+ * again (Yes) is left following its own choice or Settings. No audio known yet saves
  * nothing, and a storage that refuses claims nothing: the switch then
  * plays in the audio watched in all the same.
  */
@@ -22,7 +23,9 @@ export function carryAudio(
 	pickedId: string,
 	storage?: AudioChoiceStorage | null
 ): void {
-	if (storedAudio(pickedId, storage) !== undefined) return;
+	// The show shown picked again (Yes) has nothing to carry from; a show
+	// with its own choice keeps it.
+	if (pickedId === shownId || storedAudio(pickedId, storage) !== undefined) return;
 	const audio = deps.audioInForce?.(shownId) ?? null;
 	if (audio) rememberAudio(pickedId, audio, storage);
 }
