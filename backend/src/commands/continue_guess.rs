@@ -48,6 +48,36 @@
 //!   Reincarnated as a Slime Season 2" is not Kitsu's "2nd Season
 //!   Part 2".
 //!
+//! Three more rules say whether the row's title search answered the
+//! row at all ([`refutes`]). They read weaker evidence — Kitsu files
+//! some films as specials and tags some movies "Recap" in an alternate
+//! title alone — so they withhold the hits they refute only when they
+//! refute every hit of the search's answer the rules above leave;
+//! beside a hit that stands, they withhold nothing. A hit sent alone (a
+//! stored title match, a slug lookup's entry) is no search's answer,
+//! and they do not judge it. A hit is refuted when:
+//!
+//! - **the title names a movie the hit is not**: a title carrying
+//!   "Movie" as a word takes only a movie, and one numbering its movie
+//!   ("One Piece: The Movie 14 - Stampede") takes no hit whose titles
+//!   number other movies and not that one. Kitsu titles the fourteenth
+//!   "One Piece: Stampede", so a hit that numbers no movie is not
+//!   another;
+//! - **the hit is a recap the row does not name**: one of the hit's
+//!   titles carries "Recap", and neither the title nor the show key's
+//!   words do. hianime's "Haikyu!! Movie: Battle of the Garbage Dump"
+//!   brings back the fourth recap movie alone;
+//! - **the show key names a later season the title does not**: a key
+//!   whose words name a season past the first anywhere in them ("Season
+//!   2", "2nd Season"), on a row whose title names no season (no
+//!   trailing season, part or cour, and no "Season N" or "Nth Season"
+//!   anywhere), takes
+//!   only a hit naming that season anywhere in a title or its slug, or
+//!   one the title's season rule above would take for it. hianime's
+//!   "Jujutsu Kaisen: Specials" is `jujutsu-kaisen-season-2-recaps`,
+//!   and its title's search brings back the New Year's Special, the
+//!   third season and a movie.
+//!
 //! A hit ruled out is never offered, even when no hit is left: the row
 //! then goes on to the resolve from its show key's words
 //! ([`super::kitsu::resolve_allmanga_show_id`]), which searches the
@@ -62,6 +92,17 @@ pub use words::{carries_first_word, is_series, names_series, past_reach};
 
 #[path = "continue_guess_season.rs"]
 mod season;
+
+#[path = "continue_guess_key_season.rs"]
+mod key_season;
+pub use key_season::season_named;
+
+#[path = "continue_guess_kind.rs"]
+mod kind;
+pub use kind::{
+    a_recap_the_row_does_not_name, is_movie, movie_number, names_movie, names_recap,
+    numbered_as_another_movie,
+};
 
 #[path = "continue_guess_request.rs"]
 mod request;
@@ -88,12 +129,45 @@ pub fn ruled_out(title: &str, episode: Option<f64>, hit: &KitsuAnimeRef) -> bool
     season::names_a_whole_season(title) && words::names(hit).any(season::later_part_of_a_season)
 }
 
-/// The ids of the `hits` the row rules out, in their order.
+/// Whether the row refutes `hit` as the answer to its search, on its
+/// title and its show key's words (empty for a key that carries none):
+/// a movie the title names that the hit is not, a recap neither names,
+/// or a later season the key names and the title and hit do not.
+///
+/// These read weaker evidence than [`ruled_out`] — Kitsu files some
+/// films as specials and tags some movies "Recap" in an alternate title
+/// alone — so they say whether the search answered the row at all, not
+/// which hit is its show: [`ruled_out_ids`] withholds the hits they
+/// refute only when they refute every hit [`ruled_out`] leaves. A row
+/// whose search they refute goes on to the resolve from its show key's
+/// words; a hit they refute beside one that stands is left to the
+/// picker.
 #[must_use]
-pub fn ruled_out_ids(title: &str, episode: Option<f64>, hits: &[KitsuAnimeRef]) -> Vec<String> {
+pub fn refutes(title: &str, key_words: &str, hit: &KitsuAnimeRef) -> bool {
+    kind::another_movie(title, hit)
+        || kind::a_recap_the_row_does_not_name(title, key_words, hit)
+        || key_season::a_season_the_key_names_and_the_hit_does_not(title, key_words, hit)
+}
+
+/// The ids of the `hits` the row rules out, in their order: the ones
+/// [`ruled_out`] refuses, and when [`refutes`] refuses every other one,
+/// those too.
+#[must_use]
+pub fn ruled_out_ids(
+    title: &str,
+    key_words: &str,
+    episode: Option<f64>,
+    hits: &[KitsuAnimeRef],
+) -> Vec<String> {
+    let out: Vec<bool> = hits.iter().map(|h| ruled_out(title, episode, h)).collect();
+    let missed = hits
+        .iter()
+        .zip(&out)
+        .all(|(h, o)| *o || refutes(title, key_words, h));
     hits.iter()
-        .filter(|h| ruled_out(title, episode, h))
-        .map(|h| h.id.clone())
+        .zip(out)
+        .filter(|(_, o)| *o || missed)
+        .map(|(h, _)| h.id.clone())
         .collect()
 }
 

@@ -1037,7 +1037,49 @@ describe('the hits a row rules out', () => {
 			'Jujutsu Kaisen (TV)',
 			24,
 			[special()],
-			'hianime:jujutsu-kaisen-237'
+			'hianime:jujutsu-kaisen-237',
+			true
+		);
+	});
+
+	it("sends a slug lookup's entry alone, not as a search's answer", async () => {
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:show-season-2-1', ep_no: '1', title: 'Show Season 2' },
+			null
+		);
+		const entry = { ...stubKitsu('7', 'Show Season 2', 12), slug: 'show-season-2' };
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSlug.mockResolvedValue(entry);
+
+		await resolveKitsuMatch(row);
+
+		expect(mockedRuledOut).toHaveBeenCalledWith(
+			'Show Season 2',
+			1,
+			[entry],
+			'hianime:show-season-2-1',
+			false
+		);
+	});
+
+	it('sends a stored title match alone, not as a search answer', async () => {
+		const movie = { ...stubKitsu('44212', 'Jujutsu Kaisen 0', 1), subtype: 'movie' };
+		mockedGetMatch.mockResolvedValue('44212');
+		mockedDetail.mockResolvedValue(movie);
+
+		await resolveKitsuMatch(
+			resolveHistoryEntry(
+				{ id: 'hianime:jujutsu-kaisen-0-413', ep_no: '1', title: 'Jujutsu Kaisen 0 Movie' },
+				null
+			)
+		);
+
+		expect(mockedRuledOut).toHaveBeenCalledWith(
+			'Jujutsu Kaisen 0 Movie',
+			1,
+			[movie],
+			'hianime:jujutsu-kaisen-0-413',
+			false
 		);
 	});
 
@@ -1147,7 +1189,8 @@ describe('the hits a row rules out', () => {
 			'Jujutsu Kaisen (TV)',
 			24,
 			[special()],
-			'hianime:jujutsu-kaisen-237'
+			'hianime:jujutsu-kaisen-237',
+			true
 		);
 	});
 

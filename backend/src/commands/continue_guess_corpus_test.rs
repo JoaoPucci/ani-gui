@@ -107,6 +107,9 @@ fn every_row_rules_out_the_hits_the_corpus_records() {
                 title: c.title.clone(),
                 episode,
                 hits: all.iter().map(sent).collect(),
+                // The search's and the slug lookup's hits together: of the
+                // rows the refuting rules empty, none looks a slug up.
+                search: true,
             });
             got.dedup();
             let want = c.ruled_out.get(ep).cloned().unwrap_or_default();

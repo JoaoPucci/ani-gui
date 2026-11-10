@@ -104,10 +104,12 @@ proptest! {
         prop_assert_eq!(names_series(&t), named);
     }
 
-    /// `ruled_out_ids` is the hits `ruled_out` refuses, in their order.
+    /// `ruled_out_ids` is the hits `ruled_out` refuses, in their order,
+    /// and every hit when `refutes` refuses the rest.
     #[test]
     fn ruled_out_ids_lists_the_refused_hits_in_order(
         t in title(),
+        k in title(),
         e in 0.0f64..100.0,
         hits in prop::collection::vec((title(), subtype(), prop::option::of(0u32..50)), 0..8),
     ) {
@@ -116,12 +118,134 @@ proptest! {
             .enumerate()
             .map(|(i, (c, s, n))| KitsuAnimeRef { id: i.to_string(), ..hit(c, s, *n) })
             .collect();
+        let missed = hits.iter().all(|h| ruled_out(&t, Some(e), h) || refutes(&t, &k, h));
         let want: Vec<String> = hits
             .iter()
-            .filter(|h| ruled_out(&t, Some(e), h))
+            .filter(|h| missed || ruled_out(&t, Some(e), h))
             .map(|h| h.id.clone())
             .collect();
-        prop_assert_eq!(ruled_out_ids(&t, Some(e), &hits), want);
+        prop_assert_eq!(ruled_out_ids(&t, &k, Some(e), &hits), want);
+    }
+
+    /// A title that does not carry "movie" as a word names no movie.
+    #[test]
+    fn only_a_movie_word_names_a_movie(t in title()) {
+        let named = t.to_ascii_lowercase().split(' ').any(|w| w == "movie");
+        prop_assert_eq!(names_movie(&t), named);
+    }
+
+    /// A movie titled exactly as the row, with no count, is never ruled
+    /// out, by the title or by a key of the same words: it is the movie
+    /// the row names.
+    #[test]
+    fn the_movie_the_row_names_is_never_ruled_out(
+        words in prop::collection::vec("[a-z]{1,8}", 1..4),
+        n in prop::option::of(0u32..30),
+        e in 0.0f64..10_000.0,
+    ) {
+        let t = match n {
+            Some(n) => format!("{} Movie {n}", words.join(" ")),
+            None => format!("{} Movie", words.join(" ")),
+        };
+        prop_assume!(!names_series(&t));
+        let h = hit(&t, "movie", None);
+        prop_assert!(!ruled_out(&t, Some(e), &h));
+        prop_assert!(!refutes(&t, &t, &h));
+    }
+
+    /// A hit that numbers no movie is never numbered as another.
+    #[test]
+    fn a_hit_numbering_no_movie_is_never_another(t in title(), c in title(), n in 0u32..30) {
+        let row = format!("{t} Movie {n}");
+        prop_assert!(!numbered_as_another_movie(&row, &hit(&c, "movie", Some(1))));
+    }
+
+    /// A hit one of whose titles numbers the row's movie is never
+    /// another, whatever else it numbers.
+    #[test]
+    fn a_hit_numbering_the_row_s_movie_is_never_another(
+        t in title(),
+        n in 0u32..30,
+        others in prop::collection::vec(0u32..30, 0..4),
+    ) {
+        let row = format!("{t} Movie {n}");
+        let mut h = hit(&format!("Show Movie {n}"), "movie", Some(1));
+        h.abbreviated_titles = others.iter().map(|m| format!("Show Movie {m}")).collect();
+        prop_assert!(!numbered_as_another_movie(&row, &h));
+    }
+
+    /// A row whose title or key names a recap refuses no hit for being
+    /// one.
+    #[test]
+    fn a_row_naming_a_recap_refuses_no_recap(
+        t in title(),
+        k in title(),
+        in_title in any::<bool>(),
+        c in title(),
+    ) {
+        let (t, k) = if in_title { (format!("{t} Recap"), k) } else { (t, format!("{k} recaps")) };
+        let h = hit(&format!("{c} Recap"), "special", Some(1));
+        prop_assert!(!a_recap_the_row_does_not_name(&t, &k, &h));
+    }
+
+    /// A season is read off "Season N" and "Nth Season" wherever it
+    /// stands in the words.
+    #[test]
+    fn a_season_is_read_wherever_it_stands(
+        before in prop::collection::vec("[a-z]{1,8}", 0..3),
+        after in prop::collection::vec("[a-z]{1,8}", 0..3),
+        n in 1u32..40,
+        ordinal in any::<bool>(),
+    ) {
+        prop_assume!(!before.iter().chain(after.iter()).any(|w| w == "season"));
+        let s = if ordinal {
+            let suffix = match (n % 100, n % 10) {
+                (11..=13, _) => "th",
+                (_, 1) => "st",
+                (_, 2) => "nd",
+                (_, 3) => "rd",
+                _ => "th",
+            };
+            format!("{n}{suffix} Season")
+        } else {
+            format!("Season {n}")
+        };
+        let text = [before.join(" "), s, after.join(" ")].join(" ");
+        prop_assert_eq!(season_named(&text), Some(n));
+    }
+
+    /// A title that names a season is judged by its own season, never by
+    /// its key's.
+    #[test]
+    fn a_title_naming_a_season_is_never_judged_by_its_key(
+        t in title(),
+        n in 1u32..12,
+        k in title(),
+        m in 2u32..12,
+        c in title(),
+    ) {
+        let row = format!("{t} Season {n}");
+        let key = format!("{k} season {m}");
+        prop_assert!(!key_season::a_season_the_key_names_and_the_hit_does_not(
+            &row,
+            &key,
+            &hit(&c, "TV", None)
+        ));
+    }
+
+    /// A hit naming the season the key names, anywhere in a title, is
+    /// never refused by the key's season.
+    #[test]
+    fn a_hit_naming_the_key_s_season_is_never_refused_by_it(
+        k in prop::collection::vec("[a-z]{1,8}", 1..4),
+        m in 2u32..12,
+        c in prop::collection::vec("[a-z]{1,8}", 1..3),
+        tail in prop::collection::vec("[a-z]{1,8}", 0..3),
+    ) {
+        prop_assume!(!k.iter().any(|w| w == "season"));
+        let key = format!("{} season {m} extras", k.join(" "));
+        let h = hit(&format!("{} Season {m} {}", c.join(" "), tail.join(" ")), "special", None);
+        prop_assert!(!key_season::a_season_the_key_names_and_the_hit_does_not("Show: Extras", &key, &h));
     }
 
     /// A row whose episode says nothing (a bare key's) is judged as one
@@ -160,7 +284,33 @@ proptest! {
                     subtype: Some((*s).to_string()),
                 })
                 .collect(),
+            search: true,
         };
         prop_assert_eq!(answer(req(e)), answer(req(0.0)));
+    }
+
+    /// A hit neither rule refuses keeps every hit only `refutes`
+    /// refuses: the search answered the row.
+    #[test]
+    fn a_standing_hit_keeps_the_refuted_ones(
+        t in title(),
+        k in title(),
+        e in 0.0f64..100.0,
+        hits in prop::collection::vec((title(), subtype(), prop::option::of(0u32..50)), 0..6),
+    ) {
+        let mut hits: Vec<KitsuAnimeRef> = hits
+            .iter()
+            .enumerate()
+            .map(|(i, (c, s, n))| KitsuAnimeRef { id: i.to_string(), ..hit(c, s, *n) })
+            .collect();
+        let standing = KitsuAnimeRef { id: "standing".into(), ..hit(&t, "TV", None) };
+        prop_assume!(!ruled_out(&t, Some(e), &standing) && !refutes(&t, &k, &standing));
+        hits.push(standing);
+        let want: Vec<String> = hits
+            .iter()
+            .filter(|h| ruled_out(&t, Some(e), h))
+            .map(|h| h.id.clone())
+            .collect();
+        prop_assert_eq!(ruled_out_ids(&t, &k, Some(e), &hits), want);
     }
 }
