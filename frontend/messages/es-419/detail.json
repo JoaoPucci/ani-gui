@@ -3,6 +3,7 @@
 	"actions_aria_label": "Acciones del título",
 	"audio_group_aria_label": "Modo de audio",
 	"audio_group_label": "Audio",
+	"audio_note_show": "En este anime",
 	"download_button": "Descargar",
 	"ep_airs": "Se emite el {date}",
 	"ep_disabled_tooltip": "Fuera del catálogo de streaming.",
