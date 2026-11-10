@@ -108,12 +108,13 @@ export interface ResumeTarget {
 	year: number | null;
 }
 
-/** Matches a `Part N` / `Cour N` / `Season N` token at the *end* of
+/** Matches a `Part N` / `Cour N` / `Season N` token (a space before the
+ *  number or none, as the backend reads it) at the *end* of
  *  the title. Anchored to end so "JoJo Part 6: Stone Ocean" doesn't
  *  trip on the mid-title "Part 6" — that "Part" refers to the parent
  *  series, not the cour. Only a trailing match is treated as a cour
  *  disambiguator. */
-const COUR_SUFFIX_RE = /(?:^|[\s:])(?:Part|Cour|Season)\s+(\d+)\s*$/i;
+const COUR_SUFFIX_RE = /(?:^|[\s:])(?:Part|Cour|Season)\s*(\d+)\s*$/i;
 
 /** Ordinal-season forms — "Foo 2nd Season", "Foo 4th Part" — where the index
  *  precedes the cour word. */
