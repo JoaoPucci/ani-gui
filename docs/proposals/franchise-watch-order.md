@@ -1160,9 +1160,12 @@ them introduces a new widget style.
     listed here." line. The walk goes outward from the show both ways,
     so titles may be missing at either end: the rows keep their
     layout but carry no numbers, and the masthead gives no title count,
-    no place for Resume and no "Start from the beginning". The page
-    never says the show is alone. The strip's link to the page gives
-    no counts either.
+    no place for Resume and no "Start from the beginning". Ways on are
+    headed "Ways to continue" without a count, and titles with no
+    number gather under no "No clear place" heading. The page never
+    says the show is alone, and its name comes from the earliest title
+    the read reached. The strip's link to the page gives no counts
+    either.
   - A forked run: the numbered path runs up to the fork, and the ways
     on stand side by side, unnumbered. A fork left with one way (the
     others start at a join or in a loop) is listed as a line.
@@ -1574,8 +1577,8 @@ The third round revises the strip's footer only.
   lifts.
 - **No poster.** A franchise none of whose entries has a poster shows
   three blank frames in the same fan, the front one carrying the
-  number of entries the franchise page lists, upright, in the strip's
-  numeral face. The posters the stack fans are only entries that have
+  number of entries the franchise page lists (none for a franchise
+  read only in part), upright, in the strip's numeral face. The posters the stack fans are only entries that have
   one, and a poster that fails to load is drawn as a blank frame, so
   a missing image never leaves an empty card among real ones.
 - **The whole link is the target.** The link's padding is the area a
