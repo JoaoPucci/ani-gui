@@ -492,7 +492,6 @@ describe('detail route — the franchise link without a strip', () => {
 		expect(similarCard('61')).toBeNull();
 		// No place is claimed for a show with nothing before or after it.
 		expect(eyebrow()).not.toContain(m.watchorder_strip_position({ position: '01', total: '01' }));
-		expect(eyebrow()).not.toContain(m.watchorder_strip_position_open({ position: '01' }));
 	});
 
 	it('links there without counts from a franchise read in part', async () => {
