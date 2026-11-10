@@ -45,6 +45,7 @@ pub struct LaunchArgs {
     /// Title shown in the player window's titlebar.
     pub title: Option<String>,
     /// Player command, e.g. `"mpv"`. Caller resolves this from settings.
+    /// Blank runs the type's standard program ([`player_program`]).
     pub player_command: String,
     /// Which player flag syntax to use. Old payloads without this
     /// field decode as `Mpv` so existing clients keep working.
@@ -145,14 +146,29 @@ pub fn open_external_player(args: &LaunchArgs) -> Result<()> {
     })
 }
 
-/// The program a launch runs: the command the user configured, or
-/// none when it is blank.
+/// The program a launch runs: the command the user configured, or,
+/// when it is blank, the type's standard program. A blank Custom
+/// command runs nothing: Custom has no standard program.
 #[must_use]
-pub fn player_program(command: &str, _kind: ExternalPlayerKind) -> Option<&str> {
+pub fn player_program(command: &str, kind: ExternalPlayerKind) -> Option<&str> {
     if command.trim().is_empty() {
-        None
+        kind.standard_program()
     } else {
         Some(command)
+    }
+}
+
+impl ExternalPlayerKind {
+    /// The program this type runs when the user wrote no command:
+    /// its own name, found on the PATH. None for Custom.
+    #[must_use]
+    pub fn standard_program(self) -> Option<&'static str> {
+        match self {
+            Self::Mpv => Some("mpv"),
+            Self::Vlc => Some("vlc"),
+            Self::Iina => Some("iina"),
+            Self::Custom => None,
+        }
     }
 }
 

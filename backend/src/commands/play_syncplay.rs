@@ -100,7 +100,15 @@ pub(crate) fn syncplay_launch_for(
         binary,
         referer: launch.referer,
         player_kind,
-        player_binary,
+        // The program the "Open in …" item would run: a blank command
+        // is the type's standard one, and a blank Custom one is left
+        // to Syncplay's own setting.
+        player_binary: crate::commands::external_player::player_program(
+            &player_binary,
+            player_kind,
+        )
+        .unwrap_or_default()
+        .to_string(),
         subtitle_urls: launch.subtitle_urls,
         subtitles_off: launch.subtitles_off,
     }

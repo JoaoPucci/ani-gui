@@ -21,7 +21,11 @@ const BARE: Record<ExternalPlayerKind, string | null> = {
 	custom: null
 };
 
-/** The command a player type runs by its bare name; null for Custom. */
+/**
+ * The command a player type runs by its bare name; null for Custom.
+ * It is also what a blank command runs (the backend's
+ * `player_program`), so Settings shows it as the field's placeholder.
+ */
 export function bareCommand(kind: ExternalPlayerKind): string | null {
 	return BARE[kind];
 }

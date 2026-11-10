@@ -23,7 +23,7 @@
 	import { failed, landed, type ErrorBlock } from '$lib/settings/error-block';
 	import { describeError } from '$lib/play/error-copy';
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
-	import { commandAfterKindChange } from '$lib/settings/player-command';
+	import { bareCommand, commandAfterKindChange } from '$lib/settings/player-command';
 	import { DOWNLOAD_QUALITIES, downloadQuality } from '$lib/download/download-quality';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
 	import { applyLocale } from '$lib/settings/apply-locale';
@@ -140,6 +140,9 @@
 		{ key: 'iina' },
 		{ key: 'custom' }
 	];
+	// The program a blank command runs: the selected type's own
+	// (mpv, vlc, iina). Custom has none.
+	const standardProgram = $derived(cfg ? bareCommand(cfg.external_player_kind) : null);
 	function setExternalPlayerKind(kind: ExternalPlayerKind) {
 		if (!cfg) return;
 		// The command follows the type while it is the previous type's
@@ -366,10 +369,15 @@
 				<div class="field-label">
 					<span class="field-key">{m.settings_field_external_player_key()}</span>
 					<span class="field-hint">
-						{m.settings_field_external_player_hint_prefix({
-							button: externalOpenLabel(cfg.external_player_kind)
-						})}<code>{m.settings_field_external_player_default()}</code
-						>{m.settings_field_external_player_hint_suffix()}
+						{#if standardProgram}
+							{m.settings_field_external_player_hint_prefix({
+								button: externalOpenLabel(cfg.external_player_kind)
+							})}<code>{standardProgram}</code>{m.settings_field_external_player_hint_suffix()}
+						{:else}
+							{m.settings_field_external_player_hint_custom({
+								button: externalOpenLabel(cfg.external_player_kind)
+							})}
+						{/if}
 					</span>
 				</div>
 				<div class="player-binary-row">
@@ -378,7 +386,7 @@
 						type="text"
 						value={cfg.external_player}
 						oninput={(e) => setExternalPlayer((e.currentTarget as HTMLInputElement).value)}
-						placeholder={m.settings_field_external_player_default()}
+						placeholder={standardProgram ?? ''}
 						spellcheck="false"
 						autocomplete="off"
 						aria-label={m.settings_field_external_player_key()}
