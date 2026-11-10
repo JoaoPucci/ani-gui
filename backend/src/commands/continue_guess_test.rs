@@ -507,7 +507,7 @@ fn a_hit_numbering_the_row_s_movie_is_not_another() {
 // — A recap ————————————————————————————————————————————————————
 
 #[test]
-fn a_row_naming_no_recap_rules_out_a_recap() {
+fn a_row_naming_no_recap_refutes_a_recap() {
     // hianime's "Haikyu!! Movie: Battle of the Garbage Dump" brings back
     // the fourth recap movie alone.
     let mut concept = titled(
@@ -582,7 +582,7 @@ fn a_season_is_named_anywhere_in_the_words() {
 }
 
 #[test]
-fn a_key_naming_a_season_the_title_does_not_rules_out_a_hit_naming_none() {
+fn a_key_naming_a_season_the_title_does_not_refutes_a_hit_naming_none() {
     // hianime's "Jujutsu Kaisen: Specials" is
     // `jujutsu-kaisen-season-2-recaps`; Kitsu's search for the title
     // brings back the New Year's Special, the third season and a movie.
@@ -653,7 +653,7 @@ fn a_title_naming_a_season_is_not_judged_by_its_key() {
 }
 
 #[test]
-fn a_key_naming_the_first_season_rules_nothing_out() {
+fn a_key_naming_the_first_season_refutes_nothing() {
     assert!(!refutes(
         "Show: Extras",
         "show season 1 extras",
