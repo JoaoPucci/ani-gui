@@ -13,7 +13,7 @@ const { EventEmitter } = require("node:events");
 const fc = require("fast-check");
 
 const { SPLASH_PAGE, SPLASH_SHOW_WAIT_MS, lastSplashState, splashController, splashPageQuery } = require("./splash.cjs");
-const { SPLASH_FLASH_MS, SPLASH_STUCK_MS, STUCK_CALL } = require("./splash-stuck.cjs");
+const { SPLASH_FLASH_MS, SPLASH_RELOADS, SPLASH_STUCK_MS, STUCK_CALL } = require("./splash-stuck.cjs");
 const { APP_READY_CHANNEL, appReadyBound, appReadyWaiter, revealGate } = require("./app-window.cjs");
 const { splashWords } = require("./splash-progress.cjs");
 const { messagesFor } = require("./main-messages.cjs");
@@ -96,7 +96,7 @@ function stuckWindow() {
 
 /** A controller over a fresh stuckWindow, on a mocked clock, opened
  *  and (unless `paint` is false) painted at `paintAt`. */
-async function stuckSplash(t, { paintAt = 0, paint = true, onRestart = () => {}, focused = false } = {}) {
+async function stuckSplash(t, { paintAt = 0, paint = true, onRestart = () => {}, focused = false, resting = false } = {}) {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let now = 0;
   const win = stuckWindow();
@@ -118,7 +118,7 @@ async function stuckSplash(t, { paintAt = 0, paint = true, onRestart = () => {},
   });
   splash.show();
   win.emit("ready-to-show");
-  splash.motionPreference(false);
+  splash.motionPreference(resting);
   const later = async (ms) => {
     for (let left = ms; left > 0; left -= 250) {
       const step = Math.min(250, left);
@@ -129,7 +129,7 @@ async function stuckSplash(t, { paintAt = 0, paint = true, onRestart = () => {},
   };
   if (paint) {
     await later(paintAt);
-    win.paint(false);
+    win.paint(resting);
     await flush();
   }
   return {
@@ -457,6 +457,42 @@ test("a splash whose page crashes is reloaded, and a stuck one offers its choice
   win.choose("quit");
   await flush();
   assert.equal(splash.dismissed(), true);
+});
+
+test("a splash page that keeps crashing is reloaded a bounded number of times", async (t) => {
+  const { win, logs } = await stuckSplash(t);
+  for (let i = 0; i < 6; i++) win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  assert.equal(win.calls.filter((c) => c === "reload").length, SPLASH_RELOADS);
+  assert.ok(logs.some((l) => l.includes("not reloaded again")));
+});
+
+test("a splash page that exited cleanly or was killed is not reloaded", async (t) => {
+  for (const reason of ["clean-exit", "killed"]) {
+    const { splash, win } = await stuckSplash(t);
+    win.webContents.emit("render-process-gone", {}, { reason });
+    assert.ok(!win.calls.includes("reload"), reason);
+    splash.close();
+    t.mock.timers.reset();
+  }
+});
+
+test("a reloaded splash page is told to move again, or to rest, as it was", async (t) => {
+  for (const resting of [false, true]) {
+    const { splash, win } = await stuckSplash(t, { resting });
+    const starts = () => win.calls.filter((c) => c.startsWith("js:") && c.includes("classList.add(")).length;
+    const before = starts();
+    win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+    win.webContents.emit("did-finish-load");
+    await flush();
+    const told = win.calls.filter((c) => c.startsWith("js:") && c.includes("classList.add(")).at(-1);
+    assert.equal(starts(), before + 1, String(resting));
+    assert.match(told, resting ? /add\('reduced'\)/ : /add\('shown'\)/);
+    // Only the start: not a second paint.
+    assert.doesNotMatch(told, /requestAnimationFrame/);
+    assert.equal(lastSplashState().shown, true);
+    splash.close();
+    t.mock.timers.reset();
+  }
 });
 
 test("a splash page that crashes once the boot is past the splash is left alone", async (t) => {
