@@ -23,7 +23,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { groupEmpty } from "../lib/own-group.cjs";
+import { groupEmpty, statFields } from "../lib/own-group.cjs";
 import { appInfo, emptyHistory, topRated, trending } from "./fixtures/kitsu";
 import { appWindow, launchPackagedApp, packagedBinary, routeContext, stopApp } from "./launch";
 
@@ -75,8 +75,16 @@ async function busWithSilentSecretService(dir: string) {
   const daemon: ChildProcess = spawn(
     "dbus-daemon",
     [`--config-file=${config}`, "--nofork", "--print-address=1"],
-    { stdio: ["ignore", "pipe", "inherit"], detached: true },
+    { stdio: ["ignore", "pipe", "pipe"], detached: true },
   );
+  // The bus logs each activation with the pid of the connection that
+  // asked for it: the process that is waiting on the keyring, as the
+  // bus itself reports it.
+  let log = "";
+  daemon.stderr!.on("data", (chunk) => {
+    log += chunk;
+    process.stderr.write(chunk);
+  });
   const address = await new Promise<string>((resolve, reject) => {
     let out = "";
     daemon.once("error", reject);
@@ -88,6 +96,13 @@ async function busWithSilentSecretService(dir: string) {
   });
   return {
     address,
+    /** The pids that asked this bus for the secret service. */
+    secretServiceRequesters: (): number[] =>
+      [
+        ...log.matchAll(
+          /Activating service name='org\.freedesktop\.secrets' requested by '[^']*' \(uid=\d+ pid=(\d+)/g,
+        ),
+      ].map((m) => Number(m[1])),
     // Only while the daemon is unreaped: its group id is then still the
     // group this spec created (lib/own-group.cjs explains why).
     stop: () => {
@@ -169,9 +184,18 @@ test("a secret service that never answers keeps neither the window nor the first
     // Nothing gave up on the saved sign-in.
     expect(fs.readFileSync(path.join(tokens, "anilist.bin"))).toEqual(saved);
 
-    // The helper still waiting on the keyring (the read the toast is
-    // about) goes with the app. It runs in the app's process group, which
-    // Playwright created: once the app has quit, nothing is left there.
+    // One process asked the bus for the keyring: a helper of the app's,
+    // not its main process, in the process group Playwright created for
+    // the app.
+    const asked = bus.secretServiceRequesters();
+    expect(asked.length).toBe(1);
+    const [helper] = asked;
+    expect(helper).not.toBe(pid);
+    const stat = statFields(fs.readFileSync(`/proc/${helper}/stat`, "utf8"));
+    expect(stat?.pgrp).toBe(pid);
+
+    // The helper still waiting on the keyring goes with the app: once the
+    // app has quit, nothing is left in its group, the helper included.
     await app.close();
     await expect.poll(() => groupEmpty(pid), { timeout: 10_000 }).toBe(true);
   } finally {
