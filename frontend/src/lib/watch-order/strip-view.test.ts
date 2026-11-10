@@ -31,9 +31,15 @@ describe('stripView', () => {
 
 describe('emptyColumn', () => {
 	it('says the run starts or ends, or that nothing follows a side story', () => {
-		expect(emptyColumn(stripView(run('bleach'), '244', 'linked'), 'before')).toBe('first');
-		expect(emptyColumn(stripView(run('bleach'), '49444', 'linked'), 'after')).toBe('last');
-		expect(emptyColumn(stripView(run('jojo'), '12064', 'linked'), 'after')).toBe('side_end');
+		expect(emptyColumn(stripView(run('bleach'), '244', 'linked'), 'before', true)).toBe('first');
+		expect(emptyColumn(stripView(run('bleach'), '49444', 'linked'), 'after', true)).toBe('last');
+		expect(emptyColumn(stripView(run('jojo'), '12064', 'linked'), 'after', true)).toBe('side_end');
+	});
+
+	it('says nothing in an empty column of a franchise read in part: entries may be missing there', () => {
+		expect(emptyColumn(stripView(run('bleach'), '244', 'linked'), 'before', false)).toBeNull();
+		expect(emptyColumn(stripView(run('bleach'), '49444', 'linked'), 'after', false)).toBeNull();
+		expect(emptyColumn(stripView(run('jojo'), '12064', 'linked'), 'after', false)).toBeNull();
 	});
 });
 

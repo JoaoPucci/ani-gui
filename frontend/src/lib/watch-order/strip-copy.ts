@@ -26,14 +26,17 @@ export function columnKeyText(key: ColumnKey): string {
 
 /**
  * The line under a key where a column holds several entries: a join or
- * a fork. A side story's several parents are neither, and get none.
+ * a fork. A side story's several parents are neither, and get none, and
+ * a franchise read in part (`complete` false) gets none: its count may
+ * be short.
  */
 export function columnCountText(
 	kind: 'run' | 'side',
 	side: 'before' | 'after',
-	count: number
+	count: number,
+	complete: boolean
 ): string | null {
-	if (kind === 'side' || count < 2) return null;
+	if (kind === 'side' || count < 2 || !complete) return null;
 	return side === 'before'
 		? m.watchorder_strip_join({ count })
 		: m.watchorder_strip_ways({ count });
@@ -56,6 +59,8 @@ export function captionText(caption: StripCaption): string {
 			});
 		case 'numeral':
 			return m.watchorder_strip_position_open({ position: numeral(caption.position) });
+		case 'partial':
+			return '';
 		case 'side':
 			return m.watchorder_strip_side_story();
 		case 'cycle':

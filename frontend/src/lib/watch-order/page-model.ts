@@ -18,6 +18,8 @@ import type { Progress, WatchEntry, WatchRun } from './types';
 export type StripCaption =
 	| { readonly kind: 'position'; readonly position: number; readonly total: number }
 	| { readonly kind: 'numeral'; readonly position: number }
+	/** A run member's place in a franchise read in part: nothing about it is sure. */
+	| { readonly kind: 'partial' }
 	| { readonly kind: 'side' }
 	| { readonly kind: 'cycle'; readonly count: number }
 	| { readonly kind: 'branch' };
@@ -26,6 +28,8 @@ export interface WatchOrderPage {
 	readonly order: WatchOrder;
 	readonly run: WatchRun;
 	readonly view: StripView;
+	/** Whether the franchise was read whole: see `StripModel.complete`. */
+	readonly complete: boolean;
 	readonly caption: StripCaption;
 	/** "05 of 09" in the masthead eyebrow: only where the run is one line. */
 	readonly eyebrow: { readonly position: number; readonly total: number } | null;
@@ -56,9 +60,16 @@ export function settledOrder(
 	return failed ? 'linked' : null;
 }
 
-/** The caption for a view; `loop` is the size of the cycle `view` sits in, if any. */
-export function captionOf(view: StripView, loop: number): StripCaption {
+/**
+ * The caption for a view; `loop` is the size of the cycle `view` sits
+ * in, if any. `complete` is false for a franchise read in part: its
+ * walk may have missed entries on either side of this one, so no
+ * number, fork or loop size is sure, and a run member's caption is
+ * `partial`.
+ */
+export function captionOf(view: StripView, loop: number, complete: boolean): StripCaption {
 	if (view.kind === 'side') return { kind: 'side' };
+	if (!complete) return { kind: 'partial' };
 	if (view.position !== null && view.total !== null)
 		return { kind: 'position', position: view.position, total: view.total };
 	if (view.position !== null) return { kind: 'numeral', position: view.position };
@@ -82,14 +93,15 @@ export function watchOrderPage(
 ): WatchOrderPage | null {
 	const strip = stripFor(data.franchise, id, order);
 	if (!strip) return null;
-	const { run, view } = strip;
+	const { run, view, complete } = strip;
 	const progress = progressFromHistory(data.rows, run.entries);
 	const watching = watchingFor(run, progress, id, view, order);
-	const caption = captionOf(view, loopSize(run, id, order));
+	const caption = captionOf(view, loopSize(run, id, order), complete);
 	return {
 		order,
 		run,
 		view,
+		complete,
 		caption,
 		eyebrow:
 			caption.kind === 'position' ? { position: caption.position, total: caption.total } : null,

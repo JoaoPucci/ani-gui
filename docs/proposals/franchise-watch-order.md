@@ -1003,11 +1003,14 @@ them introduces a new widget style.
 - **Placement.** The strip comes right after the masthead, above the
   synopsis, under its own eyebrow ("Watch order"), as what comes
   before this entry, its position ("05"; a total, "of 05", only for a
-  run with no fork, join or cycle) and what comes after (the
-  maintainer chose this arrangement over a rail of the whole run;
+  run with no fork, join or cycle; neither for a franchise read only
+  in part, as the list of missing data below says) and what comes
+  after (the maintainer chose this arrangement over a rail of the
+  whole run;
   "The strip, second round" below has its layout). The
   masthead's eyebrow gains the position in its value
-  slot ("TV · Finished · 05 of 09"), only for a run that is one line:
+  slot ("TV · Finished · 05 of 09"), only for a run that is one line
+  and read whole:
   a bare "05" there reads as nothing in particular. The reason
   for this spot: "where am I, and did I miss something" is answered
   before choosing an episode, not after scrolling past them. The strip
@@ -1066,6 +1069,9 @@ them introduces a new widget style.
     neighbours like any other, without a position number.
   - An unaired entry: a card with its date in the meta line ("Coming
     January 2027") and no episode count.
+  - A franchise read only in part: no position, no total, no fork or
+    loop caption, no join or fork count, and blank empty columns (see
+    "Missing data" under Phase 0's watch-order strip, below).
 
 ### The "Up next" card (player and Continue Watching)
 
@@ -1299,6 +1305,12 @@ The rules below hold on every surface:
   yet" in the empty column; a side story's end reads the same as the
   last entry's. Unknown date: "Date not announced" in place of the
   year and count. An entry the provider lacks looks like any other.
+  A franchise read only in part (the walk reached its bound, or a
+  listing came back cut short) may be missing entries on either side
+  of the show, so the strip makes no claim that needs the whole: no
+  position, in the strip or the masthead, no total, no fork or loop
+  caption, no join or fork count, and an empty column stays blank. A
+  side story keeps its caption.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
   keys page it); every card and tile is a link with the poster card's
   bone focus ring; the entry being viewed is not a link. The line for
@@ -1316,9 +1328,12 @@ The rules below hold on every surface:
 - **States.** One aired next entry: a link to its page. Several (a
   fork): "Ways to continue" over one row per branch. One not yet
   aired: "Next, when it airs", its date or "Date not announced", and
-  no link. None: no card. The mockup showed the card from the start
-  of a last episode, so a screenshot could catch it; the player shows
-  it once the video ends.
+  no link. None: no card. A franchise read only in part (the walk
+  reached its bound, or a listing came back cut short) also gets no
+  card, since the entry that really comes next may be missing from
+  it. The mockup showed the card from the start of a last episode, so
+  a screenshot could catch it; the player shows it once the video
+  ends.
 - **Keyboard and screen readers.** The card never takes focus; Esc
   dismisses it while it has focus; the dismiss button is its own tab
   stop. The announcement is written into a polite live region after
@@ -1334,6 +1349,10 @@ The rules below hold on every surface:
 - **Placement.** The hand-off takes the finished entry's place in the
   rail; that entry's own card is not shown beside it. Once the next
   entry has a history row of its own, the hand-off gives way to it.
+  A row counts for the entry it recorded and for the entry its card
+  shows, which differ when Kitsu has deleted the recorded entry and
+  the row was matched again. A franchise read only in part gives no
+  hand-off, as it may be missing the entry that really comes next.
 - **Truncation.** See "On Continue Watching" above: the sequel's
   whole title gets the two-line row.
 
@@ -1423,9 +1442,10 @@ variant below is one of the switch's options.
   so the three keys share one baseline whatever sits under them, and
   the centre's two hairlines run through all three rows. An empty side
   keeps its column, drops its key and says why it is empty ("The story
-  starts here", "Nothing after this yet"), so the numeral does not
-  move at either end of a run. The centre column stays at every window
-  width; the first round hid it below 1100 px.
+  starts here", "Nothing after this yet"; blank for a franchise read
+  in part), so the numeral does not move at either end of a run. The
+  centre column stays at every window width; the first round hid it
+  below 1100 px.
 - **The band.** The strip sits on one faint band: the page's own ink,
   one step up (`--ink-050`), at 72 % opacity, with the card corner
   radius. No border, blur, shadow or gradient. Its footer, under a
@@ -1518,7 +1538,8 @@ The maintainer answered the second round's six questions:
    repeat "Similar titles"; what that row does with a franchise's side
    stories is a separate discussion.
 5. **No "of N" at forks, joins and loops** stays. In "As released"
-   order every run is one line, and the strip says "N of total" there:
+   order every run is one line, and the strip says "N of total" there
+   (for a franchise read whole; see "Missing data" above):
    *Nisemonogatari* is "02 of 16", and *Off & Monster Season Shin
    Episode*, which has no date and sorts last, "16 of 16".
 6. **The franchise page's masthead** takes its artwork from the entry
