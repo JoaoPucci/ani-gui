@@ -271,8 +271,9 @@ describe('franchise page', () => {
 		expect(
 			rail(m.watchorder_franchise_recaps())?.querySelector('a[href="/anime/90"]')
 		).not.toBeNull();
-		expect(button(m.watchorder_franchise_recaps_show())).toBeUndefined();
-		expect(button(m.watchorder_franchise_recaps_hide())).toBeUndefined();
+		expect(
+			rail(m.watchorder_franchise_recaps())!.querySelector('button[aria-expanded]')
+		).toBeNull();
 	});
 
 	it('leaves out the rails the franchise has nothing for', async () => {
