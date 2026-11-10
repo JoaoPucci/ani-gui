@@ -24,12 +24,13 @@
 	import { refillEpisodes, refilledImages } from '$lib/refill/apply';
 	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
+	import StripFranchiseLink from '$lib/watch-order/StripFranchiseLink.svelte';
 	import StripTrio from '$lib/watch-order/StripTrio.svelte';
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
 	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { localDay } from '$lib/watch-order/entry';
 	import { numeral } from '$lib/watch-order/meta';
-	import { settledOrder, watchOrderPage } from '$lib/watch-order/page-model';
+	import { franchiseLinkOnly, settledOrder, watchOrderPage } from '$lib/watch-order/page-model';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
@@ -1413,11 +1414,17 @@
 	const watchModel = $derived(
 		watchOrderData && watchOrder ? watchOrderPage(watchOrderData, id, watchOrder) : null
 	);
+	// A show with no strip whose franchise page still lists more than
+	// the show (its films, side stories, recaps) gets the strip's link
+	// to that page on its own.
+	const watchLink = $derived(
+		watchOrderData && watchOrder && !watchModel ? franchiseLinkOnly(watchOrderData, id) : null
+	);
 	// "Similar titles" waits for the strip's reads, so it never shows a
 	// card the strip then takes away.
 	const similarShown = $derived(
 		watchOrderData && watchOrder
-			? (similar ?? []).filter((s) => !watchModel?.similarHidden.has(s.id))
+			? (similar ?? []).filter((s) => !(watchModel ?? watchLink)?.similarHidden.has(s.id))
 			: []
 	);
 
@@ -2018,6 +2025,10 @@
 			{#if watchModel}
 				<div class="watch-order">
 					<StripTrio model={watchModel} {id} today={watchToday} />
+				</div>
+			{:else if watchLink}
+				<div class="watch-order watch-order-link">
+					<StripFranchiseLink run={watchLink.run} {id} complete={watchLink.complete} />
 				</div>
 			{/if}
 
@@ -3646,6 +3657,14 @@
 	     (--strip-pad = --space-8) so the row aligns with the page rhythm. */
 	.watch-order {
 		margin-block-start: var(--space-7);
+	}
+	/* The franchise link without a strip: on the page's text column,
+	   its hover plate reaching a little past it as the strip's band does. */
+	.watch-order-link {
+		padding-inline: var(--space-8);
+	}
+	.watch-order-link > :global(.stack) {
+		margin-inline-start: calc(-1 * var(--space-3));
 	}
 	.similar {
 		margin-block-start: var(--space-8);

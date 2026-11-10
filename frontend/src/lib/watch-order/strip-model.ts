@@ -77,7 +77,7 @@ export interface StripModel {
 }
 
 /** Whether `id`'s strip would show anything: a run beyond `id` itself, or parent stories. */
-function hasStrip(run: WatchRun, id: string): boolean {
+export function hasStrip(run: WatchRun, id: string): boolean {
 	if (run.parents[id] !== undefined) return true;
 	return run.entries.length > 1 && run.entries.some((e) => e.id === id);
 }

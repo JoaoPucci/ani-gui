@@ -1066,6 +1066,12 @@ them introduces a new widget style.
 - **When data is missing.**
   - No relations, or Kitsu unreachable: no strip, no position in the
     eyebrow, and no empty state. The page looks as it does today.
+  - Nothing before or after the show, but the franchise page lists
+    other titles beside it (films, other versions, side stories or
+    recaps): no strip, and the strip's franchise link stands on its
+    own under the hero, with the same counts (none for a franchise
+    read in part). "Similar titles" leaves out what that page lists,
+    as it does beside a strip.
   - An entry the provider lacks: shown like any other (decided in
     option b).
   - A forked run (link order only): the "next" position holds the
@@ -1317,7 +1323,9 @@ The rules below hold on every surface:
   Semi-Final*, which no prequel reaches, has no number rather than a
   second "01". The key line is reserved on every card, so titles share
   one baseline.
-- **Missing data.** No run: no strip, no position in the masthead.
+- **Missing data.** No run: no strip, no position in the masthead;
+  where the franchise page still lists titles beside the show, its
+  link stands on its own.
   First or last entry: "The story starts here", "Nothing after this
   yet" in the empty column; a side story's end reads the same as the
   last entry's. Unknown date: "Date not announced" in place of the

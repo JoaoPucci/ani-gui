@@ -3,14 +3,15 @@
  * reading: the strip itself, its caption, the masthead eyebrow's
  * position, each tile's progress, the "You're watching" card, and the
  * titles "Similar titles" leaves out because the franchise page the
- * strip links to lists them.
+ * strip links to lists them. A show with no strip may still get the
+ * strip's link to that page on its own (`franchiseLinkOnly`).
  * The page and the strip component only hand these on.
  */
 import type { WatchOrder } from './by-start';
 import type { WatchOrderData } from './loader';
 import { loopSize } from './order';
 import { progressFromHistory } from './progress';
-import { stripFor } from './strip-model';
+import { hasStrip, runOf, stripFor } from './strip-model';
 import { watchingFor, type StripView } from './strip-view';
 import type { Progress, WatchEntry, WatchRun } from './types';
 
@@ -125,8 +126,19 @@ export interface FranchiseLink {
 	readonly similarHidden: ReadonlySet<string>;
 }
 
-/** The franchise link the page shows on its own, or null. */
+/**
+ * The franchise link the page shows on its own: where `id` has no
+ * strip (nothing before or after it, no parent story) but the
+ * franchise page would list titles beside it, such as films, other
+ * versions, side stories or recaps. Null where the strip shows, which
+ * carries the link itself, and where the franchise page would list the
+ * show alone, read whole or in part.
+ */
 export function franchiseLinkOnly(data: WatchOrderData, id: string): FranchiseLink | null {
-	void [data, id];
-	return null;
+	if (data.franchise === null || data.franchise.anchor !== id) return null;
+	const run = runOf(data.franchise);
+	if (run === null || hasStrip(run, id)) return null;
+	const rest = restOfFranchise(run, id);
+	if (rest.size === 0) return null;
+	return { run, complete: data.franchise.complete, similarHidden: rest };
 }
