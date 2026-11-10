@@ -187,6 +187,76 @@ fn a_version_named_only_from_the_other_side_is_the_one_miss() {
     assert_eq!(both(&c, "1"), (FirstHop::Strip, FirstHop::Link));
 }
 
+/// A spin-off that started before the show, names the show back as its
+/// parent story and names more beneath it is the show's parent: the
+/// walk takes its run, and the strip comes. The show's listing calls it
+/// only a side story.
+#[test]
+fn an_earlier_bigger_side_story_naming_the_show_back_foretells_the_strip() {
+    // 1 started first and names more beneath it (3 and 4) than 2 does (1).
+    let mut c = with(&[("1", "TV"), ("2", "TV"), ("3", "special"), ("4", "ONA")]);
+    c.rel("2", "side_story", "1")
+        .rel("1", "parent_story", "2")
+        .rel("1", "side_story", "3")
+        .rel("1", "spinoff", "4");
+    assert_eq!(both(&c, "2"), (FirstHop::Strip, FirstHop::Strip));
+}
+
+/// A parent story that started after the show and names fewer entries
+/// beneath it is refused (One Piece naming LEGO ONE PIECE): the show
+/// has no strip, and the refused parent sits beside it on the
+/// franchise page.
+#[test]
+fn a_later_smaller_parent_story_foretells_the_link() {
+    // 2 started after 1 and names one entry beneath it; 1 names two.
+    let mut c = with(&[
+        ("1", "TV"),
+        ("2", "special"),
+        ("3", "special"),
+        ("4", "ONA"),
+    ]);
+    c.rel("1", "parent_story", "2")
+        .rel("1", "side_story", "3")
+        .rel("1", "spinoff", "4")
+        .rel("2", "side_story", "1");
+    assert_eq!(both(&c, "1"), (FirstHop::Link, FirstHop::Link));
+}
+
+/// On every anchor of the walk's own regression corpus
+/// (`tests/fixtures/franchise/`), the first hop is what the walk draws.
+#[test]
+fn the_first_hop_matches_the_walk_on_the_walks_corpus() {
+    #[derive(Deserialize)]
+    struct Listings {
+        listings: BTreeMap<String, FranchiseListing>,
+        details: BTreeMap<String, FranchiseEntry>,
+    }
+    #[derive(Deserialize)]
+    struct Case {
+        anchor: String,
+    }
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("repo root")
+        .join("tests/fixtures/franchise");
+    let read = |name: &str| std::fs::read(dir.join(name)).expect("fixture");
+    let l: Listings = serde_json::from_slice(&read("listings.json")).expect("listings");
+    let cases: Vec<Case> = serde_json::from_slice(&read("cases.json")).expect("cases");
+    let cat = Catalogue {
+        entries: l.details,
+        listings: l.listings,
+    };
+    let wrong: Vec<_> = cases
+        .iter()
+        .map(|c| (c.anchor.clone(), both(&cat, &c.anchor)))
+        .filter(|(_, (hop, walked))| hop != walked)
+        .collect();
+    assert!(
+        wrong.is_empty(),
+        "first hop differs from the walk: {wrong:?}"
+    );
+}
+
 #[test]
 fn the_wire_names_are_lowercase() {
     let names: Vec<String> = [FirstHop::Strip, FirstHop::Link, FirstHop::None]

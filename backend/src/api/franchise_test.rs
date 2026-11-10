@@ -165,6 +165,21 @@ async fn first_hop_route_answers_from_the_shows_own_listing() {
     seed(&state, "1", vec![rel("sequel", &next)]);
     seed(&state, "2", vec![rel("side_story", &film)]);
     seed(&state, "3", vec![rel("character", &film)]);
+    // A show with a side story: the first hop reads its detail to know
+    // whether the side story started before it (the walk's parent check).
+    let detail = json!({
+        "id": "2", "canonical_title": "A show", "titles": {}, "abbreviated_titles": [],
+        "slug": null, "synopsis": null, "start_date": "2010-01-01", "end_date": null,
+        "episode_count": 12, "average_rating": null, "subtype": "TV", "status": "finished",
+        "age_rating": null, "popularity_rank": null, "poster_image": null, "cover_image": null
+    });
+    meta_cache_put(
+        &state.cache_pool,
+        &crate::commands::kitsu::anime_detail_key("2"),
+        &detail.to_string(),
+        3600,
+    )
+    .expect("seed detail");
     let router = crate::api::build_api_router(state);
     for (id, signal) in [("1", "strip"), ("2", "link"), ("3", "none")] {
         let r = router
