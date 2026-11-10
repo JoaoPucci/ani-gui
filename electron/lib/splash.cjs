@@ -52,6 +52,19 @@ function shownSignal(reduced) {
 /** The page the splash loads. */
 const SPLASH_PAGE = path.join(__dirname, "..", "splash", "index.html");
 
+/** Whether `url` is the splash's own page: a file URL ending in
+ *  splash/index.html. Compared by its decoded path's ending rather than
+ *  in full, so an install path's spaces, non-ASCII letters or drive
+ *  letter case cannot make the page look like somewhere else. */
+function isSplashPage(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === "file:" && /\/splash\/index\.html$/i.test(decodeURIComponent(u.pathname));
+  } catch {
+    return false;
+  }
+}
+
 /** The splash window's options. */
 function splashWindowOptions() {
   return {
@@ -387,6 +400,17 @@ function splashController({
         }
         reloads += 1;
         splash.webContents.reload();
+      });
+      // The splash is one page and stays on it: a file dropped on it, or
+      // anything else that would navigate it, is refused, and it opens
+      // no windows. A navigation that commits elsewhere anyway takes
+      // Restart and Quit with it: a loss. Its own page reloaded is not.
+      splash.webContents.on("will-navigate", (event) => event.preventDefault());
+      if (typeof splash.webContents.setWindowOpenHandler === "function") {
+        splash.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      }
+      splash.webContents.on("did-navigate", (_event, url) => {
+        if (!isSplashPage(url)) lose("left its page");
       });
       // A page that fails to load, on the first load or a reload, is a
       // splash with no way out. A load superseded by another (a reload
