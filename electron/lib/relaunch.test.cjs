@@ -56,7 +56,7 @@ test("in the AppImage, the relaunch waits for this process and then runs the App
   assert.equal(plan.env.APPIMAGE, appImageEnv.APPIMAGE);
 });
 
-test("everywhere else Electron's own relaunch starts the same binary with the same arguments", () => {
+test("everywhere else the plan is Electron's own relaunch (this binary, these arguments)", () => {
   const cases = [
     // The .deb, through its wrapper's environment and switches.
     { platform: "linux", env: { HOME: "/h" }, execPath: "/opt/ani-gui/ani-gui.bin" },

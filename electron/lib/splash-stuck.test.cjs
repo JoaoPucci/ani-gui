@@ -501,10 +501,18 @@ test("a page that never says it rendered is never revealed: the splash stays, st
   win.choose("quit");
   await flush();
   assert.equal(dismissed(), 1);
-  // A word that comes now reveals nothing: the launch is cancelled.
+  // A word that comes now opens the gate, but the reveal is cancelled
+  // (revealMaximized's `cancelled`, main.js).
   ipc.emit(APP_READY_CHANNEL, { sender: contents });
   await later(1_000);
   assert.equal(splash.dismissed(), true);
+  const revealed = [];
+  const { revealMaximized } = require("./splash.cjs");
+  revealMaximized(
+    { isDestroyed: () => false, maximize: () => revealed.push("maximize"), show: () => revealed.push("show") },
+    { cancelled: () => splash.dismissed(), onMapped: () => {}, afterShow: () => {} },
+  );
+  assert.deepEqual(revealed, []);
 });
 
 // Every order of paint, render and click, on the clock.

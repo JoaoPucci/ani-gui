@@ -201,8 +201,18 @@ test('a first page that never says it rendered: the splash offers Restart and Qu
 		await splash.keyboard.press('Tab');
 		expect(await focusedAct(splash)).toBe('quit');
 		await splash.keyboard.press('Escape');
-		await splash.waitForTimeout(1_000);
+		// Long enough to be past 15 s from the app window's creation too,
+		// which came after the paint.
+		await splash.waitForTimeout(4_000);
 		expect(ours(pid, binary)).toBe(true);
+		// Still the stuck splash, and the app's window still hidden, well
+		// past the 15 s from the window's creation that used to reveal it.
+		expect(await windows(app)).toEqual(
+			expect.arrayContaining([
+				{ splash: true, visible: true, onTop: false },
+				{ splash: false, visible: false, onTop: false }
+			])
+		);
 		expect(await windows(app)).toHaveLength(2);
 
 		// Enter on Quit: the launch ends as closing the splash ends it.
@@ -263,6 +273,9 @@ test('Restart, in the app’s language, starts the app again: this process exits
 	} finally {
 		await stopOurs(relaunched, binary);
 		await closeLaunched(app, pid, binary);
+		// A relaunch that took the lock after the poll gave up is still
+		// this test's: the lock in its own profile names it.
+		await stopOurs(lockHolder(config), binary);
 		fs.rmSync(tmp, { recursive: true, force: true });
 	}
 });
