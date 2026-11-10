@@ -9,8 +9,8 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} título",
-				"countPlural=*": "{count} títulos"
+				"countPlural=one": "{count} anime",
+				"countPlural=*": "{count} animes"
 			}
 		}
 	],
@@ -23,14 +23,14 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} título vinculado, ordem incerta",
-				"countPlural=*": "{count} títulos vinculados, ordem incerta"
+				"countPlural=one": "{count} anime vinculado, ordem incerta",
+				"countPlural=*": "{count} animes vinculados, ordem incerta"
 			}
 		}
 	],
 	"franchise_main": "História principal",
 	"franchise_off": "Esta página é um protótipo de design. Ative os protótipos em Diagnóstico para vê-la.",
-	"franchise_order_change": "Alterar em Configurações",
+	"franchise_order_change": "Alterar em Ajustes",
 	"franchise_order_note_linked": "Na ordem em que as bases de dados de anime os vinculam.",
 	"franchise_order_note_released": "Em ordem de lançamento.",
 	"franchise_recaps": "Recapitulações",

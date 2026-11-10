@@ -9,8 +9,8 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} título",
-				"countPlural=*": "{count} títulos"
+				"countPlural=one": "{count} anime",
+				"countPlural=*": "{count} animes"
 			}
 		}
 	],
@@ -23,8 +23,8 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} título enlazado, sin orden claro",
-				"countPlural=*": "{count} títulos enlazados, sin orden claro"
+				"countPlural=one": "{count} anime enlazado, sin orden claro",
+				"countPlural=*": "{count} animes enlazados, sin orden claro"
 			}
 		}
 	],
@@ -110,8 +110,8 @@
 			"declarations": ["input others", "local countPlural = others: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "Enlazado con {others} título más, sin orden claro",
-				"countPlural=*": "Enlazado con otros {others} títulos, sin orden claro"
+				"countPlural=one": "Enlazado con {others} anime más, sin orden claro",
+				"countPlural=*": "Enlazado con otros {others} animes, sin orden claro"
 			}
 		}
 	],
