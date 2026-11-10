@@ -44,9 +44,13 @@ describe('loadWatchOrder', () => {
 	});
 
 	it('asks for the franchise of the entry the page shows', async () => {
-		const franchise = vi.fn(() => Promise.resolve(FRANCHISE));
+		const franchise = vi.fn((id: string) => {
+			void id;
+			return Promise.resolve(FRANCHISE);
+		});
 		await loadWatchOrder('42', { franchise, named: () => Promise.resolve({}) });
-		expect(franchise).toHaveBeenCalledWith('42');
+		expect(franchise).toHaveBeenCalledTimes(1);
+		expect(franchise.mock.calls[0][0]).toBe('42');
 	});
 
 	it('asks for the row of every entry the franchise names, once each', async () => {
