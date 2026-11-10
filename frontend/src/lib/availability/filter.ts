@@ -93,8 +93,10 @@ export async function filterAvailable<T extends KitsuAnimeRef>(
  *  prime the cache. */
 export async function filterAvailableCacheOnly<T extends KitsuAnimeRef>(
 	items: T[],
-	mode: 'sub' | 'dub'
+	mode: 'sub' | 'dub',
+	opts: ReadOptions = {}
 ): Promise<T[]> {
+	void opts;
 	if (items.length === 0) return items;
 	const ids = items.map((i) => i.id);
 	let cached: Record<string, boolean> = {};
