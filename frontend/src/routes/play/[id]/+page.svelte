@@ -78,7 +78,7 @@
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { captionChoiceOf, storedCaption } from '$lib/play/caption-choice';
-	import { storedAudio } from '$lib/play/audio-choice';
+	import { audioFor, storedAudio } from '$lib/play/audio-choice';
 	import { carrySwitchAudio, takeSwitchAudio } from '$lib/play/switch-audio';
 	import { rememberPickMoved } from '$lib/play/caption-repick';
 	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
@@ -248,8 +248,10 @@
 	const playLink = new InPlaceLinkSession({
 		...appLinkDeps(),
 		notify: (notice) => toastStore.push(notice),
-		// The Sub or Dub the session plays in.
-		audioInForce: () => audio,
+		// The shown show's own Sub or Dub, else the one this session was
+		// switched in, else Settings — asked of the show the link was made
+		// for, whichever page is on screen when it answers.
+		audioInForce: (shown) => audioFor(shown, switchedAudio ?? playMode(config)),
 		inPlayer: true
 	});
 	// A pick saved after the viewer left is still saved, and switches to
@@ -2635,8 +2637,9 @@
 					rate: videoEl?.playbackRate ?? playbackRate
 				}
 			);
-			// No player of the pick opened: nothing takes the audio.
-			if (outcome !== 'switched') takeSwitchAudio(pick.id);
+			// The pick's player took it as it mounted; a switch that opened
+			// none, or whose navigation was overtaken, leaves nothing behind.
+			takeSwitchAudio(pick.id);
 			if (outcome === 'failed') {
 				toastStore.push({
 					kind: 'error',

@@ -25,3 +25,8 @@ export function takeSwitchAudio(showId: string): AudioMode | undefined {
 	pending = null;
 	return p !== null && p.showId === showId ? p.audio : undefined;
 }
+
+/** Test seam: forget any carried audio. */
+export function __resetSwitchAudioForTests(): void {
+	pending = null;
+}

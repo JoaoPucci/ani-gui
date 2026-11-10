@@ -45,6 +45,7 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { rememberAudio, storedAudio } from '../../src/lib/play/audio-choice';
+import { __resetSwitchAudioForTests } from '../../src/lib/play/switch-audio';
 
 /** Where the per-show Sub or Dub choices are kept ($lib/play/audio-choice). */
 const AUDIO_KEY = 'ani-gui.audio-choices';
@@ -150,6 +151,7 @@ beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	__resetPlayCacheForTests();
 	__resetHiddenRowsForTests();
+	__resetSwitchAudioForTests();
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	window.localStorage.clear();
