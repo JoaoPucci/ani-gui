@@ -83,6 +83,8 @@
 	const discovery = $derived(discoveryView(rowLoads));
 	const trendingSlot = $derived(discovery.slots[0]);
 	const topRatedSlot = $derived(discovery.slots[1]);
+	// Both rows loading or shown: what the page caption names is there.
+	const bothRowsThere = $derived(discovery.slots.every((slot) => slot.kind !== 'absent'));
 
 	// User settings — only `mode` matters here, used to scope the
 	// availability filter to the user's sub/dub preference. Settings
@@ -446,16 +448,18 @@
 				<span class="eyebrow-rule" aria-hidden="true"></span>
 				<span class="eyebrow-value">{m.search_eyebrow_value_empty()}</span>
 			</p>
-			<!-- Names both rows below, so its words go when either is not
-			     there: dropped, or both gone behind the notice. The line
-			     itself stays, so a row already shown below never moves up
-			     when the other is dropped. -->
-			<p class="eyebrow-caption">
-				{#if discovery.slots.every((slot) => slot.kind !== 'absent')}
-					{m.search_empty_caption()}
-				{:else}
-					&nbsp;
-				{/if}
+			<!-- Names both rows below, so it is hidden, from sight and from
+			     screen readers, when either is not there: dropped, or both
+			     gone behind the notice. It stays in the page with its words,
+			     so it keeps its height (wrapped or not) and a row already
+			     shown below never moves up, and the live region it sits in
+			     sees no change of text. -->
+			<p
+				class="eyebrow-caption"
+				class:caption-hidden={!bothRowsThere}
+				aria-hidden={bothRowsThere ? undefined : 'true'}
+			>
+				{m.search_empty_caption()}
 			</p>
 		{/if}
 	</section>
@@ -812,6 +816,9 @@
 		font-family: var(--font-body);
 		font-size: var(--type-meta);
 		color: var(--bone-300);
+	}
+	.eyebrow-caption.caption-hidden {
+		visibility: hidden;
 	}
 
 	/* — Grid: dense, never centered, never gappy. */
