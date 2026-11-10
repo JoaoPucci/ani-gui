@@ -210,9 +210,10 @@
 	// Which trackers' lists `watchLater` (or its failure) is the answer
 	// for. When the set the row reads changes (a sign-in read after the
 	// keyring notice, a connect, a disconnect), what is held answers for
-	// another set: the row takes it as not loaded yet, a skeleton, rather
-	// than draw the last set's list — least of all the empty one read
-	// with no sign-in — while the new one loads.
+	// another set and counts as not loaded yet: a row not on screen comes
+	// in as its skeleton, never as the empty list read with no sign-in. A
+	// row already on screen stays as it is (keepShown) until the new
+	// list lands.
 	let watchLaterFor = $state<string | null>(null);
 	// True when the most recent rail load failed (bridge/availability),
 	// as opposed to succeeding with an empty list — so a connected user
