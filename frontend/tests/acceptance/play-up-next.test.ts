@@ -194,7 +194,6 @@ async function openEpisode(options: Options = {}) {
 				? HttpResponse.json({ error: 'error.kitsu.unreachable' }, { status: 502 })
 				: HttpResponse.json(options.franchise ?? franchise())
 		),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json(options.history ?? [])),
 		// The rows the franchise's entries resume from, as the resume
 		// lookup names them.
 		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
