@@ -1185,9 +1185,10 @@ them introduces a new widget style.
   - **Recaps:** a rail like the others, under its eyebrow and count,
     shown from the start (decision 3 below).
 - **At a glance versus on hover.** Each row shows the numeral, the
-  short title, the format, the year, and the episode count or the
-  progress. The full title is the row's tooltip on hover and what a
-  screen reader reads, as on the show page's strip.
+  whole title (decision 4 below), the format, the year, and the
+  episode count or the progress. The title is also the row's tooltip
+  on hover and what a screen reader reads, as on the show page's
+  strip.
 - **Keyboard and motion.** The list is a list of links in reading
   order. There is no order switch (section 4). The page enters like the
   show page. Under reduced motion it does not
