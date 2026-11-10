@@ -7,6 +7,7 @@ import {
 	allmangaKitsuMapPlayed,
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
+	kitsuGuessRuledOut,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
 	kitsuTitleMatchGet,
@@ -26,6 +27,7 @@ vi.mock('$lib/api', () => ({
 	allmangaKitsuMapPlayed: vi.fn(),
 	kitsuAnimeBySlug: vi.fn(),
 	kitsuAnimeDetail: vi.fn(),
+	kitsuGuessRuledOut: vi.fn(),
 	kitsuResolveAllmangaShowId: vi.fn(),
 	kitsuSearch: vi.fn(),
 	kitsuTitleMatchGet: vi.fn(),
@@ -38,6 +40,7 @@ const mockedPlayed = vi.mocked(allmangaKitsuMapPlayed);
 const mockedSlug = vi.mocked(kitsuAnimeBySlug);
 const mockedDetail = vi.mocked(kitsuAnimeDetail);
 const mockedResolveAllmanga = vi.mocked(kitsuResolveAllmangaShowId);
+const mockedRuledOut = vi.mocked(kitsuGuessRuledOut);
 const mockedSearch = vi.mocked(kitsuSearch);
 const mockedGetMatch = vi.mocked(kitsuTitleMatchGet);
 const mockedPutMatch = vi.mocked(kitsuTitleMatchPut);
@@ -81,6 +84,8 @@ beforeEach(() => {
 	mockedResolveAllmanga.mockReset();
 	mockedResolveAllmanga.mockResolvedValue(null);
 	mockedSearch.mockReset();
+	mockedRuledOut.mockReset();
+	mockedRuledOut.mockResolvedValue([]);
 	mockedGetMatch.mockReset();
 	mockedPutMatch.mockReset();
 	mockedPutMatch.mockResolvedValue(undefined);
@@ -1007,5 +1012,211 @@ describe('which Continue matches a play may record', () => {
 
 		expect(got.match?.id).toBe('1');
 		expect(got.trusted).toBe(false);
+	});
+});
+
+describe('the hits a row rules out', () => {
+	const jjk = () =>
+		resolveHistoryEntry(
+			{ id: 'hianime:jujutsu-kaisen-237', ep_no: '24', title: 'Jujutsu Kaisen (TV)' },
+			null
+		);
+	const special = () => ({
+		...stubKitsu('43886', "Jujutsu Kaisen New Year's Special", 1),
+		slug: 'jujutsu-kaisen-new-year-s-special',
+		subtype: 'special'
+	});
+
+	it("asks with the row's search title, episode and show key, and the search's hits", async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([special()]);
+
+		await resolveKitsuMatch(jjk());
+
+		expect(mockedRuledOut).toHaveBeenCalledWith(
+			'Jujutsu Kaisen (TV)',
+			24,
+			[special()],
+			'hianime:jujutsu-kaisen-237',
+			true
+		);
+	});
+
+	it("sends a slug lookup's entry alone, not as a search's answer", async () => {
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:show-season-2-1', ep_no: '1', title: 'Show Season 2' },
+			null
+		);
+		const entry = { ...stubKitsu('7', 'Show Season 2', 12), slug: 'show-season-2' };
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSlug.mockResolvedValue(entry);
+
+		await resolveKitsuMatch(row);
+
+		expect(mockedRuledOut).toHaveBeenCalledWith(
+			'Show Season 2',
+			1,
+			[entry],
+			'hianime:show-season-2-1',
+			false
+		);
+	});
+
+	it('sends a stored title match alone, not as a search answer', async () => {
+		const movie = { ...stubKitsu('44212', 'Jujutsu Kaisen 0', 1), subtype: 'movie' };
+		mockedGetMatch.mockResolvedValue('44212');
+		mockedDetail.mockResolvedValue(movie);
+
+		await resolveKitsuMatch(
+			resolveHistoryEntry(
+				{ id: 'hianime:jujutsu-kaisen-0-413', ep_no: '1', title: 'Jujutsu Kaisen 0 Movie' },
+				null
+			)
+		);
+
+		expect(mockedRuledOut).toHaveBeenCalledWith(
+			'Jujutsu Kaisen 0 Movie',
+			1,
+			[movie],
+			'hianime:jujutsu-kaisen-0-413',
+			false
+		);
+	});
+
+	it('never offers a hit the row rules out, and goes on to the show key', async () => {
+		// hianime's "Jujutsu Kaisen (TV)" brings back the New Year's
+		// Special alone. The row names a series and is 24 episodes in,
+		// so the special is out, and the show key's words answer.
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([special()]);
+		mockedRuledOut.mockResolvedValue(['43886']);
+		mockedResolveAllmanga.mockResolvedValue(stubKitsu('42765', 'Jujutsu Kaisen', 24));
+
+		const got = await resolveKitsuMatch(jjk());
+
+		expect(got?.id).toBe('42765');
+		expect(mockedResolveAllmanga).toHaveBeenCalledWith('hianime:jujutsu-kaisen-237', true);
+		expect(mockedPutMatch).toHaveBeenCalledWith('Jujutsu Kaisen (TV)', 1, '42765', 'hianime', null);
+	});
+
+	it('picks among the hits the row leaves', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([special(), stubKitsu('42765', 'Jujutsu Kaisen', 24)]);
+		mockedRuledOut.mockResolvedValue(['43886']);
+
+		const got = await resolveKitsuMatch(jjk());
+
+		expect(got?.id).toBe('42765');
+		expect(mockedResolveAllmanga).not.toHaveBeenCalled();
+	});
+
+	it("passes over a slug lookup's entry the row rules out", async () => {
+		// A later season's row looks its slug up first; an entry the row
+		// rules out there goes the way of a search hit it rules out.
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:show-season-2-1', ep_no: '1', title: 'Show Season 2' },
+			null
+		);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSlug.mockResolvedValue({
+			...stubKitsu('7', 'Show Season 2 Part 2', 12),
+			slug: 'show-season-2'
+		});
+		mockedRuledOut.mockImplementation(async (_t, _e, hits) =>
+			hits.filter((h) => h.id === '7').map((h) => h.id)
+		);
+		mockedSearch.mockResolvedValue([{ ...stubKitsu('8', 'Show Season 2', 12), slug: 'show-2' }]);
+
+		const got = await resolveKitsuMatch(row);
+
+		expect(got?.id).toBe('8');
+		expect(mockedSearch).toHaveBeenCalledWith('Show Season 2');
+	});
+
+	it('rules none out when the backend cannot answer', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([special()]);
+		mockedRuledOut.mockRejectedValue(new Error('down'));
+
+		const got = await resolveKitsuMatch(jjk());
+
+		expect(got?.id).toBe('43886');
+	});
+
+	it('stores no pick the rules could not check, so the next load asks again', async () => {
+		// With the rules unanswered, this load still shows a card, but
+		// the pick is one the rules may refuse: stored as the title
+		// match, it would stand for the match's whole lifetime without
+		// the rules ever being asked again.
+		// The title-match store as the backend keeps it: what a load
+		// puts, the next load gets.
+		let stored: string | null = null;
+		mockedGetMatch.mockImplementation(async () => stored);
+		mockedPutMatch.mockImplementation(async (_t, _c, id) => {
+			stored = id;
+		});
+		mockedDetail.mockImplementation(async (id) =>
+			id === '43886' ? special() : stubKitsu(id, 'Jujutsu Kaisen', 24)
+		);
+		mockedSearch.mockResolvedValue([special()]);
+		mockedRuledOut.mockRejectedValueOnce(new Error('down'));
+
+		await resolveKitsuMatch(jjk());
+		expect(mockedPutMatch).not.toHaveBeenCalled();
+		expect(stored).toBeNull();
+
+		mockedRuledOut.mockResolvedValue(['43886']);
+		mockedResolveAllmanga.mockResolvedValue(stubKitsu('42765', 'Jujutsu Kaisen', 24));
+		const again = await resolveKitsuMatch(jjk());
+		expect(again?.id).toBe('42765');
+	});
+
+	it('passes over a stored match the row now rules out, and picks again', async () => {
+		// A match stored while the row was at its first episode can be a
+		// hit the row rules out further on: the special stands at episode
+		// 1 of "Jujutsu Kaisen (TV)" but not at 24. The stored entry goes
+		// through the rules like a search hit before it is trusted.
+		mockedGetMatch.mockResolvedValue('43886');
+		mockedDetail.mockResolvedValue(special());
+		mockedSearch.mockResolvedValue([special()]);
+		mockedRuledOut.mockResolvedValue(['43886']);
+		mockedResolveAllmanga.mockResolvedValue(stubKitsu('42765', 'Jujutsu Kaisen', 24));
+
+		const got = await resolveKitsuMatch(jjk());
+
+		expect(got?.id).toBe('42765');
+		expect(mockedRuledOut).toHaveBeenCalledWith(
+			'Jujutsu Kaisen (TV)',
+			24,
+			[special()],
+			'hianime:jujutsu-kaisen-237',
+			true
+		);
+	});
+
+	it('trusts a stored match as before when the rules cannot answer', async () => {
+		mockedGetMatch.mockResolvedValue('43886');
+		mockedDetail.mockResolvedValue(special());
+		mockedRuledOut.mockRejectedValue(new Error('down'));
+
+		const got = await resolveKitsuMatch(jjk());
+
+		expect(got?.id).toBe('43886');
+		expect(mockedSearch).not.toHaveBeenCalled();
+	});
+
+	it("stores no pick when the slug lookup's check failed", async () => {
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:show-season-2-1', ep_no: '1', title: 'Show Season 2' },
+			null
+		);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSlug.mockResolvedValue({ ...stubKitsu('7', 'Show Season 2', 12), slug: 'show-season-2' });
+		mockedRuledOut.mockRejectedValueOnce(new Error('down'));
+
+		const got = await resolveKitsuMatch(row);
+
+		expect(got?.id).toBe('7');
+		expect(mockedPutMatch).not.toHaveBeenCalled();
 	});
 });

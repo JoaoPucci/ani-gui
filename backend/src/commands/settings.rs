@@ -56,6 +56,7 @@ mod tests {
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+            flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
         }
     }
 
@@ -73,7 +74,6 @@ mod tests {
         let state = state_with_config_at(dir.path().join("config.toml"));
         let new_cfg = Config {
             mode: "dub".into(),
-            quality: "720".into(),
             external_player: "vlc".into(),
             ..Config::default()
         };

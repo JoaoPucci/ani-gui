@@ -650,3 +650,87 @@ fn a_cache_at_version_two_is_left_alone() {
     drop(pool);
     assert_eq!(commits_to(&path), before);
 }
+
+/// Every row of `sql`'s answer, each column read as text (NULL as
+/// "NULL"), in the order the query gives.
+fn rows_as_text(conn: &rusqlite::Connection, sql: &str) -> Vec<Vec<String>> {
+    let mut stmt = conn.prepare(sql).unwrap();
+    let width = stmt.column_count();
+    stmt.query_map([], |r| {
+        (0..width)
+            .map(|i| {
+                Ok(match r.get_ref(i)? {
+                    rusqlite::types::ValueRef::Null => "NULL".to_string(),
+                    rusqlite::types::ValueRef::Integer(n) => n.to_string(),
+                    rusqlite::types::ValueRef::Real(f) => f.to_string(),
+                    rusqlite::types::ValueRef::Text(t) | rusqlite::types::ValueRef::Blob(t) => {
+                        String::from_utf8_lossy(t).into_owned()
+                    }
+                })
+            })
+            .collect()
+    })
+    .unwrap()
+    .map(std::result::Result::unwrap)
+    .collect()
+}
+
+/// What an upgrade must leave alone in a cache: its migrations' history
+/// (versions, names, when each was applied and refinery's checksum of
+/// it), its schema, its `user_version`, its title matches and the
+/// meta_cache rows the launch reclaim keeps.
+fn upgrade_invariants(path: &std::path::Path) -> Vec<Vec<Vec<String>>> {
+    let conn = rusqlite::Connection::open(path).unwrap();
+    [
+        "SELECT version, name, applied_on, checksum FROM refinery_schema_history ORDER BY version",
+        "SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY type, name",
+        "PRAGMA user_version",
+        "SELECT query_norm, kitsu_id, anilist_id, fetched_at FROM title_match ORDER BY query_norm",
+        "SELECT key, body, fetched_at, ttl_seconds FROM meta_cache ORDER BY key",
+    ]
+    .iter()
+    .map(|sql| rows_as_text(&conn, sql))
+    .collect()
+}
+
+/// A cache the 0.17.0 release made (tests/fixtures/cache/) opens with
+/// this build's code, as the app's launch opens it, and its schema, its
+/// migrations' history and its rows come through unchanged: nothing is
+/// re-applied, nothing is refused as diverged, and nothing is lost.
+#[test]
+fn a_cache_the_0_17_0_code_made_opens_unchanged() {
+    use base64::Engine as _;
+    let text = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tests/fixtures/cache/metadata-0.17.0.db.b64"),
+    )
+    .expect("the fixture");
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(text.split_whitespace().collect::<String>())
+        .expect("base64");
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    std::fs::write(&path, bytes).unwrap();
+    let before = upgrade_invariants(&path);
+    assert_eq!(before[0].len(), 2, "the fixture carries both migrations");
+    assert_eq!(before[4].len(), 1, "the fixture carries a meta_cache row");
+    assert!(
+        crate::cache::families::declared(&before[4][0][0]),
+        "the fixture's meta_cache key {} is in no family this build reads, so the launch \
+         reclaim deletes it: regenerate tests/fixtures/cache/ with a key a family still holds \
+         (its MANIFEST.json says how)",
+        before[4][0][0]
+    );
+
+    let (pool, _) = open_pool_reclaiming(&path).expect("the 0.17.0 cache opens");
+    assert_eq!(
+        title_match_get(&pool, "sousou no frieren")
+            .unwrap()
+            .and_then(|m| m.kitsu_id)
+            .as_deref(),
+        Some("46474")
+    );
+    drop(pool);
+
+    assert_eq!(upgrade_invariants(&path), before);
+}

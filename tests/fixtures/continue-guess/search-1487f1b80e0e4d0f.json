@@ -1,0 +1,92 @@
+{
+ "data": [
+  {
+   "id": "49129",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Shingeki no Kyojin Movie: Kanketsu-hen - The Last Attack",
+    "titles": {
+     "en": "Attack on Titan: The Last Attack",
+     "en_jp": "Shingeki no Kyojin Movie: Kanketsu-hen - The Last Attack",
+     "ja_jp": "劇場版 進撃の巨人 完結編 THE LAST ATTACK"
+    },
+    "abbreviatedTitles": [
+     "Attack on Titan the Movie: The Last Attack"
+    ],
+    "slug": "shingeki-no-kyojin-movie-kanketsu-hen-the-last-attack",
+    "startDate": "2024-11-08",
+    "endDate": "2024-11-08",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "2984",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Rokushin Gattai GodMars",
+    "titles": {
+     "en": "Six God Combination Godmars",
+     "en_jp": "Rokushin Gattai GodMars",
+     "en_us": "God Mars",
+     "ja_jp": "六神合体ゴッドマーズ"
+    },
+    "abbreviatedTitles": [
+     "Roku Shin Gattai God Mars",
+     "Hexademonic Symbiote Godmars",
+     "Six God Union Godmarz",
+     "Six Gods Unit",
+     "Six God Combination Godmars"
+    ],
+    "slug": "rokushin-gattai-god-mars",
+    "startDate": "1981-10-02",
+    "endDate": "1982-12-24",
+    "episodeCount": 64,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7442",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan",
+    "titles": {
+     "en": "Attack on Titan",
+     "en_jp": "Shingeki no Kyojin",
+     "en_us": "Attack on Titan",
+     "ja_jp": "進撃の巨人"
+    },
+    "abbreviatedTitles": [
+     "AoT"
+    ],
+    "slug": "attack-on-titan",
+    "startDate": "2013-04-07",
+    "endDate": "2013-09-29",
+    "episodeCount": 25,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8671",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan Season 2",
+    "titles": {
+     "en": "Attack on Titan Season 2",
+     "en_jp": "Shingeki no Kyojin Season 2",
+     "ja_jp": "進撃の巨人 Season 2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "shingeki-no-kyojin-2",
+    "startDate": "2017-04-01",
+    "endDate": "2017-06-17",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

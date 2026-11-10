@@ -58,6 +58,12 @@ pub fn parse_master_variants(m3u8: &str) -> Vec<MasterVariant> {
     out
 }
 
+/// The quality that keeps the adaptive master: what the built-in
+/// player, the external players and Syncplay always ask for, each
+/// choosing among the master's levels itself. Only a download asks
+/// for another (`Config::download_quality`).
+pub const MASTER: &str = "best";
+
 /// The variant a quality setting selects, mirroring the script's
 /// `select_quality` arms: `best` takes the highest, `worst` the
 /// lowest, anything else the variant whose height matches the
@@ -116,7 +122,7 @@ pub async fn stream_url<P: Provider + ?Sized>(
             detail: "master URL did not answer with an HLS playlist".into(),
         });
     }
-    if quality == "best" {
+    if quality == MASTER {
         return Ok(master_url.to_string());
     }
     let variants = parse_master_variants(&body);
