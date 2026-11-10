@@ -71,10 +71,15 @@ export function loopText(count: number): string {
 	return m.watchorder_strip_unnumbered_cycle({ others: count - 1 });
 }
 
-/** A loop of `count` as the heading over its group of titles. */
+/**
+ * A loop of `count` as the heading over its group of titles, with no
+ * count for a franchise read in part (`complete` false), where it may
+ * be short.
+ */
 export function loopGroupText(count: number, complete: boolean): string {
-	void complete;
-	return m.watchorder_franchise_loop_group({ count });
+	return complete
+		? m.watchorder_franchise_loop_group({ count })
+		: m.watchorder_franchise_loop_group_partial();
 }
 
 /**
