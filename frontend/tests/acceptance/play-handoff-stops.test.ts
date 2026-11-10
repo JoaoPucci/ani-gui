@@ -404,5 +404,45 @@ describe('play route — an episode handed to another player stays stopped here'
 		release();
 		await new Promise((r) => setTimeout(r, 300));
 		expect(resolves()).toBe(before);
+		// The failed stream's error stands, with its Reload, for when the
+		// viewer comes back.
+		await until(() => target.querySelector('.player-error-reload') !== null, 'the Reload');
+	});
+
+	it('a pick that never landed does not carry into the next handoff', async () => {
+		const hls = await mountPlayingHls();
+		hls.emit(MANIFEST_PARSED, LEVELS);
+		await settle();
+		await handToExternal();
+		const nextButton = () =>
+			target.querySelector<HTMLButtonElement>(
+				`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
+			);
+		await until(() => nextButton()?.disabled === false, 'Next enabled');
+		nextButton()!.click();
+		await settle();
+		// The pick fails: its stream answers with an error.
+		const pick = FakeEventSource.instances.filter((e) => e.url.includes('episode=2')).at(-1)!;
+		const fail = new MessageEvent('error', { data: JSON.stringify({ kind: 'timeout' }) });
+		for (const h of pick.listeners['error'] ?? []) h(fail);
+		await until(
+			() => target.querySelector('section.player-frame.player-busy') === null,
+			'the failed switch to end'
+		);
+		// The viewer comes back by playing, then hands off again.
+		playerVideo().dispatchEvent(new Event('play'));
+		await settle();
+		await handToExternal();
+		expect(playerVideo().autoplay).toBe(false);
+
+		// A stream attaches now, behind the second handoff: the failed
+		// pick's flag must not let it play here.
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '2', kind: 'hls' });
+		await until(() => hlsInstances().length > 1, 'the next engine');
+		const next = hlsInstances()[hlsInstances().length - 1];
+		next.emit(MANIFEST_PARSED, LEVELS);
+		await settle();
+		expect(next.startLoadCalls).toBe(0);
+		expect(playerVideo().autoplay).toBe(false);
 	});
 });
