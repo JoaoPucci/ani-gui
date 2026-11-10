@@ -16,6 +16,7 @@
  * without booting Svelte.
  */
 import { describe, it, expect } from 'vitest';
+import fc from 'fast-check';
 import { createAniskipFetchTrigger } from './aniskip-fetch-trigger';
 
 describe('aniskip fetch trigger', () => {
@@ -83,7 +84,7 @@ describe('aniskip fetch trigger', () => {
 		expect(trigger.step('', 5, true)).toEqual({ kind: 'clear' });
 	});
 
-	it('stays idle when the key is incomplete and nothing was previously fetched', () => {
+	it('stays idle while the key stays incomplete', () => {
 		const trigger = createAniskipFetchTrigger();
 		expect(trigger.step('', 5, true)).toEqual({ kind: 'idle' });
 		expect(trigger.step('show-1', 0, true)).toEqual({ kind: 'idle' });
@@ -99,6 +100,27 @@ describe('aniskip fetch trigger', () => {
 	it('treats episode 0 as incomplete (aniskip episodes are 1-indexed)', () => {
 		const trigger = createAniskipFetchTrigger();
 		expect(trigger.step('show-1', 0, true)).toEqual({ kind: 'idle' });
+	});
+
+	it('clears on any episode change, even before the new length is known', () => {
+		const trigger = createAniskipFetchTrigger();
+		trigger.step('show-1', 5, true);
+		expect(trigger.step('show-1', 6, false)).toEqual({ kind: 'clear' });
+		expect(trigger.step('show-1', 6, false)).toEqual({ kind: 'idle' });
+	});
+
+	it('asks again for an episode come back to before the one in between learned its length', () => {
+		// 5 fetched, 6 opened and left before its length was known, then
+		// 5 again: its skip times were cleared on the way, so it asks.
+		const trigger = createAniskipFetchTrigger();
+		trigger.step('show-1', 5, true);
+		trigger.step('show-1', 6, false);
+		expect(trigger.step('show-1', 5, false)).toEqual({ kind: 'clear' });
+		expect(trigger.step('show-1', 5, true)).toEqual({
+			kind: 'fetch',
+			showId: 'show-1',
+			episode: '5'
+		});
 	});
 
 	it('after a clear, the next complete-key+ready step re-issues a fetch', () => {
@@ -127,5 +149,36 @@ describe('createAniskipFetchTrigger — a fractional extra', () => {
 		expect(t.step('42', 7, true)).toEqual({ kind: 'fetch', showId: '42', episode: '7' });
 		expect(t.step('42', 7.5, true)).toEqual({ kind: 'clear' });
 		expect(t.step('42', 8, true)).toEqual({ kind: 'fetch', showId: '42', episode: '8' });
+	});
+});
+
+describe('createAniskipFetchTrigger — any run of steps', () => {
+	it('asks once per stay on an episode, once its length is known, and clears on every change', () => {
+		const stepArb = fc.record({
+			show: fc.constantFrom('', 'show-1', 'show-2'),
+			episode: fc.constantFrom(0, 1, 2, 2.5),
+			ready: fc.boolean()
+		});
+		fc.assert(
+			fc.property(fc.array(stepArb, { maxLength: 30 }), (steps) => {
+				const trigger = createAniskipFetchTrigger();
+				let last: string | null | undefined = undefined;
+				let asked = false;
+				for (const { show, episode, ready } of steps) {
+					const whole = episode > 0 && Number.isInteger(episode);
+					const key = show && whole ? `${show}|${episode}` : null;
+					const changed = last !== undefined && key !== last;
+					if (changed || last === undefined) asked = false;
+					last = key;
+					const got = trigger.step(show, episode, ready);
+					if (key !== null && ready && !asked) {
+						expect(got).toEqual({ kind: 'fetch', showId: show, episode: String(episode) });
+						asked = true;
+					} else {
+						expect(got).toEqual({ kind: changed ? 'clear' : 'idle' });
+					}
+				}
+			})
+		);
 	});
 });
