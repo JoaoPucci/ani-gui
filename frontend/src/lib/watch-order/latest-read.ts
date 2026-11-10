@@ -16,10 +16,18 @@ export interface LatestRead<T> {
 }
 
 export function latestRead<T>(show: (value: T | null) => void): LatestRead<T> {
+	let latest = 0;
 	return {
 		start(read) {
-			void read().then(show);
+			const mine = ++latest;
+			show(null);
+			void read().then((value) => {
+				if (mine === latest) show(value);
+			});
 		},
-		stop() {}
+		stop() {
+			latest++;
+			show(null);
+		}
 	};
 }

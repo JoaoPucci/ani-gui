@@ -37,6 +37,7 @@
 	import { settle } from '$lib/motion/settle';
 	import UpNextCard from '$lib/watch-order/UpNextCard.svelte';
 	import { localDay } from '$lib/watch-order/entry';
+	import { latestRead } from '$lib/watch-order/latest-read';
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
 	import { settledOrder } from '$lib/watch-order/page-model';
 	import { finaleCard } from '$lib/watch-order/up-next';
@@ -1557,15 +1558,16 @@
 			atEnd: playheadOnScreen && atVideoEnd(currentTime, duration, videoEnded)
 		})
 	);
+	// One read per show; only the latest one's answer counts
+	// ($lib/watch-order/latest-read). Neither read rejects; a franchise
+	// that cannot be read means no card ($lib/watch-order/loader).
+	const upNextReads = latestRead<WatchOrderData>((w) => (upNextData = w));
 	$effect(() => {
 		const showId = id;
-		upNextData = null;
-		if (!showId) return;
-		// Neither read rejects; a franchise that cannot be read means no
-		// card ($lib/watch-order/loader).
-		void loadWatchOrder(showId, { franchise: kitsuFranchise, history: historyList }).then((w) => {
-			if (id === showId) upNextData = w;
-		});
+		if (!showId) return upNextReads.stop();
+		upNextReads.start(() =>
+			loadWatchOrder(showId, { franchise: kitsuFranchise, history: historyList })
+		);
 	});
 
 	// Auto-play next: persisted in Config.auto_play_next; mirrored as a
