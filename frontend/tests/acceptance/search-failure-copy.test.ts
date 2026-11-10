@@ -30,7 +30,7 @@ import { setLocale } from '../../src/lib/paraglide/runtime';
 const CONFIG = {
 	locale: 'en',
 	mode: 'sub',
-	quality: 'best',
+	download_quality: 'best',
 	external_player: '',
 	external_player_kind: 'mpv',
 	external_player_custom_args: '',

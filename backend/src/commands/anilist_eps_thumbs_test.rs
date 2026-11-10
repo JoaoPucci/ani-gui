@@ -233,6 +233,7 @@ fn state_with_kitsu_at(kitsu_uri: &str) -> AppState {
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     }
 }
 

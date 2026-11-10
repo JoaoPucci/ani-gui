@@ -1,0 +1,28 @@
+{
+ "data": [
+  {
+   "id": "13656",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Haikyuu!! Movie 4: Concept no Tatakai",
+    "titles": {
+     "en": "Haikyu!! The Movie: Battle of Concepts!!",
+     "en_jp": "Haikyuu!! Movie 4: Concept no Tatakai",
+     "ja_jp": "ハイキュー!! コンセプトの戦い"
+    },
+    "abbreviatedTitles": [
+     "Haikyuu!! Movie 4: Battle of Concepts",
+     "High Kyuu!! Movie 4: Haikyuu!! Movie 4: Battle of Concepts",
+     "Haikyuu!!: Karasuno Koukou VS Shiratorizawa Gakuen Koukou Recap",
+     "Haikyuu!! Recap 4"
+    ],
+    "slug": "haikyuu-movie-4-concept-no-tatakai",
+    "startDate": "2017-09-29",
+    "endDate": "2017-09-29",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

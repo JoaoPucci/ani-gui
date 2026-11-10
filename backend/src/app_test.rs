@@ -56,6 +56,12 @@ async fn build_assembles_state_from_a_staged_environment() {
     assert!(state.state_dir.starts_with(&root));
     assert!(state.image_cache_dir.is_dir(), "image cache dir created");
     assert!(state.bundled_bin.is_some(), "resource bin dir picked up");
+    // The flags store waits for the launch refresh the binary
+    // spawns rather than claiming to have settled.
+    assert!(
+        !state.flags.is_settled(),
+        "flags wait for the launch refresh"
+    );
 
     // Boot sweeps the script copy an earlier version would have
     // left in the cache root. This staged env never had one, so
@@ -87,6 +93,7 @@ fn fake_state() -> AppState {
         mal_refresh: MalRefreshState::new(),
         account_write_locks: AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     }
 }
 

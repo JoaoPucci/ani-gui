@@ -7,10 +7,13 @@
   later.
 
   Esc cancels; clicking the backdrop cancels. Confirm focuses on
-  open so Enter activates it directly.
+  open so Enter activates it directly; on close, focus goes back to
+  the control that opened the dialog if it is still there
+  ($lib/components/focus-return).
 -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
+	import { createFocusReturn } from './focus-return';
 
 	interface Props {
 		open: boolean;
@@ -49,6 +52,19 @@
 	}: Props = $props();
 
 	let confirmBtn: HTMLButtonElement | undefined = $state();
+	const focusReturn = createFocusReturn();
+
+	// Note what held focus as the dialog opens, and give it back as it
+	// closes. Pre-effect, so the note is taken before the confirm button
+	// below takes focus.
+	$effect.pre(() => {
+		if (open) {
+			const active = document.activeElement;
+			focusReturn.save(active instanceof HTMLElement ? active : null);
+		} else {
+			focusReturn.restore();
+		}
+	});
 
 	$effect(() => {
 		// Auto-focus the confirm button when the modal opens so Enter

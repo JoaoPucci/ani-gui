@@ -256,6 +256,27 @@ describe('detail — play failures render the shared copy with the override', ()
 		expect(target.textContent).not.toContain(m.play_play_failure_network());
 	});
 
+	it('a source answer the resolver could not read says so, and that an update may fix it', async () => {
+		// The provider answered with a page this version no longer
+		// reads. The detail is for the backend log; the overlay says
+		// what happened instead of the generic try-again-later.
+		useDetailHandlers();
+		await mountAndFailEpisode(
+			7,
+			JSON.stringify({
+				kind: 'parse_failed',
+				key: 'error.scraper.parse_failed',
+				detail: 'the page is not the search shape'
+			})
+		);
+		await until(
+			() => (target.textContent ?? '').includes(m.play_play_failure_unreadable()),
+			'the unreadable-answer copy on the play failure overlay'
+		);
+		expect(target.textContent).not.toContain(m.play_play_failure_generic());
+		expect(target.textContent).not.toContain('search shape');
+	});
+
 	it("a catalogue miss keeps this surface's definitive phrasing", async () => {
 		// The one per-surface override the unification preserved: the
 		// detail page states the miss definitively instead of the

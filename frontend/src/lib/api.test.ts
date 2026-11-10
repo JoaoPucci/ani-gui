@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readPosition, savePosition } from './play/watch-position';
+import { getLocale } from '$lib/paraglide/runtime';
 import {
 	__resetApiBaseForTests,
 	allmangaKitsuMapDelete,
@@ -27,6 +28,7 @@ import {
 	kitsuAnimeDetail,
 	kitsuEpisodes,
 	kitsuFranchise,
+	kitsuGuessRuledOut,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
 	kitsuSearchPage,
@@ -287,18 +289,18 @@ describe('play', () => {
 		const resp = await play({
 			title: 'Cowboy Bebop',
 			episode: '5',
-			mode: 'sub',
-			quality: 'best'
+			mode: 'sub'
 		});
 		expect(resp).toEqual(sessionResponse);
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/play`);
 		expect(init?.method).toBe('POST');
+		// The body names the renderer's locale too (`api-locale.test.ts`).
 		expect(JSON.parse(init?.body as string)).toEqual({
 			title: 'Cowboy Bebop',
 			episode: '5',
 			mode: 'sub',
-			quality: 'best'
+			locale: getLocale()
 		});
 	});
 });
@@ -394,8 +396,7 @@ describe('markWatched', () => {
 		await markWatched({
 			title: 'Naruto: Shippuuden',
 			episode: '150',
-			mode: 'sub',
-			quality: 'best'
+			mode: 'sub'
 		});
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/play/mark-watched`);
@@ -418,8 +419,7 @@ describe('evictPlayCache', () => {
 		await evictPlayCache({
 			title: 'Stone Ocean',
 			episode: '1',
-			mode: 'sub',
-			quality: 'best'
+			mode: 'sub'
 		});
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/play/cache/evict`);
@@ -480,10 +480,10 @@ describe('playStream', () => {
 		};
 	}
 
-	it('opens an SSE URL with title/episode/mode/quality/episode_count query params', async () => {
+	it('opens an SSE URL with title/episode/mode/episode_count query params', async () => {
 		const onProgress = vi.fn();
 		const promise = playStream(
-			{ title: 'One Piece', episode: '1', mode: 'sub', quality: 'best', episode_count: 1100 },
+			{ title: 'One Piece', episode: '1', mode: 'sub', episode_count: 1100 },
 			onProgress
 		);
 		// `apiBase()` is async — give the promise chain one tick to construct
@@ -493,7 +493,7 @@ describe('playStream', () => {
 		const es = FakeEventSource.instances[0];
 		expect(es).toBeTruthy();
 		expect(es.url).toBe(
-			`${BASE}/api/play/stream?title=One+Piece&episode=1&mode=sub&quality=best&episode_count=1100`
+			`${BASE}/api/play/stream?title=One+Piece&episode=1&mode=sub&episode_count=1100&locale=${getLocale()}`
 		);
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
@@ -612,12 +612,12 @@ describe('playStream', () => {
 		await promise;
 	});
 
-	it('omits quality and episode_count when not provided', async () => {
+	it('omits episode_count when not provided', async () => {
 		const promise = playStream({ title: 'X', episode: '2', mode: 'dub' }, () => {});
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
-		expect(es.url).toBe(`${BASE}/api/play/stream?title=X&episode=2&mode=dub`);
+		expect(es.url).toBe(`${BASE}/api/play/stream?title=X&episode=2&mode=dub&locale=${getLocale()}`);
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
 	});
@@ -1058,6 +1058,35 @@ describe('kitsuSearch', () => {
 	});
 });
 
+describe('kitsuGuessRuledOut', () => {
+	it('POSTs the row and its hits and returns the ids the row rules out', async () => {
+		const fetchMock = mockFetchOnce(['43886']);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const hit = {
+			id: '43886',
+			canonical_title: "Jujutsu Kaisen New Year's Special"
+		} as KitsuAnimeRef;
+		const ids = await kitsuGuessRuledOut(
+			'Jujutsu Kaisen (TV)',
+			24,
+			[hit],
+			'hianime:jujutsu-kaisen-237',
+			true
+		);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/guess/ruled-out`);
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(init?.body as string)).toEqual({
+			key: 'hianime:jujutsu-kaisen-237',
+			title: 'Jujutsu Kaisen (TV)',
+			episode: 24,
+			hits: [hit],
+			search: true
+		});
+		expect(ids).toEqual(['43886']);
+	});
+});
+
 describe('kitsuSearchPage', () => {
 	it('POSTs the query and offset to the paged route and returns the page', async () => {
 		const fetchMock = mockFetchOnce({ hits: [], next_offset: 40 });
@@ -1442,7 +1471,7 @@ describe('settingsGet', () => {
 		const cfg: Config = {
 			locale: 'en',
 			mode: 'sub',
-			quality: 'best',
+			download_quality: 'best',
 			external_player: 'mpv',
 			external_player_kind: 'mpv',
 			external_player_custom_args: '',
@@ -1471,7 +1500,7 @@ describe('settingsPut', () => {
 		const cfg: Config = {
 			locale: 'pt-BR',
 			mode: 'dub',
-			quality: '1080',
+			download_quality: '1080',
 			external_player: 'vlc',
 			external_player_kind: 'vlc',
 			external_player_custom_args: '',

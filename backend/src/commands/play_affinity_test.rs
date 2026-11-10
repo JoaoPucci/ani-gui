@@ -38,6 +38,7 @@ fn state_over(primary: &Arc<TableProvider>, fallback: &Arc<TableProvider>) -> Ap
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     }
 }
 
@@ -83,10 +84,10 @@ async fn an_episode_the_remembered_fallback_does_not_serve_does_not_write_the_pr
     let state = state_over(&primary, &fallback);
     write_cache(&state, "580", "sub", true, Some(ProviderId::TestB));
     let args = PlayArgs {
+        locale: None,
         title: "The Show".into(),
         episode: "2".into(),
         mode: "sub".into(),
-        quality: None,
         subtype: None,
         episode_count: None,
         year: None,
