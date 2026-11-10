@@ -33,7 +33,7 @@ export function isWatchLaterStale(
 
 /** Read the last-refresh epoch (ms) for a provider, or null if unset
  *  / unparseable. Mirrors the defensive localStorage reads elsewhere
- *  (`topbar/dropdown.ts`). */
+ *  (`topbar/recent-searches.ts`). */
 export function readLastRefreshed(provider: Provider): number | null {
 	try {
 		const raw = window.localStorage.getItem(KEY_PREFIX + provider);

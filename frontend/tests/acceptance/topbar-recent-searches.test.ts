@@ -30,7 +30,7 @@ vi.mock('$app/navigation', () => ({
 
 import Layout from '../../src/routes/+layout.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { RECENT_STORAGE_KEY } from '../../src/lib/topbar/dropdown';
+import { RECENT_STORAGE_KEY } from '../../src/lib/topbar/recent-searches';
 import { m } from '../../src/lib/paraglide/messages';
 
 let target: HTMLElement;
