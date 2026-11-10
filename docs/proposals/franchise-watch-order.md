@@ -1242,12 +1242,14 @@ The rules below hold on every surface:
   checks the preference itself. Nothing moves on a timer.
 - **Logical properties** only, so a right-to-left locale is a
   translation.
-- **Titles.** A card clamps its title to two lines and keeps the full
-  title as its tooltip and accessible name. The "short titles" option
-  drops the leading words another entry of the run shares, up to a
-  separator (": ", " - "): *JoJo no Kimyou na Bouken: Stone Ocean Part
-  3* becomes *Stone Ocean Part 3*. A title with no shared part, such
-  as *Steel Ball Run: JoJo no Kimyou na Bouken*, stays whole.
+- **Titles.** A card shows the entry's whole title, the one the rest
+  of the app shows ("BLEACH: Sennen Kessen-hen", "Boruto: Naruto Next
+  Generations"), clamped to two lines, with the full title as its
+  tooltip and accessible name. The first round's short titles, which
+  dropped the words another entry of the run shares ("Sennen
+  Kessen-hen"), were reversed after the build: a title cut that way
+  reads as an unfamiliar show, and a shared prefix that is not the
+  franchise's name ("Boruto:") renamed the show.
 
 #### The watch-order strip (show page)
 
@@ -1375,7 +1377,8 @@ The maintainer answered the eight questions the first mockups asked:
    was liked, but forks and joins break it up. The strip needed a
    second round, below.
 2. **Short titles** on cards: yes, with the full title as tooltip and
-   accessible name.
+   accessible name. Reversed after the build: every card shows the
+   whole title (see Titles in section 5).
 3. **The player's "next episode" button** stays within the entry; only
    the Up next card crosses to another entry.
 4. **Accents.** Each entry keeps its own accent.
