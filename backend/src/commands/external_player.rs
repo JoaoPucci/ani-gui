@@ -175,10 +175,28 @@ pub fn player_program(command: &str, kind: ExternalPlayerKind) -> Option<&str> {
 /// As [`open_external_player`]. A launch task that dies reads as a
 /// spawn failure for the configured command.
 pub async fn open_external_player_off_workers(args: LaunchArgs) -> Result<()> {
-    let command = args.player_command.clone();
+    let failure = launch_task_failure(&args);
     tokio::task::spawn_blocking(move || open_external_player(&args))
         .await
-        .unwrap_or(Err(AniError::PlayerSpawnFailed { binary: command }))
+        .unwrap_or(Err(failure))
+}
+
+/// What a launch reports when its task dies before answering.
+#[must_use]
+pub fn launch_task_failure(args: &LaunchArgs) -> AniError {
+    AniError::PlayerSpawnFailed {
+        binary: args.player_command.clone(),
+    }
+}
+
+/// Settings' answer when the lookup task dies before answering.
+#[must_use]
+pub fn standard_program_unknown(kind: ExternalPlayerKind) -> StandardProgram {
+    StandardProgram {
+        name: kind.standard_program(),
+        path: None,
+        supported: true,
+    }
 }
 
 /// The program a launch spawns: [`player_program`], with a standard
