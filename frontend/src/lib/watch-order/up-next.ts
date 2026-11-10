@@ -47,7 +47,8 @@ export interface FinaleCard {
 
 /**
  * The card `id`'s `episode` shows, or null: not a finale, the
- * franchise not read (or read for another id), the settings not
+ * franchise not read (or read for another id, or only in part, where
+ * the entry that really comes next may be missing), the settings not
  * settled (`order` null), `id` outside the run, or nothing after it.
  * `self` is the player's own reading of the entry; without one the
  * run's entry decides the finale.
@@ -61,6 +62,7 @@ export function finaleCard(
 	self: FinaleSelf | null
 ): FinaleCard | null {
 	if (data?.franchise == null || order === null || data.franchise.anchor !== id) return null;
+	if (!data.franchise.complete) return null;
 	const run = runOf(data.franchise);
 	const entry = run?.entries.find((e) => e.id === id);
 	if (!run || !entry || !isFinale(self ?? entry, episode)) return null;

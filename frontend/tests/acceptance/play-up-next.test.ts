@@ -75,7 +75,9 @@ const SAGA = entry('10', 'Saga', '2010-01-01');
 const SECOND = entry(KITSU_ID, TITLE, '2012-01-01');
 const FINAL = entry('50', 'Saga: Final Arc', '2014-01-01');
 
-function franchise(over: Partial<{ entries: unknown[]; links: string[][] }> = {}) {
+function franchise(
+	over: Partial<{ entries: unknown[]; links: string[][]; complete: boolean }> = {}
+) {
 	return {
 		anchor: KITSU_ID,
 		entries: [SAGA, SECOND, ORIGINS, FINAL],
@@ -541,6 +543,15 @@ describe('the Up next card at a finale', () => {
 
 	it('shows no card where the franchise cannot be read, and the pill shows as before', async () => {
 		const { video } = await openEpisode({ franchise: null });
+		await playTo(video, 1300);
+		await until(() => skipPill() !== null, 'the Skip Ending pill');
+		await playToEnd(video);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(card()).toBeNull();
+	});
+
+	it('shows no card where the franchise was read only in part, and the pill shows as before', async () => {
+		const { video } = await openEpisode({ franchise: franchise({ complete: false }) });
 		await playTo(video, 1300);
 		await until(() => skipPill() !== null, 'the Skip Ending pill');
 		await playToEnd(video);

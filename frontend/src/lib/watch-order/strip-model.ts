@@ -68,6 +68,12 @@ export function runOf(franchise: FranchiseData): WatchRun | null {
 export interface StripModel {
 	readonly run: WatchRun;
 	readonly view: StripView;
+	/**
+	 * False when the backend's walk stopped at its bound or read a
+	 * listing cut short: entries may be missing on either side, so the
+	 * strip claims nothing that needs the whole.
+	 */
+	readonly complete: boolean;
 }
 
 /** Whether `id`'s strip would show anything: a run beyond `id` itself, or parent stories. */
@@ -90,5 +96,5 @@ export function stripFor(
 	if (franchise === null || franchise.anchor !== id) return null;
 	const run = runOf(franchise);
 	if (run === null || !hasStrip(run, id)) return null;
-	return { run, view: stripView(run, id, order) };
+	return { run, view: stripView(run, id, order), complete: franchise.complete };
 }

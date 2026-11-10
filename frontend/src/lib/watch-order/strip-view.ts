@@ -35,8 +35,16 @@ export function stripView(run: WatchRun, id: string, order: WatchOrder): StripVi
 	};
 }
 
-/** The text an empty column carries. */
-export function emptyColumn(view: StripView, side: 'before' | 'after'): EmptyColumn {
+/**
+ * The text an empty column carries; null for a franchise read in part
+ * (`complete` false), where the column may only be missing its entries.
+ */
+export function emptyColumn(
+	view: StripView,
+	side: 'before' | 'after',
+	complete: boolean
+): EmptyColumn | null {
+	if (!complete) return null;
 	if (side === 'before') return 'first';
 	return view.kind === 'side' ? 'side_end' : 'last';
 }

@@ -51,6 +51,12 @@ describe('runOf', () => {
 });
 
 describe('stripFor', () => {
+	it('carries whether the franchise was read whole', () => {
+		expect(stripFor(payload('bleach', '48015'), '48015', 'linked')!.complete).toBe(true);
+		const part = { ...payload('bleach', '48015'), complete: false };
+		expect(stripFor(part, '48015', 'linked')!.complete).toBe(false);
+	});
+
 	it("places a member of a straight run, with the run's length", () => {
 		const got = stripFor(payload('bleach', '48015'), '48015', 'linked')!;
 		expect(got.view).toMatchObject({ kind: 'run', position: 4, total: 5 });
