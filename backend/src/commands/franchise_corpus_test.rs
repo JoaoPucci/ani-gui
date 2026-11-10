@@ -121,6 +121,11 @@ fn wrong(case: &Case, f: &Franchise) -> Vec<String> {
             ));
         }
     }
+    for e in &f.recaps {
+        if e.subtype.as_deref() == Some("TV") {
+            out.push(format!("the series {} ({}) is under recaps", e.id, e.title));
+        }
+    }
     for (name, ids) in &case.sections {
         for id in ids {
             if !section(f, name).iter().any(|e| &e.id == id) {

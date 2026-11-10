@@ -124,9 +124,10 @@ proptest! {
 
     /// The shape of the answer: the anchor is a member or a side-story
     /// anchor among the sides (the films, for a movie); every movie
-    /// around the run is a film; the run is bounded; sections are disjoint
-    /// from one another and from the run; every link joins members;
-    /// asked again, the walk answers the same.
+    /// around the run is a film, and no TV series is a recap; the run
+    /// is bounded; sections are disjoint from one another and from the
+    /// run; every link joins members; asked again, the walk answers
+    /// the same.
     #[test]
     fn the_answer_keeps_its_shape((cat, anchor) in catalogue()) {
         let (f, (known, details)) = drive_with(&anchor, &cat, &[]);
@@ -155,6 +156,9 @@ proptest! {
         }
         for e in f.versions.iter().chain(&f.sides).chain(&f.recaps) {
             prop_assert!(e.subtype.as_deref() != Some("movie"), "the film {} is not a film", e.id);
+        }
+        for e in &f.recaps {
+            prop_assert!(e.subtype.as_deref() != Some("TV"), "the series {} is a recap", e.id);
         }
         prop_assert_eq!(plan(&anchor, &known, &details), Plan::Done(f.clone()));
         let everything = cat.listings.clone();
