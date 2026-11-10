@@ -4,8 +4,9 @@
   story as a numbered list, other versions, films, side stories and
   recaps. Numbered stretches carry the oversized numeral; ways to
   continue stand side by side and titles with no clear order form one
-  group, both unnumbered. A franchise read in part has no numbers or
-  title count. The title the page was opened from is "You are here".
+  group, both unnumbered. A franchise read in part has no numbers,
+  title count or recap count. The title the page was opened from is
+  "You are here".
   Every reading comes from the page model (`./franchise-page`); this
   component only draws it.
 -->
