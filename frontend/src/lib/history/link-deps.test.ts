@@ -1,15 +1,23 @@
 // The app's link dependencies, built in one place for every surface.
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HistoryEntry } from '$lib/api';
 
 const resolveKitsuMatchWithTrust = vi.hoisted(() =>
 	vi.fn(async () => ({ match: null, trusted: false }))
 );
 vi.mock('./match', () => ({ resolveKitsuMatchWithTrust }));
+const api = vi.hoisted(() => ({
+	historyLink: vi.fn(),
+	historyUnlink: vi.fn()
+}));
+vi.mock('$lib/api', async (importOriginal) => ({
+	...(await importOriginal<typeof import('$lib/api')>()),
+	...api
+}));
 
-import { historyLink, historyLinkGroup, historyList, historyUnlink, kitsuSearch } from '$lib/api';
-import { appLinkDeps } from './link-deps';
+import { historyLinkGroup, historyList, kitsuSearch } from '$lib/api';
+import { appLinkDeps, onHistoryLinked } from './link-deps';
 import { resolveHistoryEntry } from './resolve';
 
 describe('appLinkDeps', () => {
@@ -17,8 +25,6 @@ describe('appLinkDeps', () => {
 		const deps = appLinkDeps();
 		expect(deps.history).toBe(historyList);
 		expect(deps.search).toBe(kitsuSearch);
-		expect(deps.link).toBe(historyLink);
-		expect(deps.unlink).toBe(historyUnlink);
 		expect(deps.group).toBe(historyLinkGroup);
 	});
 
@@ -30,5 +36,46 @@ describe('appLinkDeps', () => {
 		};
 		await appLinkDeps().resolve(entry);
 		expect(resolveKitsuMatchWithTrust).toHaveBeenCalledWith(resolveHistoryEntry(entry, null));
+	});
+});
+
+// Every surface that reads the history hears of a link or an undo, made
+// from any surface, whenever it answers: the toast's Undo outlives the
+// page it was made on, and Home may be another instance by then.
+describe('a link or undo, once answered', () => {
+	const unsubscribe: (() => void)[] = [];
+	afterEach(() => {
+		for (const off of unsubscribe.splice(0)) off();
+		api.historyLink.mockReset();
+		api.historyUnlink.mockReset();
+	});
+
+	it('is announced to every listener, after it answered', async () => {
+		const heard: string[] = [];
+		unsubscribe.push(onHistoryLinked(() => heard.push('one')));
+		unsubscribe.push(onHistoryLinked(() => heard.push('two')));
+		const outcome = { kitsu_id: '1', linked: [] };
+		api.historyLink.mockImplementation(async () => {
+			expect(heard).toEqual([]);
+			return outcome;
+		});
+		expect(await appLinkDeps().link('card', ['card'], '1')).toBe(outcome);
+		expect(heard).toEqual(['one', 'two']);
+	});
+
+	it('is announced when it failed too, since what it wrote is not known', async () => {
+		const heard: number[] = [];
+		unsubscribe.push(onHistoryLinked(() => heard.push(1)));
+		api.historyUnlink.mockRejectedValue(new Error('down'));
+		await expect(appLinkDeps().unlink('1', [])).rejects.toThrow('down');
+		expect(heard).toEqual([1]);
+	});
+
+	it('is not announced to a listener that left', async () => {
+		const heard: number[] = [];
+		onHistoryLinked(() => heard.push(1))();
+		api.historyUnlink.mockResolvedValue({ restored: [], kept: [] });
+		await appLinkDeps().unlink('1', []);
+		expect(heard).toEqual([]);
 	});
 });

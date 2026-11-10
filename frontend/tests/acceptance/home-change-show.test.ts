@@ -797,6 +797,13 @@ describe("an Undo from a card's notice, once Home moved on", () => {
 		);
 	});
 
+	/** Home opened afresh, Black Clover's card linked to the series. */
+	async function openHomeLinked() {
+		app = mount(HomePage, { target });
+		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'Black Clover as the series');
+		await settle();
+	}
+
 	async function linkBlackClover() {
 		await openHome();
 		pill(BC_CARD)!.click();
@@ -835,6 +842,21 @@ describe("an Undo from a card's notice, once Home moved on", () => {
 		expect(dialog()!.textContent).toContain(JOJO_RIGHT_TITLE);
 		expect(button(m.detail_link_confirm_button())?.disabled).toBe(false);
 		expect(toastWith(m.detail_link_undone_toast())).toBeDefined();
+	});
+
+	it('gives the card its guess back on the Home the user came back to', async () => {
+		const toast = await linkBlackClover();
+		// Home is left, and opened again before the Undo is pressed.
+		unmount(app!);
+		app = null;
+		await openHomeLinked();
+		toast.onAction!();
+		await until(() => backend.unlinkCalls.length === 1, 'the undo');
+		await until(
+			() => showLine(BC_CARD).includes(BC_GUESS_TITLE),
+			'Black Clover as the guess again'
+		);
+		await until(() => pill(BC_CARD) !== null, "Black Clover's pill back");
 	});
 
 	it('undoes the link and says so after the user left Home, reading nothing for it', async () => {

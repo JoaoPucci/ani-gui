@@ -618,6 +618,17 @@ describe('a link that lands after the user left the surface', () => {
 		expect(pickedRow(CARD.id)).toBe(true);
 	});
 
+	it('on the player, says the pick was saved, with its Undo, since no slip is left to say it', async () => {
+		const { f, s, release } = await held(true);
+		const confirming = s.confirm();
+		s.leave();
+		release();
+		await confirming;
+		const notice = f.notices.at(-1)!;
+		expect(notice.message).toBe(m.detail_link_done_toast({ title: RIGHT.canonical_title }));
+		expect(notice.actionLabel).toBe(m.detail_link_undo());
+	});
+
 	it('on the player, leaves no earlier pick to switch to either', async () => {
 		const { f, s, release } = await held(true);
 		release();
