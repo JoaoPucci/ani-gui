@@ -101,6 +101,19 @@ describe('whether a guessed card still stands', () => {
 		await flush();
 	});
 
+	it('settles nothing for a row matched again while its check was out', async () => {
+		let answer!: (stands: boolean) => void;
+		const h = home([row('a')], [[row('a', '5')]], {
+			offerStands: () => new Promise((r) => (answer = r))
+		});
+		const checking = h.relink.stillGuessed('a', 'g');
+		// A link lands meanwhile: the row is matched again.
+		await h.relink.reread();
+		answer(false);
+		expect(await checking).toBe(false);
+		expect(h.settled.has('a')).toBe(false);
+	});
+
 	it('asks the offer for the row and the guess it was shown as', async () => {
 		const offerStands = vi.fn(async () => true);
 		const h = home([row('a')], [], { offerStands });
