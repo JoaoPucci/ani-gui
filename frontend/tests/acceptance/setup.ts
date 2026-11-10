@@ -11,12 +11,13 @@
 //     else should fail loudly rather than silently return undefined.
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { afterAll, afterEach, aroundEach, beforeAll } from 'vitest';
+import { afterAll, afterEach, aroundEach, beforeAll, beforeEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 
 import { installElementAnimateStub } from './stubs/element-animate';
 import { isSession } from './session-contract';
+import { accountStore } from '../../src/lib/account/store.svelte';
 
 // Before any component mounts. See the stub for why happy-dom needs
 // it and why only post-mount DOM changes trip over its absence.
@@ -466,6 +467,14 @@ beforeAll(() => {
 	// silently-empty response would show up later as an unexplained
 	// assertion failure somewhere else entirely.
 	server.listen({ onUnhandledRequest: 'error' });
+});
+
+// A page mounts after the layout's hydrate has read the saved sign-ins,
+// which no page-level mount runs: scenarios seed the store the way the
+// hydrate would, and this is the part of that every scenario shares. A
+// scenario about the launch's own reads clears it.
+beforeEach(() => {
+	accountStore.readsSettled = true;
 });
 
 aroundEach(async (runScenario, context) => {

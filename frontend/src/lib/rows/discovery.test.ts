@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { discoveryView, LOADING, settleRow, type RowLoad, type RowSlot } from './discovery';
+import {
+	discoveryView,
+	LOADING,
+	PENDING,
+	settleRow,
+	type RowLoad,
+	type RowSlot
+} from './discovery';
 
 const ready = (...items: string[]): RowLoad<string> => ({ kind: 'ready', items });
 const FAILED: RowLoad<string> = { kind: 'failed' };
 const SKELETON: RowSlot<string> = { kind: 'skeleton' };
 const ABSENT: RowSlot<string> = { kind: 'absent' };
 const shown = (...items: string[]): RowSlot<string> => ({ kind: 'shown', items });
+const HELD: RowSlot<string> = { kind: 'held' };
 
 describe('discoveryView', () => {
 	it('holds a skeleton in every row while both are loading', () => {
@@ -65,27 +73,69 @@ describe('discoveryView', () => {
 	});
 });
 
+describe('discoveryView, with a row not yet known to exist', () => {
+	// A row whose presence is not known yet (the home page's Continue
+	// watching before the history read answers) has no placeholder of
+	// its own. Anything drawn below it would be pushed down when it
+	// turns out to be there, so nothing below it is drawn at all.
+	it('draws nothing in or below a pending row', () => {
+		expect(discoveryView([PENDING, LOADING, ready('r1')])).toEqual({
+			slots: [HELD, HELD, HELD],
+			nothing: false
+		});
+	});
+
+	it('leaves the rows above a pending row as they are', () => {
+		expect(discoveryView([ready('t1'), PENDING, ready('r1')]).slots).toEqual([
+			shown('t1'),
+			HELD,
+			HELD
+		]);
+	});
+
+	it('draws the rows below once the pending row turns out to be absent', () => {
+		expect(discoveryView([ready(), LOADING, ready('r1')]).slots).toEqual([
+			ABSENT,
+			SKELETON,
+			SKELETON
+		]);
+	});
+
+	it('does not say there is nothing to browse while a row is pending', () => {
+		expect(discoveryView([FAILED, PENDING]).nothing).toBe(false);
+	});
+});
+
 describe('discoveryView, as rows settle in any order', () => {
 	const settled = fc.oneof(
 		fc.constant<RowLoad<string>>(FAILED),
 		fc.array(fc.string({ maxLength: 3 }), { maxLength: 3 }).map((items) => ready(...items))
 	);
-	// The rows' final answers, and the order they arrive in.
-	const run = fc.array(settled, { minLength: 1, maxLength: 5 }).chain((finals) =>
-		fc
-			.shuffledSubarray(
-				finals.map((_, i) => i),
-				{ minLength: finals.length, maxLength: finals.length }
-			)
-			.map((order) => ({ finals, order }))
-	);
+	// The rows' final answers, whether each starts out pending (not yet
+	// known to exist) rather than loading, and the order of the steps:
+	// a pending row's index appears twice, once to learn it exists (it
+	// is then loading, or settles straight away when it was absent) and
+	// once to settle.
+	const run = fc
+		.array(fc.tuple(settled, fc.boolean()), { minLength: 1, maxLength: 5 })
+		.chain((rows) => {
+			const steps = rows.flatMap(([, pending], i) => (pending ? [i, i] : [i]));
+			return fc
+				.shuffledSubarray(steps, { minLength: steps.length, maxLength: steps.length })
+				.map((order) => ({
+					finals: rows.map(([f]) => f),
+					pending: rows.map(([, p]) => p),
+					order
+				}));
+		});
 
-	/** Every view the page draws on the way, from all-loading to all-settled. */
-	function views(finals: RowLoad<string>[], order: number[]) {
-		const loads: RowLoad<string>[] = finals.map(() => LOADING);
+	/** Every view the page draws on the way, from nothing known to all
+	 *  settled. */
+	function views(finals: RowLoad<string>[], order: number[], pending: boolean[] = []) {
+		const loads: RowLoad<string>[] = finals.map((_, i) => (pending[i] ? PENDING : LOADING));
 		const seen = [discoveryView(loads)];
 		for (const i of order) {
-			loads[i] = finals[i];
+			loads[i] = loads[i].kind === 'pending' && finals[i].kind !== 'failed' ? LOADING : finals[i];
 			seen.push(discoveryView([...loads]));
 		}
 		return seen;
@@ -93,8 +143,8 @@ describe('discoveryView, as rows settle in any order', () => {
 
 	it('never moves a row once it is shown', () => {
 		fc.assert(
-			fc.property(run, ({ finals, order }) => {
-				const seen = views(finals, order);
+			fc.property(run, ({ finals, order, pending }) => {
+				const seen = views(finals, order, pending);
 				seen.forEach((view, k) => {
 					view.slots.forEach((slot, i) => {
 						if (slot.kind !== 'shown') return;
@@ -109,10 +159,29 @@ describe('discoveryView, as rows settle in any order', () => {
 		);
 	});
 
+	it('never draws a row above one already drawn, so nothing drawn is pushed down', () => {
+		const drawn = (slot: RowSlot<string>) => slot.kind === 'skeleton' || slot.kind === 'shown';
+		const drawnAbove = (slots: RowSlot<string>[], i: number) =>
+			slots.slice(0, i).filter(drawn).length;
+		fc.assert(
+			fc.property(run, ({ finals, order, pending }) => {
+				const seen = views(finals, order, pending);
+				seen.forEach((view, k) => {
+					view.slots.forEach((slot, i) => {
+						if (!drawn(slot)) return;
+						for (const later of seen.slice(k + 1)) {
+							expect(drawnAbove(later.slots, i)).toBeLessThanOrEqual(drawnAbove(view.slots, i));
+						}
+					});
+				});
+			})
+		);
+	});
+
 	it('ends with every row that has something to show, shown in its place', () => {
 		fc.assert(
-			fc.property(run, ({ finals, order }) => {
-				const last = views(finals, order).at(-1)!;
+			fc.property(run, ({ finals, order, pending }) => {
+				const last = views(finals, order, pending).at(-1)!;
 				const expected = finals.map((f) =>
 					f.kind === 'ready' && f.items.length > 0 ? shown(...f.items) : ABSENT
 				);

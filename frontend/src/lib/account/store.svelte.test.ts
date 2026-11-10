@@ -294,6 +294,29 @@ describe('accountStore.hydrate', () => {
 			await done;
 		});
 
+		it('says its reads have settled once every provider has answered, before the refresh', async () => {
+			// The home page holds the rows a sign-in would put above it
+			// until then: a signed-out store is not yet a signed-out viewer.
+			accountStore.readsSettled = false;
+			const spy = vi
+				.spyOn(accountStore, 'refreshExpired')
+				.mockImplementation(() => new Promise(() => {}));
+			try {
+				const answer = stubSlowBridge();
+				void accountStore.hydrate();
+				answer('anilist', { ok: true, payload: payload() });
+				answer('mal', { ok: false, kind: 'not_found' });
+				await flush();
+				expect(accountStore.readsSettled).toBe(false);
+				answer('inhouse', { ok: false, kind: 'not_found' });
+				await flush();
+				// The refresh is still out; the reads are not.
+				expect(accountStore.readsSettled).toBe(true);
+			} finally {
+				spy.mockRestore();
+			}
+		});
+
 		it('takes one provider without waiting on another still out', async () => {
 			const answer = stubSlowBridge();
 			void accountStore.hydrate();
