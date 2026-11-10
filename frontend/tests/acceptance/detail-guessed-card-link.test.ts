@@ -410,7 +410,10 @@ describe('the picker, by keyboard and while it links', () => {
 		change.focus();
 		change.click();
 		await until(() => target.querySelector('dialog') !== null, 'the picker');
-		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+		// Escape where focus is, as a key press is.
+		(document.activeElement ?? document.body).dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
 		await until(() => target.querySelector('dialog') === null, 'the picker to close');
 		await until(() => document.activeElement === button(m.detail_link_change()), 'focus on Change');
 	});

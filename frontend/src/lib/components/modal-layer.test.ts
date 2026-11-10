@@ -315,6 +315,12 @@ describe('a modal opening over a fullscreen element', () => {
 		expect(exit).not.toHaveBeenCalled();
 	});
 
+	it('stays in fullscreen for a native dialog, which the page shows in the top layer', () => {
+		const exit = fullscreen(section);
+		mountIn(page, document.createElement('dialog'));
+		expect(exit).not.toHaveBeenCalled();
+	});
+
 	it('shrugs off a refused exit', async () => {
 		const exit = fullscreen(section);
 		exit.mockImplementation(async () => {
