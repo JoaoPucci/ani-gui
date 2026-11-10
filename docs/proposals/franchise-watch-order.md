@@ -1161,7 +1161,8 @@ them introduces a new widget style.
     entry.
   - **Films, side stories and other versions:** standard `Strip` rails
     of poster cards, each under the app's eyebrow.
-  - **Recaps:** a collapsed section under the same eyebrow.
+  - **Recaps:** a rail like the others, under its eyebrow and count,
+    shown from the start (decision 3 below).
 - **At a glance versus on hover.** Each row shows the numeral, the
   short title, the format, the year, and the episode count or the
   progress. The full title is the row's tooltip on hover and what a
@@ -1414,8 +1415,7 @@ The rules below hold on every surface:
   series' name); the entry being watched has its own line beside the
   Resume button. A note under the button says which order the list
   follows, with a link to Settings.
-- **Missing data and keyboard** as on the show page; the recaps stay
-  folded behind a "Show recaps" button that reports its state.
+- **Missing data and keyboard** as on the show page.
 
 #### The setting
 
@@ -1673,6 +1673,19 @@ that ends normally it shows the card up to a second early.
    where the show has no strip). How to make franchises findable gracefully (a
    franchise search, or a similar mechanic) is a study of its own, in
    the deferred-work log.
+3. **Recaps are not hidden.** The franchise page shows its recaps as a
+   rail like the other sections; the "Show recaps" button that folded
+   them away is gone.
+4. **Whole titles everywhere.** The strip, the franchise page and
+   Continue Watching's hand-off name each entry by the full title the
+   rest of the app shows ("BLEACH: Sennen Kessen-hen", "Boruto: Naruto
+   Next Generations"), never a short title cut against the rest of the
+   run; this reverses the first round's short titles.
+5. **An entry's own format places it.** Every movie around the run is
+   listed under Films, whatever role Kitsu gives it (*Boruto: Naruto
+   the Movie*, Dragon Ball's first four films), and a TV series Kitsu
+   lists as a summary is an other version, not a recap (*Dragon Ball
+   Super: Beerus*, beside both *Kai* series).
 
 ## 6. Recommendation and plan for 0.19.0
 
