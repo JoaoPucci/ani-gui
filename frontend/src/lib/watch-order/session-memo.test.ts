@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { MEMO_LIMIT, forgetAnswers, rememberedAnswer, settledAnswer } from './session-memo';
+import {
+	MEMO_LIMIT,
+	forgetAnswers,
+	rememberedAnswer,
+	settledAnswer,
+	visitAnswer
+} from './session-memo';
 import type { WatchOrderData } from './loader';
 import type { FranchiseData } from './types';
 
@@ -57,5 +63,31 @@ describe('the session memo of watch-order answers', () => {
 		settledAnswer('1', answer('1'));
 		forgetAnswers();
 		expect(rememberedAnswer('1')).toBeNull();
+	});
+});
+
+describe("a show page visit's answer", () => {
+	it('draws and remembers the answer of a visit still on screen', () => {
+		const visit = new AbortController();
+		expect(visitAnswer('1', answer('1'), visit.signal)).toEqual(answer('1'));
+		expect(rememberedAnswer('1')).toEqual(answer('1'));
+	});
+
+	it('keeps the earlier answer for a visit whose read failed', () => {
+		settledAnswer('1', answer('1'));
+		expect(visitAnswer('1', failed, new AbortController().signal)).toEqual(answer('1'));
+	});
+
+	it('draws nothing for a visit that ended, and leaves the memo as it was', () => {
+		// The viewer left, or the page read the show again: what the
+		// cancelled read answered is no answer at all.
+		settledAnswer('1', answer('1', '3'));
+		const visit = new AbortController();
+		visit.abort();
+		expect(visitAnswer('1', failed, visit.signal)).toBeNull();
+		expect(visitAnswer('1', answer('1', '9'), visit.signal)).toBeNull();
+		expect(rememberedAnswer('1')).toEqual(answer('1', '3'));
+		expect(visitAnswer('2', answer('2'), visit.signal)).toBeNull();
+		expect(rememberedAnswer('2')).toBeNull();
 	});
 });
