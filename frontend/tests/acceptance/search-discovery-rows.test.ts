@@ -167,7 +167,16 @@ function caption(): Element {
 	if (!el) throw new Error(`the page caption is not on the page\n--- DOM ---\n${screen()}`);
 	return el;
 }
-const captionShown = () => caption().getAttribute('aria-hidden') !== 'true';
+/** Shown to sight and to screen readers: the caption-hidden class
+ *  carries the visibility rule (happy-dom applies no component CSS, so
+ *  the class is the observable half) and aria-hidden the other. */
+const captionShown = () => {
+	const el = caption();
+	const hiddenToSight = el.classList.contains('caption-hidden');
+	const hiddenToReaders = el.getAttribute('aria-hidden') === 'true';
+	expect(hiddenToSight).toBe(hiddenToReaders);
+	return !hiddenToSight;
+};
 const above = (a: string, b: string) =>
 	(at(a).compareDocumentPosition(at(b)) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
