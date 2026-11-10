@@ -397,7 +397,12 @@ function splashController({
       splash.webContents.on("render-process-gone", (_event, details) => {
         const reason = details && details.reason;
         log(`[main] splash's page went (${reason}) (${since()})`);
-        if (over || chosen || win !== splash || splash.isDestroyed() || NOT_A_CRASH.has(reason)) return;
+        if (over || chosen || win !== splash || splash.isDestroyed()) return;
+        // Not a crash, so not reloaded; but the page is gone all the same.
+        if (NOT_A_CRASH.has(reason)) {
+          lose(`exited (${reason})`);
+          return;
+        }
         if (reloads >= SPLASH_RELOADS) {
           log(`[main] splash's page crashed ${reloads + 1} times: not reloaded again (${since()})`);
           lose(`crashed ${reloads + 1} times`);
