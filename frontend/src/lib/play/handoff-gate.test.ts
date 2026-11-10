@@ -194,7 +194,15 @@ describe('HandoffGate — a recovery whose eviction answered', () => {
 });
 
 describe('HandoffGate — every sequence', () => {
-	type Op = 'handOff' | 'comeBack' | 'picked' | 'attaching' | 'started' | 'stopped' | 'forget';
+	type Op =
+		| 'handOff'
+		| 'comeBack'
+		| 'picked'
+		| 'attaching'
+		| 'started'
+		| 'stopped'
+		| 'forget'
+		| 'manifest';
 	it('matches a model of the transitions: restarts, ends and stand-downs', () => {
 		fc.assert(
 			fc.property(
@@ -212,10 +220,25 @@ describe('HandoffGate — every sequence', () => {
 				),
 				(ops) => {
 					let restarts = 0;
-					const gate = new HandoffGate(() => {
-						restarts += 1;
-					});
-					const model = { off: false, pick: false, engine: false, restarts: 0 };
+					let reloads = 0;
+					const gate = new HandoffGate(
+						() => {
+							restarts += 1;
+						},
+						() => {
+							reloads += 1;
+						}
+					);
+					// No stream attached yet reads as a manifest in: there is
+					// nothing to ask for again.
+					const model = {
+						off: false,
+						pick: false,
+						engine: false,
+						manifest: true,
+						restarts: 0,
+						reloads: 0
+					};
 					for (const op of ops) {
 						switch (op) {
 							case 'handOff':
@@ -226,6 +249,7 @@ describe('HandoffGate — every sequence', () => {
 							case 'comeBack':
 								gate.comeBack();
 								if (model.off && model.engine) model.restarts += 1;
+								else if (model.off && !model.manifest) model.reloads += 1;
 								model.off = false;
 								model.pick = false;
 								break;
@@ -239,8 +263,13 @@ describe('HandoffGate — every sequence', () => {
 								if (model.pick) model.off = false;
 								model.pick = false;
 								model.engine = false;
+								model.manifest = false;
 								break;
 							}
+							case 'manifest':
+								gate.manifestParsed();
+								model.manifest = true;
+								break;
 							case 'started':
 								gate.engineStarted();
 								model.engine = true;
@@ -257,11 +286,53 @@ describe('HandoffGate — every sequence', () => {
 						}
 						expect(gate.handedOff).toBe(model.off);
 						expect(restarts).toBe(model.restarts);
+						expect(reloads).toBe(model.reloads);
 						expect(gate.recoveryStandsDown(false)).toBe(model.off);
 						expect(gate.recoveryStandsDown(true)).toBe(model.off && !model.pick);
 					}
 				}
 			)
 		);
+	});
+});
+
+describe('HandoffGate — a handoff before the manifest is in', () => {
+	it('asks for the stream again on the way back: the handoff cut its manifest off', () => {
+		const restart = vi.fn();
+		const reload = vi.fn();
+		const gate = new HandoffGate(restart, reload);
+		gate.attaching();
+		gate.handOff();
+		gate.comeBack();
+		expect(reload).toHaveBeenCalledTimes(1);
+		expect(restart).not.toHaveBeenCalled();
+	});
+
+	it('a manifest in and an engine started is restarted, not asked for again', () => {
+		const restart = vi.fn();
+		const reload = vi.fn();
+		const gate = new HandoffGate(restart, reload);
+		gate.attaching();
+		gate.manifestParsed();
+		gate.engineStarted();
+		gate.handOff();
+		gate.comeBack();
+		expect(restart).toHaveBeenCalledTimes(1);
+		expect(reload).not.toHaveBeenCalled();
+	});
+
+	it('a held start is the return, whatever else', () => {
+		const restart = vi.fn();
+		const reload = vi.fn();
+		const gate = new HandoffGate(restart, reload);
+		gate.attaching();
+		gate.handOff();
+		gate.manifestParsed();
+		const start = vi.fn();
+		gate.whenWatching(start);
+		gate.comeBack();
+		expect(start).toHaveBeenCalledTimes(1);
+		expect(restart).not.toHaveBeenCalled();
+		expect(reload).not.toHaveBeenCalled();
 	});
 });
