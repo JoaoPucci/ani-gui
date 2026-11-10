@@ -155,7 +155,7 @@ describe('handoffFrom', () => {
 		expect(handoffFrom(lone, '999', 'linked', TODAY, none)).toBeNull();
 	});
 
-	it('names only an aired, unplayed sole next entry of its own series (property)', () => {
+	it('names only an aired, unplayed sole next entry of its own series read whole (property)', () => {
 		fc.assert(
 			fc.property(
 				franchiseArb(),
@@ -168,7 +168,7 @@ describe('handoffFrom', () => {
 					const r = runOf(franchise);
 					const up =
 						r && r.entries.some((e) => e.id === id) ? upNextFor(r, id, order, TODAY) : null;
-					if (up?.kind === 'one' && !played.has(up.entry.id)) {
+					if (franchise.complete && up?.kind === 'one' && !played.has(up.entry.id)) {
 						expect(got?.finished.id).toBe(id);
 						expect(got?.next).toEqual(up.entry);
 						expect(got?.titles).toEqual(r!.entries.map((e) => e.title));
