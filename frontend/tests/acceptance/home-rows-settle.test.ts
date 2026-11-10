@@ -312,6 +312,31 @@ describe('Home: the rows below the hero', () => {
 		expect(drawn()).toEqual([TRENDING_ROW, TOP_RATED_ROW]);
 	});
 
+	it('loads Watch later as a skeleton, not an empty list, when the keyring answers after its notice', async () => {
+		// The rows were drawn once the notice went up, and Watch later
+		// was read with no sign-in. A sign-in landing now is a new list,
+		// not the empty one read without it.
+		accountStore.readsSettled = false;
+		const list = hold();
+		server.use(...handlers({ list: list.gate }));
+
+		app = mount(HomePage, { target });
+		accountStore.keyringWaiting = true;
+		await until(() => screen().includes('Classic One'), 'the catalogue rows');
+
+		accountStore.setConnected('anilist', SIGN_IN);
+		accountStore.readsSettled = true;
+		accountStore.keyringWaiting = false;
+		await until(() => row(WATCH_LATER) !== null, 'Watch later');
+		await settle();
+		expect(screen()).not.toContain(m.account_watch_later_empty());
+		expect(drawn()[0]).toBe(`${WATCH_LATER} (loading)`);
+
+		list.release();
+		await until(() => screen().includes('Planned One'), 'Watch later');
+		expect(drawn()).toEqual([WATCH_LATER, TRENDING_ROW, TOP_RATED_ROW]);
+	});
+
 	it('holds a Watch later skeleton while a signed-in list loads, and the rows below with it', async () => {
 		accountStore.setConnected('anilist', SIGN_IN);
 		const list = hold();
