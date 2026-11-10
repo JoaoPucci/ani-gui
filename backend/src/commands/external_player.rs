@@ -168,6 +168,19 @@ pub fn player_program(command: &str, kind: ExternalPlayerKind) -> Option<&str> {
     }
 }
 
+/// [`open_external_player`] off the async workers: the lookup it runs
+/// may start reg.exe on Windows, and the spawn itself blocks briefly.
+///
+/// # Errors
+/// As [`open_external_player`]. A launch task that dies reads as a
+/// spawn failure for the configured command.
+pub async fn open_external_player_off_workers(args: LaunchArgs) -> Result<()> {
+    let command = args.player_command.clone();
+    tokio::task::spawn_blocking(move || open_external_player(&args))
+        .await
+        .unwrap_or(Err(AniError::PlayerSpawnFailed { binary: command }))
+}
+
 /// The program a launch spawns: [`player_program`], with a standard
 /// program's bare name replaced by where `locate` finds it installed.
 /// A name `locate` cannot find is spawned as it is.

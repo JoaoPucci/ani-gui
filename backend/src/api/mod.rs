@@ -248,7 +248,7 @@ async fn get_history_number(
 async fn post_external_player(
     Json(args): Json<external_player::LaunchArgs>,
 ) -> Result<StatusCode, AniError> {
-    external_player::open_external_player(&args)?;
+    external_player::open_external_player_off_workers(args).await?;
     Ok(StatusCode::ACCEPTED)
 }
 

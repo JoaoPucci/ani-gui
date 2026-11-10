@@ -55,13 +55,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
             launch,
             cfg.syncplay_binary,
             player_kind,
-            // A bare standard name: the program installed here on Windows and
-            // macOS, the name as typed on Linux (see `syncplay_locate_on`).
-            crate::commands::external_player::syncplay_player_with(
-                &cfg.external_player,
-                player_kind,
-                &crate::commands::player_locate::locate_for_syncplay,
-            ),
+            syncplay_player(&cfg.external_player, player_kind).await,
         ))?;
         crate::commands::play_native_record::record_watch_requested_at(
             state,
@@ -79,13 +73,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         launch,
         cfg.syncplay_binary,
         player_kind,
-        // A bare standard name: the program installed here on Windows and
-        // macOS, the name as typed on Linux (see `syncplay_locate_on`).
-        crate::commands::external_player::syncplay_player_with(
-            &cfg.external_player,
-            player_kind,
-            &crate::commands::player_locate::locate_for_syncplay,
-        ),
+        syncplay_player(&cfg.external_player, player_kind).await,
     ))?;
     // The spawn is the watch: recorded once Syncplay has started.
     crate::commands::play_native_record::record_watch_requested_at(
@@ -96,6 +84,28 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     )
     .await;
     Ok(())
+}
+
+/// The player Syncplay is told to wrap: a bare standard name is the
+/// program installed here on Windows and macOS, and the name as typed
+/// on Linux (see `syncplay_locate_on`). Looked up off the async
+/// workers, since on Windows the lookup may run reg.exe. A failed
+/// lookup task leaves the command as typed.
+async fn syncplay_player(
+    command: &str,
+    kind: crate::commands::external_player::ExternalPlayerKind,
+) -> String {
+    let typed = command.to_string();
+    let asked = typed.clone();
+    tokio::task::spawn_blocking(move || {
+        crate::commands::external_player::syncplay_player_with(
+            &asked,
+            kind,
+            &crate::commands::player_locate::locate_for_syncplay,
+        )
+    })
+    .await
+    .unwrap_or(typed)
 }
 
 /// A launch projected onto Syncplay's arguments: the stream, the
