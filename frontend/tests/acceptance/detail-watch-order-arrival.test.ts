@@ -280,15 +280,20 @@ describe('detail route — the watch-order strip arriving', () => {
 
 	it('waits for the first hop together with the show’s details', async () => {
 		const hop = gate();
-		const calls = useShow({ hopGate: hop.opened });
+		const walk = gate();
+		const calls = useShow({ hopGate: hop.opened, walkGate: walk.opened });
 		app = mount(DetailPage, { target });
-		await until(() => calls.hop > 0, 'the first hop asked');
-		await new Promise((r) => setTimeout(r, 120));
-		// The details have answered; the page waits a moment for the hop.
-		expect(title()).toBe('');
-		hop.open();
-		await until(() => title() !== '', 'the page');
-		expect(held()).not.toBeNull();
+		try {
+			await until(() => calls.hop > 0, 'the first hop asked');
+			await new Promise((r) => setTimeout(r, 120));
+			// The details have answered; the page waits a moment for the hop.
+			expect(title()).toBe('');
+			hop.open();
+			await until(() => title() !== '', 'the page');
+			expect(held()).not.toBeNull();
+		} finally {
+			walk.open();
+		}
 	});
 
 	it('draws the page past a first hop that is slow, holding nothing', async () => {
