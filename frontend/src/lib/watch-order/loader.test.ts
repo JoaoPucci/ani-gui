@@ -101,6 +101,110 @@ describe('loadWatchOrder', () => {
 		);
 	});
 
+	it("hands the visit's signal to both reads", async () => {
+		const visit = new AbortController();
+		const franchise = vi.fn((id: string, signal?: AbortSignal) => {
+			void id;
+			void signal;
+			return Promise.resolve(FRANCHISE);
+		});
+		const named = vi.fn((ids: readonly string[], signal?: AbortSignal) => {
+			void ids;
+			void signal;
+			return Promise.resolve({});
+		});
+		await loadWatchOrder('7', { franchise, named }, visit.signal);
+		expect(franchise.mock.calls[0][1]).toBe(visit.signal);
+		expect(named.mock.calls[0][1]).toBe(visit.signal);
+	});
+
+	it('asks for no rows once the visit has ended, and answers nothing', async () => {
+		// The franchise answered just as the viewer left: the rows would
+		// only take a connection for a page that is gone.
+		const visit = new AbortController();
+		const named = vi.fn(() => Promise.resolve(NAMED));
+		const got = await loadWatchOrder(
+			'7',
+			{
+				franchise: () => {
+					visit.abort();
+					return Promise.resolve(FRANCHISE);
+				},
+				named
+			},
+			visit.signal
+		);
+		expect(named).not.toHaveBeenCalled();
+		expect(got).toEqual({ franchise: null, rows: [] });
+	});
+
+	it('answers nothing for a visit that ended while the rows were out', async () => {
+		// Not a strip without progress: the rows were cut off, not
+		// unreadable, and nothing may keep this answer as the show's.
+		const visit = new AbortController();
+		const got = await loadWatchOrder(
+			'7',
+			{
+				franchise: () => Promise.resolve(FRANCHISE),
+				named: () => {
+					visit.abort();
+					return Promise.reject(new DOMException('aborted', 'AbortError'));
+				}
+			},
+			visit.signal
+		);
+		expect(got).toEqual({ franchise: null, rows: [] });
+	});
+
+	it('starts no read for a visit that has already ended', async () => {
+		const visit = new AbortController();
+		visit.abort();
+		const franchise = vi.fn(() => Promise.resolve(FRANCHISE));
+		const named = vi.fn(() => Promise.resolve(NAMED));
+		const got = await loadWatchOrder('7', { franchise, named }, visit.signal);
+		expect(franchise).not.toHaveBeenCalled();
+		expect(named).not.toHaveBeenCalled();
+		expect(got).toEqual({ franchise: null, rows: [] });
+	});
+
+	it('answers nothing whenever the visit ends, and never rejects', async () => {
+		// The visit ends before the franchise read, during it, between
+		// the reads, during the rows read, or not at all.
+		await fc.assert(
+			fc.asyncProperty(
+				fc.integer({ min: 0, max: 4 }),
+				fc.boolean(),
+				fc.boolean(),
+				async (at, f, h) => {
+					const visit = new AbortController();
+					const end = (step: number) => {
+						if (at === step) visit.abort();
+					};
+					end(0);
+					const got = await loadWatchOrder(
+						'7',
+						{
+							franchise: async () => {
+								end(1);
+								if (!f) throw new Error('kitsu unreachable');
+								end(2);
+								return FRANCHISE;
+							},
+							named: async () => {
+								end(3);
+								if (!h) throw new Error('no backend');
+								return NAMED;
+							}
+						},
+						visit.signal
+					);
+					if (visit.signal.aborted) expect(got).toEqual({ franchise: null, rows: [] });
+					else expect(got).toEqual({ franchise: f ? FRANCHISE : null, rows: f && h ? ROWS : [] });
+				}
+			)
+		);
+	});
+
 	it('gives each named entry its row and nothing else', async () => {
 		const ids = ['7', '8', '20', '30', '40', '50'];
 		const answer = fc.dictionary(

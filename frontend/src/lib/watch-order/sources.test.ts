@@ -16,4 +16,12 @@ describe('watchOrderSources', () => {
 		expect(vi.mocked(kitsuFranchise).mock.calls[0]?.[0]).toBe('7');
 		expect(vi.mocked(historyByKitsuEach).mock.calls[0]?.[0]).toEqual(['7', '8']);
 	});
+
+	it("cancels both reads with the visit's signal", async () => {
+		const visit = new AbortController();
+		await watchOrderSources.franchise('7', visit.signal);
+		await watchOrderSources.named(['7', '8'], visit.signal);
+		expect(kitsuFranchise).toHaveBeenLastCalledWith('7', { signal: visit.signal });
+		expect(historyByKitsuEach).toHaveBeenLastCalledWith(['7', '8'], { signal: visit.signal });
+	});
 });
