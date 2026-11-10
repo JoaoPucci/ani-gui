@@ -111,9 +111,16 @@ function kitsuEpisodes(count: number) {
 	}));
 }
 
-function useShowHandlers() {
+function useShowHandlers(opts: { nativeControls?: boolean } = {}) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () =>
+			HttpResponse.json({
+				...appConfig(),
+				use_custom_player_controls: !opts.nativeControls
+			})
+		),
+		http.post(`${API_BASE}/api/play/external`, () => new HttpResponse(null, { status: 202 })),
+		http.post(`${API_BASE}/api/play/syncplay`, () => new HttpResponse(null, { status: 202 })),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
 			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
@@ -189,6 +196,10 @@ function controlled(video: HTMLVideoElement) {
 
 async function openEpisode(sessionId = 'session-1', episode = '1') {
 	useShowHandlers();
+	return openMounted(sessionId, episode);
+}
+
+async function openMounted(sessionId: string, episode: string) {
 	setUrl(`/play/${KITSU_ID}`, { session: sessionId, episode, kind: 'mp4' });
 	app = mount(PlayPage, { target });
 	await until(() => playerVideoInSlot(), 'the video in its slot');
@@ -317,5 +328,62 @@ describe('play route — a stream on its way is never offered Play', () => {
 			delete (document as unknown as { fullscreenElement?: unknown }).fullscreenElement;
 			document.dispatchEvent(new Event('fullscreenchange'));
 		}
+	});
+
+	for (const [what, itemLabel] of [
+		['the external player', () => m.play_external_label()],
+		['Syncplay', () => m.play_hamburger_syncplay_label()]
+	] as const) {
+		it(`handing a start to ${what} stops it, so nothing keeps loading behind the other player`, async () => {
+			const media = await openEpisode();
+			expect(indicatorOn()).toBe(true);
+			(
+				target.querySelector(
+					`button[aria-label="${m.play_more_aria_label()}"]`
+				) as HTMLButtonElement
+			).click();
+			const item = () =>
+				Array.from(target.querySelectorAll('button[role="menuitem"]')).find((b) =>
+					(b.textContent ?? '').includes(itemLabel())
+				) as HTMLButtonElement | undefined;
+			await until(() => item() !== undefined, `the ${what} menu item`);
+			item()!.click();
+			await until(() => media.pause.mock.calls.length > 0, 'the embedded video to pause');
+			await settle();
+			expect(indicatorOn()).toBe(false);
+			expect(busy()).toBe(false);
+			expect(label()).toBe(PLAY());
+		});
+	}
+
+	it('a stream attaching while the error panel is up starts, once the panel gives way to it', async () => {
+		await openEpisode();
+		const video = playerVideo();
+		Object.defineProperty(video, 'error', { value: { code: 3 }, configurable: true });
+		video.dispatchEvent(new Event('error'));
+		await until(() => target.querySelector('.player-error') !== null, 'the error panel');
+
+		// Back or forward lands on another episode's session while the
+		// panel is up: the next stream attaches with no slot on screen.
+		Object.defineProperty(video, 'error', { value: null, configurable: true });
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '2', kind: 'mp4' });
+		await until(() => target.querySelector('.player-error') === null, 'the panel to give way');
+		await until(() => playPause() !== null, 'the controls back');
+		await settle();
+		expect(label()).toBe(PAUSE());
+		expect(indicatorOn()).toBe(true);
+	});
+
+	it("with Chromium's own controls, a start is busy but the frame draws no second indicator", async () => {
+		useShowHandlers({ nativeControls: true });
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		await until(() => readPosition(KITSU_ID, 1) === 0, 'the stream to attach');
+		await until(() => playerVideo().controls, "Chromium's controls");
+		await settle();
+		expect(busy()).toBe(true);
+		expect(indicatorOn()).toBe(false);
 	});
 });
