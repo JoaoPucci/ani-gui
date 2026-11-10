@@ -1,14 +1,15 @@
 //! A side-story anchor's parent stories, checked against Kitsu listing
 //! a pair the wrong way round: One Piece names LEGO ONE PIECE, its
 //! two-episode spin-off, as its parent story, and LEGO names One Piece
-//! as its side story. An entry is the anchor's parent story only when
-//! it is at least as much a hub as the anchor (its listing names at
-//! least as many side stories, spin-offs and recaps); an entry the
-//! anchor names as its side story or spin-off is its parent story
-//! instead when it started before the anchor, names the anchor back as
-//! its parent story, and names more of them. Every candidate's listing
-//! read to decide counts as read, for the walk's bound and for whether
-//! the answer is complete.
+//! as its side story. An entry the anchor names as its parent story is
+//! refused only when it did not start before the anchor and is less of
+//! a hub (its listing names fewer side stories, spin-offs and recaps).
+//! An entry the anchor names as its side story or spin-off is its
+//! parent story instead when it started before the anchor, names the
+//! anchor back as its parent story, and names more of them. Every
+//! candidate's listing read to decide counts as read: toward the
+//! walk's bound on what it reads after, and toward whether the answer
+//! is complete. The candidates themselves are read whatever the bound.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -34,7 +35,8 @@ pub(super) struct Found {
 }
 
 /// The anchor's parent stories: those it names as its parent story
-/// that name at least as many entries beneath them as it does, and
+/// that started before it or name at least as many entries beneath
+/// them as it does, and
 /// those it names as its side story or spin-off that started before
 /// it, name it back as their parent story, and name more.
 ///
@@ -66,9 +68,10 @@ pub(super) fn parent_stories(anchor: &str, look: &Lookup<'_>) -> Result<Found, V
     let own = beneath(look, anchor).unwrap_or(0);
     let size = |id: &str| beneath(look, id).unwrap_or(0);
     let names_back = |id: &str| listed(look, id, &["parent_story"]).any(|r| r.id == anchor);
+    let before = |s: &Option<String>| matches!((s, &own_start), (Some(a), Some(b)) if a < b);
     let mut parents: Vec<(&str, Option<String>)> = named
         .iter()
-        .filter(|(id, _)| size(id) >= own)
+        .filter(|(id, s)| before(s) || size(id) >= own)
         .chain(
             earlier
                 .iter()

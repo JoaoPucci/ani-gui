@@ -26,17 +26,20 @@ fn beneath(known: &BTreeMap<String, FranchiseListing>, id: &str) -> usize {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// A side-story anchor is placed only under entries that name at
-    /// least as many side stories, spin-offs and recaps as it does: an
-    /// entry the anchor names as its parent story that has fewer is the
-    /// anchor's own spin-off, listed the wrong way round.
+    /// A side-story anchor is placed only under entries that started
+    /// before it or name at least as many side stories, spin-offs and
+    /// recaps as it does: a later entry the anchor names as its parent
+    /// story that has fewer is the anchor's own spin-off, listed the
+    /// wrong way round.
     #[test]
-    fn an_anchor_is_never_placed_under_a_smaller_entry((cat, anchor) in catalogue()) {
+    fn an_anchor_is_never_placed_under_a_later_smaller_entry((cat, anchor) in catalogue()) {
         let (f, _) = drive_with(&anchor, &cat, &[]);
         let own = beneath(&cat.listings, &anchor);
+        let start = |id: &str| cat.entries[id].start.clone();
         for p in f.parents.get(&anchor).into_iter().flatten() {
+            let earlier = matches!((start(p), start(&anchor)), (Some(a), Some(b)) if a < b);
             prop_assert!(
-                beneath(&cat.listings, p) >= own,
+                earlier || beneath(&cat.listings, p) >= own,
                 "{} placed under {}", anchor, p
             );
         }
@@ -56,6 +59,50 @@ proptest! {
             .any(|r| matches!((start(&r.id), start(&anchor)), (Some(a), Some(b)) if a < b));
         if !named && !earlier {
             prop_assert!(!f.parents.contains_key(&anchor));
+        }
+    }
+
+    /// A parent the anchor names only as its own side story or spin-off
+    /// lists the anchor back as its parent story: the pair is listed
+    /// the wrong way round from both sides, not from one.
+    #[test]
+    fn a_reversed_parent_names_the_anchor_back((cat, anchor) in catalogue()) {
+        let (f, _) = drive_with(&anchor, &cat, &[]);
+        let details = BTreeMap::new();
+        let look = Lookup { known: &cat.listings, details: &details };
+        let named: BTreeSet<String> = listed(&look, &anchor, &["parent_story"])
+            .map(|r| r.id.clone())
+            .collect();
+        for p in f.parents.get(&anchor).into_iter().flatten() {
+            if named.contains(p) {
+                continue;
+            }
+            prop_assert!(
+                listed(&look, p, &["parent_story"]).any(|r| r.id == anchor),
+                "{} placed under {}, which does not name it back", anchor, p
+            );
+        }
+    }
+
+    /// Every candidate the parent check considers had its listing read,
+    /// so one read only in part leaves the answer incomplete, taken or
+    /// not.
+    #[test]
+    fn a_candidate_read_in_part_leaves_the_answer_incomplete((cat, anchor) in catalogue()) {
+        let (f, (known, _)) = drive_with(&anchor, &cat, &[]);
+        let details = BTreeMap::new();
+        let look = Lookup { known: &cat.listings, details: &details };
+        let alone = f.entries.len() == 1 && f.entries[0].id == anchor;
+        if !(alone || f.parents.contains_key(&anchor)) {
+            return Ok(());
+        }
+        let candidates = listed(&look, &anchor, &["parent_story", "side_story", "spinoff"])
+            .map(|r| r.id.clone())
+            .filter(|id| known.contains_key(id));
+        for c in candidates {
+            if !cat.listings[&c].complete {
+                prop_assert!(!f.complete, "{} read {} in part", anchor, c);
+            }
         }
     }
 }
