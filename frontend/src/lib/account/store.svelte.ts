@@ -6,7 +6,7 @@
  * connect / disconnect / sync actions, and read by:
  *
  *   - /account page — surface state per provider
- *   - home Watch Later rail — gate render on hasAny
+ *   - home Watch Later rail — which sign-ins it reads, and readsSettled
  *   - AccountChip — avatar + amber dot
  */
 
