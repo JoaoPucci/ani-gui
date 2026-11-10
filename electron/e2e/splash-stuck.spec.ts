@@ -14,16 +14,31 @@
  *
  * Restart's relaunch is checked as the person would see it: this
  * process exits, and a new one from the same tree starts and keeps
- * running (it holds the single-instance lock rather than handing over
- * to the one that is exiting). The new process is outside Playwright's
- * reach, so it is found by its binary's path and stopped by hand.
+ * running, holding the single-instance lock rather than handing over to
+ * the one that is exiting.
+ *
+ * Processes: a test signals only what it can prove it started. The
+ * process Playwright launched is closed through Playwright. The
+ * relaunched one is outside Playwright's reach, and outside this
+ * test's process tree too: its parent exits, and it is reparented to
+ * the session's subreaper, the user's service manager, which must
+ * never be signalled. So it is never looked for in the process list
+ * and its parent is never touched. It names itself: Chromium's
+ * single-instance lock in the test's own temporary profile is a
+ * symlink to `<host>-<pid>` of the process holding it. That pid is
+ * signalled only after /proc shows it running this test's own copy of
+ * the binary, and only that pid: its own quit stops its backend.
+ *
+ * Everything the app could reach is the test's: HOME and the XDG
+ * directories are a temporary directory, and the display and the
+ * session bus are the private ones tools/headless-wayland.sh starts,
+ * which the relaunched process inherits.
  */
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { killTree } from '../lib/cold-launch.cjs';
 import { launchPackagedApp, packagedBinary, splashState, splashWindow } from './launch';
 
 test.beforeAll(() => {
@@ -60,10 +75,13 @@ function profileEnv(locale?: string) {
 		fs.mkdirSync(path.join(config, 'ani-gui'), { recursive: true });
 		fs.writeFileSync(path.join(config, 'ani-gui', 'config.toml'), `locale = "${locale}"\n`);
 	}
+	fs.mkdirSync(path.join(tmp, 'home'), { recursive: true });
 	return {
 		tmp,
+		config,
 		env: {
 			...process.env,
+			HOME: path.join(tmp, 'home'),
 			XDG_STATE_HOME: path.join(tmp, 'state'),
 			XDG_CONFIG_HOME: config,
 			XDG_CACHE_HOME: path.join(tmp, 'cache'),
@@ -99,30 +117,52 @@ async function stuckView(splash: Page) {
 const focusedAct = (splash: Page) =>
 	splash.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset?.act ?? document.activeElement?.tagName);
 
-/** The main processes started from `binary`'s tree: not Chromium's
- *  helpers, which carry `--type=`. */
-function mainProcesses(binary: string): number[] {
-	const bin = `${binary}.bin`;
-	return execFileSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8' })
-		.split('\n')
-		.map((line) => line.trim())
-		.filter((line) => line.includes(bin) && !line.includes('--type='))
-		.map((line) => Number(line.split(/\s+/)[0]));
+/** The pid holding the app's single-instance lock in the profile under
+ *  `config`, or null: Chromium's lock is a symlink to `<host>-<pid>`. */
+function lockHolder(config: string): number | null {
+	try {
+		const target = fs.readlinkSync(path.join(config, 'ani-gui', 'SingletonLock'));
+		const pid = Number(target.slice(target.lastIndexOf('-') + 1));
+		return Number.isInteger(pid) && pid > 1 ? pid : null;
+	} catch {
+		return null;
+	}
 }
 
-function alive(pid: number): boolean {
+/** Whether `pid` is alive and running this test's own copy of the app
+ *  (`binary`'s tree), by its /proc entry. Nothing that fails this is
+ *  ever signalled. */
+function ours(pid: number | null | undefined, binary: string): pid is number {
+	if (!Number.isInteger(pid) || (pid as number) <= 1) return false;
 	try {
-		process.kill(pid, 0);
-		return true;
+		return fs.readlinkSync(`/proc/${pid}/exe`) === `${binary}.bin`;
 	} catch {
 		return false;
 	}
 }
 
+/** Stop the app process `pid`, if it is ours: SIGTERM, which quits it
+ *  the normal way (its backend with it), then SIGKILL to the same pid
+ *  if it is still there and still ours. Never a group, a child or a
+ *  parent. */
+async function stopOurs(pid: number | null | undefined, binary: string) {
+	if (!ours(pid, binary)) return;
+	process.kill(pid, 'SIGTERM');
+	for (let i = 0; i < 100 && ours(pid, binary); i++) await new Promise((r) => setTimeout(r, 100));
+	if (ours(pid, binary)) process.kill(pid, 'SIGKILL');
+}
+
+/** Close the app Playwright launched; if it will not go, stop its
+ *  recorded pid the same way. */
+async function closeLaunched(app: ElectronApplication, pid: number, binary: string) {
+	if (ours(pid, binary)) await Promise.race([app.close().catch(() => {}), new Promise((r) => setTimeout(r, 10_000))]);
+	await stopOurs(pid, binary);
+}
+
 test('a first page that never says it rendered: the splash offers Restart and Quit, and Quit ends the launch revealing nothing', async () => {
 	test.setTimeout(90_000);
 	const binary = packagedWithPage('never-en', 'never');
-	const { tmp, env } = profileEnv();
+	const { tmp, config, env } = profileEnv();
 	const app = await launchPackagedApp(env, { binary });
 	const pid = app.process().pid!;
 	const exited = new Promise<number | null>((resolve) => app.process().once('exit', (code) => resolve(code)));
@@ -162,7 +202,7 @@ test('a first page that never says it rendered: the splash offers Restart and Qu
 		expect(await focusedAct(splash)).toBe('quit');
 		await splash.keyboard.press('Escape');
 		await splash.waitForTimeout(1_000);
-		expect(alive(pid)).toBe(true);
+		expect(ours(pid, binary)).toBe(true);
 		expect(await windows(app)).toHaveLength(2);
 
 		// Enter on Quit: the launch ends as closing the splash ends it.
@@ -173,12 +213,12 @@ test('a first page that never says it rendered: the splash offers Restart and Qu
 			if (!String(err).includes('has been closed')) throw err;
 		});
 		expect(await exited).toBe(0);
-		expect(mainProcesses(binary)).toEqual([]);
+		// Nothing started again: no process of this tree took the lock.
+		await new Promise((r) => setTimeout(r, 3_000));
+		expect(ours(lockHolder(config), binary)).toBe(false);
 	} finally {
-		if (alive(pid)) {
-			killTree(pid);
-			await app.close().catch(() => {});
-		}
+		await closeLaunched(app, pid, binary);
+		await stopOurs(lockHolder(config), binary);
 		fs.rmSync(tmp, { recursive: true, force: true });
 	}
 });
@@ -186,11 +226,11 @@ test('a first page that never says it rendered: the splash offers Restart and Qu
 test('Restart, in the app’s language, starts the app again: this process exits and a new one takes over', async () => {
 	test.setTimeout(90_000);
 	const binary = packagedWithPage('never-pt', 'never');
-	const { tmp, env } = profileEnv('pt-BR');
+	const { tmp, config, env } = profileEnv('pt-BR');
 	const app = await launchPackagedApp(env, { binary });
 	const pid = app.process().pid!;
 	const exited = new Promise<number | null>((resolve) => app.process().once('exit', (code) => resolve(code)));
-	let relaunched: number[] = [];
+	let relaunched: number | null = null;
 	try {
 		const splash = await splashWindow(app);
 		await expect(splash.locator('.actions')).toBeVisible({ timeout: 30_000 });
@@ -201,21 +241,28 @@ test('Restart, in the app’s language, starts the app again: this process exits
 			lang: 'pt-BR',
 			late: 1
 		});
+		expect(lockHolder(config)).toBe(pid);
 		await splash.getByRole('button', { name: 'Reiniciar' }).click();
 		expect(await exited).toBe(0);
+		// A new process of this tree holds the lock.
 		await expect
-			.poll(() => (relaunched = mainProcesses(binary).filter((p) => p !== pid)), { timeout: 15_000 })
-			.toHaveLength(1);
-		// It kept running: it holds the lock, rather than handing over to
-		// the process that was exiting and quitting at once.
+			.poll(
+				() => {
+					const holder = lockHolder(config);
+					relaunched = holder !== pid && ours(holder, binary) ? holder : null;
+					return relaunched !== null;
+				},
+				{ timeout: 15_000 }
+			)
+			.toBe(true);
+		// And keeps it: it did not hand over to the process that was
+		// exiting and quit at once.
 		await new Promise((resolve) => setTimeout(resolve, 5_000));
-		expect(relaunched.every(alive)).toBe(true);
+		expect(lockHolder(config)).toBe(relaunched);
+		expect(ours(relaunched, binary)).toBe(true);
 	} finally {
-		for (const p of relaunched) killTree(p);
-		if (alive(pid)) {
-			killTree(pid);
-			await app.close().catch(() => {});
-		}
+		await stopOurs(relaunched, binary);
+		await closeLaunched(app, pid, binary);
 		fs.rmSync(tmp, { recursive: true, force: true });
 	}
 });
@@ -225,6 +272,7 @@ test('a first page that renders after the stuck state hands over as usual: the w
 	const binary = packagedWithPage('late', 'late');
 	const { tmp, env } = profileEnv();
 	const app = await launchPackagedApp(env, { binary });
+	const pid = app.process().pid!;
 	try {
 		const splash = await splashWindow(app);
 		await expect(splash.locator('.actions')).toBeVisible({ timeout: 30_000 });
@@ -238,7 +286,7 @@ test('a first page that renders after the stuck state hands over as usual: the w
 		});
 		expect(ready).toEqual({ rendered: true, gaveUp: false, beforeReveal: true });
 	} finally {
-		await app.close();
+		await closeLaunched(app, pid, binary);
 		fs.rmSync(tmp, { recursive: true, force: true });
 	}
 });
