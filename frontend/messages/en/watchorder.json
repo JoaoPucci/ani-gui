@@ -1,0 +1,182 @@
+{
+	"diag_description": "Design mockups for the watch-order feature, drawn from fixed sample data: a watch-order strip on the show pages of Bleach, Attack on Titan, JoJo, Gintama, Fate/Zero and Monogatari; an Up next card in the player; Up next cards at the start of Continue Watching; a franchise page; and the Watch order setting.",
+	"diag_section": "Watch-order mockups",
+	"diag_switcher": "Show the switch for the mockup options",
+	"diag_toggle": "Show the watch-order mockups",
+	"franchise_after_loop": "After the loop, unnumbered: the loop gives these no single place",
+	"franchise_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} entry",
+				"countPlural=*": "{count} entries"
+			}
+		}
+	],
+	"franchise_cycle_hint": "These entries link round to one another, so they have no single order. They are listed along their links, from where the run enters the loop.",
+	"franchise_eyebrow": "Franchise",
+	"franchise_films": "Films",
+	"franchise_here": "You are here",
+	"franchise_main": "Main story",
+	"franchise_off": "This page is a design mockup. Turn the mockups on in Diagnostics to see it.",
+	"franchise_order_change": "Change in Settings",
+	"franchise_order_note_linked": "In the order the anime databases link them.",
+	"franchise_order_note_released": "In order of release.",
+	"franchise_recaps": "Recaps",
+	"franchise_recaps_hide": "Hide recaps",
+	"franchise_recaps_show": "Show recaps",
+	"franchise_resume": "Resume",
+	"franchise_sides": "Side stories & specials",
+	"franchise_start": "Start from the beginning",
+	"franchise_versions": "Other versions",
+	"handoff_after": "After {title}",
+	"handoff_aria": "Up next: {title}, after {finished}",
+	"handoff_next": "Next",
+	"meta_coming": "Coming {date}",
+	"meta_no_date": "Date not announced",
+	"meta_progress": "EP {episode} of {total}",
+	"meta_progress_open": "EP {episode}",
+	"meta_watched": "Watched",
+	"mock_badge": "Mockup",
+	"mock_cta": "Franchise link",
+	"mock_cta_button": "Button",
+	"mock_cta_stack": "Poster stack",
+	"mock_footer": "Footer",
+	"mock_footer_axis": "On the centre line",
+	"mock_footer_center": "Centred",
+	"mock_footer_ends": "Opposite ends",
+	"mock_franchise": "Franchise",
+	"mock_franchise_list": "List",
+	"mock_franchise_shelf": "Shelf",
+	"mock_group_aria": "Watch-order mockup options",
+	"mock_handoff": "Continue",
+	"mock_handoff_episode": "EP 1",
+	"mock_handoff_next": "Next",
+	"mock_order": "Order",
+	"mock_placement": "Place",
+	"mock_placement_bottom": "Above similar titles",
+	"mock_placement_top": "Under the title",
+	"mock_resume": "Watching",
+	"mock_resume_chip": "Card",
+	"mock_resume_sentence": "Sentence",
+	"mock_setting": "Setting",
+	"mock_setting_radio": "Options with hints",
+	"mock_setting_segmented": "Buttons",
+	"mock_stack_hover": "Stack highlight",
+	"mock_stack_hover_border": "Border",
+	"mock_stack_hover_surface": "Surface",
+	"mock_stack_hover_underline": "Underline",
+	"mock_stack_posters": "Posters (simulated)",
+	"mock_stack_posters_0": "None",
+	"mock_stack_posters_1": "1",
+	"mock_stack_posters_2": "2",
+	"mock_stack_posters_3": "3",
+	"mock_strip": "Strip",
+	"mock_strip_rail": "Whole run",
+	"mock_strip_trio": "Before and after",
+	"mock_titles": "Titles",
+	"mock_titles_full": "Full",
+	"mock_titles_short": "Short",
+	"mock_upnext": "Up next",
+	"mock_upnext_poster": "Poster",
+	"mock_upnext_still": "Still",
+	"mock_wording": "Wording",
+	"mock_wording_plain": "Before / After",
+	"mock_wording_previous": "Previous / Next",
+	"mock_wording_role": "Relation",
+	"mock_wording_watch": "Watch before / after",
+	"setting_aria": "Watch order",
+	"setting_hint": "How a series' seasons, films and specials are ordered: as the anime databases link them, or by release date. The links generally follow the story, but they are maintained by each database's community and can be wrong.",
+	"setting_key": "Watch order",
+	"setting_linked": "As linked",
+	"setting_linked_desc": "As the anime databases link them, which often follows the story",
+	"setting_released": "As released",
+	"setting_released_desc": "By release date",
+	"strip_after": "After",
+	"strip_before": "Before",
+	"strip_eyebrow": "Watch order",
+	"strip_first": "Start of the run",
+	"strip_franchise_link": "Whole franchise",
+	"strip_franchise_stack_films": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} film or version",
+				"countPlural=*": "{count} films and versions"
+			}
+		}
+	],
+	"strip_franchise_stack_main": "{count} in the main story",
+	"strip_franchise_stack_recaps": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} recap",
+				"countPlural=*": "{count} recaps"
+			}
+		}
+	],
+	"strip_franchise_stack_sides": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} side story",
+				"countPlural=*": "{count} side stories"
+			}
+		}
+	],
+	"strip_franchise_stack_title": "See the whole franchise",
+	"strip_join": "Comes after these {count}",
+	"strip_last": "End of the run",
+	"strip_leads_into": "Leads into {title}",
+	"strip_of_total": "of {total}",
+	"strip_position": "{position} of {total}",
+	"strip_side_end": "Nothing links on from here",
+	"strip_side_story": "Side story",
+	"strip_unnumbered_branch": "One of the ways to continue",
+	"strip_unnumbered_cycle": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Part of a loop of {count} entry",
+				"countPlural=*": "Part of a loop of {count} entries"
+			}
+		}
+	],
+	"strip_watching_go": "Go to its page",
+	"strip_watching_key": "You're watching",
+	"strip_watching_sentence": "You're watching {title} · EP {episode}.",
+	"strip_way": "Way {n} of {count}",
+	"strip_ways": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} way to continue",
+				"countPlural=*": "{count} ways to continue"
+			}
+		}
+	],
+	"strip_word_next": "Next",
+	"strip_word_parent": "Parent story",
+	"strip_word_parents": "Parent stories",
+	"strip_word_prequel": "Prequel",
+	"strip_word_prequels": "Prequels",
+	"strip_word_previous": "Previous",
+	"strip_word_released_after": "Released after",
+	"strip_word_released_before": "Released before",
+	"strip_word_sequel": "Sequel",
+	"strip_word_sequels": "Sequels",
+	"strip_word_watch_after": "Watch after",
+	"strip_word_watch_before": "Watch before",
+	"upnext_announce": "Up next: {title}",
+	"upnext_choices": "Ways to continue",
+	"upnext_coming": "Next, when it airs",
+	"upnext_dismiss": "Dismiss",
+	"upnext_eyebrow": "Up next"
+}
