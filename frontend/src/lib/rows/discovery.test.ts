@@ -114,7 +114,7 @@ describe('discoveryView, as rows settle in any order', () => {
 	// The rows' final answers, whether each starts out pending (not yet
 	// known to exist) rather than loading, and the order of the steps:
 	// a pending row's index appears twice, once to learn it exists (it
-	// is then loading, or settles straight away when it was absent) and
+	// is then loading, or settles straight away when it failed) and
 	// once to settle.
 	const run = fc
 		.array(fc.tuple(settled, fc.boolean()), { minLength: 1, maxLength: 5 })
