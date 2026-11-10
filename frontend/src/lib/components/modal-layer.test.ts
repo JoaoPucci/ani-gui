@@ -268,6 +268,19 @@ describe('modals on top of each other', () => {
 		expect(document.activeElement).toBe(opener);
 	});
 
+	it('enters the one beneath at its control when the upper, opened with focus nowhere, closes first', () => {
+		// The lower one's own surface does not take focus (the update
+		// dialog's backdrop has no tabindex), so focus goes to its control.
+		const lower = document.createElement('div');
+		lower.innerHTML = '<button id="l1">l1</button><button id="l2">l2</button>';
+		page.appendChild(lower);
+		open.push(openModal(lower));
+		(document.activeElement as HTMLElement).blur();
+		const above = mountIn(page, dialog('<button id="u1">u1</button>'));
+		above.close();
+		expect(document.activeElement?.id).toBe('l1');
+	});
+
 	it('enters the one beneath when the closing one’s opener has gone', () => {
 		const lower = dialog('<button id="l1">l1</button>');
 		mountIn(page, lower);

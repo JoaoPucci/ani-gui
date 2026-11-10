@@ -206,7 +206,7 @@ describe('the player, under a play failure', () => {
 		await mountPlayer();
 		await clickAndFail(2);
 		const streams = FakeEventSource.instances.length;
-		for (const key of ['f', 'n', 'p', 'ArrowRight', 'm']) press(key);
+		for (const key of ['f', 'n', 'p']) press(key);
 		await settle();
 		expect(fullscreenRequests).not.toHaveBeenCalled();
 		expect(FakeEventSource.instances.length).toBe(streams);

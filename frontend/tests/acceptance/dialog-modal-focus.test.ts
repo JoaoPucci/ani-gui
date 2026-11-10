@@ -144,6 +144,8 @@ describe('the update dialog', () => {
 			seen.add(active());
 		}
 		expect(seen.has(notes)).toBe(true);
+		// A named, focusable scroll region: a bare <pre> may not carry a name.
+		expect(notes.getAttribute('role')).toBe('region');
 		expect(notes.getAttribute('aria-label')).toBe(m.update_dialog_notes_aria_label());
 	});
 
