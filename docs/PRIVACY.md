@@ -156,8 +156,9 @@ ani-gui keeps the following on your computer only:
   records a show played again after removing it.
 - **Choices you make for a show** — the subtitle language you last
   picked for it (or Off; a track of unknown language, or a play
-  opened from a guessed Continue card, leaves it as it was), and, for
-  a show the streaming site lists twice, the version you chose. Kept
+  opened from a guessed Continue card, leaves it as it was), the
+  audio (Sub or Dub) you picked on its page, and, for a show the
+  streaming site lists twice, the version you chose. Kept
   in the app's local browser storage (under your OS user-data
   directory), keyed by the show's Kitsu id, at most 500 shows for each
   kind of choice, the least recently chosen dropped first. Choosing

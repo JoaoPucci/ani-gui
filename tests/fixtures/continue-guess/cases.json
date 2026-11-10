@@ -1,0 +1,2152 @@
+[
+ {
+  "key": "hianime:jojos-bizarre-adventure-2012-708",
+  "title": "JoJo's Bizarre Adventure (Uncensored)",
+  "key_year": 2012,
+  "right": "7158",
+  "picks": {
+   "1": "7158",
+   "26": "7158"
+  },
+  "ruled_out": {
+   "26": [
+    "13306",
+    "42116",
+    "610",
+    "3136",
+    "7730",
+    "46393"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:jojos-bizarre-adventure-stardust-crusaders-718",
+  "title": "JoJo's Bizarre Adventure Part 2: Stardust Crusaders (Uncensored)",
+  "key_year": null,
+  "right": "8063",
+  "picks": {
+   "1": "46010",
+   "24": "46010"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:jojos-bizarre-adventure-diamond-is-unbreakable-1388",
+  "title": "JoJo's Bizarre Adventure Part 4: Diamond is Unbreakable (Uncensored)",
+  "key_year": null,
+  "right": "11459",
+  "picks": {
+   "1": "11459",
+   "39": "11459"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:jojos-bizarre-adventure-stardust-crusaders-battle-in-egypt-710",
+  "title": "JoJo's Bizarre Adventure Part 3: Stardust Crusaders 2nd Season (Uncensored)",
+  "key_year": null,
+  "right": "8739",
+  "picks": {
+   "1": "8739",
+   "24": "8739"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:jojos-bizarre-adventure-golden-wind-695",
+  "title": "JoJo's Bizarre Adventure Part 5: Golden Wind (Uncensored)",
+  "key_year": null,
+  "right": "41410",
+  "picks": {
+   "1": "41410",
+   "39": "41410"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:chained-soldier-uncensored-9454",
+  "title": "Chained Soldier [Uncensored]",
+  "key_year": null,
+  "right": "45512",
+  "picks": {
+   "1": "45512",
+   "12": "45512"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:chained-soldier-season-2-uncensored-10415",
+  "title": "Chained Soldier Season 2 [Uncensored]",
+  "key_year": null,
+  "right": "48639",
+  "picks": {
+   "1": "48639",
+   "12": "48639"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:jojos-bizarre-adventure-stone-ocean-1460",
+  "title": "JoJo's Bizarre Adventure Part 6: Stone Ocean",
+  "key_year": null,
+  "right": "44294",
+  "picks": {
+   "1": "44294",
+   "12": "44294"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:jojos-bizarre-adventure-stone-ocean-part-2-1464",
+  "title": "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2",
+  "key_year": null,
+  "right": "46010",
+  "picks": {
+   "1": "46010",
+   "12": "46010"
+  },
+  "ruled_out": {
+   "1": [
+    "44294"
+   ],
+   "12": [
+    "44294"
+   ]
+  },
+  "enrichment": "46010",
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:jojos-bizarre-adventure-stone-ocean-part-3-2834",
+  "title": "JoJo's Bizarre Adventure: Stone Ocean Part 3",
+  "key_year": null,
+  "right": "46598",
+  "picks": {
+   "1": "46598",
+   "14": "46598"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:attack-on-titan-240",
+  "title": "Attack on Titan",
+  "key_year": null,
+  "right": "7442",
+  "picks": {
+   "1": "7442",
+   "25": "7442"
+  },
+  "ruled_out": {
+   "25": [
+    "41982",
+    "41538",
+    "8674",
+    "42247",
+    "41487",
+    "8673",
+    "43212",
+    "7694",
+    "13718",
+    "46038",
+    "7838",
+    "8672",
+    "47132",
+    "41550"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:attack-on-titan-season-2-865",
+  "title": "Attack on Titan Season 2",
+  "key_year": null,
+  "right": "8671",
+  "picks": {
+   "1": "8671",
+   "12": "8671"
+  },
+  "ruled_out": {
+   "1": [
+    "47129",
+    "41982",
+    "44240",
+    "47132",
+    "47131",
+    "47259"
+   ],
+   "12": [
+    "47129",
+    "41982",
+    "44240",
+    "47132",
+    "47131",
+    "47259"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:attack-on-titan-season-3-866",
+  "title": "Attack on Titan Season 3",
+  "key_year": null,
+  "right": "13569",
+  "picks": {
+   "1": "13569",
+   "22": "13569"
+  },
+  "ruled_out": {
+   "1": [
+    "41982",
+    "42247",
+    "46038",
+    "47130"
+   ],
+   "22": [
+    "41982",
+    "42247",
+    "46038",
+    "47130"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:attack-on-titan-season-3-part-2-1895",
+  "title": "Attack on Titan Season 3 Part 2",
+  "key_year": null,
+  "right": "41982",
+  "picks": {
+   "1": "41982",
+   "10": "41982"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:attack-on-titan-final-season-1372",
+  "title": "Attack on Titan: Final Season, Part 1",
+  "key_year": null,
+  "right": "42422",
+  "picks": {
+   "1": "46038",
+   "16": "46038"
+  },
+  "ruled_out": {
+   "16": [
+    "46038",
+    "47131",
+    "47259"
+   ]
+  },
+  "enrichment": "46038",
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:attack-on-titan-final-season-part-2-868",
+  "title": "Attack on Titan: Final Season, Part 2",
+  "key_year": null,
+  "right": "44240",
+  "picks": {
+   "1": "44240",
+   "12": "44240"
+  },
+  "ruled_out": {
+   "1": [
+    "47259",
+    "47131"
+   ],
+   "12": [
+    "47132",
+    "47259",
+    "47131"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:bleach-thousand-year-blood-war-1234",
+  "title": "Bleach: Thousand-Year Blood War Arc",
+  "key_year": null,
+  "right": "43078",
+  "picks": {
+   "1": "43078",
+   "13": "43078"
+  },
+  "ruled_out": {
+   "13": [
+    "48914"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:bleach-thousand-year-blood-war-the-separation-1009",
+  "title": "Bleach: Thousand-Year Blood War - The Separation",
+  "key_year": null,
+  "right": "46903",
+  "picks": {
+   "1": "46903",
+   "13": "46903"
+  },
+  "ruled_out": {
+   "13": [
+    "48914"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:bleach-thousand-year-blood-war-the-conflict-3859",
+  "title": "Bleach: Thousand-Year Blood War - The Conflict",
+  "key_year": null,
+  "right": "48015",
+  "picks": {
+   "1": "48015",
+   "14": "48015"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:spy-x-family-639",
+  "title": "Spy x Family",
+  "key_year": null,
+  "right": "45398",
+  "picks": {
+   "1": "45398",
+   "12": "45398"
+  },
+  "ruled_out": {
+   "12": [
+    "51163",
+    "46874",
+    "48477"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:anime-14-256",
+  "title": "Spy x Family, Part 2",
+  "key_year": null,
+  "right": "45619",
+  "picks": {
+   "1": "45619",
+   "13": "45619"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:anime-13-255",
+  "title": "Spy x Family Season 2",
+  "key_year": null,
+  "right": "46873",
+  "picks": {
+   "1": "46873",
+   "12": "46873"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:mob-psycho-100-926",
+  "title": "Mob Psycho 100",
+  "key_year": null,
+  "right": "11578",
+  "picks": {
+   "1": "11578",
+   "12": "11578"
+  },
+  "ruled_out": {
+   "12": [
+    "41073",
+    "42416",
+    "46870"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:mob-psycho-100-ii-918",
+  "title": "Mob Psycho 100 II",
+  "key_year": null,
+  "right": "41071",
+  "picks": {
+   "1": "41071",
+   "13": "41071"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:demon-slayer-kimetsu-no-yaiba-843",
+  "title": "Demon Slayer: Kimetsu no Yaiba",
+  "key_year": null,
+  "right": "41370",
+  "picks": {
+   "1": "41370",
+   "26": "41370"
+  },
+  "ruled_out": {
+   "1": [
+    "49645"
+   ],
+   "26": [
+    "42586",
+    "44081",
+    "44389",
+    "45249",
+    "44390",
+    "44388",
+    "45254",
+    "45253",
+    "45866",
+    "47635",
+    "49001",
+    "47122",
+    "50005",
+    "49645"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:demon-slayer-kimetsu-no-yaiba-entertainment-district-arc-749",
+  "title": "Demon Slayer: Entertainment District Arc",
+  "key_year": null,
+  "right": "44081",
+  "picks": {
+   "1": "44081",
+   "11": "44081"
+  },
+  "ruled_out": {
+   "11": [
+    "47122"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:rezero-starting-life-in-another-world-1387",
+  "title": "Re:ZERO -Starting Life in Another World-",
+  "key_year": null,
+  "right": "11209",
+  "picks": {
+   "1": "11209",
+   "25": "11209"
+  },
+  "ruled_out": {
+   "1": [
+    "43029"
+   ],
+   "25": [
+    "42633",
+    "13882",
+    "42006",
+    "43029",
+    "43306",
+    "46382"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:rezero-starting-life-in-another-world-season-2-858",
+  "title": "Re:ZERO -Starting Life in Another World- Season 2",
+  "key_year": null,
+  "right": "42198",
+  "picks": {
+   "1": "42198",
+   "13": "42198"
+  },
+  "ruled_out": {
+   "1": [
+    "43247"
+   ],
+   "13": [
+    "43247"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:rezero-starting-life-in-another-world-season-2-part-2-859",
+  "title": "Re:Zero - Starting Life in Another World 2nd Season (Part 2)",
+  "key_year": null,
+  "right": "43247",
+  "picks": {
+   "1": "43247",
+   "12": "43247"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:mushoku-tensei-jobless-reincarnation-452",
+  "title": "Mushoku Tensei: Jobless Reincarnation",
+  "key_year": null,
+  "right": "42323",
+  "picks": {
+   "1": "42323",
+   "11": "42323"
+  },
+  "ruled_out": {
+   "11": [
+    "45492",
+    "47683"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:mushoku-tensei-jobless-reincarnation-part-2-453",
+  "title": "Mushoku Tensei: Jobless Reincarnation Part 2",
+  "key_year": null,
+  "right": "43907",
+  "picks": {
+   "1": "43907",
+   "12": "43907"
+  },
+  "ruled_out": {
+   "1": [
+    "45492"
+   ],
+   "12": [
+    "45492"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:mushoku-tensei-jobless-reincarnation-season-2-449",
+  "title": "Mushoku Tensei: Jobless Reincarnation Season 2",
+  "key_year": null,
+  "right": "45950",
+  "picks": {
+   "1": "45950",
+   "12": "45950"
+  },
+  "ruled_out": {
+   "1": [
+    "47694",
+    "51093",
+    "47683"
+   ],
+   "12": [
+    "47694",
+    "51093",
+    "47683"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:vinland-saga-901",
+  "title": "Vinland Saga",
+  "key_year": null,
+  "right": "41084",
+  "picks": {
+   "1": "41084",
+   "24": "41084"
+  },
+  "ruled_out": {
+   "24": [
+    "47074",
+    "47444",
+    "11481"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:vinland-saga-season-2-902",
+  "title": "Vinland Saga: 2nd Season",
+  "key_year": null,
+  "right": "44875",
+  "picks": {
+   "1": "44875",
+   "24": "44875"
+  },
+  "ruled_out": {
+   "1": [
+    "47074",
+    "47444",
+    "41084",
+    "11481"
+   ],
+   "24": [
+    "47074",
+    "47444",
+    "41084",
+    "11481"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:kaguya-sama-love-is-war-1-437",
+  "title": "Kaguya-sama: Love is War",
+  "key_year": null,
+  "right": "41373",
+  "picks": {
+   "1": "41373",
+   "12": "41373"
+  },
+  "ruled_out": {
+   "12": [
+    "46206",
+    "43731",
+    "45542",
+    "49998",
+    "50446",
+    "44648"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:kaguya-sama-love-is-war-416",
+  "title": "Kaguya-sama: Love is War Season 2",
+  "key_year": null,
+  "right": "42632",
+  "picks": {
+   "1": "42632",
+   "12": "42632"
+  },
+  "ruled_out": {
+   "1": [
+    "43691",
+    "45542"
+   ],
+   "12": [
+    "43691",
+    "45542"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:oshi-no-ko-675",
+  "title": "My Star",
+  "key_year": null,
+  "right": "46170",
+  "picks": {
+   "1": "46170",
+   "11": "46170"
+  },
+  "ruled_out": {
+   "1": [
+    "43092",
+    "8080",
+    "42387",
+    "9843",
+    "49897",
+    "46194",
+    "46508",
+    "48943",
+    "50019",
+    "13893",
+    "5212",
+    "7238",
+    "46455",
+    "48186",
+    "5762",
+    "4551",
+    "10411",
+    "49015"
+   ],
+   "11": [
+    "2724",
+    "43092",
+    "8080",
+    "42387",
+    "9843",
+    "49897",
+    "7105",
+    "46194",
+    "46508",
+    "48943",
+    "50019",
+    "13893",
+    "5212",
+    "7238",
+    "46455",
+    "48186",
+    "5762",
+    "4551",
+    "10411",
+    "49015"
+   ]
+  },
+  "enrichment": "46170",
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:oshi-no-ko-season-2-682",
+  "title": "My Star: Season 2",
+  "key_year": null,
+  "right": "47659",
+  "picks": {
+   "1": "47659",
+   "13": "47659"
+  },
+  "ruled_out": {
+   "1": [
+    "47232"
+   ],
+   "13": [
+    "47232"
+   ]
+  },
+  "enrichment": "47659",
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:oshi-no-ko-season-3-672",
+  "title": "My Star Season 3",
+  "key_year": null,
+  "right": "49264",
+  "picks": {
+   "1": "49264",
+   "11": "49264"
+  },
+  "ruled_out": {
+   "1": [
+    "47232"
+   ],
+   "11": [
+    "47232"
+   ]
+  },
+  "enrichment": "49264",
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:mobile-suit-gundam-the-witch-from-mercury-3596",
+  "title": "Mobile Suit Gundam: The Witch from Mercury",
+  "key_year": null,
+  "right": "45217",
+  "picks": {
+   "1": "45217",
+   "12": "45217"
+  },
+  "ruled_out": {
+   "12": [
+    "47301",
+    "46291"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:mobile-suit-gundam-the-witch-from-mercury-season-2-5101",
+  "title": "Mobile Suit Gundam: The Witch from Mercury Season 2",
+  "key_year": null,
+  "right": "46561",
+  "picks": {
+   "1": "46561",
+   "12": "46561"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:jujutsu-kaisen-237",
+  "title": "Jujutsu Kaisen (TV)",
+  "key_year": null,
+  "right": "42765",
+  "picks": {
+   "1": "42765",
+   "24": "42765"
+  },
+  "ruled_out": {
+   "1": [
+    "43886"
+   ],
+   "24": [
+    "43886"
+   ]
+  },
+  "enrichment": "42765",
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:jujutsu-kaisen-season-2-415",
+  "title": "Jujutsu Kaisen 2nd Season",
+  "key_year": null,
+  "right": "45857",
+  "picks": {
+   "1": "45857",
+   "23": "45857"
+  },
+  "ruled_out": {
+   "1": [
+    "47880"
+   ],
+   "23": [
+    "47880"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:overlord-464",
+  "title": "Overlord",
+  "key_year": null,
+  "right": "9965",
+  "picks": {
+   "1": "9965",
+   "13": "9965"
+  },
+  "ruled_out": {
+   "1": [
+    "13402",
+    "2622",
+    "48197"
+   ],
+   "13": [
+    "12915",
+    "12584",
+    "12239",
+    "13402",
+    "44530",
+    "41338",
+    "41644",
+    "42044",
+    "41351",
+    "2622",
+    "48197",
+    "48528"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:overlord-ii-856",
+  "title": "Overlord II",
+  "key_year": null,
+  "right": "13237",
+  "picks": {
+   "1": "13237",
+   "13": "13237"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:fatezero-1115",
+  "title": "Fate/Zero",
+  "key_year": null,
+  "right": "6028",
+  "picks": {
+   "1": "6028",
+   "13": "6028"
+  },
+  "ruled_out": {
+   "1": [
+    "41777",
+    "42092",
+    "42076",
+    "47235",
+    "218",
+    "48225"
+   ],
+   "13": [
+    "6906",
+    "7873",
+    "41777",
+    "42092",
+    "42076",
+    "47235",
+    "218",
+    "48225"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:fatezero-season-2-1117",
+  "title": "Fate/Zero Season 2",
+  "key_year": null,
+  "right": "7658",
+  "picks": {
+   "1": "7658",
+   "12": "7658"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:bakemonogatari-976",
+  "title": "Bakemonogatari (The Monogatari Series)",
+  "key_year": null,
+  "right": "3919",
+  "picks": {
+   "1": "3919",
+   "15": "3919"
+  },
+  "ruled_out": {
+   "1": [
+    "48434"
+   ],
+   "15": [
+    "48434"
+   ]
+  },
+  "enrichment": "3919",
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:dr-stone-1235",
+  "title": "Dr. Stone",
+  "key_year": null,
+  "right": "42080",
+  "picks": {
+   "1": "42080",
+   "24": "42080"
+  },
+  "ruled_out": {
+   "1": [
+    "3117",
+    "2377",
+    "8901"
+   ],
+   "24": [
+    "45615",
+    "43682",
+    "43715",
+    "3117",
+    "2377",
+    "8901",
+    "5385"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:dr-stone-new-world-1104",
+  "title": "Dr. Stone: New World",
+  "key_year": null,
+  "right": "44289",
+  "picks": {
+   "1": "44289",
+   "11": "44289"
+  },
+  "ruled_out": {
+   "11": [
+    "43715"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:tokyo-ghoul-890",
+  "title": "Tokyo Ghoul",
+  "key_year": null,
+  "right": "8271",
+  "picks": {
+   "1": "8271",
+   "12": "8271"
+  },
+  "ruled_out": {
+   "1": [
+    "12550"
+   ],
+   "12": [
+    "10789",
+    "11294",
+    "12550"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:tokyo-ghoulre-892",
+  "title": "Tokyo Ghoul:re",
+  "key_year": null,
+  "right": "13929",
+  "picks": {
+   "1": "13929",
+   "12": "13929"
+  },
+  "ruled_out": {
+   "1": [
+    "12550"
+   ],
+   "12": [
+    "12550"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:one-piece-1",
+  "title": "One Piece",
+  "key_year": null,
+  "right": "12",
+  "picks": {
+   "1": "12",
+   "1180": "12"
+  },
+  "ruled_out": {
+   "1180": [
+    "13623",
+    "6827",
+    "3492",
+    "7240",
+    "7894",
+    "8718",
+    "11351",
+    "421",
+    "5469",
+    "426",
+    "424",
+    "422",
+    "423",
+    "425",
+    "427",
+    "1906",
+    "3300",
+    "4014",
+    "7390"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:frieren-beyond-journeys-end-481",
+  "title": "Frieren: Beyond Journey's End",
+  "key_year": null,
+  "right": "46474",
+  "picks": {
+   "1": "46474",
+   "28": "46474"
+  },
+  "ruled_out": {
+   "28": [
+    "49240"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:solo-leveling-235",
+  "title": "Solo Leveling",
+  "key_year": null,
+  "right": "46231",
+  "picks": {
+   "1": "46231",
+   "12": "46231"
+  },
+  "ruled_out": {
+   "12": [
+    "48572",
+    "49220",
+    "50837"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:solo-leveling-season-2-arise-from-the-shadow-84",
+  "title": "Solo Leveling Season 2: Arise from the Shadow",
+  "key_year": null,
+  "right": "48671",
+  "picks": {
+   "1": "48671",
+   "13": "48671"
+  },
+  "ruled_out": {
+   "13": [
+    "50837"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:gintama-1237",
+  "title": "Gintama",
+  "key_year": null,
+  "right": "818",
+  "picks": {
+   "1": "818",
+   "201": "818"
+  },
+  "ruled_out": {
+   "201": [
+    "5971",
+    "7253",
+    "12553",
+    "7241",
+    "14095",
+    "4989",
+    "13726",
+    "41079",
+    "4797",
+    "2671",
+    "43683",
+    "5842",
+    "8627",
+    "6278",
+    "43829",
+    "7888",
+    "42516",
+    "49020",
+    "50384"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:gintama-season-2-1153",
+  "title": "Gintama Season 2",
+  "key_year": null,
+  "right": "5971",
+  "picks": {
+   "1": "5971",
+   "51": "5971"
+  },
+  "ruled_out": {
+   "1": [
+    "10083",
+    "14095",
+    "11545"
+   ],
+   "51": [
+    "41079",
+    "10083",
+    "14095",
+    "11545"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:gintama-silver-soul-arc-1155",
+  "title": "Gintama.: Silver Soul Arc",
+  "key_year": null,
+  "right": "14095",
+  "picks": {
+   "1": "14095",
+   "26": "14095"
+  },
+  "ruled_out": {
+   "26": [
+    "43683"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:gintama-silver-soul-arc-second-half-war-1157",
+  "title": "Gintama.: Silver Soul Arc - Second Half War",
+  "key_year": null,
+  "right": "41079",
+  "picks": {
+   "1": "41079",
+   "14": "41079"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:naruto-1335",
+  "title": "Naruto",
+  "key_year": null,
+  "right": "11",
+  "picks": {
+   "1": "11",
+   "220": "11"
+  },
+  "ruled_out": {
+   "220": [
+    "7008",
+    "405",
+    "2245",
+    "3606",
+    "833",
+    "5266",
+    "6256",
+    "1941",
+    "4520",
+    "549",
+    "683",
+    "960",
+    "46581",
+    "3484",
+    "2036",
+    "4953",
+    "6861"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:naruto-shippuden-600",
+  "title": "Naruto: Shippuden",
+  "key_year": null,
+  "right": "1555",
+  "picks": {
+   "1": "1555",
+   "500": "1555"
+  },
+  "ruled_out": {
+   "500": [
+    "2245",
+    "3606",
+    "4520",
+    "3484"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:boruto-naruto-next-generations-650",
+  "title": "Boruto: Naruto Next Generations",
+  "key_year": null,
+  "right": "13051",
+  "picks": {
+   "1": "13051",
+   "293": "13051"
+  },
+  "ruled_out": {
+   "293": [
+    "40971"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:haikyu-to-the-top-933",
+  "title": "Haikyuu!!: To the Top (Part 1+2)",
+  "key_year": null,
+  "right": "42059",
+  "picks": {
+   "1": "42938",
+   "25": "42938"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:haikyu-to-the-top-2nd-cour-934",
+  "title": "Haikyuu!!: To the Top 2nd Season",
+  "key_year": null,
+  "right": "42938",
+  "picks": {
+   "1": "42938",
+   "12": "42938"
+  },
+  "ruled_out": {
+   "1": [
+    "42059",
+    "42920"
+   ],
+   "12": [
+    "42059",
+    "42920"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:that-time-i-got-reincarnated-as-a-slime-season-2-487",
+  "title": "That Time I Got Reincarnated as a Slime Season 2",
+  "key_year": null,
+  "right": "42196",
+  "picks": {
+   "1": "42196",
+   "12": "42196"
+  },
+  "ruled_out": {
+   "1": [
+    "43361",
+    "43897",
+    "44852",
+    "49100",
+    "49235",
+    "48689"
+   ],
+   "12": [
+    "43361",
+    "43897",
+    "44852",
+    "49100",
+    "49235",
+    "48689"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:that-time-i-got-reincarnated-as-a-slime-season-2-part-2-492",
+  "title": "That Time I Got Reincarnated as a Slime 2nd Season Part 2",
+  "key_year": null,
+  "right": "43361",
+  "picks": {
+   "1": "43361",
+   "12": "43361"
+  },
+  "ruled_out": {
+   "1": [
+    "44852",
+    "48689"
+   ],
+   "12": [
+    "44852",
+    "48689"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:86-eighty-six-1260",
+  "title": "86",
+  "key_year": null,
+  "right": "43066",
+  "picks": {
+   "1": "43066",
+   "11": "43066"
+  },
+  "ruled_out": {
+   "1": [
+    "3783",
+    "10622"
+   ],
+   "11": [
+    "44788",
+    "45545",
+    "3783",
+    "10622"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:86-eighty-six-part-2-1421",
+  "title": "Eighty Six: 2nd Season",
+  "key_year": null,
+  "right": "44398",
+  "picks": {
+   "1": "44398",
+   "12": "44398"
+  },
+  "ruled_out": {
+   "1": [
+    "43066",
+    "44788",
+    "45545"
+   ],
+   "12": [
+    "43066",
+    "44788",
+    "45545"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:fire-force-1107",
+  "title": "Fire Force",
+  "key_year": null,
+  "right": "42068",
+  "picks": {
+   "1": "42068",
+   "24": "42068"
+  },
+  "ruled_out": {
+   "1": [
+    "41028",
+    "555",
+    "2159",
+    "327",
+    "3925",
+    "48962",
+    "44176",
+    "5131",
+    "12913",
+    "2069",
+    "6086",
+    "40995",
+    "529",
+    "2308"
+   ],
+   "24": [
+    "1818",
+    "41028",
+    "555",
+    "2159",
+    "327",
+    "3925",
+    "48962",
+    "44176",
+    "5131",
+    "12913",
+    "2069",
+    "6086",
+    "40995",
+    "529",
+    "2308"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:golden-kamuy-2595",
+  "title": "Golden Kamuy",
+  "key_year": null,
+  "right": "13689",
+  "picks": {
+   "1": "13689",
+   "12": "13689"
+  },
+  "ruled_out": {
+   "12": [
+    "41305",
+    "42052",
+    "50036",
+    "49982"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:golden-kamuy-season-4-2598",
+  "title": "Golden Kamuy Season 4",
+  "key_year": null,
+  "right": "45556",
+  "picks": {
+   "1": "45556",
+   "13": "45556"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:ranma-3119",
+  "title": "Ranma ½",
+  "key_year": null,
+  "right": "186",
+  "picks": {
+   "1": "186",
+   "161": "186"
+  },
+  "ruled_out": {
+   "1": [
+    "6522"
+   ],
+   "161": [
+    "897",
+    "901",
+    "382",
+    "898",
+    "707",
+    "900",
+    "4123",
+    "4681",
+    "6372",
+    "6366",
+    "6369",
+    "6371",
+    "6370",
+    "6522"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:the-apothecary-diaries-438",
+  "title": "The Apothecary Diaries",
+  "key_year": null,
+  "right": "47083",
+  "picks": {
+   "1": "47083",
+   "24": "47083"
+  },
+  "ruled_out": {
+   "1": [
+    "50029"
+   ],
+   "24": [
+    "50842",
+    "50029"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:blue-lock-964",
+  "title": "Blue Lock",
+  "key_year": null,
+  "right": "44973",
+  "picks": {
+   "1": "44973",
+   "24": "44973"
+  },
+  "ruled_out": {
+   "24": [
+    "47244",
+    "49314"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:the-rising-of-the-shield-hero-885",
+  "title": "The Rising of the Shield Hero",
+  "key_year": null,
+  "right": "13593",
+  "picks": {
+   "1": "13593",
+   "25": "13593"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:sword-art-online-874",
+  "title": "Sword Art Online",
+  "key_year": null,
+  "right": "6589",
+  "picks": {
+   "1": "6589",
+   "25": "6589"
+  },
+  "ruled_out": {
+   "25": [
+    "11423",
+    "7914",
+    "42927",
+    "9784",
+    "7372",
+    "43546",
+    "8196",
+    "9963",
+    "45400",
+    "41273",
+    "42610",
+    "42154",
+    "40949",
+    "43286"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:kaiju-no-8-257",
+  "title": "Kaiju No. 8",
+  "key_year": null,
+  "right": "46300",
+  "picks": {
+   "1": "46300",
+   "12": "46300"
+  },
+  "ruled_out": {
+   "12": [
+    "49102",
+    "50400",
+    "50452"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:dan-da-dan-86",
+  "title": "Dandadan",
+  "key_year": null,
+  "right": "48269",
+  "picks": {
+   "1": "48269",
+   "12": "48269"
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:mashle-magic-and-muscles-591",
+  "title": "Mashle: Magic and Muscles",
+  "key_year": null,
+  "right": "46229",
+  "picks": {
+   "1": "46229",
+   "12": "46229"
+  },
+  "ruled_out": {
+   "12": [
+    "47466",
+    "51114"
+   ]
+  },
+  "source": "audited picker pairing"
+ },
+ {
+  "key": "hianime:dragon-ball-super-1101",
+  "title": "Dragon Ball Super",
+  "key_year": null,
+  "right": "10879",
+  "picks": {
+   "1": "10879",
+   "131": "10879"
+  },
+  "ruled_out": {
+   "1": [
+    "40582"
+   ],
+   "131": [
+    "41046",
+    "41319",
+    "5997",
+    "800",
+    "802",
+    "44544",
+    "42256",
+    "40582",
+    "50497",
+    "44794",
+    "803",
+    "797",
+    "804",
+    "7884",
+    "7176",
+    "801",
+    "44661"
+   ]
+  },
+  "source": "picker pairing"
+ },
+ {
+  "key": "hianime:dragon-ball-super-broly-2763",
+  "title": "Dragon Ball Super: Broly",
+  "key_year": null,
+  "right": "41046",
+  "picks": {
+   "1": "41046"
+  },
+  "source": "picker pairing"
+ },
+ {
+  "key": "hianime:dragon-ball-super-super-hero-1402",
+  "title": "Dragon Ball Super: Super Hero",
+  "key_year": null,
+  "right": "44544",
+  "picks": {
+   "1": "44544"
+  },
+  "source": "picker pairing"
+ },
+ {
+  "key": "hianime:dragon-ball-super-beerus-10542",
+  "title": "Dragon Ball Super: Beerus",
+  "key_year": null,
+  "right": "50497",
+  "picks": {
+   "1": "50497",
+   "19": "50497"
+  },
+  "source": "picker pairing",
+  "ruled_out": {
+   "19": [
+    "7176"
+   ]
+  }
+ },
+ {
+  "key": "hianime:naruto-shinsaku-anime-1984",
+  "title": "Naruto (Shinsaku Anime)",
+  "key_year": null,
+  "right": "47150",
+  "picks": {
+   "1": "47150",
+   "4": "47150"
+  },
+  "source": "picker pairing"
+ },
+ {
+  "key": "hianime:the-outcast-season-6-3813",
+  "title": "The Outcast 6",
+  "key_year": null,
+  "right": "50237",
+  "picks": {
+   "1": "50237",
+   "26": "50237"
+  },
+  "source": "picker pairing"
+ },
+ {
+  "key": "hianime:dragon-ball-z-broly-the-legendary-super-saiyan-2879",
+  "title": "Dragon Ball Z: Broly – The Legendary Super Saiyan",
+  "key_year": null,
+  "right": "801",
+  "picks": {
+   "1": "801"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:boruto-naruto-the-movie-2800",
+  "title": "Boruto: Naruto the Movie",
+  "key_year": null,
+  "right": "10089",
+  "picks": {
+   "1": "10089"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:naruto-shippuden-the-movie-1-2013",
+  "title": "Naruto: Shippuden the Movie",
+  "key_year": null,
+  "right": "2245",
+  "picks": {
+   "1": "2245"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:naruto-shippuden-the-movie-7-the-last-886",
+  "title": "The Last: Naruto the Movie",
+  "key_year": null,
+  "right": "7543",
+  "picks": {
+   "1": "7543"
+  },
+  "ruled_out": {
+   "1": [
+    "7008",
+    "2586"
+   ]
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:one-piece-film-red-2825",
+  "title": "One Piece Film: Red",
+  "key_year": null,
+  "right": "45513",
+  "picks": {
+   "1": "45513"
+  },
+  "ruled_out": {
+   "1": [
+    "48761"
+   ]
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:one-piece-stampede-1433",
+  "title": "One Piece: The Movie 14 - Stampede",
+  "key_year": null,
+  "right": "42061",
+  "picks": {
+   "1": "421"
+  },
+  "ruled_out": {
+   "1": [
+    "3925",
+    "50501",
+    "47566"
+   ]
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:demon-slayer-kimetsu-no-yaiba-the-movie-mugen-train-745",
+  "title": "Demon Slayer Movie: Mugen Train",
+  "key_year": null,
+  "right": "42586",
+  "picks": {
+   "1": "42586"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:jujutsu-kaisen-0-413",
+  "title": "Jujutsu Kaisen 0 Movie",
+  "key_year": null,
+  "right": "44212",
+  "picks": {
+   "1": "47880"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:a-silent-voice-770",
+  "title": "A Silent Voice",
+  "key_year": null,
+  "right": "10028",
+  "picks": {
+   "1": "10028"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:spy-x-family-code-white-1990",
+  "title": "Spy x Family Code: White",
+  "key_year": null,
+  "right": "46874",
+  "picks": {
+   "1": "46874"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:sword-art-online-the-movie-ordinal-scale-3809",
+  "title": "Sword Art Online the Movie -Ordinal Scale-",
+  "key_year": null,
+  "right": "11423",
+  "picks": {
+   "1": "11423"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:gintama-the-very-final-1158",
+  "title": "Gintama: The Final",
+  "key_year": null,
+  "right": "43683",
+  "picks": {
+   "1": "43683"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:rezero-starting-life-in-another-world-memory-snow-4096",
+  "title": "Re:Zero kara Hajimeru Isekai Seikatsu - Memory Snow",
+  "key_year": null,
+  "right": "13882",
+  "picks": {
+   "1": "13882"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:that-time-i-got-reincarnated-as-a-slime-the-movie-tears-of-the-azure-sea-2766",
+  "title": "That Time I Got Reincarnated as a Slime the Movie: Tears of the Azure Sea",
+  "key_year": null,
+  "right": "49236",
+  "picks": {
+   "1": "49236"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:haikyu-movie-the-dumpster-battle-1993",
+  "title": "Haikyu!! Movie: Battle of the Garbage Dump",
+  "key_year": null,
+  "right": "46336",
+  "picks": {
+   "1": "13656"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:attack-on-titan-the-last-attack-3690",
+  "title": "Attack on Titan: The Last Attack",
+  "key_year": null,
+  "right": "49129",
+  "picks": {
+   "1": "49129"
+  },
+  "ruled_out": {
+   "1": [
+    "2984"
+   ]
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:jojos-bizarre-adventure-phantom-blood-5183",
+  "title": "JoJo's Bizarre Adventure: Phantom Blood",
+  "key_year": null,
+  "right": "3136",
+  "picks": {
+   "1": "3136"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:jojos-bizarre-adventure-2000-5182",
+  "title": "JoJo's Bizarre Adventure",
+  "key_year": 2000,
+  "right": "7730",
+  "picks": {
+   "1": "7730",
+   "7": "7730"
+  },
+  "source": "pool card",
+  "ruled_out": {
+   "7": [
+    "3136",
+    "46393"
+   ]
+  }
+ },
+ {
+  "key": "hianime:jojos-bizarre-adventure-706",
+  "title": "JoJo's Bizarre Adventure",
+  "key_year": null,
+  "right": "610",
+  "picks": {
+   "1": "7158",
+   "6": "7158"
+  },
+  "source": "pool card",
+  "ruled_out": {
+   "6": [
+    "3136",
+    "46393"
+   ]
+  }
+ },
+ {
+  "key": "hianime:attack-on-titan-no-regrets-908",
+  "title": "Attack on Titan: No Regrets",
+  "key_year": null,
+  "right": "8674",
+  "picks": {
+   "1": "8674",
+   "2": "8674"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:attack-on-titan-lost-girls-1824",
+  "title": "Attack on Titan: Lost Girls",
+  "key_year": null,
+  "right": "13718",
+  "picks": {
+   "1": "13718",
+   "3": "13718"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:attack-on-titan-oad-1897",
+  "title": "Attack on Titan OVA",
+  "key_year": null,
+  "right": "7694",
+  "picks": {
+   "1": "7694",
+   "3": "7694"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:kaguya-sama-love-is-war-ova-556",
+  "title": "Kaguya-sama: Love is War OVA",
+  "key_year": null,
+  "right": "43731",
+  "picks": {
+   "1": "43731"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:haikyuu-ova-5406",
+  "title": "Haikyuu!! (OVA)",
+  "key_year": null,
+  "right": "42574",
+  "picks": {
+   "1": "42574",
+   "10": "42574"
+  },
+  "source": "pool card",
+  "ruled_out": {
+   "10": [
+    "42502",
+    "41556",
+    "8626",
+    "11374"
+   ]
+  }
+ },
+ {
+  "key": "hianime:tokyo-ghoul-jack-2773",
+  "title": "Tokyo Ghoul: \"Jack\"",
+  "key_year": null,
+  "right": "10789",
+  "picks": {
+   "1": "10789"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:ranma-ova-4243",
+  "title": "Ranma ½ OVA",
+  "key_year": null,
+  "right": "897",
+  "picks": {
+   "1": "897",
+   "6": "897"
+  },
+  "source": "pool card",
+  "ruled_out": {
+   "6": [
+    "4123"
+   ]
+  }
+ },
+ {
+  "key": "hianime:jujutsu-kaisen-season-2-recaps-3513",
+  "title": "Jujutsu Kaisen: Specials",
+  "key_year": null,
+  "right": "47880",
+  "picks": {
+   "1": "43886",
+   "2": "43886"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:86-eighty-six-season-2-recap-9822",
+  "title": "86 EIGHTY-SIX Season 2 Recap",
+  "key_year": null,
+  "right": "45545",
+  "picks": {
+   "1": "45545",
+   "2": "45545"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:sword-art-online-extra-edition-3750",
+  "title": "Sword Art Online: Extra Edition",
+  "key_year": null,
+  "right": "7914",
+  "picks": {
+   "1": "7914"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:boruto-jump-festa-2016-special-5982",
+  "title": "Boruto: Jump Festa 2016 Special",
+  "key_year": 2016,
+  "right": "41528",
+  "picks": {
+   "1": "41528"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:my-star-specials-9656",
+  "title": "My Star: Specials",
+  "key_year": null,
+  "right": null,
+  "picks": {
+   "1": "46170"
+  },
+  "ruled_out": {
+   "1": [
+    "50019",
+    "9843",
+    "50580",
+    "4551",
+    "924",
+    "49492",
+    "8287"
+   ]
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:astro-boy-1980-7802",
+  "title": "Astro Boy (1980)",
+  "key_year": 1980,
+  "right": "2748",
+  "picks": {
+   "1": "2748",
+   "52": "2748"
+  },
+  "ruled_out": {
+   "52": [
+    "8938"
+   ]
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:astro-boy-2003-4317",
+  "title": "Astro Boy (2003)",
+  "key_year": 2003,
+  "right": "861",
+  "picks": {
+   "1": "861",
+   "50": "861"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:ranma-2024-2559",
+  "title": "Ranma 1/2",
+  "key_year": 2024,
+  "right": "48981",
+  "picks": {
+   "1": "48981",
+   "12": "48981"
+  },
+  "ruled_out": {
+   "1": [
+    "4612"
+   ],
+   "12": [
+    "901",
+    "382",
+    "898",
+    "707",
+    "900",
+    "4681",
+    "6372",
+    "6366",
+    "6369",
+    "6371",
+    "6370",
+    "4612"
+   ]
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:steel-ball-run-jojos-bizarre-adventure-4",
+  "title": "Steel Ball Run: JoJo's Bizarre Adventure",
+  "key_year": null,
+  "right": "49847",
+  "picks": {
+   "1": "49847",
+   "12": "49847"
+  },
+  "source": "pool card"
+ },
+ {
+  "key": "hianime:black-clover-949",
+  "title": "Black Clover",
+  "key_year": null,
+  "right": "13209",
+  "picks": {
+   "1": "13209",
+   "170": "13209"
+  },
+  "source": "reported",
+  "ruled_out": {
+   "170": [
+    "44242",
+    "12625",
+    "42035",
+    "50024",
+    "47442",
+    "42426"
+   ]
+  }
+ },
+ {
+  "key": "hianime:rezero-starting-life-in-another-world-season-4-4587",
+  "title": "Re:ZERO -Starting Life in Another World- Season 4",
+  "key_year": null,
+  "right": "49746",
+  "picks": {
+   "1": "49746",
+   "19": "49746"
+  },
+  "source": "reported"
+ },
+ {
+  "key": "hianime:there-is-also-a-hole-in-the-student-organization-10497",
+  "title": "There Is Also a Hole in the Student Organization!",
+  "key_year": null,
+  "right": "49877",
+  "picks": {
+   "1": "49877",
+   "12": "49877"
+  },
+  "source": "reported"
+ }
+]
