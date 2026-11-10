@@ -11,7 +11,7 @@ use super::rules::{alt, listed, run};
 use super::tests::Catalogue;
 use super::*;
 
-const ROLES: [&str; 10] = [
+const ROLES: [&str; 11] = [
     "prequel",
     "sequel",
     "prequel",
@@ -22,6 +22,7 @@ const ROLES: [&str; 10] = [
     "side_story",
     "parent_story",
     "character",
+    "spinoff",
 ];
 const SUBTYPES: [&str; 5] = ["TV", "movie", "OVA", "special", "music"];
 
@@ -39,7 +40,7 @@ fn spec(n: usize) -> BoxedStrategy<Spec> {
         .boxed()
 }
 
-fn catalogue() -> BoxedStrategy<(Catalogue, String)> {
+pub(super) fn catalogue() -> BoxedStrategy<(Catalogue, String)> {
     (2usize..14)
         .prop_flat_map(|n| (prop::collection::vec(spec(n), n), 0..n))
         .prop_map(|(specs, anchor)| {
@@ -68,7 +69,11 @@ type Read = (
 /// Drive the walk from `anchor` with `prefetched` listings already
 /// read, answering each need in reverse order; the result and what was
 /// read.
-fn drive_with(anchor: &str, cat: &Catalogue, prefetched: &[String]) -> (Franchise, Read) {
+pub(super) fn drive_with(
+    anchor: &str,
+    cat: &Catalogue,
+    prefetched: &[String],
+) -> (Franchise, Read) {
     let mut known: BTreeMap<String, FranchiseListing> = prefetched
         .iter()
         .map(|id| (id.clone(), cat.listings[id].clone()))

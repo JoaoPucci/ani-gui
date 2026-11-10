@@ -161,3 +161,15 @@ mod tests;
 #[cfg(test)]
 #[path = "franchise_walk_prop_test.rs"]
 mod prop_tests;
+
+#[cfg(test)]
+#[path = "franchise_corpus_test.rs"]
+mod corpus_tests;
+
+#[cfg(test)]
+#[path = "franchise_corpus_record_test.rs"]
+mod corpus_record;
+
+#[cfg(test)]
+#[path = "franchise_walk_parent_prop_test.rs"]
+mod parent_prop_tests;

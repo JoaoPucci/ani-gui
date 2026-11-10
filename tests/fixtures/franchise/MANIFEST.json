@@ -1,0 +1,16 @@
+{
+ "$comment": "The franchise walk's regression corpus: big franchises with many films, specials and spin-offs (One Piece, Naruto, Bleach, Dragon Ball, Detective Conan, Gintama, Pokémon, Lupin III, Fate, Monogatari, JoJo, Attack on Titan), recorded from kitsu.io/api/edge.",
+ "fixtures": {
+  "cases.json": {
+   "source": "Hand-written: one case per anchor, what the walk must answer for it (the title of the run's first entry by start, which section holds the anchor, a side story's parent stories, ids a section must hold), pinned by backend/src/commands/franchise_corpus_test.rs.",
+   "size": 3547,
+   "sha256": "af91b51f3a9df65a414b2b3d497bfe7d6951ccf18f449c6e0a39f5f66676e32c"
+  },
+  "listings.json": {
+   "source": "Recorded by backend/src/commands/franchise_corpus_record_test.rs: the franchise walk run from every anchor in cases.json, each listing it asked for read with the app's query (KitsuClient::franchise_relations) and each detail with KitsuClient::anime_detail, artwork dropped (the walk never reads it).",
+   "captured_at": "2026-11-11",
+   "size": 187743,
+   "sha256": "6f003fe10c6db7c7288021086707e91c454550820b560a8334e354f6892c66f9"
+  }
+ }
+}
