@@ -688,7 +688,15 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
             slots[i] = r;
         }
     }
-    slots.into_iter().flatten().collect()
+    rail_cards(slots.into_iter().flatten().collect())
+}
+
+/// The bridged cards as the Watch Later rail lists them, in input
+/// order.
+fn rail_cards(
+    cards: Vec<crate::meta::kitsu::KitsuAnimeRef>,
+) -> Vec<crate::meta::kitsu::KitsuAnimeRef> {
+    cards
 }
 
 /// Resolve a show's Kitsu id into the provider-native media id needed
