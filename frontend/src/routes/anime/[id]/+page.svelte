@@ -1193,11 +1193,17 @@
 		// The watch-order strip: neither read rejects, and a franchise
 		// that cannot be read shows no strip ($lib/watch-order/loader),
 		// unless an earlier read this session could
-		// ($lib/watch-order/session-memo).
-		const walked = loadWatchOrder(currentId, watchOrderSources).then((w) => {
-			const shown = settledAnswer(currentId, w);
-			if (id === currentId) watchOrderData = shown;
-		});
+		// ($lib/watch-order/session-memo). Leaving the show cancels both,
+		// so a walk Kitsu is slow to answer does not hold an API
+		// connection for nobody.
+		const watchOrderVisit = new AbortController();
+		const walked = loadWatchOrder(currentId, watchOrderSources, watchOrderVisit.signal).then(
+			(w) => {
+				if (watchOrderVisit.signal.aborted) return;
+				const shown = settledAnswer(currentId, w);
+				if (id === currentId) watchOrderData = shown;
+			}
+		);
 		// The details wait a moment for the walk's first hop, so the
 		// room the strip will take is held from the page's first frame.
 		// A show whose answer is remembered needs no hop, only the order
@@ -1276,6 +1282,7 @@
 		// when the id moved: this effect also re-runs on the same show.
 		return () => {
 			refills.abort();
+			watchOrderVisit.abort();
 			if (id !== currentId) clearBackgroundForShow(currentId);
 		};
 	});

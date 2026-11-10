@@ -1694,6 +1694,14 @@ describe('historyByKitsuEach', () => {
 		expect(JSON.parse(String(init?.body))).toEqual({ ids: ['7', '8'] });
 		expect(got).toEqual(answer);
 	});
+
+	it('hands its signal to the request, so the page that asked can cancel it', async () => {
+		const fetchMock = mockFetchOnce({});
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const visit = new AbortController();
+		await historyByKitsuEach(['7'], { signal: visit.signal });
+		expect(lastCall(fetchMock).init?.signal).toBe(visit.signal);
+	});
 });
 
 describe('checkAvailability / availabilityBatch / availabilityWarm', () => {
@@ -1897,6 +1905,14 @@ describe('kitsuFranchise', () => {
 		const got = await kitsuFranchise('kid 7730');
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/franchise/kid%207730`);
 		expect(got).toEqual(franchise);
+	});
+
+	it('hands its signal to the request: the walk holds it open across several reads', async () => {
+		const fetchMock = mockFetchOnce({});
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const visit = new AbortController();
+		await kitsuFranchise('7730', { signal: visit.signal });
+		expect(lastCall(fetchMock).init?.signal).toBe(visit.signal);
 	});
 });
 

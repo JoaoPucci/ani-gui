@@ -1637,7 +1637,8 @@
 			atEnd: playheadOnScreen && atVideoEnd(currentTime, duration, videoEnded)
 		})
 	);
-	// One read per show; only the latest one's answer counts
+	// One read per show; only the latest one's answer counts, and a
+	// read superseded, or still out when the page goes, is cancelled
 	// ($lib/watch-order/latest-read). Neither read rejects; a franchise
 	// that cannot be read means no card ($lib/watch-order/loader).
 	const upNextReads = latestRead<WatchOrderData>((w) => (upNextData = w));
@@ -1647,8 +1648,9 @@
 			upNextReads.stop();
 			return;
 		}
-		upNextReads.start(() => loadWatchOrder(showId, watchOrderSources));
+		upNextReads.start((signal) => loadWatchOrder(showId, watchOrderSources, signal));
 	});
+	onDestroy(() => upNextReads.stop());
 
 	// Auto-play next: persisted in Config.auto_play_next; mirrored as a
 	// local boolean so the inline toggle on the player can flip the

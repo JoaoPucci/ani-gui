@@ -13,6 +13,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { appConfig, homeHandlers, kitsuRef } from './home-handlers';
+import { watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -120,7 +121,7 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 
 interface Scenario {
 	history: ReturnType<typeof row>[];
-	franchise?: () => Response;
+	franchise?: () => Response | Promise<Response>;
 	order?: string;
 	/** The settings read's answer; the Watch order `order` by default. */
 	settings?: () => Response;
@@ -133,6 +134,8 @@ interface Scenario {
 	named?: Record<string, ReturnType<typeof row>>;
 	/** The resume lookup fails. */
 	namedFails?: boolean;
+	/** The resume lookup's answer, in place of the scenario's rows. */
+	namedAnswer?: () => Promise<Response>;
 }
 
 /** Mounts Home over `history`, the first show's series answered by `franchise`. */
@@ -188,6 +191,7 @@ function mountHome(s: Scenario) {
 			// among the rows still in history.
 			http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
 				if (s.namedFails) return new HttpResponse(null, { status: 503 });
+				if (s.namedAnswer) return s.namedAnswer();
 				const { ids } = (await request.json()) as { ids: string[] };
 				const kept = (r: ReturnType<typeof row> | undefined) =>
 					r && !removed.has(r.id) ? r : null;
@@ -448,5 +452,53 @@ describe('Continue Watching after a finale', () => {
 			settings: () => new HttpResponse(null, { status: 500 })
 		});
 		await until(() => handoffTo('20') !== null, 'the card to move on as linked');
+	});
+});
+
+describe('Continue Watching hand-off — leaving Home', () => {
+	it('cancels a series read still out, so a slow franchise walk holds no connection', async () => {
+		const fetches = watchPageFetches();
+		let release: (() => void) | null = null;
+		// Kitsu is slow: the first show's series read stays open.
+		mountHome({
+			history: [row('13')],
+			franchise: () =>
+				new Promise<Response>((resolve) => {
+					release = () => resolve(new HttpResponse(null, { status: 503 }));
+				})
+		});
+		const seriesRead = (f: { path: string }) => f.path === '/api/kitsu/franchise/10';
+		await until(() => fetches.sent.some(seriesRead), "the first show's series read");
+		unmount(app!);
+		app = null;
+		try {
+			await until(() => fetches.failed.some(seriesRead), 'the series read cancelled', 2000);
+		} finally {
+			(release as (() => void) | null)?.();
+		}
+	});
+
+	it('cancels a resume lookup still out', async () => {
+		const fetches = watchPageFetches();
+		let release: (() => void) | null = null;
+		// The card would move on once the lookup says no row resumes
+		// the next show; the lookup stays open.
+		mountHome({
+			history: [row('13')],
+			namedAnswer: () =>
+				new Promise<Response>((resolve) => {
+					release = () => resolve(new HttpResponse(null, { status: 503 }));
+				})
+		});
+		const lookup = (f: { path: string; method: string }) =>
+			f.method === 'POST' && f.path === '/api/history/by-kitsu';
+		await until(() => fetches.sent.some(lookup), 'the resume lookup');
+		unmount(app!);
+		app = null;
+		try {
+			await until(() => fetches.failed.some(lookup), 'the resume lookup cancelled', 2000);
+		} finally {
+			(release as (() => void) | null)?.();
+		}
 	});
 });

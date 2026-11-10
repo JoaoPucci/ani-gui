@@ -201,8 +201,9 @@ async function expect2xx<T>(resp: Response): Promise<T> {
 	return JSON.parse(text) as T;
 }
 
-async function getJson<T>(path: string): Promise<T> {
-	const resp = await fetch(await url(path));
+async function getJson<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+	const at = await url(path, opts.lane);
+	const resp = await (opts.signal ? fetch(at, { signal: opts.signal }) : fetch(at));
 	return expect2xx<T>(resp);
 }
 
@@ -657,11 +658,17 @@ export function historyByKitsu(kitsuId: string): Promise<HistoryEntry | null> {
 
 /** `historyByKitsu` for each of `ids` at once, from one read of the
  *  history: each id with the row it resumes from, or null. A value
- *  that is not a Kitsu id is left out of the answer. */
+ *  that is not a Kitsu id is left out of the answer. `signal` cancels
+ *  it once the page that asked has gone. */
 export function historyByKitsuEach(
-	ids: readonly string[]
+	ids: readonly string[],
+	opts: { signal?: AbortSignal } = {}
 ): Promise<Record<string, HistoryEntry | null>> {
-	return postJson<Record<string, HistoryEntry | null>>('/api/history/by-kitsu', { ids });
+	return postJson<Record<string, HistoryEntry | null>>(
+		'/api/history/by-kitsu',
+		{ ids },
+		{ signal: opts.signal }
+	);
 }
 
 /** The episode one history row reads as now, and the number it read as
@@ -1412,9 +1419,17 @@ export interface Franchise {
 }
 
 /** The franchise around `kitsuId`: the run it belongs to and what sits
- *  around it. */
-export function kitsuFranchise(kitsuId: string): Promise<Franchise> {
-	return getJson<Franchise>(`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}`);
+ *  around it. The backend holds the response open while it walks the
+ *  franchise, several rounds of Kitsu reads when Kitsu is slow, so the
+ *  page that asked passes `signal` and cancels it when it goes: a read
+ *  nobody waits for would hold one of the API lane's connections. */
+export function kitsuFranchise(
+	kitsuId: string,
+	opts: { signal?: AbortSignal } = {}
+): Promise<Franchise> {
+	return getJson<Franchise>(`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}`, {
+		signal: opts.signal
+	});
 }
 
 /** What the show page will draw once the franchise walk answers, as
