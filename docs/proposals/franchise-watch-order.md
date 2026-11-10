@@ -570,7 +570,9 @@ an entry is taken as the anchor's parent story only when its own
 listing names at least as many side stories, spin-offs and recaps as
 the anchor's does; and an entry the anchor names as its side story or
 spin-off is taken as its parent story when it started before the
-anchor and names more of them. *One Piece* names sixty-three;
+anchor, names the anchor back as its parent story, and names more of
+them. Every listing read for this counts toward the walk's bound, and
+one cut short makes the answer incomplete. *One Piece* names sixty-three;
 *LEGO ONE PIECE* names one.
 
 With these tie-breaks every entry has one path and one decision, so
@@ -866,10 +868,10 @@ design section. Below it, sections:
    listed here but under Films: the 2010 UBW film and the first
    *Heaven's Feel* film, *Gintama*'s retelling films.
 3. From `around`: **Films** (every movie around the run, whatever its
-   role: a version, a recap or a side story), **Recaps** (`summary`,
-   a TV series aside, which is an other version) and **Side stories &
+   role: a version, a recap or a side story), **Side stories &
    specials** (everything else: side stories, parent stories,
-   spin-offs, `other`). Links of the `character` and `adaptation`
+   spin-offs, `other`) and **Recaps** (`summary`, a TV series aside,
+   which is an other version). Links of the `character` and `adaptation`
    roles are not shown: they tie unrelated series together (*Gintama*
    to *Saiki Kusuo*).
 
