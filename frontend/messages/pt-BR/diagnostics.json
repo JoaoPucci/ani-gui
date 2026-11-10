@@ -40,6 +40,6 @@
 	"banner_framing_description": "Mostra um pequeno controle na página inicial e na página de cada anime para escolher como o banner é enquadrado e qual imagem ele usa primeiro. A escolha fica salva neste computador e continua valendo depois que os controles são ocultados de novo.",
 	"banner_framing_toggle_label": "Mostrar os controles de enquadramento do banner",
 	"section_row_style": "Estilo das fileiras do início",
-	"row_style_description": "Mostra um pequeno controle no Início para escolher onde as fileiras mostram suas ações: ao lado do título, ou no fim do cabeçalho com uma faixa que aparece quando o ponteiro ou o foco está na fileira. A escolha fica salva neste computador e continua valendo depois que você esconde o controle.",
+	"row_style_description": "Mostra um pequeno controle na página inicial para escolher onde ficam as ações das fileiras: ao lado do título, ou no fim do cabeçalho com uma faixa que aparece quando o ponteiro ou o foco está na fileira. A escolha fica salva neste computador e continua valendo depois que você esconde o controle.",
 	"row_style_toggle_label": "Mostrar o controle de estilo das fileiras"
 }
