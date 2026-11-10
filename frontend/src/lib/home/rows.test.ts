@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { homeRows, type HomeRowsInput, type WatchLaterInput } from './rows';
+import {
+	homeRows,
+	keepShown,
+	type HomeRows,
+	type HomeRowsInput,
+	type WatchLaterInput
+} from './rows';
 
 /** Everything settled with something in it: every row shown. */
 const settled: HomeRowsInput = {
@@ -183,5 +189,45 @@ describe('homeRows, as the page loads in any order', () => {
 				expect(last.every((k) => k === 'shown' || k === 'absent')).toBe(true);
 			})
 		);
+	});
+});
+
+describe('keepShown', () => {
+	const all = (kind: HomeRows['trending']): HomeRows => ({
+		continue: kind,
+		watchLater: kind,
+		trending: kind,
+		topRated: kind
+	});
+
+	it('keeps a row shown when a row arriving late above it would take it back to a skeleton', () => {
+		// The sign-ins counted as known once the keyring notice went up;
+		// a sign-in read after that brings Watch later in loading above
+		// rows already on screen.
+		const before: HomeRows = {
+			continue: 'absent',
+			watchLater: 'absent',
+			trending: 'shown',
+			topRated: 'shown'
+		};
+		const next: HomeRows = {
+			continue: 'absent',
+			watchLater: 'skeleton',
+			trending: 'skeleton',
+			topRated: 'skeleton'
+		};
+		expect(keepShown(before, next)).toEqual({ ...next, trending: 'shown', topRated: 'shown' });
+	});
+
+	it('keeps a shown row shown over a held one too', () => {
+		expect(keepShown(all('shown'), all('held'))).toEqual(all('shown'));
+	});
+
+	it('lets a shown row go when it is dropped', () => {
+		expect(keepShown(all('shown'), all('absent'))).toEqual(all('absent'));
+	});
+
+	it('changes nothing on the first draw', () => {
+		expect(keepShown(null, all('skeleton'))).toEqual(all('skeleton'));
 	});
 });

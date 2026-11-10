@@ -336,7 +336,9 @@ describe('Home: the rows below the hero', () => {
 		await until(() => row(WATCH_LATER) !== null, 'Watch later');
 		await settle();
 		expect(screen()).not.toContain(m.account_watch_later_empty());
-		expect(drawn()[0]).toBe(`${WATCH_LATER} (loading)`);
+		// The rows already shown stay shown: they are not taken back to
+		// skeletons behind the row that came in above them.
+		expect(drawn()).toEqual([`${WATCH_LATER} (loading)`, TRENDING_ROW, TOP_RATED_ROW]);
 
 		list.release();
 		await until(() => screen().includes('Planned One'), 'Watch later');

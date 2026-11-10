@@ -91,3 +91,9 @@ export function homeRows(input: HomeRowsInput): HomeRows {
 	]).slots.map((slot) => slot.kind);
 	return { continue: cw, watchLater: wl, trending, topRated };
 }
+
+/** What the page draws now, given what it drew before. Unchanged in
+ *  this commit: the next draw as it comes. */
+export function keepShown(_before: HomeRows | null, next: HomeRows): HomeRows {
+	return next;
+}
