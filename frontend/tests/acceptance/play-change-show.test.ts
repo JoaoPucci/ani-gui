@@ -344,8 +344,30 @@ describe('the player of a line the user named a show for', () => {
 		await until(() => button(m.play_link_menu_item()) !== null, 'the menu entry');
 		const up = target.querySelector<HTMLAnchorElement>('a.np-link')!;
 		expect(new URL(up.href, 'http://x').searchParams.get('guessed')).toBe(CARD);
-		// It asks nothing: the slip is not shown.
-		expect(slipText()).not.toContain(guessNote());
+		// It asks nothing: no slip, not even its held room.
+		expect(slip()).toBeNull();
+	});
+
+	it('holds no slip room while it checks the line, for a session no guess opened', async () => {
+		let release: () => void = () => {};
+		const read = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let held = false;
+		// The session's check of the line reads the history, held here;
+		// answered then by the fake backend's own route.
+		server.use(
+			http.get(`${API_BASE}/api/history`, async () => {
+				held = true;
+				await read;
+			})
+		);
+		await openPlayer({ row: CARD });
+		await until(() => held, "the line's check");
+		expect(slip()).toBeNull();
+		release();
+		await settle();
+		expect(slip()).toBeNull();
 	});
 
 	it('offers nothing for a line a play recorded, with no naming', async () => {

@@ -53,6 +53,20 @@ describe('slipState', () => {
 		expect(slipState({ ...base, settled: true, offered: true, asking: false })).toBe('none');
 	});
 
+	it('holds no room for a session no guess opened, which can only change a named show again', () => {
+		const base = { row: 'hianime:a-1', aside: false, linked: false, switched: false };
+		expect(slipState({ ...base, settled: false, offered: false, asking: false, asks: false })).toBe(
+			'none'
+		);
+		expect(slipState({ ...base, settled: true, offered: true, asking: false, asks: false })).toBe(
+			'none'
+		);
+		// A pick kept watching past still says so.
+		expect(
+			slipState({ ...base, linked: true, settled: true, offered: true, asking: false, asks: false })
+		).toBe('linked');
+	});
+
 	it('says once that the show was switched, before the question or the held room', () => {
 		fc.assert(
 			fc.property(inputs, (s: SlipInputs) => {

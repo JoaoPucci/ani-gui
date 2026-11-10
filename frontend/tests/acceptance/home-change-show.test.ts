@@ -947,3 +947,37 @@ describe('a resume clicked while a later answer is still matching the card', () 
 		expect(url.searchParams.get('episode')).toBe('2');
 	});
 });
+
+describe("a named card's pill clicked while its new show is still being matched", () => {
+	it('comes back once the card shows the show it was named', async () => {
+		let releaseDetail: () => void = () => {};
+		let hold = false;
+		let asked = false;
+		const detail = new Promise<void>((resolve) => {
+			releaseDetail = resolve;
+		});
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/anime/:id`, async ({ params }) => {
+				if (String(params.id) === BC_RIGHT && hold) {
+					asked = true;
+					await detail;
+				}
+				return HttpResponse.json(show(String(params.id)));
+			})
+		);
+		await openHome();
+		pill(BC_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		hold = true;
+		await pickAndLink(BC_RIGHT_TITLE);
+		await until(() => asked, 'the card being matched as the series');
+		// The pill is there at once, the card still showing the special.
+		await until(() => pill(BC_CARD) !== null, 'the pill');
+		pill(BC_CARD)!.click();
+		await settle();
+		releaseDetail();
+		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'the card as the series');
+		await settle();
+		expect(pill(BC_CARD)).not.toBeNull();
+	});
+});

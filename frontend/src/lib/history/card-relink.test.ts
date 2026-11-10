@@ -86,6 +86,21 @@ describe('whether a guessed card still stands', () => {
 		expect(h.history()).toEqual([row('a', '5')]);
 	});
 
+	it('settles nothing for a row being matched again: its card is about to change', async () => {
+		// A link just named another show for the row: the card still shows
+		// the one it leaves, whose offer no longer stands.
+		let answer!: (m: KitsuAnimeRef) => void;
+		const h = home([row('a')], [[row('a', '5')]], {
+			offerStands: async () => false,
+			resolveMatch: () => new Promise((r) => (answer = r))
+		});
+		await h.relink.reread();
+		expect(await h.relink.stillGuessed('a', 'g')).toBe(false);
+		expect(h.settled.has('a')).toBe(false);
+		answer(ref('5'));
+		await flush();
+	});
+
 	it('asks the offer for the row and the guess it was shown as', async () => {
 		const offerStands = vi.fn(async () => true);
 		const h = home([row('a')], [], { offerStands });
