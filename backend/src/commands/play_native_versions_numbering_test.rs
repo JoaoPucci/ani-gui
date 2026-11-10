@@ -120,7 +120,6 @@ async fn a_play_by_a_former_number_is_kept_under_the_version_it_named() {
             &play_resolution_cache::cache_key_for_version(
                 TITLE,
                 "sub",
-                "best",
                 episode,
                 asked.year,
                 asked.episode_count,

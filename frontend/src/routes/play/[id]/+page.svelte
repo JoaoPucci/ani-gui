@@ -81,6 +81,7 @@
 	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
+	import { downloadQuality } from '$lib/download/download-quality';
 	import { buildMediaUrl } from '$lib/play/media-url';
 	import { applyCaptionPick, type CaptionTarget } from '$lib/play/caption-pick';
 	import { captionEntries } from '$lib/play/caption-label';
@@ -124,8 +125,8 @@
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
-	import { QUALITY_SETTING_WAIT_MS, settledWithin } from '$lib/play/quality-sink';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
+	import { playerSession } from '$lib/play/quality-session';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
@@ -161,7 +162,6 @@
 		playArgsFor,
 		playedRecord,
 		playMode,
-		playQuality,
 		recordPlayed,
 		runOwnedPlay
 	} from '$lib/play/owned-play';
@@ -712,14 +712,6 @@
 	// stream's quality control publishes them ($lib/play/arm-quality);
 	// the menu is its pure model ($lib/play/quality-menu).
 	let qualityView = $state<QualityView | null>(null);
-	// The quality setting as the settings answer it, once: a stream's
-	// start level waits for it rather than reading a setting not yet
-	// loaded as `best`. Failing settings answer `undefined`, read as
-	// `best` like everywhere else.
-	let answerQualitySetting: (quality: string | undefined) => void = () => {};
-	const qualitySetting = new Promise<string | undefined>((resolve) => {
-		answerQualitySetting = resolve;
-	});
 	let qualityControl: QualityControl | null = null;
 	const qualityMenuModel = $derived(qualityMenu(qualityView));
 	function pickQuality(choice: 'auto' | number) {
@@ -1941,7 +1933,7 @@
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
 			// The quality control starts the engine once it has chosen the
-			// start level, which waits for the settings ($lib/play/arm-quality).
+			// start level as the levels arrive ($lib/play/arm-quality).
 			hls = new Hls({ lowLatencyMode: false, autoStartLoad: false, ...HLS_STALL_LOAD_POLICY });
 			// The engine retires with its source: the next attach's
 			// flush, or the page leaving.
@@ -1950,14 +1942,14 @@
 				engine.destroy();
 			});
 			// The level the stream plays is the app's choice, not the
-			// engine's bandwidth estimate: the setting's level from the
-			// start, down a level when playback stalls, back up once it
+			// engine's bandwidth estimate: Auto at the highest level from
+			// the start (or the level picked earlier in the player
+			// session), down a level when playback stalls, back up once it
 			// runs healthy, or the one the viewer picks from the menu.
 			const quality = armQuality({
 				engine,
 				events: Hls.Events,
 				video: videoEl,
-				setting: () => settledWithin(qualitySetting, QUALITY_SETTING_WAIT_MS),
 				holdsStart: true,
 				startAt,
 				onView: (view) => {
@@ -2083,7 +2075,12 @@
 	// went ($lib/play/show-release).
 	const showReleases = createShowReleases(clearForShow);
 	$effect.pre(() => showReleases.showing(() => id));
+	// A level picked in the player lasts for the player session: the
+	// next episode keeps it, and another show or leaving lets it go
+	// ($lib/play/quality-session).
+	$effect.pre(() => playerSession.shows(id));
 	onDestroy(() => {
+		playerSession.ends();
 		// Leaving the page ends playback: the stream's engine and
 		// listeners retire, the element unloads and leaves the page,
 		// and picture-in-picture, which shows it, closes. Abandoned
@@ -2155,11 +2152,9 @@
 		void settingsGet()
 			.then((c) => {
 				config = c;
-				answerQualitySetting(c.quality);
 			})
 			.catch(() => {
 				config = null;
-				answerQualitySetting(undefined);
 			});
 	});
 
@@ -2180,7 +2175,7 @@
 	// Background prefetch: warm every episode visible in the strip
 	// concurrently so any click in the page is instant. Re-runs when
 	// the strip page changes (different `episodes` array) or settings
-	// flip mode/quality. The play-cache dedupes across calls — duplicate
+	// flip the audio mode. The play-cache dedupes across calls — duplicate
 	// keys share a single in-flight promise, so reloading the same page
 	// after a swap doesn't refire requests already resolved.
 	//
@@ -2207,7 +2202,6 @@
 		const title = detail.canonical_title;
 		if (!title) return;
 		const mode = playMode(config);
-		const quality = playQuality(config);
 		// The version remembered for the show on its detail page — the
 		// one the session playing here was resolved for.
 		const version = storedChoice(id);
@@ -2230,7 +2224,6 @@
 				title,
 				episode: targetEp,
 				mode,
-				quality,
 				show: detail,
 				kitsuId: recordableId(id, fromGuess),
 				prefetch: true,
@@ -2242,7 +2235,7 @@
 				guessId: guessedId(fromGuess, id)
 			});
 			void getOrFire(
-				makeKey(id, targetEp, mode, quality, version, args.guess_row, args.caption),
+				makeKey(id, targetEp, mode, version, args.guess_row, args.caption),
 				(emit, signal) => playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
@@ -2290,13 +2283,11 @@
 		const show = detail;
 		const guess = fromGuess;
 		const row = fromRow;
-		const quality = playQuality(config);
 		const version = storedChoice(owner.showId);
 		const playArgs = playArgsFor({
 			title,
 			episode: targetEp,
 			mode,
-			quality,
 			show,
 			kitsuId: recordableId(owner.showId, guess),
 			version,
@@ -2326,15 +2317,7 @@
 				owner,
 				() =>
 					getOrFire(
-						makeKey(
-							owner.showId,
-							targetEp,
-							mode,
-							quality,
-							version,
-							playArgs.guess_row,
-							playArgs.caption
-						),
+						makeKey(owner.showId, targetEp, mode, version, playArgs.guess_row, playArgs.caption),
 						(emit, signal) => playStream(playArgs, emit, signal),
 						(p) => {
 							switchProgress = progressLabel(p);
@@ -2482,10 +2465,9 @@
 		if (toast) toastStore.push(toast);
 		const title = detail.canonical_title;
 		// Settings is intentionally NOT a precondition — falling back to
-		// sub/best matches switchToEpisode's pattern. A permanently null
+		// sub matches switchToEpisode's pattern. A permanently null
 		// config (settingsGet rejected) shouldn't leave Reload no-op.
 		const mode = playMode(config);
-		const quality = playQuality(config);
 		console.info('[play] stale-stream recovery:', reason);
 		try {
 			// The resolution cache keys on the version, so the eviction
@@ -2497,7 +2479,6 @@
 					title,
 					episode: episodeNum,
 					mode,
-					quality,
 					show: detail,
 					kitsuId: undefined,
 					version: storedChoice(id),
@@ -2813,12 +2794,12 @@
 		// total and an All download could range into unaired episodes.
 		if (!detail || airingIsPending) return;
 		const mode = playMode(config);
-		const quality = playQuality(config);
 		downloadArgs = buildDownloadArgs({
 			detail,
 			episode: episodeNum,
 			mode,
-			quality,
+			// The download quality, not a level picked in the player.
+			quality: downloadQuality(config),
 			kitsuId: id,
 			version: storedChoice(id),
 			caption: storedCaption(id)
@@ -5010,6 +4991,11 @@
 	.pc-menu-quality-row,
 	.pc-menu-quality-current {
 		font-variant-numeric: tabular-nums;
+	}
+	/* "Auto · 1080p" is one value: on one line, however long the
+	   locale's word for Auto. */
+	.pc-menu-quality-current {
+		white-space: nowrap;
 	}
 	.pc-menu-check {
 		display: inline-flex;

@@ -160,9 +160,9 @@ export function shouldResetStaleStreamBudget(args: {
  *  canonical_title + alt_titles + episode_count + year populate the
  *  eviction payload, and there's no sensible fallback. Settings is
  *  intentionally NOT required: the recovery flow falls back to
- *  sub/best (matching switchToEpisode's `config?.mode` /
- *  `config?.quality` pattern), so a permanently null config from a
- *  rejected settingsGet shouldn't disable the Reload button.
+ *  sub (matching switchToEpisode's `config?.mode` pattern), so a
+ *  permanently null config from a rejected settingsGet shouldn't
+ *  disable the Reload button.
  *
  *  Also blocked while a switchToEpisode is in flight (switchBusy).
  *  A stale network error from the old video can fire mid-foreground-
