@@ -1753,8 +1753,10 @@ was accepted.
    their text-only progress.
 4. **The strip's room is held while the walk runs**, from the walk's
    first hop: the show's own relation listing, read through the
-   walk's own cache. A prequel or sequel the show does not list as
-   another version, or a parent story, means the strip; any other
+   walk's own cache (and, for a show with no run beside it, what the
+   walk's parent check reads). A prequel or sequel the show does not
+   list as another version, or a parent story the walk's parent check
+   accepts, means the strip; any other
    relation the franchise page lists means the link alone; none means
    nothing is held. Only a foretold strip can be wrong (a sequel whose
    own listing names the show as its other version), and the walk's
