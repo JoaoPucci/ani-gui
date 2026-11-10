@@ -63,8 +63,9 @@ export class LinkSession extends LinkPicker {
 	}
 
 	/** The page `pageId` was opened, from the guessed card's row `row`
-	 *  or from anywhere else (null). */
-	async arrive(row: string | null, pageId: string): Promise<void> {
+	 *  or from anywhere else (null). Whether its offer stands as the
+	 *  session's: no when a later arrival overtook it. */
+	async arrive(row: string | null, pageId: string): Promise<boolean> {
 		const arrival = ++this.#arrival;
 		this.#pageId = pageId;
 		this.offer = null;
@@ -72,9 +73,10 @@ export class LinkSession extends LinkPicker {
 		this.settled = false;
 		this.group = null;
 		const offer = await this.findOffer(row, pageId);
-		if (arrival !== this.#arrival) return;
+		if (arrival !== this.#arrival) return false;
 		this.offer = offer;
 		this.settled = true;
+		return true;
 	}
 
 	/** The offer the page `pageId` makes for the card row `row`. */

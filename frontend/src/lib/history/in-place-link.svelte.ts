@@ -100,14 +100,17 @@ export class InPlaceLinkSession extends LinkSession {
 		});
 	}
 
-	override async arrive(row: string | null, pageId: string): Promise<void> {
+	override arrive(row: string | null, pageId: string): Promise<boolean> {
 		this.#row = row;
 		this.#page = pageId;
 		this.aside = isRowHidden(row);
 		this.linked = null;
 		this.switchedTitle = this.#inPlayer ? takeSwitch(row) : null;
-		await super.arrive(row, pageId);
+		return super.arrive(row, pageId);
 	}
+
+	/** The surface is gone: the page was left. */
+	leave(): void {}
 
 	/** A guessed row's offer; on the player, else the way to change the
 	 *  show again of a row the viewer picked a show for there. */

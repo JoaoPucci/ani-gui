@@ -441,3 +441,17 @@ describe('a later arrival', () => {
 		expect(linked.at(-1)).toEqual([other.id]);
 	});
 });
+
+describe('an arrival a later one overtook', () => {
+	it('says its answer did not stand, and the later one does', async () => {
+		const f = fake();
+		const other: HistoryEntry = { ...CARD, id: 'hianime:other-1' };
+		f.rows = [CARD, other];
+		const s = new InPlaceLinkSession(f.deps);
+		const first = s.arrive(CARD.id, GUESS.id);
+		const second = s.arrive(other.id, GUESS.id);
+		expect(await first).toBe(false);
+		expect(await second).toBe(true);
+		expect(s.offer?.entry.id).toBe(other.id);
+	});
+});

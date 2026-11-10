@@ -23,8 +23,9 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { rereadLinked } from './reread-linked';
 
 export interface CardRelinkDeps {
-	/** Whether a link offer still stands for `row`, shown as `matchId`. */
-	offerStands: (row: string, matchId: string) => Promise<boolean>;
+	/** Whether a link offer still stands for `row`, shown as `matchId`;
+	 *  null when a later check overtook this one. */
+	offerStands: (row: string, matchId: string) => Promise<boolean | null>;
 	/** The rows found no longer guessed: their pill goes. */
 	settled: { add: (row: string) => unknown };
 	/** The history the cards show now. */
