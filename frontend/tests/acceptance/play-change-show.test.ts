@@ -44,6 +44,7 @@ import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
+import { rememberAudio } from '../../src/lib/play/audio-choice';
 import { __resetHiddenRowsForTests } from '../../src/lib/history/in-place-link.svelte';
 import { recoveryResume } from '../../src/lib/play/resume-after-recovery';
 
@@ -656,6 +657,18 @@ describe('switching to the pick', () => {
 		expect(after.defaultPlaybackRate).toBe(1);
 		await moreMenu();
 		expect(button(m.play_link_menu_item())).not.toBeNull();
+	});
+
+	it('plays the pick in its own Sub or Dub, the Settings value only the default', async () => {
+		// The picked show was watched dubbed before; Settings say sub.
+		rememberAudio(RIGHT, 'dub');
+		await openPlayer();
+		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+		videoAt(74);
+		await openPicker();
+		await pickAndLink(RIGHT_TITLE, m.play_link_switch_now());
+		await until(() => pickPlay() !== undefined, 'the play of the pick');
+		expect(new URL(pickPlay()!.url, 'http://x').searchParams.get('mode')).toBe('dub');
 	});
 
 	it('never switches to an earlier pick when a later one cannot be saved', async () => {
