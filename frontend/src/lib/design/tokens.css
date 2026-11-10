@@ -197,8 +197,8 @@
    declaration cannot outrank it, and
    `tests/lint/reduced-motion.test.ts` refuses any `!important` on these
    properties that could. A transition's delay is kept: with no duration
-   it is a pause before a jump, not motion, and the player's spinner
-   relies on it to stay hidden through a fast load.
+   it is a pause before a jump, not motion, and the player's start
+   veil relies on it to keep its loader hidden through a fast load.
 
    Script motion goes through `$lib/motion/`, which reads the same
    preference. The duration tokens collapse too, for anything that

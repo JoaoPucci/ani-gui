@@ -1,7 +1,7 @@
 {
 	"loading_aria": "Carregando vídeo",
 	"starting": "Carregando episódio {n}",
-	"resuming": "Continuando de {time}",
+	"resuming": "Retomando em {time}",
 	"buffering": "Carregando",
 	"episode": "Episódio {n}"
 }

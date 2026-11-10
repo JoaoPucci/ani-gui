@@ -44,6 +44,6 @@
 	"row_style_toggle_label": "Mostrar o controle de estilo das fileiras",
 	"section_start_look": "Visual do início no player",
 	"start_look_description": "O que o player mostra enquanto um episódio começa a carregar. Os dois visuais estão em teste e um vai ficar.",
-	"start_look_still": "Cena do episódio com carregamento",
+	"start_look_still": "Cena do episódio com indicador de carregamento",
 	"start_look_card": "Cartão de título"
 }

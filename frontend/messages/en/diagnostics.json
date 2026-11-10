@@ -43,7 +43,7 @@
 	"row_style_description": "Shows a small control on the home page for choosing how its rows present their actions: beside each row's title, or at the end of the row's header, with a band that marks out the row while the pointer is over it or focus is inside it. The choice is kept on this computer and stays in effect after the control is hidden again.",
 	"row_style_toggle_label": "Show row style control",
 	"section_start_look": "Player start look",
-	"start_look_description": "What the player shows while an episode starts loading. Both looks are being tried out; one will stay.",
+	"start_look_description": "What the player shows while an episode starts loading. Both looks are being tried out, and one will stay.",
 	"start_look_still": "Episode still with a loader",
 	"start_look_card": "Title card"
 }

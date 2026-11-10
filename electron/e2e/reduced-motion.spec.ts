@@ -12,8 +12,8 @@
  * Web Animation on the page — must hold nothing that moves.
  *
  * "Moves" means running with time in it. A transition the stylesheet
- * gives no duration but a delay (the player's spinner waits 240 ms
- * before it shows, so a fast load never flashes it) is a pending
+ * gives no duration but a delay (the player's start veil waits 400 ms
+ * before its loader shows, so a fast load never flashes it) is a pending
  * zero-length switch: it changes the property at once when the delay
  * ends and draws no frame in between, so it is not counted.
  *

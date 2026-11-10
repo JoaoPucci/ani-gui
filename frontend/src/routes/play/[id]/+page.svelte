@@ -203,6 +203,7 @@
 	import { chromeReadsPlaying, type StartPhase } from '$lib/play/start-state';
 	import { watchStart, type StartWatch } from '$lib/play/start-watch';
 	import StartVeil from '$lib/play/StartVeil.svelte';
+	import StartAnnounce from '$lib/play/StartAnnounce.svelte';
 	import { veilMode } from '$lib/play/start-veil';
 	import { loadStartLook } from '$lib/play/start-look';
 	import { browserStorage } from '$lib/hero/prefs';
@@ -3212,7 +3213,8 @@
 
 			<!-- The start veil sits here: inside the frame, above the
 			     picture and below the controls and the Skip button, which
-			     come later in the frame. Anything laid over or beside the
+			     come later in the frame (the veil takes no z-index, so
+			     order decides). Anything laid over or beside the
 			     player for a shared session (Watch Together's room panel
 			     and room messages) belongs outside the frame or above it;
 			     the veil must never cover them. -->
@@ -3234,7 +3236,7 @@
 			     seeks just past `end_time`. Positioned bottom-right
 			     above native + custom controls so it never overlaps
 			     the timeline. -->
-			{#if !resumeHolding && startVeil !== 'start' && activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
+			{#if !resumeHolding && startVeil !== 'start' && startPhase !== 'starting' && activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
 				<button
 					type="button"
 					class="player-skip-btn"
@@ -3813,6 +3815,7 @@
 			{/if}
 		{/if}
 	</section>
+	<StartAnnounce mode={startVeil} />
 
 	<div class="watch-column">
 		<!-- Now-playing row: compact breadcrumb under the player so the

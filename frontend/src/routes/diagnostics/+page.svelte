@@ -224,8 +224,8 @@
 
 	<section>
 		<h2>{m.diagnostics_section_start_look()}</h2>
-		<p>{m.diagnostics_start_look_description()}</p>
-		<p>
+		<fieldset class="start-look">
+			<legend>{m.diagnostics_start_look_description()}</legend>
 			<label>
 				<input
 					type="radio"
@@ -244,7 +244,7 @@
 				/>
 				{m.diagnostics_start_look_card()}
 			</label>
-		</p>
+		</fieldset>
 	</section>
 
 	<section>
@@ -280,6 +280,19 @@
 </main>
 
 <style>
+	/* The start-look radios: one named group, laid out like the page's
+	   other switches. */
+	.start-look {
+		display: grid;
+		gap: 0.4rem;
+		margin: 0;
+		padding: 0;
+		border: 0;
+	}
+	.start-look legend {
+		margin-block-end: 0.4rem;
+		padding: 0;
+	}
 	/* Diagnostics is a utilitarian, design-pass-exempt page. Just
 	   enough wrapping to keep the back button and prose off the rail
 	   edge — same gutter the rest of the app uses. */

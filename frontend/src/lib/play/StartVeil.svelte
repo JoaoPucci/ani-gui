@@ -17,7 +17,8 @@
   strip on a small dark pill, kept inside the video picture.
 
   Layering: the veil lives inside the player frame, above the picture
-  and below the player's controls. Anything the app lays over or
+  and below the player's controls, by order alone: it takes no
+  z-index, and the controls come after it in the frame. Anything the app lays over or
   beside the player for a shared session, such as Watch Together's
   room panel and room messages, sits outside the frame or above it:
   the veil must never cover them.
@@ -62,16 +63,7 @@
 		resumeAt === null ? null : m.playstart_resuming({ time: clock(resumeAt) })
 	);
 	const caption = $derived(resumeLine ?? m.playstart_starting({ n }));
-	const announced = $derived(
-		mode === 'start' ? m.playstart_loading_aria() : mode === 'stall' ? m.playstart_buffering() : ''
-	);
 </script>
-
-<!-- The live region stays mounted so a change of its text is announced;
-     only the picture layer comes and goes. -->
-<div class="announce" role="status">
-	<span class="vh">{announced}</span>
-</div>
 
 {#if mode !== 'off'}
 	<div
@@ -133,16 +125,9 @@
 
 <style>
 	/* — Frame ——————————————————————————————————————————————————— */
-	.announce {
-		position: absolute;
-		inline-size: 1px;
-		block-size: 1px;
-		pointer-events: none;
-	}
 	.veil {
 		position: absolute;
 		inset: 0;
-		z-index: 1;
 		pointer-events: none;
 		container-type: size;
 		overflow: hidden;
@@ -155,29 +140,30 @@
 	.veil.fullscreen {
 		--safe-end: 7rem;
 	}
-	.vh {
-		position: absolute;
-		inline-size: 1px;
-		block-size: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-	}
 	p {
 		margin: 0;
 	}
 
-	/* Everything that moves arrives softly, and only once a start or a
-	   stall has lasted a beat: one that lands sooner never flashes the
-	   loader. The backdrop and the card's text are not delayed; they
-	   only replace a black frame. */
-	@keyframes appear {
-		from {
-			opacity: 0;
-		}
-	}
+	/* The loader arrives softly, and only once a start or a stall has
+	   lasted a beat: one that lands sooner never flashes it. The beat
+	   is a transition delay, which reduced motion keeps (tokens.css)
+	   while it takes every animation off. The backdrop and the card's
+	   text are not delayed: they stand in for a black frame, or, at a
+	   fullscreen switch, for the episode being left. */
 	.veil {
 		--loader-beat: 400ms;
+	}
+	.strip,
+	.centre-caption,
+	.pill {
+		transition: opacity var(--dur-slow) var(--ease-out-soft) var(--loader-beat);
+	}
+	@starting-style {
+		.strip,
+		.centre-caption,
+		.pill {
+			opacity: 0;
+		}
 	}
 
 	/* The video picture inside the frame: a pillarboxed or letterboxed
@@ -190,7 +176,7 @@
 		inset-block-end: max(var(--player-letterbox-y, 0px), var(--safe-end));
 	}
 
-	/* — Backdrop (b and c, start) ——————————————————————————————— */
+	/* — Backdrop (both looks, start) ——————————————————————————————— */
 	/* Ink until the still arrives, so nothing flashes the accent first;
 	   the accent field is only for a show with no usable image. */
 	.backdrop {
@@ -255,7 +241,6 @@
 		gap: calc(var(--cell) * 0.32);
 		--cell: clamp(12px, 1.3cqi, 22px);
 		--lit: color-mix(in oklab, var(--accent) 60%, var(--bone-100));
-		animation: appear var(--dur-slow) var(--ease-out-soft) var(--loader-beat) both;
 	}
 	.strip-l .strip {
 		--cell: clamp(16px, 1.9cqi, 34px);
@@ -289,7 +274,7 @@
 		}
 	}
 
-	/* — b: centred loader ——————————————————————————————————————— */
+	/* — Still: centred loader ——————————————————————————————————————— */
 	/* Set a little below the middle of the space above the controls,
 	   where the eye lands on a frame about to play. */
 	.centre {
@@ -307,10 +292,9 @@
 		color: var(--bone-200);
 		font-variant-numeric: tabular-nums;
 		text-shadow: 0 1px 8px rgb(0 0 0 / 0.7);
-		animation: appear var(--dur-slow) var(--ease-out-soft) var(--loader-beat) both;
 	}
 
-	/* — b/c: stall ———————————————————————————————————————————— */
+	/* — Stall (both looks) ———————————————————————————————————————————— */
 	/* A small dark pill behind the strip only, so it reads on a
 	   near-white frame without dimming the whole picture. */
 	.stall {
@@ -323,10 +307,9 @@
 		padding-inline: clamp(12px, 1.4cqi, 30px);
 		border-radius: var(--radius-pill);
 		background: rgb(0 0 0 / 0.55);
-		animation: appear var(--dur-slow) var(--ease-out-soft) var(--loader-beat) both;
 	}
 
-	/* — c: title card ————————————————————————————————————————— */
+	/* — Card: title card ————————————————————————————————————————— */
 	.card {
 		position: absolute;
 		inset-inline-start: var(--edge);

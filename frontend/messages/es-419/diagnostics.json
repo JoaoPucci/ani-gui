@@ -44,6 +44,6 @@
 	"row_style_toggle_label": "Mostrar el control de estilo de las filas",
 	"section_start_look": "Aspecto del inicio en el reproductor",
 	"start_look_description": "Lo que muestra el reproductor mientras un episodio empieza a cargar. Los dos aspectos están a prueba y uno se quedará.",
-	"start_look_still": "Imagen del episodio con carga",
+	"start_look_still": "Imagen del episodio con indicador de carga",
 	"start_look_card": "Tarjeta de título"
 }
