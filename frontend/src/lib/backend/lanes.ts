@@ -19,10 +19,13 @@
  *                  open while the backend walks the franchise, several
  *                  rounds of Kitsu reads when Kitsu is slow, and the
  *                  page that asked cancels it when the viewer leaves.
- *                  The show page, the player and the franchise page
- *                  hold at most one (`$lib/watch-order/loader`); Home
- *                  holds one per Continue row at its finale, all at
- *                  once (`$lib/watch-order/handoff-reads`).
+ *                  The show page holds at most one, cancelled with the
+ *                  visit (`$lib/watch-order/loader`), and the player and
+ *                  the franchise page at most one each, a superseded
+ *                  read cancelled (`$lib/watch-order/latest-read`). Home
+ *                  walks the series of its Continue rows at their finale
+ *                  two at a time and the rest in turn
+ *                  (`$lib/watch-order/handoff-reads`).
  *   - `stream`   — the stream proxy; what the player waits on.
  *   - `image`    — `/api/image`, an upstream fetch on a cold cache.
  *   - `probe`    — availability probes, a provider walk each.
