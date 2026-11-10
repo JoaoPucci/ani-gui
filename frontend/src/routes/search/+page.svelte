@@ -48,6 +48,7 @@
 	import { cardPositions, scrollToAnchor } from '$lib/search/scroll-anchor';
 	import { followAddress } from '$lib/search/follow-address';
 	import { arrive, emptyView, type SearchView } from '$lib/search/arrival';
+	import { discoveryView, LOADING, settleRow, type RowLoad } from '$lib/search/discovery';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
@@ -73,10 +74,14 @@
 		void tick().then(() => sentinelWatch?.remeasure());
 	}
 
-	// Discovery rows for the empty state — same data as the home page so
-	// users have something to browse when they arrive without a query.
-	let trending = $state<KitsuAnimeRef[] | null>(null);
-	let topRated = $state<KitsuAnimeRef[] | null>(null);
+	// Discovery rows for the empty state, so users have something to
+	// browse when they arrive without a query. Trending is drawn first,
+	// Top rated below it; what each slot shows is decided in
+	// $lib/search/discovery.ts.
+	let rowLoads = $state<[RowLoad<KitsuAnimeRef>, RowLoad<KitsuAnimeRef>]>([LOADING, LOADING]);
+	const discovery = $derived(discoveryView(rowLoads));
+	const trendingSlot = $derived(discovery.slots[0]);
+	const topRatedSlot = $derived(discovery.slots[1]);
 
 	// User settings — only `mode` matters here, used to scope the
 	// availability filter to the user's sub/dub preference. Settings
@@ -181,16 +186,19 @@
 			// Settings fetch failed — fall through with config null;
 			// pickAvailabilityMode handles that with 'sub' default.
 		}
-		const mode = pickAvailabilityMode(config);
-		kitsuTrending()
-			.then((t) => filterAvailable(t, mode))
-			.then((t) => (trending = t))
-			.catch(() => (trending = []));
-		kitsuTopRated()
-			.then((t) => filterAvailable(t, mode))
-			.then((t) => (topRated = t))
-			.catch(() => (topRated = []));
+		loadDiscovery(pickAvailabilityMode(config));
 	});
+
+	/** Ask for both discovery rows; each lands in its own slot. */
+	function loadDiscovery(mode: 'sub' | 'dub') {
+		rowLoads = [LOADING, LOADING];
+		void settleRow(kitsuTrending().then((t) => filterAvailable(t, mode))).then(
+			(row) => (rowLoads[0] = row)
+		);
+		void settleRow(kitsuTopRated().then((t) => filterAvailable(t, mode))).then(
+			(row) => (rowLoads[1] = row)
+		);
+	}
 
 	// Drive the search off the URL ?q=… param. The global topbar from
 	// +layout.svelte writes that param on submit; this page reacts to
@@ -499,22 +507,22 @@
 		</div>
 	{:else if !submitted}
 		<!-- No query yet: surface the same discovery rows the home page uses. -->
-		{#if trending && trending.length > 0}
+		{#if trendingSlot.kind === 'shown'}
 			<Strip
 				eyebrow={m.search_discovery_trending_eyebrow()}
 				caption={m.search_discovery_trending_caption()}
 			>
-				{#each trending as hit (hit.id)}
+				{#each trendingSlot.items as hit (hit.id)}
 					<PosterCard anime={hit} />
 				{/each}
 			</Strip>
 		{/if}
-		{#if topRated && topRated.length > 0}
+		{#if topRatedSlot.kind === 'shown'}
 			<Strip
 				eyebrow={m.search_discovery_top_rated_eyebrow()}
 				caption={m.search_discovery_top_rated_caption()}
 			>
-				{#each topRated as hit (hit.id)}
+				{#each topRatedSlot.items as hit (hit.id)}
 					<PosterCard anime={hit} />
 				{/each}
 			</Strip>
