@@ -2,7 +2,8 @@
  * Rows of cards stacked down a page, each loaded on its own: what each
  * row's request has come to, and what the page draws for it. The search
  * page's discovery rows, shown while nothing has been asked, are one
- * such stack.
+ * such stack (loadDiscoveryRows loads them); the home page's rows are
+ * another ($lib/home/rows).
  *
  * The rows are fetched side by side and each lands when it lands, so
  * the order they answer in is not the order they are drawn in.
@@ -75,4 +76,51 @@ export function discoveryView<T>(rows: readonly RowLoad<T>[]): DiscoveryView<T> 
 	});
 	const nothing = aboveSettled && slots.every((slot) => slot.kind === 'absent');
 	return { slots, nothing };
+}
+
+/** What {@link loadDiscoveryRows} needs from the page. */
+export interface DiscoveryLoad<T, C> {
+	/** The settings the page already holds, or null when it has none. */
+	config: () => C | null;
+	/** Read the settings from the backend. */
+	readConfig: () => Promise<C>;
+	/** Keep settings that were read, for this load and the next. */
+	keepConfig: (config: C) => void;
+	/** The sub/dub mode to filter for, given the settings or null. */
+	pickMode: (config: C | null) => 'sub' | 'dub';
+	/** One request per row, in drawing order, filtered for `mode`. */
+	rows: readonly ((mode: 'sub' | 'dub') => Promise<readonly T[]>)[];
+	/** Called once per row as it settles, with the row's index. */
+	onRow: (index: number, row: RowLoad<T>) => void;
+}
+
+/**
+ * Ask for every discovery row. Also the notice's retry, which is
+ * offered only once every row has settled, so no earlier answer is
+ * still on its way.
+ *
+ * The settings are resolved first so the availability filter sees the
+ * user's actual sub/dub mode; started in parallel, a row could be
+ * filtered with the no-settings default. When they could not be read,
+ * they are asked again on the retry: they come from the same local
+ * backend as the rows, so a page that reached the notice has usually
+ * lost them too. A request that fails settles as a failed row, and
+ * the promise resolves once every row has settled.
+ */
+export async function loadDiscoveryRows<T, C>(load: DiscoveryLoad<T, C>): Promise<void> {
+	let config = load.config();
+	if (config === null) {
+		try {
+			config = await load.readConfig();
+			load.keepConfig(config);
+		} catch {
+			// Still unreadable: pickMode falls back to its default.
+		}
+	}
+	const mode = load.pickMode(config);
+	await Promise.all(
+		load.rows.map((request, index) =>
+			settleRow(request(mode)).then((row) => load.onRow(index, row))
+		)
+	);
 }

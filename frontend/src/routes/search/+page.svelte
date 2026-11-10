@@ -14,7 +14,7 @@
 		imageProxyUrl,
 		kitsuSearchPage,
 		kitsuTopRated,
-		kitsuTrending,
+		kitsuTrendingAnilist,
 		settingsGet,
 		type Config,
 		type KitsuAnimeRef,
@@ -49,7 +49,7 @@
 	import { cardPositions, scrollToAnchor } from '$lib/search/scroll-anchor';
 	import { followAddress } from '$lib/search/follow-address';
 	import { arrive, emptyView, type SearchView } from '$lib/search/arrival';
-	import { discoveryView, LOADING, settleRow, type RowLoad } from '$lib/rows/discovery';
+	import { discoveryView, loadDiscoveryRows, LOADING, type RowLoad } from '$lib/rows/discovery';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
@@ -76,13 +76,16 @@
 	}
 
 	// Discovery rows for the empty state, so users have something to
-	// browse when they arrive without a query. Trending is drawn first,
-	// Top rated below it; what each slot shows is decided in
-	// $lib/rows/discovery.ts.
+	// browse when they arrive without a query. Trending is the home
+	// page's AniList list (kitsuTrendingAnilist, cached by the backend
+	// for an hour) and is drawn first, Top rated below it; what each
+	// slot shows is decided in $lib/rows/discovery.ts.
 	let rowLoads = $state<[RowLoad<KitsuAnimeRef>, RowLoad<KitsuAnimeRef>]>([LOADING, LOADING]);
 	const discovery = $derived(discoveryView(rowLoads));
 	const trendingSlot = $derived(discovery.slots[0]);
 	const topRatedSlot = $derived(discovery.slots[1]);
+	// Both rows loading or shown: what the page caption names is there.
+	const bothRowsThere = $derived(discovery.slots.every((slot) => slot.kind !== 'absent'));
 
 	// User settings — only `mode` matters here, used to scope the
 	// availability filter to the user's sub/dub preference. Settings
@@ -179,32 +182,22 @@
 
 	onMount(() => void loadDiscovery());
 
-	/** Ask for both discovery rows; each lands in its own slot. Also
-	 *  the notice's retry, which is offered only once both have
-	 *  settled, so no earlier answer is still on its way.
-	 *
-	 *  The settings are resolved first so the availability filter sees
-	 *  the user's actual sub/dub mode; started in parallel, a row could
-	 *  be filtered with pickAvailabilityMode(null)'s 'sub' default. When
-	 *  they could not be read, they are asked again on the retry: they
-	 *  come from the same local backend as the rows, so a page that
-	 *  reached the notice has usually lost them too. */
-	async function loadDiscovery() {
+	/** Ask for both discovery rows, each landing in its own slot
+	 *  ($lib/rows/discovery: loadDiscoveryRows). Also the notice's
+	 *  Try again. */
+	function loadDiscovery() {
 		rowLoads = [LOADING, LOADING];
-		if (config === null) {
-			try {
-				config = await settingsGet();
-			} catch {
-				// Still unreadable: pickAvailabilityMode falls back to 'sub'.
-			}
-		}
-		const mode = pickAvailabilityMode(config);
-		void settleRow(kitsuTrending().then((t) => filterAvailable(t, mode))).then(
-			(row) => (rowLoads[0] = row)
-		);
-		void settleRow(kitsuTopRated().then((t) => filterAvailable(t, mode))).then(
-			(row) => (rowLoads[1] = row)
-		);
+		return loadDiscoveryRows<KitsuAnimeRef, Config>({
+			config: () => config,
+			readConfig: settingsGet,
+			keepConfig: (read) => (config = read),
+			pickMode: pickAvailabilityMode,
+			rows: [
+				(mode) => kitsuTrendingAnilist().then((t) => filterAvailable(t, mode)),
+				(mode) => kitsuTopRated().then((t) => filterAvailable(t, mode))
+			],
+			onRow: (index, row) => (rowLoads[index] = row)
+		});
 	}
 
 	// Drive the search off the URL ?q=… param. The global topbar from
@@ -309,7 +302,7 @@
 	const searchRunner = createSearchRunner({
 		searchPage: kitsuSearchPage,
 		getConfig: async () => {
-			// Same race as loadDiscovery: a fast ?q= deeplink can fire before
+			// Same race as loadDiscoveryRows: a fast ?q= deeplink can fire before
 			// settingsGet has resolved on first load. The runner caches
 			// the result so DUB users never search under the 'sub'
 			// fallback twice.
@@ -425,7 +418,20 @@
 				<span class="eyebrow-rule" aria-hidden="true"></span>
 				<span class="eyebrow-value">{m.search_eyebrow_value_empty()}</span>
 			</p>
-			<p class="eyebrow-caption">{m.search_empty_caption()}</p>
+			<!-- Names both rows below, so it is hidden, from sight and from
+			     screen readers, when either is not there: dropped, or both
+			     gone behind the notice. It stays in the page with its words,
+			     so it keeps its height (wrapped or not) and a row already
+			     shown below never moves up, and the live region it sits in
+			     sees no change of text (it is announced again only when it
+			     returns, after a retry has loaded the rows). -->
+			<p
+				class="eyebrow-caption"
+				class:caption-hidden={!bothRowsThere}
+				aria-hidden={bothRowsThere ? undefined : 'true'}
+			>
+				{m.search_empty_caption()}
+			</p>
 		{/if}
 	</section>
 
@@ -781,6 +787,9 @@
 		font-family: var(--font-body);
 		font-size: var(--type-meta);
 		color: var(--bone-300);
+	}
+	.eyebrow-caption.caption-hidden {
+		visibility: hidden;
 	}
 
 	/* — Grid: dense, never centered, never gappy. */

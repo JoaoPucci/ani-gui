@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
 	discoveryView,
+	loadDiscoveryRows,
 	LOADING,
 	PENDING,
 	settleRow,
+	type DiscoveryLoad,
 	type RowLoad,
 	type RowSlot
 } from './discovery';
@@ -199,5 +201,132 @@ describe('settleRow', () => {
 
 	it('settles a failure as a failed row instead of rejecting', async () => {
 		await expect(settleRow(Promise.reject(new Error('offline')))).resolves.toEqual(FAILED);
+	});
+});
+
+describe('loadDiscoveryRows', () => {
+	type Config = { mode: 'sub' | 'dub' };
+	const pickMode = (c: Config | null) => c?.mode ?? 'sub';
+
+	/** A load whose events are recorded in order. */
+	function recorder(over: Partial<DiscoveryLoad<string, Config>> & { held?: Config | null } = {}) {
+		const events: string[] = [];
+		let held: Config | null = over.held ?? null;
+		const load: DiscoveryLoad<string, Config> = {
+			config: () => held,
+			readConfig: async () => {
+				events.push('read settings');
+				return { mode: 'dub' };
+			},
+			keepConfig: (c) => {
+				events.push(`keep ${c.mode}`);
+				held = c;
+			},
+			pickMode,
+			rows: [
+				async (mode) => {
+					events.push(`ask row 0 in ${mode}`);
+					return ['t1'];
+				},
+				async (mode) => {
+					events.push(`ask row 1 in ${mode}`);
+					return ['r1'];
+				}
+			],
+			onRow: (i, row) => events.push(`row ${i} ${row.kind}`),
+			...over
+		};
+		return { events, load };
+	}
+
+	it('uses the settings the page holds without reading them again', async () => {
+		const { events, load } = recorder({ held: { mode: 'dub' } });
+		await loadDiscoveryRows(load);
+		expect(events.filter((e) => e.startsWith('ask'))).toEqual([
+			'ask row 0 in dub',
+			'ask row 1 in dub'
+		]);
+		expect(events).not.toContain('read settings');
+	});
+
+	it('reads and keeps the settings before asking for any row when the page has none', async () => {
+		const { events, load } = recorder();
+		await loadDiscoveryRows(load);
+		expect(events.slice(0, 2)).toEqual(['read settings', 'keep dub']);
+		expect(events).toContain('ask row 0 in dub');
+		expect(events).toContain('ask row 1 in dub');
+	});
+
+	it('falls back to the default mode, keeping nothing, when the settings cannot be read', async () => {
+		const { events, load } = recorder({
+			readConfig: () => Promise.reject(new Error('offline'))
+		});
+		await loadDiscoveryRows(load);
+		expect(events.some((e) => e.startsWith('keep'))).toBe(false);
+		expect(events).toContain('ask row 0 in sub');
+	});
+
+	it('hands each row to its own slot, a failure as a failed row, and resolves once all settle', async () => {
+		const rows: [number, RowLoad<string>][] = [];
+		let answer: (items: string[]) => void = () => {};
+		const held = new Promise<string[]>((resolve) => {
+			answer = resolve;
+		});
+		let done = false;
+		const loading = loadDiscoveryRows<string, Config>({
+			config: () => null,
+			readConfig: () => Promise.reject(new Error('offline')),
+			keepConfig: () => {},
+			pickMode,
+			rows: [() => Promise.reject(new Error('503')), () => held],
+			onRow: (i, row) => rows.push([i, row])
+		}).then(() => (done = true));
+
+		for (let k = 0; k < 10; k++) await Promise.resolve();
+		expect(done).toBe(false);
+		expect(rows).toEqual([[0, FAILED]]);
+
+		answer(['r1']);
+		await loading;
+		expect(done).toBe(true);
+		expect(new Map(rows)).toEqual(
+			new Map<number, RowLoad<string>>([
+				[0, FAILED],
+				[1, ready('r1')]
+			])
+		);
+	});
+
+	it('settles every row exactly once into its own slot, whatever the outcomes', async () => {
+		await fc.assert(
+			fc.asyncProperty(
+				fc.array(fc.option(fc.array(fc.string({ maxLength: 3 }), { maxLength: 3 })), {
+					maxLength: 5
+				}),
+				fc.option(fc.constantFrom<'sub' | 'dub'>('sub', 'dub')),
+				async (answers, heldMode) => {
+					const seen: [number, RowLoad<string>][] = [];
+					const asked: string[] = [];
+					await loadDiscoveryRows<string, Config>({
+						config: () => (heldMode === null ? null : { mode: heldMode }),
+						readConfig: () => Promise.reject(new Error('offline')),
+						keepConfig: () => {},
+						pickMode,
+						rows: answers.map((a) => (mode: 'sub' | 'dub') => {
+							asked.push(mode);
+							return a === null ? Promise.reject(new Error('x')) : Promise.resolve(a);
+						}),
+						onRow: (i, row) => seen.push([i, row])
+					});
+					expect(seen.map(([i]) => i).sort((x, y) => x - y)).toEqual(answers.map((_, i) => i));
+					for (const [i, row] of seen) {
+						const a = answers[i];
+						expect(row).toEqual(a === null ? FAILED : ready(...a));
+					}
+					expect(new Set(asked).size).toBeLessThanOrEqual(1);
+					if (asked.length > 0) expect(asked[0]).toBe(heldMode ?? 'sub');
+				}
+			)
+		);
 	});
 });
