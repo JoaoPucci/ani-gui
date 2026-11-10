@@ -864,7 +864,8 @@ already caches for 30 days).
 
 **Edge cases.** A run longer than the walk's bound (about 40 entries;
 the largest run sampled, *Monogatari*, has 16) ends with a note that
-there may be more titles; Kitsu pages are cached, so a second visit
+there may be more titles, and numbers nothing, since the cut can fall
+at either end; Kitsu pages are cached, so a second visit
 costs nothing. Forked runs (Fate seen from *Fate/Zero*) render as the
 numbered path and the branches side by side; an entry that only leads
 into a join (*Gintama: The Semi-Final*) is listed with the title it
@@ -1156,7 +1157,12 @@ them introduces a new widget style.
 - **When data is missing.**
   - A bounded walk that stopped early, or a listing cut short: the
     list ends with a quiet "There may be more titles than the ones
-    listed here." line.
+    listed here." line. The walk goes outward from the show both ways,
+    so titles may be missing at either end: the rows keep their
+    layout but carry no numbers, and the masthead gives no title count,
+    no place for Resume and no "Start from the beginning". The page
+    never says the show is alone. The strip's link to the page gives
+    no counts either.
   - A forked run: the numbered path runs up to the fork, and the ways
     on stand side by side, unnumbered. A fork left with one way (the
     others start at a join or in a loop) is listed as a line.
