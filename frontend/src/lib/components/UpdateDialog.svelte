@@ -12,6 +12,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { m } from '$lib/paraglide/messages';
 	import { updateStore } from '$lib/update/store.svelte';
+	import { modal } from './modal-layer';
 
 	interface Props {
 		/** App version string from package.json — passed in so the
@@ -34,20 +35,18 @@
 		// outside. Mirrors the player ErrorOverlay's pattern.
 		if (event.target === event.currentTarget) close();
 	}
-
-	function onKeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape') close();
-	}
 </script>
 
-<svelte:window onkeydown={open ? onKeydown : undefined} />
-
+<!-- A modal ($lib/components/modal-layer): its first control takes
+     focus, Tab stays inside it, the page behind it is inert, Escape
+     closes it, and focus goes back to the update badge. -->
 {#if open && release}
 	<div
 		class="update-backdrop"
 		role="presentation"
 		onpointerdown={onBackdropPointerDown}
 		transition:fade={{ duration: 160 }}
+		use:modal={{ onEscape: close }}
 	>
 		<div
 			class="update-dialog"
