@@ -59,6 +59,8 @@ export function captionText(caption: StripCaption): string {
 			});
 		case 'numeral':
 			return m.watchorder_strip_position_open({ position: numeral(caption.position) });
+		case 'partial':
+			return '';
 		case 'side':
 			return m.watchorder_strip_side_story();
 		case 'cycle':

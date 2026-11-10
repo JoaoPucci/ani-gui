@@ -17,6 +17,8 @@ import type { Progress, WatchEntry, WatchRun } from './types';
 export type StripCaption =
 	| { readonly kind: 'position'; readonly position: number; readonly total: number }
 	| { readonly kind: 'numeral'; readonly position: number }
+	/** A numbered place in a franchise read in part: no number is sure. */
+	| { readonly kind: 'partial' }
 	| { readonly kind: 'side' }
 	| { readonly kind: 'cycle'; readonly count: number }
 	| { readonly kind: 'branch' };

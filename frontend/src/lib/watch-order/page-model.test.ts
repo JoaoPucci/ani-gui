@@ -192,7 +192,7 @@ describe('watchOrderPage', () => {
 		);
 	});
 
-	it('carries the read being partial, and then claims no total anywhere', () => {
+	it('carries the read being partial, and then claims no number anywhere', () => {
 		fc.assert(
 			fc.property(anyPage, ({ f, id, order, rows }) => {
 				const got = watchOrderPage({ franchise: f, rows }, id, order);
@@ -200,6 +200,7 @@ describe('watchOrderPage', () => {
 				expect(got.complete).toBe(f.complete);
 				if (!f.complete) {
 					expect(got.caption.kind).not.toBe('position');
+					expect(got.caption.kind).not.toBe('numeral');
 					expect(got.eyebrow).toBeNull();
 				}
 			})
@@ -240,11 +241,10 @@ describe('captionOf', () => {
 		expect(captionOf({ ...view, position: 3 }, 0, true)).toEqual({ kind: 'numeral', position: 3 });
 	});
 
-	it('reads no total for a franchise read in part: entries may be missing', () => {
-		expect(captionOf({ ...view, position: 3, total: 9 }, 0, false)).toEqual({
-			kind: 'numeral',
-			position: 3
-		});
+	it('reads no number for a franchise read in part: entries may be missing on either side', () => {
+		expect(captionOf({ ...view, position: 3, total: 9 }, 0, false)).toEqual({ kind: 'partial' });
+		expect(captionOf({ ...view, position: 3 }, 0, false)).toEqual({ kind: 'partial' });
+		expect(captionOf(view, 0, false)).toEqual({ kind: 'branch' });
 		expect(captionOf({ ...view, inCycle: true }, 10, false)).toEqual({ kind: 'cycle', count: 10 });
 		expect(captionOf({ ...view, kind: 'side' }, 0, false)).toEqual({ kind: 'side' });
 	});

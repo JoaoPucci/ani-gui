@@ -44,6 +44,8 @@ describe('the strip copy', () => {
 		expect(captionText({ kind: 'position', position: 4, total: 5 })).toBe('04 of 05');
 		// Read aloud in the strip's heading, a bare number says nothing.
 		expect(captionText({ kind: 'numeral', position: 7 })).toBe('Position 07');
+		// A franchise read in part: the heading reads "Watch order" alone.
+		expect(captionText({ kind: 'partial' })).toBe('');
 		expect(captionText({ kind: 'side' })).toBe('Side story');
 		// A loop is said as what the viewer sees: the others it links with.
 		expect(captionText({ kind: 'cycle', count: 10 })).toBe('Linked with 9 others, order unclear');
