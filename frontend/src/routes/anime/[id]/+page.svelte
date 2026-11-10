@@ -145,7 +145,7 @@
 	import { decideEpisodeFetchAction, parsePageParam } from '$lib/history/url-deeplink';
 	import { guessedQuery, guessedRowOf } from '$lib/history/guessed-context';
 	import { LinkSession } from '$lib/history/link-session.svelte';
-	import { appLinkDeps } from '$lib/history/link-deps';
+	import { appLinkDeps, onHistoryLinked } from '$lib/history/link-deps';
 	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
 	import GuessMark from '$lib/components/GuessMark.svelte';
 	import { pageTrail } from '$lib/page-trail';
@@ -1724,17 +1724,24 @@
 			}),
 		/* eslint-enable svelte/no-navigation-without-resolve */
 		here: () => page.url.pathname,
-		refresh: () => {
-			const currentId = id;
-			void lookupResume(currentId, historyByKitsu, kitsuAnimeDetail(currentId))
-				.then((h) => {
-					if (id !== currentId) return;
-					resumeEntry = h;
-					resumeRefresh.row(h);
-				})
-				.catch(() => {});
-		}
+		// The page's own links are heard below, as every other one is.
+		refresh: () => {}
 	});
+	// Every link or undo answered while the page is on screen, made here
+	// or from a notice that outlived another page ($lib/history/link-deps.ts),
+	// reads the show's history again: a Continue kept from the rows before
+	// would play the show onto rows an Undo gave back.
+	const stopHearing = onHistoryLinked(() => {
+		const currentId = id;
+		void lookupResume(currentId, historyByKitsu, kitsuAnimeDetail(currentId))
+			.then((h) => {
+				if (id !== currentId) return;
+				resumeEntry = h;
+				resumeRefresh.row(h);
+			})
+			.catch(() => {});
+	});
+	onDestroy(stopHearing);
 	$effect(() => void linkSession.arrive(guessedRow, id));
 
 	function onPickEpisode(n: number) {

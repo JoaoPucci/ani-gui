@@ -33,9 +33,17 @@ export function onHistoryLinked(listener: () => void): () => void {
 	return () => listeners.delete(listener);
 }
 
-/** `write`, announced once it answered, whatever it answered. */
+/** `write`, announced once it answered, whatever it answered. A
+ *  listener's failure is its own: the write answers as it did, and the
+ *  next listener still hears. */
 function announced<T>(write: Promise<T>): Promise<T> {
 	return write.finally(() => {
-		for (const listener of [...listeners]) listener();
+		for (const listener of [...listeners]) {
+			try {
+				listener();
+			} catch {
+				// Ignored: see above.
+			}
+		}
 	});
 }
