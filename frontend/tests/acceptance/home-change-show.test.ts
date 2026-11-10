@@ -934,6 +934,35 @@ describe('the picker while Clear history runs', () => {
 		);
 	});
 
+	it('is not opened by a pill whose check answers once a clear is running', async () => {
+		await openHome();
+		// The pill's check reads the history, held until the clear runs.
+		let releaseRead: () => void = () => {};
+		let readAsked = false;
+		const read = new Promise<void>((resolve) => {
+			releaseRead = resolve;
+		});
+		server.use(
+			http.get(`${API_BASE}/api/history`, async () => {
+				readAsked = true;
+				await read;
+			})
+		);
+		pill(BC_CARD)!.click();
+		await until(() => readAsked, "the pill's check");
+		button(m.home_clear_history_action())!.click();
+		await until(() => button(m.home_clear_confirm_button()) !== null, 'the confirm dialog');
+		button(m.home_clear_confirm_button())!.click();
+		await until(() => clearAsked, 'the clear');
+		releaseRead();
+		await settle();
+		expect(dialog()?.open).not.toBe(true);
+		releaseClear();
+		await until(() => cell(BC_CARD) === null, 'the cards cleared');
+		await settle();
+		expect(dialog()?.open).not.toBe(true);
+	});
+
 	it('is not opened from a pill until the clear has answered', async () => {
 		await openHome();
 		button(m.home_clear_history_action())!.click();

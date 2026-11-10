@@ -158,6 +158,27 @@ describe('reading the cards again', () => {
 		expect(h.deps.list).toHaveBeenCalledTimes(2);
 	});
 
+	it('matches nothing again from a read a remove or clear overtook', async () => {
+		// The overtaken list still holds b, recorded as another show: b was
+		// removed meanwhile, so nothing is matched or published for it.
+		let writes = 0;
+		const h = home([row('a'), row('b')], [[row('a'), row('b', '7')], [row('a')]], {
+			writes: () => writes
+		});
+		const list = h.deps.list;
+		let first = true;
+		h.deps.list = vi.fn(async () => {
+			const rows = await list();
+			if (first) writes++;
+			first = false;
+			return rows;
+		});
+		await h.relink.reread();
+		await flush();
+		expect(h.history()).toEqual([row('a')]);
+		expect(h.published).toEqual([]);
+	});
+
 	it('keeps reading after a read that failed', async () => {
 		let fail = true;
 		const h = home([row('a')], [[row('a', '5')]], {
