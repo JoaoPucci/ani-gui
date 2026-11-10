@@ -40,14 +40,16 @@ export async function filterAvailable<T extends KitsuAnimeRef>(
 	mode: 'sub' | 'dub',
 	opts: ReadOptions = {}
 ): Promise<T[]> {
-	void opts;
 	if (items.length === 0) return items;
 	const ids = items.map((i) => i.id);
 	let cached: Record<string, boolean> = {};
 	try {
-		const r = await availabilityBatch(ids, mode);
+		const r = await availabilityBatch(ids, mode, opts);
 		cached = r.cached;
-	} catch {
+	} catch (e) {
+		// The page that asked has gone: no list, filtered or not, and
+		// nothing warmed for it.
+		if (opts.signal?.aborted) throw e;
 		// Cache fetch failed — render everything; lazy click path
 		// still surfaces real errors.
 		return items;

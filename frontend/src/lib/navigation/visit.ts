@@ -66,15 +66,25 @@ export function readEnded(e: unknown): boolean {
 	return e instanceof DOMException && e.name === 'AbortError';
 }
 
-/** Visits that follow one another. Not wired yet: beginning one ends
- *  nothing. */
+/** Visits that follow one another: a read asked again supersedes the
+ *  one before, as a show's list entry is read again after a save. */
 export interface VisitSeries {
-	/** Begins the next visit. */
+	/** Ends the current visit, if any, and begins the next. */
 	next(): Visit;
-	/** The page has gone. */
+	/** Ends the current visit: the page has gone. */
 	end(): void;
 }
 
 export function visitSeries(): VisitSeries {
-	return { next: beginVisit, end: () => {} };
+	let current: Visit | null = null;
+	return {
+		next() {
+			current?.end();
+			current = beginVisit();
+			return current;
+		},
+		end() {
+			current?.end();
+		}
+	};
 }
