@@ -356,4 +356,52 @@ describe('play route — a src stream handed to another player is unloaded, and 
 			expect(playerVideo().currentTime).toBe(at);
 		});
 	}
+
+	it('the handoff playhead stays with the visit: opening the episode again later goes by its kept position', async () => {
+		const media = await openEpisode();
+		playingAt(media, 1360);
+		await handToExternal();
+		// The viewer leaves while handed off, and opens the episode again
+		// later: in its last stretch it reads as finished, from its start.
+		unmount(app!);
+		app = null;
+		target.replaceChildren();
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-4', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(() => src().includes('session-4'), 'the stream attached');
+		Object.defineProperty(playerVideo(), 'duration', { configurable: true, get: () => 1420 });
+		playerVideo().currentTime = 0;
+		playerVideo().dispatchEvent(new Event('loadedmetadata'));
+		expect(playerVideo().currentTime).toBe(0);
+	});
+
+	it('Reload after the handoff resumes exactly where it was handed off', async () => {
+		const media = await openEpisode();
+		playingAt(media, 1360);
+		const video = playerVideo();
+		Object.defineProperty(video, 'error', { value: { code: 3 }, configurable: true });
+		video.dispatchEvent(new Event('error'));
+		await until(() => target.querySelector('.player-error-reload') !== null, 'the Reload');
+		await handToExternal();
+		const before = FakeEventSource.instances.length;
+		(target.querySelector('.player-error-reload') as HTMLButtonElement).click();
+		await until(() => FakeEventSource.instances.length > before, 'the fresh resolve');
+		FakeEventSource.instances.at(-1)!.dispatch(
+			'done',
+			JSON.stringify({
+				session_id: 'session-5',
+				media_url: `${API_BASE}/s/session-5/file.mp4`,
+				media_kind: 'mp4'
+			})
+		);
+		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-5', episode: '1', kind: 'mp4' });
+		await until(() => src().includes('session-5'), 'the fresh stream');
+		Object.defineProperty(playerVideo(), 'error', { value: null, configurable: true });
+		Object.defineProperty(playerVideo(), 'duration', { configurable: true, get: () => 1420 });
+		playerVideo().currentTime = 0;
+		playerVideo().dispatchEvent(new Event('loadedmetadata'));
+		expect(playerVideo().currentTime).toBe(1360);
+	});
 });
