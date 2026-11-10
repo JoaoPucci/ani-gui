@@ -5,9 +5,9 @@
   fanned on one arc, beside "See the whole franchise" and what the
   page holds. Hovering or focusing the link opens the fan outwards
   along the arc (./stack-fan) and lays a faint plate under the whole
-  link, which is one target. With no poster the stack is three blank frames, the
-  front one carrying the number of titles the franchise page lists
-  (none for a franchise read in part).
+  link, which is one target. With no poster the stack is three blank
+  frames, the front one carrying the number of titles the franchise
+  page lists (none for a franchise read in part).
   Under reduced motion the fan is drawn open and does not move.
 -->
 <script lang="ts">

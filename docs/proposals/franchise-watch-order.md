@@ -831,10 +831,11 @@ smaller.
 
 **How it looks.** `/anime/<id>/franchise`, reached from the show
 page's franchise link: the strip's trailing link, or the same link on
-its own where the show has no strip. (Search results were also proposed as a way in; that
-was dropped, see "Decisions recorded (after the build)" below, and a
-study of making franchises findable is in the deferred-work log.) A
-header named after the run's first entry, with your position: "05 ·
+its own where the show has no strip. (Search results were also
+proposed as a way in; that was dropped, see "Decisions recorded
+(after the build)" below, and a study of making franchises findable
+is in the deferred-work log.) A header named after the run's first
+entry, with your position: "05 ·
 *Golden Wind* · EP 12" (with a total only for a run with no fork, join
 or cycle) and a Resume button; its hero and accent are set in the
 design section. Below it, sections:
@@ -1070,10 +1071,11 @@ them introduces a new widget style.
   - Nothing before or after the show, but the franchise page lists
     other titles beside it (films, other versions, side stories or
     recaps), or the show is itself a film, version, recap or side
-    story outside the run with no parent story in it: no strip, and the strip's franchise link stands on its
-    own under the hero, with the same counts (none for a franchise
-    read in part). "Similar titles" leaves out what that page lists,
-    as it does beside a strip.
+    story outside the run with no parent story in it: no strip, and
+    the strip's franchise link stands on its own under the hero, with
+    the same counts (none for a franchise read in part). "Similar
+    titles" leaves out what that page lists, as it does beside a
+    strip.
   - An entry the provider lacks: shown like any other (decided in
     option b).
   - A forked run (link order only): the "next" position holds the
