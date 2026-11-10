@@ -78,6 +78,7 @@
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<pre
 					class="update-dialog-body"
+					role="region"
 					tabindex="0"
 					aria-label={m.update_dialog_notes_aria_label()}>{release.body}</pre>
 			{/if}

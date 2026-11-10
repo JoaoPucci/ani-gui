@@ -86,7 +86,10 @@ function close(layer: Layer): void {
 	// Only the topmost modal held focus; one closing beneath another
 	// leaves it where it is.
 	if (at < stack.length) return;
-	if (layer.returnTo?.isConnected) layer.returnTo.focus();
+	// A return target that is a modal's own surface (one opened with
+	// focus on nothing) is entered like a modal: at its control.
+	const back = layer.returnTo;
+	if (back?.isConnected && !stack.some((l) => l.root === back)) back.focus();
 	else if (top()) enter(top()!.root);
 }
 
