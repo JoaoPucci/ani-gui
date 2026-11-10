@@ -13,6 +13,7 @@ const {
   APP_BACKGROUND,
   APP_READY_CHANNEL,
   APP_READY_WAIT_MS,
+  abortWhenLost,
   appReadyBound,
   appReadyWaiter,
   appWindowOptions,
@@ -272,4 +273,64 @@ test("the wait is unbounded exactly while a splash stands in for the window", ()
   // No splash (a later window, or one that could not be made): the
   // bound stays, so the window is not left hidden for good.
   assert.equal(appReadyBound({ standsIn: () => false }), APP_READY_WAIT_MS);
+});
+
+// A splash lost to crashes (lib/splash.cjs `lost`) no longer stands in
+// for the window. The page gets back the bound it has without a splash:
+// one that renders within it is revealed as usual, one that does not
+// fails the boot (main.js passes this as openFirstPage's `abort`).
+test("a lost splash gives the page the bound back: rendered within it, nothing fails", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let lose;
+  const lost = new Promise((_r, reject) => (lose = reject));
+  let render;
+  const ready = new Promise((resolve) => (render = resolve));
+  let failed = null;
+  abortWhenLost(lost, ready).catch((err) => (failed = err));
+  lose(new Error("lost"));
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  t.mock.timers.tick(APP_READY_WAIT_MS - 1);
+  render(true);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  t.mock.timers.tick(APP_READY_WAIT_MS * 2);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(failed, null);
+});
+
+test("a lost splash and a page that does not render within the bound fail the boot", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let lose;
+  const lost = new Promise((_r, reject) => (lose = reject));
+  let failed = null;
+  abortWhenLost(lost, new Promise(() => {})).catch((err) => (failed = err));
+  lose(new Error("the launch splash's page crashed 3 times"));
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  t.mock.timers.tick(APP_READY_WAIT_MS - 1);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(failed, null, "not before the bound");
+  t.mock.timers.tick(1);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.match(String(failed), /crashed 3 times/);
+});
+
+test("a page that rendered before the splash was lost is never failed by it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let lose;
+  const lost = new Promise((_r, reject) => (lose = reject));
+  let failed = null;
+  abortWhenLost(lost, Promise.resolve(true)).catch((err) => (failed = err));
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  lose(new Error("lost"));
+  t.mock.timers.tick(APP_READY_WAIT_MS * 2);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(failed, null);
+});
+
+test("a splash never lost never fails anything", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let failed = null;
+  abortWhenLost(new Promise(() => {}), new Promise(() => {})).catch((err) => (failed = err));
+  t.mock.timers.tick(APP_READY_WAIT_MS * 10);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(failed, null);
 });
