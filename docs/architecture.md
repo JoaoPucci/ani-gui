@@ -109,7 +109,32 @@ A provider's resolves stamp its show keys on every store a play writes, and remo
 
 The sweep keeps no marker. It finds its work in the data itself, so a launch with nothing retired reads the history and numbering files and a few key ranges of the cache, under two milliseconds, and writes nothing, and a history or cache restored from an older copy is swept on the next launch. It reads every store it needs — the history, the numbering sidecar, the cache — before it writes any, and a store that exists but cannot be read stops it with nothing written: read as empty, the sidecar would have a kept row's provider slot written as its episode for good. What it changed is listed on the diagnostics page.
 
-The survey that chose hianime, and the reasoning behind the shape this section describes, are in [`proposals/additional-providers.md`](./proposals/additional-providers.md) — the proposal as it was written before the work, kept for its survey; this section, not the proposal, describes what shipped.
+### Adding a provider
+
+The seam exists because one provider is one point of failure. Within ten days in 2026 the single provider the app then rode failed twice in two different ways: in late August its server-rendered pages stalled for hours while its JSON routes kept answering, and from early September every route, the JSON API included, answered a maintenance 503. Nothing new could be resolved through either. hianime was added behind the seam as the second provider, and is the one left.
+
+A second provider again is mostly a client behind the `Provider` trait; the recipe in `backend/src/provider_set.rs` lists every place it has to be named. What decides whether a candidate can be a client at all:
+
+- **Reachable by the app's transports, on both packaged platforms.** The scrape rides `curl-impersonate`, spawned once per request: a request carries a URL and headers, one built from the provider's own site is held to its origin, and no cookie jar carries over from one request to the next. Impersonation passes a TLS fingerprint check; it cannot run JavaScript, so a site behind an interactive challenge is out of reach. And the scrape is only half of it, because playback rides other transports: the proxy's own `reqwest` client (`backend/src/proxy/upstream.rs`, a rustls fingerprint) fetches playlists and segments for the embedded player, `yt-dlp` and `ffmpeg` fetch for downloads, and the external player, alone or under Syncplay, fetches for itself. A site can answer every scrape and still refuse every play if its delivery network fingerprints those. A candidate counts as reachable only once a master playlist and its segments have come through the proxy and through each of the other consumers, on Linux and on Windows, through the tools each platform's package ships or relies on ([`AGENTS.md`](../AGENTS.md) §15).
+- **A text search** that accepts the titles the bridge feeds it, in priority order ([`title-resolution.md`](./title-resolution.md)). The checks that judge a mapping from the provider's show to a Kitsu entry compare the season the provider's title names with the one Kitsu's entry names, so a provider that names its seasons its own way needs those checks looked at too.
+- **An episode listing with numbers.** Availability caps and the disambiguation by episode count both read it. Providers number differently — some continuously across seasons, so a second season's first episode is the fourteenth, and some, hianime among them, within each season's entry — and a cap from one model is not comparable with a cap from the other.
+- **A sub/dub signal**, per episode at best. hianime types each server on an episode's server list, which is per episode but costs one request per episode; why that matters is the per-episode audio-mode caps entry in [`deferred-work.md`](./deferred-work.md#interface).
+- **An extraction step whose upkeep is sustainable.** Embed obfuscation rotates; the question is how often, and how much each rotation costs to follow.
+- **Catalogue breadth, and a tolerance for the request rate.** The gate, the breaker and the reservations apply per provider either way.
+
+The candidates, as surveyed on 2026-09-05 from one residential connection, with plain curl and with the impersonating transport. The survey covers the scrape half of reachability only — no playlist or segment was pulled through the proxy for any of them — and a Cloudflare challenge can be per address and per moment while domains churn constantly, so every row needs checking again before anything is built on it.
+
+| Site | What answered | Note |
+|---|---|---|
+| hianime | 200 in about 0.3 s at hianime.at | Chosen. The canonical hianime.to was filtered by SNI on the surveyed connection: the TLS handshake naming it hung until timeout. |
+| anizone.to | Open to plain curl, no challenge | Pages are Livewire-rendered, so search and listings mean speaking to its Livewire endpoints. A small self-hosted library. |
+| allanime | Cloudflare interactive challenge, to the impersonating transport too | Its GraphQL API answered per-mode episode arrays, exactly the sub/dub signal wanted. |
+| animepahe (animepahe.pw) | The same challenge | — |
+| animekai | animekai.to did not resolve; .cc and .bz were parked | Current home not found. |
+
+Not surveyed: the gogoanime and anitaku lineage, with its history of domain deaths; 9anime and aniwave, shut down in 2024; smaller sites. The reference scrapers the open-source ecosystem used to read, consumet.ts and aniwatch-api, were taken off GitHub by DMCA takedowns in March 2026. A later sighting, hianime.ms and the vidnest.fun embed it lists, is [its own entry](./deferred-work.md#reading-hianimems-and-vidnestfun-as-providers) in the deferred-work log, and where anidb.app's operator appears to have gone is in [the second-provider entry](./deferred-work.md#a-second-provider-and-what-it-would-allow).
+
+Two of the larger candidates sit behind a JavaScript challenge, and this app has a route to them that a scraper does not: it ships Chromium. A hidden window could visit the challenged origin, let a non-interactive check complete, and hand the clearance cookie to the backend, which would then have to present the same user agent from the same address for the cookie to hold. The costs are real: a challenge can turn interactive, leaving a visible window or giving up as the choices; a clearance cookie expires within hours and is bound to origin, address and user agent; and the hand-off is a new bridge between the shell and the backend with failure modes of its own. If allanime is ever the pick, this is its own investigation first.
 
 ## Watch history and removing it
 
