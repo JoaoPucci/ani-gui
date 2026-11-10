@@ -570,6 +570,14 @@ test("the splash's own page is recognised in every shape Electron commits it in"
   }
 });
 
+test("a splash page whose renderer exited while standing in is lost, though not reloaded", async (t) => {
+  const made = await watchedLoss(t);
+  made.win.webContents.emit("render-process-gone", {}, { reason: "clean-exit" });
+  await flush();
+  assert.ok(!made.win.calls.includes("reload"));
+  assert.match(String(made.lost), /exited/);
+});
+
 test("a splash window closed before the boot is past it is lost as well as cancelling the launch", async (t) => {
   const made = await watchedLoss(t);
   made.win.close();
