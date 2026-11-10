@@ -39,7 +39,7 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { playerVideo, playerVideoInSlot } from './player-video';
-import { readPosition } from '../../src/lib/play/watch-position';
+import { readPosition, savePosition } from '../../src/lib/play/watch-position';
 import { m } from '../../src/lib/paraglide/messages';
 
 const KITSU_ID = '42';
@@ -334,7 +334,7 @@ describe('play route — a stream on its way is never offered Play', () => {
 		['the external player', () => m.play_external_label()],
 		['Syncplay', () => m.play_hamburger_syncplay_label()]
 	] as const) {
-		it(`handing a start to ${what} stops it, so nothing keeps loading behind the other player`, async () => {
+		it(`handing a start to ${what} stops it, so nothing starts or shows loading behind the other player`, async () => {
 			const media = await openEpisode();
 			expect(indicatorOn()).toBe(true);
 			(
@@ -385,5 +385,37 @@ describe('play route — a stream on its way is never offered Play', () => {
 		await settle();
 		expect(busy()).toBe(true);
 		expect(indicatorOn()).toBe(false);
+	});
+
+	it('handing a resume to the external player ends its hold, so the hold never starts the video behind it', async () => {
+		savePosition(KITSU_ID, 1, 612.5, 1420);
+		useShowHandlers();
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		const media = controlled(playerVideo());
+		Object.defineProperty(playerVideo(), 'duration', { configurable: true, get: () => 1420 });
+		await until(() => frame().classList.contains('player-resuming'), 'the resume hold');
+
+		(
+			target.querySelector(`button[aria-label="${m.play_more_aria_label()}"]`) as HTMLButtonElement
+		).click();
+		const item = () =>
+			Array.from(target.querySelectorAll('button[role="menuitem"]')).find((b) =>
+				(b.textContent ?? '').includes(m.play_external_label())
+			) as HTMLButtonElement | undefined;
+		await until(() => item() !== undefined, 'the external player menu item');
+		item()!.click();
+		await until(() => !frame().classList.contains('player-resuming'), 'the hold to end');
+
+		// The metadata and the seek land afterwards: nothing plays.
+		playerVideo().dispatchEvent(new Event('loadedmetadata'));
+		playerVideo().dispatchEvent(new Event('seeked'));
+		await settle();
+		expect(media.play).not.toHaveBeenCalled();
+		expect(playerVideo().autoplay).toBe(true);
+		expect(indicatorOn()).toBe(false);
+		expect(label()).toBe(PLAY());
 	});
 });
