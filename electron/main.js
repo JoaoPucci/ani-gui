@@ -650,6 +650,12 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // that gave up on the render (it has no splash) is revealed anyway;
     // a renderer gone before it rendered fails the boot.
     beforeShow: () => revealGate(splash, appReady),
+    // While the splash stands in, the wait for the page has no bound and
+    // Restart and Quit are the way out. A splash whose page has crashed
+    // past its reloads offers neither, so the boot fails on it: the
+    // failure dialog says why, rather than a launch waiting forever
+    // behind a dead splash or revealing a window that may be empty.
+    abort: splash.lost(),
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window
     // whose first page failed (lib/startup.cjs).

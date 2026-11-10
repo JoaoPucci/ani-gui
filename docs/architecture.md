@@ -405,7 +405,11 @@ three-second limit below.
    and nothing is revealed. There is no new final give-up: a packaged
    launch keeps its two-minute deadlines for the backend's handshake and
    the window's first paint, whose failure dialog takes the splash away,
-   and a renderer that dies fails the boot as before. The log has a
+   and a renderer that dies fails the boot as before. A splash whose own
+   page crashes is reloaded, at most twice per launch, and offers its
+   choices again; one that crashes past that can no longer offer a way
+   out, so the boot fails on it with the same dialog rather than waiting
+   for ever or revealing a window that may be empty. The log has a
    line for each: the stuck state (which step, how long after the
    paint), the choice, and a page rendering after it (how long after).
 

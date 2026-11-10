@@ -179,6 +179,12 @@ function splashController({
   let backstop = null;
   // Reloads of a crashed splash page so far.
   let reloads = 0;
+  // Rejects once the splash's crash recovery has run out while it
+  // stands in for the window (`lost`). Handled here too, so a launch
+  // that never asks leaves no unhandled rejection.
+  let markLost = () => {};
+  const lostSignal = new Promise((_resolve, reject) => (markLost = reject));
+  lostSignal.catch(() => {});
   let suppressed = false;
   // Set when the splash closes by any hand but the boot's: the user,
   // or a quit already under way.
@@ -363,6 +369,9 @@ function splashController({
         if (over || chosen || win !== splash || splash.isDestroyed() || NOT_A_CRASH.has(reason)) return;
         if (reloads >= SPLASH_RELOADS) {
           log(`[main] splash's page crashed ${reloads + 1} times: not reloaded again (${since()})`);
+          // Nothing on screen can end or continue the launch now: the
+          // boot fails on this (main.js, openFirstPage's `abort`).
+          markLost(new Error(`the launch splash's page crashed ${reloads + 1} times`));
           return;
         }
         reloads += 1;
@@ -436,6 +445,13 @@ function splashController({
     },
     standsIn() {
       return state.opened && !over && alive() === true;
+    },
+    // Rejects when the splash's page has crashed past its bounded
+    // reloads while the boot still relies on it (no bound on the wait
+    // for the first page, Restart and Quit its only way out). Never
+    // settles otherwise.
+    lost() {
+      return lostSignal;
     },
     // The app's window is about to be revealed: its first page has
     // rendered, or the wait for that gave up (`rendered` false). Either
