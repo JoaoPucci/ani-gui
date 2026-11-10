@@ -233,3 +233,25 @@ fn syncplay_on_windows_and_macos_gets_the_installed_program() {
         Some("/found/iina")
     );
 }
+
+#[test]
+fn a_registered_path_keeps_a_variable_it_cannot_expand_and_a_lone_percent() {
+    let var = vars(&[("ProgramFiles", "C:\\Program Files")]);
+    for (registered, expanded) in [
+        ("%NOPE%\\VLC\\vlc.exe", "%NOPE%\\VLC\\vlc.exe"),
+        ("C:\\100%\\vlc.exe", "C:\\100%\\vlc.exe"),
+        ("%%\\vlc.exe", "%%\\vlc.exe"),
+        (
+            "%ProgramFiles%\\VLC\\vlc.exe",
+            "C:\\Program Files\\VLC\\vlc.exe",
+        ),
+    ] {
+        let app = |_: &str| Some(registered.to_string());
+        let exists = |p: &str| p == expanded;
+        assert_eq!(
+            locate("vlc", Os::Windows, &var, &exists, &app).as_deref(),
+            Some(expanded),
+            "{registered}"
+        );
+    }
+}
