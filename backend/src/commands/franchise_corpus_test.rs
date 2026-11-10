@@ -209,8 +209,9 @@ fn the_corpus_holds_what_kitsu_served_for_one_piece_and_lego_one_piece() {
 
 /// Anchors whose answers are kept as `GET /api/kitsu/franchise/:id`
 /// serves them (`served-<id>.json`), for the frontend's tests: One
-/// Piece and its spin-off LEGO ONE PIECE, Naruto, and Bleach.
-pub(super) const SERVED: [&str; 4] = ["12", "50656", "11", "244"];
+/// Piece and its spin-off LEGO ONE PIECE, Naruto, Bleach and Dragon
+/// Ball.
+pub(super) const SERVED: [&str; 5] = ["12", "50656", "11", "244", "199"];
 
 #[test]
 fn the_served_payloads_are_the_walks_answers() {
