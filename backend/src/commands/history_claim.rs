@@ -21,7 +21,8 @@ pub(crate) struct RowIds<'a> {
 /// stands. A row that records none — or records one Kitsu deleted —
 /// is named by its mapping while that stands. A row whose recorded
 /// entry was deleted, with no standing mapping, is named by the title
-/// match the home page stored for it, the entry it is now shown as; a
+/// match the home page stored for it, the entry it is now shown as
+/// (the one under its own cour, so one entry at most); a
 /// row that never recorded an id is not, since that would be the
 /// guess the mapping is there to stand in for.
 pub(crate) fn names(kitsu_id: &str, kitsu_gone: bool, row: &RowIds<'_>) -> bool {
@@ -59,7 +60,9 @@ pub(crate) fn row_names(state: &AppState, entry: &HistoryEntry, kitsu_id: &str) 
         None => None,
     };
     let title_matched = if recorded.is_some() {
-        super::history_forget_titles::current_title_match_ids(state, &entry.id, &entry.title)?
+        super::history_forget_titles::current_title_match_id(state, &entry.id, &entry.title)?
+            .into_iter()
+            .collect()
     } else {
         Vec::new()
     };
