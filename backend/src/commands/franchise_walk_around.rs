@@ -19,6 +19,7 @@ use std::collections::BTreeSet;
 
 use super::links::{links, parents};
 use super::rules::Run;
+use super::sections::{is_movie, Sections};
 use super::{order_key, Franchise, Lookup};
 use crate::meta::kitsu::FranchiseEntry;
 
@@ -31,15 +32,6 @@ const NOT_AROUND: [&str; 6] = [
     "alternative_setting",
     "alternative_version",
 ];
-
-/// Section ids before they are told apart.
-#[derive(Default)]
-struct Sections {
-    versions: BTreeSet<String>,
-    recaps: BTreeSet<String>,
-    films: BTreeSet<String>,
-    sides: BTreeSet<String>,
-}
 
 fn sections(run: &Run, look: &Lookup<'_>) -> Sections {
     let music = |id: &String| {
@@ -75,23 +67,8 @@ fn sections(run: &Run, look: &Lookup<'_>) -> Sections {
         }
     }
     s.versions.retain(|id| !run.members.contains_key(id));
-    // A movie is a film, whatever the role that placed it.
-    let movie = |id: &String| {
-        look.entry(id, &run.consulted)
-            .is_some_and(|e| e.subtype.as_deref() == Some("movie"))
-    };
-    for set in [&mut s.versions, &mut s.recaps, &mut s.sides] {
-        let films: Vec<String> = set.iter().filter(|id| movie(id)).cloned().collect();
-        for id in films {
-            set.remove(&id);
-            s.films.insert(id);
-        }
-    }
-    s.recaps.retain(|id| !s.versions.contains(id));
-    s.films
-        .retain(|id| !s.versions.contains(id) && !s.recaps.contains(id));
-    s.sides
-        .retain(|id| !s.versions.contains(id) && !s.recaps.contains(id) && !s.films.contains(id));
+    s.movies_to_films(|id| is_movie(id, run, look));
+    s.one_section_each();
     s
 }
 
@@ -111,13 +88,7 @@ fn entries(ids: &BTreeSet<String>, run: &Run, look: &Lookup<'_>) -> Vec<Franchis
 pub(super) fn assemble(anchor: &str, run: &Run, look: &Lookup<'_>) -> Franchise {
     let mut s = sections(run, look);
     if run.side_anchor {
-        let film = look
-            .entry(anchor, &run.consulted)
-            .is_some_and(|e| e.subtype.as_deref() == Some("movie"));
-        for set in [&mut s.versions, &mut s.recaps, &mut s.films, &mut s.sides] {
-            set.remove(anchor);
-        }
-        if film { &mut s.films } else { &mut s.sides }.insert(anchor.to_string());
+        s.place_side_anchor(anchor, is_movie(anchor, run, look));
     }
     let members: BTreeSet<String> = run.members.keys().cloned().collect();
     Franchise {

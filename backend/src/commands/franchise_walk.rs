@@ -149,8 +149,12 @@ mod joined;
 mod links;
 #[path = "franchise_walk_meet.rs"]
 mod meet;
+#[path = "franchise_walk_parents.rs"]
+mod parents;
 #[path = "franchise_walk_rules.rs"]
 pub(crate) mod rules;
+#[path = "franchise_walk_sections.rs"]
+mod sections;
 #[path = "franchise_walk_run.rs"]
 mod walking;
 
