@@ -364,6 +364,8 @@
 	// The URL of the src stream a handoff unloaded, while it waits for
 	// the viewer.
 	let unloadedFor = $state<string | null>(null);
+	// Where that stream was when it was let go of.
+	let handoffAt: number | null = null;
 	/** The episode went to another player: a hold ends without
 	 *  starting anything, a start stops, the engine stops loading, and
 	 *  the element no longer starts on its own. A stream the element
@@ -387,11 +389,12 @@
 		// again as a resume: at its kept point, with its subtitles.
 		if (hls === null && attachedUrl !== null) {
 			unloadedFor = attachedUrl;
-			// The return goes back to the playhead itself, as a recovery
-			// does: the kept position reads the first seconds as the start
-			// and the last stretch as finished.
+			// The return goes back to the playhead itself: the kept
+			// position reads the first seconds as the start and the last
+			// stretch as finished. Kept with the page, so leaving it or
+			// picking another episode forgets it.
 			const at = videoEl?.currentTime ?? 0;
-			if (at > 0) recoveryResume.capture(id, episodeNum, at);
+			handoffAt = at > 0 ? at : null;
 			sourceScope.flush();
 			teardown();
 		}
@@ -403,7 +406,12 @@
 	/** The viewer is back on the embedded player. */
 	function comeBack() {
 		replacingHandoff = false;
-		// The stream the handoff let go of attaches again.
+		// The stream the handoff let go of attaches again, at its
+		// playhead, as a recovery's stream does.
+		if (unloadedFor !== null && handoffAt !== null) {
+			recoveryResume.capture(id, episodeNum, handoffAt);
+		}
+		handoffAt = null;
 		unloadedFor = null;
 		if (!handoff.handedOff) return;
 		ownVideo.autoplay = true;
@@ -1984,6 +1992,7 @@
 		if (unloadedFor !== null) {
 			if (mediaUrl === unloadedFor) return;
 			unloadedFor = null;
+			handoffAt = null;
 		}
 		// The stream already attached from this URL keeps playing: the
 		// effect can run again without its source changing, and
@@ -2657,7 +2666,9 @@
 		// place so the fresh attach can seek back, and tell the user
 		// what the upcoming loading overlay is (silence here is what
 		// made recoveries read as the app breaking).
-		recoveryResume.capture(id, episodeNum, videoEl?.currentTime ?? 0);
+		// A stream a handoff let go of reads zero: its playhead is the
+		// one it was let go of at.
+		recoveryResume.capture(id, episodeNum, handoffAt ?? videoEl?.currentTime ?? 0);
 		// The fresh session gets its own same-stream retry budget.
 		stallMachine.reset();
 		const toast = stallRecoveryToast(reason);
