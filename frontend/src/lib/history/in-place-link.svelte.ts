@@ -38,6 +38,7 @@ import { LinkSession, type LinkNotice, type LinkSessionDeps } from './link-sessi
 import type { LinkDeps, LinkOffer } from './link-offer';
 import { offerAgain } from './picked-offer';
 import { playerNotify } from './link-notices';
+import { surface, undoInPlace, type Surface } from './in-place-undo';
 import {
 	hideRow,
 	isRowHidden,
@@ -71,7 +72,7 @@ export class InPlaceLinkSession extends LinkSession {
 
 	#row = $state<string | null>(null);
 	#page = '';
-	#surface: { gone: boolean };
+	#surface: Surface;
 	#refresh: () => void;
 	#notify: (notice: LinkNotice) => void;
 	#inPlayer: boolean;
@@ -80,7 +81,7 @@ export class InPlaceLinkSession extends LinkSession {
 	constructor(deps: InPlaceLinkDeps) {
 		const refresh = deps.refresh ?? noRefresh;
 		const inPlayer = deps.inPlayer === true;
-		const surface = { gone: false };
+		const place = surface();
 		super({
 			...deps,
 			// The player says what a pick did in its slip, once: no
@@ -91,9 +92,9 @@ export class InPlaceLinkSession extends LinkSession {
 			// undo never navigates either. It is somewhere else only once
 			// it is gone: a link answered then reads nothing again.
 			showPage: () => {},
-			here: () => (surface.gone ? 'gone' : '')
+			here: place.here
 		} satisfies LinkSessionDeps);
-		this.#surface = surface;
+		this.#surface = place;
 		this.#refresh = refresh;
 		this.#notify = deps.notify;
 		this.#inPlayer = inPlayer;
@@ -125,7 +126,7 @@ export class InPlaceLinkSession extends LinkSession {
 	/** The surface is gone: the page was left. Whatever is still out
 	 *  answers to nothing on it, and leaves no pick to switch to. */
 	leave(): void {
-		this.#surface.gone = true;
+		this.#surface.leave();
 		this.linked = null;
 		this.supersede();
 	}
@@ -196,25 +197,22 @@ export class InPlaceLinkSession extends LinkSession {
 		return true;
 	}
 
-	/** Undo `outcome`, made on the page `from` for the card row `row`.
-	 *  The rows are given back wherever the user is; what follows is
-	 *  for the card the link was made on, while it is the one on screen. */
-	override async undo(outcome: LinkOutcome, from: string, row: string): Promise<void> {
-		const arrival = this.arrivals;
-		const onCard = () => !this.#surface.gone && this.#row === row;
-		if (onCard()) {
-			// The note about the link goes now; the slip holds its room
-			// until the offer is decided again.
-			this.linked = null;
-			this.settled = false;
-		}
-		// Says what the undo did, or that it failed, wherever the user is.
-		await super.undo(outcome, from, row);
-		if (this.#surface.gone) return;
-		// The history is the truth, whatever the undo answered.
-		this.#refresh();
-		// Another card arrived meanwhile: its offer and pick are its own.
-		if (arrival === this.arrivals && onCard()) await this.arrive(row, this.#page);
+	/** Undo `outcome`, made on the page `from` for the card row `row`
+	 *  ($lib/history/in-place-undo.ts). */
+	override undo(outcome: LinkOutcome, from: string, row: string): Promise<void> {
+		return undoInPlace({
+			row,
+			surface: this.#surface,
+			at: () => ({ row: this.#row, arrival: this.arrivals }),
+			clear: () => {
+				// The slip holds its room until the offer is decided again.
+				this.linked = null;
+				this.settled = false;
+			},
+			undo: () => super.undo(outcome, from, row),
+			refresh: this.#refresh,
+			offerAgain: () => this.arrive(row, this.#page)
+		});
 	}
 }
 
