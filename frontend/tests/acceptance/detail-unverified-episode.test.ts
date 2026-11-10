@@ -149,7 +149,7 @@ function useUnreadShow() {
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
 		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
 			HttpResponse.json({ id: 'hianime:noragami-916', ep_no: '13', title: TITLE })
 		),
