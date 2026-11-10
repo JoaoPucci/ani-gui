@@ -96,12 +96,12 @@ describe('franchisePage', () => {
 	it('has nothing to resume when nothing is part-way, and starts from the first title', () => {
 		const page = franchisePage(data('jojo', '41410'), '41410', 'linked')!;
 		expect(page.resume).toBeNull();
-		expect(page.start.id).toBe('7158');
+		expect(page.start?.id).toBe('7158');
 	});
 
 	it('starts from the earliest release in release order', () => {
 		// Fate/stay night (2006) came out before Fate/Zero (2011).
-		expect(franchisePage(data('fate', '6028'), '6028', 'released')!.start.id).toBe('323');
+		expect(franchisePage(data('fate', '6028'), '6028', 'released')!.start?.id).toBe('323');
 	});
 
 	it('numbers a straight run of seasons from 01, marking the title it was opened from', () => {
@@ -349,6 +349,38 @@ describe('franchisePage', () => {
 		expect(franchisePage(data('jojo', '7158'), '7158', 'linked')!.partial).toBe(false);
 	});
 
+	it('claims no place, total or beginning for a franchise read in part', () => {
+		// The walk goes both ways from the show, so it may have missed
+		// earlier titles: nothing counted from the first title it reached
+		// is sure.
+		for (const order of ['linked', 'released'] as const) {
+			const rows = [{ kitsu_id: '7158', ep_no: '3' }];
+			const page = franchisePage(
+				{ franchise: payload('jojo', '7158', false), rows },
+				'7158',
+				order
+			)!;
+			expect(rowsOf(page).every((r) => r.position === null)).toBe(true);
+			expect(page.total).toBeNull();
+			expect(page.start).toBeNull();
+			expect(page.resume?.entry.id).toBe('7158');
+			expect(page.resume?.position).toBeNull();
+		}
+	});
+
+	it('is never alone when read in part: the walk may have missed the rest', () => {
+		const self = {
+			...payload('jojo', '7158', false),
+			entries: run('jojo').entries.filter((e) => e.id === '7158'),
+			links: [],
+			versions: [],
+			films: [],
+			sides: [],
+			recaps: []
+		};
+		expect(franchisePage({ franchise: self, rows: [] }, '7158', 'linked')!.alone).toBe(false);
+	});
+
 	it('opens for a side story, which sits among the side stories rather than the main story', () => {
 		const page = franchisePage(data('fate', '6928'), '6928', 'linked')!;
 		expect(ids(page.sides)).toContain('6928');
@@ -432,7 +464,7 @@ describe('franchisePage', () => {
 					)
 				);
 				if (order === 'released') expect(page.sections).toHaveLength(1);
-				expect(page.start).toBe(sequence(page.run, order)[0]);
+				expect(page.start).toBe(f.complete ? sequence(page.run, order)[0] : null);
 			})
 		);
 	});
@@ -472,7 +504,7 @@ describe('franchisePage', () => {
 				if (!page) return;
 				const r = page.run;
 				const listed = [...r.entries, ...r.versions, ...r.films, ...r.sides, ...r.recaps];
-				expect(page.alone).toBe(listed.length === 1 && listed[0].id === id);
+				expect(page.alone).toBe(f.complete && listed.length === 1 && listed[0].id === id);
 			})
 		);
 	});
@@ -486,7 +518,13 @@ describe('franchisePage', () => {
 				expect([page.art.title, withoutFormatSuffix(page.art.title)]).toContain(page.name);
 				const r = page.run;
 				expect(page.total).toBe(
-					r.entries.length + r.versions.length + r.films.length + r.sides.length + r.recaps.length
+					f.complete
+						? r.entries.length +
+								r.versions.length +
+								r.films.length +
+								r.sides.length +
+								r.recaps.length
+						: null
 				);
 				expect(page.partial).toBe(!f.complete);
 			})
@@ -508,7 +546,7 @@ describe('franchisePage', () => {
 				expect(page.resume?.episode ?? null).toBe(now?.episode ?? null);
 				if (page.resume) {
 					expect(page.resume.position).toBe(
-						placement(page.run, page.resume.entry.id, order).position
+						f.complete ? placement(page.run, page.resume.entry.id, order).position : null
 					);
 				}
 			})

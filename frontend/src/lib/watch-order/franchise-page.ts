@@ -33,8 +33,8 @@ export interface FranchisePageModel {
 	readonly name: string;
 	/** The title the name comes from, whose artwork and accent the masthead takes. */
 	readonly art: WatchEntry;
-	/** Every title the page lists. */
-	readonly total: number;
+	/** Every title the page lists; null for a franchise read in part. */
+	readonly total: number | null;
 	/** The franchise is the show alone: it lists the show and nothing else. */
 	readonly alone: boolean;
 	/** The title the viewer is part-way through, where Resume goes. */
@@ -44,8 +44,12 @@ export interface FranchisePageModel {
 		readonly episode: number;
 		readonly position: number | null;
 	} | null;
-	/** Where "Start from the beginning" goes: the first title in the order. */
-	readonly start: WatchEntry;
+	/**
+	 * Where "Start from the beginning" goes: the first title in the
+	 * order. Null for a franchise read in part, whose first title read
+	 * may not be the first.
+	 */
+	readonly start: WatchEntry | null;
 	readonly sections: readonly FranchiseSection[];
 	readonly versions: readonly WatchEntry[];
 	readonly films: readonly WatchEntry[];

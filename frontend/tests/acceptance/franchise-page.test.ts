@@ -287,6 +287,17 @@ describe('franchise page', () => {
 		expect(target.textContent).toContain(m.watchorder_franchise_partial());
 	});
 
+	it('claims no places, total or beginning when there may be more titles', async () => {
+		// The read may have missed titles before the first one it lists.
+		useFranchise({ franchise: () => HttpResponse.json({ ...FRANCHISE, complete: false }) });
+		app = mount(FranchisePage, { target });
+		await until(() => rows().length === 4, 'the main story');
+		const text = target.textContent ?? '';
+		expect(text).not.toMatch(/\b0\d\b/);
+		expect(text).not.toContain(m.watchorder_franchise_count({ count: 4 }));
+		expect(text).not.toContain(m.watchorder_franchise_start());
+	});
+
 	it('says the franchise could not be loaded, and loads it on Try again', async () => {
 		let fail = true;
 		const calls = useFranchise({

@@ -45,21 +45,26 @@
 			<div class="masthead-text">
 				<p class="eyebrow">
 					<span class="eyebrow-key">{m.watchorder_franchise_eyebrow()}</span>
-					<span class="eyebrow-rule" aria-hidden="true"></span>
-					<span class="eyebrow-value">{m.watchorder_franchise_count({ count: model.total })}</span>
+					{#if model.total !== null}
+						<span class="eyebrow-rule" aria-hidden="true"></span>
+						<span class="eyebrow-value">{m.watchorder_franchise_count({ count: model.total })}</span
+						>
+					{/if}
 				</p>
 				<h1 class="title">{model.name}</h1>
 				<div class="actions">
-					<a
-						class="btn btn-glass"
-						style:--btn-glow="var(--accent)"
-						href={resolve('/anime/[id]', { id: (model.resume?.entry ?? model.start).id })}
-					>
-						<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"
-							><path d="M8 5v14l11-7z" fill="currentColor" /></svg
+					{#if model.resume ?? model.start}
+						<a
+							class="btn btn-glass"
+							style:--btn-glow="var(--accent)"
+							href={resolve('/anime/[id]', { id: (model.resume?.entry ?? model.start)!.id })}
 						>
-						{model.resume ? m.watchorder_franchise_resume() : m.watchorder_franchise_start()}
-					</a>
+							<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"
+								><path d="M8 5v14l11-7z" fill="currentColor" /></svg
+							>
+							{model.resume ? m.watchorder_franchise_resume() : m.watchorder_franchise_start()}
+						</a>
+					{/if}
 					{#if model.resume}
 						<span class="resume-caption">
 							{#if model.resume.position !== null}<span class="caption-num"
