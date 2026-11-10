@@ -142,6 +142,15 @@ describe('resolveHistoryEntry — direct episode mapping', () => {
 		expect(resolveHistoryEntry(entry('Seasonal Foo', '1'), null).cour).toBe(1);
 	});
 
+	it('reads a cour past what the backend can hold as none, as the backend does', () => {
+		// The backend parses a cour as a u32 and reads one past it as no
+		// cour (the first), so the key it reads is c1.
+		expect(resolveHistoryEntry(entry('Foo Season 4294967295', '1'), null).cour).toBe(4294967295);
+		expect(resolveHistoryEntry(entry('Foo Season 4294967296', '1'), null).cour).toBe(1);
+		expect(resolveHistoryEntry(entry('Foo 99999999999th Season', '1'), null).cour).toBe(1);
+		expect(resolveHistoryEntry(entry('Foo Season 002', '1'), null).cour).toBe(2);
+	});
+
 	it('parses ordinal-season suffixes ("2nd Season", "Fourth Season") as the cour', () => {
 		// resolveHistoryEntry only recognized "Season N"; the "Nth Season" /
 		// "<word> Season" forms left cour=1, so the cour-slug guard never ran and
