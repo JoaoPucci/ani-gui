@@ -202,6 +202,8 @@
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import { chromeReadsPlaying, type StartPhase } from '$lib/play/start-state';
 	import { watchStart, type StartWatch } from '$lib/play/start-watch';
+	import { HandoffGate } from '$lib/play/handoff-gate';
+	import { startEngine } from '$lib/play/quality-sink';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
@@ -341,12 +343,31 @@
 	// panel stands in for the slot.
 	// Ends the attached stream's resume hold, if it has one.
 	let endResumeHold: () => void = () => {};
+	// Whether the episode went to another player ($lib/play/handoff-gate).
+	// Until the viewer comes back to the embedded player nothing starts
+	// it again by itself: the engine is stopped, the element does not
+	// autoplay, a stream attaching meanwhile does not load, and the
+	// recoveries, retries and auto-play stand down. Coming back is the
+	// element's own `play` (its button, Space, a click, a media key,
+	// picture-in-picture), picking an episode, or Reload.
+	const handoff = new HandoffGate(() => hls?.startLoad());
 	/** The episode went to another player: a hold ends without
-	 *  starting anything, and a start stops. */
+	 *  starting anything, a start stops, the engine stops loading, and
+	 *  the element no longer starts on its own. */
 	function stopForHandoff() {
 		endResumeHold();
+		ownVideo.autoplay = false;
 		startWatch.cancel();
+		hls?.stopLoad();
+		handoff.handOff();
 	}
+	/** The viewer is back on the embedded player. */
+	function comeBack() {
+		if (!handoff.handedOff) return;
+		ownVideo.autoplay = true;
+		handoff.comeBack();
+	}
+	ownVideo.addEventListener('play', comeBack);
 	const startWatch: StartWatch = watchStart(ownVideo, (phase) => {
 		startPhase = phase;
 	});
@@ -1307,6 +1328,7 @@
 		onCleared: (episode, _count, refresh) => {
 			applyCapGateRefresh(refresh);
 			switchBusy = false;
+			comeBack();
 			void switchToEpisode(episode);
 		},
 		onStillGated: (_episode, refresh) => {
@@ -1372,7 +1394,10 @@
 			isAired: () => !epAirState(n, airing).unaired,
 			beyondPlayable: () => beyondPlayable(n, playableEpisodeCount),
 			currentContext: () => (gone ? GONE : `${visit}:${navigationClaims.epoch}:${id ?? ''}`),
-			play: () => void switchToEpisode(n),
+			play: () => {
+				comeBack();
+				void switchToEpisode(n);
+			},
 			recheckProvider: () => onRecheckEpisode(n),
 			notifyStillUnaired: () =>
 				toastStore.push({ kind: 'info', message: m.detail_ep_unaired_still() }),
@@ -1953,6 +1978,9 @@
 			startedAtPoint: mediaKind !== 'mp4' && Hls.isSupported()
 		});
 		endResumeHold = endHold;
+		// Handed off: a resume hold would start the stream itself once
+		// its seek lands. The seek still goes to the point.
+		if (handoff.handedOff) endHold();
 		playerError = null;
 		failedStreamError = null;
 
@@ -2001,7 +2029,7 @@
 			// out: the switch would decline it ($lib/play/reload-offer).
 			if (
 				shouldAttemptStaleStreamRetry({ err: { source: 'video', code }, hasAutoRetried }) &&
-				canRecoverFromStaleStream({ detail, switchBusy }) &&
+				canRecoverFromStaleStream({ detail, switchBusy, handedOff: handoff.handedOff }) &&
 				reloadEnd === null &&
 				!airingIsPending
 			) {
@@ -2046,8 +2074,9 @@
 				engine,
 				events: Hls.Events,
 				video: videoEl,
-				holdsStart: true,
-				startAt,
+				// The page starts the engine (below), so a handoff can hold
+				// the start until the viewer comes back.
+				holdsStart: false,
 				onView: (view) => {
 					// A stream retiring takes its levels with it; both menus'
 					// Quality lists follow the model this feeds, and close
@@ -2060,6 +2089,13 @@
 				quality.dispose();
 				if (qualityControl === quality) qualityControl = null;
 			});
+			// Started once the levels are in and the quality control has
+			// set the start level (its handler is the earlier one): at
+			// once, or, with the episode handed to another player, when
+			// the viewer comes back.
+			const startHere = () => startEngine(engine, startAt);
+			hls.on(Hls.Events.MANIFEST_PARSED, () => handoff.whenWatching(startHere));
+			sourceScope.add(() => handoff.drop(startHere));
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);
 			// One guard per source: a fragment the engine keeps asking
@@ -2116,6 +2152,8 @@
 						marginSeconds: HOLD_RUNWAY_MARGIN_S,
 						fire: () => {
 							cancelHeldRetry = null;
+							// Handed off, the viewer's return restarts it.
+							if (handoff.handedOff) return;
 							engine.startLoad();
 						}
 					});
@@ -2127,6 +2165,8 @@
 				// re-resolve would return the same crawling URL at the
 				// price of a full interruption.
 				if (action.act === 'nudge' && hls) {
+					// Handed off, the viewer's return restarts it.
+					if (handoff.handedOff) return;
 					if (action.toast) toastStore.push(stallNudgeToast());
 					hls.startLoad();
 					return;
@@ -2137,7 +2177,7 @@
 				// budget on a no-op recovery.
 				if (
 					action.act === 'recover' &&
-					canRecoverFromStaleStream({ detail, switchBusy }) &&
+					canRecoverFromStaleStream({ detail, switchBusy, handedOff: handoff.handedOff }) &&
 					reloadEnd === null &&
 					!airingIsPending
 				) {
@@ -2185,6 +2225,7 @@
 		sourceScope.flush();
 		teardown();
 		startWatch.dispose();
+		ownVideo.removeEventListener('play', comeBack);
 		releasePlayerVideo(ownVideo);
 		showReleases.leave();
 	});
@@ -2625,21 +2666,25 @@
 	 *  loading leaves the overlay in place to try again rather than
 	 *  flashing into a blank frame. */
 	function onReloadStream() {
+		comeBack();
 		void recoverFromStaleStream('manual reload');
 	}
 
 	function onPrev() {
 		if (!hasPrev) return;
+		comeBack();
 		void switchToEpisode(prevEpisodeNum);
 	}
 	function onNext() {
 		if (!hasNext) return;
+		comeBack();
 		void switchToEpisode(nextEpisodeNum);
 	}
 	function onPickEpisode(ep: KitsuEpisode) {
 		const n = ep.number ?? ep.relative_number ?? null;
 		if (n === null) return;
 		if (n === episodeNum) return; // already playing
+		comeBack();
 		void switchToEpisode(n);
 	}
 
@@ -2667,6 +2712,7 @@
 	function onVideoEnded() {
 		const decision = decideAutoPlayNext({
 			enabled: autoPlayNext,
+			handedOff: handoff.handedOff,
 			episodeNum,
 			totalEpisodes,
 			extras: extraNums
