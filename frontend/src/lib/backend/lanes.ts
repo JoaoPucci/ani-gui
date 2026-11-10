@@ -15,12 +15,14 @@
  *                  kinds of long-lived request. The renderer's single
  *                  wait on held-back fills (`$lib/refill/refill`), open
  *                  up to 20 s at a time while a page waits on one, holds
- *                  one of the six, never more. A franchise read
- *                  (`$lib/watch-order/loader`) stays open while the
- *                  backend walks the franchise, several rounds of Kitsu
- *                  reads when Kitsu is slow; the page that asked
- *                  cancels it when the viewer leaves, so a page holds
- *                  at most one.
+ *                  one of the six, never more. A franchise read stays
+ *                  open while the backend walks the franchise, several
+ *                  rounds of Kitsu reads when Kitsu is slow, and the
+ *                  page that asked cancels it when the viewer leaves.
+ *                  The show page and the player hold at most one
+ *                  (`$lib/watch-order/loader`); Home holds one per
+ *                  Continue row at its finale, all at once
+ *                  (`$lib/watch-order/handoff-reads`).
  *   - `stream`   — the stream proxy; what the player waits on.
  *   - `image`    — `/api/image`, an upstream fetch on a cold cache.
  *   - `probe`    — availability probes, a provider walk each.

@@ -134,6 +134,8 @@ interface Scenario {
 	named?: Record<string, ReturnType<typeof row>>;
 	/** The resume lookup fails. */
 	namedFails?: boolean;
+	/** The resume lookup's answer, in place of the scenario's rows. */
+	namedAnswer?: () => Promise<Response>;
 }
 
 /** Mounts Home over `history`, the first show's series answered by `franchise`. */
@@ -189,6 +191,7 @@ function mountHome(s: Scenario) {
 			// among the rows still in history.
 			http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
 				if (s.namedFails) return new HttpResponse(null, { status: 503 });
+				if (s.namedAnswer) return s.namedAnswer();
 				const { ids } = (await request.json()) as { ids: string[] };
 				const kept = (r: ReturnType<typeof row> | undefined) =>
 					r && !removed.has(r.id) ? r : null;
@@ -470,6 +473,30 @@ describe('Continue Watching hand-off — leaving Home', () => {
 		app = null;
 		try {
 			await until(() => fetches.failed.some(seriesRead), 'the series read cancelled', 2000);
+		} finally {
+			(release as (() => void) | null)?.();
+		}
+	});
+
+	it('cancels a resume lookup still out', async () => {
+		const fetches = watchPageFetches();
+		let release: (() => void) | null = null;
+		// The card would move on once the lookup says no row resumes
+		// the next show; the lookup stays open.
+		mountHome({
+			history: [row('13')],
+			namedAnswer: () =>
+				new Promise<Response>((resolve) => {
+					release = () => resolve(new HttpResponse(null, { status: 503 }));
+				})
+		});
+		const lookup = (f: { path: string; method: string }) =>
+			f.method === 'POST' && f.path === '/api/history/by-kitsu';
+		await until(() => fetches.sent.some(lookup), 'the resume lookup');
+		unmount(app!);
+		app = null;
+		try {
+			await until(() => fetches.failed.some(lookup), 'the resume lookup cancelled', 2000);
 		} finally {
 			(release as (() => void) | null)?.();
 		}
