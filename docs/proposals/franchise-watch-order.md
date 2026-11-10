@@ -2,9 +2,14 @@
 
 **Status**: proposed as the main feature of the 0.19.0 release. The
 product questions are decided (section 6); the design questions are
-open (section 5). Nothing below is built. The research was done on
-2026-11-01; the live samples it quotes describe the catalogues on that
-day and will drift.
+open (section 5). Built so far: the backend's franchise read, `GET
+/api/kitsu/franchise/:kitsu_id`, and the stored "Watch order" value it
+is shown in (section 4 describes the read as built). Not built yet:
+everything a viewer sees. The strip, the Up next card, Continue
+Watching's hand-off, the franchise page and the setting's control
+exist only as design mockups drawn from fixture data, behind a
+Diagnostics switch. The research was done on 2026-11-01; the live
+samples it quotes describe the catalogues on that day and will drift.
 
 ## The problem in plain terms
 
