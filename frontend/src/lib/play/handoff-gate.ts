@@ -22,8 +22,18 @@ export class HandoffGate {
 	// has stopped it for good since: the only engine a return restarts.
 	private engine = false;
 
-	/** `restart` resumes what the handoff stopped, when no start is held. */
-	constructor(private readonly restart: () => void) {}
+	/** `restart` resumes what the handoff stopped, when no start is
+	 *  held. `reload` asks again for a stream whose manifest the handoff
+	 *  cut off. (Signature only so far.) */
+	constructor(
+		private readonly restart: () => void,
+		private readonly reload: () => void = () => {}
+	) {}
+
+	/** The attached stream's manifest is in. (Signature only so far.) */
+	manifestParsed(): void {
+		void this.reload;
+	}
 
 	get handedOff(): boolean {
 		return this.off;
