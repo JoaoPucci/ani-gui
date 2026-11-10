@@ -4,8 +4,8 @@
  * artwork, the title count and where Resume goes), the main story as
  * numbered stretches, branches side by side and groups with no clear
  * order, and the rails around it. A franchise read in part gets no
- * count, number or beginning (see `unnumberedStory`). The route and
- * its view only hand these on.
+ * count, number or beginning. The route and its view only hand these
+ * on.
  */
 import type { BreadcrumbSegment } from '$lib/breadcrumb';
 import { m } from '$lib/paraglide/messages';
@@ -64,31 +64,14 @@ export interface FranchisePageModel {
 }
 
 /**
- * `section` as a franchise read in part shows it: without its numbers,
- * and without the "No clear place" heading, since a title's place may
- * lie past the cut. The layout is made with the numbers, so a title
- * keeps its stretch.
+ * `section` as a franchise read in part shows it: without its numbers.
+ * The layout is made with them, so every title keeps its stretch, the
+ * titles with no clear place theirs.
  */
 function unnumbered(section: FranchiseSection): FranchiseSection {
 	const blank = (r: FranchiseRow): FranchiseRow => ({ ...r, position: null });
 	if (section.kind === 'ways') return { ...section, ways: section.ways.map((w) => w.map(blank)) };
-	if (section.kind === 'group') return { ...section, rows: section.rows.map(blank) };
-	return { ...section, rows: section.rows.map(blank), unplaced: false };
-}
-
-/**
- * The main story of a franchise read in part: each section unnumbered,
- * and a line left next to another (the stretch that lost its heading)
- * joined to it, so no two lists sit side by side.
- */
-function unnumberedStory(sections: readonly FranchiseSection[]): FranchiseSection[] {
-	return sections.map(unnumbered).reduce<FranchiseSection[]>((out, s) => {
-		const last = out.at(-1);
-		if (s.kind === 'line' && last?.kind === 'line')
-			out[out.length - 1] = { ...last, rows: [...last.rows, ...s.rows] };
-		else out.push(s);
-		return out;
-	}, []);
+	return { ...section, rows: section.rows.map(blank) };
 }
 
 /** Whether `run` lists `id` and nothing else. */
@@ -137,7 +120,7 @@ export function franchisePage(
 			position: whole ? placement(run, now.entry.id, order).position : null
 		},
 		start: whole ? sequence(run, order)[0] : null,
-		sections: whole ? mainStory(ctx, segs) : unnumberedStory(mainStory(ctx, segs)),
+		sections: whole ? mainStory(ctx, segs) : mainStory(ctx, segs).map(unnumbered),
 		versions: run.versions,
 		films: run.films,
 		sides: run.sides,
