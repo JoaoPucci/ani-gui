@@ -59,13 +59,6 @@ export function beginVisit(): Visit {
 	};
 }
 
-/** Whether `e` is what a read rejects with once its signal aborted —
- *  the visit ending — rather than a failure of the backend or the
- *  network, which says something about what was asked. */
-export function readEnded(e: unknown): boolean {
-	return e instanceof DOMException && e.name === 'AbortError';
-}
-
 /** Visits that follow one another: a read asked again supersedes the
  *  one before, as a show's list entry is read again after a save. */
 export interface VisitSeries {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
-import { beginVisit, readEnded, visitSeries } from './visit';
+import { beginVisit, visitSeries } from './visit';
 
 /** Lets every settled promise run its callbacks. */
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -112,22 +112,6 @@ describe('Visit.keep', () => {
 				expect(seen).toEqual(endFirst ? [] : [fails ? 'error' : 'value']);
 			})
 		);
-	});
-});
-
-describe('readEnded', () => {
-	it('names the rejection of a read whose signal aborted', () => {
-		const visit = beginVisit();
-		visit.end();
-		expect(readEnded(new DOMException('The operation was aborted.', 'AbortError'))).toBe(true);
-		expect(readEnded(visit.signal.reason)).toBe(true);
-	});
-
-	it('does not take a failure of the backend or the network for one', () => {
-		expect(readEnded({ kind: 'http', status: 503 })).toBe(false);
-		expect(readEnded(new TypeError('Failed to fetch'))).toBe(false);
-		expect(readEnded(null)).toBe(false);
-		expect(readEnded(undefined)).toBe(false);
 	});
 });
 
