@@ -2,9 +2,11 @@
  * Where the External player type's standard program is installed, as
  * Settings shows it under the field.
  *
- * The page asks the backend once per type ([`createStandardLookup`])
- * and shows only the answer for the type last asked about: one that
- * arrives after the type changed is dropped, and so is a failure. What
+ * The page calls the lookup once per type change
+ * ([`createStandardLookup`]), which shows only the outcome for the type
+ * last asked about: an answer that arrives after the type changed is
+ * dropped, and so is a stale failure. A failure for the current type
+ * shows no answer. What
  * the hint then says, and the field's placeholder, follow from the
  * type and that answer ([`standardHint`], [`standardPlaceholder`]).
  * The component only passes the type in and renders the result.
