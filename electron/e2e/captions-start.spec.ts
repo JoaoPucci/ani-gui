@@ -128,6 +128,9 @@ async function stubMetadata(page: Page, apiBase: string) {
     if (p.startsWith("/api/kitsu/episodes/")) return j([continueKitsuEpisode6]);
     if (p === "/api/history") return j([]);
     if (p.startsWith("/api/image")) return r.fulfill({ status: 503 });
+    // The backend answers skip times with a list, empty when it
+    // knows none; the page reads it as one once the length is known.
+    if (p.startsWith("/api/aniskip/")) return j([]);
     return j(null);
   });
 }
