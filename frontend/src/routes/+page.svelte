@@ -1114,7 +1114,15 @@
 	const namedReads = createNamedReads(historyByKitsuEach, (id, named) => {
 		handoffNamed = { ...handoffNamed, [id]: named };
 	});
+	// A changed history may hold a row that now resumes a next show, so
+	// the answers are asked again for it.
+	let namedFor: HistoryEntry[] | null = null;
 	$effect(() => {
+		if (history !== namedFor) {
+			namedFor = history;
+			namedReads.forget();
+			handoffNamed = {};
+		}
 		for (const h of railHandoffs(handoffAsks, handoffFor).values()) namedReads.want(h.next.id);
 	});
 	const handoffs = $derived(

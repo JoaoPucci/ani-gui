@@ -83,4 +83,22 @@ describe('createNamedReads', () => {
 		await flush();
 		expect(settled).toHaveBeenCalledWith('20', null);
 	});
+
+	it('asks again after forgetting, and drops an answer still out from before', async () => {
+		let answer!: (rows: Record<string, unknown>) => void;
+		const read = vi
+			.fn<(ids: readonly string[]) => Promise<Record<string, unknown>>>()
+			.mockImplementationOnce(() => new Promise((r) => (answer = r)))
+			.mockImplementation(async () => ({ '20': { ep_no: '1' } }));
+		const settled = vi.fn();
+		const reads = createNamedReads(read, settled);
+		reads.want('20');
+		reads.forget();
+		reads.want('20');
+		await flush();
+		answer({ '20': null });
+		await flush();
+		expect(read).toHaveBeenCalledTimes(2);
+		expect(settled.mock.calls).toEqual([['20', true]]);
+	});
 });
