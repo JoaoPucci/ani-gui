@@ -111,3 +111,22 @@ export function watchOrderPage(
 		titles: run.entries.map((e) => e.title)
 	};
 }
+
+/**
+ * The way to the franchise page where the show has no strip to carry
+ * it: the run the link's stack draws from, whether it was read whole,
+ * and what "Similar titles" leaves out because that page lists it.
+ */
+export interface FranchiseLink {
+	readonly run: WatchRun;
+	/** Whether the franchise was read whole: see `StripModel.complete`. */
+	readonly complete: boolean;
+	/** Ids "Similar titles" leaves out: the rest of the franchise. */
+	readonly similarHidden: ReadonlySet<string>;
+}
+
+/** The franchise link the page shows on its own, or null. */
+export function franchiseLinkOnly(data: WatchOrderData, id: string): FranchiseLink | null {
+	void [data, id];
+	return null;
+}
