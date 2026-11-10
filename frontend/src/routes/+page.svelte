@@ -136,6 +136,7 @@
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
 	import { splitTrending } from '$lib/hero/rotation';
+	import { homeRows } from '$lib/home/rows';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayArgs } from '$lib/play/play-args';
@@ -489,6 +490,21 @@
 	// the hero title also pinned as a card of the row below.
 	const trendingTail = $derived(trendingSplit.row);
 	const featuredAccent = $derived(featured ? accentFor(featured.id) : 'var(--accent-ink)');
+
+	// What each row below the hero draws ($lib/home/rows).
+	const rows = $derived(
+		homeRows({
+			history,
+			watchLater: {
+				accountsKnown: true,
+				signedIn: accountStore.hasAny,
+				cards: watchLater,
+				failed: watchLaterFailed
+			},
+			trending: { items: trending === null ? null : trendingTail, failed: trendingError !== null },
+			topRated: { items: topRated, failed: topRatedError !== null }
+		})
+	);
 
 	onMount(() => {
 		// Fire all three in parallel; render whichever lands first.
@@ -1288,7 +1304,7 @@
 {/if}
 
 <!-- Continue Watching: only when history is non-empty -->
-{#if history && history.length > 0}
+{#if rows.continue === 'shown'}
 	<Strip
 		surface={rowSurface}
 		eyebrow={m.home_strip_continue_eyebrow()}
@@ -1491,7 +1507,7 @@
 	/>
 {/snippet}
 
-{#if wlFailedRow || (watchLater && (watchLater.length > 0 || (accountStore.hasAny && !watchLaterFailed)))}
+{#if rows.watchLater === 'shown'}
 	<!-- The list, or — connected and the cached Plan-to-Watch genuinely
 	     empty — the empty row with its header and refresh, so newly-added
 	     tracker titles can be pulled in before the TTL; or, connected but
@@ -1535,7 +1551,7 @@
 <p class="wl-announce" role="status">{wl.announce}</p>
 
 <!-- Trending strip (the tail; the head is the hero) -->
-{#if trending === null && !trendingError}
+{#if rows.trending === 'skeleton'}
 	<Strip
 		surface={rowSurface}
 		eyebrow={m.home_strip_trending_eyebrow()}
@@ -1549,7 +1565,7 @@
 			</div>
 		{/each}
 	</Strip>
-{:else if trendingTail.length > 0}
+{:else if rows.trending === 'shown'}
 	<Strip
 		surface={rowSurface}
 		eyebrow={m.home_strip_trending_eyebrow()}
@@ -1562,7 +1578,7 @@
 {/if}
 
 <!-- Top Rated strip -->
-{#if topRated === null && !topRatedError}
+{#if rows.topRated === 'skeleton'}
 	<Strip
 		surface={rowSurface}
 		eyebrow={m.home_strip_top_rated_eyebrow()}
@@ -1576,13 +1592,13 @@
 			</div>
 		{/each}
 	</Strip>
-{:else if topRated && topRated.length > 0}
+{:else if rows.topRated === 'shown'}
 	<Strip
 		surface={rowSurface}
 		eyebrow={m.home_strip_top_rated_eyebrow()}
 		caption={m.home_strip_top_rated_caption()}
 	>
-		{#each topRated as anime (anime.id)}
+		{#each topRated ?? [] as anime (anime.id)}
 			<PosterCard {anime} />
 		{/each}
 	</Strip>

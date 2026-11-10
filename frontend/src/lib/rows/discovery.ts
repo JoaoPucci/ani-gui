@@ -8,16 +8,19 @@
  * the order they answer in is not the order they are drawn in.
  */
 
-/** Where one row's request stands: still out, answered (after the
- *  availability filter has had its say), or failed. */
+/** Where one row's request stands: not yet known to exist, still out,
+ *  answered (after the availability filter has had its say), or
+ *  failed. */
 export type RowLoad<T> =
+	| { kind: 'pending' }
 	| { kind: 'loading' }
 	| { kind: 'ready'; items: readonly T[] }
 	| { kind: 'failed' };
 
-/** What the page draws in one row's place: a skeleton strip, the row,
- *  or nothing at all. */
+/** What the page draws in one row's place: nothing yet, a skeleton
+ *  strip, the row, or nothing at all. */
 export type RowSlot<T> =
+	| { kind: 'held' }
 	| { kind: 'skeleton' }
 	| { kind: 'shown'; items: readonly T[] }
 	| { kind: 'absent' };
@@ -31,6 +34,7 @@ export interface DiscoveryView<T> {
 }
 
 export const LOADING: RowLoad<never> = { kind: 'loading' };
+export const PENDING: RowLoad<never> = { kind: 'pending' };
 
 /** A row's request, as a load that never rejects. */
 export function settleRow<T>(request: Promise<readonly T[]>): Promise<RowLoad<T>> {
@@ -52,7 +56,7 @@ export function settleRow<T>(request: Promise<readonly T[]>): Promise<RowLoad<T>
 export function discoveryView<T>(rows: readonly RowLoad<T>[]): DiscoveryView<T> {
 	let aboveSettled = true;
 	const slots = rows.map((row): RowSlot<T> => {
-		if (row.kind === 'loading') {
+		if (row.kind === 'loading' || row.kind === 'pending') {
 			aboveSettled = false;
 			return { kind: 'skeleton' };
 		}

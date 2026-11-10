@@ -101,6 +101,14 @@ class AccountStore {
 	keyringWaiting = $state(false);
 
 	/**
+	 * True once a hydrate's first reads of the saved sign-ins have all
+	 * answered, whatever they found (see `$lib/account/hydrate-flow`).
+	 * Until then the store shows every provider signed out whether or
+	 * not one is signed in. It stays true from then on.
+	 */
+	readsSettled = $state(false);
+
+	/**
 	 * Read every provider's persisted token (via the OS keyring) and seed
 	 * the store, each provider as its read answers (see
 	 * `$lib/account/hydrate-flow`). Called at cold launch from
