@@ -829,11 +829,10 @@ describe("an Undo from a card's notice, once Home moved on", () => {
 			'Black Clover as the guess again'
 		);
 		await settle();
-		// JoJo's picker is still open on JoJo's card, the OVA still picked.
+		// JoJo's picker is still open on JoJo's card, the OVA still picked:
+		// its last step asks about the OVA.
 		expect(dialog()?.open).toBe(true);
-		expect(dialog()!.textContent).toContain(
-			m.detail_link_dialog_body({ episode: '2', title: JOJO_TITLE })
-		);
+		expect(dialog()!.textContent).toContain(JOJO_RIGHT_TITLE);
 		expect(button(m.detail_link_confirm_button())?.disabled).toBe(false);
 		expect(toastWith(m.detail_link_undone_toast())).toBeDefined();
 	});
