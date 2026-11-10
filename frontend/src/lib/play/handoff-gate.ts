@@ -15,6 +15,12 @@
 export class HandoffGate {
 	private off = false;
 	private held: (() => void) | null = null;
+	// A pick from the embedded player while handed off, waiting for its
+	// stream to attach.
+	private pick = false;
+	// The attached stream's engine was started by the page, and nothing
+	// has stopped it for good since: the only engine a return restarts.
+	private engine = false;
 
 	/** `restart` resumes what the handoff stopped, when no start is held. */
 	constructor(private readonly restart: () => void) {}
@@ -25,16 +31,18 @@ export class HandoffGate {
 
 	handOff(): void {
 		this.off = true;
+		this.pick = false;
 	}
 
 	/** The viewer is back on the embedded player. */
 	comeBack(): void {
+		this.pick = false;
 		if (!this.off) return;
 		this.off = false;
 		const start = this.held;
 		this.held = null;
 		if (start) start();
-		else this.restart();
+		else if (this.engine) this.restart();
 	}
 
 	/** Runs `start` now, or, while handed off, when the viewer comes
@@ -49,30 +57,44 @@ export class HandoffGate {
 	forget(): void {
 		this.off = false;
 		this.held = null;
+		this.pick = false;
 	}
 
 	/** The viewer picked another stream from the embedded player (an
-	 *  episode, Reload). (Signature only so far.) */
-	picked(): void {}
-
-	/** A stream attaches. Whether a pick ended the handoff with it.
-	 *  (Signature only so far.) */
-	attaching(): boolean {
-		return false;
+	 *  episode, Reload): the handoff ends as that stream attaches, and
+	 *  the stream it replaces is not started again meanwhile. A later
+	 *  handoff, or the viewer playing again, cancels a pick that never
+	 *  attached. */
+	picked(): void {
+		if (this.off) this.pick = true;
 	}
 
-	/** The page started the engine of the attached stream. (Signature
-	 *  only so far.) */
-	engineStarted(): void {}
+	/** A stream attaches: its engine is a new one, not started yet. True
+	 *  when a pick ended the handoff with it (the element plays on its
+	 *  own again). */
+	attaching(): boolean {
+		this.engine = false;
+		if (!this.pick) return false;
+		this.forget();
+		return true;
+	}
 
-	/** Something stopped that engine for good. (Signature only so far.) */
-	engineStopped(): void {}
+	/** The page started the engine of the attached stream. */
+	engineStarted(): void {
+		this.engine = true;
+	}
 
-	/** Whether a recovery whose eviction has answered stands down.
-	 *  (Signature only so far.) */
+	/** Something stopped that engine for good (the fragment-loop guard). */
+	engineStopped(): void {
+		this.engine = false;
+	}
+
+	/** Whether a recovery whose eviction has answered stands down:
+	 *  while handed off, resolving again would only load the episode
+	 *  behind the other player, unless it is a Reload the viewer still
+	 *  means (no handoff since it was pressed). */
 	recoveryStandsDown(manualReload: boolean): boolean {
-		void manualReload;
-		return false;
+		return this.off && !(manualReload && this.pick);
 	}
 
 	/** Forgets `start` if it is the one held: its stream is gone. */
