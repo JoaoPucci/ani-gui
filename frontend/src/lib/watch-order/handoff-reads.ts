@@ -46,16 +46,27 @@ export function createNamedReads(
 	read: (ids: readonly string[]) => Promise<Readonly<Record<string, unknown>>>,
 	settled: (id: string, named: boolean | null) => void
 ): NamedReads {
-	const asked = new Set<string>();
+	let asked = new Set<string>();
+	// Counts every forget: an answer is handed on only while none has
+	// happened since it was asked.
+	let generation = 0;
 	return {
 		want(id) {
 			if (asked.has(id)) return;
 			asked.add(id);
+			const mine = generation;
 			read([id]).then(
-				(rows) => settled(id, rows[id] != null),
-				() => settled(id, null)
+				(rows) => {
+					if (mine === generation) settled(id, rows[id] != null);
+				},
+				() => {
+					if (mine === generation) settled(id, null);
+				}
 			);
 		},
-		forget() {}
+		forget() {
+			generation += 1;
+			asked = new Set();
+		}
 	};
 }
