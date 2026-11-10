@@ -90,7 +90,7 @@ describe('the standard-program lookup', () => {
 		expect(shown).toEqual([{ kind: 'mpv', path: '/usr/bin/mpv', supported: true }]);
 	});
 
-	it('only ever shows an outcome for the type that was current when it arrived', async () => {
+	it('shows each outcome exactly when it is for the type current when it arrived', async () => {
 		const kind = fc.constantFrom<ExternalPlayerKind>('mpv', 'vlc', 'iina', 'custom');
 		await fc.assert(
 			fc.asyncProperty(
@@ -110,9 +110,21 @@ describe('the standard-program lookup', () => {
 					for (const [pick, ok] of releases) {
 						if (open.length === 0) break;
 						const i = open.splice(pick % open.length, 1)[0];
+						const before = seen.length;
 						if (ok) pending[i].answer({ name: pending[i].kind, path: null, supported: true });
 						else pending[i].fail();
 						await flush();
+						// Shown exactly when the request is for the current
+						// type: an answer as that type's, a failure as none.
+						// A stale answer or failure shows nothing.
+						if (pending[i].kind === current) {
+							expect(seen.length).toBe(before + 1);
+							const last = seen[seen.length - 1].shown;
+							if (ok) expect(last?.kind).toBe(current);
+							else expect(last).toBeNull();
+						} else {
+							expect(seen.length).toBe(before);
+						}
 					}
 					for (const { shown, current: at } of seen) {
 						expect(at).not.toBe('custom');
