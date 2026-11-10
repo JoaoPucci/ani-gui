@@ -246,8 +246,8 @@ body.shown.stuck .actions { animation: actions 260ms var(--ease-out-soft) 280ms 
 /* The late stretch: lit, but dimmed, and breathing over three beats
    of the transport — the step that has not landed. No halo: a glow on
    a dimmed stretch muddies it. Still (reduced motion, or a splash never
-   told to move) it rests at the breath's middle, with no animation: a
-   merely paused one would hold its first keyframe instead. */
+   told to move) it rests dimly within the breath's range, with no
+   animation: a merely paused one would hold its first keyframe instead. */
 @keyframes late { 0%, 100% { opacity: 0.10; } 50% { opacity: 0.35; } }
 .rail i.late::after {
   clip-path: inset(0 0 0 0); box-shadow: none;

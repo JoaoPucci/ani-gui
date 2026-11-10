@@ -21,9 +21,10 @@
 //   one. (The relaunch build-resources/after-pack.cjs warns about
 //   switched platforms, XWayland to Wayland, inside one launch; this
 //   one switches nothing. The end-to-end suite restarts the unpacked
-//   tree this way under Wayland with IBus running.) Under `pnpm dev` the new Electron is no longer attached to the
-//   dev script's terminal, and the Vite server it loads from has to be
-//   still running.
+//   tree this way: on X11 in CI, and on Wayland when run locally under
+//   tools/headless-wayland.sh.) Under `pnpm dev` the new Electron is
+//   no longer attached to the dev script's terminal, and the Vite
+//   server it loads from has to be still running.
 // - The AppImage. Its binary sits on a FUSE mount that goes away the
 //   moment this process exits, so neither it nor Electron's helper
 //   (which runs from the same mount) can be what starts the new one.

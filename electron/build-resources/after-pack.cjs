@@ -12,8 +12,8 @@ const path = require("node:path");
 // into `--ozone-platform-hint=auto` crashed on Wayland (the parent inits on
 // XWayland, then the re-exec'd child SIGTRAPs in Ozone init — 100% on
 // GNOME/ibus). The only reliable knob is the process environment, set by the
-// launcher. (The splash's Restart relaunches too, lib/relaunch.cjs, but into
-// the same environment and platform it runs on: the crash was the switch.)
+// launcher. (The splash's Restart relaunches too, lib/relaunch.cjs, but on
+// the display platform it already runs on: the crash was the switch.)
 //
 // So: rename the packed `ani-gui` ELF to `ani-gui.bin` and drop a tiny `ani-gui`
 // shell wrapper in its place that exports the hint and execs the real binary.

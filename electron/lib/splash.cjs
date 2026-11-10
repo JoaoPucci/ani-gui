@@ -16,7 +16,7 @@ const path = require("node:path");
 
 const { APP_BACKGROUND } = require("./app-window.cjs");
 const { STALL_MS, STEPS } = require("./splash-progress.cjs");
-const { stuckWatch } = require("./splash-stuck.cjs");
+const { NOT_A_CRASH, SPLASH_RELOADS, stuckWatch } = require("./splash-stuck.cjs");
 
 /** Set on the splash's BrowserWindow, so a harness can tell it from
  *  the app's window (electron/e2e/launch.ts). */
@@ -34,12 +34,15 @@ const SPLASH_MARK = "aniGuiSplash";
  * page's own reduced-motion media query. A hidden or covered splash
  * may never answer; the wait on it is bounded (SPLASH_SHOW_WAIT_MS).
  */
-function shownSignal(reduced) {
-  const start = reduced
+function shownStart(reduced) {
+  return reduced
     ? "document.body.classList.add('reduced');"
     : "if (!document.body.classList.contains('reduced')) document.body.classList.add('shown');";
+}
+
+function shownSignal(reduced) {
   return (
-    start +
+    shownStart(reduced) +
     " new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() =>" +
     " r(document.body.classList.contains('reduced') ||" +
     " matchMedia('(prefers-reduced-motion: reduce)').matches))))"
@@ -174,6 +177,8 @@ function splashController({
   let signalled = false;
   let win = null;
   let backstop = null;
+  // Reloads of a crashed splash page so far.
+  let reloads = 0;
   let suppressed = false;
   // Set when the splash closes by any hand but the boot's: the user,
   // or a quit already under way.
@@ -340,14 +345,28 @@ function splashController({
       backstop = setTimeout(() => stuck.arm(), SPLASH_SHOW_WAIT_MS);
       splash.webContents.on("did-finish-load", () => {
         if (steps > 0) sendSteps();
-        // A page reloaded after a crash shows the stuck state again.
+        // A page reloaded after a crash starts with neither motion
+        // class: it is told again to move or to rest, as the first was
+        // (the start alone: its paint was counted once), and a stuck
+        // splash offers its choices again.
+        if (reloads > 0 && signalled && alive()) {
+          Promise.resolve(win.webContents.executeJavaScript(shownStart(preference))).catch(() => {});
+        }
         stuck.offerAgain();
       });
-      // A splash page whose renderer dies comes back: while it stands
-      // in for the window, it is the only way out of a late page.
+      // A splash page whose renderer crashes comes back, a bounded
+      // number of times: while it stands in for the window, it is the
+      // only way out of a late page.
       splash.webContents.on("render-process-gone", (_event, details) => {
-        log(`[main] splash's page went (${details && details.reason}) (${since()})`);
-        if (!over && !chosen && win === splash && !splash.isDestroyed()) splash.webContents.reload();
+        const reason = details && details.reason;
+        log(`[main] splash's page went (${reason}) (${since()})`);
+        if (over || chosen || win !== splash || splash.isDestroyed() || NOT_A_CRASH.has(reason)) return;
+        if (reloads >= SPLASH_RELOADS) {
+          log(`[main] splash's page crashed ${reloads + 1} times: not reloaded again (${since()})`);
+          return;
+        }
+        reloads += 1;
+        splash.webContents.reload();
       });
       Promise.resolve(splash.loadFile(SPLASH_PAGE, { query })).catch((err) =>
         logError("[main] the splash failed to load:", err),

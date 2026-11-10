@@ -35,6 +35,15 @@ const SPLASH_STUCK_MS = 15_000;
 /** How long the taskbar entry flashes: about one flash. */
 const SPLASH_FLASH_MS = 1_000;
 
+/** How many times a launch reloads a splash page whose renderer
+ *  crashed (lib/splash.cjs): enough for a one-off crash, and bounded
+ *  for a page that dies on every load. */
+const SPLASH_RELOADS = 2;
+
+/** Renderer exits that are not a crash: a clean exit, or one killed
+ *  from outside (a session tearing down). Not reloaded. */
+const NOT_A_CRASH = new Set(["clean-exit", "killed"]);
+
 /** What the main process runs in the splash to show the stuck state.
  *  It evaluates to the page's choice once one is made ("restart" or
  *  "quit"), or to null when the page has nothing to offer (it is
@@ -146,4 +155,4 @@ function stuckWatch({
   };
 }
 
-module.exports = { SPLASH_FLASH_MS, SPLASH_STUCK_MS, STUCK_CALL, isChoice, stuckWatch };
+module.exports = { NOT_A_CRASH, SPLASH_FLASH_MS, SPLASH_RELOADS, SPLASH_STUCK_MS, STUCK_CALL, isChoice, stuckWatch };
