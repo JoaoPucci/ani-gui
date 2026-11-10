@@ -92,12 +92,15 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 	// the cards that write took away: read again rather than put them back.
 	const readOnce = async (): Promise<void> => {
 		const at = writes();
+		// Matched again only once the read is known to stand.
+		const changed: HistoryEntry[] = [];
 		const next = await rereadLinked(deps.current(), {
 			list: deps.list,
 			order: deps.order,
-			rematch
+			rematch: (h) => changed.push(h)
 		});
 		if (writes() !== at) return readOnce();
+		for (const h of changed) rematch(h);
 		deps.setHistory(next);
 	};
 

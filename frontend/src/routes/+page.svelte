@@ -516,7 +516,9 @@
 		// over it ($lib/history/confirm-run).
 		if (deleteRun.busy || clearRun.busy) return;
 		resumeFailure = null;
-		if (await relink.stillGuessed(row, matchId)) void cardLink.start(episode);
+		const guessed = await relink.stillGuessed(row, matchId);
+		// …nor once one started while the check was out.
+		if (guessed && !deleteRun.busy && !clearRun.busy) void cardLink.start(episode);
 	}
 	// Rows found no longer guessed since the cards were read: their pill
 	// goes rather than open nothing ($lib/history/card-relink.ts).
