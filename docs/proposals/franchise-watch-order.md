@@ -554,7 +554,10 @@ is defined from the entry being viewed — the anchor — by these rules
    never listed. A movie among them is listed with the films instead:
    *Boruto: Naruto the Movie*, left out beside the *Boruto* series it
    is a version of, is a film on Naruto's franchise page, not an
-   other version. The same holds for a recap that is a movie.
+   other version. The same holds for a recap that is a movie. A TV
+   series a member lists as its summary is a version of it, not a
+   recap: *Dragon Ball Super: Beerus*, a 19-episode re-edit of
+   *Super*'s opening arc, is listed beside both *Kai* series.
 
 **Side stories.** An anchor whose own run is itself alone, and that
 names a parent story, is walked from its earliest parent story
@@ -863,7 +866,7 @@ design section. Below it, sections:
    *Heaven's Feel* film, *Gintama*'s retelling films.
 3. From `around`: **Films** (every movie around the run, whatever its
    role: a version, a recap or a side story), **Recaps** (`summary`,
-   collapsed by default) and **Side stories & specials** (everything
+   a TV series aside, which is an other version) and **Side stories & specials** (everything
    else: side stories, parent stories, spin-offs, `other`). Links of the
    `character` and `adaptation` roles are not shown: they tie
    unrelated series together (*Gintama* to *Saiki Kusuo*).
