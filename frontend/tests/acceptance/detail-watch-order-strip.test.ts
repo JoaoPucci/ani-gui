@@ -7,7 +7,9 @@
 // order setting decides the neighbours. A franchise that cannot be
 // read leaves the page as it was, with no strip and no error. Where
 // the strip shows, the franchise it links to is left out of "Similar
-// titles", and nothing else is.
+// titles", and nothing else is. A show with no strip whose franchise
+// page still lists other titles gets the strip's franchise link on its
+// own, and "Similar titles" leaves those titles out the same way.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -489,7 +491,8 @@ describe('detail route — the franchise link without a strip', () => {
 		expect(similarCard('60')).toBeNull();
 		expect(similarCard('61')).toBeNull();
 		// No place is claimed for a show with nothing before or after it.
-		expect(eyebrow()).not.toMatch(/\b\d{2}\b/);
+		expect(eyebrow()).not.toContain(m.watchorder_strip_position({ position: '01', total: '01' }));
+		expect(eyebrow()).not.toContain(m.watchorder_strip_position_open({ position: '01' }));
 	});
 
 	it('links there without counts from a franchise read in part', async () => {

@@ -269,6 +269,18 @@ describe('franchiseLinkOnly', () => {
 		expect(franchiseLinkOnly({ franchise: alone(false), rows: [] }, '244')).toBeNull();
 	});
 
+	it("links a film's page, outside the run, to the franchise page that lists the run", () => {
+		const b = run('bleach');
+		const film = b.films[0];
+		const link = franchiseLinkOnly({ franchise: payload('bleach', film.id), rows: [] }, film.id)!;
+		expect(link).not.toBeNull();
+		expect(
+			watchOrderPage({ franchise: payload('bleach', film.id), rows: [] }, film.id, 'linked')
+		).toBeNull();
+		expect(link.similarHidden.has(film.id)).toBe(false);
+		for (const e of b.entries) expect(link.similarHidden.has(e.id)).toBe(true);
+	});
+
 	it('gives no link alone where the strip shows, which carries its own', () => {
 		expect(franchiseLinkOnly(data('fate', '6028'), '6028')).toBeNull();
 	});
