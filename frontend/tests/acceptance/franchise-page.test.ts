@@ -124,7 +124,6 @@ function useFranchise(opts: Options = {}) {
 			calls.franchise++;
 			return opts.franchise ? opts.franchise() : HttpResponse.json(FRANCHISE);
 		}),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json(opts.history ?? [])),
 		// The rows the franchise's entries resume from, as the resume
 		// lookup names them.
 		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
