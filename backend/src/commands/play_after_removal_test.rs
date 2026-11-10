@@ -1206,6 +1206,28 @@ mod card_note_follows_the_row {
     }
 
     #[tokio::test]
+    async fn an_older_guessed_play_turned_away_sets_no_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let older = no_page(&state);
+        let now = epoch(&state.history_path);
+        record_watch_requested_at(&state, &watch(), None, now, None).await;
+        record_fresh_watch(&state, &native(), "2", older, None, Some(CARD));
+        assert_eq!(note(&state), None);
+    }
+
+    #[tokio::test]
+    async fn a_guessed_play_of_a_removed_show_sets_no_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        seed_row(&state, SHOW);
+        let older = no_page(&state);
+        delete_show(&state);
+        record_fresh_watch(&state, &native(), "2", older, None, Some(CARD));
+        assert_eq!(note(&state), None);
+    }
+
+    #[tokio::test]
     async fn an_accepted_play_of_the_row_itself_clears_it() {
         let tmp = tempfile::tempdir().unwrap();
         let state = state_in(tmp.path());
