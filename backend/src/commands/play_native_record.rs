@@ -189,16 +189,6 @@ pub(crate) async fn record_watch_requested_at(
     requested: Epoch,
     guess_row: Option<&str>,
 ) {
-    record_watch_at(state, watch, kitsu_id, requested, guess_row).await;
-}
-
-async fn record_watch_at(
-    state: &AppState,
-    watch: &Watch,
-    kitsu_id: Option<&str>,
-    requested: Epoch,
-    guess_row: Option<&str>,
-) {
     if watch.show_id.is_empty() {
         return;
     }
@@ -337,15 +327,6 @@ pub(crate) fn write_history_then(
     }
 }
 
-/// [`record_watch_requested_at`] for a watch whose request begins as it
-/// is recorded — the form the tests record with. Every production
-/// caller takes its request's moment first.
-#[cfg(test)]
-pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Option<&str>) {
-    let now = crate::history::guard::epoch(&state.history_path);
-    record_watch_requested_at(state, watch, kitsu_id, now, None).await;
-}
-
 #[cfg(test)]
 #[path = "play_native_record_test.rs"]
 mod tests;
@@ -354,15 +335,8 @@ mod tests;
 #[path = "play_native_record_ids_test.rs"]
 mod ids_tests;
 
-/// [`write_history_then`] with nothing settled beside the row — the
-/// form the tests write with; the play's own path settles the card note.
 #[cfg(test)]
-pub(crate) fn write_history(
-    state: &AppState,
-    native: &NativeResolved,
-    requested: &str,
-    asked: Asked<'_>,
-    kitsu_id: Option<&str>,
-) {
-    write_history_then(state, native, requested, asked, kitsu_id, || {});
-}
+#[path = "play_native_record_test_support.rs"]
+mod test_support;
+#[cfg(test)]
+pub(crate) use test_support::{record_watch, write_history};
