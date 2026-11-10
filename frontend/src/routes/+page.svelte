@@ -548,9 +548,11 @@
 		publish: (id, match) => publishLoaderCap(id, match, match?.episode_count ?? null, true),
 		writes: () => historyWrites
 	});
+	// The rows the user named a show for: their cards keep the pill.
+	const namedRows = $derived(new Set((history ?? []).filter((h) => h.named).map((h) => h.id)));
 	/** Whether the card for the history row `row` offers its pill. */
 	function askable(row: string): boolean {
-		return rowTrust.isGuess(row) || historyById.get(row)?.named === true;
+		return rowTrust.isGuess(row) || namedRows.has(row);
 	}
 	/** The card that stands for the history row `row`. */
 	function cardButton(row: string): HTMLElement | null {

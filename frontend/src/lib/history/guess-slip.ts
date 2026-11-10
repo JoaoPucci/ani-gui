@@ -16,7 +16,7 @@
 export type SlipState = 'none' | 'holding' | 'guess' | 'linked' | 'switched';
 
 export interface SlipInputs {
-	/** The card's history row; null for a session no guess opened. */
+	/** The card's history row; null for a session no card opened. */
 	row: string | null;
 	/** Whether the viewer hid the row's slip. */
 	aside: boolean;
@@ -33,7 +33,9 @@ export interface SlipInputs {
 	/** Whether the offer still asks: a guess, not a pick kept only to
 	 *  change the show again. */
 	asking: boolean;
-	/** Whether the session can ask at all: a guess opened it. */
+	/** Whether the session can ask at all: a guess opened it. One that
+	 *  cannot only changes a named show again, from the ⋯ entry, and
+	 *  holds no room for a question it will never ask. */
 	asks?: boolean;
 }
 
@@ -41,6 +43,7 @@ export function slipState(s: SlipInputs): SlipState {
 	if (s.row === null || s.aside) return 'none';
 	if (s.linked) return 'linked';
 	if (s.switched) return 'switched';
+	if (s.asks === false) return 'none';
 	if (!s.settled) return 'holding';
 	return s.offered && s.asking ? 'guess' : 'none';
 }

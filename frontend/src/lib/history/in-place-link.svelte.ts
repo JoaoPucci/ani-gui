@@ -68,7 +68,7 @@ export class InPlaceLinkSession extends LinkSession {
 	switchedTitle = $state<string | null>(null);
 
 	#row = $state<string | null>(null);
-	#guess = true;
+	#guess = $state(true);
 	#page = '';
 	#surface: Surface;
 	#refresh: () => void;
@@ -107,7 +107,8 @@ export class InPlaceLinkSession extends LinkSession {
 			switched: this.switchedTitle !== null,
 			settled: this.settled,
 			offered: this.offer !== null,
-			asking: this.offer?.saved === undefined
+			asking: this.offer?.saved === undefined,
+			asks: this.#guess
 		});
 	}
 

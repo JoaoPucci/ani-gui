@@ -94,6 +94,15 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 	const writes = deps.writes ?? (() => 0);
 	// A list that went out before a remove or clear landed answers with
 	// the cards that write took away: read again rather than put them back.
+	// A view of the rows as they are matched now (`CardRelink.since`).
+	const view = () => {
+		const taken = new Map(rematches);
+		// A row being matched again when the view is taken is already
+		// another show: a click on it then is on the one it is leaving.
+		const left = new Set(leaving);
+		return (row: string) => !left.has(row) && count(row) === (taken.get(row) ?? 0);
+	};
+
 	const readOnce = async (): Promise<void> => {
 		const at = writes();
 		// Matched again only once the read is known to stand.
@@ -116,8 +125,13 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 
 	return {
 		stillGuessed: async (row, matchId) => {
+			const same = view();
 			const stands = await deps.offerStands(row, matchId);
 			if (stands) return true;
+			// Matched again, or being matched, since the check began: the
+			// card shows, or is about to show, another show, whose offer
+			// this one, for the show it leaves, is not.
+			if (!same(row)) return false;
 			// A later check overtook this one, and answers for itself: this
 			// card is not known to be settled.
 			if (stands === null) return false;
@@ -126,12 +140,6 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 			return false;
 		},
 		reread,
-		since: () => {
-			const taken = new Map(rematches);
-			// A row being matched again when the view is taken is already
-			// another show: a click on it then is on the one it is leaving.
-			const left = new Set(leaving);
-			return (row) => !left.has(row) && count(row) === (taken.get(row) ?? 0);
-		}
+		since: view
 	};
 }
