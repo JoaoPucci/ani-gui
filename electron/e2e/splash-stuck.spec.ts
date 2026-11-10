@@ -30,9 +30,10 @@
  * the binary, and only that pid: its own quit stops its backend.
  *
  * Everything the app could reach is the test's: HOME and the XDG
- * directories are a temporary directory, and the display and the
- * session bus are the private ones tools/headless-wayland.sh starts,
- * which the relaunched process inherits.
+ * directories are a temporary directory, and the display is the run's
+ * own — the private session tools/headless-wayland.sh starts locally,
+ * with its own session bus, or CI's Xvfb — which the relaunched
+ * process inherits.
  */
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
