@@ -578,6 +578,33 @@ test("a splash page whose renderer exited while standing in is lost, though not 
   assert.match(String(made.lost), /exited/);
 });
 
+test("a stuck splash whose page has nothing to offer is lost", async (t) => {
+  // Its words never reached it, or its script did not load: the stuck
+  // call answers null or undefined while the page is still late.
+  for (const answer of [null, undefined]) {
+    const made = await watchedLoss(t);
+    made.win.webContents.executeJavaScript = ((orig) => (code) =>
+      code.includes("stuck()") ? (made.win.calls.push(`js:${code}`), Promise.resolve(answer)) : orig(code))(
+      made.win.webContents.executeJavaScript,
+    );
+    await made.later(SPLASH_STUCK_MS);
+    assert.match(String(made.lost), /no way out/, String(answer));
+    t.mock.timers.reset();
+  }
+});
+
+test("a splash whose page completed as it was asked for its choices is not lost", async (t) => {
+  const made = await watchedLoss(t);
+  await made.splash.progress("backend");
+  await made.splash.progress("flags");
+  await made.later(SPLASH_STUCK_MS - 250);
+  made.splash.pageReady(true);
+  await made.later(250);
+  await flush();
+  assert.equal(made.lost, null);
+  made.splash.close();
+});
+
 test("a splash window closed before the boot is past it is lost as well as cancelling the launch", async (t) => {
   const made = await watchedLoss(t);
   made.win.close();
