@@ -452,8 +452,9 @@ pub const WATCH_LATER_BRIDGE_MAX_IDS: usize = 500;
 /// than serial.
 const WATCH_LATER_BRIDGE_CONCURRENCY: usize = 8;
 
-/// Bridge a list of MAL ids to Kitsu refs, preserving input order
-/// and dropping ids Kitsu can't map. Used by the home page's Watch
+/// Bridge a list of MAL ids to Kitsu refs, preserving input order,
+/// dropping ids Kitsu can't map, and listing a Kitsu show two ids lead
+/// to once, at the first (`rail_cards`). Used by the home page's Watch
 /// Later rail so cached `user_list_cache` rows render with the same
 /// Kitsu metadata + availability filter as the rest of the home.
 ///
@@ -691,12 +692,18 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
     rail_cards(slots.into_iter().flatten().collect())
 }
 
-/// The bridged cards as the Watch Later rail lists them, in input
-/// order.
+/// The bridged cards as the Watch Later rail lists them: each Kitsu
+/// show once, as its first card, the rest in input order. Two MAL ids
+/// can lead to the same Kitsu show, and the rail keys its cards by
+/// Kitsu id, so a show handed to it twice would be a duplicate key.
 fn rail_cards(
     cards: Vec<crate::meta::kitsu::KitsuAnimeRef>,
 ) -> Vec<crate::meta::kitsu::KitsuAnimeRef> {
+    let mut seen = std::collections::HashSet::new();
     cards
+        .into_iter()
+        .filter(|c| seen.insert(c.id.clone()))
+        .collect()
 }
 
 /// Resolve a show's Kitsu id into the provider-native media id needed
