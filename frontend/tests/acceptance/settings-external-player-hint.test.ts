@@ -60,7 +60,10 @@ const APP_INFO = {
 
 /** The backend's answer about each type's standard program; a type
  *  it has no entry for answers 500, as an unreachable backend would. */
-let standard: Record<string, { name: string | null; path: string | null }> = {};
+let standard: Record<string, { name: string | null; path: string | null; supported?: boolean }> =
+	{};
+/** How many times Settings asked. */
+let asked = 0;
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
@@ -72,12 +75,14 @@ beforeEach(() => {
 		http.put(`${API_BASE}/api/settings`, () => new HttpResponse(null, { status: 204 })),
 		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO)),
 		http.get(`${API_BASE}/api/external-player/standard`, ({ request }) => {
+			asked += 1;
 			const kind = new URL(request.url).searchParams.get('kind') ?? '';
 			const answer = standard[kind];
 			return answer ? HttpResponse.json(answer) : new HttpResponse(null, { status: 500 });
 		})
 	);
 	standard = {};
+	asked = 0;
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -172,5 +177,33 @@ describe('settings — the external player hint', () => {
 		expect(hint()).toContain('Leave it blank to use iina.');
 		expect(hint()).not.toContain('VideoLAN');
 		expect(field()!.placeholder).toBe('iina');
+	});
+
+	it('says IINA runs only on macOS where it does not exist', async () => {
+		standard = {
+			mpv: { name: 'mpv', path: '/usr/bin/mpv', supported: true },
+			iina: { name: 'iina', path: null, supported: false }
+		};
+		app = mount(SettingsPage, { target });
+		await settle();
+		flavour('IINA')!.click();
+		await settle();
+		expect(hint()).toContain('IINA runs only on macOS.');
+		expect(hint()).not.toContain('Install it');
+		expect(field()!.placeholder).toBe('iina');
+	});
+
+	it('asks once per type, not on every keystroke or save', async () => {
+		standard = { mpv: { name: 'mpv', path: '/usr/bin/mpv', supported: true } };
+		app = mount(SettingsPage, { target });
+		await settle();
+		expect(asked).toBe(1);
+		const input = field()!;
+		for (const typed of ['/', '/o', '/op']) {
+			input.value = typed;
+			input.dispatchEvent(new Event('input', { bubbles: true }));
+			await settle();
+		}
+		expect(asked).toBe(1);
 	});
 });

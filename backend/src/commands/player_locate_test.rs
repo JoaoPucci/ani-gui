@@ -212,3 +212,24 @@ fn a_reg_query_answer_gives_its_default_value_whatever_the_language() {
     );
     assert_eq!(parse_reg_default("    (Default)    REG_SZ    \r\n"), None);
 }
+
+#[test]
+fn syncplay_on_linux_gets_the_name_as_typed() {
+    // A flatpak or snap Syncplay cannot reach a host path, and its own
+    // PATH lookup is what a bare name always relied on there.
+    let never = |_: &str| -> Option<String> { panic!("not looked up on Linux") };
+    assert_eq!(syncplay_locate_on(Os::Linux, "mpv", &never), None);
+}
+
+#[test]
+fn syncplay_on_windows_and_macos_gets_the_installed_program() {
+    let found = |n: &str| Some(format!("/found/{n}"));
+    assert_eq!(
+        syncplay_locate_on(Os::Windows, "vlc", &found).as_deref(),
+        Some("/found/vlc")
+    );
+    assert_eq!(
+        syncplay_locate_on(Os::MacOs, "iina", &found).as_deref(),
+        Some("/found/iina")
+    );
+}

@@ -420,3 +420,34 @@ fn settings_learns_what_a_blank_command_runs_here() {
         }
     );
 }
+
+#[test]
+fn iina_is_supported_only_on_macos() {
+    use crate::commands::player_locate::Os;
+    let never = |_: &str| -> Option<String> { panic!("IINA is not looked up off macOS") };
+    for os in [Os::Linux, Os::Windows] {
+        assert_eq!(
+            standard_program_found_on(os, ExternalPlayerKind::Iina, &never),
+            StandardProgram {
+                name: Some("iina"),
+                path: None,
+                supported: false,
+            },
+            "{os:?}"
+        );
+    }
+    let found = |n: &str| Some(format!("/Applications/{n}"));
+    assert_eq!(
+        standard_program_found_on(Os::MacOs, ExternalPlayerKind::Iina, &found),
+        StandardProgram {
+            name: Some("iina"),
+            path: Some("/Applications/iina".into()),
+            supported: true,
+        }
+    );
+    // mpv and VLC exist everywhere.
+    for os in [Os::Linux, Os::Windows, Os::MacOs] {
+        assert!(standard_program_found_on(os, ExternalPlayerKind::Vlc, &found).supported);
+        assert!(standard_program_found_on(os, ExternalPlayerKind::Mpv, &found).supported);
+    }
+}
