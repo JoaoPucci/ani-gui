@@ -201,12 +201,17 @@
 	// dedupe: the card for a show is the row watched last, as the
 	// detail page resumes it.
 	let historyWatchedAt = $state<Record<string, number>>({});
-	// Plan §6.6: Watch Later rail. `null` = not loaded yet (during
-	// boot before accountStore.hydrate completes, or no provider
-	// connected at all). `[]` = loaded, but no Planning rows to
-	// show — rail stays hidden, same as the "no provider" case.
-	// Non-empty = render with the bridged Kitsu refs.
+	// Plan §6.6: Watch Later rail. `null` = no list loaded yet for the
+	// sign-ins the row reads now. `[]` = loaded with no Planning rows:
+	// the row's empty state for a viewer with a sign-in, nothing for one
+	// without ($lib/home/rows). Non-empty = render with the bridged
+	// Kitsu refs.
 	let watchLater = $state<KitsuAnimeRef[] | null>(null);
+	// Which trackers' lists `watchLater` was loaded for. A load for a
+	// different set (a sign-in read after the keyring notice, a connect,
+	// a disconnect) starts from no list, so the row shows its skeleton
+	// rather than the last set's list while the new one loads.
+	let watchLaterLoadedFor: string | null = null;
 	// True when the most recent rail load failed (bridge/availability),
 	// as opposed to succeeding with an empty list — so a connected user
 	// sees a retry affordance instead of a false "nothing planned".
@@ -683,18 +688,22 @@
 		return () => window.removeEventListener('scroll', onScroll);
 	});
 
-	// Watch Later rail. Reactive on accountStore.byProvider so:
-	//  - on cold launch directly to `/`, the rail loads as soon as the
-	//    layout's hydrate() populates the store;
-	//  - sign-in / disconnect / token-refresh events during the session
-	//    trigger a re-load without a route navigation.
-	// It waits for the saved sign-ins to be known, so its first load
-	// reads every signed-in list rather than none and then some, and
-	// for the settings, so it is filtered once, in the viewer's mode.
+	// Watch Later rail. Reactive on accountStore.byProvider so
+	// sign-in / disconnect / token-refresh events during the session
+	// trigger a re-load without a route navigation. It waits for the
+	// saved sign-ins to be known, so its first load reads every
+	// signed-in list rather than none and then some, and for the
+	// settings, so it is filtered once, in the viewer's mode.
 	$effect(() => {
 		if (!accountsKnown || !settingsRead) return;
 		const filterMode = pickAvailabilityMode(config);
 		const deps = buildWatchLaterDeps();
+		const loadingFor = Object.keys(deps.credentials).sort().join(',');
+		if (loadingFor !== watchLaterLoadedFor) {
+			watchLaterLoadedFor = loadingFor;
+			watchLater = null;
+			watchLaterFailed = false;
+		}
 		const ticket = watchLaterLoads.start(true);
 		void loadWatchLater(deps)
 			.then((refs) => filterAvailable(refs, filterMode))
@@ -772,7 +781,7 @@
 		// that invalidated a tracker's last pull — may have changed the
 		// stamps the freshness line reads, so it reads them again.
 		wlFreshness.stampsChanged();
-		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const filterMode = pickAvailabilityMode(config);
 		const deps = buildWatchLaterDeps();
 		// Nothing between taking the ticket and the `try` may throw: the
 		// `finally` reports the load finished, which a refresh waits on.
