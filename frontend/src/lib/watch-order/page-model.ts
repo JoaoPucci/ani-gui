@@ -37,8 +37,6 @@ export interface WatchOrderPage {
 	readonly watching: { readonly entry: WatchEntry; readonly episode: number } | null;
 	/** Ids "Similar titles" leaves out: what the strip shows. */
 	readonly similarHidden: ReadonlySet<string>;
-	/** The run's titles, which short titles are cut against. */
-	readonly titles: readonly string[];
 }
 
 /** The order setting as stored: anything but `released` reads as linked. */
@@ -97,7 +95,6 @@ export function watchOrderPage(
 			caption.kind === 'position' ? { position: caption.position, total: caption.total } : null,
 		progress,
 		watching,
-		similarHidden: shownOnStrip(view, watching?.entry ?? null),
-		titles: run.entries.map((e) => e.title)
+		similarHidden: shownOnStrip(view, watching?.entry ?? null)
 	};
 }

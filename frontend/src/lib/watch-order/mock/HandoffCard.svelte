@@ -12,19 +12,11 @@
 	import { imageProxyUrl } from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
-	import { shortTitle } from '../short-title';
 	import type { Handoff } from './view';
 
 	let { handoff, variant }: { handoff: Handoff; variant: 'next' | 'episode' } = $props();
 
-	// The finished entry by the words that set it apart: the one-line
-	// mono row would otherwise cut exactly those.
-	const finished = $derived(
-		shortTitle(
-			handoff.finished.title,
-			handoff.run.entries.map((e) => e.title)
-		)
-	);
+	const finished = $derived(handoff.finished.title);
 	const image = $derived(imageProxyUrl(handoff.next.cover ?? handoff.next.poster));
 </script>
 
