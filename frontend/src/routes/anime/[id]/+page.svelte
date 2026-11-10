@@ -1194,7 +1194,7 @@
 		// that cannot be read shows no strip ($lib/watch-order/loader),
 		// unless an earlier read this session could
 		// ($lib/watch-order/session-memo).
-		void loadWatchOrder(currentId, watchOrderSources).then((w) => {
+		const walked = loadWatchOrder(currentId, watchOrderSources).then((w) => {
 			const shown = settledAnswer(currentId, w);
 			if (id === currentId) watchOrderData = shown;
 		});
@@ -1207,7 +1207,8 @@
 				: withFirstHop(
 						detailServed,
 						kitsuFranchiseFirstHop(currentId),
-						(ms) => new Promise<void>((r) => setTimeout(r, ms))
+						(ms) => new Promise<void>((r) => setTimeout(r, ms)),
+						walked
 					);
 		void detailShown
 			.then(({ details: d, hop }) => {

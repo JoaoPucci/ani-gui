@@ -45,8 +45,9 @@ export const LEAVE_COLLAPSE_MS = 260;
 
 /**
  * The details, with the first hop if it answered by the time they did
- * or within `FIRST_HOP_CAP_MS` after; null if not, or if it failed.
- * Rejects only as `details` does.
+ * or within `FIRST_HOP_CAP_MS` after; null if not, if it failed, or if
+ * `walked` (the walk itself) answered first. Rejects only as `details`
+ * does.
  */
 export async function withFirstHop<T>(
 	details: Promise<T>,
@@ -54,7 +55,6 @@ export async function withFirstHop<T>(
 	wait: (ms: number) => Promise<void>,
 	walked: Promise<unknown> = new Promise<never>(() => {})
 ): Promise<{ details: T; hop: FirstHop | null }> {
-	void walked;
 	// Read now, so a hop that answers before the details is not lost,
 	// and a hop that fails is no hop rather than a failure.
 	const answered = hop.then(
@@ -63,7 +63,12 @@ export async function withFirstHop<T>(
 	);
 	const shown = await details;
 	const capped = wait(FIRST_HOP_CAP_MS).then(() => null);
-	return { details: shown, hop: await Promise.race([answered, capped]) };
+	// Once the walk has answered nothing is held, so nothing is waited for.
+	const moot = walked.then(
+		() => null,
+		() => null
+	);
+	return { details: shown, hop: await Promise.race([answered, capped, moot]) };
 }
 
 /** The room held while the walk has not answered, or null. */

@@ -431,7 +431,7 @@
 		background: var(--ink-050);
 	}
 	.story-row.compact {
-		grid-template-columns: 3rem minmax(0, 1fr) 8rem;
+		grid-template-columns: 3rem minmax(0, 1fr) 9rem;
 	}
 	.here .story-row {
 		background: color-mix(in oklab, var(--row-accent) 8%, var(--ink-050));
