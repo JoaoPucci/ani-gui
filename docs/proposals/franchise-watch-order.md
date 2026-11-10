@@ -1764,8 +1764,8 @@ was accepted.
    shows, and on the walk's own regression corpus, it matched the walk
    every time.
 5. **The page waits for the first hop with the show's details**, at
-   most about 300 ms past them, and not at all once the walk and the
-   order setting have answered; a slower hop is not used, and the
+   most about 300 ms past them, and no longer than until the walk and
+   the order setting have answered; a slower hop is not used, and the
    strip arrives as before.
 6. **The held room is a static outline** of the strip's measured
    layout under the real "Watch order" label, or of the link, with no
@@ -1775,7 +1775,8 @@ was accepted.
    Reduced motion makes every step instant. The outline waits for the
    walk, with no timeout of its own.
 7. **A show visited again in the session** draws its strip with its
-   first frame, from the last answer kept for it.
+   first frame, from the last answer kept for it (the page waits for
+   the order setting, within the same cap).
 8. **Growing the strip into place, or drawing it under the episodes,
    were dropped.**
 

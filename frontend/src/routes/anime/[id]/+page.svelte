@@ -1199,17 +1199,19 @@
 			if (id === currentId) watchOrderData = shown;
 		});
 		// The details wait a moment for the walk's first hop, so the
-		// room the strip will take is held from the page's first frame;
-		// a show whose answer is remembered needs none.
+		// room the strip will take is held from the page's first frame.
+		// A show whose answer is remembered needs no hop, only the order
+		// setting, so its strip draws with the page; the same cap holds.
+		// Nothing is held once the walk and the order setting have both
+		// answered, so the wait ends then too.
+		const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 		const detailShown =
 			remembered !== null
-				? detailServed.then((details) => ({ details, hop: null }))
+				? withFirstHop(detailServed, new Promise<FirstHop>(() => {}), wait, settingsSettled)
 				: withFirstHop(
 						detailServed,
 						kitsuFranchiseFirstHop(currentId),
-						(ms) => new Promise<void>((r) => setTimeout(r, ms)),
-						// Nothing is held once the walk and the order setting
-						// have both answered, so the wait ends then too.
+						wait,
 						Promise.all([walked, settingsSettled])
 					);
 		void detailShown
