@@ -64,7 +64,6 @@ const request = (over: Partial<SwitchRequest> = {}): SwitchRequest => ({
 	at: 14.5,
 	row: CARD,
 	mode: 'sub',
-	quality: 'best',
 	...over
 });
 
@@ -77,7 +76,6 @@ describe('switching to the picked show', () => {
 			title: RIGHT.canonical_title,
 			episode: '2',
 			mode: 'sub',
-			quality: 'best',
 			kitsu_id: RIGHT.id,
 			subtype: 'OVA',
 			year: 2000

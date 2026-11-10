@@ -88,7 +88,6 @@ async fn an_episode_the_remembered_fallback_does_not_serve_does_not_write_the_pr
         title: "The Show".into(),
         episode: "2".into(),
         mode: "sub".into(),
-        quality: None,
         subtype: None,
         episode_count: None,
         year: None,

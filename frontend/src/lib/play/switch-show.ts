@@ -74,7 +74,6 @@ export interface SwitchRequest {
 	/** The card's history row, when a card opened the session. */
 	row: string | null;
 	mode: 'sub' | 'dub';
-	quality: string;
 	/** The version and captions remembered for the picked show. */
 	version?: VersionKind;
 	caption?: string;
@@ -91,7 +90,6 @@ export async function switchShow(deps: SwitchShowDeps, req: SwitchRequest): Prom
 		title,
 		episode: req.episode,
 		mode: req.mode,
-		quality: req.quality,
 		show: req.to,
 		kitsuId: req.to.id,
 		version: req.version,

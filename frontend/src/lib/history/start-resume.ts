@@ -42,7 +42,6 @@ export interface ResumePlayArgs {
 	title: string;
 	episode: number;
 	mode: 'sub' | 'dub';
-	quality: string;
 }
 
 export interface StartResumeDeps {
@@ -63,7 +62,7 @@ export interface StartResumeDeps {
 		isCurrent?: () => boolean
 	) => void | Promise<void>;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
-	getSettings: () => Promise<{ mode: 'sub' | 'dub'; quality: string }>;
+	getSettings: () => Promise<{ mode: 'sub' | 'dub' }>;
 	getPlayableCount: (entryId: string) => number | null;
 	/** Whether the stored cap came from the search hit rather than the
 	 *  detail fetch. An approximate cap is revalidated before use —
@@ -169,7 +168,7 @@ export function makeStartResume(deps: StartResumeDeps): (
 		deps.onBusy(match.id);
 		deps.onProgress(null);
 
-		const { mode, quality } = await deps.getSettings();
+		const { mode } = await deps.getSettings();
 		// The viewer moved on while settings loaded: nothing of the
 		// click's provider work, the cap lookup included, is theirs.
 		if (!stillHere()) {
@@ -207,7 +206,6 @@ export function makeStartResume(deps: StartResumeDeps): (
 				match,
 				title,
 				mode,
-				quality,
 				guess
 			},
 			stillHere
@@ -232,7 +230,7 @@ export function makeStartResume(deps: StartResumeDeps): (
 		}
 
 		const row = guessRow(guess, line);
-		const args: ResumePlayArgs = { match, title, episode, mode, quality, guess };
+		const args: ResumePlayArgs = { match, title, episode, mode, guess };
 		if (row) args.row = row;
 		// The viewer moved on while the click was still settling what to
 		// play: no play has begun, so none is resolved, started or

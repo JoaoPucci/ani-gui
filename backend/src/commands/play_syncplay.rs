@@ -36,7 +36,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
 
     // Reuse the long-term cache the same way play_external does — the
     // embedded player likely just resolved this exact (title, mode,
-    // quality, episode) tuple. Without it, the user waits another
+    // episode) tuple. Without it, the user waits another
     // ~30s for a fresh resolve.
     // Syncplay wraps whichever player the user already configured
     // for "Open in external" — most users have one media player
@@ -47,7 +47,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
 
     // Reuse the long-term cache the same way play_external does — the
     // embedded player likely just resolved this exact (title, mode,
-    // quality, episode) tuple. The cached referer rides along so
+    // episode) tuple. The cached referer rides along so
     // Syncplay's wrapped player gets the same flags it would have
     // under play_external.
     if let Some((launch, watch)) = try_launch_args_from_cache(state, args, &cfg).await {

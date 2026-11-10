@@ -23,7 +23,7 @@ fn router_with_resolution(td: &TempDir) -> (axum::Router, std::path::PathBuf) {
     let state = test_app_state(td);
     put(
         &state.cache_pool,
-        &cache_key(TITLE, "sub", "best", "2", None, None, None),
+        &cache_key(TITLE, "sub", "2", None, None, None),
         &CachedResolution {
             upstream_url: "https://video.example/master.m3u8".into(),
             referer: String::new(),

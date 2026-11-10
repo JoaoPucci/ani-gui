@@ -81,7 +81,6 @@ fn args() -> PlayArgs {
         title: "The Show".into(),
         episode: "2".into(),
         mode: "sub".into(),
-        quality: None,
         subtype: None,
         episode_count: None,
         year: None,

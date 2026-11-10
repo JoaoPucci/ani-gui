@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-11-09_
+_Last updated: 2026-11-10_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -154,6 +154,18 @@ ani-gui keeps the following on your computer only:
   playing the show again afterwards keeps its positions again, and
   where its stream stood while recovering, the same way the history
   records a show played again after removing it.
+- **Choices you make for a show** — the subtitle language you last
+  picked for it (or Off; a track of unknown language, or a play
+  opened from a guessed Continue card, leaves it as it was), and, for
+  a show the streaming site lists twice, the version you chose. Kept
+  in the app's local browser storage (under your OS user-data
+  directory), keyed by the show's Kitsu id, at most 500 shows for each
+  kind of choice, the least recently chosen dropped first. Choosing
+  the uncensored version, which is what plays when nothing is chosen,
+  forgets the version choice for that show. These are preferences for
+  the show rather than history, so clearing your watch history or
+  removing the show from Continue Watching leaves them; otherwise they
+  stay until newer choices push them out.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
@@ -213,7 +225,7 @@ kind of request:
   pages for every aired and playable episode in view (the detail page's
   grid, the play page's episode strip); the warm follows the page rather
   than running once on opening, so paging the grid or the strip to new
-  episodes, or changing the audio mode or quality setting, resolves
+  episodes, or changing the audio mode, resolves
   what is newly in view. These requests carry the search terms you
   typed or the anime IDs you're browsing, and no account identifier.
   MyAnimeList is reached only as your tracker, and reading a show's
@@ -279,13 +291,14 @@ kind of request:
   resolution is reused: a resolve — a page warm, a play or hand-off
   that finds nothing cached, or a download, which always resolves
   afresh — fetches the episode's master playlist, to
-  check that what the page named is a playlist, and, when the quality
-  setting is not "best" and the master offers a rendition matching
-  it whose address resolves against the master's, that rendition's
-  playlist as well — a second fetch, at whatever host the master
-  names for it; a master with no such rendition, or one whose
-  matching rendition's address does not resolve, is kept as it is,
-  with no second fetch; and any play served from the
+  check that what the page named is a playlist, and, for a download
+  whose download quality is not "Best" when the master offers a
+  rendition matching it whose address resolves against the master's,
+  that rendition's playlist as well — a second fetch, at whatever host
+  the master names for it; a play or hand-off, and a download whose
+  master has no such rendition, or whose matching rendition's address
+  does not resolve, keeps the master as it is, with no second fetch;
+  and any play served from the
   resolution cache — a page warm,
   a play in the app, or a hand-off to an external player or Syncplay —
   checks the cached stream and each of its subtitle tracks at the CDN

@@ -77,7 +77,6 @@ async fn a_replay_recorded_later_writes_no_history_row() {
     let key = play_resolution_cache::cache_key(
         &asked.title,
         &asked.mode,
-        "best",
         "5",
         asked.year,
         asked.episode_count,
