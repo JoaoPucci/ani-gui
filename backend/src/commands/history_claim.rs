@@ -37,38 +37,89 @@ pub(crate) fn names(kitsu_id: &str, kitsu_gone: bool, row: &RowIds<'_>) -> bool 
     row.recorded.is_some() && row.title_matched.iter().any(|t| same_kitsu_id(t, kitsu_id))
 }
 
-/// [`names`], over what the cache knows of `entry`.
+/// What the cache knows of one row's Kitsu identity: read once per
+/// row, it answers [`names`] for any id ([`RowIdentity::names`]).
+pub(crate) struct RowIdentity {
+    recorded: Option<(String, bool)>,
+    mapped: Option<(String, bool)>,
+    title_matched: Vec<String>,
+}
+
+impl RowIdentity {
+    /// The identity of a row with these parts, keeping only what
+    /// [`names`] reads: a recorded id that stands decides alone, so the
+    /// mapping and title matches are dropped for it, and a row that
+    /// recorded no id is never named by a title match.
+    fn of(
+        recorded: Option<(String, bool)>,
+        mapped: impl FnOnce() -> Result<Option<(String, bool)>>,
+        title_matched: impl FnOnce() -> Result<Vec<String>>,
+    ) -> Result<Self> {
+        if let Some((_, false)) = recorded {
+            return Ok(Self {
+                recorded,
+                mapped: None,
+                title_matched: Vec::new(),
+            });
+        }
+        let mapped = mapped()?;
+        let title_matched = if recorded.is_some() {
+            title_matched()?
+        } else {
+            Vec::new()
+        };
+        Ok(Self {
+            recorded,
+            mapped,
+            title_matched,
+        })
+    }
+
+    /// [`names`] for `kitsu_id`, which Kitsu answered gone or not.
+    pub(crate) fn names(&self, kitsu_id: &str, kitsu_gone: bool) -> bool {
+        let row = RowIds {
+            recorded: side(&self.recorded),
+            mapped: side(&self.mapped),
+            title_matched: &self.title_matched,
+        };
+        names(kitsu_id, kitsu_gone, &row)
+    }
+}
+
+fn side(o: &Option<(String, bool)>) -> Option<(&str, bool)> {
+    o.as_ref().map(|(id, gone)| (id.as_str(), *gone))
+}
+
+/// Whether Kitsu answered `id` gone. A gone mark is kept under digits;
+/// a value that is not an id has none.
 ///
 /// # Errors
 /// SQLite read failures propagate.
-pub(crate) fn row_names(state: &AppState, entry: &HistoryEntry, kitsu_id: &str) -> Result<bool> {
-    // A gone mark is kept under digits; a value that is not an id has
-    // none.
-    let gone =
-        |id: &str| kitsu_id_in(id).map_or(Ok(false), |id| super::kitsu_gone::is_gone(state, id));
+pub(crate) fn id_gone(state: &AppState, id: &str) -> Result<bool> {
+    kitsu_id_in(id).map_or(Ok(false), |id| super::kitsu_gone::is_gone(state, id))
+}
+
+/// What the cache knows of `entry`. A recorded id that stands decides
+/// alone, so nothing else is read for it.
+///
+/// # Errors
+/// SQLite read failures propagate.
+pub(crate) fn row_identity(state: &AppState, entry: &HistoryEntry) -> Result<RowIdentity> {
     let recorded = match entry.kitsu_id.as_deref() {
-        Some(id) => Some((id, gone(id)?)),
+        Some(id) => Some((id.to_owned(), id_gone(state, id)?)),
         None => None,
     };
-    if let Some((id, false)) = recorded {
-        return Ok(same_kitsu_id(id, kitsu_id));
-    }
-    let mapped_id = super::kitsu::allmanga_kitsu_get(state, &entry.id)?;
-    let mapped = match mapped_id.as_deref() {
-        Some(id) => Some((id, gone(id)?)),
-        None => None,
-    };
-    let title_matched = if recorded.is_some() {
-        super::history_forget_titles::current_title_match_ids(state, &entry.id, &entry.title)?
-    } else {
-        Vec::new()
-    };
-    let row = RowIds {
+    RowIdentity::of(
         recorded,
-        mapped,
-        title_matched: &title_matched,
-    };
-    Ok(names(kitsu_id, gone(kitsu_id)?, &row))
+        || match super::kitsu::allmanga_kitsu_get(state, &entry.id)? {
+            Some(id) => {
+                let gone = id_gone(state, &id)?;
+                Ok(Some((id, gone)))
+            }
+            None => Ok(None),
+        },
+        || super::history_forget_titles::current_title_match_ids(state, &entry.id, &entry.title),
+    )
 }
 
 #[cfg(test)]

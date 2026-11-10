@@ -3,6 +3,7 @@
 //! complexity bar.
 
 use super::{to_kitsu_numbering, Numbering};
+use crate::commands::history_claim::{id_gone, row_identity, RowIdentity};
 use crate::error::Result;
 use crate::history::{read_all, HistoryEntry};
 
@@ -21,8 +22,11 @@ use crate::history::{read_all, HistoryEntry};
 /// rule the Continue Watching strip applies to the same rows, so
 /// the two surfaces name one episode. Returns `None` when:
 ///   - The history file is missing or empty.
-///   - No entry records `kitsu_id`, and no entry that records none has
-///     a cached mapping equal to it.
+///   - Kitsu answered `kitsu_id` itself gone.
+///   - No entry records `kitsu_id` while Kitsu still has it; no entry
+///     without a standing recorded id has a standing mapping to it;
+///     and no entry whose recorded entry is gone, with no standing
+///     mapping, has a title match naming it.
 ///
 /// A row that records no id can be in the file without being in the
 /// reverse cache: a play that had no Kitsu id to record, a pairing the
@@ -34,8 +38,9 @@ use crate::history::{read_all, HistoryEntry};
 /// # Errors
 /// Returns [`crate::error::AniError::Io`] when the history file
 /// exists but cannot be read; SQLite errors propagate from the
-/// reverse-cache lookup and from the watched-at stamp's, since a
-/// read that fails says nothing about the row it was for.
+/// gone marks, the reverse-cache lookup, the title matches and the
+/// watched-at stamp's, since a read that fails says nothing about the
+/// row it was for. An empty history reads none of them.
 pub fn history_by_kitsu(
     state: &crate::app::AppState,
     kitsu_id: &str,
@@ -71,10 +76,10 @@ pub fn history_by_kitsu_each(
         return Ok(std::collections::BTreeMap::new());
     }
     crate::history::guard::hold(&state.history_path, |_| {
-        let entries = read_all(&state.history_path)?;
+        let rows = identified(state)?;
         let numbering = Numbering::read(&state.history_path);
         ids.iter()
-            .map(|id| Ok((id.clone(), resumed_from(state, &entries, &numbering, id)?)))
+            .map(|id| Ok((id.clone(), resumed_from(state, &rows, &numbering, id)?)))
             .collect()
     })
 }
@@ -83,18 +88,34 @@ fn history_by_kitsu_held(
     state: &crate::app::AppState,
     kitsu_id: &str,
 ) -> Result<Option<HistoryEntry>> {
-    let entries = read_all(&state.history_path)?;
+    let rows = identified(state)?;
     let numbering = Numbering::read(&state.history_path);
-    resumed_from(state, &entries, &numbering, kitsu_id)
+    resumed_from(state, &rows, &numbering, kitsu_id)
 }
 
-/// The row of `entries` that `kitsu_id` resumes from, in its numbering.
+/// The history's rows, each with what the cache knows of its Kitsu
+/// identity, read once however many ids are then asked about.
+fn identified(state: &crate::app::AppState) -> Result<Vec<(HistoryEntry, RowIdentity)>> {
+    read_all(&state.history_path)?
+        .into_iter()
+        .map(|entry| {
+            let identity = row_identity(state, &entry)?;
+            Ok((entry, identity))
+        })
+        .collect()
+}
+
+/// The row of `rows` that `kitsu_id` resumes from, in its numbering.
 fn resumed_from(
     state: &crate::app::AppState,
-    entries: &[HistoryEntry],
+    rows: &[(HistoryEntry, RowIdentity)],
     numbering: &Numbering,
     kitsu_id: &str,
 ) -> Result<Option<HistoryEntry>> {
+    if rows.is_empty() {
+        return Ok(None);
+    }
+    let gone = id_gone(state, kitsu_id)?;
     // Two providers can leave two rows for one show, one under each
     // provider's id. The one the user watched last is the one to
     // resume from, by the rule the Continue Watching strip applies to
@@ -113,12 +134,12 @@ fn resumed_from(
     // moment beside the row, so a cache that refused the stamp still
     // leaves the row ranked as the watch it was.
     let mut best: Option<(HistoryEntry, Option<i64>)> = None;
-    for entry in entries {
+    for (entry, identity) in rows {
         // The id the row records is the show the user played; the
         // reverse mapping stands in only for a row without one, or one
         // whose recorded entry Kitsu has since deleted
         // ([`crate::commands::history_claim::names`]).
-        if !crate::commands::history_claim::row_names(state, entry, kitsu_id)? {
+        if !identity.names(kitsu_id, gone) {
             continue;
         }
         let stamp = crate::commands::history_resume::latest_of(

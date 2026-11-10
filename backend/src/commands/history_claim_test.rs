@@ -63,4 +63,21 @@ proptest! {
         };
         prop_assert_eq!(names(&asked, false, &row), expected);
     }
+
+    /// What `row_identity` keeps of a row answers every id as the whole
+    /// row would: for a recorded id that stands it reads neither the
+    /// mapping nor the title matches, which a standing id makes moot.
+    #[test]
+    fn a_row_s_identity_answers_as_the_whole_row(
+        asked in id(),
+        asked_gone in any::<bool>(),
+        recorded in side(),
+        mapped in side(),
+        titled in proptest::collection::vec(id(), 0..3),
+    ) {
+        let whole = RowIds { recorded: as_ref(&recorded), mapped: as_ref(&mapped), title_matched: &titled };
+        let identity =
+            RowIdentity::of(recorded.clone(), || Ok(mapped.clone()), || Ok(titled.clone())).unwrap();
+        prop_assert_eq!(identity.names(&asked, asked_gone), names(&asked, asked_gone, &whole));
+    }
 }

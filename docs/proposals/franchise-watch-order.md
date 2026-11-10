@@ -866,8 +866,9 @@ one unnumbered group, in air-date order, where the cycle sits in the
 run. A history row counts toward the entry whose page would resume
 from it: the entry it recorded while Kitsu still has it, else the one
 its stored mapping names, else, for a row whose recorded entry Kitsu
-deleted, the one Home's title match found for it. A row with none of
-these contributes no progress.
+deleted, the ones Home's title matches found for it (a title can
+hold one per cour, so such a row can count toward each). A row with none
+of these contributes no progress.
 
 **Trackers.** Read-only.
 
