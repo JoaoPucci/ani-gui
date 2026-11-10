@@ -602,10 +602,12 @@ starting it, and delete it when you find it done.
   and Chromium's native ones, which Settings swaps in when "Custom
   player controls" (`use_custom_player_controls`, on by default) is
   turned off. Every player feature has to work through
-  both, so it is built twice. The per-show subtitle memory is the
-  latest case: a pick in the app's captions menu is recorded as it
+  both, so it is built twice. The per-show subtitle memory is one
+  case: a pick in the app's captions menu is recorded as it
   is made, while a pick in the browser's menu has to be inferred from
-  the video's text-track changes.
+  the video's text-track changes. The quality picker is another: the
+  native bar has none, so with it the picker is in the page's ⋯ menu,
+  as Watch together is.
 
   Investigate choosing one. Before deciding, measure what the native
   path still offers that the custom one does not — the setting's own
