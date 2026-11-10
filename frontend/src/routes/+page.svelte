@@ -1108,14 +1108,15 @@
 	const handoffFor = (kitsuId: string) =>
 		handoffFrom(handoffSeries[kitsuId] ?? null, kitsuId, handoffOrder, handoffToday, handoffPlayed);
 	// Before a card moves on, the backend's resume lookup is asked, once
-	// per history, whether a history row resumes the next entry, the rule its own
-	// page goes by ($lib/watch-order/handoff `unclaimedHandoff`).
+	// per id and again whenever the history changes, whether a history
+	// row resumes the next entry, the rule its own page goes by
+	// ($lib/watch-order/handoff `unclaimedHandoff`).
 	let handoffNamed = $state<Record<string, boolean | null>>({});
 	const namedReads = createNamedReads(historyByKitsuEach, (id, named) => {
 		handoffNamed = { ...handoffNamed, [id]: named };
 	});
-	// A changed history may hold a row that now resumes a next show, so
-	// the answers are asked again for it.
+	// A row removed from the history may have been the one that resumed
+	// a next show, so the answers are asked again when it changes.
 	let namedFor: HistoryEntry[] | null = null;
 	$effect(() => {
 		// The last answers stand until the new ones land, so a moved-on
