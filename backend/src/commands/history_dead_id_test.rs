@@ -127,6 +127,37 @@ async fn a_deleted_recorded_entry_gives_way_to_the_title_match_past_a_dead_mappi
     assert_eq!(found(&state, "999"), None);
 }
 
+/// A row whose recorded entry is gone is named by the one title match
+/// Continue Watching reads for it: the one under the cour its title
+/// names. A match stored under another cour of the same title is
+/// another row's guess, and names nothing for this one.
+#[tokio::test]
+async fn a_deleted_recorded_entry_gives_way_to_the_title_match_of_its_own_cour_alone() {
+    let (_tmp, _mock, state) = row_recording("999", 404).await;
+    title_match(&state, "1");
+    crate::commands::kitsu::title_match_put(&state, ShowKey::parse(SHOW).provider, TITLE, 2, "2")
+        .unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert_eq!(found(&state, "1").as_deref(), Some(SHOW));
+    assert_eq!(found(&state, "2"), None);
+}
+
+/// A row titled for its second season is named by the match under
+/// that cour, not by one stored under the first.
+#[tokio::test]
+async fn a_deleted_recorded_entry_of_a_later_season_gives_way_to_that_season_s_match() {
+    let title = "Cowboy Bebop Season 2";
+    let (_tmp, _mock, state) = row_recording_titled("999", 404, title).await;
+    let provider = ShowKey::parse(SHOW).provider;
+    crate::commands::kitsu::title_match_put(&state, provider, title, 1, "1").unwrap();
+    crate::commands::kitsu::title_match_put(&state, provider, title, 2, "2").unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert_eq!(found(&state, "2").as_deref(), Some(SHOW));
+    assert_eq!(found(&state, "1"), None);
+}
+
 #[tokio::test]
 async fn a_title_match_the_version_before_stored_names_no_show() {
     // Home no longer reads a title match an earlier pick order stored —

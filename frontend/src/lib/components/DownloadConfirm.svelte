@@ -11,6 +11,7 @@
 -->
 <script lang="ts">
 	import { startDownload } from '$lib/download/start';
+	import { modal } from './modal-layer';
 	import { downloadQualityLabel } from '$lib/download/download-quality';
 	import { defaultRangeOnEnter } from '$lib/download/default-range';
 	import { rangeError as rangeErrorFor } from '$lib/download/range-error';
@@ -165,21 +166,19 @@
 		open = false;
 		onClose();
 	}
-
-	function onBackdropKey(e: KeyboardEvent) {
-		if (e.key === 'Escape') close();
-	}
 </script>
 
 {#if open && args}
-	<!-- Backdrop. role="dialog" + aria-modal=true keeps screen readers
-	     trapped inside until close. Click on backdrop dismisses. -->
+	<!-- Backdrop. A modal ($lib/components/modal-layer): its first
+	     control takes focus, Tab stays inside it, the page behind it is
+	     inert, Escape closes it, and focus goes back to what opened it.
+	     Click on backdrop dismisses. -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="dl-backdrop"
 		onclick={close}
-		onkeydown={onBackdropKey}
+		use:modal={{ onEscape: close }}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="dl-confirm-title"

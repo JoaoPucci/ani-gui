@@ -45,6 +45,7 @@
 	import DownloadBar from '$lib/components/DownloadBar.svelte';
 	import ToastHost from '$lib/components/ToastHost.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
+	import { isModalOpen } from '$lib/components/modal-layer';
 	import UpdateBadge from '$lib/components/UpdateBadge.svelte';
 	import UpdateDialog from '$lib/components/UpdateDialog.svelte';
 	import { downloadFailureStore } from '$lib/download/failure-store.svelte';
@@ -347,6 +348,8 @@
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const onKey = (e: KeyboardEvent) => {
+			// A modal is the only keyboard target while it is up.
+			if (isModalOpen()) return;
 			const t = e.target as HTMLElement | null;
 			const inField =
 				t &&
