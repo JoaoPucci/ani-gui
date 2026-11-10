@@ -69,4 +69,11 @@ describe('the row style description', () => {
 			expect(description(locale)).toContain(WORDS[locale].homePage);
 		});
 	}
+
+	for (const locale of LOCALES) {
+		it(`the About intro names the home page the same way in ${locale}`, () => {
+			const about = JSON.parse(readFileSync(join(ROOT, locale, 'about.json'), 'utf8'));
+			expect(String(about.intro).toLocaleLowerCase(locale)).toContain(WORDS[locale].homePage);
+		});
+	}
 });
