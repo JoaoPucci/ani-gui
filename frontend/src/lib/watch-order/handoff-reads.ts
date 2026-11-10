@@ -10,10 +10,12 @@ import type { FranchiseData } from './types';
 export interface FranchiseReads {
 	/** Asks for `id`'s franchise, unless it was asked for already. */
 	want(id: string): void;
+	/** The page has gone: cancels every read still out, and hands on no more answers. */
+	stop(): void;
 }
 
 export function createFranchiseReads(
-	read: (id: string) => Promise<FranchiseData>,
+	read: (id: string, signal: AbortSignal) => Promise<FranchiseData>,
 	settled: (id: string, franchise: FranchiseData | null) => void
 ): FranchiseReads {
 	const asked = new Set<string>();
@@ -21,11 +23,12 @@ export function createFranchiseReads(
 		want(id) {
 			if (asked.has(id)) return;
 			asked.add(id);
-			read(id).then(
+			read(id, new AbortController().signal).then(
 				(franchise) => settled(id, franchise),
 				() => settled(id, null)
 			);
-		}
+		},
+		stop() {}
 	};
 }
 
@@ -44,7 +47,7 @@ export interface NamedReads extends FranchiseReads {
  * failed. Asked once per id until `forget`.
  */
 export function createNamedReads(
-	read: (ids: readonly string[]) => Promise<Readonly<Record<string, unknown>>>,
+	read: (ids: readonly string[], signal: AbortSignal) => Promise<Readonly<Record<string, unknown>>>,
 	settled: (id: string, named: boolean | null) => void
 ): NamedReads {
 	let asked = new Set<string>();
@@ -56,7 +59,7 @@ export function createNamedReads(
 			if (asked.has(id)) return;
 			asked.add(id);
 			const mine = generation;
-			read([id]).then(
+			read([id], new AbortController().signal).then(
 				(rows) => {
 					if (mine === generation) settled(id, rows[id] != null);
 				},
@@ -68,6 +71,7 @@ export function createNamedReads(
 		forget() {
 			generation += 1;
 			asked = new Set();
-		}
+		},
+		stop() {}
 	};
 }

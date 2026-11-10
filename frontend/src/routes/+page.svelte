@@ -1082,9 +1082,12 @@
 	// offering that episode. The probe may never answer, so the
 	// hand-off does not wait for it.
 	let handoffSeries = $state<Record<string, FranchiseData | null>>({});
-	const handoffReads = createFranchiseReads(kitsuFranchise, (id, franchise) => {
-		handoffSeries = { ...handoffSeries, [id]: franchise };
-	});
+	const handoffReads = createFranchiseReads(
+		(id) => kitsuFranchise(id),
+		(id, franchise) => {
+			handoffSeries = { ...handoffSeries, [id]: franchise };
+		}
+	);
 	const handoffToday = localDay(new Date());
 	const handoffOrder = $derived(settledOrder(config, configFailed));
 	const handoffAsks = $derived(
@@ -1112,9 +1115,12 @@
 	// row resumes the next entry, the rule its own page goes by
 	// ($lib/watch-order/handoff `unclaimedHandoff`).
 	let handoffNamed = $state<Record<string, boolean | null>>({});
-	const namedReads = createNamedReads(historyByKitsuEach, (id, named) => {
-		handoffNamed = { ...handoffNamed, [id]: named };
-	});
+	const namedReads = createNamedReads(
+		(ids) => historyByKitsuEach(ids),
+		(id, named) => {
+			handoffNamed = { ...handoffNamed, [id]: named };
+		}
+	);
 	// A row removed from the history may have been the one that resumed
 	// a next show, so the answers are asked again when it changes.
 	let namedFor: HistoryEntry[] | null = null;
