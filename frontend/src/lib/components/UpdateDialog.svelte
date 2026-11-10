@@ -8,10 +8,11 @@
   trying to interpret rendered HTML in-app.
 -->
 <script lang="ts">
-	import { fly, fade } from 'svelte/transition';
+	import { fly, fade } from '$lib/motion/transitions';
 	import { cubicOut } from 'svelte/easing';
 	import { m } from '$lib/paraglide/messages';
 	import { updateStore } from '$lib/update/store.svelte';
+	import { modal } from './modal-layer';
 
 	interface Props {
 		/** App version string from package.json — passed in so the
@@ -34,20 +35,18 @@
 		// outside. Mirrors the player ErrorOverlay's pattern.
 		if (event.target === event.currentTarget) close();
 	}
-
-	function onKeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape') close();
-	}
 </script>
 
-<svelte:window onkeydown={open ? onKeydown : undefined} />
-
+<!-- A modal ($lib/components/modal-layer): its first control takes
+     focus, Tab stays inside it, the page behind it is inert, Escape
+     closes it, and focus goes back to the update badge. -->
 {#if open && release}
 	<div
 		class="update-backdrop"
 		role="presentation"
 		onpointerdown={onBackdropPointerDown}
 		transition:fade={{ duration: 160 }}
+		use:modal={{ onEscape: close }}
 	>
 		<div
 			class="update-dialog"
@@ -73,7 +72,15 @@
 			</dl>
 
 			{#if release.body}
-				<pre class="update-dialog-body">{release.body}</pre>
+				<!-- The notes scroll in a capped box; a tab stop lets the
+				     keyboard reach and scroll them, as Chromium does for a
+				     scroll container. -->
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<pre
+					class="update-dialog-body"
+					role="region"
+					tabindex="0"
+					aria-label={m.update_dialog_notes_aria_label()}>{release.body}</pre>
 			{/if}
 
 			<footer class="update-dialog-foot">
@@ -222,6 +229,7 @@
 	.dlg-btn-primary:hover {
 		background: color-mix(in oklab, var(--brand) 80%, var(--bone-100));
 	}
+	.update-dialog-body:focus-visible,
 	.dlg-btn:focus-visible {
 		outline: 2px solid var(--brand);
 		outline-offset: 2px;

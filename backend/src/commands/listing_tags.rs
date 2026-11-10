@@ -20,8 +20,8 @@
 use crate::app::AppState;
 use crate::cache::ttl::PLAY_RESOLUTION_TTL;
 
-fn key(show_key: &str) -> String {
-    format!("listing-tags:v3:{show_key}")
+pub(crate) fn key(show_key: &str) -> String {
+    format!("{}{show_key}", crate::cache::families::LISTING_TAGS)
 }
 
 #[path = "listing_tags_record.rs"]

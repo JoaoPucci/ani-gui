@@ -1,7 +1,7 @@
 // Which Watch Later cards move when the row is read again after a
 // tracker write settles, and the gate the row's transitions read at
 // fire time. The motion itself is the Continue Watching strip's
-// (`$lib/transitions/card-motion`), gated the same way
+// (`$lib/motion/card-motion`), gated the same way
 // (`$lib/history/animation-gate`): only what a settled write changed
 // moves; a row that fills or re-sorts on load does not.
 

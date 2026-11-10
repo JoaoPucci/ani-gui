@@ -52,6 +52,58 @@ export default ts.config(
 		}
 	},
 	{
+		// Reduced motion is honoured by construction: every piece of
+		// script motion goes through `src/lib/motion/`, which reads the
+		// preference. Outside it, these are the forms that start motion
+		// without asking. `tests/lint/reduced-motion.test.ts` runs these
+		// rules over fixtures and says what they do not cover.
+		files: ['src/**/*.{ts,js,svelte}'],
+		ignores: ['src/lib/motion/**', 'src/**/*.test.ts', 'src/**/*.spec.ts'],
+		rules: {
+			'no-restricted-imports': [
+				'error',
+				{
+					paths: ['svelte/transition', 'svelte/animate', 'svelte/motion', 'lottie-web'].map(
+						(name) => ({
+							name,
+							message:
+								'Motion goes through $lib/motion, which stands it still under reduced motion.'
+						})
+					)
+				}
+			],
+			'no-restricted-syntax': [
+				'error',
+				{
+					selector: "ImportExpression[source.value='lottie-web']",
+					message:
+						'Load Lottie through $lib/motion/lottie, which holds it still under reduced motion.'
+				},
+				{
+					selector:
+						"CallExpression[callee.type='MemberExpression'][callee.property.name='animate']",
+					message:
+						'Start a Web Animation through $lib/motion, which stands it still under reduced motion.'
+				},
+				{
+					selector: "Property[key.name='behavior'][value.value='smooth']",
+					message:
+						'Take a scroll behaviour from scrollBehavior() in $lib/motion/scroll, which jumps under reduced motion.'
+				},
+				{
+					selector: 'Literal[value=/prefers-reduced-motion/]',
+					message:
+						'Read the motion preference from reducedMotion in $lib/motion/reduced-motion.svelte.'
+				},
+				{
+					selector: 'TemplateElement[value.raw=/prefers-reduced-motion/]',
+					message:
+						'Read the motion preference from reducedMotion in $lib/motion/reduced-motion.svelte.'
+				}
+			]
+		}
+	},
+	{
 		// The acceptance tier's request guard cannot tell a request MSW
 		// sends on to a port that refuses it from one a handler
 		// answered (see tests/acceptance/setup.ts), so the tier does

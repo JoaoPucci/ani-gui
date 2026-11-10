@@ -81,6 +81,10 @@ pub struct SyncplayLaunchArgs {
     /// beside them covers those fetches too.
     #[serde(default)]
     pub subtitle_urls: Vec<String>,
+    /// Whether the show's remembered captions choice is Off: the
+    /// wrapped player starts with its subtitles off.
+    #[serde(default)]
+    pub subtitles_off: bool,
 }
 
 /// Build the argv that would be passed to `Command::new(binary).args(...)`.
@@ -118,22 +122,47 @@ pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
     // Custom is short-circuited above; its arms here are unreachable,
     // but the compiler can't see that without the explicit matches!()
     // above, so they stay explicit.
-    let (referrer_flag, sub_flag, every_track) = match args.player_kind {
-        ExternalPlayerKind::Mpv => ("--referrer=", "--sub-file=", true),
-        ExternalPlayerKind::Vlc => ("--http-referrer=", "--sub-file=", false),
-        ExternalPlayerKind::Iina => ("--mpv-referrer=", "--mpv-sub-file=", true),
-        ExternalPlayerKind::Custom => ("--referrer=", "--sub-file=", false),
+    let (referrer_flag, sub_flag, every_track, off_flag) = match args.player_kind {
+        ExternalPlayerKind::Mpv => ("--referrer=", "--sub-file=", true, "--sid=no"),
+        ExternalPlayerKind::Vlc => ("--http-referrer=", "--sub-file=", false, ""),
+        ExternalPlayerKind::Iina => ("--mpv-referrer=", "--mpv-sub-file=", true, "--mpv-sid=no"),
+        ExternalPlayerKind::Custom => ("--referrer=", "--sub-file=", false, ""),
     };
     let mut player_opts = Vec::new();
     if let Some(r) = args.referer.as_deref().filter(|s| !s.is_empty()) {
         player_opts.push(format!("{referrer_flag}{r}"));
     }
+    // A show remembered Off starts the player with its subtitles off:
+    // every track still there to turn on where the player takes them
+    // all, none where it takes one.
+    if args.subtitles_off && every_track {
+        player_opts.push(off_flag.to_string());
+    }
     let tracks: &[String] = if every_track {
         &args.subtitle_urls
+    } else if args.subtitles_off {
+        &[]
     } else {
         &args.subtitle_urls[..args.subtitle_urls.len().min(1)]
     };
-    player_opts.extend(tracks.iter().map(|u| format!("{sub_flag}{u}")));
+    // Fitted to the command line beside everything else on it: the
+    // arguments so far, the separator and the referer flag.
+    let fixed: Vec<String> = argv
+        .iter()
+        .cloned()
+        .chain(std::iter::once("--".to_string()))
+        .chain(player_opts.iter().cloned())
+        .collect();
+    let flags = tracks.iter().map(|u| format!("{sub_flag}{u}")).collect();
+    let mut kept = crate::commands::command_line::flags_within_budget(&args.binary, &fixed, flags);
+    // Syncplay starts the player with them, beside the referer flag: a
+    // player that is a batch file runs them through `cmd.exe`, whose
+    // line is far shorter.
+    let player = args.player_binary.trim();
+    if !player.is_empty() {
+        kept = crate::commands::command_line::flags_within_budget(player, &player_opts, kept);
+    }
+    player_opts.extend(kept);
     if !player_opts.is_empty() {
         argv.push("--".to_string());
         argv.extend(player_opts);

@@ -16,6 +16,7 @@ pub mod anilist_user;
 pub mod aniskip;
 pub mod github;
 pub mod images;
+pub(crate) mod inflight;
 pub mod kitsu;
 pub mod kitsu_page;
 pub mod mal_user;

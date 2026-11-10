@@ -6,6 +6,7 @@ it must. Standard library only — CI runs this with the runner's python3.
     python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
 """
 
+import copy
 import io
 import json
 import os
@@ -21,6 +22,20 @@ sys.path.insert(0, HERE)
 import oracle  # noqa: E402
 
 E = 12
+
+_GENERATED = []
+
+
+def generated_set():
+    """The generated set, built by `oracle.gen()` once per process — it
+    takes the better part of half a minute — and handed to each caller
+    as a copy of its own, so no test sees another's edits. The set is
+    still built afresh where building is what a test is about: twice in
+    the test that it is the same every time, and in a second process by
+    the command-line round trip."""
+    if not _GENERATED:
+        _GENERATED.append(oracle.gen())
+    return copy.deepcopy(_GENERATED[0])
 
 
 def pool(titles, count, rows, year=2020, dead=(), **names):
@@ -44,14 +59,14 @@ def pick(slug, count=E):
 
 class Generation(unittest.TestCase):
     def test_the_set_is_the_same_every_time(self):
-        self.assertEqual(oracle.gen(), oracle.gen())
+        self.assertEqual(oracle.gen(), generated_set())
 
     def test_every_id_is_unique(self):
-        ids = [c["id"] for c in oracle.gen()]
+        ids = [c["id"] for c in generated_set()]
         self.assertEqual(len(ids), len(set(ids)))
 
     def test_a_generated_id_follows_the_pool_not_its_position(self):
-        case = next(c for c in oracle.gen() if c["family"].startswith("admission") and len(c["rows"]) > 1)
+        case = next(c for c in generated_set() if c["family"].startswith("admission") and len(c["rows"]) > 1)
         again = oracle.case_id(
             case["family"], case["titles"], case["count"], case["entry_year"], case["rows"], case.get("dead", [])
         )
@@ -62,7 +77,7 @@ class Generation(unittest.TestCase):
         self.assertNotEqual(moved, case["id"], "the provider's order is part of the pool")
 
     def test_the_hand_written_sets_ride_along_with_their_expectations(self):
-        by_id = {c["id"]: c for c in oracle.gen()}
+        by_id = {c["id"]: c for c in generated_set()}
         total = 0
         for name in sorted(os.listdir(os.path.join(HERE, "cases"))):
             with open(os.path.join(HERE, "cases", name), encoding="utf-8") as fh:
@@ -73,7 +88,7 @@ class Generation(unittest.TestCase):
         self.assertGreater(total, 100)
 
     def test_every_case_carries_an_expectation(self):
-        for case in oracle.gen():
+        for case in generated_set():
             self.assertIn("expect", case, case["id"])
             self.assertTrue(
                 case["expect"] is None or set(case["expect"]) in ({"pick", "count"}, {"pick", "count", "versions"}),
@@ -81,7 +96,7 @@ class Generation(unittest.TestCase):
             )
 
     def test_the_generated_set_walks_versions_both_ways(self):
-        fams = [c for c in oracle.gen() if c["family"].startswith("versions")]
+        fams = [c for c in generated_set() if c["family"].startswith("versions")]
         # generated pools tag titles that end on a division too: the tag hides none
         self.assertTrue(
             any(
@@ -290,7 +305,7 @@ class TheModelReadsTheDocs(unittest.TestCase):
             oracle.predict(pool(["Show (Shin"], E, rows)),
             {"pick": "u", "count": E, "versions": [["p", "standard"], ["u", "uncensored"]]},
         )
-        self.assertTrue(any(c["family"] == "nested-tag" for c in oracle.gen()))
+        self.assertTrue(any(c["family"] == "nested-tag" for c in generated_set()))
 
     def test_a_closing_bracket_around_the_name_is_a_separator_in_either_width(self):
         for entry in ("[Oshi no Ko] 2nd Season", "［Oshi no Ko］ 2nd Season"):
@@ -316,7 +331,7 @@ class TheModelReadsTheDocs(unittest.TestCase):
         self.assertFalse(oracle.season_before_entry(["Show 2"], "Show 1 Shin"))
         self.assertFalse(oracle.season_before_entry(["Show 2 Season 3"], "Show 1 Shin Season 1"))
         self.assertTrue(oracle.season_before_entry(["Show 3 Part 2"], "Show 2 Part 2"))
-        self.assertTrue(any(c["family"] == "unicode-words" for c in oracle.gen()))
+        self.assertTrue(any(c["family"] == "unicode-words" for c in generated_set()))
 
     def test_a_version_tag_folds_as_the_picker_folds(self):
         # ASCII or full-width, either case, each letter on its own — and no
@@ -327,7 +342,7 @@ class TheModelReadsTheDocs(unittest.TestCase):
         self.assertEqual(oracle.version_of("Show (Uncenſored)")[1], "standard")
         self.assertEqual(oracle._past_vtag("Show 1 (Uncenſored)"), "Show 1 (Uncenſored)")
         self.assertEqual(oracle.predict(pool(["Show"], E, [("p", "Show", E), ("u", "Show (Uncenſored)", E)])), pick("p"))
-        self.assertTrue(any(c["family"] == "not-a-tag" for c in oracle.gen()))
+        self.assertTrue(any(c["family"] == "not-a-tag" for c in generated_set()))
 
     def test_letters_and_spaces_are_the_picker_s(self):
         # the picker's letters and digits: char::is_alphanumeric, a combining
@@ -369,7 +384,7 @@ class TheModelReadsTheDocs(unittest.TestCase):
                 for a, b in zip(text, text[1:])
             )
 
-        cases = oracle.gen()
+        cases = generated_set()
         rows = [(c, r[1]) for c in cases for r in c["rows"]]
         self.assertTrue(any(mixed(m.group(0)[1:-1]) for _, t in rows for m in [oracle.VTAG.search(t.lower())] if m))
         self.assertTrue(any(mixed(m.group(0)[1:-1]) for _, t in rows for m in [oracle.CTAG.search(t.lower())] if m))
@@ -569,7 +584,7 @@ class TheModelReadsTheDocs(unittest.TestCase):
         expectation its family tabled from the docs: the two readings of
         the same document agree."""
         covered = 0
-        for case in oracle.gen():
+        for case in generated_set():
             want = oracle.predict(case)
             if want is oracle.NOT_MODELLED:
                 continue
@@ -751,7 +766,7 @@ class Comparison(unittest.TestCase):
         self.assertEqual(gen.returncode, 0, gen.stderr)
         with open(cases, encoding="utf-8") as fh:
             generated = json.load(fh)
-        self.assertEqual(generated, oracle.gen())
+        self.assertEqual(generated, generated_set())
         # every pool agrees but one picked pool, which the allowlist carries
         at, first = next((i, c) for i, c in enumerate(generated) if c["expect"])
         outcomes = [{"id": c["id"], "got": outcome_of(c)} for c in generated]

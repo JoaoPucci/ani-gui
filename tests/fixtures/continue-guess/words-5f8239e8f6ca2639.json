@@ -1,0 +1,92 @@
+{
+ "data": [
+  {
+   "id": "3919",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Bakemonogatari",
+    "titles": {
+     "en": "Bakemonogatari",
+     "en_jp": "Bakemonogatari",
+     "ja_jp": "化物語"
+    },
+    "abbreviatedTitles": [
+     "Ghostory"
+    ],
+    "slug": "bakemonogatari",
+    "startDate": "2009-07-03",
+    "endDate": "2010-06-25",
+    "episodeCount": 15,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "4800",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Bakemonogatari Recap",
+    "titles": {
+     "en_jp": "Bakemonogatari Recap",
+     "ja_jp": "化物語"
+    },
+    "abbreviatedTitles": [
+     "Bakemonogatari Episode 5.5",
+     "Bakemonogatari Special",
+     "Ghostory Recap",
+     "Ghostory Special"
+    ],
+    "slug": "bakemonogatari-recap",
+    "startDate": "2009-08-07",
+    "endDate": "2009-08-07",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45896",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Bakemonogatari PV",
+    "titles": {
+     "en": "Bakemonogatari PV",
+     "en_jp": "Bakemonogatari PV",
+     "ja_jp": "化物語 PV"
+    },
+    "abbreviatedTitles": [
+     "漫画 化物語 シャフト制作特別PV",
+     "Bakemonogatari Special PV"
+    ],
+    "slug": "bakemonogatari-pv",
+    "startDate": "2022-02-17",
+    "endDate": "2022-02-17",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48484",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Nekomonogatari: Kuro Recap",
+    "titles": {
+     "en": "Nekomonogatari: Black Recap",
+     "en_jp": "Nekomonogatari: Kuro Recap",
+     "ja_jp": "「化物語」ダイジェストムービー"
+    },
+    "abbreviatedTitles": [
+     "Nekomonogatari Black: Tsubasa Family Recap",
+     "Bakemonogatari Digest Movie"
+    ],
+    "slug": "nekomonogatari-kuro-recap",
+    "startDate": "2013-03-06",
+    "endDate": "2013-03-06",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

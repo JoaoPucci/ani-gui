@@ -80,6 +80,11 @@ pub struct DownloadArgs {
     /// ([`crate::commands::play::PlayArgs::version`]).
     #[serde(default)]
     pub version: Option<crate::commands::play_native_versions::VersionKind>,
+    /// The captions choice remembered for the show
+    /// ([`crate::commands::play::PlayArgs::caption`]), which decides
+    /// which tracks a listing past the cap keeps, as it does for a play.
+    #[serde(default)]
+    pub caption: Option<String>,
     /// Absolute path to the directory the download lands in. The
     /// frontend's confirmation modal opens on `paths::download_dir()`
     /// and lets the user pick a different folder; the chosen path
@@ -87,14 +92,41 @@ pub struct DownloadArgs {
     /// chain on the backend.
     #[serde(default)]
     pub download_dir: Option<String>,
+    /// The locale the renderer runs in ([`super::play::PlayArgs::locale`]).
+    #[serde(default)]
+    pub locale: Option<String>,
 }
 
 impl DownloadArgs {
+    /// What the viewer wants of a listing, with `locale` the UI's
+    /// ([`crate::commands::play::PlayArgs::wanted`]).
+    #[must_use]
+    pub fn wanted<'a>(&'a self, locale: &'a str) -> crate::scraper::track_preference::Wanted<'a> {
+        crate::scraper::track_preference::Wanted {
+            remembered: self.caption.as_deref().filter(|c| *c != "off"),
+            locale,
+        }
+    }
+
+    /// The locale the download orders subtitle tracks by: the
+    /// renderer's, or the one in the `config.toml` at `config_path`
+    /// when the request names none. A single episode and a range both
+    /// read it here.
+    #[must_use]
+    pub fn ordering_locale(&self, config_path: &std::path::Path) -> String {
+        self.locale.clone().unwrap_or_else(|| {
+            crate::config::read_config(config_path)
+                .unwrap_or_default()
+                .locale
+        })
+    }
+
     /// The native resolve this download asks for, at `quality`.
     #[must_use]
     pub fn native_request<'a>(
         &'a self,
         quality: &'a str,
+        locale: &'a str,
         stamps_beside: Option<&'a std::path::Path>,
         tail: Option<&'a dyn super::play_native_appended::TailSource>,
     ) -> NativeResolveRequest<'a> {
@@ -104,6 +136,7 @@ impl DownloadArgs {
             episode: &self.episode,
             mode: &self.mode,
             quality,
+            wanted: self.wanted(locale),
             expected_count: self.episode_count,
             year: self.year,
             subtype: self.subtype.as_deref(),
@@ -236,10 +269,12 @@ where
     // priority, like the play path's non-prefetch requests.
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
+    let locale = args.ordering_locale(&state.config_path);
     // Every listing the resolve picks is recorded, served or not.
     let recorder = crate::commands::listing_tags::Recorder::new(state);
     let mut request = args.native_request(
         quality,
+        &locale,
         Some(&state.history_path),
         tail.as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
@@ -723,9 +758,11 @@ pub(crate) async fn publish_without_links(
     }
 }
 
-/// How long the sidecar phase may take as a whole. A subtitle file is
-/// kilobytes and the tracks are fetched together, so a minute is
-/// generous for all of them at once; the proxy client would otherwise
+/// How long the sidecar phase may take as a whole, for a listing of
+/// sixteen tracks; a longer one adds to it
+/// ([`super::download_pacing::sidecar_phase_deadline`]). A subtitle
+/// file is kilobytes and the tracks are fetched together, so a minute
+/// is generous for sixteen at once; the proxy client would otherwise
 /// let each one stall for its own two minutes, one after another,
 /// after the media tool had already finished under its hour. A CDN
 /// that has not answered in a minute is stalling, and the deadline

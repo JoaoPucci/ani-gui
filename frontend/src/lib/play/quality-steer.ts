@@ -2,7 +2,7 @@
  * A pin carried across levels replaced outright.
  *
  * A content-steering pathway switch replaces every level object, so
- * the remap keeps none of them and the hold re-seats at the setting's
+ * the remap keeps none of them and the hold re-seats at its target's
  * level, letting the stream's pin go. The viewer's choice still
  * stands: the stream is pinned again at the run's pinned height (or
  * rank) among the new levels, when one is at or below it.

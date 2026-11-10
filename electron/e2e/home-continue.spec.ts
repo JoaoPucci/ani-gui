@@ -20,13 +20,7 @@
  * kitsu-anime-detail it points to is enough to drive a deterministic
  * match. Live `kitsuSearch` is stubbed for the orphan case only.
  */
-import {
-	_electron as electron,
-	expect,
-	test,
-	type ElectronApplication,
-	type Page
-} from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
@@ -43,9 +37,7 @@ import {
 	topRated,
 	trending
 } from './fixtures/kitsu';
-
-const electronDir = path.resolve(__dirname, '..');
-const packagedBinary = path.join(electronDir, 'dist/linux-unpacked/ani-gui');
+import { appWindow, launchPackagedApp, packagedBinary } from './launch';
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -79,8 +71,13 @@ interface StubOptions {
 	/** Serve the show as a movie. Combined with `episodeTitle: null`
 	 *  this is the only variant whose body has no episode line. */
 	singleVideo?: boolean;
-	/** Hook fired whenever the renderer posts to /api/play — lets
-	 *  the test assert the click handler ran with the right episode. */
+	/** Hook fired for every play request the renderer sends — the
+	 *  stream and the POST alike — so a test can tell which episode a
+	 *  click asked for. Background warms come through here too: the
+	 *  player warms the next episode as soon as it opens. A warm is
+	 *  marked on the wire (`prefetch=1` on the stream, `prefetch: true`
+	 *  in the POST body), and the recorded body keeps that mark, so a
+	 *  test can pick out the request a click caused. */
 	onPlay?: (body: unknown) => void;
 	/** Per-request hook for /api/play/stream. Return 'hang' to leave
 	 *  that request pending forever (only the renderer's own abort
@@ -119,14 +116,10 @@ async function launchAppWithContinueStubsOnce(
 		ANI_GUI_UNATTENDED: '1'
 	};
 
-	const app = await electron.launch({
-		executablePath: packagedBinary,
-		args: ['--no-sandbox'],
-		env: cleanEnv
-	});
+	const app = await launchPackagedApp(cleanEnv);
 	onLaunch(app);
 	const context = app.context();
-	const page = await app.firstWindow();
+	const page = await appWindow(app);
 
 	const watchedAt: Record<string, number> = {};
 	for (const h of opts.history) watchedAt[h.id] = 1_700_000_000;
@@ -135,11 +128,11 @@ async function launchAppWithContinueStubsOnce(
 	// the context). page.route() applies to the specific page from the
 	// moment it's registered onward; the bounce below then forces a
 	// fresh navigation whose fetches all flow through this handler.
-	// Earlier attempts to register on context.route before firstWindow
+	// Earlier attempts to register on context.route before appWindow
 	// raced the renderer's initial onMount fetch batch (CI runs
 	// 26891889692, 26892237750, 26893103223 — test #4 screenshot
 	// consistently showed real-Kitsu content despite the bounce).
-	// Registering AFTER firstWindow on the page means there's no
+	// Registering AFTER appWindow on the page means there's no
 	// pre-page window where the route can be missed.
 	await page.route('**/api/**', async (r) => {
 		const u = new URL(r.request().url());
@@ -200,7 +193,7 @@ async function launchAppWithContinueStubsOnce(
 				title: u.searchParams.get('title'),
 				episode: u.searchParams.get('episode'),
 				mode: u.searchParams.get('mode'),
-				quality: u.searchParams.get('quality')
+				prefetch: u.searchParams.get('prefetch')
 			};
 			opts.onPlay?.(body);
 			if (opts.onPlayStream?.(u) === 'hang') return;
@@ -309,11 +302,16 @@ async function waitForStripVisible(page: Page) {
 }
 
 test('Continue card shows last+1 and clicking it plays that episode', async () => {
-	let playArgs: Record<string, string | null> | null = null;
+	const plays: Record<string, unknown>[] = [];
+	// The click's play is the request that is not a warm. The player
+	// warms the next episode the moment it opens, so episode 7 follows
+	// the click on the wire — and whether it lands before or after a
+	// read of "the latest request" is a race this test must not run.
+	const clicked = () => plays.filter((p) => p.prefetch !== '1' && p.prefetch !== true);
 	const { app, page } = await launchAppWithContinueStubs({
 		history: continueHistory,
 		onPlay: (body) => {
-			playArgs = body as typeof playArgs;
+			plays.push(body as Record<string, unknown>);
 		}
 	});
 	try {
@@ -331,12 +329,13 @@ test('Continue card shows last+1 and clicking it plays that episode', async () =
 		await expect(card).toContainText('6');
 
 		await card.click();
-		await expect.poll(() => playArgs?.episode, { timeout: 10_000 }).toBe('6');
-		// playStream encodes title + mode in the SSE query string;
-		// kitsu_id isn't on the wire (the backend reads it from the
-		// reverse cache during resolution), so assert what is.
-		expect(playArgs?.title).toBe(continueKitsuMatch.canonical_title);
-		expect(playArgs?.mode).toBe('sub');
+		await expect.poll(() => clicked().length, { timeout: 10_000 }).toBeGreaterThan(0);
+		const [playArgs] = clicked();
+		expect(playArgs.episode).toBe('6');
+		// The same request carries the show and the audio the card
+		// resolved.
+		expect(playArgs.title).toBe(continueKitsuMatch.canonical_title);
+		expect(playArgs.mode).toBe('sub');
 	} finally {
 		await app.close();
 	}
@@ -530,9 +529,10 @@ async function continueCardHeight(opts: StubOptions, selector: string): Promise<
 		await waitForStripVisible(page);
 		const strip = page.getByRole('region', { name: /continue watching/i });
 		await expect(strip).toBeVisible({ timeout: 10_000 });
-		// Class locators, not roles: the strip also holds the rail's
-		// kebab and each card's delete chip, so `getByRole('button')`
-		// picks up a 33px chip and compares it against a card.
+		// Class locators, not roles: the strip also holds each card's
+		// delete chip, so `getByRole('button')` picks up a 33px chip and
+		// compares it against a card. (The row's Clear history action
+		// sits in the row's header, outside this region.)
 		const card = strip.locator(selector).first();
 		await expect(card).toBeVisible({ timeout: 10_000 });
 		return (await card.boundingBox())?.height ?? 0;

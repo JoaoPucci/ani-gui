@@ -6,31 +6,44 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
+	import { appInfo, historyClear, historyList, metaCacheClear } from '$lib/api';
 	import {
-		appInfo,
-		historyClear,
-		historyList,
-		metaCacheClear,
-		type AppInfo,
-		type HistoryEntry
-	} from '$lib/api';
+		createDiagnosticsActions,
+		INITIAL_DIAGNOSTICS,
+		type DiagnosticsState
+	} from '$lib/diagnostics/history-actions';
 	import { legacySweepView } from '$lib/diagnostics/legacy-sweep';
+	import { retiredSweepView } from '$lib/diagnostics/retired-sweep';
+	import { cacheReclaimView } from '$lib/diagnostics/cache-reclaim';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs } from '$lib/hero/prefs';
+	import { loadRowPrefs, saveRowPrefs } from '$lib/rows/prefs';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
 
-	let info = $state<AppInfo | null>(null);
-	let history = $state<HistoryEntry[] | null>(null);
-	let infoError = $state<string | null>(null);
-	let historyError = $state<string | null>(null);
-	let busy = $state(false);
-	let cacheStatus = $state<string | null>(null);
-	let cacheError = $state<string | null>(null);
+	// The page's actions and what they leave on show live in
+	// $lib/diagnostics/history-actions; this renders its state.
+	let view = $state<DiagnosticsState>({ ...INITIAL_DIAGNOSTICS });
+	const actions = createDiagnosticsActions({
+		appInfo,
+		historyList,
+		historyClear,
+		metaCacheClear,
+		describe: describeError,
+		changed: (next) => (view = next)
+	});
+	const info = $derived(view.info);
+	const history = $derived(view.history);
 
 	// What the backend's boot sweep removed, if anything. Present only
 	// on the launch that upgraded from a version which kept its own
 	// copy of the shell script — see $lib/diagnostics/legacy-sweep.
 	const legacySweep = $derived(legacySweepView(info?.removed_legacy_paths));
+	// What the sweep over a retired streaming provider's rows changed,
+	// if anything — see $lib/diagnostics/retired-sweep.
+	const retiredSweep = $derived(retiredSweepView(info?.retired_provider_sweep));
+	// What the launch's cache reclaim deleted, if anything — see
+	// $lib/diagnostics/cache-reclaim.
+	const cacheReclaim = $derived(cacheReclaimView(info?.cache_reclaim));
 
 	// Whether the home and detail pages show their banner framing
 	// switch. Kept with the framing preferences themselves, so turning
@@ -42,48 +55,15 @@
 		saveHeroPrefs(browserStorage(), heroPrefs);
 	}
 
-	async function refresh() {
-		infoError = null;
-		historyError = null;
-		try {
-			info = await appInfo();
-		} catch (e) {
-			infoError = describeError(e);
-		}
-		try {
-			history = await historyList();
-		} catch (e) {
-			historyError = describeError(e);
-		}
+	// Whether the home page shows its row style switch, kept with the
+	// row preferences the same way — see $lib/rows/prefs.
+	let rowPrefs = $state(loadRowPrefs(browserStorage()));
+	function setRowStyleControls(shown: boolean) {
+		rowPrefs = { ...rowPrefs, controls: shown };
+		saveRowPrefs(browserStorage(), rowPrefs);
 	}
 
-	async function clearHistory() {
-		busy = true;
-		try {
-			await historyClear();
-			history = [];
-		} catch (e) {
-			historyError = describeError(e);
-		} finally {
-			busy = false;
-		}
-	}
-
-	async function clearMetaCache() {
-		busy = true;
-		cacheStatus = null;
-		cacheError = null;
-		try {
-			await metaCacheClear();
-			cacheStatus = m.diagnostics_cache_clear_success();
-		} catch (e) {
-			cacheError = describeError(e);
-		} finally {
-			busy = false;
-		}
-	}
-
-	onMount(refresh);
+	onMount(() => void actions.refresh());
 </script>
 
 <main class="page">
@@ -91,8 +71,8 @@
 
 	<section>
 		<h2>{m.diagnostics_section_app_info()}</h2>
-		{#if infoError}
-			<p>{m.diagnostics_app_info_error()} {infoError}</p>
+		{#if view.infoError}
+			<p>{m.diagnostics_app_info_error()} {view.infoError}</p>
 		{:else if info}
 			<dl>
 				<dt>{m.diagnostics_app_info_version()}</dt>
@@ -106,6 +86,46 @@
 			<p>{m.diagnostics_app_info_loading()}</p>
 		{/if}
 	</section>
+
+	{#if cacheReclaim.visible}
+		<section>
+			<h2>{m.diagnostics_section_cache_reclaim()}</h2>
+			<p>{m.diagnostics_cache_reclaim_description()}</p>
+			<ul>
+				{#if cacheReclaim.oldRows > 0}
+					<li>{m.diagnostics_cache_reclaim_old({ count: cacheReclaim.oldRows })}</li>
+				{/if}
+				{#if cacheReclaim.expiredRows > 0}
+					<li>{m.diagnostics_cache_reclaim_expired({ count: cacheReclaim.expiredRows })}</li>
+				{/if}
+			</ul>
+		</section>
+	{/if}
+
+	{#if retiredSweep.visible}
+		<section>
+			<h2>{m.diagnostics_section_retired_sweep()}</h2>
+			{#if retiredSweep.superseded.length > 0}
+				<p>{m.diagnostics_retired_sweep_superseded()}</p>
+				<ul>
+					{#each retiredSweep.superseded as title, i (i)}
+						<li>{title}</li>
+					{/each}
+				</ul>
+			{/if}
+			{#if retiredSweep.renumbered.length > 0}
+				<p>{m.diagnostics_retired_sweep_renumbered()}</p>
+				<ul>
+					{#each retiredSweep.renumbered as title, i (i)}
+						<li>{title}</li>
+					{/each}
+				</ul>
+			{/if}
+			{#if retiredSweep.storedEntries > 0}
+				<p>{m.diagnostics_retired_sweep_stored({ count: retiredSweep.storedEntries })}</p>
+			{/if}
+		</section>
+	{/if}
 
 	{#if legacySweep.visible}
 		<section>
@@ -127,8 +147,8 @@
 				{m.diagnostics_section_history_title({ count: history.length })}
 			{/if}
 		</h2>
-		{#if historyError}
-			<p>{m.diagnostics_history_error()} {historyError}</p>
+		{#if view.historyError}
+			<p>{m.diagnostics_history_error()} {view.historyError}</p>
 		{:else if history === null}
 			<p>{m.diagnostics_history_loading()}</p>
 		{:else if history.length === 0}
@@ -146,11 +166,19 @@
 				{/each}
 			</ul>
 		{/if}
+		{#if view.historyClearError}<p>
+				{m.diagnostics_history_clear_error()}
+				{view.historyClearError}
+			</p>{/if}
 		<p>
-			<button type="button" onclick={refresh} disabled={busy}
+			<button type="button" onclick={() => actions.refresh()} disabled={view.busy}
 				>{m.diagnostics_refresh_button()}</button
 			>
-			<button type="button" onclick={clearHistory} disabled={busy || history?.length === 0}>
+			<button
+				type="button"
+				onclick={() => actions.clearHistory()}
+				disabled={view.busy || history?.length === 0}
+			>
 				{m.diagnostics_clear_history_button()}
 			</button>
 		</p>
@@ -162,12 +190,12 @@
 			{m.diagnostics_metadata_cache_description()}
 		</p>
 		<p>
-			<button type="button" onclick={clearMetaCache} disabled={busy}
+			<button type="button" onclick={() => actions.clearCache()} disabled={view.busy}
 				>{m.diagnostics_clear_metadata_cache_button()}</button
 			>
 		</p>
-		{#if cacheStatus}<p>{cacheStatus}</p>{/if}
-		{#if cacheError}<p>{m.diagnostics_cache_clear_error()} {cacheError}</p>{/if}
+		{#if view.cacheCleared}<p>{m.diagnostics_cache_clear_success()}</p>{/if}
+		{#if view.cacheError}<p>{m.diagnostics_cache_clear_error()} {view.cacheError}</p>{/if}
 	</section>
 
 	<section>
@@ -181,6 +209,21 @@
 					onchange={(e) => setFramingControls((e.currentTarget as HTMLInputElement).checked)}
 				/>
 				{m.diagnostics_banner_framing_toggle_label()}
+			</label>
+		</p>
+	</section>
+
+	<section>
+		<h2>{m.diagnostics_section_row_style()}</h2>
+		<p>{m.diagnostics_row_style_description()}</p>
+		<p>
+			<label>
+				<input
+					type="checkbox"
+					checked={rowPrefs.controls}
+					onchange={(e) => setRowStyleControls((e.currentTarget as HTMLInputElement).checked)}
+				/>
+				{m.diagnostics_row_style_toggle_label()}
 			</label>
 		</p>
 	</section>

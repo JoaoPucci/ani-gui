@@ -1,0 +1,27 @@
+{
+ "data": [
+  {
+   "id": "11459",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Diamond wa Kudakenai",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Diamond is Unbreakable",
+     "en_jp": "JoJo no Kimyou na Bouken: Diamond wa Kudakenai",
+     "en_us": "JoJo's Bizarre Adventure: Diamond is Unbreakable",
+     "ja_jp": "ジョジョの奇妙な冒険 ダイヤモンドは砕けない"
+    },
+    "abbreviatedTitles": [
+     "JoJo no Kimyou na Bouken Part 4: Diamond wa Kudakenai",
+     "Diamond is not Crash"
+    ],
+    "slug": "jojo-s-bizarre-adventure-diamond-is-unbreakable",
+    "startDate": "2016-04-02",
+    "endDate": "2016-12-24",
+    "episodeCount": 39,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

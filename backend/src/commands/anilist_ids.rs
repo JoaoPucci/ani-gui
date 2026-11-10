@@ -32,11 +32,14 @@ use crate::cache::{meta_cache_get, meta_cache_put, SqlitePool};
 use crate::error::Result;
 
 fn media_id_key(mal_id: u32) -> String {
-    format!("anilist:media-id-for-mal:v1:{mal_id}")
+    format!("{}{mal_id}", crate::cache::families::ANILIST_MEDIA_FOR_MAL)
 }
 
 fn mal_id_key(media_id: u32) -> String {
-    format!("anilist:mal-id-for-media:v1:{media_id}")
+    format!(
+        "{}{media_id}",
+        crate::cache::families::ANILIST_MAL_FOR_MEDIA
+    )
 }
 
 /// The cached answer under `key`: `Some(Some(id))` translated,

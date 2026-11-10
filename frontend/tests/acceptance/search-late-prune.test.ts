@@ -48,7 +48,7 @@ function ref(id: string, title: string) {
 const CONFIG = {
 	locale: 'en',
 	mode: 'sub',
-	quality: 'best',
+	download_quality: 'best',
 	external_player: '',
 	external_player_kind: 'mpv',
 	external_player_custom_args: '',

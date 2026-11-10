@@ -25,10 +25,22 @@
  * without a backend address.
  */
 import type { StreamProvider } from '$lib/history/show-key';
+import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
+import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
 import { laneBase, type Lane } from '$lib/backend/lanes';
+import { getLocale } from '$lib/paraglide/runtime';
 import { probeLimiter } from '$lib/availability/probe-limiter';
 import { probeScope } from '$lib/availability/probe-scope';
+import {
+	REFILL_HEADER,
+	RefillWaiter,
+	parseRefills,
+	refetchOnRefill,
+	shareRefetch,
+	type RefillEnded,
+	type Served
+} from '$lib/refill/refill';
 
 let apiBaseCache: string | null = null;
 
@@ -53,6 +65,18 @@ declare global {
 			 *  per OS (e.g. the FfmpegMissing modal). Absent in browser-
 			 *  only dev. */
 			platform?: string;
+			/** The launch's remote flags, decided by the backend before
+			 *  the window opened and fixed for the session
+			 *  (`$lib/flags`). Absent in browser-only dev. */
+			flags?: Readonly<Record<string, boolean>>;
+			/** Where those flags came from: `file`, `cache`,
+			 *  `defaults` or `test`; null when the window opened
+			 *  without them. */
+			flagsOrigin?: string | null;
+			/** Tell the main process the app's first page has rendered,
+			 *  which the window's reveal waits for (`$lib/app-ready`).
+			 *  Absent in browser-only dev. */
+			appReady?: () => void;
 			/** Open a native folder picker dialog. Returns the chosen
 			 *  absolute path or null on cancel. */
 			pickDirectory?: (options?: {
@@ -182,6 +206,77 @@ async function getJson<T>(path: string): Promise<T> {
 	return expect2xx<T>(resp);
 }
 
+/** A GET's JSON body, with the tickets of the refills it was served
+ *  without (`$lib/refill/refill`). */
+async function getJsonServed<T>(path: string): Promise<Served<T>> {
+	const resp = await fetch(await url(path));
+	const data = await expect2xx<T>(resp);
+	// A response built without headers (a test's stand-in) has none.
+	const headers = resp.headers as Headers | undefined;
+	return { data, refills: parseRefills(headers?.get(REFILL_HEADER)) };
+}
+
+/** Wait until one of `tickets` has ended; `[]` past the backend's own
+ *  limit. */
+export function refillsWait(tickets: number[], signal: AbortSignal): Promise<RefillEnded[]> {
+	return postJson<RefillEnded[]>('/api/refills/wait', { tickets }, { signal });
+}
+
+/** The page showing these tickets' fills has gone. Best effort: a
+ *  release that fails leaves the retry ranked as on screen a moment
+ *  longer. */
+export function refillsRelease(tickets: number[]): void {
+	void postJson<void>('/api/refills/release', { tickets }).catch(() => {});
+}
+
+/** The renderer's one waiter on refills. */
+const refillWaiter = new RefillWaiter(refillsWait, undefined, refillsRelease);
+
+/** What a read the page waits on a refill for takes: what to do with
+ *  the read fetched once more after the refill landed, and what says
+ *  the page has gone. */
+export interface RefillOptions<T> {
+	onRefill?: (data: T) => void;
+	signal?: AbortSignal;
+}
+
+/** GET `path`, and when it was served without a fill a retry will
+ *  bring, fetch it once more after the retry lands and hand that to
+ *  `opts.onRefill`. */
+async function getJsonRefilled<T>(
+	path: string,
+	refetchPath: string,
+	opts: RefillOptions<T>
+): Promise<T> {
+	const served = await getJsonServed<T>(path);
+	const apply = opts.onRefill;
+	if (apply) {
+		void refetchOnRefill(served, {
+			waiter: refillWaiter,
+			// Every read of this page waiting on the same refill fetches
+			// it once between them.
+			refetch: () =>
+				shareRefetch(`${refetchPath}#${served.refills.join(',')}`, () =>
+					getJsonLettingGo<T>(refetchPath)
+				),
+			apply,
+			signal: opts.signal
+		});
+	} else {
+		refillWaiter.letGo(served.refills);
+	}
+	return served.data;
+}
+
+/** GET `path` for a read that waits on no refill: the tickets it is
+ *  served with are let go, so their retries rank after every fill a
+ *  page on screen waits for. */
+async function getJsonLettingGo<T>(path: string): Promise<T> {
+	const served = await getJsonServed<T>(path);
+	refillWaiter.letGo(served.refills);
+	return served.data;
+}
+
 /** Where a request goes and what can cancel it. */
 interface RequestOptions {
 	lane?: Lane;
@@ -223,6 +318,14 @@ export interface AppInfo {
 	 *  launch after upgrading; the diagnostics page decides what to
 	 *  show via `$lib/diagnostics/legacy-sweep`. */
 	removed_legacy_paths: string[];
+	/** What the boot sweep over a retired streaming provider's rows
+	 *  changed; empty on every launch that found none. The page decides
+	 *  what to show via `$lib/diagnostics/retired-sweep`. */
+	retired_provider_sweep?: RetiredSweepReport;
+	/** What the launch's cache reclaim deleted; zero on every launch
+	 *  that found nothing to reclaim. The page decides what to show via
+	 *  `$lib/diagnostics/cache-reclaim`. */
+	cache_reclaim?: CacheReclaimReport;
 }
 
 /** One row from the watch-history file. */
@@ -233,6 +336,10 @@ export interface HistoryEntry {
 	/** Kitsu id of the show the user played, recorded with the watch.
 	 *  Absent on rows written before history recorded it. */
 	kitsu_id?: string;
+	/** The release year the row's show key names among its slug's words
+	 *  (`hianime:jojos-bizarre-adventure-2000-5182` names 2000), read by
+	 *  the backend; absent when it names none. */
+	key_year?: number;
 }
 
 /** Input to `cmd_create_session`. */
@@ -293,6 +400,10 @@ export interface CreateSessionResponse {
 	versions?: VersionInfo[];
 	/** The version that played, when there are several. */
 	version?: VersionKind;
+	/** Whether a play that named a guessed card's row (`guess_row`)
+	 *  landed on that row's own listing. Absent (false) otherwise and
+	 *  from older backends. */
+	own_listing?: boolean;
 }
 
 /** Which copy of a season a version is: the provider lists some
@@ -370,7 +481,10 @@ export interface KitsuCoverImage {
 export interface Config {
 	locale: string;
 	mode: string; // "sub" | "dub"
-	quality: string; // "best" | "worst" | "1080" | "720" | "480"
+	/** The quality downloads take: "best" | "worst" | a height such as
+	 *  "720". Downloads only — the player always starts on Auto, and the
+	 *  external players and Syncplay get the master. */
+	download_quality: string;
 	external_player: string;
 	external_player_kind: ExternalPlayerKind;
 	external_player_custom_args: string;
@@ -567,7 +681,6 @@ export interface PlayArgs {
 	title: string;
 	episode: string;
 	mode: 'sub' | 'dub';
-	quality?: string;
 	/** Kitsu's authoritative episode count. The backend uses this to
 	 *  disambiguate the provider candidates that share a title — e.g.
 	 *  picking the 500-ep "Naruto: Shippuden" main show over the
@@ -612,19 +725,55 @@ export interface PlayArgs {
 	 *  resolution cache on it, so a stamp or an eviction names the
 	 *  version its play named. */
 	version?: VersionKind;
+	/** The history row a Continue card whose show was only a guess
+	 *  opened the play from. The session answers whether the play
+	 *  landed on that row's own listing (`own_listing`). */
+	guess_row?: string;
+	/** The Kitsu id the guessed card guessed, sent with `guess_row` in
+	 *  place of `kitsu_id`: the backend records it on the row the
+	 *  resolve writes only when the play landed on that row's own
+	 *  listing, and reads it for nothing else. */
+	guess_id?: string;
+	/** The captions choice remembered for the show
+	 *  (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. The
+	 *  backend orders the subtitle tracks it hands an external player,
+	 *  and cuts a listing past its cap, by it. Absent when none is. */
+	caption?: string;
+}
+
+/** `args` naming the locale the renderer runs in. The backend orders
+ *  the subtitle tracks it hands a player, a download or a cut listing
+ *  by it, so they follow the locale the built-in player starts by
+ *  rather than `config.toml`'s, which the renderer adopts only when it
+ *  is one of the app's own (`$lib/settings/boot-locale.ts`). */
+function withUiLocale<T extends object>(args: T): T & { locale: string } {
+	return { ...args, locale: uiLocale() };
+}
+
+/** The locale the renderer runs in, or an empty one when Paraglide
+ *  can resolve none (it throws then, as `boot-locale.ts` also allows
+ *  for). The play page reads the same empty locale for the built-in
+ *  player, and the backend reads it as no language, as the player
+ *  does — so both orders still agree, and the play does not fail. */
+function uiLocale(): string {
+	try {
+		return getLocale();
+	} catch {
+		return '';
+	}
 }
 
 /** Play an episode in the embedded player. Returns the session URLs
  *  the renderer feeds to hls.js after navigating to /play. */
 export function play(args: PlayArgs): Promise<CreateSessionResponse> {
-	return postJson<CreateSessionResponse>('/api/play', args, { lane: 'resolve' });
+	return postJson<CreateSessionResponse>('/api/play', withUiLocale(args), { lane: 'resolve' });
 }
 
 /** Play an episode in the user's external media player (default mpv).
  *  No session is registered — the player streams from the upstream
  *  directly with the resolved Referer. */
 export function playExternal(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/external', args, { lane: 'resolve' });
+	return postJson<void>('/api/play/external', withUiLocale(args), { lane: 'resolve' });
 }
 
 /** Launch the resolved episode in the user's Syncplay binary. Same
@@ -634,7 +783,7 @@ export function playExternal(args: PlayArgs): Promise<void> {
  *  Syncplay binary can't be spawned — caller surfaces the failure
  *  via the play page's `ErrorOverlay` with a syncplay.pl link. */
 export function playSyncplay(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/syncplay', args, { lane: 'resolve' });
+	return postJson<void>('/api/play/syncplay', withUiLocale(args), { lane: 'resolve' });
 }
 
 /** Drop the cached play resolution for `args` so the next play call
@@ -704,7 +853,6 @@ export function playStream(
 	params.set('title', args.title);
 	params.set('episode', args.episode);
 	params.set('mode', args.mode);
-	if (args.quality) params.set('quality', args.quality);
 	if (typeof args.episode_count === 'number')
 		params.set('episode_count', String(args.episode_count));
 	if (typeof args.year === 'number') params.set('year', String(args.year));
@@ -718,6 +866,10 @@ export function playStream(
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.prefetch === true) params.set('prefetch', '1');
 	if (args.version) params.set('version', args.version);
+	if (args.guess_row) params.set('guess_row', args.guess_row);
+	if (args.guess_id) params.set('guess_id', args.guess_id);
+	if (args.caption) params.set('caption', args.caption);
+	params.set('locale', uiLocale());
 
 	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
 		(url) =>
@@ -805,6 +957,10 @@ export interface DownloadArgs {
 	download_dir?: string;
 	/** Which version to download — {@link PlayArgs.version}. */
 	version?: VersionKind;
+	/** The captions choice remembered for the show —
+	 *  {@link PlayArgs.caption} — which decides the subtitle tracks a
+	 *  listing past the backend's cap keeps. */
+	caption?: string;
 }
 
 /** SSE progress event body — one line of the download's progress
@@ -851,6 +1007,8 @@ export function downloadStream(
 	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
 	if (args.download_dir) params.set('download_dir', args.download_dir);
 	if (args.version) params.set('version', args.version);
+	if (args.caption) params.set('caption', args.caption);
+	params.set('locale', uiLocale());
 
 	return url(`/api/download/stream?${params.toString()}`, 'download').then(
 		(url) =>
@@ -1083,8 +1241,15 @@ export function kitsuSearchPage(
 	return postJson<KitsuSearchPage>('/api/kitsu/search/page', body);
 }
 
-export function kitsuAnimeDetail(id: string): Promise<KitsuAnimeRef> {
-	return getJson<KitsuAnimeRef>(`/api/kitsu/anime/${encodeURIComponent(id)}`);
+/** One show's detail. A page showing its banner passes `onRefill`: when
+ *  AniList's banner was held back, the detail fetched once more after
+ *  the retry lands is handed to it. */
+export function kitsuAnimeDetail(
+	id: string,
+	opts: RefillOptions<KitsuAnimeRef> = {}
+): Promise<KitsuAnimeRef> {
+	const path = `/api/kitsu/anime/${encodeURIComponent(id)}`;
+	return getJsonRefilled<KitsuAnimeRef>(path, path, opts);
 }
 
 /**
@@ -1112,7 +1277,8 @@ export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
 }
 
 /** Bridge a batch of MAL ids to Kitsu refs in one round-trip.
- *  Order is preserved; ids Kitsu can't map drop out of the response.
+ *  Order is preserved; ids Kitsu can't map drop out of the response,
+ *  and a Kitsu show two ids lead to is listed once, at the first.
  *  Used by the home Watch Later rail to render the merged
  *  Plan-to-Watch list with Kitsu metadata + availability filtering
  *  matching the rest of the home. Empty input → empty
@@ -1188,17 +1354,21 @@ export function kitsuTopRated(): Promise<KitsuAnimeRef[]> {
 	return getJson<KitsuAnimeRef[]>('/api/kitsu/top-rated');
 }
 
+/** One page of a show's episodes. A page showing their stills passes
+ *  `onRefill`: when AniList's thumbnails were held back, the page
+ *  fetched once more after the retry lands is handed to it. */
 export function kitsuEpisodes(
 	animeId: string,
 	page: number = 1,
-	opts: { refresh?: boolean } = {}
+	opts: { refresh?: boolean } & RefillOptions<KitsuEpisode[]> = {}
 ): Promise<KitsuEpisode[]> {
+	const base = `/api/kitsu/episodes/${encodeURIComponent(animeId)}`;
 	const qs = new URLSearchParams({ page: String(page) });
+	// The refetch reads the page the first read cached.
+	const refetchPath = `${base}?${qs.toString()}`;
 	// Same contract as `airingGet`'s refresh: past the cached page.
 	if (opts.refresh) qs.set('refresh', 'true');
-	return getJson<KitsuEpisode[]>(
-		`/api/kitsu/episodes/${encodeURIComponent(animeId)}?${qs.toString()}`
-	);
+	return getJsonRefilled<KitsuEpisode[]>(`${base}?${qs.toString()}`, refetchPath, opts);
 }
 
 /**
@@ -1211,11 +1381,15 @@ export function kitsuEpisodes(
 export function kitsuTitleMatchGet(
 	title: string,
 	cour: number,
-	provider: StreamProvider | null
+	provider: StreamProvider | null,
+	year: number | null = null
 ): Promise<string | null> {
 	const qs = new URLSearchParams({ title, cour: String(cour) });
 	// A history row whose key names no provider asks without one.
 	if (provider !== null) qs.set('provider', provider);
+	// A row that names a year keeps its guess apart from a row titled
+	// alike that names another.
+	if (year !== null) qs.set('year', String(year));
 	return getJson<string | null>(`/api/title-match?${qs.toString()}`);
 }
 
@@ -1230,9 +1404,11 @@ export function kitsuTitleMatchPut(
 	title: string,
 	cour: number,
 	kitsuId: string,
-	provider: StreamProvider | null
+	provider: StreamProvider | null,
+	year: number | null = null
 ): Promise<void> {
-	return putJson<void>('/api/title-match', { title, cour, kitsu_id: kitsuId, provider });
+	const body = { title, cour, kitsu_id: kitsuId, provider };
+	return putJson<void>('/api/title-match', year === null ? body : { ...body, year });
 }
 
 /**
@@ -1311,6 +1487,31 @@ export function kitsuResolveAllmangaShowId(
 	return getJson<KitsuAnimeRef | null>(
 		`/api/kitsu/resolve-allmanga/${encodeURIComponent(showId)}${qs}`
 	);
+}
+
+/**
+ * The ids of the `hits` a Continue row's guess may not take: the
+ * backend reads the row's search title, the episode it reached and its
+ * show key against each hit (`backend/src/commands/continue_guess.rs`).
+ * The call itself asks nothing of Kitsu or the provider; the hits are
+ * the ones the row's own search or slug lookup returned, or its stored
+ * match. `search` says the hits are the title search's whole answer,
+ * which the backend may refute as a whole; a lone hit is judged alone.
+ */
+export function kitsuGuessRuledOut(
+	title: string,
+	episode: number,
+	hits: KitsuAnimeRef[],
+	key: string,
+	search: boolean
+): Promise<string[]> {
+	return postJson<string[]>('/api/history/guess/ruled-out', {
+		key,
+		title,
+		episode,
+		hits,
+		search
+	});
 }
 
 /**

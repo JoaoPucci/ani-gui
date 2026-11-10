@@ -3,12 +3,13 @@
   Composition:
     - Hero band (cover_image with blurred-poster fallback) + parallax.
     - Masthead: poster hangs into the hero. Right column carries title +
-      action row (Play / Download / External) + Sub-Dub + Quality + meta-row.
+      action row (Play / Download / External) + Sub-Dub + meta-row.
     - 2-column body: left = synopsis (≤60ch, drop cap kept), right =
       Episodes panel (12 placeholder tiles with per-anime accent on hover).
       Vertical accent-tinted hairline divides the columns.
   CLI features represented even when wiring is M2:
-    Mode (sub/dub) and Quality persist via settingsGet/settingsPut today.
+    Mode (sub/dub) is the show's own once picked here (local storage), the
+    Settings default until then.
     Play / Download / External are wired to TODOs with inline notice.
 -->
 <script lang="ts">
@@ -20,6 +21,8 @@
 		type HeroOrigin
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
+	import { refillEpisodes, refilledImages } from '$lib/refill/apply';
+	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
@@ -39,7 +42,6 @@
 		playStream,
 		airingGet,
 		settingsGet,
-		settingsPut,
 		type AiringStatus,
 		type Config,
 		type HistoryEntry,
@@ -63,7 +65,6 @@
 		claimPlay,
 		playArgsFor,
 		playMode,
-		playQuality,
 		recordPlayed,
 		runOwnedPlay
 	} from '$lib/play/owned-play';
@@ -86,7 +87,10 @@
 	import { airedCap, beyondPlayable, displayCap, minCap } from '$lib/detail/episode-caps';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
-	import { settle, settleOut } from '$lib/transitions/settle';
+	import { spotlightEpisode } from '$lib/detail/episode-spotlight';
+	import { heroParallaxTransform } from '$lib/motion/parallax';
+	import { reducedMotion } from '$lib/motion/reduced-motion.svelte';
+	import { settle, settleOut } from '$lib/motion/settle';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import PosterCard from '$lib/components/PosterCard.svelte';
@@ -110,6 +114,8 @@
 		versionsToOffer,
 		versionsInMode
 	} from '$lib/versions/version-choice';
+	import { storedCaption } from '$lib/play/caption-choice';
+	import { pickAudio, storedAudio } from '$lib/play/audio-choice';
 	import { handleRadioKey } from '$lib/versions/radio-keys';
 	import { versionLabel } from '$lib/versions/version-label';
 	import { followPlayed } from '$lib/play/played-episode';
@@ -136,13 +142,22 @@
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
 	import type { DownloadArgs } from '$lib/api';
 	import { buildDownloadArgs } from '$lib/download/build-args';
+	import { downloadQuality } from '$lib/download/download-quality';
 	import { decideEpisodeFetchAction, parsePageParam } from '$lib/history/url-deeplink';
-	import { breadcrumb } from '$lib/breadcrumb';
+	import { pageTrail } from '$lib/page-trail';
 	import { m } from '$lib/paraglide/messages';
 
 	let detail = $state<KitsuAnimeRef | null>(null);
 	let config = $state<Config | null>(null);
 	const id = $derived(page.params.id ?? '');
+	// The show's own Sub or Dub, read whenever the page turns to a show
+	// ($lib/play/audio-choice); a show never chosen on plays the
+	// Settings value, which is only the default.
+	let chosenAudio = $derived<'sub' | 'dub' | undefined>(storedAudio(id));
+	const audio = $derived(chosenAudio ?? playMode(config));
+	// What the control shows as picked: nothing while neither a choice
+	// nor the settings are known.
+	const pickedAudio = $derived(chosenAudio ?? (config ? playMode(config) : null));
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 	let error = $state<{ headline: string; detail: string | null } | null>(null);
 	let scrollY = $state(0);
@@ -169,7 +184,7 @@
 	// about one audio says nothing about the other. A music title is
 	// unavailable in both by this page's own rule, asked or not.
 	let availabilityRow = $state<AvailabilityRow | null>(null);
-	const rowKey = $derived(audioKey(detail?.id, playMode(config)));
+	const rowKey = $derived(audioKey(detail?.id, audio));
 	const knownRow = $derived(rowFor(availabilityRow, rowKey));
 	const availability = $derived(isMusicSubtype(detail?.subtype ?? null) ? false : knownRow.listed);
 	// True once the availability probe settled (result, error, or the
@@ -241,7 +256,7 @@
 	 * the page does, so a click in that gap asks with the fallback and
 	 * the real mode can arrive while the answer is out.
 	 */
-	const capGateMode = (): 'sub' | 'dub' => playMode(config);
+	const capGateMode = (): 'sub' | 'dub' => audio;
 	/**
 	 * The context once this page is gone.
 	 *
@@ -677,11 +692,22 @@
 		return out;
 	}
 
+	// What says the show this page shows has gone: a refill landing
+	// after it is not fetched ($lib/refill/refill).
+	let refillSignal: AbortSignal | undefined;
+
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
-		const eps = await kitsuEpisodes(id, p);
+		const eps = await kitsuEpisodes(id, p, {
+			signal: refillSignal,
+			// Thumbnails AniList's pacing held back, filled in once
+			// they land.
+			onRefill: (filled) => {
+				refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
+			}
+		});
 		kitsuPageCache.set(p, eps);
 		return eps;
 	}
@@ -804,20 +830,9 @@
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		episodes;
 
-		let timerId: number | undefined;
-		const rafId = requestAnimationFrame(() => {
-			const el = document.querySelector(`[data-ep-num="${target}"]`);
-			if (!el) return; // not rendered yet; effect re-runs when episodes changes
-			el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-			timerId = window.setTimeout(() => {
-				if (highlightEp === target) highlightEp = null;
-			}, 3200);
+		return spotlightEpisode(target, () => {
+			if (highlightEp === target) highlightEp = null;
 		});
-
-		return () => {
-			cancelAnimationFrame(rafId);
-			if (timerId !== undefined) clearTimeout(timerId);
-		};
 	});
 
 	let configError = $state<string | null>(null);
@@ -827,7 +842,7 @@
 	// unchanged, and a derived that compares equal does not wake its
 	// dependents — so the common case costs one lookup, not two
 	// identical ones against a source that rate-limits.
-	const availabilityMode = $derived(playMode(config));
+	const availabilityMode = $derived(audio);
 
 	// Availability against the provider. Result gates the Play + Download
 	// CTAs so titles outside the catalogue (Western animation, etc.)
@@ -835,10 +850,11 @@
 	// names the other audio when the cache has the title there, never
 	// for a music title — see $lib/detail/unavailable-copy), and its episode count caps the tiles.
 	//
-	// Its own effect, reading the mode directly, because the mode
-	// arrives after the page does: settings resolve late, so the first
-	// lookup goes out with the fallback `sub`, and a sub count says
-	// nothing about the dub catalogue. Reading the mode inside the
+	// Its own effect, reading the mode directly, because the mode can
+	// change after the page lands: a show with no audio of its own
+	// waits on the settings, which resolve late, so its first lookup
+	// goes out with the fallback `sub`; and a pick on the page changes
+	// it too. A sub count says nothing about the dub catalogue. Reading the mode inside the
 	// load callback made it invisible to the effect, so nothing
 	// reissued the question and the page kept no cap at all — every
 	// aired dub tile playable until the user navigated. The play route already worked this way.
@@ -925,8 +941,7 @@
 		const d = detail;
 		const title = playTitle();
 		if (!d || !title) return Promise.resolve();
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
 		// The version a click on the row would play: its warm puts that
 		// copy's numbering right and keeps its stream under the key the
 		// click reads.
@@ -935,12 +950,12 @@
 			title,
 			episode: ep,
 			mode,
-			quality,
 			show: d,
 			kitsuId: d.id,
-			version
+			version,
+			caption: storedCaption(d.id)
 		});
-		return warmResumeEpisode({ showId, episode: ep, mode, quality, version }, args, playStream);
+		return warmResumeEpisode({ showId, episode: ep, mode, version }, args, playStream);
 	}
 
 	// Synopsis collapse/expand. Default collapsed (long synopses are
@@ -1099,16 +1114,6 @@
 			: m.detail_ep_unaired();
 	}
 
-	// Labels are message functions, called at render, so a locale
-	// switch relabels the buttons without rebuilding the table.
-	const QUALITIES: Array<{ key: string; label: () => string }> = [
-		{ key: 'best', label: m.app_quality_best },
-		{ key: '1080', label: () => '1080' },
-		{ key: '720', label: () => '720' },
-		{ key: '480', label: () => '480' },
-		{ key: 'worst', label: m.app_quality_worst }
-	];
-
 	// Cancel the plays of every show this page showed on unmount —
 	// warms and clicks alike. Prevents abandoned resolves from holding
 	// provider slots after the user navigates away — clearForShow
@@ -1146,7 +1151,17 @@
 		resumeEntry = null;
 		resumeRefresh.reset();
 		resetEpisodePageCache(kitsuPageCache);
-		const detailServed = kitsuAnimeDetail(currentId);
+		const refills = new AbortController();
+		refillSignal = refills.signal;
+		const detailServed = kitsuAnimeDetail(currentId, {
+			signal: refills.signal,
+			// A banner AniList's pacing held back, put on the hero once
+			// it lands.
+			onRefill: (fresh) => {
+				const images = refilledImages(detail, fresh);
+				if (images && detail && id === currentId) Object.assign(detail, images);
+			}
+		});
 		void lookupResume(currentId, historyByKitsu, detailServed)
 			.then((h) => {
 				if (id !== currentId) return;
@@ -1158,7 +1173,10 @@
 			});
 		void detailServed
 			.then((d) => {
-				if (id !== currentId) return; // navigation raced ahead
+				// Navigation raced ahead: another show, or another page
+				// altogether (the player keeps the same id), whose trail
+				// this show must not name.
+				if (id !== currentId || refills.signal.aborted) return;
 				detail = d;
 				if (isMusicSubtype(d.subtype)) {
 					// Music videos (a YOASOBI MV, say) never exist on the provider —
@@ -1170,8 +1188,9 @@
 				}
 				// Override the layout's URL-only default with the
 				// loaded title so the breadcrumb reads the show
-				// instead of "Anime".
-				breadcrumb.set([
+				// instead of "Anime" — whether the layout's reset for
+				// this navigation has run yet or not.
+				pageTrail.name(page.url.pathname, [
 					{ label: m.breadcrumb_home(), href: '/' },
 					{ label: d.canonical_title ?? m.breadcrumb_anime() }
 				]);
@@ -1187,6 +1206,8 @@
 						.then((hits) => {
 							if (id !== currentId) return null;
 							const trimmed = hits.filter((h) => h.id !== d.id).slice(0, 12);
+							// A list of other shows: the Settings default, not
+							// this show's own audio.
 							const mode: 'sub' | 'dub' = playMode(config);
 							return filterAvailable(trimmed, mode);
 						})
@@ -1210,6 +1231,7 @@
 		// click's own play runs on and records its show's watch. Only
 		// when the id moved: this effect also re-runs on the same show.
 		return () => {
+			refills.abort();
 			if (id !== currentId) clearBackgroundForShow(currentId);
 		};
 	});
@@ -1221,7 +1243,7 @@
 	});
 
 	// Background prefetch: as soon as we have the show title + the
-	// user's current mode/quality, fire a play() for the default
+	// show's audio mode, fire a play() for the default
 	// episode in the background so the eventual hero-button click is
 	// instant. The play-cache dedupes against the click handler — both
 	// share the same promise, so there's never a duplicate
@@ -1246,8 +1268,7 @@
 		// cap as unbounded, so the warm would resolve
 		// aired-but-uncatalogued padded tiles.
 		if (!availabilityResolved) return;
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
 		// Read here so a new choice re-warms under its own keys; the
 		// other version's warmed sessions are never served for it.
 		const version = versionChoice;
@@ -1287,15 +1308,16 @@
 				title,
 				episode: ep,
 				mode,
-				quality,
 				show: detail,
 				kitsuId: id,
 				prefetch: true,
-				version
+				version,
+				caption: storedCaption(id)
 			});
 			const warmedVisit = visit;
-			const warm = getOrFire(makeKey(id, ep, mode, quality, version), (emit, signal) =>
-				playStream(args, emit, signal)
+			const warm = getOrFire(
+				makeKey(id, ep, mode, version, undefined, args.caption),
+				(emit, signal) => playStream(args, emit, signal)
 			);
 			// The warm paid for a listing: the resume row is read again —
 			// once per warm, not on every re-run that finds it cached.
@@ -1413,39 +1435,19 @@
 		if (s === 'upcoming') return m.detail_status_upcoming();
 		return s;
 	}
+	// The parallax holds still under reduced motion; reading the
+	// preference here makes the transform follow a change to it.
 	function heroTransform(y: number, isCover: boolean): string {
-		// Honor prefers-reduced-motion: when set, the hero doesn't translate
-		// on scroll. Scale (which doesn't move) is kept for visual polish.
-		if (
-			typeof window !== 'undefined' &&
-			window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-		) {
-			return `translate3d(0, 0, 0) scale(${isCover ? 1.02 : 1.15})`;
-		}
-		const offset = Math.min(y * 0.25, 80);
-		const scale = isCover ? 1.02 : 1.15;
-		return `translate3d(0, ${offset}px, 0) scale(${scale})`;
+		return heroParallaxTransform(y, isCover, reducedMotion.current);
 	}
 
-	async function setMode(mode: 'sub' | 'dub') {
-		if (!config || config.mode === mode) return;
-		const next: Config = { ...config, mode };
-		config = next;
-		try {
-			await settingsPut(next);
-		} catch (e) {
-			configError = describeSettingsFailure(e);
-		}
-	}
-	async function setQuality(q: string) {
-		if (!config || config.quality === q) return;
-		const next: Config = { ...config, quality: q };
-		config = next;
-		try {
-			await settingsPut(next);
-		} catch (e) {
-			configError = describeSettingsFailure(e);
-		}
+	// Sub or Dub is the show's own once picked here, remembered per show
+	// ($lib/play/audio-choice); the settings are not written.
+	function setMode(mode: 'sub' | 'dub') {
+		if (!id) return;
+		// What the storage kept: the player reads the show's audio back
+		// from it, so a pick the storage refused changes nothing here.
+		chosenAudio = pickAudio(id, mode);
 	}
 
 	function notify(msg: string) {
@@ -1525,8 +1527,7 @@
 			notify(m.detail_notify_no_title());
 			return;
 		}
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
 		const version = versionChoice;
 		// The show and visit this play is for, and its request, taken at
 		// the click ($lib/play/owned-play): a late answer is judged
@@ -1542,10 +1543,10 @@
 			title,
 			episode: ep,
 			mode,
-			quality,
 			show,
 			kitsuId: owner.showId,
-			version
+			version,
+			caption: storedCaption(owner.showId)
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if the player never opens.
@@ -1559,14 +1560,14 @@
 		actionNotice = null;
 		actionProgress = null;
 		// Hits the play-cache: a prefetch from onMount or an earlier
-		// click against the same (show, ep, mode, quality, version)
+		// click against the same (show, ep, mode, version)
 		// completes instantly here. The streaming variant feeds progress
 		// events into the overlay so the user sees `<provider> ✓` ticks.
 		const outcome = await runOwnedPlay(
 			owner,
 			() =>
 				getOrFire(
-					makeKey(owner.showId, ep, mode, quality, version),
+					makeKey(owner.showId, ep, mode, version, undefined, playArgs.caption),
 					(emit, signal) => playStream(playArgs, emit, signal),
 					(p) => {
 						actionProgress = progressLabel(p);
@@ -1576,11 +1577,11 @@
 		);
 		if (outcome.kind === 'played') {
 			actionNotice = null;
-			// Stamp Continue Watching for the click. getOrFire shares
-			// the prefetch's in-flight promise (which had prefetch=true),
-			// so the backend's auto-history-write stayed silent for
-			// cache-hit clicks — markWatched covers that gap. The backend
-			// op is idempotent.
+			// Stamp Continue Watching for the click. A click served from a
+			// finished prefetch (prefetch=true) wrote no history row on
+			// resolving — getOrFire refires a warm still running — so
+			// markWatched, sent now as the session arrives, writes it. The
+			// backend op is idempotent.
 			// Completion is decided against the FULL finite series total
 			// (Kitsu's mode-independent count), NOT episodeCap — in dub
 			// mode the playable cap is only the dubbed slice — and only for a finished series.
@@ -1669,8 +1670,8 @@
 		if (!detail || nothingAiredYet || airingIsPending) return;
 		if (resumeRefresh.refreshing() && !(await resumeRowSettled())) return;
 		if (!detail || nothingAiredYet || airingIsPending) return;
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
+		const quality = downloadQuality(config);
 		// `episode_count` must stay Kitsu's announced total — that's
 		// what the backend picker compares against the provider's planned
 		// `episodeCount`. The modal's range cap (the provider's released-
@@ -1682,7 +1683,8 @@
 			mode,
 			quality,
 			kitsuId: id,
-			version: versionChoice
+			version: versionChoice,
+			caption: storedCaption(id)
 		});
 		downloadModalOpen = true;
 	}
@@ -1711,9 +1713,11 @@
 		</div>
 	{:else if detail === null}
 		<!-- Skeleton -->
-		<section class="hero hero-skeleton" aria-busy="true">
-			<div class="hero-img hero-skeleton-img"></div>
-		</section>
+		<div class="hero-frame">
+			<section class="hero hero-skeleton" aria-busy="true">
+				<div class="hero-img hero-skeleton-img"></div>
+			</section>
+		</div>
 		<div class="content">
 			<section class="masthead">
 				<div class="poster-frame poster-skeleton"></div>
@@ -1733,40 +1737,42 @@
 		{@const rating = ratingDisplay(detail.average_rating)}
 		{@const year = yearOf(detail)}
 
-		<section
-			class="hero"
-			class:hero-fallback={!hero.isCover}
-			class:framing-contain={hero.isCover && heroPrefs.framing === 'contain'}
-			class:framing-pillar={hero.isCover && heroPrefs.framing === 'pillar'}
-			class:framing-focus={hero.isCover && heroPrefs.framing === 'focus'}
-		>
-			{#if hero.url && hero.isCover && (heroPrefs.framing === 'contain' || heroPrefs.framing === 'pillar')}
-				<img
-					class="hero-backdrop"
-					src={hero.url}
-					alt=""
-					style:transform={`${heroTransform(scrollY, true)} scale(1.22)`}
-				/>
-			{/if}
-			{#if hero.url}
-				<img
-					class="hero-img"
-					src={hero.url}
-					alt=""
-					style:transform={heroTransform(scrollY, hero.isCover)}
-					style:--ratio={heroRatios[heroId]}
-					onload={(e) => onHeroLoad(heroId, e)}
-					onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
-				/>
-			{/if}
-			<div class="hero-scrim" aria-hidden="true"></div>
-			{#if !hero.isCover}
-				<div class="hero-grain" aria-hidden="true"></div>
-			{/if}
-			{#if heroPrefs.controls}
-				<HeroFramingSwitch prefs={heroPrefs} origin={hero.origin} onchoose={chooseHeroPrefs} />
-			{/if}
-		</section>
+		<div class="hero-frame">
+			<section
+				class="hero"
+				class:hero-fallback={!hero.isCover}
+				class:framing-contain={hero.isCover && heroPrefs.framing === 'contain'}
+				class:framing-pillar={hero.isCover && heroPrefs.framing === 'pillar'}
+				class:framing-focus={hero.isCover && heroPrefs.framing === 'focus'}
+			>
+				{#if hero.url && hero.isCover && (heroPrefs.framing === 'contain' || heroPrefs.framing === 'pillar')}
+					<img
+						class="hero-backdrop"
+						src={hero.url}
+						alt=""
+						style:transform={`${heroTransform(scrollY, true)} scale(1.22)`}
+					/>
+				{/if}
+				{#if hero.url}
+					<img
+						class="hero-img"
+						src={hero.url}
+						alt=""
+						style:transform={heroTransform(scrollY, hero.isCover)}
+						style:--ratio={heroRatios[heroId]}
+						onload={(e) => onHeroLoad(heroId, e)}
+						onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
+					/>
+				{/if}
+				<div class="hero-scrim" aria-hidden="true"></div>
+				{#if !hero.isCover}
+					<div class="hero-grain" aria-hidden="true"></div>
+				{/if}
+				{#if heroPrefs.controls}
+					<HeroFramingSwitch prefs={heroPrefs} origin={hero.origin} onchoose={chooseHeroPrefs} />
+				{/if}
+			</section>
+		</div>
 
 		<div class="content">
 			<section class="masthead">
@@ -1866,39 +1872,27 @@
 						</div>
 					{/if}
 
-					<!-- Sub/Dub + Quality controls. Reads/writes ani-gui config. -->
+					<!-- Sub/Dub control: the show's own choice once picked, the
+					     Settings default until then. The label says when the
+					     show has a choice of its own. -->
 					<div class="controls">
 						<div class="seg-group" role="group" aria-label={m.detail_audio_group_aria_label()}>
-							<span class="seg-label">{m.detail_audio_group_label()}</span>
+							<span class="seg-label"
+								>{m.detail_audio_group_label()}{#if chosenAudio}<span class="seg-scope"
+										>&nbsp;·&nbsp;{m.detail_audio_note_show()}</span
+									>{/if}</span
+							>
 							<div class="seg">
 								{#each ['sub', 'dub'] as mode (mode)}
 									<button
 										type="button"
 										class="seg-btn"
-										class:active={config?.mode === mode}
-										aria-pressed={config?.mode === mode}
-										disabled={!config}
+										class:active={pickedAudio === mode}
+										aria-pressed={pickedAudio === mode}
+										disabled={!id}
 										onclick={() => setMode(mode as 'sub' | 'dub')}
 									>
 										{mode.toUpperCase()}
-									</button>
-								{/each}
-							</div>
-						</div>
-
-						<div class="seg-group" role="group" aria-label={m.detail_quality_group_aria_label()}>
-							<span class="seg-label">{m.detail_quality_group_label()}</span>
-							<div class="seg seg-narrow">
-								{#each QUALITIES as q (q.key)}
-									<button
-										type="button"
-										class="seg-btn"
-										class:active={config?.quality === q.key}
-										aria-pressed={config?.quality === q.key}
-										disabled={!config}
-										onclick={() => setQuality(q.key)}
-									>
-										{q.label()}
 									</button>
 								{/each}
 							</div>
@@ -2237,7 +2231,14 @@
 										>
 											<span class="ep-thumb">
 												{#if thumb}
-													<img src={thumb} alt="" loading="lazy" decoding="async" />
+													<img
+														class="img-fade"
+														use:fadeOnLoad
+														src={thumb}
+														alt=""
+														loading="lazy"
+														decoding="async"
+													/>
 												{:else if air.unaired}
 													<span class="ep-thumb-placeholder ep-thumb-airs" aria-hidden="true">
 														{unairedLabel(air.airsAt)}
@@ -2369,7 +2370,7 @@
 	{/if}
 </main>
 
-<LoadingOverlay visible={actionBusy || resumeWaiting} progress={actionProgress} />
+<LoadingOverlay modal visible={actionBusy || resumeWaiting} progress={actionProgress} />
 
 {#if playFailure}
 	<ErrorOverlay
@@ -2397,9 +2398,8 @@
 		   on `.content` below. */
 		padding-block-end: var(--space-8);
 		/* Page-enter animation — a soft fade + lift so navigating into a
-		   detail page doesn't feel like a hard cut. The reduced-motion
-		   token already zeroes --dur-slow so this is inert when the user
-		   opts out. */
+		   detail page doesn't feel like a hard cut. Under reduced motion
+		   tokens.css takes it off. */
 		animation: detail-page-enter var(--dur-slow) var(--ease-out-soft) both;
 	}
 
@@ -2422,16 +2422,23 @@
 		}
 	}
 
-	/* — Hero band. */
-	.hero {
-		position: relative;
-		aspect-ratio: var(--hero-aspect);
-		overflow: hidden;
-		/* Escape the layout's inline gutters AND the rail column on
-		   the left so the banner spreads behind the glassy rail too
-		   (the rail's backdrop-blur frosts whatever shows through).
-		   Right side just escapes the gutter — there's no chrome
-		   there to bleed behind. */
+	/* — Hero band.
+	   The frame holds the band's place: it escapes the layout's
+	   inline gutters AND the rail column on the left so the banner
+	   spreads behind the glassy rail too (the rail's backdrop-blur
+	   frosts whatever shows through). Right side just escapes the
+	   gutter — there's no chrome there to bleed behind.
+	   It also clips. The band below arrives scaled up and settles to
+	   its own size; a transformed box adds to the page's scrollable
+	   overflow unless an ancestor clips it, and the frame is the
+	   nearest box exactly the band's size. Without it the page grew a
+	   horizontal scrollbar for as long as the entry lasted. Once the
+	   page has settled the frame reaches the window's edges on three
+	   sides, and the band's foot fades out under its mask, so the clip
+	   takes nothing a reader could see. `clip`, not `hidden`, so the frame does not become a
+	   scroll container. */
+	.hero-frame {
+		overflow: clip;
 		margin-inline-start: calc(-1 * (var(--space-7) + var(--rail-width)));
 		margin-inline-end: calc(-1 * var(--space-7));
 		inline-size: calc(100% + 2 * var(--space-7) + var(--rail-width));
@@ -2441,6 +2448,14 @@
 		   margin-block-end below compensates so the masthead under
 		   the hero stays at its original y. */
 		margin-block-start: calc(-1 * var(--topbar-h));
+		/* Compensate for the negative margin-block-start above so the
+		   masthead beneath the hero stays at its original y. */
+		margin-block-end: calc(var(--space-7) + var(--topbar-h));
+	}
+	.hero {
+		position: relative;
+		aspect-ratio: var(--hero-aspect);
+		overflow: hidden;
 		/* Per-anime accent gradient shows through when Kitsu has no
 		   cover, no poster, and no episode thumbnail — the show
 		   still gets a branded backdrop instead of dead grey. The
@@ -2453,9 +2468,6 @@
 				var(--ink-050) 100%
 			),
 			var(--ink-050);
-		/* Compensate for the negative margin-block-start above so the
-		   masthead beneath the hero stays at its original y. */
-		margin-block-end: calc(var(--space-7) + var(--topbar-h));
 		/* Bleed the banner image down into the masthead area: mask
 		   the bottom 30% of the hero to transparent so the image
 		   fades over the page background. The masthead then pulls
@@ -2778,7 +2790,7 @@
 	.btn-outline:hover {
 		border-color: var(--bone-100);
 	}
-	/* — Segmented controls (sub/dub + quality). */
+	/* — Segmented controls (sub/dub, version). */
 	.controls {
 		display: flex;
 		flex-wrap: wrap;
@@ -2789,6 +2801,7 @@
 	.seg-group {
 		display: inline-flex;
 		flex-direction: column;
+		align-items: flex-start;
 		gap: var(--space-2);
 	}
 	.seg-label {
@@ -2832,8 +2845,8 @@
 		opacity: 0.5;
 		cursor: progress;
 	}
-	.seg-narrow .seg-btn {
-		padding-inline: var(--space-3);
+	.seg-scope {
+		color: var(--accent, var(--bone-300));
 	}
 	.seg-error {
 		font-family: var(--font-mono);
@@ -3091,15 +3104,13 @@
 		filter: saturate(0.6);
 	}
 
-	/* Aired, but above the episode count the provider last reported. Dimmed
-	   the same amount as an uncatalogued tile — the episode genuinely
-	   is not streamable yet — but it keeps the pointer and the hover
-	   lift, because clicking it re-asks the provider. `not-allowed` here
-	   would deny the one affordance the tile exists to offer. */
+	/* Aired, but above the episode count the provider last reported. Its
+	   picture dims as far as an uncatalogued tile's — the episode
+	   genuinely is not streamable yet — but it keeps the pointer and the
+	   hover lift, because clicking it re-asks the provider. `not-allowed`
+	   here would deny the one affordance the tile exists to offer. */
 	.ep-tile-recheck {
 		cursor: pointer;
-		opacity: 0.55;
-		filter: saturate(0.6);
 	}
 
 	/* Unaired episodes: visible so the season's shape stays readable,
@@ -3109,8 +3120,48 @@
 	   `.ep-tile-recheck`. */
 	.ep-tile-unaired {
 		cursor: pointer;
+	}
+
+	/* Both stay clickable, so their words stay readable: the picture
+	   dims and the title steps down a tier, where fading the whole tile
+	   took the title to 3.9:1 and the meta line under it to 1.9:1. A
+	   tile that is also disabled keeps fading whole through
+	   `.ep-tile-disabled`, so these rules leave it alone. Hover lifts
+	   the brightness as on any tile but keeps the desaturation. */
+	.ep-tile-recheck:not(.ep-tile-disabled) .ep-thumb img {
+		opacity: 0.55;
+		filter: brightness(0.85) saturate(0.6);
+	}
+	.ep-tile-unaired:not(.ep-tile-disabled) .ep-thumb img {
 		opacity: 0.45;
-		filter: saturate(0.35);
+		filter: brightness(0.85) saturate(0.35);
+	}
+	.ep-tile-recheck:not(.ep-tile-disabled):hover .ep-thumb img {
+		filter: brightness(1) saturate(0.6);
+	}
+	.ep-tile-unaired:not(.ep-tile-disabled):hover .ep-thumb img {
+		filter: brightness(1) saturate(0.35);
+	}
+	.ep-tile-recheck:not(.ep-tile-disabled) .ep-title,
+	.ep-tile-unaired:not(.ep-tile-disabled) .ep-title {
+		color: var(--bone-300);
+	}
+	/* With no picture to dim, the placeholder loses its accent warmth
+	   and its words step down to the faintest tier, which still clears
+	   AA on ink-100 (5.4:1). The frame number follows them; it sits on
+	   the darkest part of the scrim. */
+	.ep-tile-recheck:not(.ep-tile-disabled) .ep-thumb-placeholder,
+	.ep-tile-unaired:not(.ep-tile-disabled) .ep-thumb-placeholder {
+		background: var(--ink-100);
+		color: var(--bone-400);
+	}
+	.ep-tile-recheck:not(.ep-tile-disabled, :hover)
+		.ep-thumb:has(.ep-thumb-placeholder)
+		:is(.ep-frame-num-key, .ep-frame-num-val),
+	.ep-tile-unaired:not(.ep-tile-disabled, :hover)
+		.ep-thumb:has(.ep-thumb-placeholder)
+		:is(.ep-frame-num-key, .ep-frame-num-val) {
+		color: var(--bone-400);
 	}
 	.ep-unaired-label {
 		font-variant-caps: all-small-caps;
@@ -3170,9 +3221,6 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.ep-grid li.ep-highlight .ep-tile {
-			animation: none;
-		}
 		.ep-grid:has(li.ep-highlight) li:not(.ep-highlight) .ep-tile {
 			opacity: 1;
 		}
@@ -3212,7 +3260,10 @@
 		block-size: 100%;
 		object-fit: cover;
 		filter: brightness(0.85);
-		transition: filter var(--dur-med) var(--ease-out-soft);
+		/* Opacity: the fade in on load (.img-fade, tokens.css). */
+		transition:
+			filter var(--dur-med) var(--ease-out-soft),
+			opacity var(--dur-med) var(--ease-out-soft);
 	}
 	.ep-thumb-placeholder {
 		display: grid;
@@ -3314,11 +3365,6 @@
 	.ep-foot-skel {
 		block-size: 4rem;
 		background: var(--ink-050);
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.ep-thumb-skel {
-			animation: none;
-		}
 	}
 
 	/* Caption beneath the grid — sentence chrome (body sans, normal case)
@@ -3503,7 +3549,7 @@
 		color: var(--bone-200);
 	}
 	.ep-range-faint {
-		color: color-mix(in oklab, var(--bone-300) 70%, transparent);
+		color: var(--bone-400);
 	}
 
 	/* Prev/next chevron mini-buttons — small bordered chips with
@@ -3586,13 +3632,6 @@
 		}
 		50% {
 			opacity: 0.55;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.hero-skeleton-img,
-		.poster-skeleton,
-		.line {
-			animation: none;
 		}
 	}
 

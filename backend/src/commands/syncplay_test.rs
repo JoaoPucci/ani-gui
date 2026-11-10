@@ -8,6 +8,7 @@ fn args(stream: &str, binary: &str) -> SyncplayLaunchArgs {
         player_kind: ExternalPlayerKind::Mpv,
         player_binary: String::new(),
         subtitle_urls: Vec::new(),
+        subtitles_off: false,
     }
 }
 
@@ -306,6 +307,7 @@ fn with_tracks(kind: ExternalPlayerKind, referer: Option<&str>) -> SyncplayLaunc
             "https://cdn.example/x/subs/en.vtt".into(),
             "https://cdn.example/x/subs/es.vtt".into(),
         ],
+        subtitles_off: false,
     }
 }
 
@@ -354,4 +356,83 @@ fn vlc_gets_the_first_track_and_custom_gets_none() {
         !custom.iter().any(|a| a == "--"),
         "custom forwards nothing: {custom:?}"
     );
+}
+
+/// Through Syncplay the tracks sit past the separator on Syncplay's
+/// own command line, which Windows bounds the same way.
+#[test]
+fn syncplays_track_flags_fit_on_windows_command_line() {
+    let long: Vec<String> = (0..64)
+        .map(|i| format!("https://cdn.example/{i}/{}.vtt", "a".repeat(1000)))
+        .collect();
+    let mut launch = with_tracks(ExternalPlayerKind::Mpv, Some("https://embed.example/"));
+    launch.subtitle_urls = long.clone();
+    let argv = build_argv(&launch);
+    let line: usize = std::iter::once(launch.binary.as_str())
+        .chain(argv.iter().map(String::as_str))
+        .map(|a| 2 * a.len() + 3)
+        .sum();
+    assert!(line <= 32_766, "{line}");
+    let sep = argv.iter().position(|a| a == "--").expect("separator");
+    assert_eq!(argv[sep + 1], "--referrer=https://embed.example/");
+    let subs = argv.iter().filter(|a| a.starts_with("--sub-file=")).count();
+    assert!(subs > 0 && subs < long.len(), "{subs}");
+}
+
+/// Syncplay starts the player it wraps with the forwarded flags, so a
+/// player that is a batch file runs them through `cmd.exe`, whose
+/// bound is far shorter: the flags are fitted to the shorter of the
+/// two lines.
+#[test]
+fn a_batch_player_behind_syncplay_gets_cmds_bound() {
+    let long: Vec<String> = (0..64)
+        .map(|i| format!("https://cdn.example/{i}/{}.vtt", "a".repeat(200)))
+        .collect();
+    let mut launch = with_tracks(ExternalPlayerKind::Mpv, Some("https://embed.example/"));
+    launch.player_binary = r"C:\tools\mpv.bat".into();
+    launch.subtitle_urls = long.clone();
+    let argv = build_argv(&launch);
+    let sep = argv.iter().position(|a| a == "--").expect("separator");
+    let forwarded = &argv[sep + 1..];
+    // The player's line: cmd.exe's prefix, the script's path counted at
+    // no less than 260 units, then the forwarded flags at eight units a
+    // byte, each quoted and spaced.
+    let line: usize = 32
+        + launch.player_binary.len().max(260)
+        + 3
+        + forwarded.iter().map(|a| 8 * a.len() + 3).sum::<usize>();
+    assert!(line <= 8_191, "{line}");
+    let subs = forwarded
+        .iter()
+        .filter(|a| a.starts_with("--sub-file="))
+        .count();
+    assert!(subs > 0 && subs < long.len(), "{subs}");
+}
+
+/// Through Syncplay too, a show remembered Off starts the wrapped
+/// player with subtitles off: mpv and IINA get `--sid=no` among the
+/// forwarded flags beside every track; VLC, which takes one file,
+/// gets none.
+#[test]
+fn a_show_remembered_off_starts_the_wrapped_player_with_subtitles_off() {
+    let mut mpv = with_tracks(ExternalPlayerKind::Mpv, Some("https://embed.example/"));
+    mpv.subtitles_off = true;
+    let argv = build_argv(&mpv);
+    let sep = argv.iter().position(|a| a == "--").expect("separator");
+    assert!(
+        argv[sep + 1..].contains(&"--sid=no".to_string()),
+        "{argv:?}"
+    );
+    assert!(
+        argv[sep + 1..].iter().any(|a| a.starts_with("--sub-file=")),
+        "{argv:?}"
+    );
+    let mut iina = with_tracks(ExternalPlayerKind::Iina, None);
+    iina.subtitles_off = true;
+    let argv = build_argv(&iina);
+    assert!(argv.contains(&"--mpv-sid=no".to_string()), "{argv:?}");
+    let mut vlc = with_tracks(ExternalPlayerKind::Vlc, None);
+    vlc.subtitles_off = true;
+    let argv = build_argv(&vlc);
+    assert!(!argv.iter().any(|a| a.contains("sub-file")), "{argv:?}");
 }

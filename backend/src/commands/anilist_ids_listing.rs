@@ -8,7 +8,10 @@ use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::error::Result;
 
 fn recording_key(mal_id: u32) -> String {
-    format!("anilist:media-ids-recording-mal:v1:{mal_id}")
+    format!(
+        "{}{mal_id}",
+        crate::cache::families::ANILIST_MEDIA_RECORDING_MAL
+    )
 }
 
 /// Every AniList media that records MAL's `mal_id`, in AniList id

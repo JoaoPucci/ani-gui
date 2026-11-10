@@ -18,7 +18,7 @@
   hits Escape — no item is touched.
 -->
 <script lang="ts">
-	import { fly } from 'svelte/transition';
+	import { fly } from '$lib/motion/transitions';
 	import { cubicOut } from 'svelte/easing';
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { formatDownloadBarLabel } from '$lib/download/bar-label';
@@ -177,6 +177,16 @@
 		}
 		100% {
 			inset-inline-start: 100%;
+		}
+	}
+	/* Reduced motion: the sweep comes off (tokens.css), and a chunk left
+	   at the start of the track would read as progress stuck part-way.
+	   The whole track takes the colour at part strength instead. */
+	@media (prefers-reduced-motion: reduce) {
+		.dl-bar-progress span {
+			inset-inline-start: 0;
+			inline-size: 100%;
+			opacity: 0.6;
 		}
 	}
 	.dl-bar-label {

@@ -37,6 +37,8 @@ vi.mock('$lib/account/push-watched', () => ({
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { applyChoice } from '../../src/lib/versions/version-choice';
+import { rememberAudio } from '../../src/lib/play/audio-choice';
+import { rememberCaption } from '../../src/lib/play/caption-choice';
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -238,5 +240,89 @@ describe('play route — the version remembered for the show', () => {
 		await clickMenuItem(m.play_external_label());
 		await until(() => posted.external.length === 1, 'the external-player request');
 		expect('version' in posted.external[0]).toBe(false);
+	});
+});
+
+describe("play route — the show's remembered captions choice", () => {
+	// An external player starts on the track the built-in one would:
+	// the backend orders the tracks it hands off by the choice, and
+	// starts the player with its subtitles off when the choice is Off.
+	it('names it on both hand-offs', async () => {
+		rememberCaption(KITSU_ID, 'es-419');
+		const posted = fresh();
+		useHandlers(posted);
+		await mountPlaying();
+
+		await clickMenuItem(m.play_external_label());
+		await until(() => posted.external.length === 1, 'the external-player request');
+		expect(posted.external[0].caption).toBe('es-419');
+
+		await clickMenuItem(m.play_hamburger_syncplay_label());
+		await until(() => posted.syncplay.length === 1, 'the Syncplay request');
+		expect(posted.syncplay[0].caption).toBe('es-419');
+	});
+
+	// The backend keeps the tracks a long listing has room for by the
+	// choice, and the play cache does not key on it: a switch plays the
+	// session its warm resolved, so a warm that named no choice would
+	// hand the switch a session cut without the viewer's language.
+	it('names it on the warms, and a switch plays the session warmed with it', async () => {
+		rememberCaption(KITSU_ID, 'es-419');
+		const posted = fresh();
+		useHandlers(posted);
+		await mountPlaying();
+
+		const episodeOf = (es: FakeEventSource) => new URL(es.url).searchParams.get('episode');
+		const captionOf = (es: FakeEventSource) => new URL(es.url).searchParams.get('caption');
+		await until(
+			() => FakeEventSource.instances.some((es) => episodeOf(es) === '4'),
+			'the warm of the next episode'
+		);
+		for (const es of FakeEventSource.instances) expect(captionOf(es)).toBe('es-419');
+
+		// That warm is the only stream the page opened, and
+		// `mountPlaying` has already answered it.
+		const opened = FakeEventSource.instances.length;
+		const next = () =>
+			target.querySelector(
+				`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
+			) as HTMLButtonElement | null;
+		await until(() => next() !== null && !next()!.disabled, 'the next-episode button');
+		next()!.click();
+		await until(() => posted.watched.some((w) => w.episode === '4'), 'the switch watch');
+		// The switch asked for nothing new: it played the warm's session.
+		expect(FakeEventSource.instances.length).toBe(opened);
+	});
+
+	it('names none when nothing is remembered', async () => {
+		const posted = fresh();
+		useHandlers(posted);
+		await mountPlaying();
+		await clickMenuItem(m.play_external_label());
+		await until(() => posted.external.length === 1, 'the external-player request');
+		expect('caption' in posted.external[0]).toBe(false);
+		for (const es of FakeEventSource.instances) {
+			expect(new URL(es.url).searchParams.has('caption')).toBe(false);
+		}
+	});
+});
+
+describe("play route — the show's own audio", () => {
+	it('is asked for by the warms and both hand-offs, whatever the Settings default', async () => {
+		rememberAudio(KITSU_ID, 'dub');
+		const posted = fresh();
+		useHandlers(posted);
+		await mountPlaying();
+
+		for (const es of FakeEventSource.instances) {
+			expect(new URL(es.url).searchParams.get('mode')).toBe('dub');
+		}
+		await clickMenuItem(m.play_external_label());
+		await until(() => posted.external.length === 1, 'the external-player request');
+		expect(posted.external[0].mode).toBe('dub');
+
+		await clickMenuItem(m.play_hamburger_syncplay_label());
+		await until(() => posted.syncplay.length === 1, 'the Syncplay request');
+		expect(posted.syncplay[0].mode).toBe('dub');
 	});
 });

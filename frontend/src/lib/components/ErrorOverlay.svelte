@@ -12,9 +12,14 @@
   External Player button could replace the dismiss in a future
   iteration). The Escape key + clicking the backdrop are wired to
   the same handler.
+
+  It is a modal ($lib/components/modal-layer): the dismiss button
+  takes focus as it opens, Tab stays inside it, the page behind it is
+  inert, and focus goes back to what opened it as it closes.
 -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
+	import { modal } from './modal-layer';
 
 	let { headline, body, dismissLabel, onDismiss, actionLabel, actionHref } = $props<{
 		/** Short eyebrow line — `Couldn't play episode N` style. */
@@ -53,30 +58,29 @@
 		if (e.target === e.currentTarget) onDismiss();
 	}
 
-	function onKey(e: KeyboardEvent) {
-		if (e.key === 'Escape') onDismiss();
-	}
+	// Two overlays can be on a page at once (the layout's and a
+	// route's), so each names its own headline and body.
+	const uid = $props.id();
 </script>
 
-<svelte:window on:keydown={onKey} />
-
 <!-- The role=alertdialog backdrop is the dismiss surface; tabindex=-1
-     keeps it unfocusable but reachable for the global Escape handler
-     wired via svelte:window above. Keyboard activation flows through
-     the dismiss <button> below — the rule wants a keydown on the div,
-     but Escape-handling already covers the keyboard path globally. -->
+     keeps it out of the Tab order while it can still hold focus. The
+     modal layer answers Escape; keyboard activation flows through the
+     dismiss <button> below. -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	class="backdrop"
 	role="alertdialog"
 	aria-modal="true"
-	aria-labelledby="error-headline"
+	aria-labelledby="{uid}-headline"
+	aria-describedby="{uid}-body"
 	tabindex="-1"
 	onclick={onBackdropClick}
+	use:modal={{ onEscape: () => onDismiss() }}
 >
 	<div class="card" role="document">
-		<p id="error-headline" class="headline">{headline}</p>
-		<p class="body">{body}</p>
+		<p id="{uid}-headline" class="headline">{headline}</p>
+		<p id="{uid}-body" class="body">{body}</p>
 		<div class="actions">
 			{#if hasAction}
 				<!-- External URL — `resolve()` is for SvelteKit route
@@ -95,7 +99,9 @@
 				</a>
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			{/if}
-			<button type="button" class="dismiss" onclick={onDismiss}>{displayDismissLabel}</button>
+			<button type="button" class="dismiss" onclick={onDismiss} data-autofocus
+				>{displayDismissLabel}</button
+			>
 		</div>
 	</div>
 </div>
@@ -261,15 +267,6 @@
 		to {
 			opacity: 1;
 			transform: translateY(0) scale(1);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.backdrop,
-		.card {
-			animation: none;
-		}
-		.dismiss {
-			transition: none;
 		}
 	}
 </style>

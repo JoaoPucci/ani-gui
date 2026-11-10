@@ -1,6 +1,6 @@
 //! Connection pool + typed repos for the SQLite metadata cache.
 //!
-//! The pool wraps `r2d2_sqlite::SqliteConnectionManager`. On open, all
+//! The pool wraps the cache's own [`SqliteConnectionManager`]. On open, all
 //! pending refinery migrations are applied (idempotent). Repos are free
 //! functions that take `&SqlitePool` so they don't have to thread a
 //! connection through the call site.
@@ -8,9 +8,11 @@
 //! ## TTL policy
 //!
 //! `meta_cache_get` returns `None` for entries past their TTL but does
-//! not delete them — overwrite happens on the next `meta_cache_put`. This
-//! lets a future revalidation flow opt to serve the stale body while a
-//! background refresh runs.
+//! not delete them: the next `meta_cache_put` overwrites one, and the
+//! launch reclaim ([`crate::cache::reclaim`]) deletes the rest, except in
+//! the families a reader takes past their lifetime. A reader that serves
+//! a stale body has to mark its family that way in
+//! [`crate::cache::families`], or the reclaim deletes what it serves.
 //!
 //! ## Threading
 //!
@@ -26,11 +28,11 @@ use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension};
 use scheduled_thread_pool::ScheduledThreadPool;
 
 use crate::cache::schema::run_migrations;
+use crate::cache::sqlite_manager::SqliteConnectionManager;
 use crate::error::{AniError, Result};
 
 /// Convenience type alias for the pool.
@@ -86,6 +88,16 @@ fn builder() -> r2d2::Builder<SqliteConnectionManager> {
 /// - [`AniError::Cache`] when the pool can't be built, the lock can't
 ///   be taken, or migrations fail.
 pub fn open_pool(path: &Path) -> Result<SqlitePool> {
+    open_then(path, |_| ()).map(|(pool, ())| pool)
+}
+
+/// Open the pool, run the migrations, the played-marks pass and the
+/// carry of re-keyed play rows (`play_rekey`) under the migration lock,
+/// then `then` on the same connection, still under it.
+fn open_then<T>(
+    path: &Path,
+    then: impl FnOnce(&mut rusqlite::Connection) -> T,
+) -> Result<(SqlitePool, T)> {
     let manager = SqliteConnectionManager::file(path);
     let pool = builder()
         .max_size(4)
@@ -95,7 +107,33 @@ pub fn open_pool(path: &Path) -> Result<SqlitePool> {
     let _turn = migration_lock(path)?;
     run_migrations(&mut conn)?;
     crate::cache::played_marks::mark_earlier_plays(&mut conn)?;
-    Ok(pool)
+    // Carrying is an optimisation: a refusal leaves every row where it
+    // is, for the reclaim, and the cache still opens.
+    if let Err(e) = crate::cache::play_rekey::carry_play_rows(&mut conn) {
+        tracing::warn!(error = ?e, "play row carry refused; nothing carried");
+    }
+    let out = then(&mut conn);
+    drop(conn);
+    Ok((pool, out))
+}
+
+/// [`open_pool`] for the app's launch: once the cache is open, and
+/// still under the migration lock, delete the rows no reader of this
+/// build asks for ([`crate::cache::reclaim`]) and report them. A
+/// reclaim SQLite refuses is logged and leaves every row: the cache
+/// still opens.
+///
+/// # Errors
+/// As [`open_pool`].
+pub fn open_pool_reclaiming(
+    path: &Path,
+) -> Result<(SqlitePool, crate::cache::reclaim::ReclaimReport)> {
+    open_then(path, |conn| {
+        crate::cache::reclaim::reclaim(conn, &crate::cache::families::live()).unwrap_or_else(|e| {
+            tracing::warn!(error = ?e, "cache reclaim refused; every row stays");
+            crate::cache::reclaim::ReclaimReport::default()
+        })
+    })
 }
 
 /// The cross-process lock a cache's migrations run under, held until
@@ -150,7 +188,10 @@ pub fn open_in_memory() -> Result<SqlitePool> {
 ///
 /// # Errors
 /// [`AniError::Cache`] on connection or query failure.
+#[cfg_attr(test, track_caller)]
 pub fn meta_cache_get(pool: &SqlitePool, key: &str) -> Result<Option<String>> {
+    #[cfg(test)]
+    super::families::check(key);
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     let row: Option<(String, i64, i64)> = conn
         .query_row(
@@ -177,7 +218,10 @@ pub fn meta_cache_get(pool: &SqlitePool, key: &str) -> Result<Option<String>> {
 ///
 /// # Errors
 /// [`AniError::Cache`] on connection or query failure.
+#[cfg_attr(test, track_caller)]
 pub fn meta_cache_fetched_at(pool: &SqlitePool, key: &str) -> Result<Option<i64>> {
+    #[cfg(test)]
+    super::families::check(key);
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     let row: Option<(i64, i64)> = conn
         .query_row(
@@ -197,7 +241,10 @@ pub fn meta_cache_fetched_at(pool: &SqlitePool, key: &str) -> Result<Option<i64>
 ///
 /// # Errors
 /// [`AniError::Cache`] on write failure.
+#[cfg_attr(test, track_caller)]
 pub fn meta_cache_put(pool: &SqlitePool, key: &str, body: &str, ttl_seconds: u64) -> Result<()> {
+    #[cfg(test)]
+    super::families::check(key);
     #[cfg(test)]
     super::put_observer::saw(key);
     let conn = pool.get().map_err(|_| AniError::Cache)?;
@@ -227,7 +274,10 @@ pub struct MetaCacheRow {
 ///
 /// # Errors
 /// [`AniError::Cache`] on connection or query failure.
+#[cfg_attr(test, track_caller)]
 pub fn meta_cache_row(pool: &SqlitePool, key: &str) -> Result<Option<MetaCacheRow>> {
+    #[cfg(test)]
+    super::families::check(key);
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     let row: Option<(String, i64, i64)> = conn
         .query_row(
@@ -251,12 +301,15 @@ pub fn meta_cache_row(pool: &SqlitePool, key: &str) -> Result<Option<MetaCacheRo
 ///
 /// # Errors
 /// [`AniError::Cache`] on write failure.
+#[cfg_attr(test, track_caller)]
 pub fn meta_cache_shorten(
     pool: &SqlitePool,
     key: &str,
     seen: &MetaCacheRow,
     ttl_seconds: u64,
 ) -> Result<bool> {
+    #[cfg(test)]
+    super::families::check(key);
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     let as_i64 = |v: u64| i64::try_from(v).unwrap_or(i64::MAX);
     let changed = conn
@@ -282,12 +335,15 @@ pub fn meta_cache_shorten(
 ///
 /// # Errors
 /// [`AniError::Cache`] on write failure.
+#[cfg_attr(test, track_caller)]
 pub fn meta_cache_rebody(
     pool: &SqlitePool,
     key: &str,
     seen: &MetaCacheRow,
     body: &str,
 ) -> Result<bool> {
+    #[cfg(test)]
+    super::families::check(key);
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     let as_i64 = |v: u64| i64::try_from(v).unwrap_or(i64::MAX);
     let changed = conn
@@ -470,7 +526,7 @@ pub fn title_match_put(
 
 // --- helpers -------------------------------------------------------------
 
-fn now_secs() -> i64 {
+pub(super) fn now_secs() -> i64 {
     i64::try_from(
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

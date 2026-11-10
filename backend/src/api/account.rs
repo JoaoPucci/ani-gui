@@ -77,7 +77,9 @@ use account_wire::{
     UpdateProgressRequest,
 };
 
-/// When the disconnect-path `me()` call fails, decide whether to fall
+/// When the owner lookup (`account::owner`: answered from the owner
+/// memo for a bearer already seen, otherwise a `me()` call) fails,
+/// decide whether to fall
 /// through to the renderer-supplied identity (still gated by the
 /// internal secret). The path is open for `InvalidToken`, and for
 /// `Network` and
@@ -99,8 +101,9 @@ fn me_failure_allows_renderer_fallback(e: &AniError) -> bool {
 }
 
 /// Resolve the cache-owner user_id for an endpoint that operates on
-/// per-user cache rows. Tries the bearer-derived `me()` identity
-/// first (the only one upstream can vouch for), and on offline /
+/// per-user cache rows. Tries the bearer-derived identity first (the
+/// only one upstream can vouch for; asked of the tracker once per
+/// bearer, then remembered — `account::owner`), and on offline /
 /// 401 / 5xx falls back to the renderer-supplied id gated by the
 /// internal secret. Used by both the cached-read path and the
 /// disconnect-delete path so a single helper enforces the security gate.
@@ -111,8 +114,8 @@ async fn resolve_owner_user_id(
     headers: &HeaderMap,
     fallback: Option<String>,
 ) -> Result<String, AniError> {
-    match account::me(state, kind, tokens).await {
-        Ok(profile) => Ok(profile.user_id),
+    match account::owner(state, kind, tokens).await {
+        Ok(user_id) => Ok(user_id),
         Err(e) if me_failure_allows_renderer_fallback(&e) => {
             state.internal_secret.validate_header(headers)?;
             fallback.ok_or(e)
@@ -321,9 +324,9 @@ async fn post_list(
     // the request body and used it as the cache-write owner. A
     // cross-origin page with its own valid bearer could choose any
     // other user_id and poison that target's local cache. Like the
-    // cached read/delete paths, derive the owner from the bearer by
-    // calling `me()` upstream — the bearer is the only identity
-    // input the backend trusts.
+    // cached read/delete paths, derive the owner from the bearer — as
+    // the tracker names it, asked once per bearer and then remembered
+    // — the bearer is the only identity input the backend trusts.
     let kind = parse_provider(&provider)?;
     let bearer = bearer_from_headers(&headers)?;
     let tokens = account::tokens_from_bearer(&bearer);
@@ -341,12 +344,13 @@ async fn get_cached_list(
     // succeed, which defeated the local cache the moment the user went
     // offline or AniList threw 5xx — exactly when the cached read is
     // most useful. Resolve through the shared helper so the bearer-
-    // validated identity wins when reachable, with the renderer-only
-    // internal-secret-gated fallback covering outage paths. The rule
-    // that the trusted path takes no caller-supplied user_id is
-    // still honoured: the fallback id is only consulted after me()
-    // fails for offline/401/5xx AND the renderer secret authenticates
-    // the request as coming from the Electron preload.
+    // derived identity wins when known or reachable, with the
+    // renderer-only internal-secret-gated fallback covering outage
+    // paths. The rule that the trusted path takes no caller-supplied
+    // user_id is still honoured: the fallback id is only consulted
+    // after the owner lookup fails for offline/401/429/5xx AND the
+    // renderer secret authenticates the request as coming from the
+    // Electron preload.
     let bearer = bearer_from_headers(&headers)?;
     let kind = parse_provider(&provider)?;
     let tokens = account::tokens_from_bearer(&bearer);
@@ -364,9 +368,9 @@ async fn delete_list_cache(
 ) -> Result<StatusCode, AniError> {
     // Shared resolver
     // so the same security gate covers the disconnect-delete and the
-    // cached-read paths. Bearer-validated me() wins when reachable;
-    // offline / 401 / 5xx falls through to the renderer-supplied id
-    // gated by the internal secret.
+    // cached-read paths. The bearer-derived owner wins when known or
+    // reachable; an owner lookup failing offline / 401 / 429 / 5xx falls
+    // through to the renderer-supplied id gated by the internal secret.
     let bearer = bearer_from_headers(&headers)?;
     let kind = parse_provider(&provider)?;
     let tokens = account::tokens_from_bearer(&bearer);

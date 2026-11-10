@@ -1,0 +1,150 @@
+{
+ "data": [
+  {
+   "id": "11578",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mob Psycho 100",
+    "titles": {
+     "en": "Mob Psycho 100",
+     "en_jp": "Mob Psycho 100",
+     "ja_jp": "モブサイコ100"
+    },
+    "abbreviatedTitles": [
+     "Mob Psycho Hyaku",
+     "Mob Psycho One Hundred"
+    ],
+    "slug": "mob-psycho-100",
+    "startDate": "2016-07-12",
+    "endDate": "2016-09-27",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41071",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mob Psycho 100 II",
+    "titles": {
+     "en": "Mob Psycho 100 II",
+     "en_jp": "Mob Psycho 100 II",
+     "ja_jp": "モブサイコ100 II"
+    },
+    "abbreviatedTitles": [
+     "Mob Psycho 100 2nd Season",
+     "Mob Psycho Hyaku",
+     "Mob Psycho One Hundred"
+    ],
+    "slug": "mob-psycho-100-ii",
+    "startDate": "2019-01-07",
+    "endDate": "2019-04-01",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45338",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mob Psycho 100 III",
+    "titles": {
+     "en": "Mob Psycho 100 III",
+     "en_jp": "Mob Psycho 100 III",
+     "ja_jp": "モブサイコ III"
+    },
+    "abbreviatedTitles": [
+     "Mob Psycho 100 Season 3",
+     "Mob Psycho 3rd Season",
+     "モブサイコ100 Ⅲ"
+    ],
+    "slug": "mob-psycho-100-iii",
+    "startDate": "2022-10-05",
+    "endDate": "2022-12-21",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41073",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mob Psycho 100: Reigen - Shirarezaru Kiseki no Reinouryokusha",
+    "titles": {
+     "en": "Mob Psycho 100: Reigen - The Miraculous Unknown Psychic",
+     "en_jp": "Mob Psycho 100: Reigen - Shirarezaru Kiseki no Reinouryokusha",
+     "ja_jp": "モブサイコ100 REIGEN ～知られざる奇跡の霊能力者～"
+    },
+    "abbreviatedTitles": [],
+    "slug": "mob-psycho-100-reigen-shirarezaru-kiseki-no-reinouryokusha",
+    "startDate": "2018-03-18",
+    "endDate": "2018-03-18",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42416",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mob Psycho 100: Dai Ikkai Rei toka Soudansho Ian Ryokou - Kokoro Mitasu Iyashi no Tabi",
+    "titles": {
+     "en": "Mob Psycho 100: The Spirits and Such Consultation Office's First Company Outing - A Healing Trip That Warms the Heart",
+     "en_jp": "Mob Psycho 100: Dai Ikkai Rei toka Soudansho Ian Ryokou - Kokoro Mitasu Iyashi no Tabi",
+     "ja_jp": "モブサイコ100 第一回霊とか相談所慰安旅行~ココロ満たす癒やしの旅"
+    },
+    "abbreviatedTitles": [],
+    "slug": "mob-psycho-100-dai-ikkai-rei-toka-soudansho-ian-ryokou-kokoro-mitasu-iyashi-no-tabi",
+    "startDate": "2019-09-25",
+    "endDate": "2019-09-25",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46870",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mob Psycho 100: Tankoubon Hatsubai Kinen Anime",
+    "titles": {
+     "en_jp": "Mob Psycho 100: Tankoubon Hatsubai Kinen Anime",
+     "ja_jp": "モブサイコ100』 単行本発売記念アニメ"
+    },
+    "abbreviatedTitles": [
+     "Mob Psycho 100 Tankoubon 3-kan Hatsubai Kinen Anime"
+    ],
+    "slug": "mob-psycho-100-tankoubon-hatsubai-kinen-anime",
+    "startDate": "2013-02-17",
+    "endDate": "2013-06-20",
+    "episodeCount": 3,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41072",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mob Psycho Mini",
+    "titles": {
+     "en_jp": "Mob Psycho Mini",
+     "ja_jp": "モブサイコ mini"
+    },
+    "abbreviatedTitles": [
+     "Mob Psycho 100 Specials"
+    ],
+    "slug": "mob-psycho-100-mini",
+    "startDate": "2016-09-28",
+    "endDate": "2017-02-22",
+    "episodeCount": 6,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

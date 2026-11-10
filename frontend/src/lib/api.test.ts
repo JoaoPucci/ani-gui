@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readPosition, savePosition } from './play/watch-position';
+import { getLocale } from '$lib/paraglide/runtime';
 import {
 	__resetApiBaseForTests,
 	allmangaKitsuMapDelete,
@@ -26,6 +27,7 @@ import {
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
 	kitsuEpisodes,
+	kitsuGuessRuledOut,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
 	kitsuSearchPage,
@@ -43,6 +45,7 @@ import {
 	playSyncplay,
 	playStream,
 	proxyBaseUrl,
+	refillsRelease,
 	settingsGet,
 	settingsPut,
 	watchedAtAll,
@@ -285,18 +288,18 @@ describe('play', () => {
 		const resp = await play({
 			title: 'Cowboy Bebop',
 			episode: '5',
-			mode: 'sub',
-			quality: 'best'
+			mode: 'sub'
 		});
 		expect(resp).toEqual(sessionResponse);
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/play`);
 		expect(init?.method).toBe('POST');
+		// The body names the renderer's locale too (`api-locale.test.ts`).
 		expect(JSON.parse(init?.body as string)).toEqual({
 			title: 'Cowboy Bebop',
 			episode: '5',
 			mode: 'sub',
-			quality: 'best'
+			locale: getLocale()
 		});
 	});
 });
@@ -392,8 +395,7 @@ describe('markWatched', () => {
 		await markWatched({
 			title: 'Naruto: Shippuuden',
 			episode: '150',
-			mode: 'sub',
-			quality: 'best'
+			mode: 'sub'
 		});
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/play/mark-watched`);
@@ -416,8 +418,7 @@ describe('evictPlayCache', () => {
 		await evictPlayCache({
 			title: 'Stone Ocean',
 			episode: '1',
-			mode: 'sub',
-			quality: 'best'
+			mode: 'sub'
 		});
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/play/cache/evict`);
@@ -478,10 +479,10 @@ describe('playStream', () => {
 		};
 	}
 
-	it('opens an SSE URL with title/episode/mode/quality/episode_count query params', async () => {
+	it('opens an SSE URL with title/episode/mode/episode_count query params', async () => {
 		const onProgress = vi.fn();
 		const promise = playStream(
-			{ title: 'One Piece', episode: '1', mode: 'sub', quality: 'best', episode_count: 1100 },
+			{ title: 'One Piece', episode: '1', mode: 'sub', episode_count: 1100 },
 			onProgress
 		);
 		// `apiBase()` is async — give the promise chain one tick to construct
@@ -491,7 +492,7 @@ describe('playStream', () => {
 		const es = FakeEventSource.instances[0];
 		expect(es).toBeTruthy();
 		expect(es.url).toBe(
-			`${BASE}/api/play/stream?title=One+Piece&episode=1&mode=sub&quality=best&episode_count=1100`
+			`${BASE}/api/play/stream?title=One+Piece&episode=1&mode=sub&episode_count=1100&locale=${getLocale()}`
 		);
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
@@ -565,6 +566,29 @@ describe('playStream', () => {
 		await unnamed;
 	});
 
+	it("names the show's remembered captions choice, and nothing when none is", async () => {
+		// The backend cuts a listing past its cap by the choice, as the
+		// player starts by it.
+		const named = playStream(
+			{ title: 'X', episode: '5', mode: 'sub', caption: 'es-419' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(new URL(es.url).searchParams.get('caption')).toBe('es-419');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await named;
+
+		const unnamed = playStream({ title: 'X', episode: '5', mode: 'sub' }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const plain = FakeEventSource.instances[1];
+		expect(new URL(plain.url).searchParams.has('caption')).toBe(false);
+		plain.dispatch('done', JSON.stringify(donePayload()));
+		await unnamed;
+	});
+
 	it('omits prefetch param entirely when not set or false', async () => {
 		// Click path: leave the field default. Backend treats absence
 		// as false, history-write fires.
@@ -587,12 +611,12 @@ describe('playStream', () => {
 		await promise;
 	});
 
-	it('omits quality and episode_count when not provided', async () => {
+	it('omits episode_count when not provided', async () => {
 		const promise = playStream({ title: 'X', episode: '2', mode: 'dub' }, () => {});
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
-		expect(es.url).toBe(`${BASE}/api/play/stream?title=X&episode=2&mode=dub`);
+		expect(es.url).toBe(`${BASE}/api/play/stream?title=X&episode=2&mode=dub&locale=${getLocale()}`);
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
 	});
@@ -613,6 +637,32 @@ describe('playStream', () => {
 		expect(es.url).toContain('subtype=movie');
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
+	});
+
+	it("names the guessed card's row on the SSE query when given, and only then", async () => {
+		// The session then says whether the play landed on that row's own
+		// listing, which is what lets the guess be recorded on it.
+		const promise = playStream(
+			{ title: 'X', episode: '1', mode: 'sub', guess_row: 'hianime:x-1', guess_id: '42' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(new URL(es.url).searchParams.get('guess_row')).toBe('hianime:x-1');
+		// The guess rides beside it, apart from the page's id.
+		expect(new URL(es.url).searchParams.get('guess_id')).toBe('42');
+		expect(new URL(es.url).searchParams.has('kitsu_id')).toBe(false);
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+		const plain = playStream({ title: 'X', episode: '1', mode: 'sub' }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const es2 = FakeEventSource.instances[1];
+		expect(new URL(es2.url).searchParams.has('guess_row')).toBe(false);
+		expect(new URL(es2.url).searchParams.has('guess_id')).toBe(false);
+		es2.dispatch('done', JSON.stringify(donePayload()));
+		await plain;
 	});
 
 	it('appends kitsu_id to the SSE query when provided', async () => {
@@ -1007,6 +1057,35 @@ describe('kitsuSearch', () => {
 	});
 });
 
+describe('kitsuGuessRuledOut', () => {
+	it('POSTs the row and its hits and returns the ids the row rules out', async () => {
+		const fetchMock = mockFetchOnce(['43886']);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const hit = {
+			id: '43886',
+			canonical_title: "Jujutsu Kaisen New Year's Special"
+		} as KitsuAnimeRef;
+		const ids = await kitsuGuessRuledOut(
+			'Jujutsu Kaisen (TV)',
+			24,
+			[hit],
+			'hianime:jujutsu-kaisen-237',
+			true
+		);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/guess/ruled-out`);
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(init?.body as string)).toEqual({
+			key: 'hianime:jujutsu-kaisen-237',
+			title: 'Jujutsu Kaisen (TV)',
+			episode: 24,
+			hits: [hit],
+			search: true
+		});
+		expect(ids).toEqual(['43886']);
+	});
+});
+
 describe('kitsuSearchPage', () => {
 	it('POSTs the query and offset to the paged route and returns the page', async () => {
 		const fetchMock = mockFetchOnce({ hits: [], next_offset: 40 });
@@ -1106,6 +1185,36 @@ describe('kitsuTitleMatchGet', () => {
 		globalThis.fetch = mockFetchOnce(null) as unknown as typeof fetch;
 		const got = await kitsuTitleMatchGet('Whatever', 1, 'hianime');
 		expect(got).toBeNull();
+	});
+});
+
+describe('the title match of a row that names a year', () => {
+	it('asks for the guess its year keyed', async () => {
+		const fetchMock = mockFetchOnce('7730');
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTitleMatchGet("JoJo's Bizarre Adventure", 1, 'hianime', 2000);
+		const url = new URL(lastCall(fetchMock).url);
+		expect(url.searchParams.get('year')).toBe('2000');
+	});
+
+	it('stores the guess under its year', async () => {
+		const fetchMock = mockFetchOnce(null, 204);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTitleMatchPut("JoJo's Bizarre Adventure", 1, '7730', 'hianime', 2000);
+		expect(JSON.parse(lastCall(fetchMock).init?.body as string)).toEqual({
+			title: "JoJo's Bizarre Adventure",
+			cour: 1,
+			kitsu_id: '7730',
+			provider: 'hianime',
+			year: 2000
+		});
+	});
+
+	it('names no year for a row that names none', async () => {
+		const fetchMock = mockFetchOnce(null);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTitleMatchGet('Demon Slayer', 1, 'hianime', null);
+		expect(new URL(lastCall(fetchMock).url).searchParams.has('year')).toBe(false);
 	});
 });
 
@@ -1217,6 +1326,143 @@ describe('kitsuEpisodes', () => {
 		await kitsuEpisodes('12', 3);
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/episodes/12?page=3`);
 	});
+	it('fetches the page once more when its held-back thumbnails land', async () => {
+		const filled = [{ id: 'e1', number: 1, thumbnail: { original: 'https://x/1.jpg' } }];
+		const fetchMock = refillingFetch([], filled, true);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const onRefill = vi.fn();
+		const eps = await kitsuEpisodes('12', 2, { refresh: true, onRefill });
+		expect(eps).toEqual([]);
+		await vi.waitFor(() => expect(onRefill).toHaveBeenCalledWith(filled));
+		const urls = fetchMock.mock.calls.map((c) => c[0] as string);
+		expect(urls).toEqual([
+			`${BASE}/api/kitsu/episodes/12?page=2&refresh=true`,
+			`${BASE}/api/refills/wait`,
+			// The refetch reads the page the first read cached.
+			`${BASE}/api/kitsu/episodes/12?page=2`
+		]);
+		expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({ tickets: [7] });
+	});
+	it('does not fetch again when the refill did not land', async () => {
+		const fetchMock = refillingFetch([], [], false);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const onRefill = vi.fn();
+		await kitsuEpisodes('12', 1, { onRefill });
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+		await new Promise((r) => setTimeout(r, 0));
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(onRefill).not.toHaveBeenCalled();
+	});
+});
+
+/** A backend whose first read carries refill ticket 7, whose wait
+ *  answers it `landed`, and whose next read answers `then`. */
+function refillingFetch(first: unknown, then: unknown, landed: boolean) {
+	let reads = 0;
+	return vi.fn(async (url: string, init?: RequestInit) => {
+		void init;
+		const isWait = url.endsWith('/api/refills/wait');
+		const payload = isWait ? [{ ticket: 7, landed }] : reads++ === 0 ? first : then;
+		const header = !isWait && reads === 1 ? '7' : null;
+		return {
+			ok: true,
+			status: 200,
+			headers: { get: (name: string) => (name === 'x-ani-gui-refill' ? header : null) },
+			async text() {
+				return JSON.stringify(payload);
+			}
+		} as unknown as Response;
+	});
+}
+
+/** A backend whose reads carry the next of `tickets` each (none once
+ *  they run out), whose wait answers the first one landed, and which
+ *  records every release. */
+function ticketedFetch(tickets: number[]) {
+	const released: number[][] = [];
+	let reads = 0;
+	const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+		if (url.endsWith('/api/refills/release')) {
+			released.push(JSON.parse(init?.body as string).tickets);
+			return {
+				ok: true,
+				status: 204,
+				async text() {
+					return '';
+				}
+			} as unknown as Response;
+		}
+		const isWait = url.endsWith('/api/refills/wait');
+		const header = isWait ? null : (tickets[reads++]?.toString() ?? null);
+		const payload = isWait ? [{ ticket: tickets[0], landed: true }] : [];
+		return {
+			ok: true,
+			status: 200,
+			headers: { get: (name: string) => (name === 'x-ani-gui-refill' ? header : null) },
+			async text() {
+				return JSON.stringify(payload);
+			}
+		} as unknown as Response;
+	});
+	return { fetchMock, released };
+}
+
+describe('tickets no page waits on', () => {
+	it('are let go when the page closed before its read came back', async () => {
+		const { fetchMock, released } = ticketedFetch([41]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const page = new AbortController();
+		const read = kitsuEpisodes('12', 1, { onRefill: vi.fn(), signal: page.signal });
+		page.abort();
+		await read;
+		await vi.waitFor(() => expect(released).toEqual([[41]]));
+		const urls = fetchMock.mock.calls.map((c) => c[0] as string);
+		expect(urls.some((u) => u.endsWith('/api/refills/wait'))).toBe(false);
+	});
+	it('are let go for a read that does not wait on its refill', async () => {
+		const { fetchMock, released } = ticketedFetch([42]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuAnimeDetail('12');
+		await vi.waitFor(() => expect(released).toEqual([[42]]));
+	});
+	it('are let go when the read fetched once more is itself held back', async () => {
+		const { fetchMock, released } = ticketedFetch([43, 44]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const onRefill = vi.fn();
+		await kitsuAnimeDetail('12', { onRefill });
+		await vi.waitFor(() => expect(onRefill).toHaveBeenCalled());
+		await vi.waitFor(() => expect(released).toEqual([[44]]));
+	});
+});
+
+describe('refillsRelease', () => {
+	it('posts the tickets a closed page let go, and shrugs off a failure', async () => {
+		const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+			void init;
+			throw new Error('offline');
+		});
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		refillsRelease([3, 4]);
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/refills/release`);
+		expect(JSON.parse(init?.body as string)).toEqual({ tickets: [3, 4] });
+		await new Promise((r) => setTimeout(r, 0));
+	});
+});
+
+describe('kitsuAnimeDetail refill', () => {
+	it('hands the detail fetched once more after a held-back banner lands', async () => {
+		const fresh = { id: '12', cover_image: { original: 'https://al/b.jpg' } };
+		globalThis.fetch = refillingFetch(
+			{ id: '12', cover_image: null },
+			fresh,
+			true
+		) as unknown as typeof fetch;
+		const onRefill = vi.fn();
+		await kitsuAnimeDetail('12', { onRefill });
+		await vi.waitFor(() => expect(onRefill).toHaveBeenCalledWith(fresh));
+	});
 });
 
 describe('settingsGet', () => {
@@ -1224,7 +1470,7 @@ describe('settingsGet', () => {
 		const cfg: Config = {
 			locale: 'en',
 			mode: 'sub',
-			quality: 'best',
+			download_quality: 'best',
 			external_player: 'mpv',
 			external_player_kind: 'mpv',
 			external_player_custom_args: '',
@@ -1252,7 +1498,7 @@ describe('settingsPut', () => {
 		const cfg: Config = {
 			locale: 'pt-BR',
 			mode: 'dub',
-			quality: '1080',
+			download_quality: '1080',
 			external_player: 'vlc',
 			external_player_kind: 'vlc',
 			external_player_custom_args: '',
