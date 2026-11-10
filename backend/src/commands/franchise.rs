@@ -17,6 +17,7 @@ use futures_util::stream::{self, StreamExt};
 use crate::app::AppState;
 use crate::cache::ttl::{ANIME_DETAIL_TTL, EPISODES_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
+use crate::commands::franchise_walk::first_hop::{first_hop, FirstHop};
 use crate::commands::franchise_walk::{plan, Franchise, Plan};
 use crate::error::Result;
 use crate::meta::inflight::Inflight;
@@ -71,6 +72,19 @@ pub async fn franchise_listing(state: &AppState, id: &str) -> Result<FranchiseLi
             Ok(listing)
         })
         .await
+}
+
+/// What the show page will draw for `anchor`, from its own listing:
+/// the walk's first read, cached as the walk caches it, so the walk
+/// that follows reads it from the cache.
+///
+/// # Errors
+/// [`crate::error::AniError::InvalidKitsuId`] for a value that is not
+/// an id, and the listing read's errors.
+pub async fn franchise_first_hop(state: &AppState, anchor: &str) -> Result<FirstHop> {
+    let anchor = crate::kitsu_id::require(anchor)?;
+    let listing = franchise_listing(state, anchor).await?;
+    Ok(first_hop(anchor, &listing))
 }
 
 /// The listing reads in flight: two at once for one entry share one.

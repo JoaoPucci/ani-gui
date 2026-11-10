@@ -5,11 +5,29 @@
 //! The show page reserves room for its watch-order strip (or its lone
 //! franchise link) while the walk runs, so the strip does not push the
 //! page down when it lands. [`first_hop`] says which of the two to
-//! reserve, or that nothing is coming.
+//! reserve, or that nothing is coming, by the rules the walk applies to
+//! the same listing:
+//!
+//! - **strip**: the show lists an anime prequel or sequel other than
+//!   itself that it does not also list as its alternative version or
+//!   setting (rule 3 leaves those out of the run), or an anime parent
+//!   story, whose run a side story alone takes;
+//! - **link**: else, any anime relation the franchise page lists beside
+//!   the show: anything but a music video, a character crossover, an
+//!   adaptation or an alternative setting;
+//! - **none**: else.
+//!
+//! Only the strip can be wrong, and only from what the show's listing
+//! cannot see: a sequel whose own listing names the show as its other
+//! version, or sequels that are versions of one another. The walk then
+//! draws the link or nothing, and the page's placeholder gives way to
+//! it. Where the first hop says link or nothing, the walk agrees.
+
+use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::meta::kitsu::FranchiseListing;
+use crate::meta::kitsu::{FranchiseListing, FranchiseRelation};
 
 /// What the show page draws once the walk answers, as far as the
 /// anchor's own listing tells.
@@ -27,9 +45,38 @@ pub enum FirstHop {
 /// What `anchor`'s own `listing` says the show page will draw.
 #[must_use]
 pub fn first_hop(anchor: &str, listing: &FranchiseListing) -> FirstHop {
-    let _ = (anchor, listing);
-    FirstHop::None
+    let anime: Vec<&FranchiseRelation> = listing
+        .relations
+        .iter()
+        .filter(|r| r.kind == "anime" && r.id != anchor)
+        .collect();
+    let versions: BTreeSet<&str> = anime
+        .iter()
+        .filter(|r| ALTERNATIVES.contains(&r.role.as_str()))
+        .map(|r| r.id.as_str())
+        .collect();
+    let leads_on = |r: &&&FranchiseRelation| match r.role.as_str() {
+        "prequel" | "sequel" => !versions.contains(r.id.as_str()),
+        role => role == "parent_story",
+    };
+    if anime.iter().any(|r| leads_on(&r)) {
+        return FirstHop::Strip;
+    }
+    let listed_beside = |r: &&&FranchiseRelation| {
+        r.subtype.as_deref() != Some("music") && !NEVER_LISTED.contains(&r.role.as_str())
+    };
+    if anime.iter().any(|r| listed_beside(&r)) {
+        FirstHop::Link
+    } else {
+        FirstHop::None
+    }
 }
+
+/// Roles that make an entry another version or setting of the show.
+const ALTERNATIVES: [&str; 2] = ["alternative_version", "alternative_setting"];
+
+/// Roles the franchise page never lists an entry under on their own.
+const NEVER_LISTED: [&str; 3] = ["character", "adaptation", "alternative_setting"];
 
 #[cfg(test)]
 #[path = "franchise_walk_first_hop_test.rs"]
