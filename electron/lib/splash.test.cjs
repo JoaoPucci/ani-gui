@@ -1444,7 +1444,9 @@ async function splashBeforeAPage(t, { bound = false } = {}) {
     }
   };
   const rendered = () => ipc.emit(APP_READY_CHANNEL, { sender: contents });
-  const rail = () => painted.win.calls.filter((c) => c.includes("splashProgress")).at(-1);
+  // The rail's own calls: the stuck state (lib/splash-stuck.cjs) is
+  // another call to the same page object.
+  const rail = () => painted.win.calls.filter((c) => c.includes("splashProgress.set")).at(-1);
   const gone = () => painted.win.calls.filter((c) => c === "close" || c === "hide");
   return { ...painted, logs, gate, later, rendered, rail, gone };
 }
