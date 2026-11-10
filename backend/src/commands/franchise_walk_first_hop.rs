@@ -10,8 +10,12 @@
 //!
 //! - **strip**: the show lists an anime prequel or sequel other than
 //!   itself that it does not also list as its alternative version or
-//!   setting (rule 3 leaves those out of the run), or an anime parent
-//!   story, whose run a side story alone takes;
+//!   setting (rule 3 leaves those out of the run); else a parent
+//!   story the walk's own parent check accepts
+//!   (`franchise_walk_parents.rs`), whose run a side story alone
+//!   takes: for that it reads the show's detail and the listings of
+//!   the parent stories, side stories and spin-offs it names, as the
+//!   walk does;
 //! - **link**: else, any anime relation the franchise page lists beside
 //!   the show: anything but a music video, a character crossover, an
 //!   adaptation or an alternative setting;
@@ -27,6 +31,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use super::parents::parent_stories;
+use super::Lookup;
 use crate::meta::kitsu::{FranchiseEntry, FranchiseListing, FranchiseRelation};
 
 /// What the show page draws once the walk answers, as far as the
@@ -64,17 +70,42 @@ pub fn first_hop(
     known: &BTreeMap<String, FranchiseListing>,
     details: &BTreeMap<String, FranchiseEntry>,
 ) -> Step {
-    let _ = details;
     let Some(listing) = known.get(anchor) else {
-        return Step::Read {
-            listings: vec![anchor.to_string()],
-            details: Vec::new(),
-        };
+        return read(vec![anchor.to_string()], Vec::new());
     };
-    Step::Done(from_own_listing(anchor, listing))
+    let hop = from_own_listing(anchor, listing);
+    if hop == FirstHop::Strip || !names_a_possible_parent(anchor, listing) {
+        return Step::Done(hop);
+    }
+    // No run beside the show: the walk's parent check decides whether
+    // it walks from a parent story, from the show's start and the
+    // candidates' own listings.
+    if !details.contains_key(anchor) {
+        return read(Vec::new(), vec![anchor.to_string()]);
+    }
+    match parent_stories(anchor, &Lookup { known, details }) {
+        Err(listings) => read(listings, Vec::new()),
+        Ok(found) if !found.parents.is_empty() => Step::Done(FirstHop::Strip),
+        Ok(_) => Step::Done(hop),
+    }
 }
 
-/// What `anchor`'s own `listing` says the show page will draw.
+fn read(listings: Vec<String>, details: Vec<String>) -> Step {
+    Step::Read { listings, details }
+}
+
+/// Whether `anchor`'s listing names an entry the walk's parent check
+/// weighs: a parent story, a side story or a spin-off.
+fn names_a_possible_parent(anchor: &str, listing: &FranchiseListing) -> bool {
+    listing.relations.iter().any(|r| {
+        r.kind == "anime"
+            && r.id != anchor
+            && matches!(r.role.as_str(), "parent_story" | "side_story" | "spinoff")
+    })
+}
+
+/// What `anchor`'s own `listing` says the show page will draw, before
+/// the parent check: a parent story it names counts for nothing here.
 fn from_own_listing(anchor: &str, listing: &FranchiseListing) -> FirstHop {
     let anime: Vec<&FranchiseRelation> = listing
         .relations
@@ -86,9 +117,8 @@ fn from_own_listing(anchor: &str, listing: &FranchiseListing) -> FirstHop {
         .filter(|r| ALTERNATIVES.contains(&r.role.as_str()))
         .map(|r| r.id.as_str())
         .collect();
-    let leads_on = |r: &&&FranchiseRelation| match r.role.as_str() {
-        "prequel" | "sequel" => !versions.contains(r.id.as_str()),
-        role => role == "parent_story",
+    let leads_on = |r: &&&FranchiseRelation| {
+        matches!(r.role.as_str(), "prequel" | "sequel") && !versions.contains(r.id.as_str())
     };
     if anime.iter().any(|r| leads_on(&r)) {
         return FirstHop::Strip;
