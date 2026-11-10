@@ -6,14 +6,15 @@
   prompt is enough — per-row history delete and clear-all today, more
   later.
 
-  Esc cancels; clicking the backdrop cancels. Confirm focuses on
-  open so Enter activates it directly; on close, focus goes back to
-  the control that opened the dialog if it is still there
-  ($lib/components/focus-return).
+  Esc cancels; clicking the backdrop cancels. It is a modal
+  ($lib/components/modal-layer): Confirm takes focus on open so Enter
+  activates it directly, Tab stays inside the dialog, the page behind
+  it is inert, and on close focus goes back to the control that opened
+  the dialog if it is still there.
 -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
-	import { createFocusReturn } from './focus-return';
+	import { modal } from './modal-layer';
 
 	interface Props {
 		open: boolean;
@@ -51,54 +52,30 @@
 		onCancel
 	}: Props = $props();
 
-	let confirmBtn: HTMLButtonElement | undefined = $state();
-	const focusReturn = createFocusReturn();
-
-	// Note what held focus as the dialog opens, and give it back as it
-	// closes. Pre-effect, so the note is taken before the confirm button
-	// below takes focus.
-	$effect.pre(() => {
-		if (open) {
-			const active = document.activeElement;
-			focusReturn.save(active instanceof HTMLElement ? active : null);
-		} else {
-			focusReturn.restore();
-		}
-	});
-
-	$effect(() => {
-		// Auto-focus the confirm button when the modal opens so Enter
-		// fires it. Has to wait a tick for the element to mount.
-		if (open && confirmBtn) {
-			confirmBtn.focus();
-		}
-	});
-
-	function onBackdropClick() {
+	// Clicking the backdrop and Escape both cancel, unless the confirm
+	// is out.
+	function cancelIfIdle() {
 		if (!busy) onCancel();
 	}
-
-	function onKey(e: KeyboardEvent) {
-		if (e.key === 'Escape' && !busy) {
-			e.preventDefault();
-			onCancel();
-		}
-	}
+	// Two dialogs can be on a page (Home has two), so each names its
+	// own title.
+	const uid = $props.id();
 </script>
 
-<svelte:window onkeydown={onKey} />
-
 {#if open}
-	<!-- Backdrop closes on click, role=dialog traps screen readers,
-	     aria-modal keeps assistive tech focused inside. -->
+	<!-- Backdrop closes on click; role=dialog + aria-modal tell
+	     assistive tech it is a modal, and the modal layer makes the
+	     page behind it inert. -->
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="cd-backdrop"
 		role="dialog"
 		aria-modal="true"
-		aria-labelledby="cd-title"
+		aria-labelledby="{uid}-title"
+		aria-describedby={body ? `${uid}-body` : undefined}
 		tabindex="-1"
-		onclick={onBackdropClick}
+		onclick={cancelIfIdle}
+		use:modal={{ onEscape: cancelIfIdle }}
 	>
 		<div class="cd-card" role="document" onclick={(e) => e.stopPropagation()} tabindex="-1">
 			<header class="cd-head">
@@ -108,9 +85,9 @@
 						<span class="cd-eyebrow-key">{eyebrow}</span>
 					</p>
 				{/if}
-				<h2 id="cd-title" class="cd-title">{title}</h2>
+				<h2 id="{uid}-title" class="cd-title">{title}</h2>
 				{#if body}
-					<p class="cd-body">{body}</p>
+					<p id="{uid}-body" class="cd-body">{body}</p>
 				{/if}
 			</header>
 			<footer class="cd-foot">
@@ -118,7 +95,7 @@
 					{cancelLabel ?? m.confirm_button_cancel()}
 				</button>
 				<button
-					bind:this={confirmBtn}
+					data-autofocus
 					type="button"
 					class="cd-btn"
 					class:cd-btn-accent={!destructive}
