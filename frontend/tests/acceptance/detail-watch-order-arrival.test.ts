@@ -118,17 +118,22 @@ interface ShowOptions {
 	/** The walk's answer; held until `walkGate` opens, if given. */
 	franchise?: () => Response;
 	walkGate?: Promise<void>;
+	/** The show's details and the settings, held until these open. */
+	detailsGate?: Promise<void>;
+	settingsGate?: Promise<void>;
 }
 
 function useShow(opts: ShowOptions = {}) {
 	const calls = { hop: 0, franchise: 0 };
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({ ...appConfig(), watch_order: 'linked' })
-		),
-		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, 'Saga: Second Arc', 12), subtype: 'TV' })
-		),
+		http.get(`${API_BASE}/api/settings`, async () => {
+			await opts.settingsGate;
+			return HttpResponse.json({ ...appConfig(), watch_order: 'linked' });
+		}),
+		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, async () => {
+			await opts.detailsGate;
+			return HttpResponse.json({ ...kitsuRef(KITSU_ID, 'Saga: Second Arc', 12), subtype: 'TV' });
+		}),
 		http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}/first-hop`, async () => {
 			calls.hop++;
 			await opts.hopGate;
@@ -317,6 +322,54 @@ describe('detail route — the watch-order strip arriving', () => {
 		} finally {
 			hop.open();
 			walk.open();
+		}
+	});
+
+	it('draws the page without waiting for the first hop once the walk has answered', async () => {
+		const hop = gate();
+		const details = gate();
+		const calls = useShow({ hopGate: hop.opened, detailsGate: details.opened });
+		app = mount(DetailPage, { target });
+		try {
+			// The walk answers (from a warm cache) before the details do.
+			await until(() => strip() === null && calls.franchise > 0, 'the walk asked');
+			await new Promise((r) => setTimeout(r, 50));
+			const opened = Date.now();
+			details.open();
+			await until(() => title() !== '', 'the page');
+			// Well inside the 300 ms the page would wait for a hop.
+			expect(Date.now() - opened).toBeLessThan(200);
+			expect(held()).toBeNull();
+		} finally {
+			hop.open();
+		}
+	});
+
+	it('holds the strip’s room until the order setting is read, when the walk answered first', async () => {
+		const settings = gate();
+		const details = gate();
+		const hop = gate();
+		const calls = useShow({
+			settingsGate: settings.opened,
+			detailsGate: details.opened,
+			hopGate: hop.opened
+		});
+		app = mount(DetailPage, { target });
+		try {
+			await until(() => calls.franchise > 0 && calls.hop > 0, 'the walk and the hop asked');
+			await new Promise((r) => setTimeout(r, 50));
+			// The walk has answered; the hop answers just after the details.
+			details.open();
+			await new Promise((r) => setTimeout(r, 30));
+			hop.open();
+			await until(() => title() !== '', 'the page');
+			// The strip cannot draw before the order setting: its room is held.
+			expect(held()).not.toBeNull();
+			settings.open();
+			await until(() => strip() !== null && held() === null, 'the strip');
+		} finally {
+			settings.open();
+			hop.open();
 		}
 	});
 
