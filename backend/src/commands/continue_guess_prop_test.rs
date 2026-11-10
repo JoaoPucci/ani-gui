@@ -227,7 +227,7 @@ proptest! {
     ) {
         let row = format!("{t} Season {n}");
         let key = format!("{k} season {m}");
-        prop_assert!(!season::a_season_the_key_names_and_the_hit_does_not(
+        prop_assert!(!key_season::a_season_the_key_names_and_the_hit_does_not(
             &row,
             &key,
             &hit(&c, "TV", None)
@@ -246,7 +246,7 @@ proptest! {
         prop_assume!(!k.iter().any(|w| w == "season"));
         let key = format!("{} season {m} extras", k.join(" "));
         let h = hit(&format!("{} Season {m} {}", c.join(" "), tail.join(" ")), "special", None);
-        prop_assert!(!season::a_season_the_key_names_and_the_hit_does_not("Show: Extras", &key, &h));
+        prop_assert!(!key_season::a_season_the_key_names_and_the_hit_does_not("Show: Extras", &key, &h));
     }
 
     /// A row whose episode says nothing (a bare key's) is judged as one

@@ -79,7 +79,10 @@ pub use words::{carries_first_word, is_series, names_series, past_reach};
 
 #[path = "continue_guess_season.rs"]
 mod season;
-pub use season::season_named;
+
+#[path = "continue_guess_key_season.rs"]
+mod key_season;
+pub use key_season::season_named;
 
 #[path = "continue_guess_kind.rs"]
 mod kind;
@@ -119,7 +122,7 @@ pub fn ruled_out(title: &str, episode: Option<f64>, hit: &KitsuAnimeRef) -> bool
 #[must_use]
 pub fn ruled_out_by_key(title: &str, key_words: &str, hit: &KitsuAnimeRef) -> bool {
     kind::a_recap_the_row_does_not_name(title, key_words, hit)
-        || season::a_season_the_key_names_and_the_hit_does_not(title, key_words, hit)
+        || key_season::a_season_the_key_names_and_the_hit_does_not(title, key_words, hit)
 }
 
 /// The ids of the `hits` the row rules out, in their order: by its
