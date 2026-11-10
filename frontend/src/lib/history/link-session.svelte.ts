@@ -37,6 +37,10 @@ export interface LinkSessionDeps extends LinkDeps {
 	refresh: () => void;
 	/** The path the app is on now. */
 	here: () => string;
+	/** The Sub or Dub the viewer watches the show `shownId` in, as the
+	 *  surface plays it — its own choice, else the Settings default —
+	 *  or null when none is known yet. */
+	audioInForce?: (shownId: string) => 'sub' | 'dub' | null;
 }
 
 export class LinkSession extends LinkPicker {
