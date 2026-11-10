@@ -743,6 +743,40 @@ describe('switching to the pick', () => {
 		expect(storedAudio(RIGHT)).toBe('dub');
 	});
 
+	it('carries the guessed show’s audio when the pick is saved after the viewer left', async () => {
+		rememberAudio(GUESS, 'dub');
+		rememberAudio('777', 'sub');
+		let release: () => void = () => {};
+		const saved = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		server.use(
+			http.post(`${API_BASE}/api/history/link`, async () => {
+				await saved;
+			})
+		);
+		await openPlayer();
+		await openPicker();
+		const row = () =>
+			Array.from(dialog()?.querySelectorAll<HTMLButtonElement>('li button') ?? []).find((b) =>
+				(b.textContent ?? '').includes(RIGHT_TITLE)
+			);
+		await until(() => row() !== undefined, 'the pick among the candidates');
+		row()!.click();
+		const keep = () => button(m.play_link_keep_watching(), dialog()!);
+		await until(() => keep() !== null && !keep()!.disabled, 'Keep watching this');
+		keep()!.click();
+		// The viewer leaves for another show's player while the pick is saved.
+		unmount(app!);
+		app = null;
+		setParams({ id: '777' });
+		setUrl('/play/777');
+		release();
+		await until(() => backend.linkCalls.length === 1, 'the link');
+		await until(() => storedAudio(RIGHT) !== undefined, 'the audio carried');
+		expect(storedAudio(RIGHT)).toBe('dub');
+	});
+
 	it('switches in the audio watched in when the choice cannot be kept, claiming none', async () => {
 		rememberAudio(GUESS, 'dub');
 		// The audio choices' storage refuses the write; the rest of the
