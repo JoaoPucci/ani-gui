@@ -351,7 +351,16 @@ describe('a modal opening over a native modal dialog', () => {
 		const native = nativeDialog();
 		const above = mountIn(page, dialog());
 		expect(native.open).toBe(false);
-		expect(above).toBeDefined();
+		void above;
+	});
+
+	it('leaves a dialog gone from the page closed', () => {
+		const native = nativeDialog();
+		const above = mountIn(page, dialog());
+		native.remove();
+		const showModal = vi.spyOn(native, 'showModal');
+		above.close();
+		expect(showModal).not.toHaveBeenCalled();
 	});
 
 	it('brings it back, focus inside it, once the modal above closes', () => {
