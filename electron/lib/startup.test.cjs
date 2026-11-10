@@ -920,9 +920,10 @@ test("a first page that commits without an error status and is then superseded i
 
 // The splash's crash recovery can run out (lib/splash.cjs `lost`) while
 // the window waits, with no bound, for a page that painted but never
-// said it rendered. Nothing on screen could then end or continue the
-// launch, so the open fails and the boot takes its failure path: the
-// dialog says why and the app exits.
+// said it rendered. If the page still has not rendered within the bound
+// it then gets back (lib/app-window.cjs abortWhenLost), the open is told
+// to give up: it fails and the boot takes its failure path, the dialog
+// saying why and the app exiting.
 test("an open told to give up fails, and the window it held back is never shown", async () => {
   let giveUp;
   const abort = new Promise((_resolve, reject) => (giveUp = reject));

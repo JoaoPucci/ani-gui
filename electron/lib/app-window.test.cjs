@@ -334,3 +334,38 @@ test("a splash never lost never fails anything", async (t) => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
   assert.equal(failed, null);
 });
+
+test("a lost splash leaves a page whose renderer went to the boot's own renderer-gone failure", async (t) => {
+  // That guard (lib/startup.cjs waitBeforeShow) names the real cause;
+  // the splash's loss would otherwise race it and be blamed.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let lose;
+  const lost = new Promise((_r, reject) => (lose = reject));
+  let gone;
+  const ready = new Promise((resolve) => (gone = resolve));
+  let failed = null;
+  abortWhenLost(lost, ready).catch((err) => (failed = err));
+  lose(new Error("lost"));
+  gone(false);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  t.mock.timers.tick(APP_READY_WAIT_MS * 2);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(failed, null);
+});
+
+test("a page that renders only after the bound has run out does not undo the failure", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let lose;
+  const lost = new Promise((_r, reject) => (lose = reject));
+  let render;
+  const ready = new Promise((resolve) => (render = resolve));
+  let failed = null;
+  abortWhenLost(lost, ready).catch((err) => (failed = err));
+  lose(new Error("lost"));
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  t.mock.timers.tick(APP_READY_WAIT_MS);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  render(true);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.match(String(failed), /lost/);
+});
