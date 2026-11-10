@@ -70,6 +70,7 @@
 	"external_sent_toast_single": "Opened in {player}.",
 	"external_player_custom_label": "external player",
 	"external_spawn_failed_named": "Couldn't launch {binary}. Make sure it's installed and on your PATH, or pick its full path in Settings.",
+	"external_spawn_failed_unset": "No program is set for Custom. Enter one under External player in Settings.",
 	"episodes_section_heading": "Episodes",
 	"episodes_range_pagination": "{epStart}–{epEnd} of {total}",
 	"episodes_range_all": [

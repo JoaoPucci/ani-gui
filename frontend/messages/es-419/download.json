@@ -183,7 +183,7 @@
 	"status_already_here": "Ese episodio ya está en esta carpeta. Se conserva el archivo existente.",
 	"status_abandoned_claim": "Una descarga interrumpida dejó un archivo vacío en {path}. Elimínalo e inténtalo de nuevo.",
 	"status_claim_pending": "Otra descarga está publicando {path} y aún no termina. Inténtalo de nuevo en un momento.",
-	"status_repackage_retry": "yt-dlp no pudo reempaquetar la transmisión. Reintentando con ffmpeg.",
+	"status_repackage_retry": "yt-dlp no pudo reempaquetar el stream. Reintentando con ffmpeg.",
 	"status_retry_ffmpeg": "yt-dlp falló. Reintentando con ffmpeg.",
 	"range_error_not_a_number": "Ingresa los dos números de episodio.",
 	"range_error_below_one": "Los episodios empiezan en 1.",

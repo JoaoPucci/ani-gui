@@ -3,8 +3,9 @@
  * player's type in Settings (mpv, VLC, IINA, Custom).
  *
  * While the command is still the previous type's bare command ("mpv",
- * "vlc", "iina"), it becomes the new type's: a user who never wrote one
- * gets the player they picked. A command the user wrote (a full path, a
+ * "vlc", "iina", in any case, with or without ".exe"), it becomes the
+ * new type's: a user who never wrote one gets the player they picked.
+ * Between mpv, VLC and IINA, a command the user wrote (a full path, a
  * wrapper, a blank, another type's name) is theirs, and is never
  * touched. Custom has no command of its own, so a change to it keeps
  * the command.
@@ -46,7 +47,7 @@ export function commandAfterKindChange(
 	const next = bareCommand(to);
 	if (next === null) return command;
 	if (previous === null) return isBareProgramName(command) ? '' : command;
-	return command === previous ? next : command;
+	return isBareProgramName(command) && programName(command) === previous ? next : command;
 }
 
 /**
@@ -55,9 +56,13 @@ export function commandAfterKindChange(
  * A path, a command with flags, another program or a blank is not.
  */
 export function isBareProgramName(command: string): boolean {
-	const name = command
+	return Object.values(BARE).includes(programName(command));
+}
+
+/** A command as a program name: trimmed, lower case, without ".exe". */
+function programName(command: string): string {
+	return command
 		.trim()
 		.toLowerCase()
 		.replace(/\.exe$/, '');
-	return Object.values(BARE).includes(name);
 }

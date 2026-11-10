@@ -70,6 +70,7 @@
 	"external_sent_toast_single": "Открыто в {player}.",
 	"external_player_custom_label": "внешний плеер",
 	"external_spawn_failed_named": "Не удалось запустить {binary}. Убедитесь, что плеер установлен и доступен в PATH, или укажите полный путь в настройках.",
+	"external_spawn_failed_unset": "Для варианта «Свой» не задана программа. Укажите её в поле «Внешний плеер» в настройках.",
 	"episodes_section_heading": "Эпизоды",
 	"episodes_range_pagination": "{epStart}–{epEnd} из {total}",
 	"episodes_range_all": [

@@ -21,12 +21,10 @@ import { describePlayFailure, type OtherAudio } from './error-copy';
  *  verdict (see `describePlayFailure`). */
 export function describeExternalLaunchFailure(e: unknown, otherAudio: OtherAudio): string {
 	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
-	if (
-		obj &&
-		obj.kind === 'player_spawn_failed' &&
-		typeof obj.binary === 'string' &&
-		obj.binary.length > 0
-	) {
+	if (obj && obj.kind === 'player_spawn_failed' && typeof obj.binary === 'string') {
+		// No program to name: a blank Custom command, which waiting
+		// cannot fix.
+		if (obj.binary.trim().length === 0) return m.play_external_spawn_failed_unset();
 		return m.play_external_spawn_failed_named({ binary: obj.binary });
 	}
 	// Other failures (scraper / timeout / network on the resolve

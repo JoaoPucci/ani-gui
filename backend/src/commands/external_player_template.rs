@@ -39,10 +39,12 @@ pub(super) fn build_argv_with_template(
                 .iter()
                 .map(|u| format!("{flag}{u}"))
                 .collect();
+            // Measured for the program that launches: a blank command
+            // runs the type's standard one.
+            let program =
+                super::player_program(&args.player_command, args.player_kind).unwrap_or_default();
             argv.extend(crate::commands::command_line::flags_within_budget(
-                &args.player_command,
-                &fixed,
-                flags,
+                program, &fixed, flags,
             ));
         }
         // One file, and none for a show remembered Off.
