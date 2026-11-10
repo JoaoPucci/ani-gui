@@ -1276,9 +1276,10 @@ The rules below hold on every surface:
   year and count. An entry the provider lacks looks like any other.
   A franchise read only in part (the walk reached its bound, or a
   listing came back cut short) may be missing entries on either side
-  of the show, so the strip makes no claim that needs the whole: the
-  position has no total and the masthead no position, no column gets
-  a join or fork count, and an empty column stays blank.
+  of the show, so the strip makes no claim that needs the whole: no
+  position, in the strip or the masthead, no total, no join or fork
+  count, and an empty column stays blank. A loop, a branch and a side
+  story keep their captions.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
   keys page it); every card and tile is a link with the poster card's
   bone focus ring; the entry being viewed is not a link. The line for
@@ -1399,9 +1400,10 @@ variant below is one of the switch's options.
   so the three keys share one baseline whatever sits under them, and
   the centre's two hairlines run through all three rows. An empty side
   keeps its column, drops its key and says why it is empty ("The story
-  starts here", "Nothing after this yet"), so the numeral does not
-  move at either end of a run. The centre column stays at every window
-  width; the first round hid it below 1100 px.
+  starts here", "Nothing after this yet"; blank for a franchise read
+  in part), so the numeral does not move at either end of a run. The
+  centre column stays at every window width; the first round hid it
+  below 1100 px.
 - **The band.** The strip sits on one faint band: the page's own ink,
   one step up (`--ink-050`), at 72 % opacity, with the card corner
   radius. No border, blur, shadow or gradient. Its footer, under a
