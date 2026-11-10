@@ -350,16 +350,33 @@
 	// recoveries, retries and auto-play stand down. Coming back is the
 	// element's own `play` (its button, Space, a click, a media key,
 	// picture-in-picture), picking an episode, or Reload.
-	const handoff = new HandoffGate(() => hls?.startLoad());
+	// Restarts only an engine the page started and nothing stopped for
+	// good since (the fragment-loop guard): one not started yet starts
+	// when its levels arrive, through the gate.
+	let engineStarted = false;
+	const handoff = new HandoffGate(() => {
+		if (engineStarted) hls?.startLoad();
+	});
+	// Set by a viewer's pick of another stream while handed off: the
+	// stream it brings ends the handoff as it attaches, and the one it
+	// replaces is not started again meanwhile.
+	let replacingHandoff = false;
 	/** The episode went to another player: a hold ends without
 	 *  starting anything, a start stops, the engine stops loading, and
-	 *  the element no longer starts on its own. */
+	 *  the element no longer starts on its own. A stream the element
+	 *  plays from its `src` (mp4, or HLS without hls.js) has no loader
+	 *  the page can stop: it stays paused, and nothing starts it, but
+	 *  the browser may go on buffering it. */
 	function stopForHandoff() {
 		endResumeHold();
 		ownVideo.autoplay = false;
 		startWatch.cancel();
 		hls?.stopLoad();
 		handoff.handOff();
+	}
+	/** The viewer picked another stream from here (an episode, Reload). */
+	function comeBackWith() {
+		if (handoff.handedOff) replacingHandoff = true;
 	}
 	/** The viewer is back on the embedded player. */
 	function comeBack() {
@@ -1328,7 +1345,7 @@
 		onCleared: (episode, _count, refresh) => {
 			applyCapGateRefresh(refresh);
 			switchBusy = false;
-			comeBack();
+			comeBackWith();
 			void switchToEpisode(episode);
 		},
 		onStillGated: (_episode, refresh) => {
@@ -1395,7 +1412,7 @@
 			beyondPlayable: () => beyondPlayable(n, playableEpisodeCount),
 			currentContext: () => (gone ? GONE : `${visit}:${navigationClaims.epoch}:${id ?? ''}`),
 			play: () => {
-				comeBack();
+				comeBackWith();
 				void switchToEpisode(n);
 			},
 			recheckProvider: () => onRecheckEpisode(n),
@@ -1954,6 +1971,14 @@
 		teardown();
 		attachedUrl = mediaUrl;
 		lengthFor = untrack(() => sessionId);
+		// A stream the viewer picked while the episode was handed off
+		// ends the handoff: it plays here, as any pick does.
+		if (replacingHandoff) {
+			replacingHandoff = false;
+			handoff.forget();
+			ownVideo.autoplay = true;
+		}
+		engineStarted = false;
 		// The unload above set the element paused without a `pause`
 		// event; the stream attaching now is on its way. Told before the
 		// resume hold, below, takes the element's autoplay off.
@@ -2056,8 +2081,9 @@
 		if (mediaKind === 'mp4') {
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
-			// The quality control starts the engine once it has chosen the
-			// start level as the levels arrive ($lib/play/arm-quality).
+			// The page starts the engine once the levels are in and the
+			// quality control has chosen the start level
+			// ($lib/play/arm-quality), through the handoff gate (below).
 			hls = new Hls({ lowLatencyMode: false, autoStartLoad: false, ...HLS_STALL_LOAD_POLICY });
 			// The engine retires with its source: the next attach's
 			// flush, or the page leaving.
@@ -2093,7 +2119,10 @@
 			// set the start level (its handler is the earlier one): at
 			// once, or, with the episode handed to another player, when
 			// the viewer comes back.
-			const startHere = () => startEngine(engine, startAt);
+			const startHere = () => {
+				engineStarted = true;
+				startEngine(engine, startAt);
+			};
 			hls.on(Hls.Events.MANIFEST_PARSED, () => handoff.whenWatching(startHere));
 			sourceScope.add(() => handoff.drop(startHere));
 			hls.loadSource(mediaUrl);
@@ -2108,6 +2137,7 @@
 				stallMachine.fragmentLoaded(data);
 				if (!loopGuard.loaded(fragmentLoopKey(data.frag))) return;
 				engine.stopLoad();
+				engineStarted = false;
 				dropHeldRetry();
 				console.warn('[play] fragment loop guard: engine stopped on fragment', data.frag.sn);
 				playerError = fragmentLoopOverlayMessage();
@@ -2634,6 +2664,10 @@
 		// The viewer left while the eviction was out: a fresh resolve
 		// would only navigate them back. Or a switch overtook it, and its
 		// session is the one on its way.
+		// Handed to another player while the eviction was out: resolving
+		// again would only load the episode behind it. A Reload is the
+		// viewer, and was let through above.
+		if (handoff.handedOff && !replacingHandoff) return;
 		const turn = recoveryAfterEviction({
 			left: !owner.isCurrent(),
 			switchedSince: switchesStarted !== atSwitch,
@@ -2666,25 +2700,25 @@
 	 *  loading leaves the overlay in place to try again rather than
 	 *  flashing into a blank frame. */
 	function onReloadStream() {
-		comeBack();
+		comeBackWith();
 		void recoverFromStaleStream('manual reload');
 	}
 
 	function onPrev() {
 		if (!hasPrev) return;
-		comeBack();
+		comeBackWith();
 		void switchToEpisode(prevEpisodeNum);
 	}
 	function onNext() {
 		if (!hasNext) return;
-		comeBack();
+		comeBackWith();
 		void switchToEpisode(nextEpisodeNum);
 	}
 	function onPickEpisode(ep: KitsuEpisode) {
 		const n = ep.number ?? ep.relative_number ?? null;
 		if (n === null) return;
 		if (n === episodeNum) return; // already playing
-		comeBack();
+		comeBackWith();
 		void switchToEpisode(n);
 	}
 
@@ -2898,10 +2932,11 @@
 			() => visit,
 			() => gone
 		);
-		// Pause the embedded video so the user isn't watching two
-		// instances simultaneously. The notice/launch flow continues
-		// regardless; if the external player fails to start the user
-		// can press space (or click the embedded player) to resume.
+		// Stop the embedded video, and anything that would start it
+		// again, so the user isn't watching two instances at once. The
+		// notice/launch flow continues regardless; if the external
+		// player fails to start, the user plays the embedded one again
+		// (Space, a click) and it comes back.
 		stopForHandoff();
 		externalBusy = true;
 		try {
@@ -2968,9 +3003,8 @@
 			() => visit,
 			() => gone
 		);
-		// Same pause-the-embedded-video logic as the external flow:
-		// Syncplay opens its own player window so two instances would
-		// otherwise stack audio.
+		// Same handoff as the external flow: Syncplay opens its own
+		// player window, so two instances would otherwise stack audio.
 		stopForHandoff();
 		syncplayBusy = true;
 		try {

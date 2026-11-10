@@ -44,9 +44,11 @@ export class HandoffGate {
 	}
 
 	/** The viewer picked another stream, which replaces this one: the
-	 *  handoff and what it held are forgotten, and nothing runs.
-	 *  (Signature only so far.) */
-	forget(): void {}
+	 *  handoff and what it held are forgotten, and nothing runs. */
+	forget(): void {
+		this.off = false;
+		this.held = null;
+	}
 
 	/** Forgets `start` if it is the one held: its stream is gone. */
 	drop(start: () => void): void {
