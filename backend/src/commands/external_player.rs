@@ -185,6 +185,29 @@ pub fn syncplay_player_with(
         .to_string()
 }
 
+/// What a blank command runs for `kind` on this computer: the standard
+/// program's name, and where `locate` finds it installed. Settings
+/// shows it under the External player field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StandardProgram {
+    /// The program's name (`"vlc"`); none for Custom.
+    pub name: Option<&'static str>,
+    /// Where it is installed; none when it was not found.
+    pub path: Option<String>,
+}
+
+/// [`StandardProgram`] for `kind`, found by `locate`.
+#[must_use]
+pub fn standard_program_found(
+    kind: ExternalPlayerKind,
+    _locate: &dyn Fn(&str) -> Option<String>,
+) -> StandardProgram {
+    StandardProgram {
+        name: kind.standard_program(),
+        path: None,
+    }
+}
+
 impl ExternalPlayerKind {
     /// The program this type runs when the user wrote no command:
     /// its own name, found on the PATH. None for Custom.
