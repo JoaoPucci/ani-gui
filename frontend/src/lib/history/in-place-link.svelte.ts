@@ -3,10 +3,9 @@
  * a guessed session and Home's Continue cards.
  *
  * The show page's session ($lib/history/link-session.svelte.ts) leaves
- * for the linked show's page after a link and comes back after an
- * undo. These do not. Home reads the card again in place, and its
- * notice holds an Undo, which makes the same offer again, so the guess
- * comes back.
+ * for the linked show's page after a link. These do not: Home reads
+ * the card again in place, and says the show was saved in a plain
+ * notice.
  *
  * The player (`inPlayer`) asks "Is this the show you meant?". Yes
  * records the show playing on the card's row, which stops being a
@@ -15,8 +14,8 @@
  * that show in the picker is. A pick of
  * another show is recorded the same way while the episode goes on
  * playing, and the slip alone says so, with the way to switch to it
- * (`linked`): the player gives no notice, so no Undo, while it is on
- * screen (a pick saved once it is gone is said in one). The offer stays
+ * (`linked`): the player gives no notice while it is on screen (a pick
+ * saved once it is gone is said in one). The offer stays
  * after a pick as the ⋯ entry's way to change the show again, asking
  * nothing, and so does the session a switch opens for the row
  * ($lib/history/guess-slip.ts), which says once what plays now.
@@ -26,23 +25,19 @@
  *
  * An answer can land after the surface moved on. A link that lands
  * after another card arrived is saved for its own card and leaves the
- * newer one's state alone; an Undo from Home's notice gives back the
- * card the link was made on and offers it again only while that card
- * is still the one on screen, else it reads the cards again and leaves
- * the newer card's offer and pick as they are. Once the surface is
- * left (`leave`), a late link, pick or Undo is still saved and still
- * said — a pick on the player too, in a notice with its Undo, since its
- * slip is gone — and reads nothing and switches to nothing for the page
- * that is gone. Whatever Home is on screen hears of it from the app
- * ($lib/history/link-deps.ts).
+ * newer one's state alone. Once the surface is left (`leave`), a late
+ * link or pick is still saved and still said — a pick on the player
+ * too, in a notice, since its slip is gone — and reads nothing and
+ * switches to nothing for the page that is gone. Whatever Home or show
+ * page is on screen hears of it from the app ($lib/history/link-deps.ts).
  */
 
-import type { KitsuAnimeRef, LinkOutcome } from '$lib/api';
+import type { KitsuAnimeRef } from '$lib/api';
 import { LinkSession, type LinkNotice, type LinkSessionDeps } from './link-session.svelte';
 import type { LinkDeps, LinkOffer } from './link-offer';
 import { offerAgain } from './picked-offer';
 import { playerNotify } from './link-notices';
-import { surface, undoInPlace, type Surface } from './in-place-undo';
+import { surface, type Surface } from './surface';
 import {
 	hideRow,
 	isRowHidden,
@@ -56,8 +51,7 @@ export { __resetHiddenRowsForTests, type SlipState } from './guess-slip';
 
 export interface InPlaceLinkDeps extends LinkDeps {
 	notify: (notice: LinkNotice) => void;
-	/** Read again what the surface reads from the history, after a link
-	 *  or an undo. */
+	/** Read again what the surface reads from the history, after a link. */
 	refresh?: () => void;
 	/** The player's session: a pick is said in its slip, not a notice,
 	 *  and its offer stays to change the show again. */
@@ -89,13 +83,13 @@ export class InPlaceLinkSession extends LinkSession {
 		super({
 			...deps,
 			// The player says what a pick did in its slip, once: no
-			// notice, and so no Undo. Failures are still said, and so is
-			// a pick saved once the player is gone, with its slip.
+			// notice. Failures are still said, and so is a pick saved once
+			// the player is gone, with its slip.
 			notify: playerNotify(deps.notify, inPlayer, place),
 			refresh,
-			// The surface is not left for the linked show's page, so an
-			// undo never navigates either. It is somewhere else only once
-			// it is gone: a link answered then reads nothing again.
+			// The surface is not left for the linked show's page. It is
+			// somewhere else only once it is gone: a link answered then
+			// reads nothing again.
 			showPage: () => {},
 			here: place.here
 		} satisfies LinkSessionDeps);
@@ -200,24 +194,6 @@ export class InPlaceLinkSession extends LinkSession {
 		}
 		if (chosen.ref.id !== this.#page) this.#refresh();
 		return true;
-	}
-
-	/** Undo `outcome`, made on the page `from` for the card row `row`
-	 *  ($lib/history/in-place-undo.ts). */
-	override undo(outcome: LinkOutcome, from: string, row: string): Promise<void> {
-		return undoInPlace({
-			row,
-			surface: this.#surface,
-			at: () => ({ row: this.#row, arrival: this.arrivals }),
-			clear: () => {
-				// The slip holds its room until the offer is decided again.
-				this.linked = null;
-				this.settled = false;
-			},
-			undo: () => super.undo(outcome, from, row),
-			refresh: this.#refresh,
-			offerAgain: () => this.arrive(row, this.#page)
-		});
 	}
 }
 

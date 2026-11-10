@@ -2,14 +2,13 @@
 // from, and the flow that links it.
 
 import { describe, expect, it, vi } from 'vitest';
-import type { HistoryEntry, KitsuAnimeRef, LinkOutcome } from '$lib/api';
+import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import {
 	confirmLink,
 	guessedGroup,
 	linkOffer,
 	loadCandidates,
 	searchCandidates,
-	undoLink,
 	type LinkDeps
 } from './link-offer';
 
@@ -60,7 +59,6 @@ function deps(over: Partial<LinkDeps> = {}): LinkDeps {
 			kitsu_id: kitsuId,
 			linked: rows.map((row) => ({ row, previous: null, ep_no: '1', watched_at: null }))
 		}),
-		unlink: async (_k, rows) => ({ restored: rows.map((r) => r.row), kept: [] }),
 		// Every row asked shares the card's listing unless a test says
 		// otherwise: the backend's rule (history_link_plan.rs).
 		group: async (_card, rows) => rows,
@@ -261,24 +259,12 @@ describe("a row of another listing the card's guess matches", () => {
 	});
 });
 
-describe('confirmLink and undoLink', () => {
+describe('confirmLink', () => {
 	it('links the whole group to the chosen show', async () => {
 		const link = vi.fn(deps().link);
 		const offer = (await linkOffer(deps(), CARD.id, GUESS))!;
 		const outcome = await confirmLink(deps({ link }), offer, '13209');
 		expect(link).toHaveBeenCalledWith(CARD.id, [CARD.id, HIDDEN.id], '13209');
 		expect(outcome.kitsu_id).toBe('13209');
-	});
-
-	it('says whether the undo gave every row back', async () => {
-		const outcome: LinkOutcome = {
-			kitsu_id: '13209',
-			linked: [{ row: CARD.id, previous: null, ep_no: '1', watched_at: null }]
-		};
-		const unlink = vi.fn(deps().unlink);
-		expect(await undoLink(deps({ unlink }), outcome)).toBe(true);
-		expect(unlink).toHaveBeenCalledWith('13209', outcome.linked);
-		const kept = deps({ unlink: async () => ({ restored: [], kept: [CARD.id] }) });
-		expect(await undoLink(kept, outcome)).toBe(false);
 	});
 });

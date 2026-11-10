@@ -65,12 +65,6 @@ function fake(inPlayer = false): Fake {
 				linked: rows.map((row) => ({ row, previous: null, ep_no: '1', watched_at: null }))
 			};
 		},
-		unlink: async (_k, rows) => {
-			f.rows = f.rows.map((r) =>
-				rows.some((l) => l.row === r.id) ? { ...r, kitsu_id: undefined } : r
-			);
-			return { restored: rows.map((r) => r.row), kept: [] };
-		},
 		notify: (n) => f.notices.push(n),
 		refresh: () => f.refreshed++,
 		inPlayer
@@ -186,24 +180,6 @@ describe('"Yes" on the player', () => {
 });
 
 describe('a pick on Home', () => {
-	it('of the show on the card says it was saved, with an Undo that gives the guess back', async () => {
-		const f = fake();
-		const s = new InPlaceLinkSession(f.deps);
-		await s.arrive(CARD.id, GUESS.id);
-		await s.start(2);
-		s.choose({ ref: GUESS, current: true });
-		await s.confirm();
-		expect(s.slip).toBe('none');
-		const notice = f.notices.at(-1)!;
-		expect(notice.message).toBe(m.detail_link_done_toast({ title: GUESS.canonical_title }));
-		expect(notice.actionLabel).toBe(m.detail_link_undo());
-		notice.onAction!();
-		await new Promise((r) => setTimeout(r, 0));
-		await new Promise((r) => setTimeout(r, 0));
-		expect(f.rows[0].kitsu_id).toBeUndefined();
-		expect(s.slip).toBe('guess');
-	});
-
 	it('says the show was saved in a plain notice, with no Undo', async () => {
 		const f = fake();
 		const s = new InPlaceLinkSession(f.deps);
@@ -239,7 +215,7 @@ describe('a pick of another show on the player', () => {
 		expect(f.rows[0].kitsu_id).toBe(RIGHT.id);
 		expect(s.slip).toBe('linked');
 		expect(s.linked).toEqual({ id: RIGHT.id, title: RIGHT.canonical_title, show: RIGHT });
-		// The confirmation is the slip's: no notice, so no Undo.
+		// The confirmation is the slip's: no notice.
 		expect(f.notices).toEqual([]);
 		expect(f.refreshed).toBe(1);
 	});
@@ -340,7 +316,7 @@ describe('the session a switch opens', () => {
 });
 
 describe('a surface that reads nothing from the history', () => {
-	it('links and undoes without a refresh', async () => {
+	it('links without a refresh', async () => {
 		const f = fake();
 		delete f.deps.refresh;
 		const s = new InPlaceLinkSession(f.deps);
@@ -349,15 +325,7 @@ describe('a surface that reads nothing from the history', () => {
 		s.choose({ ref: RIGHT, current: false });
 		await s.confirm();
 		expect(s.slip).toBe('linked');
-		await s.undo(
-			{
-				kitsu_id: RIGHT.id,
-				linked: [{ row: CARD.id, previous: null, ep_no: '1', watched_at: null }]
-			},
-			GUESS.id,
-			CARD.id
-		);
-		expect(s.slip).toBe('guess');
+		expect(f.rows[0].kitsu_id).toBe(RIGHT.id);
 	});
 });
 
@@ -454,132 +422,6 @@ describe('a later arrival', () => {
 	});
 });
 
-// An Undo from Home's notice can be pressed, or answer, after Home moved
-// on: to another card's offer, or off Home altogether. Like a late link,
-// it acts on the card the link was made on, and on no other.
-describe("an Undo from Home's notice", () => {
-	const OTHER: HistoryEntry = { ...CARD, id: 'hianime:other-1', title: 'Other' };
-
-	/** Home with the card linked to RIGHT from its pill; the Undo's
-	 *  unlink waits for `release` when `held`, and fails when `fails`
-	 *  (the session keeps the deps it was built with). */
-	async function linkedHome(held = false, fails = false) {
-		const f = fake();
-		f.rows = [CARD, OTHER];
-		f.deps.group = async (card) => [card];
-		let release!: () => void;
-		const gate = new Promise<void>((r) => (release = r));
-		const unlink = f.deps.unlink;
-		f.deps.unlink = async (k, rows) => {
-			if (held) await gate;
-			if (fails) throw new Error('down');
-			return unlink(k, rows);
-		};
-		const s = new InPlaceLinkSession(f.deps);
-		await s.arrive(CARD.id, GUESS.id);
-		await s.start(2);
-		s.choose({ ref: RIGHT, current: false });
-		await s.confirm();
-		const undo = f.notices.at(-1)!.onAction!;
-		return { f, s, undo, release };
-	}
-	const flush = async () => {
-		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
-	};
-	/** The other card's picker, opened and with a show picked. */
-	async function otherPicking(s: InPlaceLinkSession) {
-		await s.arrive(OTHER.id, GUESS.id);
-		await s.start(3);
-		s.choose({ ref: RIGHT, current: false });
-	}
-	const otherUntouched = (s: InPlaceLinkSession) => {
-		expect(s.offer?.entry.id).toBe(OTHER.id);
-		expect(s.open).toBe(true);
-		expect(s.chosen?.ref.id).toBe(RIGHT.id);
-		expect(s.settled).toBe(true);
-		expect(s.episode).toBe('3');
-	};
-
-	it('pressed on the same visit gives the card its guess back and offers it again', async () => {
-		const { f, s, undo } = await linkedHome();
-		undo();
-		await flush();
-		expect(f.rows.find((r) => r.id === CARD.id)?.kitsu_id).toBeUndefined();
-		expect(f.refreshed).toBe(2);
-		expect(s.offer?.entry.id).toBe(CARD.id);
-		expect(f.notices.at(-1)?.message).toBe(m.detail_link_undone_toast());
-	});
-
-	it("pressed once Home moved to another card's picker, undoes the first card and leaves the picker as it is", async () => {
-		const { f, s, undo } = await linkedHome();
-		await otherPicking(s);
-		undo();
-		await flush();
-		expect(f.rows.find((r) => r.id === CARD.id)?.kitsu_id).toBeUndefined();
-		expect(f.rows.find((r) => r.id === OTHER.id)?.kitsu_id).toBeUndefined();
-		// The cards are read again, so the first card shows its guess.
-		expect(f.refreshed).toBe(2);
-		otherUntouched(s);
-	});
-
-	it("answering after Home moved to another card's picker leaves that picker as it is", async () => {
-		const { f, s, undo, release } = await linkedHome(true);
-		undo();
-		await otherPicking(s);
-		release();
-		await flush();
-		expect(f.rows.find((r) => r.id === CARD.id)?.kitsu_id).toBeUndefined();
-		expect(f.refreshed).toBe(2);
-		otherUntouched(s);
-	});
-
-	it('failing late after Home moved on says so, reads the cards again and leaves the new card alone', async () => {
-		const { f, s, undo, release } = await linkedHome(true, true);
-		undo();
-		await otherPicking(s);
-		release();
-		await flush();
-		expect(f.notices.at(-1)).toEqual({ kind: 'error', message: m.detail_link_failed() });
-		// The link stands; the cards are read again, the source of truth.
-		expect(f.rows.find((r) => r.id === CARD.id)?.kitsu_id).toBe(RIGHT.id);
-		expect(f.refreshed).toBe(2);
-		otherUntouched(s);
-	});
-
-	it('failing on the same visit says so and reads the card again as linked', async () => {
-		const { f, s, undo } = await linkedHome(false, true);
-		undo();
-		await flush();
-		expect(f.notices.at(-1)).toEqual({ kind: 'error', message: m.detail_link_failed() });
-		expect(f.refreshed).toBe(2);
-		// The card is linked still: it offers nothing.
-		expect(s.offer).toBeNull();
-		expect(s.settled).toBe(true);
-	});
-
-	it('pressed after the user left Home undoes the link and says so, reading nothing', async () => {
-		const { f, s, undo } = await linkedHome();
-		s.leave();
-		undo();
-		await flush();
-		expect(f.rows.find((r) => r.id === CARD.id)?.kitsu_id).toBeUndefined();
-		expect(f.notices.at(-1)?.message).toBe(m.detail_link_undone_toast());
-		expect(f.refreshed).toBe(1);
-		expect(s.offer).toBeNull();
-	});
-
-	it('answering after the user left Home reads nothing either', async () => {
-		const { f, s, undo, release } = await linkedHome(true);
-		undo();
-		s.leave();
-		release();
-		await flush();
-		expect(f.rows.find((r) => r.id === CARD.id)?.kitsu_id).toBeUndefined();
-		expect(f.notices.at(-1)?.message).toBe(m.detail_link_undone_toast());
-		expect(f.refreshed).toBe(1);
-	});
-});
-
 describe('a link that lands after the user left the surface', () => {
 	async function held(inPlayer: boolean, fails = false) {
 		let release!: () => void;
@@ -598,7 +440,7 @@ describe('a link that lands after the user left the surface', () => {
 		return { f, s, release };
 	}
 
-	it('on Home, is saved and says so with its Undo, and reads nothing', async () => {
+	it('on Home, is saved and says so, and reads nothing', async () => {
 		const { f, s, release } = await held(false);
 		const confirming = s.confirm();
 		s.leave();
@@ -606,7 +448,10 @@ describe('a link that lands after the user left the surface', () => {
 		expect(await confirming).toBe(true);
 		expect(f.rows[0].kitsu_id).toBe(RIGHT.id);
 		expect(f.refreshed).toBe(0);
-		expect(f.notices.at(-1)?.actionLabel).toBe(m.detail_link_undo());
+		expect(f.notices.at(-1)).toEqual({
+			kind: 'success',
+			message: m.detail_link_done_toast({ title: RIGHT.canonical_title })
+		});
 	});
 
 	it('on Home, says its failure in a notice', async () => {
@@ -630,15 +475,16 @@ describe('a link that lands after the user left the surface', () => {
 		expect(pickedRow(CARD.id)).toBe(true);
 	});
 
-	it('on the player, says the pick was saved, with its Undo, since no slip is left to say it', async () => {
+	it('on the player, says the pick was saved, since no slip is left to say it', async () => {
 		const { f, s, release } = await held(true);
 		const confirming = s.confirm();
 		s.leave();
 		release();
 		await confirming;
-		const notice = f.notices.at(-1)!;
-		expect(notice.message).toBe(m.detail_link_done_toast({ title: RIGHT.canonical_title }));
-		expect(notice.actionLabel).toBe(m.detail_link_undo());
+		expect(f.notices.at(-1)).toEqual({
+			kind: 'success',
+			message: m.detail_link_done_toast({ title: RIGHT.canonical_title })
+		});
 	});
 
 	it('on the player, leaves no earlier pick to switch to either', async () => {

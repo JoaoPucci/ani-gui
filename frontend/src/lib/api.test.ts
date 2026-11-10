@@ -22,7 +22,6 @@ import {
 	historyDelete,
 	historyLink,
 	historyLinkGroup,
-	historyUnlink,
 	historyList,
 	historyNumber,
 	imageCacheClear,
@@ -2155,7 +2154,7 @@ describe('downloadStream', () => {
 	});
 });
 
-describe('historyLink and historyUnlink', () => {
+describe('historyLink', () => {
 	it('posts the rows and the id, and reads back what was written', async () => {
 		const outcome = {
 			kitsu_id: '13209',
@@ -2216,15 +2215,5 @@ describe('historyLink and historyUnlink', () => {
 			card: 'hianime:jojo-2000-5182',
 			rows: ['hianime:jojo-2000-5182', 'hianime:jojo-2012-708']
 		});
-	});
-
-	it('posts the rows as the link left them to undo it', async () => {
-		const fetchMock = mockFetchOnce({ restored: ['a'], kept: [] });
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		const rows = [{ row: 'a', previous: null, ep_no: '1', watched_at: null }];
-		expect(await historyUnlink('13209', rows)).toEqual({ restored: ['a'], kept: [] });
-		const { url, init } = lastCall(fetchMock);
-		expect(url).toBe(`${BASE}/api/history/unlink`);
-		expect(JSON.parse(String(init?.body))).toEqual({ kitsu_id: '13209', rows });
 	});
 });

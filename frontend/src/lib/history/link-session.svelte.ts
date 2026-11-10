@@ -1,32 +1,28 @@
 /**
  * The show page's link session: the quiet offer a guessed Continue
- * card's page makes, the picker it opens, the link and its undo.
+ * card's page makes, the picker it opens, and the link.
  *
  * The page hands it what the app provides ($lib/history/link-offer.ts)
  * and three effects of its own — a notice, a navigation, a refresh of
  * what it reads from the history (empty on the show page, which hears
- * of every link and undo from the app instead, $lib/history/link-deps.ts)
+ * of every link from the app instead, $lib/history/link-deps.ts)
  * — and renders its state. Arriving on
  * a page decides the offer; a later arrival outdates an earlier one
  * still out. A link opens the chosen show's page without the card's
  * row, refreshing it first when it is the page the link was made on,
- * unless the user left the page while the link was out.
- * An undo gives the rows back and, while the user is still on the page
- * the link left them on, returns to the page it was made from, which
- * then offers it again ($lib/history/link-notices.ts).
+ * unless the user left the page while the link was out. Its notice is
+ * a plain confirmation: the answer is the viewer's, and the way to
+ * change it is the ⋯ "Not this show?" ($lib/history/link-notices.ts).
  */
 
-import type { LinkOutcome } from '$lib/api';
-import { linkedNotice, linkFailure, undoAndReturn } from './link-notices';
+import { linkedNotice, linkFailure } from './link-notices';
 import { LinkPicker } from './link-picker.svelte';
 import { guessedGroup, linkOffer, type LinkDeps } from './link-offer';
 
-/** A notice to the user, with an optional action. */
+/** A notice to the user. */
 export interface LinkNotice {
 	kind: 'success' | 'info' | 'error';
 	message: string;
-	actionLabel?: string;
-	onAction?: () => void;
 }
 
 export interface LinkSessionDeps extends LinkDeps {
@@ -138,13 +134,8 @@ export class LinkSession extends LinkPicker {
 		this.error = null;
 		try {
 			const rows = this.group ?? (await guessedGroup(this.#deps, offer));
-			const outcome = await this.#deps.link(offer.entry.id, rows, chosen.ref.id);
-			this.#deps.notify(
-				linkedNotice(
-					chosen.ref.canonical_title,
-					() => void this.undo(outcome, from, offer.entry.id)
-				)
-			);
+			await this.#deps.link(offer.entry.id, rows, chosen.ref.id);
+			this.#deps.notify(linkedNotice(chosen.ref.canonical_title));
 			if (stayed()) this.#landed(chosen.ref.id, from);
 			else if (onSurface()) this.#deps.refresh();
 			return true;
@@ -166,11 +157,5 @@ export class LinkSession extends LinkPicker {
 		this.offer = null;
 		if (to === from) this.#deps.refresh();
 		this.#deps.showPage(to, null);
-	}
-
-	/** Undo `outcome`, made on the page `from` for the card row `row`
-	 *  ($lib/history/link-notices.ts). */
-	undo(outcome: LinkOutcome, from: string, row: string): Promise<void> {
-		return undoAndReturn(this.#deps, outcome, from, row);
 	}
 }

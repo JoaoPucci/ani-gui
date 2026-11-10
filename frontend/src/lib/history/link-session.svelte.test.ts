@@ -1,5 +1,5 @@
 // The show page's link session: the offer it makes on arrival, the
-// picker, the link and the undo, against fake app dependencies.
+// picker and the link, against fake app dependencies.
 
 import { describe, expect, it, vi } from 'vitest';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
@@ -62,12 +62,6 @@ function fake(over: Partial<LinkSessionDeps> = {}): Fake {
 			};
 		},
 		group: async (_card, rows) => rows,
-		unlink: async (_k, rows) => {
-			f.rows = f.rows.map((r) =>
-				rows.some((l) => l.row === r.id) ? { ...r, kitsu_id: undefined } : r
-			);
-			return { restored: rows.map((r) => r.row), kept: [] };
-		},
 		notify: (n) => f.notices.push(n),
 		showPage: (id, row) => {
 			f.pages.push([id, row]);
@@ -169,7 +163,7 @@ describe('LinkSession', () => {
 		expect(s.failed).toBe(true);
 	});
 
-	it('links to another show, goes there, and offers an undo that comes back', async () => {
+	it('links to another show and goes there', async () => {
 		const f = fake();
 		const s = new LinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS);
@@ -182,15 +176,6 @@ describe('LinkSession', () => {
 		expect(s.open).toBe(false);
 		expect(s.offer).toBeNull();
 		expect(f.pages).toEqual([[RIGHT.id, null]]);
-		const done = f.notices[0];
-		expect(done.message).toBe(m.detail_link_done_toast({ title: 'Gintama' }));
-		expect(done.actionLabel).toBe(m.detail_link_undo());
-
-		done.onAction!();
-		await vi.waitFor(() => expect(f.pages.length).toBe(2));
-		expect(f.rows[0].kitsu_id).toBeUndefined();
-		expect(f.pages[1]).toEqual([GUESS, CARD.id]);
-		expect(f.notices[1].message).toBe(m.detail_link_undone_toast());
 	});
 
 	it('says the show was saved in a plain notice, with no Undo', async () => {
@@ -218,18 +203,6 @@ describe('LinkSession', () => {
 		expect(f.refreshed).toBe(1);
 		// Opened again without the card's row, so the line's room goes.
 		expect(f.pages).toEqual([[GUESS, null]]);
-	});
-
-	it('says when an undo met a row played since', async () => {
-		const f = fake({ unlink: async () => ({ restored: [], kept: [CARD.id] }) });
-		const s = new LinkSession(f.deps);
-		await s.arrive(CARD.id, GUESS);
-		await s.start();
-		s.choose(s.candidates![0]);
-		await s.confirm();
-		f.notices[0].onAction!();
-		await vi.waitFor(() => expect(f.notices.length).toBe(2));
-		expect(f.notices[1]).toEqual({ kind: 'error', message: m.detail_link_undo_kept_toast() });
 	});
 
 	it('keeps the picker open with the reason when Kitsu says the show is gone', async () => {
@@ -260,20 +233,6 @@ describe('LinkSession', () => {
 		await s.arrive(CARD.id, GUESS);
 		await s.confirm();
 		expect(link).not.toHaveBeenCalled();
-	});
-
-	it('says an undo that could not be made failed, and stays put', async () => {
-		const f = fake({ unlink: async () => Promise.reject(new Error('down')) });
-		const s = new LinkSession(f.deps);
-		await s.arrive(CARD.id, GUESS);
-		await s.start();
-		s.choose(s.candidates![0]);
-		await s.confirm();
-		f.notices[0].onAction!();
-		await vi.waitFor(() => expect(f.notices.length).toBe(2));
-		expect(f.notices[1]).toEqual({ kind: 'error', message: m.detail_link_failed() });
-		// Only the confirmation's reopening of the page, none for the undo.
-		expect(f.pages).toEqual([[GUESS, null]]);
 	});
 
 	it('settles an arrival with no offer, so the page can let the line go', async () => {
@@ -326,22 +285,6 @@ describe('LinkSession', () => {
 		gates['gintama season 4']?.();
 		await opening;
 		expect(s.candidates?.map((c) => c.ref.id)).toEqual(['2']);
-	});
-
-	it('leaves the user where they are when the undo comes after they moved on', async () => {
-		const f = fake();
-		const s = new LinkSession(f.deps);
-		await s.arrive(CARD.id, GUESS);
-		await s.start();
-		await s.search('gintama');
-		s.choose(s.candidates![0]);
-		await s.confirm();
-		f.path = '/';
-		f.notices[0].onAction!();
-		await vi.waitFor(() => expect(f.notices.length).toBe(2));
-		expect(f.notices[1].message).toBe(m.detail_link_undone_toast());
-		expect(f.pages).toEqual([[RIGHT.id, null]]);
-		expect(f.refreshed).toBe(0);
 	});
 
 	it('takes the card’s row alone when the history cannot be read on opening', async () => {
@@ -428,7 +371,7 @@ describe('LinkSession', () => {
 			expect(f.rows[0].kitsu_id).toBe(pick ? RIGHT.id : GUESS);
 			expect(f.pages).toEqual([]);
 			expect(f.refreshed).toBe(0);
-			// The saved link still says so, with its Undo.
+			// The saved link still says so.
 			expect(f.notices[0].message).toBe(
 				m.detail_link_done_toast({ title: pick ? 'Gintama' : s.chosen!.ref.canonical_title })
 			);
@@ -488,27 +431,5 @@ describe('LinkSession', () => {
 		expect(await confirming).toBe(false);
 		expect(s.error).toBeNull();
 		expect(f.notices).toEqual([{ kind: 'error', message: m.detail_link_failed() }]);
-	});
-
-	it('leaves the user where they went while the undo was out', async () => {
-		let release!: () => void;
-		const held = new Promise<void>((r) => (release = r));
-		const unlink = fake().deps.unlink;
-		const f = fake();
-		f.deps.unlink = async (k, rows) => {
-			await held;
-			return unlink(k, rows);
-		};
-		const s = new LinkSession(f.deps);
-		await s.arrive(CARD.id, GUESS);
-		await s.start();
-		await s.search('gintama');
-		s.choose(s.candidates![0]);
-		await s.confirm();
-		f.notices[0].onAction!();
-		f.path = '/';
-		release();
-		await vi.waitFor(() => expect(f.notices.length).toBe(2));
-		expect(f.pages).toEqual([[RIGHT.id, null]]);
 	});
 });

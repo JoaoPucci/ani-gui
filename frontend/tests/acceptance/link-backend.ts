@@ -1,5 +1,5 @@
 // A fake of the backend's history link routes for the acceptance
-// tests of the change-show flows: the history, the link, its undo and
+// tests of the change-show flows: the history, the link and
 // the group a link from a card would write.
 //
 // The group answers as the backend does (history_link_plan.rs,
@@ -24,11 +24,10 @@ export interface Row {
 export interface LinkBackend {
 	rows: Row[];
 	linkCalls: { card: string; rows: string[]; kitsu_id: string }[];
-	unlinkCalls: { kitsu_id: string; rows: { row: string; previous: string | null }[] }[];
 }
 
 export function linkBackend(rows: Row[]): LinkBackend {
-	return { rows, linkCalls: [], unlinkCalls: [] };
+	return { rows, linkCalls: [] };
 }
 
 const walked = (id: string) => id.startsWith('hianime:');
@@ -77,18 +76,6 @@ export function linkBackendHandlers(b: LinkBackend): HttpHandler[] {
 				}));
 			b.rows = b.rows.map((r) => (ids.includes(r.id) ? { ...r, kitsu_id: body.kitsu_id } : r));
 			return HttpResponse.json({ kitsu_id: body.kitsu_id, linked });
-		}),
-		http.post(`${API_BASE}/api/history/unlink`, async ({ request }) => {
-			const body = (await request.json()) as LinkBackend['unlinkCalls'][number];
-			b.unlinkCalls.push(body);
-			b.rows = b.rows.map((r) => {
-				const l = body.rows.find((x) => x.row === r.id);
-				if (!l) return r;
-				const { kitsu_id: _dropped, ...rest } = r;
-				void _dropped;
-				return l.previous ? { ...rest, kitsu_id: l.previous } : rest;
-			});
-			return HttpResponse.json({ restored: body.rows.map((r) => r.row), kept: [] });
 		})
 	];
 }

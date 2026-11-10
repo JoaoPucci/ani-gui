@@ -1692,8 +1692,7 @@
 	const guessedRow = $derived(guessedRowOf(page.url.searchParams));
 	const linkSession = new LinkSession({
 		...appLinkDeps(),
-		notify: (notice) =>
-			toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined }),
+		notify: (notice) => toastStore.push(notice),
 		/* eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query */
 		showPage: (kitsuId, row) =>
 			void goto(resolve('/anime/[id]', { id: kitsuId }) + guessedQuery(row !== null, row), {
@@ -1704,10 +1703,9 @@
 		// The page's own links are heard below, as every other one is.
 		refresh: () => {}
 	});
-	// Every link or undo answered while the page is on screen, made here
-	// or from a notice that outlived another page ($lib/history/link-deps.ts),
-	// reads the show's history again: a Continue kept from the rows before
-	// would play the show onto rows an Undo gave back.
+	// Every link answered while the page is on screen, made here or on a
+	// page since left ($lib/history/link-deps.ts), reads the show's
+	// history again: the page's Continue follows the rows the link wrote.
 	const stopHearing = onHistoryLinked(() => {
 		const currentId = id;
 		const latest = resumeLookups();

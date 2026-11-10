@@ -8,8 +8,7 @@ const resolveKitsuMatchWithTrust = vi.hoisted(() =>
 );
 vi.mock('./match', () => ({ resolveKitsuMatchWithTrust }));
 const api = vi.hoisted(() => ({
-	historyLink: vi.fn(),
-	historyUnlink: vi.fn()
+	historyLink: vi.fn()
 }));
 vi.mock('$lib/api', async (importOriginal) => ({
 	...(await importOriginal<typeof import('$lib/api')>()),
@@ -39,15 +38,14 @@ describe('appLinkDeps', () => {
 	});
 });
 
-// Every surface that reads the history hears of a link or an undo, made
-// from any surface, whenever it answers: the toast's Undo outlives the
-// page it was made on, and Home may be another instance by then.
-describe('a link or undo, once answered', () => {
+// Every surface that reads the history hears of a link, made from any
+// surface, whenever it answers: a link can answer after the page it was
+// made on was left, and Home may be another instance by then.
+describe('a link, once answered', () => {
 	const unsubscribe: (() => void)[] = [];
 	afterEach(() => {
 		for (const off of unsubscribe.splice(0)) off();
 		api.historyLink.mockReset();
-		api.historyUnlink.mockReset();
 	});
 
 	it('is announced to every listener, after it answered', async () => {
@@ -66,8 +64,8 @@ describe('a link or undo, once answered', () => {
 	it('is announced when it failed too, since what it wrote is not known', async () => {
 		const heard: number[] = [];
 		unsubscribe.push(onHistoryLinked(() => heard.push(1)));
-		api.historyUnlink.mockRejectedValue(new Error('down'));
-		await expect(appLinkDeps().unlink('1', [])).rejects.toThrow('down');
+		api.historyLink.mockRejectedValue(new Error('down'));
+		await expect(appLinkDeps().link('card', ['card'], '1')).rejects.toThrow('down');
 		expect(heard).toEqual([1]);
 	});
 
@@ -88,8 +86,8 @@ describe('a link or undo, once answered', () => {
 	it('is not announced to a listener that left', async () => {
 		const heard: number[] = [];
 		onHistoryLinked(() => heard.push(1))();
-		api.historyUnlink.mockResolvedValue({ restored: [], kept: [] });
-		await appLinkDeps().unlink('1', []);
+		api.historyLink.mockResolvedValue({ kitsu_id: '1', linked: [] });
+		await appLinkDeps().link('card', ['card'], '1');
 		expect(heard).toEqual([]);
 	});
 });

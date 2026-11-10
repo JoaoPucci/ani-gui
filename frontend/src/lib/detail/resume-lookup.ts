@@ -30,8 +30,8 @@ export async function lookupResume<T>(
 /** Numbers a page's resume lookups as they start. Each start hands back
  *  whether that lookup is still the latest one started: an earlier
  *  lookup answering after a later one — the page's first, sent before
- *  an undo given elsewhere, after the lookup the undo's announcement
- *  made — puts back nothing the later one read. */
+ *  a link made elsewhere landed, after the lookup the link's
+ *  announcement made — puts back nothing the later one read. */
 export function latestLookup(): () => () => boolean {
 	let latest = 0;
 	return () => {

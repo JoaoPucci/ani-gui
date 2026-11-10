@@ -695,15 +695,6 @@ describe('switching to the pick', () => {
 		expect(backend.rows.find((r) => r.id === CARD)?.kitsu_id).toBe(RIGHT);
 		expect(pickPlay()).toBeUndefined();
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
-		// The slip that would say the pick is gone: a notice says it,
-		// and its Undo gives the row back.
-		const done = toastWith(m.detail_link_done_toast({ title: RIGHT_TITLE }));
-		expect(done?.actionLabel).toBe(m.detail_link_undo());
-		done!.onAction!();
-		await until(() => backend.unlinkCalls.length === 1, 'the undo');
-		await until(() => toastWith(m.detail_link_undone_toast()) !== undefined, 'the undo notice');
-		expect(backend.rows.find((r) => r.id === CARD)?.kitsu_id).toBeUndefined();
-		expect(vi.mocked(goto)).not.toHaveBeenCalled();
 	});
 
 	it('names no episode of a single-video work on the player, from its first line', async () => {

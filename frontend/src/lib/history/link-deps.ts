@@ -3,13 +3,13 @@
  * that opens the picker: the show page, the player and Home
  * ($lib/history/link-offer.ts).
  *
- * Every link and undo is announced once it answered, failed or not,
- * to whatever reads the history and is on screen then: the notice
- * that holds an Undo outlives the page the link was made on, and the
- * Home on screen when it answers may not be the one it was made from.
+ * Every link is announced once it answered, failed or not, to whatever
+ * reads the history and is on screen then: a link can answer after
+ * the page it was made on was left, and the Home or show page on
+ * screen when it answers may not be the one it was made from.
  */
 
-import { historyLink, historyLinkGroup, historyList, historyUnlink, kitsuSearch } from '$lib/api';
+import { historyLink, historyLinkGroup, historyList, kitsuSearch } from '$lib/api';
 import type { LinkDeps } from './link-offer';
 import { resolveKitsuMatchWithTrust } from './match';
 import { resolveHistoryEntry } from './resolve';
@@ -20,14 +20,13 @@ export function appLinkDeps(): LinkDeps {
 		resolve: (entry) => resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null)),
 		search: kitsuSearch,
 		link: (card, rows, kitsuId) => announced(historyLink(card, rows, kitsuId)),
-		unlink: (kitsuId, rows) => announced(historyUnlink(kitsuId, rows)),
 		group: historyLinkGroup
 	};
 }
 
 const listeners = new Set<() => void>();
 
-/** Hear of every link or undo once it answered; the way to stop. */
+/** Hear of every link once it answered; the way to stop. */
 export function onHistoryLinked(listener: () => void): () => void {
 	listeners.add(listener);
 	return () => listeners.delete(listener);

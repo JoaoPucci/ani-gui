@@ -23,7 +23,7 @@
  * renderer never parses a slug.
  */
 
-import type { HistoryEntry, KitsuAnimeRef, LinkedRow, LinkOutcome, UnlinkOutcome } from '$lib/api';
+import type { HistoryEntry, KitsuAnimeRef, LinkOutcome } from '$lib/api';
 import { resolveHistoryEntry } from './resolve';
 import { mergeCandidates, slugSearchTerm, type LinkCandidate } from './link-candidates';
 
@@ -37,7 +37,6 @@ export interface LinkDeps {
 	link: (card: string, rows: string[], kitsuId: string) => Promise<LinkOutcome>;
 	/** The rows of `rows` a link from the card `card` would write. */
 	group: (card: string, rows: string[]) => Promise<string[]>;
-	unlink: (kitsuId: string, rows: LinkedRow[]) => Promise<UnlinkOutcome>;
 }
 
 /** The offer: the card's row, and the show it is guessed as. On the
@@ -131,10 +130,4 @@ export async function confirmLink(
 	kitsuId: string
 ): Promise<LinkOutcome> {
 	return deps.link(offer.entry.id, await guessedGroup(deps, offer), kitsuId);
-}
-
-/** Undo `outcome`; true when every row it linked got its id back. */
-export async function undoLink(deps: LinkDeps, outcome: LinkOutcome): Promise<boolean> {
-	const undone = await deps.unlink(outcome.kitsu_id, outcome.linked);
-	return undone.kept.length === 0;
 }

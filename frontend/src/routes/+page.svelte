@@ -497,16 +497,16 @@
 	// A guessed card's way to the picker — its pill, and its failed
 	// resume's button. A link reads the cards again where they stand;
 	// nothing navigates ($lib/history/in-place-link.svelte.ts).
-	// The cards are read again on every link or undo that answers while
-	// this Home is on screen, made from here or anywhere else — the Undo
-	// of a notice outlives the Home it was made on
+	// The cards are read again on every link that answers while this
+	// Home is on screen, made from here or anywhere else — a link can
+	// answer after the Home it was made on was left
 	// ($lib/history/link-deps.ts) — so the session itself reads nothing.
 	const cardLink = new InPlaceLinkSession({
 		...appLinkDeps(),
-		notify: (notice) => toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined })
+		notify: (notice) => toastStore.push(notice)
 	});
 	const stopHearing = onHistoryLinked(() => void relink.reread().catch(() => {}));
-	// A link or Undo answered after the user left Home does nothing here.
+	// A link answered after the user left Home does nothing here.
 	onDestroy(() => {
 		stopHearing();
 		cardLink.leave();

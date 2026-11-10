@@ -266,7 +266,7 @@ describe("a guessed Continue card's pill", () => {
 		expect(id).toBe(BC_RIGHT);
 	});
 
-	it("links the card's listing and reads the card again where it stands; Undo puts it back", async () => {
+	it("links the card's listing and reads the card again where it stands", async () => {
 		await openHome();
 		pill(BC_CARD)!.click();
 		await until(() => dialog()?.open === true, 'the picker');
@@ -279,11 +279,6 @@ describe("a guessed Continue card's pill", () => {
 		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'the card as the linked show');
 		expect(pill(BC_CARD)).toBeNull();
 		expect(goto).not.toHaveBeenCalled();
-		const toast = toastWith(m.detail_link_done_toast({ title: BC_RIGHT_TITLE }))!;
-		expect(toast.actionLabel).toBe(m.detail_link_undo());
-		toast.onAction!();
-		await until(() => backend.unlinkCalls.length === 1, 'the undo');
-		await until(() => showLine(BC_CARD).includes(BC_GUESS_TITLE), 'the card as the guess again');
 	});
 
 	it('says the show was saved, with no Undo on the notice', async () => {
@@ -695,196 +690,39 @@ describe('a card linked while its first probe waits in the queue', () => {
 	});
 });
 
-describe("a resume clicked while a link's Undo is still matching the card", () => {
-	// JoJo's card is linked to the OVA from its pill. Its Undo is pressed,
-	// and while the card is being matched as the guess again (its title
-	// search held), the card is clicked: the click is a resume of the OVA,
-	// whose cap lookup (held too) answers 1 only after the card is the
-	// guess again. That cap is the OVA's: the guess's next resume must not
-	// replay episode 1 because of it.
-	let holdTitle = false;
-	let releaseTitle: () => void = () => {};
-	let releaseLookup: () => void = () => {};
-	let titleAsks = 0;
-	let lookupAsked = false;
-	beforeEach(() => {
-		holdTitle = false;
-		titleAsks = 0;
-		lookupAsked = false;
-		const title = new Promise<void>((resolve) => {
-			releaseTitle = resolve;
+describe('a link that answers after the user left Home', () => {
+	// The link's notice and its write outlive the Home it was made on:
+	// the Home the user came back to reads its cards again when it lands.
+	it('shows the card as the linked show on the Home the user came back to', async () => {
+		let release: () => void = () => {};
+		const saved = new Promise<void>((resolve) => {
+			release = resolve;
 		});
-		const lookup = new Promise<void>((resolve) => {
-			releaseLookup = resolve;
-		});
+		// Held, then answered by the fake backend's own route.
 		server.use(
-			http.get(`${API_BASE}/api/title-match`, async ({ request }) => {
-				const t = new URL(request.url).searchParams.get('title') ?? '';
-				if (t.startsWith(JOJO_TITLE)) {
-					if (holdTitle) {
-						titleAsks++;
-						await title;
-					}
-					return HttpResponse.json(JOJO_GUESS);
-				}
-				if (t.startsWith(BC_TITLE)) return HttpResponse.json(BC_GUESS);
-				return HttpResponse.json(null);
-			}),
-			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
-				const { kitsu_id, background } = (await request.json()) as {
-					kitsu_id?: string;
-					background?: boolean;
-				};
-				if (kitsu_id === JOJO_RIGHT && background === false) {
-					lookupAsked = true;
-					await lookup;
-					return HttpResponse.json({ available: true, episode_count: 1 });
-				}
-				return HttpResponse.json({ available: true, episode_count: 26 });
+			http.post(`${API_BASE}/api/history/link`, async () => {
+				await saved;
 			})
 		);
-	});
-
-	it("does not keep the OVA's cap on the card once it is the guess again", async () => {
-		await openHome();
-		pill(JOJO_CARD)!.click();
-		await until(() => dialog()?.open === true, 'the picker');
-		await pickAndLink(JOJO_RIGHT_TITLE);
-		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the card as the OVA');
-		await settle();
-		// Undo: the card is matched as the guess again, held at its title.
-		holdTitle = true;
-		toastWith(m.detail_link_done_toast({ title: JOJO_RIGHT_TITLE }))!.onAction!();
-		await until(() => titleAsks > 0, 'the card being matched again');
-		// The card still shows the OVA, and is clicked.
-		const card = () => cell(JOJO_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!;
-		card().click();
-		await until(() => lookupAsked, "the click's cap lookup");
-		releaseTitle();
-		await until(() => showLine(JOJO_CARD).includes(JOJO_GUESS_TITLE), 'the card as the guess');
-		releaseLookup();
-		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
-		FakeEventSource.instances
-			.at(-1)!
-			.dispatch('error', JSON.stringify({ kind: 'no_results', message: 'not found' }));
-		await until(
-			() => target.querySelector('[role="alertdialog"]') !== null,
-			'the failed resume overlay'
-		);
-		await settle();
-		// The guess's resume goes on to episode 2.
-		const before = FakeEventSource.instances.length;
-		card().click();
-		await until(() => FakeEventSource.instances.length > before, 'the second resume');
-		const url = new URL(FakeEventSource.instances.at(-1)!.url, 'http://x');
-		expect(url.searchParams.get('kitsu_id')).toBeNull();
-		expect(url.searchParams.get('episode')).toBe('2');
-	});
-});
-
-describe("an Undo from a card's notice, once Home moved on", () => {
-	// Black Clover's card is linked from its pill, and its notice holds
-	// the Undo for a while. The Undo acts on Black Clover's card: it
-	// gives the card its guess back, and leaves alone whatever Home shows
-	// by the time it answers.
-	let holdUnlink = false;
-	let releaseUnlink: () => void = () => {};
-	let unlinkAsked = false;
-	let historyReads = 0;
-	beforeEach(() => {
-		holdUnlink = false;
-		unlinkAsked = false;
-		historyReads = 0;
-		const unlinked = new Promise<void>((resolve) => {
-			releaseUnlink = resolve;
-		});
-		// Each counts or holds, then answers nothing: the request goes on
-		// to the fake backend's own route.
-		server.use(
-			http.get(`${API_BASE}/api/history`, () => {
-				historyReads++;
-			}),
-			http.post(`${API_BASE}/api/history/unlink`, async () => {
-				unlinkAsked = true;
-				if (holdUnlink) await unlinked;
-			})
-		);
-	});
-
-	/** Home opened afresh, Black Clover's card linked to the series. */
-	async function openHomeLinked() {
-		app = mount(HomePage, { target });
-		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'Black Clover as the series');
-		await settle();
-	}
-
-	async function linkBlackClover() {
 		await openHome();
 		pill(BC_CARD)!.click();
 		await until(() => dialog()?.open === true, 'the picker');
-		await pickAndLink(BC_RIGHT_TITLE);
-		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'the card as the series');
-		await settle();
-		return toastWith(m.detail_link_done_toast({ title: BC_RIGHT_TITLE }))!;
-	}
-
-	it("keeps another card's picker open, with its pick, when the Undo answers meanwhile", async () => {
-		const toast = await linkBlackClover();
-		holdUnlink = true;
-		toast.onAction!();
-		await until(() => unlinkAsked, 'the undo sent');
-		// JoJo's picker is opened while the undo is out, and a show picked.
-		pill(JOJO_CARD)!.click();
-		await until(() => dialog()?.open === true, "JoJo's picker");
-		const jojoRow = () =>
+		const row = () =>
 			Array.from(dialog()?.querySelectorAll<HTMLButtonElement>('li button') ?? []).find((b) =>
-				(b.textContent ?? '').includes(JOJO_RIGHT_TITLE)
+				(b.textContent ?? '').includes(BC_RIGHT_TITLE)
 			);
-		await until(() => jojoRow() !== undefined, 'the OVA among the candidates');
-		jojoRow()!.click();
+		await until(() => row() !== undefined, 'the series among the candidates');
+		row()!.click();
 		await until(() => !button(m.detail_link_confirm_button())?.disabled, 'the Link button');
-		releaseUnlink();
-		await until(() => backend.unlinkCalls.length === 1, 'the undo');
-		await until(
-			() => showLine(BC_CARD).includes(BC_GUESS_TITLE),
-			'Black Clover as the guess again'
-		);
-		await settle();
-		// JoJo's picker is still open on JoJo's card, the OVA still picked:
-		// its last step asks about the OVA.
-		expect(dialog()?.open).toBe(true);
-		expect(dialog()!.textContent).toContain(JOJO_RIGHT_TITLE);
-		expect(button(m.detail_link_confirm_button())?.disabled).toBe(false);
-		expect(toastWith(m.detail_link_undone_toast())).toBeDefined();
-	});
-
-	it('gives the card its guess back on the Home the user came back to', async () => {
-		const toast = await linkBlackClover();
-		// Home is left, and opened again before the Undo is pressed.
+		button(m.detail_link_confirm_button())!.click();
+		// Home is left while the link is out, and opened again.
 		unmount(app!);
 		app = null;
-		await openHomeLinked();
-		toast.onAction!();
-		await until(() => backend.unlinkCalls.length === 1, 'the undo');
-		await until(
-			() => showLine(BC_CARD).includes(BC_GUESS_TITLE),
-			'Black Clover as the guess again'
-		);
-		await until(() => pill(BC_CARD) !== null, "Black Clover's pill back");
-	});
-
-	it('undoes the link and says so after the user left Home, reading nothing for it', async () => {
-		const toast = await linkBlackClover();
-		// The user leaves Home before pressing the notice's Undo.
-		unmount(app!);
-		app = null;
-		const reads = historyReads;
-		toast.onAction!();
-		await until(() => backend.unlinkCalls.length === 1, 'the undo');
-		await until(() => toastWith(m.detail_link_undone_toast()) !== undefined, 'the undo notice');
-		await settle();
-		expect(backend.rows.find((r) => r.id === BC_CARD)?.kitsu_id).toBeUndefined();
-		expect(historyReads).toBe(reads);
+		await openHome();
+		release();
+		await until(() => backend.linkCalls.length === 1, 'the link');
+		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'the card as the series');
+		expect(toastWith(m.detail_link_done_toast({ title: BC_RIGHT_TITLE }))).toBeDefined();
 	});
 });
 

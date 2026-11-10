@@ -15,7 +15,6 @@ function deps(over: Partial<LinkDeps> = {}): LinkDeps {
 		resolve: async (e) => ({ match: e.kitsu_id ? ref(e.kitsu_id) : null, trusted: !!e.kitsu_id }),
 		search: async () => [],
 		link: async () => ({ kitsu_id: '', linked: [] }),
-		unlink: async () => ({ restored: [], kept: [] }),
 		group: async (_c, rows) => rows,
 		...over
 	};

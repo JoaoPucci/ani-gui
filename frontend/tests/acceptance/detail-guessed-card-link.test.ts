@@ -87,7 +87,6 @@ interface Row {
 
 let rows: Row[];
 let linkCalls: { card: string; rows: string[]; kitsu_id: string }[];
-let unlinkCalls: { kitsu_id: string; rows: { row: string; previous: string | null }[] }[];
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
@@ -104,7 +103,6 @@ beforeEach(() => {
 		{ ep_no: '3', id: HIDDEN, title: TITLE }
 	];
 	linkCalls = [];
-	unlinkCalls = [];
 	target = document.createElement('div');
 	document.body.appendChild(target);
 	serveBackend();
@@ -188,21 +186,6 @@ function serveBackend() {
 			http.post(`${API_BASE}/api/history/link-group`, async ({ request }) => {
 				const body = (await request.json()) as { card: string; rows: string[] };
 				return HttpResponse.json(body.rows.filter((r) => rows.some((h) => h.id === r)));
-			}),
-			http.post(`${API_BASE}/api/history/unlink`, async ({ request }) => {
-				const body = (await request.json()) as {
-					kitsu_id: string;
-					rows: { row: string; previous: string | null }[];
-				};
-				unlinkCalls.push(body);
-				rows = rows.map((r) => {
-					const l = body.rows.find((x) => x.row === r.id);
-					if (!l) return r;
-					const { kitsu_id: _dropped, ...rest } = r;
-					void _dropped;
-					return l.previous ? { ...rest, kitsu_id: l.previous } : rest;
-				});
-				return HttpResponse.json({ restored: body.rows.map((r) => r.row), kept: [] });
 			}),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
@@ -324,8 +307,10 @@ describe('changing the show', () => {
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the show page');
 		expect(String(vi.mocked(goto).mock.calls.at(-1)?.[0])).toBe(`/anime/${RIGHT}`);
 		await until(() => !hasNote(), 'the line to go');
-		const done = toastStore.items.find((t) => t.actionLabel === m.detail_link_undo());
-		expect(done?.message).toBe(m.detail_link_done_toast({ title: TITLE }));
+		const done = toastStore.items.find(
+			(t) => t.message === m.detail_link_done_toast({ title: TITLE })
+		);
+		expect(done).toBeDefined();
 
 		// A fresh load of Home: one card, as the linked show, and no
 		// hidden row surfacing as the old guess.
@@ -359,31 +344,11 @@ describe('changing the show', () => {
 		setUrl('/');
 		release();
 		await until(
-			() => toastStore.items.some((t) => t.actionLabel === m.detail_link_undo()),
+			() => toastStore.items.some((t) => t.message === m.detail_link_done_toast({ title: TITLE })),
 			'the saved notice'
 		);
 		await settle();
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
-	});
-
-	it('undoes the link and comes back to the page, which offers it again', async () => {
-		await linkToTheRightShow();
-		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the show page');
-		const done = toastStore.items.find((t) => t.actionLabel === m.detail_link_undo())!;
-		done.onAction!();
-
-		await until(() => unlinkCalls.length === 1, 'the undo');
-		expect(unlinkCalls[0].kitsu_id).toBe(RIGHT);
-		expect(unlinkCalls[0].rows.map((r) => r.row)).toEqual([CARD, HIDDEN]);
-		await until(
-			() => String(vi.mocked(goto).mock.calls.at(-1)?.[0]).startsWith(`/anime/${GUESS}`),
-			'the way back'
-		);
-		expect(String(vi.mocked(goto).mock.calls.at(-1)?.[0])).toBe(
-			`/anime/${GUESS}?guessed=${encodeURIComponent(CARD)}`
-		);
-		await until(hasNote, 'the line again');
-		expect(rows.every((r) => r.kitsu_id === undefined)).toBe(true);
 	});
 });
 
@@ -518,28 +483,24 @@ describe('from Home to a relinked card', () => {
 	});
 });
 
-describe('a show page on screen when a link or undo answers elsewhere', () => {
-	// The Undo of Home's notice outlives Home: pressed on the linked
-	// show's page, it gives the rows back, and the page's Continue,
-	// read from the rows before, would play the show onto them again.
-	it("reads the show's history again, and Continue goes with the link", async () => {
-		rows = rows.map((r) => ({ ...r, kitsu_id: RIGHT }));
+describe('a show page on screen when a link answers elsewhere', () => {
+	// A link can answer after the page it was made on was left — a pick
+	// on the player saved once the viewer went to a show page. The page
+	// on screen reads its history again, so its Continue follows the rows.
+	it("reads the show's history again, and Continue comes with the link", async () => {
 		await openShowPage(RIGHT);
-		await until(
-			() => (target.textContent ?? '').includes(m.detail_play_button_continue()),
-			'Continue from the linked rows'
-		);
-		await appLinkDeps().unlink(RIGHT, [
-			{ row: CARD, previous: null, ep_no: '5', watched_at: null },
-			{ row: HIDDEN, previous: null, ep_no: '3', watched_at: null }
-		]);
 		await until(
 			() => (target.textContent ?? '').includes(m.detail_play_button_episode_one()),
 			'Play from episode 1'
 		);
+		await appLinkDeps().link(CARD, [CARD, HIDDEN], RIGHT);
+		await until(
+			() => (target.textContent ?? '').includes(m.detail_play_button_continue()),
+			'Continue from the linked rows'
+		);
 	});
 
-	it("keeps Continue gone when the page's first lookup, sent before the undo, answers after it", async () => {
+	it("keeps Continue gone when the page's first lookup, sent before a link moved the rows away, answers after it", async () => {
 		rows = rows.map((r) => ({ ...r, kitsu_id: RIGHT }));
 		// The page's first lookup reads the rows as they are, then is held.
 		let releaseFirst: () => void = () => {};
@@ -556,13 +517,11 @@ describe('a show page on screen when a link or undo answers elsewhere', () => {
 		);
 		await openShowPage(RIGHT);
 		await until(() => asks === 1, "the page's first lookup");
-		await appLinkDeps().unlink(RIGHT, [
-			{ row: CARD, previous: null, ep_no: '5', watched_at: null },
-			{ row: HIDDEN, previous: null, ep_no: '3', watched_at: null }
-		]);
-		// The undo's own lookup has answered, an empty answer asked twice
+		// A link elsewhere records the rows as another show.
+		await appLinkDeps().link(CARD, [CARD, HIDDEN], GUESS);
+		// The link's own lookup has answered, an empty answer asked twice
 		// ($lib/detail/resume-lookup), before the first one does.
-		await until(() => asks === 3, "the undo's lookup");
+		await until(() => asks === 3, "the link's lookup");
 		await settle();
 		releaseFirst();
 		await settle();

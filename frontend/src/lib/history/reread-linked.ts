@@ -1,6 +1,6 @@
 /**
  * Home's Continue cards read again in place after a link from one of
- * them, or its undo: the history is read again, and every row whose
+ * them: the history is read again, and every row whose
  * recorded show changed is matched again — so the linked card names
  * its show, and a row the card no longer stands for comes out from
  * behind it as a card of its own.

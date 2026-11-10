@@ -9,8 +9,8 @@
  * lists the history in Continue order and matches again every row whose
  * recorded show changed ($lib/history/reread-linked.ts), publishing
  * what each row is now. Reads run one after another, each against the
- * history the one before left: a link and its undo, close together,
- * both reach the cards. A row matched to another show forgets what was
+ * history the one before left: two links close together both reach the
+ * cards. A row matched to another show forgets what was
  * kept for the former one: a cap a failed resume of a one-episode
  * special pinned as exact would hold the linked series at episode 1.
  * And whatever was still on its way about the former show — the first
@@ -65,8 +65,8 @@ export interface CardRelink {
 export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 	let reads: Promise<unknown> = Promise.resolve();
 	// How many times each row has been matched again. Only the latest
-	// rematch of a row publishes: a link's answer landing after its
-	// undo's is about a show the row no longer records.
+	// rematch of a row publishes: an earlier link's answer landing after
+	// a later one's is about a show the row no longer records.
 	const rematches = new Map<string, number>();
 	const count = (row: string) => rematches.get(row) ?? 0;
 	// Rows whose latest rematch has not landed yet: they are leaving the

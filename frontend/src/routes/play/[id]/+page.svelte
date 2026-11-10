@@ -229,13 +229,12 @@
 	// viewer switches to it (switchToPick); the picker holds playback
 	// while it is open ($lib/play/hold-playback). What a pick did is
 	// said in the slip, not a toast, unless the pick is saved after the
-	// viewer left, when a toast says it with its Undo. A session a switch opened, or one
+	// viewer left, when a toast says it. A session a switch opened, or one
 	// of a row picked for here since the app started, keeps the ⋯ entry
 	// to change the show again ($lib/history/guess-slip.ts).
 	const playLink = new InPlaceLinkSession({
 		...appLinkDeps(),
-		notify: (notice) =>
-			toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined }),
+		notify: (notice) => toastStore.push(notice),
 		inPlayer: true
 	});
 	// A pick saved after the viewer left is still saved, and switches to

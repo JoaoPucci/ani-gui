@@ -649,7 +649,7 @@ export function historyDelete(id: string): Promise<void> {
 export interface LinkedRow {
 	row: string;
 	previous: string | null;
-	/** The id an earlier link of the row named; the undo puts it back. */
+	/** The id an earlier link of the row named. */
 	previous_linked?: string | null;
 	ep_no: string;
 	watched_at: number | null;
@@ -659,13 +659,6 @@ export interface LinkedRow {
 export interface LinkOutcome {
 	kitsu_id: string;
 	linked: LinkedRow[];
-}
-
-/** What an undo did: the rows given back their earlier id, and those a
- *  write since the link left as they are. */
-export interface UnlinkOutcome {
-	restored: string[];
-	kept: string[];
 }
 
 /** Link history rows to the show the user named for them, from the
@@ -684,11 +677,6 @@ export function historyLink(card: string, rows: string[], kitsuId: string): Prom
  *  write: those of the card's own listing. */
 export function historyLinkGroup(card: string, rows: string[]): Promise<string[]> {
 	return postJson<string[]>('/api/history/link-group', { card, rows });
-}
-
-/** Undo a link, naming the rows as it left them. */
-export function historyUnlink(kitsuId: string, rows: LinkedRow[]): Promise<UnlinkOutcome> {
-	return postJson<UnlinkOutcome>('/api/history/unlink', { kitsu_id: kitsuId, rows });
 }
 
 /** Find the most-recent history entry whose show id maps to this Kitsu
