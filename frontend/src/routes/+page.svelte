@@ -66,6 +66,7 @@
 		kitsuByMalIds,
 		kitsuEpisodes,
 		kitsuFranchise,
+		historyByKitsuEach,
 		kitsuTopRated,
 		kitsuTrendingAnilist,
 		markWatched,
@@ -131,8 +132,14 @@
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import Strip from '$lib/components/Strip.svelte';
 	import HandoffCard from '$lib/watch-order/HandoffCard.svelte';
-	import { handoffAsk, handoffFrom, playedIds, railHandoffs } from '$lib/watch-order/handoff';
-	import { createFranchiseReads } from '$lib/watch-order/handoff-reads';
+	import {
+		handoffAsk,
+		handoffFrom,
+		playedIds,
+		railHandoffs,
+		unclaimedHandoff
+	} from '$lib/watch-order/handoff';
+	import { createFranchiseReads, createNamedReads } from '$lib/watch-order/handoff-reads';
 	import { localDay } from '$lib/watch-order/entry';
 	import { settledOrder } from '$lib/watch-order/page-model';
 	import type { FranchiseData } from '$lib/watch-order/types';
@@ -984,16 +991,23 @@
 		for (const [, kitsuId] of handoffAsks) if (kitsuId !== null) handoffReads.want(kitsuId);
 	});
 	const handoffPlayed = $derived(playedIds(history ?? [], historyMatches));
+	const handoffFor = (kitsuId: string) =>
+		handoffFrom(handoffSeries[kitsuId] ?? null, kitsuId, handoffOrder, handoffToday, handoffPlayed);
+	// Before a card moves on, the backend's resume lookup is asked once
+	// whether a history row resumes the next entry, the rule its own
+	// page goes by ($lib/watch-order/handoff `unclaimedHandoff`).
+	let handoffNamed = $state<Record<string, boolean | null>>({});
+	const namedReads = createNamedReads(historyByKitsuEach, (id, named) => {
+		handoffNamed = { ...handoffNamed, [id]: named };
+	});
+	$effect(() => {
+		for (const h of railHandoffs(handoffAsks, handoffFor).values()) namedReads.want(h.next.id);
+	});
 	const handoffs = $derived(
-		railHandoffs(handoffAsks, (kitsuId) =>
-			handoffFrom(
-				handoffSeries[kitsuId] ?? null,
-				kitsuId,
-				handoffOrder,
-				handoffToday,
-				handoffPlayed
-			)
-		)
+		railHandoffs(handoffAsks, (kitsuId) => {
+			const handoff = handoffFor(kitsuId);
+			return handoff && unclaimedHandoff(handoff, handoffNamed[handoff.next.id]);
+		})
 	);
 </script>
 

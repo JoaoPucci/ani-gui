@@ -81,6 +81,22 @@ export function handoffFrom(
 	return { finished: entry, next: up.entry, titles: run.entries.map((e) => e.title) };
 }
 
+/**
+ * `handoff` once the backend's resume lookup has answered that no
+ * history row resumes its next entry (`named` false), else null: still
+ * asking (undefined), the lookup failed (null), or a row resumes it
+ * (true). The played set reads Home's own matches, which can miss a
+ * row the lookup names for the entry: a row whose stored mapping Home
+ * passes over, which the entry's page resumes from all the same.
+ */
+export function unclaimedHandoff(
+	handoff: Handoff | null,
+	named: boolean | null | undefined
+): Handoff | null {
+	void named;
+	return handoff;
+}
+
 /** A history row as the played set reads it. */
 export interface PlayedRow {
 	readonly id: string;

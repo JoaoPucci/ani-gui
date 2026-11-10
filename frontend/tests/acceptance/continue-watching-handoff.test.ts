@@ -126,6 +126,13 @@ interface Scenario {
 	settings?: () => Response;
 	/** What the source's availability probe counts for every show. */
 	probedCap?: number;
+	/**
+	 * The rows the backend's resume lookup names for an id, where it
+	 * is not the row that recorded it (`history_claim::names`).
+	 */
+	named?: Record<string, ReturnType<typeof row>>;
+	/** The resume lookup fails. */
+	namedFails?: boolean;
 }
 
 /** Mounts Home over `history`, the first show's series answered by `franchise`. */
@@ -167,6 +174,16 @@ function mountHome(s: Scenario) {
 					{ status: 502 }
 				)
 			),
+			// The backend's resume lookup: the row each id resumes from.
+			http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
+				if (s.namedFails) return new HttpResponse(null, { status: 503 });
+				const { ids } = (await request.json()) as { ids: string[] };
+				return HttpResponse.json(
+					Object.fromEntries(
+						ids.map((k) => [k, s.named?.[k] ?? s.history.find((r) => r.kitsu_id === k) ?? null])
+					)
+				);
+			}),
 			http.get(`${API_BASE}/api/kitsu/franchise/:id`, ({ params }) => {
 				asked.push(String(params.id));
 				if (params.id === '30') return HttpResponse.json(lineFrom30);
@@ -312,6 +329,28 @@ describe('Continue Watching after a finale', () => {
 		await until(() => handoffTo('40') !== null, 'the other series to move on');
 		await until(() => resumeFor(SECOND) !== null, "the next show's matched card");
 		await new Promise((r) => setTimeout(r, 50));
+		expect(movedOn()).toBe(false);
+		expect(resumeFor(FIRST)).not.toBeNull();
+	});
+
+	it("keeps the ordinary card when the next show's page would resume from a row", async () => {
+		// Home matched the row to another show, but the backend's resume
+		// lookup, which the next show's own page goes by, names it for
+		// the next show (its stored mapping, which Home passed over).
+		const other = row('4', 'p-other', '77', 'Something Else');
+		mountHome({ history: [row('13'), controlRow()], named: { '20': other } });
+		const movedOn = everHeld(() => handoffTo('20') !== null);
+		await until(() => handoffTo('40') !== null, 'the other series to move on');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(movedOn()).toBe(false);
+		expect(resumeFor(FIRST)).not.toBeNull();
+	});
+
+	it('keeps the ordinary card when the resume lookup cannot be read', async () => {
+		const asked = mountHome({ history: [row('13'), controlRow()], namedFails: true });
+		const movedOn = everHeld(() => handoffTo('20') !== null || handoffTo('40') !== null);
+		await until(() => asked.includes('10') && asked.includes('30'), 'both series reads');
+		await new Promise((r) => setTimeout(r, 100));
 		expect(movedOn()).toBe(false);
 		expect(resumeFor(FIRST)).not.toBeNull();
 	});
