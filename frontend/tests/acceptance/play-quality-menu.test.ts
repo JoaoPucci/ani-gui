@@ -880,6 +880,31 @@ describe("play route — the ⋯ menu's quality picker, with the custom controls
 		expect(hls.loads).toEqual([]);
 	});
 
+	it('a level picked here lasts the player session: the next episode starts at it', async () => {
+		// The ⋯ menu's pick takes the in-player menu's path, so it is
+		// the same session pin: kept by the next episode.
+		const hls = await nativeMaster();
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, 'the quality row');
+		moreQualityRow()?.click();
+		await until(() => moreRadios().length > 0, 'the levels');
+		moreRadios()[2].click();
+		expect(hls.nexts).toEqual([1]);
+
+		const engines = hlsInstances().length;
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '2', kind: 'hls' });
+		await until(() => hlsInstances().length > engines, "the next episode's engine");
+		const next = hlsInstances()[hlsInstances().length - 1];
+		next.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => next.starts === 1, "the next episode's engine to start");
+		expect(next.startLevel).toBe(1);
+		await tick();
+		moreButton().click();
+		await until(() => moreQualityRow() !== undefined, "the next episode's quality row");
+		expect(moreQualityRow()?.textContent).toContain(label(720));
+		expect(moreQualityRow()?.textContent).not.toContain(m.play_quality_auto());
+	});
+
 	it('offers no quality row while the custom controls carry the picker', async () => {
 		const hls = await mountHls(true);
 		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
