@@ -76,8 +76,7 @@ export function captionText(caption: StripCaption): string {
  * count may be short.
  */
 export function stackTotal(summary: FranchiseSummary, complete: boolean): number | null {
-	void complete;
-	return summary.total;
+	return complete ? summary.total : null;
 }
 
 /**
@@ -87,7 +86,7 @@ export function stackTotal(summary: FranchiseSummary, complete: boolean): number
  * None for a franchise read in part, whose counts may be short.
  */
 export function stackPartsText(summary: FranchiseSummary, complete: boolean): string[] {
-	void complete;
+	if (!complete) return [];
 	const parts = [m.watchorder_strip_franchise_stack_main({ count: summary.main })];
 	if (summary.films > 0)
 		parts.push(m.watchorder_strip_franchise_stack_films({ count: summary.films }));
