@@ -19,12 +19,16 @@
 # one step from a kill.
 #
 #   - the tools that select processes by pattern or list the table:
-#     pkill, killall, pgrep, pidof, and ps given options (in shell, or
-#     as a program name passed to a spawn);
+#     pkill, killall, pgrep, pidof, and ps followed by options, dashed
+#     or BSD-style (`ps -eo`, `ps aux`), or named as a program passed
+#     to a spawn;
 #   - the parent-pid field's name, under any capitalisation (ps's
 #     column, the `PPid:` line of /proc/<pid>/status);
-#   - enumerating /proc: a glob over its numeric entries, or a
-#     directory read of /proc itself.
+#   - enumerating /proc: a glob over its entries, or /proc itself
+#     named as a whole — quoted, or followed by a space or the end of
+#     the line — which is how a listing (`ls /proc`, `find /proc`,
+#     `readdirSync('/proc')`, `os.listdir('/proc')`) names it. A path
+#     into one known process, `/proc/${pid}/stat`, is allowed.
 #
 # Trees scanned: electron/e2e, electron/lib, electron/scripts, tools,
 # tests — this file excepted, since it has to name what it forbids.
@@ -34,8 +38,10 @@
 # nor that a group signalled is one the test created. Those are what
 # electron/lib/own-group.cjs establishes for the e2e suite, and what
 # its own tests exercise. A selection spelled in none of the forms
-# above — another language's process library, a table read through a
-# computed path — passes here; none exists. Production code outside
+# above passes here: another language's process library, a listing of
+# a /proc path built at run time, or a walk of parent links that reads
+# the field out of /proc/<pid>/stat under another name. None exists
+# today; a reviewer has to catch a new one. Production code outside
 # electron/lib (electron/main.js, the backend) is not scanned: what it
 # stops is its own children, tracked by the handles that spawned them.
 
@@ -48,11 +54,11 @@ SELF='tests/arch/own_processes.sh'
 
 # One alternative per line, joined below.
 patterns='\b(pkill|killall|pgrep|pidof)\b
-(^|[^[:alnum:]_./-])ps +-
+(^|[^[:alnum:]_./-])ps +[-a-zA-Z]
 ["'"'"'`]ps["'"'"'`]
 [Pp][Pp][Ii][Dd]
 /proc/(\[0-9\]|\*)
-readdir(Sync)?\( *["'"'"'`]/proc["'"'"'`/]'
+/proc/?(["'"'"'`[:space:]]|$)'
 regex=$(printf '%s\n' "$patterns" | paste -sd'|' -)
 
 found=$(grep -rnE \
