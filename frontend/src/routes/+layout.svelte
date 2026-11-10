@@ -62,15 +62,17 @@
 	import { afterNavigation, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
 	import { probeScope } from '$lib/availability/probe-scope';
 	import {
-		RECENT_LIMIT,
-		RECENT_STORAGE_KEY,
 		cycleSelectedIdx,
 		decideEnterAction,
 		freshConfigOrLast,
-		mergeRecents,
-		parseStoredRecents,
 		shouldRenderDropdown
 	} from '$lib/topbar/dropdown';
+	import {
+		RECENT_LIMIT,
+		RECENT_STORAGE_KEY,
+		mergeRecents,
+		parseStoredRecents
+	} from '$lib/topbar/recent-searches';
 
 	let { children } = $props();
 
@@ -220,7 +222,7 @@
 	const LIVE_DEBOUNCE_MS = 250;
 	const LIVE_MIN_CHARS = 2;
 	const LIVE_MAX_HITS = 5;
-	// RECENT_LIMIT + RECENT_STORAGE_KEY come from $lib/topbar/dropdown
+	// RECENT_LIMIT + RECENT_STORAGE_KEY come from $lib/topbar/recent-searches
 	// so the constants live next to the helpers that consume them.
 
 	let liveResults = $state<KitsuAnimeRef[] | null>(null);
