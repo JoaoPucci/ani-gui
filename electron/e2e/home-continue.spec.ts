@@ -237,12 +237,13 @@ async function launchAppWithContinueStubsOnce(
 			});
 		}
 
-		// Default: empty 200 so unknown probes don't blow up under Xvfb
-		// (the test cares about the home-strip surfaces; everything else
-		// just needs to not error out).
 		// The backend answers skip times with a list, empty when it knows
 		// none; the page reads it as one once the length is known.
 		if (p.startsWith('/api/aniskip/')) return j([]);
+
+		// Default: empty 200 so unknown probes don't blow up under Xvfb
+		// (the test cares about the home-strip surfaces; everything else
+		// just needs to not error out).
 		return j(null);
 	});
 
