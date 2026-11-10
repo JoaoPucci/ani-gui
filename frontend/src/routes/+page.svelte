@@ -55,6 +55,7 @@
 	import { resolve } from '$app/paths';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { createNavigationClaims } from '$lib/navigation/claims';
+	import { beginVisit } from '$lib/navigation/visit';
 	import {
 		allmangaKitsuMapGet,
 		checkAvailability,
@@ -286,14 +287,16 @@
 	// An episode left part-way keeps its position; the Continue card
 	// goes back to it rather than on to the next one.
 	const leftPartWay = (kitsuId: string, episode: number) => readPosition(kitsuId, episode) !== null;
-	// Aborted when Home is left: a Continue card's refill landing after
-	// is not fetched ($lib/refill/refill).
-	const refills = new AbortController();
-	onDestroy(() => refills.abort());
+	// Home's reads, cancelled when it is left: each holds an API
+	// connection until it answers, and what a cancelled one answers
+	// reaches nothing ($lib/navigation/visit). A Continue card's refill
+	// landing after is not fetched either ($lib/refill/refill).
+	const pageReads = beginVisit();
+	onDestroy(pageReads.end);
 	const rowReady = makeContinueRowReadyHandler({
 		historyById,
 		fetchKitsuEpisodes: kitsuEpisodes,
-		signal: refills.signal,
+		signal: pageReads.signal,
 		setMatch: (id, m) => {
 			historyMatches = { ...historyMatches, [id]: m };
 		},
@@ -316,7 +319,7 @@
 	// A card's row, read again for each answer that can put it right —
 	// its match, its probe, a retried probe. Those reads can answer out
 	// of order: the latest asked counts.
-	const rowNumberNow = latestReads(historyNumber);
+	const rowNumberNow = latestReads((id: string) => historyNumber(id, { signal: pageReads.signal }));
 	async function readRowAgain(id: string) {
 		const kitsuId = historyMatches[id]?.id;
 		const next = await refreshedRows(
@@ -503,12 +506,15 @@
 		// rendered AND queued for a background warm. The next visit
 		// reads a fuller cache and filters more aggressively.
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		kitsuTrendingAnilist()
-			.then((t) => filterAvailable(t, filterMode))
+		const signal = pageReads.signal;
+		void pageReads
+			.keep(
+				kitsuTrendingAnilist({ signal }).then((t) => filterAvailable(t, filterMode, { signal }))
+			)
 			.then((t) => (trending = t))
 			.catch((e) => (trendingError = describeError(e)));
-		kitsuTopRated()
-			.then((t) => filterAvailable(t, filterMode))
+		void pageReads
+			.keep(kitsuTopRated({ signal }).then((t) => filterAvailable(t, filterMode, { signal })))
 			.then((t) => (topRated = t))
 			.catch((e) => (topRatedError = describeError(e)));
 		// Settings drive the audio mode for the Continue Watching click
@@ -523,11 +529,17 @@
 		// probes, ended when the page unmounts: the strip's probes stop
 		// with it.
 		const continueProbes = probeScope.begin();
-		settingsPromise = settingsGet().catch(() => null as Config | null);
+		settingsPromise = settingsGet({ signal }).catch(() => null as Config | null);
 		void settingsPromise.then((c) => {
 			if (c) config = c;
 		});
-		Promise.all([historyList(), watchedAtAll().catch(() => ({}) as Record<string, number>)])
+		void pageReads
+			.keep(
+				Promise.all([
+					historyList({ signal }),
+					watchedAtAll({ signal }).catch(() => ({}) as Record<string, number>)
+				])
+			)
 			.then(([h, watchedAt]) => {
 				// Continue Watching ordering: stamped rows on top,
 				// most recently watched first. Rows that resolved but
@@ -658,8 +670,12 @@
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const deps = buildWatchLaterDeps();
 		const ticket = watchLaterLoads.start(true);
-		void loadWatchLater(deps)
-			.then((refs) => filterAvailable(refs, filterMode))
+		void pageReads
+			.keep(
+				loadWatchLater(deps).then((refs) =>
+					filterAvailable(refs, filterMode, { signal: pageReads.signal })
+				)
+			)
 			.then((refs) => {
 				if (!watchLaterLoads.current(ticket)) return; // a newer load superseded this one
 				watchLater = refs;
@@ -718,10 +734,13 @@
 						: null;
 			if (acct) credentials[key] = { bearer: acct.access_token, userId: acct.user_id };
 		}
+		// Its reads are Home's: cancelled when Home is left.
+		const signal = pageReads.signal;
 		return {
 			credentials,
-			fetchCachedList,
-			kitsuByMalIds,
+			fetchCachedList: (provider: Provider, bearer: string, userId?: string) =>
+				fetchCachedList(provider, bearer, userId, { signal }),
+			kitsuByMalIds: (malIds: number[]) => kitsuByMalIds(malIds, { signal }),
 			primary: primaryAccountStore.value
 		};
 	}
@@ -740,8 +759,10 @@
 		// `finally` reports the load finished, which a refresh waits on.
 		const ticket = watchLaterLoads.start(false);
 		try {
-			const refs = await loadWatchLater(deps);
-			const filtered = await filterAvailable(refs, filterMode);
+			const refs = await pageReads.keep(loadWatchLater(deps));
+			const filtered = await pageReads.keep(
+				filterAvailable(refs, filterMode, { signal: pageReads.signal })
+			);
 			if (!watchLaterLoads.current(ticket)) return; // a newer load superseded this one
 			if (moved && watchLater) {
 				watchLaterMotion.open(
@@ -907,7 +928,7 @@
 	// then opens its play as one, which records the guess only when the
 	// play lands on the card's own listing ($lib/play/play-origin.ts).
 	const rowTrust = createRowTrust((entry) =>
-		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null))
+		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null), { signal: pageReads.signal })
 	);
 	const playArgsFor = (a: ResumePlayArgs) =>
 		buildPlayArgs({
