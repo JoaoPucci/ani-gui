@@ -336,7 +336,12 @@
 	// keep-alive read the viewer's intent from here, and the loading
 	// indicator shows through a start and a stall.
 	let startPhase = $state<StartPhase>('idle');
-	let startWatch: StartWatch | null = null;
+	// Watches the page's own video for as long as the page has it, not
+	// the slot the video sits in: a stream can attach while the error
+	// panel stands in for the slot.
+	const startWatch: StartWatch = watchStart(ownVideo, (phase) => {
+		startPhase = phase;
+	});
 	const isPaused = $derived(!chromeReadsPlaying(startPhase));
 	const streamLoading = $derived(startPhase === 'starting' || startPhase === 'stalled');
 	let currentTime = $state(0);
@@ -553,7 +558,7 @@
 		if (!videoEl || resumeHolding) return;
 		// A start on its way reads as playing, so the button stops it.
 		if (startPhase === 'starting') {
-			startWatch?.cancel();
+			startWatch.cancel();
 			return;
 		}
 		if (videoEl.paused) {
@@ -1803,16 +1808,6 @@
 		// (after an error overlay) with the stream already playing.
 		currentTime = v.currentTime;
 		duration = isFinite(v.duration) ? v.duration : 0;
-		// A stream already playing there plays on; anything else keeps
-		// the phase it had.
-		startWatch = watchStart(
-			v,
-			(phase) => {
-				startPhase = phase;
-			},
-			v.paused ? untrack(() => startPhase) : 'playing'
-		);
-		startPhase = startWatch.phase();
 		videoVolume = v.volume;
 		isMuted = v.muted;
 		playbackRate = v.playbackRate;
@@ -1888,8 +1883,6 @@
 			v.removeEventListener('progress', onProg);
 			v.removeEventListener('durationchange', onDuration);
 			v.removeEventListener('loadedmetadata', onMeta);
-			startWatch?.dispose();
-			startWatch = null;
 			v.removeEventListener('volumechange', onVol);
 			v.removeEventListener('ratechange', onRate);
 			v.removeEventListener('ended', onEnded);
@@ -1931,7 +1924,7 @@
 		// The unload above set the element paused without a `pause`
 		// event; the stream attaching now is on its way. Told before the
 		// resume hold, below, takes the element's autoplay off.
-		startWatch?.attach(videoEl.autoplay);
+		startWatch.attach(videoEl.autoplay);
 		// Source-scoped listeners — the resume seek, the progress
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
@@ -2182,6 +2175,7 @@
 		// page and hold the provider's rate-limit slots.
 		sourceScope.flush();
 		teardown();
+		startWatch.dispose();
 		releasePlayerVideo(ownVideo);
 		showReleases.leave();
 	});
@@ -2853,7 +2847,7 @@
 		// instances simultaneously. The notice/launch flow continues
 		// regardless; if the external player fails to start the user
 		// can press space (or click the embedded player) to resume.
-		videoEl?.pause();
+		startWatch.cancel();
 		externalBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
@@ -2922,7 +2916,7 @@
 		// Same pause-the-embedded-video logic as the external flow:
 		// Syncplay opens its own player window so two instances would
 		// otherwise stack audio.
-		videoEl?.pause();
+		startWatch.cancel();
 		syncplayBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
@@ -3756,13 +3750,15 @@
 		     start or stall of the stream ($lib/play/start-state). Mounted
 		     across them and toggled: the states are set in different
 		     places, and the moment between them must not restart the
-		     indicator. An
-		     error unmounts it outright, so nothing lingers over the
-		     panel. -->
+		     indicator. With Chromium's own controls a start or a stall
+		     shows theirs, not this one. An error unmounts it outright,
+		     so nothing lingers over the panel. -->
 		{#if !playerError}
 			<span
 				class="player-spinner"
-				class:player-spinner-on={switchBusy || resumeHolding || streamLoading}
+				class:player-spinner-on={switchBusy ||
+					resumeHolding ||
+					(streamLoading && USE_CUSTOM_PLAYER_CONTROLS)}
 				aria-hidden="true"
 			>
 				<span class="player-spinner-track"><span class="player-spinner-sweep"></span></span>
@@ -5558,8 +5554,8 @@
 	   hairline (the search bar's and the download bar's sweep), set
 	   in the show's accent and centred in the frame. It waits a beat
 	   before fading in, so a switch, a resume, a start or a stall that
-	   lands quickly never flashes it, and goes at once when the load ends, so it
-	   never lingers over the picture. Toggled rather than remounted,
+	   lands quickly never flashes it, and goes at once when the load
+	   ends, so it never lingers over the picture. Toggled rather than remounted,
 	   it runs on unbroken from a switch into the resume hold that
 	   follows it: the switch stays busy until the next stream has
 	   attached and started its hold. Off, it leaves the layout, so
