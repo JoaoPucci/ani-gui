@@ -14,8 +14,6 @@ import type { EntryProgress, Progress, WatchEntry, WatchRun } from './types';
 /** One title of the main story. */
 export interface FranchiseRow {
 	readonly entry: WatchEntry;
-	/** The title cut against the rest of the main story's. */
-	readonly label: string;
 	/** The oversized numeral, on numbered stretches only. */
 	readonly position: number | null;
 	readonly progress: EntryProgress | undefined;
@@ -44,7 +42,6 @@ export interface RowContext {
 	readonly order: WatchOrder;
 	readonly progress: Progress;
 	readonly id: string;
-	readonly label: (e: WatchEntry) => string;
 }
 
 function rowOf(ctx: RowContext, entry: WatchEntry, numbered: boolean): FranchiseRow {
@@ -52,11 +49,10 @@ function rowOf(ctx: RowContext, entry: WatchEntry, numbered: boolean): Franchise
 	const note = pathNote(ctx.run, entry.id, ctx.order);
 	return {
 		entry,
-		label: ctx.label(entry),
 		position: numbered ? placement(ctx.run, entry.id, ctx.order).position : null,
 		progress,
 		share: progressShare(progressOf(entry, progress)),
-		leadsInto: note?.kind === 'leads-into' ? ctx.label(note.entry) : null,
+		leadsInto: note?.kind === 'leads-into' ? note.entry.title : null,
 		here: entry.id === ctx.id
 	};
 }

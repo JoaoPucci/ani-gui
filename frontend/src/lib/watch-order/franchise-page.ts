@@ -43,7 +43,6 @@ export interface FranchisePageModel {
 	/** The title the viewer is part-way through, where Resume goes. */
 	readonly resume: {
 		readonly entry: WatchEntry;
-		readonly label: string;
 		readonly episode: number;
 		readonly position: number | null;
 	} | null;
@@ -94,8 +93,7 @@ export function franchisePage(
 		run,
 		order,
 		id,
-		progress: progressFromHistory(data.rows, run.entries),
-		label: (e) => e.title
+		progress: progressFromHistory(data.rows, run.entries)
 	};
 	// Read in part, the walk may have missed titles before the first one
 	// it reached: nothing counted from that title is sure.
@@ -115,7 +113,6 @@ export function franchisePage(
 		alone: whole && isAlone(run, id),
 		resume: now && {
 			entry: now.entry,
-			label: ctx.label(now.entry),
 			episode: now.episode,
 			position: whole ? placement(run, now.entry.id, order).position : null
 		},
