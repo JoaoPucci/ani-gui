@@ -850,7 +850,8 @@ design section. Below it, sections:
 There is no order switch on the page; the app-wide setting applies.
 
 **Data.** `chain` and `around` for each entry of the run, plus
-progress from the local history (Kitsu id per row) and, where a
+progress from the local history (the row each entry's page resumes
+from) and, where a
 tracker is connected, the cached tracker list (status and episode
 count per MyAnimeList id, through Kitsu's mappings, which the app
 already caches for 30 days).
@@ -862,8 +863,12 @@ nothing. Forked runs (Fate seen from *Fate/Zero*) render as the
 numbered path and the branches side by side; a join shows its earlier
 entries side by side above it; the entries of a cycle are listed as
 one unnumbered group, in air-date order, where the cycle sits in the
-run. Entries without a Kitsu id in the history (the hianime "Gintama
-Season N" rows) contribute no progress.
+run. A history row counts toward the entry whose page would resume
+from it: the entry it recorded while Kitsu still has it, else the one
+its stored mapping names, else, for a row whose recorded entry Kitsu
+deleted, the ones Home's title matches found for it (a title can
+hold one per cour, so such a row can count toward each). A row with none
+of these contributes no progress.
 
 **Trackers.** Read-only.
 

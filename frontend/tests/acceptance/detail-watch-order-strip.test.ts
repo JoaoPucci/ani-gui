@@ -94,12 +94,20 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
+type HistoryRowFixture = { ep_no: string; id: string; title: string; kitsu_id?: string };
+
 interface ShowOptions {
 	order?: string;
 	settings?: () => Response;
 	franchise?: () => Response;
 	/** Null: the history read fails. */
-	history?: { ep_no: string; id: string; title: string; kitsu_id?: string }[] | null;
+	history?: HistoryRowFixture[] | null;
+	/**
+	 * The row the backend names for an id where it is not the row that
+	 * recorded it (`history_claim::names`): a row whose recorded entry
+	 * Kitsu deleted, named by its stored mapping or title match.
+	 */
+	named?: Record<string, HistoryRowFixture>;
 	similar?: string[];
 }
 
@@ -143,6 +151,18 @@ function useShow(opts: ShowOptions = {}) {
 				? new HttpResponse(null, { status: 503 })
 				: HttpResponse.json(opts.history ?? [])
 		),
+		// The rows the franchise's entries resume from, as the resume
+		// lookup names them.
+		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
+			if (opts.history === null) return new HttpResponse(null, { status: 503 });
+			const { ids } = (await request.json()) as { ids: string[] };
+			const rows = opts.history ?? [];
+			return HttpResponse.json(
+				Object.fromEntries(
+					ids.map((id) => [id, opts.named?.[id] ?? rows.find((r) => r.kitsu_id === id) ?? null])
+				)
+			);
+		}),
 		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
 	);
 	return calls;
@@ -214,6 +234,18 @@ describe('detail route — the watch-order strip', () => {
 		useShow({
 			history: [{ id: 'hianime:saga-origins', title: 'Saga Origins', ep_no: '3', kitsu_id: '5' }]
 		});
+		app = mount(DetailPage, { target });
+		await until(() => tile('5') !== null, 'the watching card');
+		expect(tile('5')!.textContent).toContain(m.watchorder_strip_watching_key());
+		expect(tile('5')!.textContent).toContain(m.watchorder_meta_progress_open({ episode: 3 }));
+	});
+
+	it("gives a row's progress to the entry the backend names it for, when Kitsu deleted the recorded one", async () => {
+		// The row recorded entry 4, which Kitsu has since deleted; the
+		// backend names it for Origins (5), the entry its Continue
+		// Watching card was matched to, as the resume lookup does.
+		const ROW = { id: 'hianime:saga-origins', title: 'Saga Origins', ep_no: '3', kitsu_id: '4' };
+		useShow({ history: [ROW], named: { '5': ROW } });
 		app = mount(DetailPage, { target });
 		await until(() => tile('5') !== null, 'the watching card');
 		expect(tile('5')!.textContent).toContain(m.watchorder_strip_watching_key());
