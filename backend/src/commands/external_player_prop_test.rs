@@ -88,3 +88,30 @@ proptest! {
         }
     }
 }
+
+proptest! {
+    /// Only IINA off macOS is unsupported, and it is then never looked up.
+    #[test]
+    fn supported_is_false_only_for_iina_off_macos(
+        os in prop_oneof![
+            Just(crate::commands::player_locate::Os::Linux),
+            Just(crate::commands::player_locate::Os::Windows),
+            Just(crate::commands::player_locate::Os::MacOs),
+        ],
+        kind in kind(),
+        found in proptest::option::of("/[a-z]{1,10}"),
+    ) {
+        let given = found.clone();
+        let locate = |_: &str| given.clone();
+        let got = standard_program_found_on(os, kind, &locate);
+        let unsupported = kind == ExternalPlayerKind::Iina
+            && os != crate::commands::player_locate::Os::MacOs;
+        prop_assert_eq!(got.supported, !unsupported);
+        prop_assert_eq!(got.name, kind.standard_program());
+        if unsupported || kind == ExternalPlayerKind::Custom {
+            prop_assert_eq!(got.path, None);
+        } else {
+            prop_assert_eq!(got.path, found);
+        }
+    }
+}

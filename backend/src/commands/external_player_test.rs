@@ -456,3 +456,30 @@ fn iina_is_supported_only_on_macos() {
         assert!(standard_program_found_on(os, ExternalPlayerKind::Mpv, &found).supported);
     }
 }
+
+#[test]
+fn a_dead_launch_task_names_the_program_it_meant() {
+    // A blank binary reads as "no program set for Custom": a blank
+    // VLC field meant vlc.
+    let mut a = args("https://example.com/v.mp4");
+    a.player_command = String::new();
+    a.player_kind = ExternalPlayerKind::Vlc;
+    match launch_task_failure(&a) {
+        AniError::PlayerSpawnFailed { binary } => assert_eq!(binary, "vlc"),
+        other => panic!("expected PlayerSpawnFailed, got {other:?}"),
+    }
+    a.player_kind = ExternalPlayerKind::Custom;
+    match launch_task_failure(&a) {
+        AniError::PlayerSpawnFailed { binary } => assert_eq!(binary, ""),
+        other => panic!("expected PlayerSpawnFailed, got {other:?}"),
+    }
+}
+
+#[test]
+fn settings_without_an_answer_still_knows_iina_is_macos_only() {
+    let answer = standard_program_unknown(ExternalPlayerKind::Iina);
+    assert_eq!(answer.name, Some("iina"));
+    assert_eq!(answer.path, None);
+    assert_eq!(answer.supported, cfg!(target_os = "macos"));
+    assert!(standard_program_unknown(ExternalPlayerKind::Vlc).supported);
+}

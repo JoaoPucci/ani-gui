@@ -189,6 +189,8 @@ describe('settings — the external player hint', () => {
 		flavour('IINA')!.click();
 		await settle();
 		expect(hint()).toContain('IINA runs only on macOS.');
+		// English names the control "Player flavour".
+		expect(hint()).toContain('Pick another flavour, or Custom.');
 		expect(hint()).not.toContain('Install it');
 		expect(field()!.placeholder).toBe('iina');
 	});

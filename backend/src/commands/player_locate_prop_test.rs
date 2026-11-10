@@ -97,3 +97,27 @@ proptest! {
         prop_assert_eq!(parse_reg_default(&out), Some(value));
     }
 }
+
+proptest! {
+    #[test]
+    fn syncplay_looks_up_off_linux_only_and_takes_the_answer_as_is(
+        os in os(),
+        n in name(),
+        answer in proptest::option::of("[a-zA-Z0-9/\\\\:. ]{1,30}"),
+    ) {
+        let asked = std::cell::Cell::new(false);
+        let given = answer.clone();
+        let locate = |q: &str| {
+            asked.set(true);
+            assert_eq!(q, n);
+            given.clone()
+        };
+        let got = syncplay_locate_on(os, n, &locate);
+        if os == Os::Linux {
+            prop_assert!(!asked.get());
+            prop_assert_eq!(got, None);
+        } else {
+            prop_assert_eq!(got, answer);
+        }
+    }
+}
