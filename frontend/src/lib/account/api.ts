@@ -137,8 +137,10 @@ export function fetchAndCacheList(provider: Provider, bearer: string): Promise<L
 export async function fetchCachedList(
 	provider: Provider,
 	bearer: string,
-	fallbackUserId?: string
+	fallbackUserId?: string,
+	opts: { signal?: AbortSignal } = {}
 ): Promise<ListEntry[]> {
+	void opts;
 	// Backend resolves identity from a live `me()` call (a renderer-supplied
 	// user_id alone is forgeable under permissive CORS). When that round-trip
 	// fails (offline, 401, 5xx) the backend falls through to `fallbackUserId`

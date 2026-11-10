@@ -22,7 +22,8 @@ import {
 	kitsuSearch,
 	kitsuTitleMatchGet,
 	kitsuTitleMatchPut,
-	type KitsuAnimeRef
+	type KitsuAnimeRef,
+	type ReadOptions
 } from '$lib/api';
 import { providerOfShowId } from './show-key';
 import { cachedBindingVerdict, deriveSlug, pickKitsuMatch, type ResumeTarget } from './resolve';
@@ -47,8 +48,10 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
  *  is one a play may record: the row's recorded id, or a mapping a
  *  real play stored. Everything else is a guess. */
 export async function resolveKitsuMatchWithTrust(
-	preliminary: ResumeTarget
+	preliminary: ResumeTarget,
+	opts: ReadOptions = {}
 ): Promise<{ match: KitsuAnimeRef | null; trusted: boolean }> {
+	void opts;
 	// The row recorded the show the user played: read that entry and
 	// match nothing. A failed read answers no show rather than a guess
 	// that could land on another one — unless Kitsu answers that the
