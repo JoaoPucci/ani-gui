@@ -15,7 +15,7 @@
  * produced `dist/linux-unpacked/`.
  */
 import { expect, test, type ElectronApplication } from "@playwright/test";
-import { killTree, withColdLaunchRetry } from "../lib/cold-launch.cjs";
+import { withColdLaunchRetry } from "../lib/cold-launch.cjs";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -26,6 +26,7 @@ import {
   packagedBinary,
   routeContext,
   splashState,
+  stopDeadApp,
 } from "./launch";
 import { expectedPlatform } from "../lib/e2e-display.cjs";
 
@@ -131,11 +132,10 @@ async function launchAppWithStubs() {
       cleanup: async () => {
         const dead = pending;
         pending = null;
-        // A dead app's close() hangs while its backend lives; kill
-        // the whole tree first (lib/cold-launch.cjs).
+        // Stop what is left of the dead app: its own process group,
+        // nothing else (lib/own-group.cjs).
         if (dead) {
-          killTree(dead.process().pid);
-          await dead.close();
+          await stopDeadApp(dead);
         }
       },
     },

@@ -26,8 +26,11 @@ import {
 	type ElectronApplication,
 	type Page
 } from '@playwright/test';
+import type { ChildProcess } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { launchRefusal } from '../lib/e2e-display.cjs';
+import { stopOwnGroup } from '../lib/own-group.cjs';
 
 /** electron-builder's pre-AppImage output — the production code path:
  *  the `app://` protocol handler, the bundled SvelteKit assets and the
@@ -60,17 +63,61 @@ export const testRunEnv = { ANI_GUI_UNATTENDED: '1' } as const;
  *  be looking at, which throws, saying how to run the suite instead.
  *  `binary` is another copy of the packaged tree's launcher, for a spec
  *  that ships the app a frontend of its own (splash-stuck.spec.ts). */
-export function launchPackagedApp(
+export async function launchPackagedApp(
 	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env'],
 	{ binary = packagedBinary }: { binary?: string } = {}
 ): Promise<ElectronApplication> {
 	const refusal = launchRefusal(env ?? {});
 	if (refusal) throw new Error(refusal);
-	return _electron.launch({
+	const app = await _electron.launch({
 		executablePath: binary,
 		args: [...testLaunchSwitches],
 		env: { ...env, ...testRunEnv }
 	});
+	// The launcher script execs the binary beside it in the same process.
+	launched.set(app, { child: app.process(), exe: fs.realpathSync(`${binary}.bin`) });
+	return app;
+}
+
+/** The process each launch started, recorded as it starts: Playwright
+ *  stops answering `app.process()` once the app is closed, and stopApp
+ *  must still tell an exited app from a running one then. */
+const launched = new WeakMap<ElectronApplication, { child: ChildProcess; exe: string }>();
+
+/** Stop an app this suite launched, and nothing else: SIGTERM to the
+ *  process group Playwright created for it, SIGKILL to the same group if
+ *  it is still there after `termMs`, and only while that group is
+ *  provably the app's — the main process unreaped, leading its group,
+ *  running the binary it was launched from (lib/own-group.cjs). Then Playwright's
+ *  close, which settles once the process has gone, whatever the stop
+ *  did. An app that has already exited is closed without a signal.
+ *
+ *  The backend is not in that group. It stops itself once the app's end
+ *  of its stdin closes (lib/backend-spawn.cjs), and nothing here
+ *  signals it. */
+export async function stopApp(
+	app: ElectronApplication,
+	{ termMs = 5000, killMs = 5000 }: { termMs?: number; killMs?: number } = {}
+): Promise<void> {
+	const record = launched.get(app);
+	if (!record) throw new Error('stopApp: not an app launchPackagedApp started');
+	const { child, exe } = record;
+	try {
+		await stopOwnGroup(child, { exe, termMs, killMs });
+	} finally {
+		// Playwright's close signals nothing: it asks the app to quit and
+		// waits for the process to go. A stop that refused to signal still
+		// releases Playwright's side, and the refusal is what the spec
+		// reports.
+		await app.close();
+	}
+}
+
+/** stopApp for the cold-launch retry's cleanup (lib/cold-launch.cjs),
+ *  whose budget is five seconds before the relaunch goes ahead: both
+ *  waits are kept inside it. */
+export function stopDeadApp(app: ElectronApplication): Promise<void> {
+	return stopApp(app, { termMs: 1500, killMs: 2000 });
 }
 
 /** What the launch's splash went through (lib/splash.cjs). A test run

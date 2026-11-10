@@ -18,7 +18,8 @@
  * the one that is exiting.
  *
  * Processes: a test signals only what it can prove it started. The
- * process Playwright launched is closed through Playwright. The
+ * process Playwright launched is stopped through stopApp (launch.ts):
+ * its own process group, while provably the app's. The
  * relaunched one is outside Playwright's reach, and outside this
  * test's process tree too: its parent exits, and it is reparented to
  * the session's subreaper, the user's service manager, which must
@@ -26,8 +27,9 @@
  * and its parent is never touched. It names itself: Chromium's
  * single-instance lock in the test's own temporary profile is a
  * symlink to `<host>-<pid>` of the process holding it. That pid is
- * signalled only after /proc shows it running this test's own copy of
- * the binary, and only that pid: its own quit stops its backend.
+ * signalled only after /proc/<pid>/exe shows it running this test's
+ * own copy of the binary, and only that pid: its own quit stops its
+ * backend.
  *
  * Everything the app could reach is the test's: HOME and the XDG
  * directories are a temporary directory, and the display is the run's
@@ -40,7 +42,7 @@ import { execFileSync } from 'node:child_process';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { launchPackagedApp, packagedBinary, splashState, splashWindow } from './launch';
+import { launchPackagedApp, packagedBinary, splashState, splashWindow, stopApp } from './launch';
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -131,7 +133,7 @@ function lockHolder(config: string): number | null {
 }
 
 /** Whether `pid` is alive and running this test's own copy of the app
- *  (`binary`'s tree), by its /proc entry. Nothing that fails this is
+ *  (`binary`'s tree), by /proc/<pid>/exe. Nothing that fails this is
  *  ever signalled. */
 function ours(pid: number | null | undefined, binary: string): pid is number {
 	if (!Number.isInteger(pid) || (pid as number) <= 1) return false;
@@ -151,13 +153,6 @@ async function stopOurs(pid: number | null | undefined, binary: string) {
 	process.kill(pid, 'SIGTERM');
 	for (let i = 0; i < 100 && ours(pid, binary); i++) await new Promise((r) => setTimeout(r, 100));
 	if (ours(pid, binary)) process.kill(pid, 'SIGKILL');
-}
-
-/** Close the app Playwright launched; if it will not go, stop its
- *  recorded pid the same way. */
-async function closeLaunched(app: ElectronApplication, pid: number, binary: string) {
-	if (ours(pid, binary)) await Promise.race([app.close().catch(() => {}), new Promise((r) => setTimeout(r, 10_000))]);
-	await stopOurs(pid, binary);
 }
 
 test('a first page that never says it rendered: the splash offers Restart and Quit, and Quit ends the launch revealing nothing', async () => {
@@ -229,7 +224,7 @@ test('a first page that never says it rendered: the splash offers Restart and Qu
 		await new Promise((r) => setTimeout(r, 3_000));
 		expect(ours(lockHolder(config), binary)).toBe(false);
 	} finally {
-		await closeLaunched(app, pid, binary);
+		await stopApp(app);
 		await stopOurs(lockHolder(config), binary);
 		fs.rmSync(tmp, { recursive: true, force: true });
 	}
@@ -274,7 +269,7 @@ test('Restart, in the app’s language, starts the app again: this process exits
 		expect(ours(relaunched, binary)).toBe(true);
 	} finally {
 		await stopOurs(relaunched, binary);
-		await closeLaunched(app, pid, binary);
+		await stopApp(app);
 		// A relaunch that took the lock after the poll gave up is still
 		// this test's: the lock in its own profile names it.
 		await stopOurs(lockHolder(config), binary);
@@ -301,7 +296,7 @@ test('a first page that renders after the stuck state hands over as usual: the w
 		});
 		expect(ready).toEqual({ rendered: true, gaveUp: false, beforeReveal: true });
 	} finally {
-		await closeLaunched(app, pid, binary);
+		await stopApp(app);
 		fs.rmSync(tmp, { recursive: true, force: true });
 	}
 });
