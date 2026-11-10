@@ -195,8 +195,9 @@ describe('detail route — the watch-order strip', () => {
 		await until(() => strip() !== null, 'the strip');
 		expect(tile('10')).not.toBeNull();
 		expect(tile('50')).not.toBeNull();
-		// Short titles on the tiles, the full title as the tooltip.
-		expect(tile('50')!.textContent).toContain('Final Arc');
+		// Each tile by the title the rest of the app shows for it: the
+		// words it shares with the run are not cut.
+		expect(tile('50')!.querySelector('.tile-title')?.textContent).toBe('Saga: Final Arc');
 		expect(tile('50')!.getAttribute('title')).toBe('Saga: Final Arc');
 		expect(strip()!.textContent).toContain(m.watchorder_strip_word_prequel());
 		expect(strip()!.textContent).toContain(m.watchorder_strip_word_sequel());
@@ -306,6 +307,8 @@ describe('detail route — the watch-order strip', () => {
 		expect(spoken(tile('50')!)).not.toMatch(/^Final Arc/);
 		expect(spoken(tile('5')!)).toContain('Saga: Origins');
 		expect(spoken(tile('5')!).split('Origins').length).toBe(2);
+		// What is drawn is the whole title too, not a shortened one.
+		expect(tile('5')!.querySelector('.chip-title')?.textContent).toBe('Saga: Origins');
 	});
 
 	it('shows no Similar titles card that the strip then takes away', async () => {

@@ -13,14 +13,10 @@
 	import { imageProxyUrl } from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
-	import { shortTitle } from './short-title';
 	import type { Handoff } from './handoff';
 
 	let { handoff }: { handoff: Handoff } = $props();
 
-	// The finished entry by the words that set it apart: the one-line
-	// mono row would otherwise cut exactly those.
-	const finished = $derived(shortTitle(handoff.finished.title, handoff.titles));
 	const image = $derived(imageProxyUrl(handoff.next.cover ?? handoff.next.poster));
 </script>
 
@@ -41,7 +37,7 @@
 	</span>
 	<span class="body">
 		<span class="show" title={handoff.finished.title}
-			>{m.watchorder_handoff_after({ title: finished })}</span
+			>{m.watchorder_handoff_after({ title: handoff.finished.title })}</span
 		>
 		<span class="line">{handoff.next.title}</span>
 	</span>

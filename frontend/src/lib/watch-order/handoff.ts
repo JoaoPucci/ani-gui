@@ -18,8 +18,6 @@ import { isFinale, upNextFor } from './up-next';
 export interface Handoff {
 	readonly finished: WatchEntry;
 	readonly next: WatchEntry;
-	/** The titles of the finished entry's series, which its short title is cut against. */
-	readonly titles: readonly string[];
 }
 
 /** What a Continue row's Kitsu match says about the entry it plays. */
@@ -78,7 +76,7 @@ export function handoffFrom(
 	if (!run || !entry) return null;
 	const up = upNextFor(run, id, order, today);
 	if (up.kind !== 'one' || played.has(up.entry.id)) return null;
-	return { finished: entry, next: up.entry, titles: run.entries.map((e) => e.title) };
+	return { finished: entry, next: up.entry };
 }
 
 /**
