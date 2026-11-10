@@ -259,14 +259,19 @@ test("a restart that cannot be arranged keeps the splash and its choices", async
   assert.equal(dismissed(), 1);
 });
 
-test("an answer that is not a choice does nothing", async (t) => {
-  for (const answer of [null, undefined, "", "reload", 1, { choice: "quit" }]) {
+test("an answer that is neither a choice nor nothing does nothing", async (t) => {
+  // null and undefined mean the page has nothing to offer (a loss: "a
+  // stuck splash whose page has nothing to offer is lost").
+  for (const answer of ["", "reload", 1, { choice: "quit" }]) {
     const { splash, win, later, dismissed, restarts } = await stuckSplash(t);
+    let lost = null;
+    splash.lost().catch((err) => (lost = err));
     await later(SPLASH_STUCK_MS);
     win.choose(answer);
     await flush();
     assert.equal(dismissed(), 0, String(answer));
     assert.equal(restarts.length, 0);
+    assert.equal(lost, null, String(answer));
     assert.ok(!win.calls.includes("close"));
     splash.close();
     t.mock.timers.reset();
@@ -593,7 +598,7 @@ test("a stuck splash whose page has nothing to offer is lost", async (t) => {
   }
 });
 
-test("a splash whose page completed as it was asked for its choices is not lost", async (t) => {
+test("a splash whose page completed just before the stuck state was due is neither asked nor lost", async (t) => {
   const made = await watchedLoss(t);
   await made.splash.progress("backend");
   await made.splash.progress("flags");
