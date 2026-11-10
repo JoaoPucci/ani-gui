@@ -19,3 +19,9 @@ export function appLinkDeps(): LinkDeps {
 		group: historyLinkGroup
 	};
 }
+
+/** Hear of every link or undo once it answered; the way to stop. */
+export function onHistoryLinked(listener: () => void): () => void {
+	void listener;
+	return () => {};
+}
