@@ -16,7 +16,7 @@ use axum::{Json, Router};
 use crate::app::AppState;
 use serde::Serialize;
 
-use crate::commands::franchise_walk::first_hop::{first_hop, FirstHop};
+use crate::commands::franchise_walk::first_hop::FirstHop;
 use crate::commands::franchise_walk::Franchise;
 use crate::error::AniError;
 
@@ -41,13 +41,9 @@ async fn get_first_hop(
     State(state): State<Arc<AppState>>,
     Path(kitsu_id): Path<String>,
 ) -> Result<Json<FirstHopBody>, AniError> {
-    // The walk's own read and cache, so the walk that follows finds the
-    // listing cached and the two never read different data.
-    let kitsu_id = crate::kitsu_id::require(&kitsu_id)?;
-    let listing = crate::commands::franchise::franchise_listing(&state, kitsu_id).await?;
-    Ok(Json(FirstHopBody {
-        signal: first_hop(kitsu_id, &listing),
-    }))
+    let signal =
+        crate::commands::franchise_first_hop::franchise_first_hop(&state, &kitsu_id).await?;
+    Ok(Json(FirstHopBody { signal }))
 }
 
 async fn get_franchise(

@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use super::super::tests::{drive, Catalogue};
 use super::super::Franchise;
-use super::{first_hop, FirstHop};
+use super::{first_hop, FirstHop, Step};
 use crate::meta::kitsu::{FranchiseEntry, FranchiseListing};
 
 /// What the show page draws from the walk's answer, as the frontend
@@ -52,12 +52,48 @@ fn with(entries: &[(&str, &str)]) -> Catalogue {
     c
 }
 
+/// The first hop from `anchor`, reading from `c` what it asks for, as
+/// the IO layer does: each listing and detail once.
+fn hop(c: &Catalogue, anchor: &str) -> FirstHop {
+    let mut known = BTreeMap::new();
+    let mut details = BTreeMap::new();
+    for _ in 0..50 {
+        match first_hop(anchor, &known, &details) {
+            Step::Done(h) => return h,
+            Step::Read {
+                listings,
+                details: d,
+            } => {
+                assert!(!listings.is_empty() || !d.is_empty(), "a read of nothing");
+                for id in listings {
+                    let listing = c
+                        .listings
+                        .get(&id)
+                        .unwrap_or_else(|| panic!("no listing {id}"));
+                    assert!(
+                        known.insert(id.clone(), listing.clone()).is_none(),
+                        "{id} again"
+                    );
+                }
+                for id in d {
+                    let entry = c
+                        .entries
+                        .get(&id)
+                        .unwrap_or_else(|| panic!("no entry {id}"));
+                    assert!(
+                        details.insert(id.clone(), entry.clone()).is_none(),
+                        "{id} again"
+                    );
+                }
+            }
+        }
+    }
+    panic!("the first hop did not finish");
+}
+
 /// The first hop and the walk's drawn outcome, from `anchor`.
 fn both(c: &Catalogue, anchor: &str) -> (FirstHop, FirstHop) {
-    (
-        first_hop(anchor, &c.listings[anchor]),
-        drawn(&drive(anchor, c)),
-    )
+    (hop(c, anchor), drawn(&drive(anchor, c)))
 }
 
 #[test]

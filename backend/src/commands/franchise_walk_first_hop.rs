@@ -23,11 +23,11 @@
 //! draws the link or nothing, and the page's placeholder gives way to
 //! it. Where the first hop says link or nothing, the walk agrees.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::meta::kitsu::{FranchiseListing, FranchiseRelation};
+use crate::meta::kitsu::{FranchiseEntry, FranchiseListing, FranchiseRelation};
 
 /// What the show page draws once the walk answers, as far as the
 /// anchor's own listing tells.
@@ -42,9 +42,40 @@ pub enum FirstHop {
     None,
 }
 
-/// What `anchor`'s own `listing` says the show page will draw.
+/// What the first hop needs next, or what it foretells.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Step {
+    /// Read these listings and these entries' details, then ask again.
+    Read {
+        /// Ids whose relation listings are needed.
+        listings: Vec<String>,
+        /// Ids whose own details are needed.
+        details: Vec<String>,
+    },
+    /// What the show page will draw.
+    Done(FirstHop),
+}
+
+/// What the listings and details read so far say the show page will
+/// draw for `anchor`, or what to read first.
 #[must_use]
-pub fn first_hop(anchor: &str, listing: &FranchiseListing) -> FirstHop {
+pub fn first_hop(
+    anchor: &str,
+    known: &BTreeMap<String, FranchiseListing>,
+    details: &BTreeMap<String, FranchiseEntry>,
+) -> Step {
+    let _ = details;
+    let Some(listing) = known.get(anchor) else {
+        return Step::Read {
+            listings: vec![anchor.to_string()],
+            details: Vec::new(),
+        };
+    };
+    Step::Done(from_own_listing(anchor, listing))
+}
+
+/// What `anchor`'s own `listing` says the show page will draw.
+fn from_own_listing(anchor: &str, listing: &FranchiseListing) -> FirstHop {
     let anime: Vec<&FranchiseRelation> = listing
         .relations
         .iter()
