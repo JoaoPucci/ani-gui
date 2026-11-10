@@ -3150,8 +3150,9 @@
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const onKey = (e: KeyboardEvent) => {
-			// A modal over the player (a play failure, the download
-			// dialog) is the only keyboard target while it is up.
+			// A modal over the player (the change-show picker, a play
+			// failure, the download dialog) is the only keyboard target
+			// while it is up.
 			if (isModalOpen()) return;
 			const t = e.target as HTMLElement | null;
 			const inField =

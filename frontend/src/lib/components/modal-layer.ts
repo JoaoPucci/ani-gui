@@ -24,8 +24,11 @@
  * A modal the user cannot see would hold a keyboard they cannot use: a
  * page element in fullscreen hides everything outside it, so a modal
  * opening outside the fullscreen element leaves fullscreen first — all
- * but a native <dialog> shown modally, which the top layer shows above
- * fullscreen (the change-show picker over a fullscreen player).
+ * but a <dialog>, which the app only ever shows with showModal(): the
+ * top layer shows it above fullscreen (the change-show picker over a
+ * fullscreen player). That same top layer would hide a modal opening
+ * above such a dialog, so the dialog steps out of it while one is up,
+ * and comes back once that one closes.
  */
 
 import { nextInCycle, tabbablesIn } from './focus-cycle';
@@ -72,11 +75,21 @@ function onKeydown(e: KeyboardEvent): void {
 }
 
 function leaveHidingFullscreen(doc: Document, root: HTMLElement): void {
-	// A native dialog the page shows modally sits in the top layer, above
-	// fullscreen, and is seen there.
+	// A <dialog>, which the app only shows modally, sits in the top layer,
+	// above fullscreen, and is seen there.
 	if (root instanceof HTMLDialogElement) return;
 	const full = doc.fullscreenElement;
 	if (full && !full.contains(root)) doc.exitFullscreen().catch(() => {});
+}
+
+/** A native dialog shown modally sits in the top layer, above every
+ *  other modal: it steps out of it while one opens above it, and comes
+ *  back once that one closes. */
+function stepAside(below: Layer | undefined): void {
+	if (below?.root instanceof HTMLDialogElement && below.root.open) below.root.close();
+}
+function stepBack(layer: Layer): void {
+	if (layer.root instanceof HTMLDialogElement && !layer.root.open) layer.root.showModal();
 }
 
 function close(layer: Layer): void {
@@ -91,6 +104,8 @@ function close(layer: Layer): void {
 	// Only the topmost modal held focus; one closing beneath another
 	// leaves it where it is.
 	if (at < stack.length) return;
+	const beneath = top();
+	if (beneath) stepBack(beneath);
 	// A return target that is a modal's own surface (one opened with
 	// focus on nothing) is entered like a modal: at its control.
 	const back = layer.returnTo;
@@ -114,6 +129,7 @@ export function openModal(root: HTMLElement, opts: ModalOptions = {}): ModalHand
 	const held = active instanceof HTMLElement && active !== doc.body ? active : null;
 	const layer: Layer = { root, opts, returnTo: held ?? top()?.root ?? null };
 	if (stack.length === 0) doc.addEventListener('keydown', onKeydown, true);
+	stepAside(top());
 	stack.push(layer);
 	leaveHidingFullscreen(doc, root);
 	holdOutside(root);
