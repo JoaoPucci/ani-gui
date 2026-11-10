@@ -12,7 +12,8 @@
  * row, refreshing it first when it is the page the link was made on,
  * unless the user left the page while the link was out. Its notice is
  * a plain confirmation: the answer is the viewer's, and the way to
- * change it is the ⋯ "Not this show?" ($lib/history/link-notices.ts).
+ * change it is "Not this show?", which stays on every line the user
+ * named a show for ($lib/history/picked-offer.ts).
  */
 
 import { linkedNotice, linkFailure } from './link-notices';
