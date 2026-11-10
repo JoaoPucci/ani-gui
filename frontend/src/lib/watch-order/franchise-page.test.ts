@@ -384,12 +384,24 @@ describe('franchisePage', () => {
 		expect(shape(part)).toEqual(shape(whole));
 	});
 
-	it('heads no stretch "No clear place in the order" when read in part: its place may lie past the cut', () => {
+	it('keeps the sections of a read whole when read in part, only without numbers', () => {
+		// The titles with no clear place keep their own stretch and its
+		// heading: joined to the list before, titles that lead into it
+		// would read as coming after it.
 		fc.assert(
 			fc.property(anyPage, ({ f, id, order, rows }) => {
-				const page = franchisePage({ franchise: f, rows }, id, order);
-				if (!page || f.complete) return;
-				for (const s of page.sections) if (s.kind === 'line') expect(s.unplaced).toBe(false);
+				const part = franchisePage({ franchise: { ...f, complete: false }, rows }, id, order);
+				const whole = franchisePage({ franchise: { ...f, complete: true }, rows }, id, order);
+				if (!part || !whole) return;
+				const shape = (p: typeof whole) =>
+					p.sections.map((s) =>
+						s.kind === 'line'
+							? ['line', s.unplaced, ids(s.rows.map((r) => r.entry))]
+							: s.kind === 'ways'
+								? ['ways', s.ways.map((w) => ids(w.map((r) => r.entry)))]
+								: ['group', ids(s.rows.map((r) => r.entry))]
+					);
+				expect(shape(part)).toEqual(shape(whole));
 			})
 		);
 	});

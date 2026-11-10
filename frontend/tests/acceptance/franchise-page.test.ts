@@ -475,6 +475,37 @@ describe('franchise page', () => {
 		expect(row('50')!.textContent).toContain('03');
 	});
 
+	it('keeps the titles with no clear place apart when there may be more titles', async () => {
+		const SIDE_ARC = entry('45', 'Saga: Side Arc', 'TV', '2013-06-01');
+		useFranchise({
+			franchise: () =>
+				HttpResponse.json({
+					...FRANCHISE,
+					entries: [SAGA, SECOND, ORIGINS, SIDE_ARC, FINAL],
+					links: [
+						['10', '42'],
+						['42', '50'],
+						['5', '45'],
+						['45', '50']
+					],
+					complete: false
+				})
+		});
+		app = mount(FranchisePage, { target });
+		await until(() => rows().length === 5, 'the main story');
+		const story = mainStory()!;
+		// Origins and Side Arc lead into Final Arc: under their own
+		// heading, they never read as coming after it.
+		const heading = [...story.querySelectorAll('p')].find(
+			(p) => p.textContent?.trim() === m.watchorder_franchise_unplaced()
+		);
+		expect(heading).toBeDefined();
+		const after = [...story.querySelectorAll('li a')].filter(
+			(a) => heading!.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING
+		);
+		expect(after.map((a) => a.getAttribute('href'))).toEqual(['/anime/5', '/anime/45']);
+	});
+
 	it('draws the page when the one title it lists is another show', async () => {
 		useFranchise({
 			franchise: () =>
