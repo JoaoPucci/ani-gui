@@ -55,6 +55,12 @@ vi.mock('hls.js', () => {
 		handlers: Record<string, Handler[]> = {};
 		startLoadCalls = 0;
 		stopLoadCalls = 0;
+		loadSourceCalls = 0;
+		// As hls.js 1.6.19 does: stopLoad() before the manifest is parsed
+		// destroys the playlist loaders, so that manifest never arrives;
+		// only a fresh loadSource() asks for it again.
+		parsed = false;
+		manifestLost = false;
 		levels: unknown[] = [];
 		startLevel = -1;
 		loadLevel = -1;
@@ -64,7 +70,10 @@ vi.mock('hls.js', () => {
 		constructor() {
 			FakeHls.instances.push(this);
 		}
-		loadSource() {}
+		loadSource() {
+			this.loadSourceCalls += 1;
+			this.manifestLost = false;
+		}
 		attachMedia() {}
 		on(event: string, handler: Handler) {
 			(this.handlers[event] ??= []).push(handler);
@@ -74,6 +83,15 @@ vi.mock('hls.js', () => {
 		}
 		stopLoad() {
 			this.stopLoadCalls += 1;
+			if (!this.parsed) this.manifestLost = true;
+		}
+		/** The host answers the manifest: delivered unless a stopLoad()
+		 *  cut it off. */
+		deliverManifest(data: unknown): boolean {
+			if (this.manifestLost) return false;
+			this.parsed = true;
+			this.emit('hlsManifestParsed', data);
+			return true;
 		}
 		destroy() {}
 		emit(event: string, data: unknown) {
@@ -91,6 +109,8 @@ import { playerVideo, playerVideoInSlot } from './player-video';
 type FakeHlsT = InstanceType<typeof Hls> & {
 	startLoadCalls: number;
 	stopLoadCalls: number;
+	loadSourceCalls: number;
+	deliverManifest: (data: unknown) => boolean;
 	emit: (event: string, data: unknown) => void;
 };
 const hlsInstances = () => (Hls as unknown as { instances: FakeHlsT[] }).instances;
@@ -216,8 +236,6 @@ async function mountPlayingHls(overrides: () => void = () => {}): Promise<FakeHl
 
 const NETWORK_FATAL = { fatal: true, type: 'networkError', details: 'fragLoadError' };
 const HOST_SLOW_FATAL = { fatal: true, type: 'networkError', details: 'fragLoadTimeOut' };
-const MANIFEST_PARSED = (Hls as unknown as { Events: { MANIFEST_PARSED: string } }).Events
-	.MANIFEST_PARSED;
 const LEVELS = { levels: [{ height: 720, width: 1280, bitrate: 2_000_000 }] };
 
 const settle = () => new Promise((r) => setTimeout(r, 30));
@@ -304,7 +322,7 @@ describe('play route — an episode handed to another player stays stopped here'
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'hls' });
 		await until(() => hlsInstances().length > 1, 'the next engine');
 		const next = hlsInstances()[hlsInstances().length - 1];
-		next.emit(MANIFEST_PARSED, LEVELS);
+		next.deliverManifest(LEVELS);
 		await settle();
 		expect(next.startLoadCalls).toBe(0);
 		expect(playerVideo().autoplay).toBe(false);
@@ -319,7 +337,7 @@ describe('play route — an episode handed to another player stays stopped here'
 
 	it('playing the embedded video again restarts the loading the handoff stopped', async () => {
 		const hls = await mountPlayingHls();
-		hls.emit(MANIFEST_PARSED, LEVELS);
+		hls.deliverManifest(LEVELS);
 		await settle();
 		expect(hls.startLoadCalls).toBe(1);
 		await handToExternal();
@@ -344,21 +362,26 @@ describe('play route — an episode handed to another player stays stopped here'
 		expect(target.querySelector('section.player-frame.player-busy')).toBeNull();
 	});
 
-	it('coming back before the stream has its levels starts it once, where the page starts it', async () => {
+	it('coming back before the stream has its levels asks for them again, and starts it once', async () => {
 		const hls = await mountPlayingHls();
+		expect(hls.loadSourceCalls).toBe(1);
 		await handToExternal();
+		// The handoff's stopLoad cut the manifest off: it never comes.
+		expect(hls.deliverManifest(LEVELS)).toBe(false);
 		playerVideo().dispatchEvent(new Event('play'));
 		await settle();
-		// Nothing was started, so nothing restarts.
+		// Nothing was started, so nothing restarts; the manifest is asked
+		// for again, and the stream starts once it is in.
 		expect(hls.startLoadCalls).toBe(0);
-		hls.emit(MANIFEST_PARSED, LEVELS);
+		expect(hls.loadSourceCalls).toBe(2);
+		expect(hls.deliverManifest(LEVELS)).toBe(true);
 		await settle();
 		expect(hls.startLoadCalls).toBe(1);
 	});
 
 	it('Next while handed off replaces the stream without starting the old one again', async () => {
 		const hls = await mountPlayingHls();
-		hls.emit(MANIFEST_PARSED, LEVELS);
+		hls.deliverManifest(LEVELS);
 		await settle();
 		await handToExternal();
 		const nextButton = () =>
@@ -377,7 +400,7 @@ describe('play route — an episode handed to another player stays stopped here'
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '2', kind: 'hls' });
 		await until(() => hlsInstances().length > 1, 'the next engine');
 		const next = hlsInstances()[hlsInstances().length - 1];
-		next.emit(MANIFEST_PARSED, LEVELS);
+		next.deliverManifest(LEVELS);
 		await settle();
 		expect(next.startLoadCalls).toBe(1);
 		expect(playerVideo().autoplay).toBe(true);
@@ -411,7 +434,7 @@ describe('play route — an episode handed to another player stays stopped here'
 
 	it('a pick that never landed does not carry into the next handoff', async () => {
 		const hls = await mountPlayingHls();
-		hls.emit(MANIFEST_PARSED, LEVELS);
+		hls.deliverManifest(LEVELS);
 		await settle();
 		await handToExternal();
 		const nextButton = () =>
@@ -440,7 +463,7 @@ describe('play route — an episode handed to another player stays stopped here'
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '2', kind: 'hls' });
 		await until(() => hlsInstances().length > 1, 'the next engine');
 		const next = hlsInstances()[hlsInstances().length - 1];
-		next.emit(MANIFEST_PARSED, LEVELS);
+		next.deliverManifest(LEVELS);
 		await settle();
 		expect(next.startLoadCalls).toBe(0);
 		expect(playerVideo().autoplay).toBe(false);
