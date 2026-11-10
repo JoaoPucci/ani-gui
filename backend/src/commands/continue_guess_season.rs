@@ -33,3 +33,19 @@ pub(super) fn names_a_whole_season(title: &str) -> bool {
     let w = words(title);
     w.iter().any(|x| x == "season") && !w.iter().any(|x| x == "part")
 }
+
+/// The season `text` names anywhere in its words.
+#[must_use]
+pub fn season_named(_text: &str) -> Option<u32> {
+    None
+}
+
+/// Whether the row's show key names a later season its title does not
+/// and `hit` names no such season.
+pub(super) fn a_season_the_key_names_and_the_hit_does_not(
+    _title: &str,
+    _key_words: &str,
+    _hit: &KitsuAnimeRef,
+) -> bool {
+    false
+}

@@ -340,8 +340,302 @@ fn ruled_out_ids_keeps_the_order_of_the_hits() {
     let hits = vec![
         hit("1", "Show Special", "show-special", "special", Some(1)),
         hit("2", "Show", "show", "TV", Some(24)),
-        hit("3", "Show Recap", "show-recap", "special", Some(1)),
+        hit("3", "Show Extra", "show-extra", "special", Some(1)),
     ];
-    assert_eq!(ruled_out_ids("Show", Some(20.0), &hits), vec!["1", "3"]);
-    assert!(ruled_out_ids("Show", Some(1.0), &hits).is_empty());
+    assert_eq!(ruled_out_ids("Show", "", Some(20.0), &hits), vec!["1", "3"]);
+    assert!(ruled_out_ids("Show", "", Some(1.0), &hits).is_empty());
+}
+
+#[test]
+fn ruled_out_ids_reads_the_key_s_words_too() {
+    let hits = vec![
+        hit("1", "Show Recap", "show-recap", "special", Some(1)),
+        hit("2", "Show", "show", "TV", Some(24)),
+    ];
+    assert_eq!(ruled_out_ids("Show", "show", Some(1.0), &hits), vec!["1"]);
+    assert!(ruled_out_ids("Show", "show recaps", Some(1.0), &hits).is_empty());
+}
+
+// — A movie ————————————————————————————————————————————————————
+
+#[test]
+fn only_a_movie_word_names_a_movie() {
+    assert!(names_movie("Jujutsu Kaisen 0 Movie"));
+    assert!(names_movie("Haikyu!! Movie: Battle of the Garbage Dump"));
+    assert!(!names_movie("One Piece Film: Red"));
+    assert!(!names_movie("Moviestar"));
+    assert!(is_movie(Some("movie")));
+    assert!(is_movie(Some("Movie")));
+    for other in ["special", "TV", "ONA", "OVA", "music"] {
+        assert!(!is_movie(Some(other)), "{other}");
+    }
+    assert!(!is_movie(None));
+}
+
+#[test]
+fn a_movie_title_rules_out_what_is_no_movie() {
+    // hianime's "Jujutsu Kaisen 0 Movie" brings back the second
+    // season's recap alone, a two-episode special.
+    let recap = titled(
+        hit(
+            "47880",
+            "Jujutsu Kaisen 2nd Season Recap",
+            "jujutsu-kaisen-2nd-season-recap",
+            "special",
+            Some(2),
+        ),
+        "Jujutsu Kaisen Season 2 Recap",
+    );
+    assert!(ruled_out("Jujutsu Kaisen 0 Movie", Some(1.0), &recap));
+    let movie = titled(
+        hit(
+            "44212",
+            "Jujutsu Kaisen 0",
+            "jujutsu-kaisen-movie-0",
+            "movie",
+            Some(1),
+        ),
+        "Jujutsu Kaisen 0",
+    );
+    assert!(!ruled_out("Jujutsu Kaisen 0 Movie", Some(1.0), &movie));
+}
+
+#[test]
+fn the_number_after_movie_numbers_it() {
+    assert_eq!(movie_number("One Piece: The Movie 14 - Stampede"), Some(14));
+    assert_eq!(
+        movie_number("Haikyuu!! Movie 4: Concept no Tatakai"),
+        Some(4)
+    );
+    assert_eq!(movie_number("Jujutsu Kaisen 0 Movie"), None);
+    assert_eq!(movie_number("Demon Slayer Movie: Mugen Train"), None);
+}
+
+#[test]
+fn a_numbered_movie_rules_out_a_movie_numbered_otherwise() {
+    // hianime's "One Piece: The Movie 14 - Stampede" brings back the
+    // first thirteen and none of Stampede.
+    let first = hit(
+        "421",
+        "One Piece Movie 1",
+        "one-piece-2000",
+        "movie",
+        Some(1),
+    );
+    assert!(ruled_out(
+        "One Piece: The Movie 14 - Stampede",
+        Some(1.0),
+        &first
+    ));
+    // Numbered in an abbreviation alone.
+    let mut z = hit(
+        "6827",
+        "One Piece Film: Z",
+        "one-piece-film-z",
+        "movie",
+        Some(1),
+    );
+    z.abbreviated_titles.push("One Piece Movie 12".into());
+    assert!(numbered_as_another_movie(
+        "One Piece: The Movie 14 - Stampede",
+        &z
+    ));
+    // Stampede itself numbers no movie, and is not another.
+    let stampede = titled(
+        hit(
+            "42061",
+            "Gekijouban One Piece: Stampede",
+            "one-piece-stampede",
+            "movie",
+            Some(1),
+        ),
+        "One Piece: Stampede",
+    );
+    assert!(!ruled_out(
+        "One Piece: The Movie 14 - Stampede",
+        Some(1.0),
+        &stampede
+    ));
+}
+
+#[test]
+fn a_numbered_movie_rules_out_an_ova() {
+    let prologue = hit(
+        "10047",
+        "One Piece: Episode of Alabasta - Prologue",
+        "one-piece-episode-of-alabaster-prologue",
+        "OVA",
+        Some(1),
+    );
+    assert!(ruled_out(
+        "One Piece: The Movie 14 - Stampede",
+        Some(1.0),
+        &prologue
+    ));
+}
+
+#[test]
+fn a_hit_numbering_the_row_s_movie_is_not_another() {
+    let mut h = hit("1", "Show Movie 4", "show-movie-4", "movie", Some(1));
+    h.abbreviated_titles.push("Show Movie 9".into());
+    assert!(!numbered_as_another_movie("Show Movie 4: Subtitle", &h));
+    // An unnumbered movie title is never told apart by number.
+    assert!(!numbered_as_another_movie("Show Movie: Subtitle", &h));
+}
+
+// — A recap ————————————————————————————————————————————————————
+
+#[test]
+fn a_row_naming_no_recap_rules_out_a_recap() {
+    // hianime's "Haikyu!! Movie: Battle of the Garbage Dump" brings back
+    // the fourth recap movie alone.
+    let mut concept = titled(
+        hit(
+            "13656",
+            "Haikyuu!! Movie 4: Concept no Tatakai",
+            "haikyuu-movie-4-concept-no-tatakai",
+            "movie",
+            Some(1),
+        ),
+        "Haikyu!! The Movie: Battle of Concepts!!",
+    );
+    concept.abbreviated_titles.push("Haikyuu!! Recap 4".into());
+    assert!(names_recap("Haikyuu!! Recap 4"));
+    assert!(ruled_out_by_key(
+        "Haikyu!! Movie: Battle of the Garbage Dump",
+        "haikyu movie the dumpster battle",
+        &concept
+    ));
+    // Nothing else about it rules it out.
+    assert!(!ruled_out(
+        "Haikyu!! Movie: Battle of the Garbage Dump",
+        Some(1.0),
+        &concept
+    ));
+}
+
+#[test]
+fn a_row_naming_a_recap_in_its_title_or_key_keeps_a_recap() {
+    let recaps = titled(
+        hit(
+            "45545",
+            "86 Part 2 Recaps",
+            "86-part-2-recaps",
+            "special",
+            Some(2),
+        ),
+        "86 EIGHTY-SIX Part 2 Recaps",
+    );
+    assert!(!a_recap_the_row_does_not_name(
+        "86 EIGHTY-SIX Season 2 Recap",
+        "86 eighty six season 2 recap",
+        &recaps
+    ));
+    let s2_recap = titled(
+        hit(
+            "47880",
+            "Jujutsu Kaisen 2nd Season Recap",
+            "jujutsu-kaisen-2nd-season-recap",
+            "special",
+            Some(2),
+        ),
+        "Jujutsu Kaisen Season 2 Recap",
+    );
+    assert!(!a_recap_the_row_does_not_name(
+        "Jujutsu Kaisen: Specials",
+        "jujutsu kaisen season 2 recaps",
+        &s2_recap
+    ));
+}
+
+// — A season the key names ——————————————————————————————————————
+
+#[test]
+fn a_season_is_named_anywhere_in_the_words() {
+    assert_eq!(season_named("jujutsu kaisen season 2 recaps"), Some(2));
+    assert_eq!(season_named("Jujutsu Kaisen 2nd Season Recap"), Some(2));
+    assert_eq!(season_named("Show 1st Season"), Some(1));
+    assert_eq!(season_named("Show Season"), None);
+    assert_eq!(season_named("Show 2nd"), None);
+    assert_eq!(season_named("Show Part 2"), None);
+}
+
+#[test]
+fn a_key_naming_a_season_the_title_does_not_rules_out_a_hit_naming_none() {
+    // hianime's "Jujutsu Kaisen: Specials" is
+    // `jujutsu-kaisen-season-2-recaps`; Kitsu's search for the title
+    // brings back the New Year's Special, the third season and a movie.
+    let ny = titled(
+        hit(
+            "43886",
+            "Jujutsu Kaisen New Year's Special",
+            "jujutsu-kaisen-new-year-s-special",
+            "special",
+            Some(1),
+        ),
+        "Jujutsu Kaisen New Year's Special",
+    );
+    let key = "jujutsu kaisen season 2 recaps";
+    assert!(ruled_out_by_key("Jujutsu Kaisen: Specials", key, &ny));
+    let mut third = titled(
+        hit(
+            "48363",
+            "Jujutsu Kaisen: Shimetsu Kaiyū Zenpen",
+            "Jujutsu-Kaisen-3",
+            "TV",
+            Some(12),
+        ),
+        "Jujutsu Kaisen Season 3: The Culling Game Part 1",
+    );
+    third
+        .abbreviated_titles
+        .push("Jujutsu Kaisen 3rd Season".into());
+    assert!(ruled_out_by_key("Jujutsu Kaisen: Specials", key, &third));
+    let recap = titled(
+        hit(
+            "47880",
+            "Jujutsu Kaisen 2nd Season Recap",
+            "jujutsu-kaisen-2nd-season-recap",
+            "special",
+            Some(2),
+        ),
+        "Jujutsu Kaisen Season 2 Recap",
+    );
+    assert!(!ruled_out_by_key("Jujutsu Kaisen: Specials", key, &recap));
+    // Without the key's season, the special stands.
+    assert!(!ruled_out_by_key(
+        "Jujutsu Kaisen: Specials",
+        "jujutsu kaisen specials",
+        &ny
+    ));
+}
+
+#[test]
+fn a_title_naming_a_season_is_not_judged_by_its_key() {
+    let other = hit(
+        "50837",
+        "Solo Leveling: ReAwakening",
+        "solo-leveling-reawakening",
+        "movie",
+        Some(1),
+    );
+    assert!(!ruled_out_by_key(
+        "Solo Leveling Season 2: Arise from the Shadow",
+        "solo leveling season 2 arise from the shadow",
+        &other
+    ));
+    assert!(!ruled_out_by_key(
+        "Show Season 3",
+        "show season 2",
+        &hit("1", "Show", "show", "TV", Some(12))
+    ));
+}
+
+#[test]
+fn a_key_naming_the_first_season_rules_nothing_out() {
+    assert!(!ruled_out_by_key(
+        "Show: Extras",
+        "show season 1 extras",
+        &hit("1", "Show Special", "show-special", "special", Some(1))
+    ));
 }

@@ -84,5 +84,5 @@ pub fn answer(req: RuledOutRequest) -> Vec<String> {
         .is_some();
     let episode = walked.then_some(req.episode);
     let hits: Vec<KitsuAnimeRef> = req.hits.into_iter().map(Into::into).collect();
-    super::ruled_out_ids(&req.title, episode, &hits)
+    super::ruled_out_ids(&req.title, "", episode, &hits)
 }

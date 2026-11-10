@@ -121,3 +121,40 @@ async fn a_row_a_retired_provider_wrote_is_never_past_a_hit() {
     let ids: Vec<String> = serde_json::from_str(&body).expect("ids");
     assert_eq!(ids, vec!["7"]);
 }
+
+#[tokio::test]
+async fn the_route_reads_the_season_the_show_key_names() {
+    // hianime's "Jujutsu Kaisen: Specials" is
+    // `jujutsu-kaisen-season-2-recaps`: its key names the second season
+    // and its title none, so the New Year's Special Kitsu's search
+    // returns for the title is out and the second season's recap is not.
+    let (status, body) = post(serde_json::json!({
+        "key": "hianime:jujutsu-kaisen-season-2-recaps-3513",
+        "title": "Jujutsu Kaisen: Specials",
+        "episode": 1,
+        "hits": [
+            {
+                "id": "43886",
+                "canonical_title": "Jujutsu Kaisen New Year's Special",
+                "titles": { "en": "Jujutsu Kaisen New Year's Special" },
+                "abbreviated_titles": ["Jujutsu Kaisen (TV) Recap"],
+                "slug": "jujutsu-kaisen-new-year-s-special",
+                "episode_count": 1,
+                "subtype": "special"
+            },
+            {
+                "id": "47880",
+                "canonical_title": "Jujutsu Kaisen 2nd Season Recap",
+                "titles": { "en": "Jujutsu Kaisen Season 2 Recap" },
+                "abbreviated_titles": ["Jujutsu Kaisen Season 2 + Movie Recap"],
+                "slug": "jujutsu-kaisen-2nd-season-recap",
+                "episode_count": 2,
+                "subtype": "special"
+            }
+        ]
+    }))
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let ids: Vec<String> = serde_json::from_str(&body).expect("ids");
+    assert_eq!(ids, vec!["43886"]);
+}

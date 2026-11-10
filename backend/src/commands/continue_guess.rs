@@ -62,6 +62,14 @@ pub use words::{carries_first_word, is_series, names_series, past_reach};
 
 #[path = "continue_guess_season.rs"]
 mod season;
+pub use season::season_named;
+
+#[path = "continue_guess_kind.rs"]
+mod kind;
+pub use kind::{
+    a_recap_the_row_does_not_name, is_movie, movie_number, names_movie, names_recap,
+    numbered_as_another_movie,
+};
 
 #[path = "continue_guess_request.rs"]
 mod request;
@@ -77,7 +85,7 @@ pub fn ruled_out(title: &str, episode: Option<f64>, hit: &KitsuAnimeRef) -> bool
     if names_series(title) && !is_series(hit.subtype.as_deref()) {
         return true;
     }
-    if !carries_first_word(title, hit) {
+    if !carries_first_word(title, hit) || kind::another_movie(title, hit) {
         return true;
     }
     if let Some(cour) = super::cour::cour_from_title(title).filter(|c| *c >= 2) {
@@ -88,11 +96,27 @@ pub fn ruled_out(title: &str, episode: Option<f64>, hit: &KitsuAnimeRef) -> bool
     season::names_a_whole_season(title) && words::names(hit).any(season::later_part_of_a_season)
 }
 
-/// The ids of the `hits` the row rules out, in their order.
+/// Whether the row's title and its show key's words (empty for a key
+/// that carries none) rule `hit` out together: a recap neither names,
+/// or a later season the key names and the title and hit do not.
 #[must_use]
-pub fn ruled_out_ids(title: &str, episode: Option<f64>, hits: &[KitsuAnimeRef]) -> Vec<String> {
+pub fn ruled_out_by_key(title: &str, key_words: &str, hit: &KitsuAnimeRef) -> bool {
+    kind::a_recap_the_row_does_not_name(title, key_words, hit)
+        || season::a_season_the_key_names_and_the_hit_does_not(title, key_words, hit)
+}
+
+/// The ids of the `hits` the row rules out, in their order: by its
+/// title and episode ([`ruled_out`]), or by its title and its show
+/// key's words ([`ruled_out_by_key`]).
+#[must_use]
+pub fn ruled_out_ids(
+    title: &str,
+    key_words: &str,
+    episode: Option<f64>,
+    hits: &[KitsuAnimeRef],
+) -> Vec<String> {
     hits.iter()
-        .filter(|h| ruled_out(title, episode, h))
+        .filter(|h| ruled_out(title, episode, h) || ruled_out_by_key(title, key_words, h))
         .map(|h| h.id.clone())
         .collect()
 }
