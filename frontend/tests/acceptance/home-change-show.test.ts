@@ -38,6 +38,7 @@ import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
+import { rememberAudio, storedAudio } from '../../src/lib/play/audio-choice';
 
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
@@ -294,6 +295,36 @@ describe("a guessed Continue card's pill", () => {
 		const toast = toastWith(m.detail_link_done_toast({ title: BC_RIGHT_TITLE }))!;
 		expect(toast.actionLabel).toBeNull();
 		expect(toast.onAction).toBeNull();
+	});
+
+	it('carries the card’s audio to the show picked for it, when that show has none', async () => {
+		rememberAudio(BC_GUESS, 'dub');
+		rememberAudio(JOJO_RIGHT, 'sub');
+		await openHome();
+		pill(BC_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(BC_RIGHT_TITLE);
+		await until(() => storedAudio(BC_RIGHT) !== undefined, 'the audio carried');
+		expect(storedAudio(BC_RIGHT)).toBe('dub');
+		// A show with its own choice keeps it.
+		const linked = backend.linkCalls.length;
+		pill(JOJO_CARD)!.click();
+		await until(() => dialog()?.open === true, "JoJo's picker");
+		await until(
+			() =>
+				Array.from(dialog()?.querySelectorAll<HTMLButtonElement>('li button') ?? []).some((b) =>
+					(b.textContent ?? '').includes(JOJO_RIGHT_TITLE)
+				),
+			'the OVA among the candidates'
+		);
+		Array.from(dialog()!.querySelectorAll<HTMLButtonElement>('li button'))
+			.find((b) => (b.textContent ?? '').includes(JOJO_RIGHT_TITLE))!
+			.click();
+		await until(() => !button(m.detail_link_confirm_button())?.disabled, 'the Link button');
+		button(m.detail_link_confirm_button())!.click();
+		await until(() => backend.linkCalls.length > linked, 'the second link');
+		await settle();
+		expect(storedAudio(JOJO_RIGHT)).toBe('sub');
 	});
 
 	it('links only the JoJo card, and the 2012 row comes out as a card of its own', async () => {

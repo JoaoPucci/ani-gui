@@ -44,7 +44,7 @@ import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
-import { rememberAudio } from '../../src/lib/play/audio-choice';
+import { rememberAudio, storedAudio } from '../../src/lib/play/audio-choice';
 import { __resetHiddenRowsForTests } from '../../src/lib/history/in-place-link.svelte';
 import { recoveryResume } from '../../src/lib/play/resume-after-recovery';
 
@@ -669,6 +669,38 @@ describe('switching to the pick', () => {
 		await pickAndLink(RIGHT_TITLE, m.play_link_switch_now());
 		await until(() => pickPlay() !== undefined, 'the play of the pick');
 		expect(new URL(pickPlay()!.url, 'http://x').searchParams.get('mode')).toBe('dub');
+	});
+
+	it('carries the audio watched in to a pick with none of its own, and switches in it', async () => {
+		// The guessed show was watched dubbed; the pick has no choice.
+		rememberAudio(GUESS, 'dub');
+		await openPlayer();
+		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+		videoAt(74);
+		await openPicker();
+		await pickAndLink(RIGHT_TITLE, m.play_link_switch_now());
+		await until(() => pickPlay() !== undefined, 'the play of the pick');
+		expect(new URL(pickPlay()!.url, 'http://x').searchParams.get('mode')).toBe('dub');
+		expect(storedAudio(RIGHT)).toBe('dub');
+	});
+
+	it('switches in the audio watched in when the choice cannot be kept, claiming none', async () => {
+		rememberAudio(GUESS, 'dub');
+		const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+			throw new Error('quota');
+		});
+		try {
+			await openPlayer();
+			await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+			videoAt(74);
+			await openPicker();
+			await pickAndLink(RIGHT_TITLE, m.play_link_switch_now());
+			await until(() => pickPlay() !== undefined, 'the play of the pick');
+			expect(new URL(pickPlay()!.url, 'http://x').searchParams.get('mode')).toBe('dub');
+			expect(storedAudio(RIGHT)).toBeUndefined();
+		} finally {
+			setItem.mockRestore();
+		}
 	});
 
 	it('never switches to an earlier pick when a later one cannot be saved', async () => {

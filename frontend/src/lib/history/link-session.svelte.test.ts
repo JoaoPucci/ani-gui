@@ -1,7 +1,8 @@
 // The show page's link session: the offer it makes on arrival, the
 // picker and the link, against fake app dependencies.
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { rememberAudio, storedAudio } from '$lib/play/audio-choice';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { m } from '$lib/paraglide/messages';
 import { LinkSession, type LinkNotice, type LinkSessionDeps } from './link-session.svelte';
@@ -445,5 +446,74 @@ describe('LinkSession', () => {
 		expect(await confirming).toBe(false);
 		expect(s.error).toBeNull();
 		expect(f.notices).toEqual([{ kind: 'error', message: m.detail_link_failed() }]);
+	});
+});
+
+// The viewer corrects the show: a picked show with no Sub or Dub of its
+// own takes the one the viewer was watching in, so it plays in it.
+describe('the audio a correction carries', () => {
+	const RIGHT_ID = RIGHT.id;
+	let store: Map<string, string>;
+	let refuse = false;
+	beforeEach(() => {
+		store = new Map();
+		refuse = false;
+		(globalThis as { localStorage?: unknown }).localStorage = {
+			getItem: (k: string) => store.get(k) ?? null,
+			setItem: (k: string, v: string) => {
+				if (refuse) throw new Error('quota');
+				store.set(k, v);
+			}
+		};
+	});
+	afterEach(() => {
+		delete (globalThis as { localStorage?: unknown }).localStorage;
+	});
+
+	async function pick(audio: 'sub' | 'dub' | null, link?: LinkSessionDeps['link']) {
+		const f = fake();
+		const asked: string[] = [];
+		f.deps.audioInForce = (shown) => {
+			asked.push(shown);
+			return audio;
+		};
+		if (link) f.deps.link = link;
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start();
+		await s.search('gintama');
+		s.choose(s.candidates![0]);
+		const saved = await s.confirm();
+		return { f, s, asked, saved };
+	}
+
+	it('is saved as the picked show’s own when it has none, the shown show’s audio asked', async () => {
+		const { asked } = await pick('dub');
+		expect(storedAudio(RIGHT_ID)).toBe('dub');
+		expect(asked).toEqual([GUESS]);
+	});
+
+	it('leaves a picked show’s own choice as it is', async () => {
+		rememberAudio(RIGHT_ID, 'sub');
+		await pick('dub');
+		expect(storedAudio(RIGHT_ID)).toBe('sub');
+	});
+
+	it('saves nothing when no audio is known yet', async () => {
+		await pick(null);
+		expect(storedAudio(RIGHT_ID)).toBeUndefined();
+	});
+
+	it('saves nothing for a link that failed', async () => {
+		const { saved } = await pick('dub', async () => Promise.reject(new Error('down')));
+		expect(saved).toBe(false);
+		expect(storedAudio(RIGHT_ID)).toBeUndefined();
+	});
+
+	it('keeps the link when the storage refuses the choice', async () => {
+		refuse = true;
+		const { saved } = await pick('dub');
+		expect(saved).toBe(true);
+		expect(storedAudio(RIGHT_ID)).toBeUndefined();
 	});
 });
