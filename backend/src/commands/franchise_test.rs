@@ -141,7 +141,9 @@ async fn the_walk_reads_each_listing_once_and_pages() {
     let ids: Vec<&str> = first.entries.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(ids, ["610", "7730", "7158"]);
     let versions: Vec<&str> = first.versions.iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(versions, ["3136", "8063"]);
+    assert_eq!(versions, ["8063"]);
+    let films: Vec<&str> = first.films.iter().map(|e| e.id.as_str()).collect();
+    assert_eq!(films, ["3136"]);
     assert_eq!(
         first.entries[1].title,
         "JoJo no Kimyou na Bouken: Adventure"

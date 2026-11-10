@@ -11,7 +11,7 @@ use super::rules::{alt, listed, run};
 use super::tests::Catalogue;
 use super::*;
 
-const ROLES: [&str; 10] = [
+const ROLES: [&str; 11] = [
     "prequel",
     "sequel",
     "prequel",
@@ -22,6 +22,7 @@ const ROLES: [&str; 10] = [
     "side_story",
     "parent_story",
     "character",
+    "spinoff",
 ];
 const SUBTYPES: [&str; 5] = ["TV", "movie", "OVA", "special", "music"];
 
@@ -39,7 +40,7 @@ fn spec(n: usize) -> BoxedStrategy<Spec> {
         .boxed()
 }
 
-fn catalogue() -> BoxedStrategy<(Catalogue, String)> {
+pub(super) fn catalogue() -> BoxedStrategy<(Catalogue, String)> {
     (2usize..14)
         .prop_flat_map(|n| (prop::collection::vec(spec(n), n), 0..n))
         .prop_map(|(specs, anchor)| {
@@ -68,7 +69,11 @@ type Read = (
 /// Drive the walk from `anchor` with `prefetched` listings already
 /// read, answering each need in reverse order; the result and what was
 /// read.
-fn drive_with(anchor: &str, cat: &Catalogue, prefetched: &[String]) -> (Franchise, Read) {
+pub(super) fn drive_with(
+    anchor: &str,
+    cat: &Catalogue,
+    prefetched: &[String],
+) -> (Franchise, Read) {
     let mut known: BTreeMap<String, FranchiseListing> = prefetched
         .iter()
         .map(|id| (id.clone(), cat.listings[id].clone()))
@@ -118,9 +123,11 @@ proptest! {
     }
 
     /// The shape of the answer: the anchor is a member or a side-story
-    /// anchor among the sides; the run is bounded; sections are disjoint
-    /// from one another and from the run; every link joins members;
-    /// asked again, the walk answers the same.
+    /// anchor among the sides (the films, for a movie); every movie
+    /// around the run is a film, and no TV series is a recap; the run
+    /// is bounded; sections are disjoint from one another and from the
+    /// run; every link joins members; asked again, the walk answers
+    /// the same.
     #[test]
     fn the_answer_keeps_its_shape((cat, anchor) in catalogue()) {
         let (f, (known, details)) = drive_with(&anchor, &cat, &[]);
@@ -128,7 +135,9 @@ proptest! {
         if members.contains(&anchor) {
             prop_assert!(f.parents.is_empty());
         } else {
-            prop_assert!(id_set(&f.sides).contains(&anchor));
+            let film = cat.entries[&anchor].subtype.as_deref() == Some("movie");
+            let around = if film { &f.films } else { &f.sides };
+            prop_assert!(id_set(around).contains(&anchor));
             prop_assert!(f.parents.contains_key(&anchor));
         }
         prop_assert!(members.len() <= MAX_MEMBERS);
@@ -144,6 +153,12 @@ proptest! {
         }
         for e in f.films.iter().chain(&f.sides).chain(&f.recaps) {
             prop_assert!(e.id == anchor || e.subtype.as_deref() != Some("music"));
+        }
+        for e in f.versions.iter().chain(&f.sides).chain(&f.recaps) {
+            prop_assert!(e.subtype.as_deref() != Some("movie"), "the film {} is not a film", e.id);
+        }
+        for e in &f.recaps {
+            prop_assert!(e.subtype.as_deref() != Some("TV"), "the series {} is a recap", e.id);
         }
         prop_assert_eq!(plan(&anchor, &known, &details), Plan::Done(f.clone()));
         let everything = cat.listings.clone();

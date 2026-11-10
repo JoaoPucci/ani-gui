@@ -149,8 +149,12 @@ mod joined;
 mod links;
 #[path = "franchise_walk_meet.rs"]
 mod meet;
+#[path = "franchise_walk_parents.rs"]
+mod parents;
 #[path = "franchise_walk_rules.rs"]
 pub(crate) mod rules;
+#[path = "franchise_walk_sections.rs"]
+mod sections;
 #[path = "franchise_walk_run.rs"]
 mod walking;
 
@@ -161,3 +165,15 @@ mod tests;
 #[cfg(test)]
 #[path = "franchise_walk_prop_test.rs"]
 mod prop_tests;
+
+#[cfg(test)]
+#[path = "franchise_corpus_test.rs"]
+mod corpus_tests;
+
+#[cfg(test)]
+#[path = "franchise_corpus_record_test.rs"]
+mod corpus_record;
+
+#[cfg(test)]
+#[path = "franchise_walk_parent_prop_test.rs"]
+mod parent_prop_tests;
