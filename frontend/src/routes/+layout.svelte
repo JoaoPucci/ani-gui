@@ -18,6 +18,7 @@
 <script lang="ts">
 	import '$lib/design/tokens.css';
 	import { onDestroy, onMount } from 'svelte';
+	import { signalAppReady } from '$lib/app-ready';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { afterNavigate, goto, replaceState } from '$app/navigation';
@@ -25,7 +26,9 @@
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { m } from '$lib/paraglide/messages';
-	import { breadcrumb, defaultTrailFor, searchOrigin, withSearchOrigin } from '$lib/breadcrumb';
+	import { breadcrumb, withSearchOrigin } from '$lib/breadcrumb';
+	import { searchOrigin } from '$lib/search-origin';
+	import { pageTrail } from '$lib/page-trail';
 	import {
 		imageProxyUrl,
 		kitsuSearch,
@@ -42,6 +45,7 @@
 	import DownloadBar from '$lib/components/DownloadBar.svelte';
 	import ToastHost from '$lib/components/ToastHost.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
+	import { isModalOpen } from '$lib/components/modal-layer';
 	import UpdateBadge from '$lib/components/UpdateBadge.svelte';
 	import UpdateDialog from '$lib/components/UpdateDialog.svelte';
 	import { downloadFailureStore } from '$lib/download/failure-store.svelte';
@@ -53,20 +57,23 @@
 	import { ExpiryToastTracker } from '$lib/account/expiry-toast';
 	import { signInToastCopy } from '$lib/account/sign-in-toast-copy';
 	import { needsRenewalRetry, RenewalRetry } from '$lib/account/renewal-retry';
+	import { KeyringWaitNotice } from '$lib/account/keyring-wait';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { afterNavigation, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
 	import { probeScope } from '$lib/availability/probe-scope';
 	import {
-		RECENT_LIMIT,
-		RECENT_STORAGE_KEY,
 		cycleSelectedIdx,
 		decideEnterAction,
 		freshConfigOrLast,
-		mergeRecents,
-		parseStoredRecents,
 		shouldRenderDropdown
 	} from '$lib/topbar/dropdown';
+	import {
+		RECENT_LIMIT,
+		RECENT_STORAGE_KEY,
+		mergeRecents,
+		parseStoredRecents
+	} from '$lib/topbar/recent-searches';
 
 	let { children } = $props();
 
@@ -131,9 +138,11 @@
 		}
 		canGoBack = shouldShowBackButton(navDepth);
 		// Reset the breadcrumb to a default URL-only trail on every
-		// navigation. Routes with richer labels (anime title, episode
-		// number) overwrite this in onMount once their data lands.
-		breadcrumb.set(defaultTrailFor(page.route?.id ?? null));
+		// navigation, keeping a trail the page on this address already
+		// named itself with: SvelteKit runs this only after the page has
+		// rendered, so a page that stayed mounted, or whose data landed
+		// first, has named itself by now ($lib/page-trail).
+		pageTrail.reset(page.url.pathname, page.route?.id ?? null);
 	});
 
 	// Sign-in notices: one pinned `warning` toast per provider whose
@@ -178,6 +187,18 @@
 		renewalRetry.sync();
 	});
 
+	// Keyring notice: pinned while a saved sign-in's keyring read runs
+	// past its wait (see `$lib/account/keyring-wait`), so a signed-out
+	// home is not taken for a lost sign-in; down when the read settles.
+	const keyringWaitNotice = new KeyringWaitNotice();
+	$effect(() => {
+		keyringWaitNotice.sync(accountStore.keyringWaiting, {
+			push: () =>
+				toastStore.push({ kind: 'info', duration: null, message: m.account_keyring_waiting() }),
+			dismiss: (id) => toastStore.dismiss(id)
+		});
+	});
+
 	let topbarQuery = $state('');
 	let topbarInputEl: HTMLInputElement | undefined = $state();
 
@@ -202,7 +223,7 @@
 	const LIVE_DEBOUNCE_MS = 250;
 	const LIVE_MIN_CHARS = 2;
 	const LIVE_MAX_HITS = 5;
-	// RECENT_LIMIT + RECENT_STORAGE_KEY come from $lib/topbar/dropdown
+	// RECENT_LIMIT + RECENT_STORAGE_KEY come from $lib/topbar/recent-searches
 	// so the constants live next to the helpers that consume them.
 
 	let liveResults = $state<KitsuAnimeRef[] | null>(null);
@@ -215,6 +236,9 @@
 	let blurDismiss: ReturnType<typeof setTimeout> | null = null;
 
 	onMount(() => {
+		// The layout and its first route have mounted: the window may be
+		// revealed once this frame is drawn (electron/lib/app-window.cjs).
+		signalAppReady();
 		try {
 			recentSearches = parseStoredRecents(window.localStorage.getItem(RECENT_STORAGE_KEY));
 		} catch {
@@ -227,13 +251,13 @@
 		// only `/account/+page.svelte` called this, which meant a cold
 		// launch directly to `/` left the rail blank for connected
 		// users until they visited Accounts first.
-		// `hydrate()` is sync (preload's `getToken` is sync IPC) so by
-		// the time the home page mounts the store is fully populated.
-		// hydrate() seeds the store from safeStorage AND kicks off a
-		// silent refresh of any expired-but-refreshable token (e.g. MAL's
-		// ~1h access token), so the user isn't pushed through OAuth every
-		// hour.
-		accountStore.hydrate();
+		// `hydrate()` is asynchronous: the keyring may be locked or slow
+		// to answer, and the page renders signed out until it does —
+		// every consumer reads the store reactively. hydrate() seeds the
+		// store from the OS keyring AND kicks off a silent refresh of any
+		// expired-but-refreshable token (e.g. MAL's ~1h access token), so
+		// the user isn't pushed through OAuth every hour.
+		void accountStore.hydrate();
 
 		// Update notifier — one-shot check on app open. Routes
 		// through the local backend (`/api/update-check`); the
@@ -241,7 +265,8 @@
 		// backend is the documented outbound HTTP boundary
 		// (`docs/architecture.md`). The
 		// `update_include_prereleases` setting (default true)
-		// drives which GitHub endpoint the backend hits.
+		// decides whether the backend counts pre-releases when it
+		// picks the newest release with this platform's package.
 		const localApiBase = window.aniGui?.apiBase ?? '';
 		if (localApiBase) {
 			void settingsGet()
@@ -323,6 +348,8 @@
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const onKey = (e: KeyboardEvent) => {
+			// A modal is the only keyboard target while it is up.
+			if (isModalOpen()) return;
 			const t = e.target as HTMLElement | null;
 			const inField =
 				t &&
@@ -360,9 +387,9 @@
 			blurDismiss = null;
 		}
 		dropdownOpen = true;
-		// Re-pull config so the next dropdown filter sees the user's
-		// current Sub/Dub pick. Settings + the detail page mutate their
-		// page-local config but don't push it back here, so without
+		// Re-pull config so the next dropdown filter sees the current
+		// default Sub/Dub. The Settings page mutates its page-local
+		// config but doesn't push it back here, so without
 		// this refresh the dropdown filters with whatever mode was set
 		// when the layout first mounted. Bounded work: fires once per
 		// focus, not per keystroke.
@@ -562,6 +589,9 @@
 	</aside>
 
 	<div class="main-area">
+		<!-- The player's captions menu caps its height at this bar's
+		     bottom edge, found by its class (routes/play/[id]/+page.svelte,
+		     fitCcMenu): renaming this class means renaming that lookup. -->
 		<header class="topbar">
 			{#if canGoBack}
 				<Breadcrumb
@@ -744,8 +774,9 @@
 		/* Extra inline gutter on both sides so the main column
 		   doesn't feel glued to the rail on the left or the
 		   window edge on the right. Stacks on top of each route's
-		   own padding-inline. Banners (.hero, .masthead) escape
-		   this gutter via negative margins so they stay full-bleed. */
+		   own padding-inline. Banners (Home's .hero, the show page's
+		   .hero-frame, .masthead) escape this gutter via negative
+		   margins so they stay full-bleed. */
 		padding-inline: var(--space-7);
 	}
 	@media (max-inline-size: 720px) {
@@ -880,12 +911,15 @@
 			flex-wrap: wrap;
 		}
 	}
+	/* The small rail link steps down to the faintest text tier rather
+	   than fading with opacity: bone-300 at 0.6 read 3.8:1, short of
+	   WCAG AA for its label. */
 	.nav li.small .nav-link {
-		opacity: 0.6;
+		color: var(--bone-400);
 	}
 	.nav li.small .nav-link:hover,
 	.nav li.small .nav-link.active {
-		opacity: 1;
+		color: var(--bone-100);
 	}
 
 	.nav-link {
@@ -1191,8 +1225,17 @@
 		gap: var(--space-3);
 		/* Bumped from 28rem to 32rem; the search is the topbar's
 		   primary action and the previous size made the input feel
-		   secondary. */
-		flex: 0 1 32rem;
+		   secondary.
+		   Sized from its narrowest up rather than from 32rem down, so
+		   that when the row runs short the pill gives way first and the
+		   breadcrumb only after it: the pill starts at its min-content
+		   width (basis 0, held there by its automatic minimum), grows
+		   into whatever room the row has, up to 32rem, and never shrinks.
+		   The breadcrumb is the row's only shrinking item, so it takes
+		   any shortfall left once the pill is at its narrowest. Where
+		   the row has room, the result is what `0 1 32rem` gave. */
+		flex: 1 0 0;
+		max-inline-size: 32rem;
 		margin-inline-start: auto;
 		/* Pill thickens (--space-2 → --space-3 vertical, --space-4
 		   → --space-5 horizontal) to host the new 16px body-sans
@@ -1259,9 +1302,9 @@
 		display: none;
 	}
 	.topbar-search input::placeholder {
-		/* Lift placeholder from bone-400 to a brighter color-mix so
-		   the call-to-action ("Search anime…") is legible at the
-		   bumped 16px size. */
+		/* The call-to-action ("Search anime…") at the bumped 16px
+		   size. Bone-100 at 55% clears WCAG AA (4.5:1) on every ink
+		   surface; tests/lint/text-contrast.test.ts holds it there. */
 		color: color-mix(in oklab, var(--bone-100) 55%, transparent);
 		font-weight: 400;
 	}

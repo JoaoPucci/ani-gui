@@ -34,8 +34,9 @@ jobs:
           # exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
           # The snapshot generator, the rust workflow filter, the
-          # hostile temporary-directory tool and the runner the picker
-          # oracle jobs start their steps with live in tools/ and the
+          # hostile temporary-directory tool, the runner the picker
+          # oracle jobs start their steps with and the headless Wayland
+          # session the e2e suite runs in locally live in tools/ and the
           # bats suites execute them, so a change to any of them must
           # run the suite that runs it; `tests/tools/` carries the node
           # tool tests. Workflows are included because
@@ -43,7 +44,7 @@ jobs:
           # the recorded snapshot, and the composite actions because
           # arch checks the bats cases run read them and these jobs
           # install through one.
-          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|tools/workflow-snapshot\.py$|tools/rust-workflow-filter\.sh$|tools/rust-lcov\.sh$|tools/hostile-tmpdir\.sh$|tools/alongside\.sh$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$|\.github/actions/)' <<<"$changed"; then
+          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|tools/workflow-snapshot\.py$|tools/rust-workflow-filter\.sh$|tools/rust-lcov\.sh$|tools/hostile-tmpdir\.sh$|tools/alongside\.sh$|tools/headless-wayland\.sh$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$|\.github/actions/)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -132,7 +133,7 @@ jobs:
         # there, which a virtualenv install would not provide.
         uses: ./.github/actions/apt-install
         with:
-          packages: python3-yaml
+          packages: python3-yaml dbus-daemon dbus-bin
       - if: needs.filter.outputs.relevant == 'true'
         name: Install bats-core and plugins
         run: ./tests/bash/helpers/install-bats.sh

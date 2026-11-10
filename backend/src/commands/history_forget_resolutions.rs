@@ -66,8 +66,9 @@ impl Resolutions {
     /// the numbering of. A key a resolution row the delete leaves still
     /// names keeps it, whether or not that row can be played again: a
     /// live row's play writes the key's history row through it, and one
-    /// expired or under an older schema's key keeps it until the
-    /// history is cleared.
+    /// expired or under an older schema's key keeps it until the launch
+    /// reclaim deletes that row ([`crate::cache::reclaim`]) or the history
+    /// is cleared.
     pub(crate) fn only_named(&self) -> Vec<String> {
         self.named
             .iter()

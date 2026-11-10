@@ -19,6 +19,9 @@ importers:
       electron-builder:
         specifier: ^25.1.8
         version: 25.1.8(electron-builder-squirrel-windows@25.1.8)
+      fast-check:
+        specifier: ^4.7.0
+        version: 4.7.0
 
   frontend:
     dependencies:

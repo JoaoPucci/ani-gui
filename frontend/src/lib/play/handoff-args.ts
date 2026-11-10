@@ -14,18 +14,21 @@ export function handoffArgs(input: {
 	title: string;
 	episode: number;
 	kitsuId: string;
-	config: { mode: string; quality: string };
+	config: { mode: string };
 	detail: KitsuAnimeRef | null;
 	/** The version the embedded play names for the show. */
 	version?: VersionKind;
+	/** The captions choice remembered for the show, which the external
+	 *  player starts on as the embedded one does. */
+	caption?: string;
 }): PlayArgs {
 	return buildPlayArgs({
 		title: input.title,
 		episode: input.episode,
 		mode: input.config.mode === 'dub' ? 'dub' : 'sub',
-		quality: input.config.quality || 'best',
 		show: input.detail,
 		kitsuId: input.kitsuId,
-		version: input.version
+		version: input.version,
+		caption: input.caption
 	});
 }

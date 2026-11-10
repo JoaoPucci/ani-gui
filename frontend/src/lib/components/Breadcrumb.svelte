@@ -13,7 +13,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
-	import { goesBack, type BreadcrumbSegment } from '$lib/breadcrumb';
+	import { goesBack, yieldingSegment, type BreadcrumbSegment } from '$lib/breadcrumb';
 	import { m } from '$lib/paraglide/messages';
 
 	let { segments, back = null }: { segments: BreadcrumbSegment[]; back?: string | null } = $props();
@@ -24,6 +24,9 @@
 	const upHref = $derived<string>(
 		segments.length >= 2 ? (segments[segments.length - 2].href ?? '/') : '/'
 	);
+
+	// The label that ellipsises first when the topbar runs short.
+	const yielding = $derived(yieldingSegment(segments));
 
 	// A hop to the page behind steps back to its history entry, so it
 	// comes back as it was left (the search page restores its results
@@ -73,7 +76,7 @@
 				{#if i > 0}
 					<li class="sep" aria-hidden="true">·</li>
 				{/if}
-				<li class:current={!seg.href}>
+				<li class:current={!seg.href} class:yields={i === yielding}>
 					{#if seg.href}
 						<!-- href is `/` literal or `/anime/[id]` etc; the no-resolve
 						     rule pattern-matches a literal `resolve(...)` and trips
@@ -94,15 +97,26 @@
 {/if}
 
 <style>
+	/* The trail shares the topbar's row with the search pill and the
+	   window controls, and it is the one that gives way: with
+	   `min-inline-size: 0` the row may narrow it below its full width,
+	   and the longest label inside then ellipsises (the labels clip,
+	   so a flex item's automatic minimum is zero for them). Without it a
+	   long title at the smallest window pushed the window controls,
+	   and the page with them, past the window's edge.
+	   The search pill still gives way first, as it did before the trail
+	   could shrink at all; see `.topbar-search` in +layout.svelte. */
 	.crumbs {
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-2);
+		min-inline-size: 0;
 		padding: 0.4rem 0.6rem 0.4rem 0.4rem;
 		margin-inline-start: calc(-1 * var(--space-2));
 		border-radius: var(--radius-pill);
 	}
 	.up {
+		flex-shrink: 0;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -136,10 +150,18 @@
 		letter-spacing: var(--tracking-meta);
 		min-inline-size: 0;
 	}
+	/* One label gives way: the longest, which is the show's title in
+	   practice (`yields`, from yieldingSegment). The others hold their
+	   width: any share of the shrink, however small, would ellipsise
+	   them. */
 	li {
 		display: inline-flex;
 		align-items: center;
+		flex-shrink: 0;
 		min-inline-size: 0;
+	}
+	li.yields {
+		flex-shrink: 1;
 	}
 	li.sep {
 		color: var(--bone-400);

@@ -1,0 +1,35 @@
+{
+ "data": [
+  {
+   "id": "49847",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Steel Ball Run: JoJo no Kimyou na Bouken",
+    "titles": {
+     "en": "Steel Ball Run: JoJo's Bizarre Adventure",
+     "en_jp": "Steel Ball Run: JoJo no Kimyou na Bouken",
+     "en_us": "STEEL BALL RUN JoJo's Bizarre Adventure",
+     "ja_jp": "スティール・ボール・ラン ジョジョの奇妙な冒険"
+    },
+    "abbreviatedTitles": [
+     "JoJo's Bizarre Adventure Part 7: Steel Ball Run",
+     "JoJo's Bizarre Adventure: Steel Ball Run",
+     "JoJo no Kimyou na Bouken: Steel Ball Run",
+     "ジョジョの奇妙な冒険 スティール・ボール・ラン",
+     "STEEL BALL RUN JoJo's Bizarre Adventure 1st STAGE",
+     "ジョジョの奇妙な冒険 スティール・ボール・ラン 1st STAGE",
+     "JoJo no Kimyou na Bouken: Steel Ball Run - 1st STAGE",
+     "STEEL BALL RUN JoJo's Bizarre Adventure 2nd - 3rd STAGE",
+     "JoJo no Kimyou na Bouken: Steel Ball Run - 2nd - 3rd STAGE",
+     "ジョジョの奇妙な冒険 スティール・ボール・ラン 2nd - 3rd STAGE"
+    ],
+    "slug": "steel-ball-run-jojo-no-kimyou-na-bouken",
+    "startDate": "2026-03-19",
+    "endDate": "2026-12-04",
+    "episodeCount": 12,
+    "subtype": "ONA",
+    "status": "current"
+   }
+  }
+ ]
+}

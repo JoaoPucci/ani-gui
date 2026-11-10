@@ -60,10 +60,46 @@ for (const a of process.argv) {
 	if (lane) lanes[lane[1]] = lane[2];
 }
 
+// The launch's remote flags, decided by the backend before this window
+// opened and fixed for the session: `--ani-gui-flags=` carries them as
+// URI-encoded JSON, `--ani-gui-flags-origin=` where they came from (see
+// lib/window-args.cjs). Anything but a flat object of booleans and
+// strings counts as none, and every flag then takes its default.
+const flagsFlag = '--ani-gui-flags=';
+const flagsOriginFlag = '--ani-gui-flags-origin=';
+function readFlags() {
+	const a = process.argv.find((x) => x.startsWith(flagsFlag));
+	if (!a) return {};
+	try {
+		const v = JSON.parse(decodeURIComponent(a.slice(flagsFlag.length)));
+		if (typeof v !== 'object' || v === null || Array.isArray(v)) return {};
+		const scalar = (x) => typeof x === 'boolean' || typeof x === 'string';
+		return Object.values(v).every(scalar) ? v : {};
+	} catch {
+		return {};
+	}
+}
+const flags = Object.freeze(readFlags());
+const flagsOriginArg = process.argv.find((a) => a.startsWith(flagsOriginFlag));
+const flagsOrigin = flagsOriginArg
+	? decodeURIComponent(flagsOriginArg.slice(flagsOriginFlag.length))
+	: null;
+
+// The renderer's word that its first page has rendered, which the
+// window's reveal waits for (lib/app-window.cjs). Sent once.
+let appReadySent = false;
+
 contextBridge.exposeInMainWorld('aniGui', {
+	appReady() {
+		if (appReadySent) return;
+		appReadySent = true;
+		ipcRenderer.send('ani-gui:app-ready');
+	},
 	apiBase,
 	internalSecret,
 	lanes,
+	flags,
+	flagsOrigin,
 
 	// Surface `process.platform` so renderer-side UI can tailor copy
 	// per OS (Windows installer vs Linux package manager vs macOS
@@ -158,13 +194,14 @@ contextBridge.exposeInMainWorld('aniGui', {
 	//   2. account.setToken(provider, payload) → safeStorage-encrypts
 	//      the payload (`{access_token, refresh_token, expires_at_epoch_s,
 	//      user_id}`) and writes to disk.
-	//   3. account.getToken(provider) → sync read + decrypt; returns
+	//   3. account.getToken(provider) → read + decrypt; resolves to
 	//      {ok:true, payload} or {ok:false, kind:'not_found'|...}.
 	//   4. account.clearToken(provider) → drops the persisted file.
 	//
-	// Sync `getToken` because every backend call that needs a bearer
-	// reads it inline; an async round-trip per fetch is unnecessary
-	// IPC overhead.
+	// Every call here is asynchronous. `getToken` was once synchronous,
+	// and a keyring waiting on its unlock prompt then held the
+	// renderer's thread as well as the main process's: the first page
+	// never rendered.
 	account: {
 		openOAuth(args) {
 			return ipcRenderer.invoke('ani-gui:account:open-oauth', args);
@@ -176,7 +213,7 @@ contextBridge.exposeInMainWorld('aniGui', {
 			return ipcRenderer.invoke('ani-gui:account:set-token', { provider, payload });
 		},
 		getToken(provider) {
-			return ipcRenderer.sendSync('ani-gui:account:get-token', provider);
+			return ipcRenderer.invoke('ani-gui:account:get-token', provider);
 		},
 		clearToken(provider) {
 			return ipcRenderer.invoke('ani-gui:account:clear-token', provider);

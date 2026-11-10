@@ -1,0 +1,112 @@
+//! What becomes of the history rows a provider the app no longer walks
+//! left behind — decided from the rows alone, with no I/O, so the
+//! rule can be checked over every shape of history.
+//!
+//! A row is a retired provider's when its show key names no provider
+//! the app walks: a bare id (anidb.app's slugs, the allanime-era ids
+//! before them), or the label of a provider since removed from
+//! [`crate::provider_set::ProviderSet::shipped`]. Nothing names
+//! providers one by one here, so removing the next provider needs no
+//! change to this rule.
+//!
+//! Such a row is one of two things:
+//!
+//! - **Superseded**, when for every Kitsu entry it stands for, a row
+//!   of a walked provider that recorded the same entry resumes over it, by
+//!   the rule both Continue Watching and the detail page apply
+//!   ([`crate::commands::history_resume::resumes_over`]). Both surfaces
+//!   already show that row in its place, so the retired row is removed
+//!   and nothing either surface shows changes. A retired row that is
+//!   still the one a show resumes from stays until a watch of the show
+//!   overtakes it.
+//! - **Kept** otherwise — still the row its show resumes from, its show
+//!   recorded by no walked row, or shown as nothing. Its
+//!   episode is rewritten in the app's own numbering (the number the
+//!   read boundary already shows for it), so the numbering sidecar
+//!   holds nothing for a provider that is gone.
+//!
+//! A row is never given a Kitsu id here: the entry a row is shown as
+//! may be a guess, and a guess never becomes a row's id.
+
+use crate::commands::history_resume::resumes_over;
+use crate::history::same_kitsu_id;
+
+/// What the plan needs to know of one history row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanRow {
+    /// The row's show key.
+    pub id: String,
+    /// Whether the key names a provider the app walks.
+    pub walked: bool,
+    /// The Kitsu entries the row stands for. For a walked row, the one
+    /// it recorded and Kitsu has not answered gone — the entry both
+    /// Continue Watching and the detail page's resume find it by — and
+    /// nothing else: a guess makes neither surface certain. For a
+    /// retired row, the entry it recorded while Kitsu serves it, which
+    /// both surfaces read it by; otherwise everything anything names
+    /// for it, so a walked row must cover all of them before it goes.
+    /// Empty when nothing is known.
+    pub shown_as: Vec<String>,
+    /// The moment it was watched: the later of the row's own and the
+    /// cache's stamp.
+    pub stamp: Option<i64>,
+    /// Its episode in the entry's numbering, as the read boundary
+    /// shows it.
+    pub ep: String,
+    /// Whether the file already holds that number as the app's own.
+    pub own_number: bool,
+}
+
+/// What to do with a history's retired rows.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Plan {
+    /// Rows a walked provider's row supersedes, to remove.
+    pub superseded: Vec<String>,
+    /// Kept rows whose episode is to be written in the app's own
+    /// numbering.
+    pub renumber: Vec<String>,
+}
+
+impl Plan {
+    /// Whether the plan changes nothing.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.superseded.is_empty() && self.renumber.is_empty()
+    }
+}
+
+/// The plan for `rows`, in file order.
+#[must_use]
+pub fn plan(rows: &[PlanRow]) -> Plan {
+    let mut out = Plan::default();
+    for row in rows.iter().filter(|r| !r.walked) {
+        if superseded(row, rows) {
+            out.superseded.push(row.id.clone());
+        } else if !row.own_number {
+            out.renumber.push(row.id.clone());
+        }
+    }
+    out
+}
+
+/// Whether, for every entry `row` is shown as, a walked row shown as
+/// the same entry resumes over it. A row shown as nothing is never
+/// superseded: nothing ties it to another row.
+fn superseded(row: &PlanRow, rows: &[PlanRow]) -> bool {
+    !row.shown_as.is_empty()
+        && row.shown_as.iter().all(|kitsu| {
+            rows.iter().any(|w| {
+                w.walked
+                    && w.shown_as.iter().any(|k| same_kitsu_id(k, kitsu))
+                    && resumes_over((w.stamp, &w.ep), (row.stamp, &row.ep))
+            })
+        })
+}
+
+#[cfg(test)]
+#[path = "retired_provider_plan_test.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "retired_provider_plan_prop_test.rs"]
+mod prop_tests;

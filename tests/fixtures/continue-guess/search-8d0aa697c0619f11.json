@@ -1,0 +1,24 @@
+{
+ "data": [
+  {
+   "id": "13718",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: Lost Girls",
+    "titles": {
+     "en": "Attack on Titan: Lost Girls",
+     "en_jp": "Shingeki no Kyojin: Lost Girls",
+     "en_us": "Attack on Titan: Lost Girls",
+     "ja_jp": "進撃の巨人 LOST GIRLS"
+    },
+    "abbreviatedTitles": [],
+    "slug": "attack-on-titan-lost-girls",
+    "startDate": "2017-12-08",
+    "endDate": "2018-08-09",
+    "episodeCount": 3,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  }
+ ]
+}

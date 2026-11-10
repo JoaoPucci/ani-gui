@@ -34,7 +34,10 @@ export interface ContinueRowReadyDeps {
 	 *  so all reactivity stays component-scoped. */
 	setMatch: (entryId: string, match: KitsuAnimeRef | null) => void;
 	setPlayableCount: (entryId: string, count: number) => void;
-	setEpisode: (entryId: string, episode: KitsuEpisode | null) => void;
+	/** `forEpisode` is the episode the answer was fetched for: a card
+	 *  whose offered episode has moved on can then tell an answer
+	 *  (including "nothing found") that is not its own. */
+	setEpisode: (entryId: string, episode: KitsuEpisode | null, forEpisode: number) => void;
 	/** Whether `episode` of `kitsuId` was left part-way, its position
 	 *  kept — the card then shows that episode, which its click plays.
 	 *  Omitted, nothing was. */
@@ -146,13 +149,13 @@ export function makeContinueRowReadyHandler(
 				if (inFlight.get(entryId)?.token !== token) return;
 				settle();
 				shown.set(entryId, target);
-				deps.setEpisode(entryId, pick(eps));
+				deps.setEpisode(entryId, pick(eps), nextEpisode);
 			})
 			.catch(() => {
 				if (inFlight.get(entryId)?.token !== token) return;
 				settle();
 				shown.delete(entryId);
-				deps.setEpisode(entryId, null);
+				deps.setEpisode(entryId, null, nextEpisode);
 			});
 	};
 }

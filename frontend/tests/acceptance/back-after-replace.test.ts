@@ -127,7 +127,7 @@ beforeEach(async () => {
 	window.localStorage.clear();
 	(window as unknown as { aniGui: unknown }).aniGui = {
 		apiBase: API_BASE,
-		account: { getToken: () => ({ ok: false, kind: 'not_found' }) }
+		account: { getToken: async () => ({ ok: false, kind: 'not_found' }) }
 	};
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
