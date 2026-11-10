@@ -1,0 +1,44 @@
+{
+ "data": [
+  {
+   "id": "11423",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online Movie: Ordinal Scale",
+    "titles": {
+     "en": "Sword Art Online the Movie -Ordinal Scale-",
+     "en_jp": "Sword Art Online Movie: Ordinal Scale",
+     "en_us": "Sword Art Online the Movie -Ordinal Scale-",
+     "ja_jp": "劇場版 ソードアート・オンライン -オーディナル・スケール-"
+    },
+    "abbreviatedTitles": [
+     "Gekijouban Sword Art Online"
+    ],
+    "slug": "sword-art-online-ordinal-scale",
+    "startDate": "2017-02-18",
+    "endDate": "2017-02-18",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "40949",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online Movie: Ordinal Scale - Sword Art Offline",
+    "titles": {
+     "en_jp": "Sword Art Online Movie: Ordinal Scale - Sword Art Offline",
+     "ja_jp": "劇場版 ソードアート・オンライン -オーディナル・スケール- おふらいん"
+    },
+    "abbreviatedTitles": [],
+    "slug": "sword-art-online-movie-ordinal-scale-sword-art-offline",
+    "startDate": "2017-09-27",
+    "endDate": "2017-09-27",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

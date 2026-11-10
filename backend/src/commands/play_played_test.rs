@@ -69,7 +69,6 @@ async fn a_replay_opens_a_session_named_for_the_episode_its_resolve_played() {
     let key = play_resolution_cache::cache_key(
         &asked.title,
         &asked.mode,
-        "best",
         &asked.episode,
         asked.year,
         asked.episode_count,
@@ -126,7 +125,6 @@ fn key_for(asked: &PlayArgs, episode: &str) -> String {
     play_resolution_cache::cache_key(
         &asked.title,
         &asked.mode,
-        "best",
         episode,
         asked.year,
         asked.episode_count,

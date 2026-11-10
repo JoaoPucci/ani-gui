@@ -1,0 +1,23 @@
+{
+ "data": [
+  {
+   "id": "45556",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Golden Kamuy 4th Season",
+    "titles": {
+     "en": "Golden Kamuy Season 4",
+     "en_jp": "Golden Kamuy 4th Season",
+     "ja_jp": "ゴールデンカムイ 第四期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "golden-kamuy-4",
+    "startDate": "2022-10-03",
+    "endDate": "2023-06-26",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

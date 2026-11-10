@@ -48,7 +48,7 @@ export function appConfig(mode: 'sub' | 'dub' = 'sub') {
 	return {
 		locale: 'en',
 		mode,
-		quality: 'best',
+		download_quality: 'best',
 		external_player: '',
 		external_player_kind: 'mpv',
 		external_player_custom_args: '',
@@ -115,6 +115,9 @@ export function homeHandlers(
 		// accident.
 		http.get(`${API_BASE}/api/kitsu/resolve-allmanga/:showId`, () => HttpResponse.json(null)),
 		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		// The hits a guessed row rules out, asked of the backend between
+		// the search and the pick: none, unless a scenario says.
+		http.post(`${API_BASE}/api/history/guess/ruled-out`, () => HttpResponse.json([])),
 		http.post(`${API_BASE}/api/availability`, () =>
 			HttpResponse.json({ available: true, episode_count: 26, approximate: false })
 		)

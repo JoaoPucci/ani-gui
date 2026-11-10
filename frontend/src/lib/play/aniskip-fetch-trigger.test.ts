@@ -17,7 +17,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { createAniskipFetchTrigger } from './aniskip-fetch-trigger';
+import { createAniskipFetchTrigger, lengthReady } from './aniskip-fetch-trigger';
 
 describe('aniskip fetch trigger', () => {
 	it('fires a fetch on the first step where the key is complete and duration is ready', () => {
@@ -84,7 +84,7 @@ describe('aniskip fetch trigger', () => {
 		expect(trigger.step('', 5, true)).toEqual({ kind: 'clear' });
 	});
 
-	it('stays idle while the key stays incomplete', () => {
+	it('stays idle when the key is incomplete and nothing was previously fetched', () => {
 		const trigger = createAniskipFetchTrigger();
 		expect(trigger.step('', 5, true)).toEqual({ kind: 'idle' });
 		expect(trigger.step('show-1', 0, true)).toEqual({ kind: 'idle' });
@@ -100,27 +100,6 @@ describe('aniskip fetch trigger', () => {
 	it('treats episode 0 as incomplete (aniskip episodes are 1-indexed)', () => {
 		const trigger = createAniskipFetchTrigger();
 		expect(trigger.step('show-1', 0, true)).toEqual({ kind: 'idle' });
-	});
-
-	it('clears on any episode change, even before the new length is known', () => {
-		const trigger = createAniskipFetchTrigger();
-		trigger.step('show-1', 5, true);
-		expect(trigger.step('show-1', 6, false)).toEqual({ kind: 'clear' });
-		expect(trigger.step('show-1', 6, false)).toEqual({ kind: 'idle' });
-	});
-
-	it('asks again for an episode come back to before the one in between learned its length', () => {
-		// 5 fetched, 6 opened and left before its length was known, then
-		// 5 again: its skip times were cleared on the way, so it asks.
-		const trigger = createAniskipFetchTrigger();
-		trigger.step('show-1', 5, true);
-		trigger.step('show-1', 6, false);
-		expect(trigger.step('show-1', 5, false)).toEqual({ kind: 'clear' });
-		expect(trigger.step('show-1', 5, true)).toEqual({
-			kind: 'fetch',
-			showId: 'show-1',
-			episode: '5'
-		});
 	});
 
 	it('after a clear, the next complete-key+ready step re-issues a fetch', () => {
@@ -152,33 +131,153 @@ describe('createAniskipFetchTrigger — a fractional extra', () => {
 	});
 });
 
-describe('createAniskipFetchTrigger — any run of steps', () => {
-	it('asks once per stay on an episode, once its length is known, and clears on every change', () => {
-		const stepArb = fc.record({
-			show: fc.constantFrom('', 'show-1', 'show-2'),
-			episode: fc.constantFrom(0, 1, 2, 2.5),
+describe('createAniskipFetchTrigger — an episode switch', () => {
+	// Across a switch the page cannot ask for the new episode's times
+	// until its stream has learned its own length; the last episode's
+	// times are not this one's in the meantime.
+	it("clears the last episode's times at once, before the new one's length is known", () => {
+		const t = createAniskipFetchTrigger();
+		t.step('42', 11, true);
+		expect(t.step('42', 12, false)).toEqual({ kind: 'clear' });
+		expect(t.step('42', 12, false)).toEqual({ kind: 'idle' });
+		expect(t.step('42', 12, true)).toEqual({ kind: 'fetch', showId: '42', episode: '12' });
+	});
+
+	it('asks again for an episode switched back to', () => {
+		const t = createAniskipFetchTrigger();
+		t.step('42', 11, true);
+		expect(t.step('42', 12, false)).toEqual({ kind: 'clear' });
+		expect(t.step('42', 11, false)).toEqual({ kind: 'idle' });
+		expect(t.step('42', 11, true)).toEqual({ kind: 'fetch', showId: '42', episode: '11' });
+	});
+
+	it('keeps the times of an episode opened again in a new session', () => {
+		// A recovery or a reload: same episode, a new stream that has not
+		// learned its length yet. Its times are still this episode's.
+		const t = createAniskipFetchTrigger();
+		t.step('42', 11, true);
+		expect(t.step('42', 11, false)).toEqual({ kind: 'idle' });
+		expect(t.step('42', 11, true)).toEqual({ kind: 'idle' });
+	});
+
+	it('stays idle on a first episode whose length is not yet known', () => {
+		const t = createAniskipFetchTrigger();
+		expect(t.step('42', 11, false)).toEqual({ kind: 'idle' });
+	});
+});
+
+describe('createAniskipFetchTrigger — whose answer is shown', () => {
+	it('shows the answer to the latest request', () => {
+		const t = createAniskipFetchTrigger();
+		t.step('42', 11, true);
+		expect(t.answers(t.asked())).toBe(true);
+	});
+
+	it('drops an answer for the last episode once the episode changes, whatever its length', () => {
+		const t = createAniskipFetchTrigger();
+		t.step('42', 11, true);
+		const ask = t.asked();
+		t.step('42', 12, false);
+		expect(t.answers(ask)).toBe(false);
+	});
+
+	it('drops an earlier request for the same episode once it is switched back to', () => {
+		// 11 → 12 → 11: the first request for 11 answers late. The
+		// times shown are the ones asked with the stream on screen.
+		const t = createAniskipFetchTrigger();
+		t.step('42', 11, true);
+		const first = t.asked();
+		t.step('42', 12, true);
+		t.step('42', 11, true);
+		expect(t.answers(first)).toBe(false);
+		expect(t.answers(t.asked())).toBe(true);
+	});
+
+	it('drops an answer once the page moves to an extra', () => {
+		const t = createAniskipFetchTrigger();
+		t.step('42', 12, true);
+		const ask = t.asked();
+		t.step('42', 12.5, true);
+		expect(t.answers(ask)).toBe(false);
+	});
+
+	it('keeps the answer for an episode opened again in a new session', () => {
+		const t = createAniskipFetchTrigger();
+		t.step('42', 11, true);
+		const ask = t.asked();
+		t.step('42', 11, false);
+		t.step('42', 11, true);
+		expect(t.answers(ask)).toBe(true);
+	});
+
+	it('over any run of steps, shows an answer only for the episode on screen, and always asks for it', () => {
+		const step = fc.record({
+			episode: fc.constantFrom(0, 11, 12, 12.5),
 			ready: fc.boolean()
 		});
 		fc.assert(
-			fc.property(fc.array(stepArb, { maxLength: 30 }), (steps) => {
-				const trigger = createAniskipFetchTrigger();
-				let last: string | null | undefined = undefined;
-				let asked = false;
-				for (const { show, episode, ready } of steps) {
-					const whole = episode > 0 && Number.isInteger(episode);
-					const key = show && whole ? `${show}|${episode}` : null;
-					const changed = last !== undefined && key !== last;
-					if (changed || last === undefined) asked = false;
-					last = key;
-					const got = trigger.step(show, episode, ready);
-					if (key !== null && ready && !asked) {
-						expect(got).toEqual({ kind: 'fetch', showId: show, episode: String(episode) });
-						asked = true;
-					} else {
-						expect(got).toEqual({ kind: changed ? 'clear' : 'idle' });
+			fc.property(fc.array(step, { minLength: 1, maxLength: 30 }), (steps) => {
+				const t = createAniskipFetchTrigger();
+				// The episode each request asked for, by its ask.
+				const asked = new Map<number, number>();
+				let sinceChange = 0;
+				let prev: number | null = null;
+				for (const s of steps) {
+					if (s.episode !== prev) sinceChange = 0;
+					prev = s.episode;
+					if (t.step('42', s.episode, s.ready).kind === 'fetch') {
+						asked.set(t.asked(), s.episode);
+						sinceChange += 1;
 					}
 				}
+				const last = steps.at(-1)!;
+				const live = [...asked].filter(([a]) => t.answers(a));
+				// Never an answer for another episode, or one asked before
+				// the episode on screen was last switched to.
+				for (const [, episode] of live) expect(episode).toBe(last.episode);
+				expect(live.length).toBeLessThanOrEqual(sinceChange);
+				// A whole episode whose length is ready has been asked for.
+				const whole = last.episode > 0 && Number.isInteger(last.episode);
+				if (whole && last.ready) expect(live.length).toBe(1);
+				if (!whole) expect(live).toEqual([]);
 			})
+		);
+	});
+});
+
+describe('lengthReady', () => {
+	it('is ready once the stream on screen has learned its length', () => {
+		expect(lengthReady('session-2', 'session-2', 1500)).toBe(true);
+	});
+
+	it("is not ready while the length is still the last stream's", () => {
+		// The page has moved to session-2; the element still describes
+		// session-1's stream until session-2's attaches.
+		expect(lengthReady('session-1', 'session-2', 1420)).toBe(false);
+	});
+
+	it('is not ready before any stream has attached', () => {
+		expect(lengthReady(null, 'session-1', 1420)).toBe(false);
+	});
+
+	it('is not ready without a usable length', () => {
+		for (const d of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+			expect(lengthReady('session-1', 'session-1', d)).toBe(false);
+		}
+	});
+
+	it('is ready exactly when the sessions match and the length is usable', () => {
+		fc.assert(
+			fc.property(
+				fc.option(fc.constantFrom('a', 'b')),
+				fc.constantFrom('a', 'b'),
+				fc.double(),
+				(lengthFor, session, duration) => {
+					expect(lengthReady(lengthFor, session, duration)).toBe(
+						lengthFor === session && Number.isFinite(duration) && duration > 0
+					);
+				}
+			)
 		);
 	});
 });

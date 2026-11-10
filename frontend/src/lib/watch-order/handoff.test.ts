@@ -7,6 +7,7 @@ import {
 	handoffFrom,
 	playedIds,
 	railHandoffs,
+	unclaimedHandoff,
 	type Handoff,
 	type HandoffMatch
 } from './handoff';
@@ -304,6 +305,39 @@ describe('railHandoffs', () => {
 					}
 				}
 			)
+		);
+	});
+});
+
+describe('unclaimedHandoff', () => {
+	const entry = (id: string) => ({
+		id,
+		title: id,
+		subtype: 'TV',
+		start: '2020-01-01',
+		episodes: 12,
+		status: 'finished',
+		poster: null,
+		cover: null
+	});
+	const handoff: Handoff = { finished: entry('10'), next: entry('20'), titles: [] };
+
+	it('moves on once the resume lookup answers that no row resumes the next entry', () => {
+		expect(unclaimedHandoff(handoff, false)).toBe(handoff);
+	});
+
+	it('waits while the lookup is out, and keeps the card when it fails or a row resumes the entry', () => {
+		expect(unclaimedHandoff(handoff, undefined)).toBeNull();
+		expect(unclaimedHandoff(handoff, null)).toBeNull();
+		expect(unclaimedHandoff(handoff, true)).toBeNull();
+	});
+
+	it('moves on only where there is a hand-off and the lookup answered no row', () => {
+		fc.assert(
+			fc.property(fc.boolean(), fc.constantFrom(true, false, null, undefined), (has, named) => {
+				const got = unclaimedHandoff(has ? handoff : null, named);
+				expect(got).toBe(has && named === false ? handoff : null);
+			})
 		);
 	});
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createFranchiseReads } from './handoff-reads';
+import { createFranchiseReads, createNamedReads } from './handoff-reads';
 import type { FranchiseData } from './types';
 
 const franchise = (anchor: string): FranchiseData => ({
@@ -54,5 +54,33 @@ describe('createFranchiseReads', () => {
 		await flush();
 		expect(read).toHaveBeenCalledTimes(1);
 		expect(settled).toHaveBeenCalledWith('7', null);
+	});
+});
+
+describe('createNamedReads', () => {
+	it('asks the resume lookup about an id once, and says whether a row resumes it', async () => {
+		const read = vi.fn(async (ids: readonly string[]) =>
+			Object.fromEntries(ids.map((id) => [id, id === '20' ? { ep_no: '3' } : null]))
+		);
+		const settled = vi.fn();
+		const reads = createNamedReads(read, settled);
+		reads.want('20');
+		reads.want('20');
+		reads.want('30');
+		await flush();
+		reads.want('20');
+		await flush();
+		expect(read).toHaveBeenCalledTimes(2);
+		expect(read).toHaveBeenCalledWith(['20']);
+		expect(settled).toHaveBeenCalledWith('20', true);
+		expect(settled).toHaveBeenCalledWith('30', false);
+	});
+
+	it('settles a lookup that fails as unknown', async () => {
+		const settled = vi.fn();
+		const reads = createNamedReads(() => Promise.reject(new Error('no backend')), settled);
+		reads.want('20');
+		await flush();
+		expect(settled).toHaveBeenCalledWith('20', null);
 	});
 });

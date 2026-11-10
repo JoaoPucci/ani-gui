@@ -58,7 +58,9 @@
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		line-height: 1.4;
-		color: color-mix(in oklab, var(--bone-100) 45%, transparent);
+		/* The faint tier, as the poster card's meta: bone-100 at 45%
+		   read 3.8:1 on the lightest surface, short of AA. */
+		color: var(--bone-400);
 	}
 	.seg {
 		display: inline-flex;
@@ -74,6 +76,6 @@
 	}
 	.dot {
 		margin-inline-end: calc(var(--space-2) - 0.3em);
-		color: color-mix(in oklab, var(--bone-100) 35%, transparent);
+		color: var(--bone-400);
 	}
 </style>
