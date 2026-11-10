@@ -8,8 +8,11 @@
 //!   versions), `character`, `adaptation` and the alternatives aside,
 //!   manga and music aside; a `movie` is a film, anything else a side.
 //!
-//! An id lands in one section only: entries, then versions, recaps,
-//! films, sides. A side-story anchor outside the run is a side.
+//! A movie is a film whatever the role that placed it: a version or a
+//! recap that is a movie is listed under films. An id lands in one
+//! section only: entries, then films (for a movie), versions, recaps,
+//! sides. A side-story anchor outside the run is a side, or a film when
+//! it is a movie.
 
 use std::collections::BTreeSet;
 
@@ -69,6 +72,18 @@ fn sections(run: &Run, look: &Lookup<'_>) -> Sections {
         }
     }
     s.versions.retain(|id| !run.members.contains_key(id));
+    // A movie is a film, whatever the role that placed it.
+    let movie = |id: &String| {
+        look.entry(id, &run.consulted)
+            .is_some_and(|e| e.subtype.as_deref() == Some("movie"))
+    };
+    for set in [&mut s.versions, &mut s.recaps, &mut s.sides] {
+        let films: Vec<String> = set.iter().filter(|id| movie(id)).cloned().collect();
+        for id in films {
+            set.remove(&id);
+            s.films.insert(id);
+        }
+    }
     s.recaps.retain(|id| !s.versions.contains(id));
     s.films
         .retain(|id| !s.versions.contains(id) && !s.recaps.contains(id));
@@ -93,10 +108,13 @@ fn entries(ids: &BTreeSet<String>, run: &Run, look: &Lookup<'_>) -> Vec<Franchis
 pub(super) fn assemble(anchor: &str, run: &Run, look: &Lookup<'_>) -> Franchise {
     let mut s = sections(run, look);
     if run.side_anchor {
-        for set in [&mut s.versions, &mut s.recaps, &mut s.films] {
+        let film = look
+            .entry(anchor, &run.consulted)
+            .is_some_and(|e| e.subtype.as_deref() == Some("movie"));
+        for set in [&mut s.versions, &mut s.recaps, &mut s.films, &mut s.sides] {
             set.remove(anchor);
         }
-        s.sides.insert(anchor.to_string());
+        if film { &mut s.films } else { &mut s.sides }.insert(anchor.to_string());
     }
     let members: BTreeSet<String> = run.members.keys().cloned().collect();
     Franchise {
