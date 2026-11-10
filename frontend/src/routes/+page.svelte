@@ -391,8 +391,14 @@
 		setBusy: (busy) => (deleteBusy = busy),
 		close: () => (deleteCandidate = null)
 	});
+	// One modal at a time. A confirm does not open over a resume's
+	// loading or failure overlay, and a resume does not start under a
+	// confirm. The modal layer already keeps the page behind each of
+	// them out of reach; this is the rule where the openings are decided.
+	const resumeOverlayUp = () => resumeBusy !== null || resumeFailure !== null;
+	const confirmUp = () => deleteCandidate !== null || clearConfirmOpen;
 	function openDeleteFor(entry: HistoryEntry, displayTitle: string) {
-		if (clearRun.busy) return;
+		if (clearRun.busy || resumeOverlayUp()) return;
 		deleteRun.open(() => (deleteCandidate = { entry, displayTitle }));
 	}
 	function cancelDelete() {
@@ -455,7 +461,7 @@
 		close: () => (clearConfirmOpen = false)
 	});
 	function openClearConfirm() {
-		if (deleteRun.busy) return;
+		if (deleteRun.busy || resumeOverlayUp()) return;
 		clearRun.open(() => (clearConfirmOpen = true));
 	}
 	function cancelClear() {
@@ -1033,7 +1039,7 @@
 		movePosition: (kitsuId, from, to) => movePosition(kitsuId, from, to),
 		followPlayed: (kitsuId, session, requested) => followPlayed(kitsuId, session, requested),
 		warm: (a) => playStream({ ...playArgsFor(a), prefetch: true }, () => {}),
-		isBusy: () => !!resumeBusy,
+		isBusy: () => !!resumeBusy || confirmUp(),
 		isGuess: (entryId) => rowTrust.isGuess(entryId),
 		onBusy: (id) => {
 			resumeBusy = id;
@@ -1569,7 +1575,7 @@
 	</Strip>
 {/if}
 
-<LoadingOverlay visible={resumeBusy !== null} progress={resumeProgress} />
+<LoadingOverlay modal visible={resumeBusy !== null} progress={resumeProgress} />
 {#if resumeFailure}
 	<ErrorOverlay
 		headline={m.home_error_resume_headline({ title: resumeFailure.title })}

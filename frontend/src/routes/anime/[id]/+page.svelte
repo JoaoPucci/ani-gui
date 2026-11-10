@@ -2456,7 +2456,7 @@
 	{/if}
 </main>
 
-<LoadingOverlay visible={actionBusy || resumeWaiting} progress={actionProgress} />
+<LoadingOverlay modal visible={actionBusy || resumeWaiting} progress={actionProgress} />
 
 {#if playFailure}
 	<ErrorOverlay
