@@ -394,3 +394,91 @@ async fn the_resolve_records_no_watch_before_the_spawn() {
         "no watched-at stamp before the player has started"
     );
 }
+
+// ── every play gets the master ──────────────────────────────────────
+
+const OP_MASTER: &str = "https://cdn.example/op/master.m3u8";
+const OP_720: &str = "https://cdn.example/op/720/index.m3u8";
+
+/// One show whose episode streams from a master listing a 1080 and a
+/// 720 rendition, both of which answer.
+fn ladder_provider() -> std::sync::Arc<TableProvider> {
+    let master = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repo root")
+            .join("tests/fixtures/hls/master_op.m3u8"),
+    )
+    .expect("fixture");
+    std::sync::Arc::new(
+        TableProvider::one_show(
+            "",
+            ("handoff-show-7", "Handoff Show"),
+            &[(71, 1)],
+            &[71],
+            OP_MASTER,
+        )
+        .playlist(OP_MASTER, master)
+        .playlist(OP_720, "#EXTM3U\n".to_string())
+        .playlist(
+            "https://cdn.example/op/1080/index.m3u8",
+            "#EXTM3U\n".to_string(),
+        ),
+    )
+}
+
+/// A request that still names a quality, as a renderer from before
+/// this change sends one: the field is not read.
+fn asked_at_720() -> PlayArgs {
+    serde_json::from_value(serde_json::json!({
+        "title": "Handoff Show",
+        "episode": "1",
+        "mode": "sub",
+        "quality": "720",
+    }))
+    .expect("args")
+}
+
+fn fetched_a_rendition(provider: &TableProvider) -> bool {
+    provider.count(
+        |a| matches!(a, crate::scraper::table_provider::Asked::Playlist(url) if url != OP_MASTER),
+    ) > 0
+}
+
+#[tokio::test]
+async fn a_handoff_gets_the_master_whatever_quality_is_asked() {
+    // mpv, VLC, IINA and Syncplay all adapt to the master themselves,
+    // so a hand-off gets the master and fetches no rendition.
+    let provider = ladder_provider();
+    let td = tempfile::tempdir().expect("td");
+    let state = state_for(&td, &provider);
+    let (launch, _watch) =
+        super::play_handoff::resolve_launch_args(&state, &asked_at_720(), asked_now(&state))
+            .await
+            .expect("resolves");
+    assert_eq!(launch.stream_url, OP_MASTER);
+    assert!(!fetched_a_rendition(&provider), "{:?}", provider.asked());
+}
+
+#[tokio::test]
+async fn the_built_in_player_gets_the_master_whatever_quality_is_asked() {
+    // The player starts on Auto with every level the master lists; a
+    // pick in its Quality menu then chooses among them.
+    let provider = ladder_provider();
+    let td = tempfile::tempdir().expect("td");
+    let state = state_for(&td, &provider);
+    let session = super::play::play(&state, &asked_at_720())
+        .await
+        .expect("resolves");
+    let id = crate::proxy::SessionId::parse(&session.session_id).expect("an id");
+    assert_eq!(
+        state
+            .sessions
+            .get(&id)
+            .expect("the session is open")
+            .upstream_url
+            .as_str(),
+        OP_MASTER
+    );
+    assert!(!fetched_a_rendition(&provider), "{:?}", provider.asked());
+}

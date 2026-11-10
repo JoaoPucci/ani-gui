@@ -123,6 +123,8 @@
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
+	import { createConfirmRun } from '$lib/history/confirm-run';
+	import { toastStore } from '$lib/toasts/store.svelte';
 	import { nextHeroIndex, startHeroRotation } from '$lib/hero-rotation';
 	import {
 		failedHeroImages,
@@ -363,81 +365,101 @@
 
 	// Delete confirmation: holds the entry pending user confirm. Null
 	// means no modal open. The modal pops over the rail; cancelling
-	// just nulls this back out, confirming fires historyDelete + local
-	// state update (optimistic — no reload to keep the deletion crisp).
+	// nulls this back out (not while a remove is out), and confirming
+	// fires historyDelete, taking the rows off the strip once the
+	// deletes land, with no reload of the history.
 	let deleteCandidate = $state<{ entry: HistoryEntry; displayTitle: string } | null>(null);
 	let deleteBusy = $state(false);
 	// Clear-all confirmation modal open state.
 	let clearConfirmOpen = $state(false);
 	let clearBusy = $state(false);
 
+	// Each dialog's run ($lib/history/confirm-run): it runs once however
+	// often confirm is pressed, the dialog is held open while it is out
+	// and neither dialog opens over it, and a failure is said in an
+	// error toast, the way the app reports other failed actions, with
+	// the cards left as the backend holds them.
+	const deleteRun = createConfirmRun({
+		setBusy: (busy) => (deleteBusy = busy),
+		close: () => (deleteCandidate = null)
+	});
 	function openDeleteFor(entry: HistoryEntry, displayTitle: string) {
-		deleteCandidate = { entry, displayTitle };
+		if (clearRun.busy) return;
+		deleteRun.open(() => (deleteCandidate = { entry, displayTitle }));
 	}
 	function cancelDelete() {
-		deleteCandidate = null;
+		deleteRun.cancel();
 	}
-	async function confirmDelete() {
-		if (!deleteCandidate) return;
-		deleteBusy = true;
-		try {
-			// Decision + transition logic lives in the helper per
-			// AGENTS.md §2: group expansion +
-			// serialized backend deletes + filtered-history compute,
-			// all unit-covered in delete-controller.test.ts. The
-			// component stays as modal/busy glue.
-			// Snapshot the visible order BEFORE the IPC so we can
-			// hand the gate the exact set of ids this delete
-			// touches: the removed rows themselves + every survivor
-			// whose position shifts left to fill the gap. A
-			// concurrent dedupe firing during the gate's window has
-			// different ids and short-circuits.
-			const snapshot = dedupedHistory.map((e) => e.id);
-			await executeKitsuGroupDelete(deleteCandidate.entry.id, {
-				history: history ?? [],
-				currentHistory: () => history ?? [],
-				// Open the gate IMMEDIATELY before the optimistic mutation
-				// so the 350ms auto-close window starts when Svelte's
-				// out-transition factory is about to fire — not when the
-				// click was first received. See $lib/history/animation-gate
-				// for the per-id scope + Svelte-batched-reset story.
-				applyRemaining: (rows, removedIds) => {
-					deleteAnimationGate.open(removedIds, shiftedSurvivorIds(snapshot, removedIds));
-					history = rows;
-				},
-				matches: historyMatches,
-				historyDelete,
-				snapshotPositions,
-				forgetPositions: (kitsuId, since) => clearShowPositions(kitsuId, undefined, since),
-				forgetRowPositions: (rows, keep, since) => clearRowPositions(rows, undefined, keep, since),
-				kitsuIdOf: allmangaKitsuMapGet,
-				// Read the way the Continue resolver reads a recorded id.
-				recordedGone: (id) =>
-					kitsuAnimeDetail(id).then(
-						() => false,
-						(e) => (kitsuEntryGone(e) ? true : Promise.reject(e))
-					)
-			});
-		} finally {
-			deleteBusy = false;
-			deleteCandidate = null;
-		}
+	function confirmDelete() {
+		const candidate = deleteCandidate;
+		if (!candidate) return;
+		return deleteRun.confirm(
+			() => removeCard(candidate.entry),
+			() =>
+				toastStore.push({
+					kind: 'error',
+					message: m.home_delete_failed({ title: candidate.displayTitle })
+				})
+		);
 	}
+	async function removeCard(entry: HistoryEntry) {
+		// Decision + transition logic lives in the helper per
+		// AGENTS.md §2: group expansion +
+		// serialized backend deletes + filtered-history compute,
+		// all unit-covered in delete-controller.test.ts. The
+		// dialog's run is $lib/history/confirm-run's.
+		// Snapshot the visible order BEFORE the IPC so we can
+		// hand the gate the exact set of ids this delete
+		// touches: the removed rows themselves + every survivor
+		// whose position shifts left to fill the gap. A
+		// concurrent dedupe firing during the gate's window has
+		// different ids and short-circuits.
+		const snapshot = dedupedHistory.map((e) => e.id);
+		await executeKitsuGroupDelete(entry.id, {
+			history: history ?? [],
+			currentHistory: () => history ?? [],
+			// Open the gate IMMEDIATELY before the strip changes
+			// so the 350ms auto-close window starts when Svelte's
+			// out-transition factory is about to fire — not when the
+			// click was first received. See $lib/history/animation-gate
+			// for the per-id scope + Svelte-batched-reset story.
+			applyRemaining: (rows, removedIds) => {
+				deleteAnimationGate.open(removedIds, shiftedSurvivorIds(snapshot, removedIds));
+				history = rows;
+			},
+			matches: historyMatches,
+			historyDelete,
+			snapshotPositions,
+			forgetPositions: (kitsuId, since) => clearShowPositions(kitsuId, undefined, since),
+			forgetRowPositions: (rows, keep, since) => clearRowPositions(rows, undefined, keep, since),
+			kitsuIdOf: allmangaKitsuMapGet,
+			// Read the way the Continue resolver reads a recorded id.
+			recordedGone: (id) =>
+				kitsuAnimeDetail(id).then(
+					() => false,
+					(e) => (kitsuEntryGone(e) ? true : Promise.reject(e))
+				)
+		});
+	}
+	const clearRun = createConfirmRun({
+		setBusy: (busy) => (clearBusy = busy),
+		close: () => (clearConfirmOpen = false)
+	});
 	function openClearConfirm() {
-		clearConfirmOpen = true;
+		if (deleteRun.busy) return;
+		clearRun.open(() => (clearConfirmOpen = true));
 	}
 	function cancelClear() {
-		clearConfirmOpen = false;
+		clearRun.cancel();
 	}
-	async function confirmClear() {
-		clearBusy = true;
-		try {
-			await historyClear();
-			history = [];
-		} finally {
-			clearBusy = false;
-			clearConfirmOpen = false;
-		}
+	function confirmClear() {
+		return clearRun.confirm(
+			async () => {
+				await historyClear();
+				history = [];
+			},
+			() => toastStore.push({ kind: 'error', message: m.home_clear_history_failed() })
+		);
 	}
 	let trendingError = $state<string | null>(null);
 	let topRatedError = $state<string | null>(null);
@@ -450,7 +472,7 @@
 	// Shared settings load — created on mount, awaited by BOTH the
 	// loader's getMode and startResume. Cards can release (and be
 	// clicked) before this resolves; the click awaits it via
-	// resolveResumeSettings so a DUB user never plays the sub/best
+	// resolveResumeSettings so a DUB user never plays the sub
 	// fallback just because they clicked fast.
 	let settingsPromise: Promise<Config | null> = Promise.resolve(null);
 	let resumeBusy = $state<string | null>(null);
@@ -482,8 +504,8 @@
 			.then((t) => filterAvailable(t, filterMode))
 			.then((t) => (topRated = t))
 			.catch((e) => (topRatedError = describeError(e)));
-		// Settings drive mode/quality for the Continue Watching click
-		// handler. Default {sub, best} when settings haven't loaded
+		// Settings drive the audio mode for the Continue Watching click
+		// handler. Default sub when settings haven't loaded
 		// yet — same fallback the click handler uses on /anime/[id].
 		// The shared promise lets the Continue Watching loader await
 		// the configured mode before firing its batch availability
@@ -881,7 +903,6 @@
 			title: a.title,
 			episode: a.episode,
 			mode: a.mode,
-			quality: a.quality,
 			show: a.match,
 			kitsuId: recordableId(a.match.id, a.guess === true),
 			// The version remembered for the show, as its detail page
@@ -958,7 +979,7 @@
 		resolvePlay: (a, onProgress) => {
 			const args = playArgsFor(a);
 			return getOrFire(
-				makeKey(a.match.id, a.episode, a.mode, a.quality, args.version, a.row, args.caption),
+				makeKey(a.match.id, a.episode, a.mode, args.version, a.row, args.caption),
 				(emit, signal) => playStream(args, emit, signal),
 				(p) => onProgress(progressLabel(p))
 			);
@@ -1309,23 +1330,17 @@
 							)
 			})}
 			{@const initials = (card.text?.show ?? target.displayTitle).slice(0, 2).toUpperCase()}
-			<!-- Both transitions are gated on `deleteBusy` so they only
-		     run for user-confirmed deletes. On home re-mount,
-		     `dedupeHistoryByKitsuId` collapses Kitsu-group siblings
-		     as their matches resolve, which would otherwise fire
-		     out:scale on every dedupe-removed row + animate:flip on
-		     every survivor — the resize-flicker users see when
-		     navigating Detail → back → Home. Duration 0 makes those
-		     transitions instant (no animation) during load; during
-		     `confirmDelete`, `deleteBusy=true` re-enables the smooth
-		     shrink + slide.
-
-		     Params are FUNCTIONS, not object literals, because
-		     Svelte caches the object form at element mount — by
-		     fire time, the cached duration is still the
-		     `deleteBusy=false` value and the user delete won't
-		     animate. The function form re-evaluates on every
-		     fire, so the gate reads the live state. -->
+			<!-- Both transitions are gated on `deleteAnimationGate` so
+		     they only run for user-confirmed deletes. On home
+		     re-mount, `dedupeHistoryByKitsuId` collapses Kitsu-group
+		     siblings as their matches resolve, which would otherwise
+		     fire out:scale on every dedupe-removed row + animate:flip
+		     on every survivor — the resize-flicker users see when
+		     navigating Detail → back → Home. A row the gate was not
+		     opened for leaves and shifts instantly; a confirmed
+		     remove opens it for the removed rows and the survivors
+		     they shift, just before the strip changes. The factories
+		     read the gate when they fire, per id. -->
 			<div
 				class="resume-cell"
 				style="--accent: {accent};"

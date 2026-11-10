@@ -51,9 +51,10 @@ export interface CheckForUpdateOptions {
 	/** Localhost base URL of the Rust backend (the renderer reads
 	 *  it off `window.aniGui.apiBase` at runtime). */
 	apiBase: string;
-	/** Forwarded to the backend as a query param. Whether to
-	 *  consider pre-releases. Defaults to true — see
-	 *  `meta::github` on the backend for the endpoint switch. */
+	/** Forwarded to the backend as a query param. Whether
+	 *  pre-releases count as an offer. Defaults to true — see
+	 *  `meta::github` on the backend, which offers the newest
+	 *  release with a package for this platform. */
 	includePrereleases?: boolean;
 }
 
