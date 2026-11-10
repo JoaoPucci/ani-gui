@@ -105,6 +105,8 @@ const g = globalThis as unknown as GlobalLike;
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
+/** Franchise reads held open, ended when the case ends. */
+const holding: Array<() => void> = [];
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
@@ -121,6 +123,7 @@ afterEach(async () => {
 	if (app) unmount(app);
 	app = null;
 	delete g.EventSource;
+	for (const end of holding.splice(0)) end();
 	target.remove();
 	await setReducedMotion(false);
 });
@@ -154,8 +157,9 @@ interface Options {
 	autoPlayNext?: boolean;
 	nativeControls?: boolean;
 	skips?: { skip_type: string; start_time: number; end_time: number }[];
-	/** Null: the franchise cannot be read. */
-	franchise?: ReturnType<typeof franchise> | null;
+	/** Null: the franchise cannot be read. Held: Kitsu is slow, and
+	 *  the read stays open until the page cancels it. */
+	franchise?: ReturnType<typeof franchise> | null | 'held';
 	/** How many episodes the source lists and has aired: Kitsu's 12 unless set. */
 	sourceEpisodes?: number;
 	/** Fractional extras the source lists ("12.5"). */
@@ -190,9 +194,13 @@ async function openEpisode(options: Options = {}) {
 			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, EPISODES), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, () =>
-			options.franchise === null
-				? HttpResponse.json({ error: 'error.kitsu.unreachable' }, { status: 502 })
-				: HttpResponse.json(options.franchise ?? franchise())
+			options.franchise === 'held'
+				? new Promise<Response>((resolve) =>
+						holding.push(() => resolve(new HttpResponse(null, { status: 503 })))
+					)
+				: options.franchise === null
+					? HttpResponse.json({ error: 'error.kitsu.unreachable' }, { status: 502 })
+					: HttpResponse.json(options.franchise ?? franchise())
 		),
 		// The rows the franchise's entries resume from, as the resume
 		// lookup names them.
@@ -244,7 +252,8 @@ async function openEpisode(options: Options = {}) {
 	Object.defineProperty(video, 'duration', { configurable: true, get: () => LENGTH });
 	video.dispatchEvent(new Event('loadedmetadata'));
 	video.dispatchEvent(new Event('durationchange'));
-	await fetches.settled('the franchise, the settings and the skip times');
+	if (options.franchise !== 'held')
+		await fetches.settled('the franchise, the settings and the skip times');
 	return { video, fetches };
 }
 
@@ -917,5 +926,16 @@ describe('the Up next card at a finale', () => {
 		await new Promise((r) => setTimeout(r, 50));
 		await playTo(video, 63);
 		expect(skipPill()).not.toBeNull();
+	});
+});
+
+describe("the Up next card's read", () => {
+	it('is cancelled when the player goes, so a slow franchise walk holds no connection', async () => {
+		const { fetches } = await openEpisode({ franchise: 'held' });
+		const franchiseRead = (f: { path: string }) => f.path === `/api/kitsu/franchise/${KITSU_ID}`;
+		await until(() => fetches.sent.some(franchiseRead), 'the franchise read');
+		unmount(app!);
+		app = null;
+		await until(() => fetches.failed.some(franchiseRead), 'the franchise read cancelled', 2000);
 	});
 });
