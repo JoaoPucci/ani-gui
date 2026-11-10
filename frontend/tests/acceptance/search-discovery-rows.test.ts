@@ -7,10 +7,11 @@
 // AniList list (/api/kitsu/trending-anilist; the Kitsu-only
 // /api/kitsu/trending is not asked, and an unhandled request fails the
 // scenario). Top rated is cached for six hours and Trending for one,
-// so on most visits Top rated answers first. Drawn as it landed, it took the top of the page, and when
-// Trending arrived a moment later it was inserted above and the row
-// the reader was looking at slid down. These scenarios hold each
-// request in turn and look at the page in between.
+// so on most visits Top rated answers first. Drawn as it landed, it
+// took the top of the page, and when Trending arrived a moment later
+// it was inserted above and the row the reader was looking at slid
+// down. These scenarios hold each request in turn and look at the page
+// in between.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -243,6 +244,8 @@ describe('/search with no query: the discovery rows', () => {
 
 		expect(skeletons()).toBe(0);
 		expect(row(m.search_discovery_trending_eyebrow())).toBeNull();
+		// The page caption names both rows, and one of them is not there.
+		expect(screen()).not.toContain(m.search_empty_caption());
 		expect(screen()).not.toContain(m.search_discovery_nothing_headline());
 	});
 
