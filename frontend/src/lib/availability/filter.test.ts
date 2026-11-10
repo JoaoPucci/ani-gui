@@ -229,6 +229,21 @@ describe('filterAvailableCacheOnly (high-frequency surfaces)', () => {
 		apiMock.checkAvailability.mockReset();
 	});
 
+	it("hands the search's signal to the batch, and answers a cancelled one with the abort", async () => {
+		const search = new AbortController();
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true } });
+		await filterAvailableCacheOnly([ref('a')], 'sub', { signal: search.signal });
+		expect(apiMock.availabilityBatch).toHaveBeenLastCalledWith(['a'], 'sub', {
+			signal: search.signal
+		});
+		search.abort();
+		const abort = new DOMException('The operation was aborted.', 'AbortError');
+		apiMock.availabilityBatch.mockRejectedValueOnce(abort);
+		await expect(
+			filterAvailableCacheOnly([ref('a')], 'sub', { signal: search.signal })
+		).rejects.toBe(abort);
+	});
+
 	it('returns empty list unchanged without hitting the API', async () => {
 		const out = await filterAvailableCacheOnly([], 'sub');
 		expect(out).toEqual([]);
