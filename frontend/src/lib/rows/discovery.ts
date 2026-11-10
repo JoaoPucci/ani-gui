@@ -1,7 +1,8 @@
 /**
- * The discovery rows the search page shows while nothing has been
- * asked: what each row's request has come to, and what the page draws
- * for it.
+ * Rows of cards stacked down a page, each loaded on its own: what each
+ * row's request has come to, and what the page draws for it. The search
+ * page's discovery rows, shown while nothing has been asked, are one
+ * such stack.
  *
  * The rows are fetched side by side and each lands when it lands, so
  * the order they answer in is not the order they are drawn in.
