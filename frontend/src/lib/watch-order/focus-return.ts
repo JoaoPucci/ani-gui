@@ -19,9 +19,7 @@ export function focusEntered<T>(
 	from: T | null,
 	inCard: (el: T) => boolean
 ): T | null {
-	void from;
-	void inCard;
-	return kept;
+	return from !== null && !inCard(from) ? from : kept;
 }
 
 /** The element kept after focus moved within or out of the card, to `to` (null when nowhere). */
@@ -30,26 +28,20 @@ export function focusLeft<K, T>(
 	to: T | null,
 	inCard: (el: T) => boolean
 ): K | null {
-	void to;
-	void inCard;
-	return kept;
+	return to !== null && inCard(to) ? kept : null;
 }
 
 /** The element to give focus back to on a dismissal, or null to leave focus alone. */
 export function focusBack<T>(kept: T | null, byKeyboard: boolean, focusInCard: boolean): T | null {
-	void byKeyboard;
-	void focusInCard;
-	return kept;
+	return byKeyboard && focusInCard ? kept : null;
 }
 
 /** Whether a click on the close button came from the keyboard: a keyboard click counts no presses. */
 export function keyboardClick(detail: number): boolean {
-	void detail;
-	return false;
+	return detail === 0;
 }
 
 /** Whether a key dismisses the card. */
 export function dismissKey(key: string): boolean {
-	void key;
-	return false;
+	return key === 'Escape';
 }

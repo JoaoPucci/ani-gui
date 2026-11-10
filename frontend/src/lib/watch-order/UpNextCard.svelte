@@ -15,6 +15,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { settle } from '$lib/motion/settle';
 	import MetaLine from './MetaLine.svelte';
+	import { dismissKey, focusBack, focusEntered, focusLeft, keyboardClick } from './focus-return';
 	import { metaLine } from './meta';
 	import type { Progress, WatchEntry } from './types';
 	import type { UpNext } from './up-next';
@@ -56,28 +57,28 @@
 		onannounce();
 	});
 
-	// The card never takes focus itself, so focus inside it came from
-	// somewhere: a keyboard dismissal gives it back there. A pointer
-	// dismissal leaves it alone, so a click cannot hand focus to a
-	// player control and keep the fullscreen controls up.
+	// Focus given back on a dismissal: $lib/watch-order/focus-return
+	// has the rules; this keeps its state and focuses its answer.
 	let cameFrom: HTMLElement | null = null;
 	let card = $state<HTMLElement | null>(null);
+	const inCard = (el: Node) => card?.contains(el) ?? false;
 	function onfocusin(e: FocusEvent) {
-		const from = e.relatedTarget;
-		if (from instanceof HTMLElement && !card?.contains(from)) cameFrom = from;
+		const from = e.relatedTarget instanceof HTMLElement ? e.relatedTarget : null;
+		cameFrom = focusEntered(cameFrom, from, inCard);
 	}
 	function onfocusout(e: FocusEvent) {
-		const to = e.relatedTarget;
-		if (!(to instanceof Node) || !card?.contains(to)) cameFrom = null;
+		const to = e.relatedTarget instanceof Node ? e.relatedTarget : null;
+		cameFrom = focusLeft(cameFrom, to, inCard);
 	}
 	function dismiss(byKeyboard: boolean) {
-		const back = byKeyboard && card?.contains(document.activeElement) ? cameFrom : null;
+		const active = document.activeElement;
+		const back = focusBack(cameFrom, byKeyboard, active !== null && inCard(active));
 		ondismiss();
 		if (back?.isConnected) back.focus();
 	}
 
 	function onkeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
+		if (dismissKey(e.key)) {
 			e.stopPropagation();
 			dismiss(true);
 		}
@@ -110,7 +111,7 @@
 		type="button"
 		class="dismiss"
 		aria-label={m.watchorder_upnext_dismiss()}
-		onclick={(e) => dismiss(e.detail === 0)}
+		onclick={(e) => dismiss(keyboardClick(e.detail))}
 	>
 		<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
 			<path
