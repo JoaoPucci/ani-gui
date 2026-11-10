@@ -202,6 +202,10 @@
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import { chromeReadsPlaying, type StartPhase } from '$lib/play/start-state';
 	import { watchStart, type StartWatch } from '$lib/play/start-watch';
+	import StartVeil from '$lib/play/StartVeil.svelte';
+	import { veilMode } from '$lib/play/start-veil';
+	import { loadStartLook } from '$lib/play/start-look';
+	import { browserStorage } from '$lib/hero/prefs';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
@@ -336,6 +340,10 @@
 	// keep-alive read the viewer's intent from here, and the loading
 	// indicator shows through a start and a stall.
 	let startPhase = $state<StartPhase>('idle');
+	// The episode a switch is on its way to, which the veil shows in
+	// fullscreen; and where the attached stream resumes, which it names.
+	let switchTarget = $state<number | null>(null);
+	let startResumeAt = $state<number | null>(null);
 	// Watches the page's own video for as long as the page has it, not
 	// the slot the video sits in: a stream can attach while the error
 	// panel stands in for the slot.
@@ -947,6 +955,21 @@
 	// start phase) — reuse it as a keep-alive input.
 	let controlsFocusWithin = $state(false);
 	let idleTimer: ReturnType<typeof setTimeout> | null = null;
+	// What the frame shows over the picture from a stream attaching to
+	// its first frame, and in a stall ($lib/play/start-veil), in the
+	// look the Diagnostics page picked ($lib/play/start-look).
+	const startLook = loadStartLook(browserStorage());
+	const startVeil = $derived(
+		veilMode({
+			phase: startPhase,
+			resumeHolding,
+			switchBusy,
+			fullscreen: isFullscreen,
+			videoFullscreen,
+			playerError: playerError !== null,
+			customControls: USE_CUSTOM_PLAYER_CONTROLS
+		})
+	);
 	const fullscreenControlsHidden = $derived(
 		isFullscreen &&
 			shouldHideControlsInFullscreen({
@@ -1618,6 +1641,17 @@
 
 	// Scan every cached page so the meta resolves even when the user
 	// has paginated away from the page that contains their current ep.
+	// The episode the start veil shows: a switch's target while it is on
+	// its way, else the one playing.
+	const veilEpisode = $derived(switchBusy && switchTarget !== null ? switchTarget : episodeNum);
+	const veilEpisodeMeta = $derived.by(() => {
+		for (const eps of kitsuPageCache.values()) {
+			const found = eps.find((e) => (e.number ?? e.relative_number ?? -1) === veilEpisode);
+			if (found) return found;
+		}
+		return null;
+	});
+
 	const currentEpisodeMeta = $derived.by(() => {
 		for (const eps of kitsuPageCache.values()) {
 			const found = eps.find((e) => (e.number ?? e.relative_number ?? -1) === episodeNum);
@@ -1953,6 +1987,7 @@
 			startedAtPoint: mediaKind !== 'mp4' && Hls.isSupported()
 		});
 		endResumeHold = endHold;
+		startResumeAt = startAt;
 		playerError = null;
 		failedStreamError = null;
 
@@ -2399,6 +2434,7 @@
 		markStarted(owner.showId, targetEp, undefined, row);
 		switchesStarted += 1;
 		switchBusy = true;
+		switchTarget = targetEp;
 		switchProgress = null;
 		// Cleared for the stream the switch brings; kept to put back if
 		// the switch fails, or its navigation does, and the failed stream
@@ -2507,6 +2543,7 @@
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} finally {
 			switchBusy = false;
+			switchTarget = null;
 		}
 	}
 
@@ -3098,6 +3135,8 @@
 		class="player-frame"
 		class:player-busy={switchBusy}
 		class:player-resuming={resumeHolding && !videoFullscreen}
+		class:player-starting={startVeil === 'start'}
+		data-start-veil={startVeil}
 		aria-busy={switchBusy || ((resumeHolding || streamLoading) && !playerError)}
 		class:fs-controls-hidden={fullscreenControlsHidden}
 		style:--player-letterbox-x="{letterboxX}px"
@@ -3171,13 +3210,31 @@
 			     100%/100% sizing letterboxes within. -->
 			<div class="player-video-slot" bind:this={frameTargetEl}></div>
 
+			<!-- The start veil sits here: inside the frame, above the
+			     picture and below the controls and the Skip button, which
+			     come later in the frame. Anything laid over or beside the
+			     player for a shared session (Watch Together's room panel
+			     and room messages) belongs outside the frame or above it;
+			     the veil must never cover them. -->
+			<StartVeil
+				look={startLook}
+				mode={startVeil}
+				still={imageProxyUrl(veilEpisodeMeta?.thumbnail?.original ?? null)}
+				poster={npPoster}
+				episode={veilEpisode}
+				episodeTitle={veilEpisodeMeta?.canonical_title ?? null}
+				showTitle={detail?.canonical_title ?? null}
+				resumeAt={switchBusy ? null : startResumeAt}
+				fullscreen={isFullscreen}
+			/>
+
 			<!-- Skip OP / Skip Outro overlay — driven by aniskip's
 			     crowd-sourced timestamps. Renders only when the
 			     current playhead is inside an OP/ED interval; click
 			     seeks just past `end_time`. Positioned bottom-right
 			     above native + custom controls so it never overlaps
 			     the timeline. -->
-			{#if !resumeHolding && activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
+			{#if !resumeHolding && startVeil !== 'start' && activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
 				<button
 					type="button"
 					class="player-skip-btn"
@@ -3754,24 +3811,6 @@
 					</div>
 				</div>
 			{/if}
-		{/if}
-		<!-- On through a switch, the resume hold that follows it, and any
-		     start or stall of the stream ($lib/play/start-state). Mounted
-		     across them and toggled: the states are set in different
-		     places, and the moment between them must not restart the
-		     indicator. With Chromium's own controls a start or a stall
-		     shows theirs, not this one. An error unmounts it outright,
-		     so nothing lingers over the panel. -->
-		{#if !playerError}
-			<span
-				class="player-spinner"
-				class:player-spinner-on={switchBusy ||
-					resumeHolding ||
-					(streamLoading && USE_CUSTOM_PLAYER_CONTROLS)}
-				aria-hidden="true"
-			>
-				<span class="player-spinner-track"><span class="player-spinner-sweep"></span></span>
-			</span>
 		{/if}
 	</section>
 
@@ -5062,6 +5101,15 @@
 	.player-frame.player-resuming:hover .player-controls {
 		opacity: 0;
 	}
+	/* From any other stream's attach to its first frame (the start
+	   veil's `start`) the controls are out of sight and out of the
+	   pointer's way: a timeline at 0:00 / 0:00 says nothing. They stay
+	   in the keyboard's reach, and show while focus is in them, so a
+	   menu open when a stream re-attaches under it stays usable. */
+	.player-frame.player-starting .player-controls:not(:focus-within) {
+		opacity: 0;
+		pointer-events: none;
+	}
 	.player-frame.fs-controls-hidden,
 	.player-frame.fs-controls-hidden :global(*) {
 		cursor: none;
@@ -5558,101 +5606,6 @@
 	:global(.player-frame.player-resuming video) {
 		opacity: 0;
 		transition: none;
-	}
-	/* Loading indicator over the player: the app's indeterminate
-	   hairline (the search bar's and the download bar's sweep), set
-	   in the show's accent and centred in the frame. It waits a beat
-	   before fading in, so a switch, a resume, a start or a stall that
-	   lands quickly never flashes it, and goes at once when the load
-	   ends, so it never lingers over the picture. Toggled rather than remounted,
-	   it runs on unbroken from a switch into the resume hold that
-	   follows it: the switch stays busy until the next stream has
-	   attached and started its hold. Off, it leaves the layout, so
-	   the sweep stops with it. The sweep travels on
-	   inset-inline-start, so it runs with the reading direction; the
-	   track contains its own layout, so that costs the page nothing
-	   while the video decodes. A soft dark halo is invisible on the black frame of a resume
-	   hold and lifts the line off a half-dimmed picture. */
-	.player-spinner {
-		position: absolute;
-		inset: 0;
-		place-items: center;
-		pointer-events: none;
-		display: none;
-		opacity: 0;
-	}
-	.player-spinner.player-spinner-on {
-		display: grid;
-		opacity: 1;
-		transition: opacity var(--dur-slow) var(--ease-out-soft) 240ms;
-	}
-	@starting-style {
-		.player-spinner.player-spinner-on {
-			opacity: 0;
-		}
-	}
-	.player-spinner-track {
-		position: relative;
-		display: block;
-		inline-size: clamp(6rem, 22%, 12rem);
-		block-size: 3px;
-		border-radius: var(--radius-pill);
-		background: color-mix(in oklab, var(--bone-100) 16%, transparent);
-		box-shadow:
-			0 0 0 1px rgb(0 0 0 / 0.45),
-			0 0 16px 4px rgb(0 0 0 / 0.55);
-		overflow: hidden;
-		contain: layout paint;
-	}
-	/* Windowed, a switch already has the page-wide loading overlay;
-	   a second indicator in the frame would peek out beside its band.
-	   So windowed, the frame's indicator stays off through a switch;
-	   when the overlay lifts into a resume hold, it enters as it does
-	   on a fresh open, after the same beat, so a hold that lands
-	   quickly does not flash it there either. In fullscreen that
-	   overlay is outside the top layer, so the frame's own indicator
-	   is the one the viewer sees throughout, scaled up for the larger
-	   picture. */
-	.player-frame.player-busy:not(:fullscreen) .player-spinner {
-		display: none;
-	}
-	.player-frame:fullscreen .player-spinner-track {
-		inline-size: clamp(8rem, 22%, 16rem);
-		block-size: 4px;
-	}
-	.player-spinner-sweep {
-		position: absolute;
-		inset-block: 0;
-		inline-size: 40%;
-		background: linear-gradient(
-			to right,
-			transparent,
-			var(--accent) 35%,
-			color-mix(in oklab, var(--accent), white 35%) 50%,
-			var(--accent) 65%,
-			transparent
-		);
-		animation: player-spinner-sweep 1.4s var(--ease-in-out) infinite;
-	}
-	@keyframes player-spinner-sweep {
-		from {
-			inset-inline-start: -40%;
-		}
-		to {
-			inset-inline-start: 100%;
-		}
-	}
-	/* Reduced motion: nothing moves (tokens.css takes the sweep off).
-	   The whole track takes the accent at part strength instead, a
-	   still bar across the frame's foot, as the search page's progress
-	   bar does under the topbar. */
-	@media (prefers-reduced-motion: reduce) {
-		.player-spinner-sweep {
-			inset-inline-start: 0;
-			inline-size: 100%;
-			background: var(--accent);
-			opacity: 0.6;
-		}
 	}
 
 	/* Similar Titles wrapper — fills the watch-column (no per-section
