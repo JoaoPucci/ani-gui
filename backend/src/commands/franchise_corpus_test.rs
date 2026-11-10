@@ -113,6 +113,14 @@ fn wrong(case: &Case, f: &Franchise) -> Vec<String> {
     if parents != case.parents {
         out.push(format!("parents {parents:?}, want {:?}", case.parents));
     }
+    for e in f.versions.iter().chain(&f.sides).chain(&f.recaps) {
+        if e.subtype.as_deref() == Some("movie") {
+            out.push(format!(
+                "the film {} ({}) is not under films",
+                e.id, e.title
+            ));
+        }
+    }
     for (name, ids) in &case.sections {
         for id in ids {
             if !section(f, name).iter().any(|e| &e.id == id) {

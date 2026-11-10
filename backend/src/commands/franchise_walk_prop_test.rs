@@ -123,7 +123,8 @@ proptest! {
     }
 
     /// The shape of the answer: the anchor is a member or a side-story
-    /// anchor among the sides; the run is bounded; sections are disjoint
+    /// anchor among the sides (the films, for a movie); every movie
+    /// around the run is a film; the run is bounded; sections are disjoint
     /// from one another and from the run; every link joins members;
     /// asked again, the walk answers the same.
     #[test]
@@ -133,7 +134,9 @@ proptest! {
         if members.contains(&anchor) {
             prop_assert!(f.parents.is_empty());
         } else {
-            prop_assert!(id_set(&f.sides).contains(&anchor));
+            let film = cat.entries[&anchor].subtype.as_deref() == Some("movie");
+            let around = if film { &f.films } else { &f.sides };
+            prop_assert!(id_set(around).contains(&anchor));
             prop_assert!(f.parents.contains_key(&anchor));
         }
         prop_assert!(members.len() <= MAX_MEMBERS);
@@ -149,6 +152,9 @@ proptest! {
         }
         for e in f.films.iter().chain(&f.sides).chain(&f.recaps) {
             prop_assert!(e.id == anchor || e.subtype.as_deref() != Some("music"));
+        }
+        for e in f.versions.iter().chain(&f.sides).chain(&f.recaps) {
+            prop_assert!(e.subtype.as_deref() != Some("movie"), "the film {} is not a film", e.id);
         }
         prop_assert_eq!(plan(&anchor, &known, &details), Plan::Done(f.clone()));
         let everything = cat.listings.clone();

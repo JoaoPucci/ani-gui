@@ -140,25 +140,28 @@ fn jojo() -> Catalogue {
 /// From the 2000 OVA, the run is the 2012 series → the 2000 OVA → the
 /// 1993 OVA: Stardust Crusaders lists the OVA as another version, so
 /// rule 3 leaves it out, and it is listed with the rest of the versions.
+/// The Phantom Blood film is a film.
 #[test]
 fn from_the_2000_jojo_ova_the_run_is_the_ovas_after_the_2012_series() {
     let f = drive("7730", &jojo());
     assert_eq!(ids(&f.entries), ["610", "7730", "7158"]);
     assert_eq!(f.links, [pair("7158", "7730"), pair("7730", "610")]);
-    assert_eq!(ids(&f.versions), ["3136", "13306", "8063", "8739"]);
-    assert!(f.films.is_empty() && f.sides.is_empty() && f.recaps.is_empty());
+    assert_eq!(ids(&f.versions), ["13306", "8063", "8739"]);
+    assert_eq!(ids(&f.films), ["3136"]);
+    assert!(f.sides.is_empty() && f.recaps.is_empty());
     assert!(f.parents.is_empty());
     assert!(f.complete);
 }
 
 /// From a TV part, no member lists either OVA as a prequel or sequel:
-/// both are other versions, not members.
+/// both are other versions, not members. The film is a film.
 #[test]
 fn from_a_jojo_tv_part_the_ovas_are_other_versions() {
     let f = drive("8063", &jojo());
     assert_eq!(ids(&f.entries), ["7158", "8063", "8739"]);
     assert_eq!(f.links, [pair("7158", "8063"), pair("8063", "8739")]);
-    assert_eq!(ids(&f.versions), ["610", "7730", "3136", "13306"]);
+    assert_eq!(ids(&f.versions), ["610", "7730", "13306"]);
+    assert_eq!(ids(&f.films), ["3136"]);
 }
 
 /// Fate as Kitsu relates it around Fate/Zero, with a same-world series
@@ -212,7 +215,7 @@ fn fate() -> Catalogue {
 
 /// Fate/Zero 2nd Season lists four sequels. The 2006 series and the two
 /// films list one another as versions: the series, in the same format,
-/// is the one added, and the films are other versions. The prologue is
+/// is the one added, and the films, other versions of it, are films. The prologue is
 /// no version of them, so the run forks after the 2nd season. The
 /// same-world series is listed nowhere; the recap, the film and the
 /// side story sit around the run.
@@ -225,20 +228,22 @@ fn fate_zero_forks_and_the_same_format_series_wins_its_group() {
     );
     assert!(f.links.contains(&pair("7658", "323")));
     assert!(f.links.contains(&pair("7658", "9718")));
-    assert_eq!(ids(&f.versions), ["4788", "8675"]);
+    assert!(f.versions.is_empty());
     assert_eq!(ids(&f.recaps), ["6906"]);
-    assert_eq!(ids(&f.films), ["7873"]);
+    assert_eq!(ids(&f.films), ["4788", "7873", "8675"]);
     assert_eq!(ids(&f.sides), ["6928"]);
     assert!(f.parents.is_empty());
 }
 
 /// From the UBW series, the 2006 series it lists as a version is left
-/// out of the run by rule 3 and listed as a version.
+/// out of the run by rule 3 and listed as a version; the films listed
+/// as versions are films.
 #[test]
 fn from_unlimited_blade_works_the_2006_series_is_a_version() {
     let f = drive("7882", &fate());
     assert_eq!(ids(&f.entries), ["6028", "7658", "9718", "7882", "10052"]);
-    assert_eq!(ids(&f.versions), ["323", "4788", "8675"]);
+    assert_eq!(ids(&f.versions), ["323"]);
+    assert_eq!(ids(&f.films), ["4788", "7873", "8675"]);
 }
 
 /// A side story with two parents walks from the earlier parent; it is
