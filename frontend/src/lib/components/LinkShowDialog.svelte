@@ -3,7 +3,10 @@
 
   Opened from the show page's quiet note, the player's slip and ⋯ menu,
   and Home's guessed cards, never on arrival. A modal <dialog> in the
-  top layer (showModal()), so it shows over a fullscreen player too.
+  top layer (showModal()), so it shows over a fullscreen player too,
+  and a modal of the app's modal layer ($lib/components/modal-layer):
+  Tab cycles inside it, the page behind is inert and its shortcuts
+  stand down, and Escape closes it, as every dialog of the app does.
   Two steps in one card: "Which show is it?", a pick from the
   candidates (or a search for one), then the answer, with anything
   worth a second look. On the player (`switchAt`), a pick of another
@@ -19,6 +22,7 @@
   it (`currentLabel`): on this page, playing now, on the card.
 -->
 <script lang="ts">
+	import { modal } from './modal-layer';
 	import { m } from '$lib/paraglide/messages';
 	import { imageProxyUrl, type KitsuAnimeRef } from '$lib/api';
 	import type { LinkCandidate, LinkWarning } from '$lib/history/link-candidates';
@@ -139,16 +143,7 @@
 	function close() {
 		if (!busy) onCancel();
 	}
-
-	function onKey(e: KeyboardEvent) {
-		if (open && e.key === 'Escape') {
-			e.preventDefault();
-			close();
-		}
-	}
 </script>
-
-<svelte:window onkeydown={onKey} />
 
 {#if open}
 	<!-- The dialog itself is the backdrop's click target: a click that
@@ -157,6 +152,7 @@
 		bind:this={dialog}
 		class="ls-dialog"
 		aria-labelledby="ls-title"
+		use:modal={{ onEscape: close }}
 		oncancel={(e) => {
 			e.preventDefault();
 			close();

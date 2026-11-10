@@ -23,7 +23,9 @@
  *
  * A modal the user cannot see would hold a keyboard they cannot use: a
  * page element in fullscreen hides everything outside it, so a modal
- * opening outside the fullscreen element leaves fullscreen first.
+ * opening outside the fullscreen element leaves fullscreen first — all
+ * but a native <dialog> shown modally, which the top layer shows above
+ * fullscreen (the change-show picker over a fullscreen player).
  */
 
 import { nextInCycle, tabbablesIn } from './focus-cycle';
@@ -70,6 +72,9 @@ function onKeydown(e: KeyboardEvent): void {
 }
 
 function leaveHidingFullscreen(doc: Document, root: HTMLElement): void {
+	// A native dialog the page shows modally sits in the top layer, above
+	// fullscreen, and is seen there.
+	if (root instanceof HTMLDialogElement) return;
 	const full = doc.fullscreenElement;
 	if (full && !full.contains(root)) doc.exitFullscreen().catch(() => {});
 }
