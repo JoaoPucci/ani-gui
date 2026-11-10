@@ -51,16 +51,18 @@ export class HandoffGate {
 		this.pick = false;
 	}
 
-	/** The viewer is back on the embedded player. */
-	comeBack(): void {
+	/** The viewer is back on the embedded player. (Returning the point
+	 *  to resume at: signature only so far.) */
+	comeBack(): number | null {
 		this.pick = false;
-		if (!this.off) return;
+		if (!this.off) return null;
 		this.off = false;
 		const start = this.held;
 		this.held = null;
 		if (start) start();
 		else if (this.engine) this.restart();
 		else if (!this.manifest) this.reload();
+		return null;
 	}
 
 	/** Runs `start` now, or, while handed off, when the viewer comes
@@ -114,6 +116,24 @@ export class HandoffGate {
 	 *  means (no handoff since it was pressed). */
 	recoveryStandsDown(manualReload: boolean): boolean {
 		return this.off && !(manualReload && this.pick);
+	}
+
+	/** A stream the element plays from its src is let go of at
+	 *  `playhead`. (Signature only so far.) */
+	letGo(url: string, playhead: number): void {
+		void url;
+		void playhead;
+	}
+
+	/** Whether an attach of `url` waits. (Signature only so far.) */
+	attachWaits(url: string): boolean {
+		void url;
+		return false;
+	}
+
+	/** The point a Reload resumes at. (Signature only so far.) */
+	reloadPoint(current: number): number {
+		return current;
 	}
 
 	/** Forgets `start` if it is the one held: its stream is gone. */
