@@ -31,6 +31,7 @@ vi.mock('$app/navigation', () => ({
 	afterNavigate: vi.fn()
 }));
 
+import { watchPageFetches } from './page-fetches';
 import FranchisePage from '../../src/routes/anime/[id]/franchise/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { breadcrumb } from '../../src/lib/breadcrumb';
@@ -104,7 +105,7 @@ type HistoryRowFixture = { ep_no: string; id: string; title: string; kitsu_id?: 
 
 interface Options {
 	order?: string;
-	franchise?: () => Response;
+	franchise?: () => Response | Promise<Response>;
 	history?: HistoryRowFixture[];
 	/**
 	 * The row the backend names for an id where it is not the row that
@@ -612,5 +613,28 @@ describe('franchise page', () => {
 		app = mount(FranchisePage, { target });
 		await until(() => rows().length === 1, 'the one title');
 		expect(target.textContent).not.toContain(m.watchorder_franchise_none());
+	});
+});
+
+describe('franchise page — leaving it while Kitsu is slow', () => {
+	it('cancels the franchise read still out, so the walk holds no connection', async () => {
+		const fetches = watchPageFetches();
+		let release: (() => void) | null = null;
+		useFranchise({
+			franchise: () =>
+				new Promise<Response>((resolve) => {
+					release = () => resolve(new HttpResponse(null, { status: 503 }));
+				})
+		});
+		app = mount(FranchisePage, { target });
+		const franchiseRead = (f: { path: string }) => f.path === `/api/kitsu/franchise/${KITSU_ID}`;
+		await until(() => fetches.sent.some(franchiseRead), 'the franchise read');
+		unmount(app);
+		app = null;
+		try {
+			await until(() => fetches.failed.some(franchiseRead), 'the franchise read cancelled', 2000);
+		} finally {
+			(release as (() => void) | null)?.();
+		}
 	});
 });
