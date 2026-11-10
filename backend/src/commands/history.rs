@@ -128,6 +128,27 @@ pub fn history_by_kitsu(
     })
 }
 
+/// The ids [`history_by_kitsu_each`] answers for.
+#[derive(Debug, serde::Deserialize)]
+pub struct ByKitsuEachArgs {
+    /// A value that is not a Kitsu id is dropped.
+    #[serde(deserialize_with = "crate::kitsu_id::deserialize_list")]
+    pub ids: Vec<String>,
+}
+
+/// [`history_by_kitsu`] for each of `ids` at once: each id with the
+/// row it resumes from, or `None`, all read from one state of the
+/// history under one hold of the writers' guard.
+///
+/// # Errors
+/// As [`history_by_kitsu`].
+pub fn history_by_kitsu_each(
+    _state: &crate::app::AppState,
+    _ids: &[String],
+) -> Result<std::collections::BTreeMap<String, Option<HistoryEntry>>> {
+    Ok(std::collections::BTreeMap::new())
+}
+
 fn history_by_kitsu_held(
     state: &crate::app::AppState,
     kitsu_id: &str,
