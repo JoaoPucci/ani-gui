@@ -55,7 +55,8 @@ pub(super) fn registered_app_path(file: &str) -> Option<String> {
 
 /// The `reg.exe` command for one query (AGENTS.md §5): a tokio
 /// command, killed if dropped, with `TERM=dumb` and `NO_COLOR=1`, no
-/// stdin and no stderr, and on Windows no console window.
+/// stdin, and on Windows no console window. Its output is collected by
+/// `output()`, which captures stdout and stderr; only stdout is read.
 #[cfg_attr(not(windows), allow(dead_code))] // used by the Windows query and the tests
 pub(super) fn reg_command(program: &str, args: &[String]) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(program);
@@ -63,8 +64,6 @@ pub(super) fn reg_command(program: &str, args: &[String]) -> tokio::process::Com
         .env("TERM", "dumb")
         .env("NO_COLOR", "1")
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
         .kill_on_drop(true);
     #[cfg(windows)]
     {
