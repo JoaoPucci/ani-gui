@@ -150,7 +150,7 @@
 	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
 	import GuessMark from '$lib/components/GuessMark.svelte';
 	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
-	import { appLinkDeps } from '$lib/history/link-deps';
+	import { appLinkDeps, onHistoryLinked } from '$lib/history/link-deps';
 	import { createCardRelink } from '$lib/history/card-relink';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -474,14 +474,20 @@
 	// A guessed card's way to the picker — its pill, and its failed
 	// resume's button. A link reads the cards again where they stand;
 	// nothing navigates ($lib/history/in-place-link.svelte.ts).
+	// The cards are read again on every link or undo that answers while
+	// this Home is on screen, made from here or anywhere else — the Undo
+	// of a notice outlives the Home it was made on
+	// ($lib/history/link-deps.ts) — so the session itself reads nothing.
 	const cardLink = new InPlaceLinkSession({
 		...appLinkDeps(),
-		notify: (notice) =>
-			toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined }),
-		refresh: () => void relink.reread().catch(() => {})
+		notify: (notice) => toastStore.push({ ...notice, duration: notice.onAction ? 8000 : undefined })
 	});
-	// A link or Undo answered after the user left Home reads nothing for it.
-	onDestroy(() => cardLink.leave());
+	const stopHearing = onHistoryLinked(() => void relink.reread().catch(() => {}));
+	// A link or Undo answered after the user left Home does nothing here.
+	onDestroy(() => {
+		stopHearing();
+		cardLink.leave();
+	});
 	async function openCardLink(row: string, matchId: string, episode: number) {
 		resumeFailure = null;
 		if (await relink.stillGuessed(row, matchId)) void cardLink.start(episode);

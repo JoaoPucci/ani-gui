@@ -29,8 +29,11 @@
  * card the link was made on and offers it again only while that card
  * is still the one on screen, else it reads the cards again and leaves
  * the newer card's offer and pick as they are. Once the surface is
- * left (`leave`), a late link or Undo is still saved and still said,
- * and reads nothing and switches to nothing for the page that is gone.
+ * left (`leave`), a late link, pick or Undo is still saved and still
+ * said — a pick on the player too, in a notice with its Undo, since its
+ * slip is gone — and reads nothing and switches to nothing for the page
+ * that is gone. Whatever Home is on screen hears of it from the app
+ * ($lib/history/link-deps.ts).
  */
 
 import type { KitsuAnimeRef, LinkOutcome } from '$lib/api';
@@ -85,8 +88,9 @@ export class InPlaceLinkSession extends LinkSession {
 		super({
 			...deps,
 			// The player says what a pick did in its slip, once: no
-			// notice, and so no Undo. Failures are still said.
-			notify: playerNotify(deps.notify, inPlayer),
+			// notice, and so no Undo. Failures are still said, and so is
+			// a pick saved once the player is gone, with its slip.
+			notify: playerNotify(deps.notify, inPlayer, () => place.gone),
 			refresh,
 			// The surface is not left for the linked show's page, so an
 			// undo never navigates either. It is somewhere else only once
