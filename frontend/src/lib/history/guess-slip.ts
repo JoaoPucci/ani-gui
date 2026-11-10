@@ -33,6 +33,8 @@ export interface SlipInputs {
 	/** Whether the offer still asks: a guess, not a pick kept only to
 	 *  change the show again. */
 	asking: boolean;
+	/** Whether the session can ask at all: a guess opened it. */
+	asks?: boolean;
 }
 
 export function slipState(s: SlipInputs): SlipState {
