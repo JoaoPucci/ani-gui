@@ -176,7 +176,12 @@ export function shouldResetStaleStreamBudget(args: {
  *  playerError instead of consuming hasAutoRetried on a no-op
  *  recovery; the user sees the overlay, and clicking Reload once
  *  detail loads runs the recovery successfully. */
-export function canRecoverFromStaleStream(args: { detail: unknown; switchBusy: boolean }): boolean {
+export function canRecoverFromStaleStream(args: {
+	detail: unknown;
+	switchBusy: boolean;
+	/** The episode was handed to another player. */
+	handedOff?: boolean;
+}): boolean {
 	return args.detail !== null && !args.switchBusy;
 }
 

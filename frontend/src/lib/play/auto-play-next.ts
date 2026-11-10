@@ -20,6 +20,8 @@ export interface AutoPlayInput {
 	totalEpisodes: number | null;
 	/** The fractional extras the provider lists. */
 	extras?: readonly number[];
+	/** The episode was handed to another player. */
+	handedOff?: boolean;
 }
 
 export type AutoPlayDecision = { advance: true; target: number } | { advance: false };
