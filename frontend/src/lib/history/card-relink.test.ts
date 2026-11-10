@@ -138,6 +138,26 @@ describe('reading the cards again', () => {
 		]);
 	});
 
+	it('reads again when a remove or clear landed while its list was out', async () => {
+		// The first list answers with the rows as they were, after a clear
+		// landed meanwhile; the next one with what the clear left.
+		let writes = 0;
+		const h = home([row('a'), row('b')], [[row('a'), row('b')], []], {
+			writes: () => writes
+		});
+		const list = h.deps.list;
+		let first = true;
+		h.deps.list = vi.fn(async () => {
+			const rows = await list();
+			if (first) writes++;
+			first = false;
+			return rows;
+		});
+		await h.relink.reread();
+		expect(h.history()).toEqual([]);
+		expect(h.deps.list).toHaveBeenCalledTimes(2);
+	});
+
 	it('keeps reading after a read that failed', async () => {
 		let fail = true;
 		const h = home([row('a')], [[row('a', '5')]], {

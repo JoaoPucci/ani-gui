@@ -913,3 +913,42 @@ describe('two pills clicked close together', () => {
 		expect(pill(JOJO_CARD)).not.toBeNull();
 	});
 });
+
+describe('the picker while Clear history runs', () => {
+	// Clear history holds its dialog open while the clear is out, and
+	// opens no other dialog over it: a guessed card's pill neither.
+	let releaseClear: () => void = () => {};
+	let clearAsked = false;
+	beforeEach(() => {
+		clearAsked = false;
+		const cleared = new Promise<void>((resolve) => {
+			releaseClear = resolve;
+		});
+		server.use(
+			http.delete(`${API_BASE}/api/history`, async () => {
+				clearAsked = true;
+				await cleared;
+				backend.rows = [];
+				return new HttpResponse(null, { status: 204 });
+			})
+		);
+	});
+
+	it('is not opened from a pill until the clear has answered', async () => {
+		await openHome();
+		button(m.home_clear_history_action())!.click();
+		await until(() => button(m.home_clear_confirm_button()) !== null, 'the confirm dialog');
+		button(m.home_clear_confirm_button())!.click();
+		await until(() => clearAsked, 'the clear');
+		// A keyboard user reaches the pill behind the busy dialog.
+		const p = pill(BC_CARD)!;
+		expect(p.disabled).toBe(true);
+		p.disabled = false;
+		p.click();
+		await settle();
+		expect(dialog()?.open).not.toBe(true);
+		releaseClear();
+		await until(() => cell(BC_CARD) === null, 'the cards cleared');
+		expect(dialog()?.open).not.toBe(true);
+	});
+});
