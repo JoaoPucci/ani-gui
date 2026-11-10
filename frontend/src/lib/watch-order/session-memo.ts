@@ -38,6 +38,20 @@ export function settledAnswer(id: string, fresh: WatchOrderData): WatchOrderData
 	return shown;
 }
 
+/**
+ * What a show page's visit draws for `id` once its read has answered:
+ * `settledAnswer`, or null for a visit that has ended (`signal`
+ * aborted), which draws nothing and leaves the remembered answer as it
+ * was, since its read was cut off rather than answered.
+ */
+export function visitAnswer(
+	id: string,
+	fresh: WatchOrderData,
+	signal: AbortSignal
+): WatchOrderData | null {
+	return signal.aborted ? null : settledAnswer(id, fresh);
+}
+
 /** Forgets every answer. */
 export function forgetAnswers(): void {
 	answers.clear();

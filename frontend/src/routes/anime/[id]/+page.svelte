@@ -26,7 +26,7 @@
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import WatchOrderArrival from '$lib/watch-order/WatchOrderArrival.svelte';
 	import { withFirstHop, type FirstHop } from '$lib/watch-order/arrival';
-	import { rememberedAnswer, settledAnswer } from '$lib/watch-order/session-memo';
+	import { rememberedAnswer, visitAnswer } from '$lib/watch-order/session-memo';
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
 	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { localDay } from '$lib/watch-order/entry';
@@ -1199,9 +1199,8 @@
 		const watchOrderVisit = new AbortController();
 		const walked = loadWatchOrder(currentId, watchOrderSources, watchOrderVisit.signal).then(
 			(w) => {
-				if (watchOrderVisit.signal.aborted) return;
-				const shown = settledAnswer(currentId, w);
-				if (id === currentId) watchOrderData = shown;
+				const shown = visitAnswer(currentId, w, watchOrderVisit.signal);
+				if (shown && id === currentId) watchOrderData = shown;
 			}
 		);
 		// The details wait a moment for the walk's first hop, so the
