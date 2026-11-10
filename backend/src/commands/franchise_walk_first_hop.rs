@@ -30,3 +30,7 @@ pub fn first_hop(anchor: &str, listing: &FranchiseListing) -> FirstHop {
     let _ = (anchor, listing);
     FirstHop::None
 }
+
+#[cfg(test)]
+#[path = "franchise_walk_first_hop_test.rs"]
+mod tests;
