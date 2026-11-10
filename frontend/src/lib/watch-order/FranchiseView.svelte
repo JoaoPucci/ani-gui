@@ -195,8 +195,10 @@
 				<div class="recaps-head">
 					<h2 class="eyebrow">
 						<span class="eyebrow-key">{m.watchorder_franchise_recaps()}</span>
-						<span class="eyebrow-rule" aria-hidden="true"></span>
-						<span class="eyebrow-value">{model.recaps.length}</span>
+						{#if model.recapCount !== null}
+							<span class="eyebrow-rule" aria-hidden="true"></span>
+							<span class="eyebrow-value">{model.recapCount}</span>
+						{/if}
 					</h2>
 					<button
 						type="button"

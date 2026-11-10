@@ -59,6 +59,8 @@ export interface FranchisePageModel {
 	readonly films: readonly WatchEntry[];
 	readonly sides: readonly WatchEntry[];
 	readonly recaps: readonly WatchEntry[];
+	/** How many recaps the heading counts: null for a franchise read in part. */
+	readonly recapCount: number | null;
 	/** The franchise read stopped early, so there may be more titles. */
 	readonly partial: boolean;
 }
@@ -125,6 +127,7 @@ export function franchisePage(
 		films: run.films,
 		sides: run.sides,
 		recaps: run.recaps,
+		recapCount: run.recaps.length,
 		partial: !data.franchise.complete
 	};
 }

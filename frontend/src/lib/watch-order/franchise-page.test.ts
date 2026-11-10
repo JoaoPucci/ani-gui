@@ -368,6 +368,18 @@ describe('franchisePage', () => {
 		}
 	});
 
+	it('counts the recaps only for a franchise read whole', () => {
+		const whole = franchisePage(data('jojo', '7158'), '7158', 'linked')!;
+		expect(whole.recapCount).toBe(whole.recaps.length);
+		const partial = franchisePage(
+			{ franchise: payload('jojo', '7158', false), rows: [] },
+			'7158',
+			'linked'
+		)!;
+		expect(partial.recapCount).toBeNull();
+		expect(partial.recaps).toEqual(whole.recaps);
+	});
+
 	it('keeps the layout of a franchise read whole, only without its numbers, when read in part', () => {
 		// The numbers go, not the stretches they made: an unnumbered title
 		// does not move into "No clear place in the order".

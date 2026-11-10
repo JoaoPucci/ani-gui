@@ -403,6 +403,22 @@ describe('franchise page', () => {
 		expect(text).not.toContain(m.watchorder_franchise_loop_group({ count: 3 }));
 	});
 
+	it('counts the recaps only when the franchise was read whole', async () => {
+		useFranchise();
+		app = mount(FranchisePage, { target });
+		await until(() => button(m.watchorder_franchise_recaps_show()) !== undefined, 'the recaps');
+		expect(target.querySelector('.recaps .eyebrow-value')?.textContent?.trim()).toBe('1');
+	});
+
+	it('gives the recaps no count when there may be more titles', async () => {
+		useFranchise({ franchise: () => HttpResponse.json({ ...FRANCHISE, complete: false }) });
+		app = mount(FranchisePage, { target });
+		await until(() => button(m.watchorder_franchise_recaps_show()) !== undefined, 'the recaps');
+		expect(target.querySelector('.recaps h2')?.textContent?.trim()).toBe(
+			m.watchorder_franchise_recaps()
+		);
+	});
+
 	it('says the franchise could not be loaded, and loads it on Try again', async () => {
 		let fail = true;
 		const calls = useFranchise({
