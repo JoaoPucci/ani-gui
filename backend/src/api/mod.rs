@@ -105,6 +105,10 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/history/:id", delete(delete_history_entry))
         .route("/api/external-player", post(post_external_player))
+        .route(
+            "/api/external-player/standard",
+            get(get_external_player_standard),
+        )
         .route("/api/sessions", post(post_session))
         .route("/api/kitsu/search", post(post_kitsu_search))
         .route("/api/kitsu/search/page", post(post_kitsu_search_page))
@@ -246,6 +250,32 @@ async fn post_external_player(
 ) -> Result<StatusCode, AniError> {
     external_player::open_external_player(&args)?;
     Ok(StatusCode::ACCEPTED)
+}
+
+/// `?kind=` of the standard-program question.
+#[derive(Debug, Deserialize)]
+struct StandardProgramQuery {
+    kind: external_player::ExternalPlayerKind,
+}
+
+/// What a blank External player command runs for a type on this
+/// computer, and where it is installed (Settings' hint).
+async fn get_external_player_standard(
+    Query(q): Query<StandardProgramQuery>,
+) -> Json<external_player::StandardProgram> {
+    Json(
+        tokio::task::spawn_blocking(move || {
+            external_player::standard_program_found(
+                q.kind,
+                &crate::commands::player_locate::locate_installed,
+            )
+        })
+        .await
+        .unwrap_or(external_player::StandardProgram {
+            name: q.kind.standard_program(),
+            path: None,
+        }),
+    )
 }
 
 async fn post_session(
