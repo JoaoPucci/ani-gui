@@ -315,26 +315,30 @@ test('a splash whose page keeps crashing while the first page is late ends the l
 	const exited = new Promise<number | null>((resolve) => app.process().once('exit', (code) => resolve(code)));
 	try {
 		await splashWindow(app);
-		// The splash's renderer crashes on each of its loads: the first, and
-		// every reload the main process makes (lib/splash.cjs, a bounded
-		// number). Each crash waits for the previous reload to have loaded.
-		const crash = () =>
-			app.evaluate(({ BrowserWindow }) => {
-				const splash = BrowserWindow.getAllWindows().find(
-					(w) => (w as unknown as Record<string, unknown>).aniGuiSplash === true
-				);
-				if (!splash || splash.isDestroyed()) return 'gone';
-				const contents = splash.webContents;
-				if (contents.isCrashed() || contents.isLoading()) return 'busy';
-				contents.forcefullyCrashRenderer();
-				return 'crashed';
-			});
-		let crashes = 0;
-		const deadline = Date.now() + 30_000;
+		// The splash's page crashes on every load: each time it has loaded
+		// (the first time, and after each reload the main process makes,
+		// lib/splash.cjs, a bounded number), it is pointed at Chromium's
+		// own crash page, which ends its renderer. A reload brings the
+		// splash page back, since the crash page never commits.
+		// (Signalling the renderer from outside proved unreliable here:
+		// Chromium did not always see it go.)
 		let result: number | null | undefined;
 		exited.then((code) => (result = code));
+		let crashes = 0;
+		const deadline = Date.now() + 30_000;
 		while (result === undefined && Date.now() < deadline) {
-			const r = await crash().catch(() => 'gone');
+			const r = await app
+				.evaluate(({ BrowserWindow }) => {
+					const splash = BrowserWindow.getAllWindows().find(
+						(w) => !w.isDestroyed() && (w as unknown as Record<string, unknown>).aniGuiSplash === true
+					);
+					if (!splash) return 'gone';
+					const contents = splash.webContents;
+					if (contents.isCrashed() || contents.isLoading() || !contents.getURL().startsWith('file:')) return 'busy';
+					contents.loadURL('chrome://crash').catch(() => {});
+					return 'crashed';
+				})
+				.catch(() => 'gone');
 			if (r === 'crashed') crashes += 1;
 			await new Promise((resolve) => setTimeout(resolve, 300));
 		}
