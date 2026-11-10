@@ -10,6 +10,7 @@
 	"section_playback_hint": "defaults for watching and downloading",
 	"field_audio_key": "Audio",
 	"field_audio_hint": "Sub matches Japanese audio with subtitles. Dub uses dubbed audio.",
+	"field_audio_default_hint": "Each show remembers what you pick on its page.",
 	"audio_group_aria_label": "Audio mode",
 	"field_external_player_key": "External player",
 	"field_external_player_hint_prefix": "Command launched by \"Open in external player\". Defaults to ",

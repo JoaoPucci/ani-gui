@@ -302,7 +302,9 @@
 			<div class="field">
 				<div class="field-label">
 					<span class="field-key">{m.settings_field_audio_key()}</span>
-					<span class="field-hint">{m.settings_field_audio_hint()}</span>
+					<span class="field-hint"
+						>{m.settings_field_audio_hint()} {m.settings_field_audio_default_hint()}</span
+					>
 				</div>
 				<div class="seg" role="group" aria-label={m.settings_audio_group_aria_label()}>
 					{#each ['sub', 'dub'] as mode (mode)}

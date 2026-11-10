@@ -382,9 +382,9 @@
 			blurDismiss = null;
 		}
 		dropdownOpen = true;
-		// Re-pull config so the next dropdown filter sees the user's
-		// current Sub/Dub pick. Settings + the detail page mutate their
-		// page-local config but don't push it back here, so without
+		// Re-pull config so the next dropdown filter sees the current
+		// default Sub/Dub. The Settings page mutates its page-local
+		// config but doesn't push it back here, so without
 		// this refresh the dropdown filters with whatever mode was set
 		// when the layout first mounted. Bounded work: fires once per
 		// focus, not per keystroke.
