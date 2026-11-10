@@ -3,7 +3,8 @@
 //!
 //! - **versions** (rule 4): the entries rules 2 and 3 left out, music
 //!   aside, and the anime members list as `alternative_version`;
-//! - **recaps**: what members list as `summary`;
+//! - **recaps**: what members list as `summary`, a TV series aside: a
+//!   series that retells another is one of its versions;
 //! - **films** and **sides**: the rest, prequel and sequel aside (run or
 //!   versions), `character`, `adaptation` and the alternatives aside,
 //!   manga and music aside; a `movie` is a film, anything else a side.
@@ -63,6 +64,8 @@ fn sections(run: &Run, look: &Lookup<'_>) -> Sections {
             }
             let to = match r.role.as_str() {
                 "alternative_version" => &mut s.versions,
+                // A TV series that retells another is a version of it.
+                "summary" if r.subtype.as_deref() == Some("TV") => &mut s.versions,
                 "summary" => &mut s.recaps,
                 role if NOT_AROUND.contains(&role) => continue,
                 _ if r.subtype.as_deref() == Some("movie") => &mut s.films,

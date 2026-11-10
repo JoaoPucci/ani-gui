@@ -13,7 +13,18 @@
     }
   ],
   "links": [],
-  "versions": [],
+  "versions": [
+    {
+      "id": "49281",
+      "title": "One Piece: Gyojin Tou-hen",
+      "subtype": "TV",
+      "start": "2024-11-03",
+      "episodes": 21,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
   "films": [
     {
       "id": "421",
@@ -695,16 +706,6 @@
       "subtype": "special",
       "start": "2024-09-28",
       "episodes": 1,
-      "status": "finished",
-      "poster": null,
-      "cover": null
-    },
-    {
-      "id": "49281",
-      "title": "One Piece: Gyojin Tou-hen",
-      "subtype": "TV",
-      "start": "2024-11-03",
-      "episodes": 21,
       "status": "finished",
       "poster": null,
       "cover": null
