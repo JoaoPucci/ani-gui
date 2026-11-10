@@ -19,14 +19,19 @@ describe('the strip copy', () => {
 	});
 
 	it('says a join or a fork under the key, and nothing for one entry', () => {
-		expect(columnCountText('run', 'before', 2)).toBe('Comes after these 2');
-		expect(columnCountText('run', 'after', 2)).toBe('2 ways to continue');
-		expect(columnCountText('run', 'after', 1)).toBeNull();
-		expect(columnCountText('run', 'before', 0)).toBeNull();
+		expect(columnCountText('run', 'before', 2, true)).toBe('Comes after these 2');
+		expect(columnCountText('run', 'after', 2, true)).toBe('2 ways to continue');
+		expect(columnCountText('run', 'after', 1, true)).toBeNull();
+		expect(columnCountText('run', 'before', 0, true)).toBeNull();
+	});
+
+	it('says no join or fork count for a franchise read in part: the count may be short', () => {
+		expect(columnCountText('run', 'before', 2, false)).toBeNull();
+		expect(columnCountText('run', 'after', 3, false)).toBeNull();
 	});
 
 	it("says nothing under a side story's parents: two parents are not a join", () => {
-		expect(columnCountText('side', 'before', 2)).toBeNull();
+		expect(columnCountText('side', 'before', 2, true)).toBeNull();
 	});
 
 	it('says why a column is empty', () => {
@@ -39,6 +44,8 @@ describe('the strip copy', () => {
 		expect(captionText({ kind: 'position', position: 4, total: 5 })).toBe('04 of 05');
 		// Read aloud in the strip's heading, a bare number says nothing.
 		expect(captionText({ kind: 'numeral', position: 7 })).toBe('Position 07');
+		// A franchise read in part: the heading reads "Watch order" alone.
+		expect(captionText({ kind: 'partial' })).toBe('');
 		expect(captionText({ kind: 'side' })).toBe('Side story');
 		// A loop is said as what the viewer sees: the others it links with.
 		expect(captionText({ kind: 'cycle', count: 10 })).toBe('Linked with 9 others, order unclear');
