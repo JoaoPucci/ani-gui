@@ -174,15 +174,19 @@ pub enum AniError {
     #[error("scraper gate refused")]
     GateRefused,
 
-    /// External-player binary couldn't be spawned (not on PATH, or
-    /// the configured path doesn't point at an executable). The
-    /// `binary` field carries the configured player name so the UI
-    /// can name the failed command in the error toast.
+    /// External-player program couldn't be spawned (not found where
+    /// it is installed, or the path doesn't point at an executable).
+    /// The `binary` field carries the program that was tried, a found
+    /// full path included, so the UI can name it in the error toast.
     #[error("player spawn failed: {binary}")]
     PlayerSpawnFailed {
-        /// The player command the user configured (e.g. `"vlc"`,
-        /// `"/usr/bin/mpv"`). Surfaced verbatim in the localized
-        /// error message via the `{binary}` placeholder.
+        /// The program that was tried (e.g. `"vlc"`, `"/usr/bin/mpv"`):
+        /// the configured command, or the type's standard program (where
+        /// it was found installed) when the command is blank or only its
+        /// name. Blank for a blank Custom command, which
+        /// the UI answers with "set a program in Settings". Surfaced
+        /// verbatim in the localized error message via the `{binary}`
+        /// placeholder.
         binary: String,
     },
 

@@ -16,7 +16,7 @@
  *     a play-call failure — "no episode," "scraper unhappy,"
  *     "network trouble," etc.
  *   • `describeExternalLaunchFailure`, in ./external-launch-copy, covers
- *     "Open in external player" on top of `describePlayFailure`.
+ *     the external-player item ("Open in …") on top of `describePlayFailure`.
  *
  * None of them prints the payload's `detail`. The backend documents it
  * as free text for logs (ParseFailed carries serde's message, a URL that

@@ -41,7 +41,9 @@ describe('describeExternalLaunchFailure', () => {
 		// consistent across both surfaces (no debug-y "External
 		// player failed: scraper" leak).
 		expect(describeExternalLaunchFailure({ kind: 'timeout' }, null)).toMatch(/took too long/);
-		expect(describeExternalLaunchFailure({ kind: 'network' }, null)).toMatch(/Network trouble/);
+		expect(describeExternalLaunchFailure({ kind: 'network' }, null)).toMatch(
+			/Couldn't reach the streaming source/
+		);
 	});
 
 	it('rejects payloads with the wrong shape and falls back to generic copy', () => {
@@ -51,8 +53,22 @@ describe('describeExternalLaunchFailure', () => {
 		expect(describeExternalLaunchFailure({ kind: 'player_spawn_failed' }, null)).toMatch(
 			/Couldn't start this episode right now/
 		);
-		expect(
-			describeExternalLaunchFailure({ kind: 'player_spawn_failed', binary: '' }, null)
-		).toMatch(/Couldn't start this episode right now/);
+	});
+
+	it('says to set a command when none is set, rather than to try later', () => {
+		// A blank Custom command: there is no program to name, and
+		// waiting does not help.
+		const msg = describeExternalLaunchFailure({ kind: 'player_spawn_failed', binary: '' }, null);
+		expect(msg).toMatch(/Settings/);
+		expect(msg).not.toMatch(/few minutes/);
+	});
+
+	it('points at the External player field, not at PATH, when a program would not start', () => {
+		// The app looks for the player beyond PATH, so "put it on your
+		// PATH" is no longer the fix. The field in Settings is.
+		const msg = describeExternalLaunchFailure({ kind: 'player_spawn_failed', binary: 'vlc' }, null);
+		expect(msg).toMatch(/vlc/);
+		expect(msg).toMatch(/External player/);
+		expect(msg).not.toMatch(/PATH/);
 	});
 });

@@ -116,7 +116,7 @@ contextBridge.exposeInMainWorld('aniGui', {
 
 	// Native file picker — same shape as pickDirectory but for a
 	// single file. The settings page uses this to let the user point
-	// at an external-player executable that isn't on PATH. `options`
+	// at an external-player executable the lookup can't find. `options`
 	// supports `{ title, defaultPath, filters }` where `filters` is
 	// the Electron OpenDialog filter shape:
 	//   [{ name: "Executables", extensions: ["exe"] }]

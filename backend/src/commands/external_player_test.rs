@@ -160,8 +160,12 @@ fn launch_args_decode_without_player_kind_field_for_back_compat() {
 
 #[test]
 fn open_external_player_with_blank_command_returns_player_spawn_failed() {
+    // Only Custom: a blank command for mpv, VLC or IINA runs that
+    // type's standard program (see `player_program`), and spawning a
+    // real player is not something a test may do.
     let mut a = args("https://example.com/v.mp4");
     a.player_command = String::new();
+    a.player_kind = ExternalPlayerKind::Custom;
     let r = open_external_player(&a);
     match r {
         Err(AniError::PlayerSpawnFailed { binary }) => assert!(binary.is_empty()),
@@ -238,4 +242,244 @@ fn a_busy_executable_is_waited_out_rather_than_failed() {
     // give it that moment before the tempdir (and the script it is
     // about to open) goes away.
     std::thread::sleep(std::time::Duration::from_millis(50));
+}
+
+#[test]
+fn a_blank_command_runs_the_types_standard_program() {
+    for blank in ["", "   ", "\t"] {
+        assert_eq!(player_program(blank, ExternalPlayerKind::Mpv), Some("mpv"));
+        assert_eq!(player_program(blank, ExternalPlayerKind::Vlc), Some("vlc"));
+        assert_eq!(
+            player_program(blank, ExternalPlayerKind::Iina),
+            Some("iina")
+        );
+    }
+}
+
+#[test]
+fn a_blank_command_for_custom_runs_nothing() {
+    // Custom has no standard program: the user names one.
+    assert_eq!(player_program("", ExternalPlayerKind::Custom), None);
+    assert_eq!(player_program("  ", ExternalPlayerKind::Custom), None);
+}
+
+#[test]
+fn a_written_command_runs_as_written_for_every_type() {
+    for kind in [
+        ExternalPlayerKind::Mpv,
+        ExternalPlayerKind::Vlc,
+        ExternalPlayerKind::Iina,
+        ExternalPlayerKind::Custom,
+    ] {
+        assert_eq!(player_program("/usr/bin/mpv", kind), Some("/usr/bin/mpv"));
+        assert_eq!(player_program("vlc", kind), Some("vlc"));
+    }
+}
+
+#[test]
+fn a_blank_command_fits_its_subtitles_to_the_program_that_runs() {
+    // The Windows command-line budget is measured for the program that
+    // launches. A blank mpv command launches mpv, so it keeps exactly
+    // the tracks the command "mpv" keeps, at every length near the edge.
+    for len in 400..600 {
+        let url = format!("https://cdn.example/{}", "s".repeat(len));
+        let mut blank = args("https://example.com/v.m3u8");
+        blank.player_command = String::new();
+        blank.subtitle_urls = vec![url; 40];
+        let mut named = args("https://example.com/v.m3u8");
+        named.subtitle_urls = blank.subtitle_urls.clone();
+        assert_eq!(build_argv(&blank), build_argv(&named), "url length {len}");
+    }
+}
+
+/// A stand-in for the installed-program search: VLC and mpv are
+/// installed, IINA is not.
+fn installed(name: &str) -> Option<String> {
+    match name {
+        "vlc" => Some("C:\\Program Files\\VideoLAN\\VLC\\vlc.exe".into()),
+        "mpv" => Some("/usr/bin/mpv".into()),
+        _ => None,
+    }
+}
+
+#[test]
+fn a_blank_command_launches_the_installed_standard_program() {
+    assert_eq!(
+        launch_program_with("", ExternalPlayerKind::Vlc, &installed).as_deref(),
+        Some("C:\\Program Files\\VideoLAN\\VLC\\vlc.exe")
+    );
+    assert_eq!(
+        launch_program_with("  ", ExternalPlayerKind::Mpv, &installed).as_deref(),
+        Some("/usr/bin/mpv")
+    );
+}
+
+#[test]
+fn a_bare_standard_name_launches_that_program_where_it_is_installed() {
+    // The name decides, not the type: "vlc" under the mpv type is VLC.
+    assert_eq!(
+        launch_program_with(" VLC.exe ", ExternalPlayerKind::Mpv, &installed).as_deref(),
+        Some("C:\\Program Files\\VideoLAN\\VLC\\vlc.exe")
+    );
+    assert_eq!(
+        launch_program_with("mpv", ExternalPlayerKind::Mpv, &installed).as_deref(),
+        Some("/usr/bin/mpv")
+    );
+}
+
+#[test]
+fn a_program_that_is_not_found_is_launched_by_its_name_as_before() {
+    assert_eq!(
+        launch_program_with("", ExternalPlayerKind::Iina, &installed).as_deref(),
+        Some("iina")
+    );
+    assert_eq!(
+        launch_program_with("iina", ExternalPlayerKind::Iina, &installed).as_deref(),
+        Some("iina")
+    );
+}
+
+#[test]
+fn a_written_command_is_launched_as_written_and_never_looked_up() {
+    let never = |_: &str| -> Option<String> { panic!("a written command is not looked up") };
+    for written in [
+        "/opt/mpv/mpv",
+        "C:\\Tools\\mpv.exe",
+        "celluloid",
+        "mpv --fs",
+    ] {
+        assert_eq!(
+            launch_program_with(written, ExternalPlayerKind::Mpv, &never).as_deref(),
+            Some(written)
+        );
+    }
+    assert_eq!(
+        launch_program_with("", ExternalPlayerKind::Custom, &never),
+        None
+    );
+}
+
+#[test]
+fn syncplay_keeps_its_own_player_for_a_blank_command() {
+    // A blank field passes no --player-path: Syncplay opens the player
+    // configured in Syncplay itself, as it always did.
+    let never = |_: &str| -> Option<String> { panic!("a blank field is not looked up") };
+    for kind in [
+        ExternalPlayerKind::Mpv,
+        ExternalPlayerKind::Vlc,
+        ExternalPlayerKind::Iina,
+        ExternalPlayerKind::Custom,
+    ] {
+        assert_eq!(syncplay_player_with("", kind, &never), "");
+        assert_eq!(syncplay_player_with("   ", kind, &never), "");
+    }
+}
+
+#[test]
+fn syncplay_gets_a_bare_name_as_the_installed_program() {
+    assert_eq!(
+        syncplay_player_with("vlc", ExternalPlayerKind::Vlc, &installed),
+        "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe"
+    );
+    // Not found: the name, as before, for Syncplay's own PATH walk.
+    assert_eq!(
+        syncplay_player_with("iina", ExternalPlayerKind::Iina, &installed),
+        "iina"
+    );
+    assert_eq!(
+        syncplay_player_with("/opt/vlc/vlc", ExternalPlayerKind::Vlc, &installed),
+        "/opt/vlc/vlc"
+    );
+}
+
+#[test]
+fn settings_learns_what_a_blank_command_runs_here() {
+    assert_eq!(
+        standard_program_found(ExternalPlayerKind::Vlc, &installed),
+        StandardProgram {
+            name: Some("vlc"),
+            path: Some("C:\\Program Files\\VideoLAN\\VLC\\vlc.exe".into()),
+            supported: true,
+        }
+    );
+    assert_eq!(
+        // On macOS, where IINA exists: the next test covers elsewhere.
+        standard_program_found_on(
+            crate::commands::player_locate::Os::MacOs,
+            ExternalPlayerKind::Iina,
+            &installed
+        ),
+        StandardProgram {
+            name: Some("iina"),
+            path: None,
+            supported: true,
+        }
+    );
+    let never = |_: &str| -> Option<String> { panic!("Custom has nothing to look up") };
+    assert_eq!(
+        standard_program_found(ExternalPlayerKind::Custom, &never),
+        StandardProgram {
+            name: None,
+            path: None,
+            supported: true,
+        }
+    );
+}
+
+#[test]
+fn iina_is_supported_only_on_macos() {
+    use crate::commands::player_locate::Os;
+    let never = |_: &str| -> Option<String> { panic!("IINA is not looked up off macOS") };
+    for os in [Os::Linux, Os::Windows] {
+        assert_eq!(
+            standard_program_found_on(os, ExternalPlayerKind::Iina, &never),
+            StandardProgram {
+                name: Some("iina"),
+                path: None,
+                supported: false,
+            },
+            "{os:?}"
+        );
+    }
+    let found = |n: &str| Some(format!("/Applications/{n}"));
+    assert_eq!(
+        standard_program_found_on(Os::MacOs, ExternalPlayerKind::Iina, &found),
+        StandardProgram {
+            name: Some("iina"),
+            path: Some("/Applications/iina".into()),
+            supported: true,
+        }
+    );
+    // mpv and VLC exist everywhere.
+    for os in [Os::Linux, Os::Windows, Os::MacOs] {
+        assert!(standard_program_found_on(os, ExternalPlayerKind::Vlc, &found).supported);
+        assert!(standard_program_found_on(os, ExternalPlayerKind::Mpv, &found).supported);
+    }
+}
+
+#[test]
+fn a_dead_launch_task_names_the_program_it_meant() {
+    // A blank binary reads as "no program set for Custom": a blank
+    // VLC field meant vlc.
+    let mut a = args("https://example.com/v.mp4");
+    a.player_command = String::new();
+    a.player_kind = ExternalPlayerKind::Vlc;
+    match launch_task_failure(&a) {
+        AniError::PlayerSpawnFailed { binary } => assert_eq!(binary, "vlc"),
+        other => panic!("expected PlayerSpawnFailed, got {other:?}"),
+    }
+    a.player_kind = ExternalPlayerKind::Custom;
+    match launch_task_failure(&a) {
+        AniError::PlayerSpawnFailed { binary } => assert_eq!(binary, ""),
+        other => panic!("expected PlayerSpawnFailed, got {other:?}"),
+    }
+}
+
+#[test]
+fn settings_without_an_answer_still_knows_iina_is_macos_only() {
+    let answer = standard_program_unknown(ExternalPlayerKind::Iina);
+    assert_eq!(answer.name, Some("iina"));
+    assert_eq!(answer.path, None);
+    assert_eq!(answer.supported, cfg!(target_os = "macos"));
+    assert!(standard_program_unknown(ExternalPlayerKind::Vlc).supported);
 }

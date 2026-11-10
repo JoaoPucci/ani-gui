@@ -85,7 +85,7 @@ declare global {
 			}) => Promise<string | null>;
 			/** Open a native file picker dialog. Used by the settings
 			 *  page to let the user point at an external-player
-			 *  executable that isn't on PATH. Returns the chosen
+			 *  executable the lookup can't find. Returns the chosen
 			 *  absolute path or null on cancel. `filters` follows the
 			 *  Electron OpenDialog shape:
 			 *    [{ name: 'Executables', extensions: ['exe'] }] */
@@ -425,6 +425,21 @@ export interface VersionInfo {
 /** Player flag-syntax flavor — controls the argv shape `build_argv`
  *  emits on the backend. Snake_case to match the Rust serde tag. */
 export type ExternalPlayerKind = 'mpv' | 'vlc' | 'iina' | 'custom';
+
+/** What a blank External player command runs for a type on this
+ *  computer: the standard program's name (none for Custom), and where
+ *  it is installed (none when it wasn't found). */
+export interface StandardProgram {
+	name: string | null;
+	path: string | null;
+	/** False where the program does not exist (IINA off macOS). */
+	supported: boolean;
+}
+
+/** Ask the backend where a type's standard program is installed. */
+export function externalPlayerStandard(kind: ExternalPlayerKind): Promise<StandardProgram> {
+	return getJson<StandardProgram>(`/api/external-player/standard?kind=${encodeURIComponent(kind)}`);
+}
 
 /** Input to `cmd_open_external_player`. */
 export interface LaunchExternalPlayerArgs {

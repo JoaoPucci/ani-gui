@@ -726,9 +726,8 @@ ipcMain.handle("ani-gui:pick-directory", async (_event, options) => {
 });
 
 // Native file picker — used by the settings page to let the user
-// point at an external-player executable that isn't on PATH (typical
-// on Windows where mpv.exe is often installed under
-// `C:\Program Files\mpv\` outside the system PATH). Mirrors
+// point at an external-player executable the backend's lookup can't
+// find (a portable folder, an unusual install). Mirrors
 // pick-directory: returns the absolute path or null on cancel.
 ipcMain.handle("ani-gui:pick-file", async (_event, options) => {
   const filters = Array.isArray(options?.filters) ? options.filters : undefined;
@@ -829,7 +828,8 @@ ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
   }
   let server;
   try {
-    server = startOAuthServer();
+    // The page the browser lands on speaks the app's language.
+    server = startOAuthServer({ locale: mainLocale() });
   } catch (err) {
     return { ok: false, kind: "port_busy", message: String(err.message || err) };
   }

@@ -36,6 +36,7 @@ vi.mock('$lib/account/push-watched', () => ({
 
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import { externalOpenLabel } from '../../src/lib/play/external-label';
 import { applyChoice } from '../../src/lib/versions/version-choice';
 import { rememberAudio } from '../../src/lib/play/audio-choice';
 import { rememberCaption } from '../../src/lib/play/caption-choice';
@@ -203,7 +204,7 @@ describe('play route — the version remembered for the show', () => {
 		expect(versionOf(FakeEventSource.instances[0].url)).toBe('standard');
 		for (const es of FakeEventSource.instances) expect(versionOf(es.url)).toBe('standard');
 
-		await clickMenuItem(m.play_external_label());
+		await clickMenuItem(externalOpenLabel('mpv'));
 		await until(() => posted.external.length === 1, 'the external-player request');
 		expect(posted.external[0].version).toBe('standard');
 
@@ -237,7 +238,7 @@ describe('play route — the version remembered for the show', () => {
 		for (const es of FakeEventSource.instances) {
 			expect(new URL(es.url).searchParams.has('version')).toBe(false);
 		}
-		await clickMenuItem(m.play_external_label());
+		await clickMenuItem(externalOpenLabel('mpv'));
 		await until(() => posted.external.length === 1, 'the external-player request');
 		expect('version' in posted.external[0]).toBe(false);
 	});
@@ -253,7 +254,7 @@ describe("play route — the show's remembered captions choice", () => {
 		useHandlers(posted);
 		await mountPlaying();
 
-		await clickMenuItem(m.play_external_label());
+		await clickMenuItem(externalOpenLabel('mpv'));
 		await until(() => posted.external.length === 1, 'the external-player request');
 		expect(posted.external[0].caption).toBe('es-419');
 
@@ -298,7 +299,7 @@ describe("play route — the show's remembered captions choice", () => {
 		const posted = fresh();
 		useHandlers(posted);
 		await mountPlaying();
-		await clickMenuItem(m.play_external_label());
+		await clickMenuItem(externalOpenLabel('mpv'));
 		await until(() => posted.external.length === 1, 'the external-player request');
 		expect('caption' in posted.external[0]).toBe(false);
 		for (const es of FakeEventSource.instances) {
@@ -317,7 +318,7 @@ describe("play route — the show's own audio", () => {
 		for (const es of FakeEventSource.instances) {
 			expect(new URL(es.url).searchParams.get('mode')).toBe('dub');
 		}
-		await clickMenuItem(m.play_external_label());
+		await clickMenuItem(externalOpenLabel('mpv'));
 		await until(() => posted.external.length === 1, 'the external-player request');
 		expect(posted.external[0].mode).toBe('dub');
 

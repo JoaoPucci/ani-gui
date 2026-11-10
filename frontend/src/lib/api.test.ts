@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readPosition, savePosition } from './play/watch-position';
 import { getLocale } from '$lib/paraglide/runtime';
 import {
+	externalPlayerStandard,
 	__resetApiBaseForTests,
 	allmangaKitsuMapDelete,
 	allmangaKitsuMapGet,
@@ -273,6 +274,16 @@ describe('openExternalPlayer', () => {
 			stream_url: 'https://cdn.example/master.m3u8',
 			player_command: 'mpv'
 		});
+	});
+});
+
+describe('externalPlayerStandard', () => {
+	it("GETs the type's standard program and where it was found", async () => {
+		const answer = { name: 'vlc', path: 'C:\\VLC\\vlc.exe', supported: true };
+		const fetchMock = mockFetchOnce(answer);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await expect(externalPlayerStandard('vlc')).resolves.toEqual(answer);
+		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/external-player/standard?kind=vlc`);
 	});
 });
 

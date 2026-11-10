@@ -181,6 +181,7 @@
 	} from '$lib/play/owned-play';
 	import { describeExternalLaunchFailure } from '$lib/play/external-launch-copy';
 	import { externalLaunchSuccessToast } from '$lib/play/external-toast';
+	import { externalOpenLabel } from '$lib/play/external-label';
 	import {
 		canRecoverFromStaleStream,
 		shouldAttemptStaleStreamRetry,
@@ -2682,7 +2683,7 @@
 	} | null>(null);
 
 	// Overflow menu (the "..." button) housing the secondary actions
-	// Open in external + Download. They were demoted from the np-actions
+	// "Open in …" (the external player) + Download. They were demoted from the np-actions
 	// row to declutter — the primary controls are now ep-nav +
 	// auto-play, with everything else one click deeper.
 	// Its state and focus moves are $lib/play/drill-menu's; this is the
@@ -4010,7 +4011,9 @@
 											/>
 										</svg>
 										<span
-											>{externalBusy ? m.play_external_launching() : m.play_external_label()}</span
+											>{externalBusy
+												? m.play_external_launching()
+												: externalOpenLabel(config?.external_player_kind ?? 'custom')}</span
 										>
 									</button>
 

@@ -25,7 +25,7 @@
 	"skeleton_aria_label": "Loading results",
 	"empty_headline_prefix": "Nothing matched “",
 	"empty_headline_suffix": "”.",
-	"empty_detail": "Kitsu's catalogue can be sparse for season-only or aliased titles. Try the romaji form, or a shorter prefix.",
+	"empty_detail": "Kitsu sometimes misses single seasons and alternate titles. Try the romaji name, or just the start of the title.",
 	"discovery_trending_eyebrow": "Trending now",
 	"discovery_trending_caption": "currently airing · top 20",
 	"discovery_top_rated_eyebrow": "Top rated",

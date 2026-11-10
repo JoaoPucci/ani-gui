@@ -32,7 +32,7 @@
 	"cache_reclaim_expired": "Vencidos: {count}",
 	"section_retired_sweep": "Limpieza tras quitar un proveedor",
 	"retired_sweep_superseded": "Estas entradas del historial fueron reemplazadas por otras más recientes del mismo anime, así que se eliminaron:",
-	"retired_sweep_renumbered": "Estas entradas del historial se conservaron; solo cambió cómo se guarda su episodio:",
+	"retired_sweep_renumbered": "Estas entradas del historial se conservaron. Solo cambió cómo se guarda su episodio:",
 	"retired_sweep_stored": "Registros guardados que ya nada lee, eliminados: {count}",
 	"section_legacy_sweep": "Eliminado al actualizar",
 	"legacy_sweep_description": "Estos archivos ya no se usan, así que se eliminaron:",
@@ -40,6 +40,6 @@
 	"banner_framing_description": "Muestra un control pequeño en la página de inicio y en la página de cada anime para elegir cómo se encuadra el banner y qué imagen usa primero. La elección se guarda en esta computadora y sigue vigente después de ocultar los controles de nuevo.",
 	"banner_framing_toggle_label": "Mostrar los controles de encuadre del banner",
 	"section_row_style": "Estilo de las filas del inicio",
-	"row_style_description": "Muestra un control pequeño en la página de inicio para elegir cómo presentan sus acciones las filas: junto al título de cada fila o al final de su encabezado, con una franja que delimita la fila mientras el puntero está sobre ella o ella tiene el foco. La elección se guarda en esta computadora y sigue vigente después de ocultar el control de nuevo.",
+	"row_style_description": "Muestra un control pequeño en la página de inicio para elegir dónde ponen sus acciones las filas: junto al título, o al final del encabezado con una franja que aparece cuando el puntero o el foco está en la fila. Tu elección se guarda en esta computadora y sigue vigente después de ocultar el control.",
 	"row_style_toggle_label": "Mostrar el control de estilo de las filas"
 }

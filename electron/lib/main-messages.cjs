@@ -13,11 +13,10 @@
 // (frontend/project.inlang/settings.json), so adding a locale there
 // turns this red until it is added here.
 //
-// The table is those two dialogs and the line the launch splash shows
-// when a step of the boot stalls (lib/splash-progress.cjs), and no
-// more. The pages the OAuth callback server answers the browser with
-// (oauth-server.js) are the main process's text too, and are still
-// English.
+// The table is those two dialogs, the line the launch splash shows
+// when a step of the boot stalls (lib/splash-progress.cjs), and the
+// pages the OAuth callback server answers the browser with after a
+// sign-in (lib/oauth-pages.cjs), and no more.
 
 const BASE_LOCALE = "en";
 
@@ -44,6 +43,11 @@ const TRANSLATIONS = {
     // decided yet (the file if it lands in time, else the saved copy or
     // the defaults), so the line says only that the start goes ahead.
     splashNetworkSlow: "Network is slow — starting in a moment…",
+    // The pages the browser shows after a sign-in (lib/oauth-pages.cjs).
+    oauthConnectedTitle: "Connected to ani-gui",
+    oauthConnectedBody: "You can close this tab and return to the app.",
+    oauthFailedTitle: "Connection failed",
+    oauthFailedBody: "The sign-in was declined or returned an error. Close this tab and try again from ani-gui.",
   },
   "pt-BR": {
     bootFailed: "Não foi possível iniciar o ani-gui",
@@ -59,6 +63,11 @@ const TRANSLATIONS = {
     // The splash's line under its progress rail, while a step stalls.
     splashStartingUp: "Iniciando…",
     splashNetworkSlow: "A conexão está lenta — iniciando em instantes…",
+    // The pages the browser shows after a sign-in (lib/oauth-pages.cjs).
+    oauthConnectedTitle: "Conectado ao ani-gui",
+    oauthConnectedBody: "Pode fechar esta aba e voltar ao app.",
+    oauthFailedTitle: "A conexão falhou",
+    oauthFailedBody: "O login foi recusado ou deu erro. Feche esta aba e tente de novo no ani-gui.",
   },
   "es-419": {
     bootFailed: "No se pudo iniciar ani-gui",
@@ -74,6 +83,11 @@ const TRANSLATIONS = {
     // The splash's line under its progress rail, while a step stalls.
     splashStartingUp: "Iniciando…",
     splashNetworkSlow: "La conexión está lenta — iniciando en un momento…",
+    // The pages the browser shows after a sign-in (lib/oauth-pages.cjs).
+    oauthConnectedTitle: "Conectado a ani-gui",
+    oauthConnectedBody: "Puedes cerrar esta pestaña y volver a la app.",
+    oauthFailedTitle: "No se pudo conectar",
+    oauthFailedBody: "El inicio de sesión fue rechazado o dio un error. Cierra esta pestaña e inténtalo de nuevo desde ani-gui.",
   },
   ru: {
     bootFailed: "Не удалось запустить ani-gui",
@@ -90,6 +104,11 @@ const TRANSLATIONS = {
     // The splash's line under its progress rail, while a step stalls.
     splashStartingUp: "Запуск…",
     splashNetworkSlow: "Сеть работает медленно — запуск через мгновение…",
+    // The pages the browser shows after a sign-in (lib/oauth-pages.cjs).
+    oauthConnectedTitle: "Подключено к ani-gui",
+    oauthConnectedBody: "Можно закрыть эту вкладку и вернуться в приложение.",
+    oauthFailedTitle: "Не удалось подключиться",
+    oauthFailedBody: "Вход отклонён или завершился ошибкой. Закройте эту вкладку и попробуйте снова в ani-gui.",
   },
 };
 
@@ -165,4 +184,4 @@ function messagesFor(locale) {
   return MESSAGES[shippedLocale(locale) || BASE_LOCALE];
 }
 
-module.exports = { LOCALES, TRANSLATIONS, messagesFor, overBase, resolveLocale };
+module.exports = { LOCALES, TRANSLATIONS, messagesFor, overBase, resolveLocale, shippedLocale };

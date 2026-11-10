@@ -36,7 +36,7 @@ pub enum ExternalPlayerKind {
 /// Arguments to the command. Frontend supplies the resolved stream URL +
 /// optional referer. The player command itself comes from the user's
 /// config (default `mpv`).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct LaunchArgs {
     /// The resolved stream URL (mp4 or m3u8).
     pub stream_url: String,
@@ -45,6 +45,7 @@ pub struct LaunchArgs {
     /// Title shown in the player window's titlebar.
     pub title: Option<String>,
     /// Player command, e.g. `"mpv"`. Caller resolves this from settings.
+    /// Blank runs the type's standard program ([`player_program`]).
     pub player_command: String,
     /// Which player flag syntax to use. Old payloads without this
     /// field decode as `Mpv` so existing clients keep working.
@@ -124,25 +125,180 @@ enum SubFlag {
 /// On Windows, `Command::spawn` without `Wait()` already detaches.
 ///
 /// # Errors
-/// - [`AniError::PlayerSpawnFailed`] if the configured player command
-///   can't be spawned (usually means it's not on PATH or the path
-///   doesn't point at an executable). Carries the configured binary
-///   name so the UI can name it in the error toast.
+/// - [`AniError::PlayerSpawnFailed`] if the program can't be spawned
+///   (it was not found where it is installed, or the path doesn't
+///   point at an executable). Carries the program that was
+///   tried: the full path when the standard program was found
+///   installed, its bare name when it was not, the command as written
+///   otherwise. The UI names it in the error toast. A blank Custom command carries the
+///   blank: there is no program to name.
 pub fn open_external_player(args: &LaunchArgs) -> Result<()> {
-    if args.player_command.trim().is_empty() {
+    let Some(program) = launch_program_with(
+        &args.player_command,
+        args.player_kind,
+        &crate::commands::player_locate::locate_installed,
+    ) else {
         return Err(AniError::PlayerSpawnFailed {
             binary: args.player_command.clone(),
         });
-    }
-    let argv = build_argv(args);
-    let mut cmd = std::process::Command::new(&args.player_command);
+    };
+    // The argv is fitted to the program that launches.
+    let launching = LaunchArgs {
+        player_command: program.clone(),
+        ..args.clone()
+    };
+    let argv = build_argv(&launching);
+    // std's Command, not tokio's (AGENTS.md §5), on purpose: the media
+    // player is detached and outlives the backend, so it must not be
+    // killed on drop, and it gets the user's own environment, where
+    // TERM and colour settings are the player's business.
+    let mut cmd = std::process::Command::new(&program);
     cmd.args(&argv)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    spawn_detached(&mut cmd).map_err(|_| AniError::PlayerSpawnFailed {
-        binary: args.player_command.clone(),
+    spawn_detached(&mut cmd).map_err(|_| AniError::PlayerSpawnFailed { binary: program })
+}
+
+/// The program a launch runs: the command the user configured, or,
+/// when it is blank, the type's standard program. A blank Custom
+/// command runs nothing: Custom has no standard program.
+#[must_use]
+pub fn player_program(command: &str, kind: ExternalPlayerKind) -> Option<&str> {
+    if command.trim().is_empty() {
+        kind.standard_program()
+    } else {
+        Some(command)
+    }
+}
+
+/// [`open_external_player`] off the async workers: the lookup it runs
+/// may start reg.exe on Windows, and the spawn itself blocks briefly.
+///
+/// # Errors
+/// As [`open_external_player`]. A launch task that dies reads as a
+/// spawn failure for the program the launch meant
+/// ([`launch_task_failure`]).
+pub async fn open_external_player_off_workers(args: LaunchArgs) -> Result<()> {
+    let failure = launch_task_failure(&args);
+    tokio::task::spawn_blocking(move || open_external_player(&args))
+        .await
+        .unwrap_or(Err(failure))
+}
+
+/// What a launch reports when its task dies before answering.
+#[must_use]
+pub fn launch_task_failure(args: &LaunchArgs) -> AniError {
+    AniError::PlayerSpawnFailed {
+        binary: player_program(&args.player_command, args.player_kind)
+            .unwrap_or_default()
+            .to_string(),
+    }
+}
+
+/// Settings' answer when the lookup task dies before answering.
+#[must_use]
+pub fn standard_program_unknown(kind: ExternalPlayerKind) -> StandardProgram {
+    standard_program_found_on(crate::commands::player_locate::current_os(), kind, &|_| {
+        None
     })
+}
+
+/// The program a launch spawns: [`player_program`], with a standard
+/// program's bare name replaced by where `locate` finds it installed.
+/// A name `locate` cannot find is spawned as it is.
+#[must_use]
+pub fn launch_program_with(
+    command: &str,
+    kind: ExternalPlayerKind,
+    locate: &dyn Fn(&str) -> Option<String>,
+) -> Option<String> {
+    let program = player_program(command, kind)?;
+    Some(installed_or_as_is(program, locate))
+}
+
+/// `program` as `locate` finds it installed, when it is a standard
+/// program's bare name. Otherwise, or when nothing is found, as it is.
+fn installed_or_as_is(program: &str, locate: &dyn Fn(&str) -> Option<String>) -> String {
+    crate::commands::player_locate::standard_name(program)
+        .and_then(locate)
+        .unwrap_or_else(|| program.to_string())
+}
+
+/// The player Syncplay is told to wrap (`--player-path`), from the
+/// configured command.
+#[must_use]
+pub fn syncplay_player_with(
+    command: &str,
+    _kind: ExternalPlayerKind,
+    locate: &dyn Fn(&str) -> Option<String>,
+) -> String {
+    // Blank: no --player-path, so Syncplay opens the player configured
+    // in Syncplay itself, as it always did.
+    if command.trim().is_empty() {
+        return String::new();
+    }
+    installed_or_as_is(command, locate)
+}
+
+/// What a blank command runs for `kind` on this computer: the standard
+/// program's name, and where `locate` finds it installed. Settings
+/// shows it under the External player field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StandardProgram {
+    /// The program's name (`"vlc"`); none for Custom.
+    pub name: Option<&'static str>,
+    /// Where it is installed; none when it was not found.
+    pub path: Option<String>,
+    /// Whether the program exists for this OS at all (IINA is
+    /// macOS-only).
+    pub supported: bool,
+}
+
+/// [`StandardProgram`] for `kind`, found by `locate`.
+#[must_use]
+pub fn standard_program_found(
+    kind: ExternalPlayerKind,
+    locate: &dyn Fn(&str) -> Option<String>,
+) -> StandardProgram {
+    standard_program_found_on(crate::commands::player_locate::current_os(), kind, locate)
+}
+
+/// [`standard_program_found`] on `os`.
+#[must_use]
+pub fn standard_program_found_on(
+    os: crate::commands::player_locate::Os,
+    kind: ExternalPlayerKind,
+    locate: &dyn Fn(&str) -> Option<String>,
+) -> StandardProgram {
+    let name = kind.standard_program();
+    // IINA is a macOS app: there is nothing to find anywhere else.
+    let supported =
+        !(kind == ExternalPlayerKind::Iina && os != crate::commands::player_locate::Os::MacOs);
+    StandardProgram {
+        name,
+        path: if supported {
+            name.and_then(locate)
+        } else {
+            None
+        },
+        supported,
+    }
+}
+
+impl ExternalPlayerKind {
+    /// The program this type runs when the user wrote no command: its
+    /// own name, looked for where it is installed
+    /// ([`crate::commands::player_locate`]). None for Custom.
+    #[must_use]
+    pub fn standard_program(self) -> Option<&'static str> {
+        match self {
+            Self::Mpv => Some("mpv"),
+            Self::Vlc => Some("vlc"),
+            Self::Iina => Some("iina"),
+            Self::Custom => None,
+        }
+    }
 }
 
 /// Spawn with a short retry on ETXTBSY: exec of a freshly written
@@ -150,6 +306,11 @@ pub fn open_external_player(args: &LaunchArgs) -> Result<()> {
 /// write descriptor (the fds are close-on-exec, so the window is
 /// microseconds). Real for just-staged binaries; every other error
 /// surfaces immediately.
+///
+/// The one place the backend spawns with std's Command rather than
+/// tokio's with `kill_on_drop(true)` (AGENTS.md §5): the media player
+/// and Syncplay are the user's programs, detached on purpose, and must
+/// outlive the request that started them.
 pub(crate) fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<()> {
     for _ in 0..5 {
         match cmd.spawn() {
@@ -178,3 +339,7 @@ mod tests;
 #[cfg(test)]
 #[path = "external_player_subtitles_test.rs"]
 mod subtitle_tests;
+
+#[cfg(test)]
+#[path = "external_player_prop_test.rs"]
+mod prop_tests;

@@ -50,13 +50,13 @@
 			"declarations": ["input available", "local availablePlural = available: plural"],
 			"selectors": ["availablePlural"],
 			"match": {
-				"availablePlural=one": " — {announced} are announced but only {available} has been released so far.",
-				"availablePlural=*": " — {announced} are announced but only {available} have been released so far."
+				"availablePlural=one": ". {announced} are announced, but only {available} has been released so far.",
+				"availablePlural=*": ". {announced} are announced, but only {available} have been released so far."
 			}
 		}
 	],
 	"hint_all_nogap_suffix": ".",
-	"hint_all_unknown": "Episode count unknown — use Range to specify.",
+	"hint_all_unknown": "The episode count is unknown. Use Range to pick episodes.",
 	"hint_range": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -69,9 +69,9 @@
 	],
 	"label_directory": "Save to",
 	"button_browse": "Browse…",
-	"hint_filename_prefix": "Files land as ",
+	"hint_filename_prefix": "Files are saved as ",
 	"hint_filename_template": "{title} Episode N.mp4",
-	"hint_filename_suffix": " — the naming is not configurable.",
+	"hint_filename_suffix": ". The name can't be changed.",
 	"hint_quality": "Quality: {quality}. Change it in Settings.",
 	"button_cancel": "Cancel",
 	"button_confirm": "Start download",
@@ -167,8 +167,8 @@
 	"dock_dismiss_aria_label": "Dismiss",
 	"dock_dismiss_title": "Dismiss",
 	"error_ffmpeg_missing_headline": "Download needs ffmpeg",
-	"error_ffmpeg_missing_body_win32": "ani-gui uses ffmpeg to save downloads as MP4, but it isn't installed on this system. The installer normally fetches it during setup — re-run the installer with an internet connection, or install ffmpeg manually.",
-	"error_ffmpeg_missing_body_linux": "ani-gui uses ffmpeg to save downloads as MP4, but it isn't installed on this system. Install it via your distribution's package manager — for example `sudo apt install ffmpeg` (Debian/Ubuntu), `sudo dnf install ffmpeg` (Fedora), or `sudo pacman -S ffmpeg` (Arch).",
+	"error_ffmpeg_missing_body_win32": "ani-gui uses ffmpeg to save downloads as MP4, but it isn't installed on this system. The installer normally downloads it during setup. Run the installer again while online, or install ffmpeg yourself.",
+	"error_ffmpeg_missing_body_linux": "ani-gui uses ffmpeg to save downloads as MP4, but it isn't installed on this system. Install it with your distribution's package manager, for example `sudo apt install ffmpeg` (Debian/Ubuntu), `sudo dnf install ffmpeg` (Fedora) or `sudo pacman -S ffmpeg` (Arch).",
 	"error_ffmpeg_missing_body_darwin": "ani-gui uses ffmpeg to save downloads as MP4, but it isn't installed on this system. Install it via Homebrew with `brew install ffmpeg`, or download a build manually.",
 	"error_ffmpeg_missing_action_label": "Download ffmpeg",
 	"status_already_here": "That episode is already in this folder. Keeping the existing file.",

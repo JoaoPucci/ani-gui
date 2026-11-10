@@ -1,5 +1,5 @@
 /**
- * Copy for an "Open in external player" failure. Kept beside
+ * Copy for a failed launch from the "Open in …" (external player) item. Kept beside
  * `error-copy.ts`, whose play-failure mapper it falls back to, rather
  * than inside it, so neither file carries both surfaces' branching.
  */
@@ -7,9 +7,10 @@
 import { m } from '$lib/paraglide/messages';
 import { describePlayFailure, type OtherAudio } from './error-copy';
 
-/** User-facing copy for an "Open in external player" failure. The
- *  common case is a `player_spawn_failed` payload — the configured
- *  binary isn't on PATH or doesn't exist. Other resolve-step
+/** User-facing copy for a failed external-player launch. The
+ *  common case is a `player_spawn_failed` payload: the program wasn't
+ *  found where it is installed or doesn't exist, or (an empty `binary`) a blank Custom
+ *  command left no program to run. Other resolve-step
  *  failures (scraper / timeout / network) reuse `describePlayFailure`
  *  so the user doesn't get a debug-y "External player failed:
  *  scraper" string.
@@ -21,12 +22,10 @@ import { describePlayFailure, type OtherAudio } from './error-copy';
  *  verdict (see `describePlayFailure`). */
 export function describeExternalLaunchFailure(e: unknown, otherAudio: OtherAudio): string {
 	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
-	if (
-		obj &&
-		obj.kind === 'player_spawn_failed' &&
-		typeof obj.binary === 'string' &&
-		obj.binary.length > 0
-	) {
+	if (obj && obj.kind === 'player_spawn_failed' && typeof obj.binary === 'string') {
+		// No program to name: a blank Custom command, which waiting
+		// cannot fix.
+		if (obj.binary.trim().length === 0) return m.play_external_spawn_failed_unset();
 		return m.play_external_spawn_failed_named({ binary: obj.binary });
 	}
 	// Other failures (scraper / timeout / network on the resolve

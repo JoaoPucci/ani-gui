@@ -105,6 +105,10 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/history/:id", delete(delete_history_entry))
         .route("/api/external-player", post(post_external_player))
+        .route(
+            "/api/external-player/standard",
+            get(get_external_player_standard),
+        )
         .route("/api/sessions", post(post_session))
         .route("/api/kitsu/search", post(post_kitsu_search))
         .route("/api/kitsu/search/page", post(post_kitsu_search_page))
@@ -244,8 +248,31 @@ async fn get_history_number(
 async fn post_external_player(
     Json(args): Json<external_player::LaunchArgs>,
 ) -> Result<StatusCode, AniError> {
-    external_player::open_external_player(&args)?;
+    external_player::open_external_player_off_workers(args).await?;
     Ok(StatusCode::ACCEPTED)
+}
+
+/// `?kind=` of the standard-program question.
+#[derive(Debug, Deserialize)]
+struct StandardProgramQuery {
+    kind: external_player::ExternalPlayerKind,
+}
+
+/// What a blank External player command runs for a type on this
+/// computer, and where it is installed (Settings' hint).
+async fn get_external_player_standard(
+    Query(q): Query<StandardProgramQuery>,
+) -> Json<external_player::StandardProgram> {
+    Json(
+        tokio::task::spawn_blocking(move || {
+            external_player::standard_program_found(
+                q.kind,
+                &crate::commands::player_locate::locate_installed,
+            )
+        })
+        .await
+        .unwrap_or_else(|_| external_player::standard_program_unknown(q.kind)),
+    )
 }
 
 async fn post_session(
@@ -879,6 +906,10 @@ mod kitsu_search_page_test;
 #[cfg(test)]
 #[path = "flags_test.rs"]
 mod flags_tests;
+
+#[cfg(test)]
+#[path = "external_standard_test.rs"]
+mod external_standard_tests;
 
 #[cfg(test)]
 mod tests {

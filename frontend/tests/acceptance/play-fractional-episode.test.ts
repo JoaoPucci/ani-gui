@@ -36,6 +36,7 @@ vi.mock('$lib/account/push-watched', () => ({
 
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import { externalOpenLabel } from '../../src/lib/play/external-label';
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -215,8 +216,8 @@ describe('play route — on a fractional extra', () => {
 		await mountOnRecap();
 		await until(() => moreButton() !== null, 'the More actions button');
 		moreButton()!.click();
-		await until(() => menuItem(m.play_external_label()) !== undefined, 'the external item');
-		menuItem(m.play_external_label())!.click();
+		await until(() => menuItem(externalOpenLabel('mpv')) !== undefined, 'the external item');
+		menuItem(externalOpenLabel('mpv'))!.click();
 		await until(() => seen.external.length === 1, 'the external-player request');
 		expect(seen.external[0].episode).toBe('7.5');
 	});

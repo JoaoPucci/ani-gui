@@ -3,7 +3,7 @@
 	"section_app_info": "Informações do app",
 	"section_history_title": "Continuar assistindo ({count})",
 	"section_history_title_loading": "Continuar assistindo",
-	"history_empty": "Nenhuma entrada ainda. Assista algo e aparecerá aqui.",
+	"history_empty": "Nada por aqui ainda. Assista a algo e ele aparece aqui.",
 	"refresh_button": "Atualizar",
 	"clear_history_button": "Limpar histórico",
 	"section_metadata_cache": "Cache de metadados",
@@ -32,7 +32,7 @@
 	"cache_reclaim_expired": "Vencidos: {count}",
 	"section_retired_sweep": "Limpeza após a remoção de um provedor",
 	"retired_sweep_superseded": "Estas entradas do histórico foram substituídas por outras mais recentes do mesmo anime, então foram removidas:",
-	"retired_sweep_renumbered": "Estas entradas do histórico foram mantidas; só mudou a forma como o episódio é guardado:",
+	"retired_sweep_renumbered": "Estas entradas do histórico foram mantidas. Só mudou a forma como o episódio é guardado:",
 	"retired_sweep_stored": "Registros guardados que nada mais lê, removidos: {count}",
 	"section_legacy_sweep": "Removido na atualização",
 	"legacy_sweep_description": "Estes arquivos não são mais usados, então foram excluídos:",
@@ -40,6 +40,6 @@
 	"banner_framing_description": "Mostra um pequeno controle na página inicial e na página de cada anime para escolher como o banner é enquadrado e qual imagem ele usa primeiro. A escolha fica salva neste computador e continua valendo depois que os controles são ocultados de novo.",
 	"banner_framing_toggle_label": "Mostrar os controles de enquadramento do banner",
 	"section_row_style": "Estilo das fileiras do início",
-	"row_style_description": "Mostra um pequeno controle na página inicial para escolher como as fileiras apresentam suas ações: ao lado do título de cada fileira ou no fim do cabeçalho, com uma faixa que delimita a fileira enquanto o ponteiro está sobre ela ou ela tem o foco. A escolha fica salva neste computador e continua valendo depois que o controle é ocultado de novo.",
+	"row_style_description": "Mostra um pequeno controle na página inicial para escolher onde ficam as ações das fileiras: ao lado do título, ou no fim do cabeçalho com uma faixa que aparece quando o ponteiro ou o foco está na fileira. A escolha fica salva neste computador e continua valendo depois que você esconde o controle.",
 	"row_style_toggle_label": "Mostrar o controle de estilo das fileiras"
 }
