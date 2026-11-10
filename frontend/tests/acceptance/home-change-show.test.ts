@@ -873,3 +873,43 @@ describe("an Undo from a card's notice, once Home moved on", () => {
 		expect(historyReads).toBe(reads);
 	});
 });
+
+describe('two pills clicked close together', () => {
+	// Each pill checks its card's guess again before its picker opens,
+	// reading the history. JoJo's pill is clicked, then Black Clover's,
+	// and JoJo's check answers first, while Black Clover's is still out.
+	const held: (() => void)[] = [];
+	let hold = false;
+	beforeEach(() => {
+		hold = false;
+		held.length = 0;
+		// Held reads answer nothing on release: the fake backend's own
+		// route answers them.
+		server.use(
+			http.get(`${API_BASE}/api/history`, async () => {
+				if (hold) await new Promise<void>((resolve) => held.push(resolve));
+			})
+		);
+	});
+
+	it("leaves the first card's pill, and opens the later card's picker", async () => {
+		await openHome();
+		hold = true;
+		pill(JOJO_CARD)!.click();
+		await until(() => held.length === 1, "JoJo's check");
+		pill(BC_CARD)!.click();
+		await until(() => held.length === 2, "Black Clover's check");
+		hold = false;
+		held[0]();
+		await settle();
+		// JoJo's card is no less a guess for being overtaken.
+		expect(pill(JOJO_CARD)).not.toBeNull();
+		held[1]();
+		await until(() => dialog()?.open === true, "Black Clover's picker");
+		expect(dialog()!.textContent).toContain(
+			m.detail_link_dialog_body({ episode: '2', title: BC_TITLE })
+		);
+		await settle();
+		expect(pill(JOJO_CARD)).not.toBeNull();
+	});
+});
