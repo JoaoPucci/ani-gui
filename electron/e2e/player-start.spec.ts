@@ -240,7 +240,7 @@ test("a stream on its way reads Pause with the loading indicator on, until its f
 });
 
 /* Gintama's own titles, from Kitsu: the longest show title and the
- * longest episode title among its entries, on its 367th episode. The
+ * longest episode titles among its entries, on its 367th episode. The
  * title card must keep them inside the frame, above the controls, the
  * episode title on two lines at most and the loader in sight, with each
  * locale's own caption. */
@@ -254,8 +254,11 @@ const longEpisode = {
   id: "ep-367",
   number: 367,
   relative_number: 367,
+  // Gintama's three longest episode titles joined: at the window the
+  // test sets (below), long enough that the clamp must cut it, so the
+  // check is a check of the clamp.
   canonical_title:
-    "Do Something Uncharacteristic, and Something Uncharacteristic Will Happen",
+    "Do Something Uncharacteristic, and Something Uncharacteristic Will Happen. Two in Girl Years Is Equal to Ten in Man Years. The Unemployed Cannot Be Stained By Anything",
 };
 
 const startingCaption: Record<string, string> = {
@@ -264,6 +267,35 @@ const startingCaption: Record<string, string> = {
   "es-419": "Cargando episodio 367",
   ru: "Загрузка серии 367",
 };
+
+/** The window the layout case is measured in, set on the page's own
+ *  window: the card's type scales with the frame, whose height follows
+ *  the window's, and a short frame drops the show line, so the case
+ *  holds the window still rather than measure whatever the session
+ *  gave it. Under Xvfb there is no window manager, and the app's own
+ *  maximize can land after launch, so the request is repeated until
+ *  the size holds. */
+const WINDOW = { width: 1280, height: 960 };
+async function holdWindow(app: ElectronApplication, page: Page) {
+  const win = await app.browserWindow(page);
+  for (let i = 0; i < 50; i++) {
+    await win.evaluate((w, size) => {
+      if (w.isMaximized()) w.unmaximize();
+      w.setContentSize(size.width, size.height);
+    }, WINDOW);
+    if (
+      await page.evaluate(
+        (size) =>
+          window.innerWidth === size.width &&
+          window.innerHeight === size.height,
+        WINDOW,
+      )
+    )
+      return;
+    await page.waitForTimeout(200);
+  }
+  throw new Error(`the window never reached ${WINDOW.width}x${WINDOW.height}`);
+}
 
 for (const locale of ["en", "pt-BR", "es-419", "ru"]) {
   test(`the title card keeps Gintama's longest titles inside the frame (${locale})`, async () => {
@@ -285,6 +317,7 @@ for (const locale of ["en", "pt-BR", "es-419", "ru"]) {
       const url = new URL(page.url());
       url.pathname = `/play/${continueKitsuMatch.id}`;
       url.search = `?session=${sid}&episode=367&kind=hls`;
+      await holdWindow(app, page);
       await page.goto(url.toString());
       await page.locator(".start-veil[data-look='card'] .card-title").waitFor();
       await expect(page.locator(".start-veil .card-title")).toHaveText(
