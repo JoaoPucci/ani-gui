@@ -57,6 +57,18 @@ describe('mergeRecents', () => {
 		]);
 	});
 
+	it('replaces an entry that differs from the query only in case or spacing', () => {
+		expect(mergeRecents(['one piece', 'jojo'], 'One  Piece')).toEqual(['One  Piece', 'jojo']);
+	});
+
+	it('collapses entries in the existing list that are the same search', () => {
+		expect(mergeRecents(['Jojo', 'jojo ', 'bleach'], 'naruto')).toEqual([
+			'naruto',
+			'Jojo',
+			'bleach'
+		]);
+	});
+
 	it('caps the result at `max`', () => {
 		const existing = ['a', 'b', 'c', 'd', 'e'];
 		expect(mergeRecents(existing, 'f', 5)).toEqual(['f', 'a', 'b', 'c', 'd']);
@@ -92,6 +104,25 @@ describe('parseStoredRecents', () => {
 	it('caps at max', () => {
 		const raw = JSON.stringify(['a', 'b', 'c', 'd', 'e', 'f']);
 		expect(parseStoredRecents(raw, 3)).toEqual(['a', 'b', 'c']);
+	});
+
+	it('lists a repeated entry once, at its first place', () => {
+		const raw = JSON.stringify(['naruto', 'jojo', 'naruto', 'bleach']);
+		expect(parseStoredRecents(raw)).toEqual(['naruto', 'jojo', 'bleach']);
+	});
+
+	it('counts entries that differ only in case or spacing as one search, as the search does', () => {
+		const raw = JSON.stringify(['One Piece', 'one piece', '  ONE   PIECE ']);
+		expect(parseStoredRecents(raw)).toEqual(['One Piece']);
+	});
+
+	it('drops empty and blank entries and trims the rest', () => {
+		expect(parseStoredRecents(JSON.stringify(['', '   ', ' jojo  ']))).toEqual(['jojo']);
+	});
+
+	it('does not let repeats use up the cap', () => {
+		const raw = JSON.stringify(['a', 'a', 'A', 'b', 'c', 'd', 'e', 'f']);
+		expect(parseStoredRecents(raw, 5)).toEqual(['a', 'b', 'c', 'd', 'e']);
 	});
 });
 
@@ -204,6 +235,67 @@ describe('mergeRecents (properties)', () => {
 				const out = mergeRecents(existing, query, RECENT_LIMIT);
 				const existingSet = new Set(existing);
 				return out.every((x) => x === query || existingSet.has(x));
+			})
+		);
+	});
+});
+
+/** How a search is matched: case aside, with its spacing collapsed —
+ *  the rule the backend's search cache keys a query by. Two recent
+ *  entries with the same key are the same search. */
+const searchKey = (q: string) => q.trim().toLowerCase().split(/\s+/).join(' ');
+
+describe('recent searches with repeats (properties)', () => {
+	// A pool small enough that repeats, case variants and spacing
+	// variants are common, mixed with the other shapes a corrupted
+	// stored value can hold.
+	const entry = fc.oneof(
+		fc.constantFrom('naruto', 'Naruto', ' naruto ', 'one piece', 'One  Piece', 'jojo', 'bleach'),
+		fc.constantFrom('', '   '),
+		fc.string({ maxLength: 6 }),
+		fc.integer(),
+		fc.constant(null),
+		fc.constant({ q: 'naruto' })
+	);
+	const stored = fc.array(entry, { maxLength: 30 });
+	const maxes = fc.integer({ min: 1, max: 10 });
+
+	it('reads back no search twice, and no blank or untrimmed entry', () => {
+		fc.assert(
+			fc.property(stored, maxes, (list, max) => {
+				const out = parseStoredRecents(JSON.stringify(list), max);
+				expect(new Set(out.map(searchKey)).size).toBe(out.length);
+				for (const q of out) {
+					expect(q).toBe(q.trim());
+					expect(q.length).toBeGreaterThan(0);
+				}
+			})
+		);
+	});
+
+	it('keeps each search as its first entry, in stored order, dropping only repeats and the cap', () => {
+		fc.assert(
+			fc.property(stored, maxes, (list, max) => {
+				const out = parseStoredRecents(JSON.stringify(list), max);
+				const strings = list
+					.filter((x): x is string => typeof x === 'string')
+					.map((x) => x.trim())
+					.filter((x) => x.length > 0);
+				const firstAt = out.map((q) => strings.findIndex((x) => searchKey(x) === searchKey(q)));
+				out.forEach((q, i) => expect(q).toBe(strings[firstAt[i]]));
+				expect(firstAt).toEqual([...firstAt].sort((a, b) => a - b));
+				const distinct = new Set(strings.map(searchKey)).size;
+				expect(out.length).toBe(Math.min(max, distinct));
+			})
+		);
+	});
+
+	it('a new search never leaves two entries for the same search', () => {
+		fc.assert(
+			fc.property(stored, fc.constantFrom('naruto', 'NARUTO', 'one  piece', 'jojo'), (list, q) => {
+				const out = mergeRecents(parseStoredRecents(JSON.stringify(list)), q);
+				expect(out[0]).toBe(q);
+				expect(new Set(out.map(searchKey)).size).toBe(out.length);
 			})
 		);
 	});
