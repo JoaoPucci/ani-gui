@@ -1,22 +1,27 @@
 /**
- * The discovery rows the search page shows while nothing has been
- * asked: what each row's request has come to, and what the page draws
- * for it.
+ * Rows of cards stacked down a page, each loaded on its own: what each
+ * row's request has come to, and what the page draws for it. The search
+ * page's discovery rows, shown while nothing has been asked, are one
+ * such stack (loadDiscoveryRows loads them); the home page's rows are
+ * another ($lib/home/rows).
  *
  * The rows are fetched side by side and each lands when it lands, so
  * the order they answer in is not the order they are drawn in.
  */
 
-/** Where one row's request stands: still out, answered (after the
- *  availability filter has had its say), or failed. */
+/** Where one row's request stands: not yet known to exist, still out,
+ *  answered (after the availability filter has had its say), or
+ *  failed. */
 export type RowLoad<T> =
+	| { kind: 'pending' }
 	| { kind: 'loading' }
 	| { kind: 'ready'; items: readonly T[] }
 	| { kind: 'failed' };
 
-/** What the page draws in one row's place: a skeleton strip, the row,
- *  or nothing at all. */
+/** What the page draws in one row's place: nothing yet, a skeleton
+ *  strip, the row, or nothing at all. */
 export type RowSlot<T> =
+	| { kind: 'held' }
 	| { kind: 'skeleton' }
 	| { kind: 'shown'; items: readonly T[] }
 	| { kind: 'absent' };
@@ -30,6 +35,7 @@ export interface DiscoveryView<T> {
 }
 
 export const LOADING: RowLoad<never> = { kind: 'loading' };
+export const PENDING: RowLoad<never> = { kind: 'pending' };
 
 /** A row's request, as a load that never rejects. */
 export function settleRow<T>(request: Promise<readonly T[]>): Promise<RowLoad<T>> {
@@ -47,10 +53,20 @@ export function settleRow<T>(request: Promise<readonly T[]>): Promise<RowLoad<T>
  * still loading. A row that failed, or that the availability filter
  * emptied, is dropped. Dropping one can move only skeletons, never a
  * shown row, because a row is shown only when everything above it is
- * already final. */
+ * already final.
+ *
+ * A row not yet known to exist has no skeleton to hold its place, so
+ * nothing in it or below it is drawn until it is known: drawn earlier,
+ * a row below would be pushed down when it turned out to be there. */
 export function discoveryView<T>(rows: readonly RowLoad<T>[]): DiscoveryView<T> {
 	let aboveSettled = true;
+	let abovePending = false;
 	const slots = rows.map((row): RowSlot<T> => {
+		if (abovePending || row.kind === 'pending') {
+			abovePending = true;
+			aboveSettled = false;
+			return { kind: 'held' };
+		}
 		if (row.kind === 'loading') {
 			aboveSettled = false;
 			return { kind: 'skeleton' };

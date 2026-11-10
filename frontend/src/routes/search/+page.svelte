@@ -24,6 +24,7 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import SearchProgress from '$lib/components/SearchProgress.svelte';
 	import Strip from '$lib/components/Strip.svelte';
+	import SkeletonRow from '$lib/components/SkeletonRow.svelte';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { filterAvailableProgressive } from '$lib/availability/progressive';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
@@ -48,7 +49,7 @@
 	import { cardPositions, scrollToAnchor } from '$lib/search/scroll-anchor';
 	import { followAddress } from '$lib/search/follow-address';
 	import { arrive, emptyView, type SearchView } from '$lib/search/arrival';
-	import { discoveryView, loadDiscoveryRows, LOADING, type RowLoad } from '$lib/search/discovery';
+	import { discoveryView, loadDiscoveryRows, LOADING, type RowLoad } from '$lib/rows/discovery';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
@@ -78,7 +79,7 @@
 	// browse when they arrive without a query. Trending is the home
 	// page's AniList list (kitsuTrendingAnilist, cached by the backend
 	// for an hour) and is drawn first, Top rated below it; what each
-	// slot shows is decided in $lib/search/discovery.ts.
+	// slot shows is decided in $lib/rows/discovery.ts.
 	let rowLoads = $state<[RowLoad<KitsuAnimeRef>, RowLoad<KitsuAnimeRef>]>([LOADING, LOADING]);
 	const discovery = $derived(discoveryView(rowLoads));
 	const trendingSlot = $derived(discovery.slots[0]);
@@ -182,7 +183,7 @@
 	onMount(() => void loadDiscovery());
 
 	/** Ask for both discovery rows, each landing in its own slot
-	 *  ($lib/search/discovery: loadDiscoveryRows). Also the notice's
+	 *  ($lib/rows/discovery: loadDiscoveryRows). Also the notice's
 	 *  Try again. */
 	function loadDiscovery() {
 		rowLoads = [LOADING, LOADING];
@@ -386,27 +387,6 @@
 	<title>{m.app_page_title_search()}</title>
 </svelte:head>
 
-<!-- A discovery row still loading: its header, and placeholder cards
-     that take the room the cards they stand in for will take — a
-     poster, a title wrapped to two lines (PosterCard clamps there, and a
-     strip is as tall as its tallest card, which in a row of twenty
-     almost always has a wrapped title) and the meta line, on the same
-     line boxes as PosterCard's. -->
-{#snippet skeletonRow(eyebrow: string, caption: string)}
-	<Strip {eyebrow} {caption}>
-		{#each Array.from({ length: 8 }, (_, k) => k) as i (i)}
-			<div class="skel-card" aria-hidden="true">
-				<div class="skel-poster"></div>
-				<div class="skel-body">
-					<span class="skel-title" style="--bar: 85%;">&nbsp;</span>
-					<span class="skel-title" style="--bar: 55%;">&nbsp;</span>
-					<span class="skel-meta">&nbsp;</span>
-				</div>
-			</div>
-		{/each}
-	</Strip>
-{/snippet}
-
 <div class="page" bind:this={pageEl}>
 	<SearchProgress {busy} />
 	<header class="page-header">
@@ -542,7 +522,7 @@
 		<!-- No query yet: the discovery rows. A row keeps a skeleton in
 		     its place until every row above it has settled, so a row on
 		     screen is never pushed down; a row that failed or came back
-		     empty is dropped ($lib/search/discovery). -->
+		     empty is dropped ($lib/rows/discovery). -->
 		<!-- Mounted with the rows, so a notice that appears once the rows
 		     have been asked for lands in a live region already in place
 		     and is announced. Focus on its Try again, which leaves as the
@@ -565,10 +545,10 @@
 			{/if}
 		</div>
 		{#if trendingSlot.kind === 'skeleton'}
-			{@render skeletonRow(
-				m.search_discovery_trending_eyebrow(),
-				m.search_discovery_trending_caption_loading()
-			)}
+			<SkeletonRow
+				eyebrow={m.search_discovery_trending_eyebrow()}
+				caption={m.search_discovery_trending_caption_loading()}
+			/>
 		{:else if trendingSlot.kind === 'shown'}
 			<Strip
 				eyebrow={m.search_discovery_trending_eyebrow()}
@@ -580,10 +560,10 @@
 			</Strip>
 		{/if}
 		{#if topRatedSlot.kind === 'skeleton'}
-			{@render skeletonRow(
-				m.search_discovery_top_rated_eyebrow(),
-				m.search_discovery_top_rated_caption_loading()
-			)}
+			<SkeletonRow
+				eyebrow={m.search_discovery_top_rated_eyebrow()}
+				caption={m.search_discovery_top_rated_caption_loading()}
+			/>
 		{:else if topRatedSlot.kind === 'shown'}
 			<Strip
 				eyebrow={m.search_discovery_top_rated_eyebrow()}
@@ -983,57 +963,6 @@
 	}
 	.line-thin {
 		block-size: 0.6rem;
-	}
-	/* A discovery row's placeholder card. The strip sizes it like the
-	   cards it stands in for; the body repeats PosterCard's card-body,
-	   card-title and card-meta boxes (padding, font size, line height),
-	   each line carried by a non-breaking space with a pulsing bar
-	   drawn over it from the line's start edge. */
-	.skel-card {
-		display: block;
-	}
-	.skel-body {
-		display: block;
-		padding-block-start: var(--space-3);
-	}
-	.skel-title,
-	.skel-meta {
-		position: relative;
-	}
-	.skel-title::before,
-	.skel-meta::before {
-		content: '';
-		position: absolute;
-		inset-inline-start: 0;
-		inset-block: 0;
-		margin-block: auto;
-		inline-size: var(--bar, 100%);
-		background: var(--ink-100);
-		border-radius: 2px;
-		animation: pulse 1.6s var(--ease-in-out) infinite;
-	}
-	.skel-title {
-		display: block;
-		font-size: 0.9375rem;
-		line-height: 1.3;
-	}
-	.skel-title::before {
-		block-size: 0.75rem;
-	}
-	.skel-meta {
-		display: inline-flex;
-		inline-size: 40%;
-		margin-block-start: var(--space-2);
-		font-size: 0.75rem;
-	}
-	.skel-meta::before {
-		block-size: 0.6rem;
-	}
-	.skel-poster {
-		aspect-ratio: var(--poster-aspect);
-		background: var(--ink-100);
-		border-radius: var(--radius-card);
-		animation: pulse 1.6s var(--ease-in-out) infinite;
 	}
 	@keyframes pulse {
 		0%,

@@ -21,6 +21,7 @@ export interface HydrateTarget {
 	accountGeneration: Record<Provider, number>;
 	accountChanging: Record<Provider, boolean>;
 	keyringWaiting: boolean;
+	readsSettled: boolean;
 	bumpGeneration(provider: Provider): void;
 	nextChange(provider: Provider): Promise<void>;
 	refreshExpired(only?: Provider): Promise<void>;

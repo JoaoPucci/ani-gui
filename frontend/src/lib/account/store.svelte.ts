@@ -6,7 +6,8 @@
  * connect / disconnect / sync actions, and read by:
  *
  *   - /account page — surface state per provider
- *   - home Watch Later rail — gate render on hasAny
+ *   - home Watch Later rail — which sign-ins it reads, readsSettled and
+ *     keyringWaiting (whether the sign-ins are known yet)
  *   - AccountChip — avatar + amber dot
  */
 
@@ -99,6 +100,14 @@ class AccountStore {
 	 * keyring notice.
 	 */
 	keyringWaiting = $state(false);
+
+	/**
+	 * True once a hydrate's first reads of the saved sign-ins have all
+	 * answered, whatever they found (see `$lib/account/hydrate-flow`).
+	 * Until then the store shows every provider signed out whether or
+	 * not one is signed in. It stays true from then on.
+	 */
+	readsSettled = $state(false);
 
 	/**
 	 * Read every provider's persisted token (via the OS keyring) and seed
