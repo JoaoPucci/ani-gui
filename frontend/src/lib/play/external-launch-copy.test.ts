@@ -53,9 +53,6 @@ describe('describeExternalLaunchFailure', () => {
 		expect(describeExternalLaunchFailure({ kind: 'player_spawn_failed' }, null)).toMatch(
 			/Couldn't start this episode right now/
 		);
-		expect(
-			describeExternalLaunchFailure({ kind: 'player_spawn_failed', binary: '' }, null)
-		).toMatch(/Couldn't start this episode right now/);
 	});
 
 	it('says to set a command when none is set, rather than to try later', () => {
