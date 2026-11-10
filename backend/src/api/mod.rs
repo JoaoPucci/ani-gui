@@ -881,6 +881,10 @@ mod kitsu_search_page_test;
 mod flags_tests;
 
 #[cfg(test)]
+#[path = "external_standard_test.rs"]
+mod external_standard_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::meta::kitsu::KitsuClient;
