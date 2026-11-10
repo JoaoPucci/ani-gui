@@ -73,6 +73,17 @@ test("no message joins two sentences with a semicolon", () => {
   }
 });
 
+// Nor sets an aside off with an em dash. The launch splash's status
+// lines keep theirs: the dash there is the maintainer's choice.
+test("no message sets an aside off with an em dash, the splash's lines aside", () => {
+  for (const [locale, table] of Object.entries(TRANSLATIONS)) {
+    for (const [key, value] of Object.entries(table)) {
+      if (key.startsWith("splash")) continue;
+      assert.ok(!String(text(value)).includes(" — "), `${locale}.${key}`);
+    }
+  }
+});
+
 // A message one locale lacks. The tests above keep the shipped tables
 // complete, but the lookup must not depend on that: its callers index
 // it blind, and one of them is the quit prompt, which runs after the

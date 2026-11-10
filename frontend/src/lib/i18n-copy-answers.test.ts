@@ -130,6 +130,7 @@ describe('a message about the show says "anime"', () => {
 		'backend.error_play_stream_server_failed',
 		'backend.error_search_no_results',
 		'detail.actions_aria_label',
+		'detail.audio_note_show',
 		'detail.error_load_headline',
 		'detail.error_play_no_results',
 		'detail.meta_row_aria_label',
@@ -151,7 +152,8 @@ describe('a message about the show says "anime"', () => {
 		'play.play_failure_episode_unavailable_try_other_audio',
 		'play.error_no_show_id',
 		'play.error_load_failed',
-		'settings.field_custom_controls_hint'
+		'settings.field_custom_controls_hint',
+		'settings.field_audio_default_hint'
 	];
 	// A whole word: "subtítulos" is not the word.
 	for (const locale of ['pt-BR', 'es-419']) {
@@ -174,6 +176,7 @@ describe('Russian headings end without a full stop', () => {
 		'account.watch_later_empty',
 		'account.watch_later_failed',
 		'detail.episodes_heading',
+		'diagnostics.section_row_style',
 		'detail.synopsis_heading',
 		'detail.error_load_headline',
 		'detail.error_no_id_headline',
@@ -192,6 +195,7 @@ describe('Russian headings end without a full stop', () => {
 		'play.error_external_headline_single',
 		'play.error_syncplay_headline',
 		'play.error_syncplay_headline_single',
+		'rows.style_group_label',
 		// The empty-search headline is "prefix «query» suffix".
 		'search.empty_headline_suffix',
 		'search.filtered_empty_headline',
@@ -215,7 +219,16 @@ describe('one phrase per term', () => {
 	});
 
 	it('Russian says «Попробуйте снова», never «Попробуйте ещё раз»', () => {
-		expect(offenders('ru', (s) => /Попробуйте е[её] раз/i.test(s))).toEqual([]);
+		expect(offenders('ru', (s) => /Попробуйте ещ[её] раз/i.test(s))).toEqual([]);
+	});
+
+	it('the Russian check reads «ещё» and «еще» as the word they are', () => {
+		// The pattern once read "е", one letter, " раз": three letters
+		// short of «ещё», so it matched nothing and passed every message.
+		const again = /Попробуйте ещ[её] раз/i;
+		expect(again.test('Не удалось. Попробуйте ещё раз.')).toBe(true);
+		expect(again.test('Не удалось. Попробуйте еще раз.')).toBe(true);
+		expect(again.test('Не удалось. Попробуйте снова.')).toBe(false);
 	});
 
 	it('Russian never calls the streaming source «Источник видео»', () => {
