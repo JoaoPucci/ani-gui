@@ -361,6 +361,9 @@
 	// stream it brings ends the handoff as it attaches, and the one it
 	// replaces is not started again meanwhile.
 	let replacingHandoff = false;
+	// The URL of the src stream a handoff unloaded, while it waits for
+	// the viewer.
+	let unloadedFor = $state<string | null>(null);
 	/** The episode went to another player: a hold ends without
 	 *  starting anything, a start stops, the engine stops loading, and
 	 *  the element no longer starts on its own. A stream the element
@@ -374,6 +377,19 @@
 		hls?.stopLoad();
 		replacingHandoff = false;
 		handoff.handOff();
+		// A stream the element plays from its src has no engine to stop,
+		// and paused, the browser may go on buffering it: it is let go of
+		// as a switch lets go of one. The flush keeps where it was (its
+		// listeners write the playhead while the stream is still open)
+		// and retires them, so nothing the unload reports is written;
+		// the teardown then unloads it. The attach waits while its URL
+		// is the one let go of, and the viewer's return attaches it
+		// again as a resume: at its kept point, with its subtitles.
+		if (hls === null && attachedUrl !== null) {
+			unloadedFor = attachedUrl;
+			sourceScope.flush();
+			teardown();
+		}
 	}
 	/** The viewer picked another stream from here (an episode, Reload). */
 	function comeBackWith() {
@@ -382,6 +398,8 @@
 	/** The viewer is back on the embedded player. */
 	function comeBack() {
 		replacingHandoff = false;
+		// The stream the handoff let go of attaches again.
+		unloadedFor = null;
 		if (!handoff.handedOff) return;
 		ownVideo.autoplay = true;
 		handoff.comeBack();
@@ -1956,6 +1974,12 @@
 
 	$effect(() => {
 		if (!videoEl || !mediaUrl) return;
+		// The stream a handoff let go of waits for the viewer; another
+		// one (a pick, a Reload's fresh session) attaches, and ends it.
+		if (unloadedFor !== null) {
+			if (mediaUrl === unloadedFor) return;
+			unloadedFor = null;
+		}
 		// The stream already attached from this URL keeps playing: the
 		// effect can run again without its source changing, and
 		// re-attaching would restart playback from 0. A recovery lands
