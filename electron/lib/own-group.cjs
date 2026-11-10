@@ -86,10 +86,11 @@ function leaderState(child, { exe, readFile, readLink }) {
 		let running;
 		try {
 			running = readLink(`/proc/${pid}/exe`);
-		} catch {
+		} catch (err) {
 			// Unreaped, leading its group, and its executable already
 			// released: it is exiting, and its reap will sweep the group.
-			return 'zombie';
+			if (err && err.code === 'ENOENT') return 'zombie';
+			throw new Error(`process ${pid}'s binary cannot be read (${err && err.code}); not signalled`);
 		}
 		// The binary rebuilt under it since the launch: still the process
 		// the test started, from the same path.

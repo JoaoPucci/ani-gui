@@ -252,6 +252,24 @@ test('a leader whose binary was rebuilt under it is still the one launched', asy
 	assert.deepEqual(spy.calls[0], [-4245, 'SIGTERM']);
 });
 
+test('a leader whose binary cannot be read for another reason is not signalled', async () => {
+	const { EventEmitter } = require('node:events');
+	const child = Object.assign(new EventEmitter(), { pid: 4246, exitCode: null, signalCode: null });
+	const spy = spyKill();
+	await assert.rejects(
+		stopOwnGroup(child, {
+			exe: '/opt/app/bin',
+			kill: spy.kill,
+			readFile: () => '4246 (app) S 1 4246 4246 0 -1',
+			readLink: () => {
+				throw Object.assign(new Error('denied'), { code: 'EACCES' });
+			},
+		}),
+		/cannot be read \(EACCES\); not signalled/,
+	);
+	assert.deepEqual(spy.calls, []);
+});
+
 function exitedAlready(child) {
 	return child.exitCode !== null || child.signalCode !== null;
 }
