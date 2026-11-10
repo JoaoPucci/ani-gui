@@ -162,7 +162,7 @@
 					</div>
 				{:else}
 					<div class="loop">
-						<p class="group-key">{loopGroupText(section.rows.length)}</p>
+						<p class="group-key">{loopGroupText(section.rows.length, !model.partial)}</p>
 						<p class="group-hint">{m.watchorder_franchise_cycle_hint()}</p>
 						<ol class="story-list">
 							{#each section.rows as r (r.entry.id)}{@render row(r, false)}{/each}

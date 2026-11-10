@@ -77,7 +77,12 @@ describe('waysKeyText', () => {
 
 describe('loopGroupText', () => {
 	it('heads a loop as the group of titles it is', () => {
-		expect(loopGroupText(10)).toBe('10 linked titles, order unclear');
-		expect(loopGroupText(2)).toBe('2 linked titles, order unclear');
+		expect(loopGroupText(10, true)).toBe('10 linked titles, order unclear');
+		expect(loopGroupText(2, true)).toBe('2 linked titles, order unclear');
+	});
+
+	it('gives no count for a franchise read in part, where it may be short', () => {
+		expect(loopGroupText(10, false)).toBe('Linked titles, order unclear');
+		expect(loopGroupText(2, false)).toBe('Linked titles, order unclear');
 	});
 });

@@ -328,6 +328,47 @@ describe('franchise page', () => {
 		expect(text).not.toContain(m.watchorder_strip_ways({ count: 2 }));
 	});
 
+	it('counts the titles of a loop when the franchise was read whole', async () => {
+		// Saga, Second Arc and Final Arc each list the next as a sequel,
+		// and Final Arc lists Saga: a loop with no clear order.
+		useFranchise({
+			franchise: () =>
+				HttpResponse.json({
+					...FRANCHISE,
+					entries: [SAGA, SECOND, FINAL],
+					links: [
+						['10', '42'],
+						['42', '50'],
+						['50', '10']
+					]
+				})
+		});
+		app = mount(FranchisePage, { target });
+		await until(() => rows().length === 3, 'the main story');
+		expect(mainStory()!.textContent).toContain(m.watchorder_franchise_loop_group({ count: 3 }));
+	});
+
+	it('heads a loop without a count when there may be more titles', async () => {
+		useFranchise({
+			franchise: () =>
+				HttpResponse.json({
+					...FRANCHISE,
+					entries: [SAGA, SECOND, FINAL],
+					links: [
+						['10', '42'],
+						['42', '50'],
+						['50', '10']
+					],
+					complete: false
+				})
+		});
+		app = mount(FranchisePage, { target });
+		await until(() => rows().length === 3, 'the main story');
+		const text = mainStory()!.textContent ?? '';
+		expect(text).toContain(m.watchorder_franchise_loop_group_partial());
+		expect(text).not.toContain(m.watchorder_franchise_loop_group({ count: 3 }));
+	});
+
 	it('says the franchise could not be loaded, and loads it on Try again', async () => {
 		let fail = true;
 		const calls = useFranchise({

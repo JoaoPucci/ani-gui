@@ -72,7 +72,8 @@ export function loopText(count: number): string {
 }
 
 /** A loop of `count` as the heading over its group of titles. */
-export function loopGroupText(count: number): string {
+export function loopGroupText(count: number, complete: boolean): string {
+	void complete;
 	return m.watchorder_franchise_loop_group({ count });
 }
 
