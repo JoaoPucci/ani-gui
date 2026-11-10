@@ -4,8 +4,8 @@
  "fixtures": {
   "cases.json": {
    "source": "Hand-assembled from the recordings beside it: one case per hianime listing, its show key and card title copied from tests/fixtures/hianime/picker/ (the audited pairings in backend/src/commands/play_native_walk_fixture_test.rs, other cards of the recorded pools) or from a reported Continue card; `right` is the Kitsu entry the listing is, read off the recorded hits; `picks` is what the guess takes at each episode, `ruled_out` the recorded hits the row rules out at each episode, and `enrichment` what the resolve from the show key's words answers for a row whose guess reaches it, all pinned by the corpus tests.",
-   "size": 36436,
-   "sha256": "58a72c2ce22443b34f479c0e554fcd909743728fa852eb992cc2670752325728"
+   "size": 36941,
+   "sha256": "49abb1486a4289c3526440e4e7af011392f8322e86c10be107ab8e02dcb781fd"
   },
   "requests.json": {
    "source": "Which recording answers which request: `search` by the title the renderer searches, `slug` by the slug it looks up, `words` by the show key words the backend searches.",

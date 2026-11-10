@@ -121,3 +121,78 @@ async fn a_row_a_retired_provider_wrote_is_never_past_a_hit() {
     let ids: Vec<String> = serde_json::from_str(&body).expect("ids");
     assert_eq!(ids, vec!["7"]);
 }
+
+#[tokio::test]
+async fn the_route_reads_the_season_the_show_key_names() {
+    // hianime's "Jujutsu Kaisen: Specials" is
+    // `jujutsu-kaisen-season-2-recaps`: its key names the second season
+    // and its title none, so the New Year's Special and the third season,
+    // two of the hits Kitsu's search returns for the title, are both
+    // refuted, and with nothing left standing both are withheld.
+    let (status, body) = post(serde_json::json!({
+        "key": "hianime:jujutsu-kaisen-season-2-recaps-3513",
+        "title": "Jujutsu Kaisen: Specials",
+        "episode": 1,
+        "search": true,
+        "hits": [
+            {
+                "id": "43886",
+                "canonical_title": "Jujutsu Kaisen New Year's Special",
+                "titles": { "en": "Jujutsu Kaisen New Year's Special" },
+                "abbreviated_titles": ["Jujutsu Kaisen (TV) Recap"],
+                "slug": "jujutsu-kaisen-new-year-s-special",
+                "episode_count": 1,
+                "subtype": "special"
+            },
+            {
+                "id": "48363",
+                "canonical_title": "Jujutsu Kaisen: Shimetsu Kaiyū Zenpen",
+                "titles": { "en": "Jujutsu Kaisen Season 3: The Culling Game Part 1" },
+                "abbreviated_titles": ["Jujutsu Kaisen 3rd Season"],
+                "slug": "Jujutsu-Kaisen-3",
+                "episode_count": 12,
+                "subtype": "TV"
+            }
+        ]
+    }))
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let ids: Vec<String> = serde_json::from_str(&body).expect("ids");
+    assert_eq!(ids, vec!["43886", "48363"]);
+}
+
+#[tokio::test]
+async fn a_lone_hit_is_judged_by_the_title_rules_alone() {
+    // A stored title match or a slug lookup's entry is sent alone, not as
+    // a search's answer: a movie Kitsu files as a special, the row's own
+    // show perhaps, is not refuted by the movie rule then.
+    let lone = serde_json::json!({
+        "id": "5842",
+        "canonical_title": "Gintama: Shinyaku Benizakura-hen",
+        "abbreviated_titles": ["Gintama Movie: Crimson Sakura Chapter New Edition"],
+        "slug": "gintama-shinyaku-benizakura-hen",
+        "episode_count": 1,
+        "subtype": "special"
+    });
+    let (status, body) = post(serde_json::json!({
+        "key": "hianime:gintama-the-movie-1",
+        "title": "Gintama: The Movie",
+        "episode": 1,
+        "hits": [lone.clone()]
+    }))
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let ids: Vec<String> = serde_json::from_str(&body).expect("ids");
+    assert!(ids.is_empty(), "a lone hit is not refuted: {ids:?}");
+    // The same hit as a search's whole answer is refuted.
+    let (_, body) = post(serde_json::json!({
+        "key": "hianime:gintama-the-movie-1",
+        "title": "Gintama: The Movie",
+        "episode": 1,
+        "search": true,
+        "hits": [lone]
+    }))
+    .await;
+    let ids: Vec<String> = serde_json::from_str(&body).expect("ids");
+    assert_eq!(ids, vec!["5842"]);
+}
