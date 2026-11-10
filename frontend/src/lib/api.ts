@@ -1325,7 +1325,8 @@ export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
 }
 
 /** Bridge a batch of MAL ids to Kitsu refs in one round-trip.
- *  Order is preserved; ids Kitsu can't map drop out of the response.
+ *  Order is preserved; ids Kitsu can't map drop out of the response,
+ *  and a Kitsu show two ids lead to is listed once, at the first.
  *  Used by the home Watch Later rail to render the merged
  *  Plan-to-Watch list with Kitsu metadata + availability filtering
  *  matching the rest of the home. Empty input → empty
@@ -1534,6 +1535,22 @@ export function kitsuResolveAllmangaShowId(
 	return getJson<KitsuAnimeRef | null>(
 		`/api/kitsu/resolve-allmanga/${encodeURIComponent(showId)}${qs}`
 	);
+}
+
+/**
+ * The ids of the `hits` a Continue row's guess may not take: the
+ * backend reads the row's search title, the episode it reached and its
+ * show key against each hit (`backend/src/commands/continue_guess.rs`).
+ * The call itself asks nothing of Kitsu or the provider; the hits are
+ * the ones the row's own search or slug lookup returned.
+ */
+export function kitsuGuessRuledOut(
+	title: string,
+	episode: number,
+	hits: KitsuAnimeRef[],
+	key: string
+): Promise<string[]> {
+	return postJson<string[]>('/api/history/guess/ruled-out', { key, title, episode, hits });
 }
 
 /**

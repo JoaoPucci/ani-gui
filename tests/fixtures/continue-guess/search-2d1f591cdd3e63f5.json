@@ -1,0 +1,90 @@
+{
+ "data": [
+  {
+   "id": "46474",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sousou no Frieren",
+    "titles": {
+     "en": "Frieren: Beyond Journey’s End",
+     "en_jp": "Sousou no Frieren",
+     "it_it": "Frieren: Oltre la Fine del Viaggio",
+     "ja_jp": "葬送のフリーレン",
+     "ko_kr": "장송의 프리렌",
+     "pt_br": "Frieren e a Jornada para o Além",
+     "th_th": "คำอธิษฐานในวันที่จากลา Frieren",
+     "zh_cn": "葬送的芙莉蓮"
+    },
+    "abbreviatedTitles": [
+     "Frieren at the Funeral"
+    ],
+    "slug": "sousou-no-frieren",
+    "startDate": "2023-09-29",
+    "endDate": "2024-03-22",
+    "episodeCount": 28,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49240",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sousou no Frieren 2nd Season",
+    "titles": {
+     "en": "Frieren: Beyond Journey's End Season 2",
+     "en_jp": "Sousou no Frieren 2nd Season",
+     "ja_jp": "葬送のフリーレン 第２期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "sousou-no-frieren-season-2",
+    "startDate": "2026-01-16",
+    "endDate": "2026-03-27",
+    "episodeCount": 10,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48105",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sousou no Frieren: Marumaru no Mahou",
+    "titles": {
+     "en_jp": "Sousou no Frieren: Marumaru no Mahou",
+     "ja_jp": "葬送のフリーレン　～●●の魔法～"
+    },
+    "abbreviatedTitles": [
+     "Sousou no Frieren End Mini Anime",
+     "Frieren: Beyond Journey’s End Mini Anime",
+     "葬送のフリーレン ミニアニメ"
+    ],
+    "slug": "sousou-no-frieren-marumaru-no-mahou",
+    "startDate": "2023-10-10",
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "ONA",
+    "status": "current"
+   }
+  },
+  {
+   "id": "50629",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sousou no Frieren 3rd Season",
+    "titles": {
+     "en": "Frieren: Beyond Journey's End Season 3",
+     "en_jp": "Sousou no Frieren 3rd Season",
+     "ja_jp": "葬送のフリーレン 第3期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "sousou-no-frieren-season-3",
+    "startDate": "2027-10-31",
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "unreleased"
+   }
+  }
+ ]
+}

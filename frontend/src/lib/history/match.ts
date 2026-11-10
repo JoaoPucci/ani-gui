@@ -27,6 +27,7 @@ import {
 import { providerOfShowId } from './show-key';
 import { cachedBindingVerdict, deriveSlug, pickKitsuMatch, type ResumeTarget } from './resolve';
 import { storedBinding } from './match-stored';
+import { admitted } from './guess-rules';
 
 /** Whether a failed Kitsu read is Kitsu answering that the entry is
  *  gone — a 404 or 410, which the backend passes on as an upstream
@@ -98,7 +99,10 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 		if (cachedId) {
 			try {
 				const cached = await kitsuAnimeDetail(cachedId);
-				if (cachedBindingVerdict(cached, preliminary, false) === 'trust') {
+				// The match was picked at the row's episode then; the rules
+				// read the row as it is now, and a failed call trusts it.
+				const standing = (await admitted(preliminary, [cached], { failed: false })).length > 0;
+				if (standing && cachedBindingVerdict(cached, preliminary, false) === 'trust') {
 					return cached;
 				}
 				// Incompatible / implausible / cross-cour → fall through and re-resolve
@@ -113,6 +117,8 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 	}
 
 	let match: KitsuAnimeRef | null = null;
+	// Whether a rule-out call failed this load, leaving its hits unchecked.
+	const check = { failed: false };
 
 	// 2) Slug-first for multi-cour entries. Kitsu's `filter[text]`
 	//    ranks the most-popular sibling and drops sequels with
@@ -128,7 +134,8 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 		const slug = deriveSlug(preliminary.searchTitle);
 		if (slug.length >= 4) {
 			try {
-				match = await kitsuAnimeBySlug(slug);
+				const bySlug = await kitsuAnimeBySlug(slug);
+				match = bySlug ? ((await admitted(preliminary, [bySlug], check))[0] ?? null) : null;
 			} catch {
 				// Slug-fetch failure is non-fatal; fall through to search.
 			}
@@ -137,10 +144,11 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 
 	// 3) Live search + pick. Either the slug fallback didn't apply
 	//    (cour 1) or it didn't find an entry; let the picker work the
-	//    text-search hits.
+	//    text-search hits the row does not rule out (`admitted`, like
+	//    the slug lookup's above).
 	if (!match) {
 		try {
-			const hits = await kitsuSearch(preliminary.searchTitle);
+			const hits = await admitted(preliminary, await kitsuSearch(preliminary.searchTitle), check);
 			match = pickKitsuMatch(hits, preliminary);
 		} catch {
 			return null;
@@ -180,8 +188,10 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 	// 5) Persist on success so the next session bypasses the lookup.
 	//    The backend stores it only while a history row still carries
 	//    this title: a row removed while this resolution was out
-	//    leaves nothing to match.
-	if (match) {
+	//    leaves nothing to match. A pick made while the rules could not
+	//    be asked is not stored: it may be one they refuse, and a stored
+	//    match is read without asking them again.
+	if (match && !check.failed) {
 		try {
 			await kitsuTitleMatchPut(
 				preliminary.searchTitle,

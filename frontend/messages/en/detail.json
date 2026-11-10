@@ -3,6 +3,7 @@
 	"actions_aria_label": "Title actions",
 	"audio_group_aria_label": "Audio mode",
 	"audio_group_label": "Audio",
+	"audio_note_show": "This show",
 	"download_button": "Download",
 	"ep_airs": "Airs {date}",
 	"ep_disabled_tooltip": "Not in the streaming catalogue.",

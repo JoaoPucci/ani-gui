@@ -62,15 +62,17 @@
 	import { afterNavigation, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
 	import { probeScope } from '$lib/availability/probe-scope';
 	import {
-		RECENT_LIMIT,
-		RECENT_STORAGE_KEY,
 		cycleSelectedIdx,
 		decideEnterAction,
 		freshConfigOrLast,
-		mergeRecents,
-		parseStoredRecents,
 		shouldRenderDropdown
 	} from '$lib/topbar/dropdown';
+	import {
+		RECENT_LIMIT,
+		RECENT_STORAGE_KEY,
+		mergeRecents,
+		parseStoredRecents
+	} from '$lib/topbar/recent-searches';
 
 	let { children } = $props();
 
@@ -220,7 +222,7 @@
 	const LIVE_DEBOUNCE_MS = 250;
 	const LIVE_MIN_CHARS = 2;
 	const LIVE_MAX_HITS = 5;
-	// RECENT_LIMIT + RECENT_STORAGE_KEY come from $lib/topbar/dropdown
+	// RECENT_LIMIT + RECENT_STORAGE_KEY come from $lib/topbar/recent-searches
 	// so the constants live next to the helpers that consume them.
 
 	let liveResults = $state<KitsuAnimeRef[] | null>(null);
@@ -382,9 +384,9 @@
 			blurDismiss = null;
 		}
 		dropdownOpen = true;
-		// Re-pull config so the next dropdown filter sees the user's
-		// current Sub/Dub pick. Settings + the detail page mutate their
-		// page-local config but don't push it back here, so without
+		// Re-pull config so the next dropdown filter sees the current
+		// default Sub/Dub. The Settings page mutates its page-local
+		// config but doesn't push it back here, so without
 		// this refresh the dropdown filters with whatever mode was set
 		// when the layout first mounted. Bounded work: fires once per
 		// focus, not per keystroke.

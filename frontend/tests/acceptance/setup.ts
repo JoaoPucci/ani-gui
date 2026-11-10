@@ -45,6 +45,8 @@ export const API_BASE = 'http://127.0.0.1:31337';
  *   to ask whether the card's row is still a guess (and, failing,
  *   offers nothing);
  * - the title search a page runs to name a show's provider entry;
+ * - the backend's answer to which of a guessed Continue row's hits the
+ *   row rules out, which a failed call answers with none;
  * - the availability reads and warms the home and list rows send;
  * - a signed-in tracker list a list row reads;
  * - the background warm of an episode the user has not asked for:
@@ -66,6 +68,7 @@ const incidental = [
 	http.get(`${API_BASE}/api/history/by-kitsu/:id`, absentBackend),
 	http.get(`${API_BASE}/api/history`, absentBackend),
 	http.post(`${API_BASE}/api/kitsu/search`, absentBackend),
+	http.post(`${API_BASE}/api/history/guess/ruled-out`, absentBackend),
 	http.post(`${API_BASE}/api/availability/batch`, absentBackend),
 	http.post(`${API_BASE}/api/availability/warm`, absentBackend),
 	http.post(`${API_BASE}/api/account/list/:provider`, absentBackend),

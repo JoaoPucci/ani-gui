@@ -112,6 +112,7 @@
 	import { makeFetchAvailability } from '$lib/history/availability-from-match';
 	import { probeScope } from '$lib/availability/probe-scope';
 	import { resolveResumeSettings } from '$lib/history/resume-settings';
+	import { audioFor } from '$lib/play/audio-choice';
 	import { createCapAuthority } from '$lib/history/cap-authority';
 	import { makeStartResume, type ResumePlayArgs } from '$lib/history/start-resume';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
@@ -645,6 +646,8 @@
 					signal: continueProbes.signal,
 					shouldProbe: fromLoad,
 					getMode: () => settingsPromise.then(pickAvailabilityMode),
+					// A show with its own audio is probed in it.
+					modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
 					// Per-row state mutations are routed through the
 					// component-scope rowReady handler (row-ready.ts) —
 					// shared with startResume so a click-time cap
@@ -679,6 +682,8 @@
 						fetchAvailability: (m, mode) =>
 							makeFetchAvailability(checkAvailability)(m, mode, continueProbes.signal),
 						mode,
+						// A show with its own audio is asked about in it.
+						modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
 						// The retry pays for the listing the first probe
 						// did not: read the row again after it. A row matched
 						// again never gets here: the retry asks shouldRetry
@@ -1060,6 +1065,8 @@
 			};
 		},
 		getSettings: () => resolveResumeSettings(config, settingsPromise),
+		// A show with its own audio plays in it.
+		modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
 		getPlayableCount: (id) => historyPlayableCounts[id] ?? null,
 		isPlayableCountApproximate: (id) => historyApproximateCaps[id] === true,
 		setPlayableCount: (id, c, approximate) => {

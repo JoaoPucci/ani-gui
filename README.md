@@ -152,7 +152,7 @@ What the app keeps stays on your machine: your OAuth token is encrypted through 
 
 User settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Settings page exposes everything you'd normally edit:
 
-- audio mode (`sub` / `dub`)
+- default audio mode (`sub` / `dub`) — a show's page remembers its own pick
 - download quality (`best`, `1080`, `720`, `480`, `worst`), for downloads only — the built-in player always starts on Auto
 - UI locale
 - external-player kind, command, and custom arguments

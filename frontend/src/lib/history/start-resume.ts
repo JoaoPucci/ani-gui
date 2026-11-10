@@ -63,6 +63,10 @@ export interface StartResumeDeps {
 	) => void | Promise<void>;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
 	getSettings: () => Promise<{ mode: 'sub' | 'dub' }>;
+	/** The audio the clicked show plays in, given the settings' mode as
+	 *  the default (`audioFor` in `$lib/play/audio-choice`). Omitted,
+	 *  the settings' mode plays. */
+	modeFor?: (kitsuId: string, fallback: 'sub' | 'dub') => 'sub' | 'dub';
 	getPlayableCount: (entryId: string) => number | null;
 	/** Whether the stored cap came from the search hit rather than the
 	 *  detail fetch. An approximate cap is revalidated before use —
@@ -168,7 +172,8 @@ export function makeStartResume(deps: StartResumeDeps): (
 		deps.onBusy(match.id);
 		deps.onProgress(null);
 
-		const { mode } = await deps.getSettings();
+		const settings = await deps.getSettings();
+		const mode = deps.modeFor ? deps.modeFor(match.id, settings.mode) : settings.mode;
 		// The viewer moved on while settings loaded: nothing of the
 		// click's provider work, the cap lookup included, is theirs.
 		if (!stillHere()) {

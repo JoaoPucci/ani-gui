@@ -1,0 +1,27 @@
+{
+ "data": [
+  {
+   "id": "47150",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "NARUTO×NINKU",
+    "titles": {
+     "en": "Naruto×Ninku",
+     "en_jp": "NARUTO×NINKU",
+     "ja_jp": "NARUTO-ナルト-×NINKU-忍空-"
+    },
+    "abbreviatedTitles": [
+     "NARUTO -ナルト- (新作アニメ)",
+     "NARUTO (Shinsaku Anime)",
+     "ナルト新作アニメ"
+    ],
+    "slug": "naruto-x-ninku",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": 4,
+    "subtype": "TV",
+    "status": "tba"
+   }
+  }
+ ]
+}
