@@ -781,6 +781,9 @@
 		// that invalidated a tracker's last pull — may have changed the
 		// stamps the freshness line reads, so it reads them again.
 		wlFreshness.stampsChanged();
+		// Before the effect above has made the first load, it reads the
+		// list itself, once the sign-ins and the mode are known.
+		if (!accountsKnown || !settingsRead) return;
 		const filterMode = pickAvailabilityMode(config);
 		const deps = buildWatchLaterDeps();
 		// Nothing between taking the ticket and the `try` may throw: the
