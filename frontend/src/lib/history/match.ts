@@ -102,7 +102,7 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 				// The match was picked at the row's episode then; the rules
 				// read the row as it is now, and a failed call trusts it.
 				const standing =
-					(await admitted(preliminary, [cached], { failed: false }, true)).length > 0;
+					(await admitted(preliminary, [cached], { failed: false }, false)).length > 0;
 				if (standing && cachedBindingVerdict(cached, preliminary, false) === 'trust') {
 					return cached;
 				}
@@ -136,7 +136,7 @@ async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef
 		if (slug.length >= 4) {
 			try {
 				const bySlug = await kitsuAnimeBySlug(slug);
-				match = bySlug ? ((await admitted(preliminary, [bySlug], check, true))[0] ?? null) : null;
+				match = bySlug ? ((await admitted(preliminary, [bySlug], check, false))[0] ?? null) : null;
 			} catch {
 				// Slug-fetch failure is non-fatal; fall through to search.
 			}

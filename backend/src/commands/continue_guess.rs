@@ -48,12 +48,14 @@
 //!   Reincarnated as a Slime Season 2" is not Kitsu's "2nd Season
 //!   Part 2".
 //!
-//! Three more rules say whether the search answered the row at all
-//! ([`refutes`]). They read weaker evidence — Kitsu files some films as
-//! specials and tags some movies "Recap" in an alternate title alone —
-//! so they withhold the hits they refute only when they refute every
-//! hit the rules above leave; beside a hit that stands, they withhold
-//! nothing. A hit is refuted when:
+//! Three more rules say whether the row's title search answered the
+//! row at all ([`refutes`]). They read weaker evidence — Kitsu files
+//! some films as specials and tags some movies "Recap" in an alternate
+//! title alone — so they withhold the hits they refute only when they
+//! refute every hit of the search's answer the rules above leave;
+//! beside a hit that stands, they withhold nothing. A hit sent alone (a
+//! stored title match, a slug lookup's entry) is no search's answer,
+//! and they do not judge it. A hit is refuted when:
 //!
 //! - **the title names a movie the hit is not**: a title carrying
 //!   "Movie" as a word takes only a movie, and one numbering its movie
@@ -68,7 +70,8 @@
 //! - **the show key names a later season the title does not**: a key
 //!   whose words name a season past the first anywhere in them ("Season
 //!   2", "2nd Season"), on a row whose title names no season (no
-//!   trailing season, part or cour, and no "Season N" anywhere), takes
+//!   trailing season, part or cour, and no "Season N" or "Nth Season"
+//!   anywhere), takes
 //!   only a hit naming that season anywhere in a title or its slug, or
 //!   one the title's season rule above would take for it. hianime's
 //!   "Jujutsu Kaisen: Specials" is `jujutsu-kaisen-season-2-recaps`,

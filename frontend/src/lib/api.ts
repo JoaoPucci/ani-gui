@@ -1503,8 +1503,13 @@ export function kitsuGuessRuledOut(
 	key: string,
 	search: boolean
 ): Promise<string[]> {
-	void search;
-	return postJson<string[]>('/api/history/guess/ruled-out', { key, title, episode, hits });
+	return postJson<string[]>('/api/history/guess/ruled-out', {
+		key,
+		title,
+		episode,
+		hits,
+		search
+	});
 }
 
 /**

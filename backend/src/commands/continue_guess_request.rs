@@ -93,6 +93,11 @@ pub fn answer(req: RuledOutRequest) -> Vec<String> {
     let episode = key.provider.is_some().then_some(req.episode);
     let key_words = key.search_term().unwrap_or_default();
     let hits: Vec<KitsuAnimeRef> = req.hits.into_iter().map(Into::into).collect();
-    let _ = req.search;
-    super::ruled_out_ids(&req.title, &key_words, episode, &hits)
+    if req.search {
+        return super::ruled_out_ids(&req.title, &key_words, episode, &hits);
+    }
+    hits.iter()
+        .filter(|h| super::ruled_out(&req.title, episode, h))
+        .map(|h| h.id.clone())
+        .collect()
 }
