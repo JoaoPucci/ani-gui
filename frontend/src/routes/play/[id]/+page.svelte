@@ -39,6 +39,7 @@
 	import { localDay } from '$lib/watch-order/entry';
 	import { latestRead } from '$lib/watch-order/latest-read';
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
+	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { settledOrder } from '$lib/watch-order/page-model';
 	import { finaleCard } from '$lib/watch-order/up-next';
 	import { atVideoEnd, upNextShown as upNextShownFor } from '$lib/play/up-next-window';
@@ -54,9 +55,7 @@
 		checkAvailability,
 		kitsuAnimeDetail,
 		kitsuEpisodes,
-		kitsuFranchise,
 		kitsuSearch,
-		historyList,
 		markWatched,
 		playStream,
 		playExternal,
@@ -1555,15 +1554,7 @@
 			upNextReads.stop();
 			return;
 		}
-		upNextReads.start(() =>
-			loadWatchOrder(showId, {
-				franchise: kitsuFranchise,
-				named: (ids) =>
-					historyList().then((rows) =>
-						Object.fromEntries(ids.map((k) => [k, rows.find((r) => r.kitsu_id === k) ?? null]))
-					)
-			})
-		);
+		upNextReads.start(() => loadWatchOrder(showId, watchOrderSources));
 	});
 
 	// Auto-play next: persisted in Config.auto_play_next; mirrored as a
