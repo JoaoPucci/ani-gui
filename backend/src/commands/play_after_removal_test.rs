@@ -1139,3 +1139,79 @@ fn seed_former_recap_row(state: &AppState) {
     crate::history::upsert_and_write(&state.history_path, row).expect("write");
     crate::commands::numbering_offset::put_display(state, SHOW, 0, 13, "24.5");
 }
+
+/// The note of which Continue card a row's play came from
+/// (`guessed_from`) is settled with the row's write, under the same
+/// guard: a write the guard turns away — a play begun before a newer
+/// watch of the listing — settles no note, and the newer guessed play's
+/// note stands, so Home's card stands for the line the user clicked.
+mod card_note_follows_the_row {
+    use super::*;
+    use crate::commands::play_native_record::{
+        record_fresh_watch, record_watch_requested_at, Watch,
+    };
+
+    /// A guessed card of another listing whose play landed on `SHOW`.
+    const CARD: &str = "hianime:another-listing-5182";
+
+    fn note(state: &AppState) -> Option<String> {
+        crate::commands::guessed_from::all(state)
+            .unwrap()
+            .remove(SHOW)
+    }
+
+    fn watch() -> Watch {
+        Watch {
+            show_id: SHOW.into(),
+            title: "The Show".into(),
+            ep_no: "3".into(),
+        }
+    }
+
+    /// The newer play: the guessed card's, its watch recorded on `SHOW`.
+    async fn newer_guessed_watch(state: &AppState) {
+        let now = epoch(&state.history_path);
+        record_watch_requested_at(state, &watch(), None, now, Some(CARD)).await;
+        assert_eq!(note(state).as_deref(), Some(CARD));
+    }
+
+    #[tokio::test]
+    async fn an_older_fresh_resolve_turned_away_keeps_the_newer_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let older = no_page(&state);
+        newer_guessed_watch(&state).await;
+        record_fresh_watch(&state, &native(), "2", older, None, None);
+        assert_eq!(note(&state).as_deref(), Some(CARD));
+    }
+
+    #[tokio::test]
+    async fn an_older_cache_hit_turned_away_keeps_the_newer_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let older = no_page(&state);
+        newer_guessed_watch(&state).await;
+        write_history_on_cache_hit(&state, &args(), &cached(), older);
+        assert_eq!(note(&state).as_deref(), Some(CARD));
+    }
+
+    #[tokio::test]
+    async fn an_older_watch_turned_away_keeps_the_newer_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let older = epoch(&state.history_path);
+        newer_guessed_watch(&state).await;
+        record_watch_requested_at(&state, &watch(), None, older, None).await;
+        assert_eq!(note(&state).as_deref(), Some(CARD));
+    }
+
+    #[tokio::test]
+    async fn an_accepted_play_of_the_row_itself_clears_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        newer_guessed_watch(&state).await;
+        let later = no_page(&state);
+        record_fresh_watch(&state, &native(), "2", later, None, None);
+        assert_eq!(note(&state), None);
+    }
+}
