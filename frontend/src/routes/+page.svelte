@@ -6,8 +6,11 @@
        "View" call. NO autoplay, NO carousel.
     2. Continue Watching: hidden when historyList() is empty; otherwise a
        horizontal strip whose cards lean on an oversized mono episode number.
-    3. Trending strip: every other trending show, in trending order.
-    4. Top Rated: kitsuTopRated().
+    3. Watch Later: the signed-in trackers' Plan-to-Watch lists.
+    4. Trending strip: every other trending show, in trending order.
+    5. Top Rated: kitsuTopRated().
+  Each row loads on its own; $lib/home/rows decides what each draws as
+  they land, so a row on screen is never pushed or pulled by another.
 -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
@@ -146,6 +149,7 @@
 	import { filterAvailable } from '$lib/availability/filter';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import Strip from '$lib/components/Strip.svelte';
+	import SkeletonRow from '$lib/components/SkeletonRow.svelte';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
@@ -207,11 +211,26 @@
 	// as opposed to succeeding with an empty list — so a connected user
 	// sees a retry affordance instead of a false "nothing planned".
 	let watchLaterFailed = $state(false);
+	// Whether the viewer has a sign-in the row reads the list of: one
+	// signed in, or expired or in error with its account kept, whose
+	// cached list is still served. A renewal that turns an expired
+	// sign-in back into a connected one does not change it, so the row
+	// does not come and go with it.
+	const wlSignedIn = $derived(Object.keys(buildWatchLaterDeps().credentials).length > 0);
 	// The row shows its failed state when the last load failed and there
 	// are no cards to keep showing (a populated rail keeps its cards).
 	const wlFailedRow = $derived(
-		accountStore.hasAny && watchLaterFailed && !(watchLater && watchLater.length > 0)
+		wlSignedIn && watchLaterFailed && !(watchLater && watchLater.length > 0)
 	);
+	// Whether the saved sign-ins are known: read, or slow enough that the
+	// layout has put up its keyring notice. Once known they stay known —
+	// the notice coming down again does not take the rows below away.
+	// Until then the store reads as signed out whoever is signed in, and
+	// the rows a sign-in would put Watch later above are held.
+	let accountsKnown = $state(accountStore.readsSettled || accountStore.keyringWaiting);
+	$effect(() => {
+		if (accountStore.readsSettled || accountStore.keyringWaiting) accountsKnown = true;
+	});
 	// What the last failed load rejected with, so the rail's hint can
 	// say what went wrong instead of always blaming the connection.
 	let watchLaterError = $state<unknown>(null);
@@ -477,6 +496,10 @@
 	// resolveResumeSettings so a DUB user never plays the sub
 	// fallback just because they clicked fast.
 	let settingsPromise: Promise<Config | null> = Promise.resolve(null);
+	// Whether the settings read has answered, whatever it said. The
+	// Watch later list waits for it, so it is filtered once, in the
+	// viewer's mode.
+	let settingsRead = $state(false);
 	let resumeBusy = $state<string | null>(null);
 	let resumeProgress = $state<string | null>(null);
 	let resumeFailure = $state<{ title: string; message: string } | null>(null);
@@ -496,8 +519,8 @@
 		homeRows({
 			history,
 			watchLater: {
-				accountsKnown: true,
-				signedIn: accountStore.hasAny,
+				accountsKnown,
+				signedIn: wlSignedIn,
 				cards: watchLater,
 				failed: watchLaterFailed
 			},
@@ -507,18 +530,25 @@
 	);
 
 	onMount(() => {
-		// Fire all three in parallel; render whichever lands first.
-		// Each list runs through filterAvailable: cards we KNOW are
-		// unavailable get dropped, cards we don't know about get
-		// rendered AND queued for a background warm. The next visit
-		// reads a fuller cache and filters more aggressively.
-		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		settingsPromise = settingsGet().catch(() => null as Config | null);
+		void settingsPromise.then((c) => {
+			if (c) config = c;
+			settingsRead = true;
+		});
+		// Fire both catalogue rows in parallel; what each draws as it
+		// lands is $lib/home/rows'. Each list runs through filterAvailable,
+		// in the viewer's sub/dub mode once the settings have answered:
+		// cards we KNOW are unavailable get dropped, cards we don't know
+		// about get rendered AND queued for a background warm. The next
+		// visit reads a fuller cache and filters more aggressively.
+		const inViewersMode = async (list: KitsuAnimeRef[]) =>
+			filterAvailable(list, pickAvailabilityMode(await settingsPromise));
 		kitsuTrendingAnilist()
-			.then((t) => filterAvailable(t, filterMode))
+			.then(inViewersMode)
 			.then((t) => (trending = t))
 			.catch((e) => (trendingError = describeError(e)));
 		kitsuTopRated()
-			.then((t) => filterAvailable(t, filterMode))
+			.then(inViewersMode)
 			.then((t) => (topRated = t))
 			.catch((e) => (topRatedError = describeError(e)));
 		// Settings drive the audio mode for the Continue Watching click
@@ -533,10 +563,6 @@
 		// probes, ended when the page unmounts: the strip's probes stop
 		// with it.
 		const continueProbes = probeScope.begin();
-		settingsPromise = settingsGet().catch(() => null as Config | null);
-		void settingsPromise.then((c) => {
-			if (c) config = c;
-		});
 		Promise.all([historyList(), watchedAtAll().catch(() => ({}) as Record<string, number>)])
 			.then(([h, watchedAt]) => {
 				// Continue Watching ordering: stamped rows on top,
@@ -662,10 +688,12 @@
 	//    layout's hydrate() populates the store;
 	//  - sign-in / disconnect / token-refresh events during the session
 	//    trigger a re-load without a route navigation.
-	// `cfg.mode` participates too — toggling sub/dub re-runs the
-	// availability filter against the new mode.
+	// It waits for the saved sign-ins to be known, so its first load
+	// reads every signed-in list rather than none and then some, and
+	// for the settings, so it is filtered once, in the viewer's mode.
 	$effect(() => {
-		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		if (!accountsKnown || !settingsRead) return;
+		const filterMode = pickAvailabilityMode(config);
 		const deps = buildWatchLaterDeps();
 		const ticket = watchLaterLoads.start(true);
 		void loadWatchLater(deps)
@@ -1478,11 +1506,10 @@
 	onCancel={cancelClear}
 />
 
-<!-- Watch Later rail — between Continue Watching and
-     Trending. Hidden when:
-       - watchLater === null  → boot, accountStore not hydrated yet
-       - watchLater.length === 0 → no provider connected, or every
-         connected provider's Plan-to-Watch is empty / un-bridged. -->
+<!-- Watch Later rail — between Continue Watching and Trending. Not
+     drawn until the saved sign-ins are known, a skeleton while a
+     signed-in list loads, and left out for a viewer with no sign-in it
+     reads ($lib/home/rows). -->
 {#snippet watchLaterMeta()}
 	<!-- The current phrasing, and through a refresh the one it replaced,
 	     stacked in one cell; only the current one is seen or read. -->
@@ -1507,7 +1534,13 @@
 	/>
 {/snippet}
 
-{#if rows.watchLater === 'shown'}
+{#if rows.watchLater === 'skeleton'}
+	<SkeletonRow
+		surface={rowSurface}
+		eyebrow={m.account_watch_later_title()}
+		caption={m.account_watch_later_caption()}
+	/>
+{:else if rows.watchLater === 'shown'}
 	<!-- The list, or — connected and the cached Plan-to-Watch genuinely
 	     empty — the empty row with its header and refresh, so newly-added
 	     tracker titles can be pulled in before the TTL; or, connected but
@@ -1552,19 +1585,11 @@
 
 <!-- Trending strip (the tail; the head is the hero) -->
 {#if rows.trending === 'skeleton'}
-	<Strip
+	<SkeletonRow
 		surface={rowSurface}
 		eyebrow={m.home_strip_trending_eyebrow()}
 		caption={m.home_strip_trending_caption_loading()}
-	>
-		{#each Array.from({ length: 8 }, (_, k) => k) as i (i)}
-			<div class="skel-card" style="--i: {i};">
-				<div class="skel-poster"></div>
-				<div class="line line-skel" style="inline-size: 80%; block-size: 0.7rem;"></div>
-				<div class="line line-skel" style="inline-size: 40%; block-size: 0.6rem;"></div>
-			</div>
-		{/each}
-	</Strip>
+	/>
 {:else if rows.trending === 'shown'}
 	<Strip
 		surface={rowSurface}
@@ -1579,19 +1604,11 @@
 
 <!-- Top Rated strip -->
 {#if rows.topRated === 'skeleton'}
-	<Strip
+	<SkeletonRow
 		surface={rowSurface}
 		eyebrow={m.home_strip_top_rated_eyebrow()}
 		caption={m.home_strip_top_rated_caption_loading()}
-	>
-		{#each Array.from({ length: 8 }, (_, k) => k) as i (i)}
-			<div class="skel-card" style="--i: {i};">
-				<div class="skel-poster"></div>
-				<div class="line line-skel" style="inline-size: 80%; block-size: 0.7rem;"></div>
-				<div class="line line-skel" style="inline-size: 40%; block-size: 0.6rem;"></div>
-			</div>
-		{/each}
-	</Strip>
+	/>
 {:else if rows.topRated === 'shown'}
 	<Strip
 		surface={rowSurface}
@@ -1955,16 +1972,6 @@
 		inline-size: 100%;
 		block-size: 100%;
 		background: var(--ink-100);
-		animation: pulse 1.6s var(--ease-in-out) infinite;
-	}
-	.skel-card {
-		display: grid;
-		gap: var(--space-2);
-	}
-	.skel-poster {
-		aspect-ratio: var(--poster-aspect);
-		background: var(--ink-100);
-		border-radius: var(--radius-card);
 		animation: pulse 1.6s var(--ease-in-out) infinite;
 	}
 	.line {

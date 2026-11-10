@@ -52,11 +52,21 @@ export function settleRow<T>(request: Promise<readonly T[]>): Promise<RowLoad<T>
  * still loading. A row that failed, or that the availability filter
  * emptied, is dropped. Dropping one can move only skeletons, never a
  * shown row, because a row is shown only when everything above it is
- * already final. */
+ * already final.
+ *
+ * A row not yet known to exist has no skeleton to hold its place, so
+ * nothing in it or below it is drawn until it is known: drawn earlier,
+ * a row below would be pushed down when it turned out to be there. */
 export function discoveryView<T>(rows: readonly RowLoad<T>[]): DiscoveryView<T> {
 	let aboveSettled = true;
+	let abovePending = false;
 	const slots = rows.map((row): RowSlot<T> => {
-		if (row.kind === 'loading' || row.kind === 'pending') {
+		if (abovePending || row.kind === 'pending') {
+			abovePending = true;
+			aboveSettled = false;
+			return { kind: 'held' };
+		}
+		if (row.kind === 'loading') {
 			aboveSettled = false;
 			return { kind: 'skeleton' };
 		}

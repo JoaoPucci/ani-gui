@@ -85,11 +85,20 @@ async function firstRead(
  * just-expired but refreshable provider its refresh. Every hydrate path (cold launch
  * AND the account page) must do that, so the hydrate owns it rather
  * than each caller remembering.
+ *
+ * `onReadsSettled` is called once every provider's first read has
+ * settled, before the refresh: from then on the store holds what the
+ * keyring holds, not the signed-out state it starts in. It is called
+ * when a read rejects too, so nobody waits on it for good.
  */
-export function hydrateAccounts(target: HydrateTarget): Promise<void> {
+export function hydrateAccounts(
+	target: HydrateTarget,
+	onReadsSettled: () => void = () => {}
+): Promise<void> {
 	const wait = waitFor(target);
 	const hydrate: HydrateRun = { settled: false };
 	const settled = Promise.all(PROVIDERS.map((p) => firstRead(target, p, wait, hydrate)));
+	void settled.then(onReadsSettled, onReadsSettled);
 	return settled.then(() => {
 		hydrate.settled = true;
 		return target.refreshExpired();

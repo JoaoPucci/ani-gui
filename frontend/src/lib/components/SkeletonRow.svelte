@@ -8,7 +8,6 @@
   filling it in moves nothing below it.
 -->
 <script lang="ts">
-	import type { Snippet } from 'svelte';
 	import Strip from '$lib/components/Strip.svelte';
 
 	interface Props {
@@ -16,15 +15,12 @@
 		caption: string;
 		/** The surface the loaded row sits on (Strip's `surface`). */
 		surface?: 'plain' | 'band';
-		/** The loaded row's header actions, when it has them: drawn here
-		 *  too, so the header is the same height loading and loaded. */
-		headerActions?: Snippet;
 	}
 
-	let { eyebrow, caption, surface = 'plain', headerActions }: Props = $props();
+	let { eyebrow, caption, surface = 'plain' }: Props = $props();
 </script>
 
-<Strip {eyebrow} {caption} {surface} {headerActions}>
+<Strip {eyebrow} {caption} {surface}>
 	{#each Array.from({ length: 8 }, (_, k) => k) as i (i)}
 		<div class="skel-card" aria-hidden="true">
 			<div class="skel-poster"></div>
