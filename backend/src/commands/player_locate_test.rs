@@ -255,3 +255,68 @@ fn a_registered_path_keeps_a_variable_it_cannot_expand_and_a_lone_percent() {
         );
     }
 }
+
+#[test]
+fn the_registry_query_follows_the_subprocess_convention() {
+    // AGENTS.md §5: tokio's Command, killed on drop, TERM=dumb, NO_COLOR=1.
+    let args = strings(&["query", "HKCU\\X", "/ve"]);
+    let cmd = registry::reg_command("reg.exe", &args);
+    assert!(cmd.get_kill_on_drop());
+    let std = cmd.as_std();
+    let envs: HashMap<String, Option<String>> = std
+        .get_envs()
+        .map(|(k, v)| {
+            (
+                k.to_string_lossy().into_owned(),
+                v.map(|v| v.to_string_lossy().into_owned()),
+            )
+        })
+        .collect();
+    assert_eq!(envs.get("TERM"), Some(&Some("dumb".to_string())));
+    assert_eq!(envs.get("NO_COLOR"), Some(&Some("1".to_string())));
+    let got: Vec<String> = std
+        .get_args()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(got, args);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_registry_query_that_hangs_is_given_up_on() {
+    // A reg.exe that never answers must not hold Settings or a launch:
+    // the run gives up at its limit and kills the process it started.
+    let cmd = registry::reg_command("sh", &strings(&["-c", "sleep 30"]));
+    let started = std::time::Instant::now();
+    let out = registry::reg_output(cmd, std::time::Duration::from_millis(200));
+    assert!(out.is_none());
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_registry_query_that_answers_gives_its_output() {
+    let cmd = registry::reg_command(
+        "sh",
+        &strings(&[
+            "-c",
+            "printf '    (Default)    REG_SZ    C:\\\\VLC\\\\vlc.exe\\n'",
+        ]),
+    );
+    let out = registry::reg_output(cmd, std::time::Duration::from_secs(10)).expect("output");
+    assert!(out.status.success());
+    assert_eq!(
+        parse_reg_default(&String::from_utf8_lossy(&out.stdout)).as_deref(),
+        Some("C:\\VLC\\vlc.exe")
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_registry_query_runs_from_inside_an_async_task() {
+    // The lookup may be reached from async code: running the query
+    // must not try to start a runtime inside the current one.
+    let cmd = registry::reg_command("sh", &strings(&["-c", "echo ok"]));
+    let out = registry::reg_output(cmd, std::time::Duration::from_secs(10));
+    assert!(out.is_some_and(|o| o.status.success()));
+}
