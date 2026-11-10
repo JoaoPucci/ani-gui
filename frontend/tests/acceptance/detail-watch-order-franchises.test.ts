@@ -137,6 +137,15 @@ describe('detail route — the watch-order strip on real franchises', () => {
 		expect(target.querySelector('a[href="/anime/50656"]')).toBeNull();
 	});
 
+	it("leads from One Piece's page to One Piece's franchise", async () => {
+		openShow('12');
+		await until(
+			() => target.querySelector('a[href="/anime/12/franchise"]') !== null,
+			'the franchise link'
+		);
+		expect(target.textContent).not.toContain(m.watchorder_strip_side_story());
+	});
+
 	it('shows LEGO ONE PIECE as a side story of One Piece', async () => {
 		openShow('50656');
 		await until(() => strip() !== null, 'the strip');
