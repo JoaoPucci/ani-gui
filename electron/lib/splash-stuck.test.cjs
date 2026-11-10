@@ -509,6 +509,12 @@ test("property: the stuck state comes exactly when the page is 15 s late, and th
           if (paintAt !== undefined) events.push([paintAt, "paint"]);
           if (landAt !== undefined) events.push([landAt, "land"]);
           if (clickAt !== undefined) events.push([clickAt, "click"]);
+          // The harness also stops exactly at the instants the timers are
+          // due: a timer set inside a firing callback is scheduled from
+          // the end of the mocked tick, not from the instant it fired.
+          const armedAt = Math.min(paintAt ?? Infinity, SPLASH_SHOW_WAIT_MS);
+          const dueAt = armedAt + SPLASH_STUCK_MS;
+          events.push([SPLASH_SHOW_WAIT_MS, "tick"], [dueAt, "tick"]);
           events.sort((a, b) => a[0] - b[0]);
           const advance = async (to) => {
             while (now < to) {
@@ -527,8 +533,6 @@ test("property: the stuck state comes exactly when the page is 15 s late, and th
             await flush();
           }
           await advance(45_000);
-          const armedAt = Math.min(paintAt ?? Infinity, SPLASH_SHOW_WAIT_MS);
-          const dueAt = armedAt + SPLASH_STUCK_MS;
           // Timers due at an instant fire before what happens at it.
           const shouldStick = landAt === undefined || landAt >= dueAt;
           assert.equal(win.asked() > 0, shouldStick, "stuck exactly when the page is late");
