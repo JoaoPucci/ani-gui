@@ -39,7 +39,7 @@
 	"field_syncplay_binary_browse_aria_label": "Elegir el ejecutable de Syncplay",
 	"field_syncplay_binary_browse_dialog_title": "Elegir el ejecutable de Syncplay",
 	"field_auto_play_next_key": "Reproducir siguiente automáticamente",
-	"field_auto_play_next_hint": "Cuando termina el episodio actual, avanza automáticamente al siguiente. Se detiene en el último episodio de la serie.",
+	"field_auto_play_next_hint": "Cuando termina el episodio actual, avanza automáticamente al siguiente. Se detiene en el último episodio del anime.",
 	"field_cache_resolutions_key": "Reutilizar enlaces de video recientes",
 	"field_cache_resolutions_hint": "Reutiliza un enlace de video encontrado en los últimos 7 días en lugar de buscarlo de nuevo. Es más rápido, pero puedes seguir recibiendo la versión del día de estreno hasta por una semana. Por eso está desactivado por defecto.",
 	"auto_play_next_aria_label": "Reproducir siguiente automáticamente",
