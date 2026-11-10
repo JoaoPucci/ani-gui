@@ -41,6 +41,8 @@ export interface CardRelinkDeps {
 	forget: (row: string) => void;
 	/** Publishes the row's match. A row whose match failed has none. */
 	publish: (row: string, match: KitsuAnimeRef | null) => void;
+	/** How many removes and clears have landed on the cards. */
+	writes?: () => number;
 }
 
 export interface CardRelink {
