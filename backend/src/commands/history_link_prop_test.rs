@@ -46,12 +46,6 @@ fn history() -> impl Strategy<Value = Vec<HistoryEntry>> {
     })
 }
 
-fn apply(entries: &mut [HistoryEntry], row: &str, kitsu_id: Option<String>) {
-    for e in entries.iter_mut().filter(|e| e.id == row) {
-        e.kitsu_id.clone_from(&kitsu_id);
-    }
-}
-
 proptest! {
     #[test]
     fn a_plan_names_held_rows_of_the_cards_listing_once_in_the_order_asked(
@@ -77,52 +71,6 @@ proptest! {
             prop_assert_eq!(&p.ep_no, &e.ep_no);
             prop_assert_eq!(p.watched_at, e.watched_at);
         }
-    }
-
-    #[test]
-    fn an_undo_with_nothing_between_gives_the_history_back(
-        entries in history(),
-        card in id(),
-        asked in proptest::collection::vec(id(), 0..8),
-        linked in "[5-9]",
-    ) {
-        let planned = plan_link(&entries, &card, &asked);
-        let mut after = entries.clone();
-        for p in &planned {
-            apply(&mut after, &p.row, Some(linked.clone()));
-        }
-        let restored = plan_unlink(&after, &linked, &planned);
-        prop_assert_eq!(restored.len(), planned.len());
-        for r in restored {
-            apply(&mut after, &r.row, r.previous.clone());
-        }
-        prop_assert_eq!(after, entries);
-    }
-
-    #[test]
-    fn a_row_written_since_the_link_is_not_undone(
-        entries in history(),
-        linked in "[5-9]",
-        which in 0usize..6,
-        moved_episode in any::<bool>(),
-    ) {
-        prop_assume!(!entries.is_empty());
-        let asked: Vec<String> = entries.iter().map(|e| e.id.clone()).collect();
-        let i = which % entries.len();
-        // The card is the row written since, so the link covers it.
-        let planned = plan_link(&entries, &entries[i].id, &asked);
-        let mut after = entries.clone();
-        for p in &planned {
-            apply(&mut after, &p.row, Some(linked.clone()));
-        }
-        if moved_episode {
-            after[i].ep_no.push('0');
-        } else {
-            after[i].watched_at = Some(after[i].watched_at.unwrap_or(0) + 1);
-        }
-        let restored = plan_unlink(&after, &linked, &planned);
-        prop_assert!(restored.iter().all(|r| r.row != after[i].id));
-        prop_assert_eq!(restored.len(), planned.len() - 1);
     }
 
     #[test]

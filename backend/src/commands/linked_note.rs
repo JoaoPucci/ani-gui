@@ -15,9 +15,8 @@
 //! refused watch leaves that id on the row. The note is a cache row
 //! (`history-linked:v1:<row>` → the id), as `guessed_from`'s is, for the same
 //! reason: builds before this one read the history file and never ask
-//! for it. Undoing the link gives each row it restored the note an
-//! earlier link left on it, or none, and removing a row or clearing the
-//! history takes the note with the row's other cache rows. A row another id is written to since (a play from another
+//! for it. Removing a row or clearing the history takes the note with the
+//! row's other cache rows. A row another id is written to since (a play from another
 //! show's page) no longer records the noted id, so the note says
 //! nothing of it. A lost note only lets the guard clear the id again,
 //! as it did before the note existed.
@@ -26,7 +25,7 @@ use std::time::Duration;
 
 use crate::app::AppState;
 use crate::cache::families::LINKED;
-use crate::cache::{meta_cache_delete, meta_cache_get, meta_cache_put};
+use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::error::Result;
 
 /// How long a note lasts. A link is meant for as long as the row
@@ -53,38 +52,9 @@ pub(crate) fn record(state: &AppState, row: &str, kitsu_id: &str) -> Result<()> 
     meta_cache_put(&state.cache_pool, &key(row), kitsu_id, TTL.as_secs())
 }
 
-/// Drop the note for `row`.
-///
-/// # Errors
-/// SQLite errors propagate.
-pub(crate) fn forget(state: &AppState, row: &str) -> Result<()> {
-    meta_cache_delete(&state.cache_pool, &key(row))
-}
-
 /// The id the user linked `row` to, if a note says so. A cache that
 /// cannot be read answers none: the guard then judges the id as it
 /// would without the note.
 pub(crate) fn linked(state: &AppState, row: &str) -> Option<String> {
     meta_cache_get(&state.cache_pool, &key(row)).ok().flatten()
-}
-
-/// Note that the user linked `row` to `kitsu_id`, and answer the note
-/// it replaces, for the link's undo to give back.
-///
-/// # Errors
-/// SQLite errors propagate.
-pub(crate) fn replace(state: &AppState, row: &str, kitsu_id: &str) -> Result<Option<String>> {
-    let earlier = linked(state, row);
-    record(state, row, kitsu_id).map(|()| earlier)
-}
-
-/// Give `row` back the note an earlier link left, or none.
-///
-/// # Errors
-/// SQLite errors propagate.
-pub(crate) fn restore(state: &AppState, row: &str, earlier: Option<&str>) -> Result<()> {
-    match earlier {
-        Some(id) => record(state, row, id),
-        None => forget(state, row),
-    }
 }

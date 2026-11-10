@@ -29,14 +29,9 @@
 //! the id gone, as any user read does). A row removed while that read
 //! was out is not linked.
 //!
-//! An undo names, for each row, the id the link gave it and the row as
-//! the link left it — its episode, watch moment and the id the link
-//! gave it. A row that still reads so gets back the id it had before;
-//! one a watch or another link wrote since reads otherwise, and is left
-//! as it now is. A resolve that rewrote only the row's title is not
-//! told apart, and is undone with the rest. The mapping
-//! the link dropped is not restored: it was a guess, and the next
-//! Continue load guesses again.
+//! A link has no undo: the user's answer to "is this the show you
+//! meant?" stands once given, and naming another show again is how it
+//! is changed.
 
 use serde::{Deserialize, Serialize};
 
@@ -47,7 +42,7 @@ use crate::history::same_kitsu_id;
 
 #[path = "history_link_plan.rs"]
 mod plan;
-pub use plan::{card_listing, left_as_linked, of_card, plan_held, plan_link, plan_unlink};
+pub use plan::{card_listing, of_card, plan_held, plan_link};
 
 /// A request to link rows to a show.
 #[derive(Debug, Clone, Deserialize)]
@@ -77,11 +72,6 @@ pub struct LinkedRow {
     pub row: String,
     /// The Kitsu id the row recorded before the link, if any.
     pub previous: Option<String>,
-    /// The id an earlier link of the row named, if one did
-    /// ([`crate::commands::linked_note`]): the undo puts that note back
-    /// with `previous`. A row sent without it had none.
-    #[serde(default)]
-    pub previous_linked: Option<String>,
     /// The row's episode when the link wrote it.
     pub ep_no: String,
     /// The row's watch moment when the link wrote it.
@@ -95,24 +85,6 @@ pub struct LinkOutcome {
     pub kitsu_id: String,
     /// Every row linked, in the order asked.
     pub linked: Vec<LinkedRow>,
-}
-
-/// A request to undo a link.
-#[derive(Debug, Clone, Deserialize)]
-pub struct UnlinkArgs {
-    /// The Kitsu id the link gave the rows.
-    pub kitsu_id: String,
-    /// The rows as the link left them.
-    pub rows: Vec<LinkedRow>,
-}
-
-/// What an undo did.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct UnlinkOutcome {
-    /// The rows given back the id they had before the link.
-    pub restored: Vec<String>,
-    /// The rows written since the link, left as they are.
-    pub kept: Vec<String>,
 }
 
 /// The rows a link of `args.rows` from the card `args.card` would
@@ -159,7 +131,7 @@ fn link_held(
         held.set_kitsu_id(&l.row, Some(kitsu_id.to_string()))?;
         drop_other_mapping(state, &l.row, kitsu_id)?;
         // The user named the show: a refused watch leaves it on the row.
-        l.previous_linked = crate::commands::linked_note::replace(state, &l.row, kitsu_id)?;
+        crate::commands::linked_note::record(state, &l.row, kitsu_id)?;
     }
     Ok(LinkOutcome {
         kitsu_id: kitsu_id.to_string(),
@@ -174,36 +146,6 @@ fn drop_other_mapping(state: &AppState, row: &str, kitsu_id: &str) -> Result<()>
         crate::commands::kitsu::allmanga_kitsu_delete(state, row)?;
     }
     Ok(())
-}
-
-/// Undo a link: every named row that still reads as the link left it
-/// gets back the id it had before.
-///
-/// # Errors
-/// History I/O errors.
-pub fn unlink(state: &AppState, args: &UnlinkArgs) -> Result<UnlinkOutcome> {
-    crate::history::guard::hold(&state.history_path, |held| {
-        let entries = held.rows()?;
-        let restored: Vec<LinkedRow> = plan_unlink(&entries, &args.kitsu_id, &args.rows)
-            .into_iter()
-            .cloned()
-            .collect();
-        for l in &restored {
-            held.set_kitsu_id(&l.row, l.previous.clone())?;
-            // The note goes back to what an earlier link of the row named.
-            crate::commands::linked_note::restore(state, &l.row, l.previous_linked.as_deref())?;
-        }
-        let kept = args
-            .rows
-            .iter()
-            .filter(|r| !restored.iter().any(|l| l.row == r.row))
-            .map(|r| r.row.clone())
-            .collect();
-        Ok(UnlinkOutcome {
-            restored: restored.into_iter().map(|l| l.row).collect(),
-            kept,
-        })
-    })
 }
 
 #[cfg(test)]

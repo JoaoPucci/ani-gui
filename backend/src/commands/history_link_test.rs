@@ -1,4 +1,4 @@
-//! Linking history rows to a show the user names, and undoing it.
+//! Linking history rows to a show the user names.
 
 use super::*;
 use crate::cache::{meta_cache_get, meta_cache_put};
@@ -129,14 +129,12 @@ async fn a_link_writes_the_column_of_every_named_row_and_nothing_else() {
             LinkedRow {
                 row: "hianime:black-clover-949".into(),
                 previous: None,
-                previous_linked: None,
                 ep_no: "1".into(),
                 watched_at: Some(1_791_253_563_411),
             },
             LinkedRow {
                 row: "black-clover-77".into(),
                 previous: None,
-                previous_linked: None,
                 ep_no: "3".into(),
                 watched_at: None,
             },
@@ -261,66 +259,7 @@ async fn a_row_removed_while_kitsu_was_asked_is_not_linked_when_played_again() {
 }
 
 #[tokio::test]
-async fn an_undo_gives_rows_back_their_id_unless_written_since() {
-    let (_tmp, _mock, state) = setup(200).await;
-    let outcome = link(
-        &state,
-        &args(&["hianime:black-clover-949", "black-clover-77"], LINKED),
-    )
-    .await
-    .expect("link");
-    // A watch of the card's row lands after the link.
-    crate::history::upsert_and_write(
-        &state.history_path,
-        row(
-            "2",
-            "hianime:black-clover-949",
-            "Black Clover",
-            Some(1_793_000_000_000),
-            Some(LINKED),
-        ),
-    )
-    .unwrap();
-
-    let undone = unlink(
-        &state,
-        &UnlinkArgs {
-            kitsu_id: LINKED.into(),
-            rows: outcome.linked,
-        },
-    )
-    .expect("unlink");
-
-    assert_eq!(undone.restored, ["black-clover-77"]);
-    assert_eq!(undone.kept, ["hianime:black-clover-949"]);
-    let after = read_all(&state.history_path).unwrap();
-    assert_eq!(after[0].kitsu_id.as_deref(), Some(LINKED));
-    assert_eq!(after[1], rows()[1]);
-}
-
-#[tokio::test]
-async fn a_relink_undone_gives_the_row_back_the_id_it_had() {
-    let (_tmp, _mock, state) = setup(200).await;
-    let outcome = link(&state, &args(&["hianime:gintama-1237"], LINKED))
-        .await
-        .expect("link");
-    assert_eq!(outcome.linked[0].previous.as_deref(), Some("818"));
-
-    let undone = unlink(
-        &state,
-        &UnlinkArgs {
-            kitsu_id: LINKED.into(),
-            rows: outcome.linked,
-        },
-    )
-    .expect("unlink");
-
-    assert_eq!(undone.restored, ["hianime:gintama-1237"]);
-    assert_eq!(read_all(&state.history_path).unwrap(), rows());
-}
-
-#[tokio::test]
-async fn the_routes_link_and_undo() {
+async fn the_route_links() {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use std::sync::Arc;
@@ -356,16 +295,6 @@ async fn the_routes_link_and_undo() {
         read_all(&history).unwrap()[1].kitsu_id.as_deref(),
         Some(LINKED)
     );
-
-    let response = router
-        .oneshot(post(
-            "/api/history/unlink",
-            serde_json::json!({"kitsu_id": LINKED, "rows": body["linked"]}),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(read_all(&history).unwrap(), rows());
 }
 
 /// The JoJo card: its own row, the 2000 OVA's listing, guessed as the
@@ -504,10 +433,10 @@ async fn the_group_route_answers_the_rows_a_link_would_write() {
 }
 
 #[tokio::test]
-async fn a_link_notes_the_rows_it_linked_and_its_undo_drops_the_note() {
+async fn a_link_notes_the_rows_it_linked() {
     let (_tmp, _mock, state) = setup(200).await;
     let note = |row: &str| crate::commands::linked_note::linked(&state, row);
-    let outcome = link(
+    link(
         &state,
         &args(&["hianime:black-clover-949", "black-clover-77"], LINKED),
     )
@@ -516,29 +445,6 @@ async fn a_link_notes_the_rows_it_linked_and_its_undo_drops_the_note() {
     assert_eq!(note("hianime:black-clover-949").as_deref(), Some(LINKED));
     assert_eq!(note("black-clover-77").as_deref(), Some(LINKED));
     assert_eq!(note("hianime:gintama-1237"), None);
-
-    // The card's row is watched as the linked show since: its undo keeps it.
-    crate::history::upsert_and_write(
-        &state.history_path,
-        row(
-            "2",
-            "hianime:black-clover-949",
-            "Black Clover",
-            Some(1_793_000_000_000),
-            Some(LINKED),
-        ),
-    )
-    .unwrap();
-    unlink(
-        &state,
-        &UnlinkArgs {
-            kitsu_id: LINKED.into(),
-            rows: outcome.linked,
-        },
-    )
-    .expect("unlink");
-    assert_eq!(note("hianime:black-clover-949").as_deref(), Some(LINKED));
-    assert_eq!(note("black-clover-77"), None);
 }
 
 #[tokio::test]
@@ -579,55 +485,4 @@ async fn clearing_the_history_drops_every_link_note() {
             "{row}"
         );
     }
-}
-
-#[tokio::test]
-async fn an_undone_relink_gives_the_row_back_its_earlier_link_note() {
-    // Linked to 12, then to 99; undoing the second puts the row back on
-    // 12, and 12 is still the user's link.
-    let (_tmp, mock, state) = setup(200).await;
-    Mock::given(method("GET"))
-        .and(path("/anime/99"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .insert_header("content-type", "application/vnd.api+json")
-                .set_body_bytes(DETAIL_FIXTURE.to_vec()),
-        )
-        .mount(&mock)
-        .await;
-    let card = "hianime:black-clover-949";
-    link(&state, &args(&[card], LINKED)).await.expect("link");
-    let relinked = link(&state, &args(&[card], "99")).await.expect("relink");
-    assert_eq!(relinked.linked[0].previous_linked.as_deref(), Some(LINKED));
-
-    unlink(
-        &state,
-        &UnlinkArgs {
-            kitsu_id: "99".into(),
-            rows: relinked.linked,
-        },
-    )
-    .expect("unlink");
-
-    assert_eq!(
-        read_all(&state.history_path).unwrap()[0]
-            .kitsu_id
-            .as_deref(),
-        Some(LINKED)
-    );
-    assert_eq!(
-        crate::commands::linked_note::linked(&state, card).as_deref(),
-        Some(LINKED)
-    );
-}
-
-#[test]
-fn an_undo_reads_the_rows_of_a_build_that_sent_no_earlier_link() {
-    // The renderer hands the link's rows back as it got them; a row
-    // without the field reads as one with no earlier link.
-    let row: LinkedRow = serde_json::from_str(
-        r#"{"row":"hianime:black-clover-949","previous":null,"ep_no":"1","watched_at":null}"#,
-    )
-    .expect("parses");
-    assert_eq!(row.previous_linked, None);
 }
