@@ -8,19 +8,22 @@ import type { ResumeTarget } from './resolve';
 /** `hits` less the ones the row rules out: hits past the episode it
  *  reached (for a row a provider the app walks wrote), of another
  *  format than its title names, carrying none of its title's first
- *  word, or of another season than its title names; and, when every
- *  other hit is one, the hits that are another movie than its title
- *  names, a recap neither its title nor its show key names, or of
- *  another season than its show key names
+ *  word, or of another season than its title names; and, for the title
+ *  search's answer when every other hit is one, the hits that are
+ *  another movie than its title names, a recap neither its title nor
+ *  its show key names, or of another season than its show key names
  *  (backend/src/commands/continue_guess.rs). A hit ruled out is never
  *  offered, even when none is left, and the row goes on to the resolve
  *  from its show key's words. A failed call rules none out, so the
  *  guess picks as it did before the rules, and marks `check` failed so
- *  the pick is not stored. */
+ *  the pick is not stored. `search` says `hits` are the title search's
+ *  whole answer; the stored match and the slug lookup's entry are sent
+ *  alone, and the rules that judge a search as a whole leave them be. */
 export async function admitted(
 	preliminary: ResumeTarget,
 	hits: KitsuAnimeRef[],
-	check: { failed: boolean }
+	check: { failed: boolean },
+	search: boolean
 ): Promise<KitsuAnimeRef[]> {
 	if (hits.length === 0) return hits;
 	let out: Set<string>;
@@ -30,7 +33,8 @@ export async function admitted(
 				preliminary.searchTitle,
 				preliminary.displayEpisode,
 				hits,
-				preliminary.allmangaShowId
+				preliminary.allmangaShowId,
+				search
 			)
 		);
 	} catch {

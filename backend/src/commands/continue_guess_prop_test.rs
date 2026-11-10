@@ -284,6 +284,7 @@ proptest! {
                     subtype: Some((*s).to_string()),
                 })
                 .collect(),
+            search: true,
         };
         prop_assert_eq!(answer(req(e)), answer(req(0.0)));
     }
