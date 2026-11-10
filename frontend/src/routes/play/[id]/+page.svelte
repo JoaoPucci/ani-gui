@@ -354,7 +354,14 @@
 	// off, a start held for the viewer, a pick waiting for its stream,
 	// and whether the attached engine was started. The page only wires
 	// it to the element and the engine.
-	const handoff = new HandoffGate(() => hls?.startLoad());
+	const handoff = new HandoffGate(
+		() => hls?.startLoad(),
+		// A manifest the handoff cut off is asked for again; the engine,
+		// its listeners and the fragment-loop guard stay as they are.
+		() => {
+			if (hls && attachedUrl) hls.loadSource(attachedUrl);
+		}
+	);
 	/** The episode went to another player: a hold ends without
 	 *  starting anything, a start stops, the engine stops loading, and
 	 *  the element no longer starts on its own. A stream the element
@@ -2112,7 +2119,10 @@
 				handoff.engineStarted();
 				startEngine(engine, startAt);
 			};
-			hls.on(Hls.Events.MANIFEST_PARSED, () => handoff.whenWatching(startHere));
+			hls.on(Hls.Events.MANIFEST_PARSED, () => {
+				handoff.manifestParsed();
+				handoff.whenWatching(startHere);
+			});
 			sourceScope.add(() => handoff.drop(startHere));
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);

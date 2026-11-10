@@ -21,18 +21,23 @@ export class HandoffGate {
 	// The attached stream's engine was started by the page, and nothing
 	// has stopped it for good since: the only engine a return restarts.
 	private engine = false;
+	// The attached stream's manifest is in. A handoff's stopLoad() before
+	// it is cuts it off for good (hls.js destroys the playlist loaders),
+	// so a return then asks for the stream again. No stream yet reads as
+	// in: there is nothing to ask for.
+	private manifest = true;
 
 	/** `restart` resumes what the handoff stopped, when no start is
 	 *  held. `reload` asks again for a stream whose manifest the handoff
-	 *  cut off. (Signature only so far.) */
+	 *  cut off. */
 	constructor(
 		private readonly restart: () => void,
 		private readonly reload: () => void = () => {}
 	) {}
 
-	/** The attached stream's manifest is in. (Signature only so far.) */
+	/** The attached stream's manifest is in. */
 	manifestParsed(): void {
-		void this.reload;
+		this.manifest = true;
 	}
 
 	get handedOff(): boolean {
@@ -53,6 +58,7 @@ export class HandoffGate {
 		this.held = null;
 		if (start) start();
 		else if (this.engine) this.restart();
+		else if (!this.manifest) this.reload();
 	}
 
 	/** Runs `start` now, or, while handed off, when the viewer comes
@@ -84,6 +90,7 @@ export class HandoffGate {
 	 *  own again). */
 	attaching(): boolean {
 		this.engine = false;
+		this.manifest = false;
 		if (!this.pick) return false;
 		this.forget();
 		return true;
