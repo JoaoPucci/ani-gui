@@ -90,7 +90,7 @@ export class InPlaceLinkSession extends LinkSession {
 			// The player says what a pick did in its slip, once: no
 			// notice, and so no Undo. Failures are still said, and so is
 			// a pick saved once the player is gone, with its slip.
-			notify: playerNotify(deps.notify, inPlayer, () => place.gone),
+			notify: playerNotify(deps.notify, inPlayer, place),
 			refresh,
 			// The surface is not left for the linked show's page, so an
 			// undo never navigates either. It is somewhere else only once

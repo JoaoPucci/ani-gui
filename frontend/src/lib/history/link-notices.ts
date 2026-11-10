@@ -20,15 +20,15 @@ export function linkedNotice(title: string, onUndo: () => void): LinkNotice {
 }
 
 /** What the player tells the user (`inPlayer`): failures only, since
- *  its slip says what a pick did, once — unless the player is `gone`,
+ *  its slip says what a pick did, once — unless the player is gone,
  *  and no slip is left to say it. Anywhere else, every notice. */
 export function playerNotify(
 	notify: (notice: LinkNotice) => void,
 	inPlayer: boolean,
-	gone: () => boolean = () => false
+	player: { readonly gone: boolean }
 ): (notice: LinkNotice) => void {
 	return (notice) => {
-		if (!inPlayer || notice.kind === 'error' || gone()) notify(notice);
+		if (!inPlayer || notice.kind === 'error' || player.gone) notify(notice);
 	};
 }
 
