@@ -1167,7 +1167,9 @@ them introduces a new widget style.
     so titles may be missing at either end: the rows keep their
     layout but carry no numbers, and the masthead gives no title count,
     no place for Resume and no "Start from the beginning". Ways on are
-    headed "Ways to continue" without a count; the titles with no
+    headed "Ways to continue" without a count, a group of titles
+    linked in a circle "Linked titles, order unclear", and Recaps
+    carries no count; the titles with no
     clear place keep their stretch and its heading. The page never
     says the show is alone, and its name comes from the earliest title
     the read reached. The strip's link to the page gives no counts
