@@ -814,4 +814,59 @@ describe('the Up next card at a finale', () => {
 		expect(video.currentTime).toBe(0);
 		expect(skipPill()).toBeNull();
 	});
+
+	it("asks for an episode's skip times again on coming back to it before the next one learned its length", async () => {
+		const { video, fetches } = await openEpisode({ episode: 11 });
+		await playTo(video, 62);
+		await until(() => skipPill() !== null, 'the Skip Intro pill on episode 11');
+		// Episode 12 opens, and leaves before its stream learns its length.
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => Number.NaN });
+		await switchTo(video, 12, 'session-2');
+		await new Promise((r) => setTimeout(r, 20));
+		// Back on episode 11, whose length its stream then learns.
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => LENGTH });
+		await switchTo(video, 11, 'session-3');
+		await fetches.settled('the skip times for episode 11 again');
+		// The episode resumes where it was left: let that land.
+		video.dispatchEvent(new Event('seeked'));
+		video.dispatchEvent(new Event('playing'));
+		await playTo(video, 62);
+		await until(() => skipPill() !== null, 'the Skip Intro pill on episode 11 again');
+	});
+
+	it("keeps an episode's skip times when an earlier request for them fails late", async () => {
+		const { video } = await openEpisode({ episode: 10 });
+		// Episode 11's first request is held, and fails once released; its
+		// second answers.
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		let asked = 0;
+		server.use(
+			http.get(`${API_BASE}/api/aniskip/${KITSU_ID}/11`, async () => {
+				asked++;
+				if (asked === 1) {
+					await held;
+					return new HttpResponse(null, { status: 503 });
+				}
+				return HttpResponse.json([OPENING, ENDING]);
+			})
+		);
+		await switchTo(video, 11, 'session-2');
+		await until(() => asked === 1, "episode 11's first request");
+		// Episode 12 opens and is left before its stream learns its length.
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => Number.NaN });
+		await switchTo(video, 12, 'session-3');
+		await new Promise((r) => setTimeout(r, 20));
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => LENGTH });
+		await switchTo(video, 11, 'session-4');
+		await until(() => asked === 2, "episode 11's second request");
+		video.dispatchEvent(new Event('seeked'));
+		video.dispatchEvent(new Event('playing'));
+		await playTo(video, 62);
+		await until(() => skipPill() !== null, 'the Skip Intro pill from the second answer');
+		release();
+		await new Promise((r) => setTimeout(r, 50));
+		await playTo(video, 63);
+		expect(skipPill()).not.toBeNull();
+	});
 });

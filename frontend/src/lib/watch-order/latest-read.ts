@@ -1,12 +1,13 @@
 /**
- * One read at a time for a page that reads per show, and per retry
- * where it offers one: each read supersedes the ones still out, and
+ * One read at a time: each read supersedes the ones still out, and
  * only the latest read's answer is shown, so an older one landing late
- * never replaces it.
+ * never replaces it. The watch-order pages read per show (and per Try
+ * again); the play page reads skip times per episode.
  *
  * `show` is called with null as a read starts or the reads stop, and
- * with the latest read's answer when it lands. A read must not reject
- * (the watch-order loader answers every failure with data of its own).
+ * with the latest read's answer when it lands. A read must not reject:
+ * callers map a failure to a value of their own (the watch-order loader
+ * to its own data, the play page's skip times to none).
  */
 export interface LatestRead<T> {
 	/** Start a read, superseding any still out; the shown value is null until it answers. */
