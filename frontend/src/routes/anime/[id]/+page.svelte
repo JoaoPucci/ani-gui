@@ -82,7 +82,7 @@
 		type AvailabilityPatch
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
-	import { lookupResume } from '$lib/detail/resume-lookup';
+	import { latestLookup, lookupResume } from '$lib/detail/resume-lookup';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { runUnairedClick } from '$lib/detail/unaired-click';
 	import { airedCap, beyondPlayable, displayCap, minCap } from '$lib/detail/episode-caps';
@@ -492,6 +492,8 @@
 	// resumeEntry.ep_no, capped at the show's known episode count so
 	// we don't propose an episode that doesn't exist yet.
 	let resumeEntry = $state<HistoryEntry | null>(null);
+	// Only the latest resume lookup started answers ($lib/detail/resume-lookup).
+	const resumeLookups = latestLookup();
 
 	// Episode list — fetched in parallel with the detail. Holds the
 	// CURRENT page only (not concatenated) so a 500-episode show doesn't
@@ -1169,9 +1171,10 @@
 				if (images && detail && id === currentId) Object.assign(detail, images);
 			}
 		});
+		const latest = resumeLookups();
 		void lookupResume(currentId, historyByKitsu, detailServed)
 			.then((h) => {
-				if (id !== currentId) return;
+				if (id !== currentId || !latest()) return;
 				resumeEntry = h;
 				resumeRefresh.row(h);
 			})
@@ -1733,9 +1736,10 @@
 	// would play the show onto rows an Undo gave back.
 	const stopHearing = onHistoryLinked(() => {
 		const currentId = id;
+		const latest = resumeLookups();
 		void lookupResume(currentId, historyByKitsu, kitsuAnimeDetail(currentId))
 			.then((h) => {
-				if (id !== currentId) return;
+				if (id !== currentId || !latest()) return;
 				resumeEntry = h;
 				resumeRefresh.row(h);
 			})

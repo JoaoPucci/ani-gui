@@ -15,7 +15,8 @@
  * special pinned as exact would hold the linked series at episode 1.
  * And whatever was still on its way about the former show — the first
  * load's probe, an earlier rematch — lands without putting it back. A
- * read whose list a remove or clear overtook reads again.
+ * read whose list a remove or clear overtook reads again, and a match
+ * that lands for a row one took away is dropped.
  *
  * The component holds the state; this decides what happens to it.
  */
@@ -81,6 +82,9 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 		const settle = (match: KitsuAnimeRef | null) => {
 			if (count(h.id) !== ask) return;
 			leaving.delete(h.id);
+			// A remove or clear took the row away meanwhile: nothing is kept
+			// for a row no longer on the cards.
+			if (!deps.current().some((r) => r.id === h.id)) return;
 			deps.forget(h.id);
 			deps.publish(h.id, match);
 		};

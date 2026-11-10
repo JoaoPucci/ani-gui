@@ -6,7 +6,8 @@
  * it. So an empty answer is asked again once the detail is served.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { lookupResume } from './resume-lookup';
+import fc from 'fast-check';
+import { latestLookup, lookupResume } from './resume-lookup';
 
 const never = new Promise<never>(() => {});
 
@@ -36,5 +37,26 @@ describe('lookupResume', () => {
 		const lookup = vi.fn().mockResolvedValue(null);
 		await expect(lookupResume('42', lookup, Promise.reject(new Error('404')))).resolves.toBeNull();
 		expect(lookup).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('latestLookup', () => {
+	it('answers for the latest lookup started, and no earlier one', () => {
+		const start = latestLookup();
+		const first = start();
+		expect(first()).toBe(true);
+		const second = start();
+		expect(first()).toBe(false);
+		expect(second()).toBe(true);
+	});
+
+	it('holds for exactly the last start of any run of starts', () => {
+		fc.assert(
+			fc.property(fc.integer({ min: 1, max: 20 }), (n) => {
+				const start = latestLookup();
+				const tickets = Array.from({ length: n }, () => start());
+				expect(tickets.map((t) => t())).toEqual(tickets.map((_, i) => i === n - 1));
+			})
+		);
 	});
 });
