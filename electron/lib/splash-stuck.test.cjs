@@ -534,6 +534,22 @@ test("a main-frame load failure is a lost splash; a subframe's, or an aborted on
   made.splash.suppress();
 });
 
+test("the splash never navigates away or opens windows; a page that leaves anyway is lost", async (t) => {
+  const made = await watchedLoss(t);
+  let prevented = false;
+  made.win.webContents.emit("will-navigate", { preventDefault: () => (prevented = true) }, "file:///home/me/dropped.png");
+  assert.equal(prevented, true);
+  assert.deepEqual(made.win.openHandler({ url: "https://example.com" }), { action: "deny" });
+  // A reload of the splash's own page is not leaving it.
+  made.win.webContents.emit("did-navigate", {}, `${require("node:url").pathToFileURL(SPLASH_PAGE).href}?v=1`);
+  await flush();
+  assert.equal(made.lost, null);
+  made.win.webContents.emit("did-navigate", {}, "file:///home/me/dropped.png");
+  await flush();
+  assert.match(String(made.lost), /left its page/);
+  made.splash.suppress();
+});
+
 test("a splash page that crashes before it ever loaded is reloaded, then lost, like any crash", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const win = stuckWindow();
