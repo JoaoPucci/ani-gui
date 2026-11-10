@@ -166,7 +166,12 @@ test('a first page that never says it rendered: the splash offers Restart and Qu
 		expect(await windows(app)).toHaveLength(2);
 
 		// Enter on Quit: the launch ends as closing the splash ends it.
-		await splash.keyboard.press('Enter');
+		// A button acts on Enter's keydown, so the page closes before the
+		// key comes back up, and the press reports its page gone; the exit
+		// below is the check.
+		await splash.keyboard.press('Enter').catch((err) => {
+			if (!String(err).includes('has been closed')) throw err;
+		});
 		expect(await exited).toBe(0);
 		expect(mainProcesses(binary)).toEqual([]);
 	} finally {
