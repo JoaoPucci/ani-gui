@@ -161,7 +161,17 @@ interface Options {
 	/** Fractional extras the source lists ("12.5"). */
 	extras?: string[];
 	autoSkipOp?: boolean;
+	/** The watch history: none unless set. */
+	history?: HistoryRowFixture[];
+	/**
+	 * The row the backend names for an id where it is not the row that
+	 * recorded it (`history_claim::names`): a row whose recorded entry
+	 * Kitsu deleted, named by its stored mapping or title match.
+	 */
+	named?: Record<string, HistoryRowFixture>;
 }
+
+type HistoryRowFixture = { id: string; title: string; ep_no: string; kitsu_id?: string };
 
 /** Opens `options.episode` of Second Arc and gives its video a length. */
 async function openEpisode(options: Options = {}) {
@@ -184,7 +194,18 @@ async function openEpisode(options: Options = {}) {
 				? HttpResponse.json({ error: 'error.kitsu.unreachable' }, { status: 502 })
 				: HttpResponse.json(options.franchise ?? franchise())
 		),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json(options.history ?? [])),
+		// The rows the franchise's entries resume from, as the resume
+		// lookup names them.
+		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
+			const { ids } = (await request.json()) as { ids: string[] };
+			const rows = options.history ?? [];
+			return HttpResponse.json(
+				Object.fromEntries(
+					ids.map((k) => [k, options.named?.[k] ?? rows.find((r) => r.kitsu_id === k) ?? null])
+				)
+			);
+		}),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
 			HttpResponse.json({
 				aired: options.sourceEpisodes ?? EPISODES,
@@ -422,11 +443,14 @@ describe('the Up next card at a finale', () => {
 		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		await fetches.settled('anything the card set off');
+		// The local history lookup names every entry of the franchise
+		// once it is read, which asks nothing of the provider.
 		const asked = fetches.sent.filter(
 			(f) =>
-				f.path.includes('/50') ||
-				JSON.stringify(f.body).includes('Final Arc') ||
-				JSON.stringify(f.body).includes('"50"')
+				f.path !== '/api/history/by-kitsu' &&
+				(f.path.includes('/50') ||
+					JSON.stringify(f.body).includes('Final Arc') ||
+					JSON.stringify(f.body).includes('"50"'))
 		);
 		expect(asked).toEqual([]);
 		const after = fetches.sent.slice(sentBefore);
@@ -557,6 +581,32 @@ describe('the Up next card at a finale', () => {
 		await playToEnd(video);
 		await new Promise((r) => setTimeout(r, 50));
 		expect(card()).toBeNull();
+	});
+
+	it("gives the next entry's meta line the viewer's progress in it", async () => {
+		const { video } = await openEpisode({
+			history: [{ id: 'hianime:saga-final', title: 'Saga Final Arc', ep_no: '3', kitsu_id: '50' }]
+		});
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card');
+		await until(
+			() => (card()!.textContent ?? '').includes(m.watchorder_meta_progress_open({ episode: 3 })),
+			'the progress'
+		);
+	});
+
+	it("gives the next entry a row's progress when Kitsu deleted the entry the row recorded", async () => {
+		// The row recorded entry 4, which Kitsu has since deleted; the
+		// backend names it for Final Arc (50), the entry its Continue
+		// Watching card was matched to, as the resume lookup does.
+		const ROW = { id: 'hianime:saga-final', title: 'Saga Final Arc', ep_no: '3', kitsu_id: '4' };
+		const { video } = await openEpisode({ history: [ROW], named: { '50': ROW } });
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card');
+		await until(
+			() => (card()!.textContent ?? '').includes(m.watchorder_meta_progress_open({ episode: 3 })),
+			"the replacement's progress"
+		);
 	});
 
 	it('shows no card at the end of the run', async () => {

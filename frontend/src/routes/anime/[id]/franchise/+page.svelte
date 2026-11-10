@@ -35,7 +35,15 @@
 	$effect(() => {
 		const current = id;
 		void attempt;
-		reads.start(() => loadWatchOrder(current, { franchise: kitsuFranchise, history: historyList }));
+		reads.start(() =>
+			loadWatchOrder(current, {
+				franchise: kitsuFranchise,
+				named: (ids) =>
+					historyList().then((rows) =>
+						Object.fromEntries(ids.map((k) => [k, rows.find((r) => r.kitsu_id === k) ?? null]))
+					)
+			})
+		);
 	});
 
 	const order = $derived(settledOrder(config, configFailed));

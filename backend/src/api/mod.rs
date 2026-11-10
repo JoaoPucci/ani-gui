@@ -97,6 +97,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/app-info", get(get_app_info))
         .route("/api/proxy-base-url", get(get_proxy_base_url))
         .route("/api/history", get(get_history).delete(delete_history))
+        .route("/api/history/by-kitsu", post(post_history_by_kitsu_each))
         .route("/api/history/by-kitsu/:kitsu_id", get(get_history_by_kitsu))
         .route("/api/history/:id/number", get(get_history_number))
         .route("/api/history/:id", delete(delete_history_entry))
@@ -224,6 +225,14 @@ async fn get_history_by_kitsu(
 ) -> Result<Json<Option<HistoryEntry>>, AniError> {
     let kitsu_id = crate::kitsu_id::require(&kitsu_id)?;
     Ok(Json(h_inner::history_by_kitsu(&state, kitsu_id)?))
+}
+
+/// Each id's row, as `/api/history/by-kitsu/<id>` answers for one.
+async fn post_history_by_kitsu_each(
+    State(state): State<Arc<AppState>>,
+    Json(args): Json<h_inner::ByKitsuEachArgs>,
+) -> Result<Json<std::collections::BTreeMap<String, Option<HistoryEntry>>>, AniError> {
+    Ok(Json(h_inner::history_by_kitsu_each(&state, &args.ids)?))
 }
 
 /// The episode one history row reads as now — `null` when no row is
@@ -2749,6 +2758,28 @@ mod tests {
             .expect("oneshot");
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(body_string(response).await, "null");
+    }
+
+    /// `POST /api/history/by-kitsu` answers each id it is asked
+    /// about, `null` where no row names it, and drops a value that is
+    /// not an id.
+    #[tokio::test]
+    async fn history_by_kitsu_each_answers_each_id() {
+        let td = TempDir::new().expect("tempdir");
+        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/history/by-kitsu")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"ids":["99999999","7","../7"]}"#))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(body_string(response).await, r#"{"7":null,"99999999":null}"#);
     }
 
     /// `/api/external-player` is the only handler that fans out to

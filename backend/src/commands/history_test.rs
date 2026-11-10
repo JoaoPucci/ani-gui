@@ -143,6 +143,78 @@ fn by_kitsu_returns_the_matching_entry() {
 }
 
 #[test]
+fn by_kitsu_each_answers_each_id_as_by_kitsu_does() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            HistoryEntry {
+                ep_no: "42".into(),
+                id: "the-sequel-88".into(),
+                title: "The Sequel".into(),
+                watched_at: None,
+                kitsu_id: None,
+                own_number: false,
+            },
+            HistoryEntry {
+                ep_no: "3".into(),
+                id: "the-first-1".into(),
+                title: "The First".into(),
+                watched_at: None,
+                kitsu_id: Some("1001".into()),
+                own_number: false,
+            },
+        ],
+    )
+    .unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "the-sequel-88", "9009").unwrap();
+    crate::commands::numbering_offset::put(&s, "the-sequel-88", 40);
+
+    let ids: Vec<String> = ["9009", "1001", "5", "9009"]
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    let each = history_by_kitsu_each(&s, &ids).unwrap();
+    assert_eq!(each.len(), 3);
+    for id in &ids {
+        let one = history_by_kitsu(&s, id).unwrap();
+        assert_eq!(
+            each.get(id).cloned().flatten().map(|e| (e.id, e.ep_no)),
+            one.map(|e| (e.id, e.ep_no)),
+            "id {id}"
+        );
+    }
+    assert_eq!(each["9009"].as_ref().map(|e| e.ep_no.as_str()), Some("2"));
+    assert_eq!(
+        each["1001"].as_ref().map(|e| e.id.as_str()),
+        Some("the-first-1")
+    );
+    assert!(each["5"].is_none());
+}
+
+#[test]
+fn by_kitsu_each_of_no_ids_answers_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[HistoryEntry {
+            ep_no: "3".into(),
+            id: "the-first-1".into(),
+            title: "The First".into(),
+            watched_at: None,
+            kitsu_id: Some("1001".into()),
+            own_number: false,
+        }],
+    )
+    .unwrap();
+    assert!(history_by_kitsu_each(&s, &[]).unwrap().is_empty());
+}
+
+#[test]
 fn by_kitsu_returns_none_when_no_history_entry_maps_to_id() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("history");

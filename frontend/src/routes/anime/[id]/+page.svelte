@@ -25,6 +25,7 @@
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import StripTrio from '$lib/watch-order/StripTrio.svelte';
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
+	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { localDay } from '$lib/watch-order/entry';
 	import { numeral } from '$lib/watch-order/meta';
 	import { settledOrder, watchOrderPage } from '$lib/watch-order/page-model';
@@ -46,8 +47,6 @@
 		playStream,
 		airingGet,
 		settingsGet,
-		kitsuFranchise,
-		historyList,
 		settingsPut,
 		type AiringStatus,
 		type Config,
@@ -1184,11 +1183,9 @@
 			});
 		// The watch-order strip: neither read rejects, and a franchise
 		// that cannot be read shows no strip ($lib/watch-order/loader).
-		void loadWatchOrder(currentId, { franchise: kitsuFranchise, history: historyList }).then(
-			(w) => {
-				if (id === currentId) watchOrderData = w;
-			}
-		);
+		void loadWatchOrder(currentId, watchOrderSources).then((w) => {
+			if (id === currentId) watchOrderData = w;
+		});
 		void detailServed
 			.then((d) => {
 				// Navigation raced ahead: another show, or another page
