@@ -10,8 +10,9 @@
  * by the id it recorded while Kitsu still has that entry, else by its
  * stored mapping, else, for a row whose recorded entry Kitsu deleted,
  * by the title match Home stored for it. So the strip counts a row
- * where the entry's own page would resume from it. Each row counts
- * toward the entry that named it.
+ * where the entry's own page would resume from it, toward the entry
+ * that named it. One row can be named for several entries: a row whose
+ * recorded entry is gone, by a title match stored for each cour.
  */
 import type { HistoryRow } from './progress';
 import type { FranchiseData } from './types';

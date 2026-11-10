@@ -22,8 +22,11 @@ use crate::history::{read_all, HistoryEntry};
 /// rule the Continue Watching strip applies to the same rows, so
 /// the two surfaces name one episode. Returns `None` when:
 ///   - The history file is missing or empty.
-///   - No entry records `kitsu_id`, and no entry that records none has
-///     a cached mapping equal to it.
+///   - Kitsu answered `kitsu_id` itself gone.
+///   - No entry records `kitsu_id` while Kitsu still has it; no entry
+///     without a standing recorded id has a standing mapping to it;
+///     and no entry whose recorded entry is gone, with no standing
+///     mapping, has a title match naming it.
 ///
 /// A row that records no id can be in the file without being in the
 /// reverse cache: a play that had no Kitsu id to record, a pairing the
