@@ -40,35 +40,36 @@ function appReadyBound(splash) {
 
 /**
  * What fails the window's first open once the splash is `lost`
- * (lib/splash.cjs): the page gets back the bound it has without a
- * splash, APP_READY_WAIT_MS from the loss. A page that has rendered, or
- * renders within it, fails nothing and is revealed as usual; one that
- * has not by then rejects this with the loss's error, and the boot fails
- * on it (main.js, openFirstPage's `abort`). Nothing else on screen could
- * end or continue the launch, and revealing a page that never said it
- * rendered may show it empty. Never settles otherwise.
+ * (lib/splash.cjs): the page gets back a bound of APP_READY_WAIT_MS,
+ * counted from the loss, or from now when the splash was lost before
+ * the window was made. A page that has rendered, or renders within it,
+ * fails nothing and is revealed as usual. One that has not by then
+ * rejects this with the loss's error, and the boot fails on it (main.js,
+ * openFirstPage's `abort`): nothing else on screen could end or continue
+ * the launch, and revealing a page that never said it rendered may show
+ * it empty. A page whose renderer went (`ready` false) is left to the
+ * boot's own renderer-gone failure, which names the cause. Never
+ * settles otherwise.
  */
 function abortWhenLost(lost, ready, { graceMs = APP_READY_WAIT_MS } = {}) {
-  let rendered = false;
-  const renderedNow = Promise.resolve(ready).then((r) => {
-    if (r === true) rendered = true;
-    return r === true;
+  let outcome = null;
+  const settledReady = Promise.resolve(ready).then((r) => {
+    outcome = r === true ? "rendered" : "gone";
+    return outcome;
   });
-  return Promise.resolve(lost).then(
-    () => new Promise(() => {}),
-    (err) => {
-      if (rendered) return new Promise(() => {});
-      let timer;
-      const late = new Promise((resolve) => {
-        timer = setTimeout(() => resolve(false), graceMs);
-      });
-      return Promise.race([renderedNow, late]).then((ok) => {
-        clearTimeout(timer);
-        if (ok) return new Promise(() => {});
-        throw err;
-      });
-    },
-  );
+  const never = () => new Promise(() => {});
+  return Promise.resolve(lost).then(never, (err) => {
+    if (outcome) return never();
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(() => resolve("late"), graceMs);
+    });
+    return Promise.race([settledReady, late]).then((what) => {
+      clearTimeout(timer);
+      if (what !== "late") return never();
+      throw err;
+    });
+  });
 }
 
 /** The app window's options. */

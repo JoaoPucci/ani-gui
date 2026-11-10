@@ -196,8 +196,9 @@ async function openFirstPage(
   url,
   // `abort`: a promise whose rejection fails the open (and so the boot)
   // whatever it is waiting for, and keeps the window from being shown:
-  // main.js passes the splash's `lost`, for a wait that only the splash
-  // could otherwise end.
+  // main.js passes lib/app-window.cjs abortWhenLost, which rejects when
+  // the splash is lost and the page has not rendered within the bound
+  // it then gets back.
   { timeoutMs, logError, beforeShow = async () => {}, reveal = () => win.show(), abort = new Promise(() => {}) },
 ) {
   const contents = win.webContents;
