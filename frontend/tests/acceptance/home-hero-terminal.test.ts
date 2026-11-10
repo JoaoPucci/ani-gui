@@ -158,8 +158,15 @@ describe('home hero, when there is no show to feature', () => {
 			])
 		);
 		app = mount(HomePage, { target });
-		await vi.waitFor(() => expect(busy()).toBe(true), { timeout: 3000 });
-		expect(layerOf('.hero-body')).not.toBeNull();
-		release();
+		try {
+			await vi.waitFor(() => expect(busy()).toBe(true), { timeout: 3000 });
+			expect(layerOf('.hero-body')).not.toBeNull();
+		} finally {
+			release();
+		}
+		// The held request answers before the page unmounts.
+		await vi.waitFor(() => expect(heroTitle()).toBe(m.home_hero_empty_title()), {
+			timeout: 3000
+		});
 	});
 });
