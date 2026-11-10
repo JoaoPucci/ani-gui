@@ -466,6 +466,39 @@ test("a splash page that keeps crashing is reloaded a bounded number of times", 
   assert.ok(logs.some((l) => l.includes(`crashed ${SPLASH_RELOADS + 1} times: not reloaded again`)), JSON.stringify(logs));
 });
 
+test("a splash whose crash recovery runs out says it is lost, so the boot can fail instead of waiting forever", async (t) => {
+  const { splash, win } = await stuckSplash(t);
+  let lost = null;
+  splash.lost().catch((err) => (lost = err));
+  for (let i = 0; i < SPLASH_RELOADS; i++) {
+    win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+    await flush();
+    assert.equal(lost, null, `after ${i + 1} crash(es) it is reloaded instead`);
+  }
+  win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  await flush();
+  assert.ok(lost instanceof Error);
+  assert.match(lost.message, new RegExp(`crashed ${SPLASH_RELOADS + 1} times`));
+  splash.suppress();
+});
+
+test("a splash that is never lost never says so, and crashes past the boot do not count", async (t) => {
+  const { splash, win } = await stuckSplash(t);
+  let lost = null;
+  splash.lost().catch((err) => (lost = err));
+  splash.close();
+  for (let i = 0; i < 5; i++) win.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  await flush();
+  assert.equal(lost, null);
+  // A controller that never opened a splash is never lost either, and
+  // asking does not leave an unhandled rejection behind.
+  const none = splashController({ createWindow: () => null, logError: () => {} });
+  let noneLost = null;
+  none.lost().catch((err) => (noneLost = err));
+  await flush();
+  assert.equal(noneLost, null);
+});
+
 test("a splash page that exited cleanly is not reloaded; one the system killed is", async (t) => {
   // On Linux the kernel's out-of-memory killer is reported as "killed":
   // that is the one-off crash the reload is for.
