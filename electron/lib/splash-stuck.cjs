@@ -40,9 +40,10 @@ const SPLASH_FLASH_MS = 1_000;
  *  for a page that dies on every load. */
 const SPLASH_RELOADS = 2;
 
-/** Renderer exits that are not a crash: a clean exit, or one killed
- *  from outside (a session tearing down). Not reloaded. */
-const NOT_A_CRASH = new Set(["clean-exit", "killed"]);
+/** Renderer exits that are not a crash: a clean exit. Not reloaded.
+ *  "killed" is: on Linux it is how the kernel's out-of-memory killer
+ *  is reported. */
+const NOT_A_CRASH = new Set(["clean-exit"]);
 
 /** What the main process runs in the splash to show the stuck state.
  *  It evaluates to the page's choice once one is made ("restart" or

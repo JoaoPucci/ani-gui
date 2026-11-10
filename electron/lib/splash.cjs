@@ -347,8 +347,8 @@ function splashController({
         if (steps > 0) sendSteps();
         // A page reloaded after a crash starts with neither motion
         // class: it is told again to move or to rest, as the first was
-        // (the start alone: its paint was counted once), and a stuck
-        // splash offers its choices again.
+        // (the start alone: the first page's paint was counted, or given
+        // up on, already), and a stuck splash offers its choices again.
         if (reloads > 0 && signalled && alive()) {
           Promise.resolve(win.webContents.executeJavaScript(shownStart(preference))).catch(() => {});
         }
