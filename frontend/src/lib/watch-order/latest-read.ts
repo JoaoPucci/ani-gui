@@ -1,8 +1,8 @@
 /**
  * One read at a time: each read supersedes the ones still out, and
  * only the latest read's answer is shown, so an older one landing late
- * never replaces it. The play page reads its watch order per show
- * through it.
+ * never replaces it. The watch-order pages read through it: the play
+ * page per show, and the franchise page per show and per Try again.
  *
  * `show` is called with null as a read starts or the reads stop, and
  * with the latest read's answer when it lands. A read must not reject:
