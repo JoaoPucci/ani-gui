@@ -175,9 +175,10 @@ runtime_dir() {
     grep -qxF 'GVFS_DISABLE_FUSE=1' "$STUB_DIR/service.env"
 }
 
-@test "a process the command leaves in its group is stopped, even one the sweep cannot see" {
+@test "a process the command leaves in its group is stopped, even one with an empty environment" {
     # `env -i` empties the environment, as Chromium's children overwrite
-    # theirs: only the signal to the command's process group reaches it.
+    # theirs: nothing about it says which session it came from, and the
+    # signal to the command's process group reaches it all the same.
     left="$STUB_DIR/hidden.pid"
     run sh "$TOOL" sh -c "(exec env -i sleep 60 </dev/null >/dev/null 2>&1) & echo \$! >'$left'"
     [ "$status" -eq 0 ]
