@@ -34,11 +34,6 @@ const HAVE_FUTURE_DATA = 3;
 /** `HTMLMediaElement.HAVE_ENOUGH_DATA`. */
 const HAVE_ENOUGH_DATA = 4;
 
-/** How long a start or a stall lasts before the loader shows: a start
- *  from the cache or a seek inside the buffer lands sooner and never
- *  flashes it. */
-export const LOADER_DELAY_MS = 400;
-
 export function nextStartPhase(phase: StartPhase, event: StartEvent): StartPhase {
 	switch (event.kind) {
 		case 'attach':
@@ -78,10 +73,4 @@ export function nextStartPhase(phase: StartPhase, event: StartEvent): StartPhase
  *  way. */
 export function chromeReadsPlaying(phase: StartPhase): boolean {
 	return phase === 'starting' || phase === 'playing' || phase === 'stalled';
-}
-
-/** Whether the loader is due `now`, for a phase entered at `since`. */
-export function loaderDue(phase: StartPhase, since: number, now: number): boolean {
-	if (phase !== 'starting' && phase !== 'stalled') return false;
-	return now - since >= LOADER_DELAY_MS;
 }

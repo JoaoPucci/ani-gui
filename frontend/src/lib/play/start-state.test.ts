@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
-	LOADER_DELAY_MS,
 	chromeReadsPlaying,
-	loaderDue,
 	nextStartPhase,
 	type StartEvent,
 	type StartPhase
@@ -78,16 +76,6 @@ describe('chromeReadsPlaying', () => {
 		expect(chromeReadsPlaying('paused')).toBe(false);
 		expect(chromeReadsPlaying('ended')).toBe(false);
 		expect(chromeReadsPlaying('idle')).toBe(false);
-	});
-});
-
-describe('loaderDue', () => {
-	it('waits a beat before showing, so a quick start never flashes it', () => {
-		expect(loaderDue('starting', 0, LOADER_DELAY_MS - 1)).toBe(false);
-		expect(loaderDue('starting', 0, LOADER_DELAY_MS)).toBe(true);
-		expect(loaderDue('stalled', 100, 100 + LOADER_DELAY_MS)).toBe(true);
-		expect(loaderDue('playing', 0, 10_000)).toBe(false);
-		expect(loaderDue('paused', 0, 10_000)).toBe(false);
 	});
 });
 
