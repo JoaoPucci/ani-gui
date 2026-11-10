@@ -10,7 +10,7 @@
  */
 
 import { recoveryResume } from '$lib/play/resume-after-recovery';
-import { holdForResume, resumeStartAt, type ResumeHold } from '$lib/play/resume-hold';
+import { holdForResume, noHold, resumeStartAt, type ResumeHold } from '$lib/play/resume-hold';
 import { stallMachine } from '$lib/play/stall-machine';
 import type { SourceScope } from '$lib/play/source-scope';
 import {
@@ -72,10 +72,10 @@ export function armSourceScopedListeners(input: {
 	// fragment before the point's is fetched, so nothing before it can
 	// be shown. A started mark, at zero, has nowhere to seek.
 	const startAt = resumeStartAt(recovered, kept);
-	const hold: ResumeHold | null =
+	const hold: ResumeHold =
 		startAt !== null
 			? holdForResume({ video, onHold: (holding) => onResumeHold?.(holding) })
-			: null;
+			: noHold(video);
 	// Progress means frames actually rendered — the `playing` event —
 	// never a bare timeupdate: the resume seek below emits one at the
 	// old timestamp before the fresh source has delivered anything.
@@ -121,10 +121,7 @@ export function armSourceScopedListeners(input: {
 	const stopWaiting = () => {
 		video.removeEventListener('durationchange', onDuration);
 	};
-	const seekTo = (seconds: number) => {
-		if (hold) hold.seekTo(seconds);
-		else video.currentTime = seconds;
-	};
+	const seekTo = (seconds: number) => hold.seekTo(seconds);
 	const onDuration = () => {
 		if (Number.isFinite(video.duration)) resumeKept();
 	};
@@ -138,7 +135,7 @@ export function armSourceScopedListeners(input: {
 	// is already at its start, and is revealed there at once.
 	const startFromTheTop = () => {
 		if (input.startedAtPoint) seekTo(0);
-		else hold?.release();
+		else hold.release();
 	};
 	// Seeks to the kept point unless the known length puts it in the
 	// last 90 seconds, where it is forgotten instead. Decided once.
@@ -164,7 +161,7 @@ export function armSourceScopedListeners(input: {
 	scope.add(() => {
 		save();
 		stopWaiting();
-		hold?.end();
+		hold.end();
 		opened = false;
 		video.removeEventListener('playing', markProgress);
 		video.removeEventListener('loadedmetadata', onMetadata);
@@ -177,5 +174,5 @@ export function armSourceScopedListeners(input: {
 	video.addEventListener('timeupdate', onTime);
 	video.addEventListener('pause', save);
 	video.addEventListener('ended', onEnded);
-	return { startAt, endHold: () => hold?.end() };
+	return { startAt, endHold: () => hold.end() };
 }
