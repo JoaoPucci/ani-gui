@@ -48,7 +48,7 @@
 	import { cardPositions, scrollToAnchor } from '$lib/search/scroll-anchor';
 	import { followAddress } from '$lib/search/follow-address';
 	import { arrive, emptyView, type SearchView } from '$lib/search/arrival';
-	import { discoveryView, LOADING, settleRow, type RowLoad } from '$lib/search/discovery';
+	import { discoveryView, loadDiscoveryRows, LOADING, type RowLoad } from '$lib/search/discovery';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
@@ -181,32 +181,22 @@
 
 	onMount(() => void loadDiscovery());
 
-	/** Ask for both discovery rows; each lands in its own slot. Also
-	 *  the notice's retry, which is offered only once both have
-	 *  settled, so no earlier answer is still on its way.
-	 *
-	 *  The settings are resolved first so the availability filter sees
-	 *  the user's actual sub/dub mode; started in parallel, a row could
-	 *  be filtered with pickAvailabilityMode(null)'s 'sub' default. When
-	 *  they could not be read, they are asked again on the retry: they
-	 *  come from the same local backend as the rows, so a page that
-	 *  reached the notice has usually lost them too. */
-	async function loadDiscovery() {
+	/** Ask for both discovery rows, each landing in its own slot
+	 *  ($lib/search/discovery: loadDiscoveryRows). Also the notice's
+	 *  Try again. */
+	function loadDiscovery() {
 		rowLoads = [LOADING, LOADING];
-		if (config === null) {
-			try {
-				config = await settingsGet();
-			} catch {
-				// Still unreadable: pickAvailabilityMode falls back to 'sub'.
-			}
-		}
-		const mode = pickAvailabilityMode(config);
-		void settleRow(kitsuTrendingAnilist().then((t) => filterAvailable(t, mode))).then(
-			(row) => (rowLoads[0] = row)
-		);
-		void settleRow(kitsuTopRated().then((t) => filterAvailable(t, mode))).then(
-			(row) => (rowLoads[1] = row)
-		);
+		return loadDiscoveryRows<KitsuAnimeRef, Config>({
+			config: () => config,
+			readConfig: settingsGet,
+			keepConfig: (read) => (config = read),
+			pickMode: pickAvailabilityMode,
+			rows: [
+				(mode) => kitsuTrendingAnilist().then((t) => filterAvailable(t, mode)),
+				(mode) => kitsuTopRated().then((t) => filterAvailable(t, mode))
+			],
+			onRow: (index, row) => (rowLoads[index] = row)
+		});
 	}
 
 	// Drive the search off the URL ?q=… param. The global topbar from
@@ -311,7 +301,7 @@
 	const searchRunner = createSearchRunner({
 		searchPage: kitsuSearchPage,
 		getConfig: async () => {
-			// Same race as loadDiscovery: a fast ?q= deeplink can fire before
+			// Same race as loadDiscoveryRows: a fast ?q= deeplink can fire before
 			// settingsGet has resolved on first load. The runner caches
 			// the result so DUB users never search under the 'sub'
 			// fallback twice.
