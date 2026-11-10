@@ -63,13 +63,31 @@ export interface FranchisePageModel {
 }
 
 /**
- * `section` without its numbers. The layout is made with them, so a
- * title keeps its stretch rather than moving into "No clear place".
+ * `section` as a franchise read in part shows it: without its numbers,
+ * and without the "No clear place" heading, since a title's place may
+ * lie past the cut. The layout is made with the numbers, so a title
+ * keeps its stretch.
  */
 function unnumbered(section: FranchiseSection): FranchiseSection {
 	const blank = (r: FranchiseRow): FranchiseRow => ({ ...r, position: null });
 	if (section.kind === 'ways') return { ...section, ways: section.ways.map((w) => w.map(blank)) };
-	return { ...section, rows: section.rows.map(blank) };
+	if (section.kind === 'group') return { ...section, rows: section.rows.map(blank) };
+	return { ...section, rows: section.rows.map(blank), unplaced: false };
+}
+
+/**
+ * The main story of a franchise read in part: each section unnumbered,
+ * and a line left next to another (the stretch that lost its heading)
+ * joined to it, so no two lists sit side by side.
+ */
+function unnumberedStory(sections: readonly FranchiseSection[]): FranchiseSection[] {
+	return sections.map(unnumbered).reduce<FranchiseSection[]>((out, s) => {
+		const last = out.at(-1);
+		if (s.kind === 'line' && last?.kind === 'line')
+			out[out.length - 1] = { ...last, rows: [...last.rows, ...s.rows] };
+		else out.push(s);
+		return out;
+	}, []);
 }
 
 /** Whether `run` lists `id` and nothing else. */
@@ -118,7 +136,7 @@ export function franchisePage(
 			position: whole ? placement(run, now.entry.id, order).position : null
 		},
 		start: whole ? sequence(run, order)[0] : null,
-		sections: whole ? mainStory(ctx, segs) : mainStory(ctx, segs).map(unnumbered),
+		sections: whole ? mainStory(ctx, segs) : unnumberedStory(mainStory(ctx, segs)),
 		versions: run.versions,
 		films: run.films,
 		sides: run.sides,

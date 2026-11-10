@@ -81,8 +81,7 @@ export function loopGroupText(count: number): string {
  * franchise read in part (`complete` false), where it may be short.
  */
 export function waysKeyText(count: number, complete: boolean): string {
-	void complete;
-	return m.watchorder_strip_ways({ count });
+	return complete ? m.watchorder_strip_ways({ count }) : m.watchorder_upnext_choices();
 }
 
 /** "05": positions read as oversized two-digit numerals. */
