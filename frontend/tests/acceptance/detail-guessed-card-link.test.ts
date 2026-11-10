@@ -527,4 +527,35 @@ describe('a show page on screen when a link or undo answers elsewhere', () => {
 			'Play from episode 1'
 		);
 	});
+
+	it("keeps Continue gone when the page's first lookup, sent before the undo, answers after it", async () => {
+		rows = rows.map((r) => ({ ...r, kitsu_id: RIGHT }));
+		// The page's first lookup reads the rows as they are, then is held.
+		let releaseFirst: () => void = () => {};
+		const held = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		let asks = 0;
+		server.use(
+			http.get(`${API_BASE}/api/history/by-kitsu/:id`, async ({ params }) => {
+				const found = rows.find((r) => r.kitsu_id === params.id) ?? null;
+				if (++asks === 1) await held;
+				return HttpResponse.json(found);
+			})
+		);
+		await openShowPage(RIGHT);
+		await until(() => asks === 1, "the page's first lookup");
+		await appLinkDeps().unlink(RIGHT, [
+			{ row: CARD, previous: null, ep_no: '5', watched_at: null },
+			{ row: HIDDEN, previous: null, ep_no: '3', watched_at: null }
+		]);
+		// The undo's own lookup has answered, an empty answer asked twice
+		// ($lib/detail/resume-lookup), before the first one does.
+		await until(() => asks === 3, "the undo's lookup");
+		await settle();
+		releaseFirst();
+		await settle();
+		expect(target.textContent).not.toContain(m.detail_play_button_continue());
+		expect(target.textContent).toContain(m.detail_play_button_episode_one());
+	});
 });

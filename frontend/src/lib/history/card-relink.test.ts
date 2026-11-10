@@ -179,6 +179,20 @@ describe('reading the cards again', () => {
 		expect(h.published).toEqual([]);
 	});
 
+	it('publishes nothing for a row a remove took away while its match was out', async () => {
+		let answer!: (m: KitsuAnimeRef) => void;
+		const h = home([row('a'), row('b')], [[row('a'), row('b', '7')]], {
+			resolveMatch: () => new Promise((r) => (answer = r))
+		});
+		await h.relink.reread();
+		// b is removed while its match is out.
+		h.deps.setHistory([row('a')]);
+		answer(ref('7'));
+		await flush();
+		expect(h.published).toEqual([]);
+		expect(h.events).toEqual([]);
+	});
+
 	it('keeps reading after a read that failed', async () => {
 		let fail = true;
 		const h = home([row('a')], [[row('a', '5')]], {
