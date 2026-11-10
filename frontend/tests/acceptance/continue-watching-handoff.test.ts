@@ -159,6 +159,14 @@ function mountHome(s: Scenario) {
 			http.get(`${API_BASE}/api/kitsu/anime/20`, () =>
 				HttpResponse.json(kitsuRef('20', SECOND, 13))
 			),
+			// An entry Kitsu has deleted: a row that recorded it is
+			// matched again by its title.
+			http.get(`${API_BASE}/api/kitsu/anime/99`, () =>
+				HttpResponse.json(
+					{ kind: 'upstream', status: 404, key: 'error.network.upstream' },
+					{ status: 502 }
+				)
+			),
 			http.get(`${API_BASE}/api/kitsu/franchise/:id`, ({ params }) => {
 				asked.push(String(params.id));
 				if (params.id === '30') return HttpResponse.json(lineFrom30);
@@ -292,6 +300,29 @@ describe('Continue Watching after a finale', () => {
 		const movedOn = everHeld(() => handoffTo('20') !== null);
 		await until(() => handoffTo('40') !== null, 'the other series to move on');
 		await until(() => resumeFor(SECOND) !== null, "the next show's matched card");
+		expect(movedOn()).toBe(false);
+		expect(resumeFor(FIRST)).not.toBeNull();
+	});
+
+	it('keeps the ordinary card when the next show was played from a row whose recorded entry Kitsu deleted', async () => {
+		// The row recorded 99, which Kitsu no longer has; it is matched
+		// again by its title, to the next show, and its card shows that.
+		mountHome({ history: [row('2', 'p-second', '99', SECOND), row('13'), controlRow()] });
+		const movedOn = everHeld(() => handoffTo('20') !== null);
+		await until(() => handoffTo('40') !== null, 'the other series to move on');
+		await until(() => resumeFor(SECOND) !== null, "the next show's matched card");
+		await new Promise((r) => setTimeout(r, 50));
+		expect(movedOn()).toBe(false);
+		expect(resumeFor(FIRST)).not.toBeNull();
+	});
+
+	it('keeps the ordinary card when the series was read only in part', async () => {
+		const asked = mountHome({
+			history: [row('13'), controlRow()],
+			franchise: () => HttpResponse.json({ ...lineFrom10, complete: false })
+		});
+		const movedOn = everHeld(() => handoffTo('20') !== null);
+		await settled(asked);
 		expect(movedOn()).toBe(false);
 		expect(resumeFor(FIRST)).not.toBeNull();
 	});

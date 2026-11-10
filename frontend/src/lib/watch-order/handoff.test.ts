@@ -116,6 +116,12 @@ describe('handoffFrom', () => {
 		expect(got?.titles).toEqual(run('bleach').entries.map((e) => e.title));
 	});
 
+	it('keeps the ordinary card for a franchise read only in part: the next entry may be missing', () => {
+		const part = { ...payload('bleach', '43078'), complete: false };
+		expect(handoffFrom(part, '43078', 'linked', TODAY, none)).toBeNull();
+		expect(handoffFrom(part, '43078', 'released', TODAY, none)).toBeNull();
+	});
+
 	it('keeps the ordinary card once the next entry has a history row of its own', () => {
 		expect(
 			handoffFrom(payload('bleach', '43078'), '43078', 'linked', TODAY, new Set(['46903']))
@@ -176,7 +182,7 @@ describe('handoffFrom', () => {
 });
 
 describe('playedIds', () => {
-	it("holds each row's recorded Kitsu id, else its match's", () => {
+	it("holds each row's recorded Kitsu id and its match's: a deleted recorded entry is matched again", () => {
 		const got = playedIds(
 			[
 				{ id: 'a', kitsu_id: '1' },
@@ -187,14 +193,49 @@ describe('playedIds', () => {
 			],
 			{ a: { id: '9' }, b: { id: '2' }, c: null, d: null, e: { id: '5' } }
 		);
-		expect([...got!].sort()).toEqual(['1', '2', '5']);
+		// Row a recorded 1, which Kitsu no longer has: its card shows 9.
+		expect([...got!].sort()).toEqual(['1', '2', '5', '9']);
 	});
 
-	it('is not known while a row without a recorded id is still being matched', () => {
+	it('is not known while any row is still being matched', () => {
 		expect(playedIds([{ id: 'a', kitsu_id: '1' }, { id: 'b' }], {})).toBeNull();
 		expect(playedIds([{ id: 'b' }], { b: undefined })).toBeNull();
-		// A recorded id needs no match.
-		expect([...playedIds([{ id: 'a', kitsu_id: '1' }], {})!]).toEqual(['1']);
+		// A recorded entry may be gone and matched again as another.
+		expect(playedIds([{ id: 'a', kitsu_id: '1' }], {})).toBeNull();
+		expect([...playedIds([{ id: 'a', kitsu_id: '1' }], { a: null })!]).toEqual(['1']);
+	});
+
+	it('holds every recorded id and every match once all rows are matched, and is unknown before', () => {
+		const rowArb = fc.record({
+			id: fc.constantFrom('a', 'b', 'c', 'd'),
+			kitsu_id: fc.option(fc.constantFrom('1', '2', '3'), { nil: undefined })
+		});
+		const matchArb = fc.option(fc.record({ id: fc.constantFrom('1', '2', '3', '9') }), {
+			nil: undefined
+		});
+		fc.assert(
+			fc.property(
+				fc.array(rowArb, { maxLength: 6 }),
+				fc.dictionary(fc.constantFrom('a', 'b', 'c', 'd'), fc.option(matchArb, { nil: null })),
+				(rows, raw) => {
+					const matches = Object.fromEntries(
+						Object.entries(raw).filter(([, v]) => v !== undefined)
+					) as Record<string, { id: string } | null>;
+					const got = playedIds(rows, matches);
+					if (rows.some((r) => matches[r.id] === undefined)) {
+						expect(got).toBeNull();
+						return;
+					}
+					const want = new Set<string>();
+					for (const r of rows) {
+						if (r.kitsu_id !== undefined) want.add(r.kitsu_id);
+						const m = matches[r.id];
+						if (m) want.add(m.id);
+					}
+					expect(got).toEqual(want);
+				}
+			)
+		);
 	});
 });
 
