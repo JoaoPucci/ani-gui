@@ -49,6 +49,29 @@ fn a_title_match_stored_before_the_row_ruled_hits_out_is_not_read() {
     );
 }
 
+/// A match stored before the row's search could be refuted as a
+/// whole may be one of the hits it refutes: hianime's "One Piece: The
+/// Movie 14 - Stampede" took One Piece Movie 1. A stored match is
+/// checked alone, by the rules that do not read a search as a whole, so
+/// it is not read; the next load picks again.
+#[test]
+fn a_title_match_stored_before_a_search_could_be_refuted_is_not_read() {
+    let td = tempfile::tempdir().expect("td");
+    let s = state(td.path().join("history"));
+    let before = "title-match:v6:hianime:one piece: the movie 14 - stampede:c1";
+    crate::cache::meta_cache_put(&s.cache_pool, before, "421", 86_400).expect("put");
+    assert_eq!(
+        title_match_get(
+            &s,
+            Some(ProviderId::Hianime),
+            "one piece: the movie 14 - stampede",
+            1
+        )
+        .expect("get"),
+        None
+    );
+}
+
 #[test]
 fn removing_the_show_takes_the_title_matches_the_version_before_stored() {
     let td = tempfile::tempdir().expect("td");
