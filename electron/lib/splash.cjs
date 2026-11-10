@@ -8,11 +8,15 @@
 // It closes as the app's window shows, in that window's reveal
 // (main.js), with bootApp's close in lib/startup.cjs as the fallback.
 // A splash the user closes first cancels the launch (onDismissed).
+// A first page that is late leaves it stuck, offering Restart and Quit
+// (lib/splash-stuck.cjs); it stands in for the window meanwhile, so the
+// window is never revealed before its page has rendered.
 
 const path = require("node:path");
 
 const { APP_BACKGROUND } = require("./app-window.cjs");
 const { STALL_MS, STEPS } = require("./splash-progress.cjs");
+const { stuckWatch } = require("./splash-stuck.cjs");
 
 /** Set on the splash's BrowserWindow, so a harness can tell it from
  *  the app's window (electron/e2e/launch.ts). */
@@ -87,6 +91,17 @@ function splashWindowOptions() {
  *   closed, and a paint that arrives later does not show it again —
  *   it would come back always on top, over the dialog that says why
  *   the boot failed.
+ * - `standsIn` says whether it is up and the boot not past it: the
+ *   window's wait for its page then has no bound (lib/app-window.cjs),
+ *   because the stuck state is the way out of a page that is late.
+ *
+ * The stuck state's choices (lib/splash-stuck.cjs) end the launch the
+ * way closing the splash does — it closes, `onDismissed` runs, and
+ * nothing is revealed — Restart having first had `onRestart` arrange
+ * the relaunch. A restart that cannot be arranged is logged, and the
+ * choices are offered again. A choice that reaches this process before
+ * the boot is past the splash wins, even over a page that rendered
+ * meanwhile; one after it is ignored.
  */
 function splashController({
   createWindow,
@@ -103,6 +118,12 @@ function splashController({
   // The line's generic words, which take over at once from a step's own
   // when that step lands, read when the splash opens.
   stallGeneric = () => "",
+  // The page's language, name and stuck-state words
+  // (lib/splash-progress.cjs splashWords), read when the splash opens.
+  pageWords = () => ({}),
+  // Restart was chosen: arrange the relaunch (lib/relaunch.cjs), before
+  // this launch ends. Throws when it cannot.
+  onRestart = () => {},
 }) {
   const state = fresh();
   state.version = version;
@@ -152,13 +173,50 @@ function splashController({
   let preference = null;
   let signalled = false;
   let win = null;
+  let backstop = null;
   let suppressed = false;
   // Set when the splash closes by any hand but the boot's: the user,
   // or a quit already under way.
   let dismissedByUser = false;
   // Set once the boot is past the splash: shown its window, or failed.
   let over = false;
+  // The stuck state's choice, once one has been carried out.
+  let chosen = null;
   const alive = () => win && !win.isDestroyed();
+  const stuck = stuckWatch({
+    window: () => win,
+    pending: () => (over || chosen || !alive() || steps >= STEPS.length ? null : STEPS[steps]),
+    onChoice: (choice) => choose(choice),
+    onStuck: () => (state.stuck = true),
+    log,
+    logError,
+    clock,
+    since: () => since(),
+  });
+  const choose = (choice) => {
+    if (over || chosen || !alive()) {
+      log(`[main] splash: ${choice} came after the boot was past the splash, and changes nothing (${since()})`);
+      return;
+    }
+    if (choice === "restart") {
+      log(`[main] splash: Restart chosen (${since()})`);
+      try {
+        onRestart();
+      } catch (err) {
+        logError("[main] could not arrange the restart:", err);
+        stuck.offerAgain();
+        return;
+      }
+    } else {
+      log(`[main] splash: Quit chosen (${since()})`);
+    }
+    chosen = choice;
+    state.choice = choice;
+    // As if the person had closed the splash: the launch is cancelled
+    // (the closed handler below), the app quits, and a Restart's
+    // relaunch runs once this process has exited.
+    win.close();
+  };
   const signal = () => {
     if (signalled || !windowShown || preference === null || !alive()) return;
     signalled = true;
@@ -168,12 +226,16 @@ function splashController({
         state.shown = true;
         paintedAt = clock();
         log(`[main] splash painted (${since()})`);
+        stuck.arm();
         restingAtPaint = resting === true;
         markPainted(resting === true);
       })
       .catch((err) => {
         logError("[main] could not tell the splash it is shown:", err);
         markUp();
+        // Still up, it may still be on screen: the stuck state counts
+        // from here.
+        stuck.arm();
       });
   };
   const holdForCompletion = async (landedAt) => {
@@ -215,7 +277,13 @@ function splashController({
       } catch (err) {
         logError("[main] the splash's generic stall line could not be read:", err);
       }
-      const query = splashPageQuery({ version, stallTexts: texts, generic });
+      let words = {};
+      try {
+        words = pageWords() || {};
+      } catch (err) {
+        logError("[main] the splash's words could not be read:", err);
+      }
+      const query = splashPageQuery({ version, stallTexts: texts, generic, words });
       let splash;
       try {
         splash = createWindow(splashWindowOptions());
@@ -248,6 +316,10 @@ function splashController({
         // out never answers it (the call neither resolves nor rejects),
         // so this is what releases a wait on a closed splash.
         markUp();
+        if (win === splash) {
+          clearTimeout(backstop);
+          stuck.stop();
+        }
         const byUser = win === splash && !over;
         if (win === splash) win = null;
         if (byUser) {
@@ -261,6 +333,9 @@ function splashController({
       });
       win = splash;
       state.opened = true;
+      // A paint that never answers still starts the stuck state's count,
+      // at the paint's own bound (SPLASH_SHOW_WAIT_MS, as whenShown).
+      backstop = setTimeout(() => stuck.arm(), SPLASH_SHOW_WAIT_MS);
       splash.webContents.on("did-finish-load", () => {
         if (steps > 0) sendSteps();
       });
@@ -270,6 +345,8 @@ function splashController({
     },
     close() {
       over = true;
+      clearTimeout(backstop);
+      stuck.stop();
       if (alive()) {
         state.closed = true;
         const onScreen = paintedAt === null ? "never painted" : `on screen ${clock() - paintedAt} ms after painting`;
@@ -326,7 +403,10 @@ function splashController({
     // did: the launch is cancelled, and the app's window must not be
     // revealed.
     dismissed() {
-      return dismissedByUser;
+      return dismissedByUser || chosen !== null;
+    },
+    standsIn() {
+      return state.opened && !over && alive() === true;
     },
     // The app's window is about to be revealed: its first page has
     // rendered, or the wait for that gave up (`rendered` false). Either
@@ -359,6 +439,7 @@ function splashController({
       state.steps = n;
       const landedAt = clock();
       log(`[main] splash step ${n}, ${step} (${since()})`);
+      if (n === STEPS.length) stuck.landed();
       const answered = sendSteps();
       if (n < STEPS.length) return answered;
       return answered.then(() => holdForCompletion(landedAt));
@@ -366,6 +447,8 @@ function splashController({
     suppress() {
       over = true;
       suppressed = true;
+      clearTimeout(backstop);
+      stuck.stop();
       state.suppressed = true;
       // Put away: it can no longer be on screen, so nothing waits on it.
       markUp();
@@ -384,16 +467,34 @@ function splashController({
 let current = fresh();
 
 function fresh() {
-  return { opened: false, shown: false, closed: false, suppressed: false, version: "", steps: 0, railLit: 0 };
+  return {
+    opened: false,
+    shown: false,
+    closed: false,
+    suppressed: false,
+    version: "",
+    steps: 0,
+    railLit: 0,
+    // Whether the splash went stuck (lib/splash-stuck.cjs), and the
+    // choice made there: "restart", "quit" or null.
+    stuck: false,
+    choice: null,
+  };
 }
 
 /** The query the splash page is opened with: the version above its
  *  title, how long a step may be pending before the stall line shows,
- *  that line for each step, and its generic words. */
-function splashPageQuery({ version, stallTexts = [], generic = "" }) {
+ *  that line for each step, and its generic words; and, from `words`
+ *  (splashWords), the page's language (`l`), its name (`al`), and the
+ *  stuck state's line and actions (`sl`, `sr`, `sq`). */
+function splashPageQuery({ version, stallTexts = [], generic = "", words = {} }) {
   const query = { v: version, st: String(STALL_MS) };
   stallTexts.forEach((text, i) => (query[`t${i + 1}`] = text));
   if (generic) query.tg = generic;
+  const keys = { lang: "l", label: "al", stuck: "sl", restart: "sr", quit: "sq" };
+  for (const [name, key] of Object.entries(keys)) {
+    if (typeof words[name] === "string" && words[name]) query[key] = words[name];
+  }
   return query;
 }
 

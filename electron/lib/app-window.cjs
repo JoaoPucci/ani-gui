@@ -18,17 +18,25 @@ const APP_BACKGROUND = "#0c0a09";
 const APP_READY_CHANNEL = "ani-gui:app-ready";
 
 /** The longest the reveal waits for that word, counted from the
- *  window's creation: past it, the window is revealed anyway, on the
- *  dark background, never white. It is a safety net for a page that
- *  never says it rendered, not the time a render is expected to take,
- *  because a window revealed before its page has painted shows black.
- *  During the boot the splash stays up meanwhile, and once the page's
- *  step has been pending a moment (STALL_MS) its stall line says it is
- *  starting up. A later window has no splash, and stays hidden while it
- *  waits. The bound used to be 4 s, and a cold dev start rendered its
- *  first page later than that: the splash closed and the window stayed
- *  black until the page painted. */
+ *  window's creation, when no splash stands in for the window: a
+ *  window opened later (macOS reopening one against the running
+ *  backend), or a boot whose splash could not be made. Past it, the
+ *  window is revealed anyway, on the dark background, never white —
+ *  it would otherwise stay hidden for good, with nothing on screen.
+ *
+ *  While the boot's splash stands in, the wait has no bound
+ *  (appReadyBound): a page that is late leaves the splash stuck,
+ *  offering Restart and Quit (lib/splash-stuck.cjs), and the window is
+ *  revealed only once its page has rendered. The bound used to apply
+ *  there too, and revealed a window whose page had not painted: dark
+ *  and empty. */
 const APP_READY_WAIT_MS = 15_000;
+
+/** The bound the wait for the window's first page takes: none while
+ *  `splash` stands in for the window, APP_READY_WAIT_MS otherwise. */
+function appReadyBound(splash) {
+  return splash.standsIn() ? null : APP_READY_WAIT_MS;
+}
 
 /** The app window's options. */
 function appWindowOptions({ width, height, icon, preload, additionalArguments }) {
@@ -52,10 +60,15 @@ let current = { rendered: false, gaveUp: false, beforeReveal: false };
 /**
  * Wait for `contents`' renderer to say, on APP_READY_CHANNEL of `ipc`,
  * that its first page has rendered. `ready` settles true when it does,
- * false after `timeoutMs`; either way the listener goes. Start it when
- * the window is made, so a word that comes early is not missed. The
- * record notes whether the window was still hidden (`isShown`) when
- * the word came: the reveal waited for it.
+ * false after `timeoutMs` (never, when that is null), and false when
+ * the renderer goes or the contents are destroyed first — `gone()` then
+ * says so. A renderer gone fails the boot (lib/startup.cjs
+ * waitBeforeShow); destroyed contents are a window closed by a quit,
+ * which reveals nothing (revealMaximized).
+ * Either way the listeners go. Start it when the window is made, so a
+ * word that comes early is not missed. The record notes whether the
+ * window was still hidden (`isShown`) when the word came: the reveal
+ * waited for it.
  *
  * The renderer sends the word after two animation frames, which run in
  * a hidden window only because `paintWhenInitiallyHidden` is left at its
@@ -69,11 +82,20 @@ function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown 
   let settle;
   const ready = new Promise((resolve) => (settle = resolve));
   let timer = null;
-  const done = (rendered) => {
+  let settled = false;
+  let lost = false;
+  const watchesContents = typeof contents.on === "function";
+  const done = (rendered, { gaveUp = !rendered } = {}) => {
+    if (settled) return;
+    settled = true;
     ipc.removeListener(APP_READY_CHANNEL, onReady);
+    if (watchesContents) {
+      contents.removeListener("render-process-gone", onGone);
+      contents.removeListener("destroyed", onGone);
+    }
     if (timer) clearTimeout(timer);
     state.rendered = rendered;
-    state.gaveUp = !rendered;
+    state.gaveUp = gaveUp;
     settle(rendered);
   };
   // Matched by the sending contents' id: Electron may hand over another
@@ -83,9 +105,19 @@ function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown 
     state.beforeReveal = !isShown();
     done(true);
   }
+  // With no bound, nothing else would end the wait for a renderer that
+  // can no longer say anything.
+  function onGone() {
+    lost = true;
+    done(false, { gaveUp: false });
+  }
   ipc.on(APP_READY_CHANNEL, onReady);
-  timer = setTimeout(() => done(false), timeoutMs);
-  return { ready };
+  if (watchesContents) {
+    contents.on("render-process-gone", onGone);
+    contents.on("destroyed", onGone);
+  }
+  if (timeoutMs != null) timer = setTimeout(() => done(false), timeoutMs);
+  return { ready, gone: () => lost };
 }
 
 /** What the latest launch's wait for the renderer saw, for the
@@ -102,7 +134,9 @@ function lastAppReady() {
 function revealGate(splash, appReady) {
   return Promise.all([
     splash.whenShown(),
-    appReady.ready.then((rendered) => splash.pageReady(rendered === true)),
+    // A renderer that went is no page to complete the rail for: the
+    // boot is about to fail.
+    appReady.ready.then((rendered) => (appReady.gone && appReady.gone() ? undefined : splash.pageReady(rendered === true))),
   ]);
 }
 
@@ -111,6 +145,7 @@ module.exports = {
   APP_BACKGROUND,
   APP_READY_CHANNEL,
   APP_READY_WAIT_MS,
+  appReadyBound,
   appReadyWaiter,
   appWindowOptions,
   lastAppReady,

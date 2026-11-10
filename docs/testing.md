@@ -128,6 +128,19 @@ only. The launch helper accepts Xvfb only on a GitHub Actions runner
 `smoke.spec.ts` checks that the app landed on Wayland in the headless
 session and on X11 in CI.
 
+A spec signals only processes it can prove it started: the one
+Playwright launched, closed through Playwright or by its recorded pid,
+or a pid the app itself reports into the spec's own temporary profile,
+checked against `/proc/<pid>/exe` before any signal. Never a pid picked
+out of the process list by its name or path, and never a process's
+parent: an app relaunched by Restart (`splash-stuck.spec.ts`)
+outlives its parent and is reparented to the session's subreaper, the
+user's service manager, and a signal sent there ends the whole desktop
+session. `splash-stuck.spec.ts` runs a hard-linked copy of
+`dist/linux-unpacked/` whose `resources/frontend/build` holds a fixture
+page (`electron/e2e/fixtures/first-page/`), so the late first page is
+real and nothing in the app reads a test switch.
+
 ## Coverage targets
 
 Layer-specific. CI fails on regression below the baseline in `coverage-baseline.json`, not on absolute floors.

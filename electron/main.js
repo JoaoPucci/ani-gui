@@ -48,11 +48,12 @@ const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cj
 const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { messagesFor, resolveLocale } = require("./lib/main-messages.cjs");
-const { stallTexts } = require("./lib/splash-progress.cjs");
+const { splashWords, stallTexts } = require("./lib/splash-progress.cjs");
+const { relaunch, relaunchPlan } = require("./lib/relaunch.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
 const { revealMaximized, splashController, splashVersionLabel } = require("./lib/splash.cjs");
-const { appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
+const { appReadyBound, appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
 const {
   grantedSizeRecorder,
   initialSize,
@@ -414,6 +415,26 @@ const splash = splashController({
   // ready, when the splash opens).
   stallTexts: () => stallTexts(messagesFor(mainLocale())),
   stallGeneric: () => messagesFor(mainLocale()).splashStartingUp,
+  // The page's language, its name, and its stuck state's line and
+  // actions (lib/splash-stuck.cjs), in the same language.
+  pageWords: () => {
+    const locale = mainLocale();
+    return splashWords(locale, messagesFor(locale));
+  },
+  // Restart, from the stuck state: the whole app again, once this
+  // process has exited (lib/relaunch.cjs). The quit that follows is the
+  // one closing the splash starts (onDismissed above).
+  onRestart: () =>
+    relaunch(
+      relaunchPlan({
+        platform: process.platform,
+        env: process.env,
+        execPath: process.execPath,
+        argv: process.argv,
+        pid: process.pid,
+      }),
+      { app, spawn, logError: console.error },
+    ),
   // Above the splash's title. A dev run is the one that loads the Vite
   // dev server (IS_DEV), whose frontend labels the rail's version
   // `-dev` (import.meta.env.DEV); the splash marks it the same.
@@ -459,14 +480,21 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   );
   // Started now, so the renderer's word is not missed however early it
   // comes; the reveal waits for it (bounded) as well as for the splash.
+  // While the boot's splash stands in for the window the wait has no
+  // bound: a late page leaves the splash stuck, offering Restart and
+  // Quit, and the window is revealed only once its page has rendered. A
+  // window with no splash (a later one) keeps the bound.
   const appReady = appReadyWaiter(win.webContents, ipcMain, {
     isShown: () => !win.isDestroyed() && win.isVisible(),
+    timeoutMs: appReadyBound(splash),
   });
   appReady.ready.then((rendered) =>
     console.log(
       rendered
         ? "[main] app's first page rendered"
-        : "[main] app's first page did not say it rendered in time; revealing it anyway",
+        : appReady.gone()
+          ? "[main] app's window went before its first page rendered"
+          : "[main] app's first page did not say it rendered in time; revealing it anyway",
     ),
   );
 
@@ -607,8 +635,9 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // The window loads hidden; at ready-to-show it waits for two
     // things: the splash — up to a second for it to have rendered a
     // frame, then what is left of its minimum time on screen — and its
-    // own renderer's word that the first page has rendered (at most 15
-    // seconds from the window's creation, lib/app-window.cjs). Only then
+    // own renderer's word that the first page has rendered (however
+    // long, while the splash stands in; at most 15 seconds from the
+    // window's creation without one, lib/app-window.cjs). Only then
     // is it mapped (maximized) and shown, and the splash put away. The
     // two are never on screen competing, on any platform. A later window
     // finds no splash, and waits only for its renderer.
@@ -617,9 +646,9 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // has answered (about a millisecond; at most STEP_ANSWER_WAIT_MS),
     // before the window replaces the splash; and when it lands too late
     // for the minimum to show it, the splash holds until
-    // SPLASH_COMPLETE_HOLD_MS after it landed. A wait that gave up on the
-    // render completes the rail the same way before the window is
-    // revealed anyway, so the rail is always seen complete.
+    // SPLASH_COMPLETE_HOLD_MS after it landed. A later window's wait
+    // that gave up on the render (it has no splash) is revealed anyway;
+    // a renderer gone before it rendered fails the boot.
     beforeShow: () => revealGate(splash, appReady),
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window
