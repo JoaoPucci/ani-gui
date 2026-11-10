@@ -1,4 +1,4 @@
-// Home's cards read again in place after a link or its undo.
+// Home's cards read again in place after a link.
 
 import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';

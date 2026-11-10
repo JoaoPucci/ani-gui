@@ -649,8 +649,6 @@ export function historyDelete(id: string): Promise<void> {
 export interface LinkedRow {
 	row: string;
 	previous: string | null;
-	/** The id an earlier link of the row named. */
-	previous_linked?: string | null;
 	ep_no: string;
 	watched_at: number | null;
 }

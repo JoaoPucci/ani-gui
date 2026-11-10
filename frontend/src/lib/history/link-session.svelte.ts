@@ -21,7 +21,7 @@ import { guessedGroup, linkOffer, type LinkDeps } from './link-offer';
 
 /** A notice to the user. */
 export interface LinkNotice {
-	kind: 'success' | 'info' | 'error';
+	kind: 'success' | 'error';
 	message: string;
 }
 

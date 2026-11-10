@@ -126,8 +126,8 @@ describe('reading the cards again', () => {
 	});
 
 	it('reads again one at a time, each against the history the one before left', async () => {
-		// A link and its undo, close together: the undo's read compares with
-		// the linked history, so the row is matched again both times.
+		// Two links close together: the second's read compares with the
+		// history the first left, so the row is matched again both times.
 		const h = home([row('a')], [[row('a', '5')], [row('a')]]);
 		await Promise.all([h.relink.reread(), h.relink.reread()]);
 		await flush();
@@ -254,7 +254,7 @@ describe('what was asked for a row before it was matched again', () => {
 	});
 
 	it("does not publish an earlier rematch's answer over a later one's", async () => {
-		// The link's match lands after its undo's.
+		// The first link's match lands after the second's.
 		const held = heldMatches();
 		const h = home([row('a')], [[row('a', '5')], [row('a')]], {
 			resolveMatch: held.resolveMatch
