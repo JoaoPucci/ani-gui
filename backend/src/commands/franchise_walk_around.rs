@@ -13,7 +13,8 @@
 //! recap that is a movie is listed under films. An id lands in one
 //! section only: entries, then films (for a movie), versions, recaps,
 //! sides. A side-story anchor outside the run is a side, or a film when
-//! it is a movie.
+//! it is a movie, and so is an entry of the anchor's own run of
+//! one-offs that the run it moved to leaves out.
 
 use std::collections::BTreeSet;
 
@@ -90,6 +91,9 @@ pub(super) fn assemble(anchor: &str, run: &Run, look: &Lookup<'_>) -> Franchise 
     let mut s = sections(run, look);
     if run.side_anchor {
         s.place_side_anchor(anchor, is_movie(anchor, run, look));
+    }
+    for id in &run.beside {
+        s.place_beside(id, is_movie(id, run, look));
     }
     let members: BTreeSet<String> = run.members.keys().cloned().collect();
     let main = entries(&members, run, look);
