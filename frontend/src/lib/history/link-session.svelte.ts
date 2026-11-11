@@ -22,7 +22,7 @@ import { linkedNotice, linkFailure } from './link-notices';
 import { carryAudio } from './carry-audio';
 import { LinkPicker } from './link-picker.svelte';
 import { guessedGroup, type LinkDeps, type LinkOffer } from './link-offer';
-import { surfaceOfferRead } from './picked-offer';
+import { surfaceOfferRead, type OfferSurface } from './picked-offer';
 
 /** A notice to the user. */
 export interface LinkNotice {
@@ -106,31 +106,16 @@ export class LinkSession extends LinkPicker {
 		pageId: string,
 		opts: ReadOptions
 	): Promise<{ offer: LinkOffer | null; unread: boolean }> {
-		const surface = {
-			asksGuess: this.asksGuess,
-			inPlayer: this.inPlayer,
-			carried: this.carriesGuess
-		};
-		return surfaceOfferRead(this.#deps, row, pageId, surface, opts);
+		return surfaceOfferRead(this.#deps, row, pageId, this.surface, opts);
 	}
 
-	/** Whether the arrival may ask about a guess: a session no guess
-	 *  opened only changes again a show the user named. */
-	protected get asksGuess(): boolean {
-		return true;
-	}
-
-	/** Whether the arrival carries the verdict of the guessed card its
-	 *  session was opened from ($lib/history/link-offer.ts `linkOffer`).
-	 *  The show page arrives with a card's row only from that card's
-	 *  guessed player (`?guessed=`), so it does. */
-	protected get carriesGuess(): boolean {
-		return true;
-	}
-
-	/** Whether the session is the player's. */
-	protected get inPlayer(): boolean {
-		return false;
+	/** What the surface is, for its offer ($lib/history/picked-offer.ts):
+	 *  the show page may ask about a guess, is not the player, and carries
+	 *  the verdict of the guessed card its session was opened from, since
+	 *  it arrives with a card's row only from that card's guessed player
+	 *  (`?guessed=`). */
+	protected get surface(): OfferSurface {
+		return { asksGuess: true, inPlayer: false, carried: true };
 	}
 
 	/** Open the picker on the offer's candidates, naming `episode` —

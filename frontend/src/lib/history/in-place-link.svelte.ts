@@ -36,6 +36,7 @@
 import type { KitsuAnimeRef } from '$lib/api';
 import { LinkSession, type LinkNotice, type LinkSessionDeps } from './link-session.svelte';
 import type { LinkDeps } from './link-offer';
+import type { OfferSurface } from './picked-offer';
 import { playerNotify } from './link-notices';
 import { surface, type Surface } from './surface';
 import {
@@ -145,18 +146,15 @@ export class InPlaceLinkSession extends LinkSession {
 		this.supersede();
 	}
 
-	protected override get inPlayer(): boolean {
-		return this.#inPlayer;
-	}
-
-	protected override get asksGuess(): boolean {
-		return this.#guess;
-	}
-
-	/** The player of a session a guessed card opened carries the card's
-	 *  verdict; Home judges each card as it reads it. */
-	protected override get carriesGuess(): boolean {
-		return this.#inPlayer && this.#guess;
+	/** The player asks about a guess only in a session a guessed card
+	 *  opened, and that session carries the card's verdict; Home asks
+	 *  about every guessed card, judging each as it reads it. */
+	protected override get surface(): OfferSurface {
+		return {
+			asksGuess: this.#guess,
+			inPlayer: this.#inPlayer,
+			carried: this.#inPlayer && this.#guess
+		};
 	}
 
 	/** Hide the slip for this row until the app restarts. */
