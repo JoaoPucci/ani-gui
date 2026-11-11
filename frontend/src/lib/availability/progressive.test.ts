@@ -191,6 +191,26 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 		expect(emit.mock.calls[0][0]).toEqual(items);
 	});
 
+	it("hands the run's signal to the batch, so a search replaced or left cancels it", async () => {
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true } });
+		const run = new AbortController();
+		await filterAvailableProgressive([ref('a')], 'sub', vi.fn(), 2000, 4, run.signal);
+		expect(apiMock.availabilityBatch).toHaveBeenLastCalledWith(['a'], 'sub', {
+			signal: run.signal
+		});
+	});
+
+	it('emits nothing for a batch cancelled with its run', async () => {
+		const run = new AbortController();
+		run.abort();
+		apiMock.availabilityBatch.mockRejectedValueOnce(
+			new DOMException('The operation was aborted.', 'AbortError')
+		);
+		const emit = vi.fn();
+		await filterAvailableProgressive([ref('a')], 'sub', emit, 2000, 4, run.signal);
+		expect(emit).not.toHaveBeenCalled();
+	});
+
 	it('emits an empty list without hitting the API', async () => {
 		const emit = vi.fn();
 		await filterAvailableProgressive([], 'sub', emit);

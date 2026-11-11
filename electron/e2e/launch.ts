@@ -60,33 +60,39 @@ export const testRunEnv = { ANI_GUI_UNATTENDED: '1' } as const;
 
 /** Launch the packaged app with `env` as its whole environment, as a
  *  test run — unless that environment leads to a display someone may
- *  be looking at, which throws, saying how to run the suite instead. */
+ *  be looking at, which throws, saying how to run the suite instead.
+ *  `binary` is another copy of the packaged tree's launcher, for a spec
+ *  that ships the app a frontend of its own (splash-stuck.spec.ts). */
 export async function launchPackagedApp(
-	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env']
+	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env'],
+	{ binary = packagedBinary }: { binary?: string } = {}
 ): Promise<ElectronApplication> {
 	const refusal = launchRefusal(env ?? {});
 	if (refusal) throw new Error(refusal);
+	// The launcher script execs the binary beside it in the same process;
+	// resolved before the launch, so a launched app is always recorded.
+	const exe = fs.realpathSync(`${binary}.bin`);
 	const app = await _electron.launch({
-		executablePath: packagedBinary,
+		executablePath: binary,
 		args: [...testLaunchSwitches],
 		env: { ...env, ...testRunEnv }
 	});
-	launched.set(app, app.process());
+	launched.set(app, { child: app.process(), exe });
 	return app;
 }
 
 /** The process each launch started, recorded as it starts: Playwright
  *  stops answering `app.process()` once the app is closed, and stopApp
  *  must still tell an exited app from a running one then. */
-const launched = new WeakMap<ElectronApplication, ChildProcess>();
+const launched = new WeakMap<ElectronApplication, { child: ChildProcess; exe: string }>();
 
 /** Stop an app this suite launched, and nothing else: SIGTERM to the
  *  process group Playwright created for it, SIGKILL to the same group if
  *  it is still there after `termMs`, and only while that group is
  *  provably the app's — the main process unreaped, leading its group,
- *  running the packaged binary (lib/own-group.cjs). Then Playwright's
- *  close, which settles once the process has gone, whatever the stop
- *  did. An app that has already exited is closed without a signal.
+ *  running the binary it was launched from (lib/own-group.cjs). Then
+ *  Playwright's close, which settles once the process has gone,
+ *  whatever the stop did. An app that has already exited is closed without a signal.
  *
  *  The backend is not in that group. It stops itself once the app's end
  *  of its stdin closes (lib/backend-spawn.cjs), and nothing here
@@ -95,10 +101,9 @@ export async function stopApp(
 	app: ElectronApplication,
 	{ termMs = 5000, killMs = 5000 }: { termMs?: number; killMs?: number } = {}
 ): Promise<void> {
-	// The launcher script execs this binary in the same process.
-	const exe = fs.realpathSync(path.join(path.dirname(packagedBinary), 'ani-gui.bin'));
-	const child = launched.get(app);
-	if (!child) throw new Error('stopApp: not an app launchPackagedApp started');
+	const record = launched.get(app);
+	if (!record) throw new Error('stopApp: not an app launchPackagedApp started');
+	const { child, exe } = record;
 	try {
 		await stopOwnGroup(child, { exe, termMs, killMs });
 	} finally {
@@ -133,6 +138,20 @@ export function splashState(app: ElectronApplication): Promise<Record<string, bo
 async function isSplash(app: ElectronApplication, page: Page): Promise<boolean> {
 	const win = await app.browserWindow(page);
 	return win.evaluate((w) => (w as unknown as Record<string, unknown>).aniGuiSplash === true);
+}
+
+/** The splash's page, while it is up: a launch whose first page is
+ *  late keeps it on screen long enough to look at (splash-stuck.spec.ts). */
+export async function splashWindow(app: ElectronApplication, timeoutMs = 30_000): Promise<Page> {
+	const deadline = Date.now() + timeoutMs;
+	for (;;) {
+		for (const page of app.windows()) {
+			if (page.isClosed()) continue;
+			if (await isSplash(app, page).catch(() => false)) return page;
+		}
+		if (Date.now() > deadline) throw new Error(`no splash within ${timeoutMs} ms`);
+		await new Promise((resolve) => setTimeout(resolve, 25));
+	}
 }
 
 /** The app's window — not the splash, which opens first and closes

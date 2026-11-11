@@ -1220,3 +1220,74 @@ describe('the hits a row rules out', () => {
 		expect(mockedPutMatch).not.toHaveBeenCalled();
 	});
 });
+
+describe('a resolution the page that asked can cancel', () => {
+	const abortError = () => new DOMException('The operation was aborted.', 'AbortError');
+
+	it('hands its signal to every read it makes', async () => {
+		const page = new AbortController();
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:some-show-1', ep_no: '3', title: 'Some Show Season 2' },
+			null
+		);
+		mockedAllmangaMap.mockResolvedValue('77');
+		mockedDetail.mockResolvedValue(stubKitsu('77', 'Unrelated Music', 1));
+		mockedGetMatch.mockResolvedValue('88');
+		mockedSlug.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('99', 'Some Show Season 2', 12)]);
+		mockedRuledOut.mockResolvedValue(['99']);
+
+		await resolveKitsuMatchWithTrust(row, { signal: page.signal });
+
+		const withSignal = { signal: page.signal };
+		for (const read of [
+			mockedAllmangaMap,
+			mockedDetail,
+			mockedGetMatch,
+			mockedSlug,
+			mockedSearch,
+			mockedRuledOut,
+			mockedResolveAllmanga
+		]) {
+			expect(read).toHaveBeenCalled();
+			for (const call of read.mock.calls) expect(call.at(-1)).toEqual(withSignal);
+		}
+	});
+
+	it('rejects with the abort once its signal aborted, never as a row with no match', async () => {
+		const page = new AbortController();
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:some-show-1', ep_no: '3', title: 'Some Show' },
+			null
+		);
+		mockedGetMatch.mockImplementation(async () => {
+			page.abort();
+			throw abortError();
+		});
+		mockedSearch.mockRejectedValue(abortError());
+		mockedResolveAllmanga.mockRejectedValue(abortError());
+
+		await expect(resolveKitsuMatchWithTrust(row, { signal: page.signal })).rejects.toMatchObject({
+			name: 'AbortError'
+		});
+		expect(mockedPutMatch).not.toHaveBeenCalled();
+	});
+
+	it('stores no title match for a pick made as its signal aborted', async () => {
+		const page = new AbortController();
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:some-show-1', ep_no: '3', title: 'Some Show' },
+			null
+		);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockImplementation(async () => {
+			page.abort();
+			return [stubKitsu('99', 'Some Show', 12)];
+		});
+
+		await expect(resolveKitsuMatchWithTrust(row, { signal: page.signal })).rejects.toMatchObject({
+			name: 'AbortError'
+		});
+		expect(mockedPutMatch).not.toHaveBeenCalled();
+	});
+});

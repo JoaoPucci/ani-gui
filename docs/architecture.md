@@ -66,7 +66,7 @@ The backend listens on six loopback ports, not one — a lane per class of traff
 
 The handshake the backend prints at startup announces each lane as `ANI_GUI_LANE <name> <origin>`, ahead of the API's `ANI_GUI_LISTENING <origin>` and the secret, the two lines the desktop shell waits for; the shell hands them to the renderer through the preload bridge as `window.aniGui.lanes`, and the renderer picks the lane for each request, falling back to the API's origin for any lane it was not given. The stream proxy stamps every URL it writes — the session's media URL, every URI in a rewritten playlist — with the stream lane's origin. The external player and Syncplay are handed the upstream stream itself, and a download's tools reach the proxy from processes the backend spawns, so none of the three draws on Chromium's pool.
 
-Lanes bound how long one class can make another wait; they do not bound a class against itself, so the renderer also holds availability probes to four at once across every surface, background ones to three so a probe the user is waiting on always finds a slot, and aborts a page's probes once the user has left it. The backend, in turn, shares walks of an availability row — a show in one audio mode. A lookup of a row whose walk is already out, from another surface, a page mounted again or the warm, waits on that walk instead of starting another, unless the walk set off before a cache-skipping refresh last wrote the row; an interactive lookup does not wait behind a background walk, but takes its place, and the background walk's callers move onto it. A refresh, and a lookup with no Kitsu id, walk on their own. A probe the renderer aborts stops waiting, and a walk nobody waits on any more ends, except a background one while fewer than three others walk on with nobody waiting: a page mounted again joins it rather than starting over, and its verdict is cached. The list views' warm feeds one worker through a queue that holds each row once and at most 256 rows, and the renderer hands an uncached id to it once per session, and again only once two minutes have passed since it last did. Downloads start at most six at once — as many connections as Chromium opens to their lane, since each holds one for its progress stream and the backend starts a download only when that stream arrives — and the rest wait in the download dock as queued, in order, cancellable before they start.
+Lanes bound how long one class can make another wait; they do not bound a class against itself, so the renderer also holds availability probes to four at once across every surface, background ones to three so a probe the user is waiting on always finds a slot, and aborts a page's probes once the user has left it. The API lane's own reads are held to the same rule: the reads a page makes to show itself take the signal of the page's visit, which ends when the viewer leaves the page or, on a show's page and the player, moves to another show, and a search replaced by another, a live search the query has moved past, and a lookup asked again end theirs too, so a read nobody will read gives its connection back instead of queuing the next page behind it; a read cancelled so shows neither an answer nor a failure. The reads an action makes once clicked — such as an unaired episode's recheck, a Continue card's row read again before it resumes, the questions a failed play or a removed row asks — a tracker list's refresh, and the layout's other reads (the settings, the update check), which outlive every page, run on to their answer, as a write would. The backend, in turn, shares walks of an availability row — a show in one audio mode. A lookup of a row whose walk is already out, from another surface, a page mounted again or the warm, waits on that walk instead of starting another, unless the walk set off before a cache-skipping refresh last wrote the row; an interactive lookup does not wait behind a background walk, but takes its place, and the background walk's callers move onto it. A refresh, and a lookup with no Kitsu id, walk on their own. A probe the renderer aborts stops waiting, and a walk nobody waits on any more ends, except a background one while fewer than three others walk on with nobody waiting: a page mounted again joins it rather than starting over, and its verdict is cached. The list views' warm feeds one worker through a queue that holds each row once and at most 256 rows, and the renderer hands an uncached id to it once per session, and again only once two minutes have passed since it last did. Downloads start at most six at once — as many connections as Chromium opens to their lane, since each holds one for its progress stream and the backend starts a download only when that stream arrives — and the rest wait in the download dock as queued, in order, cancellable before they start.
 
 ## Data flow: searching and playing an episode
 
@@ -369,13 +369,16 @@ three-second limit below.
    nothing white shows before a stylesheet loads. It loads and paints
    its first page hidden, and its renderer says when that page has
    rendered (two animation frames after the root layout mounts); the
-   reveal waits for that word, at most 15 seconds from the window's
-   creation, with the splash up and, once the page's step has been
-   pending for 700 ms, its stall line. That bound is a safety net for
-   a page that never says it rendered, not an expected duration (a
-   cold Vite start in development has rendered the first page past
-   four seconds): past it, the window is revealed anyway, on the dark
-   background. Once it is ready to show, it also waits up
+   reveal waits for that word, with the splash up and, once the page's
+   step has been pending for 700 ms, its stall line. While the splash is
+   up the wait has no bound, and a window is never revealed before its
+   page has rendered. A launch whose first page has not rendered 15
+   seconds after the splash painted, whatever step is still pending,
+   leaves the splash stuck instead (below). A window with no splash to
+   stand in for it (one opened later, or a boot whose splash could not
+   be made) waits at most 15 seconds from its creation and is then
+   revealed anyway, on the dark background. Once it is ready to show,
+   it also waits up
    to a second for the splash to answer that it has rendered a frame,
    then until the splash has been on screen for 500 ms since that paint
    (300 ms when it rests on its still frame) — long enough for the
@@ -403,6 +406,43 @@ three-second limit below.
    Closing the splash before the app's window appears cancels the
    launch. Measured on GNOME under Wayland and on Xvfb; X11 with a real
    window manager and Windows were not measured.
+5. A first page that is late leaves the splash stuck
+   (`electron/lib/splash-stuck.cjs`). Fifteen seconds after the splash
+   painted, with the page not yet rendered, its line says "Taking longer
+   than usual to start.", the pending stretch of the rail pulses
+   faintly, and Restart and Quit appear under the line, in the app's
+   language. The film keeps running. The splash stops being
+   always-on-top, since it now waits for a decision, and flashes its
+   taskbar entry once when it does not have focus. Nothing is focused
+   for the person: Tab reaches Restart, then Quit, Enter or Space uses
+   the focused one, and Escape does nothing. Quit is closing the splash:
+   the launch is cancelled. Restart first arranges a relaunch of the
+   whole app, then ends the launch the same way; the new process starts
+   only once this one has exited, so it takes the single-instance lock
+   rather than handing over to the one that is exiting
+   (`electron/lib/relaunch.cjs`). Electron's own relaunch does that for
+   the .deb, the Windows install and development; in the AppImage, whose
+   binary sits on a mount that goes away with the process, a detached
+   shell waits for this process to exit and then runs the AppImage file
+   itself. A page that renders after the stuck state hands over as
+   usual: the rail completes, the actions go inert, and the window is
+   revealed. A choice that reaches the main process before that wins,
+   and nothing is revealed. While the splash can offer its choices, no
+   new deadline gives up on the person's behalf: a packaged launch keeps its
+   two-minute deadlines for the backend's handshake and the window's
+   first paint, whose failure dialog takes the splash away, and a
+   renderer that dies fails the boot as before. A splash whose own page
+   crashes is reloaded, at most twice per launch, and offers its choices
+   again. One that crashes past that, or whose page fails to load, is
+   navigated away (navigation and new windows are refused on the
+   splash), exits, or loads with nothing to offer, can no longer offer
+   a way out, so the page gets 15 seconds more, counted from the loss or from the
+   window's creation if that came later: if it renders within them, the
+   window is revealed as usual; if not, the boot fails with the same
+   dialog rather than waiting for ever or revealing a window that may
+   be empty. The log has a
+   line for each: the stuck state (which step, how long after the
+   paint), the choice, and a page rendering after it (how long after).
 
 The splash is a 35mm strip of the app's mark pulled through a lit gate a
 frame at a time, beside the app's name with its version above it
@@ -412,10 +452,9 @@ page with it. Nothing else on the splash is a number, since any number
 on a screen this brief reads as a count. Under the name, a wordless rail
 of film edge lights one of its three stretches as each step of the boot
 lands: the backend's handshake, the launch's flags decided, the app's
-first page rendered (`electron/lib/splash-progress.cjs`); a launch whose
-wait for that render gave up lights the last stretch as its window is
-about to be revealed anyway, held the same way, so the rail is always
-seen complete. The splash waits at most 150 ms, about a millisecond in
+first page rendered (`electron/lib/splash-progress.cjs`); the last
+stretch lights as the window is about to be revealed, held the same way,
+so the rail is always seen complete. The splash waits at most 150 ms, about a millisecond in
 practice, for its page to take the last step. A last step landing so
 late that the splash's minimum time on screen would not show it then
 holds the splash until 250 ms (150 ms on the still frame) after that
