@@ -732,10 +732,11 @@ pub(crate) mod tests {
     /// Build an `AppState` for the `try_serve_cached` tests. Mirrors
     /// `app::tests::fake_state` (private, unreachable from here) so the
     /// shape stays in lock-step.
-    pub(crate) fn state_with_proxy_origin() -> AppState {
+    pub(crate) fn state_with_proxy_origin() -> crate::scratch::Scratch<AppState> {
         use crate::meta::kitsu::KitsuClient;
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-        AppState {
+        let dirs = crate::scratch::dir();
+        let state = AppState {
             // Unreachable: the fresh-resolve fallback must fail fast in
             // tests instead of walking a live provider.
             secret: AppSecret::random(),
@@ -746,22 +747,23 @@ pub(crate) mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: std::path::PathBuf::from("/tmp/ani-gui/history"),
+            history_path: dirs.history(),
             providers: crate::provider_set::ProviderSet::for_tests().with_stub(
                 std::sync::Arc::new(crate::scraper::table_provider::TableProvider::unreachable()),
             ),
-            image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
+            image_cache_dir: dirs.images(),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),
-            config_path: std::path::PathBuf::from("/tmp/ani-gui-config.toml"),
-            state_dir: std::path::PathBuf::from("/tmp/ani-gui-state"),
+            config_path: dirs.config(),
+            state_dir: dirs.state(),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
             flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
-        }
+        };
+        dirs.hold(state)
     }
 
     /// Every test that plays records history through this state, and
@@ -974,7 +976,7 @@ pub(crate) mod tests {
     /// by the returned tempdir. The cache-hit tests exercise the
     /// opt-in path, so they declare the opt-in instead of relying on
     /// the old unconditional caching.
-    fn state_with_caching_on() -> (tempfile::TempDir, AppState) {
+    fn state_with_caching_on() -> (tempfile::TempDir, crate::scratch::Scratch<AppState>) {
         let td = tempfile::tempdir().expect("tempdir");
         let cfg = td.path().join("config.toml");
         std::fs::write(&cfg, "cache_resolutions = true\n").expect("config write");
@@ -1847,13 +1849,8 @@ pub(crate) mod tests {
         let args = external_args("Show With History", "3");
         let upstream = format!("{}/cached.mp4", server.uri());
         seed_play_cache(&state, &args, &upstream, "");
-        // Non-prefetch click → history must be written. The upsert
-        // target is state.history_path, which is /tmp/ani-gui/history
-        // by default — make it a real tempfile so the write
-        // succeeds and we can assert against it.
-        let td = tempfile::tempdir().expect("tempdir");
-        let mut state = state;
-        state.history_path = td.path().join("history");
+        // Non-prefetch click → history must be written, to the
+        // state's own history file.
         let _ = play_with_progress(&state, &args, |_| {}).await.expect("ok");
         // The history file must exist with one row referencing the
         // seeded show_id.

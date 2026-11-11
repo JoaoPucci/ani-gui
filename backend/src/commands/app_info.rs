@@ -72,8 +72,9 @@ mod tests {
         );
     }
 
-    fn fake_state() -> AppState {
-        AppState {
+    fn fake_state() -> crate::scratch::Scratch<AppState> {
+        let dirs = crate::scratch::dir();
+        let state = AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -82,20 +83,21 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 42_337),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/home/u/.local/state/ani-gui/history"),
+            history_path: dirs.history(),
             providers: crate::provider_set::ProviderSet::for_tests(),
-            image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+            image_cache_dir: dirs.images(),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
-            config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-            state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            config_path: dirs.config(),
+            state_dir: dirs.state(),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
             flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
-        }
+        };
+        dirs.hold(state)
     }
 
     #[test]
@@ -164,7 +166,10 @@ mod tests {
 
     #[test]
     fn app_info_projects_state_fields() {
-        let s = fake_state();
+        // A path the projection is checked against, never opened:
+        // app-info only reports where the history lives.
+        let mut s = fake_state();
+        s.history_path = PathBuf::from("/home/u/.local/state/ani-gui/history");
         let info = app_info(&s).unwrap();
         // Robust to the dev profile's `-dev` suffix (and any parallel test
         // toggling ANI_GUI_DEV): the version always starts with the crate

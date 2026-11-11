@@ -193,10 +193,10 @@ mod subtitle_tests;
 mod tests {
     use super::*;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::path::PathBuf;
 
-    fn make_state(port: u16) -> AppState {
-        AppState {
+    fn make_state(port: u16) -> crate::scratch::Scratch<AppState> {
+        let dirs = crate::scratch::dir();
+        let state = AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -205,20 +205,21 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", port),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/y/history"),
+            history_path: dirs.history(),
             providers: crate::provider_set::ProviderSet::for_tests(),
-            image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+            image_cache_dir: dirs.images(),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
-            config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-            state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            config_path: dirs.config(),
+            state_dir: dirs.state(),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
             flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
-        }
+        };
+        dirs.hold(state)
     }
 
     #[test]

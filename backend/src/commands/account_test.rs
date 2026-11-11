@@ -9,10 +9,12 @@ use crate::account::pkce::PkceMethod;
 /// wiremock server) so id-resolution tests can mock the mappings
 /// endpoint. Everything else is throwaway.
 #[cfg(test)]
-fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
-    use std::path::PathBuf;
+fn state_with_kitsu(
+    kitsu_uri: &str,
+) -> crate::scratch::Scratch<std::sync::Arc<crate::app::AppState>> {
     use std::sync::Arc;
-    Arc::new(crate::app::AppState {
+    let dirs = crate::scratch::dir();
+    let state = Arc::new(crate::app::AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -21,19 +23,20 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
         proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: PathBuf::from("/tmp/ani-gui/history"),
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
-    })
+    });
+    dirs.hold(state)
 }
 
 /// Kitsu `/anime/:id?include=mappings` body carrying a MAL mapping.
@@ -959,8 +962,8 @@ fn build_entry_update_rejects_empty_and_unknown_status() {
 
 #[test]
 fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
-    use std::path::PathBuf;
     use std::sync::Arc;
+    let dirs = crate::scratch::dir();
     let state = Arc::new(crate::app::AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
@@ -970,13 +973,13 @@ fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
         proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: PathBuf::from("/tmp/ani-gui/history"),
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: AccountWriteLocks::new(),
