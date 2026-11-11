@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { decideAutoPlayNext } from './auto-play-next';
+import fc from 'fast-check';
+import { nextEpisode, stepAllowed } from './episode-number';
 
 describe('decideAutoPlayNext', () => {
 	it('does not advance when the toggle is disabled', () => {
@@ -78,5 +80,34 @@ describe('decideAutoPlayNext — from a fractional extra', () => {
 		expect(decideAutoPlayNext({ enabled: true, episodeNum: 12.5, totalEpisodes: 12 })).toEqual({
 			advance: false
 		});
+	});
+});
+
+describe('decideAutoPlayNext — where the player has no next step', () => {
+	// The Up next card shows only where the player's own next step is
+	// closed, and appears as the video ends: auto-play, which also acts
+	// at the end, must have nothing to start there, or it would race it.
+	it('never advances where the next-episode step is closed', () => {
+		fc.assert(
+			fc.property(
+				fc.oneof(
+					fc.integer({ min: 1, max: 30 }),
+					fc.integer({ min: 2, max: 60 }).map((n) => n / 2)
+				),
+				fc.oneof(fc.integer({ min: 1, max: 30 }), fc.constant(null)),
+				fc.uniqueArray(
+					fc.integer({ min: 1, max: 60 }).map((n) => n + 0.5),
+					{ maxLength: 3 }
+				),
+				fc.boolean(),
+				(episodeNum, totalEpisodes, extras, enabled) => {
+					const step = nextEpisode(episodeNum, extras);
+					if (stepAllowed(step, totalEpisodes, extras)) return;
+					expect(decideAutoPlayNext({ enabled, episodeNum, totalEpisodes, extras })).toEqual({
+						advance: false
+					});
+				}
+			)
+		);
 	});
 });

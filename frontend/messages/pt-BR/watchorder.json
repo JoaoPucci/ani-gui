@@ -1,5 +1,5 @@
 {
-	"diag_description": "Protótipos de design do recurso de ordem para assistir, feitos com dados de exemplo fixos: um cartão A seguir no player, cartões A seguir no início de Continuar assistindo e uma página de franquia.",
+	"diag_description": "Protótipos de design do recurso de ordem para assistir, feitos com dados de exemplo fixos: cartões A seguir no início de Continuar assistindo e uma página de franquia.",
 	"diag_section": "Protótipos de ordem para assistir",
 	"diag_switcher": "Mostrar o seletor de opções dos protótipos",
 	"diag_toggle": "Mostrar os protótipos de ordem para assistir",
@@ -57,9 +57,6 @@
 	"mock_handoff_episode": "EP 1",
 	"mock_handoff_next": "Próximo",
 	"mock_order": "Ordem",
-	"mock_upnext": "A seguir",
-	"mock_upnext_poster": "Pôster",
-	"mock_upnext_still": "Imagem",
 	"setting_aria": "Ordem para assistir",
 	"setting_hint": "Como as temporadas, filmes e especiais de uma série são ordenados: como as bases de dados de anime os vinculam, ou por data de lançamento. Os vínculos geralmente seguem a história, mas são mantidos pela comunidade de cada base e podem estar errados.",
 	"setting_key": "Ordem para assistir",

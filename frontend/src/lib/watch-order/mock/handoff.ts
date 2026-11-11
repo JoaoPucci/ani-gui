@@ -5,7 +5,7 @@
 import { MOCK_RUNS } from './fixtures';
 import { sequence, type WatchOrder } from '../order';
 import type { MockEntry, MockRun } from './types';
-import { upNextFor } from './view';
+import { upNextFor } from '../up-next';
 
 export interface Handoff {
 	readonly run: MockRun;

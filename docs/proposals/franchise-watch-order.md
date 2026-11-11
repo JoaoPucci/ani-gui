@@ -4,12 +4,12 @@
 product questions are decided (section 6); the design questions are
 open (section 5). Built so far: the backend's franchise read, `GET
 /api/kitsu/franchise/:kitsu_id` (section 4 describes it as built), the
-watch-order strip on the show page and the "Watch order" setting. Not
-built yet: the Up next card, Continue Watching's hand-off and the
-franchise page, which exist only as design mockups drawn from fixture
-data, behind a Diagnostics switch. The research was done on
-2026-11-01; the live samples it quotes describe the catalogues on that
-day and will drift.
+watch-order strip on the show page, the "Watch order" setting and the
+player's Up next card at a finale. Not built yet: Continue Watching's
+hand-off and the franchise page, which exist only as design mockups
+drawn from fixture data, behind a Diagnostics switch. The research
+was done on 2026-11-01; the live samples it quotes describe the
+catalogues on that day and will drift.
 
 ## The problem in plain terms
 
@@ -787,13 +787,13 @@ first.**
 
 **How it looks.**
 
-- *In the player*: when the last episode of an entry reaches its
-  ending credits (the point the existing "Skip Ending" button already
-  knows from skip data, else the final seconds), the button becomes
-  an end card — the sequel's banner, its title, its year and format,
-  under "Up next". The card waits for a click. It does not count down
-  or play the sequel by itself, whatever the auto-play setting:
-  auto-play stays within one entry, as it does today.
+- *In the player*: when the last episode of an entry ends (the video's
+  ended state; "Decisions recorded: the Up next card's timing"), the
+  "Skip Ending" corner holds an end card — the sequel's poster, its
+  title, its year and format, under "Up next". The card waits for a
+  click. It does not count down or play the sequel by itself, whatever
+  the auto-play setting: auto-play stays within one entry, as it does
+  today.
 - *On Continue Watching*: once the finale has been played through,
   the card stops offering the finale again and shows the sequel —
   its art, its title, "Up next".
@@ -1116,12 +1116,19 @@ them introduces a new widget style.
   of the "Skip Ending" pill, in the same bottom-end corner, with the
   same dark translucent surface and accent border. It grows from a
   pill into a small card: the sequel's poster, an "Up next" eyebrow,
-  the title clamped to two lines, and a format and year line. The
-  reason for this spot: it is where the eye already goes at the
-  credits, and it does not cover the picture's centre. Unlike the
-  pill, which shows for five seconds, the card stays through the
-  credits and after the video ends, until it is used or dismissed.
-  With no skip data, it appears in the final seconds instead. Showing
+  the title clamped to three lines (the card is narrow, and the words
+  that tell entries apart come last), and a format and year line. The
+  reason for this spot: it is where the eye already goes at the end
+  of an episode, and it does not cover the picture's centre. It
+  appears once the video ends, so the credits and anything after
+  them (a closing scene, the next episode's preview) play uncovered
+  but for their last second at most, with the "Skip Ending" pill
+  behaving as on any episode. A playhead within a second of the
+  length counts as the end. Unlike the pill, which shows for five
+  seconds, the card stays until it is used or dismissed; a seek back
+  puts it away and the end brings it back. It waits for the player's
+  own last step: where the source lists an episode past Kitsu's
+  count, the card shows on that one. Showing
   the sequel in the now-playing header's "next" button (below the
   player) on a finale was decided: no, the button stays within the
   entry ("Decisions recorded", 3).
@@ -1283,12 +1290,13 @@ The rules below hold on every surface:
   translation.
 - **Titles.** A card shows the entry's whole title, the one the rest
   of the app shows ("BLEACH: Sennen Kessen-hen", "Boruto: Naruto Next
-  Generations"), clamped to two lines, with the full title as its
-  tooltip and accessible name. The first round's short titles, which
-  dropped the words another entry of the run shares ("Sennen
-  Kessen-hen"), were reversed after the build: a title cut that way
-  reads as an unfamiliar show, and a shared prefix that is not the
-  franchise's name ("Boruto:") renamed the show.
+  Generations"), clamped to two lines (the player's narrower Up next
+  card, three), with the full title as its tooltip and accessible name.
+  The first round's short titles, which dropped the words another
+  entry of the run shares ("Sennen Kessen-hen"), were reversed after
+  the build: a title cut that way reads as an unfamiliar show, and a
+  shared prefix that is not the franchise's name ("Boruto:") renamed
+  the show.
 
 #### The watch-order strip (show page)
 
@@ -1341,18 +1349,21 @@ The rules below hold on every surface:
 
 #### The "Up next" card (player)
 
-- **Options.** *Poster*: the next entry's 5:7 poster beside its title
-  and meta, in the skip pill's surface and corner. *Still*: the next
-  entry's banner above its title, wider. **Recommended: poster.** It
-  covers less of the end credits (at 1280 px the still variant covers
-  more than half of the picture's height), and banners crop
-  unpredictably at that size.
+- **Poster, decided** ("Decisions recorded", 5): the next entry's 5:7
+  poster beside its title and meta, in the skip pill's surface and
+  corner. The other option, *Still*, put the entry's banner above its
+  title, wider; it covered more of the end credits (at 1280 px more
+  than half of the picture's height), and banners crop unpredictably
+  at that size.
 - **States.** One aired next entry: a link to its page. Several (a
   fork): "Ways to continue" over one row per branch. One not yet
   aired: "Next, when it airs", its date or "Date not announced", and
-  no link. None: no card. The mockup shows the card on an entry's
-  last episode, from the start of playback, so a screenshot can catch
-  it over the credits.
+  no link. None: no card. A franchise read only in part (the walk
+  reached its bound, or a listing came back cut short) also gets no
+  card, since the entry that really comes next may be missing from
+  it. The mockup showed the card from the start of a last episode, so
+  a screenshot could catch it; the player shows it once the video
+  ends.
 - **Keyboard and screen readers.** The card never takes focus; Esc
   dismisses it while it has focus; the dismiss button is its own tab
   stop. The announcement is written into a polite live region after
@@ -1617,6 +1628,22 @@ The third round revises the strip's footer only.
   short. Without the card (on *Stone Ocean Part 3*, where *Steel Ball
   Run* is already a tile) the stack sits alone in the middle, at its
   own width.
+
+### Decisions recorded: the Up next card's timing
+
+The card first appeared from the start of the ending credits that the
+skip data knows, or in the last minute and a half without skip data.
+The maintainer found that too early: it covered the credits and any
+closing scene or next-episode preview after them. The card now
+appears once the video ends, and stays until it is used or
+dismissed. A seek back puts it away and the end brings it back,
+unless it was dismissed. Through the credits the "Skip Ending" pill
+behaves as on any episode. A playhead within a second of the length
+counts as the end, as well as the video's own ended state. That is a
+precaution: where a stream played through hls.js has less media than
+the length it declared, the playhead can stop just short of it and the
+video never reports its end, so the card would never come. On a stream
+that ends normally it shows the card up to a second early.
 
 ### Open design questions
 
