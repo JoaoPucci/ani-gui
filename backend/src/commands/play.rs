@@ -764,6 +764,36 @@ pub(crate) mod tests {
         }
     }
 
+    /// Every test that plays records history through this state, and
+    /// cargo runs them side by side. A history path two states share is
+    /// one file those tests race on — one reads another's rows — and a
+    /// fixed one outlives the run. Each state's files live in a
+    /// directory of their own, gone once the state is.
+    #[test]
+    fn each_test_state_keeps_its_files_in_a_directory_of_its_own() {
+        let a = state_with_proxy_origin();
+        let b = state_with_proxy_origin();
+        assert_ne!(
+            a.history_path, b.history_path,
+            "two test states share one history file"
+        );
+        let dir = a.history_path.parent().expect("parent").to_path_buf();
+        for path in [&a.image_cache_dir, &a.config_path, &a.state_dir] {
+            assert!(
+                path.starts_with(&dir),
+                "{} sits outside the state's own directory",
+                path.display()
+            );
+        }
+        std::fs::write(&a.history_path, "row\n").expect("the state's directory is writable");
+        drop(a);
+        assert!(
+            !dir.exists(),
+            "{} outlives the state that wrote it",
+            dir.display()
+        );
+    }
+
     /// The gap this closes: when no availability row exists — the
     /// mount-time probe failed, or the show was never probed — a
     /// successful play stamped extra_episodes: [], hiding every
