@@ -194,10 +194,24 @@ async function waitBeforeShow(contents, beforeShow, logError) {
 async function openFirstPage(
   win,
   url,
-  { timeoutMs, logError, beforeShow = async () => {}, reveal = () => win.show() },
+  // `abort`: a promise whose rejection fails the open (and so the boot)
+  // whatever it is waiting for, and keeps the window from being shown:
+  // main.js passes lib/app-window.cjs abortWhenLost, which rejects when
+  // the splash is lost and the page has not rendered within the bound
+  // it then gets back.
+  { timeoutMs, logError, beforeShow = async () => {}, reveal = () => win.show(), abort = new Promise(() => {}) },
 ) {
   const contents = win.webContents;
   let failed = false;
+  const aborted = Promise.resolve(abort).then(
+    () => new Promise(() => {}),
+    (err) => {
+      failed = true;
+      throw err;
+    },
+  );
+  // A rejection after the open has settled is nobody's.
+  aborted.catch(() => {});
   // `beforeShow` is whatever must happen first — the splash on screen,
   // the page's first render (main.js).
   const shown = awaitFirstShow(win, { timeoutMs })
@@ -212,7 +226,7 @@ async function openFirstPage(
     const markFailed = () => {
       failed = true;
     };
-    await Promise.all([loadFirstPage(win, url, logError, markFailed), shown]);
+    await Promise.race([Promise.all([loadFirstPage(win, url, logError, markFailed), shown]), aborted]);
   } catch (err) {
     failed = true;
     // Either part may go first: close() destroys the contents and

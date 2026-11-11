@@ -917,3 +917,42 @@ test("a first page that commits without an error status and is then superseded i
     assert.equal(logged.length, 1, String(status));
   }
 });
+
+// The splash's crash recovery can run out (lib/splash.cjs `lost`) while
+// the window waits, with no bound, for a page that painted but never
+// said it rendered. If the page still has not rendered within the bound
+// it then gets back (lib/app-window.cjs abortWhenLost), the open is told
+// to give up: it fails and the boot takes its failure path, the dialog
+// saying why and the app exiting.
+test("an open told to give up fails, and the window it held back is never shown", async () => {
+  let giveUp;
+  const abort = new Promise((_resolve, reject) => (giveUp = reject));
+  let holdReveal;
+  const win = showableWindow(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    beforeShow: () => new Promise((resolve) => (holdReveal = resolve)),
+    abort,
+  });
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  giveUp(new Error("the splash's page crashed 3 times"));
+  await assert.rejects(opened, /crashed 3 times/);
+  // Whatever the reveal was waiting for comes later: nothing is shown.
+  holdReveal();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.shows, 0);
+});
+
+test("an abort that never comes changes nothing", async () => {
+  const win = showableWindow(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    abort: new Promise(() => {}),
+  });
+  win.emit("ready-to-show");
+  await opened;
+  assert.equal(win.shows, 1);
+});

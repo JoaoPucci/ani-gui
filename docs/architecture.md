@@ -369,13 +369,16 @@ three-second limit below.
    nothing white shows before a stylesheet loads. It loads and paints
    its first page hidden, and its renderer says when that page has
    rendered (two animation frames after the root layout mounts); the
-   reveal waits for that word, at most 15 seconds from the window's
-   creation, with the splash up and, once the page's step has been
-   pending for 700 ms, its stall line. That bound is a safety net for
-   a page that never says it rendered, not an expected duration (a
-   cold Vite start in development has rendered the first page past
-   four seconds): past it, the window is revealed anyway, on the dark
-   background. Once it is ready to show, it also waits up
+   reveal waits for that word, with the splash up and, once the page's
+   step has been pending for 700 ms, its stall line. While the splash is
+   up the wait has no bound, and a window is never revealed before its
+   page has rendered. A launch whose first page has not rendered 15
+   seconds after the splash painted, whatever step is still pending,
+   leaves the splash stuck instead (below). A window with no splash to
+   stand in for it (one opened later, or a boot whose splash could not
+   be made) waits at most 15 seconds from its creation and is then
+   revealed anyway, on the dark background. Once it is ready to show,
+   it also waits up
    to a second for the splash to answer that it has rendered a frame,
    then until the splash has been on screen for 500 ms since that paint
    (300 ms when it rests on its still frame) — long enough for the
@@ -403,6 +406,43 @@ three-second limit below.
    Closing the splash before the app's window appears cancels the
    launch. Measured on GNOME under Wayland and on Xvfb; X11 with a real
    window manager and Windows were not measured.
+5. A first page that is late leaves the splash stuck
+   (`electron/lib/splash-stuck.cjs`). Fifteen seconds after the splash
+   painted, with the page not yet rendered, its line says "Taking longer
+   than usual to start.", the pending stretch of the rail pulses
+   faintly, and Restart and Quit appear under the line, in the app's
+   language. The film keeps running. The splash stops being
+   always-on-top, since it now waits for a decision, and flashes its
+   taskbar entry once when it does not have focus. Nothing is focused
+   for the person: Tab reaches Restart, then Quit, Enter or Space uses
+   the focused one, and Escape does nothing. Quit is closing the splash:
+   the launch is cancelled. Restart first arranges a relaunch of the
+   whole app, then ends the launch the same way; the new process starts
+   only once this one has exited, so it takes the single-instance lock
+   rather than handing over to the one that is exiting
+   (`electron/lib/relaunch.cjs`). Electron's own relaunch does that for
+   the .deb, the Windows install and development; in the AppImage, whose
+   binary sits on a mount that goes away with the process, a detached
+   shell waits for this process to exit and then runs the AppImage file
+   itself. A page that renders after the stuck state hands over as
+   usual: the rail completes, the actions go inert, and the window is
+   revealed. A choice that reaches the main process before that wins,
+   and nothing is revealed. While the splash can offer its choices, no
+   new deadline gives up on the person's behalf: a packaged launch keeps its
+   two-minute deadlines for the backend's handshake and the window's
+   first paint, whose failure dialog takes the splash away, and a
+   renderer that dies fails the boot as before. A splash whose own page
+   crashes is reloaded, at most twice per launch, and offers its choices
+   again. One that crashes past that, or whose page fails to load, is
+   navigated away (navigation and new windows are refused on the
+   splash), exits, or loads with nothing to offer, can no longer offer
+   a way out, so the page gets 15 seconds more, counted from the loss or from the
+   window's creation if that came later: if it renders within them, the
+   window is revealed as usual; if not, the boot fails with the same
+   dialog rather than waiting for ever or revealing a window that may
+   be empty. The log has a
+   line for each: the stuck state (which step, how long after the
+   paint), the choice, and a page rendering after it (how long after).
 
 The splash is a 35mm strip of the app's mark pulled through a lit gate a
 frame at a time, beside the app's name with its version above it
@@ -412,10 +452,9 @@ page with it. Nothing else on the splash is a number, since any number
 on a screen this brief reads as a count. Under the name, a wordless rail
 of film edge lights one of its three stretches as each step of the boot
 lands: the backend's handshake, the launch's flags decided, the app's
-first page rendered (`electron/lib/splash-progress.cjs`); a launch whose
-wait for that render gave up lights the last stretch as its window is
-about to be revealed anyway, held the same way, so the rail is always
-seen complete. The splash waits at most 150 ms, about a millisecond in
+first page rendered (`electron/lib/splash-progress.cjs`); the last
+stretch lights as the window is about to be revealed, held the same way,
+so the rail is always seen complete. The splash waits at most 150 ms, about a millisecond in
 practice, for its page to take the last step. A last step landing so
 late that the splash's minimum time on screen would not show it then
 holds the splash until 250 ms (150 ms on the still frame) after that
