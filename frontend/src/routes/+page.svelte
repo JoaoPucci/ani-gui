@@ -122,6 +122,7 @@
 	import { kitsuEntryGone, resolveKitsuMatchWithTrust } from '$lib/history/match';
 	import { createRowTrust } from '$lib/history/row-trust';
 	import { guessedId, recordableId, withGuess, withRow } from '$lib/play/play-origin';
+	import { failedResumeGuess, openCardLink as runOpenCardLink } from '$lib/history/open-card-link';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { cardRow } from '$lib/history/card-row';
@@ -525,17 +526,17 @@
 		stopHearing();
 		cardLink.leave();
 	});
-	async function openCardLink(row: string, matchId: string, episode: number) {
-		// A remove or clear holds its dialog while it is out, with none
-		// over it ($lib/history/confirm-run).
-		if (deleteRun.busy || clearRun.busy) return;
-		resumeFailure = null;
-		const guessed = await relink.stillGuessed(row, matchId);
-		// A check that could not be read says so; the pill stays to try again.
-		if (guessed === 'unread')
-			return void toastStore.push({ kind: 'error', message: m.home_link_check_failed() });
-		// …nor once one started while the check was out.
-		if (guessed && !deleteRun.busy && !clearRun.busy) void cardLink.start(episode);
+	// Its lifecycle is $lib/history/open-card-link.ts.
+	function openCardLink(row: string, matchId: string, episode: number) {
+		return runOpenCardLink(row, matchId, episode, {
+			busy: () => deleteRun.busy || clearRun.busy,
+			dismissFailure: () => {
+				resumeFailure = null;
+			},
+			stillGuessed: (r, id) => relink.stillGuessed(r, id),
+			checkFailed: () => toastStore.push({ kind: 'error', message: m.home_link_check_failed() }),
+			start: (ep) => void cardLink.start(ep)
+		});
 	}
 	// Rows found no longer guessed since the cards were read: their pill
 	// goes rather than open nothing ($lib/history/card-relink.ts).
@@ -1091,20 +1092,17 @@
 			// Moved on while the message was worded: it is about a click
 			// the viewer left behind.
 			if (isCurrent?.() === false) return;
-			// A guess still standing gets the pick, and so does one whose
-			// check could not be read, since the pick checks again; one
-			// settled since the cards were read gets none.
-			const guessed = args.guess ? historyById.get(args.row ?? '') : undefined;
-			const row =
-				guessed && (await relink.stillGuessed(guessed.id, args.match.id)) ? guessed : undefined;
-			if (isCurrent?.() === false) return;
-			resumeFailure = {
-				title,
-				message,
-				guess: row
-					? { row: row.id, matchId: args.match.id, title: row.title, episode: args.episode }
-					: undefined
-			};
+			// The pick it offers, for a guess ($lib/history/open-card-link).
+			const guess = await failedResumeGuess(
+				{ guess: args.guess, row: args.row, matchId: args.match.id, episode: args.episode },
+				{
+					line: (row) => historyById.get(row),
+					stillGuessed: (row, id) => relink.stillGuessed(row, id),
+					isCurrent: () => isCurrent?.() !== false
+				}
+			);
+			if (guess === null) return;
+			resumeFailure = { title, message, guess };
 		},
 		getSettings: () => resolveResumeSettings(config, settingsPromise),
 		// A show with its own audio plays in it.
