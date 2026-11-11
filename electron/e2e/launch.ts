@@ -195,3 +195,37 @@ export async function routeContext(
 		}
 	}
 }
+
+/** Answers every backend API request that none of a spec's own stubs
+ *  answers with a 501, and records it as `METHOD /path`. Registered
+ *  before the spec's stubs, since Playwright tries the most recently
+ *  registered route first: this one sees only what they leave. A spec
+ *  that claims its page runs on stubs asserts the record is empty; the
+ *  request itself never reaches the backend. */
+export async function refuseUnstubbed(context: BrowserContext): Promise<string[]> {
+	const unstubbed: string[] = [];
+	await routeContext(context, /^http:\/\/127\.0\.0\.1:\d+\/api\//, (r) => {
+		const req = r.request();
+		unstubbed.push(`${req.method()} ${new URL(req.url()).pathname}`);
+		return r.fulfill({ status: 501, contentType: 'text/plain', body: 'unstubbed in this spec' });
+	});
+	return unstubbed;
+}
+
+/** Mounts the app's first page again, so every request it makes goes
+ *  through the routes a spec has set since launch: the first mount asks
+ *  before they are in place. A goto to the same URL would be a
+ *  client-side no-op, hence the bounce through about:blank. `witness`
+ *  is armed once the old page is gone and resolves when a stubbed
+ *  request of the new mount arrives, the proof that the stubs are live. */
+export async function remountFirstPage(page: Page, witness: () => Promise<void>): Promise<void> {
+	await page.waitForURL((u) => u.protocol !== 'about:');
+	const first = page.url();
+	// Settling is normally a second or two; bounded, so a request that
+	// never answers does not hold the bounce for the full timeout.
+	await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
+	await page.goto('about:blank');
+	const live = witness();
+	await page.goto(first, { waitUntil: 'domcontentloaded' });
+	await live;
+}
