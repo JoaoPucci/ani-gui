@@ -223,23 +223,28 @@ describe('watchOrderPage', () => {
 	});
 
 	it('calls the shown entry a film exactly where it is a side story listed under films', () => {
-		// The anchor's own entry goes under films or under sides, as the
-		// walk places a side story: films for a movie, sides otherwise.
-		const placed = anyPage.chain(({ f, id, order, rows }) =>
-			fc.record({
-				f: fc.constant(f),
-				id: fc.constant(id),
-				order: fc.constant(order),
-				rows: fc.constant(rows),
-				film: fc.boolean()
-			})
-		);
+		// A side story outside the run, its parents among the members,
+		// listed under films or under sides as the walk places it: films
+		// for a movie, sides otherwise. Run members never read as films.
+		const side = franchiseArb()
+			.filter((f) => f.entries.length > 0)
+			.chain((f) =>
+				fc.record({
+					f: fc.constant(f),
+					parents: fc.uniqueArray(fc.constantFrom(...f.entries.map((e) => e.id)), {
+						minLength: 1,
+						maxLength: 3
+					}),
+					member: fc.constantFrom(...f.entries.map((e) => e.id)),
+					order: fc.constantFrom('linked' as const, 'released' as const),
+					film: fc.boolean()
+				})
+			);
 		fc.assert(
-			fc.property(placed, ({ f, id, order, rows, film }) => {
-				const own = f.entries.find((e) => e.id === id);
-				const entry: WatchEntry = own ?? {
-					id,
-					title: `T${id}`,
+			fc.property(side, ({ f, parents, member, order, film }) => {
+				const entry: WatchEntry = {
+					id: '999',
+					title: 'T999',
 					subtype: film ? 'movie' : 'OVA',
 					start: null,
 					episodes: null,
@@ -247,18 +252,22 @@ describe('watchOrderPage', () => {
 					poster: null,
 					cover: null
 				};
-				const placedF: FranchiseData = own
-					? f
-					: film
-						? { ...f, films: [entry] }
-						: { ...f, sides: [entry] };
-				const got = watchOrderPage({ franchise: placedF, rows }, id, order);
-				if (!got) return;
-				if (got.view.kind === 'side') {
-					expect(got.caption.kind).toBe(own === undefined && film ? 'film' : 'side');
-				} else {
-					expect(got.caption.kind).not.toBe('film');
-				}
+				const placed: FranchiseData = {
+					...f,
+					anchor: '999',
+					parents: { '999': parents },
+					films: film ? [entry] : [],
+					sides: film ? [] : [entry]
+				};
+				const got = watchOrderPage({ franchise: placed, rows: [] }, '999', order)!;
+				expect(got.view.kind).toBe('side');
+				expect(got.caption.kind).toBe(film ? 'film' : 'side');
+				const onMember = watchOrderPage(
+					{ franchise: { ...placed, anchor: member }, rows: [] },
+					member,
+					order
+				);
+				if (onMember) expect(onMember.caption.kind).not.toBe('film');
 			})
 		);
 	});
