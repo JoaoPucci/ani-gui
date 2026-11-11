@@ -152,5 +152,10 @@ export function franchiseLinkOnly(data: WatchOrderData, id: string): FranchiseLi
 	if (run === null || hasStrip(run, id)) return null;
 	const rest = restOfFranchise(run, id);
 	if (rest.size === 0) return null;
-	return { run, front: run.nameId, complete: data.franchise.complete, similarHidden: rest };
+	return {
+		run,
+		front: data.franchise.name_from,
+		complete: data.franchise.complete,
+		similarHidden: rest
+	};
 }

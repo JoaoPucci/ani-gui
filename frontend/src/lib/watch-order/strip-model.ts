@@ -98,5 +98,10 @@ export function stripFor(
 	if (franchise === null || franchise.anchor !== id) return null;
 	const run = runOf(franchise);
 	if (run === null || !hasStrip(run, id)) return null;
-	return { run, front: run.nameId, view: stripView(run, id, order), complete: franchise.complete };
+	return {
+		run,
+		front: franchise.name_from,
+		view: stripView(run, id, order),
+		complete: franchise.complete
+	};
 }

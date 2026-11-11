@@ -10,7 +10,6 @@
 import type { BreadcrumbSegment } from '$lib/breadcrumb';
 import { m } from '$lib/paraglide/messages';
 import type { WatchOrder } from './by-start';
-import { franchiseName, nameEntry } from './franchise-name';
 import type { WatchOrderData } from './loader';
 import { placement, segments, sequence } from './order';
 import {
@@ -29,10 +28,7 @@ export type { FranchiseRow, FranchiseSection };
 export interface FranchisePageModel {
 	readonly order: WatchOrder;
 	readonly run: WatchRun;
-	/**
-	 * The franchise's name: its first TV series' title, else its first
-	 * title (`nameEntry`), "(TV)" dropped where nothing clashes.
-	 */
+	/** The franchise's name, as the walk decides it (backend `franchise_walk_name.rs`). */
 	readonly name: string;
 	/** The title the name comes from, whose artwork and accent the masthead takes. */
 	readonly art: WatchEntry;
@@ -101,18 +97,18 @@ export function franchisePage(
 	// Read in part, the walk may have missed titles before the first one
 	// it reached: nothing counted from that title is sure.
 	const whole = data.franchise.complete;
-	const art = nameEntry(run);
-	const others = [...run.entries, ...run.versions, ...run.films, ...run.sides, ...run.recaps]
-		.filter((e) => e.id !== art.id)
-		.map((e) => e.title);
+	// The walk names the franchise after one of its run's entries; a
+	// payload naming another is shown with its first entry's artwork.
+	const nameFrom = data.franchise.name_from;
+	const art = run.entries.find((e) => e.id === nameFrom) ?? run.entries[0];
 	const now = currentIn(run, ctx.progress, order);
 	const segs = segments(run, order);
 	return {
 		order,
 		run,
-		name: franchiseName(art.title, others),
+		name: data.franchise.name,
 		art,
-		total: whole ? franchiseSummary(run, run.nameId).total : null,
+		total: whole ? franchiseSummary(run, art.id).total : null,
 		alone: whole && isAlone(run, id),
 		resume: now && {
 			entry: now.entry,
