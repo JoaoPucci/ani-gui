@@ -183,3 +183,7 @@ mod parent_prop_tests;
 #[cfg(test)]
 #[path = "franchise_walk_series_test.rs"]
 mod series_tests;
+
+#[cfg(test)]
+#[path = "franchise_walk_name_test.rs"]
+mod name_tests;

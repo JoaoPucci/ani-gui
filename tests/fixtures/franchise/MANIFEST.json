@@ -3,8 +3,8 @@
  "fixtures": {
   "cases.json": {
    "source": "Hand-written: one case per anchor, what the walk must answer for it (the title of the run's first entry by start, which section holds the anchor, a side story's parent stories, ids a section must hold), pinned by backend/src/commands/franchise_corpus_test.rs.",
-   "size": 9168,
-   "sha256": "2e51cf5775193cb72ffeb6b2e5869a62a8e653faaadfa73cf541ed1c9c06e8ac"
+   "size": 11372,
+   "sha256": "d9763902f15dcc3fe3b26307252f1de745406f2fb24b5e0cf829ad1af778b1f2"
   },
   "listings.json": {
    "source": "Recorded by backend/src/commands/franchise_corpus_record_test.rs: the franchise walk run from every anchor in cases.json, each listing it asked for read with the app's query (KitsuClient::franchise_relations) and each detail with KitsuClient::anime_detail, artwork dropped (the walk never reads it).",
