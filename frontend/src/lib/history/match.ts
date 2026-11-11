@@ -49,10 +49,13 @@ export async function resolveKitsuMatch(
  *  Every read takes `opts.signal`: the page that asked cancels them
  *  when it goes. A resolution its signal aborted rejects with the
  *  abort, whatever its steps made of the cancelled reads, so it is
- *  never taken for a row with no match. A Kitsu read that failed on the
- *  way — the recorded show's detail, the stored mapping's show (not one
- *  Kitsu answered gone), the live search, the show-id enrichment — says
- *  so (`unread`): with no match, none is known either way. */
+ *  never taken for a row with no match. A read that failed on the way
+ *  says so (`unread`): the recorded show's detail, the stored mapping or
+ *  its show, the title-match cache or its show (not one Kitsu answered
+ *  gone), the live search, the show-id enrichment. With no match, none is
+ *  known either way. A failure that leaves unknown whether a play stored
+ *  the row's mapping — its show or its played mark not read — says that
+ *  too (`trustUnread`): whether the row is a guess at all is not known. */
 export async function resolveKitsuMatchWithTrust(
 	preliminary: ResumeTarget,
 	opts: ReadOptions = {}
@@ -89,7 +92,7 @@ async function resolveWithTrust(
 	//    mapping (Burichi/Buriki fuzzy-matched to Doraemon Movie 14).
 	//    Only a mapping a play stored may be recorded on the row.
 	// `unread` once a read on the way failed.
-	const read: { unread?: true } = {};
+	const read: { unread?: true; trustUnread?: true } = {};
 	const stored = await storedBinding(preliminary, opts, read);
 	if (stored) return { match: stored.ref, trusted: stored.played };
 	const match = await guessKitsuMatch(preliminary, opts, read);
@@ -100,7 +103,7 @@ async function resolveWithTrust(
 async function guessKitsuMatch(
 	preliminary: ResumeTarget,
 	opts: ReadOptions,
-	read: { unread?: true }
+	read: { unread?: true; trustUnread?: true }
 ): Promise<KitsuAnimeRef | null> {
 	// 1) Cache lookup. If we've resolved this title→id before, fetch
 	//    the (cached, 7d-TTL) detail and short-circuit.
@@ -136,13 +139,17 @@ async function guessKitsuMatch(
 				}
 				// Incompatible / implausible / cross-cour → fall through and re-resolve
 				// (step 5 re-Puts a corrected title-match row; no title-match delete).
-			} catch {
+			} catch (e) {
 				// Stale id (Kitsu removed the entry) — fall through to a
-				// live search and re-cache.
+				// live search and re-cache. Any other failure leaves the
+				// match unread, should nothing be found after it.
+				if (!kitsuEntryGone(e)) read.unread = true;
 			}
 		}
 	} catch {
-		// Cache backend unavailable — degrade to live search.
+		// Cache backend unavailable — degrade to live search, the match
+		// unread should nothing be found after it.
+		read.unread = true;
 	}
 
 	let match: KitsuAnimeRef | null = null;
