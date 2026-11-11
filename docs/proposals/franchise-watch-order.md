@@ -1625,7 +1625,7 @@ The maintainer answered the second round's six questions:
    as decided in the first round. The maintainer first asked for the
    year in its place ("JoJo no Kimyou na Bouken (2012)") and then
    reversed it: the year would read as naming only the first season,
-   not the franchise. The franchise-name function is unchanged.
+   not the franchise. The suffix rule is unchanged.
 
 ### The poster stack and the footer, third round
 
