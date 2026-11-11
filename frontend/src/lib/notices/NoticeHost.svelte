@@ -25,7 +25,7 @@
 		setNoticeToast
 	} from './instance';
 	import { createDonationAsk } from './donation-ask';
-	import { readPublished, publishedChanges } from './published';
+	import { startPublishedRead } from './published-read';
 	import { createPublishedMemoryStore } from './published-memory-store';
 	import type { Moment } from './arrival';
 	import { momentOf, watchMoment } from './moment';
@@ -57,7 +57,7 @@
 		dismissLabel: m.notices_donation_later()
 	}));
 	const ask = createDonationAsk({ storage, now: () => Date.now(), show: askToast.show });
-	const busy = () => moment.playing || moment.fullscreen || onPlayer;
+	const busyWith = (player: boolean) => player || moment.playing || moment.fullscreen;
 
 	function setBusy(now: boolean) {
 		askToast.busy(now);
@@ -84,19 +84,15 @@
 		const stopMoment = watchMoment(document, (at) => {
 			noticeCenter.setMoment(at);
 			moment = at;
-			setBusy(busy());
+			setBusy(busyWith(onPlayer));
 		});
-		let alive = true;
-		void publishedNotices()
-			.then(readPublished, () => readPublished(null))
-			.then((p) => {
-				if (!alive) return;
-				const remembered = memory.keepPublished(p.items.map((i) => i.id));
-				noticeCenter.take(publishedChanges(p.items, remembered));
-				ask.setNumber(p.donationAsk);
-				// An outage row raised before the answer gets its note now.
-				noticeCenter.take(outageNote.published(p.items));
-			});
+		const stopRead = startPublishedRead({
+			read: publishedNotices,
+			keepPublished: memory.keepPublished,
+			joinNote: outageNote.published,
+			take: (c) => noticeCenter.take(c),
+			setNumber: (n) => ask.setNumber(n)
+		});
 		const poll = startHealthPoll({
 			read: sourceHealth,
 			onHealth: (h) => noticeCenter.take(outageNote.health(h)),
@@ -106,7 +102,7 @@
 		const onFocus = () => poll.poke();
 		window.addEventListener('focus', onFocus);
 		return () => {
-			alive = false;
+			stopRead();
 			setNoticeObserver(null);
 			window.removeEventListener('focus', onFocus);
 			poll.stop();
@@ -120,7 +116,7 @@
 	// writes the center's list, which must not re-run the effect.
 	$effect(() => {
 		const player = onPlayer;
-		untrack(() => setBusy(player || moment.playing || moment.fullscreen));
+		untrack(() => setBusy(busyWith(player)));
 	});
 
 	$effect(() => {
