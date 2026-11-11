@@ -1208,8 +1208,9 @@ them introduces a new widget style.
     circle "Linked titles, order unclear", and Recaps have no count.
     The titles with no clear place keep their stretch and its
     heading. The page never
-    says the show is alone, and its name comes from the earliest title
-    the read reached. The strip's link to the page gives no counts
+    says the show is alone, and its name comes from the first TV
+    series among the titles the read reached, else the first of them
+    by its links. The strip's link to the page gives no counts
     either.
   - A forked run: the numbered path runs up to the fork, and the ways
     on stand side by side, unnumbered. A fork left with one way (the
@@ -1606,7 +1607,8 @@ The maintainer answered the second round's six questions:
    *Nisemonogatari* is "02 of 16", and *Off & Monster Season Shin
    Episode*, which has no date and sorts last, "16 of 16".
 6. **The franchise page's masthead** takes its artwork from the entry
-   the name comes from, the run's first in link order (on JoJo, the 2012 series, not
+   the name comes from, the run's first TV series in link order (on
+   JoJo, the 2012 series, not
    *Steel Ball Run*, which the viewer is watching); the entry being
    watched keeps its own line beside Resume. The name keeps Kitsu's
    "(TV)" where dropping it would clash with another entry's title,
