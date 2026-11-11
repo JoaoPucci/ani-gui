@@ -1422,12 +1422,14 @@ export interface Franchise {
  *  around it. The backend holds the response open while it walks the
  *  franchise, several rounds of Kitsu reads when Kitsu is slow, so the
  *  page that asked passes `signal` and cancels it when it goes: a read
- *  nobody waits for would hold one of the API lane's connections. */
+ *  nobody waits for would hold one of the franchise lane's connections
+ *  (`$lib/backend/lanes`). */
 export function kitsuFranchise(
 	kitsuId: string,
 	opts: { signal?: AbortSignal } = {}
 ): Promise<Franchise> {
 	return getJson<Franchise>(`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}`, {
+		lane: 'franchise',
 		signal: opts.signal
 	});
 }
@@ -1449,7 +1451,7 @@ export async function kitsuFranchiseFirstHop(
 ): Promise<FirstHop> {
 	const { signal } = await getJson<{ signal: FirstHop }>(
 		`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}/first-hop`,
-		{ signal: opts.signal }
+		{ lane: 'franchise', signal: opts.signal }
 	);
 	return signal;
 }

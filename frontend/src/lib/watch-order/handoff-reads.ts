@@ -8,9 +8,9 @@
  * Each read is handed a signal, aborted when the page goes (`stop`)
  * and, for the resume lookups, when forgetting drops their answers:
  * a franchise read holds its response open while the backend walks the
- * franchise, on the API lane every page shares (`$lib/backend/lanes`),
- * so a read whose answer nobody will use must not hold a connection.
- * For the same reason the series are walked a few at a time
+ * franchise, on the franchise lane (`$lib/backend/lanes`), so a read
+ * whose answer nobody will use must not hold a connection. The series
+ * are walked as many at a time as the lane has connections
  * (`HANDOFF_WALKS_AT_ONCE`), in the order the rows ask for them.
  */
 import type { FranchiseData } from './types';
@@ -23,13 +23,14 @@ export interface FranchiseReads {
 }
 
 /**
- * How many series walks Home keeps out at once. Chromium gives the API
- * lane six connections, the refill wait can hold one, and Home's own
- * calls need the rest: a Continue card's resume reads its row again
- * before it plays, and a removal writes. Two walks leave three once
- * Home's own first reads have answered.
+ * How many series walks Home keeps out at once: the franchise lane's
+ * six connections, which Chromium gives each origin. The walks have
+ * that lane to themselves while Home is open, and Home's own calls (a
+ * Continue card's resume, a removal) go to the API lane, so none waits
+ * behind them. More would only wait in Chromium's queue instead of
+ * this one, which starts them in the order the rows ask.
  */
-export const HANDOFF_WALKS_AT_ONCE = 2;
+export const HANDOFF_WALKS_AT_ONCE = 6;
 
 export function createFranchiseReads(
 	read: (id: string, signal: AbortSignal) => Promise<FranchiseData>,
