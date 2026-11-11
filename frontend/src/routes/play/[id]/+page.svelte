@@ -363,18 +363,38 @@
 			if (hls && attachedUrl) hls.loadSource(attachedUrl);
 		}
 	);
+	// Bumped when the viewer comes back, so the attach runs again for a
+	// src stream the handoff let go of (the gate holds which, and where).
+	let handoffReturns = $state(0);
 	/** The episode went to another player: a hold ends without
 	 *  starting anything, a start stops, the engine stops loading, and
 	 *  the element no longer starts on its own. A stream the element
-	 *  plays from its `src` (mp4, or HLS without hls.js) has no loader
-	 *  the page can stop: it stays paused, and nothing starts it, but
-	 *  the browser may go on buffering it. */
+	 *  plays from its `src` (mp4, or HLS without hls.js), which has no
+	 *  engine to stop, is unloaded, and attached again on the viewer's
+	 *  return, exactly where it was. */
 	function stopForHandoff() {
 		endResumeHold();
 		ownVideo.autoplay = false;
 		startWatch.cancel();
 		hls?.stopLoad();
 		handoff.handOff();
+		// A stream the element plays from its src has no engine to stop,
+		// and paused, the browser may go on buffering it: it is let go of
+		// as a switch lets go of one. The flush keeps where it was (its
+		// listeners write the playhead while the stream is still open)
+		// and retires them, so nothing the unload reports is written;
+		// the teardown then unloads it. The attach waits while its URL
+		// is the one let go of, and the viewer's return attaches it
+		// again as a resume: at its kept point, with its subtitles.
+		if (hls === null && attachedUrl !== null) {
+			// The return goes back to the playhead itself: the kept
+			// position reads the first seconds as the start and the last
+			// stretch as finished. Kept with the page's gate, so leaving
+			// the page or picking another episode forgets it.
+			handoff.letGo(attachedUrl, videoEl?.currentTime ?? 0);
+			sourceScope.flush();
+			teardown();
+		}
 	}
 	/** The viewer picked another stream from here (an episode, Reload). */
 	function comeBackWith() {
@@ -383,7 +403,11 @@
 	/** The viewer is back on the embedded player. */
 	function comeBack() {
 		if (handoff.handedOff) ownVideo.autoplay = true;
-		handoff.comeBack();
+		// A stream the handoff let go of attaches again, at its playhead,
+		// as a recovery's stream does.
+		const point = handoff.comeBack();
+		if (point !== null) recoveryResume.capture(id, episodeNum, point);
+		handoffReturns += 1;
 	}
 	ownVideo.addEventListener('play', comeBack);
 	const startWatch: StartWatch = watchStart(ownVideo, (phase) => {
@@ -1974,6 +1998,11 @@
 
 	$effect(() => {
 		if (!videoEl || !mediaUrl) return;
+		// The stream a handoff let go of waits for the viewer, whose return
+		// bumps handoffReturns and runs this again; another one (a pick, a
+		// Reload's fresh session) attaches, and ends the wait.
+		void handoffReturns;
+		if (untrack(() => handoff.attachWaits(mediaUrl))) return;
 		// The stream already attached from this URL keeps playing: the
 		// effect can run again without its source changing, and
 		// re-attaching would restart playback from 0. A recovery lands
@@ -2659,7 +2688,9 @@
 		// place so the fresh attach can seek back, and tell the user
 		// what the upcoming loading overlay is (silence here is what
 		// made recoveries read as the app breaking).
-		recoveryResume.capture(id, episodeNum, videoEl?.currentTime ?? 0);
+		// A stream a handoff let go of reads zero: its playhead is the
+		// one it was let go of at.
+		recoveryResume.capture(id, episodeNum, handoff.reloadPoint(videoEl?.currentTime ?? 0));
 		// The fresh session gets its own same-stream retry budget.
 		stallMachine.reset();
 		const toast = stallRecoveryToast(reason);

@@ -368,3 +368,90 @@ describe('HandoffGate — a handoff before the manifest is in', () => {
 		expect(reload).not.toHaveBeenCalled();
 	});
 });
+
+describe('HandoffGate — a stream played from its src, let go of', () => {
+	it('an attach of that stream waits; the return gives its playhead back and ends the wait', () => {
+		const gate = new HandoffGate(() => {});
+		gate.handOff();
+		gate.letGo('mp4-a', 1360);
+		expect(gate.attachWaits('mp4-a')).toBe(true);
+		expect(gate.comeBack()).toBe(1360);
+		expect(gate.attachWaits('mp4-a')).toBe(false);
+		// Given once.
+		gate.handOff();
+		expect(gate.comeBack()).toBeNull();
+	});
+
+	it('another stream attaching ends the wait and forgets the playhead', () => {
+		const gate = new HandoffGate(() => {});
+		gate.handOff();
+		gate.letGo('mp4-a', 300);
+		expect(gate.attachWaits('mp4-b')).toBe(false);
+		expect(gate.attachWaits('mp4-a')).toBe(false);
+		expect(gate.comeBack()).toBeNull();
+		expect(gate.reloadPoint(0)).toBe(0);
+	});
+
+	it('a Reload resumes at the playhead it was let go of at, in place of the unloaded zero', () => {
+		const gate = new HandoffGate(() => {});
+		expect(gate.reloadPoint(12)).toBe(12);
+		gate.handOff();
+		gate.letGo('mp4-a', 1360);
+		expect(gate.reloadPoint(0)).toBe(1360);
+	});
+
+	it('a stream let go of before its first frame has no playhead to give back', () => {
+		const gate = new HandoffGate(() => {});
+		gate.handOff();
+		gate.letGo('mp4-a', 0);
+		expect(gate.attachWaits('mp4-a')).toBe(true);
+		expect(gate.comeBack()).toBeNull();
+		expect(gate.attachWaits('mp4-a')).toBe(false);
+	});
+
+	it('every sequence of let-gos, attaches and returns matches a model', () => {
+		type Op =
+			| { kind: 'handOff' }
+			| { kind: 'letGo'; url: string; at: number }
+			| { kind: 'attach'; url: string }
+			| { kind: 'comeBack' };
+		const url = fc.constantFrom('a', 'b');
+		const op: fc.Arbitrary<Op> = fc.oneof(
+			fc.constant({ kind: 'handOff' as const }),
+			fc.record({
+				kind: fc.constant('letGo' as const),
+				url,
+				at: fc.constantFrom(0, 10, 1360)
+			}),
+			fc.record({ kind: fc.constant('attach' as const), url }),
+			fc.constant({ kind: 'comeBack' as const })
+		);
+		fc.assert(
+			fc.property(fc.array(op, { maxLength: 30 }), (ops) => {
+				const gate = new HandoffGate(() => {});
+				let waiting: string | null = null;
+				let at: number | null = null;
+				for (const o of ops) {
+					if (o.kind === 'handOff') gate.handOff();
+					else if (o.kind === 'letGo') {
+						gate.letGo(o.url, o.at);
+						waiting = o.url;
+						at = o.at > 0 ? o.at : null;
+					} else if (o.kind === 'attach') {
+						const waits = gate.attachWaits(o.url);
+						expect(waits).toBe(waiting === o.url);
+						if (waiting !== null && waiting !== o.url) {
+							waiting = null;
+							at = null;
+						}
+					} else {
+						expect(gate.comeBack()).toBe(waiting !== null ? at : null);
+						waiting = null;
+						at = null;
+					}
+					expect(gate.reloadPoint(0)).toBe(at ?? 0);
+				}
+			})
+		);
+	});
+});
