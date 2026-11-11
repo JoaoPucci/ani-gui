@@ -11,8 +11,8 @@
  * the renderer sends each kind of request to its own (the frontend's
  * unit and acceptance tests pin which request goes where); this proves
  * the half only a real browser can: that requests held on the probe,
- * resolve, download and image lanes leave the API and the stream proxy
- * answering at once.
+ * resolve, download, image and franchise lanes leave the API and the
+ * stream proxy answering at once.
  *
  * What holds them is the image route asked for an upstream that never
  * answers: a TCP server that accepts and says nothing, so the
@@ -21,8 +21,9 @@
  * of connecting).
  * Every lane serves every route, so the same held request stands in
  * for a slow probe on the probe lane, a slow resolution on the resolve
- * lane, an open download stream on the download lane and a cold poster
- * on the image lane — the connection is what is being held, whatever
+ * lane, an open download stream on the download lane, a cold poster
+ * on the image lane and a slow franchise walk on the franchise lane —
+ * the connection is what is being held, whatever
  * the route. A control request on a held lane must itself wait, or the
  * holds did not take and the rest of the test would prove nothing.
  *
@@ -52,7 +53,7 @@ import { appWindow, launchPackagedApp, packagedBinary } from './launch';
  *  six, so every one of its connections is taken. */
 const HELD_PER_LANE = 7;
 /** The lanes the test holds. */
-const HELD_LANES = ['probe', 'resolve', 'download', 'image'];
+const HELD_LANES = ['probe', 'resolve', 'download', 'image', 'franchise'];
 /** How many connections Chromium opens to one host and port. */
 const CHROMIUM_PER_ORIGIN = 6;
 
@@ -140,7 +141,7 @@ async function launch() {
 	);
 }
 
-test('requests held on the probe, resolve, download and image lanes delay neither the API nor a play', async () => {
+test('requests held on the probe, resolve, download, image and franchise lanes delay neither the API nor a play', async () => {
 	test.setTimeout(90_000);
 	const silent = await silentServer();
 	const media = await upstream();
@@ -265,9 +266,9 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 
 		const origins = new Set([result.api, ...Object.values(lanes)]);
 		expect(Object.keys(lanes).sort()).toEqual(
-			['download', 'image', 'probe', 'resolve', 'stream'].sort()
+			['download', 'franchise', 'image', 'probe', 'resolve', 'stream'].sort()
 		);
-		expect(origins.size, 'every lane is an origin of its own').toBe(6);
+		expect(origins.size, 'every lane is an origin of its own').toBe(7);
 
 		expect(result.control.settled.ok, 'the control answered').toBe(true);
 		expect(
