@@ -32,16 +32,8 @@
 		withSourceNote,
 		type SourceNote
 	} from './published';
-	import {
-		PUBLISHED_STORAGE_KEY,
-		keepPublished,
-		parseMemory,
-		remember,
-		serializeMemory,
-		type PublishedMemory
-	} from './published-memory';
+	import { createPublishedMemoryStore } from './published-memory-store';
 	import type { Moment } from './arrival';
-	import type { Notice } from './model';
 	import { momentOf, watchMoment } from './moment';
 	import { startHealthPoll } from './health-poll';
 	import { noticeToast, viewOf } from './panel';
@@ -55,29 +47,7 @@
 	let health: ProviderHealth[] | null = null;
 	let moment: Moment = { playing: false, fullscreen: false };
 
-	function readMemory(): PublishedMemory {
-		try {
-			return parseMemory(storage?.getItem(PUBLISHED_STORAGE_KEY) ?? null);
-		} catch {
-			return parseMemory(null);
-		}
-	}
-
-	let memory = readMemory();
-
-	function store(next: PublishedMemory) {
-		if (serializeMemory(next) === serializeMemory(memory)) return;
-		memory = next;
-		try {
-			storage?.setItem(PUBLISHED_STORAGE_KEY, serializeMemory(next));
-		} catch {
-			// Refused: read and dismissed hold for this session only.
-		}
-	}
-
-	function keep(before: readonly Notice[], after: readonly Notice[]) {
-		store(remember(memory, before, after));
-	}
+	const memory = createPublishedMemoryStore(storage);
 
 	// Never over a video, fullscreen or the player: the ask waits, and
 	// one already up goes when any of them begins (it was acted on, so it
@@ -122,7 +92,7 @@
 		noticeCenter.load();
 		setNoticeToast((n) => toastStore.push(noticeToast(n, view)));
 		setMomentReader(() => momentOf(document));
-		setNoticeObserver(keep);
+		setNoticeObserver(memory.observe);
 		const stopMoment = watchMoment(document, (at) => {
 			noticeCenter.setMoment(at);
 			moment = at;
@@ -134,13 +104,8 @@
 			.then((p) => {
 				if (!alive) return;
 				note = sourceNote(p.items);
-				store(
-					keepPublished(
-						memory,
-						p.items.map((i) => i.id)
-					)
-				);
-				noticeCenter.take(publishedChanges(p.items, memory));
+				const remembered = memory.keepPublished(p.items.map((i) => i.id));
+				noticeCenter.take(publishedChanges(p.items, remembered));
 				ask.setNumber(p.donationAsk);
 				// An outage row raised before the answer gets its note now.
 				if (health) noticeCenter.take(withSourceNote(outageChanges(health), note));
