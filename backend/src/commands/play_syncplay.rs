@@ -57,15 +57,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
             player_kind,
             cfg.external_player,
         ))?;
-        crate::commands::play_native_record::record_watch_requested_at(
-            state,
-            &watch,
-            args.kitsu_id.as_deref(),
-            asked.begun,
-            // A play of the row itself: no guessed card's.
-            None,
-        )
-        .await;
+        crate::commands::play_handoff::record_handoff_watch(state, args, &watch, asked.begun).await;
         return Ok(());
     }
 
@@ -78,15 +70,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         cfg.external_player,
     ))?;
     // The spawn is the watch: recorded once Syncplay has started.
-    crate::commands::play_native_record::record_watch_requested_at(
-        state,
-        &watch,
-        args.kitsu_id.as_deref(),
-        asked.begun,
-        // A play of the row itself: no guessed card's.
-        None,
-    )
-    .await;
+    crate::commands::play_handoff::record_handoff_watch(state, args, &watch, asked.begun).await;
     Ok(())
 }
 

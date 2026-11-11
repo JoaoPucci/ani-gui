@@ -39,15 +39,7 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
     // path instead of handing mpv a 403.
     if let Some((launch, watch)) = try_launch_args_from_cache(state, args, &cfg).await {
         external_player::open_external_player(&launch)?;
-        crate::commands::play_native_record::record_watch_requested_at(
-            state,
-            &watch,
-            args.kitsu_id.as_deref(),
-            asked.begun,
-            // A play of the row itself: no guessed card's.
-            None,
-        )
-        .await;
+        crate::commands::play_handoff::record_handoff_watch(state, args, &watch, asked.begun).await;
         return Ok(());
     }
 
@@ -55,15 +47,7 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
         crate::commands::play_handoff::resolve_launch_args(state, args, asked).await?;
     external_player::open_external_player(&launch)?;
     // The spawn is the watch: recorded once the player has started.
-    crate::commands::play_native_record::record_watch_requested_at(
-        state,
-        &watch,
-        args.kitsu_id.as_deref(),
-        asked.begun,
-        // A play of the row itself: no guessed card's.
-        None,
-    )
-    .await;
+    crate::commands::play_handoff::record_handoff_watch(state, args, &watch, asked.begun).await;
     Ok(())
 }
 

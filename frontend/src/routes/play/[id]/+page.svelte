@@ -3068,7 +3068,11 @@
 						handoffArgs({
 							title,
 							episode: ep,
-							kitsuId: recordableId(id, fromGuess) ?? '',
+							// What the session's own plays name: the card's row and
+							// its guess (the pick, once one was made here).
+							kitsuId: playingAs.kitsuId ?? '',
+							guessRow: playingAs.guessRow,
+							guessId: playingAs.guessId,
 							config: { mode },
 							detail,
 							version: storedChoice(id),
@@ -3137,7 +3141,11 @@
 						handoffArgs({
 							title,
 							episode: ep,
-							kitsuId: recordableId(id, fromGuess) ?? '',
+							// What the session's own plays name: the card's row and
+							// its guess (the pick, once one was made here).
+							kitsuId: playingAs.kitsuId ?? '',
+							guessRow: playingAs.guessRow,
+							guessId: playingAs.guessId,
 							config: { mode },
 							detail,
 							version: storedChoice(id),
