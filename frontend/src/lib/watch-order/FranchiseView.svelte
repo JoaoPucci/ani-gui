@@ -1,6 +1,6 @@
 <!--
   The franchise page, in the show page's frame: a hero band and
-  masthead named as the walk names the franchise (its first series), then the main
+  masthead carrying the name the franchise read gives, then the main
   story as a numbered list, other versions, films, side stories and
   recaps. Numbered stretches carry the oversized numeral; ways to
   continue stand side by side and titles with no clear order form one
