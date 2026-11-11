@@ -12,13 +12,25 @@
 // the current measurements. A user re-running coverage to tighten
 // CRAP could thereby lock in a degraded coverage floor.
 
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+
+/** Every temporary directory a test here makes, removed once the
+ *  file's tests have run, whether they passed or not. */
+const scratchDirs = [];
+function tempDir(prefix) {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+	scratchDirs.push(dir);
+	return dir;
+}
+after(() => {
+	for (const dir of scratchDirs) fs.rmSync(dir, { recursive: true, force: true });
+});
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
@@ -30,7 +42,7 @@ const scriptUnderTest = path.join(repoRoot, 'tools/check-coverage-baseline.mjs')
  * tmpdir + a runner that invokes the script.
  */
 function stageFixtureRepo() {
-	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cov-baseline-test-'));
+	const tmpDir = tempDir('cov-baseline-test-');
 	const toolsDir = path.join(tmpDir, 'tools');
 	fs.mkdirSync(toolsDir, { recursive: true });
 	fs.copyFileSync(scriptUnderTest, path.join(toolsDir, 'check-coverage-baseline.mjs'));
