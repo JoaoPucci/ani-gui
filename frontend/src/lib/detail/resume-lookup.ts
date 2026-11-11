@@ -67,6 +67,9 @@ export interface ResumeRead<T> {
  *  is dropped: resume is a hint, not load-bearing. */
 export function readResume<T>(r: ResumeRead<T>): void {
 	const opts = { signal: r.reads.signal };
+	// A row found at once never waits on the detail, whose fetch the
+	// visit's end may cancel: its failure is the lookup's to ignore.
+	r.detailServed.catch(() => {});
 	void r.reads
 		.keep(lookupResume(r.kitsuId, (k) => r.lookup(k, opts), r.detailServed))
 		.then((row) => {
