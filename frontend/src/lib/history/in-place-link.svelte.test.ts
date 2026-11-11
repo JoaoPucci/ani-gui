@@ -305,11 +305,11 @@ describe('the session a switch opens', () => {
 		expect(later.offer).not.toBeNull();
 	});
 
-	it('offers nothing for a row no pick on the player saved', async () => {
+	it('offers nothing for a row no pick on the player saved, in a session no guess opened', async () => {
 		const f = fake(true);
 		f.rows = [{ ...CARD, kitsu_id: RIGHT.id }];
 		const s = new InPlaceLinkSession(f.deps);
-		await s.arrive(CARD.id, RIGHT.id);
+		await s.arrive(CARD.id, RIGHT.id, false);
 		expect(s.offer).toBeNull();
 		expect(s.slip).toBe('none');
 	});

@@ -187,10 +187,13 @@ describe('LinkSession', () => {
 		expect(s.offer?.entry.id).toBe(CARD.id);
 		expect(s.offer?.current.id).toBe(RIGHT.id);
 		expect(s.offer?.saved).toBe(RIGHT.id);
-		// One the app recorded from a play, with no naming, is not offered.
+		// One the app recorded from a play, with no naming, is not offered
+		// again: the page a guessed card's player went up to asks about it
+		// as the guess its card was clicked as, saving nothing yet.
 		f.rows = [{ ...CARD, kitsu_id: RIGHT.id }];
 		await s.arrive(CARD.id, RIGHT.id);
-		expect(s.offer).toBeNull();
+		expect(s.offer?.saved).toBeUndefined();
+		expect(s.offer?.current.id).toBe(RIGHT.id);
 	});
 
 	it('says the show was saved in a plain notice, with no Undo', async () => {
@@ -252,7 +255,7 @@ describe('LinkSession', () => {
 
 	it('settles an arrival with no offer, so the page can let the line go', async () => {
 		const f = fake();
-		f.rows = [{ ...CARD, kitsu_id: GUESS }];
+		f.rows = [{ ...CARD, kitsu_id: RIGHT.id }];
 		const s = new LinkSession(f.deps);
 		const arriving = s.arrive(CARD.id, GUESS);
 		expect(s.settled).toBe(false);
