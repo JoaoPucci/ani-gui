@@ -6,10 +6,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::parents::parent_stories;
+use super::place::place;
 use super::rules::Walk;
 use super::series::is_series;
-use super::{order_key, Lookup};
+use super::Lookup;
 
 /// A decided run.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,60 +78,6 @@ fn holds_series(run: &Run, look: &Lookup<'_>) -> bool {
         .keys()
         .filter_map(|m| look.entry(m, &run.consulted))
         .any(|e| is_series(&e))
-}
-
-/// Where a side story alone, or a run of one-offs, is placed.
-struct Placed {
-    /// The parent story to walk from: the earliest any member names.
-    root: Option<String>,
-    /// The anchor's parents to name: its own, else its run's.
-    parents: Vec<String>,
-    /// Every candidate listing read to decide.
-    read: BTreeSet<String>,
-}
-
-/// The parent stories the members of `own` name outside it (each
-/// checked with its own start), the earliest the one to walk from; the
-/// anchor's own are the ones it is placed under, else every member's.
-fn place(anchor: &str, own: &Run, look: &Lookup<'_>) -> Result<Placed, Vec<String>> {
-    let mut read = BTreeSet::new();
-    let mut unread = BTreeSet::new();
-    let mut mine = Vec::new();
-    let mut all = BTreeSet::new();
-    for m in own.members.keys() {
-        match parent_stories(m, look, &own.consulted) {
-            Ok(found) => {
-                read.extend(found.read);
-                let outside: Vec<String> = found
-                    .parents
-                    .into_iter()
-                    .filter(|p| !own.members.contains_key(p))
-                    .collect();
-                if m == anchor {
-                    mine.clone_from(&outside);
-                }
-                all.extend(outside);
-            }
-            Err(need) => unread.extend(need),
-        }
-    }
-    if !unread.is_empty() {
-        return Err(unread.into_iter().collect());
-    }
-    let mut consulted = own.consulted.clone();
-    consulted.extend(read.iter().cloned());
-    let key = |p: &String| {
-        let start = look.entry(p, &consulted).and_then(|e| e.start);
-        order_key(start.as_deref(), p)
-    };
-    let mut all: Vec<String> = all.into_iter().collect();
-    all.sort_by_key(key);
-    mine.sort_by_key(key);
-    Ok(Placed {
-        root: all.first().cloned(),
-        parents: if mine.is_empty() { all } else { mine },
-        read,
-    })
 }
 
 /// The anchor's run, or, for a side story whose run is itself alone or
