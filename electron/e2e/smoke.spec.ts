@@ -3,8 +3,9 @@
  * `dist/linux-unpacked/ani-gui` (electron-builder's pre-AppImage
  * output), stubs every request its pages make of the Rust backend's
  * HTTP API, and asserts the home page reaches a recognizable rendered
- * state. An API request no stub answers fails the test, so nothing
- * the pages show depends on Kitsu, AniList or the provider.
+ * state. An API request no stub answers fails the test, and the launch
+ * helper keeps the backend itself off the network, so nothing here
+ * depends on Kitsu, AniList, GitHub or the provider being reachable.
  *
  * Targeting the packaged artifact rather than running unpacked
  * Electron directly tests the production code path: the `app://`
@@ -52,9 +53,9 @@ test.beforeAll(() => {
  * Launch the app with every API request its pages make here answered
  * by a stub. Routes can only be set once the app is up, and by then
  * its first page has already asked for history, trending and top
- * rated, and the real backend answered. The page is mounted again
- * once the stubs are in place, and everything the new mount asks goes
- * through them.
+ * rated; the launch helper keeps the backend off the network, so those
+ * first answers are errors. The page is mounted again once the stubs
+ * are in place, and everything the new mount asks goes through them.
  */
 async function launchAppWithStubsOnce(
   onLaunch: (app: ElectronApplication) => void,
@@ -146,8 +147,8 @@ async function launchAppWithStubsOnce(
 
   const page = await appWindow(app);
   // The first mount asked before the stubs were in place, and the
-  // real backend answered it: mount it again, and go on once the new
-  // mount has asked a stub.
+  // backend, kept off the network, could not answer it: mount it
+  // again, and go on once the new mount has asked a stub.
   await remountFirstPage(
     page,
     () => new Promise<void>((resolve) => (topRatedAsked = resolve)),

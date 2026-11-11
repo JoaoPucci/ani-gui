@@ -17,6 +17,13 @@
  * desktop of whoever ran the suite before this, even under xvfb-run.
  * smoke.spec.ts asks the running app which platform it landed on.
  *
+ * And every launch here keeps the backend off the network. A spec's
+ * stubs answer only what the renderer asks after they are set, and the
+ * first page asks before then. The launched app gets a proxy that
+ * refuses every connection beyond this machine and records it
+ * (outboundAttempts); smoke.spec.ts asks the backend for something
+ * only GitHub knows and finds the attempt there.
+ *
  * Pre-condition: `pnpm run package` (or the chained `pnpm e2e`) has
  * produced `dist/linux-unpacked/`.
  */
@@ -28,6 +35,7 @@ import {
 } from '@playwright/test';
 import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import { launchRefusal } from '../lib/e2e-display.cjs';
 import { stopOwnGroup } from '../lib/own-group.cjs';
@@ -58,6 +66,48 @@ export const testLaunchSwitches = ['--no-sandbox', '--mute-audio'] as const;
  *  (backend/src/flags/launch.rs). */
 export const testRunEnv = { ANI_GUI_UNATTENDED: '1' } as const;
 
+/** A proxy that lets nothing through. It answers every request with
+ *  403 and closes, and records the request line: `CONNECT host:port`
+ *  for HTTPS, the absolute URL's request line for plain HTTP. */
+async function refusingProxy(): Promise<{ origin: string; seen: string[]; close: () => void }> {
+	const seen: string[] = [];
+	const server = net.createServer((socket) => {
+		let head = '';
+		socket.on('data', (chunk) => {
+			if (head.includes('\r\n')) return;
+			head += chunk.toString('latin1');
+			const end = head.indexOf('\r\n');
+			if (end < 0) return;
+			// `CONNECT host:port HTTP/1.1` or `GET http://… HTTP/1.1`.
+			seen.push(head.slice(0, end).replace(/ HTTP\/\d(\.\d)?$/, ''));
+			socket.end('HTTP/1.1 403 Forbidden\r\ncontent-length: 0\r\nconnection: close\r\n\r\n');
+		});
+		socket.on('error', () => socket.destroy());
+	});
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	// Never what keeps the test worker alive.
+	server.unref();
+	const { port } = server.address() as net.AddressInfo;
+	return { origin: `http://127.0.0.1:${port}`, seen, close: () => server.close() };
+}
+
+/** The proxy settings every test launch carries, pointing at `origin`:
+ *  the backend's HTTP clients (reqwest) and the provider transport
+ *  (curl) both read them, in either case. Loopback is exempt, so the
+ *  backend still reaches a spec's own local servers — a media fixture,
+ *  an upstream that never answers — and the renderer its backend. */
+function proxyEnv(origin: string): Record<string, string> {
+	const env: Record<string, string> = {};
+	for (const name of ['http_proxy', 'https_proxy', 'all_proxy']) {
+		env[name] = origin;
+		env[name.toUpperCase()] = origin;
+	}
+	const loopback = '127.0.0.1,localhost,::1';
+	env.no_proxy = loopback;
+	env.NO_PROXY = loopback;
+	return env;
+}
+
 /** Launch the packaged app with `env` as its whole environment, as a
  *  test run — unless that environment leads to a display someone may
  *  be looking at, which throws, saying how to run the suite instead.
@@ -72,22 +122,39 @@ export async function launchPackagedApp(
 	// The launcher script execs the binary beside it in the same process;
 	// resolved before the launch, so a launched app is always recorded.
 	const exe = fs.realpathSync(`${binary}.bin`);
-	const app = await _electron.launch({
-		executablePath: binary,
-		args: [...testLaunchSwitches],
-		env: { ...env, ...testRunEnv }
-	});
+	// Whatever a spec stubs, the backend reaches no host beyond this
+	// machine: its proxy refuses every connection, and says which it
+	// refused (outboundAttempts). Set after the spec's environment, so
+	// no spec can lift it.
+	const proxy = await refusingProxy();
+	let app: ElectronApplication;
+	try {
+		app = await _electron.launch({
+			executablePath: binary,
+			args: [...testLaunchSwitches],
+			env: { ...env, ...proxyEnv(proxy.origin), ...testRunEnv }
+		});
+	} catch (err) {
+		proxy.close();
+		throw err;
+	}
+	app.process().once('exit', () => proxy.close());
 	launched.set(app, { child: app.process(), exe });
+	refused.set(app, proxy.seen);
 	return app;
 }
 
 /** Every connection the launched app tried to open to a host beyond
  *  this machine, as `CONNECT host:port` or `GET http://…`, in the
- *  order it tried them. */
+ *  order it tried them. The backend is what reads the proxy settings;
+ *  Chromium may too, on some desktops. */
 export function outboundAttempts(app: ElectronApplication): string[] {
-	void app;
-	return [];
+	const seen = refused.get(app);
+	if (!seen) throw new Error('outboundAttempts: not an app launchPackagedApp started');
+	return [...seen];
 }
+
+const refused = new WeakMap<ElectronApplication, string[]>();
 
 /** The process each launch started, recorded as it starts: Playwright
  *  stops answering `app.process()` once the app is closed, and stopApp

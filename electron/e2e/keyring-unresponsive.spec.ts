@@ -188,8 +188,8 @@ test("a secret service that never answers keeps neither the window nor the first
     // The app's window, not the splash that opens before it.
     const page = await appWindow(app);
     // Its first mount asked before the stubs were in place, and the
-    // real backend answered: mount it again, and go on once the new
-    // mount has asked a stub.
+    // backend, kept off the network, could not answer: mount it again,
+    // and go on once the new mount has asked a stub.
     await remountFirstPage(
       page,
       () => new Promise<void>((resolve) => (topRatedAsked = resolve)),
