@@ -45,4 +45,12 @@ describe('the published note on the outage row, whichever answer comes first', (
 		);
 		expect(join.health([DOWN])).toEqual(outageChanges([DOWN]));
 	});
+
+	it('joins the note to the latest health answer, not the first', () => {
+		const answering: ProviderHealth = { provider: 'hianime', state: 'answering' };
+		const join = createOutageNote();
+		join.health([DOWN]);
+		join.health([answering]);
+		expect(join.published([ABOUT_SOURCE])).toEqual(outageChanges([answering]));
+	});
 });

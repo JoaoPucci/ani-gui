@@ -21,8 +21,8 @@ export interface PublishedMemoryStore {
 	readonly current: PublishedMemory;
 	/** The center's list changed from `before` to `after`. */
 	observe(before: readonly Notice[], after: readonly Notice[]): void;
-	/** The ids the answer still publishes, moved up so they are not the
-	 *  ones let go; returns the memory after. */
+	/** The ids the answer still publishes, moved to the end of each list
+	 *  so they are not the ones let go; returns the memory after. */
 	keepPublished(ids: readonly string[]): PublishedMemory;
 }
 

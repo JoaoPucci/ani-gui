@@ -8,7 +8,7 @@ import { sourceNote, withSourceNote, type Published, type SourceNote } from './p
 import { outageChanges, type ProviderHealth, type SourceChange } from './sources';
 
 export interface OutageNote {
-	/** The published answer arrived: the outage rows already raised
+	/** The published answer arrived: the last health answer's changes
 	 *  with the note joined, or nothing while no health is known. */
 	published(items: readonly Published[]): SourceChange[];
 	/** A health answer arrived: its outage changes, the note joined. */

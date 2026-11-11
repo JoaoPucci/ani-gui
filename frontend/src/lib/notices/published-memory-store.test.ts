@@ -82,4 +82,14 @@ describe('the stored memory of published notices', () => {
 			serializeMemory({ read: ['b', 'a'], dismissed: [] })
 		);
 	});
+
+	it('builds each change on what it remembers by then, not on what it first read', () => {
+		const store = createPublishedMemoryStore(fakeStorage());
+		store.observe([remote('a')], []);
+		store.observe([remote('b')], []);
+		expect(store.current.dismissed).toEqual(['a', 'b']);
+		store.observe([remote('c')], [remote('c', true)]);
+		expect(store.keepPublished(['x']).read).toEqual(['c']);
+		expect(store.current).toEqual({ read: ['c'], dismissed: ['a', 'b'] });
+	});
 });
