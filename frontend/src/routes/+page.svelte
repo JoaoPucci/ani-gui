@@ -136,6 +136,7 @@
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
 	import { splitTrending } from '$lib/hero/rotation';
+	import { heroState } from '$lib/hero/state';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayArgs } from '$lib/play/play-args';
@@ -488,9 +489,14 @@
 
 	const trendingSplit = $derived(splitTrending(trending ?? []));
 	const heroRotation = $derived<KitsuAnimeRef[]>(trendingSplit.hero);
-	const featured = $derived(
-		heroRotation.length > 0 ? heroRotation[heroIndex % heroRotation.length] : null
+	const heroView = $derived(
+		heroState({
+			rotation: trending === null ? null : heroRotation,
+			failed: trendingError !== null,
+			index: heroIndex
+		})
 	);
+	const featured = $derived(heroView.kind === 'featured' ? heroView.show : null);
 	// The row leaves out the rotation's shows, so the user doesn't see
 	// the hero title also pinned as a card of the row below.
 	const trendingTail = $derived(trendingSplit.row);
@@ -1160,20 +1166,44 @@
 				{/each}
 			</div>
 		{/if}
-	{:else if trendingError}
-		<div class="hero-empty">
-			<p class="eyebrow">
-				<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
-				<span class="eyebrow-rule" aria-hidden="true"></span>
-				<span class="eyebrow-value">{m.home_hero_error_eyebrow_value()}</span>
-			</p>
-			<h1 class="hero-title">{m.home_hero_error_title()}</h1>
-			<p class="hero-snippet">{m.home_hero_error_body()}</p>
-			<div class="hero-actions">
-				<a class="btn btn-primary" href={resolve('/search')}>
-					<span>{m.home_hero_error_cta()}</span>
-					<span aria-hidden="true">→</span>
-				</a>
+	{:else if heroView.kind === 'failed'}
+		<!-- In a .hero-layer like the featured text, so the message
+		     sits low in the banner rather than under the topbar. -->
+		<div class="hero-layer">
+			<div class="hero-empty">
+				<p class="eyebrow">
+					<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
+					<span class="eyebrow-rule" aria-hidden="true"></span>
+					<span class="eyebrow-value">{m.home_hero_error_eyebrow_value()}</span>
+				</p>
+				<h1 class="hero-title">{m.home_hero_error_title()}</h1>
+				<p class="hero-snippet">{m.home_hero_error_body()}</p>
+				<div class="hero-actions">
+					<a class="btn btn-primary" href={resolve('/search')}>
+						<span>{m.home_hero_error_cta()}</span>
+						<span aria-hidden="true">→</span>
+					</a>
+				</div>
+			</div>
+		</div>
+	{:else if heroView.kind === 'empty'}
+		<!-- Trending answered with no show to feature. Kitsu did answer,
+		     so the failure's "no answer" line is left out. -->
+		<!-- In a .hero-layer like the featured text, so the message
+		     sits low in the banner rather than under the topbar. -->
+		<div class="hero-layer">
+			<div class="hero-empty">
+				<p class="eyebrow">
+					<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
+				</p>
+				<h1 class="hero-title">{m.home_hero_empty_title()}</h1>
+				<p class="hero-snippet">{m.home_hero_empty_body()}</p>
+				<div class="hero-actions">
+					<a class="btn btn-primary" href={resolve('/search')}>
+						<span>{m.home_hero_error_cta()}</span>
+						<span aria-hidden="true">→</span>
+					</a>
+				</div>
 			</div>
 		</div>
 	{:else}
@@ -1181,11 +1211,14 @@
 		<div class="hero-skel" aria-busy="true">
 			<div class="hero-skel-img"></div>
 		</div>
-		<div class="hero-body">
-			<p class="eyebrow"><span class="eyebrow-key">{m.home_hero_skeleton_eyebrow_key()}</span></p>
-			<div class="line line-skel" style="inline-size: 50%; block-size: 3rem;"></div>
-			<div class="line line-skel" style="inline-size: 70%;"></div>
-			<div class="line line-skel" style="inline-size: 60%;"></div>
+		<!-- Low in the banner, where the text it stands in for will sit. -->
+		<div class="hero-layer">
+			<div class="hero-body hero-body-skel">
+				<p class="eyebrow"><span class="eyebrow-key">{m.home_hero_skeleton_eyebrow_key()}</span></p>
+				<div class="line line-skel" style="inline-size: 50%; block-size: 3rem;"></div>
+				<div class="line line-skel" style="inline-size: 70%;"></div>
+				<div class="line line-skel" style="inline-size: 60%;"></div>
+			</div>
 		</div>
 	{/if}
 </section>
@@ -1940,6 +1973,12 @@
 	.hero-skel {
 		position: absolute;
 		inset: 0;
+	}
+	/* In the flex layer the body shrinks to its content, which for
+	   the placeholder is only the eyebrow, and the lines' percentage
+	   widths would resolve against that. Take the full measure. */
+	.hero-body-skel {
+		flex: 1;
 	}
 	.hero-skel-img {
 		inline-size: 100%;
