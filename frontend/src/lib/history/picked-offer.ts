@@ -53,7 +53,9 @@ export function offerAgain(
 /** What a surface is, for its offer: whether it may ask about a guess
  *  (`asksGuess`), whether it is the player (`inPlayer`), and whether
  *  its session carries the verdict of the guessed card it was opened
- *  from (`carried`, $lib/history/link-offer.ts `linkOffer`). */
+ *  from (`carried`, $lib/history/link-offer.ts `linkOffer`), which
+ *  stands only while the line's guessed play does
+ *  ($lib/history/guess-plays.ts). */
 export interface OfferSurface {
 	asksGuess: boolean;
 	inPlayer: boolean;

@@ -8,7 +8,9 @@
  * (`resolveKitsuMatchWithTrust`) is still a guess of this very show —
  * a row with no recorded id, or one whose recorded entry Kitsu has
  * deleted — or, for a surface whose session the guessed card opened
- * (`carried`), still this show and not one the user named. Anything
+ * (`carried`) while that guessed play stands
+ * ($lib/history/guess-plays.ts), still this show and not one the user
+ * named. Anything
  * else, and the page says nothing.
  *
  * A link covers every guessed row the card stands for on the card's

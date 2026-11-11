@@ -147,8 +147,9 @@ export class InPlaceLinkSession extends LinkSession {
 	}
 
 	/** The player asks about a guess only in a session a guessed card
-	 *  opened, and that session carries the card's verdict; Home asks
-	 *  about every guessed card, judging each as it reads it. */
+	 *  opened, and that session carries the card's verdict while the
+	 *  line's guessed play stands ($lib/history/guess-plays.ts); Home
+	 *  asks about every guessed card, judging each as it reads it. */
 	protected override get surface(): OfferSurface {
 		return {
 			asksGuess: this.#guess,
