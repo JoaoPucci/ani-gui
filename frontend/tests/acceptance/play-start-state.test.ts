@@ -409,16 +409,18 @@ describe('play route — a stream on its way is never offered Play', () => {
 		item()!.click();
 		await until(() => !frame().classList.contains('player-resuming'), 'the hold to end');
 
-		// The metadata and the seek land afterwards: nothing plays, and
-		// the episode still goes to where it was left, for a later Play.
-		playerVideo().currentTime = 0;
-		playerVideo().dispatchEvent(new Event('loadedmetadata'));
-		expect(playerVideo().currentTime).toBe(612.5);
+		// The stream, played from its src, is let go of: the episode
+		// keeps where it was left, for a later Play
+		// (play-handoff-unload), and what the element reports afterwards
+		// starts nothing.
+		expect(playerVideo().getAttribute('src')).toBeNull();
 		expect(readPosition(KITSU_ID, 1)).toBe(612.5);
+		playerVideo().dispatchEvent(new Event('loadedmetadata'));
 		playerVideo().dispatchEvent(new Event('seeked'));
 		await settle();
 		expect(media.play).not.toHaveBeenCalled();
-		expect(playerVideo().autoplay).toBe(true);
+		// Handed off, the element no longer starts on its own either.
+		expect(playerVideo().autoplay).toBe(false);
 		expect(indicatorOn()).toBe(false);
 		expect(label()).toBe(PLAY());
 	});
