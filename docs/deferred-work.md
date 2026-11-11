@@ -497,10 +497,15 @@ starting it, and delete it when you find it done.
   credits as a hint, or no length where the sources disagree. That
   work is finding the causes, counting the occurrences across the
   catalogue, and choosing a source the list can trust.
+- **A franchise is found only from one of its shows.** The franchise
+  page (`/anime/<id>/franchise`) is reached from a show page (the
+  watch-order strip's link, or that link alone where the show has no
+  strip), so a viewer has to find one show of the franchise first.
+  The proposal also named search results as a way in; the maintainer
+  dropped it in favour of a study of how to make franchises
+  findable gracefully, such as a franchise search or a similar
+  mechanic.
 - **Localised content fetch** — synopsis and episode titles.
-- **Franchise and season grouping** across surfaces. A design is
-  proposed in
-  [`proposals/franchise-watch-order.md`](./proposals/franchise-watch-order.md).
 - **Search has no sort *direction* control.** Sorting by relevance,
   year and rating ships, as do subtype filter chips; only
   ascending/descending is absent. Kitsu does the sorting, and it takes

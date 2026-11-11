@@ -58,6 +58,8 @@ const BRANCH_E = entry('25', BRANCH, '2022-01-01', 12);
 
 const lineFrom10 = {
 	anchor: '10',
+	name: FIRST,
+	name_from: '10',
 	entries: [FIRST_E, SECOND_E],
 	links: [['10', '20']],
 	versions: [],
@@ -81,6 +83,8 @@ const forkFrom10 = {
 const lineFrom30 = {
 	...lineFrom10,
 	anchor: '30',
+	name: CONTROL,
+	name_from: '30',
 	entries: [entry('30', CONTROL, '2015-01-01', 13), entry('40', CONTROL_NEXT, '2016-01-01', 13)],
 	links: [['30', '40']]
 };

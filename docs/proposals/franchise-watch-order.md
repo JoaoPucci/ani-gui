@@ -1,15 +1,15 @@
 # Proposal: watch order — what comes before, what comes next, and the franchise around a show
 
-**Status**: proposed as the main feature of the 0.19.0 release. The
-product questions are decided (section 6); the design questions are
-open (section 5). Built so far: the backend's franchise read, `GET
-/api/kitsu/franchise/:kitsu_id` (section 4 describes it as built), the
-watch-order strip on the show page, the "Watch order" setting, the
-player's Up next card at a finale and Continue Watching's hand-off.
-Not built yet: the franchise page, which exists only as a design
-mockup drawn from fixture data, behind a Diagnostics switch. The
-research was done on 2026-11-01; the live samples it quotes describe
-the catalogues on that day and will drift.
+**Status**: built as the main feature of the 0.19.0 release. The
+product questions are decided (section 6) and so are the design
+questions (section 5): the app has the watch-order strip on the show
+page with its link to the franchise page, the "Watch order" setting,
+the player's "Up next" card at a finale, Continue Watching moving on
+to the next entry, and the franchise page. One card per franchise
+(option d) is not planned. Section 4 describes each option as it was
+proposed; section 5 records the design as it was decided and built.
+The research was done on 2026-11-01; the live samples it quotes
+describe the catalogues on that day and will drift.
 
 ## The problem in plain terms
 
@@ -863,9 +863,13 @@ smaller.
 
 ### (c) A franchise page
 
-**How it looks.** `/anime/<id>/franchise`, reached from the strip's
-trailing link and from search results that belong to a franchise. A
-header named after the run's first entry, with your position: "05 ·
+**How it looks.** `/anime/<id>/franchise`, reached from the show
+page's franchise link: the strip's trailing link, or the same link on
+its own where the show has no strip. (Search results were also
+proposed as a way in; that was dropped, see "Decisions recorded
+(after the build)" below, and a study of making franchises findable
+is in the deferred-work log.) A header named after the run's first
+series, with your position: "05 ·
 *Golden Wind* · EP 12" (with a total only for a run with no fork, join
 or cycle) and a Resume button; its hero and accent are set in the
 design section. Below it, sections:
@@ -896,18 +900,20 @@ count per MyAnimeList id, through Kitsu's mappings, which the app
 already caches for 30 days).
 
 **Edge cases.** A run longer than the walk's bound (about 40 entries;
-the largest run sampled, *Monogatari*, has 16) ends with "showing 40
-of more"; Kitsu pages are cached for a week, so a second visit costs
-nothing. Forked runs (Fate seen from *Fate/Zero*) render as the
-numbered path and the branches side by side; a join shows its earlier
-entries side by side above it; the entries of a cycle are listed as
-one unnumbered group, in air-date order, where the cycle sits in the
-run. A history row counts toward the entry whose page would resume
-from it: the entry it recorded while Kitsu still has it, else the one
-its stored mapping names, else, for a row whose recorded entry Kitsu
-deleted, the ones Home's title matches found for it (a title can
-hold one per cour, so such a row can count toward each). A row with none
-of these contributes no progress.
+the largest run sampled, *Monogatari*, has 16) ends with a note that
+there may be more titles, and numbers nothing, since the cut can fall
+at either end; Kitsu pages are cached, so a second visit
+costs nothing. Forked runs (Fate seen from *Fate/Zero*) render as the
+numbered path and the branches side by side; an entry that only leads
+into a join (*Gintama: The Semi-Final*) is listed with the title it
+leads into; the entries of a cycle are listed as one unnumbered group,
+along their links, where the cycle sits in the run. A history row
+counts toward the entry whose page would resume from it: the entry it
+recorded while Kitsu still has it, else the one its stored mapping
+names, else, for a row whose recorded entry Kitsu deleted, the ones
+Home's title matches found for it (a title can hold one per cour, so
+such a row can count toward each). A row with none of these
+contributes no progress.
 
 **Trackers.** Read-only.
 
@@ -1096,6 +1102,14 @@ them introduces a new widget style.
 - **When data is missing.**
   - No relations, or Kitsu unreachable: no strip, no position in the
     eyebrow, and no empty state. The page looks as it does today.
+  - Nothing before or after the show, but the franchise page lists
+    other titles beside it (films, other versions, side stories or
+    recaps), or the show is itself a film, version, recap or side
+    story outside the run with no parent story in it: no strip, and
+    the strip's franchise link stands on its own under the hero, with
+    the same counts (none for a franchise read in part). "Similar
+    titles" leaves out what that page lists, as it does beside a
+    strip.
   - An entry the provider lacks: shown like any other (decided in
     option b).
   - A forked run (link order only): the "next" position holds the
@@ -1163,12 +1177,13 @@ them introduces a new widget style.
 
 - **Placement and anatomy.** The page reuses the show page's frame.
   - **Hero:** the entry the franchise is named after (the run's first
-    in link order, whatever the order setting), in the hero band and the masthead's poster, so the artwork
+    series by start, whatever the order setting, see *Masthead*), in
+    the hero band and the masthead's poster, so the artwork
     beside the name is that entry's. The entry being watched has its
     own line beside the Resume button.
   - **Masthead:** the run's name in the italic display serif under a
     "Franchise · 15 titles" eyebrow (every entry the page lists, the
-    total the strip's "Whole franchise" link stands for), with a Resume
+    total behind the strip's "See the whole franchise" link), with a Resume
     button styled and
     glowing like the show page's Play. The page takes the accent of the
     entry the hero shows; Resume goes to the entry being watched.
@@ -1181,19 +1196,41 @@ them introduces a new widget style.
     entry.
   - **Films, side stories and other versions:** standard `Strip` rails
     of poster cards, each under the app's eyebrow.
-  - **Recaps:** a collapsed section under the same eyebrow.
-- **At a glance versus on hover.** The list shows the numeral, title,
-  year and progress. Hover or focus reveals the full title, the
-  episode count and the link target, as on the show page.
+  - **Recaps:** a rail like the others, under its eyebrow and count,
+    shown from the start (decision 3 below).
+- **At a glance versus on hover.** Each row shows the numeral, the
+  whole title (decision 4 below), the format, the year, and the
+  episode count or the progress. The title is also the row's tooltip
+  on hover and what a screen reader reads, as on the show page's
+  strip.
 - **Keyboard and motion.** The list is a list of links in reading
   order. There is no order switch (section 4). The page enters like the
   show page. Under reduced motion it does not
   animate.
 - **When data is missing.**
-  - A bounded walk that stopped early: the list ends with a quiet
-    "Showing 40 of more" line.
-  - A forked run: the numbered path continues as a list, and the
-    branches stand side by side, unnumbered, from the fork.
+  - A bounded walk that stopped early, or a listing cut short: the
+    list ends with a quiet "There may be more titles than the ones
+    listed here." line. The walk goes outward from the show both ways,
+    so titles may be missing at either end: the rows keep their
+    layout but carry no numbers, and the masthead gives no title count,
+    no place for Resume and no "Start from the beginning". Ways on are
+    headed "Ways to continue" without a count, titles linked in a
+    circle "Linked titles, order unclear", and Recaps have no count.
+    The titles with no clear place keep their stretch and its
+    heading. The page never
+    says the show is alone, and its name comes from the first series
+    among the titles the read reached, else the first of them by
+    start. The strip's link to the page gives no counts
+    either.
+  - A forked run: the numbered path runs up to the fork, and the ways
+    on stand side by side, unnumbered. A fork left with one way (the
+    others start at a join or in a loop) is listed as a line.
+  - Titles the page cannot number, such as those after ways that
+    join back up, gather at the end of the main story under "No
+    clear place in the order". A title with no number that only leads
+    into a title with a place (a numbered one, or one in a way or a
+    group) stays in place and says what it leads into; one that leads
+    into a title with no clear place joins them.
   - Entries the provider lacks: listed normally.
 
 ### The watch-order setting
@@ -1257,18 +1294,19 @@ and a warning on every strip, card and page.
 
 ### Phase 0: the mockups, surface by surface
 
-The mockups are drawn in the real app from fixture data: real Kitsu
+The mockups were drawn in the real app from fixture data: real Kitsu
 entries, with titles, formats, dates, episode counts and images as
 Kitsu served them on 2026-11-02, and made-up progress so every state
-shows. The runs are *Bleach* (a straight line, from the 2004 series to
+shows. The runs were *Bleach* (a straight line, from the 2004 series to
 the fourth *Thousand-Year Blood War* part), *Attack on Titan*, *JoJo*
 (long romanised titles), *Gintama* (a join at *The Final*), *Fate*
 seen from *Fate/Zero* (a fork) and *Monogatari* (a loop of ten
-entries, and *Off & Monster Season*'s undated special). They are
-turned on in Diagnostics; nothing is fetched or walked at runtime, and
-`frontend/src/lib/watch-order/mock/` is removed when the feature
-lands. Where a choice is real, the mockup offers two options; the
-recommendation follows each.
+entries, and *Off & Monster Season*'s undated special). They were
+turned on in Diagnostics, and nothing was fetched or walked at
+runtime. `frontend/src/lib/watch-order/mock/` and the Diagnostics
+switch were removed as each surface was built, the last of them with
+the franchise page. Where a choice was real, the mockup offered two
+options; the recommendation follows each.
 
 The rules below hold on every surface:
 
@@ -1329,7 +1367,9 @@ The rules below hold on every surface:
   Semi-Final*, which no prequel reaches, has no number rather than a
   second "01". The key line is reserved on every card, so titles share
   one baseline.
-- **Missing data.** No run: no strip, no position in the masthead.
+- **Missing data.** No run: no strip, no position in the masthead;
+  where the franchise page still lists titles beside the show, its
+  link stands on its own.
   First or last entry: "The story starts here", "Nothing after this
   yet" in the empty column; a side story's end reads the same as the
   last entry's. Unknown date: "Date not announced" in place of the
@@ -1395,15 +1435,24 @@ The rules below hold on every surface:
   width they need, and the fork and the loop can be laid out as what
   they are.
 - **Structure.** Straight stretches are numbered from the run's first
-  entry; a stretch after a loop is not, since the loop gives it no
-  single place, and its key says so. A fork is a group
+  entry. A title with no number on a straight stretch either stays in
+  place, saying what it leads into, or gathers with the others at the
+  end under "No clear place in the order", since nothing gives it a
+  single place. A fork is a group
   under "2 ways to continue", its branches side by side as unnumbered
-  columns, each under "Way n of N". A loop is a group under "10
+  columns with no label of their own. A loop is a group under "10
   linked titles, order unclear" with one sentence on why it has no
   clear order; its entries are listed along their links. In release
   order every one of these is a single numbered line.
-- **Masthead.** The franchise is named after the run's first entry,
-  without Kitsu's format suffix ("(TV)", "(Movie)", …) unless another
+- **Masthead.** The franchise is named after the run's first series
+  by start, a TV series, OVA or ONA of more than one episode (or of a
+  count Kitsu does not give yet), skipping the films, pilots, specials
+  and one-episode OVAs or ONAs before it (*Lupin III*, not its 1969
+  *Pilot Film*; *FLCL*, its 2000 OVA, not *FLCL Progressive*); a run
+  with no series is named after its first entry by start (*Kara no
+  Kyoukai 1: Fukan Fuukei*). The backend decides the name with the
+  franchise read, and the page shows it. The name drops Kitsu's format
+  suffix ("(TV)", "(Movie)", …) unless another
   entry of the franchise would then read the same, ignoring case; the
   suffix then stays, since it is what tells the two apart. *JoJo no
   Kimyou na Bouken (TV)* keeps it, because the franchise's 1993 OVA is
@@ -1413,8 +1462,7 @@ The rules below hold on every surface:
   series' name); the entry being watched has its own line beside the
   Resume button. A note under the button says which order the list
   follows, with a link to Settings.
-- **Missing data and keyboard** as on the show page; the recaps stay
-  folded behind a "Show recaps" button that reports its state.
+- **Missing data and keyboard** as on the show page.
 
 #### The setting
 
@@ -1572,14 +1620,15 @@ The maintainer answered the second round's six questions:
    *Nisemonogatari* is "02 of 16", and *Off & Monster Season Shin
    Episode*, which has no date and sorts last, "16 of 16".
 6. **The franchise page's masthead** takes its artwork from the entry
-   the name comes from, the run's first in link order (on JoJo, the 2012 series, not
+   the name comes from, the run's first series by start, else its
+   first entry by start (on JoJo's 2012 series, that series, not
    *Steel Ball Run*, which the viewer is watching); the entry being
    watched keeps its own line beside Resume. The name keeps Kitsu's
    "(TV)" where dropping it would clash with another entry's title,
    as decided in the first round. The maintainer first asked for the
    year in its place ("JoJo no Kimyou na Bouken (2012)") and then
    reversed it: the year would read as naming only the first season,
-   not the franchise. The franchise-name function is unchanged.
+   not the franchise. The suffix rule is unchanged.
 
 ### The poster stack and the footer, third round
 
@@ -1597,10 +1646,11 @@ The third round revises the strip's footer only.
   lifts.
 - **No poster.** A franchise none of whose entries has a poster shows
   three blank frames in the same fan, the front one carrying the
-  number of entries the franchise page lists, upright, in the strip's
-  numeral face. The posters the stack fans are only entries that have
-  one, and a poster that fails to load is drawn as a blank frame, so
-  a missing image never leaves an empty card among real ones.
+  number of entries the franchise page lists (none for a franchise
+  read only in part), upright, in the strip's numeral face. The
+  posters the stack fans are only entries that have one, and a
+  poster that fails to load is drawn as a blank frame, so a missing
+  image never leaves an empty card among real ones.
 - **The whole link is the target.** The link's padding is the area a
   highlight marks; three options:
   - *Surface*: a faint plate one step up the page's ink appears under
@@ -1635,6 +1685,17 @@ The third round revises the strip's footer only.
   Run* is already a tile) the stack sits alone in the middle, at its
   own width.
 
+### Decisions recorded (third review round)
+
+1. **The stack's highlight: surface.** It is the only one of the
+   three that marks the whole link as one target, and it is the hover
+   the strip's own tiles already use.
+2. **The footer: centred.** It holds at every width; the centre-line
+   arrangement fits side by side only from about a 1210 px window.
+3. **The watching card's border: none at rest** in the centred
+   footer, so the card and the stack pair as two bare items that
+   take the same plate on hover and focus.
+
 ### Decisions recorded: the Up next card's timing
 
 The card first appeared from the start of the ending credits that the
@@ -1651,26 +1712,51 @@ the length it declared, the playhead can stop just short of it and the
 video never reports its end, so the card would never come. On a stream
 that ends normally it shows the card up to a second early.
 
-### Open design questions
+### Decisions recorded (after the build)
 
-Each with a recommendation; the maintainer decides.
-
-1. **The stack's highlight.** Surface (recommended), underline or
-   border. Surface is the only one that marks the whole link as one
-   target, and it is the hover the strip's own tiles already use.
-   Underline marks only the label; border reads as a second framed
-   card beside the watching card, and under the focus ring as two
-   rings. The design critic agreed.
-2. **The footer.** Centred (recommended), on the centre line, or
-   opposite ends. Centred is what was asked for and holds at every
-   width; the centre-line version ties the pair to the strip's
-   columns but only fits side by side from about a 1210 px window,
-   and below that stacks them, centred. The design critic agreed.
-3. **The watching card's border.** In the centred footers the card
-   loses its resting border so it pairs with the stack (both bare at
-   rest, the same plate on hover and focus). Recommended: keep that;
-   the alternative is a border on both, which makes the stack read as
-   a second card. This one came from the design critic's review.
+1. **The fork's columns carry no label.** The franchise page's
+   branches sit side by side under the one "N ways to continue"
+   heading; the "Way n of N" label each column carried is gone.
+2. **No entry from search results.** The franchise page is reached
+   from a show page's franchise link (in the strip, or on its own
+   where the show has no strip). How to make franchises findable gracefully (a
+   franchise search, or a similar mechanic) is a study of its own, in
+   the deferred-work log.
+3. **Recaps are not hidden.** The franchise page shows its recaps as a
+   rail like the other sections; the "Show recaps" button that folded
+   them away is gone.
+4. **Whole titles everywhere.** The strip, the franchise page and
+   Continue Watching's hand-off name each entry by the full title the
+   rest of the app shows ("BLEACH: Sennen Kessen-hen", "Boruto: Naruto
+   Next Generations"), never a short title cut against the rest of the
+   run; this reverses the first round's short titles.
+5. **An entry's own format places it.** Every movie around the run is
+   listed under Films, whatever role Kitsu gives it (*Boruto: Naruto
+   the Movie*, Dragon Ball's first four films), and a TV series Kitsu
+   lists as a summary is an other version, not a recap (*Dragon Ball
+   Super: Beerus*, beside both *Kai* series).
+6. **A franchise is named after its first series.** The first TV
+   series, OVA or ONA of more than one episode by start names it; the
+   films, pilots, specials and one-episode OVAs before it are
+   skipped, so *Lupin III* is no longer named after its 1969 pilot
+   film, and *FLCL* and *R.O.D* are named after the OVAs that started
+   them. A run with no series keeps its first entry by start. The
+   strip's poster stack leads with the same entry. The first build
+   named a franchise after its first TV series by its links, which
+   named *FLCL* after its 2018 sequel and *Fate* after *Fate/Zero*, a
+   prequel released after *Fate/stay night*; counting OVAs and ONAs by
+   links instead would name *Lupin III* after *LUPIN ZERO*, the 2022
+   ONA Kitsu lists as the 1971 series' prequel. A film that names a
+   series its parent story reads "Film" on its strip, where any other
+   side story reads "Side story", and the franchise page lists it
+   under Films.
+7. **Films linked to each other are side stories of the series they
+   name.** *My Hero Academia*'s four films are linked to each other by
+   sequel and to the seasons only as parent story or other; from a
+   film page the films made the main story and the seasons its side
+   stories. A run with no series that names a parent story is now
+   walked from that parent, so the seasons are the main story from
+   every page and the films sit under Films.
 
 ## 6. Recommendation and plan for 0.19.0
 

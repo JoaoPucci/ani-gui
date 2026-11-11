@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { MOCK_RUNS } from './fixtures';
+import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
 import { FAN_RADIUS_REM, fanPoses, stackCards, type FanPose } from './stack-fan';
-import { franchiseSummary } from '../strip-view';
-import type { MockRun } from './types';
+import { franchiseSummary } from './strip-view';
 
-const run = (key: string): MockRun => MOCK_RUNS.find((r) => r.key === key)!;
+const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
 
 describe('stackCards', () => {
-	const posters = franchiseSummary(run('jojo')).posters;
+	const posters = franchiseSummary(run('jojo'), run('jojo').nameId).posters;
 
 	it('holds up to the limit of posters, in order', () => {
 		expect(stackCards(posters, 3).map((c) => (c.kind === 'poster' ? c.entry.id : '-'))).toEqual(

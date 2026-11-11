@@ -13,7 +13,7 @@
 //
 // Reads the namespace sources as data, like the other copy pins here.
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { describe, it, expect } from 'vitest';
@@ -60,6 +60,58 @@ describe('the watch order speaks the viewer’s words', () => {
 		);
 		expect(found).toEqual([]);
 	});
+});
+
+// The watch order's screens also borrow messages from other
+// catalogues (the meta line's "ep"). Every message the feature's own
+// sources name, the franchise page's route among them, is held to the
+// same words. A source names a message as `m.<namespace>_<key>`, the
+// key living in `messages/<locale>/<namespace>.json`.
+const SOURCES = ['../../src/lib/watch-order/', '../../src/routes/anime/[id]/franchise/'];
+
+function sourceFiles(): string[] {
+	return SOURCES.flatMap((dir) => {
+		const root = fileURLToPath(new URL(dir, import.meta.url));
+		return (readdirSync(root, { recursive: true }) as string[])
+			.filter((f) => /\.(ts|svelte)$/.test(f) && !/\.test\.ts$/.test(f))
+			.map((f) => readFileSync(`${root}${f}`, 'utf8'));
+	});
+}
+
+const named = [
+	...new Set(sourceFiles().flatMap((src) => [...src.matchAll(/\bm\.([a-z0-9]+)_(\w+)\(/g)]))
+].map(([, namespace, key]) => ({ namespace, key }));
+
+describe('every message the watch order shows', () => {
+	it('is found in its catalogue', () => {
+		expect(named.length).toBeGreaterThan(0);
+		for (const { locale } of catalogues) {
+			const missing = named.filter(({ namespace, key }) => {
+				const file = fileURLToPath(
+					new URL(`../../messages/${locale}/${namespace}.json`, import.meta.url)
+				);
+				const messages = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+				return messages[key] === undefined;
+			});
+			expect(missing).toEqual([]);
+		}
+	});
+
+	it.each(catalogues)(
+		'speaks the viewer’s words in $locale, whichever catalogue holds it',
+		({ locale }) => {
+			const found = named.flatMap(({ namespace, key }) => {
+				const file = fileURLToPath(
+					new URL(`../../messages/${locale}/${namespace}.json`, import.meta.url)
+				);
+				const messages = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+				return texts(messages[key])
+					.filter((t) => BANNED[locale].test(t))
+					.map((t) => `${namespace}_${key}: ${t}`);
+			});
+			expect(found).toEqual([]);
+		}
+	);
 });
 
 describe('the Up next key over an entry not aired yet', () => {

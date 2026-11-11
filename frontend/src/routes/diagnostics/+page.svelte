@@ -17,7 +17,6 @@
 	import { cacheReclaimView } from '$lib/diagnostics/cache-reclaim';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs } from '$lib/hero/prefs';
 	import { loadRowPrefs, saveRowPrefs } from '$lib/rows/prefs';
-	import { loadMockPrefs, saveMockPrefs } from '$lib/watch-order/mock/prefs';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
 
@@ -54,15 +53,6 @@
 	function setFramingControls(shown: boolean) {
 		heroPrefs = { ...heroPrefs, controls: shown };
 		saveHeroPrefs(browserStorage(), heroPrefs);
-	}
-
-	// Watch-order mockups (0.19.0 design review): whether the player,
-	// home and franchise pages draw them, and whether
-	// each shows its option switch — see $lib/watch-order/mock.
-	let mockPrefs = $state(loadMockPrefs(browserStorage()));
-	function setMock(field: 'enabled' | 'switcher', on: boolean) {
-		mockPrefs = { ...mockPrefs, [field]: on };
-		saveMockPrefs(browserStorage(), mockPrefs);
 	}
 
 	// Whether the home page shows its row style switch, kept with the
@@ -234,31 +224,6 @@
 					onchange={(e) => setRowStyleControls((e.currentTarget as HTMLInputElement).checked)}
 				/>
 				{m.diagnostics_row_style_toggle_label()}
-			</label>
-		</p>
-	</section>
-
-	<section>
-		<h2>{m.watchorder_diag_section()}</h2>
-		<p>{m.watchorder_diag_description()}</p>
-		<p>
-			<label>
-				<input
-					type="checkbox"
-					checked={mockPrefs.enabled}
-					onchange={(e) => setMock('enabled', (e.currentTarget as HTMLInputElement).checked)}
-				/>
-				{m.watchorder_diag_toggle()}
-			</label>
-		</p>
-		<p>
-			<label>
-				<input
-					type="checkbox"
-					checked={mockPrefs.switcher}
-					onchange={(e) => setMock('switcher', (e.currentTarget as HTMLInputElement).checked)}
-				/>
-				{m.watchorder_diag_switcher()}
 			</label>
 		</p>
 	</section>

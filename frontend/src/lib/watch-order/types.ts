@@ -24,6 +24,13 @@ export type RunLink = readonly [string, string];
 export interface FranchiseData {
 	/** The id asked about. */
 	readonly anchor: string;
+	/** The franchise's name, as the walk decides it. */
+	readonly name: string;
+	/**
+	 * The main-story entry the name comes from: the franchise page's
+	 * artwork and the front of the strip's poster stack.
+	 */
+	readonly name_from: string;
 	/** The run, anchor included unless the anchor is a side story. */
 	readonly entries: readonly WatchEntry[];
 	readonly links: readonly RunLink[];
@@ -39,7 +46,7 @@ export interface FranchiseData {
 
 /**
  * A run as the ordering works on it: the payload's sections plus the
- * entry the run is named after and numbered from (`nameId`).
+ * entry the run is numbered from (`nameId`).
  */
 export interface WatchRun {
 	/** The run's first entry: see `./name-id`. */

@@ -67,6 +67,8 @@ export function runOf(franchise: FranchiseData): WatchRun | null {
 
 export interface StripModel {
 	readonly run: WatchRun;
+	/** The main-story entry the poster stack is fronted by. */
+	readonly front: string;
 	readonly view: StripView;
 	/**
 	 * False when the backend's walk stopped at its bound or read a
@@ -77,7 +79,7 @@ export interface StripModel {
 }
 
 /** Whether `id`'s strip would show anything: a run beyond `id` itself, or parent stories. */
-function hasStrip(run: WatchRun, id: string): boolean {
+export function hasStrip(run: WatchRun, id: string): boolean {
 	if (run.parents[id] !== undefined) return true;
 	return run.entries.length > 1 && run.entries.some((e) => e.id === id);
 }
@@ -96,5 +98,10 @@ export function stripFor(
 	if (franchise === null || franchise.anchor !== id) return null;
 	const run = runOf(franchise);
 	if (run === null || !hasStrip(run, id)) return null;
-	return { run, view: stripView(run, id, order), complete: franchise.complete };
+	return {
+		run,
+		front: franchise.name_from,
+		view: stripView(run, id, order),
+		complete: franchise.complete
+	};
 }

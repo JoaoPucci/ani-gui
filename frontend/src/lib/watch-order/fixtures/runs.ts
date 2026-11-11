@@ -13,8 +13,8 @@
  * every state shows; JoJo's and Gintama's follow the development
  * profile's watch history.
  *
- * The ordering's tests read these runs, and the design mockups draw
- * from them. The data lives in `runs.json`: titles are Kitsu's, not
+ * The watch-order modules' tests read these runs; nothing in the app
+ * does. The data lives in `runs.json`: titles are Kitsu's, not
  * interface copy.
  */
 import raw from './runs.json';

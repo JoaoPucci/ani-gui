@@ -1,13 +1,11 @@
 /**
- * Small adapters for the mockup components: the PosterCard shape; the
- * franchise's display name is re-exported from `./franchise-name`.
- * Part of the mockups' views; `./view` gathers them.
+ * A franchise entry in the shape PosterCard takes, for the franchise
+ * page's rails of other versions, films, side stories and recaps.
  */
 import type { KitsuAnimeRef } from '$lib/api';
-import type { MockEntry } from './types';
+import type { WatchEntry } from './types';
 
-/** A fixture entry in the shape PosterCard takes. */
-export function asRef(entry: MockEntry): KitsuAnimeRef {
+export function asRef(entry: WatchEntry): KitsuAnimeRef {
 	return {
 		id: entry.id,
 		canonical_title: entry.title,
@@ -29,5 +27,3 @@ export function asRef(entry: MockEntry): KitsuAnimeRef {
 			: null
 	};
 }
-
-export { franchiseName } from './franchise-name';

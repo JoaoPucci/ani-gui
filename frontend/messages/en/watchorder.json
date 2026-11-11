@@ -1,9 +1,4 @@
 {
-	"diag_description": "Design mockups for the watch-order feature, drawn from fixed sample data: a franchise page.",
-	"diag_section": "Watch-order mockups",
-	"diag_switcher": "Show the switch for the mockup options",
-	"diag_toggle": "Show the watch-order mockups",
-	"franchise_after_loop": "No clear place in the order",
 	"franchise_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -16,6 +11,7 @@
 	],
 	"franchise_cycle_hint": "These are all linked to each other, so there's no clear order to watch them in. They're listed as they're linked.",
 	"franchise_eyebrow": "Franchise",
+	"franchise_failed": "Couldn't load this franchise.",
 	"franchise_films": "Films",
 	"franchise_here": "You are here",
 	"franchise_loop_group": [
@@ -28,17 +24,19 @@
 			}
 		}
 	],
+	"franchise_loop_group_partial": "Linked titles, order unclear",
 	"franchise_main": "Main story",
-	"franchise_off": "This page is a design mockup. Turn the mockups on in Diagnostics to see it.",
+	"franchise_none": "This show has no other seasons or related titles.",
 	"franchise_order_change": "Change in Settings",
 	"franchise_order_note_linked": "In the order the anime databases link them.",
 	"franchise_order_note_released": "In order of release.",
+	"franchise_partial": "There may be more titles than the ones listed here.",
 	"franchise_recaps": "Recaps",
-	"franchise_recaps_hide": "Hide recaps",
-	"franchise_recaps_show": "Show recaps",
 	"franchise_resume": "Resume",
+	"franchise_retry": "Try again",
 	"franchise_sides": "Side stories & specials",
 	"franchise_start": "Start from the beginning",
+	"franchise_unplaced": "No clear place in the order",
 	"franchise_versions": "Other versions",
 	"handoff_after": "After {title}",
 	"handoff_aria": "Up next: {title}, after {finished}",
@@ -48,12 +46,6 @@
 	"meta_progress": "EP {episode} of {total}",
 	"meta_progress_open": "EP {episode}",
 	"meta_watched": "Watched",
-	"mock_badge": "Mockup",
-	"mock_franchise": "Franchise",
-	"mock_franchise_list": "List",
-	"mock_franchise_shelf": "Shelf",
-	"mock_group_aria": "Watch-order mockup options",
-	"mock_order": "Order",
 	"setting_aria": "Watch order",
 	"setting_hint": "How a series' seasons, films and specials are ordered: as the anime databases link them, or by release date. The links generally follow the story, but they are maintained by each database's community and can be wrong.",
 	"setting_key": "Watch order",
@@ -61,7 +53,6 @@
 	"setting_released": "As released",
 	"strip_eyebrow": "Watch order",
 	"strip_first": "The story starts here",
-	"strip_franchise_link": "Whole franchise",
 	"strip_franchise_stack_films": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -114,7 +105,6 @@
 		}
 	],
 	"strip_watching_key": "You're watching",
-	"strip_way": "Way {n} of {count}",
 	"strip_ways": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

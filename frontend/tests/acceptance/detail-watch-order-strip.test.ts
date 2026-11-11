@@ -5,8 +5,11 @@
 // in the masthead eyebrow where the run is one line), and a card for
 // the entry the viewer is part-way through elsewhere in the run. The
 // order setting decides the neighbours. A franchise that cannot be
-// read leaves the page as it was, with no strip and no error. Entries
-// the strip shows are left out of "Similar titles", and only those.
+// read leaves the page as it was, with no strip and no error. Where
+// the strip shows, the franchise it links to is left out of "Similar
+// titles", and nothing else is. A show with no strip whose franchise
+// page still lists other titles gets the strip's franchise link on its
+// own, and "Similar titles" leaves those titles out the same way.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -55,6 +58,8 @@ const FINAL = entry('50', 'Saga: Final Arc', 'TV', '2014-01-01');
 
 const FRANCHISE = {
 	anchor: KITSU_ID,
+	name: 'Saga',
+	name_from: '10',
 	entries: [SAGA, SECOND, ORIGINS, FINAL],
 	links: [
 		['10', '42'],
@@ -203,6 +208,25 @@ describe('detail route — the watch-order strip', () => {
 		expect(eyebrow()).toContain(m.watchorder_strip_position({ position: '03', total: '04' }));
 	});
 
+	it("links to the whole franchise from the strip's footer", async () => {
+		useShow();
+		app = mount(DetailPage, { target });
+		await until(() => strip() !== null, 'the strip');
+		const link = strip()!.querySelector(`a[href="/anime/${KITSU_ID}/franchise"]`);
+		expect(link).not.toBeNull();
+		expect(link!.textContent).toContain(m.watchorder_strip_franchise_stack_title());
+		expect(link!.textContent).toContain(m.watchorder_strip_franchise_stack_main({ count: 4 }));
+	});
+
+	it('keeps the franchise link beside the card for the entry being watched', async () => {
+		useShow({
+			history: [{ id: 'hianime:saga-origins', title: 'Saga Origins', ep_no: '3', kitsu_id: '5' }]
+		});
+		app = mount(DetailPage, { target });
+		await until(() => tile('5') !== null, 'the watching card');
+		expect(strip()!.querySelector(`a[href="/anime/${KITSU_ID}/franchise"]`)).not.toBeNull();
+	});
+
 	it('shows no strip and no error when the franchise cannot be read', async () => {
 		const calls = useShow({ franchise: () => new HttpResponse(null, { status: 503 }) });
 		app = mount(DetailPage, { target });
@@ -248,14 +272,21 @@ describe('detail route — the watch-order strip', () => {
 		expect(tile('5')!.textContent).toContain(m.watchorder_meta_progress_open({ episode: 3 }));
 	});
 
-	it('leaves the entries the strip shows out of Similar titles, and only those', async () => {
-		useShow({ similar: ['10', '50', '5', '77'] });
+	it('leaves the whole franchise out of Similar titles, and only the franchise', async () => {
+		// The strip links to the franchise page, which lists all of it:
+		// Origins is in the run but not on the strip, and the film is
+		// beside the run, yet neither is a similar title.
+		const FILM = entry('60', 'Saga: The Movie', 'movie', '2015-01-01');
+		useShow({
+			similar: ['10', '50', '5', '60', '77'],
+			franchise: () => HttpResponse.json({ ...FRANCHISE, films: [FILM] })
+		});
 		app = mount(DetailPage, { target });
 		await until(() => strip() !== null && similarCard('77') !== null, 'the strip and Similar');
 		expect(similarCard('10')).toBeNull();
 		expect(similarCard('50')).toBeNull();
-		// Origins is in the run but not on the strip: it stays.
-		expect(similarCard('5')).not.toBeNull();
+		expect(similarCard('5')).toBeNull();
+		expect(similarCard('60')).toBeNull();
 	});
 
 	it("leaves the watching card's entry out of Similar titles too", async () => {
@@ -347,6 +378,9 @@ describe('detail route — the watch-order strip', () => {
 		expect(text).not.toContain(m.watchorder_strip_last());
 		expect(text).not.toContain(m.watchorder_strip_first());
 		expect(eyebrow()).not.toMatch(/\b\d{2}\b/);
+		// The way to the franchise page stays, without counts it may get wrong.
+		expect(text).toContain(m.watchorder_strip_franchise_stack_title());
+		expect(text).not.toContain(m.watchorder_strip_franchise_stack_main({ count: 2 }));
 	});
 
 	it("names a side story's parent stories, and nothing after it", async () => {
@@ -430,5 +464,73 @@ describe('detail route — the watch-order strip', () => {
 		await new Promise((r) => setTimeout(r, 150));
 		expect(strip()).toBeNull();
 		expect(eyebrow()).not.toContain(m.watchorder_strip_position({ position: '04', total: '04' }));
+	});
+});
+
+describe('detail route — the franchise link without a strip', () => {
+	// Second Arc as its run alone: nothing comes before or after it, so
+	// there is no strip, but the franchise page lists a film and a side
+	// story beside it.
+	const FILM = entry('60', 'Saga: The Movie', 'movie', '2015-01-01');
+	const SIDE = entry('61', 'Saga: Side Story', 'OVA', '2013-01-01');
+	const ONE_MAIN = {
+		...FRANCHISE,
+		entries: [SECOND],
+		links: [],
+		films: [FILM],
+		sides: [SIDE]
+	};
+	const ALONE = { ...ONE_MAIN, films: [], sides: [] };
+	const link = () => target.querySelector(`a[href="/anime/${KITSU_ID}/franchise"]`);
+
+	it('links to the franchise page from a show that is its main story alone', async () => {
+		useShow({ similar: ['60', '61', '77'], franchise: () => HttpResponse.json(ONE_MAIN) });
+		app = mount(DetailPage, { target });
+		await until(() => link() !== null && similarCard('77') !== null, 'the link and Similar');
+		expect(strip()).toBeNull();
+		expect(link()!.textContent).toContain(m.watchorder_strip_franchise_stack_title());
+		expect(link()!.textContent).toContain(m.watchorder_strip_franchise_stack_main({ count: 1 }));
+		expect(link()!.textContent).toContain(m.watchorder_strip_franchise_stack_films({ count: 1 }));
+		// The franchise page lists the film and the side story, so Similar
+		// titles leaves them out, as it does beside a strip.
+		expect(similarCard('60')).toBeNull();
+		expect(similarCard('61')).toBeNull();
+		// No place is claimed for a show with nothing before or after it.
+		expect(eyebrow()).not.toContain(m.watchorder_strip_position({ position: '01', total: '01' }));
+	});
+
+	it('links there without counts from a franchise read in part', async () => {
+		useShow({ franchise: () => HttpResponse.json({ ...ONE_MAIN, complete: false }) });
+		app = mount(DetailPage, { target });
+		await until(() => link() !== null, 'the link');
+		expect(strip()).toBeNull();
+		expect(link()!.textContent).toContain(m.watchorder_strip_franchise_stack_title());
+		expect(link()!.textContent).not.toContain(
+			m.watchorder_strip_franchise_stack_main({ count: 1 })
+		);
+	});
+
+	for (const complete of [true, false]) {
+		it(`gives no link for a show that is the franchise alone (read ${complete ? 'whole' : 'in part'})`, async () => {
+			const calls = useShow({
+				similar: ['77'],
+				franchise: () => HttpResponse.json({ ...ALONE, complete })
+			});
+			app = mount(DetailPage, { target });
+			await until(
+				() => calls.franchise > 0 && similarCard('77') !== null,
+				'the franchise read and Similar'
+			);
+			await new Promise((r) => setTimeout(r, 100));
+			expect(link()).toBeNull();
+			expect(strip()).toBeNull();
+		});
+	}
+
+	it('keeps the one link in the strip where there is a strip', async () => {
+		useShow();
+		app = mount(DetailPage, { target });
+		await until(() => strip() !== null, 'the strip');
+		expect(target.querySelectorAll(`a[href="/anime/${KITSU_ID}/franchise"]`).length).toBe(1);
 	});
 });

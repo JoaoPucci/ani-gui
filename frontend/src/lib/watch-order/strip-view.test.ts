@@ -1,15 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import fc from 'fast-check';
 import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
 import { placement } from './order';
-import {
-	currentIn,
-	emptyColumn,
-	franchiseSummary,
-	shownOnStrip,
-	stripView,
-	watchingFor
-} from './strip-view';
+import { currentIn, emptyColumn, franchiseSummary, stripView, watchingFor } from './strip-view';
 import type { WatchEntry, WatchRun } from './types';
 
 const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
@@ -53,24 +45,54 @@ describe('emptyColumn', () => {
 
 describe('franchiseSummary', () => {
 	it('counts the main story, films with other versions, and side stories', () => {
-		expect(franchiseSummary(run('fate'))).toMatchObject({ main: 6, films: 3, sides: 1 });
-		expect(franchiseSummary(run('bleach'))).toMatchObject({ main: 5, films: 4, sides: 3 });
+		expect(franchiseSummary(run('fate'), run('fate').nameId)).toMatchObject({
+			main: 6,
+			films: 3,
+			sides: 1
+		});
+		expect(franchiseSummary(run('bleach'), run('bleach').nameId)).toMatchObject({
+			main: 5,
+			films: 4,
+			sides: 3
+		});
 	});
 
 	it('totals every entry the franchise page lists, recaps included', () => {
 		// JoJo: 9 in the run, 4 other versions, 1 side story, 1 recap.
-		expect(franchiseSummary(run('jojo')).total).toBe(15);
-		expect(franchiseSummary(run('fate')).total).toBe(12);
+		expect(franchiseSummary(run('jojo'), run('jojo').nameId).total).toBe(15);
+		expect(franchiseSummary(run('fate'), run('fate').nameId).total).toBe(12);
 	});
 
 	it('counts the recaps, so the stack lists what the total counts', () => {
-		expect(franchiseSummary(run('jojo')).recaps).toBe(1);
-		expect(franchiseSummary(run('fate')).recaps).toBe(2);
+		expect(franchiseSummary(run('jojo'), run('jojo').nameId).recaps).toBe(1);
+		expect(franchiseSummary(run('fate'), run('fate').nameId).recaps).toBe(2);
 	});
 
-	it('fans the first entry, a film and a side story, filling from the main story', () => {
-		expect(ids(franchiseSummary(run('fate')).posters)).toEqual(['6028', '4788', '6928']);
-		expect(ids(franchiseSummary(run('monogatari')).posters)).toEqual(['3919', '49128', '6546']);
+	it('fans the front entry, a film and a side story, filling from the main story', () => {
+		expect(ids(franchiseSummary(run('fate'), run('fate').nameId).posters)).toEqual([
+			'6028',
+			'4788',
+			'6928'
+		]);
+		expect(ids(franchiseSummary(run('monogatari'), run('monogatari').nameId).posters)).toEqual([
+			'3919',
+			'49128',
+			'6546'
+		]);
+	});
+
+	it('fans the entry the franchise is named after first, wherever it sits in the run', () => {
+		// Fate is named after Fate/stay night (323), not Fate/Zero (6028),
+		// its first entry by its links.
+		expect(ids(franchiseSummary(run('fate'), '323').posters)).toEqual(['323', '4788', '6928']);
+		const jojo = run('jojo');
+		const last = jojo.entries.at(-1)!.id;
+		expect(franchiseSummary(jojo, last).posters[0].id).toBe(last);
+	});
+
+	it('fronts the stack with the first entry, as the franchise page does, when the front entry is not in the run', () => {
+		const fate = run('fate');
+		expect(franchiseSummary(fate, '999').posters[0].id).toBe(fate.entries[0].id);
 	});
 
 	it('fans only entries that have a poster, and none when no entry has one', () => {
@@ -80,7 +102,7 @@ describe('franchiseSummary', () => {
 			...fate,
 			entries: fate.entries.map((e) => (e.id === fate.nameId ? blank(e) : e))
 		};
-		expect(ids(franchiseSummary(noFirst).posters)).toEqual(['4788', '6928', '7658']);
+		expect(ids(franchiseSummary(noFirst, fate.nameId).posters)).toEqual(['4788', '6928', '7658']);
 		const none: WatchRun = {
 			...fate,
 			entries: fate.entries.map(blank),
@@ -89,7 +111,7 @@ describe('franchiseSummary', () => {
 			sides: fate.sides.map(blank),
 			recaps: fate.recaps.map(blank)
 		};
-		expect(franchiseSummary(none).posters).toEqual([]);
+		expect(franchiseSummary(none, fate.nameId).posters).toEqual([]);
 	});
 });
 
@@ -151,47 +173,5 @@ describe('watchingFor', () => {
 
 	it('says nothing where nothing is part-way', () => {
 		expect(watching('bleach', '244')).toBeNull();
-	});
-});
-
-describe('shownOnStrip', () => {
-	it("names the strip's tiles and the watched entry's card, and nothing else", () => {
-		const jojo = run('jojo');
-		const golden = stripView(jojo, '41410', 'linked');
-		const sbr = jojo.entries.find((e) => e.id === '49847')!;
-		expect([...shownOnStrip(golden, sbr)].sort()).toEqual(
-			[...golden.before, ...golden.after, sbr].map((e) => e.id).sort()
-		);
-		// A side story's parents are its tiles.
-		expect([...shownOnStrip(stripView(run('fate'), '6928', 'linked'), null)].sort()).toEqual([
-			'6028',
-			'7658'
-		]);
-	});
-
-	it('leaves the rest of the run to "Similar titles"', () => {
-		const bleach = run('bleach');
-		const shown = shownOnStrip(stripView(bleach, '48015', 'linked'), null);
-		expect(shown.has('244')).toBe(false);
-		expect(shown.size).toBe(2);
-	});
-
-	it('is exactly the tiles plus the card, on every member of every run, in either order', () => {
-		const member = fc.constantFrom(...FIXTURE_RUNS).chain((r) =>
-			fc.record({
-				r: fc.constant(r),
-				id: fc.constantFrom(...r.entries.map((e) => e.id)),
-				card: fc.option(fc.constantFrom(...r.entries), { nil: null }),
-				order: fc.constantFrom('linked' as const, 'released' as const)
-			})
-		);
-		fc.assert(
-			fc.property(member, ({ r, id, card, order }) => {
-				const view = stripView(r, id, order);
-				const want = new Set([...view.before, ...view.after].map((e) => e.id));
-				if (card) want.add(card.id);
-				expect(shownOnStrip(view, card)).toEqual(want);
-			})
-		);
 	});
 });
