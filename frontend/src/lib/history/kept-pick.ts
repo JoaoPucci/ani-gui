@@ -6,14 +6,15 @@
  * (`named`): the session's later episodes go out as the pick
  * ($lib/play/session-show.ts), and the slip says so with the way to
  * switch. That lives in the player's own state, and the URL still names
- * the show playing. A player mounted again (a reload, a recovery) reads
- * it back from the line: a line the user named for another show than the
- * one playing is that pick, kept.
+ * the show playing. A player mounted again — the renderer reloaded, or
+ * Back to the player a switch left — reads it back from the line: a line
+ * the user named for another show than the one playing is that pick,
+ * kept. It brings back the pick and the slip's way to switch, not the ⋯
+ * entry to change it again, which needs the offer of the show playing.
  */
 
 import type { KitsuAnimeRef, ReadOptions } from '$lib/api';
-import type { LinkOffer } from './link-offer';
-import type { LinkDeps } from './link-offer';
+import type { LinkDeps, LinkOffer } from './link-offer';
 import { readOpts } from './read-opts';
 
 /** The show the line `row` was named for, when it is not `pageId`, the
@@ -50,8 +51,11 @@ export async function keptOnArrival(
  *  an earlier one's read landing late is not the later one's. */
 export class KeptPicks {
 	#held: { arrival: number; pick: KitsuAnimeRef } | null = null;
+	#latest = 0;
 
 	note(arrival: number, pick: KitsuAnimeRef | null): void {
+		if (arrival < this.#latest) return;
+		this.#latest = arrival;
 		this.#held = pick ? { arrival, pick } : null;
 	}
 

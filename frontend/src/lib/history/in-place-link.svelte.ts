@@ -66,8 +66,9 @@ export interface InPlaceLinkDeps extends LinkDeps {
 export class InPlaceLinkSession extends LinkSession {
 	/** Whether the viewer hid this row's slip. */
 	aside = $state(false);
-	/** The show picked for the card from here, while what plays is
-	 *  still the one before; null otherwise. */
+	/** The show picked for the card from here, or kept on its line from
+	 *  a player before this one ($lib/history/kept-pick.ts), while what
+	 *  plays is still the one before; null otherwise. */
 	linked = $state<{ id: string; title: string; show: KitsuAnimeRef } | null>(null);
 	/** The show a switch to a pick opened this session for, which the
 	 *  slip names once; null otherwise. */

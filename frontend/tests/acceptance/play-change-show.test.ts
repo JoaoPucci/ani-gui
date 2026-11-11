@@ -538,8 +538,8 @@ describe('a pick of another show on the player, kept watching here', () => {
 
 describe('a player opened again on a line picked for another show', () => {
 	// The pick was made with "Keep watching this", and the player was
-	// mounted again (a reload, a recovery): the URL still names the show
-	// playing, and the line records the pick.
+	// mounted again (the renderer reloaded, or Back to it after a switch):
+	// the URL still names the show playing, and the line records the pick.
 	it.each([
 		['a guessed session', { guess: '1', row: CARD }],
 		['a session of the named line', { row: CARD }]
