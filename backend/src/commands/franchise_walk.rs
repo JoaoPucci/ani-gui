@@ -177,3 +177,7 @@ mod corpus_record;
 #[cfg(test)]
 #[path = "franchise_walk_parent_prop_test.rs"]
 mod parent_prop_tests;
+
+#[cfg(test)]
+#[path = "franchise_walk_series_test.rs"]
+mod series_tests;
