@@ -228,6 +228,8 @@
 	// so the constants live next to the helpers that consume them.
 
 	let liveResults = $state<KitsuAnimeRef[] | null>(null);
+	// The query `liveResults` answers.
+	let liveResultsFor: string | null = null;
 	let liveBusy = $state(false);
 	let liveError = $state(false);
 	let dropdownOpen = $state(false);
@@ -308,6 +310,17 @@
 		liveReads.end();
 	}
 
+	/** The dropdown has closed: no live search goes on, and hits of a
+	 *  query the viewer typed past are not shown again. */
+	function closeLive() {
+		stopLive();
+		liveBusy = false;
+		if (liveResultsFor !== topbarQuery.trim()) {
+			liveResults = null;
+			liveError = false;
+		}
+	}
+
 	function scheduleLive(q: string) {
 		stopLive();
 		if (q.length < LIVE_MIN_CHARS) {
@@ -343,8 +356,10 @@
 				// typing while it ran.
 				if (q !== topbarQuery.trim()) return;
 				liveResults = filtered;
+				liveResultsFor = q;
 			} catch {
 				liveResults = [];
+				liveResultsFor = q;
 				liveError = true;
 			} finally {
 				liveBusy = false;
@@ -440,8 +455,7 @@
 
 	function navigateToHit(hit: KitsuAnimeRef) {
 		dropdownOpen = false;
-		stopLive();
-		liveBusy = false;
+		closeLive();
 		void goto(resolve('/anime/[id]', { id: hit.id }));
 	}
 
@@ -451,9 +465,7 @@
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		void goto(target);
 		dropdownOpen = false;
-		// The dropdown has closed: a live search would answer nobody.
-		stopLive();
-		liveBusy = false;
+		closeLive();
 	}
 
 	// Double-click-to-maximize on the frameless titlebar is handled by the
