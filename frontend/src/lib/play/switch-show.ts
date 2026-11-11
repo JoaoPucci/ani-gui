@@ -110,10 +110,21 @@ export async function switchShow(deps: SwitchShowDeps, req: SwitchRequest): Prom
 	deps.carry(req.to.id, episode, req.at);
 	if (req.rate !== undefined) deps.carryRate(req.to.id, req.rate);
 	if (req.row) deps.noteSwitch(req.row, title);
-	if (!(await deps.open(req.to.id, session, episode, req.row))) {
+	// A player that could not be opened, one whose opening threw among
+	// them, leaves nothing for a later page.
+	const opened = await Promise.resolve()
+		.then(() => deps.open(req.to.id, session, episode, req.row))
+		.catch(() => false);
+	if (!opened) {
 		deps.forget(req.to.id, req.row);
 		return 'failed';
 	}
-	deps.record({ ...args, episode: String(episode) }, session, episode);
+	// The player is on the pick now: the switch happened, whatever
+	// recording its watch does.
+	try {
+		deps.record({ ...args, episode: String(episode) }, session, episode);
+	} catch {
+		// Recorded best-effort, as every watch is.
+	}
 	return 'switched';
 }
