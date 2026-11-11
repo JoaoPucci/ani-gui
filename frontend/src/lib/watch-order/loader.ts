@@ -17,10 +17,10 @@
  * Both reads belong to one visit of one page, and `signal` ends them
  * when it ends. The franchise read holds its response open while the
  * backend walks the franchise, several rounds of Kitsu reads when
- * Kitsu is slow, on the API lane the page's own details, settings and
- * history share (`$lib/backend/lanes`). Kept after the viewer left, a
- * few such reads would hold all of that lane's connections and queue
- * the next page behind them. A visit that ended answers nothing, as a
+ * Kitsu is slow, on the franchise lane (`$lib/backend/lanes`). Kept
+ * after the viewer left, a few such reads would hold all of that
+ * lane's connections and queue the next page's franchise read behind
+ * them. A visit that ended answers nothing, as a
  * franchise that cannot be read does: not a strip without progress,
  * whose rows were cut off rather than unreadable.
  */

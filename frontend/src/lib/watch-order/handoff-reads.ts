@@ -28,7 +28,11 @@ export interface FranchiseReads {
  * that lane to themselves while Home is open, and Home's own calls (a
  * Continue card's resume, a removal) go to the API lane, so none waits
  * behind them. More would only wait in Chromium's queue instead of
- * this one, which starts them in the order the rows ask.
+ * this one, which starts them in the order the rows ask. Each walk
+ * reads up to four Kitsu listings at a time on a cold cache, so six
+ * walks put up to 24 in flight; a listing is cached for a day, or a
+ * week once everything it relates has finished, so a warm Home asks
+ * Kitsu for little or nothing.
  */
 export const HANDOFF_WALKS_AT_ONCE = 6;
 
