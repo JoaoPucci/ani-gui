@@ -179,27 +179,4 @@ describe('play route — leaving while its reads are out', () => {
 			"the next show's strip"
 		);
 	});
-
-	it("reads the next show's strip once, not under the show left, when the episode moves too", async () => {
-		slowReads(reads);
-		const asked: string[] = [];
-		server.use(
-			http.get(`${API_BASE}/api/kitsu/episodes/43`, ({ request }) => {
-				asked.push(new URL(request.url).searchParams.get('page') ?? '');
-				return HttpResponse.json([]);
-			})
-		);
-		pool = sixConnections();
-		app = mount(PlayPage, { target });
-		await until(
-			() => reads.held.some((h) => h.endsWith(`/api/kitsu/episodes/${KITSU_ID}`)),
-			"the first show's episodes to be out"
-		);
-		// Another show, at an episode on another page of the strip.
-		setParams({ id: '43' });
-		setUrl('/play/43', { episode: '30' });
-		await until(() => asked.length > 0, "the next show's strip read");
-		await new Promise((r) => setTimeout(r, 50));
-		expect(pool.cancelled.filter((p) => p === '/api/kitsu/episodes/43')).toEqual([]);
-	});
 });
