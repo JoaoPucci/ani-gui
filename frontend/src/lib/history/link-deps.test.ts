@@ -67,6 +67,21 @@ describe("appLinkDeps' match", () => {
 		resolveKitsuMatchWithTrust.mockResolvedValueOnce({ match: null, trusted: false });
 		await expect(appLinkDeps().resolve(entry)).resolves.toEqual({ match: null, trusted: false });
 	});
+
+	it('answers the match a guess found, though a read on the way failed', async () => {
+		const entry: HistoryEntry = {
+			id: 'hianime:black-clover-949',
+			title: 'Black Clover',
+			ep_no: '1'
+		};
+		const found = { id: '13209' } as never;
+		resolveKitsuMatchWithTrust.mockResolvedValueOnce({
+			match: found,
+			trusted: false,
+			unread: true
+		} as never);
+		await expect(appLinkDeps().resolve(entry)).resolves.toMatchObject({ match: found });
+	});
 });
 
 // Every surface that reads the history hears of a link, made from any

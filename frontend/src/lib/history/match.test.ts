@@ -1313,6 +1313,52 @@ describe('a match that could not be read', () => {
 		expect(got).toEqual({ match: null, trusted: false, unread: true });
 	});
 
+	it('says so when the search found nothing and the show-id enrichment failed', async () => {
+		mockedAllmangaMap.mockResolvedValue(null);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([]);
+		mockedResolveAllmanga.mockRejectedValue(new Error('backend busy'));
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(
+				{ id: 'ReooPAxPMsHM4KPMY', ep_no: '1', title: '1P (1161 episodes)' },
+				null
+			)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
+	});
+
+	it("says so when the stored mapping's show could not be read and no guess was found", async () => {
+		mockedAllmangaMap.mockResolvedValue('4013');
+		mockedDetail.mockRejectedValue({
+			kind: 'upstream',
+			status: 503,
+			key: 'error.network.upstream'
+		});
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([]);
+		mockedResolveAllmanga.mockResolvedValue(null);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:show-1', ep_no: '1', title: 'Show (12 episodes)' }, null)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
+	});
+
+	it('reads a stored mapping Kitsu answered gone as no mapping, not as unread', async () => {
+		mockedAllmangaMap.mockResolvedValue('4013');
+		mockedDetail.mockRejectedValue({
+			kind: 'upstream',
+			status: 404,
+			key: 'error.network.upstream'
+		});
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([]);
+		mockedResolveAllmanga.mockResolvedValue(null);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:show-1', ep_no: '1', title: 'Show (12 episodes)' }, null)
+		);
+		expect(got).toEqual({ match: null, trusted: false });
+	});
+
 	it('says nothing of the kind for a row the search read and matched to nothing', async () => {
 		mockedGetMatch.mockResolvedValue(null);
 		mockedSearch.mockResolvedValue([]);
