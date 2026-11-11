@@ -28,6 +28,25 @@ export function takeRate(showId: string): number | null {
 	return p !== null && p.showId === showId ? p.rate : null;
 }
 
+/** The element side of a carried speed: when one is carried to
+ *  `showId`, play it on `video` once the stream's metadata has loaded —
+ *  the load resets the rate, a stream attached again before then still
+ *  finds it, and the element's default stays as it was, so a later
+ *  episode does not fall back to it. The returned function stops
+ *  waiting (the source went); null when nothing is carried. */
+export function applyCarriedRate(
+	video: Pick<HTMLMediaElement, 'addEventListener' | 'removeEventListener' | 'playbackRate'>,
+	showId: string
+): (() => void) | null {
+	if (!rateFor(showId)) return null;
+	const play = () => {
+		const rate = takeRate(showId);
+		if (rate !== null) video.playbackRate = rate;
+	};
+	video.addEventListener('loadedmetadata', play, { once: true });
+	return () => video.removeEventListener('loadedmetadata', play);
+}
+
 /** Test seam: forget any carried speed. */
 export function __resetRateForTests(): void {
 	pending = null;

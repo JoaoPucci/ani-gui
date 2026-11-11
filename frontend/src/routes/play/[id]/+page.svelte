@@ -222,7 +222,7 @@
 	import { switchShow, type SwitchRequest, type SwitchShowDeps } from '$lib/play/switch-show';
 	import { switchToPick as runPickSwitch } from '$lib/play/pick-switch';
 	import { sessionShow } from '$lib/play/session-show';
-	import { carryRate, rateFor, takeRate } from '$lib/play/rate-carry';
+	import { applyCarriedRate, carryRate, takeRate } from '$lib/play/rate-carry';
 	import { takeSwitch } from '$lib/history/guess-slip';
 	import { holdPlayback } from '$lib/play/hold-playback';
 	import GuessSlip from '$lib/components/GuessSlip.svelte';
@@ -2111,21 +2111,10 @@
 		if (handoff.handedOff) endHold();
 		playerError = null;
 		failedStreamError = null;
-		// A switch from another show's player hands its speed over
-		// ($lib/play/rate-carry), taken and played once the stream's
-		// metadata has loaded: the load resets the rate, a stream attached
-		// again before then still finds it, and the element's default
-		// stays as it was, so a later episode does not fall back to it.
-		if (rateFor(id)) {
-			const v = videoEl;
-			const showId = id;
-			const play = () => {
-				const rate = takeRate(showId);
-				if (rate !== null) v.playbackRate = rate;
-			};
-			v.addEventListener('loadedmetadata', play, { once: true });
-			sourceScope.add(() => v.removeEventListener('loadedmetadata', play));
-		}
+		// A switch from another show's player hands its speed over, played
+		// once the stream's metadata has loaded ($lib/play/rate-carry).
+		const stopRate = applyCarriedRate(videoEl, id);
+		if (stopRate) sourceScope.add(stopRate);
 
 		// One held retry pending per source: a second failure inside
 		// a hold re-arms it rather than adding a second startLoad,
