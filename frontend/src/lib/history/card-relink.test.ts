@@ -152,6 +152,35 @@ describe('whether a guessed card still stands', () => {
 		expect(h.settled.has('a')).toBe(false);
 	});
 
+	it("opens no picker on an offer read before the row was matched again: it is the former show's", async () => {
+		// The check read the history before a link from an earlier visit
+		// landed; the cards are read again meanwhile, and the row is matched
+		// to the linked show before the check answers that its old offer
+		// stands. Opening on it would let a pick overwrite the newer link.
+		let answer!: (stands: boolean) => void;
+		const h = home([row('a')], [[row('a', '5')]], {
+			offerStands: () => new Promise((r) => (answer = r))
+		});
+		const checking = h.relink.stillGuessed('a', 'g');
+		await h.relink.reread();
+		await flush();
+		expect(h.published).toEqual([['a', '5']]);
+		answer(true);
+		expect(await checking).toBe(false);
+	});
+
+	it('opens no picker on a card being matched again as its check began', async () => {
+		let answer!: (m: KitsuAnimeRef) => void;
+		const h = home([row('a')], [[row('a', '5')]], {
+			offerStands: async () => true,
+			resolveMatch: () => new Promise((r) => (answer = r))
+		});
+		await h.relink.reread();
+		expect(await h.relink.stillGuessed('a', 'g')).toBe(false);
+		answer(ref('5'));
+		await flush();
+	});
+
 	it('asks the offer for the row and the guess it was shown as', async () => {
 		const offerStands = vi.fn(async () => true);
 		const h = home([row('a')], [], { offerStands });
