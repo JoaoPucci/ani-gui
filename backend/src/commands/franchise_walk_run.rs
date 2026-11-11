@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::parents::{parent_stories, Found};
+use super::parents::parent_stories;
 use super::rules::Walk;
 use super::series::is_series;
 use super::{order_key, Lookup};
@@ -26,6 +26,10 @@ pub(crate) struct Run {
     pub(crate) side_anchor: bool,
     /// A side-story anchor's parent stories in the run, in start order.
     pub(crate) parents: Vec<String>,
+    /// The other entries of the anchor's own run of one-offs, when the
+    /// walk moved to their parent's run and that run left them out:
+    /// listed around it like the anchor, music videos aside.
+    pub(crate) beside: BTreeSet<String>,
 }
 
 /// Walk from `root`, the listings in `consulted` already counted.
@@ -64,6 +68,7 @@ pub(crate) fn walk(
         complete: w.complete,
         side_anchor: false,
         parents: Vec::new(),
+        beside: BTreeSet::new(),
     })
 }
 
@@ -75,39 +80,58 @@ fn holds_series(run: &Run, look: &Lookup<'_>) -> bool {
         .any(|e| is_series(&e))
 }
 
-/// The parent stories the members of a run of one-offs name, the
-/// anchor's own when it names any, earliest first, and every
-/// candidate listing read to decide.
-fn parents_of_one_offs(anchor: &str, own: &Run, look: &Lookup<'_>) -> Result<Found, Vec<String>> {
-    let mine = parent_stories(anchor, look)?;
-    if !mine.parents.is_empty() || own.members.len() == 1 {
-        return Ok(mine);
-    }
-    let mut read = mine.read;
-    let mut parents = BTreeSet::new();
-    let mut unread = Vec::new();
-    for m in own.members.keys().filter(|m| m.as_str() != anchor) {
-        match parent_stories(m, look) {
+/// Where a side story alone, or a run of one-offs, is placed.
+struct Placed {
+    /// The parent story to walk from: the earliest any member names.
+    root: Option<String>,
+    /// The anchor's parents to name: its own, else its run's.
+    parents: Vec<String>,
+    /// Every candidate listing read to decide.
+    read: BTreeSet<String>,
+}
+
+/// The parent stories the members of `own` name outside it (each
+/// checked with its own start), the earliest the one to walk from; the
+/// anchor's own are the ones it is placed under, else every member's.
+fn place(anchor: &str, own: &Run, look: &Lookup<'_>) -> Result<Placed, Vec<String>> {
+    let mut read = BTreeSet::new();
+    let mut unread = BTreeSet::new();
+    let mut mine = Vec::new();
+    let mut all = BTreeSet::new();
+    for m in own.members.keys() {
+        match parent_stories(m, look, &own.consulted) {
             Ok(found) => {
                 read.extend(found.read);
-                parents.extend(found.parents);
+                let outside: Vec<String> = found
+                    .parents
+                    .into_iter()
+                    .filter(|p| !own.members.contains_key(p))
+                    .collect();
+                if m == anchor {
+                    mine.clone_from(&outside);
+                }
+                all.extend(outside);
             }
             Err(need) => unread.extend(need),
         }
     }
     if !unread.is_empty() {
-        unread.sort();
-        unread.dedup();
-        return Err(unread);
+        return Err(unread.into_iter().collect());
     }
     let mut consulted = own.consulted.clone();
     consulted.extend(read.iter().cloned());
-    let mut parents: Vec<String> = parents.into_iter().collect();
-    parents.sort_by_key(|p| {
+    let key = |p: &String| {
         let start = look.entry(p, &consulted).and_then(|e| e.start);
         order_key(start.as_deref(), p)
-    });
-    Ok(Found { parents, read })
+    };
+    let mut all: Vec<String> = all.into_iter().collect();
+    all.sort_by_key(key);
+    mine.sort_by_key(key);
+    Ok(Placed {
+        root: all.first().cloned(),
+        parents: if mine.is_empty() { all } else { mine },
+        read,
+    })
 }
 
 /// The anchor's run, or, for a side story whose run is itself alone or
@@ -121,27 +145,38 @@ pub(crate) fn run(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>> {
     if own.members.len() > 1 && holds_series(&own, look) {
         return Ok(own);
     }
-    let found = parents_of_one_offs(anchor, &own, look)?;
+    let placed = place(anchor, &own, look)?;
     let mut consulted = own.consulted.clone();
-    consulted.extend(found.read);
-    let Some(parent) = found.parents.first() else {
+    consulted.extend(placed.read);
+    let Some(parent) = placed.root else {
         return Ok(Run { consulted, ..own });
     };
-    let theirs = walk(parent, look, consulted)?;
-    let parents = found.parents;
+    let theirs = walk(&parent, look, consulted)?;
     let side_anchor = !theirs.members.contains_key(anchor);
     let parents = if side_anchor {
-        parents
+        placed
+            .parents
             .into_iter()
             .filter(|p| theirs.members.contains_key(p))
             .collect()
     } else {
         Vec::new()
     };
+    let beside = own
+        .members
+        .keys()
+        .filter(|m| m.as_str() != anchor && !theirs.members.contains_key(*m))
+        .filter(|m| {
+            look.entry(m, &theirs.consulted)
+                .is_none_or(|e| e.subtype.as_deref() != Some("music"))
+        })
+        .cloned()
+        .collect();
     Ok(Run {
         complete: own.complete && theirs.complete,
         side_anchor,
         parents,
+        beside,
         ..theirs
     })
 }
