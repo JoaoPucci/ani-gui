@@ -5,6 +5,8 @@ import type { FranchiseData } from './types';
 
 const franchise = (anchor: string): FranchiseData => ({
 	anchor,
+	name: `Franchise ${anchor}`,
+	name_from: anchor,
 	entries: [],
 	links: [],
 	versions: [],

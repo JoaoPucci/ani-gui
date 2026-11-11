@@ -30,6 +30,8 @@ export type StripCaption =
 export interface WatchOrderPage {
 	readonly order: WatchOrder;
 	readonly run: WatchRun;
+	/** The main-story entry the strip's poster stack is fronted by. */
+	readonly front: string;
 	readonly view: StripView;
 	/** Whether the franchise was read whole: see `StripModel.complete`. */
 	readonly complete: boolean;
@@ -100,7 +102,7 @@ export function watchOrderPage(
 ): WatchOrderPage | null {
 	const strip = stripFor(data.franchise, id, order);
 	if (!strip) return null;
-	const { run, view, complete } = strip;
+	const { run, front, view, complete } = strip;
 	const progress = progressFromHistory(data.rows, run.entries);
 	const watching = watchingFor(run, progress, id, view, order);
 	const film = run.films.some((e) => e.id === id);
@@ -108,6 +110,7 @@ export function watchOrderPage(
 	return {
 		order,
 		run,
+		front,
 		view,
 		complete,
 		caption,
@@ -126,6 +129,8 @@ export function watchOrderPage(
  */
 export interface FranchiseLink {
 	readonly run: WatchRun;
+	/** The main-story entry the link's poster stack is fronted by. */
+	readonly front: string;
 	/** Whether the franchise was read whole: see `StripModel.complete`. */
 	readonly complete: boolean;
 	/** Ids "Similar titles" leaves out: the rest of the franchise. */
@@ -147,5 +152,10 @@ export function franchiseLinkOnly(data: WatchOrderData, id: string): FranchiseLi
 	if (run === null || hasStrip(run, id)) return null;
 	const rest = restOfFranchise(run, id);
 	if (rest.size === 0) return null;
-	return { run, complete: data.franchise.complete, similarHidden: rest };
+	return {
+		run,
+		front: data.franchise.name_from,
+		complete: data.franchise.complete,
+		similarHidden: rest
+	};
 }

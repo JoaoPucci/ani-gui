@@ -24,6 +24,8 @@ function payload(key: string, anchor: string): FranchiseData {
 	const r = run(key);
 	return {
 		anchor,
+		name: `The ${key} franchise`,
+		name_from: r.nameId,
 		entries: r.entries,
 		links: r.links,
 		versions: r.versions,

@@ -142,6 +142,9 @@ async fn franchise_route_serves_the_walk_from_the_cache() {
         got,
         json!({
             "anchor": "7730",
+            // The run's first series by start: the 1993 OVA.
+            "name": "JoJo no Kimyou na Bouken",
+            "name_from": "610",
             "entries": [old, ova, tv],
             "links": [["7158", "7730"], ["7730", "610"]],
             "versions": [sc],

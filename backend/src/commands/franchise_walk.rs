@@ -30,6 +30,11 @@ pub const MAX_LISTINGS: usize = 80;
 pub struct Franchise {
     /// The id asked about.
     pub anchor: String,
+    /// The franchise's name (`franchise_walk_name.rs`).
+    pub name: String,
+    /// The main-story entry the name comes from, whose artwork the
+    /// franchise page and the front of the strip's poster stack show.
+    pub name_from: String,
     /// The run, start order (unknown last), then numeric id.
     pub entries: Vec<FranchiseEntry>,
     /// Prequel → sequel pairs between two run members.
@@ -151,12 +156,16 @@ mod joined;
 mod links;
 #[path = "franchise_walk_meet.rs"]
 mod meet;
+#[path = "franchise_walk_name.rs"]
+mod name;
 #[path = "franchise_walk_parents.rs"]
 mod parents;
 #[path = "franchise_walk_rules.rs"]
 pub(crate) mod rules;
 #[path = "franchise_walk_sections.rs"]
 mod sections;
+#[path = "franchise_walk_series.rs"]
+pub(crate) mod series;
 #[path = "franchise_walk_run.rs"]
 mod walking;
 
@@ -179,3 +188,11 @@ mod corpus_record;
 #[cfg(test)]
 #[path = "franchise_walk_parent_prop_test.rs"]
 mod parent_prop_tests;
+
+#[cfg(test)]
+#[path = "franchise_walk_series_test.rs"]
+mod series_tests;
+
+#[cfg(test)]
+#[path = "franchise_walk_name_test.rs"]
+mod name_tests;
