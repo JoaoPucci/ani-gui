@@ -25,26 +25,21 @@
 		setNoticeToast
 	} from './instance';
 	import { createDonationAsk } from './donation-ask';
-	import {
-		readPublished,
-		publishedChanges,
-		sourceNote,
-		withSourceNote,
-		type SourceNote
-	} from './published';
+	import { readPublished, publishedChanges } from './published';
 	import { createPublishedMemoryStore } from './published-memory-store';
 	import type { Moment } from './arrival';
 	import { momentOf, watchMoment } from './moment';
 	import { startHealthPoll } from './health-poll';
 	import { noticeToast, viewOf } from './panel';
-	import { downloadChanges, outageChanges, updateChange, type ProviderHealth } from './sources';
+	import { downloadChanges, updateChange } from './sources';
+	import { createOutageNote } from './outage-note';
+	import { createAskToast } from './ask-toast';
 
 	let { onPlayer, appVersion }: { onPlayer: boolean; appVersion: string } = $props();
 
 	const seenDownloads = new Set<string>();
 	const storage = browserStorage(window);
-	let note: SourceNote | null = null;
-	let health: ProviderHealth[] | null = null;
+	const outageNote = createOutageNote();
 	let moment: Moment = { playing: false, fullscreen: false };
 
 	const memory = createPublishedMemoryStore(storage);
@@ -52,27 +47,20 @@
 	// Never over a video, fullscreen or the player: the ask waits, and
 	// one already up goes when any of them begins (it was acted on, so it
 	// does not come back).
-	let askToast: string | null = null;
-	const ask = createDonationAsk({
-		storage,
-		now: () => Date.now(),
-		show: () => {
-			askToast = toastStore.push({
-				kind: 'info',
-				message: m.notices_donation_ask(),
-				duration: null,
-				actionLabel: m.notices_donation_donate(),
-				// eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve builds the path; the hash names the About page's section
-				onAction: () => void goto(`${resolve('/about')}#support`),
-				dismissLabel: m.notices_donation_later(),
-				onClose: () => (askToast = null)
-			});
-		}
-	});
+	const askToast = createAskToast(toastStore, () => ({
+		kind: 'info',
+		message: m.notices_donation_ask(),
+		duration: null,
+		actionLabel: m.notices_donation_donate(),
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve builds the path; the hash names the About page's section
+		onAction: () => void goto(`${resolve('/about')}#support`),
+		dismissLabel: m.notices_donation_later()
+	}));
+	const ask = createDonationAsk({ storage, now: () => Date.now(), show: askToast.show });
 	const busy = () => moment.playing || moment.fullscreen || onPlayer;
 
 	function setBusy(now: boolean) {
-		if (now && askToast !== null) toastStore.dismiss(askToast);
+		askToast.busy(now);
 		ask.setBusy(now);
 	}
 
@@ -103,19 +91,15 @@
 			.then(readPublished, () => readPublished(null))
 			.then((p) => {
 				if (!alive) return;
-				note = sourceNote(p.items);
 				const remembered = memory.keepPublished(p.items.map((i) => i.id));
 				noticeCenter.take(publishedChanges(p.items, remembered));
 				ask.setNumber(p.donationAsk);
 				// An outage row raised before the answer gets its note now.
-				if (health) noticeCenter.take(withSourceNote(outageChanges(health), note));
+				noticeCenter.take(outageNote.published(p.items));
 			});
 		const poll = startHealthPoll({
 			read: sourceHealth,
-			onHealth: (h) => {
-				health = h;
-				noticeCenter.take(withSourceNote(outageChanges(h), note));
-			},
+			onHealth: (h) => noticeCenter.take(outageNote.health(h)),
 			setInterval: (fn, ms) => setInterval(() => fn(), ms),
 			clearInterval: (h) => clearInterval(h as ReturnType<typeof setInterval>)
 		});
