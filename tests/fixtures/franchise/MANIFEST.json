@@ -3,14 +3,14 @@
  "fixtures": {
   "cases.json": {
    "source": "Hand-written: one case per anchor, what the walk must answer for it (the title of the run's first entry by start, which section holds the anchor, a side story's parent stories, ids a section must hold), pinned by backend/src/commands/franchise_corpus_test.rs.",
-   "size": 8080,
-   "sha256": "0a473878797cd7139c37292672f4fd77fa0951499814b68763aba7fe25b6b9a1"
+   "size": 8994,
+   "sha256": "f506096627d8c7788d11804a26a35a7272c48765157aaf90c283ed0918fbbc7f"
   },
   "listings.json": {
    "source": "Recorded by backend/src/commands/franchise_corpus_record_test.rs: the franchise walk run from every anchor in cases.json, each listing it asked for read with the app's query (KitsuClient::franchise_relations) and each detail with KitsuClient::anime_detail, artwork dropped (the walk never reads it).",
-   "captured_at": "2026-11-11",
-   "size": 228983,
-   "sha256": "86043b4437c542e82ed5bb8010a7ac90bc49604b6f1a2a9e058e99b0e7f04c34"
+   "captured_at": "2026-11-11; My Hero Academia's seasons and its second and fourth films 2026-11-12",
+   "size": 239190,
+   "sha256": "0cc3c271e1b9d73e4b5edca3cf9a692127012f77d21188ff71179d54717e672f"
   },
   "served-10089.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Boruto: Naruto the Movie (anime/10089) over listings.json, as GET /api/kitsu/franchise/10089 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -31,6 +31,11 @@
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Naruto (anime/11) over listings.json, as GET /api/kitsu/franchise/11 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
    "size": 6223,
    "sha256": "0ab288a01e264d2b9e4ee9bb0ea6bf882f4eed49d655a143012b7d7d2a96da84"
+  },
+  "served-11469.json": {
+   "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Boku no Hero Academia (anime/11469) over listings.json, as GET /api/kitsu/franchise/11469 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
+   "size": 5735,
+   "sha256": "6d3b9da357144b35b7611e037a30f02bd06f3941e0c91a26c9a1b04ddb03568b"
   },
   "served-115.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Hunter x Hunter (anime/115) over listings.json, as GET /api/kitsu/franchise/115 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -66,6 +71,11 @@
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Boruto: Naruto Next Generations (anime/13051) over listings.json, as GET /api/kitsu/franchise/13051 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
    "size": 6226,
    "sha256": "962eefa4503283dacef66e74bddf0a22e6656b43975442851946e69014db4eca"
+  },
+  "served-13881.json": {
+   "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Boku no Hero Academia 3 (anime/13881) over listings.json, as GET /api/kitsu/franchise/13881 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
+   "size": 5735,
+   "sha256": "be777bcf717c80e534408fdda735bf0f6ad75f304601fc5e34a76b355a684832"
   },
   "served-14084.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Boku no Hero Academia the Movie: Futari no Hero (anime/14084) over listings.json, as GET /api/kitsu/franchise/14084 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -127,6 +137,11 @@
    "size": 6490,
    "sha256": "c1075656b6f9e7fe378566509c8f254c258eaa01c1447ff347f0074a7bb9dd3d"
   },
+  "served-42205.json": {
+   "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Boku no Hero Academia the Movie 2: Heroes:Rising (anime/42205) over listings.json, as GET /api/kitsu/franchise/42205 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
+   "size": 3457,
+   "sha256": "e92649ef0c59bd8b491ed8809610247bd1ba732001b2aa6ba66b2757bac235aa"
+  },
   "served-428.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from One Piece: Taose! Kaizoku Ganzack (anime/428) over listings.json, as GET /api/kitsu/franchise/428 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
    "size": 18808,
@@ -151,6 +166,11 @@
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from SPY×FAMILY CODE: White (anime/46874) over listings.json, as GET /api/kitsu/franchise/46874 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
    "size": 1668,
    "sha256": "7438419049556b41e6ea89dc82474852ed6a40b2b827a492d3a0fb31134240cc"
+  },
+  "served-47844.json": {
+   "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Boku no Hero Academia THE MOVIE: YOU'RE NEXT (anime/47844) over listings.json, as GET /api/kitsu/franchise/47844 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
+   "size": 3457,
+   "sha256": "fc0a1a106f2a7465b1a1e1911100bd7adadf6e12f935bf616c1506a9081c9322"
   },
   "served-486.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Pocket Monsters (anime/486) over listings.json, as GET /api/kitsu/franchise/486 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",

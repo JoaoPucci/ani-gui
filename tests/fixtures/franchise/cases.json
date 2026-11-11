@@ -42,5 +42,9 @@
   {"franchise": "Dragon Ball", "anchor": "44544", "first": "Dragon Ball", "anchor_in": "entries", "note": "Dragon Ball Super: Super Hero, the sequel of Broly in the run: a film inside the run."},
   {"franchise": "SPY x FAMILY", "anchor": "46874", "first": "SPY×FAMILY", "anchor_in": "films", "parents": ["45619"], "note": "SPY×FAMILY CODE: White, which names SPY x FAMILY Part 2 its parent story: a film, under Films."},
   {"franchise": "Naruto", "anchor": "7543", "first": "Naruto", "anchor_in": "films", "parents": ["1555"], "note": "The Last: Naruto the Movie, which names Naruto: Shippuuden its parent story: a film, under Films."},
-  {"franchise": "Detective Conan", "anchor": "696", "first": "Detective Conan", "anchor_in": "films", "parents": ["210"], "note": "The first film, which names the series its parent story: a film, under Films."}
+  {"franchise": "Detective Conan", "anchor": "696", "first": "Detective Conan", "anchor_in": "films", "parents": ["210"], "note": "The first film, which names the series its parent story: a film, under Films."},
+  {"franchise": "My Hero Academia", "anchor": "11469", "first": "Boku no Hero Academia", "anchor_in": "entries", "sections": {"films": ["14084", "42205", "44209", "47844"]}, "note": "The first TV season: the seasons make the run, and the four films sit under Films."},
+  {"franchise": "My Hero Academia", "anchor": "13881", "first": "Boku no Hero Academia", "anchor_in": "entries", "note": "The third TV season, which the first film names as its parent story."},
+  {"franchise": "My Hero Academia", "anchor": "42205", "first": "Boku no Hero Academia the Movie: Futari no Hero", "anchor_in": "entries", "note": "The second film, which names no parent story: it names the fourth season as other."},
+  {"franchise": "My Hero Academia", "anchor": "47844", "first": "Boku no Hero Academia the Movie: Futari no Hero", "anchor_in": "entries", "note": "The fourth film, which names the seventh season its parent story."}
 ]

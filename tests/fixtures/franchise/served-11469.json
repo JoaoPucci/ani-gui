@@ -1,0 +1,276 @@
+{
+  "anchor": "11469",
+  "entries": [
+    {
+      "id": "11469",
+      "title": "Boku no Hero Academia",
+      "subtype": "TV",
+      "start": "2016-04-03",
+      "episodes": 13,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "13313",
+      "title": "Boku no Hero Academia 2nd Season: Hero Note",
+      "subtype": "special",
+      "start": "2017-03-25",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12268",
+      "title": "Boku no Hero Academia 2",
+      "subtype": "TV",
+      "start": "2017-04-01",
+      "episodes": 25,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "13881",
+      "title": "Boku no Hero Academia 3",
+      "subtype": "TV",
+      "start": "2018-04-07",
+      "episodes": 25,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "41971",
+      "title": "Boku no Hero Academia 4",
+      "subtype": "TV",
+      "start": "2019-10-12",
+      "episodes": 25,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "43108",
+      "title": "Boku no Hero Academia 5",
+      "subtype": "TV",
+      "start": "2021-03-27",
+      "episodes": 25,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "45240",
+      "title": "Boku no Hero Academia 6",
+      "subtype": "TV",
+      "start": "2022-10-01",
+      "episodes": 25,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47232",
+      "title": "Boku no Hero Academia 7",
+      "subtype": "TV",
+      "start": "2024-05-04",
+      "episodes": 21,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49279",
+      "title": "Boku no Hero Academia FINAL SEASON",
+      "subtype": "TV",
+      "start": "2025-10-04",
+      "episodes": 11,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50399",
+      "title": "Boku no Hero Academia No. 170+1: More",
+      "subtype": "special",
+      "start": "2026-05-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50701",
+      "title": "Boku no Hero Academia: I am a hero too",
+      "subtype": "special",
+      "start": "2026-08-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "11469",
+      "12268"
+    ],
+    [
+      "12268",
+      "13881"
+    ],
+    [
+      "13313",
+      "12268"
+    ],
+    [
+      "13881",
+      "41971"
+    ],
+    [
+      "41971",
+      "43108"
+    ],
+    [
+      "43108",
+      "45240"
+    ],
+    [
+      "45240",
+      "47232"
+    ],
+    [
+      "47232",
+      "49279"
+    ],
+    [
+      "49279",
+      "50399"
+    ],
+    [
+      "50399",
+      "50701"
+    ]
+  ],
+  "versions": [],
+  "films": [
+    {
+      "id": "14084",
+      "title": "Boku no Hero Academia the Movie: Futari no Hero",
+      "subtype": "movie",
+      "start": "2018-08-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42205",
+      "title": "Boku no Hero Academia the Movie 2: Heroes:Rising",
+      "subtype": "movie",
+      "start": "2019-12-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "44209",
+      "title": "Boku no Hero Academia the Movie: World Heroes' Mission",
+      "subtype": "movie",
+      "start": "2021-08-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47844",
+      "title": "Boku no Hero Academia THE MOVIE: YOU'RE NEXT",
+      "subtype": "movie",
+      "start": "2024-08-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "12511",
+      "title": "Boku no Hero Academia: Sukue! Kyuujo Kunren!",
+      "subtype": "OVA",
+      "start": "2017-04-04",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "14030",
+      "title": "Boku no Hero Academia: Training of the Dead",
+      "subtype": "OVA",
+      "start": "2017-06-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "43485",
+      "title": "Boku no Hero Academia: Ikinokore! Kesshi no Survival Kunren",
+      "subtype": "ONA",
+      "start": "2020-08-16",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46117",
+      "title": "Boku no Hero Academia: HLB",
+      "subtype": "ONA",
+      "start": "2022-08-01",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48276",
+      "title": "Boku no Hero Academia: Yuuei Heroes Battle",
+      "subtype": "OVA",
+      "start": "2023-10-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49435",
+      "title": "Vigilante: Boku no Hero Academia ILLEGALS",
+      "subtype": "TV",
+      "start": "2025-04-07",
+      "episodes": 13,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [
+    {
+      "id": "48700",
+      "title": "Boku no Hero Academia: Memories",
+      "subtype": "special",
+      "start": "2024-04-06",
+      "episodes": 4,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "parents": {},
+  "complete": true
+}
