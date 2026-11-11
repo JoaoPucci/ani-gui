@@ -540,9 +540,10 @@
 	// Removes and clears landed: a card read out before one answers again.
 	let historyWrites = 0;
 	const relink = createCardRelink({
-		// A check another card's overtook answers for nothing.
+		// A check another card's overtook answers for nothing, and so does
+		// one that could not be read: the pill stays, to be tried again.
 		offerStands: async (row, matchId) =>
-			(await cardLink.arrive(row, matchId)) ? Boolean(cardLink.offer) : null,
+			(await cardLink.arrive(row, matchId)) ? cardLink.stands : null,
 		settled: settledRows,
 		current: () => history ?? [],
 		// Cancelled with Home's other reads when it is left.

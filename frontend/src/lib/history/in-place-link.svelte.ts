@@ -132,7 +132,8 @@ export class InPlaceLinkSession extends LinkSession {
 	/** Whether the latest arrival's offer stands: null when it could not
 	 *  be read, so a check of the card may be asked again. */
 	get stands(): boolean | null {
-		return this.offer !== null;
+		if (this.offer) return true;
+		return this.unread ? null : false;
 	}
 
 	/** The surface is gone: the page was left. Whatever is still out

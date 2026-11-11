@@ -22,7 +22,7 @@ import { linkedNotice, linkFailure } from './link-notices';
 import { carryAudio } from './carry-audio';
 import { LinkPicker } from './link-picker.svelte';
 import { guessedGroup, type LinkDeps, type LinkOffer } from './link-offer';
-import { surfaceOffer } from './picked-offer';
+import { surfaceOfferRead } from './picked-offer';
 
 /** A notice to the user. */
 export interface LinkNotice {
@@ -50,6 +50,9 @@ export class LinkSession extends LinkPicker {
 	busy = $state(false);
 	/** Whether the latest arrival's offer is decided. */
 	settled = $state(false);
+	/** Whether the latest arrival's offer could not be read: none is
+	 *  known either way, and the next arrival asks again. */
+	unread = $state(false);
 	/** The history rows the card stands for, once worked out. */
 	group = $state<string[] | null>(null);
 
@@ -86,9 +89,11 @@ export class LinkSession extends LinkPicker {
 		this.open = false;
 		this.settled = false;
 		this.group = null;
-		const offer = await this.findOffer(row, pageId, { signal: reads.signal });
+		this.unread = false;
+		const found = await this.findOffer(row, pageId, { signal: reads.signal });
 		if (arrival !== this.#arrival) return false;
-		this.offer = offer;
+		this.offer = found.offer;
+		this.unread = found.unread;
 		this.settled = true;
 		return true;
 	}
@@ -100,9 +105,9 @@ export class LinkSession extends LinkPicker {
 		row: string | null,
 		pageId: string,
 		opts: ReadOptions
-	): Promise<LinkOffer | null> {
+	): Promise<{ offer: LinkOffer | null; unread: boolean }> {
 		const surface = { asksGuess: this.asksGuess, inPlayer: this.inPlayer };
-		return surfaceOffer(this.#deps, row, pageId, surface, opts);
+		return surfaceOfferRead(this.#deps, row, pageId, surface, opts);
 	}
 
 	/** Whether the arrival may ask about a guess: a session no guess

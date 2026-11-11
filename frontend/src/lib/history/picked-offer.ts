@@ -72,5 +72,17 @@ export async function surfaceOfferRead(
 	surface: { asksGuess: boolean; inPlayer: boolean },
 	opts?: ReadOptions
 ): Promise<{ offer: LinkOffer | null; unread: boolean }> {
-	return { offer: await surfaceOffer(deps, row, pageId, surface, opts), unread: false };
+	let failed = false;
+	const noted = <T>(read: Promise<T>): Promise<T> =>
+		read.catch((e: unknown) => {
+			failed = true;
+			throw e;
+		});
+	const watched: LinkDeps = {
+		...deps,
+		history: (...a) => noted(deps.history(...a)),
+		resolve: (...a) => noted(deps.resolve(...a))
+	};
+	const offer = await surfaceOffer(watched, row, pageId, surface, opts);
+	return { offer, unread: offer === null && failed };
 }
