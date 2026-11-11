@@ -68,7 +68,7 @@ describe('the strip copy', () => {
 describe('stackPartsText', () => {
 	it("lists JoJo's parts: the main story, films and versions, side stories, recaps", () => {
 		const jojo = FIXTURE_RUNS.find((r) => r.key === 'jojo')!;
-		expect(stackPartsText(franchiseSummary(jojo), true)).toEqual([
+		expect(stackPartsText(franchiseSummary(jojo, jojo.nameId), true)).toEqual([
 			'9 in the main story',
 			'4 films and versions',
 			'1 side story',
@@ -78,9 +78,9 @@ describe('stackPartsText', () => {
 
 	it('gives no counts for a franchise read in part: they may be short', () => {
 		const jojo = FIXTURE_RUNS.find((r) => r.key === 'jojo')!;
-		expect(stackPartsText(franchiseSummary(jojo), false)).toEqual([]);
-		expect(stackTotal(franchiseSummary(jojo), false)).toBeNull();
-		expect(stackTotal(franchiseSummary(jojo), true)).toBe(15);
+		expect(stackPartsText(franchiseSummary(jojo, jojo.nameId), false)).toEqual([]);
+		expect(stackTotal(franchiseSummary(jojo, jojo.nameId), false)).toBeNull();
+		expect(stackTotal(franchiseSummary(jojo, jojo.nameId), true)).toBe(15);
 	});
 
 	it('leaves out a part the franchise has none of, never the main story', () => {

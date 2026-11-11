@@ -113,7 +113,7 @@
 					</div>
 				{/if}
 				<div class="slot">
-					<StripFranchiseLink run={model.run} {id} complete={model.complete} />
+					<StripFranchiseLink run={model.run} front={model.front} {id} complete={model.complete} />
 				</div>
 			</footer>
 		</div>

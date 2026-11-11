@@ -101,6 +101,8 @@ const e = (
 const runFrom = (entries: WatchEntry[], links: RunLink[] = []): WatchRun =>
 	runOf({
 		anchor: entries[0].id,
+		name: entries[0].title,
+		name_from: entries[0].id,
 		entries,
 		links,
 		versions: [],

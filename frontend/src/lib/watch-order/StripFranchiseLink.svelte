@@ -24,16 +24,19 @@
 
 	let {
 		run,
+		front,
 		id,
 		complete
 	}: {
 		run: WatchRun;
+		/** The main-story entry the stack is fronted by. */
+		front: string;
 		id: string;
 		/** False for a franchise read in part: the stack gives no counts. */
 		complete: boolean;
 	} = $props();
 
-	const summary = $derived(franchiseSummary(run));
+	const summary = $derived(franchiseSummary(run, front));
 	const parts = $derived(stackPartsText(summary, complete));
 	const total = $derived(stackTotal(summary, complete));
 	const cards = $derived(stackCards(summary.posters, 3));

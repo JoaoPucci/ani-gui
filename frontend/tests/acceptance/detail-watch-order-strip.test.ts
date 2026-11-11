@@ -58,6 +58,8 @@ const FINAL = entry('50', 'Saga: Final Arc', 'TV', '2014-01-01');
 
 const FRANCHISE = {
 	anchor: KITSU_ID,
+	name: 'Saga',
+	name_from: '10',
 	entries: [SAGA, SECOND, ORIGINS, FINAL],
 	links: [
 		['10', '42'],

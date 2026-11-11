@@ -24,6 +24,8 @@ function payload(key: string, anchor: string, complete = true): FranchiseData {
 	const r = run(key);
 	return {
 		anchor,
+		name: `The ${key} franchise`,
+		name_from: r.nameId,
 		entries: r.entries,
 		links: r.links,
 		versions: r.versions,
@@ -180,6 +182,8 @@ describe('franchisePage', () => {
 		return {
 			franchise: {
 				anchor: ids[0],
+				name: entries[0].title,
+				name_from: ids[0],
 				entries,
 				links,
 				versions: [],

@@ -2032,7 +2032,12 @@
 				</div>
 			{:else if watchLink}
 				<div class="watch-order watch-order-link">
-					<StripFranchiseLink run={watchLink.run} {id} complete={watchLink.complete} />
+					<StripFranchiseLink
+						run={watchLink.run}
+						front={watchLink.front}
+						{id}
+						complete={watchLink.complete}
+					/>
 				</div>
 			{/if}
 

@@ -112,7 +112,7 @@ export function franchisePage(
 		run,
 		name: franchiseName(art.title, others),
 		art,
-		total: whole ? franchiseSummary(run).total : null,
+		total: whole ? franchiseSummary(run, run.nameId).total : null,
 		alone: whole && isAlone(run, id),
 		resume: now && {
 			entry: now.entry,

@@ -58,12 +58,16 @@ export interface FranchiseSummary {
 	readonly films: number;
 	readonly sides: number;
 	readonly recaps: number;
-	/** Up to three entries with a poster to fan out, from different parts of the franchise. */
+	/**
+	 * Up to three entries with a poster to fan out, from different parts
+	 * of the franchise, the front entry first.
+	 */
 	readonly posters: readonly WatchEntry[];
 }
 
-export function franchiseSummary(run: WatchRun): FranchiseSummary {
-	const first = run.entries.find((e) => e.id === run.nameId);
+/** The counts of `run`, its poster stack fronted by the main-story entry `front`. */
+export function franchiseSummary(run: WatchRun, front: string): FranchiseSummary {
+	const first = run.entries.find((e) => e.id === front);
 	const candidates = [
 		first,
 		run.films[0] ?? run.versions[0],
