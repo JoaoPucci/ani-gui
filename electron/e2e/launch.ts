@@ -17,6 +17,13 @@
  * desktop of whoever ran the suite before this, even under xvfb-run.
  * smoke.spec.ts asks the running app which platform it landed on.
  *
+ * And every launch here keeps the backend off the network. A spec's
+ * stubs answer only what the renderer asks after they are set, and the
+ * first page asks before then. The launched app gets a proxy that
+ * refuses every connection beyond this machine and records it
+ * (outboundAttempts); smoke.spec.ts asks the backend for something
+ * only GitHub knows and finds the attempt there.
+ *
  * Pre-condition: `pnpm run package` (or the chained `pnpm e2e`) has
  * produced `dist/linux-unpacked/`.
  */
@@ -28,6 +35,7 @@ import {
 } from '@playwright/test';
 import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import { launchRefusal } from '../lib/e2e-display.cjs';
 import { stopOwnGroup } from '../lib/own-group.cjs';
@@ -58,28 +66,140 @@ export const testLaunchSwitches = ['--no-sandbox', '--mute-audio'] as const;
  *  (backend/src/flags/launch.rs). */
 export const testRunEnv = { ANI_GUI_UNATTENDED: '1' } as const;
 
+/** A proxy that lets nothing through. It answers every request with
+ *  403 and closes, and records the request line: `CONNECT host:port`
+ *  for HTTPS, the absolute URL's request line for plain HTTP. */
+async function refusingProxy(): Promise<{ origin: string; seen: string[]; close: () => void }> {
+	const seen: string[] = [];
+	const server = net.createServer((socket) => {
+		let head = '';
+		socket.on('data', (chunk) => {
+			if (head.includes('\r\n')) return;
+			head += chunk.toString('latin1');
+			const end = head.indexOf('\r\n');
+			if (end < 0) return;
+			// `CONNECT host:port HTTP/1.1` or `GET http://… HTTP/1.1`.
+			seen.push(head.slice(0, end).replace(/ HTTP\/\d(\.\d)?$/, ''));
+			socket.end('HTTP/1.1 403 Forbidden\r\ncontent-length: 0\r\nconnection: close\r\n\r\n');
+		});
+		socket.on('error', () => socket.destroy());
+	});
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	// Never what keeps the test worker alive.
+	server.unref();
+	const { port } = server.address() as net.AddressInfo;
+	return { origin: `http://127.0.0.1:${port}`, seen, close: () => server.close() };
+}
+
+/** The proxy settings every test launch carries, pointing at `origin`:
+ *  the backend's HTTP clients (reqwest) and the provider transport
+ *  (curl) both read them, in either case. Loopback is exempt, so the
+ *  backend still reaches a spec's own local servers — a media fixture,
+ *  an upstream that never answers — and the renderer its backend. */
+function proxyEnv(origin: string): Record<string, string> {
+	const env: Record<string, string> = {};
+	for (const name of ['http_proxy', 'https_proxy', 'all_proxy']) {
+		env[name] = origin;
+		env[name.toUpperCase()] = origin;
+	}
+	const loopback = '127.0.0.1,localhost,::1';
+	env.no_proxy = loopback;
+	env.NO_PROXY = loopback;
+	return env;
+}
+
+/** Removes the scratch directory `dir`, that path alone. A failure is
+ *  reported, never thrown: it would surface in whatever test is running
+ *  when the app exits, or hide the launch failure being reported. */
+function removeScratch(dir: string): void {
+	try {
+		fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	} catch (err) {
+		console.warn(`e2e: could not remove the scratch profile ${dir}: ${err}`);
+	}
+}
+
+/** How long the backend may go on after the app has exited: the app
+ *  stops it as it quits without waiting, and its shutdown allows 3 s
+ *  for requests in flight and 5 s for teardown (backend/src/shutdown.rs). */
+const BACKEND_STOP_MS = 10_000;
+
+/** Profiles removed when their app exited, removed again once their
+ *  backend has had time to stop, in case it wrote there on its way out;
+ *  and again as the test worker exits, if that comes first. */
+const removedProfiles = new Set<string>();
+process.once('exit', () => {
+	for (const dir of removedProfiles) removeScratch(dir);
+});
+
+function removeAfterExit(dir: string): void {
+	removeScratch(dir);
+	removedProfiles.add(dir);
+	setTimeout(() => {
+		removeScratch(dir);
+		removedProfiles.delete(dir);
+	}, BACKEND_STOP_MS).unref();
+}
+
 /** Launch the packaged app with `env` as its whole environment, as a
  *  test run — unless that environment leads to a display someone may
  *  be looking at, which throws, saying how to run the suite instead.
  *  `binary` is another copy of the packaged tree's launcher, for a spec
- *  that ships the app a frontend of its own (splash-stuck.spec.ts). */
+ *  that ships the app a frontend of its own (splash-stuck.spec.ts).
+ *  `profile` is the scratch directory the spec made for this launch
+ *  (its HOME or XDG directories): it is removed, that path alone, once
+ *  the app has exited, and again once its backend has had time to stop,
+ *  or at once if the launch never starts. A worker killed before its
+ *  app exits leaves the profile behind. */
 export async function launchPackagedApp(
 	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env'],
-	{ binary = packagedBinary }: { binary?: string } = {}
+	{ binary = packagedBinary, profile }: { binary?: string; profile?: string } = {}
 ): Promise<ElectronApplication> {
 	const refusal = launchRefusal(env ?? {});
-	if (refusal) throw new Error(refusal);
+	if (refusal) {
+		if (profile) removeScratch(profile);
+		throw new Error(refusal);
+	}
 	// The launcher script execs the binary beside it in the same process;
 	// resolved before the launch, so a launched app is always recorded.
 	const exe = fs.realpathSync(`${binary}.bin`);
-	const app = await _electron.launch({
-		executablePath: binary,
-		args: [...testLaunchSwitches],
-		env: { ...env, ...testRunEnv }
+	// Whatever a spec stubs, the backend reaches no host beyond this
+	// machine: its proxy refuses every connection, and says which it
+	// refused (outboundAttempts). Set after the spec's environment, so
+	// no spec can lift it.
+	const proxy = await refusingProxy();
+	let app: ElectronApplication;
+	try {
+		app = await _electron.launch({
+			executablePath: binary,
+			args: [...testLaunchSwitches],
+			env: { ...env, ...proxyEnv(proxy.origin), ...testRunEnv }
+		});
+	} catch (err) {
+		proxy.close();
+		if (profile) removeScratch(profile);
+		throw err;
+	}
+	app.process().once('exit', () => {
+		proxy.close();
+		if (profile) removeAfterExit(profile);
 	});
 	launched.set(app, { child: app.process(), exe });
+	refused.set(app, proxy.seen);
 	return app;
 }
+
+/** Every connection the launched app tried to open to a host beyond
+ *  this machine, as `CONNECT host:port` or `GET http://…`, in the
+ *  order it tried them. The backend is what reads the proxy settings;
+ *  Chromium may too, on some desktops. */
+export function outboundAttempts(app: ElectronApplication): string[] {
+	const seen = refused.get(app);
+	if (!seen) throw new Error('outboundAttempts: not an app launchPackagedApp started');
+	return [...seen];
+}
+
+const refused = new WeakMap<ElectronApplication, string[]>();
 
 /** The process each launch started, recorded as it starts: Playwright
  *  stops answering `app.process()` once the app is closed, and stopApp
@@ -194,4 +314,49 @@ export async function routeContext(
 			if (!closed || attempt >= 3) throw err;
 		}
 	}
+}
+
+/** Answers every backend API request that none of a spec's own stubs
+ *  answers with a 501, and records it as `METHOD /path`. Registered
+ *  before the spec's stubs, since Playwright tries the most recently
+ *  registered route first: this one sees only what they leave. A spec
+ *  that claims its page runs on stubs asserts the record is empty; the
+ *  request itself never reaches the backend. The first mount can ask
+ *  while the stubs are still being set, so a spec that remounts its
+ *  page hands the record to remountFirstPage, which forgets what the
+ *  first mount sent. */
+export async function refuseUnstubbed(context: BrowserContext): Promise<string[]> {
+	const unstubbed: string[] = [];
+	await routeContext(context, /^http:\/\/127\.0\.0\.1:\d+\/api\//, (r) => {
+		const req = r.request();
+		unstubbed.push(`${req.method()} ${new URL(req.url()).pathname}`);
+		return r.fulfill({ status: 501, contentType: 'text/plain', body: 'unstubbed in this spec' });
+	});
+	return unstubbed;
+}
+
+/** Mounts the app's first page again, so every request it makes goes
+ *  through the routes a spec has set since launch: the first mount asks
+ *  before they are in place. A goto to the same URL would be a
+ *  client-side no-op, hence the bounce through about:blank. `witness`
+ *  is armed once the old page is gone and resolves when a stubbed
+ *  request of the new mount arrives, the proof that the stubs are live.
+ *  `forget`, a refuseUnstubbed record, is emptied at the same moment:
+ *  what it holds then was sent by the first mount, which may have asked
+ *  before the stub that answers it was set. */
+export async function remountFirstPage(
+	page: Page,
+	witness: () => Promise<void>,
+	{ forget }: { forget?: string[] } = {}
+): Promise<void> {
+	await page.waitForURL((u) => u.protocol !== 'about:');
+	const first = page.url();
+	// Settling is normally a second or two; bounded, so a request that
+	// never answers does not hold the bounce for the full timeout.
+	await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
+	await page.goto('about:blank');
+	forget?.splice(0);
+	const live = witness();
+	await page.goto(first, { waitUntil: 'domcontentloaded' });
+	await live;
 }

@@ -61,7 +61,7 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
     XDG_CACHE_HOME: path.join(tmp, "cache"),
     XDG_DATA_HOME: path.join(tmp, "data"),
     ANI_GUI_UNATTENDED: "1",
-  });
+  }, { profile: tmp });
   const page = await appWindow(app);
   return { app, page };
 }
