@@ -18,8 +18,8 @@
 //!    alternative version or setting is left out. The root never is.
 //!
 //! A side-story anchor whose run is itself alone, or holds no series
-//! (`franchise_walk_series.rs`), walks from its earliest parent story
-//! instead (`franchise_walk_run.rs`).
+//! (`franchise_walk_series.rs`), walks instead from the earliest parent
+//! story it or its run's members name (`franchise_walk_run.rs`).
 
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -75,6 +75,53 @@ fn a_film_that_names_no_parent_takes_the_parents_its_films_name() {
     );
 }
 
+/// A film that names no parent is placed by the parent check of the
+/// film that does, run with that film's own start: a named parent that
+/// started first is its parent whatever the film lists beneath it.
+#[test]
+fn a_film_s_parent_is_checked_with_its_own_start_from_any_film() {
+    let mut c = Catalogue::default();
+    c.add("1", "TV", Some("2010-01-01"))
+        .add("11", "movie", Some("2012-01-01"))
+        .add("12", "movie", Some("2013-01-01"))
+        .add("13", "special", Some("2014-01-01"));
+    for f in ["11", "12"] {
+        episodes(&mut c, f, Some(1));
+    }
+    c.rel("11", "sequel", "12")
+        .rel("12", "prequel", "11")
+        .rel("12", "parent_story", "1")
+        .rel("12", "summary", "13");
+    for anchor in ["11", "12"] {
+        let f = drive(anchor, &c);
+        assert_eq!(ids(&f.entries), ["1"], "from {anchor}");
+        assert_eq!(ids(&f.films), ["11", "12"], "from {anchor}");
+    }
+}
+
+/// A film that names a film of its own chain as its parent story is not
+/// placed under it: the chain is walked from the series the films name.
+#[test]
+fn a_parent_inside_the_films_own_chain_is_no_parent() {
+    let mut c = Catalogue::default();
+    c.add("1", "TV", Some("2010-01-01"))
+        .add("11", "movie", Some("2012-01-01"))
+        .add("12", "movie", Some("2013-01-01"));
+    for f in ["11", "12"] {
+        episodes(&mut c, f, Some(1));
+    }
+    c.rel("11", "sequel", "12")
+        .rel("12", "prequel", "11")
+        .rel("11", "parent_story", "1")
+        .rel("12", "parent_story", "11");
+    for anchor in ["11", "12"] {
+        let f = drive(anchor, &c);
+        assert_eq!(ids(&f.entries), ["1"], "from {anchor}");
+        assert_eq!(ids(&f.films), ["11", "12"], "from {anchor}");
+        assert_eq!(f.parents.get(anchor).cloned(), Some(vec!["1".to_string()]));
+    }
+}
+
 #[test]
 fn from_a_season_the_answer_is_unchanged() {
     let f = drive("1", &hero());
@@ -128,78 +175,134 @@ fn a_run_of_one_episode_ovas_is_a_run_of_one_offs_and_an_ova_of_unknown_count_a_
     };
     let f = drive("2", &shape(Some(1)));
     assert_eq!(ids(&f.entries), ["1"]);
-    assert_eq!(ids(&f.sides), ["2"]);
+    // The OVA opened and the one after it, which the series does not
+    // list, both sit beside the series.
+    assert_eq!(ids(&f.sides), ["2", "3"]);
     for count in [None, Some(0), Some(2)] {
         let f = drive("2", &shape(count));
         assert_eq!(ids(&f.entries), ["2", "3"], "{count:?}");
     }
 }
 
-/// A season chain, a film chain, and which films name which seasons
-/// as their parent story (at least one); the anchor is a film.
-fn hero_like() -> BoxedStrategy<(Catalogue, String)> {
+/// Which entry a film names as its parent story: none, a season, or
+/// another film of its own chain.
+#[derive(Debug, Clone, Copy)]
+enum Named {
+    Nothing,
+    Season(usize),
+    Film(usize),
+}
+
+/// A season chain and a film chain, each started in any year, each
+/// listing recaps beneath it (a season at least as many as any film,
+/// as a series is the hub its films hang off), and which entry each
+/// film names as its parent story, at least one film naming a season.
+/// Seasons list none of the films.
+fn hero_like() -> BoxedStrategy<Catalogue> {
     (1usize..5, 1usize..5)
         .prop_flat_map(|(seasons, films)| {
+            let named = prop_oneof![
+                Just(Named::Nothing),
+                (0..seasons).prop_map(Named::Season),
+                (0..films).prop_map(Named::Film),
+            ];
             (
-                Just(seasons),
-                Just(films),
-                prop::collection::vec(prop::option::of(0..seasons), films),
-                0..films,
+                prop::collection::vec(1990u16..2030, seasons),
+                prop::collection::vec(1990u16..2030, films),
+                prop::collection::vec(named, films),
+                prop::collection::vec(0usize..3, films),
             )
         })
-        .prop_filter("a film names a parent", |(_, _, named, _)| {
-            named.iter().any(Option::is_some)
+        .prop_filter("a film names a season", |(_, _, named, _)| {
+            named.iter().any(|n| matches!(n, Named::Season(_)))
         })
-        .prop_map(|(seasons, films, named, anchor)| {
+        .prop_map(|(season_years, film_years, named, film_recaps)| {
             let s = |i: usize| format!("{}", 100 + i);
             let f = |i: usize| format!("{}", 200 + i);
             let mut c = Catalogue::default();
-            for i in 0..seasons {
-                c.add(&s(i), "TV", Some(&format!("{}-01-01", 2000 + i)));
+            let mut recap = 300;
+            let mut recaps = |c: &mut Catalogue, of: &str, n: usize| {
+                for _ in 0..n {
+                    recap += 1;
+                    let id = recap.to_string();
+                    c.add(&id, "special", Some("2031-01-01"));
+                    c.rel(of, "summary", &id);
+                }
+            };
+            for (i, y) in season_years.iter().enumerate() {
+                c.add(&s(i), "TV", Some(&format!("{y}-01-01")));
             }
-            for i in 0..films {
-                c.add(&f(i), "movie", Some(&format!("{}-06-01", 2000 + i)));
+            for (i, y) in film_years.iter().enumerate() {
+                c.add(&f(i), "movie", Some(&format!("{y}-06-01")));
                 episodes(&mut c, &f(i), Some(1));
             }
-            for i in 1..seasons {
+            for i in 1..season_years.len() {
                 c.rel(&s(i - 1), "sequel", &s(i))
                     .rel(&s(i), "prequel", &s(i - 1));
             }
-            for i in 1..films {
+            for i in 1..film_years.len() {
                 c.rel(&f(i - 1), "sequel", &f(i))
                     .rel(&f(i), "prequel", &f(i - 1));
             }
-            for (i, p) in named.iter().enumerate() {
-                if let Some(p) = p {
-                    c.rel(&f(i), "parent_story", &s(*p));
+            for i in 0..season_years.len() {
+                recaps(&mut c, &s(i), 3);
+            }
+            for (i, n) in film_recaps.iter().enumerate() {
+                recaps(&mut c, &f(i), *n);
+            }
+            for (i, n) in named.iter().enumerate() {
+                match n {
+                    Named::Nothing => {}
+                    Named::Season(p) => {
+                        c.rel(&f(i), "parent_story", &s(*p));
+                    }
+                    Named::Film(p) => {
+                        c.rel(&f(i), "parent_story", &f(*p));
+                    }
                 }
             }
-            (c, f(anchor))
+            c
         })
         .boxed()
+}
+
+/// The ids of `cat`'s entries of `subtype`, sorted.
+fn of_subtype<'a>(cat: &'a Catalogue, subtype: &str) -> Vec<&'a str> {
+    let mut out: Vec<&str> = cat
+        .entries
+        .values()
+        .filter(|e| e.subtype.as_deref() == Some(subtype))
+        .map(|e| e.id.as_str())
+        .collect();
+    out.sort_unstable();
+    out
+}
+
+fn sorted(entries: &[FranchiseEntry]) -> Vec<&str> {
+    let mut out = ids(entries);
+    out.sort_unstable();
+    out
 }
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(128))]
 
-    /// From any film of a film chain that names a season chain its
-    /// parent, the seasons are the main story, every film is under
-    /// Films, and the anchor is placed under seasons only.
+    /// From every film of a film chain that names a season chain its
+    /// parent, the answer is the same: the seasons are the main story,
+    /// every film is under Films, and the film opened is placed under
+    /// seasons only, whichever film it is, whatever the years, and
+    /// whatever the films name or list beneath them.
     #[test]
-    fn films_naming_a_series_are_never_its_main_story((cat, anchor) in hero_like()) {
-        let f = drive(&anchor, &cat);
-        let seasons: Vec<&str> = cat.entries.values()
-            .filter(|e| e.subtype.as_deref() == Some("TV"))
-            .map(|e| e.id.as_str())
-            .collect();
-        let mut got = ids(&f.entries);
-        got.sort_unstable();
-        let mut want = seasons.clone();
-        want.sort_unstable();
-        prop_assert_eq!(got, want);
-        prop_assert!(f.films.iter().any(|e| e.id == anchor));
-        let parents = f.parents.get(&anchor).cloned().unwrap_or_default();
-        prop_assert!(!parents.is_empty());
-        prop_assert!(parents.iter().all(|p| seasons.contains(&p.as_str())));
+    fn films_naming_a_series_are_never_its_main_story(cat in hero_like()) {
+        let seasons = of_subtype(&cat, "TV");
+        let films = of_subtype(&cat, "movie");
+        for anchor in &films {
+            let f = drive(anchor, &cat);
+            prop_assert_eq!(sorted(&f.entries), seasons.clone(), "from {}", anchor);
+            prop_assert_eq!(sorted(&f.films), films.clone(), "from {}", anchor);
+            let parents = f.parents.get(*anchor).cloned().unwrap_or_default();
+            prop_assert!(!parents.is_empty(), "from {}", anchor);
+            prop_assert!(parents.iter().all(|p| seasons.contains(&p.as_str())));
+        }
     }
 }
