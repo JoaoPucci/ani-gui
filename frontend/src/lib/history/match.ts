@@ -94,7 +94,7 @@ async function resolveWithTrust(
 	// `unread` once a read on the way failed.
 	const read: { unread?: true; trustUnread?: true } = {};
 	const stored = await storedBinding(preliminary, opts, read);
-	if (stored) return { match: stored.ref, trusted: stored.played };
+	if (stored) return { match: stored.ref, trusted: stored.played, ...read };
 	const match = await guessKitsuMatch(preliminary, opts, read);
 	return { match, trusted: false, ...read };
 }
