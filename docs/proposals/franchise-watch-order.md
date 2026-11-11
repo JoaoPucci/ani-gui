@@ -1329,7 +1329,8 @@ The rules below hold on every surface:
   of the show, so the strip makes no claim that needs the whole: no
   position, in the strip or the masthead, no total, no fork or loop
   caption, no join or fork count, and an empty column stays blank. A
-  side story keeps its caption.
+  side story keeps its caption: "Side story", or "Film" for a film,
+  which the franchise page lists under Films.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
   keys page it); every card and tile is a link with the poster card's
   bone focus ring; the entry being viewed is not a link. The line for

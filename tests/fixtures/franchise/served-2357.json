@@ -1,0 +1,177 @@
+{
+  "anchor": "2357",
+  "entries": [
+    {
+      "id": "2357",
+      "title": "Kara no Kyoukai 1: Fukan Fuukei",
+      "subtype": "movie",
+      "start": "2007-12-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3248",
+      "title": "Kara no Kyoukai 2: Satsujin Kousatsu (Zen)",
+      "subtype": "movie",
+      "start": "2007-12-29",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3249",
+      "title": "Kara no Kyoukai 3: Tsuukaku Zanryuu",
+      "subtype": "movie",
+      "start": "2008-02-09",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3545",
+      "title": "Kara no Kyoukai 4: Garan no Dou",
+      "subtype": "movie",
+      "start": "2008-05-24",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3546",
+      "title": "Kara no Kyoukai 5: Mujun Rasen",
+      "subtype": "movie",
+      "start": "2008-08-16",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3983",
+      "title": "Kara no Kyoukai 6: Boukyaku Rokuon",
+      "subtype": "movie",
+      "start": "2008-12-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3984",
+      "title": "Kara no Kyoukai 7: Satsujin Kousatsu (Kou)",
+      "subtype": "movie",
+      "start": "2009-08-08",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4804",
+      "title": "Kara no Kyoukai 8: Shuushou",
+      "subtype": "special",
+      "start": "2011-02-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7167",
+      "title": "Kara no Kyoukai: Mirai Fukuin",
+      "subtype": "movie",
+      "start": "2013-09-28",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "2357",
+      "3248"
+    ],
+    [
+      "3248",
+      "3249"
+    ],
+    [
+      "3249",
+      "3545"
+    ],
+    [
+      "3545",
+      "3546"
+    ],
+    [
+      "3546",
+      "3983"
+    ],
+    [
+      "3983",
+      "3984"
+    ],
+    [
+      "3984",
+      "4804"
+    ],
+    [
+      "4804",
+      "7167"
+    ]
+  ],
+  "versions": [],
+  "films": [
+    {
+      "id": "8432",
+      "title": "Kara no Kyoukai: Manner Movies",
+      "subtype": "movie",
+      "start": "2007-12-01",
+      "episodes": 7,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4637",
+      "title": "Kara no Kyoukai Remix: Gate of Seventh Heaven",
+      "subtype": "movie",
+      "start": "2009-03-14",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8361",
+      "title": "Kara no Kyoukai: Mirai Fukuin - Manner Movie",
+      "subtype": "movie",
+      "start": "2013-09-28",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "8305",
+      "title": "Kara no Kyoukai: Mirai Fukuin - Extra Chorus",
+      "subtype": "special",
+      "start": "2013-09-28",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [],
+  "parents": {},
+  "complete": true
+}
