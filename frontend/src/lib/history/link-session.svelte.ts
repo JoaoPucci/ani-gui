@@ -17,6 +17,7 @@
  * named a show for ($lib/history/picked-offer.ts).
  */
 
+import type { ReadOptions } from '$lib/api';
 import { linkedNotice, linkFailure } from './link-notices';
 import { carryAudio } from './carry-audio';
 import { LinkPicker } from './link-picker.svelte';
@@ -79,12 +80,13 @@ export class LinkSession extends LinkPicker {
 	 *  session's: no when a later arrival overtook it. */
 	async arrive(row: string | null, pageId: string): Promise<boolean> {
 		const arrival = ++this.#arrival;
+		const reads = this.beginReads();
 		this.#pageId = pageId;
 		this.offer = null;
 		this.open = false;
 		this.settled = false;
 		this.group = null;
-		const offer = await this.findOffer(row, pageId);
+		const offer = await this.findOffer(row, pageId, { signal: reads.signal });
 		if (arrival !== this.#arrival) return false;
 		this.offer = offer;
 		this.settled = true;
@@ -94,9 +96,13 @@ export class LinkSession extends LinkPicker {
 	/** The offer the page `pageId` makes for the card row `row`: a
 	 *  guess's, else the way to change again a row the user named a show
 	 *  for ($lib/history/picked-offer.ts). */
-	protected async findOffer(row: string | null, pageId: string): Promise<LinkOffer | null> {
-		const guess = this.asksGuess ? await linkOffer(this.#deps, row, pageId) : null;
-		return guess ?? offerAgain(this.#deps, row, pageId, this.inPlayer);
+	protected async findOffer(
+		row: string | null,
+		pageId: string,
+		opts: ReadOptions
+	): Promise<LinkOffer | null> {
+		const guess = this.asksGuess ? await linkOffer(this.#deps, row, pageId, opts) : null;
+		return guess ?? offerAgain(this.#deps, row, pageId, this.inPlayer, opts);
 	}
 
 	/** Whether the arrival may ask about a guess: a session no guess

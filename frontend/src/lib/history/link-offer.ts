@@ -24,6 +24,7 @@
  */
 
 import type { HistoryEntry, KitsuAnimeRef, LinkOutcome, ReadOptions } from '$lib/api';
+import { readOpts } from './read-opts';
 import { resolveHistoryEntry } from './resolve';
 import { mergeCandidates, slugSearchTerm, type LinkCandidate } from './link-candidates';
 
@@ -56,24 +57,27 @@ export interface LinkOffer {
 async function guessedAs(
 	deps: LinkDeps,
 	entry: HistoryEntry,
-	pageId: string
+	pageId: string,
+	opts?: ReadOptions
 ): Promise<KitsuAnimeRef | null> {
-	const { match, trusted } = await deps.resolve(entry);
+	const { match, trusted } = await deps.resolve(entry, ...readOpts(opts ?? {}));
 	return match && !trusted && match.id === pageId ? match : null;
 }
 
 /** The offer the show page `pageId` makes for the guessed card's row
- *  `row`, or null when it makes none. A failure to read makes none. */
+ *  `row`, or null when it makes none. A failure to read makes none, and
+ *  so does a read cancelled with the visit `opts` names. */
 export async function linkOffer(
 	deps: LinkDeps,
 	row: string | null,
-	pageId: string
+	pageId: string,
+	opts?: ReadOptions
 ): Promise<LinkOffer | null> {
 	if (!row) return null;
 	try {
-		const entry = (await deps.history()).find((e) => e.id === row);
+		const entry = (await deps.history(...readOpts(opts ?? {}))).find((e) => e.id === row);
 		if (!entry) return null;
-		const current = await guessedAs(deps, entry, pageId);
+		const current = await guessedAs(deps, entry, pageId, opts);
 		return current ? { entry, current } : null;
 	} catch {
 		return null;
@@ -82,10 +86,15 @@ export async function linkOffer(
 
 /** The candidates for the offer's row: both searches, each allowed to
  *  fail on its own. */
-export async function loadCandidates(deps: LinkDeps, offer: LinkOffer): Promise<LinkCandidate[]> {
+export async function loadCandidates(
+	deps: LinkDeps,
+	offer: LinkOffer,
+	opts?: ReadOptions
+): Promise<LinkCandidate[]> {
 	const title = resolveHistoryEntry(offer.entry, null).searchTitle;
 	const slug = slugSearchTerm(offer.entry.id);
-	const quiet = (q: string | null) => (q ? deps.search(q).catch(() => []) : Promise.resolve([]));
+	const quiet = (q: string | null) =>
+		q ? deps.search(q, ...readOpts(opts ?? {})).catch(() => []) : Promise.resolve([]);
 	const [titleHits, slugHits] = await Promise.all([quiet(title), quiet(slug)]);
 	return mergeCandidates(offer.current, titleHits, slugHits);
 }
@@ -95,9 +104,10 @@ export async function loadCandidates(deps: LinkDeps, offer: LinkOffer): Promise<
 export async function searchCandidates(
 	deps: LinkDeps,
 	offer: LinkOffer,
-	query: string
+	query: string,
+	opts?: ReadOptions
 ): Promise<LinkCandidate[]> {
-	const hits = await deps.search(query.trim());
+	const hits = await deps.search(query.trim(), ...readOpts(opts ?? {}));
 	return mergeCandidates(null, hits, []).map((c) => ({
 		...c,
 		current: c.ref.id === offer.current.id
@@ -109,7 +119,9 @@ export async function searchCandidates(
  *  own listing. The rows are asked side by side, as Continue Watching
  *  asks them; a row whose match cannot be read is left out. For a card
  *  the user named a show for (`saved`), the rows are those recorded as
- *  that show: the naming moved them all, and no guess matches them now. */
+ *  that show: the naming moved them all, and no guess matches them now.
+ *  Read with no visit's signal: the rows it names are the ones a link
+ *  writes, and a link still out when the page goes is saved all the same. */
 export async function guessedGroup(deps: LinkDeps, offer: LinkOffer): Promise<string[]> {
 	const others = (await deps.history()).filter((e) => e.id !== offer.entry.id);
 	const saved = offer.saved;

@@ -133,6 +133,7 @@ export class InPlaceLinkSession extends LinkSession {
 	 *  answers to nothing on it, and leaves no pick to switch to. */
 	leave(): void {
 		this.#surface.leave();
+		this.endReads();
 		this.linked = null;
 		this.supersede();
 	}

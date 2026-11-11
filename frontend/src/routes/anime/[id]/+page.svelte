@@ -1749,10 +1749,16 @@
 	// Every link answered while the page is on screen, made here or on a
 	// page since left ($lib/history/link-deps.ts), reads the show's
 	// history again: the page's Continue follows the rows the link wrote.
+	// The re-read is the shown show's, cancelled with its other reads.
 	const stopHearing = onHistoryLinked(() => {
 		const currentId = id;
 		const latest = resumeLookups();
-		void lookupResume(currentId, historyByKitsu, kitsuAnimeDetail(currentId))
+		const reads = showReads;
+		const read = { signal: reads.signal };
+		void reads
+			.keep(
+				lookupResume(currentId, (k) => historyByKitsu(k, read), kitsuAnimeDetail(currentId, read))
+			)
 			.then((h) => {
 				if (id !== currentId || !latest()) return;
 				resumeEntry = h;
@@ -1760,7 +1766,12 @@
 			})
 			.catch(() => {});
 	});
-	onDestroy(stopHearing);
+	// The page going cancels the show question's reads still out; a link
+	// still out is saved all the same.
+	onDestroy(() => {
+		stopHearing();
+		linkSession.endReads();
+	});
 	$effect(() => void linkSession.arrive(guessedRow, id));
 
 	function onPickEpisode(n: number) {

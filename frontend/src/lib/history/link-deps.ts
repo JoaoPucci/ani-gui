@@ -12,12 +12,14 @@
 import { historyLink, historyLinkGroup, historyList, kitsuSearch } from '$lib/api';
 import type { LinkDeps } from './link-offer';
 import { resolveKitsuMatchWithTrust } from './match';
+import { readOpts } from './read-opts';
 import { resolveHistoryEntry } from './resolve';
 
 export function appLinkDeps(): LinkDeps {
 	return {
 		history: historyList,
-		resolve: (entry) => resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null)),
+		resolve: (entry, opts) =>
+			resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null), ...readOpts(opts ?? {})),
 		search: kitsuSearch,
 		link: (card, rows, kitsuId) => announced(historyLink(card, rows, kitsuId)),
 		group: historyLinkGroup

@@ -545,7 +545,8 @@
 			(await cardLink.arrive(row, matchId)) ? Boolean(cardLink.offer) : null,
 		settled: settledRows,
 		current: () => history ?? [],
-		list: historyList,
+		// Cancelled with Home's other reads when it is left.
+		list: () => historyList({ signal: pageReads.signal }),
 		order: (rows) => sortByWatchedAt(rows, historyWatchedAt),
 		setHistory: (rows) => {
 			history = rows;

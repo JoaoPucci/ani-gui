@@ -4,9 +4,15 @@
  * $lib/history/link-session.svelte.ts, which extends it, for the
  * per-file complexity bar. Each load or search is numbered, and only
  * the latest one's answer is shown.
+ *
+ * The offer's reads and the picker's searches are reads of the page the
+ * picker is on ($lib/navigation/visit): each takes the signal of the
+ * arrival that began them, which the next arrival or the page going
+ * cancels, and nothing a cancelled one answers is shown.
  */
 
 import { continueEpisode } from '$lib/play/next-episode';
+import { visitSeries, type Visit } from '$lib/navigation/visit';
 import { linkWarnings, type LinkCandidate, type LinkWarning } from './link-candidates';
 import { loadCandidates, searchCandidates, type LinkDeps, type LinkOffer } from './link-offer';
 
@@ -23,6 +29,8 @@ export class LinkPicker {
 
 	#pickerDeps: LinkDeps;
 	#query = 0;
+	#reads = visitSeries();
+	#visit: Visit | null = null;
 
 	constructor(deps: LinkDeps) {
 		this.#pickerDeps = deps;
@@ -49,6 +57,19 @@ export class LinkPicker {
 		);
 	}
 
+	/** Begin the reads of an arrival, cancelling those of the one before. */
+	protected beginReads(): Visit {
+		this.#visit = this.#reads.next();
+		return this.#visit;
+	}
+
+	/** `read(opts)`, with the signal of the arrival's reads, settled
+	 *  only while that arrival's reads last. */
+	#kept<T>(read: (opts: { signal?: AbortSignal }) => Promise<T>): Promise<T> {
+		const visit = this.#visit;
+		return visit ? visit.keep(read({ signal: visit.signal })) : read({});
+	}
+
 	/** Show the offer's own candidates. */
 	protected async loadFor(offer: LinkOffer): Promise<void> {
 		this.chosen = null;
@@ -56,7 +77,7 @@ export class LinkPicker {
 		this.failed = false;
 		this.candidates = null;
 		const query = ++this.#query;
-		const found = await loadCandidates(this.#pickerDeps, offer);
+		const found = await this.#kept((opts) => loadCandidates(this.#pickerDeps, offer, opts));
 		if (query === this.#query && this.offer === offer) this.candidates = found;
 	}
 
@@ -69,7 +90,9 @@ export class LinkPicker {
 		const asked = ++this.#query;
 		const current = () => asked === this.#query && this.offer === offer;
 		try {
-			const found = await searchCandidates(this.#pickerDeps, offer, query);
+			const found = await this.#kept((opts) =>
+				searchCandidates(this.#pickerDeps, offer, query, opts)
+			);
 			if (current()) this.candidates = found;
 		} catch {
 			if (current()) {
@@ -80,7 +103,9 @@ export class LinkPicker {
 	}
 
 	/** The page went: the reads of the arrival still out are cancelled. */
-	endReads(): void {}
+	endReads(): void {
+		this.#reads.end();
+	}
 
 	/** Pick a show, or go back to the list (null). */
 	choose(candidate: LinkCandidate | null): void {
