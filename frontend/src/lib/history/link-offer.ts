@@ -28,7 +28,7 @@
 import type { HistoryEntry, KitsuAnimeRef, LinkOutcome, ReadOptions } from '$lib/api';
 import { readOpts } from './read-opts';
 import { resolveHistoryEntry } from './resolve';
-import { mergeCandidates, slugSearchTerm, type LinkCandidate } from './link-candidates';
+import { mergeCandidates, type LinkCandidate } from './link-candidates';
 
 /** What the page needs from the app. */
 export interface LinkDeps {
@@ -109,7 +109,8 @@ export async function loadCandidates(
 	opts?: ReadOptions
 ): Promise<LinkCandidate[]> {
 	const title = resolveHistoryEntry(offer.entry, null).searchTitle;
-	const slug = slugSearchTerm(offer.entry.id);
+	// The words of the row's key, which the backend reads off it.
+	const slug = offer.entry.slug_term ?? null;
 	const quiet = (q: string | null) =>
 		q ? deps.search(q, ...readOpts(opts ?? {})).catch(() => []) : Promise.resolve([]);
 	const [titleHits, slugHits] = await Promise.all([quiet(title), quiet(slug)]);

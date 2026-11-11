@@ -181,17 +181,24 @@ async fn get_proxy_base_url(State(state): State<Arc<AppState>>) -> Result<Json<S
     Ok(Json(proxy_url::proxy_base_url(&state)?))
 }
 
-/// A history row as Continue Watching reads it: the row, and the
-/// release year its show key names among its slug's words
-/// ([`crate::scraper::provider::key_year`]) — the renderer does not
-/// read slugs, and the year is what tells apart listings a provider
-/// titles alike ("JoJo's Bizarre Adventure", three times over).
+/// A history row as Continue Watching reads it: the row, and what its
+/// show key carries that the renderer needs, since the renderer does
+/// not read slugs — the release year its slug's words name
+/// ([`crate::scraper::provider::key_year`]), which tells apart listings
+/// a provider titles alike ("JoJo's Bizarre Adventure", three times
+/// over), and the words themselves, for the change-show picker's
+/// search.
 #[derive(serde::Serialize)]
 struct HistoryRow {
     #[serde(flatten)]
     entry: HistoryEntry,
     #[serde(skip_serializing_if = "Option::is_none")]
     key_year: Option<u32>,
+    /// The Kitsu-searchable words its show key carries
+    /// ([`crate::scraper::provider::key_search_term`]), which the
+    /// change-show picker searches beside the saved title.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slug_term: Option<String>,
     /// The Continue card whose guessed play wrote this row on another
     /// listing ([`crate::commands::guessed_from`]): the renderer stands
     /// the card for that line while both show as the same show.
@@ -217,6 +224,7 @@ async fn get_history(
             .into_iter()
             .map(|entry| HistoryRow {
                 key_year: crate::scraper::provider::key_year(&entry.id),
+                slug_term: crate::scraper::provider::key_search_term(&entry.id),
                 guessed_from: from.remove(&entry.id),
                 named: crate::commands::linked_note::stands(
                     entry.kitsu_id.as_deref(),

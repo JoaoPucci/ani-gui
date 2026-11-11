@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import * as fc from 'fast-check';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
-import { linkWarnings, mergeCandidates, slugSearchTerm } from './link-candidates';
+import { linkWarnings, mergeCandidates } from './link-candidates';
 
 function ref(id: string, over: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {
@@ -30,24 +30,6 @@ function ref(id: string, over: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 function row(id: string, title: string, ep_no = '1'): HistoryEntry {
 	return { id, title, ep_no };
 }
-
-describe('slugSearchTerm', () => {
-	it("reads a walked provider's slug without its label and number", () => {
-		expect(slugSearchTerm('hianime:jojos-bizarre-adventure-2000-5182')).toBe(
-			'jojos bizarre adventure 2000'
-		);
-	});
-
-	it("reads a retired provider's bare slug", () => {
-		expect(slugSearchTerm('naruto-shippuden-3687')).toBe('naruto shippuden');
-	});
-
-	it('has none for an id that is not slug-shaped', () => {
-		expect(slugSearchTerm('vDTSJHSpYnrkZnAvG')).toBeNull();
-		expect(slugSearchTerm('hianime:5182')).toBeNull();
-		expect(slugSearchTerm('hianime:Black-Clover-949')).toBeNull();
-	});
-});
 
 describe('mergeCandidates', () => {
 	it('leads with the show shown now, then interleaves the two searches', () => {
