@@ -17,8 +17,9 @@
 //! 3. An entry that, with any entry on its path, lists the other as an
 //!    alternative version or setting is left out. The root never is.
 //!
-//! A side-story anchor whose run is itself alone walks from its
-//! earliest parent story instead.
+//! A side-story anchor whose run is itself alone, or holds no series
+//! (`franchise_walk_series.rs`), walks from its earliest parent story
+//! instead (`franchise_walk_run.rs`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
