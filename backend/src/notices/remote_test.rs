@@ -241,7 +241,7 @@ fn a_notice_needs_a_well_formed_id_and_ids_are_unique() {
 }
 
 #[test]
-fn a_title_or_body_that_is_not_text_drops_the_notice() {
+fn a_title_or_body_that_is_empty_blank_or_not_text_drops_the_notice() {
     let v = block(vec![
         json!({ "id": "t", "title": 7 }),
         json!({ "id": "b", "title": "B", "body": 7 }),

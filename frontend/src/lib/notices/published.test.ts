@@ -63,7 +63,7 @@ describe("the backend's answer", () => {
 		}
 	});
 
-	it('passes over an entry of the list that is not a notice', () => {
+	it('passes over an entry of the list that is not an object', () => {
 		const got = readPublished({ donation_ask: null, items: [null, 'nope', 7, item({ id: 'ok' })] });
 		expect(got.items.map((n) => n.id)).toEqual(['ok']);
 	});
