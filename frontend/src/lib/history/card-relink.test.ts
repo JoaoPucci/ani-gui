@@ -66,6 +66,22 @@ describe('whether a guessed card still stands', () => {
 		expect(h.published).toEqual([['a', '5']]);
 	});
 
+	it('lifts the settling once the row is matched again, so a named row keeps its way to change it', async () => {
+		// A link made on an earlier visit lands while Home is open, and the
+		// pill is clicked before the cards are read again: the check finds
+		// the linked show, not the one shown, and settles the row. The
+		// reading again matches it to the linked show, which the user named:
+		// the settling was about the show it left.
+		const h = home([row('a')], [[{ ...row('a', '5'), named: true }]], {
+			offerStands: async () => false
+		});
+		expect(await h.relink.stillGuessed('a', 'g')).toBe(false);
+		expect(h.settled.has('a')).toBe(true);
+		await flush();
+		expect(h.published).toEqual([['a', '5']]);
+		expect(h.settled.has('a')).toBe(false);
+	});
+
 	it('settles the row even when the cards cannot be read again, and reads again next time', async () => {
 		// The history read fails: the settling stands, nothing is left
 		// unhandled, and the next read goes ahead.

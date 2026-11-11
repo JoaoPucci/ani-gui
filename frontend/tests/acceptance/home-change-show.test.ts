@@ -358,6 +358,22 @@ describe('a card that stopped being a guess while Home was open', () => {
 		expect(dialog()).toBeNull();
 	});
 
+	it('gets its pill back once it shows the show a link from elsewhere named for it', async () => {
+		await openHome();
+		// A link made on an earlier visit lands now, naming the show: the
+		// pill is clicked before the cards are read again, and the check
+		// finds the named show, not the one shown.
+		backend.rows = backend.rows.map((r) =>
+			r.id === JOJO_CARD ? { ...r, kitsu_id: JOJO_RIGHT, named: true } : r
+		);
+		pill(JOJO_CARD)!.click();
+		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the card as the named show');
+		await settle();
+		expect(dialog()).toBeNull();
+		// The way to change it again, as on every line the user named.
+		expect(pill(JOJO_CARD)).not.toBeNull();
+	});
+
 	it('keeps its pill when the check cannot read the history, and opens on the next click', async () => {
 		await openHome();
 		// The database is busy for the check's read, once.
