@@ -1623,8 +1623,8 @@ The maintainer answered the second round's six questions:
    *Nisemonogatari* is "02 of 16", and *Off & Monster Season Shin
    Episode*, which has no date and sorts last, "16 of 16".
 6. **The franchise page's masthead** takes its artwork from the entry
-   the name comes from, the run's first TV series in link order (on
-   JoJo, the 2012 series, not
+   the name comes from, the run's first TV series in link order, else
+   its first entry by its links (on JoJo, the 2012 series, not
    *Steel Ball Run*, which the viewer is watching); the entry being
    watched keeps its own line beside Resume. The name keeps Kitsu's
    "(TV)" where dropping it would clash with another entry's title,
