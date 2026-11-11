@@ -40,11 +40,19 @@ pub(super) struct Found {
 /// those it names as its side story or spin-off that started before
 /// it, name it back as their parent story, and name more.
 ///
+/// The anchor's start is read from its details or, for an entry whose
+/// details the walk never reads (another member of the anchor's run),
+/// from the `consulted` listings that relate it.
+///
 /// # Errors
 /// The candidates' listings to read first.
-pub(super) fn parent_stories(anchor: &str, look: &Lookup<'_>) -> Result<Found, Vec<String>> {
+pub(super) fn parent_stories(
+    anchor: &str,
+    look: &Lookup<'_>,
+    consulted: &BTreeSet<String>,
+) -> Result<Found, Vec<String>> {
     let start = |r: &FranchiseRelation| r.entry.as_ref().and_then(|e| e.start.clone());
-    let own_start = look.entry(anchor, &BTreeSet::new()).and_then(|e| e.start);
+    let own_start = look.entry(anchor, consulted).and_then(|e| e.start);
     let named: BTreeMap<&str, Option<String>> = listed(look, anchor, &["parent_story"])
         .map(|r| (r.id.as_str(), start(r)))
         .collect();
