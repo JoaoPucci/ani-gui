@@ -12,6 +12,7 @@ use std::collections::BTreeSet;
 
 use proptest::prelude::*;
 
+use super::parents::parent_stories;
 use super::prop_tests::{catalogue, drive_with};
 use super::rules::listed;
 use super::walking::walk;
@@ -22,9 +23,10 @@ fn is_series(e: &FranchiseEntry) -> bool {
     matches!(e.subtype.as_deref(), Some("TV" | "OVA" | "ONA")) && e.episodes != Some(1)
 }
 
-/// The entries whose parent check can place `anchor`: the anchor, and,
-/// when its own run holds more than one entry and no series, the run's
-/// other members.
+/// The entries whose parent check placed `anchor`, as the walk picks
+/// them: the anchor, unless its own run is a run of one-offs and the
+/// anchor names no parent story outside it that the check takes, in
+/// which case the run's members.
 fn placers(cat: &super::tests::Catalogue, anchor: &str) -> Vec<String> {
     let look = Lookup {
         known: &cat.listings,
@@ -32,11 +34,14 @@ fn placers(cat: &super::tests::Catalogue, anchor: &str) -> Vec<String> {
     };
     let own = walk(anchor, &look, BTreeSet::new()).expect("every listing is known");
     let one_offs = own.members.len() > 1 && !own.members.keys().any(|m| is_series(&cat.entries[m]));
-    let mut out = vec![anchor.to_string()];
-    if one_offs {
-        out.extend(own.members.keys().filter(|m| m.as_str() != anchor).cloned());
+    if !one_offs {
+        return vec![anchor.to_string()];
     }
-    out
+    let mine = parent_stories(anchor, &look, &BTreeSet::new()).expect("every listing is known");
+    if mine.parents.iter().any(|p| !own.members.contains_key(p)) {
+        return vec![anchor.to_string()];
+    }
+    own.members.keys().cloned().collect()
 }
 
 /// The anime `id`'s listing names beneath it: its side stories,

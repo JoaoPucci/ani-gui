@@ -48,6 +48,24 @@ impl Sections {
             .retain(|id| !versions.contains(id) && !recaps.contains(id) && !films.contains(id));
     }
 
+    /// An entry of the anchor's own run of one-offs outside the run the
+    /// walk moved to: where the run's listings placed it, else among the
+    /// films when it is a movie, else the sides.
+    pub(super) fn place_beside(&mut self, id: &str, film: bool) {
+        let placed = [&self.versions, &self.recaps, &self.films, &self.sides]
+            .iter()
+            .any(|set| set.contains(id));
+        if placed {
+            return;
+        }
+        let to = if film {
+            &mut self.films
+        } else {
+            &mut self.sides
+        };
+        to.insert(id.to_string());
+    }
+
     /// A side-story anchor outside the run: among the films when it is
     /// a movie, else the sides, and nowhere else.
     pub(super) fn place_side_anchor(&mut self, anchor: &str, film: bool) {

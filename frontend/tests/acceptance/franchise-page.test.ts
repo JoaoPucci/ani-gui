@@ -1,7 +1,7 @@
 // Acceptance: the franchise page, /anime/<id>/franchise.
 //
 // The page lists a whole franchise around the show it was opened
-// from: a masthead named after the franchise's first TV series, with the
+// from: a masthead carrying the name the franchise read gives, with the
 // number of titles it lists and a Resume button for the title being
 // watched (or a way to start from the beginning), then the main story
 // as a numbered list in the order the setting chooses, the show it was
@@ -170,12 +170,12 @@ const resumeLink = () =>
 	) ?? null;
 
 describe('franchise page', () => {
-	it('names the franchise after its first TV series and counts what it lists', async () => {
+	it('shows the name the franchise read gives and counts what it lists', async () => {
 		useFranchise();
 		app = mount(FranchisePage, { target });
 		await until(() => title() !== '', 'the masthead');
-		// The first title in link order is Origins, the prequel OVA; the
-		// first TV series after it is Saga.
+		// The answer names it after Saga, its first series by start; the
+		// first title in link order is Origins, the prequel OVA.
 		expect(title()).toBe('Saga');
 		expect(target.textContent).toContain(m.watchorder_franchise_eyebrow());
 		expect(target.textContent).toContain(m.watchorder_franchise_count({ count: 8 }));

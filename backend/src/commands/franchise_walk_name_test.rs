@@ -201,6 +201,31 @@ fn the_suffix_is_dropped_unless_another_entry_would_read_the_same() {
     assert_eq!(named(&drive("1", &c)).0, "Bleach (TV)");
 }
 
+/// Every suffix Kitsu writes, in any case, is dropped; anything else in
+/// brackets at the end stays, and a title that is nothing but a suffix
+/// keeps it, so the name is never empty.
+#[test]
+fn every_format_suffix_is_dropped_in_any_case_and_nothing_else() {
+    let name = |title: &str| {
+        let mut c = Catalogue::default();
+        add(&mut c, "1", "TV", "2000-01-01", Some(12), title);
+        named(&drive("1", &c)).0
+    };
+    for sfx in [
+        "(TV)",
+        "(movie)",
+        "(OVA)",
+        "(Ona)",
+        "(Special)",
+        "(SPECIAL)",
+    ] {
+        assert_eq!(name(&format!("Saga {sfx}")), "Saga", "{sfx}");
+    }
+    assert_eq!(name("Saga (2020)"), "Saga (2020)");
+    assert_eq!(name("Saga (TV) Extra"), "Saga (TV) Extra");
+    assert_eq!(name("(TV)"), "(TV)");
+}
+
 /// `title` without a trailing Kitsu format suffix: the test's own
 /// reading, kept apart from the code under test.
 fn bare(title: &str) -> String {
@@ -223,11 +248,19 @@ fn series(e: &FranchiseEntry) -> bool {
 fn titled() -> BoxedStrategy<(Catalogue, String)> {
     (
         catalogue(),
-        prop::collection::vec((0usize..4, 0usize..3, prop::bool::ANY), 14),
+        prop::collection::vec((0usize..4, 0usize..7, prop::bool::ANY), 14),
     )
         .prop_map(|((mut c, anchor), looks)| {
             const NAMES: [&str; 4] = ["Bleach", "BLEACH", "Gintama", "JoJo"];
-            const SUFFIX: [&str; 3] = ["", " (TV)", " (Movie)"];
+            const SUFFIX: [&str; 7] = [
+                "",
+                " (TV)",
+                " (movie)",
+                " (OVA)",
+                " (Ona)",
+                " (SPECIAL)",
+                " (Special)",
+            ];
             let ids: Vec<String> = c.entries.keys().cloned().collect();
             for (id, (n, s, one)) in ids.iter().zip(looks) {
                 let e = c.entries.get_mut(id).expect("entry");
@@ -273,6 +306,7 @@ proptest! {
         let clash = all.iter()
             .filter(|e| e.id != from)
             .any(|e| bare(&e.title).to_lowercase() == bare(title).to_lowercase());
-        prop_assert_eq!(name, if clash { title.clone() } else { bare(title) });
+        let keep = clash || bare(title).trim().is_empty();
+        prop_assert_eq!(name, if keep { title.clone() } else { bare(title) });
     }
 }

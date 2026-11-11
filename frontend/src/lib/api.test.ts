@@ -1891,6 +1891,8 @@ describe('kitsuFranchise', () => {
 	it('GETs /api/kitsu/franchise/<kitsuId> and returns the franchise', async () => {
 		const franchise = {
 			anchor: '7730',
+			name: 'JoJo no Kimyou na Bouken',
+			name_from: '610',
 			entries: [],
 			links: [['7158', '7730']],
 			versions: [],

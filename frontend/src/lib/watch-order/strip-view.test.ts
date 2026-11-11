@@ -90,6 +90,11 @@ describe('franchiseSummary', () => {
 		expect(franchiseSummary(jojo, last).posters[0].id).toBe(last);
 	});
 
+	it('fronts the stack with the first entry, as the franchise page does, when the front entry is not in the run', () => {
+		const fate = run('fate');
+		expect(franchiseSummary(fate, '999').posters[0].id).toBe(fate.entries[0].id);
+	});
+
 	it('fans only entries that have a poster, and none when no entry has one', () => {
 		const fate = run('fate');
 		const blank = (e: WatchEntry): WatchEntry => ({ ...e, poster: null });

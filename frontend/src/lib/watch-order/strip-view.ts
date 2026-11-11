@@ -67,7 +67,9 @@ export interface FranchiseSummary {
 
 /** The counts of `run`, its poster stack fronted by the main-story entry `front`. */
 export function franchiseSummary(run: WatchRun, front: string): FranchiseSummary {
-	const first = run.entries.find((e) => e.id === front);
+	// A payload naming no entry of the run fronts its first, as the
+	// franchise page takes the first entry's artwork then.
+	const first = run.entries.find((e) => e.id === front) ?? run.entries[0];
 	const candidates = [
 		first,
 		run.films[0] ?? run.versions[0],
