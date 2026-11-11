@@ -9,8 +9,7 @@ import type { StorageLike } from '$lib/hero/prefs';
 
 export const MOCK_OPTIONS = {
 	order: ['linked', 'released'],
-	franchise: ['list', 'shelf'],
-	handoff: ['next', 'episode']
+	franchise: ['list', 'shelf']
 } as const;
 
 type Options = typeof MOCK_OPTIONS;
@@ -26,8 +25,7 @@ export const MOCK_PREFS_DEFAULT: WatchOrderMockPrefs = {
 	enabled: false,
 	switcher: false,
 	order: 'linked',
-	franchise: 'list',
-	handoff: 'next'
+	franchise: 'list'
 };
 export const MOCK_PREFS_STORAGE_KEY = 'ani-gui:watch-order-mockups';
 

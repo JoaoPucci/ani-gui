@@ -1,22 +1,22 @@
 <!--
-  Continue Watching's hand-off card (mockup): a finished entry's card
-  moved on to the next entry. It keeps the Continue card's 16:9 shape
-  and anatomy so the rail stays even; its art is the next entry's
-  banner, its tag reads "NEXT" (or "EP 1"). The small line says why
-  the card changed ("After …"); the large line carries the next
-  entry's whole title, two lines deep, because the words that tell a
-  franchise's entries apart come last and a one-line clamp cuts them. A click opens the next entry's show page.
+  Continue Watching's hand-off card: a finished entry's card moved on
+  to the next entry (see ./handoff). It keeps the Continue card's 16:9
+  shape and anatomy so the rail stays even; its art is the next
+  entry's banner, else its poster, and its tag reads "NEXT". The small
+  line says why the card changed ("After …"); the large line carries
+  the next entry's whole title, two lines deep, because the words that
+  tell a franchise's entries apart come last and a one-line clamp cuts
+  them. A click opens the next entry's show page, never playback.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { imageProxyUrl } from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
-	import type { Handoff } from './view';
+	import type { Handoff } from './handoff';
 
-	let { handoff, variant }: { handoff: Handoff; variant: 'next' | 'episode' } = $props();
+	let { handoff }: { handoff: Handoff } = $props();
 
-	const finished = $derived(handoff.finished.title);
 	const image = $derived(imageProxyUrl(handoff.next.cover ?? handoff.next.poster));
 </script>
 
@@ -32,17 +32,12 @@
 	<span class="frame">
 		{#if image}<img src={image} alt="" loading="lazy" decoding="async" />{/if}
 		<span class="tag" aria-hidden="true">
-			{#if variant === 'episode'}
-				<span class="tag-key">{m.home_resume_ep_key()}</span>
-				<span class="tag-num">1</span>
-			{:else}
-				<span class="tag-word">{m.watchorder_handoff_next()}</span>
-			{/if}
+			<span class="tag-word">{m.watchorder_handoff_next()}</span>
 		</span>
 	</span>
 	<span class="body">
 		<span class="show" title={handoff.finished.title}
-			>{m.watchorder_handoff_after({ title: finished })}</span
+			>{m.watchorder_handoff_after({ title: handoff.finished.title })}</span
 		>
 		<span class="line">{handoff.next.title}</span>
 	</span>
@@ -116,27 +111,15 @@
 	.handoff-card:hover .tag {
 		transform: translateY(-3px);
 	}
-	.tag-key {
-		margin-block-end: 1px;
-		font-size: 0.6875rem;
-		font-weight: 600;
-		letter-spacing: 0.18em;
-		text-transform: uppercase;
-		color: color-mix(in oklab, var(--bone-100) 75%, transparent);
-	}
-	.tag-num,
 	.tag-word {
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
 		font-size: 1.75rem;
 		font-weight: 700;
 		color: var(--bone-100);
+		text-transform: uppercase;
 		transition: color var(--dur-fast) var(--ease-out-soft);
 	}
-	.tag-word {
-		text-transform: uppercase;
-	}
-	.handoff-card:hover .tag-num,
 	.handoff-card:hover .tag-word {
 		color: var(--accent);
 	}

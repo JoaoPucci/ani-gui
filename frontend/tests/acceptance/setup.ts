@@ -41,6 +41,8 @@ export const API_BASE = 'http://127.0.0.1:31337';
  * - the download folder the detail and play pages show beside the
  *   download action;
  * - a show's watch history, which the detail page reads for resume;
+ * - a show's series, which the show page's watch-order strip, the
+ *   player's Up next card and a Continue card at a finale read;
  * - the title search a page runs to name a show's provider entry;
  * - the backend's answer to which of a guessed Continue row's hits the
  *   row rules out, which a failed call answers with none;

@@ -4,12 +4,12 @@
 product questions are decided (section 6); the design questions are
 open (section 5). Built so far: the backend's franchise read, `GET
 /api/kitsu/franchise/:kitsu_id` (section 4 describes it as built), the
-watch-order strip on the show page, the "Watch order" setting and the
-player's Up next card at a finale. Not built yet: Continue Watching's
-hand-off and the franchise page, which exist only as design mockups
-drawn from fixture data, behind a Diagnostics switch. The research
-was done on 2026-11-01; the live samples it quotes describe the
-catalogues on that day and will drift.
+watch-order strip on the show page, the "Watch order" setting, the
+player's Up next card at a finale and Continue Watching's hand-off.
+Not built yet: the franchise page, which exists only as a design
+mockup drawn from fixture data, behind a Diagnostics switch. The
+research was done on 2026-11-01; the live samples it quotes describe
+the catalogues on that day and will drift.
 
 ## The problem in plain terms
 
@@ -1144,8 +1144,8 @@ them introduces a new widget style.
 - **Motion.** It enters with the settle transition the skip pill
   uses. Under reduced motion it simply appears.
 - **On Continue Watching.** The card keeps its 16:9 shape, so the rail
-  stays even. Its frame shows the sequel's art: its first episode's
-  still where Kitsu has one, otherwise its banner or cover. The
+  stays even. Its frame shows the sequel's art: its banner, or its
+  poster where it has no banner ("Decisions recorded", 5). The
   oversized tag reads "NEXT" in place of "EP N". The small line reads
   "After *<finished entry>*", which says why the card changed, with
   the finished entry named by the words that set it apart; the large
@@ -1379,6 +1379,10 @@ The rules below hold on every surface:
 - **Placement.** The hand-off takes the finished entry's place in the
   rail; that entry's own card is not shown beside it. Once the next
   entry has a history row of its own, the hand-off gives way to it.
+  A row counts for the entry it recorded and for the entry its card
+  shows, which differ when Kitsu has deleted the recorded entry and
+  the row was matched again. A franchise read only in part gives no
+  hand-off, as it may be missing the entry that really comes next.
 - **Truncation.** See "On Continue Watching" above: the sequel's
   whole title gets the two-line row.
 
@@ -1437,7 +1441,9 @@ The maintainer answered the eight questions the first mockups asked:
    **NEXT** tag. The hand-off card opens the next entry's show page,
    not its first episode, as the mockup already does: the viewer
    arrives where the strip, the synopsis and the episode list say what
-   they are about to start.
+   they are about to start. Its art stays the mockup's, the next
+   entry's banner or else its poster, rather than its first episode's
+   still.
 6. **Franchise page** as a list.
 7. **The setting** uses buttons. Its hint adds that the links
    generally follow the story but are maintained by each database's
