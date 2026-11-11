@@ -6,7 +6,9 @@
 // One Piece is the main story: Kitsu lists its two-episode spin-off LEGO
 // ONE PIECE as its parent story, and the page must not call One Piece a
 // side story of it. LEGO ONE PIECE's page is the side story, under One
-// Piece. Every tile names its entry by its whole title.
+// Piece. A film that names a series its parent story reads "Film",
+// any other side story "Side story". Every tile names its entry by its
+// whole title.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -155,6 +157,40 @@ describe('detail route — the watch-order strip on real franchises', () => {
 		expect(strip()!.textContent).toContain(m.watchorder_strip_side_story());
 		expect(tileTitle('12')).toBe('One Piece');
 	});
+
+	// Films that name a series their parent story: the walk lists each
+	// under films, and the strip says "Film" where a side story reads
+	// "Side story". Each anchor's tiles show its parent stories.
+	for (const [id, parent] of [
+		['1515', '244'], // Bleach Movie 1: Memories of Nobody
+		['45513', '12'], // One Piece Film: Red
+		['46874', '45619'], // SPY×FAMILY CODE: White
+		['696', '210'], // Detective Conan Movie 01: The Timed Skyscraper
+		['7543', '1555'] // The Last: Naruto the Movie
+	] as const) {
+		it(`calls the film ${id} a film, under its parent story ${parent}`, async () => {
+			openShow(id);
+			await until(() => strip() !== null, 'the strip');
+			expect(strip()!.textContent).toContain(m.watchorder_strip_film());
+			expect(strip()!.textContent).not.toContain(m.watchorder_strip_side_story());
+			expect(tile(parent)).not.toBeNull();
+		});
+	}
+
+	// Side stories that are not films keep "Side story".
+	for (const [id, what] of [
+		['428', 'the 1998 One Piece OVA'],
+		['50409', "CHOPPER's TV series"],
+		['50656', 'LEGO ONE PIECE'],
+		['6928', 'the Fate/Zero special']
+	] as const) {
+		it(`calls ${what} (${id}) a side story, not a film`, async () => {
+			openShow(id);
+			await until(() => strip() !== null, 'the strip');
+			expect(strip()!.textContent).toContain(m.watchorder_strip_side_story());
+			expect(strip()!.textContent).not.toContain(m.watchorder_strip_film());
+		});
+	}
 
 	it("names Naruto's next entry by its whole title", async () => {
 		openShow('11');

@@ -7,7 +7,7 @@ import {
 	type FranchiseRow,
 	type FranchisePageModel
 } from './franchise-page';
-import { withoutFormatSuffix } from './franchise-name';
+import { nameEntry, withoutFormatSuffix } from './franchise-name';
 import type { WatchOrderData } from './loader';
 import { pathNote, placement, segments, sequence } from './order';
 import type { HistoryRow } from './progress';
@@ -53,7 +53,7 @@ describe('franchisePage', () => {
 		expect(franchisePage({ franchise: empty, rows: [] }, '7158', 'linked')).toBeNull();
 	});
 
-	it('names JoJo after its first title, keeping "(TV)" beside the bare-titled OVA', () => {
+	it('names JoJo after its first TV series, keeping "(TV)" beside the bare-titled OVA', () => {
 		const page = franchisePage(data('jojo', '46598'), '46598', 'linked')!;
 		expect(page.art.id).toBe('7158');
 		expect(page.name).toBe('JoJo no Kimyou na Bouken (TV)');
@@ -68,7 +68,7 @@ describe('franchisePage', () => {
 		expect(franchisePage({ franchise: renamed, rows: [] }, '46598', 'linked')!.name).toBe('Saga');
 	});
 
-	it('takes its artwork from the first title in link order, whatever the order setting', () => {
+	it('takes its artwork from the first TV series in link order, whatever the order setting', () => {
 		for (const order of ['linked', 'released'] as const) {
 			expect(franchisePage(data('fate', '6028'), '6028', order)!.art.id).toBe('6028');
 		}
@@ -574,12 +574,12 @@ describe('franchisePage', () => {
 		);
 	});
 
-	it('names itself after its first title in link order, and counts what it lists', () => {
+	it('names itself after the title nameEntry picks, and counts what it lists', () => {
 		fc.assert(
 			fc.property(anyPage, ({ f, id, order, rows }) => {
 				const page = franchisePage({ franchise: f, rows }, id, order);
 				if (!page) return;
-				expect(page.art.id).toBe(page.run.nameId);
+				expect(page.art).toBe(nameEntry(page.run));
 				expect([page.art.title, withoutFormatSuffix(page.art.title)]).toContain(page.name);
 				const r = page.run;
 				expect(page.total).toBe(

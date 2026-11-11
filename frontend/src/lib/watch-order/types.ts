@@ -39,7 +39,7 @@ export interface FranchiseData {
 
 /**
  * A run as the ordering works on it: the payload's sections plus the
- * entry the run is named after and numbered from (`nameId`).
+ * entry the run is numbered from (`nameId`).
  */
 export interface WatchRun {
 	/** The run's first entry: see `./name-id`. */

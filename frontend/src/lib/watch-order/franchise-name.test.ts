@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
-import { franchiseName, withoutFormatSuffix } from './franchise-name';
+import { franchiseName, nameEntry, withoutFormatSuffix } from './franchise-name';
+import { sequence } from './order';
+import { runOf } from './strip-model';
+import { entriesArb, linksArb } from './testing/arbitraries';
+import type { RunLink, WatchEntry, WatchRun } from './types';
 
 const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
 const titlesBut = (r: FixtureRun, id: string) =>
@@ -72,6 +76,132 @@ describe('franchiseName', () => {
 					expect(franchiseName(n + sfx, [n.toUpperCase()])).toBe(n + sfx);
 				}
 			)
+		);
+	});
+});
+
+/** An entry with only what the name reads. */
+const e = (
+	id: string,
+	subtype: string | null,
+	start: string | null,
+	title = `T${id}`
+): WatchEntry => ({
+	id,
+	title,
+	subtype,
+	start,
+	episodes: null,
+	status: null,
+	poster: null,
+	cover: null
+});
+
+/** The run `entries` and `links` make. */
+const runFrom = (entries: WatchEntry[], links: RunLink[] = []): WatchRun =>
+	runOf({
+		anchor: entries[0].id,
+		entries,
+		links,
+		versions: [],
+		films: [],
+		sides: [],
+		recaps: [],
+		parents: {},
+		complete: true
+	})!;
+
+describe('nameEntry', () => {
+	it('skips a pilot film before the first TV series: Lupin III, not its 1969 pilot', () => {
+		const r = runFrom(
+			[
+				e('3997', 'movie', '1969-01-01', 'Lupin III: Pilot Film'),
+				e('1265', 'TV', '1971-10-24', 'Lupin III'),
+				e('1278', 'TV', '1977-10-03', 'Lupin III: Part II'),
+				e('46654', 'ONA', '2022-12-16', 'LUPIN ZERO')
+			],
+			[
+				['3997', '1265'],
+				['46654', '1265'],
+				['1265', '1278']
+			]
+		);
+		expect(nameEntry(r).id).toBe('1265');
+	});
+
+	it('skips OVAs, specials and ONAs as well as films', () => {
+		for (const sub of ['OVA', 'special', 'ONA', 'movie', 'music', null]) {
+			const r = runFrom([e('1', sub, '2000-01-01'), e('2', 'TV', '2003-01-01')], [['1', '2']]);
+			expect(nameEntry(r).id).toBe('2');
+		}
+	});
+
+	it('takes the first TV series in link order, not the earliest released', () => {
+		// FLCL: the OVA, then Progressive, then Alternative by the links,
+		// though Alternative aired first.
+		const r = runFrom(
+			[
+				e('202', 'OVA', '2000-04-26'),
+				e('11962', 'TV', '2018-03-31'),
+				e('11961', 'TV', '2018-06-02')
+			],
+			[
+				['202', '11961'],
+				['11961', '11962']
+			]
+		);
+		expect(nameEntry(r).id).toBe('11961');
+	});
+
+	it('keeps the first title by its links where the run holds no TV series', () => {
+		const r = runFrom(
+			[
+				e('2357', 'movie', '2007-12-01'),
+				e('3248', 'movie', '2007-12-29'),
+				e('4804', 'special', '2011-02-02')
+			],
+			[
+				['2357', '3248'],
+				['3248', '4804']
+			]
+		);
+		expect(nameEntry(r).id).toBe(r.nameId);
+		expect(nameEntry(r).id).toBe('2357');
+	});
+
+	it('reads only the main story: a TV series among the versions does not name it', () => {
+		const r: WatchRun = {
+			...runFrom(
+				[e('1162', 'OVA', '1988-04-25'), e('980', 'movie', '1989-07-15')],
+				[['1162', '980']]
+			),
+			versions: [e('291', 'TV', '1989-10-11')]
+		};
+		expect(nameEntry(r).id).toBe('1162');
+	});
+
+	const anyRun = entriesArb(1, 7).chain((entries) =>
+		linksArb(entries.map((x) => x.id)).map((links) => runFrom(entries, links))
+	);
+
+	it('names a run after its first TV series in link order, else after its first title', () => {
+		fc.assert(
+			fc.property(anyRun, (r) => {
+				const got = nameEntry(r);
+				expect(r.entries).toContain(got);
+				const line = sequence(r, 'linked');
+				const tv = line.find((x) => x.subtype === 'TV');
+				expect(got).toBe(tv ?? r.entries.find((x) => x.id === r.nameId));
+			})
+		);
+	});
+
+	it('does not depend on the order setting or on the order entries are listed in', () => {
+		fc.assert(
+			fc.property(anyRun, fc.boolean(), (r, flip) => {
+				const shuffled = runFrom(flip ? [...r.entries].reverse() : [...r.entries], [...r.links]);
+				expect(nameEntry(shuffled).id).toBe(nameEntry(r).id);
+			})
 		);
 	});
 });

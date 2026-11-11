@@ -10,7 +10,7 @@
 import type { BreadcrumbSegment } from '$lib/breadcrumb';
 import { m } from '$lib/paraglide/messages';
 import type { WatchOrder } from './by-start';
-import { franchiseName } from './franchise-name';
+import { franchiseName, nameEntry } from './franchise-name';
 import type { WatchOrderData } from './loader';
 import { placement, segments, sequence } from './order';
 import {
@@ -29,7 +29,10 @@ export type { FranchiseRow, FranchiseSection };
 export interface FranchisePageModel {
 	readonly order: WatchOrder;
 	readonly run: WatchRun;
-	/** The franchise's name: its first title, "(TV)" dropped where nothing clashes. */
+	/**
+	 * The franchise's name: its first TV series' title, else its first
+	 * title (`nameEntry`), "(TV)" dropped where nothing clashes.
+	 */
 	readonly name: string;
 	/** The title the name comes from, whose artwork and accent the masthead takes. */
 	readonly art: WatchEntry;
@@ -98,7 +101,7 @@ export function franchisePage(
 	// Read in part, the walk may have missed titles before the first one
 	// it reached: nothing counted from that title is sure.
 	const whole = data.franchise.complete;
-	const art = run.entries.find((e) => e.id === run.nameId)!;
+	const art = nameEntry(run);
 	const others = [...run.entries, ...run.versions, ...run.films, ...run.sides, ...run.recaps]
 		.filter((e) => e.id !== art.id)
 		.map((e) => e.title);

@@ -859,7 +859,7 @@ its own where the show has no strip. (Search results were also
 proposed as a way in; that was dropped, see "Decisions recorded
 (after the build)" below, and a study of making franchises findable
 is in the deferred-work log.) A header named after the run's first
-entry, with your position: "05 ·
+TV series, with your position: "05 ·
 *Golden Wind* · EP 12" (with a total only for a run with no fork, join
 or cycle) and a Resume button; its hero and accent are set in the
 design section. Below it, sections:
@@ -1176,7 +1176,8 @@ them introduces a new widget style.
 
 - **Placement and anatomy.** The page reuses the show page's frame.
   - **Hero:** the entry the franchise is named after (the run's first
-    in link order, whatever the order setting), in the hero band and the masthead's poster, so the artwork
+    TV series in link order, whatever the order setting, see
+    *Masthead*), in the hero band and the masthead's poster, so the artwork
     beside the name is that entry's. The entry being watched has its
     own line beside the Resume button.
   - **Masthead:** the run's name in the italic display serif under a
@@ -1381,7 +1382,8 @@ The rules below hold on every surface:
   of the show, so the strip makes no claim that needs the whole: no
   position, in the strip or the masthead, no total, no fork or loop
   caption, no join or fork count, and an empty column stays blank. A
-  side story keeps its caption.
+  side story keeps its caption: "Side story", or "Film" for a film,
+  which the franchise page lists under Films.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
   keys page it); every card and tile is a link with the poster card's
   bone focus ring; the entry being viewed is not a link. The line for
@@ -1447,8 +1449,12 @@ The rules below hold on every surface:
   linked titles, order unclear" with one sentence on why it has no
   clear order; its entries are listed along their links. In release
   order every one of these is a single numbered line.
-- **Masthead.** The franchise is named after the run's first entry,
-  without Kitsu's format suffix ("(TV)", "(Movie)", …) unless another
+- **Masthead.** The franchise is named after the run's first TV
+  series in link order, skipping the films, pilots, OVAs, ONAs and
+  specials before it (*Lupin III*, not its 1969 *Pilot Film*); a run
+  with no TV series is named after its first entry by its links
+  (*Kara no Kyoukai 1: Fukan Fuukei*). The name drops Kitsu's format
+  suffix ("(TV)", "(Movie)", …) unless another
   entry of the franchise would then read the same, ignoring case; the
   suffix then stays, since it is what tells the two apart. *JoJo no
   Kimyou na Bouken (TV)* keeps it, because the franchise's 1993 OVA is
@@ -1730,6 +1736,12 @@ that ends normally it shows the card up to a second early.
    the Movie*, Dragon Ball's first four films), and a TV series Kitsu
    lists as a summary is an other version, not a recap (*Dragon Ball
    Super: Beerus*, beside both *Kai* series).
+6. **A franchise is named after its first TV series.** The films,
+   pilots, OVAs and specials before it are skipped, so *Lupin III* is
+   no longer named after its 1969 pilot film; a run with no TV series
+   keeps its first entry by its links. A film that names a series its
+   parent story reads "Film" on its strip, where any other side story
+   reads "Side story", and the franchise page lists it under Films.
 
 ### Decisions recorded: progress and the strip's arrival
 

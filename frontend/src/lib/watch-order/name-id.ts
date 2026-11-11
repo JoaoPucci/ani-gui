@@ -1,6 +1,7 @@
 /**
- * The run's first entry, the one the franchise is named after and its
- * positions are counted from: among the members no prequel link
+ * The run's first entry, the one its positions are counted from, and
+ * the one the franchise is named after where the run holds no TV
+ * series (`./franchise-name`): among the members no prequel link
  * reaches, the earliest start, then the lowest id; where every member
  * has a prequel (the run is one loop), the earliest member.
  */
