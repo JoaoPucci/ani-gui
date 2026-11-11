@@ -30,6 +30,7 @@ import {
 import {
   appWindow,
   launchPackagedApp,
+  outboundAttempts,
   packagedBinary,
   refuseUnstubbed,
   remountFirstPage,
@@ -262,6 +263,29 @@ test("a test launch takes its flags from the test, not from GitHub", async () =>
       flags: window.aniGui?.flags,
     }));
     expect(seen).toEqual({ origin: "test", flags: {} });
+  } finally {
+    await app.close();
+  }
+});
+
+test("a test launch's backend reaches nothing beyond this machine", async () => {
+  // A spec's stubs answer what the renderer asks after they are set,
+  // but the first page asks before then, and anything a spec leaves
+  // unstubbed reaches the real backend. The launch helper gives the
+  // backend a proxy that refuses every connection and records it, so
+  // what the backend tries never reaches Kitsu, AniList, GitHub or the
+  // provider. Asked here, from outside the renderer's stubs, for the
+  // newest release, the backend tries GitHub, and the attempt lands
+  // at the helper's proxy instead.
+  const { app, page } = await launchAppWithStubs();
+  try {
+    const apiBase = await page.evaluate(() => window.aniGui?.apiBase);
+    expect(apiBase).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    const res = await fetch(`${apiBase}/api/update-check`);
+    // The backend answers a check that could not reach GitHub with no
+    // release, as it does offline.
+    expect(res.status).toBe(204);
+    expect(outboundAttempts(app)).toContain("CONNECT api.github.com:443");
   } finally {
     await app.close();
   }

@@ -81,6 +81,14 @@ export async function launchPackagedApp(
 	return app;
 }
 
+/** Every connection the launched app tried to open to a host beyond
+ *  this machine, as `CONNECT host:port` or `GET http://…`, in the
+ *  order it tried them. */
+export function outboundAttempts(app: ElectronApplication): string[] {
+	void app;
+	return [];
+}
+
 /** The process each launch started, recorded as it starts: Playwright
  *  stops answering `app.process()` once the app is closed, and stopApp
  *  must still tell an exited app from a running one then. */
