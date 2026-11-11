@@ -78,6 +78,7 @@
 	"strip_position": "{position} из {total}",
 	"strip_position_open": "Позиция {position}",
 	"strip_side_story": "Побочная история",
+	"strip_film": "Фильм",
 	"strip_unnumbered_branch": "Один из вариантов продолжения",
 	"strip_unnumbered_cycle": [
 		{

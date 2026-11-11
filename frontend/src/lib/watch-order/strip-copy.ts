@@ -63,6 +63,8 @@ export function captionText(caption: StripCaption): string {
 			return '';
 		case 'side':
 			return m.watchorder_strip_side_story();
+		case 'film':
+			return m.watchorder_strip_film();
 		case 'cycle':
 			return loopText(caption.count);
 		case 'branch':

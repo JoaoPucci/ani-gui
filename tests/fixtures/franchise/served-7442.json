@@ -1,0 +1,314 @@
+{
+  "anchor": "7442",
+  "entries": [
+    {
+      "id": "7442",
+      "title": "Attack on Titan",
+      "subtype": "TV",
+      "start": "2013-04-07",
+      "episodes": 25,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8671",
+      "title": "Attack on Titan Season 2",
+      "subtype": "TV",
+      "start": "2017-04-01",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "13569",
+      "title": "Attack on Titan Season 3",
+      "subtype": "TV",
+      "start": "2018-07-23",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "41982",
+      "title": "Attack on Titan Season 3 Part 2",
+      "subtype": "TV",
+      "start": "2019-04-29",
+      "episodes": 10,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42422",
+      "title": "Attack on Titan: The Final Season",
+      "subtype": "TV",
+      "start": "2020-12-07",
+      "episodes": 16,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "44240",
+      "title": "Attack on Titan: The Final Season Part 2",
+      "subtype": "TV",
+      "start": "2022-01-09",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46038",
+      "title": "Attack on Titan: The Final Season - Final Chapters Part 1",
+      "subtype": "special",
+      "start": "2023-03-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47132",
+      "title": "Attack on Titan: The Final Season - Final Chapters Part 2",
+      "subtype": "special",
+      "start": "2023-11-04",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "7442",
+      "8671"
+    ],
+    [
+      "8671",
+      "13569"
+    ],
+    [
+      "13569",
+      "41982"
+    ],
+    [
+      "41982",
+      "42422"
+    ],
+    [
+      "42422",
+      "44240"
+    ],
+    [
+      "44240",
+      "46038"
+    ],
+    [
+      "46038",
+      "47132"
+    ]
+  ],
+  "versions": [],
+  "films": [
+    {
+      "id": "8672",
+      "title": "Attack on Titan: Crimson Bow and Arrow",
+      "subtype": "movie",
+      "start": "2014-11-22",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8673",
+      "title": "Attack on Titan: Wings of Freedom",
+      "subtype": "movie",
+      "start": "2015-06-27",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42250",
+      "title": "Shingeki no Kyojin in the Dome: Heishi-tachi no Hoshizora",
+      "subtype": "movie",
+      "start": "2017-05-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "41487",
+      "title": "Attack on Titan: Roar of Awakening",
+      "subtype": "movie",
+      "start": "2018-01-13",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "43212",
+      "title": "Attack on Titan: Chronicle",
+      "subtype": "movie",
+      "start": "2020-07-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49129",
+      "title": "Shingeki no Kyojin Movie: Kanketsu-hen - The Last Attack",
+      "subtype": "movie",
+      "start": "2024-11-08",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "7889",
+      "title": "Attack on Titan Chibi Theatre: Fly, Cadets, Fly!",
+      "subtype": "special",
+      "start": "2013-07-17",
+      "episodes": 9,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7694",
+      "title": "Attack on Titan OVA",
+      "subtype": "OVA",
+      "start": "2013-12-09",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8674",
+      "title": "Attack on Titan: No Regrets",
+      "subtype": "OVA",
+      "start": "2014-12-09",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11315",
+      "title": "Attack on Titan: Junior High",
+      "subtype": "TV",
+      "start": "2015-10-04",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "13718",
+      "title": "Attack on Titan: Lost Girls",
+      "subtype": "OVA",
+      "start": "2017-12-08",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42247",
+      "title": "Attack on Titan Season 3 Specials",
+      "subtype": "special",
+      "start": "2018-10-17",
+      "episodes": 7,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "44404",
+      "title": "Attack on Titan: The Final Season PV",
+      "subtype": "ONA",
+      "start": "2020-05-29",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "45959",
+      "title": "Shingeki no Kyojin: The Final Season Specials",
+      "subtype": "special",
+      "start": "2021-07-07",
+      "episodes": 16,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [
+    {
+      "id": "7838",
+      "title": "Attack on Titan: Since That Day",
+      "subtype": "special",
+      "start": "2013-07-07",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47129",
+      "title": "10-pun de Oitsukeru: Shingeki no Kyojin",
+      "subtype": "ONA",
+      "start": "2018-07-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47130",
+      "title": "15-pun de Oitsukeru: Shingeki no Kyojin",
+      "subtype": "ONA",
+      "start": "2020-12-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47131",
+      "title": "20-pun de Oitsukeru: Shingeki no Kyojin",
+      "subtype": "ONA",
+      "start": "2021-12-27",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47259",
+      "title": "25-pun de Oitsukeru: Shingeki no Kyojin",
+      "subtype": "ONA",
+      "start": "2023-02-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "parents": {},
+  "complete": true
+}

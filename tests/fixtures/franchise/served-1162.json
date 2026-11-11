@@ -1,0 +1,87 @@
+{
+  "anchor": "1162",
+  "entries": [
+    {
+      "id": "1162",
+      "title": "Kidou Keisatsu Patlabor",
+      "subtype": "OVA",
+      "start": "1988-04-25",
+      "episodes": 7,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "980",
+      "title": "Kidou Keisatsu Patlabor the Movie",
+      "subtype": "movie",
+      "start": "1989-07-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "981",
+      "title": "Kidou Keisatsu Patlabor 2 the Movie",
+      "subtype": "movie",
+      "start": "1993-08-07",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1164",
+      "title": "WXIII Kidou Keisatsu Patlabor",
+      "subtype": "movie",
+      "start": "2001-12-10",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "980",
+      "981"
+    ],
+    [
+      "981",
+      "1164"
+    ],
+    [
+      "1162",
+      "980"
+    ]
+  ],
+  "versions": [
+    {
+      "id": "291",
+      "title": "Kidou Keisatsu Patlabor: On Television",
+      "subtype": "TV",
+      "start": "1989-10-11",
+      "episodes": 47,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "films": [
+    {
+      "id": "12470",
+      "title": "Kidou Keisatsu Patlabor: Reboot",
+      "subtype": "movie",
+      "start": "2016-10-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [],
+  "recaps": [],
+  "parents": {},
+  "complete": true
+}
