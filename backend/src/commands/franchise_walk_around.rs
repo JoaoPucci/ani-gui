@@ -18,6 +18,7 @@
 use std::collections::BTreeSet;
 
 use super::links::{links, parents};
+use super::name::{display_name, name_entry};
 use super::rules::Run;
 use super::sections::{is_movie, Sections};
 use super::{order_key, Franchise, Lookup};
@@ -91,13 +92,29 @@ pub(super) fn assemble(anchor: &str, run: &Run, look: &Lookup<'_>) -> Franchise 
         s.place_side_anchor(anchor, is_movie(anchor, run, look));
     }
     let members: BTreeSet<String> = run.members.keys().cloned().collect();
+    let main = entries(&members, run, look);
+    let [versions, films, sides, recaps] =
+        [&s.versions, &s.films, &s.sides, &s.recaps].map(|ids| entries(ids, run, look));
+    let (name, name_from) = name_entry(&main).map_or_else(
+        || (String::new(), anchor.to_string()),
+        |e| {
+            let others = [&main, &versions, &films, &sides, &recaps]
+                .into_iter()
+                .flatten()
+                .filter(|o| o.id != e.id)
+                .map(|o| o.title.as_str());
+            (display_name(&e.title, others), e.id.clone())
+        },
+    );
     Franchise {
         anchor: anchor.to_string(),
-        entries: entries(&members, run, look),
-        versions: entries(&s.versions, run, look),
-        films: entries(&s.films, run, look),
-        sides: entries(&s.sides, run, look),
-        recaps: entries(&s.recaps, run, look),
+        name,
+        name_from,
+        entries: main,
+        versions,
+        films,
+        sides,
+        recaps,
         links: links(run, look),
         parents: parents(anchor, run),
         complete: run.complete

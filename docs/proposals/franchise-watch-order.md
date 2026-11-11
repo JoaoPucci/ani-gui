@@ -562,7 +562,14 @@ is defined from the entry being viewed — the anchor — by these rules
 **Side stories.** An anchor whose own run is itself alone, and that
 names a parent story, is walked from its earliest parent story
 instead, and listed beside that run (with the films, if it is a movie)
-with its parents named. Kitsu sometimes lists a pair the wrong way
+with its parents named. So is an anchor whose own run holds no series
+(no TV series, OVA or ONA of more than one episode, or of a count
+Kitsu does not give yet) when the run names a parent story: *My Hero
+Academia*'s four films are linked to each other by sequel, and to the
+seasons only as parent story or other, so from any film the seasons
+are the run and the films sit under Films. A film that names no
+parent of its own is placed under the parents the films linked to it
+name. Kitsu sometimes lists a pair the wrong way
 round, from both sides: [data] on 2026-11-11 *One Piece* (12) named
 *LEGO ONE PIECE* (50656), a two-episode ONA from 2026, as its parent
 story, and *LEGO ONE PIECE* named *One Piece* as its side story. So

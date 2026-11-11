@@ -1,5 +1,12 @@
 //! Properties of a side-story anchor's parent stories over random
 //! catalogues: which entry the walk places the anchor under.
+//!
+//! The parent check runs on the anchor, and, where the anchor's own
+//! run is a run of one-offs and the anchor names no parent story that
+//! check takes, on the run's other members
+//! (`franchise_walk_run.rs`): each property holds for the entry whose
+//! check placed the anchor, so it is asked of the anchor or of one of
+//! those members ([`placers`]).
 
 use std::collections::BTreeSet;
 
@@ -7,7 +14,30 @@ use proptest::prelude::*;
 
 use super::prop_tests::{catalogue, drive_with};
 use super::rules::listed;
+use super::walking::walk;
 use super::*;
+
+/// Whether `e` is a series: a TV series, OVA or ONA not of one episode.
+fn is_series(e: &FranchiseEntry) -> bool {
+    matches!(e.subtype.as_deref(), Some("TV" | "OVA" | "ONA")) && e.episodes != Some(1)
+}
+
+/// The entries whose parent check can place `anchor`: the anchor, and,
+/// when its own run holds more than one entry and no series, the run's
+/// other members.
+fn placers(cat: &super::tests::Catalogue, anchor: &str) -> Vec<String> {
+    let look = Lookup {
+        known: &cat.listings,
+        details: &cat.entries,
+    };
+    let own = walk(anchor, &look, BTreeSet::new()).expect("every listing is known");
+    let one_offs = own.members.len() > 1 && !own.members.keys().any(|m| is_series(&cat.entries[m]));
+    let mut out = vec![anchor.to_string()];
+    if one_offs {
+        out.extend(own.members.keys().filter(|m| m.as_str() != anchor).cloned());
+    }
+    out
+}
 
 /// The anime `id`'s listing names beneath it: its side stories,
 /// spin-offs and recaps.
@@ -34,14 +64,14 @@ proptest! {
     #[test]
     fn an_anchor_is_never_placed_under_a_later_smaller_entry((cat, anchor) in catalogue()) {
         let (f, _) = drive_with(&anchor, &cat, &[]);
-        let own = beneath(&cat.listings, &anchor);
         let start = |id: &str| cat.entries[id].start.clone();
+        let by = placers(&cat, &anchor);
         for p in f.parents.get(&anchor).into_iter().flatten() {
-            let earlier = matches!((start(p), start(&anchor)), (Some(a), Some(b)) if a < b);
-            prop_assert!(
-                earlier || beneath(&cat.listings, p) >= own,
-                "{} placed under {}", anchor, p
-            );
+            let fits = by.iter().any(|x| {
+                let earlier = matches!((start(p), start(x)), (Some(a), Some(b)) if a < b);
+                earlier || beneath(&cat.listings, p) >= beneath(&cat.listings, x)
+            });
+            prop_assert!(fits, "{} placed under {}", anchor, p);
         }
     }
 
@@ -54,10 +84,12 @@ proptest! {
         let details = BTreeMap::new();
         let look = Lookup { known: &cat.listings, details: &details };
         let start = |id: &str| cat.entries[id].start.clone();
-        let named = listed(&look, &anchor, &["parent_story"]).next().is_some();
-        let earlier = listed(&look, &anchor, &["side_story", "spinoff"])
-            .any(|r| matches!((start(&r.id), start(&anchor)), (Some(a), Some(b)) if a < b));
-        if !named && !earlier {
+        let candidate = |x: &String| {
+            listed(&look, x, &["parent_story"]).next().is_some()
+                || listed(&look, x, &["side_story", "spinoff"])
+                    .any(|r| matches!((start(&r.id), start(x)), (Some(a), Some(b)) if a < b))
+        };
+        if !placers(&cat, &anchor).iter().any(candidate) {
             prop_assert!(!f.parents.contains_key(&anchor));
         }
     }
@@ -70,17 +102,13 @@ proptest! {
         let (f, _) = drive_with(&anchor, &cat, &[]);
         let details = BTreeMap::new();
         let look = Lookup { known: &cat.listings, details: &details };
-        let named: BTreeSet<String> = listed(&look, &anchor, &["parent_story"])
-            .map(|r| r.id.clone())
-            .collect();
+        let by = placers(&cat, &anchor);
         for p in f.parents.get(&anchor).into_iter().flatten() {
-            if named.contains(p) {
-                continue;
-            }
-            prop_assert!(
-                listed(&look, p, &["parent_story"]).any(|r| r.id == anchor),
-                "{} placed under {}, which does not name it back", anchor, p
-            );
+            let fits = by.iter().any(|x| {
+                listed(&look, x, &["parent_story"]).any(|r| &r.id == p)
+                    || listed(&look, p, &["parent_story"]).any(|r| &r.id == x)
+            });
+            prop_assert!(fits, "{} placed under {}, which does not name it back", anchor, p);
         }
     }
 
