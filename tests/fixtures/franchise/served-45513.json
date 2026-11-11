@@ -1,0 +1,790 @@
+{
+  "anchor": "45513",
+  "entries": [
+    {
+      "id": "12",
+      "title": "One Piece",
+      "subtype": "TV",
+      "start": "1999-10-20",
+      "episodes": null,
+      "status": "current",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [],
+  "versions": [
+    {
+      "id": "49281",
+      "title": "One Piece: Gyojin Tou-hen",
+      "subtype": "TV",
+      "start": "2024-11-03",
+      "episodes": 21,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "films": [
+    {
+      "id": "421",
+      "title": "One Piece Movie 1",
+      "subtype": "movie",
+      "start": "2000-03-04",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "422",
+      "title": "One Piece Movie 2: Nejimaki-jima no Daibouken",
+      "subtype": "movie",
+      "start": "2001-03-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "2162",
+      "title": "One Piece: Jango no Dance Carnival",
+      "subtype": "movie",
+      "start": "2001-03-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "423",
+      "title": "One Piece Movie 3: Chinjuu-jima no Chopper Oukoku",
+      "subtype": "movie",
+      "start": "2002-03-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "2163",
+      "title": "One Piece: Yume no Soccer Ou!",
+      "subtype": "movie",
+      "start": "2002-03-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "424",
+      "title": "One Piece Movie 4: Dead End no Bouken",
+      "subtype": "movie",
+      "start": "2003-03-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "425",
+      "title": "One Piece Movie 5: Norowareta Seiken",
+      "subtype": "movie",
+      "start": "2004-03-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "2260",
+      "title": "One Piece: Mezase! Kaizoku Yakyuu Ou",
+      "subtype": "movie",
+      "start": "2004-03-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "426",
+      "title": "One Piece Movie 6: Omatsuri Danshaku to Himitsu no Shima",
+      "subtype": "movie",
+      "start": "2005-03-05",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "427",
+      "title": "One Piece Movie 7: Karakuri-jou no Mecha Kyohei",
+      "subtype": "movie",
+      "start": "2006-03-04",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1906",
+      "title": "One Piece Movie 8: Episode of Alabasta - Sabaku no Oujo to Kaizoku-tachi",
+      "subtype": "movie",
+      "start": "2007-03-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48887",
+      "title": "One Piece: Uchuu tte Omoshiree! Hoshizora Jima-hen",
+      "subtype": "movie",
+      "start": "2007-04-21",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3300",
+      "title": "One Piece Movie 9: Episode of Chopper Plus - Fuyu ni Saku, Kiseki no Sakura",
+      "subtype": "movie",
+      "start": "2008-03-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3492",
+      "title": "One Piece Film: Strong World",
+      "subtype": "movie",
+      "start": "2009-12-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5987",
+      "title": "One Piece 3D: Mugiwara Chase",
+      "subtype": "movie",
+      "start": "2011-03-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6641",
+      "title": "One Piece 3D: Gekisou! Trap Coaster",
+      "subtype": "movie",
+      "start": "2011-12-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6827",
+      "title": "One Piece Film: Z",
+      "subtype": "movie",
+      "start": "2012-12-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48888",
+      "title": "One Piece: The Planetarium",
+      "subtype": "movie",
+      "start": "2013-07-13",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11351",
+      "title": "One Piece Film: Gold",
+      "subtype": "movie",
+      "start": "2016-07-23",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46584",
+      "title": "Tokyo One Piece Tower: Tongari Shima no Dai Hihou",
+      "subtype": "movie",
+      "start": "2016-11-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42061",
+      "title": "Gekijouban One Piece: Stampede",
+      "subtype": "movie",
+      "start": "2019-08-09",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "45513",
+      "title": "One Piece Film: Red",
+      "subtype": "movie",
+      "start": "2022-08-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49504",
+      "title": "Luffy, Law",
+      "subtype": "movie",
+      "start": "2025-01-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50922",
+      "title": "ONE PIECE FILM: GOD VALLEY",
+      "subtype": "movie",
+      "start": "2027-07-31",
+      "episodes": 1,
+      "status": "unreleased",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50923",
+      "title": "ONE PIECE FILM: BAAD",
+      "subtype": "movie",
+      "start": "2029-12-31",
+      "episodes": 1,
+      "status": "unreleased",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "428",
+      "title": "One Piece: Taose! Kaizoku Ganzack",
+      "subtype": "OVA",
+      "start": "1998-07-26",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "979",
+      "title": "One Piece: Umi no Heso no Daibouken-hen",
+      "subtype": "special",
+      "start": "2000-12-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1113",
+      "title": "One Piece: Oounabara ni Hirake! Dekkai Dekkai Chichi no Yume!",
+      "subtype": "special",
+      "start": "2003-04-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1114",
+      "title": "One Piece: Mamore! Saigo no Dai Butai",
+      "subtype": "special",
+      "start": "2003-12-14",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1819",
+      "title": "One Piece: Nenmatsu Tokubetsu Kikaku! Mugiwara no Luffy Oyabun Torimonochou",
+      "subtype": "special",
+      "start": "2005-12-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "2443",
+      "title": "One Piece: Straw Hat Theater",
+      "subtype": "special",
+      "start": "2006-10-01",
+      "episodes": 5,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4014",
+      "title": "One Piece: Romance Dawn Story",
+      "subtype": "OVA",
+      "start": "2008-11-24",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5469",
+      "title": "One Piece Film: Strong World Episode 0",
+      "subtype": "OVA",
+      "start": "2010-04-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50719",
+      "title": "Schick x One Piece",
+      "subtype": "special",
+      "start": "2010-06-01",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50721",
+      "title": "UHA Mikakutou x One Piece",
+      "subtype": "special",
+      "start": "2012-01-01",
+      "episodes": 7,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7390",
+      "title": "One Piece: Episode of Luffy - Hand Island no Bouken",
+      "subtype": "special",
+      "start": "2012-12-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7402",
+      "title": "One Piece: Romance Dawn",
+      "subtype": "OVA",
+      "start": "2012-12-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7434",
+      "title": "One Piece: Glorious Island",
+      "subtype": "special",
+      "start": "2012-12-23",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8718",
+      "title": "One Piece 3D2Y: Ace no shi wo Koete! Luffy Nakama Tono Chikai",
+      "subtype": "special",
+      "start": "2014-08-30",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11551",
+      "title": "One Piece: Adventure of Nebulandia",
+      "subtype": "special",
+      "start": "2015-12-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50720",
+      "title": "Star Wars x One Piece",
+      "subtype": "special",
+      "start": "2015-12-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47841",
+      "title": "One Piece Characters Log",
+      "subtype": "special",
+      "start": "2016-06-19",
+      "episodes": 9,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48738",
+      "title": "One Piece x Kawaisouni: Kono Boushi wo Omae ni Azukeru",
+      "subtype": "ONA",
+      "start": "2024-03-04",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49259",
+      "title": "ONE PIECE FAN LETTER",
+      "subtype": "special",
+      "start": "2024-10-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49712",
+      "title": "Koisuru ONE PIECE",
+      "subtype": "ONA",
+      "start": "2025-04-01",
+      "episodes": 5,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50409",
+      "title": "CHOPPER's",
+      "subtype": "TV",
+      "start": "2026-01-05",
+      "episodes": null,
+      "status": "current",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50089",
+      "title": "ONE PIECE HEROINES",
+      "subtype": "special",
+      "start": "2026-07-05",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50656",
+      "title": "LEGO ONE PIECE",
+      "subtype": "ONA",
+      "start": "2026-09-29",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [
+    {
+      "id": "46228",
+      "title": "One Piece: Otoshidama Special - Tokubetsu Hou Mugiwara Kaizoku-dan no Himitsu!",
+      "subtype": "special",
+      "start": "2006-01-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5225",
+      "title": "One Piece Recap",
+      "subtype": "OVA",
+      "start": "2010-03-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7240",
+      "title": "One Piece: Episode of Nami - Koukaishi no Namida to Nakama no Kizuna",
+      "subtype": "special",
+      "start": "2012-08-25",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7894",
+      "title": "One Piece: Episode of Merry - Mou Hitori no Nakama no Monogatari",
+      "subtype": "special",
+      "start": "2013-08-24",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11292",
+      "title": "One Piece: Episode of Sabo - 3 Kyoudai no Kizuna Kiseki no Saikai to Uketsugareru Ishi",
+      "subtype": "special",
+      "start": "2015-08-22",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "13048",
+      "title": "One Piece: Long Ring Long Land-hen",
+      "subtype": "special",
+      "start": "2015-12-11",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "13623",
+      "title": "One Piece: Episode of East Blue - Luffy to 4-nin no Nakama no Daibouken",
+      "subtype": "special",
+      "start": "2017-08-26",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "45869",
+      "title": "One Piece: 5-fun de Wakaru Kore made no Wano Kuni-hen",
+      "subtype": "ONA",
+      "start": "2020-06-22",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "45690",
+      "title": "One Piece: Luffy Senpai Ouen Kikaku! Barto no Himitsu no Heya!",
+      "subtype": "special",
+      "start": "2021-12-26",
+      "episodes": 4,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46215",
+      "title": "One Piece: Dai Tettei Kaibou! Kouzuki Oden Densetsu!",
+      "subtype": "special",
+      "start": "2022-06-26",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46447",
+      "title": "One Piece: Densetsu no Log! Akagami no Shanks!",
+      "subtype": "special",
+      "start": "2022-08-28",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46629",
+      "title": "One Piece: Dai Tettei Kaibou! Gekitou! 5-nin no Shin Sedai",
+      "subtype": "special",
+      "start": "2022-10-09",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47643",
+      "title": "One Piece: Dai Gekisen Tokushuu! Mugiwara no Ichimi vs. Tobi Roppou",
+      "subtype": "special",
+      "start": "2022-12-24",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48291",
+      "title": "One Piece: Dai Gekisen Tokushuu! Zoro vs. Ookanban!",
+      "subtype": "special",
+      "start": "2023-05-14",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47642",
+      "title": "One Piece: Dai Gekisen Tokushuu! Hangeki Doumei vs. Big Mom",
+      "subtype": "special",
+      "start": "2023-06-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48727",
+      "title": "One Piece: Dai Tannou Kikaku! \"Shi no Gekai\" Trafalgar Law",
+      "subtype": "special",
+      "start": "2024-02-04",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48726",
+      "title": "One Piece: Innen no Log! Mugiwara no Ichimi to Cipher Pol",
+      "subtype": "special",
+      "start": "2024-04-14",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48969",
+      "title": "One Piece: Kizamareru Rekishi! Gekidou no Shinkyuu Yonkou!",
+      "subtype": "special",
+      "start": "2024-06-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49133",
+      "title": "One Piece: Araburu Henkaku no Log: Anyaku Suru Kakumeigun!",
+      "subtype": "special",
+      "start": "2024-08-24",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49229",
+      "title": "One Piece: Yuruganu Seigi! Kaigun no Hokoritakaki Log!",
+      "subtype": "special",
+      "start": "2024-09-28",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49212",
+      "title": "One Piece: Dai Tokushuu! Momonosuke no Mei Shougun e no Michi",
+      "subtype": "special",
+      "start": "2024-12-24",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49878",
+      "title": "One Piece Egghead Arc Recap",
+      "subtype": "special",
+      "start": "2025-04-05",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49911",
+      "title": "One Piece: Dr. Chopper no Bouken Karte - Chichi to Musume no Ballad",
+      "subtype": "special",
+      "start": "2025-05-11",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50022",
+      "title": "One Piece: Dr. Chopper no Bouken Karte - Shinyuu-tachi no Crossroad",
+      "subtype": "special",
+      "start": "2025-06-22",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50130",
+      "title": "One Piece: Dr. Chopper no Bouken Karte - Hokoritakaki Gigant Dream",
+      "subtype": "special",
+      "start": "2025-08-31",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50262",
+      "title": "One Piece: Dr. Chopper no Bouken Karte - Uragirimono-tachi no Masquerade",
+      "subtype": "special",
+      "start": "2025-10-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50372",
+      "title": "One Piece: Dr. Chopper no Bouken Karte - Tensai ga Nokoshita \"Last Records\"",
+      "subtype": "special",
+      "start": "2025-11-23",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "parents": {
+    "45513": [
+      "12"
+    ]
+  },
+  "complete": true
+}
