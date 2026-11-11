@@ -536,6 +536,38 @@ describe('a pick of another show on the player, kept watching here', () => {
 	});
 });
 
+describe('a player opened again on a line picked for another show', () => {
+	// The pick was made with "Keep watching this", and the player was
+	// mounted again (a reload, a recovery): the URL still names the show
+	// playing, and the line records the pick.
+	it.each([
+		['a guessed session', { guess: '1', row: CARD }],
+		['a session of the named line', { row: CARD }]
+	])('keeps the pick for later episodes and says so (%s)', async (_name, query) => {
+		backend.rows = backend.rows.map((r) =>
+			r.id === CARD ? { ...r, kitsu_id: RIGHT, named: true } : r
+		);
+		await openPlayer(query);
+		await until(
+			() => slipText().includes(m.play_link_linked_note({ title: RIGHT_TITLE })),
+			'the note that the pick is saved'
+		);
+		expect(button(m.play_link_switch_now(), slip()!)).not.toBeNull();
+		const next = target.querySelector<HTMLButtonElement>(
+			`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
+		)!;
+		await until(() => !next.disabled, 'the next episode button');
+		const before = FakeEventSource.instances.length;
+		next.click();
+		await until(() => FakeEventSource.instances.length > before, 'the next episode play');
+		const asked = new URL(FakeEventSource.instances.at(-1)!.url, 'http://x').searchParams;
+		// Named as the pick on the card's row, never as the show playing.
+		expect(asked.get('guess_row')).toBe(CARD);
+		expect(asked.get('guess_id')).toBe(RIGHT);
+		expect(asked.get('kitsu_id')).toBeNull();
+	});
+});
+
 describe('switching to the pick', () => {
 	/** The player's video, at `at` seconds in. */
 	function videoAt(at: number) {

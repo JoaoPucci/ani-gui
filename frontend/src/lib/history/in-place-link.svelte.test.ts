@@ -324,6 +324,33 @@ describe('the session a switch opens', () => {
 	});
 });
 
+describe('a player mounted again after a pick it kept watching through', () => {
+	it.each([true, false])(
+		'names the pick the line records as linked, for later episodes and the slip (guess %s)',
+		async (guess) => {
+			const f = fake(true);
+			f.rows = [{ ...CARD, kitsu_id: RIGHT.id, named: true }];
+			const s = new InPlaceLinkSession(f.deps);
+			await s.arrive(CARD.id, GUESS.id, guess);
+			expect(s.linked?.id).toBe(RIGHT.id);
+			expect(s.slip).toBe('linked');
+		}
+	);
+
+	it('names nothing for a line no one named, nor on Home', async () => {
+		const f = fake(true);
+		f.rows = [{ ...CARD, kitsu_id: RIGHT.id }];
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id, false);
+		expect(s.linked).toBeNull();
+		const home = fake(false);
+		home.rows = [{ ...CARD, kitsu_id: RIGHT.id, named: true }];
+		const h = new InPlaceLinkSession(home.deps);
+		await h.arrive(CARD.id, GUESS.id);
+		expect(h.linked).toBeNull();
+	});
+});
+
 describe('a surface that reads nothing from the history', () => {
 	it('links without a refresh', async () => {
 		const f = fake();
