@@ -37,7 +37,7 @@ fn placers(cat: &super::tests::Catalogue, anchor: &str) -> Vec<String> {
     if !one_offs {
         return vec![anchor.to_string()];
     }
-    let mine = parent_stories(anchor, &look).expect("every listing is known");
+    let mine = parent_stories(anchor, &look, &BTreeSet::new()).expect("every listing is known");
     if mine.parents.iter().any(|p| !own.members.contains_key(p)) {
         return vec![anchor.to_string()];
     }
