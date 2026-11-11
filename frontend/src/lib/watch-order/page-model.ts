@@ -20,6 +20,8 @@ export type StripCaption =
 	/** A run member's place in a franchise read in part: nothing about it is sure. */
 	| { readonly kind: 'partial' }
 	| { readonly kind: 'side' }
+	/** A side story that is a film: the payload lists it under films. */
+	| { readonly kind: 'film' }
 	| { readonly kind: 'cycle'; readonly count: number }
 	| { readonly kind: 'branch' };
 
