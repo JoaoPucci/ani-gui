@@ -18,7 +18,7 @@
 <script lang="ts">
 	import '$lib/design/tokens.css';
 	import { onDestroy, onMount } from 'svelte';
-	import { visitSeries } from '$lib/navigation/visit';
+	import { createLiveSearch } from '$lib/topbar/live-search';
 	import { signalAppReady } from '$lib/app-ready';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -228,14 +228,11 @@
 	// so the constants live next to the helpers that consume them.
 
 	let liveResults = $state<KitsuAnimeRef[] | null>(null);
-	// The query `liveResults` answers.
-	let liveResultsFor: string | null = null;
 	let liveBusy = $state(false);
 	let liveError = $state(false);
 	let dropdownOpen = $state(false);
 	let selectedIdx = $state(-1);
 	let recentSearches = $state<string[]>([]);
-	let liveDebounce: ReturnType<typeof setTimeout> | null = null;
 	let blurDismiss: ReturnType<typeof setTimeout> | null = null;
 
 	onMount(() => {
@@ -296,76 +293,34 @@
 		}
 	}
 
-	// Each live search, cancelled once the query moves on: its answer
-	// would be dropped, and it holds an API connection until Kitsu
-	// answers. A search cancelled so answers nothing, not a failure
-	// ($lib/navigation/visit).
-	const liveReads = visitSeries();
-	onDestroy(liveReads.end);
-
-	/** No live search goes on: none waiting on its pause, none out. */
-	function stopLive() {
-		if (liveDebounce) clearTimeout(liveDebounce);
-		liveDebounce = null;
-		liveReads.end();
-	}
-
-	/** The dropdown has closed: no live search goes on, and hits of a
-	 *  query the viewer typed past are not shown again. */
-	function closeLive() {
-		stopLive();
-		liveBusy = false;
-		if (liveResultsFor !== topbarQuery.trim()) {
-			liveResults = null;
-			liveError = false;
-		}
-	}
-
-	function scheduleLive(q: string) {
-		stopLive();
-		if (q.length < LIVE_MIN_CHARS) {
-			liveResults = null;
-			liveBusy = false;
-			liveError = false;
-			return;
-		}
-		liveDebounce = setTimeout(async () => {
-			liveBusy = true;
-			liveError = false;
-			const reads = liveReads.next();
-			try {
-				const hits = await reads.keep(kitsuSearch(q, { signal: reads.signal }));
-				// If the user kept typing past this query, ignore stale results.
-				if (q !== topbarQuery.trim()) return;
-				const trimmed = hits.slice(0, LIVE_MAX_HITS);
-				// Drop hits the availability cache already knows aren't on
-				// the streaming source. Cache-only variant — no warm, no
-				// upstream probes — since this path fires per settled
-				// keystroke and the warm should originate from lower-
-				// frequency surfaces (home rows, detail page). Match the
-				// home filter's mode source: per-user config with 'sub'
-				// fallback. The dropdown can briefly show fewer than
-				// LIVE_MAX_HITS rows when filtering trims hits;
-				// over-fetching to backfill is deliberately not done — the
-				// dropdown is a quick-jump, not a complete listing.
-				const mode: 'sub' | 'dub' = config?.mode === 'dub' ? 'dub' : 'sub';
-				const filtered = await reads.keep(
-					filterAvailableCacheOnly(trimmed, mode, { signal: reads.signal })
-				);
-				// Re-check after the async filter — the user may have kept
-				// typing while it ran.
-				if (q !== topbarQuery.trim()) return;
-				liveResults = filtered;
-				liveResultsFor = q;
-			} catch {
-				liveResults = [];
-				liveResultsFor = q;
-				liveError = true;
-			} finally {
-				liveBusy = false;
-			}
-		}, LIVE_DEBOUNCE_MS);
-	}
+	// The live search's transitions — when a search goes out, is
+	// dropped or cancelled, and what the dropdown shows — live in
+	// $lib/topbar/live-search; this hands it the calls and writes back
+	// what it shows.
+	const liveSearch = createLiveSearch({
+		search: (q, signal) => kitsuSearch(q, { signal }),
+		// Drop hits the availability cache already knows aren't on the
+		// streaming source. Cache-only variant — no warm, no upstream
+		// probes — since this path fires per settled keystroke and the
+		// warm should originate from lower-frequency surfaces (home rows,
+		// detail page). Match the home filter's mode source: per-user
+		// config with 'sub' fallback. The dropdown can briefly show fewer
+		// than LIVE_MAX_HITS rows when filtering trims hits; over-fetching
+		// to backfill is deliberately not done — the dropdown is a
+		// quick-jump, not a complete listing.
+		filter: (hits, signal) =>
+			filterAvailableCacheOnly(hits, config?.mode === 'dub' ? 'dub' : 'sub', { signal }),
+		currentQuery: () => topbarQuery.trim(),
+		changed: (view) => {
+			liveResults = view.results;
+			liveBusy = view.busy;
+			liveError = view.error;
+		},
+		debounceMs: LIVE_DEBOUNCE_MS,
+		minChars: LIVE_MIN_CHARS,
+		maxHits: LIVE_MAX_HITS
+	});
+	onDestroy(liveSearch.destroy);
 
 	// Sync the topbar input with ?q= so navigating to /search shows
 	// what was searched and the field stays editable.
@@ -411,7 +366,7 @@
 
 	function onInput() {
 		selectedIdx = -1;
-		scheduleLive(topbarQuery.trim());
+		liveSearch.schedule(topbarQuery.trim());
 	}
 
 	async function onInputFocus() {
@@ -455,7 +410,7 @@
 
 	function navigateToHit(hit: KitsuAnimeRef) {
 		dropdownOpen = false;
-		closeLive();
+		liveSearch.close();
 		void goto(resolve('/anime/[id]', { id: hit.id }));
 	}
 
@@ -465,7 +420,7 @@
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		void goto(target);
 		dropdownOpen = false;
-		closeLive();
+		liveSearch.close();
 	}
 
 	// Double-click-to-maximize on the frameless titlebar is handled by the
