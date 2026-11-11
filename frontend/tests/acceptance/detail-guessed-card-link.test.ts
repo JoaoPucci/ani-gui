@@ -230,13 +230,23 @@ describe('the show page a guessed Continue card opened', () => {
 		expect(button(m.detail_link_change())).toBeNull();
 	});
 
-	it('says nothing once the row records a show', async () => {
-		rows = rows.map((r) => (r.id === CARD ? { ...r, kitsu_id: GUESS } : r));
+	it('says nothing once the row records another show', async () => {
+		rows = rows.map((r) => (r.id === CARD ? { ...r, kitsu_id: RIGHT } : r));
 		await openShowPage(GUESS, { guessed: CARD });
 		await settle();
 		expect(hasNote()).toBe(false);
 		// The room held for the line goes once nothing is offered.
 		expect(target.querySelector('.guess-note')).toBeNull();
+	});
+
+	it("keeps the line when the row records the page's show by the guessed session's own play", async () => {
+		// The player's guessed play landed on the card's own listing and
+		// recorded the guess: the session is still the guess its card
+		// opened, and the page it goes up to still asks.
+		rows = rows.map((r) => (r.id === CARD ? { ...r, kitsu_id: GUESS } : r));
+		await openShowPage(GUESS, { guessed: CARD });
+		await until(hasNote, 'the matched-from line');
+		expect(button(m.detail_link_change())).not.toBeNull();
 	});
 
 	it('plays as it always does with the line there', async () => {

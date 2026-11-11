@@ -111,6 +111,30 @@ describe('surfaceOffer', () => {
 		).toMatchObject({ saved: '4013' });
 	});
 
+	it("asks about a guess its session carries, though the session's own play recorded it", async () => {
+		// The guessed play landed on the card's own listing and wrote the
+		// guess on the row: the row now records 7158, trusted.
+		const recorded = { ...CARD, kitsu_id: '7158' };
+		const deps = d({ history: async () => [recorded] });
+		// The player of a session a guessed card opened carries the card's
+		// verdict; the show page it goes up to does too.
+		const player = { asksGuess: true, inPlayer: true, carried: true };
+		const showPage = { asksGuess: true, inPlayer: false, carried: true };
+		const offer = await surfaceOffer(deps, CARD.id, '7158', player);
+		expect(offer).toMatchObject({ entry: recorded, current: { id: '7158' } });
+		expect(offer?.saved).toBeUndefined();
+		// A surface that judges the row itself (Home) finds no guess.
+		expect(
+			await surfaceOffer(deps, CARD.id, '7158', { asksGuess: true, inPlayer: false })
+		).toBeNull();
+		// Nor is a row the user named a show for asked about: it is only
+		// offered to change again.
+		const named = d({ history: async () => [{ ...recorded, named: true }] });
+		expect(await surfaceOffer(named, CARD.id, '7158', showPage)).toMatchObject({ saved: '7158' });
+		// And a row recording another show than the one playing asks nothing.
+		expect(await surfaceOffer(deps, CARD.id, '4013', player)).toBeNull();
+	});
+
 	it('offers a line picked on the player again only on the player', async () => {
 		notePick(CARD.id);
 		const surface = { asksGuess: false };
