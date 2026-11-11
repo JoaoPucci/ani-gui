@@ -68,7 +68,7 @@ describe('franchiseSummary', () => {
 		expect(franchiseSummary(run('fate'), run('fate').nameId).recaps).toBe(2);
 	});
 
-	it('fans the first entry, a film and a side story, filling from the main story', () => {
+	it('fans the front entry, a film and a side story, filling from the main story', () => {
 		expect(ids(franchiseSummary(run('fate'), run('fate').nameId).posters)).toEqual([
 			'6028',
 			'4788',
@@ -79,6 +79,15 @@ describe('franchiseSummary', () => {
 			'49128',
 			'6546'
 		]);
+	});
+
+	it('fans the entry the franchise is named after first, wherever it sits in the run', () => {
+		// Fate is named after Fate/stay night (323), not Fate/Zero (6028),
+		// its first entry by its links.
+		expect(ids(franchiseSummary(run('fate'), '323').posters)).toEqual(['323', '4788', '6928']);
+		const jojo = run('jojo');
+		const last = jojo.entries.at(-1)!.id;
+		expect(franchiseSummary(jojo, last).posters[0].id).toBe(last);
 	});
 
 	it('fans only entries that have a poster, and none when no entry has one', () => {

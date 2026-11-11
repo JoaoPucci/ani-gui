@@ -7,7 +7,6 @@ import {
 	type FranchiseRow,
 	type FranchisePageModel
 } from './franchise-page';
-import { nameEntry, withoutFormatSuffix } from './franchise-name';
 import type { WatchOrderData } from './loader';
 import { pathNote, placement, segments, sequence } from './order';
 import type { HistoryRow } from './progress';
@@ -19,13 +18,22 @@ import type { FranchiseData } from './types';
 const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
 const ids = (list: readonly { readonly id: string }[]) => list.map((e) => e.id);
 
-/** A fixture run as the backend would serve it for `anchor`. */
-function payload(key: string, anchor: string, complete = true): FranchiseData {
+/**
+ * A fixture run as the backend would serve it for `anchor`, named
+ * `name` after `nameFrom` (by default its first title by its links).
+ */
+function payload(
+	key: string,
+	anchor: string,
+	complete = true,
+	name = `The ${key} franchise`,
+	nameFrom = run(key).nameId
+): FranchiseData {
 	const r = run(key);
 	return {
 		anchor,
-		name: `The ${key} franchise`,
-		name_from: r.nameId,
+		name,
+		name_from: nameFrom,
 		entries: r.entries,
 		links: r.links,
 		versions: r.versions,
@@ -55,24 +63,21 @@ describe('franchisePage', () => {
 		expect(franchisePage({ franchise: empty, rows: [] }, '7158', 'linked')).toBeNull();
 	});
 
-	it('names JoJo after its first TV series, keeping "(TV)" beside the bare-titled OVA', () => {
-		const page = franchisePage(data('jojo', '46598'), '46598', 'linked')!;
-		expect(page.art.id).toBe('7158');
-		expect(page.name).toBe('JoJo no Kimyou na Bouken (TV)');
-	});
-
-	it('drops "(TV)" from the name where no other title would read the same', () => {
-		const f = payload('jojo', '46598');
-		const renamed = {
-			...f,
-			entries: f.entries.map((e) => (e.id === '7158' ? { ...e, title: 'Saga (TV)' } : e))
-		};
-		expect(franchisePage({ franchise: renamed, rows: [] }, '46598', 'linked')!.name).toBe('Saga');
-	});
-
-	it('takes its artwork from the first TV series in link order, whatever the order setting', () => {
+	it('carries the name the walk gives the franchise, whatever the order setting', () => {
 		for (const order of ['linked', 'released'] as const) {
-			expect(franchisePage(data('fate', '6028'), '6028', order)!.art.id).toBe('6028');
+			const f = payload('jojo', '46598', true, 'JoJo no Kimyou na Bouken (TV)', '7158');
+			const page = franchisePage({ franchise: f, rows: [] }, '46598', order)!;
+			expect(page.name).toBe('JoJo no Kimyou na Bouken (TV)');
+			expect(page.art.id).toBe('7158');
+		}
+	});
+
+	it('takes its artwork from the entry the walk names it after, not its first by links', () => {
+		// Fate/Zero comes first by its links; the walk names the
+		// franchise after Fate/stay night, its first series by start.
+		const f = payload('fate', '6028', true, 'Fate/stay night', '323');
+		for (const order of ['linked', 'released'] as const) {
+			expect(franchisePage({ franchise: f, rows: [] }, '6028', order)!.art.id).toBe('323');
 		}
 	});
 
@@ -578,13 +583,13 @@ describe('franchisePage', () => {
 		);
 	});
 
-	it('names itself after the title nameEntry picks, and counts what it lists', () => {
+	it("carries the name the walk gives it and that entry's artwork, and counts what it lists", () => {
 		fc.assert(
 			fc.property(anyPage, ({ f, id, order, rows }) => {
 				const page = franchisePage({ franchise: f, rows }, id, order);
 				if (!page) return;
-				expect(page.art).toBe(nameEntry(page.run));
-				expect([page.art.title, withoutFormatSuffix(page.art.title)]).toContain(page.name);
+				expect(page.name).toBe(f.name);
+				expect(page.art.id).toBe(f.name_from);
 				const r = page.run;
 				expect(page.total).toBe(
 					f.complete

@@ -325,6 +325,14 @@ describe('franchiseLinkOnly', () => {
 		);
 	});
 
+	it('fronts its poster stack with the entry the walk names the franchise after', () => {
+		// A Bleach film with no parent story: the link shows on its own,
+		// fronted by whichever main-story entry the walk names.
+		const film = run('bleach').films[0].id;
+		const f = { ...payload('bleach', film), name_from: '46903' };
+		expect(franchiseLinkOnly({ franchise: f, rows: [] }, film)!.front).toBe('46903');
+	});
+
 	it('links there from a franchise read in part too, carrying that it was', () => {
 		const link = franchiseLinkOnly({ franchise: oneMain(false), rows: [] }, '244')!;
 		expect(link).not.toBeNull();
