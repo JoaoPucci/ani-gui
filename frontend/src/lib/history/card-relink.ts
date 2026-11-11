@@ -137,11 +137,12 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 		stillGuessed: async (row, matchId) => {
 			const same = view();
 			const stands = await deps.offerStands(row, matchId);
-			if (stands === true) return true;
 			// Matched again, or being matched, since the check began: the
 			// card shows, or is about to show, another show, whose offer
-			// this one, for the show it leaves, is not.
+			// this one, for the show it leaves, is not — whatever it
+			// answered, a picker opened on it would be the former show's.
 			if (!same(row)) return false;
+			if (stands === true) return true;
 			// This check could not be read: the card is not known to be
 			// settled, keeps its pill, and the caller says so.
 			if (stands === 'unread') return 'unread';
