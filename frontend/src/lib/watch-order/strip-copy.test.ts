@@ -47,6 +47,7 @@ describe('the strip copy', () => {
 		// A franchise read in part: the heading reads "Watch order" alone.
 		expect(captionText({ kind: 'partial' })).toBe('');
 		expect(captionText({ kind: 'side' })).toBe('Side story');
+		expect(captionText({ kind: 'film' })).toBe('Film');
 		// A loop is said as what the viewer sees: the others it links with.
 		expect(captionText({ kind: 'cycle', count: 10 })).toBe('Linked with 9 others, order unclear');
 		expect(captionText({ kind: 'cycle', count: 2 })).toBe('Linked with 1 other, order unclear');

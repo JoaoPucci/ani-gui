@@ -94,6 +94,22 @@ describe('watchOrderPage', () => {
 		expect(ids(got.view.before)).toEqual(['6028', '7658']);
 	});
 
+	it('calls a side story that the payload lists under films a film, still with no number', () => {
+		// The Fate/Zero special, served as a film: what the walk does for
+		// any movie that names a parent story.
+		const p = payload('fate', '6928');
+		const special = p.sides.find((e) => e.id === '6928')!;
+		const asFilm: FranchiseData = {
+			...p,
+			sides: p.sides.filter((e) => e.id !== '6928'),
+			films: [...p.films, { ...special, subtype: 'movie' }]
+		};
+		const got = watchOrderPage({ franchise: asFilm, rows: [] }, '6928', 'linked')!;
+		expect(got.caption).toEqual({ kind: 'film' });
+		expect(got.eyebrow).toBeNull();
+		expect(ids(got.view.before)).toEqual(['6028', '7658']);
+	});
+
 	it('reads progress from the history, for the run only', () => {
 		const rows: HistoryRow[] = [
 			{ kitsu_id: '244', ep_no: '366' },
@@ -201,6 +217,47 @@ describe('watchOrderPage', () => {
 					expect(got.caption.kind).not.toBe('position');
 					if (got.view.kind === 'run') expect(got.caption).toEqual({ kind: 'partial' });
 					expect(got.eyebrow).toBeNull();
+				}
+			})
+		);
+	});
+
+	it('calls the shown entry a film exactly where it is a side story listed under films', () => {
+		// The anchor's own entry goes under films or under sides, as the
+		// walk places a side story: films for a movie, sides otherwise.
+		const placed = anyPage.chain(({ f, id, order, rows }) =>
+			fc.record({
+				f: fc.constant(f),
+				id: fc.constant(id),
+				order: fc.constant(order),
+				rows: fc.constant(rows),
+				film: fc.boolean()
+			})
+		);
+		fc.assert(
+			fc.property(placed, ({ f, id, order, rows, film }) => {
+				const own = f.entries.find((e) => e.id === id);
+				const entry: WatchEntry = own ?? {
+					id,
+					title: `T${id}`,
+					subtype: film ? 'movie' : 'OVA',
+					start: null,
+					episodes: null,
+					status: null,
+					poster: null,
+					cover: null
+				};
+				const placedF: FranchiseData = own
+					? f
+					: film
+						? { ...f, films: [entry] }
+						: { ...f, sides: [entry] };
+				const got = watchOrderPage({ franchise: placedF, rows }, id, order);
+				if (!got) return;
+				if (got.view.kind === 'side') {
+					expect(got.caption.kind).toBe(own === undefined && film ? 'film' : 'side');
+				} else {
+					expect(got.caption.kind).not.toBe('film');
 				}
 			})
 		);
