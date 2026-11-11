@@ -121,6 +121,25 @@ export function scrollBack(gone: Gone | null, drawnHeight: number): number {
 	return gone !== null && above(gone) ? drawnHeight - gone.height : 0;
 }
 
+/** The window's scroll calls. */
+export interface ScrollWindow {
+	readonly scrollY: number;
+	scrollBy(x: number, y: number): void;
+	scrollTo(x: number, y: number): void;
+}
+
+/**
+ * Keep what the reader is reading in place as the held room `gone`
+ * goes: called once the change is laid out, with the drawn block's
+ * height, it scrolls by what the change gave back or took.
+ */
+export function holdScroll(win: ScrollWindow, gone: Gone): (drawnHeight: number) => void {
+	return (drawnHeight) => {
+		const dy = scrollBack(gone, drawnHeight);
+		if (dy !== 0) win.scrollBy(0, dy);
+	};
+}
+
 /** Whether the held room starts above the viewport. */
 function above(gone: Gone | null): boolean {
 	return gone !== null && gone.top < 0;

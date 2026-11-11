@@ -23,8 +23,8 @@
 		arriveCss,
 		arriveOf,
 		heldShape,
+		holdScroll,
 		leaveOf,
-		scrollBack,
 		type FirstHop,
 		type Gone
 	} from './arrival';
@@ -61,10 +61,17 @@
 		const was: Gone = { top: rect.top, height: rect.height };
 		gone = was;
 		if (was.top >= 0) return;
-		void tick().then(() => {
-			const dy = scrollBack(was, drawnEl?.getBoundingClientRect().height ?? 0);
-			if (dy !== 0) window.scrollBy(0, dy);
-		});
+		const hold = holdScroll(
+			{
+				get scrollY() {
+					return window.scrollY;
+				},
+				scrollBy: (x, y) => window.scrollBy(x, y),
+				scrollTo: (x, y) => window.scrollTo(x, y)
+			},
+			was
+		);
+		void tick().then(() => hold(drawnEl?.getBoundingClientRect().height ?? 0));
 	});
 
 	const leave = reducible((node: Element) => {
