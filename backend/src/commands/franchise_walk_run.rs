@@ -93,18 +93,14 @@ pub(crate) fn run(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>> {
     }
     let placed = place(anchor, &own, look)?;
     let mut consulted = own.consulted.clone();
-    consulted.extend(placed.read);
-    let Some(parent) = placed.root else {
+    consulted.extend(placed.read.iter().cloned());
+    let Some(parent) = placed.root.clone() else {
         return Ok(Run { consulted, ..own });
     };
     let theirs = walk(&parent, look, consulted)?;
     let side_anchor = !theirs.members.contains_key(anchor);
     let parents = if side_anchor {
-        placed
-            .parents
-            .into_iter()
-            .filter(|p| theirs.members.contains_key(p))
-            .collect()
+        placed.parents_in(&theirs.members)
     } else {
         Vec::new()
     };

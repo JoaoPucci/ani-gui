@@ -4,7 +4,7 @@
 //! (`franchise_walk_parents.rs`), the earliest the one the walk moves
 //! to.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::parents::parent_stories;
 use super::rules::Run;
@@ -14,10 +14,31 @@ use super::{order_key, Lookup};
 pub(super) struct Placed {
     /// The parent story to walk from: the earliest any member names.
     pub(super) root: Option<String>,
-    /// The anchor's parents to name: its own, else its run's.
-    pub(super) parents: Vec<String>,
+    /// The parent stories the anchor names outside its run, earliest first.
+    mine: Vec<String>,
+    /// The parent stories any member names outside the run, earliest first.
+    all: Vec<String>,
     /// Every candidate listing read to decide.
     pub(super) read: BTreeSet<String>,
+}
+
+impl Placed {
+    /// The anchor's parents among the `members` of the run the walk
+    /// moved to: its own there, else its run's there, which hold the
+    /// root, so the list is never empty.
+    pub(super) fn parents_in(self, members: &BTreeMap<String, Option<String>>) -> Vec<String> {
+        let within = |list: Vec<String>| -> Vec<String> {
+            list.into_iter()
+                .filter(|p| members.contains_key(p))
+                .collect()
+        };
+        let mine = within(self.mine);
+        if mine.is_empty() {
+            within(self.all)
+        } else {
+            mine
+        }
+    }
 }
 
 /// The parent stories the members of `own` name outside it (each
@@ -59,7 +80,8 @@ pub(super) fn place(anchor: &str, own: &Run, look: &Lookup<'_>) -> Result<Placed
     mine.sort_by_key(key);
     Ok(Placed {
         root: all.first().cloned(),
-        parents: if mine.is_empty() { all } else { mine },
+        mine,
+        all,
         read,
     })
 }
