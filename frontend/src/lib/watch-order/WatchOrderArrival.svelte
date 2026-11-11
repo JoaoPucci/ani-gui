@@ -25,6 +25,7 @@
 		heldShape,
 		holdScroll,
 		leaveOf,
+		windowScroll,
 		type FirstHop,
 		type Gone
 	} from './arrival';
@@ -61,15 +62,7 @@
 		const was: Gone = { top: rect.top, height: rect.height };
 		gone = was;
 		if (was.top >= 0) return;
-		const hold = holdScroll(
-			{
-				get scrollY() {
-					return window.scrollY;
-				},
-				scrollTo: (x, y) => window.scrollTo(x, y)
-			},
-			was
-		);
+		const hold = holdScroll(windowScroll(), was);
 		void tick().then(() => hold(drawnEl?.getBoundingClientRect().height ?? 0));
 	});
 

@@ -128,6 +128,20 @@ export interface ScrollWindow {
 }
 
 /**
+ * The window's scroll as `holdScroll` reads it: the position read live
+ * (a copied value would be the position at the wrong moment), the call
+ * wrapped, not handed over as a method.
+ */
+export function windowScroll(): ScrollWindow {
+	return {
+		get scrollY() {
+			return window.scrollY;
+		},
+		scrollTo: (x, y) => window.scrollTo(x, y)
+	};
+}
+
+/**
  * Keep what the reader is reading in place as the held room `gone`
  * goes. Made before the change, it notes where the page is; called once
  * the change is laid out, with the drawn block's height, it scrolls to
