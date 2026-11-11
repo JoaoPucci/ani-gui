@@ -161,3 +161,56 @@ async fn a_cache_this_build_wrote_keeps_its_notices() {
     let got = read(&path).await.expect("an entry");
     assert_eq!(got.flags.get("notices"), Some(&notices_block()));
 }
+
+/// What this build caches it admitted under its own declarations. A
+/// later build may declare a rollout this one did not, so an entry is
+/// trusted to turn one on only if it is known to have verified; an
+/// entry that is not is admitted again, as unsigned, under the reading
+/// build's declarations.
+#[tokio::test]
+async fn an_entry_not_known_to_have_verified_cannot_turn_a_rollout_on() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    let unverified = serde_json::json!({
+        "fetched_at": 42,
+        "admitted": true,
+        "flags": { "notification_center": true, "test_kill": false }
+    });
+    std::fs::write(&path, unverified.to_string()).expect("write");
+    let got = read(&path).await.expect("an entry");
+    assert_eq!(got.flags.get("notification_center"), None);
+    assert_eq!(got.flags.get("test_kill"), Some(&serde_json::json!(false)));
+}
+
+/// An entry written from a verified document keeps what only a
+/// signature allows: the document says so by holding it.
+#[tokio::test]
+async fn an_entry_written_from_a_verified_document_keeps_its_turn_on() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    let doc = serde_json::json!({ "notification_center": true, "notices": notices_block() });
+    write(
+        &path,
+        &CacheEntry::admitted(42, doc.as_object().expect("object").clone()),
+    )
+    .await;
+    let got = read(&path).await.expect("an entry");
+    assert_eq!(
+        got.flags.get("notification_center"),
+        Some(&serde_json::json!(true))
+    );
+    assert_eq!(got.flags.get("notices"), Some(&notices_block()));
+}
+
+/// The mark is the document's own evidence, taken as it is written: an
+/// entry handed in marked verified, whose document holds nothing only a
+/// verified file keeps, is written unmarked.
+#[tokio::test]
+async fn the_mark_is_taken_from_the_document_as_it_is_written() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    let mut claimed = entry(42);
+    claimed.verified = true;
+    write(&path, &claimed).await;
+    assert!(!read(&path).await.expect("an entry").verified);
+}

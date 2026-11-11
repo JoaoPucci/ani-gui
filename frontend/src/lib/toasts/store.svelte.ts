@@ -33,6 +33,10 @@ export interface ToastItem {
 	duration: number | null;
 	actionLabel: string | null;
 	onAction: (() => void) | null;
+	/** Words on the dismiss control in place of its ×, for a toast
+	 *  that asks something and whose dismissal is an answer ("Not
+	 *  now"). */
+	dismissLabel?: string | null;
 }
 
 export interface PushArgs {
@@ -42,6 +46,7 @@ export interface PushArgs {
 	duration?: number | null;
 	actionLabel?: string;
 	onAction?: () => void;
+	dismissLabel?: string;
 	/** Called once when the toast leaves the stack, by whatever route:
 	 *  dismissed, timed out, or trimmed by a later push. */
 	onClose?: () => void;
@@ -83,7 +88,8 @@ class ToastStore {
 			announcement: args.message,
 			duration,
 			actionLabel: args.actionLabel ?? null,
-			onAction: args.onAction ?? null
+			onAction: args.onAction ?? null,
+			dismissLabel: args.dismissLabel ?? null
 		};
 		// Trim oldest entries if a push would exceed the cap. Slice +
 		// concat rather than splice so the assignment triggers

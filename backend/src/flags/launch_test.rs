@@ -215,3 +215,23 @@ async fn a_test_runs_file_keeps_its_flags_and_loses_unsigned_notices() {
     assert_eq!(pair(&store).0, Some(FlagValue::Bool(false)));
     assert_eq!(store.notices(), None);
 }
+
+/// A test run's file is admitted like a fetched one: unsigned, it
+/// cannot turn the notification center on.
+#[tokio::test]
+async fn a_test_runs_unsigned_file_cannot_turn_the_center_on() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let file = td.path().join("flags.json");
+    std::fs::write(&file, r#"{"flags":{"notification_center":true}}"#).expect("write");
+    let store = FlagStore::pending(crate::flags::DECLARED);
+    start(
+        store.clone(),
+        reqwest::Client::new(),
+        LaunchPlan::Test { file: Some(file) },
+    )
+    .await
+    .expect("join");
+    assert!(!store
+        .current()
+        .enabled(&crate::notices::NOTIFICATION_CENTER));
+}

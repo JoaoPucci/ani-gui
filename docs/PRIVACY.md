@@ -186,9 +186,17 @@ ani-gui keeps the following on your computer only:
   the episode, the download folder and, for a failure, its reason, with
   when each happened and whether you have read it. At most 50, none
   older than 30 days, in the app window's local storage
-  (`ani-gui.notices.v1`). Nothing else it shows is stored: an update and
-  the streaming source not answering are worked out again at each
-  start.
+  (`ani-gui.notices.v1`). Of the notices the maintainer publishes in
+  the flags file, only which ones you have read or dismissed is kept
+  (`ani-gui.notices.published.v1`). Nothing else it shows is stored: an
+  update, the streaming source not answering and the published notices
+  themselves are worked out again at each start.
+- **Donation ask** — while the notification center is on, when the app
+  first ran with it, the published number it last asked for, and the
+  one current when it first saw one, so it asks at most once each time
+  the maintainer raises the number. In the app window's local storage
+  (`ani-gui.donation-ask.v1`). Nothing about whether you donated is
+  known or kept.
 
 ## What ani-gui transmits to public services
 
@@ -352,7 +360,9 @@ kind of request:
   (`raw.githubusercontent.com`). If that download fails, it is tried
   again later in the same session (after a few minutes, then at most
   hourly) until it succeeds. The maintainer uses it to switch off a
-  feature that turned out to be broken, without waiting for a release.
+  feature that turned out to be broken, without waiting for a release,
+  and, in a signed file, to switch on a new feature once it has been
+  checked.
   Like the update check, each request tells GitHub your IP address,
   when it was made, and that it comes from ani-gui.
   Nothing else is sent: no account
@@ -362,8 +372,9 @@ kind of request:
   center. Beside it, the same launch downloads the file's signature
   (`flags.json.minisig`), a second small request to the same server
   that reveals the same: your IP address, when, and that it comes from
-  ani-gui. The app uses the notices only when the signature proves the
-  maintainer wrote them; this version does not show them yet.
+  ani-gui. The app switches a feature on, and shows the notices, only
+  when the signature proves the maintainer wrote them; this version
+  trusts no signing key yet, so it does neither.
   GitHub's own privacy statement governs the request:
   <https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement>.
 - **Aniskip OP/ED timing (automatic, when an episode plays in the
@@ -388,7 +399,11 @@ repository.
 The notification center makes no request of its own. What it says about
 the streaming source not answering comes from the app's own requests:
 the backend notes how each one it already makes turns out, and the
-window reads that back from the backend on your computer.
+window reads that back from the backend on your computer. The notices
+it shows from the maintainer, and the donation ask's number, come from
+the remote flags file the launch already downloads, likewise read back
+from the backend on your computer. Opening a notice's link opens it in
+your browser, which then makes the request.
 
 ## Connecting and disconnecting an account
 

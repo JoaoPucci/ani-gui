@@ -208,14 +208,18 @@ test("a test launch takes its flags from the test, not from GitHub", async () =>
   // backend never fetches the live flags file (backend/src/flags/
   // launch.rs, and backend/tests/flags_launch.rs, which watches the
   // network to prove it). The window was opened with the flags the
-  // backend decided, before its first page rendered.
+  // backend decided, before its first page rendered: every declared
+  // flag at its default, the notification center off.
   const { app, page } = await launchAppWithStubs();
   try {
     const seen = await page.evaluate(() => ({
       origin: window.aniGui?.flagsOrigin,
       flags: window.aniGui?.flags,
     }));
-    expect(seen).toEqual({ origin: "test", flags: {} });
+    expect(seen).toEqual({
+      origin: "test",
+      flags: { notification_center: false },
+    });
   } finally {
     await app.close();
   }
@@ -463,7 +467,11 @@ test("the renderer cannot change the launch's flags", async () => {
         flags: window.aniGui?.flags,
       };
     });
-    expect(seen).toEqual({ flagsFrozen: true, bridgeFrozen: true, flags: {} });
+    expect(seen).toEqual({
+      flagsFrozen: true,
+      bridgeFrozen: true,
+      flags: { notification_center: false },
+    });
   } finally {
     await app.close();
   }

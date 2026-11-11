@@ -2,14 +2,16 @@
  * The words for a notice: its title, the line under it, its detail
  * page's paragraphs, and its one action. Every string comes from the
  * message bundles; what a notice carries in its data (a show's title,
- * a folder, a download's own failure text) is shown as plain text.
+ * a folder, a download's own failure text, the words and link of a
+ * published notice) is shown as plain text, never as markup.
  */
 import { m } from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
 import type { ToastKind } from '$lib/toasts/store.svelte';
 import { toneOf, type Notice, type Tone } from './model';
+import { linkAction, linkBlock, published } from './copy-published';
 
-export type ActionKind = 'open-update' | 'reveal-folder';
+export type ActionKind = 'open-update' | 'reveal-folder' | 'open-link';
 
 export interface Action {
 	kind: ActionKind;
@@ -76,6 +78,8 @@ export function copyOf(n: Notice, now: number = Date.now()): NoticeCopy {
 					? { kind: 'reveal-folder', label: m.notices_download_done_action() }
 					: null
 			};
+		case 'remote':
+			return published(n);
 		case 'download-failed':
 			return {
 				title: m.notices_download_failed_title(),
@@ -94,6 +98,8 @@ export function copyOf(n: Notice, now: number = Date.now()): NoticeCopy {
 function outage(n: Notice, now: number): NoticeCopy {
 	const since = when(ms(n.data.since, n.firstAt), now);
 	const count = ms(n.data.failures, 0);
+	const note = str(n.data.noteTitle);
+	const noteText = [note, str(n.data.noteBody)].filter(Boolean).join('\n');
 	return {
 		title: m.notices_outage_title(),
 		meta: m.notices_outage_meta({ time: since, count }),
@@ -103,9 +109,11 @@ function outage(n: Notice, now: number): NoticeCopy {
 			{
 				label: m.notices_outage_evidence_label(),
 				text: m.notices_outage_evidence({ count, last: when(ms(n.data.last, n.at), now) })
-			}
+			},
+			...(note ? [{ label: m.notices_published_meta(), text: noteText }] : []),
+			...linkBlock(note ? str(n.data.noteLink) : '')
 		],
-		action: null
+		action: note ? linkAction(str(n.data.noteLink)) : null
 	};
 }
 

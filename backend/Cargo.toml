@@ -132,6 +132,10 @@ serde_urlencoded = "0.7"
 # without binding a real socket. Used by `api::tests`.
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+# Signs the flags file inside a test with minisign's own code, so the
+# verifier is checked against the real format rather than a vector this
+# repository built by hand. Throwaway keys made per run; never a real key.
+minisign = "0.10"
 
 [profile.release]
 opt-level = 3

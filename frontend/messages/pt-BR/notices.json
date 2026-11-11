@@ -14,7 +14,7 @@
 	"panel_title": "Notificações",
 	"mark_all_read": "Marcar todas como lidas",
 	"empty_title": "Tudo em dia",
-	"empty_body": "Atualizações, downloads concluídos ou com falha e problemas com a fonte de streaming aparecem aqui.",
+	"empty_body": "Atualizações, downloads concluídos ou com falha, problemas com a fonte de streaming e avisos do desenvolvedor aparecem aqui.",
 	"dismiss": "Dispensar",
 	"dismiss_aria": "Dispensar: {title}",
 	"unread_sr": "Não lida.",
@@ -73,5 +73,11 @@
 	"download_failed_title": "Um download falhou",
 	"download_failed_meta": "{title} · Episódio {episode}",
 	"download_failed_reason_label": "O que deu errado",
-	"download_failed_reason_unknown": "O download parou sem dizer por quê."
+	"download_failed_reason_unknown": "O download parou sem dizer por quê.",
+	"published_meta": "Do desenvolvedor",
+	"published_link_label": "Link",
+	"published_link_action": "Abrir link",
+	"donation_ask": "O ani-gui é gratuito e feito nas horas vagas. Se ele é útil para você, uma doação ajuda o projeto a continuar.",
+	"donation_donate": "Doar",
+	"donation_later": "Agora não"
 }

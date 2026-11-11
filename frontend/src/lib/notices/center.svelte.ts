@@ -43,6 +43,10 @@ export interface CenterDeps {
 	/** What the window is doing right now, read at each arrival. The
 	 *  last moment reported to `setMoment` stands in without it. */
 	moment?: () => Moment;
+	/** Told the rows before and after each change to the list, for what
+	 *  is remembered outside it (the published notices read or
+	 *  dismissed). */
+	observe?: (before: readonly Notice[], after: readonly Notice[]) => void;
 }
 
 export class NoticeCenter {
@@ -130,7 +134,9 @@ export class NoticeCenter {
 	}
 
 	private set(list: Notice[]): void {
+		const before = this.rows;
 		this.rows = prune(list, this.deps.now());
+		this.deps.observe?.(before, this.rows);
 		try {
 			this.deps.storage?.setItem(STORAGE_KEY, serialize(this.rows));
 		} catch {

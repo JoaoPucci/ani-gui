@@ -10,12 +10,18 @@
 //!
 //! - [`remote`] — the typed, versioned block of notices and the
 //!   donation-ask number, validated strictly: anything malformed is
-//!   dropped with its reason, never passed on. Built and tested, not
-//!   called yet: the block is kept unparsed until showing remote
-//!   content is settled.
+//!   dropped with its reason, never passed on;
+//! - [`serve`] — what the window is handed: the parsed block while the
+//!   notification center's flag is on, nothing while it is off.
 
 mod fields;
 pub mod remote;
+pub mod serve;
 mod text_fields;
 
+#[cfg(test)]
+#[path = "serve_test.rs"]
+pub(crate) mod serve_tests;
+
 pub use remote::{parse, Parsed, Priority, RemoteNotice, RemoteNotices, NOTICES_KEY};
+pub use serve::{served, NOTIFICATION_CENTER};

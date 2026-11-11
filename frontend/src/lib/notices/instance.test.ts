@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { NoticeCenter } from './center.svelte';
-import { browserStorage, noticeCenter, setMomentReader, setNoticeToast } from './instance';
+import {
+	browserStorage,
+	noticeCenter,
+	setMomentReader,
+	setNoticeObserver,
+	setNoticeToast
+} from './instance';
 import type { Notice } from './model';
 
 describe('the window instance', () => {
@@ -42,5 +48,22 @@ describe('what the window instance reads at an arrival', () => {
 		expect(seen.map((n) => n.key)).toEqual(['heard']);
 		noticeCenter.dismiss('quiet');
 		noticeCenter.dismiss('heard');
+	});
+});
+
+describe('who the window instance tells of a change', () => {
+	it('tells the observer the layout set, and nobody without one', () => {
+		const seen: Array<[number, number]> = [];
+		setNoticeObserver((before, after) => seen.push([before.length, after.length]));
+		noticeCenter.raise({ key: 'o', kind: 'download-failed' });
+		noticeCenter.dismiss('o');
+		expect(seen).toEqual([
+			[0, 1],
+			[1, 0]
+		]);
+		setNoticeObserver(null);
+		noticeCenter.raise({ key: 'p', kind: 'download-failed' });
+		noticeCenter.dismiss('p');
+		expect(seen).toHaveLength(2);
 	});
 });

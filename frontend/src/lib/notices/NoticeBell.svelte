@@ -149,7 +149,8 @@
 		close(false);
 		act(action.kind, n, {
 			openUpdate: () => updateStore.openDialog(),
-			reveal: (dir) => void window.aniGui?.revealInFolder?.(dir)
+			reveal: (dir) => void window.aniGui?.revealInFolder?.(dir),
+			openLink: (url) => void window.aniGui?.openExternal?.(url)
 		});
 	}
 

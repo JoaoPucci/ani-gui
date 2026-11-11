@@ -34,6 +34,12 @@
 		<path d="M5 4.5 H5" />
 		<path d="M2.5 9.5 H6.5 L8 11 L7 12.5 L8.5 13.5 H2.5 Z" />
 		<path d="M10 9.5 H13.5 V13.5 H11.5 L10.5 12.5 L11.5 11 Z" />
+	{:else if kind === 'remote'}
+		<!-- A word from the developer: a speech balloon, its tail at the
+		     lower start, two lines of text inside. -->
+		<path d="M2.5 3 H13.5 V10.5 H6.5 L3.5 13.5 V10.5 H2.5 Z" />
+		<path d="M5 5.75 H11" />
+		<path d="M5 8 H9" />
 	{:else if kind === 'update'}
 		<path d="M8 12 V3.5" />
 		<path d="M4.5 7 L8 3.5 L11.5 7" />

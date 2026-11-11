@@ -5,7 +5,7 @@
  * (./tally) and storage (./storage) — and ./model re-exports them all.
  */
 
-export type NoticeKind = 'update' | 'outage' | 'download-done' | 'download-failed';
+export type NoticeKind = 'update' | 'outage' | 'download-done' | 'download-failed' | 'remote';
 export type Lifetime = 'condition' | 'event';
 
 /** How a row is drawn: a failed event (oxblood), a live condition
@@ -34,6 +34,9 @@ export interface RaiseInput {
 	data?: NoticeData;
 	/** Added to the row's count; 1 when omitted. */
 	count?: number;
+	/** A new row that is already read: news the user saw at an earlier
+	 *  launch (a published notice), raised again without announcing it. */
+	read?: boolean;
 }
 
 /** The result of a change: the new list, the row it touched, and
@@ -55,7 +58,10 @@ const LIFETIME: Record<NoticeKind, Lifetime> = {
 	update: 'condition',
 	outage: 'condition',
 	'download-done': 'event',
-	'download-failed': 'event'
+	'download-failed': 'event',
+	// Published by the maintainer: true while the flags file carries it,
+	// worked out again at each start, so never stored (./published).
+	remote: 'condition'
 };
 
 export const lifetimeOf = (kind: NoticeKind): Lifetime => LIFETIME[kind];

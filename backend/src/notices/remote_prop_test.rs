@@ -34,6 +34,9 @@ fn any_json() -> impl Strategy<Value = Value> {
 fn field_text() -> impl Strategy<Value = String> {
     prop_oneof![
         ".{0,200}",
+        Just(String::new()),
+        Just("   ".to_string()),
+        Just("\r\n".to_string()),
         Just("javascript:alert(1)".to_string()),
         Just("JaVaScRiPt:alert(1)".to_string()),
         Just(" javascript:alert(1)".to_string()),
@@ -155,6 +158,163 @@ proptest! {
         } else {
             prop_assert!(parsed.notices.items.is_empty());
             prop_assert_eq!(parsed.notices.donation_ask, None);
+        }
+    }
+}
+
+/// Strings shaped like addresses: assorted schemes and cases,
+/// credentials, ports, percent-escapes and markup in the path.
+fn address_like() -> impl Strategy<Value = String> {
+    prop_oneof![
+        "(https?|HTTPS?|Https|ftp|file|javascript|data|mailto|ws)(:|://|:///)[a-zA-Z0-9:@.%\\[\\]-]{0,24}(/[a-zA-Z0-9%<>\"' .#?=-]{0,16})?",
+        field_text(),
+    ]
+}
+
+/// The served link the window shows and opens: an `http` or `https`
+/// address with a host and no credentials, serialised as the backend's
+/// WHATWG parser (the `url` crate) parses it back. The window's own
+/// parser is Chromium's; that the two agree on every address is not
+/// something this test can show.
+fn plain_link(l: &str) -> Result<(), String> {
+    let u = url::Url::parse(l).map_err(|e| format!("link {l:?}: {e}"))?;
+    let plain = matches!(u.scheme(), "http" | "https")
+        && u.username().is_empty()
+        && u.password().is_none()
+        && u.host_str().is_some_and(|h| !h.is_empty());
+    if !plain || u.as_str() != l {
+        return Err(format!("link {l:?}"));
+    }
+    Ok(())
+}
+
+/// The served answer, read by the rules the window applied before the
+/// backend became the one place a notice is validated: an object with
+/// a list; each notice an object whose id and title are non-empty
+/// text, body none or non-empty text, priority one of the three, link
+/// none or plain; one id once; the donation number a non-negative
+/// integer or none.
+fn window_would_keep(answer: &Value) -> Result<(), String> {
+    let o = answer.as_object().ok_or("not an object")?;
+    let ask = &o["donation_ask"];
+    if !(ask.is_null() || ask.as_u64().is_some()) {
+        return Err(format!("donation_ask {ask}"));
+    }
+    let items = o["items"].as_array().ok_or("items not a list")?;
+    let mut ids = std::collections::BTreeSet::new();
+    for n in items {
+        let text = |k: &str| n[k].as_str().is_some_and(|s| !s.is_empty());
+        if !(text("id") && text("title") && (n["body"].is_null() || text("body"))) {
+            return Err(format!("text fields {n}"));
+        }
+        if !matches!(
+            n["priority"].as_str(),
+            Some("info" | "warning" | "critical")
+        ) {
+            return Err(format!("priority {n}"));
+        }
+        if !n["about_source"].is_boolean() {
+            return Err(format!("about_source {n}"));
+        }
+        match &n["link"] {
+            Value::Null => {}
+            Value::String(l) => plain_link(l)?,
+            other => return Err(format!("link {other}")),
+        }
+        if !ids.insert(n["id"].as_str().unwrap_or_default().to_string()) {
+            return Err(format!("repeated id {n}"));
+        }
+    }
+    Ok(())
+}
+
+/// A notice close enough to well formed that many are kept: a valid
+/// id, and every other field drawn from hostile and arbitrary values.
+fn nearly_well_formed() -> impl Strategy<Value = Value> {
+    let priority = prop_oneof![
+        Just(json!("info")),
+        Just(json!("warning")),
+        Just(json!("critical")),
+        field_text().prop_map(Value::String),
+        Just(Value::Null),
+    ];
+    (
+        prop_oneof![9 => "[a-c0-9._-]{1,3}", 1 => Just(String::new())],
+        field_text(),
+        prop::option::of(field_text()),
+        prop::option::of(address_like()),
+        prop::option::of(priority),
+        prop::option::of(prop_oneof![Just(json!("source")), any_json()]),
+    )
+        .prop_map(|(id, title, body, link, priority, about)| {
+            let mut m = Map::new();
+            m.insert("id".into(), json!(id));
+            m.insert("title".into(), json!(title));
+            for (k, v) in [
+                ("body", body.map(Value::String)),
+                ("link", link.map(Value::String)),
+                ("priority", priority),
+                ("about", about),
+            ] {
+                if let Some(v) = v {
+                    m.insert(k.into(), v);
+                }
+            }
+            Value::Object(m)
+        })
+}
+
+fn served_block() -> impl Strategy<Value = Value> {
+    let item = prop_oneof![nearly_well_formed(), notice_like()];
+    (any_json(), prop::collection::vec(item, 0..12))
+        .prop_map(|(ask, items)| json!({ "format": FORMAT, "donation_ask": ask, "items": items }))
+}
+
+proptest! {
+    #[test]
+    fn no_link_but_a_plain_http_or_https_one_is_ever_served(link in address_like()) {
+        let v = json!({ "format": FORMAT, "items": [{ "id": "a", "title": "A", "link": link }] });
+        for n in parse(Some(&v), "0.20.0").notices.items {
+            if let Some(l) = &n.link {
+                if let Err(why) = plain_link(l) {
+                    prop_assert!(false, "served {}", why);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn one_id_is_served_once_and_the_first_notice_with_it_wins(
+        offered in prop::collection::vec(("[abc]", "[A-Z][a-z]{0,5}"), 0..12)
+    ) {
+        let items: Vec<Value> = offered
+            .iter()
+            .map(|(id, title)| json!({ "id": id, "title": title }))
+            .collect();
+        let v = json!({ "format": FORMAT, "items": items });
+        let mut first: Vec<(String, String)> = Vec::new();
+        for (id, title) in &offered {
+            if !first.iter().any(|(i, _)| i == id) {
+                first.push((id.clone(), title.clone()));
+            }
+        }
+        let served: Vec<(String, String)> = parse(Some(&v), "0.20.0")
+            .notices
+            .items
+            .into_iter()
+            .map(|n| (n.id, n.title))
+            .collect();
+        prop_assert_eq!(served, first);
+    }
+
+    #[test]
+    fn the_served_answer_passes_every_rule_the_window_once_checked(
+        v in prop_oneof![block(), served_block()],
+        app in "[0-9]\\.[0-9]{1,2}\\.[0-9](-dev)?"
+    ) {
+        let answer = serde_json::to_value(parse(Some(&v), &app).notices).expect("serialise");
+        if let Err(why) = window_would_keep(&answer) {
+            prop_assert!(false, "the window would have refused: {}", why);
         }
     }
 }

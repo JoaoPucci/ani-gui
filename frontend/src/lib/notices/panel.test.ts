@@ -59,7 +59,7 @@ describe('a notice as a toast', () => {
 
 describe('a row action', () => {
 	it('opens the update dialog, or reveals the download folder', () => {
-		const deps = { openUpdate: vi.fn(), reveal: vi.fn() };
+		const deps = { openUpdate: vi.fn(), reveal: vi.fn(), openLink: vi.fn() };
 		act('open-update', make({ key: 'update', kind: 'update' }), deps);
 		expect(deps.openUpdate).toHaveBeenCalled();
 		act('reveal-folder', make({ key: 'd', kind: 'download-done', data: { destDir: '/v' } }), deps);

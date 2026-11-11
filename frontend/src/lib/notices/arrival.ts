@@ -2,8 +2,9 @@
  * How a notice arrives: a toast, held for later, or only the bell.
  *
  * - The update never toasts: its badge pops into the topbar instead.
- * - While a video plays, only a failure (a download that failed)
- *   toasts; everything else waits in the list and the bell's count.
+ * - While a video plays, only a failure of the app's own (a download
+ *   that failed) toasts; everything else, a published notice of any
+ *   priority included, waits in the list and the bell's count.
  * - Nothing ever appears over fullscreen, native or the player's own:
  *   a toast that would show is held, and shows on leaving fullscreen
  *   if its row is still there and unread. The bell's count and the
@@ -25,7 +26,7 @@ export type Arrival = 'toast' | 'hold' | 'quiet';
 
 export function arrival(n: Notice, fresh: boolean, at: Moment): Arrival {
 	if (!fresh || n.kind === 'update') return 'quiet';
-	if (at.playing && toneOf(n) !== 'failure') return 'quiet';
+	if (at.playing && (toneOf(n) !== 'failure' || n.kind === 'remote')) return 'quiet';
 	return at.fullscreen ? 'hold' : 'toast';
 }
 

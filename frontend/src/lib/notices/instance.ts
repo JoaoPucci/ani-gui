@@ -21,6 +21,15 @@ export function browserStorage(
 
 let toast: ((n: Notice) => void) | null = null;
 let moment: (() => Moment) | null = null;
+let observer: ((before: readonly Notice[], after: readonly Notice[]) => void) | null = null;
+
+/** Who is told of each change to the list: the layout points this at
+ *  what it remembers of published notices. */
+export function setNoticeObserver(
+	fn: ((before: readonly Notice[], after: readonly Notice[]) => void) | null
+): void {
+	observer = fn;
+}
 
 /** How the center reads what the window is doing at each arrival: the
  *  layout points this at the document. A video the player removes on
@@ -40,5 +49,6 @@ export const noticeCenter: NoticeCenter = new NoticeCenter({
 	storage: browserStorage(globalThis as unknown as { readonly localStorage: NoticeStorage }),
 	now: () => Date.now(),
 	toast: (n) => toast?.(n),
-	moment: (): Moment => moment?.() ?? noticeCenter.moment
+	moment: (): Moment => moment?.() ?? noticeCenter.moment,
+	observe: (before, after) => observer?.(before, after)
 });

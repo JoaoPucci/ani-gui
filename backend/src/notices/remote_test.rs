@@ -223,6 +223,7 @@ fn a_notice_needs_a_well_formed_id_and_ids_are_unique() {
         json!({ "id": "Has Caps", "title": "A" }),
         json!({ "id": "x".repeat(65), "title": "A" }),
         json!({ "id": 7, "title": "A" }),
+        json!({ "id": "", "title": "A" }),
         item("ok-1.2_3"),
         item("ok-1.2_3"),
     ]);
@@ -236,7 +237,48 @@ fn a_notice_needs_a_well_formed_id_and_ids_are_unique() {
             .collect::<Vec<_>>(),
         vec!["ok-1.2_3"]
     );
+    assert_eq!(parsed.dropped.len(), 6);
+}
+
+#[test]
+fn a_title_or_body_that_is_empty_blank_or_not_text_drops_the_notice() {
+    let v = block(vec![
+        json!({ "id": "t", "title": 7 }),
+        json!({ "id": "b", "title": "B", "body": 7 }),
+        json!({ "id": "n", "title": "N", "body": null }),
+        json!({ "id": "e", "title": "E", "body": "" }),
+        json!({ "id": "w", "title": "   " }),
+    ]);
+    let parsed = parse(Some(&v), APP);
+    assert!(
+        parsed.notices.items.is_empty(),
+        "{:?}",
+        parsed.notices.items
+    );
     assert_eq!(parsed.dropped.len(), 5);
+}
+
+#[test]
+fn of_two_notices_with_one_id_the_first_is_kept() {
+    let v = block(vec![
+        json!({ "id": "maint", "title": "First" }),
+        json!({ "id": "maint", "title": "Second" }),
+    ]);
+    let parsed = parse(Some(&v), APP);
+    let titles: Vec<&str> = parsed
+        .notices
+        .items
+        .iter()
+        .map(|n| n.title.as_str())
+        .collect();
+    assert_eq!(titles, vec!["First"]);
+    assert_eq!(
+        parsed.dropped,
+        vec![Dropped::Item {
+            index: 1,
+            reason: "its id repeats an earlier notice's"
+        }]
+    );
 }
 
 #[test]

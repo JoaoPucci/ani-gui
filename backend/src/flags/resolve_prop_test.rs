@@ -68,6 +68,7 @@ fn document() -> impl Strategy<Value = Value> {
 fn permitted(decl: &FlagDecl) -> Vec<FlagValue> {
     match decl.kind {
         FlagKind::KillSwitch => vec![FlagValue::Bool(true), FlagValue::Bool(false)],
+        FlagKind::Rollout => vec![FlagValue::Bool(false), FlagValue::Bool(true)],
         FlagKind::Fallback { current, earlier } => std::iter::once(current)
             .chain(earlier.iter().copied())
             .map(FlagValue::Choice)

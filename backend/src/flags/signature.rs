@@ -1,11 +1,13 @@
 //! The flags file's signature, and what it decides.
 //!
-//! The file is read from GitHub without a signature check for its
-//! flags: by the rule in [`super`], no value it can select is riskier
-//! than the build's own default. The notices it may carry (see
-//! [`crate::notices`]) are different. Text and a link shown to every
-//! user, and a number that makes the app ask for something, are
-//! content, and content is trusted only when the file is signed.
+//! Most of what the file says needs no signature: by the rule in
+//! [`super`], a kill switch or a fallback can only move toward the
+//! safer side. Two things are different. Turning a feature on (a
+//! [`super::decl::FlagKind::Rollout`]'s `true`) is riskier than the
+//! build's own default. The notices the file may carry (see
+//! [`crate::notices`]) are content: text and a link shown to every
+//! user, and a number that makes the app ask for something. Both are
+//! trusted only when the file is signed.
 //!
 //! The maintainer signs `flags.json` with minisign (Ed25519 over a
 //! BLAKE2b-512 hash) and publishes the detached signature beside it as
@@ -16,14 +18,16 @@
 //! signing with it. The trusted comment is covered by the signature as
 //! well, so it cannot be edited either.
 //!
-//! What a verdict decides is narrow: [`admit`] keeps the notices block
-//! of a verified file and drops it from any other. The flags are kept
+//! What a verdict decides is narrow: [`admit`] keeps a verified file
+//! whole, and from any other drops the notices block and every flag
+//! value only a signature may select. The rest of its flags are kept
 //! whatever the verdict, under the safer-only rule they always had.
 //! The private key never enters this repository; the steps are in
 //! `docs/development.md`, "Signing the flags file".
 
 use minisign_verify::{PublicKey, Signature};
 
+use super::decl::FlagDecl;
 use super::resolve::Document;
 use crate::notices::NOTICES_KEY;
 
@@ -74,12 +78,43 @@ pub fn verify(body: &[u8], signature: Option<&str>, keys: &[&str]) -> Verdict {
     }
 }
 
-/// The document as this launch may use it: whole when verified, its
-/// notices block dropped otherwise.
+/// Whether `doc`, once admitted, holds what only a verified file keeps
+/// through [`admit_under`]: a notices block, or a value of `decls` only
+/// a signature may select. Such a document is known to have verified.
 #[must_use]
-pub fn admit(mut doc: Document, verdict: Verdict) -> Document {
-    if verdict != Verdict::Verified {
-        doc.remove(NOTICES_KEY);
+pub fn holds_signed_content(doc: &Document, decls: &[FlagDecl]) -> bool {
+    doc.contains_key(NOTICES_KEY) || decls.iter().any(|decl| selects_signed_only(doc, decl))
+}
+
+/// Whether `doc` gives `decl` a value only a signature may select.
+fn selects_signed_only(doc: &Document, decl: &FlagDecl) -> bool {
+    doc.get(decl.name)
+        .and_then(|raw| decl.accept(raw))
+        .is_some_and(|v| decl.signed_only(v))
+}
+
+/// The document as this launch may use it, under the build's own
+/// declarations ([`super::DECLARED`]); see [`admit_under`].
+#[must_use]
+pub fn admit(doc: Document, verdict: Verdict) -> Document {
+    admit_under(doc, verdict, super::DECLARED)
+}
+
+/// The document as a launch declaring `decls` may use it: whole when
+/// verified. Otherwise its notices block is dropped, and so is every
+/// entry that names a value only a signature may select (a rollout
+/// turned on), so the flag falls back to its default. Entries no
+/// declaration accepts are left for resolution, which ignores them.
+#[must_use]
+pub fn admit_under(mut doc: Document, verdict: Verdict, decls: &[FlagDecl]) -> Document {
+    if verdict == Verdict::Verified {
+        return doc;
+    }
+    doc.remove(NOTICES_KEY);
+    for decl in decls {
+        if selects_signed_only(&doc, decl) {
+            doc.remove(decl.name);
+        }
     }
     doc
 }
@@ -87,3 +122,11 @@ pub fn admit(mut doc: Document, verdict: Verdict) -> Document {
 #[cfg(test)]
 #[path = "signature_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "signature_turn_on_test.rs"]
+mod turn_on_tests;
+
+#[cfg(test)]
+#[path = "signature_minisign_test.rs"]
+mod minisign_tests;

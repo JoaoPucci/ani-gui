@@ -68,6 +68,7 @@
 				announcement={toast.announcement}
 				actionLabel={toast.actionLabel}
 				onAction={toast.onAction}
+				dismissLabel={toast.dismissLabel}
 				onDismiss={() => toastStore.dismiss(toast.id)}
 			/>
 		</div>
