@@ -12,11 +12,13 @@ import {
 } from '$lib/api';
 import { cachedBindingVerdict, onlyTitleInDoubt, type ResumeTarget } from './resolve';
 import { readOpts } from './read-opts';
+import { kitsuEntryGone } from './entry-gone';
 
 /** The stored mapping for the row's show id when it can stand as the
  *  answer, and whether a real play stored it, else null and the row
  *  resolves on. Every endpoint failure is the same as finding nothing,
- *  and a played read that fails is the same as no play.
+ *  noted on `read` unless Kitsu answered the id gone, and a played read
+ *  that fails is the same as no play.
  *
  *  The played read runs after the mapping was read and its entry
  *  fetched, and a watch in between can store another mapping with its
@@ -25,7 +27,8 @@ import { readOpts } from './read-opts';
  *  holds stays a guess. */
 export async function storedBinding(
 	preliminary: ResumeTarget,
-	opts: ReadOptions = {}
+	opts: ReadOptions = {},
+	read: { unread?: true } = {}
 ): Promise<{ ref: KitsuAnimeRef; played: boolean } | null> {
 	if (!preliminary.allmangaShowId) return null;
 	let kitsuId: string | null;
@@ -34,8 +37,10 @@ export async function storedBinding(
 		kitsuId = await allmangaKitsuMapGet(preliminary.allmangaShowId, ...readOpts(opts));
 		if (!kitsuId) return null;
 		cached = await kitsuAnimeDetail(kitsuId, ...readOpts(opts));
-	} catch {
-		// The endpoint is down or the stored id is stale.
+	} catch (e) {
+		// The endpoint is down or the stored id is stale. A failure that
+		// is not Kitsu answering the id gone leaves `read` unread.
+		if (!kitsuEntryGone(e)) read.unread = true;
 		return null;
 	}
 	const verdict = cachedBindingVerdict(cached, preliminary, true);
