@@ -83,7 +83,7 @@ pub fn first_hop(
     if !details.contains_key(anchor) {
         return read(Vec::new(), vec![anchor.to_string()]);
     }
-    match parent_stories(anchor, &Lookup { known, details }) {
+    match parent_stories(anchor, &Lookup { known, details }, &BTreeSet::new()) {
         Err(listings) => read(listings, Vec::new()),
         Ok(found) if !found.parents.is_empty() => Step::Done(FirstHop::Strip),
         Ok(_) => Step::Done(hop),

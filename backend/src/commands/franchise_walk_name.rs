@@ -5,8 +5,9 @@
 //! ("(TV)", "(Movie)", "(OVA)", "(ONA)", "(Special)", any case) is
 //! dropped, unless another entry of the franchise, in any section,
 //! would then read the same, ignoring case: the suffix is what tells
-//! the two apart. The franchise page's heading and artwork, and the
-//! front card of the strip's poster stack, come from that entry.
+//! the two apart. A title that is nothing but a suffix keeps it. The
+//! franchise page's heading and artwork, and the front card of the
+//! strip's poster stack, come from that entry.
 
 use super::series::is_series;
 use crate::meta::kitsu::FranchiseEntry;
@@ -44,5 +45,10 @@ pub(super) fn display_name<'a>(title: &str, others: impl IntoIterator<Item = &'a
     let clash = others
         .into_iter()
         .any(|o| without_suffix(o).to_lowercase() == key);
-    if clash { title } else { bare }.to_string()
+    if clash || bare.trim().is_empty() {
+        title
+    } else {
+        bare
+    }
+    .to_string()
 }
