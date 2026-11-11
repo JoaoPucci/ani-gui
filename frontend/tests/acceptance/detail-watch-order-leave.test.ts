@@ -3,14 +3,12 @@
 // The franchise route holds its response open while the backend walks
 // the franchise's relation listings, several rounds of Kitsu reads
 // when Kitsu is slow. Chromium opens at most six connections to one
-// origin over plain HTTP and queues every request past the sixth, and
-// the franchise read shares the API lane with the show page's own
-// details, the settings and the history. A read the page kept after
-// the viewer moved on would hold one of those six for nothing: six
-// shows browsed while Kitsu is slow, and the seventh show's details
-// would wait behind them. The walk's first hop, which the page reads
-// beside it to hold the strip's room, waits on Kitsu too and goes the
-// same way.
+// origin over plain HTTP and queues every request past the sixth. The
+// franchise read and the walk's first hop, which the page reads beside
+// it to hold the strip's room, go to the franchise lane, an origin of
+// their own. Reads the page kept after the viewer moved on would hold
+// that lane's six for nothing: a few shows browsed while Kitsu is
+// slow, and the next show's own franchise read would wait behind them.
 //
 // jsdom has no connection limit, so this scenario puts Chromium's in
 // front of `fetch` (`./connections`).
@@ -40,6 +38,14 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
 const FRANCHISE = '/api/kitsu/franchise/';
+
+/** The franchise lane's origin, as the backend announces it. */
+const FRANCHISE_LANE = 'http://127.0.0.1:31351';
+type Bridge = { apiBase: string; lanes?: Record<string, string> };
+const bridge = () => (window as unknown as { aniGui: Bridge }).aniGui;
+
+/** The shows whose franchise read reached the franchise lane. */
+const reached: string[] = [];
 const HOP = '/first-hop';
 /** The shows whose franchise walk the page cancelled. */
 const walks = (c: Connections) => cancelledUnder(c, FRANCHISE).filter((p) => !p.endsWith(HOP));
@@ -62,16 +68,15 @@ function slowKitsu() {
 				subtype: 'TV'
 			})
 		),
-		http.get(
-			`${API_BASE}/api/kitsu/franchise/:id`,
-			() =>
-				new Promise<Response>((resolve) =>
-					holding.push(() => resolve(new HttpResponse(null, { status: 503 })))
-				)
-		),
+		http.get(`${FRANCHISE_LANE}/api/kitsu/franchise/:id`, ({ params }) => {
+			reached.push(String(params.id));
+			return new Promise<Response>((resolve) =>
+				holding.push(() => resolve(new HttpResponse(null, { status: 503 })))
+			);
+		}),
 		// The walk's first hop waits on Kitsu too.
 		http.get(
-			`${API_BASE}/api/kitsu/franchise/:id/first-hop`,
+			`${FRANCHISE_LANE}/api/kitsu/franchise/:id/first-hop`,
 			() =>
 				new Promise<Response>((resolve) =>
 					holding.push(() => resolve(new HttpResponse(null, { status: 503 })))
@@ -102,6 +107,8 @@ let pool: Connections | null = null;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	bridge().lanes = { franchise: FRANCHISE_LANE };
+	reached.length = 0;
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -112,6 +119,7 @@ afterEach(() => {
 	pool?.restore();
 	pool = null;
 	for (const end of holding.splice(0)) end();
+	delete bridge().lanes;
 	target.remove();
 });
 
@@ -127,7 +135,7 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 3000) {
 }
 
 describe('detail route — leaving a show while its franchise is read', () => {
-	it("cancels the show's franchise read, so the next show's details are not held behind it", async () => {
+	it("cancels the show's franchise read, so the next show's own read is not held behind it", async () => {
 		slowKitsu();
 		pool = sixConnections();
 		setParams({ id: '101' });
@@ -140,9 +148,11 @@ describe('detail route — leaving a show while its franchise is read', () => {
 		}
 		expect(walks(pool)).toEqual(['101', '102', '103', '104', '105']);
 		expect(hops(pool)).toEqual(['101', '102', '103', '104', '105']);
-		// The seventh show's details come through.
+		// The seventh show's details come through, and its own franchise
+		// read reaches the lane rather than waiting behind the others.
 		setParams({ id: '107' });
 		await until(() => title() === 'Show 107', 'show 107');
+		await until(() => reached.includes('107'), "show 107's franchise read");
 	});
 
 	it('cancels the franchise read when the page itself goes', async () => {
