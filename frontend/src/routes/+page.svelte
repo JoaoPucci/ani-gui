@@ -531,6 +531,9 @@
 		if (deleteRun.busy || clearRun.busy) return;
 		resumeFailure = null;
 		const guessed = await relink.stillGuessed(row, matchId);
+		// A check that could not be read says so; the pill stays to try again.
+		if (guessed === 'unread')
+			return void toastStore.push({ kind: 'error', message: m.home_link_check_failed() });
 		// …nor once one started while the check was out.
 		if (guessed && !deleteRun.busy && !clearRun.busy) void cardLink.start(episode);
 	}
@@ -540,10 +543,10 @@
 	// Removes and clears landed: a card read out before one answers again.
 	let historyWrites = 0;
 	const relink = createCardRelink({
-		// A check another card's overtook answers for nothing, and so does
-		// one that could not be read: the pill stays, to be tried again.
+		// A check another card's overtook answers for nothing; one that
+		// could not be read answers that ($lib/history/card-relink.ts).
 		offerStands: async (row, matchId) =>
-			(await cardLink.arrive(row, matchId)) ? cardLink.stands : null,
+			(await cardLink.arrive(row, matchId)) ? (cardLink.stands ?? 'unread') : null,
 		settled: settledRows,
 		current: () => history ?? [],
 		// Cancelled with Home's other reads when it is left.
@@ -1088,8 +1091,9 @@
 			// Moved on while the message was worded: it is about a click
 			// the viewer left behind.
 			if (isCurrent?.() === false) return;
-			// A guess still standing gets the pick; one settled since the
-			// cards were read gets none.
+			// A guess still standing gets the pick, and so does one whose
+			// check could not be read, since the pick checks again; one
+			// settled since the cards were read gets none.
 			const guessed = args.guess ? historyById.get(args.row ?? '') : undefined;
 			const row =
 				guessed && (await relink.stillGuessed(guessed.id, args.match.id)) ? guessed : undefined;

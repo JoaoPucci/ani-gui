@@ -55,7 +55,9 @@ export async function resolveKitsuMatch(
  *  Every read takes `opts.signal`: the page that asked cancels them
  *  when it goes. A resolution its signal aborted rejects with the
  *  abort, whatever its steps made of the cancelled reads, so it is
- *  never taken for a row with no match. */
+ *  never taken for a row with no match. A match Kitsu could not be
+ *  asked for — the recorded show's detail, or the live search, failed —
+ *  says so (`unread`): no match is known either way. */
 export async function resolveKitsuMatchWithTrust(
 	preliminary: ResumeTarget,
 	opts: ReadOptions = {}
@@ -68,7 +70,7 @@ export async function resolveKitsuMatchWithTrust(
 async function resolveWithTrust(
 	preliminary: ResumeTarget,
 	opts: ReadOptions
-): Promise<{ match: KitsuAnimeRef | null; trusted: boolean }> {
+): Promise<{ match: KitsuAnimeRef | null; trusted: boolean; unread?: true }> {
 	// The row recorded the show the user played: read that entry and
 	// match nothing. A failed read answers no show rather than a guess
 	// that could land on another one — unless Kitsu answers that the
@@ -80,7 +82,7 @@ async function resolveWithTrust(
 				trusted: true
 			};
 		} catch (e) {
-			if (!kitsuEntryGone(e)) return { match: null, trusted: false };
+			if (!kitsuEntryGone(e)) return { match: null, trusted: false, unread: true };
 		}
 	}
 	// 0) Reverse-mapping lookup: The provider show_id → kitsu_id,
@@ -93,13 +95,16 @@ async function resolveWithTrust(
 	//    Only a mapping a play stored may be recorded on the row.
 	const stored = await storedBinding(preliminary, opts);
 	if (stored) return { match: stored.ref, trusted: stored.played };
-	return { match: await guessKitsuMatch(preliminary, opts), trusted: false };
+	const read = { unread: false };
+	const match = await guessKitsuMatch(preliminary, opts, read);
+	return read.unread ? { match, trusted: false, unread: true } : { match, trusted: false };
 }
 
 /** Steps 1-5: everything below the stored mapping is a guess. */
 async function guessKitsuMatch(
 	preliminary: ResumeTarget,
-	opts: ReadOptions
+	opts: ReadOptions,
+	read: { unread: boolean }
 ): Promise<KitsuAnimeRef | null> {
 	// 1) Cache lookup. If we've resolved this title→id before, fetch
 	//    the (cached, 7d-TTL) detail and short-circuit.
@@ -187,6 +192,8 @@ async function guessKitsuMatch(
 			);
 			match = pickKitsuMatch(hits, preliminary);
 		} catch {
+			// Kitsu could not be searched: no match is known either way.
+			read.unread = true;
 			return null;
 		}
 	}

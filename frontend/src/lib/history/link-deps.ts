@@ -18,8 +18,16 @@ import { resolveHistoryEntry } from './resolve';
 export function appLinkDeps(): LinkDeps {
 	return {
 		history: historyList,
-		resolve: (entry, opts) =>
-			resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null), ...readOpts(opts ?? {})),
+		// A match Kitsu could not be asked for rejects: an offer made from
+		// it is not known, and is not taken for one the row does not make.
+		resolve: async (entry, opts) => {
+			const read = await resolveKitsuMatchWithTrust(
+				resolveHistoryEntry(entry, null),
+				...readOpts(opts ?? {})
+			);
+			if (read.unread) throw new Error('the match could not be read');
+			return read;
+		},
 		search: kitsuSearch,
 		link: (card, rows, kitsuId) => announced(historyLink(card, rows, kitsuId)),
 		group: historyLinkGroup

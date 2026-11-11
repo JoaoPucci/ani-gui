@@ -6,8 +6,8 @@
  * elsewhere, or a play that recorded the show, may have settled it
  * since the cards were read. A settled row loses its pill rather than
  * open an empty picker, and the cards are read again. A check that
- * cannot read the history or the row's match settles nothing: the pill
- * stays, and the next click checks again. Reading again
+ * cannot read the history or the row's match settles nothing and says
+ * so: the pill stays, and the next click checks again. Reading again
  * lists the history in Continue order and matches again every row whose
  * recorded show changed ($lib/history/reread-linked.ts), publishing
  * what each row is now. Reads run one after another, each against the
@@ -28,8 +28,8 @@ import { rereadLinked } from './reread-linked';
 
 export interface CardRelinkDeps {
 	/** Whether a link offer still stands for `row`, shown as `matchId`;
-	 *  null when a later check overtook this one, or when this one could
-	 *  not read whether it stands. */
+	 *  null when a later check overtook this one, and `unread` when this
+	 *  one could not read whether it stands. */
 	offerStands: (row: string, matchId: string) => Promise<boolean | null | 'unread'>;
 	/** The rows found no longer guessed: their pill goes. */
 	settled: { add: (row: string) => unknown };
@@ -53,7 +53,8 @@ export interface CardRelinkDeps {
 export interface CardRelink {
 	/** Whether the card for `row`, shown as `matchId`, is still a guess.
 	 *  A row that is not settles, and the cards are read again; a check
-	 *  a later one overtook answers no and settles nothing. */
+	 *  a later one overtook answers no and settles nothing, and one that
+	 *  could not be read answers `unread`, settling nothing. */
 	stillGuessed: (row: string, matchId: string) => Promise<boolean | 'unread'>;
 	/** Reads the cards again where they stand. */
 	reread: () => Promise<void>;
@@ -130,14 +131,16 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 		stillGuessed: async (row, matchId) => {
 			const same = view();
 			const stands = await deps.offerStands(row, matchId);
-			if (stands) return true;
+			if (stands === true) return true;
 			// Matched again, or being matched, since the check began: the
 			// card shows, or is about to show, another show, whose offer
 			// this one, for the show it leaves, is not.
 			if (!same(row)) return false;
-			// A later check overtook this one, and answers for itself, or this
-			// one could not be read: this card is not known to be settled, and
-			// keeps its pill to be checked again.
+			// This check could not be read: the card is not known to be
+			// settled, keeps its pill, and the caller says so.
+			if (stands === 'unread') return 'unread';
+			// A later check overtook this one, and answers for itself: this
+			// card is not known to be settled.
 			if (stands === null) return false;
 			deps.settled.add(row);
 			void reread().catch(() => {});
