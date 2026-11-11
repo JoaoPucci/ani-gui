@@ -157,7 +157,7 @@ test("a secret service that never answers keeps neither the window nor the first
       body: JSON.stringify(body),
     });
     // First, so it answers only what the stubs below leave; checked
-    // empty at the end.
+    // empty at the end, for everything asked after the remount.
     const unstubbed = await refuseUnstubbed(context);
     let topRatedAsked: (() => void) | null = null;
     await routeContext(context, "**/api/app-info", (r) => r.fulfill(json(appInfo)));
@@ -193,6 +193,7 @@ test("a secret service that never answers keeps neither the window nor the first
     await remountFirstPage(
       page,
       () => new Promise<void>((resolve) => (topRatedAsked = resolve)),
+      { forget: unstubbed },
     );
     // The first page renders, signed out.
     await expect(page.getByText(/top rated/i).first()).toBeVisible({

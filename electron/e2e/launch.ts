@@ -276,7 +276,10 @@ export async function routeContext(
  *  before the spec's stubs, since Playwright tries the most recently
  *  registered route first: this one sees only what they leave. A spec
  *  that claims its page runs on stubs asserts the record is empty; the
- *  request itself never reaches the backend. */
+ *  request itself never reaches the backend. The first mount can ask
+ *  while the stubs are still being set, so a spec that remounts its
+ *  page hands the record to remountFirstPage, which forgets what the
+ *  first mount sent. */
 export async function refuseUnstubbed(context: BrowserContext): Promise<string[]> {
 	const unstubbed: string[] = [];
 	await routeContext(context, /^http:\/\/127\.0\.0\.1:\d+\/api\//, (r) => {
@@ -292,14 +295,22 @@ export async function refuseUnstubbed(context: BrowserContext): Promise<string[]
  *  before they are in place. A goto to the same URL would be a
  *  client-side no-op, hence the bounce through about:blank. `witness`
  *  is armed once the old page is gone and resolves when a stubbed
- *  request of the new mount arrives, the proof that the stubs are live. */
-export async function remountFirstPage(page: Page, witness: () => Promise<void>): Promise<void> {
+ *  request of the new mount arrives, the proof that the stubs are live.
+ *  `forget`, a refuseUnstubbed record, is emptied at the same moment:
+ *  what it holds then was sent by the first mount, which may have asked
+ *  before the stub that answers it was set. */
+export async function remountFirstPage(
+	page: Page,
+	witness: () => Promise<void>,
+	{ forget }: { forget?: string[] } = {}
+): Promise<void> {
 	await page.waitForURL((u) => u.protocol !== 'about:');
 	const first = page.url();
 	// Settling is normally a second or two; bounded, so a request that
 	// never answers does not hold the bounce for the full timeout.
 	await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
 	await page.goto('about:blank');
+	forget?.splice(0);
 	const live = witness();
 	await page.goto(first, { waitUntil: 'domcontentloaded' });
 	await live;

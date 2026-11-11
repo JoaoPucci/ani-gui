@@ -90,7 +90,9 @@ async function launchAppWithStubsOnce(
   const context = app.context();
   // First, so it answers only what the stubs below leave: anything the
   // pages here ask that no stub answers is refused and recorded, and
-  // every test ends by checking nothing was (afterEach below).
+  // every test ends by checking nothing was (afterEach below). What
+  // the first mount asked is forgotten at the remount (it may have
+  // asked before its stub was set); everything after it counts.
   const unstubbed = await refuseUnstubbed(context);
   lastUnstubbed = unstubbed;
   let topRatedAsked: (() => void) | null = null;
@@ -152,6 +154,7 @@ async function launchAppWithStubsOnce(
   await remountFirstPage(
     page,
     () => new Promise<void>((resolve) => (topRatedAsked = resolve)),
+    { forget: unstubbed },
   );
   return { app, page, context };
 }
