@@ -1291,3 +1291,35 @@ describe('a resolution the page that asked can cancel', () => {
 		expect(mockedPutMatch).not.toHaveBeenCalled();
 	});
 });
+
+// A match that could not be read is told apart from a row with none: a
+// card check that could not read it must not take the card for one no
+// longer guessed ($lib/history/link-deps.ts).
+describe('a match that could not be read', () => {
+	it('says so when the recorded show cannot be read', async () => {
+		mockedDetail.mockRejectedValue(new Error('offline'));
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:x-1', ep_no: '1', title: 'X', kitsu_id: '49877' }, null)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
+	});
+
+	it('says so when the live search itself fails', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockRejectedValue(new Error('network down'));
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(entry('Obscure (12 episodes)', '1'), null)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
+	});
+
+	it('says nothing of the kind for a row the search read and matched to nothing', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([]);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(entry('Obscure (12 episodes)', '1'), null)
+		);
+		expect(got.match).toBeNull();
+		expect(got.unread).toBeUndefined();
+	});
+});

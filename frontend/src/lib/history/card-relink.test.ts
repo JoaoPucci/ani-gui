@@ -121,6 +121,12 @@ describe('whether a guessed card still stands', () => {
 		expect(offerStands).toHaveBeenCalledWith('a', 'g');
 	});
 
+	it('answers that it could not tell for a check that could not be read, settling nothing', async () => {
+		const h = home([row('a')], [], { offerStands: async () => 'unread' });
+		expect(await h.relink.stillGuessed('a', 'g')).toBe('unread');
+		expect(h.settled.has('a')).toBe(false);
+	});
+
 	it('answers no for a check a later one overtook, settling nothing and reading nothing', async () => {
 		const h = home([row('a')], [], { offerStands: async () => null });
 		expect(await h.relink.stillGuessed('a', 'g')).toBe(false);

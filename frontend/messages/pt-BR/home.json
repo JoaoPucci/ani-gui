@@ -49,5 +49,6 @@
 	"hero_error_eyebrow_value": "Sem resposta do Kitsu",
 	"resume_guess_note": "Talvez este não seja o anime que você queria. No seu histórico ele está como “{title}”.",
 	"link_pick_button": "Escolher o anime certo",
-	"link_on_card": "No card"
+	"link_on_card": "No card",
+	"link_check_failed": "Não foi possível verificar o anime. Tente de novo."
 }

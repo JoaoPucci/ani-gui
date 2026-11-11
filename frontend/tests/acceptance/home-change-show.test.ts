@@ -367,9 +367,28 @@ describe('a card that stopped being a guess while Home was open', () => {
 			})
 		);
 		pill(JOJO_CARD)!.click();
-		await settle();
+		await until(() => toastWith(m.home_link_check_failed()) !== undefined, 'the notice');
 		expect(pill(JOJO_CARD)).not.toBeNull();
 		expect(dialog()?.open ?? false).toBe(false);
+		pill(JOJO_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+	});
+
+	it("keeps its pill when Kitsu cannot answer the card's match, and says so", async () => {
+		await openHome();
+		// Kitsu fails every read while the check is out.
+		let kitsuDown = true;
+		const down = () => (kitsuDown ? new HttpResponse(null, { status: 503 }) : undefined);
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/anime/:id`, down),
+			http.post(`${API_BASE}/api/kitsu/search`, down),
+			http.get(`${API_BASE}/api/title-match`, down)
+		);
+		pill(JOJO_CARD)!.click();
+		await until(() => toastWith(m.home_link_check_failed()) !== undefined, 'the notice');
+		expect(pill(JOJO_CARD)).not.toBeNull();
+		expect(dialog()?.open ?? false).toBe(false);
+		kitsuDown = false;
 		pill(JOJO_CARD)!.click();
 		await until(() => dialog()?.open === true, 'the picker');
 	});

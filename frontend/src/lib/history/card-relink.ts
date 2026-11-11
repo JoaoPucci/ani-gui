@@ -30,7 +30,7 @@ export interface CardRelinkDeps {
 	/** Whether a link offer still stands for `row`, shown as `matchId`;
 	 *  null when a later check overtook this one, or when this one could
 	 *  not read whether it stands. */
-	offerStands: (row: string, matchId: string) => Promise<boolean | null>;
+	offerStands: (row: string, matchId: string) => Promise<boolean | null | 'unread'>;
 	/** The rows found no longer guessed: their pill goes. */
 	settled: { add: (row: string) => unknown };
 	/** The history the cards show now. */
@@ -54,7 +54,7 @@ export interface CardRelink {
 	/** Whether the card for `row`, shown as `matchId`, is still a guess.
 	 *  A row that is not settles, and the cards are read again; a check
 	 *  a later one overtook answers no and settles nothing. */
-	stillGuessed: (row: string, matchId: string) => Promise<boolean>;
+	stillGuessed: (row: string, matchId: string) => Promise<boolean | 'unread'>;
 	/** Reads the cards again where they stand. */
 	reread: () => Promise<void>;
 	/** A view of the rows as they are matched now: it answers, for a

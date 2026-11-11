@@ -48,5 +48,6 @@
 	"hero_error_eyebrow_value": "No answer from Kitsu",
 	"resume_guess_note": "This may not be the show you meant. It’s saved in your history as “{title}”.",
 	"link_pick_button": "Pick the right show",
-	"link_on_card": "On the card"
+	"link_on_card": "On the card",
+	"link_check_failed": "Couldn't check this show. Try again."
 }

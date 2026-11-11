@@ -59,7 +59,7 @@ export async function resolveKitsuMatch(
 export async function resolveKitsuMatchWithTrust(
 	preliminary: ResumeTarget,
 	opts: ReadOptions = {}
-): Promise<{ match: KitsuAnimeRef | null; trusted: boolean }> {
+): Promise<{ match: KitsuAnimeRef | null; trusted: boolean; unread?: true }> {
 	const answer = await resolveWithTrust(preliminary, opts);
 	opts.signal?.throwIfAborted();
 	return answer;

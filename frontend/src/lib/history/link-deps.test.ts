@@ -51,6 +51,24 @@ describe('appLinkDeps', () => {
 	});
 });
 
+describe("appLinkDeps' match", () => {
+	it('rejects when the match could not be read, apart from a row matched to nothing', async () => {
+		const entry: HistoryEntry = {
+			id: 'hianime:black-clover-949',
+			title: 'Black Clover',
+			ep_no: '1'
+		};
+		resolveKitsuMatchWithTrust.mockResolvedValueOnce({
+			match: null,
+			trusted: false,
+			unread: true
+		} as never);
+		await expect(appLinkDeps().resolve(entry)).rejects.toBeDefined();
+		resolveKitsuMatchWithTrust.mockResolvedValueOnce({ match: null, trusted: false });
+		await expect(appLinkDeps().resolve(entry)).resolves.toEqual({ match: null, trusted: false });
+	});
+});
+
 // Every surface that reads the history hears of a link, made from any
 // surface, whenever it answers: a link can answer after the page it was
 // made on was left, and Home may be another instance by then.
