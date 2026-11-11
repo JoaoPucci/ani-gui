@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import type { LinkDeps } from './link-offer';
 import { notePick, __resetHiddenRowsForTests } from './guess-slip';
-import { offerAgain, pickedOffer } from './picked-offer';
+import { offerAgain, pickedOffer, surfaceOffer } from './picked-offer';
 
 const ref = (id: string) => ({ id, canonical_title: `Show ${id}` }) as KitsuAnimeRef;
 const CARD: HistoryEntry = { id: 'hianime:black-clover-949', title: 'Black Clover', ep_no: '1' };
@@ -80,5 +80,43 @@ describe('a row the user named a show for', () => {
 
 	it('is not, for a row the app recorded from a play with no naming', async () => {
 		expect(await offerAgain(d(), CARD.id, '4013', false)).toBeNull();
+	});
+});
+
+describe('surfaceOffer', () => {
+	const GUESSED: HistoryEntry = { ...CARD, kitsu_id: undefined };
+	/** A row guessed as 7158, which also records nothing the user named. */
+	const guessed = () =>
+		d({
+			history: async () => [GUESSED],
+			resolve: async () => ({ match: ref('7158'), trusted: false })
+		});
+
+	it("makes a guess's offer on a surface that may ask about one", async () => {
+		const offer = await surfaceOffer(guessed(), CARD.id, '7158', {
+			asksGuess: true,
+			inPlayer: false
+		});
+		expect(offer).toMatchObject({ entry: GUESSED, current: { id: '7158' } });
+		expect(offer?.saved).toBeUndefined();
+	});
+
+	it('asks nothing about a guess on a surface no guess opened, and offers a named line again', async () => {
+		expect(
+			await surfaceOffer(guessed(), CARD.id, '7158', { asksGuess: false, inPlayer: false })
+		).toBeNull();
+		const named = d({ history: async () => [{ ...picked, named: true }] });
+		expect(
+			await surfaceOffer(named, CARD.id, '4013', { asksGuess: false, inPlayer: false })
+		).toMatchObject({ saved: '4013' });
+	});
+
+	it('offers a line picked on the player again only on the player', async () => {
+		notePick(CARD.id);
+		const surface = { asksGuess: false };
+		expect(await surfaceOffer(d(), CARD.id, '4013', { ...surface, inPlayer: true })).toMatchObject({
+			saved: '4013'
+		});
+		expect(await surfaceOffer(d(), CARD.id, '4013', { ...surface, inPlayer: false })).toBeNull();
 	});
 });
