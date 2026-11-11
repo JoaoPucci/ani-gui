@@ -450,3 +450,142 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
         "and no row"
     );
 }
+
+/// The guessed card the launches below are asked from: a line of
+/// another listing than the one its guess plays.
+fn guessed_card() -> String {
+    walked_key("the-show-2000-5")
+}
+
+/// `args` as a guessed Continue card's player sends them: the card's
+/// row, and its guess named apart from the page's id.
+fn guessed_args(row: &str, guess: &str) -> PlayArgs {
+    PlayArgs {
+        guess_row: Some(row.into()),
+        guess_id: Some(guess.into()),
+        ..play_args()
+    }
+}
+
+/// Syncplay configured as the recorder, with the play cache on when
+/// `cached`.
+fn configure_syncplay(state: &crate::app::AppState, binary: &std::path::Path, cached: bool) {
+    std::fs::write(
+        &state.config_path,
+        format!(
+            "syncplay_binary = {}\ncache_resolutions = {cached}\n",
+            crate::stub_file::toml_quote(binary)
+        ),
+    )
+    .expect("write config");
+}
+
+/// The Kitsu id the history row `row` records.
+fn recorded_id(state: &crate::app::AppState, row: &str) -> Option<String> {
+    crate::history::read_all(&state.history_path)
+        .expect("rows")
+        .into_iter()
+        .find(|r| r.id == row)
+        .expect("the row is written")
+        .kitsu_id
+}
+
+/// A guessed card's Syncplay launch that landed on another listing
+/// notes, beside the row it wrote, the card it came from, as the same
+/// play in the player does: "Not this show?" on Home then corrects the
+/// line the user clicked, not the listing the launch wrote.
+#[tokio::test]
+async fn a_guessed_cards_syncplay_launch_of_another_listing_notes_the_card() {
+    let mock = MockServer::start().await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
+    let dir = tempfile::tempdir().expect("tmp");
+    let (binary, _argv) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), &provider);
+    configure_syncplay(&state, &binary, false);
+
+    play_syncplay(&state, &guessed_args(&guessed_card(), "42"))
+        .await
+        .expect("launches");
+
+    let played = walked_key("the-show-77");
+    assert_eq!(
+        crate::commands::guessed_from::all(&state)
+            .expect("notes")
+            .get(&played),
+        Some(&guessed_card()),
+    );
+    assert_eq!(recorded_id(&state, &played), None);
+}
+
+#[tokio::test]
+async fn a_guessed_cards_cached_syncplay_launch_of_another_listing_notes_the_card() {
+    let mock = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/cached/master.m3u8"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock)
+        .await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (binary, _argv) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
+    configure_syncplay(&state, &binary, true);
+    let args = guessed_args(&guessed_card(), "42");
+    let played = walked_key("cached-show-9");
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &crate::commands::play_resolution_cache::CachedResolution {
+            upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
+            referer: String::new(),
+            media_kind: crate::proxy::MediaKind::Hls,
+            show_id: played.clone(),
+            show_title: "Cached Show".into(),
+            resolved_slot: Some(2),
+            subtitles: Vec::new(),
+            kitsu_id: None,
+            versions: Vec::new(),
+            version: None,
+            played: None,
+            former_episode: None,
+            episode_unverified: false,
+        },
+    );
+
+    play_syncplay(&state, &args)
+        .await
+        .expect("launches from the cache");
+
+    assert_eq!(
+        crate::commands::guessed_from::all(&state)
+            .expect("notes")
+            .get(&played),
+        Some(&guessed_card()),
+    );
+}
+
+/// A guessed card's launch that landed on the card's own listing
+/// records the card's guess on its row, as the player's play does.
+#[tokio::test]
+async fn a_guessed_cards_syncplay_launch_of_its_own_listing_records_the_guess() {
+    let mock = MockServer::start().await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
+    let dir = tempfile::tempdir().expect("tmp");
+    let (binary, _argv) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), &provider);
+    configure_syncplay(&state, &binary, false);
+    let row = walked_key("the-show-77");
+
+    play_syncplay(&state, &guessed_args(&row, "42"))
+        .await
+        .expect("launches");
+
+    assert_eq!(recorded_id(&state, &row).as_deref(), Some("42"));
+}

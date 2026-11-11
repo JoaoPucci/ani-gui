@@ -994,3 +994,68 @@ describe('Hide', () => {
 		await until(() => slipText().includes(guessNote()), 'the slip after a restart');
 	});
 });
+
+// A handoff to an external player or Syncplay is a play of the session
+// as much as the player's own: the backend notes, beside the row it
+// writes on another listing, the card the play came from, so Home's card
+// keeps standing for the line the user clicked and a correction from it
+// reaches that line. So the handoff names what the session's own plays
+// name: the card's row, and its guess — the pick, once one was made
+// from the player.
+describe('a handoff of a guessed session', () => {
+	type Posted = Record<string, unknown>;
+	let handed: { external: Posted[]; syncplay: Posted[] };
+	beforeEach(() => {
+		handed = { external: [], syncplay: [] };
+		server.use(
+			http.post(`${API_BASE}/api/play/external`, async ({ request }) => {
+				handed.external.push((await request.json()) as Posted);
+				return new HttpResponse(null, { status: 202 });
+			}),
+			http.post(`${API_BASE}/api/play/syncplay`, async ({ request }) => {
+				handed.syncplay.push((await request.json()) as Posted);
+				return new HttpResponse(null, { status: 202 });
+			})
+		);
+	});
+
+	async function handOff(label: string) {
+		await moreMenu();
+		const item = () =>
+			Array.from(target.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]')).find((b) =>
+				(b.textContent ?? '').includes(label)
+			);
+		await until(() => item() !== undefined, `the "${label}" menu item`);
+		item()!.click();
+	}
+
+	it("names the card's row and its guess to the external player, as the player's plays do", async () => {
+		await openPlayer();
+		await handOff(m.play_external_label());
+		await until(() => handed.external.length === 1, 'the external-player request');
+		expect(handed.external[0]).toMatchObject({ guess_row: CARD, guess_id: GUESS });
+		expect(handed.external[0].kitsu_id).toBeUndefined();
+	});
+
+	it("names the card's row and its guess to Syncplay", async () => {
+		await openPlayer();
+		await handOff(m.play_hamburger_syncplay_label());
+		await until(() => handed.syncplay.length === 1, 'the Syncplay request');
+		expect(handed.syncplay[0]).toMatchObject({ guess_row: CARD, guess_id: GUESS });
+		expect(handed.syncplay[0].kitsu_id).toBeUndefined();
+	});
+
+	it('names the pick, never the old guess, once one was made from the player', async () => {
+		await openPlayer();
+		await openPicker();
+		await pickAndLink(RIGHT_TITLE);
+		await until(
+			() => slipText().includes(m.play_link_linked_note({ title: RIGHT_TITLE })),
+			'the note'
+		);
+		await handOff(m.play_external_label());
+		await until(() => handed.external.length === 1, 'the external-player request');
+		expect(handed.external[0]).toMatchObject({ guess_row: CARD, guess_id: RIGHT });
+		expect(handed.external[0].kitsu_id).toBeUndefined();
+	});
+});

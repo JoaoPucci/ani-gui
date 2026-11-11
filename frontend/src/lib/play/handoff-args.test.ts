@@ -95,4 +95,34 @@ describe('handoffArgs', () => {
 		expect(args.alt_titles).toEqual([]);
 		expect(args.kitsu_id).toBeUndefined();
 	});
+
+	it("names a guessed card's row and its guess apart from the page's id, as the embedded play does", () => {
+		// The backend notes the card beside the row the handoff writes, and
+		// records the guess only on the card's own listing.
+		const guessed = {
+			title: 'The Show',
+			episode: 3,
+			kitsuId: '',
+			guessRow: 'hianime:the-show-2000-5',
+			guessId: '42',
+			config: { mode: 'sub' },
+			detail
+		};
+		const args = handoffArgs(guessed);
+		expect(args.guess_row).toBe('hianime:the-show-2000-5');
+		expect(args.guess_id).toBe('42');
+		expect(args.kitsu_id).toBeUndefined();
+	});
+
+	it('names no card for a session no guess opened', () => {
+		const args = handoffArgs({
+			title: 'The Show',
+			episode: 3,
+			kitsuId: '42',
+			config: { mode: 'sub' },
+			detail
+		});
+		expect('guess_row' in args).toBe(false);
+		expect('guess_id' in args).toBe(false);
+	});
 });

@@ -812,3 +812,203 @@ async fn an_external_play_makes_the_row_its_own_again() {
         .expect("notes")
         .contains_key(&row));
 }
+
+/// The guessed card the handoffs below are asked from: a line of
+/// another listing than the one its guess plays.
+fn guessed_card() -> String {
+    walked_key("the-show-2000-5")
+}
+
+/// `args` as a guessed Continue card's player sends them: the card's
+/// row, and its guess named apart from the page's id.
+fn guessed_args(row: &str, guess: &str) -> PlayArgs {
+    PlayArgs {
+        guess_row: Some(row.into()),
+        guess_id: Some(guess.into()),
+        ..play_args()
+    }
+}
+
+/// The external player configured as the recorder, with the play cache
+/// on when `cached`.
+fn configure_player(state: &crate::app::AppState, player: &std::path::Path, cached: bool) {
+    std::fs::write(
+        &state.config_path,
+        format!(
+            "external_player = {}\ncache_resolutions = {cached}\n",
+            crate::stub_file::toml_quote(player)
+        ),
+    )
+    .expect("write config");
+}
+
+/// A cached stream for `args`, of the listing `show`, that a HEAD on
+/// `mock` finds alive.
+async fn cache_stream(
+    state: &crate::app::AppState,
+    mock: &MockServer,
+    args: &PlayArgs,
+    show: &str,
+) {
+    Mock::given(method("HEAD"))
+        .and(path("/cached/master.m3u8"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(mock)
+        .await;
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &crate::commands::play_resolution_cache::CachedResolution {
+            upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
+            referer: String::new(),
+            media_kind: crate::proxy::MediaKind::Hls,
+            show_id: show.into(),
+            show_title: "The Show".into(),
+            resolved_slot: Some(2),
+            subtitles: Vec::new(),
+            kitsu_id: None,
+            versions: Vec::new(),
+            version: None,
+            played: None,
+            former_episode: None,
+            episode_unverified: false,
+        },
+    );
+}
+
+/// The Kitsu id the history row `row` records.
+fn recorded_id(state: &crate::app::AppState, row: &str) -> Option<String> {
+    crate::history::read_all(&state.history_path)
+        .expect("rows")
+        .into_iter()
+        .find(|r| r.id == row)
+        .expect("the row is written")
+        .kitsu_id
+}
+
+/// A guessed card's play that landed on another listing notes, beside
+/// the row it wrote, the card it came from — in the player, and handed
+/// to an external player alike. Without the note, Home's card stands
+/// for the row the handoff wrote, and "Not this show?" corrects that
+/// listing rather than the line the user clicked.
+#[tokio::test]
+async fn a_guessed_cards_external_play_of_another_listing_notes_the_card() {
+    let mock = MockServer::start().await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), &provider);
+    configure_player(&state, &player, false);
+
+    play_external(&state, &guessed_args(&guessed_card(), "42"))
+        .await
+        .expect("plays");
+    wait_for(&argv_file).await;
+
+    let played = walked_key("the-show-77");
+    assert_eq!(
+        crate::commands::guessed_from::all(&state)
+            .expect("notes")
+            .get(&played),
+        Some(&guessed_card()),
+        "the row the handoff wrote names the card it came from"
+    );
+    assert_eq!(
+        recorded_id(&state, &played),
+        None,
+        "another listing's row never takes the card's guess"
+    );
+}
+
+#[tokio::test]
+async fn a_guessed_cards_cached_external_play_of_another_listing_notes_the_card() {
+    let mock = MockServer::start().await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
+    configure_player(&state, &player, true);
+    let args = guessed_args(&guessed_card(), "42");
+    let played = walked_key("cached-show-9");
+    cache_stream(&state, &mock, &args, &played).await;
+
+    play_external(&state, &args)
+        .await
+        .expect("plays from the cache");
+    wait_for(&argv_file).await;
+
+    assert_eq!(
+        crate::commands::guessed_from::all(&state)
+            .expect("notes")
+            .get(&played),
+        Some(&guessed_card()),
+    );
+}
+
+/// A guessed card's handoff that landed on the card's own listing
+/// records the card's guess on its row, as the same play in the player
+/// does: the listing is the one the row was written by.
+#[tokio::test]
+async fn a_guessed_cards_external_play_of_its_own_listing_records_the_guess() {
+    let mock = MockServer::start().await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), &provider);
+    configure_player(&state, &player, false);
+    let row = walked_key("the-show-77");
+
+    play_external(&state, &guessed_args(&row, "42"))
+        .await
+        .expect("plays");
+    wait_for(&argv_file).await;
+
+    assert_eq!(recorded_id(&state, &row).as_deref(), Some("42"));
+    assert!(
+        !crate::commands::guessed_from::all(&state)
+            .expect("notes")
+            .contains_key(&row),
+        "a play of the card's own row notes no other card"
+    );
+}
+
+/// A row the user linked to a show while a guessed session was still
+/// out keeps the link: the session's handoff records its guess only on
+/// a row that records no other show.
+#[tokio::test]
+async fn a_guessed_cards_cached_external_play_keeps_the_show_the_row_records() {
+    let mock = MockServer::start().await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
+    configure_player(&state, &player, true);
+    let row = walked_key("cached-show-9");
+    let args = guessed_args(&row, "42");
+    cache_stream(&state, &mock, &args, &row).await;
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: row.clone(),
+            title: "The Show".into(),
+            watched_at: Some(1),
+            kitsu_id: Some("999".into()),
+            own_number: true,
+        },
+    )
+    .expect("the linked row");
+
+    play_external(&state, &args)
+        .await
+        .expect("plays from the cache");
+    wait_for(&argv_file).await;
+
+    assert_eq!(recorded_id(&state, &row).as_deref(), Some("999"));
+}
