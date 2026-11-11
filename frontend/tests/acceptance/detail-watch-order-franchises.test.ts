@@ -157,7 +157,12 @@ describe('detail route — the watch-order strip on real franchises', () => {
 		['45513', '12'], // One Piece Film: Red
 		['46874', '45619'], // SPY×FAMILY CODE: White
 		['696', '210'], // Detective Conan Movie 01: The Timed Skyscraper
-		['7543', '1555'] // The Last: Naruto the Movie
+		['7543', '1555'], // The Last: Naruto the Movie
+		// My Hero Academia's films are linked to each other, not to the
+		// seasons; each still reads as a film under a season.
+		['14084', '13881'], // Futari no Hero, under the third season
+		['42205', '13881'], // Heroes:Rising, which names no parent of its own
+		['47844', '47232'] // YOU'RE NEXT, under the seventh season
 	] as const) {
 		it(`calls the film ${id} a film, under its parent story ${parent}`, async () => {
 			openShow(id);
@@ -167,6 +172,13 @@ describe('detail route — the watch-order strip on real franchises', () => {
 			expect(tile(parent)).not.toBeNull();
 		});
 	}
+
+	it("does not line My Hero Academia's films up as a story of their own", async () => {
+		openShow('14084');
+		await until(() => strip() !== null, 'the strip');
+		expect(tile('42205')).toBeNull();
+		expect(tile('44209')).toBeNull();
+	});
 
 	// Side stories that are not films keep "Side story".
 	for (const [id, what] of [
