@@ -122,6 +122,28 @@ fn a_parent_inside_the_films_own_chain_is_no_parent() {
     }
 }
 
+/// A film whose own parent story is not in the run the walk moves to
+/// (another series, which starts later) is placed under the parents
+/// its chain names that are in it, never under none.
+#[test]
+fn a_film_whose_own_parent_is_elsewhere_takes_its_chain_s_parents() {
+    let mut c = Catalogue::default();
+    c.add("1", "TV", Some("2010-01-01"))
+        .add("50", "TV", Some("2016-01-01"))
+        .add("11", "movie", Some("2018-01-01"))
+        .add("12", "movie", Some("2019-01-01"));
+    for f in ["11", "12"] {
+        episodes(&mut c, f, Some(1));
+    }
+    c.rel("11", "sequel", "12")
+        .rel("12", "prequel", "11")
+        .rel("11", "parent_story", "50")
+        .rel("12", "parent_story", "1");
+    let f = drive("11", &c);
+    assert_eq!(ids(&f.entries), ["1"]);
+    assert_eq!(f.parents.get("11").cloned(), Some(vec!["1".to_string()]));
+}
+
 #[test]
 fn from_a_season_the_answer_is_unchanged() {
     let f = drive("1", &hero());

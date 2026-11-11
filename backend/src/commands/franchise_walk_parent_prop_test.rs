@@ -23,11 +23,12 @@ fn is_series(e: &FranchiseEntry) -> bool {
     matches!(e.subtype.as_deref(), Some("TV" | "OVA" | "ONA")) && e.episodes != Some(1)
 }
 
-/// The entries whose parent check placed `anchor`, as the walk picks
-/// them: the anchor, unless its own run is a run of one-offs and the
-/// anchor names no parent story outside it that the check takes, in
-/// which case the run's members.
-fn placers(cat: &super::tests::Catalogue, anchor: &str) -> Vec<String> {
+/// The entries whose parent check placed `anchor` in the answer `f`, as
+/// the walk picks them: the anchor, unless its own run is a run of
+/// one-offs and none of the parent stories it names outside that run
+/// that the check takes is in the answer's run, in which case the run's
+/// members.
+fn placers(cat: &super::tests::Catalogue, anchor: &str, f: &Franchise) -> Vec<String> {
     let look = Lookup {
         known: &cat.listings,
         details: &cat.entries,
@@ -38,7 +39,12 @@ fn placers(cat: &super::tests::Catalogue, anchor: &str) -> Vec<String> {
         return vec![anchor.to_string()];
     }
     let mine = parent_stories(anchor, &look, &BTreeSet::new()).expect("every listing is known");
-    if mine.parents.iter().any(|p| !own.members.contains_key(p)) {
+    let in_answer = |p: &String| f.entries.iter().any(|e| &e.id == p);
+    if mine
+        .parents
+        .iter()
+        .any(|p| !own.members.contains_key(p) && in_answer(p))
+    {
         return vec![anchor.to_string()];
     }
     own.members.keys().cloned().collect()
@@ -70,13 +76,23 @@ proptest! {
     fn an_anchor_is_never_placed_under_a_later_smaller_entry((cat, anchor) in catalogue()) {
         let (f, _) = drive_with(&anchor, &cat, &[]);
         let start = |id: &str| cat.entries[id].start.clone();
-        let by = placers(&cat, &anchor);
+        let by = placers(&cat, &anchor, &f);
         for p in f.parents.get(&anchor).into_iter().flatten() {
             let fits = by.iter().any(|x| {
                 let earlier = matches!((start(p), start(x)), (Some(a), Some(b)) if a < b);
                 earlier || beneath(&cat.listings, p) >= beneath(&cat.listings, x)
             });
             prop_assert!(fits, "{} placed under {}", anchor, p);
+        }
+    }
+
+    /// A side-story anchor is always placed under at least one parent
+    /// story: the strip shows it under them.
+    #[test]
+    fn a_placed_anchor_names_a_parent((cat, anchor) in catalogue()) {
+        let (f, _) = drive_with(&anchor, &cat, &[]);
+        if let Some(parents) = f.parents.get(&anchor) {
+            prop_assert!(!parents.is_empty());
         }
     }
 
@@ -94,7 +110,7 @@ proptest! {
                 || listed(&look, x, &["side_story", "spinoff"])
                     .any(|r| matches!((start(&r.id), start(x)), (Some(a), Some(b)) if a < b))
         };
-        if !placers(&cat, &anchor).iter().any(candidate) {
+        if !placers(&cat, &anchor, &f).iter().any(candidate) {
             prop_assert!(!f.parents.contains_key(&anchor));
         }
     }
@@ -107,7 +123,7 @@ proptest! {
         let (f, _) = drive_with(&anchor, &cat, &[]);
         let details = BTreeMap::new();
         let look = Lookup { known: &cat.listings, details: &details };
-        let by = placers(&cat, &anchor);
+        let by = placers(&cat, &anchor, &f);
         for p in f.parents.get(&anchor).into_iter().flatten() {
             let fits = by.iter().any(|x| {
                 listed(&look, x, &["parent_story"]).any(|r| &r.id == p)
