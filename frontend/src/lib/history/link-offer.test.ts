@@ -32,7 +32,12 @@ function ref(id: string, over: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	};
 }
 
-const CARD: HistoryEntry = { id: 'hianime:black-clover-949', title: 'Black Clover', ep_no: '1' };
+const CARD: HistoryEntry = {
+	id: 'hianime:black-clover-949',
+	title: 'Black Clover',
+	ep_no: '1',
+	slug_term: 'black clover'
+};
 const HIDDEN: HistoryEntry = { id: 'black-clover-77', title: 'Black Clover', ep_no: '3' };
 const PLAYED: HistoryEntry = {
 	id: 'hianime:black-clover-special-3392',
@@ -139,6 +144,28 @@ describe('loadCandidates', () => {
 		const offer = (await linkOffer(deps(), CARD.id, GUESS))!;
 		const out = await loadCandidates(deps({ search }), offer);
 		expect(out.map((c) => c.ref.id)).toEqual([GUESS, '13209']);
+	});
+
+	it("searches the words the backend read off the row's key, never reading the id itself", async () => {
+		const search = vi.fn<(q: string) => Promise<KitsuAnimeRef[]>>(async () => []);
+		const offer = {
+			entry: { ...CARD, slug_term: 'words the backend read' },
+			current: ref(GUESS)
+		};
+		await loadCandidates(deps({ search }), offer);
+		expect(search.mock.calls.map((c) => c[0]).sort()).toEqual([
+			'Black Clover',
+			'words the backend read'
+		]);
+	});
+
+	it('searches only the title for a row the backend names no words for', async () => {
+		const search = vi.fn<(q: string) => Promise<KitsuAnimeRef[]>>(async () => []);
+		// Slug-shaped, but the backend named no words: the renderer reads
+		// none of its own.
+		const offer = { entry: { ...CARD, slug_term: undefined }, current: ref(GUESS) };
+		await loadCandidates(deps({ search }), offer);
+		expect(search.mock.calls.map((c) => c[0])).toEqual(['Black Clover']);
 	});
 
 	it('searches only the title for an id with no slug words', async () => {

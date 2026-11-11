@@ -1,6 +1,7 @@
 // A fake of the backend's history link routes for the acceptance
-// tests of the change-show flows: the history, the link and
-// the group a link from a card would write.
+// tests of the change-show flows: the history (with the search words
+// each row's key carries), the link and the group a link from a card
+// would write.
 //
 // The group answers as the backend does (history_link_plan.rs,
 // `card_listing`): a row shares the card's listing when it is the
@@ -47,6 +48,18 @@ export function cardListing(card: string, row: string): boolean {
 	return a !== null && a === words(row);
 }
 
+/** The rows as the history route serves them: each with the search
+ *  words its key carries (`slug_term`), as the backend reads them off
+ *  the key (`show_key.rs`, `key_search_term`). */
+export function served(rows: Row[]): (Row & { slug_term?: string })[] {
+	return rows.map((r) => {
+		const w = r.id.replace(/^hianime:/, '').match(/^(.+)-\d+$/)?.[1] ?? null;
+		return w !== null && /^[a-z0-9-]+$/.test(w)
+			? { ...r, slug_term: w.split('-').filter(Boolean).join(' ') }
+			: r;
+	});
+}
+
 function held(b: LinkBackend, card: string, rows: string[]): string[] {
 	return rows.filter(
 		(r, i) => rows.indexOf(r) === i && cardListing(card, r) && b.rows.some((h) => h.id === r)
@@ -55,7 +68,7 @@ function held(b: LinkBackend, card: string, rows: string[]): string[] {
 
 export function linkBackendHandlers(b: LinkBackend): HttpHandler[] {
 	return [
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json(b.rows)),
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json(served(b.rows))),
 		http.get(`${API_BASE}/api/history/:id/number`, ({ params }) => {
 			const row = b.rows.find((r) => r.id === params.id);
 			return HttpResponse.json(row ? { ep_no: row.ep_no } : null);

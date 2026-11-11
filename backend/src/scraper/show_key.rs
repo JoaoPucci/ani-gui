@@ -153,3 +153,7 @@ mod tests;
 #[cfg(test)]
 #[path = "show_key_year_test.rs"]
 mod year_tests;
+
+#[cfg(test)]
+#[path = "show_key_term_test.rs"]
+mod term_tests;
