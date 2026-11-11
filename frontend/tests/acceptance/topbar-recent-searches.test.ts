@@ -112,7 +112,8 @@ describe('topbar recent searches', () => {
 				'jojo'
 			])
 		);
-		await settle();
+		// Past the live search's pause, when it would have gone out.
+		await new Promise((r) => setTimeout(r, 500));
 		expect(liveSearched).toBe(false);
 	});
 });
