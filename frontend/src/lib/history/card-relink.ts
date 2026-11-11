@@ -56,8 +56,9 @@ export interface CardRelinkDeps {
 export interface CardRelink {
 	/** Whether the card for `row`, shown as `matchId`, is still a guess.
 	 *  A row that is not settles, and the cards are read again; a check
-	 *  a later one overtook answers no and settles nothing, and one that
-	 *  could not be read answers `unread`, settling nothing. */
+	 *  a later one overtook, or one about a row matched again since it
+	 *  began, answers no and settles nothing, and one that could not be
+	 *  read answers `unread`, settling nothing. */
 	stillGuessed: (row: string, matchId: string) => Promise<boolean | 'unread'>;
 	/** Reads the cards again where they stand. */
 	reread: () => Promise<void>;
