@@ -23,16 +23,19 @@
  * renderer never parses a slug.
  */
 
-import type { HistoryEntry, KitsuAnimeRef, LinkOutcome } from '$lib/api';
+import type { HistoryEntry, KitsuAnimeRef, LinkOutcome, ReadOptions } from '$lib/api';
 import { resolveHistoryEntry } from './resolve';
 import { mergeCandidates, slugSearchTerm, type LinkCandidate } from './link-candidates';
 
 /** What the page needs from the app. */
 export interface LinkDeps {
-	history: () => Promise<HistoryEntry[]>;
+	history: (opts?: ReadOptions) => Promise<HistoryEntry[]>;
 	/** Continue Watching's match for a row, with whether it is trusted. */
-	resolve: (entry: HistoryEntry) => Promise<{ match: KitsuAnimeRef | null; trusted: boolean }>;
-	search: (query: string) => Promise<KitsuAnimeRef[]>;
+	resolve: (
+		entry: HistoryEntry,
+		opts?: ReadOptions
+	) => Promise<{ match: KitsuAnimeRef | null; trusted: boolean }>;
+	search: (query: string, opts?: ReadOptions) => Promise<KitsuAnimeRef[]>;
 	/** Link `rows` from the card whose row is `card`. */
 	link: (card: string, rows: string[], kitsuId: string) => Promise<LinkOutcome>;
 	/** The rows of `rows` a link from the card `card` would write. */

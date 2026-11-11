@@ -528,3 +528,93 @@ describe('the audio a correction carries', () => {
 		expect(storedAudio(RIGHT_ID)).toBeUndefined();
 	});
 });
+
+// The offer's reads, and the picker's searches, are reads of the page
+// the session is on: each holds one of the API lane's six connections
+// until it answers ($lib/navigation/visit). They take the signal of the
+// arrival that asked for them, which the next arrival, or the page
+// going, cancels. The rows a link writes are read without one: a link
+// still out when the page goes is saved all the same.
+describe('the reads of an arrival', () => {
+	/** `f`'s reads, each recording the signal it was asked with. */
+	function signalled(f: Fake) {
+		const asked: { read: string; signal: AbortSignal | undefined }[] = [];
+		const { history, resolve, search } = f.deps;
+		f.deps.history = (opts) => {
+			asked.push({ read: 'history', signal: opts?.signal });
+			return history();
+		};
+		f.deps.resolve = (e, opts) => {
+			asked.push({ read: 'resolve', signal: opts?.signal });
+			return resolve(e);
+		};
+		f.deps.search = (q, opts) => {
+			asked.push({ read: 'search', signal: opts?.signal });
+			return search(q);
+		};
+		return asked;
+	}
+
+	it("take the arrival's signal, which the next arrival cancels", async () => {
+		const f = fake();
+		const asked = signalled(f);
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		const first = asked.map((a) => a.signal);
+		expect(asked.map((a) => a.read)).toEqual(['history', 'resolve']);
+		expect(first.every((sig) => sig instanceof AbortSignal && !sig.aborted)).toBe(true);
+		await s.arrive(CARD.id, GUESS);
+		expect(first.every((sig) => sig!.aborted)).toBe(true);
+		expect(asked.at(-1)!.signal!.aborted).toBe(false);
+	});
+
+	it("give the picker's searches the arrival's signal", async () => {
+		const f = fake();
+		const asked = signalled(f);
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		const arrival = asked[0].signal;
+		expect(arrival).toBeInstanceOf(AbortSignal);
+		asked.length = 0;
+		await s.start();
+		await s.search('gintama');
+		const searches = asked.filter((a) => a.read === 'search');
+		expect(searches.length).toBeGreaterThan(0);
+		expect(searches.every((a) => a.signal === arrival)).toBe(true);
+	});
+
+	it('are all cancelled when the page goes, and nothing they answer is shown', async () => {
+		const f = fake();
+		const asked = signalled(f);
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		let answer!: (hits: KitsuAnimeRef[]) => void;
+		f.deps.search = (_q, opts) => {
+			asked.push({ read: 'search', signal: opts?.signal });
+			return new Promise((r) => (answer = r));
+		};
+		void s.start();
+		await vi.waitFor(() => expect(answer).toBeDefined());
+		s.endReads();
+		// The offer's reads and the picker's searches; the rows a link
+		// would write are read without a signal.
+		const arrival = asked.filter((a) => a.signal !== undefined);
+		expect(arrival.map((a) => a.read)).toEqual(['history', 'resolve', 'search', 'search']);
+		expect(arrival.every((a) => a.signal!.aborted)).toBe(true);
+		answer([RIGHT]);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(s.candidates).toBeNull();
+	});
+
+	it('leave the rows a link writes to be read without one', async () => {
+		const f = fake();
+		const asked = signalled(f);
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		asked.length = 0;
+		s.choose({ ref: RIGHT, current: false });
+		expect(await s.confirm()).toBe(true);
+		expect(asked.length).toBeGreaterThan(0);
+		expect(asked.every((a) => a.signal === undefined)).toBe(true);
+	});
+});

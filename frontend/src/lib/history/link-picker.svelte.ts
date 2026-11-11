@@ -79,6 +79,9 @@ export class LinkPicker {
 		}
 	}
 
+	/** The page went: the reads of the arrival still out are cancelled. */
+	endReads(): void {}
+
 	/** Pick a show, or go back to the list (null). */
 	choose(candidate: LinkCandidate | null): void {
 		this.chosen = candidate;

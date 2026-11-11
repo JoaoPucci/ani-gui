@@ -36,6 +36,19 @@ describe('appLinkDeps', () => {
 		await appLinkDeps().resolve(entry);
 		expect(resolveKitsuMatchWithTrust).toHaveBeenCalledWith(resolveHistoryEntry(entry, null));
 	});
+
+	it('hands the match the signal of the arrival that asks for it', async () => {
+		const entry: HistoryEntry = {
+			id: 'hianime:black-clover-949',
+			title: 'Black Clover',
+			ep_no: '1'
+		};
+		const arrival = new AbortController();
+		await appLinkDeps().resolve(entry, { signal: arrival.signal });
+		expect(resolveKitsuMatchWithTrust).toHaveBeenLastCalledWith(resolveHistoryEntry(entry, null), {
+			signal: arrival.signal
+		});
+	});
 });
 
 // Every surface that reads the history hears of a link, made from any

@@ -532,3 +532,21 @@ describe('an arrival a later one overtook', () => {
 		expect(await arriving).toBe(false);
 	});
 });
+
+describe('a surface left', () => {
+	it('cancels the reads of its arrival', async () => {
+		const f = fake(true);
+		const signals: (AbortSignal | undefined)[] = [];
+		const history = f.deps.history;
+		f.deps.history = (opts) => {
+			signals.push(opts?.signal);
+			return history();
+		};
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		expect(signals.length).toBeGreaterThan(0);
+		expect(signals.every((sig) => sig instanceof AbortSignal && !sig.aborted)).toBe(true);
+		s.leave();
+		expect(signals.every((sig) => sig!.aborted)).toBe(true);
+	});
+});
