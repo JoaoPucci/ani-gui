@@ -1,0 +1,1301 @@
+{
+  "anchor": "486",
+  "name": "Pocket Monsters",
+  "name_from": "486",
+  "entries": [
+    {
+      "id": "486",
+      "title": "Pocket Monsters",
+      "subtype": "TV",
+      "start": "1997-04-01",
+      "episodes": 276,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1404",
+      "title": "Pokemon Advanced Generation",
+      "subtype": "TV",
+      "start": "2002-11-21",
+      "episodes": 192,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1405",
+      "title": "Pokemon Diamond & Pearl",
+      "subtype": "TV",
+      "start": "2006-09-28",
+      "episodes": 191,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5605",
+      "title": "Pokemon Best Wishes!",
+      "subtype": "TV",
+      "start": "2010-09-23",
+      "episodes": 84,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7080",
+      "title": "Pokemon Best Wishes! Season 2",
+      "subtype": "TV",
+      "start": "2012-06-21",
+      "episodes": 24,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7586",
+      "title": "Pokemon Best Wishes! Season 2: Episode N",
+      "subtype": "TV",
+      "start": "2013-01-17",
+      "episodes": 14,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7895",
+      "title": "Pokemon Best Wishes! Season 2: Decolora Adventure",
+      "subtype": "TV",
+      "start": "2013-04-25",
+      "episodes": 20,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8447",
+      "title": "Pokemon XY SP: Road to Kalos",
+      "subtype": "special",
+      "start": "2013-10-10",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7850",
+      "title": "Pokemon XY",
+      "subtype": "TV",
+      "start": "2013-10-17",
+      "episodes": 93,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11367",
+      "title": "Pokemon XY&Z",
+      "subtype": "TV",
+      "start": "2015-10-29",
+      "episodes": 47,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12533",
+      "title": "Pokemon Sun & Moon",
+      "subtype": "TV",
+      "start": "2016-11-17",
+      "episodes": 146,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42534",
+      "title": "Pocket Monsters (2019)",
+      "subtype": "TV",
+      "start": "2019-11-17",
+      "episodes": 136,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46857",
+      "title": "Pocket Monsters: Mezase Pokémon Master",
+      "subtype": "TV",
+      "start": "2023-01-13",
+      "episodes": 11,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "486",
+      "1404"
+    ],
+    [
+      "1404",
+      "1405"
+    ],
+    [
+      "1405",
+      "5605"
+    ],
+    [
+      "5605",
+      "7080"
+    ],
+    [
+      "7080",
+      "7586"
+    ],
+    [
+      "7586",
+      "7895"
+    ],
+    [
+      "7850",
+      "11367"
+    ],
+    [
+      "7895",
+      "7850"
+    ],
+    [
+      "7895",
+      "8447"
+    ],
+    [
+      "8447",
+      "7850"
+    ],
+    [
+      "11367",
+      "12533"
+    ],
+    [
+      "12533",
+      "42534"
+    ],
+    [
+      "42534",
+      "46857"
+    ]
+  ],
+  "versions": [
+    {
+      "id": "2141",
+      "title": "Pokemon Housoukyoku",
+      "subtype": "TV",
+      "start": "2002-12-03",
+      "episodes": 16,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "films": [
+    {
+      "id": "487",
+      "title": "Pokemon: The First Movie",
+      "subtype": "movie",
+      "start": "1998-07-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4136",
+      "title": "Pokemon: Pikachu no Natsuyasumi",
+      "subtype": "movie",
+      "start": "1998-07-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6452",
+      "title": "Pokemon Introductory Recap",
+      "subtype": "movie",
+      "start": "1998-07-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1001",
+      "title": "Pokemon: Maboroshi no Pokemon Lugia Bakutan",
+      "subtype": "movie",
+      "start": "1999-07-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3786",
+      "title": "Pokemon: Pikachu Tankentai",
+      "subtype": "movie",
+      "start": "1999-07-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1002",
+      "title": "Pokemon: Kesshoutou no Teiou Entei",
+      "subtype": "movie",
+      "start": "2000-07-08",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3787",
+      "title": "Pokemon: Pichu to Pikachu",
+      "subtype": "movie",
+      "start": "2000-07-08",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1003",
+      "title": "Pokemon: Celebi Toki wo Koeta Deai",
+      "subtype": "movie",
+      "start": "2001-07-07",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3788",
+      "title": "Pokemon: Pikachu no Dokidoki Kakurenbo",
+      "subtype": "movie",
+      "start": "2001-07-07",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1004",
+      "title": "Pokemon: Mizu no Miyako no Mamorigami Latias to Latios",
+      "subtype": "movie",
+      "start": "2002-07-13",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3789",
+      "title": "Pokemon: Pika Pika Hoshizora Camp",
+      "subtype": "movie",
+      "start": "2002-07-13",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1005",
+      "title": "Pokemon Advanced Generation: Nanayo no Negaiboshi Jirachi",
+      "subtype": "movie",
+      "start": "2003-07-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4137",
+      "title": "Pokemon: Odoru Pokemon Himitsu Kichi",
+      "subtype": "movie",
+      "start": "2003-07-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1006",
+      "title": "Pokemon Advanced Generation: Rekkuu no Houmonsha Deoxys",
+      "subtype": "movie",
+      "start": "2004-07-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6441",
+      "title": "Pokemon 3D Adventure: Mew wo Sagase!",
+      "subtype": "movie",
+      "start": "2005-03-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1368",
+      "title": "Pokemon Advanced Generation: Mew to Hadou no Yuusha Lucario",
+      "subtype": "movie",
+      "start": "2005-07-16",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6438",
+      "title": "Pokemon 3D Adventure 2: Pikachu no Kaitei Daibouken",
+      "subtype": "movie",
+      "start": "2006-05-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "43342",
+      "title": "Pokemon Diamond & Pearl Atsumare! Pokemon Planet Center",
+      "subtype": "movie",
+      "start": "2006-07-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1992",
+      "title": "Pokemon Advanced Generation: Pokemon Ranger to Umi no Ouji Manaphy",
+      "subtype": "movie",
+      "start": "2006-07-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "2597",
+      "title": "Pokemon Diamond & Pearl: Dialga vs. Palkia vs. Darkrai",
+      "subtype": "movie",
+      "start": "2007-07-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3419",
+      "title": "Pokemon Diamond & Pearl: Giratina to Sora no Hanataba Sheimi",
+      "subtype": "movie",
+      "start": "2008-07-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4460",
+      "title": "Pokemon Diamond & Pearl: Arceus Choukoku no Jikuu e",
+      "subtype": "movie",
+      "start": "2009-07-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5083",
+      "title": "Pokemon Diamond & Pearl: Genei no Hasha Zoroark",
+      "subtype": "movie",
+      "start": "2010-07-10",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5939",
+      "title": "Pokemon Best Wishes!: Victini to Kuroki Eiyuu Zekrom",
+      "subtype": "movie",
+      "start": "2011-07-16",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6327",
+      "title": "Pokemon Best Wishes!: Victini to Shiroki Eiyuu Reshiram",
+      "subtype": "movie",
+      "start": "2011-07-16",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6786",
+      "title": "Pokemon Best Wishes! Season 2: Kyurem vs. Seikenshi",
+      "subtype": "movie",
+      "start": "2012-07-14",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7032",
+      "title": "Pokemon: Meloetta no Kirakira Recital",
+      "subtype": "movie",
+      "start": "2012-07-14",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7488",
+      "title": "Pokemon: Pikachu to Eievui Friends",
+      "subtype": "movie",
+      "start": "2013-07-13",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7489",
+      "title": "Pokemon Best Wishes! Season 2: Shinsoku no Genosect - Mewtwo Kakusei",
+      "subtype": "movie",
+      "start": "2013-07-13",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8561",
+      "title": "Pokemon XY: Sora no Hahen",
+      "subtype": "movie",
+      "start": "2014-07-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8149",
+      "title": "Pokemon XY: Hakai no Mayu to Diancie",
+      "subtype": "movie",
+      "start": "2014-07-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8150",
+      "title": "Pokemon: Pikachu, Kore Nan no Kagi?",
+      "subtype": "movie",
+      "start": "2014-07-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8903",
+      "title": "Pokemon the Movie XY: Ring no Choumajin Hoopa",
+      "subtype": "movie",
+      "start": "2015-07-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11202",
+      "title": "Pokemon the Movie XY&Z: Volcanion to Karakuri no Magearna",
+      "subtype": "movie",
+      "start": "2016-07-16",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12941",
+      "title": "Pokemon: Kimi ni Kimeta!",
+      "subtype": "movie",
+      "start": "2017-07-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "43025",
+      "title": "Pokémon the Movie: Secrets of the Jungle",
+      "subtype": "movie",
+      "start": "2020-07-10",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50942",
+      "title": "Pokemon: Wild Card",
+      "subtype": "movie",
+      "start": null,
+      "episodes": 1,
+      "status": "tba",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "3833",
+      "title": "Pokemon: Pikachu no Fuyuyasumi",
+      "subtype": "OVA",
+      "start": "1998-12-22",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6404",
+      "title": "Pokemon: Pikachu no Fuyuyasumi (2000)",
+      "subtype": "OVA",
+      "start": "1999-12-22",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6405",
+      "title": "Pokemon: Pikachu no Fuyuyasumi (2001)",
+      "subtype": "OVA",
+      "start": "2000-12-22",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1534",
+      "title": "Pokemon: Mewtwo! Ware wa Koko ni Ari",
+      "subtype": "special",
+      "start": "2000-12-30",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4763",
+      "title": "Pokemon: Bokutachi Pichu Brothers - Party wa Oosawagi! no Maki",
+      "subtype": "special",
+      "start": "2003-07-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4302",
+      "title": "Pokemon: Pikachu no Natsumatsuri",
+      "subtype": "special",
+      "start": "2004-08-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4301",
+      "title": "Pokemon: Pikachu no Obake Carnival",
+      "subtype": "special",
+      "start": "2005-08-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1369",
+      "title": "Pokemon: Senritsu no Mirage Pokemon",
+      "subtype": "special",
+      "start": "2006-04-29",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3846",
+      "title": "Pokemon: Pikachu no Wanpaku Island",
+      "subtype": "special",
+      "start": "2006-08-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5026",
+      "title": "Pokemon: Pikachu Tanken Club",
+      "subtype": "special",
+      "start": "2007-08-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4015",
+      "title": "Pokemon Fushigi no Dungeon: Toki no Tankentai, Yami no Tankentai",
+      "subtype": "special",
+      "start": "2007-09-09",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5452",
+      "title": "Pokemon: Pikachu Koori no Daibouken",
+      "subtype": "special",
+      "start": "2008-08-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4502",
+      "title": "Pokemon Fushigi no Dungeon: Sora no Tankentai - Toki to Yami wo Meguru Saigo no Bouken",
+      "subtype": "special",
+      "start": "2009-04-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4608",
+      "title": "Pokemon: Pikachu no Kirakira Daisousaku!",
+      "subtype": "special",
+      "start": "2009-08-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6451",
+      "title": "Pokemon: Pikachu no Fushigi na Fushigi na Daibouken",
+      "subtype": "special",
+      "start": "2010-08-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6120",
+      "title": "Pokemon Diamond & Pearl Specials",
+      "subtype": "special",
+      "start": "2011-02-03",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6617",
+      "title": "Pokemon: Pikachu no Summer Bridge Story",
+      "subtype": "special",
+      "start": "2011-08-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7183",
+      "title": "Pocket Monsters: Utae Meloetta - Rinka no Mi wo Sagase!",
+      "subtype": "OVA",
+      "start": "2012-07-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8113",
+      "title": "Pokemon Best Wishes! Season 2: Decolora Adventure - Dent to Takeshi! Gyarados no Gekirin!!",
+      "subtype": "special",
+      "start": "2013-10-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8946",
+      "title": "Pokemon Best Wishes! Season 2: Decolora Adventure - Iris vs. Ibuki! Dragon Master e no Michi!!",
+      "subtype": "special",
+      "start": "2014-03-27",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8425",
+      "title": "Pokemon XY: Mega Evolution",
+      "subtype": "special",
+      "start": "2014-04-03",
+      "episodes": 4,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8947",
+      "title": "Pokemon XY: Koukoku no Princess Diancie",
+      "subtype": "special",
+      "start": "2014-07-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "10915",
+      "title": "Pokemon XY: Hoopa no Odemashi Daisakusen!!",
+      "subtype": "special",
+      "start": "2015-04-23",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11792",
+      "title": "Pokemon XY&Z: Subete no Nazo wo Tokiakase!",
+      "subtype": "special",
+      "start": "2015-12-31",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12531",
+      "title": "Pokemon Generations",
+      "subtype": "ONA",
+      "start": "2016-09-16",
+      "episodes": 18,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12760",
+      "title": "Pokemon XY&Z Specials",
+      "subtype": "special",
+      "start": "2016-11-03",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46193",
+      "title": "Pokemon Moncolle Story",
+      "subtype": "ONA",
+      "start": "2018-03-30",
+      "episodes": 8,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49548",
+      "title": "W Professors",
+      "subtype": "ONA",
+      "start": "2018-09-25",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46759",
+      "title": "Pokemon Dai Koushin!",
+      "subtype": "ONA",
+      "start": "2019-01-31",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46197",
+      "title": "Pokemon Kids TV Douyou",
+      "subtype": "ONA",
+      "start": "2019-02-01",
+      "episodes": null,
+      "status": "current",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46203",
+      "title": "CoroCoro Monster Ball",
+      "subtype": "ONA",
+      "start": "2019-02-22",
+      "episodes": null,
+      "status": "current",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46199",
+      "title": "Pokemon Inai Inai Baa!",
+      "subtype": "ONA",
+      "start": "2019-03-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47120",
+      "title": "Dokidoki Ghost Mansion",
+      "subtype": "ONA",
+      "start": "2019-09-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42869",
+      "title": "Pokemon: Hakumei no Tsubasa",
+      "subtype": "TV",
+      "start": "2020-01-15",
+      "episodes": 7,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46349",
+      "title": "Pokemon ASMR",
+      "subtype": "ONA",
+      "start": "2020-01-16",
+      "episodes": 7,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46205",
+      "title": "Pikachu no Asa no Nikka",
+      "subtype": "ONA",
+      "start": "2020-07-10",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46198",
+      "title": "Kansatsu! Pokemon Zukan",
+      "subtype": "ONA",
+      "start": "2020-10-23",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46290",
+      "title": "Pokemon Daiundoukai",
+      "subtype": "ONA",
+      "start": "2020-10-30",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "44105",
+      "title": "Post Malone Virtual Concert Experience!",
+      "subtype": "ONA",
+      "start": "2021-02-27",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46212",
+      "title": "Pokemon-tachi to Asobou!",
+      "subtype": "ONA",
+      "start": "2021-03-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49551",
+      "title": "Hisui Chihou no Kiroku Eizou",
+      "subtype": "ONA",
+      "start": "2021-10-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47961",
+      "title": "Hisui Kobanashi",
+      "subtype": "ONA",
+      "start": "2021-12-10",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49557",
+      "title": "Pikachu, Pochama to Fushigi na Nendo",
+      "subtype": "ONA",
+      "start": "2022-01-07",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "45744",
+      "title": "Bidoof’s Big Stand",
+      "subtype": "ONA",
+      "start": "2022-01-11",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46208",
+      "title": "Pokemon Omosakurabe Battle",
+      "subtype": "ONA",
+      "start": "2022-05-14",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46891",
+      "title": "Pokemon Center Okinawa PV",
+      "subtype": "ONA",
+      "start": "2022-08-11",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46432",
+      "title": "Pokemon Scarlet Violet",
+      "subtype": "ONA",
+      "start": "2022-09-01",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46858",
+      "title": "Pocket Monsters: Haruka Naru Aoi Sora",
+      "subtype": "special",
+      "start": "2022-12-23",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47477",
+      "title": "Chan Chiho Challenge Channel",
+      "subtype": "ONA",
+      "start": "2023-02-10",
+      "episodes": null,
+      "status": "current",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46859",
+      "title": "Pocket Monsters (2023)",
+      "subtype": "TV",
+      "start": "2023-04-14",
+      "episodes": null,
+      "status": "current",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47863",
+      "title": "Pokémon: Path to the Peak",
+      "subtype": "ONA",
+      "start": "2023-08-11",
+      "episodes": 4,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49552",
+      "title": "Pokemon Yuenchi",
+      "subtype": "ONA",
+      "start": "2023-09-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50125",
+      "title": "Project Kabigon",
+      "subtype": "ONA",
+      "start": "2023-10-05",
+      "episodes": 11,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48195",
+      "title": "Meitantei Pikachu: Kareinaru Morning Routine",
+      "subtype": "ONA",
+      "start": "2023-10-25",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48623",
+      "title": "Shirarezaru \"Momowarou Monogatari\"",
+      "subtype": "ONA",
+      "start": "2024-01-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49570",
+      "title": "Liang Chen You Meng",
+      "subtype": "ONA",
+      "start": "2024-02-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49237",
+      "title": "Pokemon Card wo Yattemita",
+      "subtype": "ONA",
+      "start": "2024-03-21",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49554",
+      "title": "Bubble Beam Berry Blast",
+      "subtype": "ONA",
+      "start": "2024-06-07",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49550",
+      "title": "Turning the Tera Tide",
+      "subtype": "ONA",
+      "start": "2024-07-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49218",
+      "title": "Pokemon and the Autumn Moon",
+      "subtype": "ONA",
+      "start": "2024-09-14",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49525",
+      "title": "Monpoke",
+      "subtype": "ONA",
+      "start": "2025-02-19",
+      "episodes": 10,
+      "status": "current",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50121",
+      "title": "Pokemon ga Ippiki",
+      "subtype": "ONA",
+      "start": "2025-04-09",
+      "episodes": 4,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50124",
+      "title": "Bao Ke Meng Shengtai Yi Riji",
+      "subtype": "ONA",
+      "start": "2025-04-22",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "51032",
+      "title": "Baokemeng Qiyu Shatanjie",
+      "subtype": "ONA",
+      "start": "2025-06-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50126",
+      "title": "Metamon Henshin Shiritori Battle",
+      "subtype": "ONA",
+      "start": "2025-08-10",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50421",
+      "title": "Pokemon Card Game Mega Start Deck 100 Battle Collection CMs",
+      "subtype": "ONA",
+      "start": "2025-12-16",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50051",
+      "title": "Pokémon Tales: The Misadventures of Sirfetch’d & Pichu",
+      "subtype": "ONA",
+      "start": "2027-12-31",
+      "episodes": null,
+      "status": "unreleased",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [
+    {
+      "id": "41855",
+      "title": "Pocket Monsters, Fall Special!",
+      "subtype": "special",
+      "start": "1997-10-10",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12149",
+      "title": "TV-ban Pokemon Special Masara Town-hen Recaps",
+      "subtype": "OVA",
+      "start": "2000-09-29",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8948",
+      "title": "Pokemon XY: New Year Special",
+      "subtype": "special",
+      "start": "2013-12-31",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "10458",
+      "title": "Pokemon XY: New Year's Eve 2014 Super Mega Special",
+      "subtype": "special",
+      "start": "2014-12-31",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46497",
+      "title": "Pokemon (2019): Natsuyasumi Chokuzen 1-jikan Special",
+      "subtype": "special",
+      "start": "2021-07-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "parents": {},
+  "complete": true
+}

@@ -1,0 +1,95 @@
+{
+  "anchor": "7730",
+  "name": "JoJo no Kimyou na Bouken",
+  "name_from": "610",
+  "entries": [
+    {
+      "id": "610",
+      "title": "JoJo no Kimyou na Bouken",
+      "subtype": "OVA",
+      "start": "1993-11-19",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7730",
+      "title": "JoJo no Kimyou na Bouken: Adventure",
+      "subtype": "OVA",
+      "start": "2000-05-25",
+      "episodes": 7,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7158",
+      "title": "JoJo no Kimyou na Bouken (TV)",
+      "subtype": "TV",
+      "start": "2012-10-06",
+      "episodes": 26,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "7158",
+      "7730"
+    ],
+    [
+      "7730",
+      "610"
+    ]
+  ],
+  "versions": [
+    {
+      "id": "13306",
+      "title": "JoJo’s Bizarre Adventure Re-edited",
+      "subtype": "special",
+      "start": "2012-12-31",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8063",
+      "title": "JoJo no Kimyou na Bouken: Stardust Crusaders",
+      "subtype": "TV",
+      "start": "2014-04-05",
+      "episodes": 24,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8739",
+      "title": "JoJo no Kimyou na Bouken: Stardust Crusaders 2nd Season",
+      "subtype": "TV",
+      "start": "2015-01-10",
+      "episodes": 24,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "films": [
+    {
+      "id": "3136",
+      "title": "JoJo no Kimyou na Bouken: Phantom Blood",
+      "subtype": "movie",
+      "start": "2007-02-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [],
+  "recaps": [],
+  "parents": {},
+  "complete": true
+}

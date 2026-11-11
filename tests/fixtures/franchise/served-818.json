@@ -1,0 +1,321 @@
+{
+  "anchor": "818",
+  "name": "Gintama",
+  "name_from": "818",
+  "entries": [
+    {
+      "id": "818",
+      "title": "Gintama",
+      "subtype": "TV",
+      "start": "2006-04-04",
+      "episodes": 201,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5971",
+      "title": "Gintama'",
+      "subtype": "TV",
+      "start": "2011-04-04",
+      "episodes": 51,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7253",
+      "title": "Gintama': Enchousen",
+      "subtype": "TV",
+      "start": "2012-10-04",
+      "episodes": 13,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7241",
+      "title": "Gintama Movie 2: Kanketsu-hen - Yorozuya yo Eien Nare",
+      "subtype": "movie",
+      "start": "2013-07-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "10083",
+      "title": "Gintama°",
+      "subtype": "TV",
+      "start": "2015-04-08",
+      "episodes": 51,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12553",
+      "title": "Gintama.",
+      "subtype": "TV",
+      "start": "2017-01-09",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "13726",
+      "title": "Gintama.: Porori-hen",
+      "subtype": "TV",
+      "start": "2017-10-02",
+      "episodes": 13,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "14095",
+      "title": "Gintama.: Shirogane no Tamashii-hen",
+      "subtype": "TV",
+      "start": "2018-01-08",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "41079",
+      "title": "Gintama.: Shirogane no Tamashii-hen 2",
+      "subtype": "TV",
+      "start": "2018-07-09",
+      "episodes": 14,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "43683",
+      "title": "Gintama: The Final",
+      "subtype": "movie",
+      "start": "2021-01-08",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "43829",
+      "title": "Gintama: THE SEMI-FINAL",
+      "subtype": "special",
+      "start": "2021-01-15",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "818",
+      "5971"
+    ],
+    [
+      "5971",
+      "7253"
+    ],
+    [
+      "7241",
+      "10083"
+    ],
+    [
+      "7253",
+      "7241"
+    ],
+    [
+      "7253",
+      "10083"
+    ],
+    [
+      "10083",
+      "12553"
+    ],
+    [
+      "12553",
+      "13726"
+    ],
+    [
+      "13726",
+      "14095"
+    ],
+    [
+      "14095",
+      "41079"
+    ],
+    [
+      "41079",
+      "43683"
+    ],
+    [
+      "43829",
+      "43683"
+    ]
+  ],
+  "versions": [],
+  "films": [
+    {
+      "id": "4989",
+      "title": "Gintama: The Movie",
+      "subtype": "movie",
+      "start": "2010-04-24",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8608",
+      "title": "Gintama: Yorinuki Gintama-san on Theater 2D",
+      "subtype": "movie",
+      "start": "2012-08-26",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49020",
+      "title": "Gintama on Theater 2D: Ikkoku Keisei-hen",
+      "subtype": "movie",
+      "start": "2024-06-21",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50541",
+      "title": "Shin Gintama Movie: Yoshiwara Daienjou",
+      "subtype": "movie",
+      "start": "2026-02-13",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "2671",
+      "title": "Gintama: Nanigoto mo Saiyo ga Kanjin nano de Tasho Senobisuru Kurai ga Choudoyoi",
+      "subtype": "special",
+      "start": "2005-09-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4797",
+      "title": "Gintama: Shiroyasha Koutan",
+      "subtype": "special",
+      "start": "2008-09-21",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6278",
+      "title": "Gintama: Dai Hanseikai",
+      "subtype": "special",
+      "start": "2010-03-25",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7888",
+      "title": "Gintama x Mameshiba",
+      "subtype": "special",
+      "start": "2013-01-01",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8627",
+      "title": "Gintama': Futon ni Haitte kara Buki Nokoshi ni Kizuite Neru ni Nerenai Toki mo Aru",
+      "subtype": "special",
+      "start": "2015-04-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11759",
+      "title": "Gintama°: Aizome Kaori-hen",
+      "subtype": "OVA",
+      "start": "2016-08-04",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "14266",
+      "title": "Nissin Cup Noodles China x Gintama",
+      "subtype": "special",
+      "start": "2017-08-29",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42516",
+      "title": "Gintama: Monster Strike-hen",
+      "subtype": "ONA",
+      "start": "2019-08-29",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47947",
+      "title": "3-nen Z-gumi Ginpachi-sensei Announcement Special",
+      "subtype": "special",
+      "start": "2023-03-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50582",
+      "title": "Jongtama x Gintama Collab Kettei Promotion Anime",
+      "subtype": "ONA",
+      "start": "2025-10-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47198",
+      "title": "3-nen Z-gumi Ginpachi-sensei",
+      "subtype": "TV",
+      "start": "2025-10-06",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [],
+  "parents": {},
+  "complete": true
+}

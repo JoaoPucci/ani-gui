@@ -43,7 +43,8 @@ const CONFIG = {
 	use_custom_player_controls: true,
 	auto_update_anicli: false,
 	update_include_prereleases: false,
-	primary_account: ''
+	primary_account: '',
+	watch_order: 'linked'
 };
 
 const DETAIL = 'invalid type: null, expected a string at line 1 column 42';

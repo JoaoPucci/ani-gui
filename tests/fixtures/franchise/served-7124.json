@@ -1,0 +1,88 @@
+{
+  "anchor": "7124",
+  "name": "Persona 3 the Movie 1: Spring of Birth",
+  "name_from": "7124",
+  "entries": [
+    {
+      "id": "7124",
+      "title": "Persona 3 the Movie 1: Spring of Birth",
+      "subtype": "movie",
+      "start": "2013-11-23",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8189",
+      "title": "Persona 3 the Movie 2: Midsummer Knight's Dream",
+      "subtype": "movie",
+      "start": "2014-06-07",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8711",
+      "title": "Persona 3 the Movie 3: Falling Down",
+      "subtype": "movie",
+      "start": "2015-04-04",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11167",
+      "title": "Persona 3 the Movie 4: Winter of Rebirth",
+      "subtype": "movie",
+      "start": "2016-01-23",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "7124",
+      "8189"
+    ],
+    [
+      "8189",
+      "8711"
+    ],
+    [
+      "8711",
+      "11167"
+    ]
+  ],
+  "versions": [],
+  "films": [],
+  "sides": [
+    {
+      "id": "2959",
+      "title": "Persona: Trinity Soul",
+      "subtype": "TV",
+      "start": "2008-01-05",
+      "episodes": 26,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12224",
+      "title": "Persona 3 the Movie Meets “Walkman”",
+      "subtype": "ONA",
+      "start": "2016-02-14",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [],
+  "parents": {},
+  "complete": true
+}

@@ -1,0 +1,89 @@
+{
+  "anchor": "115",
+  "name": "Hunter x Hunter",
+  "name_from": "115",
+  "entries": [
+    {
+      "id": "115",
+      "title": "Hunter x Hunter",
+      "subtype": "TV",
+      "start": "1999-10-16",
+      "episodes": 62,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "116",
+      "title": "Hunter x Hunter: Yorkshin City Kanketsu-hen",
+      "subtype": "OVA",
+      "start": "2002-01-17",
+      "episodes": 8,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "117",
+      "title": "Hunter x Hunter: Greed Island",
+      "subtype": "OVA",
+      "start": "2003-02-05",
+      "episodes": 8,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "118",
+      "title": "Hunter x Hunter: Greed Island Final",
+      "subtype": "OVA",
+      "start": "2004-03-03",
+      "episodes": 14,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "115",
+      "116"
+    ],
+    [
+      "116",
+      "117"
+    ],
+    [
+      "117",
+      "118"
+    ]
+  ],
+  "versions": [
+    {
+      "id": "6448",
+      "title": "Hunter x Hunter (2011)",
+      "subtype": "TV",
+      "start": "2011-10-02",
+      "episodes": 148,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "films": [],
+  "sides": [
+    {
+      "id": "6068",
+      "title": "Hunter x Hunter Pilot",
+      "subtype": "OVA",
+      "start": "1998-01-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [],
+  "parents": {},
+  "complete": true
+}

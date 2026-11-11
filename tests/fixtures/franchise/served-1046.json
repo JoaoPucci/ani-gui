@@ -1,0 +1,99 @@
+{
+  "anchor": "1046",
+  "name": "Sakura Taisen: Ouka Kenran",
+  "name_from": "1046",
+  "entries": [
+    {
+      "id": "1046",
+      "title": "Sakura Taisen: Ouka Kenran",
+      "subtype": "OVA",
+      "start": "1997-12-18",
+      "episodes": 4,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1047",
+      "title": "Sakura Taisen: Gouka Kenran",
+      "subtype": "OVA",
+      "start": "1999-12-18",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "563",
+      "title": "Sakura Taisen: Katsudou Shashin",
+      "subtype": "movie",
+      "start": "2001-12-22",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1799",
+      "title": "Sakura Taisen: Sumire",
+      "subtype": "OVA",
+      "start": "2002-12-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "563",
+      "1799"
+    ],
+    [
+      "1046",
+      "1047"
+    ],
+    [
+      "1047",
+      "563"
+    ]
+  ],
+  "versions": [
+    {
+      "id": "518",
+      "title": "Sakura Taisen",
+      "subtype": "TV",
+      "start": "2000-04-08",
+      "episodes": 25,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "films": [],
+  "sides": [
+    {
+      "id": "1769",
+      "title": "Sakura Taisen: Ecole de Paris",
+      "subtype": "OVA",
+      "start": "2003-03-19",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1963",
+      "title": "Sakura Taisen: New York",
+      "subtype": "OVA",
+      "start": "2007-04-04",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [],
+  "parents": {},
+  "complete": true
+}

@@ -2,9 +2,14 @@
 
 **Status**: proposed as the main feature of the 0.19.0 release. The
 product questions are decided (section 6); the design questions are
-open (section 5). Nothing below is built. The research was done on
-2026-11-01; the live samples it quotes describe the catalogues on that
-day and will drift.
+open (section 5). Built so far: the backend's franchise read, `GET
+/api/kitsu/franchise/:kitsu_id`, and the stored "Watch order" value it
+is shown in (section 4 describes the read as built). Not built yet:
+everything a viewer sees. The strip, the Up next card, Continue
+Watching's hand-off, the franchise page and the setting's control
+exist only as design mockups drawn from fixture data, behind a
+Diagnostics switch. The research was done on 2026-11-01; the live
+samples it quotes describe the catalogues on that day and will drift.
 
 ## The problem in plain terms
 
@@ -478,28 +483,32 @@ build's history:
 
 ## 4. Design options
 
-All four options share one backend piece [proposal], two reads of
-Kitsu's relations:
+All four options share one backend piece, `GET
+/api/kitsu/franchise/:kitsu_id`, built on one read of Kitsu's
+relations per entry. As built, that read is not role-filtered: it lists
+every relation an entry has, each related anime with its title,
+format, start, episode count, status, poster and cover, paged in id
+order past 20 where Kitsu counts more, and cached separately from the
+`kitsu:relations:v3` read the tracker map uses, which asks for neither
+titles nor posters. From those listings it builds two things:
 
-- `chain(kitsu_id)`: the **run** an entry belongs to — a bounded walk
-  along prequel/sequel edges from that entry (say up to 40 entries),
-  each with title, format, year, episode count, status and poster,
-  under the rules below. It reads Kitsu's relations role-filtered to
-  `sequel,prequel,alternative_version,alternative_setting` — fewer
-  rows than the full list (four instead of fifteen for *Gintama*), and
-  paged past 20 where Kitsu counts more, so no link is hidden — a new,
-  separately cached query beside the existing `kitsu:relations:v3`
-  read, which asks for neither titles nor posters. One request per
-  entry the walk considers, cached; JoJo's TV run, from the 2012
-  series to *Steel Ball Run*, is nine entries.
-- `around(kitsu_id)`: one entry's other relations — side stories,
-  recaps, films and alternative versions — read in full, paging past
-  20 where Kitsu counts more. They are attached as leaves and not
-  walked from, because `alternative_version`/`ALTERNATIVE` links
-  unrelated series (Fate's *Apocrypha* and *Grand Order* hang off
-  *Fate/stay night*).
+- the **run** an entry belongs to: a bounded walk along prequel/sequel
+  edges from that entry (up to 40 entries and 80 listings), under the
+  rules below. JoJo's TV run, from the 2012 series to *Steel Ball Run*,
+  is nine entries;
+- what sits **around** the run: side stories, recaps, films and other
+  versions, from the members' own listings. They are attached as
+  leaves and not walked from, because `alternative_version`/`ALTERNATIVE`
+  links unrelated series (Fate's *Apocrypha* and *Grand Order* hang
+  off *Fate/stay night*).
 
-Neither makes a provider request. Kitsu is the metadata service the
+The read is unfiltered so one cached listing serves both. An earlier
+draft of this section filtered the walk's read to
+`sequel,prequel,alternative_version,alternative_setting` (four rows
+instead of fifteen for *Gintama*) and read one entry's other
+relations separately; one unfiltered listing serves both.
+
+It makes no provider request. Kitsu is the metadata service the
 app already pages through on every show page.
 
 ### How the walk builds a run, and keeps other versions out
@@ -525,18 +534,57 @@ is defined from the entry being viewed — the anchor — by these rules
    sequels (or several prequels) of which some list one another, in
    either direction, as `alternative_version` or
    `alternative_setting`, only one of each such group is added: the
-   one in the same format as the entry listing them (TV, movie,
+   one in the same format as the entry it was met through (TV, movie,
    OVA…), else the one that started first, else the lowest Kitsu id.
+   A group is decided once per distance, over every entry that lists
+   its members, so it keeps one even when they were met through
+   different entries, and adds none when one of them is already in
+   the run. Groups that share an entry are one group: entries that
+   are versions of one another, directly or through one another.
 3. **Versions along the path are left out.** An entry is not added if
    it and any entry on its path to the anchor list each other (in
    either direction) as `alternative_version` or
    `alternative_setting`. The anchor is never left out.
 4. **Other versions** are the anime entries rules 2 and 3 left out,
-   plus the anime that run members list as `alternative_version`.
+   music videos aside, plus the anime that run members list as
+   `alternative_version`.
    `alternative_setting` is not listed: Kitsu uses it for separate
    series in the same world (*Fate/stay night* lists *Apocrypha*,
    *Prisma☆Illya* and *Grand Order* that way). Manga and novels are
-   never listed.
+   never listed. A movie among them is listed with the films instead:
+   *Boruto: Naruto the Movie*, left out beside the *Boruto* series it
+   is a version of, is a film on Naruto's franchise page, not an
+   other version. The same holds for a recap that is a movie. A TV
+   series a member lists as its summary is a version of it, not a
+   recap: *Dragon Ball Super: Beerus*, a 19-episode re-edit of
+   *Super*'s opening arc, is listed beside both *Kai* series.
+
+**Side stories.** An anchor whose own run is itself alone, and that
+names a parent story, is walked from its earliest parent story
+instead, and listed beside that run (with the films, if it is a movie)
+with its parents named. So is an anchor whose own run holds no series
+(no TV series, OVA or ONA of more than one episode, or of a count
+Kitsu does not give yet) when the run names a parent story: *My Hero
+Academia*'s four films are linked to each other by sequel, and to the
+seasons only as parent story or other, so from any film the seasons
+are the run and the films sit under Films. The walk starts from the
+earliest parent story any of the films names, so every film's page
+shows the same main story, and a film the seasons do not list sits
+under Films as well. A film that names no parent of its own in the
+seasons' run is placed under the parents the other films of its chain
+name. Kitsu sometimes lists a pair the wrong way
+round, from both sides: [data] on 2026-11-11 *One Piece* (12) named
+*LEGO ONE PIECE* (50656), a two-episode ONA from 2026, as its parent
+story, and *LEGO ONE PIECE* named *One Piece* as its side story. So
+an entry the anchor names as its parent story is refused when it did
+not start before the anchor and its own listing names fewer side
+stories, spin-offs and recaps than the anchor's; and an entry the
+anchor names as its side story or spin-off is taken as its parent
+story when it started before the anchor, names the anchor back as its
+parent story, and names more of them. A listing read for this counts
+toward the bound on what the walk reads after it, and one cut short
+makes the answer incomplete. *One Piece* names sixty-three;
+*LEGO ONE PIECE* names one.
 
 With these tie-breaks every entry has one path and one decision, so
 the result does not depend on the order the walk happens to read
@@ -607,10 +655,10 @@ Where they differ, entry by entry:
 - **JoJo, from the 2000 OVA.** Link order: *JoJo* (TV, 2012) → 2000 OVA
   → 1993 OVA. Release order: 1993 OVA → 2000 OVA → 2012 series. All
   three entries' neighbours change. Other versions: both *Stardust
-  Crusaders* seasons, the 2007 *Phantom Blood* film and the 2012
-  re-edit special. From any TV part, the run is the nine entries from
-  the 2012 series to *Steel Ball Run* (an ONA), the same in both
-  orders. No entry in it lists either OVA as a prequel or sequel, so
+  Crusaders* seasons and the 2012 re-edit special; the 2007 *Phantom
+  Blood* film is listed with the films. From any TV part, the run is
+  the nine entries from the 2012 series to *Steel Ball Run* (an ONA),
+  the same in both orders. No entry in it lists either OVA as a prequel or sequel, so
   the walk never meets them; both are other versions by rule 4, since
   run members list them as `alternative_version`.
 - **Fate, from *Fate/Zero*.** Link order: *Fate/Zero* → *2nd Season* →
@@ -618,10 +666,11 @@ Where they differ, entry by entry:
   season. Release order: *Fate/stay night* (2006) → *Fate/Zero* → *2nd
   Season* → prologue → UBW → UBW 2nd season. They differ at *Fate/stay
   night* (2006), *Fate/Zero* and its 2nd season. The 2010 UBW film and
-  the first *Heaven's Feel* film are other versions: with *Fate/stay
-  night* (2006) they list one another as versions, and the TV series
-  wins (rule 2). Rule 4 adds *Fate/Prototype* and a UBW 2nd-season
-  special, which run members list as versions; the same-world series
+  the first *Heaven's Feel* film are left out: with *Fate/stay night*
+  (2006) they list one another as versions, and the TV series wins
+  (rule 2). Being movies, they are listed with the films. Rule 4 adds
+  *Fate/Prototype* and a UBW 2nd-season special, which run members
+  list as versions; the same-world series
   (*Apocrypha* and the rest) are not listed. From the UBW series' own
   page, the run is *Fate/Zero* → *2nd Season* → prologue → UBW → UBW
   2nd season in both orders; *Fate/stay night* (2006) is then an other
@@ -710,8 +759,8 @@ year.
   finale and *The Semi-Final*): the "before" slot holds both, side by
   side, the way a fork fills the "next" slot. The position number
   follows the earliest-starting one (section 4).
-- Recaps (`summary`) never take a slot; the role filter leaves them
-  out.
+- Recaps (`summary`) never take a slot; the walk follows only
+  prequel and sequel links, which leaves them out.
 - An unaired sequel (a start date in the future — the repository's
   fixture for Kitsu 48677 has a sequel starting 2027-01-10 with no
   episode count): shown dated,
@@ -826,16 +875,16 @@ design section. Below it, sections:
    unnumbered beside the numbered path, progress bars per entry and a
    "you are here" marker.
 2. **Other versions** — section 4's rule 4: from the JoJo TV run, both
-   OVAs; from the UBW run, the 2006 *Fate/stay night*, the 2010 film
-   and the first *Heaven's Feel* film among them; *Gintama*'s
-   retelling films.
-3. From `around`, by role first and format second: **Recaps**
-   (`summary`, collapsed by default — *Attack on Titan: Chronicle*
-   lands here though it is a film), then **Films** (movies among the
-   rest) and **Side stories & specials** (everything else: side
-   stories, parent stories, spin-offs, `other`). Links of the
-   `character` and `adaptation` roles are not shown: they tie
-   unrelated series together (*Gintama* to *Saiki Kusuo*).
+   OVAs; from the UBW run, the 2006 *Fate/stay night*. Movies are not
+   listed here but under Films: the 2010 UBW film and the first
+   *Heaven's Feel* film, *Gintama*'s retelling films.
+3. From `around`: **Films** (every movie around the run, whatever its
+   role: a version, a recap or a side story), **Side stories &
+   specials** (everything else: side stories, parent stories,
+   spin-offs, `other`) and **Recaps** (`summary`, a TV series aside,
+   which is an other version). Links of the `character` and `adaptation`
+   roles are not shown: they tie unrelated series together (*Gintama*
+   to *Saiki Kusuo*).
 
 There is no order switch on the page; the app-wide setting applies.
 

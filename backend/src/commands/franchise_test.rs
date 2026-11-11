@@ -1,0 +1,368 @@
+//! The franchise IO loop against a mocked Kitsu: each listing is read
+//! once, paged where Kitsu counts more, and cached.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use serde_json::{json, Value};
+use wiremock::matchers::{method, path, query_param};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+
+use super::{franchise, listing_key};
+use crate::app::AppState;
+use crate::cache::meta_cache_put;
+
+fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
+    Arc::new(AppState {
+        secret: crate::proxy::AppSecret::random(),
+        sessions: crate::proxy::SessionTable::new(),
+        proxy_http: reqwest::Client::new(),
+        host_budget: crate::proxy::host_budget::HostBudget::fresh(),
+        meta_http: reqwest::Client::new(),
+        proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 12_345),
+        bundled_bin: None,
+        legacy_sweep: crate::legacy_script::SweepReport::default(),
+        history_path: PathBuf::from("/tmp/ani-gui/history"),
+        providers: crate::provider_set::ProviderSet::for_tests(),
+        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
+        kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
+        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
+        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        internal_secret: crate::account::InternalSecret::random(),
+        mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+        account_write_locks: crate::commands::account::AccountWriteLocks::new(),
+        availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+    })
+}
+
+/// The detail row of the 2000 JoJo OVA, as the detail read caches it.
+pub(crate) fn seed_ova_detail(state: &AppState) {
+    let detail = json!({
+        "id": "7730", "canonical_title": "JoJo no Kimyou na Bouken: Adventure",
+        "titles": {}, "abbreviated_titles": [], "slug": null, "synopsis": null,
+        "start_date": "2000-05-25", "end_date": "2002-11-01", "episode_count": 7,
+        "average_rating": null, "subtype": "OVA", "status": "finished",
+        "age_rating": null, "popularity_rank": null,
+        "poster_image": { "tiny": null, "small": "s.jpg", "medium": "m.jpg", "large": null, "original": null },
+        "cover_image": null
+    });
+    meta_cache_put(
+        &state.cache_pool,
+        &crate::commands::kitsu::anime_detail_key("7730"),
+        &detail.to_string(),
+        3600,
+    )
+    .expect("seed detail");
+}
+
+/// An anime a relation points at: id, subtype, start.
+type To = (&'static str, &'static str, &'static str);
+
+fn page(rels: &[(&str, To)], count: usize) -> Value {
+    let data: Vec<Value> = rels
+        .iter()
+        .map(|(role, (id, _, _))| {
+            json!({ "type": "mediaRelationships", "attributes": { "role": role },
+                "relationships": { "destination": { "data": { "type": "anime", "id": id } } } })
+        })
+        .collect();
+    let included: Vec<Value> = rels
+        .iter()
+        .map(|(_, (id, subtype, start))| {
+            json!({ "type": "anime", "id": id, "attributes": {
+                "canonicalTitle": format!("T{id}"), "subtype": subtype, "status": "finished",
+                "episodeCount": 12, "startDate": start, "posterImage": null, "coverImage": null } })
+        })
+        .collect();
+    json!({ "data": data, "included": included, "meta": { "count": count } })
+}
+
+const TV_2012: To = ("7158", "TV", "2012-10-06");
+const SC: To = ("8063", "TV", "2014-04-05");
+const OVA_2000: To = ("7730", "OVA", "2000-05-25");
+const OVA_1993: To = ("610", "OVA", "1993-11-19");
+const FILM: To = ("3136", "movie", "2007-02-17");
+
+async fn serve(server: &MockServer, id: &str, offset: &str, body: Value) {
+    Mock::given(method("GET"))
+        .and(path(format!("/anime/{id}/media-relationships")))
+        .and(query_param("page[offset]", offset))
+        .respond_with(ResponseTemplate::new(200).set_body_json(body))
+        .expect(1)
+        .mount(server)
+        .await;
+}
+
+/// From the 2000 OVA, the walk reads the OVA's, both neighbours' and
+/// Stardust Crusaders' listings once each — the 2012 series' over two
+/// pages — and a second ask is answered from the cache.
+#[tokio::test]
+async fn the_walk_reads_each_listing_once_and_pages() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "7730",
+        "0",
+        page(
+            &[
+                ("sequel", OVA_1993),
+                ("alternative_version", SC),
+                ("prequel", TV_2012),
+            ],
+            3,
+        ),
+    )
+    .await;
+    serve(&server, "610", "0", page(&[("prequel", OVA_2000)], 1)).await;
+    serve(&server, "7158", "0", page(&[("sequel", SC)], 2)).await;
+    serve(
+        &server,
+        "7158",
+        "1",
+        page(&[("alternative_version", FILM)], 2),
+    )
+    .await;
+    serve(
+        &server,
+        "8063",
+        "0",
+        page(
+            &[("prequel", TV_2012), ("alternative_version", OVA_2000)],
+            2,
+        ),
+    )
+    .await;
+    let state = state_with_kitsu(&server.uri());
+    seed_ova_detail(&state);
+
+    let first = franchise(&state, "7730").await.expect("franchise");
+    let ids: Vec<&str> = first.entries.iter().map(|e| e.id.as_str()).collect();
+    assert_eq!(ids, ["610", "7730", "7158"]);
+    let versions: Vec<&str> = first.versions.iter().map(|e| e.id.as_str()).collect();
+    assert_eq!(versions, ["8063"]);
+    let films: Vec<&str> = first.films.iter().map(|e| e.id.as_str()).collect();
+    assert_eq!(films, ["3136"]);
+    assert_eq!(
+        first.entries[1].title,
+        "JoJo no Kimyou na Bouken: Adventure"
+    );
+    assert_eq!(first.entries[1].poster.as_deref(), Some("m.jpg"));
+    assert!(first.complete);
+
+    let again = franchise(&state, "7730").await.expect("franchise");
+    assert_eq!(first, again);
+    assert!(
+        crate::cache::meta_cache_get(&state.cache_pool, &listing_key("7158"))
+            .expect("read")
+            .is_some()
+    );
+}
+
+/// A value that is not a Kitsu id asks Kitsu for nothing.
+#[tokio::test]
+async fn a_value_that_is_not_an_id_is_refused() {
+    let state = state_with_kitsu("http://127.0.0.1:1");
+    assert!(matches!(
+        franchise(&state, "abc").await,
+        Err(crate::error::AniError::InvalidKitsuId)
+    ));
+}
+
+/// Two reads of one listing at the same time make one request to
+/// Kitsu: the show page and another surface asking for the same
+/// franchise share the read in flight.
+#[tokio::test]
+async fn reads_of_one_listing_at_the_same_time_share_one_request() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/610/media-relationships"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(page(&[("prequel", OVA_2000)], 1))
+                .set_delay(std::time::Duration::from_millis(200)),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let state = state_with_kitsu(&server.uri());
+    let (a, b) = tokio::join!(
+        super::franchise_listing(&state, "610"),
+        super::franchise_listing(&state, "610")
+    );
+    assert_eq!(a.expect("listing"), b.expect("listing"));
+    server.verify().await;
+}
+
+/// A listing whose related anime have all finished keeps the week the
+/// detail read keeps; one that relates an anime still airing, not yet
+/// out or of unknown status keeps a day, so its counts and statuses do
+/// not go a week stale.
+mod listing_lifetime {
+    use proptest::prelude::*;
+
+    use super::super::listing_ttl;
+    use crate::cache::ttl::{ANIME_DETAIL_TTL, EPISODES_TTL};
+    use crate::meta::kitsu::{FranchiseEntry, FranchiseListing, FranchiseRelation};
+
+    fn related(kind: &str, status: Option<&str>) -> FranchiseRelation {
+        let entry = (kind == "anime").then(|| FranchiseEntry {
+            id: "1".into(),
+            title: "T".into(),
+            subtype: Some("TV".into()),
+            start: None,
+            episodes: None,
+            status: status.map(str::to_string),
+            poster: None,
+            cover: None,
+        });
+        FranchiseRelation {
+            role: "sequel".into(),
+            kind: kind.into(),
+            id: "1".into(),
+            subtype: None,
+            entry,
+        }
+    }
+
+    fn listing(relations: Vec<FranchiseRelation>) -> FranchiseListing {
+        FranchiseListing {
+            relations,
+            complete: true,
+        }
+    }
+
+    #[test]
+    fn a_listing_of_finished_anime_keeps_a_week() {
+        let l = listing(vec![
+            related("anime", Some("finished")),
+            related("anime", Some("finished")),
+            related("manga", None),
+        ]);
+        assert_eq!(listing_ttl(&l), ANIME_DETAIL_TTL.as_secs());
+        assert_eq!(listing_ttl(&listing(vec![])), ANIME_DETAIL_TTL.as_secs());
+    }
+
+    #[test]
+    fn a_listing_with_an_unfinished_anime_keeps_a_day() {
+        for status in [
+            Some("current"),
+            Some("upcoming"),
+            Some("tba"),
+            Some("unreleased"),
+            None,
+        ] {
+            let l = listing(vec![
+                related("anime", Some("finished")),
+                related("anime", status),
+            ]);
+            assert_eq!(listing_ttl(&l), EPISODES_TTL.as_secs(), "{status:?}");
+        }
+    }
+
+    fn status() -> impl Strategy<Value = Option<String>> {
+        prop_oneof![
+            Just(Some("finished".to_string())),
+            Just(Some("current".to_string())),
+            Just(None),
+            any::<String>().prop_map(Some),
+        ]
+    }
+
+    proptest! {
+        #[test]
+        fn a_week_only_when_every_related_anime_has_finished(
+            rels in prop::collection::vec((any::<bool>(), status()), 0..8)
+        ) {
+            let relations: Vec<FranchiseRelation> = rels
+                .iter()
+                .map(|(anime, s)| related(if *anime { "anime" } else { "manga" }, s.as_deref()))
+                .collect();
+            let all_finished = rels
+                .iter()
+                .filter(|(anime, _)| *anime)
+                .all(|(_, s)| s.as_deref() == Some("finished"));
+            let want = if all_finished { ANIME_DETAIL_TTL } else { EPISODES_TTL };
+            prop_assert_eq!(listing_ttl(&listing(relations)), want.as_secs());
+        }
+    }
+}
+
+/// One Piece's shape: a series that lists no prequel or sequel, names
+/// its two-episode spin-off as its parent story, and has a side story
+/// that started before it. Seeds the series' detail row.
+fn seed_series_detail(state: &AppState) {
+    let detail = json!({
+        "id": "12", "canonical_title": "One Piece",
+        "titles": {}, "abbreviated_titles": [], "slug": null, "synopsis": null,
+        "start_date": "1999-10-20", "end_date": null, "episode_count": null,
+        "average_rating": null, "subtype": "TV", "status": "current",
+        "age_rating": null, "popularity_rank": null,
+        "poster_image": null, "cover_image": null
+    });
+    meta_cache_put(
+        &state.cache_pool,
+        &crate::commands::kitsu::anime_detail_key("12"),
+        &detail.to_string(),
+        3600,
+    )
+    .expect("seed detail");
+}
+
+const SERIES: To = ("12", "TV", "1999-10-20");
+const SPIN_OFF: To = ("50656", "ONA", "2026-09-29");
+const EARLY_OVA: To = ("428", "OVA", "1998-07-26");
+const RECAP: To = ("5225", "OVA", "2010-03-17");
+
+fn series_page() -> Value {
+    page(
+        &[
+            ("parent_story", SPIN_OFF),
+            ("side_story", EARLY_OVA),
+            ("summary", RECAP),
+        ],
+        3,
+    )
+}
+
+/// The parent check reads the listing of the entry the series names as
+/// its parent story and of its earlier side story, once each, and
+/// takes neither: the series is the main story, both sit beside it.
+#[tokio::test]
+async fn the_parent_check_reads_its_candidates_once() {
+    let server = MockServer::start().await;
+    serve(&server, "12", "0", series_page()).await;
+    serve(&server, "50656", "0", page(&[("side_story", SERIES)], 1)).await;
+    serve(&server, "428", "0", page(&[("parent_story", SERIES)], 1)).await;
+    let state = state_with_kitsu(&server.uri());
+    seed_series_detail(&state);
+
+    let f = franchise(&state, "12").await.expect("franchise");
+    let ids = |l: &[crate::meta::kitsu::FranchiseEntry]| {
+        l.iter().map(|e| e.id.clone()).collect::<Vec<_>>()
+    };
+    assert_eq!(ids(&f.entries), ["12"]);
+    assert_eq!(ids(&f.sides), ["428", "50656"]);
+    assert!(f.parents.is_empty());
+    assert!(f.complete);
+}
+
+/// A candidate's listing that cannot be read fails the franchise, as
+/// any listing the walk needs does: the walk answers whole or not at
+/// all.
+#[tokio::test]
+async fn a_candidate_that_cannot_be_read_fails_the_franchise() {
+    let server = MockServer::start().await;
+    serve(&server, "12", "0", series_page()).await;
+    serve(&server, "428", "0", page(&[("parent_story", SERIES)], 1)).await;
+    Mock::given(method("GET"))
+        .and(path("/anime/50656/media-relationships"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let state = state_with_kitsu(&server.uri());
+    seed_series_detail(&state);
+
+    assert!(franchise(&state, "12").await.is_err());
+}

@@ -1,0 +1,497 @@
+{
+  "anchor": "199",
+  "name": "Dragon Ball",
+  "name_from": "199",
+  "entries": [
+    {
+      "id": "199",
+      "title": "Dragon Ball",
+      "subtype": "TV",
+      "start": "1986-02-26",
+      "episodes": 153,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "720",
+      "title": "Dragon Ball Z",
+      "subtype": "TV",
+      "start": "1989-04-26",
+      "episodes": 291,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "200",
+      "title": "Dragon Ball GT",
+      "subtype": "TV",
+      "start": "1996-02-07",
+      "episodes": 64,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "877",
+      "title": "Dragon Ball GT: Goku Gaiden! Yuuki no Akashi wa Suushinchuu",
+      "subtype": "special",
+      "start": "1997-03-26",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "10879",
+      "title": "Dragon Ball Super",
+      "subtype": "TV",
+      "start": "2015-07-05",
+      "episodes": 131,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "41046",
+      "title": "Dragon Ball Super: Broly",
+      "subtype": "movie",
+      "start": "2018-12-14",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "44544",
+      "title": "Dragon Ball Super: Super Hero",
+      "subtype": "movie",
+      "start": "2022-06-11",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50496",
+      "title": "Dragon Ball Super: Ginga Patrol",
+      "subtype": "TV",
+      "start": null,
+      "episodes": null,
+      "status": "tba",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "199",
+      "720"
+    ],
+    [
+      "200",
+      "877"
+    ],
+    [
+      "720",
+      "200"
+    ],
+    [
+      "720",
+      "10879"
+    ],
+    [
+      "10879",
+      "41046"
+    ],
+    [
+      "41046",
+      "44544"
+    ],
+    [
+      "44544",
+      "50496"
+    ]
+  ],
+  "versions": [
+    {
+      "id": "4394",
+      "title": "Dragon Ball Kai",
+      "subtype": "TV",
+      "start": "2009-04-05",
+      "episodes": 97,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8351",
+      "title": "Dragon Ball Kai (2014)",
+      "subtype": "TV",
+      "start": "2014-04-06",
+      "episodes": 69,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48108",
+      "title": "Dragon Ball DAIMA",
+      "subtype": "TV",
+      "start": "2024-10-11",
+      "episodes": 20,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50497",
+      "title": "Dragon Ball Super: Beerus",
+      "subtype": "TV",
+      "start": "2026-10-11",
+      "episodes": 19,
+      "status": "current",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "films": [
+    {
+      "id": "461",
+      "title": "Dragon Ball Movie 1: Shen Long no Densetsu",
+      "subtype": "movie",
+      "start": "1986-12-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "791",
+      "title": "Dragon Ball Movie 2: Majinjou no Nemuri Hime",
+      "subtype": "movie",
+      "start": "1987-07-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "792",
+      "title": "Dragon Ball Movie 3: Makafushigi Daibouken",
+      "subtype": "movie",
+      "start": "1988-07-09",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "794",
+      "title": "Dragon Ball Z Movie 01: Ora no Gohan wo Kaese!!",
+      "subtype": "movie",
+      "start": "1989-07-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "795",
+      "title": "Dragon Ball Z Movie 02: Kono Yo de Ichiban Tsuyoi Yatsu",
+      "subtype": "movie",
+      "start": "1990-03-10",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "796",
+      "title": "Dragon Ball Z Movie 03: Chikyuu Marugoto Choukessen",
+      "subtype": "movie",
+      "start": "1990-07-07",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "797",
+      "title": "Dragon Ball Z Movie 04: Super Saiyajin da Son Gokuu",
+      "subtype": "movie",
+      "start": "1991-03-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "798",
+      "title": "Dragon Ball Z Movie 05: Tobikkiri no Saikyou tai Saikyou",
+      "subtype": "movie",
+      "start": "1991-07-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "799",
+      "title": "Dragon Ball Z Movie 06: Gekitotsu!! 100-oku Power no Senshi-tachi",
+      "subtype": "movie",
+      "start": "1992-03-07",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "800",
+      "title": "Dragon Ball Z Movie 07: Kyokugen Battle!! Sandai Super Saiyajin",
+      "subtype": "movie",
+      "start": "1992-07-11",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "801",
+      "title": "Dragon Ball Z Movie 08: Moetsukiro!! Nessen, Ressen, Chougekisen",
+      "subtype": "movie",
+      "start": "1993-03-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "802",
+      "title": "Dragon Ball Z Movie 09: Ginga Girigiri!! Bucchigiri no Sugoi Yatsu",
+      "subtype": "movie",
+      "start": "1993-07-10",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "803",
+      "title": "Dragon Ball Z Movie 10: Kiken na Futari! Super Senshi wa Nemurenai",
+      "subtype": "movie",
+      "start": "1994-03-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "804",
+      "title": "Dragon Ball Z Movie 11: Super Senshi Gekiha!! Katsu no wa Ore da",
+      "subtype": "movie",
+      "start": "1994-07-09",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "805",
+      "title": "Dragon Ball Z Movie 12: Fukkatsu no Fusion!! Gokuu to Vegeta",
+      "subtype": "movie",
+      "start": "1995-03-04",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "806",
+      "title": "Dragon Ball Z Movie 13: Ryuuken Bakuhatsu!! Goku ga Yaraneba Dare ga Yaru",
+      "subtype": "movie",
+      "start": "1995-07-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "793",
+      "title": "Dragon Ball Movie 4: Saikyou e no Michi",
+      "subtype": "movie",
+      "start": "1996-03-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7176",
+      "title": "Dragon Ball Z Movie 14: Kami to Kami",
+      "subtype": "movie",
+      "start": "2013-03-30",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8676",
+      "title": "Dragon Ball Z Movie 15: Fukkatsu no F",
+      "subtype": "movie",
+      "start": "2015-04-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "2285",
+      "title": "Dragon Ball Specials",
+      "subtype": "special",
+      "start": "1988-06-01",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "876",
+      "title": "Dragon Ball Z Special 1: Tatta Hitori no Saishuu Kessen",
+      "subtype": "special",
+      "start": "1990-10-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4682",
+      "title": "Dragon Ball Z: Atsumare! Gokuu World",
+      "subtype": "OVA",
+      "start": "1992-01-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "875",
+      "title": "Dragon Ball Z Special 2: Zetsubou e no Hankou!! Nokosareta Chousenshi - Gohan to Trunks",
+      "subtype": "special",
+      "start": "1993-02-24",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "874",
+      "title": "Dragon Ball Z: Saiya-jin Zetsumetsu Keikaku",
+      "subtype": "OVA",
+      "start": "1993-07-23",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8611",
+      "title": "Dragon Ball Z: Zenbu Misemasu Toshi Wasure Dragon Ball Z!",
+      "subtype": "special",
+      "start": "1993-12-31",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3951",
+      "title": "Dragon Ball: Ossu! Kaettekita Son Gokuu to Nakama-tachi!!",
+      "subtype": "special",
+      "start": "2008-09-21",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5997",
+      "title": "Dragon Ball: Super Saiya-jin Zetsumetsu Keikaku",
+      "subtype": "OVA",
+      "start": "2010-11-11",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6691",
+      "title": "Dragon Ball: Episode of Bardock",
+      "subtype": "special",
+      "start": "2011-12-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42749",
+      "title": "Nissin Cup Noodles x Dragon Ball Z",
+      "subtype": "special",
+      "start": "2015-05-25",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "41319",
+      "title": "Super Dragon Ball Heroes",
+      "subtype": "ONA",
+      "start": "2018-07-01",
+      "episodes": 56,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42256",
+      "title": "Dragon Ball Super: Broly - Skytree Super",
+      "subtype": "special",
+      "start": "2018-11-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [
+    {
+      "id": "11468",
+      "title": "The World of Dragon Ball Z",
+      "subtype": "OVA",
+      "start": "2000-01-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "14254",
+      "title": "Dragon Ball GT: A Grand Problem",
+      "subtype": "special",
+      "start": "2003-11-07",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "parents": {},
+  "complete": true
+}

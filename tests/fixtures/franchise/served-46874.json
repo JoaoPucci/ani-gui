@@ -1,0 +1,96 @@
+{
+  "anchor": "46874",
+  "name": "SPY×FAMILY",
+  "name_from": "45398",
+  "entries": [
+    {
+      "id": "45398",
+      "title": "SPY×FAMILY",
+      "subtype": "TV",
+      "start": "2022-04-09",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "45619",
+      "title": "SPY x FAMILY Part 2",
+      "subtype": "TV",
+      "start": "2022-10-01",
+      "episodes": 13,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46873",
+      "title": "SPY×FAMILY Season 2",
+      "subtype": "TV",
+      "start": "2023-10-07",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48939",
+      "title": "SPY×FAMILY Season 3",
+      "subtype": "TV",
+      "start": "2025-10-04",
+      "episodes": 13,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "51175",
+      "title": "SPY×FAMILY Season 4",
+      "subtype": "TV",
+      "start": "2026-12-31",
+      "episodes": null,
+      "status": "upcoming",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "45398",
+      "45619"
+    ],
+    [
+      "45619",
+      "46873"
+    ],
+    [
+      "46873",
+      "48939"
+    ],
+    [
+      "48939",
+      "51175"
+    ]
+  ],
+  "versions": [],
+  "films": [
+    {
+      "id": "46874",
+      "title": "SPY×FAMILY CODE: White",
+      "subtype": "movie",
+      "start": "2023-12-22",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [],
+  "recaps": [],
+  "parents": {
+    "46874": [
+      "45619"
+    ]
+  },
+  "complete": true
+}
