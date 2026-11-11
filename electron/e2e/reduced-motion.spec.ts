@@ -151,6 +151,9 @@ async function launchOnce(
 				})}\n\n`
 			});
 		}
+		// The backend answers skip times with a list, empty when it knows
+		// none; the page reads it as one once the length is known.
+		if (p.startsWith('/api/aniskip/')) return j([]);
 		return j(null);
 	});
 

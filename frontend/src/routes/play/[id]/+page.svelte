@@ -200,6 +200,8 @@
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
+	import { chromeReadsPlaying, type StartPhase } from '$lib/play/start-state';
+	import { watchStart, type StartWatch } from '$lib/play/start-watch';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
@@ -326,7 +328,30 @@
 	// our own progress bar / play / volume / fullscreen UI on top
 	// of the video. Bindings keep the bar in sync with the video
 	// element's actual state without polling.
-	let isPaused = $state(true);
+	//
+	// Where the stream stands ($lib/play/start-state), not the element's
+	// `paused`: an autoplaying element reads paused from the attach to
+	// its first frame, and offering Play over a stream on its way is
+	// what makes a viewer press it. The button and the fullscreen
+	// keep-alive read the viewer's intent from here, and the loading
+	// indicator shows through a start and a stall.
+	let startPhase = $state<StartPhase>('idle');
+	// Watches the page's own video for as long as the page has it, not
+	// the slot the video sits in: a stream can attach while the error
+	// panel stands in for the slot.
+	// Ends the attached stream's resume hold, if it has one.
+	let endResumeHold: () => void = () => {};
+	/** The episode went to another player: a hold ends without
+	 *  starting anything, and a start stops. */
+	function stopForHandoff() {
+		endResumeHold();
+		startWatch.cancel();
+	}
+	const startWatch: StartWatch = watchStart(ownVideo, (phase) => {
+		startPhase = phase;
+	});
+	const isPaused = $derived(!chromeReadsPlaying(startPhase));
+	const streamLoading = $derived(startPhase === 'starting' || startPhase === 'stalled');
 	let currentTime = $state(0);
 	let duration = $state(0);
 	let videoVolume = $state(1);
@@ -539,6 +564,11 @@
 	function togglePlay() {
 		// The resume starts playback itself once its seek lands.
 		if (!videoEl || resumeHolding) return;
+		// A start on its way reads as playing, so the button stops it.
+		if (startPhase === 'starting') {
+			startWatch.cancel();
+			return;
+		}
 		if (videoEl.paused) {
 			// `play()` returns a promise that can reject with AbortError
 			// when a pause() lands on top of an in-flight play() — the
@@ -913,8 +943,8 @@
 	// black screen with nothing to explain it.
 	let videoFullscreen = $state(false);
 	let mouseIdle = $state(false);
-	// `isPaused` already declared above (driven by the video's
-	// play/pause events) — reuse it as a keep-alive input.
+	// `isPaused` already declared above (the viewer's intent, from the
+	// start phase) — reuse it as a keep-alive input.
 	let controlsFocusWithin = $state(false);
 	let idleTimer: ReturnType<typeof setTimeout> | null = null;
 	const fullscreenControlsHidden = $derived(
@@ -1786,7 +1816,6 @@
 		// (after an error overlay) with the stream already playing.
 		currentTime = v.currentTime;
 		duration = isFinite(v.duration) ? v.duration : 0;
-		isPaused = v.paused;
 		videoVolume = v.volume;
 		isMuted = v.muted;
 		playbackRate = v.playbackRate;
@@ -1796,12 +1825,6 @@
 		};
 		const onDuration = () => {
 			duration = isFinite(v.duration) ? v.duration : 0;
-		};
-		const onPlay = () => {
-			isPaused = false;
-		};
-		const onPause = () => {
-			isPaused = true;
 		};
 		const onVol = () => {
 			videoVolume = v.volume;
@@ -1856,8 +1879,6 @@
 		v.addEventListener('progress', onProg);
 		v.addEventListener('durationchange', onDuration);
 		v.addEventListener('loadedmetadata', onMeta);
-		v.addEventListener('play', onPlay);
-		v.addEventListener('pause', onPause);
 		v.addEventListener('volumechange', onVol);
 		v.addEventListener('ratechange', onRate);
 		v.addEventListener('ended', onEnded);
@@ -1870,8 +1891,6 @@
 			v.removeEventListener('progress', onProg);
 			v.removeEventListener('durationchange', onDuration);
 			v.removeEventListener('loadedmetadata', onMeta);
-			v.removeEventListener('play', onPlay);
-			v.removeEventListener('pause', onPause);
 			v.removeEventListener('volumechange', onVol);
 			v.removeEventListener('ratechange', onRate);
 			v.removeEventListener('ended', onEnded);
@@ -1910,6 +1929,10 @@
 		teardown();
 		attachedUrl = mediaUrl;
 		lengthFor = untrack(() => sessionId);
+		// The unload above set the element paused without a `pause`
+		// event; the stream attaching now is on its way. Told before the
+		// resume hold, below, takes the element's autoplay off.
+		startWatch.attach(videoEl.autoplay);
 		// Source-scoped listeners — the resume seek, the progress
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
@@ -1917,7 +1940,7 @@
 		// It also says where the stream starts: an hls engine begins
 		// loading at a resume point's fragment, below, so nothing
 		// before that fragment is fetched or shown.
-		const { startAt } = armSourceScopedListeners({
+		const { startAt, endHold } = armSourceScopedListeners({
 			video: videoEl,
 			showId: id,
 			episode: episodeNum,
@@ -1929,6 +1952,7 @@
 			// Only hls.js is handed the start, below.
 			startedAtPoint: mediaKind !== 'mp4' && Hls.isSupported()
 		});
+		endResumeHold = endHold;
 		playerError = null;
 		failedStreamError = null;
 
@@ -2160,6 +2184,7 @@
 		// page and hold the provider's rate-limit slots.
 		sourceScope.flush();
 		teardown();
+		startWatch.dispose();
 		releasePlayerVideo(ownVideo);
 		showReleases.leave();
 	});
@@ -2831,7 +2856,7 @@
 		// instances simultaneously. The notice/launch flow continues
 		// regardless; if the external player fails to start the user
 		// can press space (or click the embedded player) to resume.
-		videoEl?.pause();
+		stopForHandoff();
 		externalBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
@@ -2900,7 +2925,7 @@
 		// Same pause-the-embedded-video logic as the external flow:
 		// Syncplay opens its own player window so two instances would
 		// otherwise stack audio.
-		videoEl?.pause();
+		stopForHandoff();
 		syncplayBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
@@ -3073,7 +3098,7 @@
 		class="player-frame"
 		class:player-busy={switchBusy}
 		class:player-resuming={resumeHolding && !videoFullscreen}
-		aria-busy={switchBusy || (resumeHolding && !playerError)}
+		aria-busy={switchBusy || ((resumeHolding || streamLoading) && !playerError)}
 		class:fs-controls-hidden={fullscreenControlsHidden}
 		style:--player-letterbox-x="{letterboxX}px"
 		style:--player-letterbox-y="{letterboxY}px"
@@ -3730,15 +3755,19 @@
 				</div>
 			{/if}
 		{/if}
-		<!-- Mounted across a switch and the resume hold that follows it,
-		     and toggled: the two states are set in different places, and
-		     the moment between them must not restart the indicator. An
-		     error unmounts it outright, so nothing lingers over the
-		     panel. -->
+		<!-- On through a switch, the resume hold that follows it, and any
+		     start or stall of the stream ($lib/play/start-state). Mounted
+		     across them and toggled: the states are set in different
+		     places, and the moment between them must not restart the
+		     indicator. With Chromium's own controls a start or a stall
+		     shows theirs, not this one. An error unmounts it outright,
+		     so nothing lingers over the panel. -->
 		{#if !playerError}
 			<span
 				class="player-spinner"
-				class:player-spinner-on={switchBusy || resumeHolding}
+				class:player-spinner-on={switchBusy ||
+					resumeHolding ||
+					(streamLoading && USE_CUSTOM_PLAYER_CONTROLS)}
 				aria-hidden="true"
 			>
 				<span class="player-spinner-track"><span class="player-spinner-sweep"></span></span>
@@ -5533,9 +5562,9 @@
 	/* Loading indicator over the player: the app's indeterminate
 	   hairline (the search bar's and the download bar's sweep), set
 	   in the show's accent and centred in the frame. It waits a beat
-	   before fading in, so a switch or a resume that lands quickly
-	   never flashes it, and goes at once when the load ends, so it
-	   never lingers over the picture. Toggled rather than remounted,
+	   before fading in, so a switch, a resume, a start or a stall that
+	   lands quickly never flashes it, and goes at once when the load
+	   ends, so it never lingers over the picture. Toggled rather than remounted,
 	   it runs on unbroken from a switch into the resume hold that
 	   follows it: the switch stays busy until the next stream has
 	   attached and started its hold. Off, it leaves the layout, so
