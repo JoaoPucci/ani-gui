@@ -112,13 +112,24 @@ function proxyEnv(origin: string): Record<string, string> {
  *  test run — unless that environment leads to a display someone may
  *  be looking at, which throws, saying how to run the suite instead.
  *  `binary` is another copy of the packaged tree's launcher, for a spec
- *  that ships the app a frontend of its own (splash-stuck.spec.ts). */
+ *  that ships the app a frontend of its own (splash-stuck.spec.ts).
+ *  `profile` is the scratch directory the spec made for this launch
+ *  (its HOME or XDG directories): it is removed, that path alone, once
+ *  the app has exited, or at once if the launch never starts. */
 export async function launchPackagedApp(
 	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env'],
-	{ binary = packagedBinary }: { binary?: string } = {}
+	{ binary = packagedBinary, profile }: { binary?: string; profile?: string } = {}
 ): Promise<ElectronApplication> {
+	const removeProfile = () => {
+		// The backend is stopped as the app quits and may still be
+		// closing its files: retried while the tree is busy.
+		if (profile) fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	};
 	const refusal = launchRefusal(env ?? {});
-	if (refusal) throw new Error(refusal);
+	if (refusal) {
+		removeProfile();
+		throw new Error(refusal);
+	}
 	// The launcher script execs the binary beside it in the same process;
 	// resolved before the launch, so a launched app is always recorded.
 	const exe = fs.realpathSync(`${binary}.bin`);
@@ -136,9 +147,13 @@ export async function launchPackagedApp(
 		});
 	} catch (err) {
 		proxy.close();
+		removeProfile();
 		throw err;
 	}
-	app.process().once('exit', () => proxy.close());
+	app.process().once('exit', () => {
+		proxy.close();
+		removeProfile();
+	});
 	launched.set(app, { child: app.process(), exe });
 	refused.set(app, proxy.seen);
 	return app;

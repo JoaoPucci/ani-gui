@@ -111,6 +111,15 @@ before its stubs, mounts the page again with `remountFirstPage`, and
 asserts that no request was left unanswered. `smoke.spec.ts` and
 `keyring-unresponsive.spec.ts` do.
 
+Each launch runs on a scratch profile the spec makes under the
+system's temporary directory. The spec passes that directory to
+`launchPackagedApp` as `profile`, and the helper removes that path,
+and nothing else, once the app has exited. `smoke.spec.ts` checks
+that the profile is gone after the app quits. The two specs that
+manage a profile themselves remove it in their own teardown: the
+keyring spec, whose profile also holds its session bus, and the
+splash-stuck spec, whose restarted app outlives the launch.
+
 Locally, the suite runs on Wayland, inside a private headless GNOME
 Shell session that `tools/headless-wayland.sh` starts and tears down:
 

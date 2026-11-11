@@ -97,7 +97,7 @@ async function launchOnce(
 		XDG_CACHE_HOME: path.join(tmp, 'cache'),
 		XDG_DATA_HOME: path.join(tmp, 'data'),
 		ANI_GUI_UNATTENDED: '1'
-	});
+	}, { profile: tmp });
 	onLaunch(app);
 	const page = await appWindow(app);
 

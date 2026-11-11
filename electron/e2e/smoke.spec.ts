@@ -84,7 +84,7 @@ async function launchAppWithStubsOnce(
     ANI_GUI_UNATTENDED: "1",
   };
 
-  const app = await launchPackagedApp(cleanEnv);
+  const app = await launchPackagedApp(cleanEnv, { profile: tmp });
   onLaunch(app);
 
   const context = app.context();
