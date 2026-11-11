@@ -177,6 +177,21 @@ describe('createLiveSearch', () => {
 		expect(h.live.view.results).toEqual([hit('1')]);
 	});
 
+	it('on close, stops a search out for the query still in the field, and keeps its earlier hits', async () => {
+		const h = harness();
+		h.type('frieren');
+		h.settle();
+		h.held[0].answer([hit('1')]);
+		await flush();
+		// The same query asked again (a trailing space, trimmed).
+		h.type('frieren');
+		h.settle();
+		expect(h.live.view.busy).toBe(true);
+		h.live.close();
+		expect(h.held[1].signal.aborted).toBe(true);
+		expect(h.live.view).toEqual({ results: [hit('1')], busy: false, error: false });
+	});
+
 	it('cancels the search out when the layout goes', () => {
 		const h = harness();
 		h.type('frieren');
