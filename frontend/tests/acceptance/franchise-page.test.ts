@@ -11,6 +11,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { mount, unmount } from 'svelte';
 import { get } from 'svelte/store';
 
@@ -18,6 +20,7 @@ import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { appConfig } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
+import { setLocale } from '../../src/lib/paraglide/runtime';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -93,6 +96,7 @@ afterEach(() => {
 	if (app) unmount(app);
 	app = null;
 	target.remove();
+	setLocale('en', { reload: false });
 });
 
 async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
@@ -616,6 +620,129 @@ describe('franchise page', () => {
 		app = mount(FranchisePage, { target });
 		await until(() => rows().length === 1, 'the one title');
 		expect(target.textContent).not.toContain(m.watchorder_franchise_none());
+	});
+});
+
+// Progress on the rows: a caption in the row's right column, with a
+// line under it only where the line measures something. A finished
+// title says so in words, with no line; a title with no known total
+// gives its episode alone. The meta line keeps the episode count.
+describe('franchise page progress', () => {
+	// Saga watched to the end, Second Arc part-way, Final Arc still
+	// airing with no known total, Origins not started.
+	const AIRING = { ...FINAL, episodes: null, status: 'current' };
+	const progressFranchise = () =>
+		useFranchise({
+			franchise: () =>
+				HttpResponse.json({ ...FRANCHISE, entries: [ORIGINS, SAGA, SECOND, AIRING] }),
+			history: [
+				{ id: 'hianime:saga', title: 'Saga', ep_no: '12', kitsu_id: '10' },
+				{ id: 'hianime:saga-2', title: 'Saga 2', ep_no: '6', kitsu_id: '42' },
+				{ id: 'hianime:saga-final', title: 'Saga Final', ep_no: '5', kitsu_id: '50' }
+			]
+		});
+	const line = (a: HTMLElement) => a.querySelector('.row-line:not(.slot)');
+	const count = (text: string, part: string) => text.split(part).length - 1;
+
+	for (const locale of ['en', 'pt-BR'] as const) {
+		it(`captions each row by how far it is watched, in ${locale}`, async () => {
+			setLocale(locale, { reload: false });
+			progressFranchise();
+			app = mount(FranchisePage, { target });
+			await until(
+				() => rows().length === 4 && (row('42')?.textContent ?? '').includes('6'),
+				'the main story with its progress'
+			);
+
+			const partway = row('42')!;
+			const caption = m.watchorder_meta_progress({ episode: 6, total: 12 });
+			// Said once, in the right column, not again in the meta line.
+			expect(count(partway.textContent!, caption)).toBe(1);
+			expect(partway.querySelector('.row-caption')!.textContent).toBe(caption);
+			expect(partway.querySelector('.meta')!.textContent).not.toContain(caption);
+			const fill = line(partway)!.querySelector('.row-line-fill') as HTMLElement;
+			expect(fill.style.inlineSize).toBe('50%');
+			expect(line(partway)!.getAttribute('aria-hidden')).toBe('true');
+
+			const watched = row('10')!;
+			expect(watched.querySelector('.row-caption')!.textContent).toBe(m.watchorder_meta_watched());
+			expect(watched.querySelector('.row-caption svg')!.getAttribute('aria-hidden')).toBe('true');
+			expect(line(watched)).toBeNull();
+
+			const airing = row('50')!;
+			expect(airing.querySelector('.row-caption')!.textContent).toBe(
+				m.watchorder_meta_progress_open({ episode: 5 })
+			);
+			expect(line(airing)).toBeNull();
+
+			const fresh = row('5')!;
+			expect(fresh.querySelector('.row-caption')).toBeNull();
+			expect(fresh.querySelector('.row-line')).toBeNull();
+
+			// The meta line gives the episode count again, progress or not.
+			for (const a of [partway, watched, fresh]) {
+				expect(a.querySelector('.meta')!.textContent).toContain(m.strip_card_episodes_suffix());
+			}
+		});
+	}
+
+	it('draws every row’s caption on one baseline, holding the line’s place where there is none', async () => {
+		progressFranchise();
+		app = mount(FranchisePage, { target });
+		await until(
+			() => (row('10')?.textContent ?? '').includes(m.watchorder_meta_watched()),
+			'the progress'
+		);
+		for (const id of ['10', '50']) {
+			const slot = row(id)!.querySelector('.row-line.slot');
+			expect(slot, id).not.toBeNull();
+			expect(slot!.getAttribute('aria-hidden')).toBe('true');
+		}
+	});
+});
+
+// The line's colours: one app colour for list progress, named once,
+// whatever show the row is. The "You are here" rule keeps the show's
+// accent, which means "this show, here". happy-dom has no cascade to
+// measure, so these are syntactic constraints on the style blocks.
+describe('franchise page progress colours', () => {
+	const view = readFileSync(
+		resolve(process.cwd(), 'src/lib/watch-order/FranchiseView.svelte'),
+		'utf8'
+	);
+	const style = view.slice(view.indexOf('<style>'));
+	const rule = (selector: string) => {
+		const at = style.indexOf(`\n\t${selector} {`);
+		expect(at, selector).toBeGreaterThan(-1);
+		return style.slice(at, style.indexOf('}', at));
+	};
+	const tokens = readFileSync(resolve(process.cwd(), 'src/lib/design/tokens.css'), 'utf8');
+
+	it('names the list progress colours once, as tokens', () => {
+		expect(tokens).toContain('--progress-fill: var(--bone-200);');
+		expect(tokens).toContain('--progress-track: var(--ink-200);');
+	});
+
+	it('fills the line in the progress colour, never thinner than 3px', () => {
+		expect(rule('.row-line')).toContain('background: var(--progress-track);');
+		const fill = rule('.row-line-fill');
+		expect(fill).toContain('background: var(--progress-fill);');
+		expect(fill).toContain('min-inline-size: 3px;');
+		expect(style).not.toMatch(/\.row-line[^{]*\{[^}]*--row-accent/);
+	});
+
+	it('gives the unnumbered rows’ caption column the numbered rows’ width', () => {
+		// "ЭП 1000 ИЗ 1100" in uppercase tracking needs the wider column.
+		expect(rule('.story-row')).toContain(
+			'grid-template-columns: 4.5rem 3.5rem minmax(0, 1fr) 9rem;'
+		);
+		expect(rule('.story-row.compact')).toContain(
+			'grid-template-columns: 3rem minmax(0, 1fr) 9rem;'
+		);
+	});
+
+	it('keeps the show’s accent on the "You are here" rule', () => {
+		expect(rule('.here .story-row')).toContain('border-inline-start-color: var(--row-accent);');
 	});
 });
 

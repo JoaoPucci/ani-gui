@@ -156,3 +156,52 @@ async fn franchise_route_serves_the_walk_from_the_cache() {
         })
     );
 }
+
+/// The first hop over cached listings: each of the three answers, from
+/// the show's own listing alone (nothing else is seeded, and the Kitsu
+/// stand-in answers nothing).
+#[tokio::test]
+async fn first_hop_route_answers_from_the_shows_own_listing() {
+    let state = test_state();
+    let film = entry("3136", "A film", "movie", "2007-02-17", 1);
+    let next = entry("7158", "The next season", "TV", "2012-10-06", 26);
+    seed(&state, "1", vec![rel("sequel", &next)]);
+    seed(&state, "2", vec![rel("side_story", &film)]);
+    seed(&state, "3", vec![rel("character", &film)]);
+    // A show with a side story: the first hop reads its detail to know
+    // whether the side story started before it (the walk's parent check).
+    // It started first, so no other listing is read.
+    let detail = json!({
+        "id": "2", "canonical_title": "A show", "titles": {}, "abbreviated_titles": [],
+        "slug": null, "synopsis": null, "start_date": "2001-01-01", "end_date": null,
+        "episode_count": 12, "average_rating": null, "subtype": "TV", "status": "finished",
+        "age_rating": null, "popularity_rank": null, "poster_image": null, "cover_image": null
+    });
+    meta_cache_put(
+        &state.cache_pool,
+        &crate::commands::kitsu::anime_detail_key("2"),
+        &detail.to_string(),
+        3600,
+    )
+    .expect("seed detail");
+    let router = crate::api::build_api_router(state);
+    for (id, signal) in [("1", "strip"), ("2", "link"), ("3", "none")] {
+        let r = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/kitsu/franchise/{id}/first-hop"))
+                    .body(Body::empty())
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(r.status(), StatusCode::OK, "{id}");
+        let body = axum::body::to_bytes(r.into_body(), 4096)
+            .await
+            .expect("body");
+        let got: Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(got, json!({ "signal": signal }), "{id}");
+    }
+}

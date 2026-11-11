@@ -160,6 +160,86 @@ async fn the_walk_reads_each_listing_once_and_pages() {
     );
 }
 
+/// The first hop reads the show's own listing through the walk's cache:
+/// the route answers from it, and the walk that follows reads it from
+/// the cache rather than asking Kitsu again.
+#[tokio::test]
+async fn the_first_hop_reads_the_listing_the_walk_then_reuses() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "7730",
+        "0",
+        page(
+            &[
+                ("sequel", OVA_1993),
+                ("alternative_version", SC),
+                ("prequel", TV_2012),
+            ],
+            3,
+        ),
+    )
+    .await;
+    serve(&server, "610", "0", page(&[("prequel", OVA_2000)], 1)).await;
+    serve(&server, "7158", "0", page(&[("sequel", SC)], 1)).await;
+    serve(
+        &server,
+        "8063",
+        "0",
+        page(
+            &[("prequel", TV_2012), ("alternative_version", OVA_2000)],
+            2,
+        ),
+    )
+    .await;
+    let state = state_with_kitsu(&server.uri());
+    seed_ova_detail(&state);
+
+    let router = crate::api::build_api_router(state.clone());
+    let r = tower::ServiceExt::oneshot(
+        router,
+        axum::http::Request::builder()
+            .uri("/api/kitsu/franchise/7730/first-hop")
+            .body(axum::body::Body::empty())
+            .expect("req"),
+    )
+    .await
+    .expect("oneshot");
+    assert_eq!(r.status(), axum::http::StatusCode::OK);
+    let body = axum::body::to_bytes(r.into_body(), 4096)
+        .await
+        .expect("body");
+    let got: Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(got, json!({ "signal": "strip" }));
+
+    let walked = franchise(&state, "7730").await.expect("franchise");
+    assert_eq!(walked.entries.len(), 3);
+    server.verify().await;
+}
+
+/// A first hop whose listing cannot be read fails as the walk would,
+/// with the read's error, and caches nothing.
+#[tokio::test]
+async fn a_first_hop_kitsu_cannot_answer_is_an_error() {
+    let state = state_with_kitsu("http://127.0.0.1:1");
+    let router = crate::api::build_api_router(state.clone());
+    let r = tower::ServiceExt::oneshot(
+        router,
+        axum::http::Request::builder()
+            .uri("/api/kitsu/franchise/7730/first-hop")
+            .body(axum::body::Body::empty())
+            .expect("req"),
+    )
+    .await
+    .expect("oneshot");
+    assert!(r.status().is_server_error(), "{}", r.status());
+    assert!(
+        crate::cache::meta_cache_get(&state.cache_pool, &listing_key("7730"))
+            .expect("read")
+            .is_none()
+    );
+}
+
 /// A value that is not a Kitsu id asks Kitsu for nothing.
 #[tokio::test]
 async fn a_value_that_is_not_an_id_is_refused() {

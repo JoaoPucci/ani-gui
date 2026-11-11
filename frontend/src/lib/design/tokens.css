@@ -51,6 +51,12 @@
 	   apart. `tests/lint/text-contrast.test.ts` holds every bone tier
 	   to AA on every ink surface. */
 	--bone-400: #968e81;
+	/* List progress: the line under a franchise row's caption. One app
+	   colour whatever show the row is, so a page of rows reads as one
+	   measure. The player's scrubber keeps the show's accent: it sits
+	   inside one show's page, where the accent means that show. */
+	--progress-fill: var(--bone-200);
+	--progress-track: var(--ink-200);
 
 	/* Per-anime accents (8). Deterministic pick by id hash on detail page.
 	   Tones lifted from film-poster ink: oxblood, ink, persimmon, jade,

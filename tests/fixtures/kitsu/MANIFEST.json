@@ -55,6 +55,13 @@
       "sha256": "814da0af1dccc938d7c7708d747b9a303b19ae8f98ae3c9ef4a4d6e94bc5e02f",
       "notes": "The franchise read of the 2000 JoJo OVA (anime/7730): sequel the 1993 OVA (610), prequel the 2012 series (7158), the Stardust Crusaders series (8063) as alternative_version, and the manga (1899) as adaptation; meta.count 4."
     },
+    "franchise_corpus.json": {
+      "request": "Each anchor walked through GET /api/kitsu/franchise/:id on an app with a throwaway profile, then read back from its metadata cache: every kitsu:franchise-rel:v1:<id> listing the walks read, and each anchor's own entry as the walk's answer carries it (from the anchor's detail read).",
+      "captured_at": "2026-11-11",
+      "size": 136948,
+      "sha256": "5398b879da33f9c00fc6b78aa6d9eb657847dbad3c3f3fff9903bfe2e1a01fd3",
+      "notes": "120 shows: Bleach, Naruto, One Piece, the 27 franchises a development profile had cached, and every entry of the six franchises in the frontend's watch-order fixtures; 123 listings, one of them (Chopper's spin-off, anime/428, which the walk's parent check reads from One Piece) copied from tests/fixtures/franchise/listings.json, recorded the same day. Posters and covers are dropped (null), as nothing that reads this looks at artwork. The first hop's corpus test walks each anchor over these listings and compares the first hop with what the show page draws."
+    },
     "franchise_rel_12_o0.json": {
       "request": "GET /anime/12/media-relationships?include=destination&fields[anime]=canonicalTitle,subtype,status,episodeCount,startDate,posterImage,coverImage&fields[manga]=subtype&page[limit]=20&page[offset]=0&sort=id",
       "captured_at": "2026-11-11",

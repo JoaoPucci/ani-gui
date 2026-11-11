@@ -1439,6 +1439,28 @@ export function kitsuFranchise(
 	});
 }
 
+/** What the show page will draw once the franchise walk answers, as
+ *  the show's own relation listing (and, where needed, the walk's
+ *  parent check) foretells it (backend
+ *  `commands::franchise_walk::first_hop`): the watch-order strip, the
+ *  franchise link alone, or nothing. Only `strip` can turn out wrong. */
+export type FirstHop = 'strip' | 'link' | 'none';
+
+/** The first hop of `kitsuId`'s franchise walk, read through the
+ *  walk's own reads and caches so the two never disagree on the data.
+ *  It waits on Kitsu as the walk does, so the page that asked passes
+ *  `signal` and cancels it when the viewer leaves. */
+export async function kitsuFranchiseFirstHop(
+	kitsuId: string,
+	opts: { signal?: AbortSignal } = {}
+): Promise<FirstHop> {
+	const { signal } = await getJson<{ signal: FirstHop }>(
+		`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}/first-hop`,
+		{ signal: opts.signal }
+	);
+	return signal;
+}
+
 export function kitsuTopRated(): Promise<KitsuAnimeRef[]> {
 	return getJson<KitsuAnimeRef[]>('/api/kitsu/top-rated');
 }

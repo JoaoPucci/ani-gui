@@ -20,8 +20,11 @@
  *                  rounds of Kitsu reads when Kitsu is slow, and the
  *                  page that asked cancels it when the viewer leaves.
  *                  The show page holds at most one, cancelled with the
- *                  visit (`$lib/watch-order/loader`), and the player and
- *                  the franchise page at most one each, a superseded
+ *                  visit (`$lib/watch-order/loader`), and, for a show
+ *                  not remembered this session, the walk's first hop
+ *                  beside it, which waits on Kitsu too
+ *                  (`kitsuFranchiseFirstHop`). The player and the
+ *                  franchise page hold at most one each, a superseded
  *                  read cancelled (`$lib/watch-order/latest-read`). Home
  *                  walks the series of its Continue rows at their finale
  *                  two at a time and the rest in turn
