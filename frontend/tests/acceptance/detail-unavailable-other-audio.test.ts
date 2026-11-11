@@ -230,7 +230,7 @@ describe('detail — the notice asks about the other audio only while it is up',
 		useHandlers('dub', { cached: {}, playable_episode_counts: {} });
 		let release!: () => void;
 		const held = new Promise<void>((r) => (release = r));
-		const { read } = watchPageFetches();
+		const { read, failed } = watchPageFetches();
 		let askedSub = false;
 		server.use(
 			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
@@ -254,11 +254,13 @@ describe('detail — the notice asks about the other audio only while it is up',
 			'the audio switch to land'
 		);
 		await until(() => notice() !== null, 'the notice in sub');
+		// The question nobody asks any more is cancelled rather than
+		// left holding a connection; its answer, released after, is
+		// never read.
+		await until(() => failed.some(isBatch('sub')), 'the old lookup to be cancelled');
 		release();
-		// The page has read the old answer, and what it set off has run
-		// to its next write.
-		await until(() => read.some(isBatch('sub')), 'the old answer to be read');
 		await afterRead();
+		expect(read.some(isBatch('sub'))).toBe(false);
 		expect(notice()).toContain(m.detail_unavailable_message());
 		expect(notice()).not.toContain(m.detail_unavailable_in_dub_message());
 		expect(notice()).not.toContain(m.detail_unavailable_in_sub_message());

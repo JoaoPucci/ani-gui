@@ -109,7 +109,7 @@ The full pyramid (unit → acceptance → e2e → property → architectural inv
 
 Known test debt (extract + unit-test next time you touch them):
 
-- Topbar live-results dropdown state machine in `+layout.svelte` (debounced search, ↑/↓ navigation, blur-dismiss timing, recent-search persistence).
+- Topbar live-results dropdown state machine in `+layout.svelte` (↑/↓ navigation, blur-dismiss timing, recent-search persistence). The debounced live search itself is `$lib/topbar/live-search`.
 
 ## 3. Provenance
 

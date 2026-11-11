@@ -9,11 +9,13 @@ import { AccountApiError, apiBase, deleteEndpoint, postJson, readErrorBody } fro
 import { internalSecretHeader } from './backend-origin';
 import type { EntryView, ListEntry, Provider } from './types';
 
-async function getJson<T>(path: string, bearer: string): Promise<T> {
+async function getJson<T>(path: string, bearer: string, signal?: AbortSignal): Promise<T> {
 	const base = await apiBase();
-	const res = await fetch(base.replace(/\/+$/, '') + path, {
+	const init: RequestInit = {
 		headers: { authorization: `Bearer ${bearer}` } // i18n-ignore: HTTP auth scheme
-	});
+	};
+	if (signal) init.signal = signal;
+	const res = await fetch(base.replace(/\/+$/, '') + path, init);
 	if (!res.ok) {
 		throw new AccountApiError(res.status, await readErrorBody(res));
 	}
@@ -28,11 +30,13 @@ async function getJson<T>(path: string, bearer: string): Promise<T> {
 export function getEntry(
 	provider: Provider,
 	bearer: string,
-	kitsuId: string
+	kitsuId: string,
+	opts: { signal?: AbortSignal } = {}
 ): Promise<EntryView | null> {
 	return getJson<EntryView | null>(
 		`/api/account/entry/${provider}?kitsu_id=${encodeURIComponent(kitsuId)}`,
-		bearer
+		bearer,
+		opts.signal
 	);
 }
 

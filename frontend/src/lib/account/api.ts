@@ -137,7 +137,8 @@ export function fetchAndCacheList(provider: Provider, bearer: string): Promise<L
 export async function fetchCachedList(
 	provider: Provider,
 	bearer: string,
-	fallbackUserId?: string
+	fallbackUserId?: string,
+	opts: { signal?: AbortSignal } = {}
 ): Promise<ListEntry[]> {
 	// Backend resolves identity from a live `me()` call (a renderer-supplied
 	// user_id alone is forgeable under permissive CORS). When that round-trip
@@ -154,7 +155,9 @@ export async function fetchCachedList(
 		authorization: `Bearer ${bearer}`, // i18n-ignore: HTTP auth scheme
 		...internalSecretHeader()
 	};
-	const res = await fetch(base.replace(/\/+$/, '') + path, { headers });
+	const init: RequestInit = { headers };
+	if (opts.signal) init.signal = opts.signal;
+	const res = await fetch(base.replace(/\/+$/, '') + path, init);
 	if (!res.ok) {
 		throw new AccountApiError(res.status, await readErrorBody(res));
 	}

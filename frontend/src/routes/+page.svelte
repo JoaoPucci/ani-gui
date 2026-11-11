@@ -55,6 +55,7 @@
 	import { resolve } from '$app/paths';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { createNavigationClaims } from '$lib/navigation/claims';
+	import { beginVisit } from '$lib/navigation/visit';
 	import {
 		allmangaKitsuMapGet,
 		checkAvailability,
@@ -136,6 +137,7 @@
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
 	import { splitTrending } from '$lib/hero/rotation';
+	import { heroState } from '$lib/hero/state';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayArgs } from '$lib/play/play-args';
@@ -286,14 +288,16 @@
 	// An episode left part-way keeps its position; the Continue card
 	// goes back to it rather than on to the next one.
 	const leftPartWay = (kitsuId: string, episode: number) => readPosition(kitsuId, episode) !== null;
-	// Aborted when Home is left: a Continue card's refill landing after
-	// is not fetched ($lib/refill/refill).
-	const refills = new AbortController();
-	onDestroy(() => refills.abort());
+	// Home's reads, cancelled when it is left: each holds an API
+	// connection until it answers, and what a cancelled one answers
+	// reaches nothing ($lib/navigation/visit). A Continue card's refill
+	// landing after is not fetched either ($lib/refill/refill).
+	const pageReads = beginVisit();
+	onDestroy(pageReads.end);
 	const rowReady = makeContinueRowReadyHandler({
 		historyById,
 		fetchKitsuEpisodes: kitsuEpisodes,
-		signal: refills.signal,
+		signal: pageReads.signal,
 		setMatch: (id, m) => {
 			historyMatches = { ...historyMatches, [id]: m };
 		},
@@ -316,7 +320,7 @@
 	// A card's row, read again for each answer that can put it right —
 	// its match, its probe, a retried probe. Those reads can answer out
 	// of order: the latest asked counts.
-	const rowNumberNow = latestReads(historyNumber);
+	const rowNumberNow = latestReads((id: string) => historyNumber(id, { signal: pageReads.signal }));
 	async function readRowAgain(id: string) {
 		const kitsuId = historyMatches[id]?.id;
 		const next = await refreshedRows(
@@ -488,9 +492,14 @@
 
 	const trendingSplit = $derived(splitTrending(trending ?? []));
 	const heroRotation = $derived<KitsuAnimeRef[]>(trendingSplit.hero);
-	const featured = $derived(
-		heroRotation.length > 0 ? heroRotation[heroIndex % heroRotation.length] : null
+	const heroView = $derived(
+		heroState({
+			rotation: trending === null ? null : heroRotation,
+			failed: trendingError !== null,
+			index: heroIndex
+		})
 	);
+	const featured = $derived(heroView.kind === 'featured' ? heroView.show : null);
 	// The row leaves out the rotation's shows, so the user doesn't see
 	// the hero title also pinned as a card of the row below.
 	const trendingTail = $derived(trendingSplit.row);
@@ -503,12 +512,15 @@
 		// rendered AND queued for a background warm. The next visit
 		// reads a fuller cache and filters more aggressively.
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		kitsuTrendingAnilist()
-			.then((t) => filterAvailable(t, filterMode))
+		const signal = pageReads.signal;
+		void pageReads
+			.keep(
+				kitsuTrendingAnilist({ signal }).then((t) => filterAvailable(t, filterMode, { signal }))
+			)
 			.then((t) => (trending = t))
 			.catch((e) => (trendingError = describeError(e)));
-		kitsuTopRated()
-			.then((t) => filterAvailable(t, filterMode))
+		void pageReads
+			.keep(kitsuTopRated({ signal }).then((t) => filterAvailable(t, filterMode, { signal })))
 			.then((t) => (topRated = t))
 			.catch((e) => (topRatedError = describeError(e)));
 		// Settings drive the audio mode for the Continue Watching click
@@ -523,11 +535,17 @@
 		// probes, ended when the page unmounts: the strip's probes stop
 		// with it.
 		const continueProbes = probeScope.begin();
-		settingsPromise = settingsGet().catch(() => null as Config | null);
+		settingsPromise = settingsGet({ signal }).catch(() => null as Config | null);
 		void settingsPromise.then((c) => {
 			if (c) config = c;
 		});
-		Promise.all([historyList(), watchedAtAll().catch(() => ({}) as Record<string, number>)])
+		void pageReads
+			.keep(
+				Promise.all([
+					historyList({ signal }),
+					watchedAtAll({ signal }).catch(() => ({}) as Record<string, number>)
+				])
+			)
 			.then(([h, watchedAt]) => {
 				// Continue Watching ordering: stamped rows on top,
 				// most recently watched first. Rows that resolved but
@@ -658,8 +676,12 @@
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const deps = buildWatchLaterDeps();
 		const ticket = watchLaterLoads.start(true);
-		void loadWatchLater(deps)
-			.then((refs) => filterAvailable(refs, filterMode))
+		void pageReads
+			.keep(
+				loadWatchLater(deps).then((refs) =>
+					filterAvailable(refs, filterMode, { signal: pageReads.signal })
+				)
+			)
 			.then((refs) => {
 				if (!watchLaterLoads.current(ticket)) return; // a newer load superseded this one
 				watchLater = refs;
@@ -718,10 +740,13 @@
 						: null;
 			if (acct) credentials[key] = { bearer: acct.access_token, userId: acct.user_id };
 		}
+		// Its reads are Home's: cancelled when Home is left.
+		const signal = pageReads.signal;
 		return {
 			credentials,
-			fetchCachedList,
-			kitsuByMalIds,
+			fetchCachedList: (provider: Provider, bearer: string, userId?: string) =>
+				fetchCachedList(provider, bearer, userId, { signal }),
+			kitsuByMalIds: (malIds: number[]) => kitsuByMalIds(malIds, { signal }),
 			primary: primaryAccountStore.value
 		};
 	}
@@ -740,8 +765,10 @@
 		// `finally` reports the load finished, which a refresh waits on.
 		const ticket = watchLaterLoads.start(false);
 		try {
-			const refs = await loadWatchLater(deps);
-			const filtered = await filterAvailable(refs, filterMode);
+			const refs = await pageReads.keep(loadWatchLater(deps));
+			const filtered = await pageReads.keep(
+				filterAvailable(refs, filterMode, { signal: pageReads.signal })
+			);
 			if (!watchLaterLoads.current(ticket)) return; // a newer load superseded this one
 			if (moved && watchLater) {
 				watchLaterMotion.open(
@@ -907,7 +934,7 @@
 	// then opens its play as one, which records the guess only when the
 	// play lands on the card's own listing ($lib/play/play-origin.ts).
 	const rowTrust = createRowTrust((entry) =>
-		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null))
+		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null), { signal: pageReads.signal })
 	);
 	const playArgsFor = (a: ResumePlayArgs) =>
 		buildPlayArgs({
@@ -1160,20 +1187,44 @@
 				{/each}
 			</div>
 		{/if}
-	{:else if trendingError}
-		<div class="hero-empty">
-			<p class="eyebrow">
-				<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
-				<span class="eyebrow-rule" aria-hidden="true"></span>
-				<span class="eyebrow-value">{m.home_hero_error_eyebrow_value()}</span>
-			</p>
-			<h1 class="hero-title">{m.home_hero_error_title()}</h1>
-			<p class="hero-snippet">{m.home_hero_error_body()}</p>
-			<div class="hero-actions">
-				<a class="btn btn-primary" href={resolve('/search')}>
-					<span>{m.home_hero_error_cta()}</span>
-					<span aria-hidden="true">→</span>
-				</a>
+	{:else if heroView.kind === 'failed'}
+		<!-- In a .hero-layer like the featured text, so the message
+		     sits low in the banner rather than under the topbar. -->
+		<div class="hero-layer">
+			<div class="hero-empty">
+				<p class="eyebrow">
+					<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
+					<span class="eyebrow-rule" aria-hidden="true"></span>
+					<span class="eyebrow-value">{m.home_hero_error_eyebrow_value()}</span>
+				</p>
+				<h1 class="hero-title">{m.home_hero_error_title()}</h1>
+				<p class="hero-snippet">{m.home_hero_error_body()}</p>
+				<div class="hero-actions">
+					<a class="btn btn-primary" href={resolve('/search')}>
+						<span>{m.home_hero_error_cta()}</span>
+						<span aria-hidden="true">→</span>
+					</a>
+				</div>
+			</div>
+		</div>
+	{:else if heroView.kind === 'empty'}
+		<!-- Trending answered with no show to feature. Kitsu did answer,
+		     so the failure's "no answer" line is left out. -->
+		<!-- In a .hero-layer like the featured text, so the message
+		     sits low in the banner rather than under the topbar. -->
+		<div class="hero-layer">
+			<div class="hero-empty">
+				<p class="eyebrow">
+					<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
+				</p>
+				<h1 class="hero-title">{m.home_hero_empty_title()}</h1>
+				<p class="hero-snippet">{m.home_hero_empty_body()}</p>
+				<div class="hero-actions">
+					<a class="btn btn-primary" href={resolve('/search')}>
+						<span>{m.home_hero_error_cta()}</span>
+						<span aria-hidden="true">→</span>
+					</a>
+				</div>
 			</div>
 		</div>
 	{:else}
@@ -1181,11 +1232,14 @@
 		<div class="hero-skel" aria-busy="true">
 			<div class="hero-skel-img"></div>
 		</div>
-		<div class="hero-body">
-			<p class="eyebrow"><span class="eyebrow-key">{m.home_hero_skeleton_eyebrow_key()}</span></p>
-			<div class="line line-skel" style="inline-size: 50%; block-size: 3rem;"></div>
-			<div class="line line-skel" style="inline-size: 70%;"></div>
-			<div class="line line-skel" style="inline-size: 60%;"></div>
+		<!-- Low in the banner, where the text it stands in for will sit. -->
+		<div class="hero-layer">
+			<div class="hero-body hero-body-skel">
+				<p class="eyebrow"><span class="eyebrow-key">{m.home_hero_skeleton_eyebrow_key()}</span></p>
+				<div class="line line-skel" style="inline-size: 50%; block-size: 3rem;"></div>
+				<div class="line line-skel" style="inline-size: 70%;"></div>
+				<div class="line line-skel" style="inline-size: 60%;"></div>
+			</div>
 		</div>
 	{/if}
 </section>
@@ -1940,6 +1994,12 @@
 	.hero-skel {
 		position: absolute;
 		inset: 0;
+	}
+	/* In the flex layer the body shrinks to its content, which for
+	   the placeholder is only the eyebrow, and the lines' percentage
+	   widths would resolve against that. Take the full measure. */
+	.hero-body-skel {
+		flex: 1;
 	}
 	.hero-skel-img {
 		inline-size: 100%;

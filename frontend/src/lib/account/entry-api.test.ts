@@ -49,6 +49,13 @@ describe('getEntry', () => {
 		mockFetchJson({}, 500);
 		await expect(getEntry('anilist', 'tok', 'k')).rejects.toBeInstanceOf(AccountApiError);
 	});
+
+	it("hands the visit's signal to the request, so the page that asked can cancel it", async () => {
+		const spy = mockFetchJson(null);
+		const visit = new AbortController();
+		await getEntry('anilist', 'tok', 'k', { signal: visit.signal });
+		expect((spy.mock.calls[0][1] as RequestInit).signal).toBe(visit.signal);
+	});
 });
 
 describe('setEntry', () => {
