@@ -108,7 +108,9 @@ export function holdForResume(input: {
 		onHold(false);
 	};
 	const start = () => {
-		if (starting) return;
+		// An ended hold has handed the element back: nothing it was
+		// waiting to do may start it now.
+		if (starting || done) return;
 		starting = true;
 		video.removeEventListener('seeked', onSeeked);
 		video.addEventListener('playing', onPlaying);

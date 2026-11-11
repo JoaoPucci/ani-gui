@@ -418,7 +418,8 @@ describe('play route — a stream on its way is never offered Play', () => {
 		playerVideo().dispatchEvent(new Event('seeked'));
 		await settle();
 		expect(media.play).not.toHaveBeenCalled();
-		expect(playerVideo().autoplay).toBe(true);
+		// Handed off, the element no longer starts on its own either.
+		expect(playerVideo().autoplay).toBe(false);
 		expect(indicatorOn()).toBe(false);
 		expect(label()).toBe(PLAY());
 	});
