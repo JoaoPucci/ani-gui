@@ -19,16 +19,8 @@
 	import StripFranchiseLink from './StripFranchiseLink.svelte';
 	import StripReserve from './StripReserve.svelte';
 	import StripTrio from './StripTrio.svelte';
-	import {
-		arriveCss,
-		arriveOf,
-		heldShape,
-		holdScroll,
-		leaveOf,
-		windowScroll,
-		type FirstHop,
-		type Gone
-	} from './arrival';
+	import { arriveCss, arriveOf, heldShape, leaveOf, type FirstHop, type Gone } from './arrival';
+	import { holdScroll, windowScroll } from './scroll-hold';
 	import type { FranchiseLink, WatchOrderPage } from './page-model';
 
 	let {
