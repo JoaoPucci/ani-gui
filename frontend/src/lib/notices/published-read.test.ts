@@ -53,7 +53,7 @@ function deps(
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('reading what the maintainer published, once', () => {
-	it('remembers, raises, asks and joins the note, in that order', async () => {
+	it('works out the note first, then remembers, raises, asks, and joins the note last', async () => {
 		const d = deps(async () => ANSWER, { read: ['maint'], dismissed: [] });
 		startPublishedRead(d);
 		await flush();
@@ -64,6 +64,7 @@ describe('reading what the maintainer published, once', () => {
 			'ask 4',
 			'take outage:hianime'
 		]);
+		expect(d.joinNote).toHaveBeenCalledWith([expect.objectContaining({ id: 'maint' })]);
 		const raised = d.take.mock.calls[0][0][0];
 		expect(raised.op === 'raise' && raised.input.read).toBe(true);
 	});
@@ -80,6 +81,7 @@ describe('reading what the maintainer published, once', () => {
 		startPublishedRead(d);
 		await flush();
 		expect(d.log).toEqual(['note', 'keep ', 'take ', 'ask null', 'take outage:hianime']);
+		expect(d.joinNote).toHaveBeenCalledWith([]);
 	});
 
 	it('does nothing with an answer that arrives after it was stopped', async () => {
