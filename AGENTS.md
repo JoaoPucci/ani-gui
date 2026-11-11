@@ -388,13 +388,16 @@ the recommendation, and never appears first in a pull request.
 Where the code a change adds lives, and so its language, is one of
 these choices. Logic — the app's decisions about its data and the
 rules it follows whatever the screen shows: matching, naming,
-grouping, ranking and validating its data, and its maths — belongs
-in the Rust backend by default. New logic is not written in another
-language because the code it touches is there; "it was already
-written that way" is not a reason for where new logic goes. A
-different choice needs a reason specific to that logic, naming what
-Rust would cost there by the criteria above, and it is the
-maintainer's, put to them as the stack paragraph describes.
+grouping, ranking and validating its data, and its maths — belongs in
+the Rust backend by default. That includes repeating a decision the
+backend already makes, outside the backend. A check at a trust
+boundary, or the handling of an answer that fails or is not the shape
+expected, is not such a repeat. New logic is not written in another
+language because the code it touches is there; "it was already written
+that way" is not a reason for where new logic goes. A different choice
+needs a reason specific to that logic, naming what Rust would cost
+there by the criteria above, and it is the maintainer's, put to them
+as the stack paragraph describes.
 
 The default is Rust because this repository is developed mostly by AI
 agents. A compiler that checks types, ownership and exhaustive
@@ -418,11 +421,6 @@ the choice and its reason go to the maintainer before it is built, as
 the stack paragraph describes, and the pull request repeats them.
 Showing a decision on screen does not make it such a piece. A
 well-reasoned exception is the rule working, not breaking.
-
-Neither side rebuilds what the other already does. The renderer does
-not repeat a decision the backend makes: it does not re-derive,
-re-validate or re-rank what the backend answers. The backend does not
-take on what the renderer's framework already provides.
 
 Code doing a job the backend cannot do — starting it, building or
 packaging the app, checking it — is written where that job runs, in
