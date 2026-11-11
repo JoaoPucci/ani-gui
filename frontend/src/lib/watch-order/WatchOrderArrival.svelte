@@ -8,8 +8,8 @@
   once and the strip fades in where it stood, from the outline's
   height to its own; when it answers with nothing, the outline fades,
   then folds away. Where the outline is above the viewport, it goes at
-  once and the page scrolls back by the height the change gave back,
-  so what the reader is reading stays put. Every step is a
+  once and the page scrolls to where it was, moved by the height the
+  change gave back, so what the reader is reading stays put. Every step is a
   `$lib/motion` transition, so reduced motion makes it instant.
 -->
 <script lang="ts">
@@ -66,7 +66,6 @@
 				get scrollY() {
 					return window.scrollY;
 				},
-				scrollBy: (x, y) => window.scrollBy(x, y),
 				scrollTo: (x, y) => window.scrollTo(x, y)
 			},
 			was
