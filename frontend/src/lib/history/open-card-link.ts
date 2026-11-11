@@ -8,7 +8,8 @@
  * again ($lib/history/card-relink.ts): the picker opens only on a card
  * still guessed, and only if no remove or clear began while the check
  * was out. A check that could not be read says so, and leaves the pill
- * to try again; a card settled since the cards were read opens nothing.
+ * to try again; a card settled since the cards were read, or matched
+ * again since its check began, opens nothing.
  *
  * Home is an adapter: it hands in the busy flags, the overlay, the
  * check, the notice and the picker.
@@ -29,7 +30,8 @@ export interface OpenCardLinkDeps {
 	start: (episode: number) => void;
 }
 
-/** What came of the opening. */
+/** What came of the opening; `settled` covers a card matched again
+ *  since its check began too. */
 export type CardLinkOpening = 'held' | 'unread' | 'settled' | 'overtaken' | 'opened';
 
 export async function openCardLink(
@@ -71,7 +73,7 @@ export interface FailedResumeDeps {
 /** The pick a failed resume offers: for a guess still standing, and
  *  for one whose check could not be read, since the pick checks again;
  *  none for a play no guess opened, or a card settled since the cards
- *  were read. `null` when the viewer moved on meanwhile, so nothing is
+ *  were read or matched again since the check began. `null` when the viewer moved on meanwhile, so nothing is
  *  shown at all. */
 export async function failedResumeGuess(
 	args: { guess?: boolean; row?: string; matchId: string; episode: number },
