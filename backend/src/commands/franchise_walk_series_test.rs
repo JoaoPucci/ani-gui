@@ -175,7 +175,9 @@ fn a_run_of_one_episode_ovas_is_a_run_of_one_offs_and_an_ova_of_unknown_count_a_
     };
     let f = drive("2", &shape(Some(1)));
     assert_eq!(ids(&f.entries), ["1"]);
-    assert_eq!(ids(&f.sides), ["2"]);
+    // The OVA opened and the one after it, which the series does not
+    // list, both sit beside the series.
+    assert_eq!(ids(&f.sides), ["2", "3"]);
     for count in [None, Some(0), Some(2)] {
         let f = drive("2", &shape(count));
         assert_eq!(ids(&f.entries), ["2", "3"], "{count:?}");
