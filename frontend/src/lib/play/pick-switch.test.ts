@@ -128,8 +128,9 @@ describe('switchToPick', () => {
 	});
 
 	it('treats a switch that threw as failed: says so, plays on, leaves nothing carried and frees the lock', async () => {
-		// One of the switch's own effects threw (a storage write refused
-		// as the point is carried over, say).
+		// Defensive: none of the switch's effects is known to throw today
+		// (switch-show.ts catches what its own steps can), but a switch
+		// that rejected must not leave the page paused and locked.
 		const w = world({}, async () => {
 			throw new Error('storage refused');
 		});

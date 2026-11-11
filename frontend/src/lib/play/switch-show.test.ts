@@ -175,6 +175,27 @@ describe('switching to the picked show', () => {
 		expect(d.forget).toHaveBeenCalledWith(RIGHT.id, CARD);
 	});
 
+	it('fails, leaving nothing behind, when opening the player throws before it navigates', async () => {
+		const { d } = deps({
+			open: vi.fn(() => {
+				throw new Error('no route');
+			})
+		});
+		expect(await switchShow(d, request())).toBe('failed');
+		expect(d.record).not.toHaveBeenCalled();
+		expect(d.forget).toHaveBeenCalledWith(RIGHT.id, CARD);
+	});
+
+	it('has switched once the player opened, whatever recording the watch does', async () => {
+		const { d } = deps({
+			record: vi.fn(() => {
+				throw new Error('record refused');
+			})
+		});
+		expect(await switchShow(d, request())).toBe('switched');
+		expect(d.forget).not.toHaveBeenCalled();
+	});
+
 	it('carries over exactly the episode and point it was asked for', async () => {
 		await fc.assert(
 			fc.asyncProperty(
