@@ -2,9 +2,10 @@
 //! for big franchises (`tests/fixtures/franchise/listings.json`, as
 //! `franchise_corpus_record_test.rs` recorded them), from every anchor
 //! `cases.json` names, against what the strip and the franchise page
-//! must say for it: the main story's first entry (the franchise page's
-//! title), whether the anchor is in the main story or around it, and a
-//! side story's parent stories.
+//! must say for it: the run's first entry by start, whether the anchor
+//! is in the main story or around it, and a side story's parent
+//! stories. What the franchise page is named is the frontend's
+//! choice, made from the walk's answers kept as `served-<id>.json`.
 
 use std::collections::BTreeMap;
 
@@ -47,7 +48,7 @@ pub(super) fn to_lines(c: &Corpus) -> String {
 struct Case {
     franchise: String,
     anchor: String,
-    /// The title of the main story's first entry.
+    /// The title of the run's first entry by start.
     first: String,
     /// Where the anchor sits: `entries`, `sides`, `films`, `versions`
     /// or `recaps`.
@@ -207,18 +208,24 @@ fn the_corpus_holds_what_kitsu_served_for_one_piece_and_lego_one_piece() {
     assert_eq!(role("50656", "12").as_deref(), Some("side_story"));
 }
 
-/// Anchors whose answers are kept as `GET /api/kitsu/franchise/:id`
-/// serves them (`served-<id>.json`), for the frontend's tests: One
-/// Piece and its spin-off LEGO ONE PIECE, Naruto, Bleach and Dragon
-/// Ball.
-pub(super) const SERVED: [&str; 5] = ["12", "50656", "11", "244", "199"];
+/// The anchors whose answers are kept as `GET /api/kitsu/franchise/:id`
+/// serves them (`served-<id>.json`), for the frontend's tests: every
+/// anchor `cases.json` names, so the strip and the franchise page can
+/// be checked on each.
+pub(super) fn served_anchors() -> Vec<String> {
+    let cases: Vec<Case> = serde_json::from_slice(&fixture("cases.json")).expect("cases.json");
+    let mut anchors: Vec<String> = cases.into_iter().map(|c| c.anchor).collect();
+    anchors.sort();
+    anchors.dedup();
+    anchors
+}
 
 #[test]
 fn the_served_payloads_are_the_walks_answers() {
     let c = corpus();
-    for anchor in SERVED {
+    for anchor in served_anchors() {
         let kept: Franchise =
             serde_json::from_slice(&fixture(&format!("served-{anchor}.json"))).expect("served");
-        assert_eq!(walk(&c, anchor), kept, "served-{anchor}.json");
+        assert_eq!(walk(&c, &anchor), kept, "served-{anchor}.json");
     }
 }

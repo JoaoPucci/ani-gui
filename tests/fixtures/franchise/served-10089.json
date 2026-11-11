@@ -1,0 +1,265 @@
+{
+  "anchor": "10089",
+  "entries": [
+    {
+      "id": "11",
+      "title": "Naruto",
+      "subtype": "TV",
+      "start": "2002-10-03",
+      "episodes": 220,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1555",
+      "title": "Naruto: Shippuuden",
+      "subtype": "TV",
+      "start": "2007-02-15",
+      "episodes": 500,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "10089",
+      "title": "Boruto: Naruto the Movie",
+      "subtype": "movie",
+      "start": "2015-08-07",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "11",
+      "1555"
+    ],
+    [
+      "1555",
+      "10089"
+    ]
+  ],
+  "versions": [
+    {
+      "id": "13051",
+      "title": "Boruto: Naruto Next Generations",
+      "subtype": "TV",
+      "start": "2017-04-05",
+      "episodes": 293,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "films": [
+    {
+      "id": "405",
+      "title": "Naruto the Movie: Ninja Clash in the Land of Snow",
+      "subtype": "movie",
+      "start": "2004-08-21",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "833",
+      "title": "Naruto Movie 2: Dai Gekitotsu! Maboroshi no Chiteiiseki Dattebayo!",
+      "subtype": "movie",
+      "start": "2005-08-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1941",
+      "title": "Naruto Movie 3: Dai Koufun! Mikazuki Jima no Animaru Panikku Dattebayo!",
+      "subtype": "movie",
+      "start": "2006-08-05",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "2245",
+      "title": "Naruto: Shippuuden Movie 1",
+      "subtype": "movie",
+      "start": "2007-08-04",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3606",
+      "title": "Naruto: Shippuuden Movie 2 - Kizuna",
+      "subtype": "movie",
+      "start": "2008-08-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4520",
+      "title": "Naruto: Shippuuden Movie 3 - Hi no Ishi wo Tsugu Mono",
+      "subtype": "movie",
+      "start": "2009-08-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5266",
+      "title": "Naruto: Shippuuden Movie 4 - The Lost Tower",
+      "subtype": "movie",
+      "start": "2010-07-31",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6256",
+      "title": "Naruto: Shippuuden Movie 5 - Blood Prison",
+      "subtype": "movie",
+      "start": "2011-07-30",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7008",
+      "title": "Naruto: Shippuuden Movie 6 - Road to Ninja",
+      "subtype": "movie",
+      "start": "2012-07-28",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7543",
+      "title": "The Last: Naruto the Movie",
+      "subtype": "movie",
+      "start": "2014-12-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "683",
+      "title": "Naruto: Akaki Yotsuba no Clover wo Sagase",
+      "subtype": "special",
+      "start": "2003-05-24",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "549",
+      "title": "Naruto: Takigakure no Shitou - Ore ga Eiyuu Dattebayo!",
+      "subtype": "special",
+      "start": "2003-12-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "960",
+      "title": "Naruto Narutimate Hero 3: Tsuini Gekitotsu! Jounin vs. Genin!! Musabetsu Dairansen taikai Kaisai!!",
+      "subtype": "OVA",
+      "start": "2005-12-22",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3484",
+      "title": "Naruto Shippuuden: Shippuu! \"Konoha Gakuen\" Den",
+      "subtype": "special",
+      "start": "2008-02-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4953",
+      "title": "Naruto: The Cross Roads",
+      "subtype": "special",
+      "start": "2009-10-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6022",
+      "title": "Naruto x UT",
+      "subtype": "OVA",
+      "start": "2011-01-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6861",
+      "title": "Naruto SD: Rock Lee no Seishun Full-Power Ninden",
+      "subtype": "TV",
+      "start": "2012-04-03",
+      "episodes": 51,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7975",
+      "title": "Naruto Shippuuden: Sunny Side Battle",
+      "subtype": "special",
+      "start": "2013-10-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11771",
+      "title": "Boruto: Naruto the Movie - Naruto ga Hokage ni Natta Hi",
+      "subtype": "special",
+      "start": "2016-07-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [
+    {
+      "id": "46581",
+      "title": "ROAD OF NARUTO",
+      "subtype": "special",
+      "start": "2022-10-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "parents": {},
+  "complete": true
+}

@@ -1,0 +1,199 @@
+{
+  "anchor": "7158",
+  "entries": [
+    {
+      "id": "7158",
+      "title": "JoJo no Kimyou na Bouken (TV)",
+      "subtype": "TV",
+      "start": "2012-10-06",
+      "episodes": 26,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8063",
+      "title": "JoJo no Kimyou na Bouken: Stardust Crusaders",
+      "subtype": "TV",
+      "start": "2014-04-05",
+      "episodes": 24,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8739",
+      "title": "JoJo no Kimyou na Bouken: Stardust Crusaders 2nd Season",
+      "subtype": "TV",
+      "start": "2015-01-10",
+      "episodes": 24,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11459",
+      "title": "JoJo no Kimyou na Bouken: Diamond wa Kudakenai",
+      "subtype": "TV",
+      "start": "2016-04-02",
+      "episodes": 39,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "41410",
+      "title": "JoJo's Bizarre Adventure: Golden Wind",
+      "subtype": "TV",
+      "start": "2018-10-06",
+      "episodes": 39,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "44294",
+      "title": "JoJo's Bizarre Adventure: Stone Ocean",
+      "subtype": "TV",
+      "start": "2021-12-01",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46010",
+      "title": "JoJo no Kimyou na Bouken: Stone Ocean Part 2",
+      "subtype": "TV",
+      "start": "2022-09-01",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46598",
+      "title": "JoJo no Kimyou na Bouken: Stone Ocean Part 3",
+      "subtype": "TV",
+      "start": "2022-12-01",
+      "episodes": 14,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49847",
+      "title": "Steel Ball Run: JoJo no Kimyou na Bouken",
+      "subtype": "ONA",
+      "start": "2026-03-19",
+      "episodes": 12,
+      "status": "current",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "7158",
+      "8063"
+    ],
+    [
+      "8063",
+      "8739"
+    ],
+    [
+      "8739",
+      "11459"
+    ],
+    [
+      "11459",
+      "41410"
+    ],
+    [
+      "41410",
+      "44294"
+    ],
+    [
+      "44294",
+      "46010"
+    ],
+    [
+      "46010",
+      "46598"
+    ],
+    [
+      "46598",
+      "49847"
+    ]
+  ],
+  "versions": [
+    {
+      "id": "610",
+      "title": "JoJo no Kimyou na Bouken",
+      "subtype": "OVA",
+      "start": "1993-11-19",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7730",
+      "title": "JoJo no Kimyou na Bouken: Adventure",
+      "subtype": "OVA",
+      "start": "2000-05-25",
+      "episodes": 7,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "13306",
+      "title": "JoJo’s Bizarre Adventure Re-edited",
+      "subtype": "special",
+      "start": "2012-12-31",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "films": [
+    {
+      "id": "3136",
+      "title": "JoJo no Kimyou na Bouken: Phantom Blood",
+      "subtype": "movie",
+      "start": "2007-02-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "12064",
+      "title": "Kishibe Rohan wa Ugokanai",
+      "subtype": "OVA",
+      "start": "2017-09-20",
+      "episodes": 4,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [
+    {
+      "id": "42116",
+      "title": "JoJo's Bizarre Adventure: Golden Wind Recap",
+      "subtype": "special",
+      "start": "2019-01-05",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "parents": {},
+  "complete": true
+}

@@ -22,6 +22,8 @@ export type StripCaption =
 	/** A run member's place in a franchise read in part: nothing about it is sure. */
 	| { readonly kind: 'partial' }
 	| { readonly kind: 'side' }
+	/** A side story that is a film: the payload lists it under films. */
+	| { readonly kind: 'film' }
 	| { readonly kind: 'cycle'; readonly count: number }
 	| { readonly kind: 'branch' };
 
@@ -64,10 +66,16 @@ export function settledOrder(
  * in, if any. `complete` is false for a franchise read in part: its
  * walk may have missed entries on either side of this one, so no
  * number, fork or loop size is sure, and a run member's caption is
- * `partial`.
+ * `partial`. `film` says the shown entry is listed under films, where
+ * a side story reads as a film, as the franchise page lists it.
  */
-export function captionOf(view: StripView, loop: number, complete: boolean): StripCaption {
-	if (view.kind === 'side') return { kind: 'side' };
+export function captionOf(
+	view: StripView,
+	loop: number,
+	complete: boolean,
+	film = false
+): StripCaption {
+	if (view.kind === 'side') return { kind: film ? 'film' : 'side' };
 	if (!complete) return { kind: 'partial' };
 	if (view.position !== null && view.total !== null)
 		return { kind: 'position', position: view.position, total: view.total };
@@ -95,7 +103,8 @@ export function watchOrderPage(
 	const { run, view, complete } = strip;
 	const progress = progressFromHistory(data.rows, run.entries);
 	const watching = watchingFor(run, progress, id, view, order);
-	const caption = captionOf(view, loopSize(run, id, order), complete);
+	const film = run.films.some((e) => e.id === id);
+	const caption = captionOf(view, loopSize(run, id, order), complete, film);
 	return {
 		order,
 		run,
