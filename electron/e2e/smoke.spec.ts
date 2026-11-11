@@ -93,7 +93,7 @@ async function launchAppWithStubsOnce(
       body: JSON.stringify(emptyHistory),
     }),
   );
-  await routeContext(context, "**/api/kitsu/trending", (r) =>
+  await routeContext(context, "**/api/kitsu/trending-anilist", (r) =>
     r.fulfill({
       status: 200,
       contentType: "application/json",
