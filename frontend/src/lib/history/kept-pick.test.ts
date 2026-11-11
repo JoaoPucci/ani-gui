@@ -68,6 +68,14 @@ describe('KeptPicks', () => {
 		expect(kept.take(2)).toBeNull();
 	});
 
+	it("is not cleared or replaced by an earlier arrival's read landing late", () => {
+		const kept = new KeptPicks();
+		kept.note(3, ref('4013'));
+		kept.note(2, null);
+		kept.note(2, ref('9999'));
+		expect(kept.take(3)?.id).toBe('4013');
+	});
+
 	it('holds nothing for an arrival that found none', () => {
 		const kept = new KeptPicks();
 		kept.note(1, ref('4013'));
