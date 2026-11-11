@@ -116,6 +116,7 @@ afterEach(async () => {
 	target.remove();
 	motion.stop();
 	vi.restoreAllMocks();
+	window.scrollY = 0;
 	await setReducedMotion(false);
 });
 
@@ -279,7 +280,10 @@ describe('detail route — the watch-order strip arriving', () => {
 			franchise: () => new HttpResponse(null, { status: 503 }),
 			walkGate: walk.opened
 		});
-		const scrollBy = vi.spyOn(window, 'scrollBy');
+		// The reader is 1000px down; the change is held from there, not
+		// from wherever the browser clamps the shortened page to.
+		window.scrollY = 1000;
+		const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 		app = mount(DetailPage, { target });
 		await until(() => held() !== null, 'the room');
 		// The reader has scrolled to the episodes: the room is 500px above.
@@ -296,8 +300,8 @@ describe('detail route — the watch-order strip arriving', () => {
 		});
 		walk.open();
 		await until(() => held() === null, 'the room to go');
-		await until(() => scrollBy.mock.calls.length > 0, 'the scroll kept');
-		expect(scrollBy).toHaveBeenCalledWith(0, -302);
+		await until(() => scrollTo.mock.calls.length > 0, 'the scroll kept');
+		expect(scrollTo).toHaveBeenCalledWith(0, 698);
 		expect(moved('watch-order-held')).toEqual([]);
 	});
 

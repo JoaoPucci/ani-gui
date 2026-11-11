@@ -8,8 +8,8 @@
   once and the strip fades in where it stood, from the outline's
   height to its own; when it answers with nothing, the outline fades,
   then folds away. Where the outline is above the viewport, it goes at
-  once and the page scrolls back by the height the change gave back,
-  so what the reader is reading stays put. Every step is a
+  once and the page scrolls to where it was, moved by the height the
+  change gave back, so what the reader is reading stays put. Every step is a
   `$lib/motion` transition, so reduced motion makes it instant.
 -->
 <script lang="ts">
@@ -23,8 +23,9 @@
 		arriveCss,
 		arriveOf,
 		heldShape,
+		holdScroll,
 		leaveOf,
-		scrollBack,
+		windowScroll,
 		type FirstHop,
 		type Gone
 	} from './arrival';
@@ -61,10 +62,8 @@
 		const was: Gone = { top: rect.top, height: rect.height };
 		gone = was;
 		if (was.top >= 0) return;
-		void tick().then(() => {
-			const dy = scrollBack(was, drawnEl?.getBoundingClientRect().height ?? 0);
-			if (dy !== 0) window.scrollBy(0, dy);
-		});
+		const hold = holdScroll(windowScroll(), was);
+		void tick().then(() => hold(drawnEl?.getBoundingClientRect().height ?? 0));
 	});
 
 	const leave = reducible((node: Element) => {
