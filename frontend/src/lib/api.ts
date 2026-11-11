@@ -841,8 +841,10 @@ export function play(args: PlayArgs): Promise<CreateSessionResponse> {
  *  No session is registered — the player streams from the upstream
  *  directly with the resolved Referer. */
 export function playExternal(args: PlayArgs): Promise<void> {
-	notePlayed(args);
-	return postJson<void>('/api/play/external', withUiLocale(args), { lane: 'resolve' });
+	// Noted once it went out: a handoff that failed played nothing.
+	return postJson<void>('/api/play/external', withUiLocale(args), { lane: 'resolve' }).then(() =>
+		notePlayed(args)
+	);
 }
 
 /** Launch the resolved episode in the user's Syncplay binary. Same
@@ -852,8 +854,10 @@ export function playExternal(args: PlayArgs): Promise<void> {
  *  Syncplay binary can't be spawned — caller surfaces the failure
  *  via the play page's `ErrorOverlay` with a syncplay.pl link. */
 export function playSyncplay(args: PlayArgs): Promise<void> {
-	notePlayed(args);
-	return postJson<void>('/api/play/syncplay', withUiLocale(args), { lane: 'resolve' });
+	// Noted once it went out: a handoff that failed played nothing.
+	return postJson<void>('/api/play/syncplay', withUiLocale(args), { lane: 'resolve' }).then(() =>
+		notePlayed(args)
+	);
 }
 
 /** Drop the cached play resolution for `args` so the next play call
