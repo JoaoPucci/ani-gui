@@ -116,6 +116,7 @@ afterEach(async () => {
 	target.remove();
 	motion.stop();
 	vi.restoreAllMocks();
+	window.scrollY = 0;
 	await setReducedMotion(false);
 });
 
@@ -301,7 +302,6 @@ describe('detail route — the watch-order strip arriving', () => {
 		await until(() => held() === null, 'the room to go');
 		await until(() => scrollTo.mock.calls.length > 0, 'the scroll kept');
 		expect(scrollTo).toHaveBeenCalledWith(0, 698);
-		window.scrollY = 0;
 		expect(moved('watch-order-held')).toEqual([]);
 	});
 
