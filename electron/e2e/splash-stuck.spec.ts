@@ -70,6 +70,19 @@ function packagedWithPage(name: string, page: 'never' | 'late'): string {
 	return path.join(root, path.basename(packagedBinary));
 }
 
+/** Launches `binary` on the profile `tmp`. The tests remove the profile
+ *  in their own teardown, once the app and anything it restarted have
+ *  gone; a launch that never starts has no teardown to reach, so its
+ *  profile is removed here. */
+async function launchOn(env: Parameters<typeof launchPackagedApp>[0], binary: string, tmp: string) {
+	try {
+		return await launchPackagedApp(env, { binary });
+	} catch (err) {
+		fs.rmSync(tmp, { recursive: true, force: true });
+		throw err;
+	}
+}
+
 /** A fresh profile, in `locale` when one is given. */
 function profileEnv(locale?: string) {
 	const tmp = path.join(os.tmpdir(), `ani-gui-splash-stuck-${process.pid}-${Date.now()}`);
@@ -160,7 +173,7 @@ test('a first page that never says it rendered: the splash offers Restart and Qu
 	test.setTimeout(90_000);
 	const binary = packagedWithPage('never-en', 'never');
 	const { tmp, config, env } = profileEnv();
-	const app = await launchPackagedApp(env, { binary });
+	const app = await launchOn(env, binary, tmp);
 	const pid = app.process().pid!;
 	const exited = new Promise<number | null>((resolve) => app.process().once('exit', (code) => resolve(code)));
 	try {
@@ -240,7 +253,7 @@ test('Restart, in the app’s language, starts the app again: this process exits
 	test.setTimeout(90_000);
 	const binary = packagedWithPage('never-pt', 'never');
 	const { tmp, config, env } = profileEnv('pt-BR');
-	const app = await launchPackagedApp(env, { binary });
+	const app = await launchOn(env, binary, tmp);
 	const pid = app.process().pid!;
 	const exited = new Promise<number | null>((resolve) => app.process().once('exit', (code) => resolve(code)));
 	let relaunched: number | null = null;
@@ -290,7 +303,7 @@ test('a first page that renders after the stuck state hands over as usual: the w
 	test.setTimeout(90_000);
 	const binary = packagedWithPage('late', 'late');
 	const { tmp, env } = profileEnv();
-	const app = await launchPackagedApp(env, { binary });
+	const app = await launchOn(env, binary, tmp);
 	try {
 		const splash = await splashWindow(app);
 		await expect(splash.locator('.actions')).toBeVisible({ timeout: 30_000 });
