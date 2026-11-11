@@ -17,6 +17,7 @@
 	import { cacheReclaimView } from '$lib/diagnostics/cache-reclaim';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs } from '$lib/hero/prefs';
 	import { loadRowPrefs, saveRowPrefs } from '$lib/rows/prefs';
+	import { loadStartLook, saveStartLook, type StartLook } from '$lib/play/start-look';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
 
@@ -61,6 +62,14 @@
 	function setRowStyleControls(shown: boolean) {
 		rowPrefs = { ...rowPrefs, controls: shown };
 		saveRowPrefs(browserStorage(), rowPrefs);
+	}
+
+	// The look the player's start veil takes, kept the same way — see
+	// $lib/play/start-look. The next episode opened picks it up.
+	let startLook = $state(loadStartLook(browserStorage()));
+	function setStartLook(look: StartLook) {
+		startLook = look;
+		saveStartLook(browserStorage(), look);
 	}
 
 	onMount(() => void actions.refresh());
@@ -214,6 +223,31 @@
 	</section>
 
 	<section>
+		<h2>{m.diagnostics_section_start_look()}</h2>
+		<fieldset class="start-look">
+			<legend>{m.diagnostics_start_look_description()}</legend>
+			<label>
+				<input
+					type="radio"
+					name="start-look"
+					checked={startLook === 'still'}
+					onchange={() => setStartLook('still')}
+				/>
+				{m.diagnostics_start_look_still()}
+			</label>
+			<label>
+				<input
+					type="radio"
+					name="start-look"
+					checked={startLook === 'card'}
+					onchange={() => setStartLook('card')}
+				/>
+				{m.diagnostics_start_look_card()}
+			</label>
+		</fieldset>
+	</section>
+
+	<section>
 		<h2>{m.diagnostics_section_row_style()}</h2>
 		<p>{m.diagnostics_row_style_description()}</p>
 		<p>
@@ -246,6 +280,19 @@
 </main>
 
 <style>
+	/* The start-look radios: one named group, laid out like the page's
+	   other switches. */
+	.start-look {
+		display: grid;
+		gap: 0.4rem;
+		margin: 0;
+		padding: 0;
+		border: 0;
+	}
+	.start-look legend {
+		margin-block-end: 0.4rem;
+		padding: 0;
+	}
 	/* Diagnostics is a utilitarian, design-pass-exempt page. Just
 	   enough wrapping to keep the back button and prose off the rail
 	   edge — same gutter the rest of the app uses. */

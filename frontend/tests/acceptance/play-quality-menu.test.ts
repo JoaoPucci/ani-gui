@@ -191,6 +191,8 @@ async function mountHls(customControls = true): Promise<FakeHlsT> {
 	await until(() => playerVideoInSlot(), 'the video in its slot');
 	await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
 	await until(() => hlsInstances().length > 0, 'the hls engine to attach');
+	// The stream's first frame plays: the player's controls wait for it.
+	playerVideo().dispatchEvent(new Event('playing'));
 	return hlsInstances()[hlsInstances().length - 1];
 }
 

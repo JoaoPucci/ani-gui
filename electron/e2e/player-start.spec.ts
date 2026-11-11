@@ -1,6 +1,6 @@
 /**
  * From a stream attaching to its first frame, the player never offers
- * Play over it, and its loading indicator is on — in the packaged
+ * Play over it, and its start veil is on — in the packaged
  * app's own Chromium, where the element's autoplay is real.
  *
  * An autoplaying <video> reads `paused` until its first fragment is
@@ -46,8 +46,13 @@ test.beforeAll(() => {
   }
 });
 
-async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
+async function launch(
+  locale = "en",
+): Promise<{ app: ElectronApplication; page: Page }> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ani-gui-start-"));
+  const config = path.join(tmp, "config", "ani-gui");
+  fs.mkdirSync(config, { recursive: true });
+  fs.writeFileSync(path.join(config, "config.toml"), `locale = "${locale}"\n`);
   const app = await launchPackagedApp({
     ...process.env,
     XDG_STATE_HOME: path.join(tmp, "state"),
@@ -104,7 +109,15 @@ async function apiBase(page: Page): Promise<string> {
 
 /** Metadata the play page asks the API for, answered without the
  *  network; the session route goes to the real backend. */
-async function stubMetadata(page: Page, base: string) {
+async function stubMetadata(
+  page: Page,
+  base: string,
+  meta: {
+    settings?: object;
+    show?: object;
+    episodes?: object[];
+  } = {},
+) {
   await page.route(`${base}/api/**`, async (r) => {
     const p = new URL(r.request().url()).pathname;
     if (p === "/api/sessions") return r.continue();
@@ -115,9 +128,11 @@ async function stubMetadata(page: Page, base: string) {
         body: JSON.stringify(body),
       });
     if (p === "/api/app-info") return j(appInfo);
-    if (p === "/api/settings") return j(settings);
-    if (p.startsWith("/api/kitsu/anime/")) return j(continueKitsuMatch);
-    if (p.startsWith("/api/kitsu/episodes/")) return j([continueKitsuEpisode6]);
+    if (p === "/api/settings") return j(meta.settings ?? settings);
+    if (p.startsWith("/api/kitsu/anime/"))
+      return j(meta.show ?? continueKitsuMatch);
+    if (p.startsWith("/api/kitsu/episodes/"))
+      return j(meta.episodes ?? [continueKitsuEpisode6]);
     if (p === "/api/history") return j([]);
     if (p.startsWith("/api/image")) return r.fulfill({ status: 503 });
     // The backend answers skip times with a list, empty when it
@@ -182,8 +197,9 @@ test("a stream on its way reads Pause with the loading indicator on, until its f
               .querySelector(".pc-buttons-row .pc-btn")
               ?.getAttribute("aria-label") ?? null,
           indicator:
-            document.querySelector(".player-spinner.player-spinner-on") !==
-            null,
+            document
+              .querySelector("section.player-frame")
+              ?.getAttribute("data-start-veil") === "start",
         };
       });
       samples.push({ t: Date.now() - t0, ...s });
@@ -208,8 +224,9 @@ test("a stream on its way reads Pause with the loading indicator on, until its f
       .poll(() =>
         page.evaluate(
           () =>
-            document.querySelector(".player-spinner.player-spinner-on") ===
-            null,
+            document
+              .querySelector("section.player-frame")
+              ?.getAttribute("data-start-veil") === "off",
         ),
       )
       .toBe(true);
@@ -221,3 +238,169 @@ test("a stream on its way reads Pause with the loading indicator on, until its f
     media.close();
   }
 });
+
+/* Gintama's own titles, from Kitsu: the longest show title and the
+ * longest episode titles among its entries, on its 367th episode. The
+ * title card must keep them inside the frame, above the controls, the
+ * episode title on two lines at most and the loader in sight, with each
+ * locale's own caption. */
+const longShow = {
+  ...continueKitsuMatch,
+  canonical_title:
+    "Gintama': Futon ni Haitte kara Buki Nokoshi ni Kizuite Neru ni Nerenai Toki mo Aru",
+};
+const longEpisode = {
+  ...continueKitsuEpisode6,
+  id: "ep-367",
+  number: 367,
+  relative_number: 367,
+  // Gintama's three longest episode titles joined: at the window the
+  // test sets (below), long enough that the clamp must cut it, so the
+  // check is a check of the clamp.
+  canonical_title:
+    "Do Something Uncharacteristic, and Something Uncharacteristic Will Happen. Two in Girl Years Is Equal to Ten in Man Years. The Unemployed Cannot Be Stained By Anything",
+};
+
+const startingCaption: Record<string, string> = {
+  en: "Loading episode 367",
+  "pt-BR": "Carregando episódio 367",
+  "es-419": "Cargando episodio 367",
+  ru: "Загрузка серии 367",
+};
+
+/** The window the layout case is measured in, set on the page's own
+ *  window: the card's type scales with the frame, whose height follows
+ *  the window's, and a short frame drops the show line, so the case
+ *  holds the window still rather than measure whatever the session
+ *  gave it. Under Xvfb there is no window manager, and the app's own
+ *  maximize can land after launch, so the request is repeated until
+ *  the size holds. */
+const WINDOW = { width: 1280, height: 960 };
+async function holdWindow(app: ElectronApplication, page: Page) {
+  const win = await app.browserWindow(page);
+  for (let i = 0; i < 50; i++) {
+    await win.evaluate((w, size) => {
+      if (w.isMaximized()) w.unmaximize();
+      w.setContentSize(size.width, size.height);
+    }, WINDOW);
+    if (
+      await page.evaluate(
+        (size) =>
+          window.innerWidth === size.width &&
+          window.innerHeight === size.height,
+        WINDOW,
+      )
+    )
+      return;
+    await page.waitForTimeout(200);
+  }
+  throw new Error(`the window never reached ${WINDOW.width}x${WINDOW.height}`);
+}
+
+for (const locale of ["en", "pt-BR", "es-419", "ru"]) {
+  test(`the title card keeps Gintama's longest titles inside the frame (${locale})`, async () => {
+    test.setTimeout(120_000);
+    // Fragments held past the test: the start stays on screen.
+    const media = await mediaServer(90_000);
+    const { app, page } = await launch(locale);
+    try {
+      const base = await apiBase(page);
+      await stubMetadata(page, base, {
+        settings: { ...settings, locale },
+        show: longShow,
+        episodes: [longEpisode],
+      });
+      await page.evaluate(() =>
+        localStorage.setItem("ani-gui:player-start-look", "card"),
+      );
+      const sid = await session(page, base, `${media.origin}/master.m3u8`);
+      const url = new URL(page.url());
+      url.pathname = `/play/${continueKitsuMatch.id}`;
+      url.search = `?session=${sid}&episode=367&kind=hls`;
+      await holdWindow(app, page);
+      await page.goto(url.toString());
+      await page.locator(".start-veil[data-look='card'] .card-title").waitFor();
+      await expect(page.locator(".start-veil .card-title")).toHaveText(
+        longEpisode.canonical_title,
+      );
+      // The loader arrives after its beat.
+      await page.waitForTimeout(1200);
+
+      const layout = await page.evaluate(() => {
+        const box = (sel: string) => {
+          const r = document.querySelector(sel)!.getBoundingClientRect();
+          return {
+            top: r.top,
+            bottom: r.bottom,
+            left: r.left,
+            right: r.right,
+            height: r.height,
+          };
+        };
+        const title = document.querySelector(".start-veil .card-title")!;
+        const lineHeight = parseFloat(getComputedStyle(title).lineHeight);
+        const show = document.querySelector(".start-veil .card-show")!;
+        return {
+          frame: box("section.player-frame"),
+          card: box(".start-veil .card"),
+          numeral: box(".start-veil .numeral"),
+          strip: box(".start-veil .card-status .strip"),
+          stripOpacity: getComputedStyle(
+            document.querySelector(".start-veil .card-status .strip")!,
+          ).opacity,
+          titleLines: title.getBoundingClientRect().height / lineHeight,
+          // The clamp is what holds the title to two lines: it must be
+          // cutting text off, not just finding room.
+          titleClamped: title.scrollHeight > title.clientHeight + 1,
+          showShown: show.getBoundingClientRect().height > 0,
+          showOneLine:
+            show.getBoundingClientRect().height <
+            parseFloat(getComputedStyle(show).lineHeight) * 1.5,
+          caption:
+            document.querySelector(".start-veil .card-caption")?.textContent ??
+            "",
+        };
+      });
+      const inside = (b: typeof layout.card) =>
+        b.left >= layout.frame.left &&
+        b.right <= layout.frame.right &&
+        b.top >= layout.frame.top &&
+        b.bottom <= layout.frame.bottom - 80;
+      expect(inside(layout.card), JSON.stringify(layout)).toBe(true);
+      expect(inside(layout.numeral), JSON.stringify(layout)).toBe(true);
+      expect(inside(layout.strip), JSON.stringify(layout)).toBe(true);
+      expect(layout.strip.height).toBeGreaterThan(0);
+      expect(Number(layout.stripOpacity)).toBeGreaterThan(0.9);
+      expect(layout.titleLines).toBeLessThanOrEqual(2.1);
+      expect(layout.titleClamped).toBe(true);
+      expect(layout.showShown).toBe(true);
+      expect(layout.showOneLine).toBe(true);
+      expect(layout.caption).toBe(startingCaption[locale]);
+
+      // The controls are out of sight, but a control the keyboard
+      // reaches shows above the veil, not under it.
+      const play = page.locator(".pc-buttons-row .pc-btn").first();
+      await play.focus();
+      // The veil lets the pointer through, so a hit test would skip it:
+      // for the measurement only, it takes the pointer, and the hit test
+      // returns whatever is painted on top.
+      await page.addStyleTag({
+        content:
+          ".start-veil, .start-veil * { pointer-events: auto !important; }",
+      });
+      await page.waitForTimeout(400);
+      const onTop = await play.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          r.left + r.width / 2,
+          r.top + r.height / 2,
+        );
+        return hit === el || el.contains(hit);
+      });
+      expect(onTop).toBe(true);
+    } finally {
+      await app.close();
+      media.close();
+    }
+  });
+}

@@ -189,6 +189,9 @@ function startStream(video: HTMLVideoElement) {
 	video.currentTime = 0;
 	Object.defineProperty(video, 'duration', { configurable: true, get: () => Number.NaN });
 	video.dispatchEvent(new Event('timeupdate'));
+	// Its first frame plays: the player's controls and its Skip button
+	// wait for that.
+	video.dispatchEvent(new Event('playing'));
 }
 function learnLength(video: HTMLVideoElement, length: number) {
 	Object.defineProperty(video, 'duration', { configurable: true, get: () => length });
@@ -243,6 +246,9 @@ async function openEpisode(options: Options) {
 		set: (src: string) => video.setAttribute('src', src)
 	});
 	learnLength(video, lengthOf(options.episode));
+	// Its first frame plays: the player's controls and its Skip button
+	// wait for that.
+	video.dispatchEvent(new Event('playing'));
 	await until(
 		() => asks.some((a) => a.episode === String(options.episode)),
 		`episode ${options.episode}'s skip times asked for`

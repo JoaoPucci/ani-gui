@@ -163,6 +163,8 @@ async function mountAt(session: string, episode: string, tracks = 3) {
 	await until(() => playerVideoInSlot(), 'the video in its slot');
 	const video = playerVideo();
 	await until(() => video.textTracks.length === tracks, 'the tracks attached');
+	// The stream's first frame plays: the player's controls wait for it.
+	video.dispatchEvent(new Event('playing'));
 	await until(
 		() =>
 			document.querySelector(`button[aria-label="${m.play_controls_cc_aria_label()}"]`) !== null,

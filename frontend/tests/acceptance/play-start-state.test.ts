@@ -150,7 +150,9 @@ const playPause = () => target.querySelector('.pc-buttons-row .pc-btn') as HTMLB
 const label = () => playPause()?.getAttribute('aria-label');
 const PLAY = () => m.play_controls_play_aria_label();
 const PAUSE = () => m.play_controls_pause_aria_label();
-const indicatorOn = () => target.querySelector('.player-spinner.player-spinner-on') !== null;
+// The loading state the frame shows: the start veil's mode, which the
+// frame names on `data-start-veil`.
+const indicatorOn = () => (frame()?.getAttribute('data-start-veil') ?? 'off') !== 'off';
 const busy = () => frame()?.getAttribute('aria-busy') === 'true';
 const settle = () => new Promise((r) => setTimeout(r, 20));
 

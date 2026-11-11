@@ -1,0 +1,7 @@
+{
+	"loading_aria": "Загрузка видео",
+	"starting": "Загрузка серии {n}",
+	"resuming": "Продолжаем с {time}",
+	"buffering": "Подгрузка",
+	"episode": "Серия {n}"
+}
