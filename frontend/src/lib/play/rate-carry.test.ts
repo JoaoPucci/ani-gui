@@ -42,12 +42,16 @@ describe('the carried playback speed', () => {
 
 describe('applyCarriedRate', () => {
 	function video() {
-		const listeners = new Map<string, () => void>();
+		const listeners = new Map<string, { fn: () => void; once: boolean }>();
 		return {
 			playbackRate: 1,
-			addEventListener: (name: string, fn: () => void) => void listeners.set(name, fn),
-			removeEventListener: (name: string) => void listeners.delete(name),
-			fire: (name: string) => listeners.get(name)?.(),
+			addEventListener: (name: string, fn: () => void, opts?: AddEventListenerOptions) =>
+				void listeners.set(name, { fn, once: opts?.once === true }),
+			removeEventListener: (name: string, fn: () => void) => {
+				if (listeners.get(name)?.fn === fn) listeners.delete(name);
+			},
+			fire: (name: string) => listeners.get(name)?.fn(),
+			once: (name: string) => listeners.get(name)?.once === true,
 			has: (name: string) => listeners.has(name)
 		};
 	}
@@ -57,6 +61,8 @@ describe('applyCarriedRate', () => {
 		const v = video();
 		const stop = applyCarriedRate(v as unknown as HTMLMediaElement, '4013');
 		expect(stop).not.toBeNull();
+		// Once: a later load of the same element is not this switch's.
+		expect(v.once('loadedmetadata')).toBe(true);
 		// Not before: the load resets the rate.
 		expect(v.playbackRate).toBe(1);
 		expect(rateFor('4013')).toBe(true);
@@ -78,5 +84,16 @@ describe('applyCarriedRate', () => {
 		const v = video();
 		expect(applyCarriedRate(v as unknown as HTMLMediaElement, '4013')).toBeNull();
 		expect(v.has('loadedmetadata')).toBe(false);
+		// The other show's speed is left for its own player.
+		expect(rateFor('9999')).toBe(true);
+	});
+
+	it('leaves the rate alone when the speed was taken before the metadata loaded', () => {
+		carryRate('4013', 1.5);
+		const v = video();
+		applyCarriedRate(v as unknown as HTMLMediaElement, '4013');
+		takeRate('4013');
+		v.fire('loadedmetadata');
+		expect(v.playbackRate).toBe(1);
 	});
 });
