@@ -66,7 +66,7 @@ describe('whether a guessed card still stands', () => {
 		expect(h.published).toEqual([['a', '5']]);
 	});
 
-	it('lifts the settling once the row is matched again, so a named row keeps its way to change it', async () => {
+	it('lifts the settling once the row is matched again, so its new match decides its pill', async () => {
 		// A link made on an earlier visit lands while Home is open, and the
 		// pill is clicked before the cards are read again: the check finds
 		// the linked show, not the one shown, and settles the row. The
@@ -79,6 +79,28 @@ describe('whether a guessed card still stands', () => {
 		expect(h.settled.has('a')).toBe(true);
 		await flush();
 		expect(h.published).toEqual([['a', '5']]);
+		expect(h.settled.has('a')).toBe(false);
+	});
+
+	it('keeps the settling while a later rematch of the row is still out', async () => {
+		// Two reads match the row again; the first one's answer lands
+		// last, about a show the row no longer records, and lifts nothing.
+		const answers: ((m: KitsuAnimeRef) => void)[] = [];
+		const h = home([row('a')], [[row('a', '5')], [row('a', '6')]], {
+			offerStands: async () => false,
+			resolveMatch: () => new Promise((r) => answers.push(r))
+		});
+		await h.relink.stillGuessed('a', 'g');
+		await flush();
+		await h.relink.reread();
+		await flush();
+		expect(answers.length).toBe(2);
+		expect(h.settled.has('a')).toBe(true);
+		answers[0](ref('5'));
+		await flush();
+		expect(h.settled.has('a')).toBe(true);
+		answers[1](ref('6'));
+		await flush();
 		expect(h.settled.has('a')).toBe(false);
 	});
 

@@ -356,6 +356,11 @@ describe('a card that stopped being a guess while Home was open', () => {
 		pill(JOJO_CARD)!.click();
 		await until(() => pill(JOJO_CARD) === null, 'the pill to go');
 		expect(dialog()).toBeNull();
+		// And it stays gone once the card is read again as the show the
+		// row records: no one named it, so there is nothing to change.
+		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the card as its show');
+		await settle();
+		expect(pill(JOJO_CARD)).toBeNull();
 	});
 
 	it('gets its pill back once it shows the show a link from elsewhere named for it', async () => {
