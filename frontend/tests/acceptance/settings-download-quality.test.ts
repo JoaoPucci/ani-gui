@@ -66,10 +66,7 @@ function mountSettings(settings: Record<string, unknown>) {
 			writes.push((await request.json()) as Record<string, unknown>);
 			return new HttpResponse(null, { status: 204 });
 		}),
-		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO)),
-		http.get(`${API_BASE}/api/account/status`, () =>
-			HttpResponse.json({ anilist: null, mal: null })
-		)
+		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO))
 	);
 	app = mount(SettingsPage, { target });
 	return { writes };
