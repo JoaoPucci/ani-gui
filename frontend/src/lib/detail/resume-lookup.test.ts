@@ -7,7 +7,8 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import fc from 'fast-check';
-import { latestLookup, lookupResume } from './resume-lookup';
+import { latestLookup, lookupResume, readResume } from './resume-lookup';
+import { beginVisit } from '$lib/navigation/visit';
 
 const never = new Promise<never>(() => {});
 
@@ -58,5 +59,67 @@ describe('latestLookup', () => {
 				expect(tickets.map((t) => t())).toEqual(tickets.map((_, i) => i === n - 1));
 			})
 		);
+	});
+});
+
+describe('readResume', () => {
+	const flush = () => new Promise((r) => setTimeout(r, 0));
+
+	it("reads under the show's visit and shows the row found", async () => {
+		const reads = beginVisit();
+		const lookup = vi.fn(async () => 'row');
+		const apply = vi.fn();
+		readResume({
+			kitsuId: '7',
+			reads,
+			latest: () => true,
+			lookup,
+			detailServed: Promise.resolve(),
+			showing: () => '7',
+			apply
+		});
+		await flush();
+		expect(lookup).toHaveBeenCalledWith('7', { signal: reads.signal });
+		expect(apply).toHaveBeenCalledWith('row');
+	});
+
+	it('shows nothing for a show the page moved on from, a later lookup, or an ended visit', async () => {
+		for (const [showing, latest, end] of [
+			['8', true, false],
+			['7', false, false],
+			['7', true, true]
+		] as const) {
+			const reads = beginVisit();
+			const apply = vi.fn();
+			readResume({
+				kitsuId: '7',
+				reads,
+				latest: () => latest,
+				lookup: async () => 'row',
+				detailServed: Promise.resolve(),
+				showing: () => showing,
+				apply
+			});
+			if (end) reads.end();
+			await flush();
+			expect(apply).not.toHaveBeenCalled();
+		}
+	});
+
+	it('drops a failure: resume is a hint', async () => {
+		const apply = vi.fn();
+		readResume({
+			kitsuId: '7',
+			reads: beginVisit(),
+			latest: () => true,
+			lookup: async () => {
+				throw new Error('history unreadable');
+			},
+			detailServed: Promise.resolve(),
+			showing: () => '7',
+			apply
+		});
+		await flush();
+		expect(apply).not.toHaveBeenCalled();
 	});
 });

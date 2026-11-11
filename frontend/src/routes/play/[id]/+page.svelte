@@ -3161,6 +3161,9 @@
 		const cfg = config;
 		const mode = audio;
 		const launch = { kitsuId: id, mode, episode: ep };
+		// What the session's own plays name: the card's row and its guess
+		// (the pick, once one was made here).
+		const as = playingAs;
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on (another show, or away and back) is
 		// not shown to them, and asks the cache nothing.
@@ -3184,11 +3187,9 @@
 						handoffArgs({
 							title,
 							episode: ep,
-							// What the session's own plays name: the card's row and
-							// its guess (the pick, once one was made here).
-							kitsuId: playingAs.kitsuId ?? '',
-							guessRow: playingAs.guessRow,
-							guessId: playingAs.guessId,
+							kitsuId: as.kitsuId ?? '',
+							guessRow: as.guessRow,
+							guessId: as.guessId,
 							config: { mode },
 							detail,
 							version: storedChoice(id),
@@ -3237,6 +3238,9 @@
 		const ep = episodeNum;
 		const mode = audio;
 		const launch = { kitsuId: id, mode, episode: ep };
+		// What the session's own plays name: the card's row and its guess
+		// (the pick, once one was made here).
+		const as = playingAs;
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on is not shown to them.
 		const owner = claimPlay(
@@ -3256,11 +3260,9 @@
 						handoffArgs({
 							title,
 							episode: ep,
-							// What the session's own plays name: the card's row and
-							// its guess (the pick, once one was made here).
-							kitsuId: playingAs.kitsuId ?? '',
-							guessRow: playingAs.guessRow,
-							guessId: playingAs.guessId,
+							kitsuId: as.kitsuId ?? '',
+							guessRow: as.guessRow,
+							guessId: as.guessId,
 							config: { mode },
 							detail,
 							version: storedChoice(id),

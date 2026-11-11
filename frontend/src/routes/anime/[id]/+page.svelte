@@ -81,7 +81,7 @@
 		type AvailabilityPatch
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
-	import { latestLookup, lookupResume } from '$lib/detail/resume-lookup';
+	import { latestLookup, readResume } from '$lib/detail/resume-lookup';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { runUnairedClick } from '$lib/detail/unaired-click';
 	import { airedCap, beyondPlayable, displayCap, minCap } from '$lib/detail/episode-caps';
@@ -504,6 +504,22 @@
 	let resumeEntry = $state<HistoryEntry | null>(null);
 	// Only the latest resume lookup started answers ($lib/detail/resume-lookup).
 	const resumeLookups = latestLookup();
+	/** The resume row of `showId`, read under its visit `reads`
+	 *  ($lib/detail/resume-lookup). */
+	function readShowResume(showId: string, reads: Visit, detailServed: Promise<unknown>) {
+		readResume({
+			kitsuId: showId,
+			reads,
+			latest: resumeLookups(),
+			lookup: historyByKitsu,
+			detailServed,
+			showing: () => id,
+			apply: (h) => {
+				resumeEntry = h;
+				resumeRefresh.row(h);
+			}
+		});
+	}
 
 	// Episode list — fetched in parallel with the detail. Holds the
 	// CURRENT page only (not concatenated) so a 500-episode show doesn't
@@ -1191,19 +1207,7 @@
 				if (images && detail && id === currentId) Object.assign(detail, images);
 			}
 		});
-		const latest = resumeLookups();
-		void reads
-			.keep(
-				lookupResume(currentId, (k) => historyByKitsu(k, { signal: reads.signal }), detailServed)
-			)
-			.then((h) => {
-				if (id !== currentId || !latest()) return;
-				resumeEntry = h;
-				resumeRefresh.row(h);
-			})
-			.catch(() => {
-				// Resume is a hint, not load-bearing — drop silently.
-			});
+		readShowResume(currentId, reads, detailServed);
 		void reads
 			.keep(detailServed)
 			.then((d) => {
@@ -1751,20 +1755,8 @@
 	// history again: the page's Continue follows the rows the link wrote.
 	// The re-read is the shown show's, cancelled with its other reads.
 	const stopHearing = onHistoryLinked(() => {
-		const currentId = id;
-		const latest = resumeLookups();
 		const reads = showReads;
-		const read = { signal: reads.signal };
-		void reads
-			.keep(
-				lookupResume(currentId, (k) => historyByKitsu(k, read), kitsuAnimeDetail(currentId, read))
-			)
-			.then((h) => {
-				if (id !== currentId || !latest()) return;
-				resumeEntry = h;
-				resumeRefresh.row(h);
-			})
-			.catch(() => {});
+		readShowResume(id, reads, kitsuAnimeDetail(id, { signal: reads.signal }));
 	});
 	// The page going cancels the show question's reads still out; a link
 	// still out is saved all the same.
