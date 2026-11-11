@@ -131,6 +131,36 @@ describe('topbar live search — the query moves on', () => {
 		await until(() => pool!.cancelled.includes('/api/kitsu/search'), 'the search cancelled');
 	});
 
+	it('shows no hits of a query typed past when the field is focused again after a submit', async () => {
+		server.use(
+			http.post(`${API_BASE}/api/kitsu/search`, async (info) => {
+				const { query } = (await info.request.clone().json()) as { query: string };
+				if (query === 'fri') return HttpResponse.json([kitsuRef('8', 'Fried Rice Show', 12)]);
+				return reads.hang(info);
+			}),
+			http.post(`${API_BASE}/api/availability/batch`, () =>
+				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+			)
+		);
+		pool = sixConnections();
+		const children = createRawSnippet(() => ({ render: () => '<div></div>' }));
+		layout = mount(Layout, { target, props: { children } });
+		input().focus();
+		input().dispatchEvent(new FocusEvent('focus'));
+		type('fri');
+		await until(
+			() => (target.textContent ?? '').includes('Fried Rice Show'),
+			"the first query's hit"
+		);
+		type('frieren');
+		await until(() => reads.held.length === 1, 'the next search to be out');
+		(input().closest('form') as HTMLFormElement).requestSubmit();
+		await until(() => pool!.cancelled.includes('/api/kitsu/search'), 'the search cancelled');
+		input().dispatchEvent(new FocusEvent('focus'));
+		await new Promise((r) => setTimeout(r, 50));
+		expect(target.textContent).not.toContain('Fried Rice Show');
+	});
+
 	it('sends no search the viewer submitted before it went out', async () => {
 		let asked = 0;
 		server.use(
