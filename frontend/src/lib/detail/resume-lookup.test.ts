@@ -106,6 +106,30 @@ describe('readResume', () => {
 		}
 	});
 
+	it('leaves no failure of a detail fetch it never waited for unhandled', async () => {
+		// A row found at once never waits for the detail; the detail's
+		// fetch, cancelled with the show's visit, rejects all the same.
+		const unhandled: unknown[] = [];
+		const note = (e: unknown) => unhandled.push(e);
+		process.on('unhandledRejection', note);
+		try {
+			const reads = beginVisit();
+			readResume({
+				kitsuId: '7',
+				reads,
+				latest: () => true,
+				lookup: async () => 'row',
+				detailServed: Promise.reject(new DOMException('The operation was aborted.', 'AbortError')),
+				showing: () => '7',
+				apply: () => {}
+			});
+			await new Promise((r) => setTimeout(r, 20));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off('unhandledRejection', note);
+		}
+	});
+
 	it('drops a failure: resume is a hint', async () => {
 		const apply = vi.fn();
 		readResume({
