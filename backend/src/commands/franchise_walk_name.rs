@@ -52,3 +52,24 @@ pub(super) fn display_name<'a>(title: &str, others: impl IntoIterator<Item = &'a
     }
     .to_string()
 }
+
+/// The franchise's name and the main-story entry it comes from, over
+/// the run (`main`, in start order) and the sections `around` it. A run
+/// with no entry, which the walk never answers, is named nothing after
+/// the anchor.
+#[must_use]
+pub(super) fn named(
+    anchor: &str,
+    main: &[FranchiseEntry],
+    around: [&[FranchiseEntry]; 4],
+) -> (String, String) {
+    let Some(e) = name_entry(main) else {
+        return (String::new(), anchor.to_string());
+    };
+    let others = std::iter::once(main)
+        .chain(around)
+        .flatten()
+        .filter(|o| o.id != e.id)
+        .map(|o| o.title.as_str());
+    (display_name(&e.title, others), e.id.clone())
+}
