@@ -79,8 +79,8 @@
   },
   "served-14084.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Boku no Hero Academia the Movie: Futari no Hero (anime/14084) over listings.json, as GET /api/kitsu/franchise/14084 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 3457,
-   "sha256": "75ef7a7ddba97a61b5d3a528c2bf18da864445eb6929d88909d9cb6b6db3a694"
+   "size": 5773,
+   "sha256": "c4712b9f322fbc847461a366dc5806bba0730a2cb9c9ec5339698afc529d87aa"
   },
   "served-1515.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Bleach Movie 1: Memories of Nobody (anime/1515) over listings.json, as GET /api/kitsu/franchise/1515 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -139,8 +139,8 @@
   },
   "served-42205.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Boku no Hero Academia the Movie 2: Heroes:Rising (anime/42205) over listings.json, as GET /api/kitsu/franchise/42205 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 3457,
-   "sha256": "e92649ef0c59bd8b491ed8809610247bd1ba732001b2aa6ba66b2757bac235aa"
+   "size": 5788,
+   "sha256": "c8b13532d2def160744bcac742a161ececd22c205db1bb5112c8735e06298f60"
   },
   "served-428.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from One Piece: Taose! Kaizoku Ganzack (anime/428) over listings.json, as GET /api/kitsu/franchise/428 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -169,8 +169,8 @@
   },
   "served-47844.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Boku no Hero Academia THE MOVIE: YOU'RE NEXT (anime/47844) over listings.json, as GET /api/kitsu/franchise/47844 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 3457,
-   "sha256": "fc0a1a106f2a7465b1a1e1911100bd7adadf6e12f935bf616c1506a9081c9322"
+   "size": 5773,
+   "sha256": "5fc607683c5217b7cf7d4ff0153cd5c679a57c177d8e6b6a5365e8369bdb2139"
   },
   "served-486.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Pocket Monsters (anime/486) over listings.json, as GET /api/kitsu/franchise/486 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",

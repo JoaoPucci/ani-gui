@@ -155,6 +155,8 @@ mod parents;
 pub(crate) mod rules;
 #[path = "franchise_walk_sections.rs"]
 mod sections;
+#[path = "franchise_walk_series.rs"]
+pub(crate) mod series;
 #[path = "franchise_walk_run.rs"]
 mod walking;
 
