@@ -25,6 +25,7 @@
  * without a backend address.
  */
 import type { StreamProvider } from '$lib/history/show-key';
+import { notePlayed } from '$lib/history/guess-plays';
 import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
 import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
@@ -840,6 +841,7 @@ export function play(args: PlayArgs): Promise<CreateSessionResponse> {
  *  No session is registered — the player streams from the upstream
  *  directly with the resolved Referer. */
 export function playExternal(args: PlayArgs): Promise<void> {
+	notePlayed(args);
 	return postJson<void>('/api/play/external', withUiLocale(args), { lane: 'resolve' });
 }
 
@@ -850,6 +852,7 @@ export function playExternal(args: PlayArgs): Promise<void> {
  *  Syncplay binary can't be spawned — caller surfaces the failure
  *  via the play page's `ErrorOverlay` with a syncplay.pl link. */
 export function playSyncplay(args: PlayArgs): Promise<void> {
+	notePlayed(args);
 	return postJson<void>('/api/play/syncplay', withUiLocale(args), { lane: 'resolve' });
 }
 
@@ -874,6 +877,7 @@ export function evictPlayCache(args: PlayArgs): Promise<void> {
  *  Click handlers fire markWatched as a side-effect after getOrFire
  *  resolves. Best-effort: caller should `void markWatched(...).catch(()=>{})`. */
 export function markWatched(args: PlayArgs): Promise<void> {
+	notePlayed(args);
 	return postJson<void>('/api/play/mark-watched', args);
 }
 

@@ -10,6 +10,7 @@
 import type { HistoryEntry, ReadOptions } from '$lib/api';
 import { linkOffer, type LinkDeps, type LinkOffer } from './link-offer';
 import { pickedRow } from './guess-slip';
+import { guessPlayed } from './guess-plays';
 import { readOpts } from './read-opts';
 
 /** The offer to change again the show of `row`, while it records
@@ -71,7 +72,13 @@ export async function surfaceOffer(
 ): Promise<LinkOffer | null> {
 	// A line picked on the player since the app started is named, though
 	// its note may not have been read: it is only offered again.
-	const carried = surface.carried === true && !(surface.inPlayer && row && pickedRow(row));
+	// The URL's verdict stands only while the line's guessed play does
+	// ($lib/history/guess-plays.ts).
+	const carried =
+		surface.carried === true &&
+		row !== null &&
+		guessPlayed(row, pageId) &&
+		!(surface.inPlayer && pickedRow(row));
 	const guess = surface.asksGuess ? await linkOffer(deps, row, pageId, opts, carried) : null;
 	return guess ?? offerAgain(deps, row, pageId, surface.inPlayer, opts);
 }

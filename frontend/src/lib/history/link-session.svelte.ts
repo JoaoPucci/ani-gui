@@ -111,9 +111,12 @@ export class LinkSession extends LinkPicker {
 
 	/** What the surface is, for its offer ($lib/history/picked-offer.ts):
 	 *  the show page may ask about a guess, is not the player, and carries
-	 *  the verdict of the guessed card its session was opened from, since
-	 *  it arrives with a card's row only from that card's guessed player
-	 *  (`?guessed=`). */
+	 *  the verdict of the guessed card its row came from. It arrives with
+	 *  a card's row only from the player of that card's line (`?guessed=`):
+	 *  a guessed session's, or one that can change the line's show again.
+	 *  The verdict stands only while the line's guessed play does in this
+	 *  run ($lib/history/guess-plays.ts), and a line the user named is only
+	 *  offered again. */
 	protected get surface(): OfferSurface {
 		return { asksGuess: true, inPlayer: false, carried: true };
 	}

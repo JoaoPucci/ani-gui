@@ -76,13 +76,14 @@ async function guessedAs(
  *  so does a read cancelled with the visit `opts` names.
  *
  *  `carried` is for a surface whose session a guessed card opened —
- *  the player, and the show page it goes up to. That session is the
- *  guess the card was clicked as for its whole life
- *  ($lib/play/play-origin.ts), so a row its own play has since
- *  recorded — a guess that landed on the card's own listing, which the
- *  backend records on the row, before the player reads it when the
- *  show's Kitsu detail is cached — is still asked about. Home judges
- *  each row as it reads it, and passes none. */
+ *  the player, and the show page it goes up to — while that guessed
+ *  play stands ($lib/history/guess-plays.ts). That session is the guess
+ *  the card was clicked as for its whole life ($lib/play/play-origin.ts),
+ *  so a row its own play has since recorded — a guess that landed on
+ *  the card's own listing, which the backend records on the row, before
+ *  the player reads it when the show's Kitsu detail is cached — is
+ *  still asked about. Home judges each row as it reads it, and passes
+ *  none. */
 export async function linkOffer(
 	deps: LinkDeps,
 	row: string | null,
