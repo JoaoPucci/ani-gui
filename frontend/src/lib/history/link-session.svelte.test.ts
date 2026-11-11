@@ -596,10 +596,16 @@ describe('the reads of an arrival', () => {
 		void s.start();
 		await vi.waitFor(() => expect(answer).toBeDefined());
 		s.endReads();
-		// The offer's reads and the picker's searches; the rows a link
-		// would write are read without a signal.
+		// The offer's reads, the picker's read ahead of the rows its link
+		// would write, and its searches.
 		const arrival = asked.filter((a) => a.signal !== undefined);
-		expect(arrival.map((a) => a.read)).toEqual(['history', 'resolve', 'search', 'search']);
+		expect(arrival.map((a) => a.read).sort()).toEqual([
+			'history',
+			'history',
+			'resolve',
+			'search',
+			'search'
+		]);
 		expect(arrival.every((a) => a.signal!.aborted)).toBe(true);
 		answer([RIGHT]);
 		await new Promise((r) => setTimeout(r, 0));
