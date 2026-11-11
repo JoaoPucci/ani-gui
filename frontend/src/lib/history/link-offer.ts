@@ -7,7 +7,9 @@
  * the history, and Continue Watching's match for the row
  * (`resolveKitsuMatchWithTrust`) is still a guess of this very show —
  * a row with no recorded id, or one whose recorded entry Kitsu has
- * deleted. Anything else, and the page says nothing.
+ * deleted — or, for a surface whose session the guessed card opened
+ * (`carried`), still this show and not one the user named. Anything
+ * else, and the page says nothing.
  *
  * A link covers every guessed row the card stands for on the card's
  * own listing: the rows Continue Watching shows as one card because
@@ -53,31 +55,46 @@ export interface LinkOffer {
 	saved?: string;
 }
 
-/** Whether a row is matched to `pageId` by a guess. */
+/** Whether a row is matched to `pageId` by a guess. With `carried`,
+ *  the surface's session was opened from the row as a guess, and keeps
+ *  that verdict: the row is asked about while it shows `pageId` and the
+ *  user named no show for it, trusted or not. */
 async function guessedAs(
 	deps: LinkDeps,
 	entry: HistoryEntry,
 	pageId: string,
-	opts?: ReadOptions
+	opts?: ReadOptions,
+	carried = false
 ): Promise<KitsuAnimeRef | null> {
 	const { match, trusted } = await deps.resolve(entry, ...readOpts(opts ?? {}));
-	return match && !trusted && match.id === pageId ? match : null;
+	const guess = !trusted || (carried && entry.named !== true);
+	return match && guess && match.id === pageId ? match : null;
 }
 
 /** The offer the show page `pageId` makes for the guessed card's row
  *  `row`, or null when it makes none. A failure to read makes none, and
- *  so does a read cancelled with the visit `opts` names. */
+ *  so does a read cancelled with the visit `opts` names.
+ *
+ *  `carried` is for a surface whose session a guessed card opened —
+ *  the player, and the show page it goes up to. That session is the
+ *  guess the card was clicked as for its whole life
+ *  ($lib/play/play-origin.ts), so a row its own play has since
+ *  recorded — a guess that landed on the card's own listing, which the
+ *  backend records on the row, before the player reads it when the
+ *  show's Kitsu detail is cached — is still asked about. Home judges
+ *  each row as it reads it, and passes none. */
 export async function linkOffer(
 	deps: LinkDeps,
 	row: string | null,
 	pageId: string,
-	opts?: ReadOptions
+	opts?: ReadOptions,
+	carried = false
 ): Promise<LinkOffer | null> {
 	if (!row) return null;
 	try {
 		const entry = (await deps.history(...readOpts(opts ?? {}))).find((e) => e.id === row);
 		if (!entry) return null;
-		const current = await guessedAs(deps, entry, pageId, opts);
+		const current = await guessedAs(deps, entry, pageId, opts, carried);
 		return current ? { entry, current } : null;
 	} catch {
 		return null;

@@ -153,6 +153,12 @@ export class InPlaceLinkSession extends LinkSession {
 		return this.#guess;
 	}
 
+	/** The player of a session a guessed card opened carries the card's
+	 *  verdict; Home judges each card as it reads it. */
+	protected override get carriesGuess(): boolean {
+		return this.#inPlayer && this.#guess;
+	}
+
 	/** Hide the slip for this row until the app restarts. */
 	hide(): void {
 		if (this.#row) hideRow(this.#row);

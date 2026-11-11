@@ -106,13 +106,25 @@ export class LinkSession extends LinkPicker {
 		pageId: string,
 		opts: ReadOptions
 	): Promise<{ offer: LinkOffer | null; unread: boolean }> {
-		const surface = { asksGuess: this.asksGuess, inPlayer: this.inPlayer };
+		const surface = {
+			asksGuess: this.asksGuess,
+			inPlayer: this.inPlayer,
+			carried: this.carriesGuess
+		};
 		return surfaceOfferRead(this.#deps, row, pageId, surface, opts);
 	}
 
 	/** Whether the arrival may ask about a guess: a session no guess
 	 *  opened only changes again a show the user named. */
 	protected get asksGuess(): boolean {
+		return true;
+	}
+
+	/** Whether the arrival carries the verdict of the guessed card its
+	 *  session was opened from ($lib/history/link-offer.ts `linkOffer`).
+	 *  The show page arrives with a card's row only from that card's
+	 *  guessed player (`?guessed=`), so it does. */
+	protected get carriesGuess(): boolean {
 		return true;
 	}
 

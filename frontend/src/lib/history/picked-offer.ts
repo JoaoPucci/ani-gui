@@ -49,6 +49,16 @@ export function offerAgain(
 	return pickedOffer(deps, row, pageId, (entry) => picked || entry.named === true, opts);
 }
 
+/** What a surface is, for its offer: whether it may ask about a guess
+ *  (`asksGuess`), whether it is the player (`inPlayer`), and whether
+ *  its session carries the verdict of the guessed card it was opened
+ *  from (`carried`, $lib/history/link-offer.ts `linkOffer`). */
+export interface OfferSurface {
+	asksGuess: boolean;
+	inPlayer: boolean;
+	carried?: boolean;
+}
+
 /** The offer a surface showing `pageId` makes for the card row `row`:
  *  a guess's when the surface may ask about one (`asksGuess`), else the
  *  way to change again a row the user named a show for (`offerAgain`). */
@@ -56,10 +66,13 @@ export async function surfaceOffer(
 	deps: LinkDeps,
 	row: string | null,
 	pageId: string,
-	surface: { asksGuess: boolean; inPlayer: boolean },
+	surface: OfferSurface,
 	opts?: ReadOptions
 ): Promise<LinkOffer | null> {
-	const guess = surface.asksGuess ? await linkOffer(deps, row, pageId, opts) : null;
+	// A line picked on the player since the app started is named, though
+	// its note may not have been read: it is only offered again.
+	const carried = surface.carried === true && !(surface.inPlayer && row && pickedRow(row));
+	const guess = surface.asksGuess ? await linkOffer(deps, row, pageId, opts, carried) : null;
 	return guess ?? offerAgain(deps, row, pageId, surface.inPlayer, opts);
 }
 
@@ -69,7 +82,7 @@ export async function surfaceOfferRead(
 	deps: LinkDeps,
 	row: string | null,
 	pageId: string,
-	surface: { asksGuess: boolean; inPlayer: boolean },
+	surface: OfferSurface,
 	opts?: ReadOptions
 ): Promise<{ offer: LinkOffer | null; unread: boolean }> {
 	let failed = false;
