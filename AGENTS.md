@@ -4,7 +4,7 @@ Operational contract for any AI agent (Claude Code, Codex, others) working in th
 
 ## 1. Project map
 
-`ani-gui` is a desktop app: an Electron shell (`electron/`) hosts a SvelteKit static SPA (`frontend/`) and launches a Rust sidecar (`backend/`) that resolves streams natively. Rust is the default language for any piece of logic; choosing another needs a stated reason, as "Choosing between options" in §14 describes.
+`ani-gui` is a desktop app: an Electron shell (`electron/`) hosts a SvelteKit static SPA (`frontend/`) and launches a Rust sidecar (`backend/`) that resolves streams natively. The app's logic belongs in the Rust backend by default, and its rendering in the renderer's own stack; "Choosing between options" in §14 says what each covers.
 
 The project began as a fork of [`pystardust/ani-cli`](https://github.com/pystardust/ani-cli) that drove the vendored shell scraper as a subprocess. Nothing of that remains in the tree: resolution went native, the packages stopped carrying the script, and the repository stopped vendoring it. `backend/src/legacy_script.rs` exists only to delete the copy earlier versions maintained in the user's cache, and pulling from upstream ended with the vendoring.
 
@@ -105,7 +105,7 @@ The full pyramid (unit → acceptance → e2e → property → architectural inv
 
 **The coverage floors (`rust.*`, `frontend.*`, `bash.*`) are also firm — tighten-only.** `node tools/check-coverage-baseline.mjs --update` now refuses to lower a floor below the recorded baseline, even if the current measurement would drop it. A PR that removes coverage must restore it (delete-with-tests, port the assertions to a new layer), not paper over the regression by re-baselining. Use `--update` when tests were deliberately added or scope grew and the floor should genuinely rise; never as a workaround for new code that skipped testing.
 
-**Svelte component logic must be testable.** The M3 design + UX detour shipped several pieces of behaviour inside `.svelte` files (BackButton depth tracking, topbar dropdown state machine, detail-page URL `$effect`s, hero rotation). Mounting Svelte 5 components against SvelteKit's runtime in vitest is brittle, so the rule is: **when you find yourself writing more than a couple of lines of imperative logic inside a `<script>`, move it out of the component into a module of its own and unit-test the module.** The component becomes a thin adapter that pulls inputs from the Svelte runtime and hands them to the pure function. Where the logic is written is chosen as "Choosing between options" in §14 describes; when it stays in the renderer, its module sits under `$lib` beside the component. `$lib/history/nav-depth.ts` is the canonical example — the layout's `afterNavigate` hook is glue around a tested function: it passes the event, `page.state` and the browser's index for the entry in, and writes back the stamp it gets.
+**Svelte component logic must be testable.** The M3 design + UX detour shipped several pieces of behaviour inside `.svelte` files (BackButton depth tracking, topbar dropdown state machine, detail-page URL `$effect`s, hero rotation). Mounting Svelte 5 components against SvelteKit's runtime in vitest is brittle, so the rule is: **when you find yourself writing more than a couple of lines of imperative code inside a `<script>`, extract it into a sibling `.ts` module under `$lib` and unit-test the module.** The component becomes a thin adapter that pulls inputs from the Svelte runtime and hands them to the pure function. This keeps rendering code, as §14's "Choosing between options" defines it, testable; logic in that subsection's sense belongs in the backend by default, not in this module. `$lib/history/nav-depth.ts` is the canonical example — the layout's `afterNavigate` hook is glue around a tested function: it passes the event, `page.state` and the browser's index for the entry in, and writes back the stamp it gets.
 
 Known test debt (extract + unit-test next time you touch them):
 
@@ -369,34 +369,71 @@ may be weighed against the rest.
 
 The ranking is how a recommendation is made, not a licence to decide
 alone. When the choice is the maintainer's — anything users see,
-scope (deferring work always is), a new dependency, or a real
-trade-off between these criteria — put the options to them, as
+scope (deferring work always is), anything new to the stack, or a
+real trade-off between these criteria — put the options to them, as
 **Ask** above describes, with the ranking as the recommendation.
 
-The language a piece of logic is written in is one of these choices,
-ranked like any other. Rust is the default. This repository is
-developed mostly by AI agents, and a compiler that checks types,
-ownership and exhaustive matches turns their mistakes into build
-failures rather than defects a user meets at runtime — on every
-later change as well as the first.
+The stack is a Rust backend and a SvelteKit frontend in an Electron
+shell, plus the tools the app already uses: the binaries its packages
+bundle, listed in the `DEPS` of `electron/scripts/fetch-linux-deps.mjs`
+and `fetch-windows-deps.mjs`, the external programs it runs, listed
+under External processes in `docs/architecture.md`, and the libraries
+its manifests already declare. Anything new to it is the
+maintainer's decision: another language, a library or binary in any
+language, a new runtime, toolchain or build step, or a piece of logic
+placed outside the Rust backend against the default below. It is put
+to them before it is built, with the investigation and the ranking as
+the recommendation, and never appears first in a pull request.
 
-Choosing any other language for a piece of logic needs a reason
-specific to that logic, written in the pull request that makes the
-choice, and the reason names what Rust would cost there, by the
-criteria above.
+Where the code a change adds lives, and so its language, is one of
+these choices. Logic — the app's decisions about its data and the
+rules it follows whatever the screen shows: matching, naming,
+grouping, ranking and validating its data, and its maths — belongs in
+the Rust backend by default. That includes repeating a decision the
+backend already makes, outside the backend. A check at a trust
+boundary, or the handling of an answer that fails or is not the shape
+expected, is not such a repeat. New logic is not written in another
+language because the code it touches is there; "it was already written
+that way" is not a reason for where new logic goes. A different choice
+needs a reason specific to that logic, naming what Rust would cost
+there by the criteria above, and it is the maintainer's, put to them
+as the stack paragraph describes.
 
-The choice is made each time: no part of the code is given a language
-in advance, and a reason given for one piece does not carry over to
-the next. "It was already written that way" is not a reason, and
-neither is "it started there" or "the code around it is in that
-language". Adding logic to code in another language needs a reason
-of its own, the same as writing it new; where none holds, the added
-logic is written in Rust. Whether the code beside it moves too is ranked like
-any other option, and a move larger than the change is a scope
-question for the maintainer, as **Ask** describes.
+The default is Rust because this repository is developed mostly by AI
+agents. A compiler that checks types, ownership and exhaustive
+matches turns their mistakes into build failures rather than defects
+a user meets at runtime.
 
-Tests are written for their subject's layer, as §2 requires. Markup,
-styles and configuration are not logic in this sense.
+Rendering — the code that draws and drives the interface, and state
+that exists only on screen — is written in the renderer's own stack
+and needs no language reason. A decision that would come out the same
+with nothing on screen is logic; one that exists only because of what
+is on screen is rendering. Text shown to the user is resolved as §4
+describes. Rendering is not put in Rust to satisfy this rule, whether
+behind a request to the backend or compiled to WebAssembly.
+
+The split is the default, not a sorting machine every piece has to
+fit. A piece the test above does not settle — part of it would stand
+with nothing on screen and part would not, or it is a protocol
+carried across both sides — is decided for that piece by the criteria
+above. Where any of its logic would land outside the Rust backend,
+the choice and its reason go to the maintainer before it is built, as
+the stack paragraph describes, and the pull request repeats them.
+Showing a decision on screen does not make it such a piece. A
+well-reasoned exception is the rule working, not breaking.
+
+Code doing a job the backend cannot do — starting it, building or
+packaging the app, checking it — is written where that job runs, in
+the language already used there; another is new to the stack. Tests
+are written for their subject's layer, as §2 requires. Configuration
+is not logic in this sense.
+
+This decides where the logic a change adds goes. It does not ask for
+existing code to be ported. A fix, making existing code do what it
+already sets out to do, stays where that code is. When added logic
+cannot stand apart from a rule that lives elsewhere, adding it there
+and moving the rule are both options, and the choice is the
+maintainer's: put both to them, as **Ask** describes.
 
 ## 15. Every change ships on every platform we package
 
