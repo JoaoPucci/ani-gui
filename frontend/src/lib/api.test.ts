@@ -1,3 +1,4 @@
+import { guessPlayed, notePlayed, __resetGuessPlaysForTests } from '$lib/history/guess-plays';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readPosition, savePosition } from './play/watch-position';
 import { getLocale } from '$lib/paraglide/runtime';
@@ -344,6 +345,41 @@ describe('playExternal', () => {
 			episode: '5',
 			mode: 'dub'
 		});
+	});
+});
+
+describe('a handoff and the guessed plays it settles ($lib/history/guess-plays)', () => {
+	beforeEach(() => __resetGuessPlaysForTests());
+
+	it("settles the show's guessed line only once the handoff went out", async () => {
+		for (const handoff of [playExternal, playSyncplay]) {
+			__resetGuessPlaysForTests();
+			notePlayed({ guess_row: 'hianime:show-1', guess_id: '42' });
+			globalThis.fetch = mockFetchOnce(
+				{ code: 'error.syncplay.spawn_failed' },
+				500
+			) as unknown as typeof fetch;
+			await expect(
+				handoff({ title: 'Show', episode: '1', mode: 'sub', kitsu_id: '42' })
+			).rejects.toBeDefined();
+			// A handoff that failed played nothing.
+			expect(guessPlayed('hianime:show-1', '42')).toBe(true);
+			globalThis.fetch = mockFetchOnce(null, 202) as unknown as typeof fetch;
+			await handoff({ title: 'Show', episode: '1', mode: 'sub', kitsu_id: '42' });
+			expect(guessPlayed('hianime:show-1', '42')).toBe(false);
+		}
+	});
+
+	it("notes a guessed session's handoff for its line", async () => {
+		globalThis.fetch = mockFetchOnce(null, 202) as unknown as typeof fetch;
+		await playExternal({
+			title: 'Show',
+			episode: '1',
+			mode: 'sub',
+			guess_row: 'hianime:show-1',
+			guess_id: '42'
+		});
+		expect(guessPlayed('hianime:show-1', '42')).toBe(true);
 	});
 });
 
