@@ -131,6 +131,24 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 		expect(apiMock.availabilityWarm).not.toHaveBeenCalled();
 	});
 
+	it("hands the visit's signal to the batch, so the page that asked can cancel it", async () => {
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true } });
+		const visit = new AbortController();
+		await filterAvailable([ref('a')], 'sub', { signal: visit.signal });
+		expect(apiMock.availabilityBatch).toHaveBeenLastCalledWith(['a'], 'sub', {
+			signal: visit.signal
+		});
+	});
+
+	it('answers a cancelled batch with the abort, not with the whole list, and warms nothing', async () => {
+		const visit = new AbortController();
+		visit.abort();
+		const abort = new DOMException('The operation was aborted.', 'AbortError');
+		apiMock.availabilityBatch.mockRejectedValueOnce(abort);
+		await expect(filterAvailable([ref('a')], 'sub', { signal: visit.signal })).rejects.toBe(abort);
+		expect(apiMock.availabilityWarm).not.toHaveBeenCalled();
+	});
+
 	it('ignores warm-call rejections (fire-and-forget contract)', async () => {
 		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
 		apiMock.availabilityWarm.mockRejectedValueOnce(new Error('warm failed'));
@@ -209,6 +227,21 @@ describe('filterAvailableCacheOnly (high-frequency surfaces)', () => {
 		apiMock.availabilityBatch.mockReset();
 		apiMock.availabilityWarm.mockReset();
 		apiMock.checkAvailability.mockReset();
+	});
+
+	it("hands the search's signal to the batch, and answers a cancelled one with the abort", async () => {
+		const search = new AbortController();
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true } });
+		await filterAvailableCacheOnly([ref('a')], 'sub', { signal: search.signal });
+		expect(apiMock.availabilityBatch).toHaveBeenLastCalledWith(['a'], 'sub', {
+			signal: search.signal
+		});
+		search.abort();
+		const abort = new DOMException('The operation was aborted.', 'AbortError');
+		apiMock.availabilityBatch.mockRejectedValueOnce(abort);
+		await expect(
+			filterAvailableCacheOnly([ref('a')], 'sub', { signal: search.signal })
+		).rejects.toBe(abort);
 	});
 
 	it('returns empty list unchanged without hitting the API', async () => {

@@ -178,7 +178,7 @@ describe('resume, with results still fresh', () => {
 		runner.loadMore();
 		await drain();
 
-		expect(searchPage).toHaveBeenCalledWith('frieren', 40, 'year');
+		expect(searchPage).toHaveBeenCalledWith('frieren', 40, 'year', expect.any(AbortSignal));
 		expect(
 			h
 				.last()
@@ -206,8 +206,8 @@ describe('resume, asking again', () => {
 		await drain();
 
 		expect(vi.mocked(h.deps.searchPage).mock.calls).toEqual([
-			['frieren', 0, 'year'],
-			['frieren', 20, 'year']
+			['frieren', 0, 'year', expect.any(AbortSignal)],
+			['frieren', 20, 'year', expect.any(AbortSignal)]
 		]);
 		expect(h.last().some((x) => x.id === '21')).toBe(true);
 		expect(h.reached).toEqual([true]);
@@ -219,7 +219,7 @@ describe('resume, asking again', () => {
 		const h = harness();
 		await createSearchRunner(h.deps).resume(saved, { now: saved.capturedAt, reload: true });
 		await drain();
-		expect(h.deps.searchPage).toHaveBeenCalledWith('frieren', 0, 'year');
+		expect(h.deps.searchPage).toHaveBeenCalledWith('frieren', 0, 'year', expect.any(AbortSignal));
 		expect(h.reached).toEqual([true]);
 	});
 
@@ -230,7 +230,7 @@ describe('resume, asking again', () => {
 		});
 		await createSearchRunner(h.deps).resume(saved, { now: saved.capturedAt, reload: false });
 		await drain();
-		expect(h.deps.searchPage).toHaveBeenCalledWith('frieren', 0, 'year');
+		expect(h.deps.searchPage).toHaveBeenCalledWith('frieren', 0, 'year', expect.any(AbortSignal));
 	});
 
 	it('stops at the pages the reader had when the card no longer shows', async () => {
@@ -302,7 +302,9 @@ describe('resume against other runs', () => {
 		await resumed;
 		await run;
 		expect(h.reached).toEqual([]);
-		expect(vi.mocked(h.deps.searchPage).mock.calls).toEqual([['himmel', 0, 'relevance']]);
+		expect(vi.mocked(h.deps.searchPage).mock.calls).toEqual([
+			['himmel', 0, 'relevance', expect.any(AbortSignal)]
+		]);
 	});
 });
 
@@ -345,6 +347,6 @@ describe('the age of saved results', () => {
 		clock = first.capturedAt + 70 * 60_000;
 		await createSearchRunner(h.deps).resume(again, { now: clock, reload: false });
 		await drain();
-		expect(h.deps.searchPage).toHaveBeenCalledWith('frieren', 0, 'year');
+		expect(h.deps.searchPage).toHaveBeenCalledWith('frieren', 0, 'year', expect.any(AbortSignal));
 	});
 });
