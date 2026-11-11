@@ -150,7 +150,7 @@ test("a secret service that never answers keeps neither the window nor the first
     });
     await routeContext(context, "**/api/app-info", (r) => r.fulfill(json(appInfo)));
     await routeContext(context, "**/api/history", (r) => r.fulfill(json(emptyHistory)));
-    await routeContext(context, "**/api/kitsu/trending", (r) =>
+    await routeContext(context, "**/api/kitsu/trending-anilist", (r) =>
       r.fulfill(json(trending)),
     );
     await routeContext(context, "**/api/kitsu/top-rated", (r) =>
