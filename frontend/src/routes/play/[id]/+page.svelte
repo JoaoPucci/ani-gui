@@ -219,7 +219,8 @@
 	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
 	import { noteSwitch } from '$lib/history/guess-slip';
 	import { appLinkDeps } from '$lib/history/link-deps';
-	import { switchShow } from '$lib/play/switch-show';
+	import { switchShow, type SwitchRequest, type SwitchShowDeps } from '$lib/play/switch-show';
+	import { switchToPick as runPickSwitch } from '$lib/play/pick-switch';
 	import { sessionShow } from '$lib/play/session-show';
 	import { carryRate, rateFor, takeRate } from '$lib/play/rate-carry';
 	import { takeSwitch } from '$lib/history/guess-slip';
@@ -2726,89 +2727,82 @@
 	 *  the other show (./+layout.svelte); a stream that cannot be had
 	 *  leaves the episode on screen and says so. */
 	async function switchToPick() {
-		const pick = playLink.linked;
-		if (!pick || switchBusy) return;
-		const at = videoEl?.currentTime ?? currentTime;
-		const wasPlaying = videoEl ? !videoEl.paused : false;
-		videoEl?.pause();
-		// The pick's own Sub or Dub, which the pick took from the session
-		// when it had none; the session's when the storage refused it.
-		const mode = storedAudio(pick.id) ?? audio;
-		carrySwitchAudio(pick.id, mode);
-		const version = storedChoice(pick.id);
-		const caption = storedCaption(pick.id);
-		const here = navigationClaims.claim();
-		switchBusy = true;
-		switchProgress = null;
-		try {
-			const outcome = await switchShow(
-				{
-					resolve: (args) =>
-						getOrFire(
-							makeKey(pick.id, episodeNum, mode, version, undefined, args.caption),
-							(emit, signal) => playStream(args, emit, signal),
-							(p) => {
-								switchProgress = progressLabel(p);
-							}
-						),
-					record: (args, session, episode) =>
-						void recordPlayed(
-							{
-								args,
-								showId: pick.id,
-								episode,
-								show: pick.show,
-								mirror: true,
-								unverified: session.episode_unverified
-							},
-							{ markWatched, syncTrackers: syncWatchedToTrackers }
-						),
-					carry: (showId, episode, seconds) => recoveryResume.capture(showId, episode, seconds),
-					noteSwitch,
-					played: (showId, session, requested) => followPlayed(showId, session, requested),
-					carryRate,
-					forget: (showId, row) => {
-						recoveryResume.forgetShow(showId);
-						takeRate(showId);
-						takeSwitch(row);
-					},
-					open: (showId, session, episode, row) =>
-						/* eslint-disable svelte/no-navigation-without-resolve */
-						goto(
-							resolve('/play/[id]', { id: showId }) +
-								withRow(buildPlayQuery(session, episode), row),
-							{ replaceState: true }
-						).then(
-							() => true,
-							() => false
-						),
-					/* eslint-enable svelte/no-navigation-without-resolve */
-					isCurrent: () => !gone && here()
-				},
-				{
-					to: pick.show,
-					episode: episodeNum,
-					at,
-					row: fromRow,
-					mode,
-					version,
-					caption,
-					rate: videoEl?.playbackRate ?? playbackRate
-				}
-			);
-			// The pick's player took it as it mounted; a switch that opened
-			// none, or whose navigation was overtaken, leaves nothing behind.
-			takeSwitchAudio(pick.id);
-			if (outcome === 'failed') {
+		await runPickSwitch(playLink.linked, {
+			busy: () => switchBusy,
+			setBusy: (busy) => {
+				switchBusy = busy;
+				if (busy) switchProgress = null;
+			},
+			playback: () => ({
+				at: videoEl?.currentTime ?? currentTime,
+				playing: videoEl ? !videoEl.paused : false,
+				rate: videoEl?.playbackRate ?? playbackRate
+			}),
+			pause: () => videoEl?.pause(),
+			resume: () => void videoEl?.play().catch(() => {}),
+			storedAudio,
+			sessionAudio: () => audio,
+			carryAudio: carrySwitchAudio,
+			takeAudio: (showId) => void takeSwitchAudio(showId),
+			choices: (showId) => ({ version: storedChoice(showId), caption: storedCaption(showId) }),
+			episode: () => episodeNum,
+			row: () => fromRow,
+			// Claimed as the switch runs, never by a click the lock turns
+			// away: that would outdate the play holding it.
+			run: (req) => switchShow(pickSwitchEffects(req, navigationClaims.claim()), req),
+			failed: (pick) =>
 				toastStore.push({
 					kind: 'error',
 					message: m.play_link_switch_failed({ title: pick.title })
-				});
-				if (wasPlaying) void videoEl?.play().catch(() => {});
-			}
-		} finally {
-			switchBusy = false;
-		}
+				})
+		});
+	}
+
+	/** The app's effects for a switch to `req.to` ($lib/play/switch-show). */
+	function pickSwitchEffects(req: SwitchRequest, here: () => boolean): SwitchShowDeps {
+		const pickId = req.to.id;
+		return {
+			resolve: (args) =>
+				getOrFire(
+					makeKey(pickId, req.episode, req.mode, req.version, undefined, args.caption),
+					(emit, signal) => playStream(args, emit, signal),
+					(p) => {
+						switchProgress = progressLabel(p);
+					}
+				),
+			record: (args, session, episode) =>
+				void recordPlayed(
+					{
+						args,
+						showId: pickId,
+						episode,
+						show: req.to,
+						mirror: true,
+						unverified: session.episode_unverified
+					},
+					{ markWatched, syncTrackers: syncWatchedToTrackers }
+				),
+			carry: (showId, episode, seconds) => recoveryResume.capture(showId, episode, seconds),
+			noteSwitch,
+			played: (showId, session, requested) => followPlayed(showId, session, requested),
+			carryRate,
+			forget: (showId, row) => {
+				recoveryResume.forgetShow(showId);
+				takeRate(showId);
+				takeSwitch(row);
+			},
+			open: (showId, session, episode, row) =>
+				/* eslint-disable svelte/no-navigation-without-resolve */
+				goto(
+					resolve('/play/[id]', { id: showId }) + withRow(buildPlayQuery(session, episode), row),
+					{ replaceState: true }
+				).then(
+					() => true,
+					() => false
+				),
+			/* eslint-enable svelte/no-navigation-without-resolve */
+			isCurrent: () => !gone && here()
+		};
 	}
 
 	/** Hand off to a fresh resolve when the player layer fails
