@@ -120,16 +120,22 @@ export async function searchCandidates(
  *  asks them; a row whose match cannot be read is left out. For a card
  *  the user named a show for (`saved`), the rows are those recorded as
  *  that show: the naming moved them all, and no guess matches them now.
- *  Read with no visit's signal: the rows it names are the ones a link
- *  writes, and a link still out when the page goes is saved all the same. */
-export async function guessedGroup(deps: LinkDeps, offer: LinkOffer): Promise<string[]> {
-	const others = (await deps.history()).filter((e) => e.id !== offer.entry.id);
+ *  The picker reads it ahead with its arrival's signal (`opts`); a link
+ *  that finds none ready reads it with none, since a link still out when
+ *  the page goes is saved all the same. */
+export async function guessedGroup(
+	deps: LinkDeps,
+	offer: LinkOffer,
+	opts?: ReadOptions
+): Promise<string[]> {
+	const read = readOpts(opts ?? {});
+	const others = (await deps.history(...read)).filter((e) => e.id !== offer.entry.id);
 	const saved = offer.saved;
 	const same = await Promise.all(
 		others.map((e) =>
 			(saved === undefined
-				? guessedAs(deps, e, offer.current.id)
-				: deps.resolve(e).then(({ match }) => (match?.id === saved ? match : null))
+				? guessedAs(deps, e, offer.current.id, opts)
+				: deps.resolve(e, ...read).then(({ match }) => (match?.id === saved ? match : null))
 			).catch(() => null)
 		)
 	);

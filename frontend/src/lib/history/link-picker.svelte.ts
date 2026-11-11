@@ -65,7 +65,7 @@ export class LinkPicker {
 
 	/** `read(opts)`, with the signal of the arrival's reads, settled
 	 *  only while that arrival's reads last. */
-	#kept<T>(read: (opts: { signal?: AbortSignal }) => Promise<T>): Promise<T> {
+	protected kept<T>(read: (opts: { signal?: AbortSignal }) => Promise<T>): Promise<T> {
 		const visit = this.#visit;
 		return visit ? visit.keep(read({ signal: visit.signal })) : read({});
 	}
@@ -77,7 +77,7 @@ export class LinkPicker {
 		this.failed = false;
 		this.candidates = null;
 		const query = ++this.#query;
-		const found = await this.#kept((opts) => loadCandidates(this.#pickerDeps, offer, opts));
+		const found = await this.kept((opts) => loadCandidates(this.#pickerDeps, offer, opts));
 		if (query === this.#query && this.offer === offer) this.candidates = found;
 	}
 
@@ -90,7 +90,7 @@ export class LinkPicker {
 		const asked = ++this.#query;
 		const current = () => asked === this.#query && this.offer === offer;
 		try {
-			const found = await this.#kept((opts) =>
+			const found = await this.kept((opts) =>
 				searchCandidates(this.#pickerDeps, offer, query, opts)
 			);
 			if (current()) this.candidates = found;

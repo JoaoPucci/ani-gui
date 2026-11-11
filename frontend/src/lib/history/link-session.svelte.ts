@@ -129,7 +129,9 @@ export class LinkSession extends LinkPicker {
 		// read leaves the card's row alone, as a row whose match cannot
 		// be read is left out of the group.
 		const ask = ++this.#groupAsk;
-		void guessedGroup(this.#deps, offer)
+		// Read ahead under the arrival's reads: the page going cancels it,
+		// and a cancelled read sets no group.
+		void this.kept((opts) => guessedGroup(this.#deps, offer, opts))
 			.catch(() => [offer.entry.id])
 			.then((group) => {
 				if (ask === this.#groupAsk && this.offer === offer) this.group = group;
