@@ -95,16 +95,17 @@ async function resolveWithTrust(
 	//    Only a mapping a play stored may be recorded on the row.
 	const stored = await storedBinding(preliminary, opts);
 	if (stored) return { match: stored.ref, trusted: stored.played };
-	const read = { unread: false };
+	// `unread` only when Kitsu could not be searched.
+	const read: { unread?: true } = {};
 	const match = await guessKitsuMatch(preliminary, opts, read);
-	return read.unread ? { match, trusted: false, unread: true } : { match, trusted: false };
+	return { match, trusted: false, ...read };
 }
 
 /** Steps 1-5: everything below the stored mapping is a guess. */
 async function guessKitsuMatch(
 	preliminary: ResumeTarget,
 	opts: ReadOptions,
-	read: { unread: boolean }
+	read: { unread?: true }
 ): Promise<KitsuAnimeRef | null> {
 	// 1) Cache lookup. If we've resolved this title→id before, fetch
 	//    the (cached, 7d-TTL) detail and short-circuit.
