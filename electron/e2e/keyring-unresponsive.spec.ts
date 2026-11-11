@@ -133,9 +133,12 @@ test("a secret service that never answers keeps neither the window nor the first
   const saved = Buffer.concat([Buffer.from("v11"), Buffer.alloc(32, 7)]);
   fs.writeFileSync(path.join(tokens, "anilist.bin"), saved);
 
-  const bus = await busWithSilentSecretService(path.join(tmp, "bus"));
+  const bus = await busWithSilentSecretService(path.join(tmp, "bus")).catch((err) => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    throw err;
+  });
   // The teardown below stops the bus and removes the profile once the
-  // app is up; a launch that never starts is cleaned up here.
+  // app is up; a bus or a launch that never starts is cleaned up here.
   const app = await launchPackagedApp({
     ...process.env,
     XDG_STATE_HOME: path.join(tmp, "state"),
