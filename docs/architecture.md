@@ -645,9 +645,10 @@ the string `"source"` is ignored rather than dropping the notice; the priority o
 `warning`, `critical`; the version bounds `X.Y.Z`. At most eight notices
 are kept. Nothing in the block is HTML, and nothing renders it as HTML.
 
-The window reads the answer strictly again (`$lib/notices/published`):
-a field that is not what it should be drops its notice, and a link is a
-plain `http` or `https` address or nothing. Each notice is a row of its
+The backend is the one place a notice is validated. The window
+(`$lib/notices/published`) checks only that the answer is the
+documented object with a list, and reads anything else, or a failed
+request, as nothing published. Each notice is a row of its
 own, "From the developer", coloured by its priority (`warning` amber,
 `critical` oxblood), toasting on arrival like any other row but never
 while a video plays, whatever its priority. Its words are drawn as text,
