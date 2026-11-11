@@ -129,6 +129,12 @@ export class InPlaceLinkSession extends LinkSession {
 		return super.arrive(row, pageId);
 	}
 
+	/** Whether the latest arrival's offer stands: null when it could not
+	 *  be read, so a check of the card may be asked again. */
+	get stands(): boolean | null {
+		return this.offer !== null;
+	}
+
 	/** The surface is gone: the page was left. Whatever is still out
 	 *  answers to nothing on it, and leaves no pick to switch to. */
 	leave(): void {

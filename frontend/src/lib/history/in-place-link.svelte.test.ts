@@ -550,3 +550,29 @@ describe('a surface left', () => {
 		expect(signals.every((sig) => sig!.aborted)).toBe(true);
 	});
 });
+
+describe("whether a card's offer stands", () => {
+	it('is unknown when the offer could not be read, and known once it can', async () => {
+		const f = fake();
+		const history = f.deps.history;
+		let fail = true;
+		f.deps.history = async () => {
+			if (fail) throw new Error('database busy');
+			return history();
+		};
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		expect(s.stands).toBeNull();
+		fail = false;
+		await s.arrive(CARD.id, GUESS.id);
+		expect(s.stands).toBe(true);
+	});
+
+	it('does not stand for a row read and offered nothing', async () => {
+		const f = fake();
+		f.rows = [{ ...CARD, kitsu_id: RIGHT.id }];
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		expect(s.stands).toBe(false);
+	});
+});

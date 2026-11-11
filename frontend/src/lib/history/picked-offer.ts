@@ -62,3 +62,15 @@ export async function surfaceOffer(
 	const guess = surface.asksGuess ? await linkOffer(deps, row, pageId, opts) : null;
 	return guess ?? offerAgain(deps, row, pageId, surface.inPlayer, opts);
 }
+
+/** `surfaceOffer`, and whether it could not be read (`unread`): a
+ *  history or match read failed, so no offer is known either way. */
+export async function surfaceOfferRead(
+	deps: LinkDeps,
+	row: string | null,
+	pageId: string,
+	surface: { asksGuess: boolean; inPlayer: boolean },
+	opts?: ReadOptions
+): Promise<{ offer: LinkOffer | null; unread: boolean }> {
+	return { offer: await surfaceOffer(deps, row, pageId, surface, opts), unread: false };
+}

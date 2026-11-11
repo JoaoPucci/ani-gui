@@ -358,6 +358,22 @@ describe('a card that stopped being a guess while Home was open', () => {
 		expect(dialog()).toBeNull();
 	});
 
+	it('keeps its pill when the check cannot read the history, and opens on the next click', async () => {
+		await openHome();
+		// The database is busy for the check's read, once.
+		server.use(
+			http.get(`${API_BASE}/api/history`, () => new HttpResponse(null, { status: 503 }), {
+				once: true
+			})
+		);
+		pill(JOJO_CARD)!.click();
+		await settle();
+		expect(pill(JOJO_CARD)).not.toBeNull();
+		expect(dialog()?.open ?? false).toBe(false);
+		pill(JOJO_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+	});
+
 	it('offers no pick on its failed resume', async () => {
 		await openHome();
 		backend.rows = backend.rows.map((r) => (r.id === BC_CARD ? { ...r, kitsu_id: BC_RIGHT } : r));

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import type { LinkDeps } from './link-offer';
 import { notePick, __resetHiddenRowsForTests } from './guess-slip';
-import { offerAgain, pickedOffer, surfaceOffer } from './picked-offer';
+import { offerAgain, pickedOffer, surfaceOffer, surfaceOfferRead } from './picked-offer';
 
 const ref = (id: string) => ({ id, canonical_title: `Show ${id}` }) as KitsuAnimeRef;
 const CARD: HistoryEntry = { id: 'hianime:black-clover-949', title: 'Black Clover', ep_no: '1' };
@@ -118,5 +118,37 @@ describe('surfaceOffer', () => {
 			saved: '4013'
 		});
 		expect(await surfaceOffer(d(), CARD.id, '4013', { ...surface, inPlayer: false })).toBeNull();
+	});
+});
+
+// A check whose reads failed knows nothing: Home must be able to ask it
+// again, rather than take the card for one no longer guessed.
+describe('surfaceOfferRead', () => {
+	const surface = { asksGuess: true, inPlayer: false };
+
+	it('says it could not read the history or the match', async () => {
+		for (const over of [
+			{ history: async () => Promise.reject(new Error('io')) },
+			{ resolve: async () => Promise.reject(new Error('kitsu')) }
+		]) {
+			expect(await surfaceOfferRead(d(over), CARD.id, '4013', surface)).toEqual({
+				offer: null,
+				unread: true
+			});
+		}
+	});
+
+	it('reads as read when the row simply makes no offer', async () => {
+		expect(await surfaceOfferRead(d(), CARD.id, '7158', surface)).toEqual({
+			offer: null,
+			unread: false
+		});
+	});
+
+	it('hands back the offer it found', async () => {
+		const named = d({ history: async () => [{ ...picked, named: true }] });
+		const read = await surfaceOfferRead(named, CARD.id, '4013', surface);
+		expect(read.unread).toBe(false);
+		expect(read.offer).toMatchObject({ saved: '4013' });
 	});
 });
