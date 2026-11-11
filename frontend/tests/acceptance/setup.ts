@@ -11,12 +11,13 @@
 //     else should fail loudly rather than silently return undefined.
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { afterAll, afterEach, aroundEach, beforeAll } from 'vitest';
+import { afterAll, afterEach, aroundEach, beforeAll, beforeEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 
 import { installElementAnimateStub } from './stubs/element-animate';
 import { isSession } from './session-contract';
+import { __resetGuessPlaysForTests } from '../../src/lib/history/guess-plays';
 
 // Before any component mounts. See the stub for why happy-dom needs
 // it and why only post-mount DOM changes trip over its absence.
@@ -471,6 +472,11 @@ beforeAll(() => {
 	// assertion failure somewhere else entirely.
 	server.listen({ onUnhandledRequest: 'error' });
 });
+
+// The guessed plays the app notes for its run ($lib/history/guess-plays)
+// are a scenario's own: one left by an earlier scenario would make a
+// guessed surface ask where this one expects nothing.
+beforeEach(() => __resetGuessPlaysForTests());
 
 aroundEach(async (runScenario, context) => {
 	await owner.run({ name: context.task.name, ended: false, reported: false }, runScenario);
