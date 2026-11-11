@@ -10,7 +10,8 @@
  * that audio is handed to the next player of the pick
  * ($lib/play/switch-audio.ts) before the switch runs; whatever the
  * switch did, nothing is left carried once it is over, since the pick's
- * player took it as it mounted. A switch that failed says so, and the
+ * player took it as it mounted. A switch that failed — one whose own
+ * effects threw among them — says so, and the
  * episode on screen goes on as it was: playing again if it was playing.
  * One abandoned — the viewer left — does neither.
  *
@@ -75,8 +76,9 @@ export async function switchToPick(
 	deps.carryAudio(pick.id, mode);
 	const { version, caption } = deps.choices(pick.id);
 	deps.setBusy(true);
+	let outcome: SwitchOutcome;
 	try {
-		const outcome = await deps.run({
+		outcome = await deps.run({
 			to: pick.show,
 			episode: deps.episode(),
 			at: playback.at,
@@ -86,13 +88,16 @@ export async function switchToPick(
 			caption,
 			rate: playback.rate
 		});
-		deps.takeAudio(pick.id);
-		if (outcome === 'failed') {
-			deps.failed(pick);
-			if (playback.playing) deps.resume();
-		}
-		return outcome;
+	} catch {
+		// A switch whose own effects threw switched to nothing.
+		outcome = 'failed';
 	} finally {
+		deps.takeAudio(pick.id);
 		deps.setBusy(false);
 	}
+	if (outcome === 'failed') {
+		deps.failed(pick);
+		if (playback.playing) deps.resume();
+	}
+	return outcome;
 }
