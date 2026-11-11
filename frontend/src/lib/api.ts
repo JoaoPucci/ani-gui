@@ -1392,11 +1392,18 @@ export interface FranchiseEntry {
 /** The franchise around an anime (backend
  *  `commands::franchise_walk::Franchise`). Every list but `entries` is
  *  sorted by start (unknown last), then numeric id; an id appears in
- *  one list at most. Ordering, positions and layout are the frontend's
- *  to compute. */
+ *  one list at most. The name is decided here; ordering, positions and
+ *  layout are the frontend's to compute. */
 export interface Franchise {
 	/** The id asked about. */
 	anchor: string;
+	/** The franchise's name: the title of the main story's first series
+	 *  by start, else of its first entry, without Kitsu's format suffix
+	 *  where nothing else in the franchise would then read the same. */
+	name: string;
+	/** The main-story entry the name comes from: the franchise page's
+	 *  artwork and the front card of the strip's poster stack. */
+	name_from: string;
 	/** The run, anchor included (unless the anchor is a side story
 	 *  outside it): start order, then numeric id. */
 	entries: FranchiseEntry[];
