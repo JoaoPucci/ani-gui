@@ -158,6 +158,8 @@ mod meet;
 mod name;
 #[path = "franchise_walk_parents.rs"]
 mod parents;
+#[path = "franchise_walk_place.rs"]
+mod place;
 #[path = "franchise_walk_rules.rs"]
 pub(crate) mod rules;
 #[path = "franchise_walk_sections.rs"]
