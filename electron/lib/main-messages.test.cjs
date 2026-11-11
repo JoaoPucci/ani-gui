@@ -159,3 +159,30 @@ test("languages the app does not ship fall through to the base locale", () => {
   assert.equal(resolveLocale({ configured: null, appLocale: "", preferred: [] }), "en");
   assert.equal(resolveLocale({}), "en");
 });
+
+// The splash's stuck state (lib/splash-stuck.cjs) and the page's name,
+// as the maintainer approved them: one short sentence, sentence-case
+// buttons, no semicolons or dashes.
+test("the stuck state says it is taking longer than usual, and offers Restart and Quit, in every language", () => {
+  const approved = {
+    en: ["Taking longer than usual to start.", "Restart", "Quit"],
+    "pt-BR": ["Está demorando mais que o normal.", "Reiniciar", "Sair"],
+    "es-419": ["Está tardando más de lo normal.", "Reiniciar", "Salir"],
+    ru: ["Запуск идёт дольше обычного.", "Перезапустить", "Выйти"],
+  };
+  assert.deepEqual(Object.keys(approved).sort(), [...shipped.locales].sort());
+  for (const [locale, [line, restart, quit]] of Object.entries(approved)) {
+    const m = TRANSLATIONS[locale];
+    assert.deepEqual([m.splashStuck, m.splashRestart, m.splashQuit], [line, restart, quit], locale);
+    for (const key of ["splashStuck", "splashRestart", "splashQuit", "splashStarting"]) {
+      assert.doesNotMatch(m[key], /[;—–]/, `${locale}.${key}`);
+    }
+  }
+});
+
+test("the splash names itself in every language, and the name says the app is starting", () => {
+  assert.equal(TRANSLATIONS.en.splashStarting, "ani-gui is starting");
+  for (const locale of shipped.locales) {
+    assert.match(TRANSLATIONS[locale].splashStarting, /ani-gui/, locale);
+  }
+});

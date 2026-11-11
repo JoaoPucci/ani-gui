@@ -2,8 +2,9 @@
 // (backend/src/commands/continue_guess.rs) — split from match.ts so its
 // sequencing stays readable and inside the complexity ratchet.
 
-import { kitsuGuessRuledOut, type KitsuAnimeRef } from '$lib/api';
+import { kitsuGuessRuledOut, type KitsuAnimeRef, type ReadOptions } from '$lib/api';
 import type { ResumeTarget } from './resolve';
+import { readOpts } from './read-opts';
 
 /** `hits` less the ones the row rules out: hits past the episode it
  *  reached (for a row a provider the app walks wrote), of another
@@ -23,7 +24,8 @@ export async function admitted(
 	preliminary: ResumeTarget,
 	hits: KitsuAnimeRef[],
 	check: { failed: boolean },
-	search: boolean
+	search: boolean,
+	opts: ReadOptions = {}
 ): Promise<KitsuAnimeRef[]> {
 	if (hits.length === 0) return hits;
 	let out: Set<string>;
@@ -34,7 +36,8 @@ export async function admitted(
 				preliminary.displayEpisode,
 				hits,
 				preliminary.allmangaShowId,
-				search
+				search,
+				...readOpts(opts)
 			)
 		);
 	} catch {

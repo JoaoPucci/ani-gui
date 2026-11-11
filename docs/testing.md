@@ -127,12 +127,13 @@ picked the desktop's Wayland compositor — throws before any window
 opens, saying how to run the suite.
 
 A spec stops the app it launched through `stopApp` in
-`electron/e2e/launch.ts`, and nothing else. Playwright starts the app
+`electron/e2e/launch.ts`, and nothing else but the one exception
+below. Playwright starts the app
 in a process group of its own; `electron/lib/own-group.cjs` sends
 SIGTERM to that group, then SIGKILL to the same group if the app is
 still there, and only while the group is provably the app's: its main
-process not yet reaped, leading the group, running the packaged
-binary. What the app leaves in its group as it exits is killed in the
+process not yet reaped, leading the group, running the binary it was
+launched from. What the app leaves in its group as it exits is killed in the
 turn its exit is reported; after that nothing is signalled, since an
 emptied group's id can be handed to someone else. The backend runs
 outside that group and stops itself when the app's end of its stdin
@@ -150,6 +151,19 @@ only. The launch helper accepts Xvfb only on a GitHub Actions runner
 (`GITHUB_ACTIONS=true`), and refuses any Wayland session there.
 `smoke.spec.ts` checks that the app landed on Wayland in the headless
 session and on X11 in CI.
+
+One process is not launched by the helper: the app the splash's Restart
+starts again (`splash-stuck.spec.ts`). It is outside the test's process
+tree and group, reparented to the session's subreaper when its parent
+exits, so `stopApp` cannot reach it and nothing may walk to it. The
+spec takes its pid from what the app writes into the spec's own
+temporary profile (the single-instance lock, a symlink to
+`<host>-<pid>`), and signals that one pid only after `/proc/<pid>/exe`
+shows it running the spec's own copy of the binary.
+`splash-stuck.spec.ts` runs a hard-linked copy of
+`dist/linux-unpacked/` whose `resources/frontend/build` holds a fixture
+page (`electron/e2e/fixtures/first-page/`), so the late first page is
+real and nothing in the app reads a test switch.
 
 ## Coverage targets
 
