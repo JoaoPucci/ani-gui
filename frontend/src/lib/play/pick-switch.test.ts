@@ -127,6 +127,21 @@ describe('switchToPick', () => {
 		expect(w.busy).toBe(false);
 	});
 
+	it('treats a switch that threw as failed: says so, plays on, leaves nothing carried and frees the lock', async () => {
+		// One of the switch's own effects threw (a storage write refused
+		// as the point is carried over, say).
+		const w = world({}, async () => {
+			throw new Error('storage refused');
+		});
+		expect(await switchToPick(PICK, w.deps)).toBe('failed');
+		expect(w.log).toEqual(['pause', 'run:dub:true', `failed:${PICK.id}`, 'resume']);
+		expect(w.carried).toBeNull();
+		expect(w.busy).toBe(false);
+		// And the next click switches again.
+		w.deps.run = async () => 'switched';
+		expect(await switchToPick(PICK, w.deps)).toBe('switched');
+	});
+
 	it('takes one switch at a time', async () => {
 		let release!: (o: SwitchOutcome) => void;
 		const w = world({}, () => new Promise<SwitchOutcome>((r) => (release = r)));
