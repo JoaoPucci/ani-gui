@@ -1388,18 +1388,12 @@ async fn watch_later_bridge_warms_a_presigned_image_when_it_seeds_the_detail_cac
         .mount(&kitsu)
         .await;
 
-    // The image cache must be this test's own. The shared default
-    // directory persists across runs, and its key is the signature-
-    // stripped URL — `http://127.0.0.1:<port>/cover.jpg` — so once an
-    // earlier run had cached the bytes under the port the OS hands
-    // this mock server again, the warm was served from disk, the
-    // server saw no request, and the assertion failed. Every passing
-    // run left one more port behind, so the flake grew with use.
-    let image_cache = tempfile::tempdir().expect("image cache tempdir");
-    let mut state = state_with_kitsu(&kitsu.uri());
-    std::sync::Arc::get_mut(&mut state)
-        .expect("state not yet shared")
-        .image_cache_dir = image_cache.path().join("images");
+    // The state's image cache is its own and starts empty: the cache
+    // key is the signature-stripped URL, `http://127.0.0.1:<port>/cover.jpg`,
+    // so bytes another run cached under a port the OS hands this mock
+    // server again would serve the warm from disk and the server would
+    // see no request.
+    let state = state_with_kitsu(&kitsu.uri());
     let _ = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], None).await;
 
     // The warm is spawned, so poll for its effect rather than asserting
