@@ -2,10 +2,11 @@
 //! for big franchises (`tests/fixtures/franchise/listings.json`, as
 //! `franchise_corpus_record_test.rs` recorded them), from every anchor
 //! `cases.json` names, against what the strip and the franchise page
-//! must say for it: the run's first entry by start, whether the anchor
-//! is in the main story or around it, and a side story's parent
-//! stories. What the franchise page is named is the frontend's
-//! choice, made from the walk's answers kept as `served-<id>.json`.
+//! must say for it: the run's first entry by start, the franchise's
+//! name and the entry it comes from, whether the anchor is in the main
+//! story or around it, and a side story's parent stories. The walk's
+//! answers are also kept as `served-<id>.json` for the frontend's
+//! tests.
 
 use std::collections::BTreeMap;
 
@@ -50,6 +51,10 @@ struct Case {
     anchor: String,
     /// The title of the run's first entry by start.
     first: String,
+    /// The franchise's name, as the answer carries it.
+    name: String,
+    /// The main-story entry the name comes from.
+    name_from: String,
     /// Where the anchor sits: `entries`, `sides`, `films`, `versions`
     /// or `recaps`.
     anchor_in: String,
@@ -103,6 +108,13 @@ fn wrong(case: &Case, f: &Franchise) -> Vec<String> {
     let first = f.entries.first().map(|e| e.title.as_str());
     if first != Some(case.first.as_str()) {
         out.push(format!("first entry {first:?}, want {:?}", case.first));
+    }
+    let served = serde_json::to_value(f).expect("json");
+    for (field, want) in [("name", &case.name), ("name_from", &case.name_from)] {
+        let got = served.get(field).and_then(|v| v.as_str());
+        if got != Some(want.as_str()) {
+            out.push(format!("{field} {got:?}, want {want:?}"));
+        }
     }
     if !section(f, &case.anchor_in)
         .iter()

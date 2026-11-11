@@ -63,6 +63,8 @@ const none = { versions: [], films: [], sides: [], recaps: [], parents: {}, comp
 const RUN = {
 	...none,
 	anchor: KITSU_ID,
+	name: 'Saga',
+	name_from: '10',
 	entries: [SAGA, SECOND, FINAL],
 	links: [
 		['10', '42'],
@@ -70,9 +72,24 @@ const RUN = {
 	]
 };
 /** The show alone with a film beside it: the franchise link alone. */
-const LINK_ONLY = { ...none, anchor: KITSU_ID, entries: [SECOND], links: [], films: [FILM] };
+const LINK_ONLY = {
+	...none,
+	anchor: KITSU_ID,
+	name: 'Saga: Second Arc',
+	name_from: '42',
+	entries: [SECOND],
+	links: [],
+	films: [FILM]
+};
 /** The show alone: nothing. */
-const ALONE = { ...none, anchor: KITSU_ID, entries: [SECOND], links: [] };
+const ALONE = {
+	...none,
+	anchor: KITSU_ID,
+	name: 'Saga: Second Arc',
+	name_from: '42',
+	entries: [SECOND],
+	links: []
+};
 
 /** An answer the scenario releases by hand. */
 function gate() {

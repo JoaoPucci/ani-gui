@@ -65,6 +65,9 @@ const RECAP = entry('90', 'Saga: Recap', 'special', '2013-01-01', 1);
 
 const FRANCHISE = {
 	anchor: KITSU_ID,
+	// The walk names it after its first series by start.
+	name: 'Saga',
+	name_from: '10',
 	entries: [ORIGINS, SAGA, SECOND, FINAL],
 	links: [
 		['10', '42'],

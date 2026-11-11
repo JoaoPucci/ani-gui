@@ -562,7 +562,14 @@ is defined from the entry being viewed — the anchor — by these rules
 **Side stories.** An anchor whose own run is itself alone, and that
 names a parent story, is walked from its earliest parent story
 instead, and listed beside that run (with the films, if it is a movie)
-with its parents named. Kitsu sometimes lists a pair the wrong way
+with its parents named. So is an anchor whose own run holds no series
+(no TV series, OVA or ONA of more than one episode, or of a count
+Kitsu does not give yet) when the run names a parent story: *My Hero
+Academia*'s four films are linked to each other by sequel, and to the
+seasons only as parent story or other, so from any film the seasons
+are the run and the films sit under Films. A film that names no
+parent of its own is placed under the parents the films linked to it
+name. Kitsu sometimes lists a pair the wrong way
 round, from both sides: [data] on 2026-11-11 *One Piece* (12) named
 *LEGO ONE PIECE* (50656), a two-episode ONA from 2026, as its parent
 story, and *LEGO ONE PIECE* named *One Piece* as its side story. So
@@ -859,7 +866,7 @@ its own where the show has no strip. (Search results were also
 proposed as a way in; that was dropped, see "Decisions recorded
 (after the build)" below, and a study of making franchises findable
 is in the deferred-work log.) A header named after the run's first
-TV series, with your position: "05 ·
+series, with your position: "05 ·
 *Golden Wind* · EP 12" (with a total only for a run with no fork, join
 or cycle) and a Resume button; its hero and accent are set in the
 design section. Below it, sections:
@@ -1176,8 +1183,8 @@ them introduces a new widget style.
 
 - **Placement and anatomy.** The page reuses the show page's frame.
   - **Hero:** the entry the franchise is named after (the run's first
-    TV series in link order, whatever the order setting, see
-    *Masthead*), in the hero band and the masthead's poster, so the artwork
+    series by start, whatever the order setting, see *Masthead*), in
+    the hero band and the masthead's poster, so the artwork
     beside the name is that entry's. The entry being watched has its
     own line beside the Resume button.
   - **Masthead:** the run's name in the italic display serif under a
@@ -1222,9 +1229,9 @@ them introduces a new widget style.
     circle "Linked titles, order unclear", and Recaps have no count.
     The titles with no clear place keep their stretch and its
     heading. The page never
-    says the show is alone, and its name comes from the first TV
-    series among the titles the read reached, else the first of them
-    by its links. The strip's link to the page gives no counts
+    says the show is alone, and its name comes from the first series
+    among the titles the read reached, else the first of them by
+    start. The strip's link to the page gives no counts
     either.
   - A forked run: the numbered path runs up to the fork, and the ways
     on stand side by side, unnumbered. A fork left with one way (the
@@ -1450,11 +1457,14 @@ The rules below hold on every surface:
   linked titles, order unclear" with one sentence on why it has no
   clear order; its entries are listed along their links. In release
   order every one of these is a single numbered line.
-- **Masthead.** The franchise is named after the run's first TV
-  series in link order, skipping the films, pilots, OVAs, ONAs and
-  specials before it (*Lupin III*, not its 1969 *Pilot Film*); a run
-  with no TV series is named after its first entry by its links
-  (*Kara no Kyoukai 1: Fukan Fuukei*). The name drops Kitsu's format
+- **Masthead.** The franchise is named after the run's first series
+  by start, a TV series, OVA or ONA of more than one episode (or of a
+  count Kitsu does not give yet), skipping the films, pilots, specials
+  and one-episode OVAs or ONAs before it (*Lupin III*, not its 1969
+  *Pilot Film*; *FLCL*, its 2000 OVA, not *FLCL Progressive*); a run
+  with no series is named after its first entry by start (*Kara no
+  Kyoukai 1: Fukan Fuukei*). The backend decides the name with the
+  franchise read, and the page shows it. The name drops Kitsu's format
   suffix ("(TV)", "(Movie)", …) unless another
   entry of the franchise would then read the same, ignoring case; the
   suffix then stays, since it is what tells the two apart. *JoJo no
@@ -1623,15 +1633,15 @@ The maintainer answered the second round's six questions:
    *Nisemonogatari* is "02 of 16", and *Off & Monster Season Shin
    Episode*, which has no date and sorts last, "16 of 16".
 6. **The franchise page's masthead** takes its artwork from the entry
-   the name comes from, the run's first TV series in link order, else
-   its first entry by its links (on JoJo, the 2012 series, not
+   the name comes from, the run's first series by start, else its
+   first entry by start (on JoJo's 2012 series, that series, not
    *Steel Ball Run*, which the viewer is watching); the entry being
    watched keeps its own line beside Resume. The name keeps Kitsu's
    "(TV)" where dropping it would clash with another entry's title,
    as decided in the first round. The maintainer first asked for the
    year in its place ("JoJo no Kimyou na Bouken (2012)") and then
    reversed it: the year would read as naming only the first season,
-   not the franchise. The franchise-name function is unchanged.
+   not the franchise. The suffix rule is unchanged.
 
 ### The poster stack and the footer, third round
 
@@ -1738,12 +1748,28 @@ that ends normally it shows the card up to a second early.
    the Movie*, Dragon Ball's first four films), and a TV series Kitsu
    lists as a summary is an other version, not a recap (*Dragon Ball
    Super: Beerus*, beside both *Kai* series).
-6. **A franchise is named after its first TV series.** The films,
-   pilots, OVAs and specials before it are skipped, so *Lupin III* is
-   no longer named after its 1969 pilot film; a run with no TV series
-   keeps its first entry by its links. A film that names a series its
-   parent story reads "Film" on its strip, where any other side story
-   reads "Side story", and the franchise page lists it under Films.
+6. **A franchise is named after its first series.** The first TV
+   series, OVA or ONA of more than one episode by start names it; the
+   films, pilots, specials and one-episode OVAs before it are
+   skipped, so *Lupin III* is no longer named after its 1969 pilot
+   film, and *FLCL* and *R.O.D* are named after the OVAs that started
+   them. A run with no series keeps its first entry by start. The
+   strip's poster stack leads with the same entry. The first build
+   named a franchise after its first TV series by its links, which
+   named *FLCL* after its 2018 sequel and *Fate* after *Fate/Zero*, a
+   prequel released after *Fate/stay night*; counting OVAs and ONAs by
+   links instead would name *Lupin III* after *LUPIN ZERO*, the 2022
+   ONA Kitsu lists as the 1971 series' prequel. A film that names a
+   series its parent story reads "Film" on its strip, where any other
+   side story reads "Side story", and the franchise page lists it
+   under Films.
+7. **Films linked to each other are side stories of the series they
+   name.** *My Hero Academia*'s four films are linked to each other by
+   sequel and to the seasons only as parent story or other; from a
+   film page the films made the main story and the seasons its side
+   stories. A run with no series that names a parent story is now
+   walked from that parent, so the seasons are the main story from
+   every page and the films sit under Films.
 
 ### Decisions recorded: progress and the strip's arrival
 

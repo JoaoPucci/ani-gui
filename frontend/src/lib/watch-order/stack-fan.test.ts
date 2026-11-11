@@ -8,7 +8,7 @@ const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
 
 describe('stackCards', () => {
-	const posters = franchiseSummary(run('jojo')).posters;
+	const posters = franchiseSummary(run('jojo'), run('jojo').nameId).posters;
 
 	it('holds up to the limit of posters, in order', () => {
 		expect(stackCards(posters, 3).map((c) => (c.kind === 'poster' ? c.entry.id : '-'))).toEqual(

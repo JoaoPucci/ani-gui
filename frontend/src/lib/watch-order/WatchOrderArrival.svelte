@@ -88,7 +88,7 @@
 	</div>
 {:else if link}
 	<div class="watch-order watch-order-link" bind:this={drawnEl} in:arrive>
-		<StripFranchiseLink run={link.run} {id} complete={link.complete} />
+		<StripFranchiseLink run={link.run} front={link.front} {id} complete={link.complete} />
 	</div>
 {:else if held}
 	<div

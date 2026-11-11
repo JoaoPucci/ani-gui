@@ -80,6 +80,8 @@ function franchise(
 ) {
 	return {
 		anchor: KITSU_ID,
+		name: 'Saga',
+		name_from: '10',
 		entries: [SAGA, SECOND, ORIGINS, FINAL],
 		links: [
 			['10', KITSU_ID],

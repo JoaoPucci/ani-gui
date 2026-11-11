@@ -42,6 +42,9 @@ export function franchiseArb(): fc.Arbitrary<FranchiseData> {
 		const anyId = fc.constantFrom(...ids, '999', '0');
 		return fc.record({
 			anchor: anyId,
+			name: fc.string({ maxLength: 8 }),
+			// The backend names it after one of its run's entries.
+			name_from: ids.length > 0 ? fc.constantFrom(...ids) : fc.constant('0'),
 			entries: fc.constant(entries),
 			links: fc.array(fc.tuple(anyId, anyId), { maxLength: 10 }),
 			versions: fc.constant([]),
@@ -80,6 +83,8 @@ export function franchiseAroundArb(): fc.Arbitrary<FranchiseData> {
 			const id = fc.constantFrom(...ids);
 			return fc.record({
 				anchor: fc.constantFrom(...ids, ...around.map((e) => e.id)),
+				name: fc.string({ maxLength: 8 }),
+				name_from: id,
 				entries: fc.constant(entries),
 				links: fc.array(fc.tuple(id, id), { maxLength: 8 }),
 				versions: fc.constant(of(0)),

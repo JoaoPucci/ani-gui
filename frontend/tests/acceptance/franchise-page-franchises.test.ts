@@ -3,9 +3,10 @@
 // Each page is served the franchise the backend's walk answers for it
 // over the listings Kitsu served (tests/fixtures/franchise/served-*.json,
 // kept equal to the walk by backend/src/commands/franchise_corpus_test.rs).
-// The page is named after the main story's first TV series by its
-// links (One Piece, also from its spin-off LEGO ONE PIECE; Lupin III,
-// not its pilot film), or its first title where it holds no TV series.
+// The page is named as the walk names the franchise: after the main
+// story's first series by start (One Piece, also from its spin-off LEGO
+// ONE PIECE; Lupin III, not its pilot film; FLCL, its 2000 OVA), or its
+// first title where it holds no series.
 // Every row carries its whole title, a film sits under Films whatever
 // role Kitsu gave it, a TV re-edit sits with the other versions, and
 // the recaps show like any other section.
@@ -101,8 +102,9 @@ const inRail = (eyebrow: string, id: string) =>
 
 /**
  * Every corpus anchor's franchise page and the name it carries: the
- * first TV series in the main story by its links, else, where the main
- * story holds none, its first title by its links.
+ * name the backend's walk answers with (`name`), from the main story's
+ * first series by start, skipping the films, pilots, specials and
+ * one-episode OVAs before it, else from its first title.
  */
 const HEADINGS: readonly (readonly [string, string, string])[] = [
 	['12', 'One Piece', 'One Piece'],
@@ -127,33 +129,32 @@ const HEADINGS: readonly (readonly [string, string, string])[] = [
 	['818', 'Gintama', 'Gintama'],
 	['7241', 'Gintama', 'its second film, in the main story'],
 	['486', 'Pocket Monsters', 'Pokémon'],
-	// The 1969 pilot film comes first by its links; the 1971 series names it.
-	['1265', 'Lupin III', 'Lupin III'],
-	['323', 'Fate/Zero', 'Fate/stay night'],
-	['6028', 'Fate/Zero', 'Fate/Zero'],
-	['6928', 'Fate/Zero', 'a Fate/Zero special'],
+	['1265', 'Lupin III', 'Lupin III, after its 1969 pilot film'],
+	['323', 'Fate/stay night', 'Fate/stay night'],
+	['6028', 'Fate/stay night', 'Fate/Zero'],
+	['6928', 'Fate/stay night', 'a Fate/Zero special'],
 	['3919', 'Bakemonogatari', 'Bakemonogatari'],
 	['7158', 'JoJo no Kimyou na Bouken (TV)', 'the 2012 series'],
-	// The 2000 OVA: the 2012 series comes first by its links.
-	['7730', 'JoJo no Kimyou na Bouken (TV)', 'the 2000 OVA'],
+	['7730', 'JoJo no Kimyou na Bouken', 'the 2000 OVA'],
 	['7442', 'Attack on Titan', 'Attack on Titan'],
 	['46874', 'SPY×FAMILY', 'SPY×FAMILY CODE: White'],
-	// An OVA before the TV series it leads into.
-	['184', 'R.O.D the TV', 'the 2001 OVA'],
-	['185', 'R.O.D the TV', 'the 2003 series'],
-	['202', 'FLCL Progressive', 'the 2000 OVA'],
-	['11961', 'FLCL Progressive', 'FLCL Progressive'],
-	// Three films before the TV series they lead into.
+	['184', 'R.O.D OVA', 'the 2001 OVA'],
+	['185', 'R.O.D OVA', 'the 2003 series'],
+	['202', 'FLCL', 'the 2000 OVA'],
+	['11961', 'FLCL', 'FLCL Progressive'],
 	['6084', 'Berserk', 'the first Golden Age film'],
-	['11655', 'Kenpuu Denki Berserk', 'the 2016 series, after the 1997 one by its links'],
+	['11655', 'Kenpuu Denki Berserk', 'the 2016 series, after the 1997 one'],
 	['115', 'Hunter x Hunter', 'the 1999 series'],
-	// No TV series in the main story: its first title by its links.
 	['1046', 'Sakura Taisen: Ouka Kenran', 'the 1997 OVA; the TV series is a version'],
 	['1162', 'Kidou Keisatsu Patlabor', 'the 1988 OVA; the TV series is a version'],
 	['2357', 'Kara no Kyoukai 1: Fukan Fuukei', 'seven films'],
 	['7124', 'Persona 3 the Movie 1: Spring of Birth', 'four films'],
 	['841', 'Top wo Nerae! Gunbuster', 'two OVAs'],
-	['14084', 'Boku no Hero Academia the Movie: Futari no Hero', 'four films linked to each other']
+	['14084', 'Boku no Hero Academia', 'its first film, a side story of the seasons'],
+	['11469', 'Boku no Hero Academia', 'its first season'],
+	['13881', 'Boku no Hero Academia', 'its third season'],
+	['42205', 'Boku no Hero Academia', 'Heroes:Rising, which names no parent of its own'],
+	['47844', 'Boku no Hero Academia', 'the fourth film']
 ];
 
 describe('franchise page — the name of every corpus franchise', () => {
