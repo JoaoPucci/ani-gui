@@ -5,6 +5,7 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import type { LinkDeps } from './link-offer';
 import { notePick, __resetHiddenRowsForTests } from './guess-slip';
 import { offerAgain, pickedOffer, surfaceOffer, surfaceOfferRead } from './picked-offer';
+import { notePlayed, __resetGuessPlaysForTests } from './guess-plays';
 
 const ref = (id: string) => ({ id, canonical_title: `Show ${id}` }) as KitsuAnimeRef;
 const CARD: HistoryEntry = { id: 'hianime:black-clover-949', title: 'Black Clover', ep_no: '1' };
@@ -22,7 +23,10 @@ function deps(over: Partial<LinkDeps> = {}): LinkDeps {
 const picked = { ...CARD, kitsu_id: '4013' };
 const d = deps;
 
-beforeEach(() => __resetHiddenRowsForTests());
+beforeEach(() => {
+	__resetHiddenRowsForTests();
+	__resetGuessPlaysForTests();
+});
 
 describe('pickedOffer', () => {
 	it("offers to change again the row a pick saved, while it records the page's show", async () => {
@@ -116,6 +120,7 @@ describe('surfaceOffer', () => {
 		// guess on the row: the row now records 7158, trusted.
 		const recorded = { ...CARD, kitsu_id: '7158' };
 		const deps = d({ history: async () => [recorded] });
+		notePlayed({ guess_row: CARD.id, guess_id: '7158' });
 		// The player of a session a guessed card opened carries the card's
 		// verdict; the show page it goes up to does too.
 		const player = { asksGuess: true, inPlayer: true, carried: true };
@@ -133,6 +138,20 @@ describe('surfaceOffer', () => {
 		expect(await surfaceOffer(named, CARD.id, '7158', showPage)).toMatchObject({ saved: '7158' });
 		// And a row recording another show than the one playing asks nothing.
 		expect(await surfaceOffer(deps, CARD.id, '4013', player)).toBeNull();
+	});
+
+	it("asks nothing about a recorded line once its show was played any other way, the card's URL notwithstanding", async () => {
+		const recorded = { ...CARD, kitsu_id: '7158' };
+		const deps = d({ history: async () => [recorded] });
+		const player = { asksGuess: true, inPlayer: true, carried: true };
+		// No guessed play went out for the line in this run: a reloaded
+		// or revisited guess URL carries nothing on its own.
+		expect(await surfaceOffer(deps, CARD.id, '7158', player)).toBeNull();
+		notePlayed({ guess_row: CARD.id, guess_id: '7158' });
+		expect(await surfaceOffer(deps, CARD.id, '7158', player)).not.toBeNull();
+		// Then the show is played from its own page, which recorded it.
+		notePlayed({ kitsu_id: '7158' });
+		expect(await surfaceOffer(deps, CARD.id, '7158', player)).toBeNull();
 	});
 
 	it('offers a line picked on the player again only on the player', async () => {

@@ -6,6 +6,7 @@ import { rememberAudio, storedAudio } from '$lib/play/audio-choice';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { m } from '$lib/paraglide/messages';
 import { LinkSession, type LinkNotice, type LinkSessionDeps } from './link-session.svelte';
+import { notePlayed, __resetGuessPlaysForTests } from './guess-plays';
 
 function ref(id: string, over: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {
@@ -76,6 +77,9 @@ function fake(over: Partial<LinkSessionDeps> = {}): Fake {
 	};
 	return f;
 }
+
+// Every case starts with no guessed play noted in the run.
+beforeEach(() => __resetGuessPlaysForTests());
 
 describe('the episode the picker names', () => {
 	it('is the one the surface it opened from shows for the card', async () => {
@@ -190,9 +194,13 @@ describe('LinkSession', () => {
 		expect(s.offer?.current.id).toBe(RIGHT.id);
 		expect(s.offer?.saved).toBe(RIGHT.id);
 		// One the app recorded from a play, with no naming, is not offered
-		// again: the page a guessed card's player went up to asks about it
-		// as the guess its card was clicked as, saving nothing yet.
+		// again. The page a guessed card's player went up to asks about it
+		// as the guess its card was clicked as, saving nothing yet — while
+		// that guessed play stands in this run ($lib/history/guess-plays).
 		f.rows = [{ ...CARD, kitsu_id: RIGHT.id }];
+		await s.arrive(CARD.id, RIGHT.id);
+		expect(s.offer).toBeNull();
+		notePlayed({ guess_row: CARD.id, guess_id: RIGHT.id });
 		await s.arrive(CARD.id, RIGHT.id);
 		expect(s.offer?.saved).toBeUndefined();
 		expect(s.offer?.current.id).toBe(RIGHT.id);

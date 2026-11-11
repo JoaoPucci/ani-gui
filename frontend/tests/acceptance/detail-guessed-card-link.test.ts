@@ -42,7 +42,8 @@ import HomePage from '../../src/routes/+page.svelte';
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { goto } from '$app/navigation';
-import { __resetApiBaseForTests } from '../../src/lib/api';
+import { __resetApiBaseForTests, markWatched } from '../../src/lib/api';
+import { __resetGuessPlaysForTests } from '../../src/lib/history/guess-plays';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { appLinkDeps } from '../../src/lib/history/link-deps';
@@ -97,6 +98,7 @@ beforeEach(() => {
 	vi.mocked(goto).mockClear();
 	__resetApiBaseForTests(API_BASE);
 	__resetPlayCacheForTests();
+	__resetGuessPlaysForTests();
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	window.localStorage.clear();
@@ -244,10 +246,34 @@ describe('the show page a guessed Continue card opened', () => {
 		// The player's guessed play landed on the card's own listing and
 		// recorded the guess: the session is still the guess its card
 		// opened, and the page it goes up to still asks.
+		await markWatched({
+			title: TITLE,
+			episode: '5',
+			mode: 'sub',
+			guess_row: CARD,
+			guess_id: GUESS
+		});
 		rows = rows.map((r) => (r.id === CARD ? { ...r, kitsu_id: GUESS } : r));
 		await openShowPage(GUESS, { guessed: CARD });
 		await until(hasNote, 'the matched-from line');
 		expect(button(m.detail_link_change())).not.toBeNull();
+	});
+
+	it('says nothing when revisited once the show was played from its own page, which recorded it', async () => {
+		await markWatched({
+			title: TITLE,
+			episode: '5',
+			mode: 'sub',
+			guess_row: CARD,
+			guess_id: GUESS
+		});
+		// The show played from its page records it on the card's row.
+		await markWatched({ title: TITLE, episode: '6', mode: 'sub', kitsu_id: GUESS });
+		rows = rows.map((r) => (r.id === CARD ? { ...r, kitsu_id: GUESS } : r));
+		// Back to the page the guessed player went up to.
+		await openShowPage(GUESS, { guessed: CARD });
+		await settle();
+		expect(hasNote()).toBe(false);
 	});
 
 	it('plays as it always does with the line there', async () => {

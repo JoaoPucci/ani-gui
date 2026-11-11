@@ -41,9 +41,10 @@ import HomePage from '../../src/routes/+page.svelte';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { goto } from '$app/navigation';
-import { __resetApiBaseForTests } from '../../src/lib/api';
+import { __resetApiBaseForTests, markWatched } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { __resetHiddenRowsForTests } from '../../src/lib/history/in-place-link.svelte';
+import { __resetGuessPlaysForTests } from '../../src/lib/history/guess-plays';
 
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
@@ -92,6 +93,7 @@ beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	__resetPlayCacheForTests();
 	__resetHiddenRowsForTests();
+	__resetGuessPlaysForTests();
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	window.localStorage.clear();
@@ -255,4 +257,23 @@ describe('the show page that player goes up to', () => {
 			);
 		}
 	);
+});
+
+describe('a guessed URL visited again', () => {
+	it('asks nothing once the show was played from its own page, which recorded it', async () => {
+		const href = await playFromHome('own-recorded');
+		await until(asks, 'the slip asking');
+		unmount(app!);
+		app = null;
+		// The show played from its own page: its watch names the show and
+		// no card.
+		await markWatched({ title: GUESS_TITLE, episode: '2', mode: 'sub', kitsu_id: GUESS });
+		// Back to the guessed player's URL.
+		setParams({ id: GUESS });
+		setUrl(href.pathname, Object.fromEntries(href.searchParams));
+		app = mount(PlayPage, { target });
+		await until(() => target.querySelector('a.np-link') !== null, 'the now-playing link');
+		await new Promise((r) => setTimeout(r, 300));
+		expect(asks()).toBe(false);
+	});
 });
