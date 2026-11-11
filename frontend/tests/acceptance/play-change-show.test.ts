@@ -1045,6 +1045,26 @@ describe('a handoff of a guessed session', () => {
 		expect(handed.syncplay[0].kitsu_id).toBeUndefined();
 	});
 
+	it("names the pick on the line's row, not the page's id, for a session no guess opened", async () => {
+		// The line records a show the user named; picked again here, the
+		// stream on screen is still the page's show, so a handoff of it
+		// names the pick apart, as the session's own plays do.
+		backend.rows = backend.rows.map((r) =>
+			r.id === CARD ? { ...r, kitsu_id: GUESS, named: true } : r
+		);
+		await openPlayer({ row: CARD });
+		await moreMenu();
+		await until(() => button(m.play_link_menu_item()) !== null, 'the menu entry');
+		button(m.play_link_menu_item())!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(RIGHT_TITLE);
+		await settle();
+		await handOff(m.play_external_label());
+		await until(() => handed.external.length === 1, 'the external-player request');
+		expect(handed.external[0]).toMatchObject({ guess_row: CARD, guess_id: RIGHT });
+		expect(handed.external[0].kitsu_id).toBeUndefined();
+	});
+
 	it('names the pick, never the old guess, once one was made from the player', async () => {
 		await openPlayer();
 		await openPicker();

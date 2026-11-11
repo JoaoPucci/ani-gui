@@ -114,7 +114,7 @@ describe('handoffArgs', () => {
 		expect(args.kitsu_id).toBeUndefined();
 	});
 
-	it('names no card for a session no guess opened', () => {
+	it('names no card when it is given none', () => {
 		const args = handoffArgs({
 			title: 'The Show',
 			episode: 3,
