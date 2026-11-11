@@ -184,7 +184,7 @@ describe('the download dialog on a show page', () => {
 					episode_count_approximate: false
 				})
 			),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
 			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
 		);
 	}

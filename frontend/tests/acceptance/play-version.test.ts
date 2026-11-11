@@ -138,7 +138,7 @@ function useHandlers(posted: { external: Posted[]; syncplay: Posted[]; watched: 
 			posted.watched.push((await request.json()) as Posted);
 			return new HttpResponse(null, { status: 204 });
 		}),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
 		http.post(`${API_BASE}/api/play/external`, async ({ request }) => {
 			posted.external.push((await request.json()) as Posted);
 			return new HttpResponse(null, { status: 202 });

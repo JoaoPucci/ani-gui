@@ -10,6 +10,8 @@
 	"hero_error_title": "The catalogue is unreachable.",
 	"hero_error_body": "Kitsu didn't answer. Search still works locally — type a title.",
 	"hero_error_cta": "Open Search",
+	"hero_empty_title": "Nothing to feature right now.",
+	"hero_empty_body": "The trending list came back empty. Search still works, type a title.",
 	"hero_skeleton_eyebrow_key": "Loading",
 	"strip_continue_eyebrow": "Continue watching",
 	"strip_continue_caption": "resume from history",

@@ -2247,3 +2247,69 @@ describe('historyLink', () => {
 		});
 	});
 });
+
+// A read a page starts holds one of the API lane's six connections
+// until it answers. Each read takes the signal of the visit that asked
+// for it and hands it to its request, so the page that goes can cancel
+// what nobody will read.
+describe('reads a page can cancel', () => {
+	const reads: Array<[string, (signal: AbortSignal) => Promise<unknown>]> = [
+		['appInfo', (signal) => appInfo({ signal })],
+		['historyList', (signal) => historyList({ signal })],
+		['historyByKitsu', (signal) => historyByKitsu('7', { signal })],
+		['historyNumber', (signal) => historyNumber('show-1', { signal })],
+		['watchedAtAll', (signal) => watchedAtAll({ signal })],
+		['settingsGet', (signal) => settingsGet({ signal })],
+		['downloadDefaultDir', (signal) => downloadDefaultDir({ signal })],
+		['kitsuSearch', (signal) => kitsuSearch('frieren', { signal })],
+		['kitsuSearchPage', (signal) => kitsuSearchPage('frieren', 0, 'relevance', { signal })],
+		['kitsuAnimeDetail', (signal) => kitsuAnimeDetail('7', { signal })],
+		['kitsuAnimeBySlug', (signal) => kitsuAnimeBySlug('frieren', { signal })],
+		['kitsuTrending', (signal) => kitsuTrending({ signal })],
+		['kitsuTrendingAnilist', (signal) => kitsuTrendingAnilist({ signal })],
+		['kitsuTopRated', (signal) => kitsuTopRated({ signal })],
+		['kitsuByMalIds', (signal) => kitsuByMalIds([1], { signal })],
+		['kitsuEpisodes', (signal) => kitsuEpisodes('7', 1, { signal })],
+		['airingGet', (signal) => airingGet('7', { signal })],
+		['aniskipGet', (signal) => aniskipGet('7', '1', 1420, { signal })],
+		['kitsuTitleMatchGet', (signal) => kitsuTitleMatchGet('Frieren', 1, null, null, { signal })],
+		['allmangaKitsuMapGet', (signal) => allmangaKitsuMapGet('show-1', { signal })],
+		['allmangaKitsuMapPlayed', (signal) => allmangaKitsuMapPlayed('show-1', { signal })],
+		[
+			'kitsuResolveAllmangaShowId',
+			(signal) => kitsuResolveAllmangaShowId('show-1', false, { signal })
+		],
+		[
+			'kitsuGuessRuledOut',
+			(signal) => kitsuGuessRuledOut('Frieren', 1, [], 'show-1', true, { signal })
+		],
+		['availabilityBatch', (signal) => availabilityBatch(['7'], 'sub', { signal })]
+	];
+
+	it.each(reads)('%s hands its signal to the request', async (_name, read) => {
+		const fetchMock = mockFetchOnce([]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const visit = new AbortController();
+		await read(visit.signal);
+		expect(lastCall(fetchMock).init?.signal).toBe(visit.signal);
+	});
+
+	it('a GET asked without a signal sends no request options, as before', async () => {
+		const fetchMock = mockFetchOnce([]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTopRated();
+		expect(lastCall(fetchMock).init).toBeUndefined();
+	});
+
+	it('a read whose signal is aborted rejects with the abort, not with a backend failure', async () => {
+		globalThis.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+			if (init?.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+			return new Response('[]');
+		}) as unknown as typeof fetch;
+		const visit = new AbortController();
+		visit.abort();
+		await expect(settingsGet({ signal: visit.signal })).rejects.toMatchObject({
+			name: 'AbortError'
+		});
+	});
+});

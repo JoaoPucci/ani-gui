@@ -109,6 +109,7 @@
 	import { clearBackgroundForShow, clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { createShowReleases } from '$lib/play/show-release';
 	import { createNavigationClaims } from '$lib/navigation/claims';
+	import { beginVisit, visitSeries, type Visit } from '$lib/navigation/visit';
 	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
 	import { createSourceScope } from '$lib/play/source-scope';
 	import { markStarted } from '$lib/play/watch-position';
@@ -201,6 +202,8 @@
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
+	import { chromeReadsPlaying, type StartPhase } from '$lib/play/start-state';
+	import { watchStart, type StartWatch } from '$lib/play/start-watch';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
@@ -381,7 +384,30 @@
 	// our own progress bar / play / volume / fullscreen UI on top
 	// of the video. Bindings keep the bar in sync with the video
 	// element's actual state without polling.
-	let isPaused = $state(true);
+	//
+	// Where the stream stands ($lib/play/start-state), not the element's
+	// `paused`: an autoplaying element reads paused from the attach to
+	// its first frame, and offering Play over a stream on its way is
+	// what makes a viewer press it. The button and the fullscreen
+	// keep-alive read the viewer's intent from here, and the loading
+	// indicator shows through a start and a stall.
+	let startPhase = $state<StartPhase>('idle');
+	// Watches the page's own video for as long as the page has it, not
+	// the slot the video sits in: a stream can attach while the error
+	// panel stands in for the slot.
+	// Ends the attached stream's resume hold, if it has one.
+	let endResumeHold: () => void = () => {};
+	/** The episode went to another player: a hold ends without
+	 *  starting anything, and a start stops. */
+	function stopForHandoff() {
+		endResumeHold();
+		startWatch.cancel();
+	}
+	const startWatch: StartWatch = watchStart(ownVideo, (phase) => {
+		startPhase = phase;
+	});
+	const isPaused = $derived(!chromeReadsPlaying(startPhase));
+	const streamLoading = $derived(startPhase === 'starting' || startPhase === 'stalled');
 	let currentTime = $state(0);
 	let duration = $state(0);
 	let videoVolume = $state(1);
@@ -501,6 +527,10 @@
 	// length of the stream on screen ($lib/play/aniskip-fetch-trigger).
 	const aniskipDurationReady = $derived(lengthReady(lengthFor, sessionId, duration));
 	const aniskipTrigger = createAniskipFetchTrigger();
+	// Each ask for skip times, cancelled by the next ask, a clear, or
+	// the page going ($lib/navigation/visit).
+	const aniskipReads = visitSeries();
+	onDestroy(aniskipReads.end);
 	$effect(() => {
 		// Subscribing to the fetch-key derived re-runs the effect on
 		// episode boundaries; subscribing to the readiness boolean
@@ -513,6 +543,7 @@
 		const key = aniskipFetchKey;
 		const decision = aniskipTrigger.step(id, episodeNum, aniskipDurationReady);
 		if (decision.kind === 'clear') {
+			aniskipReads.end();
 			skipIntervals = [];
 			return;
 		}
@@ -526,7 +557,10 @@
 		// An answer counts only for the episode on screen, and only while
 		// no later request or clear has happened: the same episode asked
 		// again, after a switch away and back, with its stream's length.
-		void aniskipGet(decision.showId, decision.episode, len)
+		// The ask before is cancelled: its answer would be dropped.
+		const reads = aniskipReads.next();
+		void reads
+			.keep(aniskipGet(decision.showId, decision.episode, len, { signal: reads.signal }))
 			.then((v) => {
 				if (aniskipFetchKey === key && aniskipTrigger.answers(ask)) {
 					skipIntervals = v;
@@ -594,6 +628,11 @@
 	function togglePlay() {
 		// The resume starts playback itself once its seek lands.
 		if (!videoEl || resumeHolding) return;
+		// A start on its way reads as playing, so the button stops it.
+		if (startPhase === 'starting') {
+			startWatch.cancel();
+			return;
+		}
 		if (videoEl.paused) {
 			// `play()` returns a promise that can reject with AbortError
 			// when a pause() lands on top of an in-flight play() — the
@@ -968,8 +1007,8 @@
 	// black screen with nothing to explain it.
 	let videoFullscreen = $state(false);
 	let mouseIdle = $state(false);
-	// `isPaused` already declared above (driven by the video's
-	// play/pause events) — reuse it as a keep-alive input.
+	// `isPaused` already declared above (the viewer's intent, from the
+	// start phase) — reuse it as a keep-alive input.
 	let controlsFocusWithin = $state(false);
 	let idleTimer: ReturnType<typeof setTimeout> | null = null;
 	const fullscreenControlsHidden = $derived(
@@ -1511,20 +1550,21 @@
 			airingResolved = true;
 			return;
 		}
-		let cancelled = false;
-		void airingGet(currentId)
+		// Asked again for another show or status: the read before is
+		// cancelled, and nothing of it is applied ($lib/navigation/visit).
+		const reads = beginVisit();
+		void reads
+			.keep(airingGet(currentId, { signal: reads.signal }))
 			.then((a) => {
-				if (!cancelled) airingSchedule = a;
+				airingSchedule = a;
 			})
 			.catch(() => {
 				/* unknown airing data → tiles stay ungated */
 			})
 			.finally(() => {
-				if (!cancelled) airingResolved = true;
+				airingResolved = true;
 			});
-		return () => {
-			cancelled = true;
-		};
+		return reads.end;
 	});
 	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
 	/** What the page knows about episode `n`, for the plays it refuses
@@ -1675,18 +1715,24 @@
 		return out;
 	}
 
-	// What says the show this page shows has gone — the page closed, or
-	// moved to another show: a refill landing after it is not fetched
-	// ($lib/refill/refill). Renewed per show below.
-	let refills = new AbortController();
-	onDestroy(() => refills.abort());
+	// The reads the page makes once, ended when the page goes; and the
+	// reads of the show it plays, ended when the page closes or moves to
+	// another show, renewed per show below. Each read holds an API
+	// connection until it answers, so a read nobody will look at is
+	// cancelled, and its answer, or its failure, never reaches the page
+	// ($lib/navigation/visit). A refill landing after the show's visit
+	// is not fetched either ($lib/refill/refill).
+	const pageReads = beginVisit();
+	onDestroy(pageReads.end);
+	let showReads: Visit = beginVisit();
+	onDestroy(() => showReads.end());
 
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
 		const eps = await kitsuEpisodes(id, p, {
-			signal: refills.signal,
+			signal: showReads.signal,
 			// Thumbnails AniList's pacing held back, filled in once
 			// they land.
 			onRefill: (filled) => {
@@ -1705,11 +1751,15 @@
 
 	async function fetchEpisodesPage(page: number, gen: number, opts: { initial?: boolean } = {}) {
 		if (!id) return;
+		// A show left meanwhile answers nothing here, not even a failure.
+		const reads = showReads;
 		episodesLoading = true;
 		try {
 			const start = (page - 1) * UI_PAGE_SIZE + 1;
 			const end = page * UI_PAGE_SIZE;
-			const merged = (await Promise.all(kitsuPagesForUiPage(page).map(getKitsuPage))).flat();
+			const merged = (
+				await reads.keep(Promise.all(kitsuPagesForUiPage(page).map(getKitsuPage)))
+			).flat();
 			if (!stripPager.completed(gen)) return;
 			rawWindowed = merged.filter((ep) => {
 				const n = ep.number ?? ep.relative_number ?? -1;
@@ -1843,7 +1893,6 @@
 		// (after an error overlay) with the stream already playing.
 		currentTime = v.currentTime;
 		duration = isFinite(v.duration) ? v.duration : 0;
-		isPaused = v.paused;
 		videoVolume = v.volume;
 		isMuted = v.muted;
 		playbackRate = v.playbackRate;
@@ -1853,12 +1902,6 @@
 		};
 		const onDuration = () => {
 			duration = isFinite(v.duration) ? v.duration : 0;
-		};
-		const onPlay = () => {
-			isPaused = false;
-		};
-		const onPause = () => {
-			isPaused = true;
 		};
 		const onVol = () => {
 			videoVolume = v.volume;
@@ -1913,8 +1956,6 @@
 		v.addEventListener('progress', onProg);
 		v.addEventListener('durationchange', onDuration);
 		v.addEventListener('loadedmetadata', onMeta);
-		v.addEventListener('play', onPlay);
-		v.addEventListener('pause', onPause);
 		v.addEventListener('volumechange', onVol);
 		v.addEventListener('ratechange', onRate);
 		v.addEventListener('ended', onEnded);
@@ -1927,8 +1968,6 @@
 			v.removeEventListener('progress', onProg);
 			v.removeEventListener('durationchange', onDuration);
 			v.removeEventListener('loadedmetadata', onMeta);
-			v.removeEventListener('play', onPlay);
-			v.removeEventListener('pause', onPause);
 			v.removeEventListener('volumechange', onVol);
 			v.removeEventListener('ratechange', onRate);
 			v.removeEventListener('ended', onEnded);
@@ -1967,6 +2006,10 @@
 		teardown();
 		attachedUrl = mediaUrl;
 		lengthFor = untrack(() => sessionId);
+		// The unload above set the element paused without a `pause`
+		// event; the stream attaching now is on its way. Told before the
+		// resume hold, below, takes the element's autoplay off.
+		startWatch.attach(videoEl.autoplay);
 		// Source-scoped listeners — the resume seek, the progress
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
@@ -1974,7 +2017,7 @@
 		// It also says where the stream starts: an hls engine begins
 		// loading at a resume point's fragment, below, so nothing
 		// before that fragment is fetched or shown.
-		const { startAt } = armSourceScopedListeners({
+		const { startAt, endHold } = armSourceScopedListeners({
 			video: videoEl,
 			showId: id,
 			episode: episodeNum,
@@ -1986,6 +2029,7 @@
 			// Only hls.js is handed the start, below.
 			startedAtPoint: mediaKind !== 'mp4' && Hls.isSupported()
 		});
+		endResumeHold = endHold;
 		playerError = null;
 		failedStreamError = null;
 		// A switch from another show's player hands its speed over
@@ -2232,6 +2276,7 @@
 		// page and hold the provider's rate-limit slots.
 		sourceScope.flush();
 		teardown();
+		startWatch.dispose();
 		releasePlayerVideo(ownVideo);
 		showReleases.leave();
 	});
@@ -2254,12 +2299,23 @@
 	// id-change reset enforces. Episode changes within the same show
 	// keep the cache (id stable → effect doesn't refire), so prev/next
 	// pagination stays instant.
+	// A show change under the page cancels the old show's reads, so the
+	// strip is opened again for the new show: nothing else would read it.
+	// The show the strip was opened for at mount.
+	let stripShow = untrack(() => id);
 	$effect(() => {
-		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
-		id;
+		const current = id;
 		resetEpisodePageCache(kitsuPageCache);
-		refills.abort();
-		refills = new AbortController();
+		showReads.end();
+		showReads = beginVisit();
+		if (current === stripShow) return;
+		stripShow = current;
+		untrack(() => {
+			rawWindowed = null;
+			episodesError = null;
+			const req = stripPager.open(stripPager.pageOf(episodeNum));
+			if (req.fetch) void fetchEpisodesPage(req.page, req.gen, { initial: true });
+		});
 	});
 
 	onMount(() => {
@@ -2267,12 +2323,14 @@
 			detailError = m.play_error_no_show_id();
 			return;
 		}
-		void kitsuAnimeDetail(id)
+		void pageReads
+			.keep(kitsuAnimeDetail(id, { signal: pageReads.signal }))
 			.then((d) => {
 				detail = d;
 				const seed = (d.canonical_title ?? '').split(/\s+/).slice(0, 2).join(' ').trim();
 				if (seed.length >= 2) {
-					void kitsuSearch(seed)
+					void pageReads
+						.keep(kitsuSearch(seed, { signal: pageReads.signal }))
 						.then((hits) => {
 							similar = hits.filter((h) => h.id !== d.id).slice(0, 12);
 						})
@@ -2293,7 +2351,8 @@
 		const startReq = stripPager.open(stripPager.pageOf(episodeNum));
 		if (startReq.fetch) void fetchEpisodesPage(startReq.page, startReq.gen, { initial: true });
 
-		void settingsGet()
+		void pageReads
+			.keep(settingsGet({ signal: pageReads.signal }))
 			.then((c) => {
 				config = c;
 			})
@@ -2999,7 +3058,7 @@
 		// instances simultaneously. The notice/launch flow continues
 		// regardless; if the external player fails to start the user
 		// can press space (or click the embedded player) to resume.
-		videoEl?.pause();
+		stopForHandoff();
 		externalBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
@@ -3068,7 +3127,7 @@
 		// Same pause-the-embedded-video logic as the external flow:
 		// Syncplay opens its own player window so two instances would
 		// otherwise stack audio.
-		videoEl?.pause();
+		stopForHandoff();
 		syncplayBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
@@ -3113,7 +3172,8 @@
 	let downloadArgs = $state<DownloadArgs | null>(null);
 	let downloadDefaultDir = $state('');
 
-	void downloadDefaultDirApi()
+	void pageReads
+		.keep(downloadDefaultDirApi({ signal: pageReads.signal }))
 		.then((d) => {
 			if (d) downloadDefaultDir = d;
 		})
@@ -3243,7 +3303,7 @@
 		class="player-frame"
 		class:player-busy={switchBusy}
 		class:player-resuming={resumeHolding && !videoFullscreen}
-		aria-busy={switchBusy || (resumeHolding && !playerError)}
+		aria-busy={switchBusy || ((resumeHolding || streamLoading) && !playerError)}
 		class:fs-controls-hidden={fullscreenControlsHidden}
 		style:--player-letterbox-x="{letterboxX}px"
 		style:--player-letterbox-y="{letterboxY}px"
@@ -3902,15 +3962,19 @@
 				</div>
 			{/if}
 		{/if}
-		<!-- Mounted across a switch and the resume hold that follows it,
-		     and toggled: the two states are set in different places, and
-		     the moment between them must not restart the indicator. An
-		     error unmounts it outright, so nothing lingers over the
-		     panel. -->
+		<!-- On through a switch, the resume hold that follows it, and any
+		     start or stall of the stream ($lib/play/start-state). Mounted
+		     across them and toggled: the states are set in different
+		     places, and the moment between them must not restart the
+		     indicator. With Chromium's own controls a start or a stall
+		     shows theirs, not this one. An error unmounts it outright,
+		     so nothing lingers over the panel. -->
 		{#if !playerError}
 			<span
 				class="player-spinner"
-				class:player-spinner-on={switchBusy || resumeHolding}
+				class:player-spinner-on={switchBusy ||
+					resumeHolding ||
+					(streamLoading && USE_CUSTOM_PLAYER_CONTROLS)}
 				aria-hidden="true"
 			>
 				<span class="player-spinner-track"><span class="player-spinner-sweep"></span></span>
@@ -5762,9 +5826,9 @@
 	/* Loading indicator over the player: the app's indeterminate
 	   hairline (the search bar's and the download bar's sweep), set
 	   in the show's accent and centred in the frame. It waits a beat
-	   before fading in, so a switch or a resume that lands quickly
-	   never flashes it, and goes at once when the load ends, so it
-	   never lingers over the picture. Toggled rather than remounted,
+	   before fading in, so a switch, a resume, a start or a stall that
+	   lands quickly never flashes it, and goes at once when the load
+	   ends, so it never lingers over the picture. Toggled rather than remounted,
 	   it runs on unbroken from a switch into the resume hold that
 	   follows it: the switch stays busy until the next stream has
 	   attached and started its hold. Off, it leaves the layout, so

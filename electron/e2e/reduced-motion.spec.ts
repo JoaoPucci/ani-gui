@@ -42,7 +42,7 @@ import {
 	type Locator,
 	type Page
 } from '@playwright/test';
-import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
+import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -54,7 +54,7 @@ import {
 	topRated,
 	trending
 } from './fixtures/kitsu';
-import { appWindow, launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary, stopApp, stopDeadApp } from './launch';
 
 /** Two rows: the first resolves to the stubbed show and is the one
  *  deleted, so the second has a gap to close. */
@@ -151,6 +151,9 @@ async function launchOnce(
 				})}\n\n`
 			});
 		}
+		// The backend answers skip times with a list, empty when it knows
+		// none; the page reads it as one once the length is known.
+		if (p.startsWith('/api/aniskip/')) return j([]);
 		return j(null);
 	});
 
@@ -187,8 +190,7 @@ async function launch(reduced = true, images = false) {
 				const dead = pending;
 				pending = null;
 				if (dead) {
-					killTree(dead.process().pid);
-					await dead.close();
+					await stopDeadApp(dead);
 				}
 			}
 		}
@@ -301,8 +303,7 @@ test('Home, a deleted Continue Watching card and a show’s page stand still', a
 		await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 		await expectStill(page, 'scrolling a show’s page');
 	} finally {
-		killTree(app.process().pid);
-		await app.close();
+		await stopApp(app);
 	}
 });
 
@@ -360,8 +361,7 @@ test('a Continue Watching card that has landed shows its artwork and text', asyn
 			expect(s.display, `${s.what} is displayed`).not.toBe('none');
 		}
 	} finally {
-		killTree(app.process().pid);
-		await app.close();
+		await stopApp(app);
 	}
 });
 
@@ -384,8 +384,7 @@ test('the player and its overlay stand still', async () => {
 		await page.locator('li[data-ep-num="7"] button').first().click();
 		await expectStill(page, 'switching episodes', 1_000);
 	} finally {
-		killTree(app.process().pid);
-		await app.close();
+		await stopApp(app);
 	}
 });
 
@@ -431,7 +430,6 @@ test('with motion on, the same hover and delete do move', async () => {
 		}
 		expect(seen.length).toBeGreaterThan(0);
 	} finally {
-		killTree(app.process().pid);
-		await app.close();
+		await stopApp(app);
 	}
 });

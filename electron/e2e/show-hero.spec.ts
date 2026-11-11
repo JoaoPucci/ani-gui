@@ -38,13 +38,13 @@
  * Pre-condition: `pnpm run package` has produced `dist/linux-unpacked/`.
  */
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
+import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { appInfo, defaultSettings } from './fixtures/kitsu';
-import { appWindow, launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
 
 /** The app's minimum window; a width where the topbar is short of
  *  room, so the order in which pill and trail give way shows (the spec
@@ -186,8 +186,7 @@ async function launch() {
 				const dead = pending;
 				pending = null;
 				if (dead) {
-					killTree(dead.process().pid);
-					await dead.close();
+					await stopDeadApp(dead);
 				}
 			}
 		}

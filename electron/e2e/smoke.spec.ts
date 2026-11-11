@@ -15,7 +15,7 @@
  * produced `dist/linux-unpacked/`.
  */
 import { expect, test, type ElectronApplication } from "@playwright/test";
-import { killTree, withColdLaunchRetry } from "../lib/cold-launch.cjs";
+import { withColdLaunchRetry } from "../lib/cold-launch.cjs";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -26,6 +26,7 @@ import {
   packagedBinary,
   routeContext,
   splashState,
+  stopDeadApp,
 } from "./launch";
 import { expectedPlatform } from "../lib/e2e-display.cjs";
 
@@ -131,11 +132,10 @@ async function launchAppWithStubs() {
       cleanup: async () => {
         const dead = pending;
         pending = null;
-        // A dead app's close() hangs while its backend lives; kill
-        // the whole tree first (lib/cold-launch.cjs).
+        // Stop what is left of the dead app: its own process group,
+        // nothing else (lib/own-group.cjs).
         if (dead) {
-          killTree(dead.process().pid);
-          await dead.close();
+          await stopDeadApp(dead);
         }
       },
     },
@@ -244,6 +244,10 @@ test("the splash shows while the app starts, and is gone once the app's window h
       // of the rail for each.
       steps: 3,
       railLit: 3,
+      // Its page rendered well inside the stuck threshold, so it never
+      // offered Restart or Quit (splash-stuck.spec.ts).
+      stuck: false,
+      choice: null,
     });
   } finally {
     await app.close();
@@ -414,10 +418,10 @@ test("the app's window paints the app's dark background and is revealed once its
         return main.require("./lib/app-window.cjs").lastAppReady();
       });
     // Wait out the reveal: the splash gone, and the wait for the
-    // renderer settled either way. Past the wait's own bound
-    // (APP_READY_WAIT_MS, 15 s), so a renderer that never says it
-    // rendered fails on the record below, which says so, rather than
-    // on a poll that ran out first.
+    // renderer settled. While the splash stands in that wait has no
+    // bound (a page that never says it rendered leaves the splash
+    // stuck, splash-stuck.spec.ts), so a renderer that never says it
+    // rendered fails the poll below.
     await expect.poll(() => app.windows().length, { timeout: 20_000 }).toBe(1);
     await expect
       .poll(async () => {
