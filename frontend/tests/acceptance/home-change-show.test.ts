@@ -437,6 +437,35 @@ describe("a guessed card's failed resume", () => {
 		await until(() => document.activeElement === pick, 'focus on Pick the right show');
 	});
 
+	it('offers the pick when its check cannot read the history, and the pick checks again', async () => {
+		// The failure overlay's check, and the pick's own, find the
+		// database busy.
+		let busy = false;
+		server.use(
+			http.get(`${API_BASE}/api/history`, () =>
+				busy ? new HttpResponse(null, { status: 503 }) : undefined
+			)
+		);
+		await openHome();
+		busy = true;
+		const card = cell(BC_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!;
+		card.click();
+		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+		FakeEventSource.instances
+			.at(-1)!
+			.dispatch('error', JSON.stringify({ kind: 'no_results', message: 'not found' }));
+		await until(
+			() => target.querySelector('[role="alertdialog"]') !== null,
+			'the failed resume overlay'
+		);
+		const overlay = target.querySelector<HTMLElement>('[role="alertdialog"]')!;
+		await until(() => button(m.home_link_pick_button(), overlay) !== null, 'the pick');
+		button(m.home_link_pick_button(), overlay)!.click();
+		await until(() => toastWith(m.home_link_check_failed()) !== undefined, 'the notice');
+		expect(dialog()?.open ?? false).toBe(false);
+		expect(pill(BC_CARD)).not.toBeNull();
+	});
+
 	it('opens the picker from the overlay, which goes', async () => {
 		const overlay = await failResume();
 		button(m.home_link_pick_button(), overlay)!.click();
