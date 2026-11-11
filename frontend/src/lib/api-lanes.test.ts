@@ -14,7 +14,10 @@ import {
 	availabilityWarm,
 	checkAvailability,
 	downloadStream,
+	historyByKitsuEach,
 	imageProxyUrl,
+	kitsuFranchise,
+	kitsuFranchiseFirstHop,
 	kitsuSearch,
 	play,
 	playExternal,
@@ -30,7 +33,8 @@ const LANES = {
 	image: 'http://127.0.0.1:3',
 	probe: 'http://127.0.0.1:4',
 	resolve: 'http://127.0.0.1:5',
-	download: 'http://127.0.0.1:6'
+	download: 'http://127.0.0.1:6',
+	franchise: 'http://127.0.0.1:7'
 };
 
 type G = {
@@ -118,6 +122,22 @@ describe('lanes', () => {
 		expect(FakeEventSource.urls[0]).toMatch(
 			new RegExp(`^${LANES.download}/api/download/stream\\?`)
 		);
+	});
+
+	it("a franchise read and the walk's first hop go to the franchise lane", async () => {
+		g.fetch = answering({ signal: 'strip' }) as unknown as typeof fetch;
+		await kitsuFranchise('12');
+		await kitsuFranchiseFirstHop('12');
+		expect(fetched.map((f) => f.url)).toEqual([
+			`${LANES.franchise}/api/kitsu/franchise/12`,
+			`${LANES.franchise}/api/kitsu/franchise/12/first-hop`
+		]);
+	});
+
+	it("the history rows a franchise resumes from stay on the API's lane", async () => {
+		g.fetch = answering({ '12': null }) as unknown as typeof fetch;
+		await historyByKitsuEach(['12']);
+		expect(fetched.map((f) => f.url)).toEqual([`${API}/api/history/by-kitsu`]);
 	});
 
 	it('a poster goes to the image lane', () => {

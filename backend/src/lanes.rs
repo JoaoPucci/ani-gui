@@ -7,7 +7,8 @@
 //! hold one — an API call answered from the cache for milliseconds, an
 //! availability probe or a play resolution for as long as a provider
 //! takes, a download's progress stream for the whole download, a cold
-//! poster for the upstream fetch — and on one origin the long holders
+//! poster for the upstream fetch, a franchise read for as long as the
+//! walk through Kitsu — and on one origin the long holders
 //! can fill all six and leave the player's segment fetches queued
 //! behind them. A lane is a listener of its own, so each class spends a
 //! connection budget of its own and none can starve another.
@@ -40,17 +41,21 @@ pub enum Lane {
     Resolve,
     /// Downloads' progress streams, each open for its whole download.
     Download,
+    /// Franchise reads and the walk's first hop, which hold theirs
+    /// while the backend walks the franchise through Kitsu.
+    Franchise,
 }
 
 impl Lane {
     /// Every lane, the API first.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Api,
         Self::Stream,
         Self::Image,
         Self::Probe,
         Self::Resolve,
         Self::Download,
+        Self::Franchise,
     ];
 
     /// The name the handshake announces the lane under.
@@ -63,6 +68,7 @@ impl Lane {
             Self::Probe => "probe",
             Self::Resolve => "resolve",
             Self::Download => "download",
+            Self::Franchise => "franchise",
         }
     }
 }

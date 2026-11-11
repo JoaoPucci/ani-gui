@@ -11,7 +11,7 @@ fn bases(ports: &[u16]) -> Vec<(Lane, String)> {
 
 #[test]
 fn lanes_come_before_the_two_lines_the_handshake_ends_with() {
-    let lines = handshake_lines(&bases(&[1, 2, 3, 4, 5, 6]), "ab");
+    let lines = handshake_lines(&bases(&[1, 2, 3, 4, 5, 6, 7]), "ab");
     assert_eq!(
         lines,
         vec![
@@ -20,10 +20,20 @@ fn lanes_come_before_the_two_lines_the_handshake_ends_with() {
             "ANI_GUI_LANE probe http://127.0.0.1:4",
             "ANI_GUI_LANE resolve http://127.0.0.1:5",
             "ANI_GUI_LANE download http://127.0.0.1:6",
+            "ANI_GUI_LANE franchise http://127.0.0.1:7",
             "ANI_GUI_LISTENING http://127.0.0.1:1",
             "ANI_GUI_INTERNAL_SECRET ab",
         ]
     );
+}
+
+/// Franchise reads hold their response open while the backend walks
+/// Kitsu, and every page asks for one: a lane of their own keeps them
+/// from taking the API lane's connections from any other page.
+#[test]
+fn franchise_reads_have_a_lane_of_their_own() {
+    let names: Vec<&str> = Lane::ALL.iter().map(|l| l.name()).collect();
+    assert!(names.contains(&"franchise"), "{names:?}");
 }
 
 #[test]
@@ -51,7 +61,7 @@ proptest! {
     /// ends with the API's line and then the secret, and puts no lane
     /// after them.
     #[test]
-    fn the_handshake_ends_with_the_api_and_the_secret(ports in proptest::collection::vec(1u16.., 6)) {
+    fn the_handshake_ends_with_the_api_and_the_secret(ports in proptest::collection::vec(1u16.., Lane::ALL.len())) {
         let all = bases(&ports);
         let lines = handshake_lines(&all, "s");
         prop_assert_eq!(lines.len(), Lane::ALL.len() + 1);

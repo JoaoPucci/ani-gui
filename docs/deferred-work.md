@@ -1102,7 +1102,7 @@ starting it, and delete it when you find it done.
   attaches media through blob URLs, which no origin-shaped rule
   covers.
 
-  The loopback origins it would allow are the backend's lanes — six,
+  The loopback origins it would allow are the backend's lanes — seven,
   on ports the kernel assigns at every start and the handshake
   announces — so the policy is one the main process writes for each
   launch rather than a constant.

@@ -6,9 +6,9 @@
  *
  * Each read is handed a signal, aborted when a later read supersedes
  * it or the reads stop: a franchise read holds its response open while
- * the backend walks the franchise, on the API lane every page shares
- * (`$lib/backend/lanes`), so a read nobody will show must not hold a
- * connection. A page stops its reads when it goes.
+ * the backend walks the franchise, on the franchise lane every page's
+ * franchise reads share (`$lib/backend/lanes`), so a read nobody will
+ * show must not hold a connection. A page stops its reads when it goes.
  *
  * `show` is called with null as a read starts or the reads stop, and
  * with the latest read's answer when it lands. A read must not reject:
