@@ -24,18 +24,12 @@
 	import { refillEpisodes, refilledImages } from '$lib/refill/apply';
 	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
-	import WatchOrderPanel from '$lib/watch-order/mock/WatchOrderPanel.svelte';
-	import { numeral as mockNumeral } from '$lib/watch-order/mock/meta';
-	import {
-		similarHidden as mockSimilarHidden,
-		stripRunFor as mockRunFor,
-		stripView as mockStripView
-	} from '$lib/watch-order/mock/strip-view';
-	import {
-		loadMockPrefs,
-		saveMockPrefs,
-		type WatchOrderMockPrefs
-	} from '$lib/watch-order/mock/prefs';
+	import StripTrio from '$lib/watch-order/StripTrio.svelte';
+	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
+	import { watchOrderSources } from '$lib/watch-order/sources';
+	import { localDay } from '$lib/watch-order/entry';
+	import { numeral } from '$lib/watch-order/meta';
+	import { settledOrder, watchOrderPage } from '$lib/watch-order/page-model';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
@@ -508,6 +502,7 @@
 	// resumeEntry.ep_no, capped at the show's known episode count so
 	// we don't propose an episode that doesn't exist yet.
 	let resumeEntry = $state<HistoryEntry | null>(null);
+	let watchOrderData = $state<WatchOrderData | null>(null);
 
 	// Episode list — fetched in parallel with the detail. Holds the
 	// CURRENT page only (not concatenated) so a 500-episode show doesn't
@@ -1161,6 +1156,7 @@
 		showVersions = [];
 		versionChoice = storedChoice(currentId);
 		resumeEntry = null;
+		watchOrderData = null;
 		resumeRefresh.reset();
 		resetEpisodePageCache(kitsuPageCache);
 		const refills = new AbortController();
@@ -1183,6 +1179,14 @@
 			.catch(() => {
 				// Resume is a hint, not load-bearing — drop silently.
 			});
+		// The watch-order strip: neither read rejects, and a franchise
+		// that cannot be read shows no strip ($lib/watch-order/loader).
+		// Leaving the show cancels both, so a walk Kitsu is slow to
+		// answer does not hold an API connection for nobody.
+		const watchOrderVisit = new AbortController();
+		void loadWatchOrder(currentId, watchOrderSources, watchOrderVisit.signal).then((w) => {
+			if (id === currentId && !watchOrderVisit.signal.aborted) watchOrderData = w;
+		});
 		void detailServed
 			.then((d) => {
 				// Navigation raced ahead: another show, or another page
@@ -1244,6 +1248,7 @@
 		// when the id moved: this effect also re-runs on the same show.
 		return () => {
 			refills.abort();
+			watchOrderVisit.abort();
 			if (id !== currentId) clearBackgroundForShow(currentId);
 		};
 	});
@@ -1404,22 +1409,21 @@
 		saveHeroPrefs(browserStorage(), next);
 	}
 
-	// Watch-order mockups (0.19.0 design review) — fixture data behind
-	// the diagnostics toggle; see $lib/watch-order/mock.
-	let mockPrefs = $state(loadMockPrefs(browserStorage()));
-	function chooseMockPrefs(next: WatchOrderMockPrefs) {
-		mockPrefs = next;
-		saveMockPrefs(browserStorage(), next);
-	}
-	const mockToday = new Date().toISOString().slice(0, 10);
-	const mockRun = $derived(mockPrefs.enabled ? mockRunFor(id) : null);
-	// "08 of 09" in the masthead eyebrow, only where the run is one
-	// line: a bare number there reads as nothing in particular.
-	const mockPlace = $derived(mockRun ? mockStripView(mockRun, id, mockPrefs.order) : null);
-	const mockHidden = $derived(
-		mockRun && mockPlace ? mockSimilarHidden(mockRun, mockPlace) : new Set<string>()
+	// The watch-order strip, its place in the masthead eyebrow, and what
+	// "Similar titles" leaves out, all read by $lib/watch-order/page-model.
+	// It waits for the settings read so it never re-orders under the viewer.
+	const watchToday = localDay(new Date());
+	const watchOrder = $derived(settledOrder(config, configError !== null));
+	const watchModel = $derived(
+		watchOrderData && watchOrder ? watchOrderPage(watchOrderData, id, watchOrder) : null
 	);
-	const similarShown = $derived((similar ?? []).filter((s) => !mockHidden.has(s.id)));
+	// "Similar titles" waits for the strip's reads, so it never shows a
+	// card the strip then takes away.
+	const similarShown = $derived(
+		watchOrderData && watchOrder
+			? (similar ?? []).filter((s) => !watchModel?.similarHidden.has(s.id))
+			: []
+	);
 
 	// `raw` is the upstream URL `url` proxies; a load failure is noted
 	// against it, and the next pick passes it over.
@@ -1820,12 +1824,12 @@
 						<span class="eyebrow-key">{subtypeLabel(detail.subtype)}</span>
 						<span class="eyebrow-rule" aria-hidden="true"></span>
 						<span class="eyebrow-value">{statusLabel(detail.status)}</span>
-						{#if mockPlace && mockPlace.position !== null && mockPlace.total !== null}
+						{#if watchModel?.eyebrow}
 							<span class="eyebrow-rule" aria-hidden="true"></span>
 							<span class="eyebrow-value"
 								>{m.watchorder_strip_position({
-									position: mockNumeral(mockPlace.position),
-									total: mockNumeral(mockPlace.total)
+									position: numeral(watchModel.eyebrow.position),
+									total: numeral(watchModel.eyebrow.total)
 								})}</span
 							>
 						{/if}
@@ -2015,14 +2019,10 @@
 				</div>
 			{/if}
 
-			{#if mockRun && mockPrefs.placement === 'top'}
-				<WatchOrderPanel
-					run={mockRun}
-					{id}
-					prefs={mockPrefs}
-					today={mockToday}
-					onchoose={chooseMockPrefs}
-				/>
+			{#if watchModel}
+				<div class="watch-order">
+					<StripTrio model={watchModel} {id} today={watchToday} />
+				</div>
 			{/if}
 
 			<!-- Body: synopsis + episodes stacked vertically. The previous
@@ -2402,15 +2402,6 @@
 			<!-- Similar titles strip — placeholder for AniList recommendations.
 		     Today: re-uses kitsuSearch with the canonical title's first
 		     1-2 words to surface franchise neighbours / look-alikes. -->
-			{#if mockRun && mockPrefs.placement === 'bottom'}
-				<WatchOrderPanel
-					run={mockRun}
-					{id}
-					prefs={mockPrefs}
-					today={mockToday}
-					onchoose={chooseMockPrefs}
-				/>
-			{/if}
 			{#if similarShown.length > 0}
 				<section class="similar">
 					<Strip
@@ -3657,6 +3648,9 @@
 
 	/* — Similar titles strip below the body. Inherits Strip's gutter
 	     (--strip-pad = --space-8) so the row aligns with the page rhythm. */
+	.watch-order {
+		margin-block-start: var(--space-7);
+	}
 	.similar {
 		margin-block-start: var(--space-8);
 	}

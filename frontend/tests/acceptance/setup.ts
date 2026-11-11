@@ -63,6 +63,9 @@ const absentBackend = () => HttpResponse.error();
 const incidental = [
 	http.get(`${API_BASE}/api/download/default-dir`, absentBackend),
 	http.get(`${API_BASE}/api/history/by-kitsu/:id`, absentBackend),
+	http.get(`${API_BASE}/api/history`, absentBackend),
+	http.post(`${API_BASE}/api/history/by-kitsu`, absentBackend),
+	http.get(`${API_BASE}/api/kitsu/franchise/:id`, absentBackend),
 	http.post(`${API_BASE}/api/kitsu/search`, absentBackend),
 	http.post(`${API_BASE}/api/history/guess/ruled-out`, absentBackend),
 	http.post(`${API_BASE}/api/availability/batch`, absentBackend),

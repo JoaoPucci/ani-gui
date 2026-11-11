@@ -1,7 +1,6 @@
 /**
- * Small adapters for the mockup components: the PosterCard shape and a
- * rail's scroll offset; the franchise's display name is re-exported
- * from `./franchise-name`.
+ * Small adapters for the mockup components: the PosterCard shape; the
+ * franchise's display name is re-exported from `./franchise-name`.
  * Part of the mockups' views; `./view` gathers them.
  */
 import type { KitsuAnimeRef } from '$lib/api';
@@ -29,23 +28,6 @@ export function asRef(entry: MockEntry): KitsuAnimeRef {
 			? { tiny: null, small: null, large: entry.cover, original: null }
 			: null
 	};
-}
-
-/**
- * The scroll offset that brings an item into a horizontal scroller at
- * `align` of the free width (0 the start, 0.5 the middle, 1 the end),
- * clamped to the scrollable range. `itemStart` is measured from the
- * start of the scroller's content. The rail puts the entry being
- * viewed late in the window, so what came before it stays in sight.
- */
-export function scrollLeftFor(
-	box: { clientWidth: number; scrollWidth: number },
-	itemStart: number,
-	itemWidth: number,
-	align: number
-): number {
-	const target = itemStart - (box.clientWidth - itemWidth) * align;
-	return Math.max(0, Math.min(target, box.scrollWidth - box.clientWidth));
 }
 
 export { franchiseName } from './franchise-name';

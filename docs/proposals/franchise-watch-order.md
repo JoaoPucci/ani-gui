@@ -3,13 +3,13 @@
 **Status**: proposed as the main feature of the 0.19.0 release. The
 product questions are decided (section 6); the design questions are
 open (section 5). Built so far: the backend's franchise read, `GET
-/api/kitsu/franchise/:kitsu_id`, and the stored "Watch order" value it
-is shown in (section 4 describes the read as built). Not built yet:
-everything a viewer sees. The strip, the Up next card, Continue
-Watching's hand-off, the franchise page and the setting's control
-exist only as design mockups drawn from fixture data, behind a
-Diagnostics switch. The research was done on 2026-11-01; the live
-samples it quotes describe the catalogues on that day and will drift.
+/api/kitsu/franchise/:kitsu_id` (section 4 describes it as built), the
+watch-order strip on the show page and the "Watch order" setting. Not
+built yet: the Up next card, Continue Watching's hand-off and the
+franchise page, which exist only as design mockups drawn from fixture
+data, behind a Diagnostics switch. The research was done on
+2026-11-01; the live samples it quotes describe the catalogues on that
+day and will drift.
 
 ## The problem in plain terms
 
@@ -889,7 +889,8 @@ design section. Below it, sections:
 There is no order switch on the page; the app-wide setting applies.
 
 **Data.** `chain` and `around` for each entry of the run, plus
-progress from the local history (Kitsu id per row) and, where a
+progress from the local history (the row each entry's page resumes
+from) and, where a
 tracker is connected, the cached tracker list (status and episode
 count per MyAnimeList id, through Kitsu's mappings, which the app
 already caches for 30 days).
@@ -901,8 +902,12 @@ nothing. Forked runs (Fate seen from *Fate/Zero*) render as the
 numbered path and the branches side by side; a join shows its earlier
 entries side by side above it; the entries of a cycle are listed as
 one unnumbered group, in air-date order, where the cycle sits in the
-run. Entries without a Kitsu id in the history (the hianime "Gintama
-Season N" rows) contribute no progress.
+run. A history row counts toward the entry whose page would resume
+from it: the entry it recorded while Kitsu still has it, else the one
+its stored mapping names, else, for a row whose recorded entry Kitsu
+deleted, the ones Home's title matches found for it (a title can
+hold one per cour, so such a row can count toward each). A row with none
+of these contributes no progress.
 
 **Trackers.** Read-only.
 
@@ -1035,11 +1040,14 @@ them introduces a new widget style.
 - **Placement.** The strip comes right after the masthead, above the
   synopsis, under its own eyebrow ("Watch order"), as what comes
   before this entry, its position ("05"; a total, "of 05", only for a
-  run with no fork, join or cycle) and what comes after (the
-  maintainer chose this arrangement over a rail of the whole run;
+  run with no fork, join or cycle; neither for a franchise read only
+  in part, as the list of missing data below says) and what comes
+  after (the maintainer chose this arrangement over a rail of the
+  whole run;
   "The strip, second round" below has its layout). The
   masthead's eyebrow gains the position in its value
-  slot ("TV · Finished · 05 of 09"), only for a run that is one line:
+  slot ("TV · Finished · 05 of 09"), only for a run that is one line
+  and read whole:
   a bare "05" there reads as nothing in particular. The reason
   for this spot: "where am I, and did I miss something" is answered
   before choosing an episode, not after scrolling past them. The strip
@@ -1098,6 +1106,9 @@ them introduces a new widget style.
     neighbours like any other, without a position number.
   - An unaired entry: a card with its date in the meta line ("Coming
     January 2027") and no episode count.
+  - A franchise read only in part: no position, no total, no fork or
+    loop caption, no join or fork count, and blank empty columns (see
+    "Missing data" under Phase 0's watch-order strip, below).
 
 ### The "Up next" card (player and Continue Watching)
 
@@ -1149,7 +1160,7 @@ them introduces a new widget style.
     beside the name is that entry's. The entry being watched has its
     own line beside the Resume button.
   - **Masthead:** the run's name in the italic display serif under a
-    "Franchise · 15 entries" eyebrow (every entry the page lists, the
+    "Franchise · 15 titles" eyebrow (every entry the page lists, the
     total the strip's "Whole franchise" link stands for), with a Resume
     button styled and
     glowing like the show page's Play. The page takes the accent of the
@@ -1260,7 +1271,7 @@ The rules below hold on every surface:
   for the strip, the franchise page, the setting, Continue and the
   player, and in English at 960 px, the smallest window the app
   allows. Counts that sit beside a
-  noun ("10 entries", "2 ways to continue") use plural variants; the
+  noun ("10 titles", "2 ways to continue") use plural variants; the
   rest put the number where no noun agrees with it ("Comes after these
   2"). Order words follow the setting's wording: "As linked" is "Por
   vínculo" in Portuguese, since "ligado" reads as "switched on".
@@ -1270,12 +1281,14 @@ The rules below hold on every surface:
   checks the preference itself. Nothing moves on a timer.
 - **Logical properties** only, so a right-to-left locale is a
   translation.
-- **Titles.** A card clamps its title to two lines and keeps the full
-  title as its tooltip and accessible name. The "short titles" option
-  drops the leading words another entry of the run shares, up to a
-  separator (": ", " - "): *JoJo no Kimyou na Bouken: Stone Ocean Part
-  3* becomes *Stone Ocean Part 3*. A title with no shared part, such
-  as *Steel Ball Run: JoJo no Kimyou na Bouken*, stays whole.
+- **Titles.** A card shows the entry's whole title, the one the rest
+  of the app shows ("BLEACH: Sennen Kessen-hen", "Boruto: Naruto Next
+  Generations"), clamped to two lines, with the full title as its
+  tooltip and accessible name. The first round's short titles, which
+  dropped the words another entry of the run shares ("Sennen
+  Kessen-hen"), were reversed after the build: a title cut that way
+  reads as an unfamiliar show, and a shared prefix that is not the
+  franchise's name ("Boruto:") renamed the show.
 
 #### The watch-order strip (show page)
 
@@ -1299,19 +1312,27 @@ The rules below hold on every surface:
   (2006) → the UBW prologue → UBW as one sequence, though they are two
   ways on from *Fate/Zero 2nd Season*. So each branch opens with a key
   ("Way 1 of 2") and a hairline in the gap before it; a loop opens
-  with "Part of a loop of 10 entries"; an entry that only leads into a
-  join says so ("Leads into 10", by the number of the entry it leads
-  into, since a title would not fit the key line). Every member of a
-  loop carries a rule over its poster that runs across the gaps, so
-  the loop reads as one stretch even where "You are here" takes its
-  key. Positions count
-  along the path to the run's first entry: *The Semi-Final*, which no
-  prequel reaches, has no number rather than a second "01". The key
-  line is reserved on every card, so titles share one baseline.
+  with "Linked with 9 others, order unclear"; an entry that only leads
+  into a join says so ("Leads into 10", by the number of the entry it
+  leads into, since a title would not fit the key line). Every member
+  of a loop carries a rule over its poster that runs across the gaps,
+  so the loop reads as one stretch even where "You are here" takes its
+  key. Positions count along the path to the run's first entry: *The
+  Semi-Final*, which no prequel reaches, has no number rather than a
+  second "01". The key line is reserved on every card, so titles share
+  one baseline.
 - **Missing data.** No run: no strip, no position in the masthead.
-  First or last entry: "Start of the run", "End of the run" in the
-  empty column. Unknown date: "Date not announced" in place of the
+  First or last entry: "The story starts here", "Nothing after this
+  yet" in the empty column; a side story's end reads the same as the
+  last entry's. Unknown date: "Date not announced" in place of the
   year and count. An entry the provider lacks looks like any other.
+  A franchise read only in part (the walk reached its bound, or a
+  listing came back cut short) may be missing entries on either side
+  of the show, so the strip makes no claim that needs the whole: no
+  position, in the strip or the masthead, no total, no fork or loop
+  caption, no join or fork count, and an empty column stays blank. A
+  side story keeps its caption: "Side story", or "Film" for a film,
+  which the franchise page lists under Films.
 - **Keyboard.** The rail is the existing `Strip` (focusable, arrow
   keys page it); every card and tile is a link with the poster card's
   bone focus ring; the entry being viewed is not a link. The line for
@@ -1362,11 +1383,10 @@ The rules below hold on every surface:
   entry; a stretch after a loop is not, since the loop gives it no
   single place, and its key says so. A fork is a group
   under "2 ways to continue", its branches side by side as unnumbered
-  columns, each under "Way n of N". A loop is a group under "Part of a
-  loop of 10 entries" with one sentence on why it has no single order;
-  its entries are listed along their links, from where the run enters
-  the loop. In release order every one of these is a single numbered
-  line.
+  columns, each under "Way n of N". A loop is a group under "10
+  linked titles, order unclear" with one sentence on why it has no
+  clear order; its entries are listed along their links. In release
+  order every one of these is a single numbered line.
 - **Masthead.** The franchise is named after the run's first entry,
   without Kitsu's format suffix ("(TV)", "(Movie)", …) unless another
   entry of the franchise would then read the same, ignoring case; the
@@ -1397,7 +1417,8 @@ The maintainer answered the eight questions the first mockups asked:
    was liked, but forks and joins break it up. The strip needed a
    second round, below.
 2. **Short titles** on cards: yes, with the full title as tooltip and
-   accessible name.
+   accessible name. Reversed after the build: every card shows the
+   whole title (see Titles in section 5).
 3. **The player's "next episode" button** stays within the entry; only
    the Up next card crosses to another entry.
 4. **Accents.** Each entry keeps its own accent.
@@ -1431,11 +1452,12 @@ variant below is one of the switch's options.
   position numeral is the strip's centre whichever side is longer. The
   grid has three rows (the keys, the join or fork line, the entries),
   so the three keys share one baseline whatever sits under them, and
-  the centre's two hairlines run through all three rows. An empty
-  side keeps its column, drops its key and says why it is empty
-  ("Start of the run", "End of the run"), so the numeral does not move
-  at either end of a run. The centre column stays at every window
-  width; the first round hid it below 1100 px.
+  the centre's two hairlines run through all three rows. An empty side
+  keeps its column, drops its key and says why it is empty ("The story
+  starts here", "Nothing after this yet"; blank for a franchise read
+  in part), so the numeral does not move at either end of a run. The
+  centre column stays at every window width; the first round hid it
+  below 1100 px.
 - **The band.** The strip sits on one faint band: the page's own ink,
   one step up (`--ink-050`), at 72 % opacity, with the card corner
   radius. No border, blur, shadow or gradient. Its footer, under a
@@ -1467,7 +1489,7 @@ variant below is one of the switch's options.
   - *Button*: the show page's outline button at its full size (the
     size of Download), with the number of entries the franchise page
     lists, recaps included, and the app's arrow ("Whole franchise |
-    15 entries →" on JoJo).
+    15 titles →" on JoJo).
   - *Poster stack*: three posters fanned (the run's first entry, a
     film or other version, a side story), "See the whole franchise",
     and what the page holds ("9 in the main story · 4 films and
@@ -1528,7 +1550,8 @@ The maintainer answered the second round's six questions:
    repeat "Similar titles"; what that row does with a franchise's side
    stories is a separate discussion.
 5. **No "of N" at forks, joins and loops** stays. In "As released"
-   order every run is one line, and the strip says "N of total" there:
+   order every run is one line, and the strip says "N of total" there
+   (for a franchise read whole; see "Missing data" above):
    *Nisemonogatari* is "02 of 16", and *Off & Monster Season Shin
    Episode*, which has no date and sorts last, "16 of 16".
 6. **The franchise page's masthead** takes its artwork from the entry

@@ -84,7 +84,7 @@ function useShow(count: number, extras: string[], announced = count, airingKnown
 		),
 		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
+		http.post(`${API_BASE}/api/history/by-kitsu`, () => HttpResponse.json({})),
 		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
 	);
 }
@@ -121,7 +121,7 @@ describe('detail route — recaps at the edges of a grid page', () => {
 			),
 			http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
 			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
-			http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/history/by-kitsu`, () => HttpResponse.json({})),
 			http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
 		);
 		app = mount(DetailPage, { target });
