@@ -156,7 +156,7 @@ async function launchAppWithStubsOnce(
     () => new Promise<void>((resolve) => (topRatedAsked = resolve)),
     { forget: unstubbed },
   );
-  return { app, page, context };
+  return { app, page, context, profile: tmp };
 }
 
 /** What the last launch's pages asked that no stub answered. */
@@ -293,6 +293,16 @@ test("a test launch's backend reaches nothing beyond this machine", async () => 
   } finally {
     await app.close();
   }
+});
+
+test("a test launch's scratch profile is gone once the app has quit", async () => {
+  // Each launch gets a profile of its own under the system's temporary
+  // directory. The launch helper removes it, and only it, once the app
+  // has exited, so test runs leave nothing behind there.
+  const { app, profile } = await launchAppWithStubs();
+  expect(existsSync(profile)).toBe(true);
+  await app.close();
+  await expect.poll(() => existsSync(profile), { timeout: 5_000 }).toBe(false);
 });
 
 test("the splash shows while the app starts, and is gone once the app's window has shown", async () => {
