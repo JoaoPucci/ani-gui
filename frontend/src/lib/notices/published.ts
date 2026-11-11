@@ -3,11 +3,13 @@
  * and its donation-ask number.
  *
  * The backend keeps them only from a file whose minisign signature
- * verifies, parses them strictly (backend/src/notices/remote.rs) and
- * serves them on `/api/notices` only while the notification center is
- * on. The window reads that answer strictly again, so a field that is
- * not what it should be drops its notice here too: text stays text,
- * and a link is a plain http or https address or nothing.
+ * verifies, validates them (backend/src/notices/remote.rs) and serves
+ * them on `/api/notices` only while the notification center is on. It
+ * is the one place a notice is validated: what it serves is plain text,
+ * a link a plain http or https address with no credentials or nothing,
+ * one id once. The window checks only that the answer is the
+ * documented object with a list, and reads anything else, or a failed
+ * request, as nothing published.
  *
  * A notice about the streaming source (`about: "source"`) explains the
  * outage the app works out for itself, so it joins that row rather
@@ -18,9 +20,25 @@ import type { NoticeData } from './model';
 import type { PublishedMemory } from './published-memory';
 import type { SourceChange } from './sources';
 
-export { parsePublished } from './published-parse';
-
 export type Priority = 'info' | 'warning' | 'critical';
+
+/** One notice as `/api/notices` serves it: `RemoteNotice` in
+ *  backend/src/notices/remote.rs. */
+export interface ServedNotice {
+	id: string;
+	title: string;
+	body: string | null;
+	link: string | null;
+	priority: Priority;
+	about_source: boolean;
+}
+
+/** The `/api/notices` answer: `RemoteNotices` in
+ *  backend/src/notices/remote.rs. */
+export interface ServedAnswer {
+	donation_ask: number | null;
+	items: ServedNotice[];
+}
 
 export interface Published {
 	id: string;
@@ -35,6 +53,33 @@ export interface PublishedAnswer {
 	/** The donation-ask number, or null when none is published. */
 	donationAsk: number | null;
 	items: Published[];
+}
+
+const NOTHING: PublishedAnswer = { donationAsk: null, items: [] };
+
+/** The backend's answer, when it is the documented object with a list
+ *  of notices; anything else, and a request that failed (which
+ *  ./NoticeHost passes in as null), reads as nothing published. A
+ *  served notice is read as it is: only a missing priority or source
+ *  mark takes the answer's documented default. */
+export function readPublished(raw: unknown): PublishedAnswer {
+	if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as ServedAnswer).items)) {
+		return NOTHING;
+	}
+	const answer = raw as ServedAnswer;
+	return {
+		donationAsk: answer.donation_ask ?? null,
+		items: answer.items
+			.filter((n) => typeof n === 'object' && n !== null)
+			.map((n) => ({
+				id: n.id,
+				title: n.title,
+				body: n.body ?? null,
+				link: n.link ?? null,
+				priority: n.priority ?? 'info',
+				aboutSource: n.about_source === true
+			}))
+	};
 }
 
 export const publishedKey = (id: string): string => `remote:${id}`;

@@ -26,7 +26,7 @@
 	} from './instance';
 	import { createDonationAsk } from './donation-ask';
 	import {
-		parsePublished,
+		readPublished,
 		publishedChanges,
 		sourceNote,
 		withSourceNote,
@@ -130,7 +130,7 @@
 		});
 		let alive = true;
 		void publishedNotices()
-			.then(parsePublished, () => parsePublished(null))
+			.then(readPublished, () => readPublished(null))
 			.then((p) => {
 				if (!alive) return;
 				note = sourceNote(p.items);

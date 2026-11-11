@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import fc from 'fast-check';
 import {
-	parsePublished,
 	publishedChanges,
 	publishedKey,
+	readPublished,
 	sourceNote,
 	withSourceNote,
 	type Published
@@ -20,9 +19,13 @@ const item = (over: Record<string, unknown> = {}) => ({
 	...over
 });
 
+// What the backend serves is validated there, the one place a notice
+// is (backend/src/notices/remote_test.rs and remote_prop_test.rs: links,
+// text, priority, one id once, the donation number). The window reads
+// the documented answer as it is, and nothing else.
 describe("the backend's answer", () => {
 	it('reads the donation number and every well-formed notice', () => {
-		const got = parsePublished({ donation_ask: 3, items: [item()] });
+		const got = readPublished({ donation_ask: 3, items: [item()] });
 		expect(got.donationAsk).toBe(3);
 		expect(got.items).toEqual<Published[]>([
 			{
@@ -37,7 +40,7 @@ describe("the backend's answer", () => {
 	});
 
 	it('takes an absent body or link as none, and an absent priority as info', () => {
-		const got = parsePublished({
+		const got = readPublished({
 			donation_ask: null,
 			items: [{ id: 'a', title: 'A', body: null, link: null }]
 		});
@@ -45,46 +48,24 @@ describe("the backend's answer", () => {
 		expect(got.donationAsk).toBeNull();
 	});
 
-	it('drops a notice whose link is not plain http or https, or whose fields are not text', () => {
-		const got = parsePublished({
-			items: [
-				item({ id: 'js', link: 'javascript:alert(1)' }),
-				item({ id: 'file', link: 'file:///etc/passwd' }),
-				item({ id: 'creds', link: 'https://user:pw@example.org/' }),
-				item({ id: 'junk', link: 'not a url' }),
-				item({ id: 'num', title: 7 }),
-				item({ id: 'empty', title: '' }),
-				item({ id: 'prio', priority: 'shout' }),
-				item({ id: '' }),
-				'nope',
-				item({ id: 'ok' })
-			]
-		});
-		expect(got.items.map((n) => n.id)).toEqual(['ok']);
-	});
-
-	it('keeps only the first of two notices with one id', () => {
-		const got = parsePublished({ items: [item({ title: 'First' }), item({ title: 'Second' })] });
-		expect(got.items.map((n) => n.title)).toEqual(['First']);
-	});
-
 	it('reads anything else as nothing published', () => {
 		for (const raw of [null, undefined, 'x', 3, [], { items: 'x' }, { donation_ask: -1 }]) {
-			const got = parsePublished(raw);
+			const got = readPublished(raw);
 			expect(got.items).toEqual([]);
 			expect(got.donationAsk).toBeNull();
 		}
-		expect(parsePublished({ donation_ask: 1.5 }).donationAsk).toBeNull();
+		expect(readPublished({ donation_ask: 1.5 }).donationAsk).toBeNull();
 	});
 
-	it('never passes on a link that is not http or https, whatever it is sent', () => {
-		fc.assert(
-			fc.property(fc.string(), (link) => {
-				for (const n of parsePublished({ items: [item({ link })] }).items) {
-					expect(['http:', 'https:']).toContain(new URL(n.link as string).protocol);
-				}
-			})
-		);
+	it('reads a list or an object without a list as nothing published', () => {
+		for (const raw of [[item()], {}, { donation_ask: 3 }]) {
+			expect(readPublished(raw)).toEqual({ donationAsk: null, items: [] });
+		}
+	});
+
+	it('passes over an entry of the list that is not a notice', () => {
+		const got = readPublished({ donation_ask: null, items: [null, 'nope', 7, item({ id: 'ok' })] });
+		expect(got.items.map((n) => n.id)).toEqual(['ok']);
 	});
 });
 
