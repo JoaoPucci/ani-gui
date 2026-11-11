@@ -108,17 +108,58 @@ function proxyEnv(origin: string): Record<string, string> {
 	return env;
 }
 
+/** Removes the scratch directory `dir`, that path alone. A failure is
+ *  reported, never thrown: it would surface in whatever test is running
+ *  when the app exits, or hide the launch failure being reported. */
+function removeScratch(dir: string): void {
+	try {
+		fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	} catch (err) {
+		console.warn(`e2e: could not remove the scratch profile ${dir}: ${err}`);
+	}
+}
+
+/** How long the backend may go on after the app has exited: the app
+ *  stops it as it quits without waiting, and its shutdown allows 3 s
+ *  for requests in flight and 5 s for teardown (backend/src/shutdown.rs). */
+const BACKEND_STOP_MS = 10_000;
+
+/** Profiles removed when their app exited, removed again once their
+ *  backend has had time to stop, in case it wrote there on its way out;
+ *  and again as the test worker exits, if that comes first. */
+const removedProfiles = new Set<string>();
+process.once('exit', () => {
+	for (const dir of removedProfiles) removeScratch(dir);
+});
+
+function removeAfterExit(dir: string): void {
+	removeScratch(dir);
+	removedProfiles.add(dir);
+	setTimeout(() => {
+		removeScratch(dir);
+		removedProfiles.delete(dir);
+	}, BACKEND_STOP_MS).unref();
+}
+
 /** Launch the packaged app with `env` as its whole environment, as a
  *  test run — unless that environment leads to a display someone may
  *  be looking at, which throws, saying how to run the suite instead.
  *  `binary` is another copy of the packaged tree's launcher, for a spec
- *  that ships the app a frontend of its own (splash-stuck.spec.ts). */
+ *  that ships the app a frontend of its own (splash-stuck.spec.ts).
+ *  `profile` is the scratch directory the spec made for this launch
+ *  (its HOME or XDG directories): it is removed, that path alone, once
+ *  the app has exited, and again once its backend has had time to stop,
+ *  or at once if the launch never starts. A worker killed before its
+ *  app exits leaves the profile behind. */
 export async function launchPackagedApp(
 	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env'],
-	{ binary = packagedBinary }: { binary?: string } = {}
+	{ binary = packagedBinary, profile }: { binary?: string; profile?: string } = {}
 ): Promise<ElectronApplication> {
 	const refusal = launchRefusal(env ?? {});
-	if (refusal) throw new Error(refusal);
+	if (refusal) {
+		if (profile) removeScratch(profile);
+		throw new Error(refusal);
+	}
 	// The launcher script execs the binary beside it in the same process;
 	// resolved before the launch, so a launched app is always recorded.
 	const exe = fs.realpathSync(`${binary}.bin`);
@@ -136,9 +177,13 @@ export async function launchPackagedApp(
 		});
 	} catch (err) {
 		proxy.close();
+		if (profile) removeScratch(profile);
 		throw err;
 	}
-	app.process().once('exit', () => proxy.close());
+	app.process().once('exit', () => {
+		proxy.close();
+		if (profile) removeAfterExit(profile);
+	});
 	launched.set(app, { child: app.process(), exe });
 	refused.set(app, proxy.seen);
 	return app;

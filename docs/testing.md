@@ -111,6 +111,24 @@ before its stubs, mounts the page again with `remountFirstPage`, and
 asserts that no request was left unanswered. `smoke.spec.ts` and
 `keyring-unresponsive.spec.ts` do.
 
+Each launch runs on a scratch profile the spec makes under the
+system's temporary directory. The spec passes that directory to
+`launchPackagedApp` as `profile`. The helper removes that path, and
+nothing else, once the app has exited. Because the backend can go on
+writing there briefly while it stops, the helper removes the path
+again once the backend has had time to stop, or as the test worker
+exits if that comes first. A launch that never starts has its profile
+removed at once. `smoke.spec.ts` checks that the profile is gone after
+the app quits. Two specs manage their profile themselves, removing it
+in their own teardown and, if the launch fails, at once: the keyring
+spec, whose profile also holds its session bus, and the splash-stuck
+spec, whose restarted app outlives the launch. A worker that is killed
+before its app exits leaves the profile behind.
+
+The Node tests that make temporary directories (`electron/lib/`,
+`tests/tools/`, `tests/complexity/`) remove them in their own
+teardown.
+
 Locally, the suite runs on Wayland, inside a private headless GNOME
 Shell session that `tools/headless-wayland.sh` starts and tears down:
 
