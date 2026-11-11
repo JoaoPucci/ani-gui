@@ -1376,8 +1376,8 @@ export interface FranchiseEntry {
 /** The franchise around an anime (backend
  *  `commands::franchise_walk::Franchise`). Every list but `entries` is
  *  sorted by start (unknown last), then numeric id; an id appears in
- *  one list at most. The name is decided here; ordering, positions and
- *  layout are the frontend's to compute. */
+ *  one list at most. The backend's walk decides the name; ordering,
+ *  positions and layout are the frontend's to compute. */
 export interface Franchise {
 	/** The id asked about. */
 	anchor: string;
