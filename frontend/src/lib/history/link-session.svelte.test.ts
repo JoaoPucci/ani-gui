@@ -606,6 +606,28 @@ describe('the reads of an arrival', () => {
 		expect(s.candidates).toBeNull();
 	});
 
+	it("read the rows the opened picker's link would write with the arrival's signal, and keep no group of a cancelled read", async () => {
+		const f = fake();
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		const signals: (AbortSignal | undefined)[] = [];
+		const history = f.deps.history;
+		let answer!: () => void;
+		f.deps.history = (opts) => {
+			signals.push(opts?.signal);
+			return new Promise((r) => (answer = () => r(history())));
+		};
+		void s.start();
+		await vi.waitFor(() => expect(signals.length).toBe(1));
+		expect(signals[0]).toBeInstanceOf(AbortSignal);
+		s.endReads();
+		expect(signals[0]!.aborted).toBe(true);
+		answer();
+		await new Promise((r) => setTimeout(r, 0));
+		// Neither the rows nor the card alone, which a failed read leaves.
+		expect(s.group).toBeNull();
+	});
+
 	it('leave the rows a link writes to be read without one', async () => {
 		const f = fake();
 		const asked = signalled(f);
