@@ -89,10 +89,12 @@ describe('createFranchiseReads, when the page goes', () => {
 	});
 });
 
-describe('createFranchiseReads, sharing the API lane', () => {
-	// Home's other API calls, a Continue card's resume among them, share
-	// the lane's six connections with these walks.
-	const AT_ONCE = 2;
+describe('createFranchiseReads, on the franchise lane', () => {
+	// The walks have the franchise lane's six connections to themselves:
+	// Home's own calls, a Continue card's resume among them, go to the
+	// API lane.
+	const AT_ONCE = 6;
+	const ids = (n: number) => Array.from({ length: n }, (_, i) => String(i + 1));
 
 	/** Reads that answer when the test says, with how many are out. */
 	function held() {
@@ -116,24 +118,24 @@ describe('createFranchiseReads, sharing the API lane', () => {
 	it(`walks at most ${AT_ONCE} series at once, and the next as one answers`, async () => {
 		const { out, started, read } = held();
 		const reads = createFranchiseReads(read, vi.fn());
-		for (const id of ['1', '2', '3', '4']) reads.want(id);
-		expect(started).toEqual(['1', '2']);
+		for (const id of ids(8)) reads.want(id);
+		expect(started).toEqual(ids(6));
 		out.get('1')!(franchise('1'));
 		await flush();
-		expect(started).toEqual(['1', '2', '3']);
+		expect(started).toEqual(ids(7));
 		out.get('2')!(new Error('503'));
 		await flush();
-		expect(started).toEqual(['1', '2', '3', '4']);
+		expect(started).toEqual(ids(8));
 	});
 
 	it('starts none of the waiting reads once the page has gone', async () => {
 		const { out, started, read } = held();
 		const settled = vi.fn();
 		const reads = createFranchiseReads(read, settled);
-		for (const id of ['1', '2', '3']) reads.want(id);
+		for (const id of ids(8)) reads.want(id);
 		reads.stop();
 		await flush();
-		expect(started).toEqual(['1', '2']);
+		expect(started).toEqual(ids(6));
 		expect(out.size).toBe(0);
 		expect(settled).not.toHaveBeenCalled();
 	});
@@ -141,7 +143,7 @@ describe('createFranchiseReads, sharing the API lane', () => {
 	it('reads every series wanted exactly once, never more than the share at a time', async () => {
 		await fc.assert(
 			fc.asyncProperty(
-				fc.array(fc.constantFrom('1', '2', '3', '4', '5', '6'), { maxLength: 12 }),
+				fc.array(fc.constantFrom(...ids(10)), { maxLength: 16 }),
 				fc.array(fc.tuple(fc.nat(), fc.boolean()), { maxLength: 12 }),
 				async (wants, answers) => {
 					const { out, started, read } = held();
