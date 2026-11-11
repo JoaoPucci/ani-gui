@@ -1,0 +1,121 @@
+{
+  "anchor": "6084",
+  "entries": [
+    {
+      "id": "6084",
+      "title": "Berserk: Ougon Jidai-hen I - Haou no Tamago",
+      "subtype": "movie",
+      "start": "2012-02-04",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6664",
+      "title": "Berserk: Ougon Jidai-hen II - Doldrey Kouryaku",
+      "subtype": "movie",
+      "start": "2012-06-23",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6665",
+      "title": "Berserk: Ougon Jidai-hen III - Kourin",
+      "subtype": "movie",
+      "start": "2013-02-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11655",
+      "title": "Berserk",
+      "subtype": "TV",
+      "start": "2016-07-01",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12569",
+      "title": "Berserk 2nd Season",
+      "subtype": "TV",
+      "start": "2017-04-07",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "6084",
+      "6664"
+    ],
+    [
+      "6664",
+      "6665"
+    ],
+    [
+      "6665",
+      "11655"
+    ],
+    [
+      "11655",
+      "12569"
+    ]
+  ],
+  "versions": [
+    {
+      "id": "24",
+      "title": "Kenpuu Denki Berserk",
+      "subtype": "TV",
+      "start": "1997-10-08",
+      "episodes": 25,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46323",
+      "title": "Berserk: Ougon Jidai-hen - MEMORIAL EDITION",
+      "subtype": "TV",
+      "start": "2022-10-01",
+      "episodes": 13,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "films": [],
+  "sides": [],
+  "recaps": [
+    {
+      "id": "13458",
+      "title": "Berserk Recap",
+      "subtype": "ONA",
+      "start": "2017-03-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "13540",
+      "title": "Berserk: Majo no Tsuisou",
+      "subtype": "special",
+      "start": "2017-06-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "parents": {},
+  "complete": true
+}

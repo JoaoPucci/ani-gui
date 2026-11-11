@@ -1,0 +1,156 @@
+{
+  "anchor": "14084",
+  "entries": [
+    {
+      "id": "14084",
+      "title": "Boku no Hero Academia the Movie: Futari no Hero",
+      "subtype": "movie",
+      "start": "2018-08-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42205",
+      "title": "Boku no Hero Academia the Movie 2: Heroes:Rising",
+      "subtype": "movie",
+      "start": "2019-12-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "44209",
+      "title": "Boku no Hero Academia the Movie: World Heroes' Mission",
+      "subtype": "movie",
+      "start": "2021-08-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47844",
+      "title": "Boku no Hero Academia THE MOVIE: YOU'RE NEXT",
+      "subtype": "movie",
+      "start": "2024-08-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "14084",
+      "42205"
+    ],
+    [
+      "42205",
+      "44209"
+    ],
+    [
+      "44209",
+      "47844"
+    ]
+  ],
+  "versions": [],
+  "films": [],
+  "sides": [
+    {
+      "id": "13881",
+      "title": "Boku no Hero Academia 3",
+      "subtype": "TV",
+      "start": "2018-04-07",
+      "episodes": 25,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42046",
+      "title": "Boku no Hero Academia: All Might - Rising The Animation",
+      "subtype": "special",
+      "start": "2019-02-13",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "41971",
+      "title": "Boku no Hero Academia 4",
+      "subtype": "TV",
+      "start": "2019-10-12",
+      "episodes": 25,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "43726",
+      "title": "Boku no Hero Academia the Movie 2: Heroes:Rising - Epilogue Plus - Yume wo Genjitsu ni",
+      "subtype": "special",
+      "start": "2020-07-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "43108",
+      "title": "Boku no Hero Academia 5",
+      "subtype": "TV",
+      "start": "2021-03-27",
+      "episodes": 25,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "45566",
+      "title": "Boku no Hero Academia THE MOVIE: World Heroes' Mission - Tabidachi",
+      "subtype": "OVA",
+      "start": "2022-02-16",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49789",
+      "title": "Boku no Hero Academia Reigi Kouza",
+      "subtype": "special",
+      "start": "2024-04-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47232",
+      "title": "Boku no Hero Academia 7",
+      "subtype": "TV",
+      "start": "2024-05-04",
+      "episodes": 21,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50501",
+      "title": "Boku no Hero Academia THE MOVIE: YOU'RE NEXT - A PIECE OF CAKE",
+      "subtype": "OVA",
+      "start": "2025-02-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [],
+  "parents": {},
+  "complete": true
+}

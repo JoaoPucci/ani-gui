@@ -88,8 +88,8 @@ async fn record_the_franchise_corpus() {
 #[ignore = "writes the served payloads of the corpus"]
 fn write_the_served_payloads() {
     let c = super::corpus_tests::corpus();
-    for anchor in super::corpus_tests::SERVED {
-        let f = super::corpus_tests::walk(&c, anchor);
+    for anchor in super::corpus_tests::served_anchors() {
+        let f = super::corpus_tests::walk(&c, &anchor);
         let body = serde_json::to_string_pretty(&f).expect("json") + "\n";
         std::fs::write(dir().join(format!("served-{anchor}.json")), body).expect("write");
     }
