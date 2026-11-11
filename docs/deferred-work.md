@@ -544,15 +544,20 @@ starting it, and delete it when you find it done.
   are written into `electron/oauth-server.js`; the main process has a
   message table in every shipped locale for its dialogs
   (`electron/lib/main-messages.cjs`), and they belong in it.
-- **Adopt the `documentPictureInPicture` browser API** for the player's
-  pop-out window. Not a request to write documentation — "Document
-  Picture-in-Picture" is the W3C API's name.
+- **Picture-in-picture shows no subtitles; a mini-player window is to
+  replace it.** Chromium's picture-in-picture window draws the video's
+  picture and not its text tracks, so the subtitles stay behind in the
+  main window. The pop-out the player needs is an app-owned window
+  carrying the player itself, studied in
+  [`proposals/mini-player.md`](./proposals/mini-player.md).
 
-  Electron exposes the API but omits the window-creation glue, so it
-  cannot work today: electron/electron#39633, open since 2023. Do not
-  re-attempt until that lands. PiP as it exists now — the player's
-  video, while the player is open — ships and is described in
-  `README.md` and `docs/architecture.md`.
+  The `documentPictureInPicture` browser API ("Document
+  Picture-in-Picture" is the W3C API's name) would have been the other
+  way, but Electron exposes it without the window-creation glue, so it
+  cannot work: electron/electron#39633, open since 2023. The maintainer
+  chose not to wait for it. PiP as it exists now — the player's video,
+  while the player is open — ships and is described in `README.md` and
+  `docs/architecture.md`.
 - **An mp4 stream resumed at a point can still show its first frame
   in picture-in-picture.** The resume hold (`$lib/play/resume-hold`)
   hides the picture with the page's CSS until the resume seek lands,
@@ -809,6 +814,22 @@ starting it, and delete it when you find it done.
   of per-episode audio, or a budget for the full scan on listings
   small enough to afford it — not a smarter search over the same
   requests.
+
+- **The Home banner's message states have no artwork.** When there is
+  no show to feature (the trending list came back empty, every show in
+  it was filtered out as unavailable, or the fetch failed), the banner
+  shows a short message and an Open Search button as plain text on a
+  dark band, at the banner's full height. It works, but it looks
+  unfinished next to a banner with art. A placeholder image or
+  illustration for those states would let them look finished. It
+  waits on a design study, held to the guard rails in `AGENTS.md` §7.
+  [`proposals/luma-custom-assets.md`](proposals/luma-custom-assets.md)
+  plans original illustrations for empty, loading and error states
+  elsewhere in the app (the "Illustrated brand assets" entry above is
+  that same work); the banner would be one more surface for it,
+  though the proposal does not list it. The proposal also rules out
+  generated art standing in for a licensed show's banner, so the
+  artwork here would be the app's own, not a substitute for a show.
 
 ## A second provider, and what it would allow
 
