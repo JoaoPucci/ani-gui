@@ -300,8 +300,11 @@ test("a test launch's scratch profile is gone once the app has quit", async () =
   // directory. The launch helper removes it, and only it, once the app
   // has exited, so test runs leave nothing behind there.
   const { app, profile } = await launchAppWithStubs();
-  expect(existsSync(profile)).toBe(true);
-  await app.close();
+  try {
+    expect(existsSync(profile)).toBe(true);
+  } finally {
+    await app.close();
+  }
   await expect.poll(() => existsSync(profile), { timeout: 5_000 }).toBe(false);
 });
 

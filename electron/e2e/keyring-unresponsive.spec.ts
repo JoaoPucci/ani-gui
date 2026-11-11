@@ -134,6 +134,8 @@ test("a secret service that never answers keeps neither the window nor the first
   fs.writeFileSync(path.join(tokens, "anilist.bin"), saved);
 
   const bus = await busWithSilentSecretService(path.join(tmp, "bus"));
+  // The teardown below stops the bus and removes the profile once the
+  // app is up; a launch that never starts is cleaned up here.
   const app = await launchPackagedApp({
     ...process.env,
     XDG_STATE_HOME: path.join(tmp, "state"),
@@ -147,6 +149,10 @@ test("a secret service that never answers keeps neither the window nor the first
     // basic_text at once and never touches the bus. A GNOME desktop is
     // where the freeze was seen.
     XDG_CURRENT_DESKTOP: "GNOME",
+  }).catch((err) => {
+    bus.stop();
+    fs.rmSync(tmp, { recursive: true, force: true });
+    throw err;
   });
   const pid = app.process().pid!;
   try {
