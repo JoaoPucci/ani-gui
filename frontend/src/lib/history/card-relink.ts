@@ -5,7 +5,9 @@
  * A card's guess is checked again before its picker opens: a link made
  * elsewhere, or a play that recorded the show, may have settled it
  * since the cards were read. A settled row loses its pill rather than
- * open an empty picker, and the cards are read again. A check that
+ * open an empty picker, and the cards are read again; once the row is
+ * matched again, its new match decides the pill, so a line the user
+ * named for it keeps its way to change it. A check that
  * cannot read the history or the row's match settles nothing and says
  * so: the pill stays, and the next click checks again. Reading again
  * lists the history in Continue order and matches again every row whose
@@ -31,8 +33,9 @@ export interface CardRelinkDeps {
 	 *  null when a later check overtook this one, and `unread` when this
 	 *  one could not read whether it stands. */
 	offerStands: (row: string, matchId: string) => Promise<boolean | null | 'unread'>;
-	/** The rows found no longer guessed: their pill goes. */
-	settled: { add: (row: string) => unknown };
+	/** The rows found no longer guessed: their pill goes, until the row
+	 *  is matched again, when its own match decides. */
+	settled: { add: (row: string) => unknown; delete: (row: string) => unknown };
 	/** The history the cards show now. */
 	current: () => readonly HistoryEntry[];
 	list: () => Promise<HistoryEntry[]>;
@@ -90,6 +93,9 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 			// for a row no longer on the cards.
 			if (!deps.current().some((r) => r.id === h.id)) return;
 			deps.forget(h.id);
+			// The settling was about the show the row left: what it is
+			// now decides its pill (a line the user named keeps one).
+			deps.settled.delete(h.id);
 			deps.publish(h.id, match);
 		};
 		void deps.resolveMatch(h).then(settle, () => settle(null));
