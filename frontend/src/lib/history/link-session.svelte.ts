@@ -21,8 +21,8 @@ import type { ReadOptions } from '$lib/api';
 import { linkedNotice, linkFailure } from './link-notices';
 import { carryAudio } from './carry-audio';
 import { LinkPicker } from './link-picker.svelte';
-import { guessedGroup, linkOffer, type LinkDeps, type LinkOffer } from './link-offer';
-import { offerAgain } from './picked-offer';
+import { guessedGroup, type LinkDeps, type LinkOffer } from './link-offer';
+import { surfaceOffer } from './picked-offer';
 
 /** A notice to the user. */
 export interface LinkNotice {
@@ -101,8 +101,8 @@ export class LinkSession extends LinkPicker {
 		pageId: string,
 		opts: ReadOptions
 	): Promise<LinkOffer | null> {
-		const guess = this.asksGuess ? await linkOffer(this.#deps, row, pageId, opts) : null;
-		return guess ?? offerAgain(this.#deps, row, pageId, this.inPlayer, opts);
+		const surface = { asksGuess: this.asksGuess, inPlayer: this.inPlayer };
+		return surfaceOffer(this.#deps, row, pageId, surface, opts);
 	}
 
 	/** Whether the arrival may ask about a guess: a session no guess

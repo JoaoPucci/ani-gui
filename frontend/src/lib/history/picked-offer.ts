@@ -8,7 +8,7 @@
  */
 
 import type { HistoryEntry, ReadOptions } from '$lib/api';
-import type { LinkDeps, LinkOffer } from './link-offer';
+import { linkOffer, type LinkDeps, type LinkOffer } from './link-offer';
 import { pickedRow } from './guess-slip';
 import { readOpts } from './read-opts';
 
@@ -47,4 +47,18 @@ export function offerAgain(
 	if (!row) return Promise.resolve(null);
 	const picked = inPlayer && pickedRow(row);
 	return pickedOffer(deps, row, pageId, (entry) => picked || entry.named === true, opts);
+}
+
+/** The offer a surface showing `pageId` makes for the card row `row`:
+ *  a guess's when the surface may ask about one (`asksGuess`), else the
+ *  way to change again a row the user named a show for (`offerAgain`). */
+export async function surfaceOffer(
+	deps: LinkDeps,
+	row: string | null,
+	pageId: string,
+	surface: { asksGuess: boolean; inPlayer: boolean },
+	opts?: ReadOptions
+): Promise<LinkOffer | null> {
+	const guess = surface.asksGuess ? await linkOffer(deps, row, pageId, opts) : null;
+	return guess ?? offerAgain(deps, row, pageId, surface.inPlayer, opts);
 }
