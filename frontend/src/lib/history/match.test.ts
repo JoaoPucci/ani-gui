@@ -483,6 +483,20 @@ describe('resolveKitsuMatch', () => {
 	// search. Resolver checks this first; on hit, no kitsuSearch /
 	// title-match round-trip is necessary.
 
+	it('says its trust could not be read when a mapping whose show checks out cannot read its played mark', async () => {
+		mockedAllmangaMap.mockResolvedValue('11061');
+		mockedDetail.mockResolvedValue(stubKitsu('11061', 'Naruto: Shippuuden', 500));
+		mockedPlayed.mockRejectedValue(new Error('backend down'));
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(
+				{ id: 'vDTSJHSpYnrkZnAvG', ep_no: '150', title: 'Nato: Shippuuden (500 episodes)' },
+				null
+			)
+		);
+		expect(got).toMatchObject({ trusted: false, trustUnread: true });
+		expect(got.match?.id).toBe('11061');
+	});
+
 	it('uses the provider→kitsu reverse mapping when present', async () => {
 		// Naruto's provider title is typo'd ("Nato: Shippuuden") so
 		// the title-match path mismatches it to Mysterious Girlfriend
