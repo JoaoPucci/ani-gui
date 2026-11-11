@@ -44,7 +44,6 @@ import { goto } from '$app/navigation';
 import { __resetApiBaseForTests, markWatched } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { __resetHiddenRowsForTests } from '../../src/lib/history/in-place-link.svelte';
-import { __resetGuessPlaysForTests } from '../../src/lib/history/guess-plays';
 
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
@@ -93,7 +92,6 @@ beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	__resetPlayCacheForTests();
 	__resetHiddenRowsForTests();
-	__resetGuessPlaysForTests();
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	window.localStorage.clear();

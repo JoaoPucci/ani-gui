@@ -43,7 +43,6 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { goto } from '$app/navigation';
 import { __resetApiBaseForTests, markWatched } from '../../src/lib/api';
-import { __resetGuessPlaysForTests } from '../../src/lib/history/guess-plays';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { appLinkDeps } from '../../src/lib/history/link-deps';
@@ -98,7 +97,6 @@ beforeEach(() => {
 	vi.mocked(goto).mockClear();
 	__resetApiBaseForTests(API_BASE);
 	__resetPlayCacheForTests();
-	__resetGuessPlaysForTests();
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	window.localStorage.clear();

@@ -1016,7 +1016,7 @@
 	 *  share a slot with hard play-call failures. The failure shows in
 	 *  a fixed-position overlay regardless of scroll. */
 	let playFailure = $state<{ episode: number; message: string } | null>(null);
-	// True while a play/playExternal request is in flight. Buttons
+	// True while a play request is in flight. Buttons
 	// disable themselves to keep the user from double-clicking into a second resolve
 	// into a stack of concurrent spawns.
 	let actionBusy = $state(false);

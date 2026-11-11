@@ -841,7 +841,7 @@ export function play(args: PlayArgs): Promise<CreateSessionResponse> {
  *  No session is registered — the player streams from the upstream
  *  directly with the resolved Referer. */
 export function playExternal(args: PlayArgs): Promise<void> {
-	// Noted once it went out: a handoff that failed played nothing.
+	// Noted once its player started: a handoff that failed played nothing.
 	return postJson<void>('/api/play/external', withUiLocale(args), { lane: 'resolve' }).then(() =>
 		notePlayed(args)
 	);
@@ -854,7 +854,7 @@ export function playExternal(args: PlayArgs): Promise<void> {
  *  Syncplay binary can't be spawned — caller surfaces the failure
  *  via the play page's `ErrorOverlay` with a syncplay.pl link. */
 export function playSyncplay(args: PlayArgs): Promise<void> {
-	// Noted once it went out: a handoff that failed played nothing.
+	// Noted once its player started: a handoff that failed played nothing.
 	return postJson<void>('/api/play/syncplay', withUiLocale(args), { lane: 'resolve' }).then(() =>
 		notePlayed(args)
 	);

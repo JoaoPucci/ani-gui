@@ -11,12 +11,15 @@
  * played any other way — from its own page, or by a player no guessed
  * card opened, there or handed off from it — which may record it on the
  * line as the user's own choice. A play of the show that lands on
- * another line lets go of the note too: the line is then only not asked
- * about again, and nothing is written. A later guessed play of the line
- * stands for it again, so the next episode of a guessed player revisited
- * asks once more. Every watch names its play here as it goes out, and
- * every handoff once it went out (`$lib/api`). The note lasts until the
- * app restarts, as the URLs it vouches for do.
+ * another line lets go of the note too: the carried verdict then no
+ * longer asks about this line's recorded guess, though nothing was
+ * written to it (a line still unrecorded is asked about as any guess
+ * is). A later guessed play of the line stands for it again, so the
+ * next episode of a guessed player revisited asks once more. Every watch
+ * names its play here as it is sent, and every handoff once its player
+ * started (`$lib/api`), so a slow handoff that started last is the
+ * line's latest play. The note lasts until the app restarts, as the
+ * URLs it vouches for do.
  */
 
 /** A play's names: its page (`kitsu_id`), and for a guessed card's

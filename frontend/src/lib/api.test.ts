@@ -1,5 +1,5 @@
-import { guessPlayed, notePlayed, __resetGuessPlaysForTests } from '$lib/history/guess-plays';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { guessPlayed, notePlayed, __resetGuessPlaysForTests } from '$lib/history/guess-plays';
 import { readPosition, savePosition } from './play/watch-position';
 import { getLocale } from '$lib/paraglide/runtime';
 import {
@@ -351,12 +351,12 @@ describe('playExternal', () => {
 describe('a handoff and the guessed plays it settles ($lib/history/guess-plays)', () => {
 	beforeEach(() => __resetGuessPlaysForTests());
 
-	it("settles the show's guessed line only once the handoff went out", async () => {
+	it("settles the show's guessed line only once the handoff's player started", async () => {
 		for (const handoff of [playExternal, playSyncplay]) {
 			__resetGuessPlaysForTests();
 			notePlayed({ guess_row: 'hianime:show-1', guess_id: '42' });
 			globalThis.fetch = mockFetchOnce(
-				{ code: 'error.syncplay.spawn_failed' },
+				{ code: 'error.play.failed' },
 				500
 			) as unknown as typeof fetch;
 			await expect(
