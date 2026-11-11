@@ -29,7 +29,10 @@ export type { FranchiseRow, FranchiseSection };
 export interface FranchisePageModel {
 	readonly order: WatchOrder;
 	readonly run: WatchRun;
-	/** The franchise's name: its first title, "(TV)" dropped where nothing clashes. */
+	/**
+	 * The franchise's name: its first TV series' title, else its first
+	 * title (`nameEntry`), "(TV)" dropped where nothing clashes.
+	 */
 	readonly name: string;
 	/** The title the name comes from, whose artwork and accent the masthead takes. */
 	readonly art: WatchEntry;

@@ -5,11 +5,19 @@
  * with the same name, in which case the suffix is what tells the two
  * apart and stays.
  */
+import { sequence } from './sequence';
 import type { WatchEntry, WatchRun } from './types';
 
-/** The entry a franchise is named after: the run's first entry. */
+/**
+ * The entry a franchise is named after: the main story's first TV
+ * series by its links, skipping the films, pilots, OVAs, ONAs and
+ * specials before it; where the main story holds no TV series, its
+ * first entry by its links (`run.nameId`). Link order is taken
+ * whatever the order setting, so the name never changes with it.
+ */
 export function nameEntry(run: WatchRun): WatchEntry {
-	return run.entries.find((e) => e.id === run.nameId)!;
+	const series = sequence(run, 'linked').find((e) => e.subtype === 'TV');
+	return series ?? run.entries.find((e) => e.id === run.nameId)!;
 }
 
 /** The title without a trailing Kitsu format suffix. */
