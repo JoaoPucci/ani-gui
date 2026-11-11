@@ -19,7 +19,7 @@
 use std::collections::BTreeSet;
 
 use super::links::{links, parents};
-use super::name::{display_name, name_entry};
+use super::name::named;
 use super::rules::Run;
 use super::sections::{is_movie, Sections};
 use super::{order_key, Franchise, Lookup};
@@ -99,17 +99,7 @@ pub(super) fn assemble(anchor: &str, run: &Run, look: &Lookup<'_>) -> Franchise 
     let main = entries(&members, run, look);
     let [versions, films, sides, recaps] =
         [&s.versions, &s.films, &s.sides, &s.recaps].map(|ids| entries(ids, run, look));
-    let (name, name_from) = name_entry(&main).map_or_else(
-        || (String::new(), anchor.to_string()),
-        |e| {
-            let others = [&main, &versions, &films, &sides, &recaps]
-                .into_iter()
-                .flatten()
-                .filter(|o| o.id != e.id)
-                .map(|o| o.title.as_str());
-            (display_name(&e.title, others), e.id.clone())
-        },
-    );
+    let (name, name_from) = named(anchor, &main, [&versions, &films, &sides, &recaps]);
     Franchise {
         anchor: anchor.to_string(),
         name,
