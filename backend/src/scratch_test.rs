@@ -13,10 +13,10 @@
 //! [`Scratch`] dereferences to what it holds, so a helper that returned
 //! `AppState` returns `Scratch<AppState>` and its callers read and
 //! mutate the state as before. No method moves the state out, since
-//! that would remove the directory under a state still using it. A
-//! clone of the state (`(*held).clone()`, or `held.clone()` on a held
-//! `Arc`) is not tied to the directory: it is safe only while the
-//! `Scratch` it came from is still alive.
+//! that would remove the directory under a state still using it.
+//! `Scratch` is not `Clone`, so `held.clone()` clones the held value,
+//! and that clone is not tied to the directory: it is safe only while
+//! the `Scratch` it came from is still alive.
 
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
