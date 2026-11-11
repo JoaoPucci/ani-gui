@@ -33,9 +33,10 @@
  * page is on screen hears of it from the app ($lib/history/link-deps.ts).
  */
 
-import type { KitsuAnimeRef } from '$lib/api';
+import type { KitsuAnimeRef, ReadOptions } from '$lib/api';
 import { LinkSession, type LinkNotice, type LinkSessionDeps } from './link-session.svelte';
-import type { LinkDeps } from './link-offer';
+import type { LinkDeps, LinkOffer } from './link-offer';
+import { keptOnArrival, KeptPicks } from './kept-pick';
 import type { OfferSurface } from './picked-offer';
 import { playerNotify } from './link-notices';
 import { surface, type Surface } from './surface';
@@ -73,6 +74,9 @@ export class InPlaceLinkSession extends LinkSession {
 	switchedTitle = $state<string | null>(null);
 
 	#row = $state<string | null>(null);
+	#deps: LinkDeps;
+	/** The pick an arrival's line keeps, read with its offer. */
+	#kept = new KeptPicks();
 	#guess = $state(true);
 	#page = '';
 	#surface: Surface;
@@ -98,6 +102,7 @@ export class InPlaceLinkSession extends LinkSession {
 			here: place.here
 		} satisfies LinkSessionDeps);
 		this.#surface = place;
+		this.#deps = deps;
 		this.#refresh = refresh;
 		this.#notify = deps.notify;
 		this.#inPlayer = inPlayer;
@@ -120,14 +125,30 @@ export class InPlaceLinkSession extends LinkSession {
 	/** The surface shows `pageId` for the card row `row`; on the player,
 	 *  `guess` says whether a guess opened the session, else it only
 	 *  offers to change again a show the user named. */
-	override arrive(row: string | null, pageId: string, guess = true): Promise<boolean> {
+	override async arrive(row: string | null, pageId: string, guess = true): Promise<boolean> {
 		this.#guess = guess;
 		this.#row = row;
 		this.#page = pageId;
 		this.aside = isRowHidden(row);
 		this.linked = null;
 		this.switchedTitle = this.#inPlayer ? takeSwitch(row) : null;
-		return super.arrive(row, pageId);
+		const stands = await super.arrive(row, pageId);
+		// A player mounted again after a pick it kept watching through:
+		// the line keeps the pick ($lib/history/kept-pick.ts).
+		if (stands) this.linked = this.#kept.take(this.arrivals);
+		return stands;
+	}
+
+	protected override async findOffer(
+		row: string | null,
+		pageId: string,
+		opts: ReadOptions
+	): Promise<{ offer: LinkOffer | null; unread: boolean }> {
+		const arrival = this.arrivals;
+		const found = await super.findOffer(row, pageId, opts);
+		const at = { inPlayer: this.#inPlayer, row, pageId };
+		this.#kept.note(arrival, await keptOnArrival(this.#deps, at, found, opts));
+		return found;
 	}
 
 	/** Whether the latest arrival's offer stands: null when it could not
@@ -160,7 +181,7 @@ export class InPlaceLinkSession extends LinkSession {
 
 	/** Hide the slip for this row until the app restarts. */
 	hide(): void {
-		if (this.#row) hideRow(this.#row);
+		hideRow(this.#row);
 		this.aside = true;
 	}
 
@@ -169,7 +190,7 @@ export class InPlaceLinkSession extends LinkSession {
 	 *  believed, and a pick of the same show in the picker writes the
 	 *  same. */
 	async answerYes(): Promise<void> {
-		if (!this.offer) return;
+		// With no offer, confirmCurrent does nothing.
 		await this.confirmCurrent();
 	}
 

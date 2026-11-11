@@ -55,8 +55,8 @@ const pickedRows = new Set<string>();
 let switchNote: { row: string; title: string } | null = null;
 
 /** Hide the slip of `row` until the app restarts. */
-export function hideRow(row: string): void {
-	hiddenRows.add(row);
+export function hideRow(row: string | null): void {
+	if (row) hiddenRows.add(row);
 }
 
 /** Whether the viewer hid the slip of `row` since the app started. */
