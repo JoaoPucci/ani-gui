@@ -68,7 +68,22 @@ describe("appLinkDeps' match", () => {
 		await expect(appLinkDeps().resolve(entry)).resolves.toEqual({ match: null, trusted: false });
 	});
 
-	it('answers the match a guess found, though a read on the way failed', async () => {
+	it("rejects when the row's trust could not be read, though a guess found a match", async () => {
+		const entry: HistoryEntry = {
+			id: 'hianime:black-clover-949',
+			title: 'Black Clover',
+			ep_no: '1'
+		};
+		resolveKitsuMatchWithTrust.mockResolvedValueOnce({
+			match: { id: '13209' },
+			trusted: false,
+			unread: true,
+			trustUnread: true
+		} as never);
+		await expect(appLinkDeps().resolve(entry)).rejects.toBeDefined();
+	});
+
+	it('answers the match a guess found, though a guess step read failed on the way', async () => {
 		const entry: HistoryEntry = {
 			id: 'hianime:black-clover-949',
 			title: 'Black Clover',

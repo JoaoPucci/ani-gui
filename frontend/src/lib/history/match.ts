@@ -56,7 +56,7 @@ export async function resolveKitsuMatch(
 export async function resolveKitsuMatchWithTrust(
 	preliminary: ResumeTarget,
 	opts: ReadOptions = {}
-): Promise<{ match: KitsuAnimeRef | null; trusted: boolean; unread?: true }> {
+): Promise<{ match: KitsuAnimeRef | null; trusted: boolean; unread?: true; trustUnread?: true }> {
 	const answer = await resolveWithTrust(preliminary, opts);
 	opts.signal?.throwIfAborted();
 	return answer;
@@ -65,7 +65,7 @@ export async function resolveKitsuMatchWithTrust(
 async function resolveWithTrust(
 	preliminary: ResumeTarget,
 	opts: ReadOptions
-): Promise<{ match: KitsuAnimeRef | null; trusted: boolean; unread?: true }> {
+): Promise<{ match: KitsuAnimeRef | null; trusted: boolean; unread?: true; trustUnread?: true }> {
 	// The row recorded the show the user played: read that entry and
 	// match nothing. A failed read answers no show rather than a guess
 	// that could land on another one — unless Kitsu answers that the
