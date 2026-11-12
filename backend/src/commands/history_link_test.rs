@@ -583,3 +583,54 @@ async fn the_history_route_marks_the_rows_the_user_named_a_show_for() {
     .unwrap();
     assert!(named(router).await.is_empty());
 }
+
+#[tokio::test]
+async fn a_link_that_waited_on_kitsu_leaves_a_newer_link_standing() {
+    // The first correction waits for its Kitsu read; the viewer corrects
+    // the same card again on another surface, which saves first. The
+    // older request lands last and must not overwrite the newer one.
+    let mock = MockServer::start().await;
+    let detail = || {
+        ResponseTemplate::new(200)
+            .insert_header("content-type", "application/vnd.api+json")
+            .set_body_bytes(DETAIL_FIXTURE.to_vec())
+    };
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(detail().set_delay(std::time::Duration::from_millis(400)))
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .respond_with(detail())
+        .mount(&mock)
+        .await;
+    let tmp = tempfile::tempdir().unwrap();
+    let history = tmp.path().join("history");
+    write_atomic(&history, &rows()).unwrap();
+    let state = state_at(history, &mock.uri());
+    let card = ["hianime:black-clover-949"];
+
+    let first = args(&card, "12");
+    let second = args(&card, "21");
+    let (older, newer) = tokio::join!(link(&state, &first), async {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        link(&state, &second).await
+    });
+
+    assert_eq!(newer.expect("newer").linked.len(), 1);
+    assert!(
+        older.expect("older").linked.is_empty(),
+        "the older link writes nothing"
+    );
+    let row = read_all(&state.history_path)
+        .unwrap()
+        .into_iter()
+        .find(|r| r.id == card[0])
+        .unwrap();
+    assert_eq!(row.kitsu_id.as_deref(), Some("21"));
+    assert_eq!(
+        crate::commands::linked_note::linked(&state, card[0]).as_deref(),
+        Some("21")
+    );
+}
