@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::cache::{meta_cache_get, meta_cache_put};
+use crate::commands::link_verdict::RowMatch;
 use crate::history::{read_all, write_atomic, HistoryEntry};
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use std::path::PathBuf;
@@ -379,20 +380,52 @@ fn the_group_a_link_would_write_leaves_out_another_listing() {
     write_atomic(&history, &jojo_rows()).unwrap();
     let state = state_at(history, "http://127.0.0.1:9");
 
+    let guess = |id: &str| RowMatch {
+        id: id.into(),
+        show: Some("7158".into()),
+        trusted: false,
+    };
     let group = link_group(
         &state,
         &LinkGroupArgs {
             card: JOJO_CARD.into(),
-            rows: vec![
-                JOJO_CARD.into(),
-                JOJO_PLAYED.into(),
-                "hianime:gone-1".into(),
-            ],
+            show: "7158".into(),
+            saved: None,
+            rows: vec![guess(JOJO_PLAYED), guess("hianime:gone-1")],
         },
     )
     .expect("group");
 
     assert_eq!(group, [JOJO_CARD]);
+}
+
+#[test]
+fn the_group_is_the_card_and_the_rows_guessed_as_its_show_on_its_listing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let history = tmp.path().join("history");
+    write_atomic(&history, &rows()).unwrap();
+    let state = state_at(history, "http://127.0.0.1:9");
+    let matched = |id: &str, show: &str, trusted: bool| RowMatch {
+        id: id.into(),
+        show: Some(show.into()),
+        trusted,
+    };
+
+    let group = link_group(
+        &state,
+        &LinkGroupArgs {
+            card: "hianime:black-clover-949".into(),
+            show: "12625".into(),
+            saved: None,
+            rows: vec![
+                matched("black-clover-77", "12625", false),
+                matched("hianime:gintama-1237", "12625", true),
+            ],
+        },
+    )
+    .expect("group");
+
+    assert_eq!(group, ["hianime:black-clover-949", "black-clover-77"]);
 }
 
 #[tokio::test]
@@ -413,7 +446,11 @@ async fn the_group_route_answers_the_rows_a_link_would_write() {
                 .body(Body::from(
                     serde_json::json!({
                         "card": "black-clover-77",
-                        "rows": ["black-clover-77", "hianime:black-clover-949", "hianime:gintama-1237"]
+                        "show": "12625",
+                        "rows": [
+                            { "id": "hianime:black-clover-949", "show": "12625", "trusted": false },
+                            { "id": "hianime:gintama-1237", "show": "818", "trusted": false }
+                        ]
                     })
                     .to_string(),
                 ))

@@ -29,6 +29,7 @@ use tower_http::cors::CorsLayer;
 mod account;
 mod airing;
 mod flags;
+mod link_rules;
 mod refill;
 mod sse_abort;
 mod syncplay;
@@ -101,6 +102,15 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/history/:id/number", get(get_history_number))
         .route("/api/history/link", post(post_history_link))
         .route("/api/history/link-group", post(post_history_link_group))
+        .route(
+            "/api/history/link-candidates",
+            post(link_rules::post_link_candidates),
+        )
+        .route("/api/history/card-lines", post(link_rules::post_card_lines))
+        .route(
+            "/api/history/link-verdict",
+            post(link_rules::post_link_verdict),
+        )
         .route(
             "/api/history/guess/ruled-out",
             post(post_history_guess_ruled_out),

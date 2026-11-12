@@ -36,6 +36,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::app::AppState;
+use crate::commands::link_verdict::{group_members, RowMatch};
 use crate::error::Result;
 use crate::history::guard::{Epoch, Held};
 use crate::history::same_kitsu_id;
@@ -56,13 +57,19 @@ pub struct LinkArgs {
     pub kitsu_id: String,
 }
 
-/// A request for the rows a link would write.
+/// A request for the rows a link from a card would write.
 #[derive(Debug, Clone, Deserialize)]
 pub struct LinkGroupArgs {
     /// The row of the card the link would be made from.
     pub card: String,
-    /// The rows the card stands for.
-    pub rows: Vec<String>,
+    /// The show the card shows.
+    pub show: String,
+    /// The show the user named for the card's line, when they did.
+    #[serde(default)]
+    pub saved: Option<String>,
+    /// The history's other rows, with Continue Watching's match for each
+    /// ([`crate::commands::link_verdict::group_members`]).
+    pub rows: Vec<RowMatch>,
 }
 
 /// A row a link wrote, as it left it, and the id it had before.
@@ -87,14 +94,17 @@ pub struct LinkOutcome {
     pub linked: Vec<LinkedRow>,
 }
 
-/// The rows a link of `args.rows` from the card `args.card` would
-/// write now — the renderer's count of what its Link covers.
+/// The rows a link from the card `args.card` would write now: every
+/// row the card stands for ([`group_members`]) on the card's own
+/// listing — the renderer's count of what its Link covers, and the rows
+/// it links.
 ///
 /// # Errors
 /// History I/O errors.
 pub fn link_group(state: &AppState, args: &LinkGroupArgs) -> Result<Vec<String>> {
     let entries = crate::history::read_all(&state.history_path)?;
-    Ok(plan_link(&entries, &args.card, &args.rows)
+    let members = group_members(&args.card, &args.show, args.saved.as_deref(), &args.rows);
+    Ok(plan_link(&entries, &args.card, &members)
         .into_iter()
         .map(|l| l.row)
         .collect())
