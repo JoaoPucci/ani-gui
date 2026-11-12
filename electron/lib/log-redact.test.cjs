@@ -171,3 +171,8 @@ test("a redacted value ends at a separator, and what follows it is kept", () => 
   assert.equal(redactSecrets(`x secret=${SECRET}, then more`), `x secret=${REDACTED}, then more`);
   assert.equal(redactSecrets(`a secret=${SECRET}|next`), `a secret=${REDACTED}|next`);
 });
+
+test("a secret= after a comma or a bar is redacted too", () => {
+  assert.equal(redactSecrets(`a,secret=${SECRET}`), `a,secret=${REDACTED}`);
+  assert.equal(redactSecrets(`a|secret=${SECRET}`), `a|secret=${REDACTED}`);
+});

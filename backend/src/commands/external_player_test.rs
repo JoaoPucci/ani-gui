@@ -417,3 +417,62 @@ fn an_option_whose_value_is_kept_stays_with_it() {
         ]
     );
 }
+
+#[test]
+fn a_dropped_option_leaves_the_option_before_it() {
+    // The Settings page's own example: with no referer, `--referer=`
+    // goes and `--no-config` stays.
+    let a = custom("--no-config --referer={referer} {url}");
+    assert_eq!(
+        build_argv(&a),
+        vec![
+            "--no-config".to_string(),
+            "https://example.com/v.m3u8".to_string()
+        ]
+    );
+}
+
+#[test]
+fn a_path_or_the_end_of_options_is_not_an_option_a_drop_takes() {
+    let a = custom("--script /home/u/x.lua -- {title} {url}");
+    assert_eq!(
+        build_argv(&a),
+        vec![
+            "--script".to_string(),
+            "/home/u/x.lua".to_string(),
+            "--".to_string(),
+            "https://example.com/v.m3u8".to_string(),
+        ]
+    );
+}
+
+proptest::proptest! {
+    #[test]
+    fn an_option_is_lost_only_with_the_value_written_after_it(
+        title in proptest::option::of("(-|/)?[a-z]{0,6}"),
+        referer in proptest::option::of("(-|/)?[a-z]{0,6}"),
+        template in proptest::collection::vec(
+            proptest::sample::select(vec![
+                "--a", "-b", "/c", "--d=1", "--t={title}", "--r={referer}",
+                "{title}", "{referer}", "x", "{url}",
+            ]),
+            0..8,
+        ),
+    ) {
+        let mut a = custom(&template.join(" "));
+        a.title = title.filter(|t| !t.is_empty());
+        a.referer = referer.filter(|r| !r.is_empty());
+        let argv = build_argv(&a);
+        // A literal option the template wrote, followed by a token that
+        // is not a bare value placeholder, is always kept.
+        for (i, tok) in template.iter().enumerate() {
+            let literal_option = (tok.starts_with('-') || tok.starts_with('/')) && !tok.contains('{');
+            let next_is_value = template
+                .get(i + 1)
+                .is_some_and(|n| n.starts_with('{') && *n != "{url}");
+            if literal_option && !next_is_value {
+                proptest::prop_assert!(argv.contains(&tok.to_string()), "{} lost: {:?} from {:?}", tok, argv, template);
+            }
+        }
+    }
+}
