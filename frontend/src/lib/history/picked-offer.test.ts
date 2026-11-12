@@ -150,6 +150,18 @@ describe('how a surface reads the answer', () => {
 		expect(shown.mock.calls[0][0]).toBe('7158');
 	});
 
+	it('makes no offer again on a show playing that cannot be read, and keeps the pick', async () => {
+		const deps = d({
+			show: async () => Promise.reject(new Error('kitsu')),
+			verdict: async () => ({ offer: 'again', kept: true })
+		});
+		expect(await surfaceOfferRead(deps, CARD.id, '7158', PLAYER)).toEqual({
+			offer: null,
+			unread: false,
+			kept: ref('4013')
+		});
+	});
+
 	it("hands back the line's kept pick", async () => {
 		const found = await surfaceOfferRead(
 			answering({ offer: null, kept: true }),
