@@ -94,8 +94,8 @@ pub struct LinkOutcome {
     pub kitsu_id: String,
     /// Every row linked, in the order asked.
     pub linked: Vec<LinkedRow>,
-    /// A row asked was left as a correction asked after this one saved
-    /// it: the viewer's latest answer stands, and this one did not save.
+    /// A correction asked after this one had already saved one of its
+    /// rows: the viewer's latest answer stands, and this one wrote no row.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub overtaken: bool,
 }
@@ -147,8 +147,12 @@ fn link_held(
     linked.retain(|l| !held.show_removed_since(begun, &l.row));
     // A row a correction asked after this one already saved keeps that
     // answer: the viewer's latest stands.
+    // Overtaken on any row, it writes none: the card's rows keep one
+    // answer, the later one.
     let overtaken = linked.iter().any(|l| held.link_overtaken(begun, &l.row));
-    linked.retain(|l| !held.link_overtaken(begun, &l.row));
+    if overtaken {
+        linked.clear();
+    }
     for l in &mut linked {
         held.set_kitsu_id(&l.row, Some(kitsu_id.to_string()))?;
         held.linked(begun, &l.row);
