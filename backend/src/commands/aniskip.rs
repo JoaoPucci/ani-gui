@@ -120,12 +120,12 @@ mod tests {
     use crate::app::AppState;
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::path::PathBuf;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    fn state_with_kitsu_at(uri: &str) -> AppState {
-        AppState {
+    fn state_with_kitsu_at(uri: &str) -> crate::scratch::Scratch<AppState> {
+        let dirs = crate::scratch::dir();
+        let state = AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -134,20 +134,21 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/y/history"),
+            history_path: dirs.history(),
             providers: crate::provider_set::ProviderSet::for_tests(),
-            image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+            image_cache_dir: dirs.images(),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), uri),
-            config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-            state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            config_path: dirs.config(),
+            state_dir: dirs.state(),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
             flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
-        }
+        };
+        dirs.hold(state)
     }
 
     const ANIME_WITHOUT_MAPPINGS: &str = r##"{
@@ -179,7 +180,7 @@ mod tests {
     /// cache key shape stays stable under refactors.
     #[tokio::test]
     async fn cache_hit_returns_stored_intervals_without_network() {
-        let state = state_with_kitsu_at("http://unused");
+        let mut state = state_with_kitsu_at("http://unused");
         // Pre-populate the cache for (mal=21, ep=1) — the format
         // matches what the green impl will write. The Kitsu
         // mappings call is needed first to learn the MAL id
@@ -194,10 +195,7 @@ mod tests {
             ))
             .mount(&kitsu)
             .await;
-        let state = AppState {
-            kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu.uri()),
-            ..state
-        };
+        state.kitsu = KitsuClient::with_base(reqwest::Client::new(), kitsu.uri());
         // Pre-populate the cache row so the green impl's hit path
         // returns these without ever hitting aniskip.com.
         let intervals = vec![SkipInterval {
@@ -217,11 +215,9 @@ mod tests {
 
     /// A state whose history lives under `dir`, holding one row for
     /// One Piece that records Kitsu id 12.
-    fn state_with_a_row_in(dir: &std::path::Path) -> AppState {
-        let state = AppState {
-            history_path: dir.join("history"),
-            ..state_with_kitsu_at("http://unused")
-        };
+    fn state_with_a_row_in(dir: &std::path::Path) -> crate::scratch::Scratch<AppState> {
+        let mut state = state_with_kitsu_at("http://unused");
+        state.history_path = dir.join("history");
         crate::history::upsert_and_write(
             &state.history_path,
             crate::history::HistoryEntry {

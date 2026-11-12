@@ -3,7 +3,7 @@
 use super::*;
 use crate::commands::play_native_test_provider::{stitched_recap, STITCHED, STITCHED_SLUG};
 
-fn state(td: &tempfile::TempDir) -> AppState {
+fn state(td: &tempfile::TempDir) -> crate::scratch::Scratch<AppState> {
     let mut state = super::tests::state_with_proxy_origin();
     state
         .providers
