@@ -93,6 +93,10 @@ pub struct LinkOutcome {
     pub kitsu_id: String,
     /// Every row linked, in the order asked.
     pub linked: Vec<LinkedRow>,
+    /// A row asked was left as a correction asked after this one saved
+    /// it: the viewer's latest answer stands, and this one did not save.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub overtaken: bool,
 }
 
 /// The rows a link from the card `args.card` would write now: every
@@ -150,6 +154,7 @@ fn link_held(
     Ok(LinkOutcome {
         kitsu_id: kitsu_id.to_string(),
         linked,
+        overtaken: false,
     })
 }
 

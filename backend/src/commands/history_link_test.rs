@@ -619,10 +619,9 @@ async fn a_link_that_waited_on_kitsu_leaves_a_newer_link_standing() {
     });
 
     assert_eq!(newer.expect("newer").linked.len(), 1);
-    assert!(
-        older.expect("older").linked.is_empty(),
-        "the older link writes nothing"
-    );
+    let older = older.expect("older");
+    assert!(older.linked.is_empty(), "the older link writes nothing");
+    assert!(older.overtaken, "and says a newer answer stands");
     let row = read_all(&state.history_path)
         .unwrap()
         .into_iter()
@@ -633,4 +632,50 @@ async fn a_link_that_waited_on_kitsu_leaves_a_newer_link_standing() {
         crate::commands::linked_note::linked(&state, card[0]).as_deref(),
         Some("21")
     );
+}
+
+#[tokio::test]
+async fn the_link_asked_last_stands_whichever_saves_first() {
+    // The first correction's read answers first; the second, asked
+    // later, waits longer. The second is the viewer's latest answer.
+    let mock = MockServer::start().await;
+    let detail = |ms: u64| {
+        ResponseTemplate::new(200)
+            .insert_header("content-type", "application/vnd.api+json")
+            .set_body_bytes(DETAIL_FIXTURE.to_vec())
+            .set_delay(std::time::Duration::from_millis(ms))
+    };
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(detail(100))
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .respond_with(detail(500))
+        .mount(&mock)
+        .await;
+    let tmp = tempfile::tempdir().unwrap();
+    let history = tmp.path().join("history");
+    write_atomic(&history, &rows()).unwrap();
+    let state = state_at(history, &mock.uri());
+    let card = ["hianime:black-clover-949"];
+    let first = args(&card, "12");
+    let second = args(&card, "21");
+
+    let (older, newer) = tokio::join!(link(&state, &first), async {
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        link(&state, &second).await
+    });
+
+    assert!(!older.expect("older").overtaken);
+    let newer = newer.expect("newer");
+    assert!(!newer.overtaken);
+    assert_eq!(newer.linked.len(), 1);
+    let row = read_all(&state.history_path)
+        .unwrap()
+        .into_iter()
+        .find(|r| r.id == card[0])
+        .unwrap();
+    assert_eq!(row.kitsu_id.as_deref(), Some("21"));
 }
