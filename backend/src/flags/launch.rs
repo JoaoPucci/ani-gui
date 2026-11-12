@@ -139,3 +139,7 @@ fn unix_now() -> u64 {
 #[cfg(test)]
 #[path = "launch_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "launch_keys_test.rs"]
+mod keys_tests;

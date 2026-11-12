@@ -18,6 +18,14 @@ path = "src/lib.rs"
 name = "ani-gui-backend"
 path = "src/bin/backend.rs"
 
+[features]
+# Test builds only. A test run's flags file (ANI_GUI_TEST_FLAGS_FILE)
+# is then trusted under the fixture test-run key as well, whose secret
+# anyone can derive from tests/fixtures/flags-signature/make.py. The
+# live fetch never trusts it. `cargo test --all-features` turns it on;
+# no build that is packaged may (tests/arch/test_run_key.sh).
+test-run-key = []
+
 [dependencies]
 # Async runtime + HTTP server (streaming proxy + API)
 tokio = { version = "1.41", features = ["full"] }

@@ -158,6 +158,25 @@ jobs:
           fi
 
       - if: needs.filter.outputs.relevant == 'true'
+        name: The packaged backend trusts no test-run key
+        # A backend built with its `test-run-key` feature trusts a test
+        # run's flags file under a fixture key whose secret anyone can
+        # derive (backend/tests/fixtures/flags-signature/). The package
+        # here is built by the scripts a release uses, so the key must
+        # not be in it. tests/arch/test_run_key.sh holds those scripts
+        # to that on both platforms; this checks the binary they made.
+        working-directory: electron
+        run: |
+          set -euo pipefail
+          backend=dist/linux-unpacked/resources/ani-gui-backend
+          key=$(head -n 1 ../backend/tests/fixtures/flags-signature/test-run-key.pub)
+          test -n "$key"
+          if grep -qF -- "$key" "$backend"; then
+            echo "the packaged backend carries the test-run key" >&2
+            exit 1
+          fi
+
+      - if: needs.filter.outputs.relevant == 'true'
         name: Run Playwright tests under Xvfb
         working-directory: electron
         run: xvfb-run --auto-servernum pnpm run e2e:fast
