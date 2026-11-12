@@ -86,9 +86,7 @@ fn a_resolve_asks_for_the_renderers_locale() {
         let args = play_args("es-419");
         assert_eq!(args.wanted(configured).locale, "es-419");
         assert_eq!(
-            args.native_request("best", configured, None, None)
-                .wanted
-                .locale,
+            args.native_request(configured, None, None).wanted.locale,
             "es-419"
         );
     }

@@ -43,7 +43,7 @@ fn recap_after_three() -> Vec<EpisodeRef> {
     ]
 }
 
-fn state(td: &tempfile::TempDir) -> AppState {
+fn state(td: &tempfile::TempDir) -> crate::scratch::Scratch<AppState> {
     let mut state = crate::commands::play::tests::state_with_proxy_origin();
     state.config_path = td.path().join("config.toml");
     state.history_path = td.path().join("history");
@@ -98,7 +98,10 @@ fn write_row(history: &std::path::Path, row: crate::history::HistoryEntry) {
 /// `meanwhile` takes no lock of this process: the queued repair holds
 /// the store's mutex, so a lock some other test holds while it waits
 /// for that mutex would never be let go.
-fn repair_racing(state: AppState, meanwhile: impl FnOnce(&std::path::Path)) -> String {
+fn repair_racing(
+    state: crate::scratch::Scratch<AppState>,
+    meanwhile: impl FnOnce(&std::path::Path),
+) -> String {
     let history = state.history_path.clone();
     let lock_path = history.with_file_name("ani-gui-offsets.lock");
     let foreign = std::fs::OpenOptions::new()

@@ -1,0 +1,399 @@
+{
+ "data": [
+  {
+   "id": "2724",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ginga Eiyuu Densetsu: Waga Yuku wa Hoshi no Taikai",
+    "titles": {
+     "en": "Legend of the Galactic Heroes: My Conquest Is the Sea of Stars",
+     "en_jp": "Ginga Eiyuu Densetsu: Waga Yuku wa Hoshi no Taikai",
+     "ja_jp": "銀河英雄伝説: わが征くは星の大海"
+    },
+    "abbreviatedTitles": [
+     "LoGH: My Conquest Is the Sea of Stars",
+     "Legend of the Galactic Heroes MOVIE (1988)"
+    ],
+    "slug": "ginga-eiyuu-densetsu-waga-yuku-wa-hoshi-no-taikai",
+    "startDate": "1988-02-06",
+    "endDate": "1988-02-06",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43092",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kyojinzoku no Hanayome",
+    "titles": {
+     "en": "The Titan's Bride",
+     "en_jp": "Kyojinzoku no Hanayome",
+     "ja_jp": "巨人族の花嫁"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kyojinzoku-no-hanayome",
+    "startDate": "2020-07-06",
+    "endDate": "2020-08-31",
+    "episodeCount": 9,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8080",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Hinata no Aoshigure",
+    "titles": {
+     "en_jp": "Hinata no Aoshigure",
+     "ja_jp": "陽なたのアオシグレ"
+    },
+    "abbreviatedTitles": [
+     "Rain in the Sunshine"
+    ],
+    "slug": "hinata-no-aoshigure",
+    "startDate": "2013-11-09",
+    "endDate": "2013-11-09",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42387",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Precure Miracle Universe Movie",
+    "titles": {
+     "en_jp": "Precure Miracle Universe Movie",
+     "ja_jp": "映画 プリキュアミラクルユニバース"
+    },
+    "abbreviatedTitles": [],
+    "slug": "precure-miracle-universe-movie",
+    "startDate": "2019-03-16",
+    "endDate": "2019-03-16",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "9843",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Heart Cocktail",
+    "titles": {
+     "en_jp": "Heart Cocktail",
+     "ja_jp": "ハートカクテル"
+    },
+    "abbreviatedTitles": [],
+    "slug": "heart-cocktail",
+    "startDate": "1986-10-03",
+    "endDate": "1988-03-26",
+    "episodeCount": 77,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49897",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "GaCen Shoujo to Ibunka Kouryuu",
+    "titles": {
+     "en": "Cultural Exchange With a Game Center Girl",
+     "en_jp": "GaCen Shoujo to Ibunka Kouryuu",
+     "ja_jp": "ゲーセン少女と異文化交流"
+    },
+    "abbreviatedTitles": [],
+    "slug": "gacen-shoujo-to-ibunka-kouryuu",
+    "startDate": "2025-07-06",
+    "endDate": "2025-09-21",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7105",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "My Melody no Akazukin",
+    "titles": {
+     "en_jp": "My Melody no Akazukin",
+     "ja_jp": "マイメロディの赤ずきん"
+    },
+    "abbreviatedTitles": [
+     "My Melody's Little Red Riding Hood"
+    ],
+    "slug": "my-melody-no-akazukin",
+    "startDate": "1989-07-22",
+    "endDate": "1989-07-22",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46194",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ikuta no Kita",
+    "titles": {
+     "en": "Dozens of Norths",
+     "en_jp": "Ikuta no Kita",
+     "fr_fr": "Des dizaines de Nords",
+     "ja_jp": "幾多の北"
+    },
+    "abbreviatedTitles": [],
+    "slug": "ikuta-no-kita",
+    "startDate": "2021-11-06",
+    "endDate": "2021-11-06",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46508",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mamekichi Mameko NEET no Nichijou",
+    "titles": {
+     "en": "Mameko Mamekichi's NEET Everyday Life",
+     "en_jp": "Mamekichi Mameko NEET no Nichijou",
+     "ja_jp": "まめきちまめこニートの日常"
+    },
+    "abbreviatedTitles": [],
+    "slug": "mamekichi-mameko-neet-no-nichijou",
+    "startDate": "2022-10-03",
+    "endDate": "2023-04-03",
+    "episodeCount": 48,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48943",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Entamesutorakku",
+    "titles": {
+     "en": "Pop Junkie",
+     "en_jp": "Entamesutorakku",
+     "ja_jp": "エンタメストラック"
+    },
+    "abbreviatedTitles": [],
+    "slug": "entamesutorakku",
+    "startDate": "2021-03-08",
+    "endDate": "2021-03-08",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50019",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Fuyu no Suta-furu-tsu",
+    "titles": {
+     "en": "Winter Star",
+     "en_jp": "Fuyu no Suta-furu-tsu",
+     "ja_jp": "冬のスターフルーツ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "fuyu-no-suta-furu-tsu",
+    "startDate": "2022-01-01",
+    "endDate": "2022-01-01",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "13893",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online: Alicization",
+    "titles": {
+     "en": "Sword Art Online: Alicization",
+     "en_jp": "Sword Art Online: Alicization",
+     "ja_jp": "ソードアート・オンライン アリシゼーション"
+    },
+    "abbreviatedTitles": [
+     "Sword Art Online III",
+     "SAO Alicization"
+    ],
+    "slug": "sword-art-online-alicization",
+    "startDate": "2018-10-07",
+    "endDate": "2019-03-31",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "5212",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Colorful (Movie)",
+    "titles": {
+     "en": "Colorful The Motion Picture",
+     "en_jp": "Colorful (Movie)",
+     "en_us": "Colorful The Motion Picture",
+     "ja_jp": "カラフル"
+    },
+    "abbreviatedTitles": [
+     "Colourful"
+    ],
+    "slug": "colorful-movie",
+    "startDate": "2010-08-21",
+    "endDate": "2010-08-21",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7238",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Wooser no Sono Higurashi",
+    "titles": {
+     "en": "Wooser's Hand-to-Mouth Life",
+     "en_jp": "Wooser no Sono Higurashi",
+     "en_us": "Wooser's Hand-to-Mouth Life",
+     "ja_jp": "うーさーのその日暮らし"
+    },
+    "abbreviatedTitles": [
+     "Project Wooser"
+    ],
+    "slug": "wooser-no-sono-higurashi",
+    "startDate": "2012-10-03",
+    "endDate": "2012-12-19",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46455",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tearmoon Teikoku Monogatari: Dantoudai kara Hajimaru, Hime no Tensei Gyakuten Story",
+    "titles": {
+     "en": "Tearmoon Empire",
+     "en_jp": "Tearmoon Teikoku Monogatari: Dantoudai kara Hajimaru, Hime no Tensei Gyakuten Story",
+     "ja_jp": "ティアムーン帝国物語～断頭台から始まる、姫の転生逆転ストーリー～",
+     "th_th": "บันทึกเรื่องราวจักรวรรดิเทียร์มูน: จุดพลิกผันชะตากรรมของเจ้าหญิงเริ่มจากบนกิโยติน"
+    },
+    "abbreviatedTitles": [],
+    "slug": "tearmoon-teikoku-monogatari-dantoudai-kara-hajimaru-hime-no-tensei-gyakuten-story",
+    "startDate": "2023-10-08",
+    "endDate": "2023-12-24",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48186",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dekisokonai to Yobareta Moto Eiyuu wa, Jikka kara Tsuihou Sareta node Suki Katte ni Ikiru Koto ni Shita",
+    "titles": {
+     "en": "The Banished Former Hero Lives as He Pleases",
+     "en_jp": "Dekisokonai to Yobareta Moto Eiyuu wa, Jikka kara Tsuihou Sareta node Suki Katte ni Ikiru Koto ni Shita",
+     "ja_jp": "出来損ないと呼ばれた元英雄は、実家から追放されたので好き勝手に生きることにした"
+    },
+    "abbreviatedTitles": [],
+    "slug": "dekisokonai-to-yobareta-moto-eiyuu-wa-jikka-kara-tsuihou-sareta-node-suki-katte-ni-ikiru-koto-ni-shita",
+    "startDate": "2024-04-02",
+    "endDate": "2024-06-11",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "5762",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Prism Magical: Prism Generations!",
+    "titles": {
+     "en_jp": "Prism Magical: Prism Generations!",
+     "ja_jp": "プリズム☆ま～じカル PRISM Generations!"
+    },
+    "abbreviatedTitles": [],
+    "slug": "prism-magical-prism-generations",
+    "startDate": "2010-08-27",
+    "endDate": "2010-08-27",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "4551",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Yuki Terai",
+    "titles": {
+     "en_jp": "Yuki Terai",
+     "ja_jp": "テライユキ"
+    },
+    "abbreviatedTitles": [
+     "Yuki Terai: Secrets",
+     "Yuki Terai: Secret Films",
+     "Yuki Terai: Secret Live"
+    ],
+    "slug": "yuki-terai",
+    "startDate": "2000-09-20",
+    "endDate": "2000-09-20",
+    "episodeCount": 6,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "10411",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Maku",
+    "titles": {
+     "en_jp": "Maku",
+     "en_us": "Maku",
+     "ja_jp": "幕"
+    },
+    "abbreviatedTitles": [],
+    "slug": "maku",
+    "startDate": "2014-08-25",
+    "endDate": "2014-08-25",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49015",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Garden of Remembrance",
+    "titles": {
+     "en_jp": "Garden of Remembrance",
+     "ja_jp": "Garden of Remembrance"
+    },
+    "abbreviatedTitles": [],
+    "slug": "garden-of-remembrance",
+    "startDate": "2024-08-30",
+    "endDate": "2024-08-30",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

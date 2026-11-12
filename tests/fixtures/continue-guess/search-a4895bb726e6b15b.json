@@ -1,0 +1,246 @@
+{
+ "data": [
+  {
+   "id": "6028",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Fate/Zero",
+    "titles": {
+     "en": "Fate/Zero",
+     "en_jp": "Fate/Zero",
+     "en_us": "Fate/Zero",
+     "ja_jp": "フェイト/ゼロ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "fate-zero",
+    "startDate": "2011-10-02",
+    "endDate": "2011-12-25",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7658",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Fate/Zero 2nd Season",
+    "titles": {
+     "en": "Fate/Zero Season 2",
+     "en_jp": "Fate/Zero 2nd Season",
+     "en_us": "Fate/Zero Season 2",
+     "ja_jp": "フェイト/ゼロ 2ndシーズン"
+    },
+    "abbreviatedTitles": [
+     "Fate/Zero Second Season"
+    ],
+    "slug": "fate-zero-2nd-season",
+    "startDate": "2012-04-08",
+    "endDate": "2012-06-24",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "6928",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Fate/Zero: Onegai! Einzbern Soudanshitsu",
+    "titles": {
+     "en": "Fate/Zero: Please! Einzbern Counseling Room",
+     "en_jp": "Fate/Zero: Onegai! Einzbern Soudanshitsu",
+     "en_us": "Fate/Zero: Please! Einzbern Counseling Room",
+     "ja_jp": "お願い!アインツベルン相談室"
+    },
+    "abbreviatedTitles": [
+     "Fate/Zero Specials",
+     "Please! Einzbern Consultation Room"
+    ],
+    "slug": "fate-zero-onegai-einzbern-soudanshitsu",
+    "startDate": "2012-03-07",
+    "endDate": "2012-09-19",
+    "episodeCount": 6,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "6906",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Fate/Zero Remix",
+    "titles": {
+     "en_jp": "Fate/Zero Remix",
+     "ja_jp": "フェイト/ゼロ Remix"
+    },
+    "abbreviatedTitles": [
+     "Fate/Zero Remix I",
+     "Fate/Zero Remix II"
+    ],
+    "slug": "fate-zero-remix",
+    "startDate": "2012-03-25",
+    "endDate": "2012-04-01",
+    "episodeCount": 2,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7873",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Fate/Zero Cafe",
+    "titles": {
+     "en_jp": "Fate/Zero Cafe",
+     "ja_jp": "Fate/ゼロカフェ"
+    },
+    "abbreviatedTitles": [
+     "Fate/Zero Café"
+    ],
+    "slug": "fate-zero-cafe",
+    "startDate": "2013-07-13",
+    "endDate": "2016-03-19",
+    "episodeCount": 2,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41777",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Delete",
+    "titles": {
+     "en_jp": "Delete"
+    },
+    "abbreviatedTitles": [],
+    "slug": "delete-4-pro",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "special",
+    "status": "tba"
+   }
+  },
+  {
+   "id": "42092",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Lord El-Melloi II Sei no Jikenbo: Rail Zeppelin Grace Note",
+    "titles": {
+     "en": "Lord El-Melloi II's Case Files {Rail Zeppelin} Grace note",
+     "en_jp": "Lord El-Melloi II Sei no Jikenbo: Rail Zeppelin Grace Note",
+     "ja_jp": "ロード・エルメロイⅡ世の事件簿 -魔眼蒐集列車 Grace note-"
+    },
+    "abbreviatedTitles": [],
+    "slug": "lord-el-melloi-ii-sei-no-jikenbo-rail-zeppelin-grace-note",
+    "startDate": "2019-07-07",
+    "endDate": "2019-09-29",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42076",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Lord El-Melloi II Sei no Jikenbo: Rail Zeppelin Grace Note - Hakamori to Neko to Majutsushi",
+    "titles": {
+     "en": "Lord El-Melloi II's Case Files: Rail Zeppelin Grace Note - A Grave Keeper, a Cat, and a Mage",
+     "en_jp": "Lord El-Melloi II Sei no Jikenbo: Rail Zeppelin Grace Note - Hakamori to Neko to Majutsushi",
+     "ja_jp": "ロード・エルメロイⅡ世の事件簿 {魔眼蒐集列車[レール・ツェッペリン]} Grace note 墓守と猫と魔術師"
+    },
+    "abbreviatedTitles": [],
+    "slug": "lord-el-melloi-ii-sei-no-jikenbo-rail-zeppelin-grace-note-hakamori-to-neko-to-majutsushi",
+    "startDate": "2018-12-31",
+    "endDate": "2018-12-31",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47235",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu 3",
+    "titles": {
+     "en": "Re:ZERO -Starting Life in Another World- Season 3",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu 3",
+     "ja_jp": "Re:ゼロから始める異世界生活 3"
+    },
+    "abbreviatedTitles": [],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-3",
+    "startDate": "2024-10-02",
+    "endDate": "2025-03-26",
+    "episodeCount": 16,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "13874",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Fate/Grand Order CMs",
+    "titles": {
+     "en": "Fate/Grand Order CMs",
+     "en_jp": "Fate/Grand Order CMs",
+     "ja_jp": "Fate/Grand Order CMs"
+    },
+    "abbreviatedTitles": [
+     "Fate/Grand Order"
+    ],
+    "slug": "fate-grand-order-cms",
+    "startDate": "2014-12-27",
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "special",
+    "status": "current"
+   }
+  },
+  {
+   "id": "218",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gravitation",
+    "titles": {
+     "en": "Gravitation",
+     "en_jp": "Gravitation",
+     "en_us": "Gravitation",
+     "ja_jp": "グラビテーション"
+    },
+    "abbreviatedTitles": [],
+    "slug": "gravitation",
+    "startDate": "2000-10-04",
+    "endDate": "2001-01-10",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48225",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Terminator ZERO",
+    "titles": {
+     "en": "Terminator Zero",
+     "en_jp": "Terminator ZERO",
+     "ja_jp": "ターミネーターZERO"
+    },
+    "abbreviatedTitles": [
+     "Terminator: The Anime Series"
+    ],
+    "slug": "terminator-zero",
+    "startDate": "2024-08-29",
+    "endDate": "2024-08-29",
+    "episodeCount": 8,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

@@ -56,6 +56,12 @@ async fn build_assembles_state_from_a_staged_environment() {
     assert!(state.state_dir.starts_with(&root));
     assert!(state.image_cache_dir.is_dir(), "image cache dir created");
     assert!(state.bundled_bin.is_some(), "resource bin dir picked up");
+    // The flags store waits for the launch refresh the binary
+    // spawns rather than claiming to have settled.
+    assert!(
+        !state.flags.is_settled(),
+        "flags wait for the launch refresh"
+    );
 
     // Boot sweeps the script copy an earlier version would have
     // left in the cache root. This staged env never had one, so
@@ -66,8 +72,9 @@ async fn build_assembles_state_from_a_staged_environment() {
     );
 }
 
-fn fake_state() -> AppState {
-    AppState {
+fn fake_state() -> crate::scratch::Scratch<AppState> {
+    let dirs = crate::scratch::dir();
+    let state = AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -76,18 +83,20 @@ fn fake_state() -> AppState {
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: PathBuf::from("/tmp/ani-gui/history"),
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::new(reqwest::Client::new()),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: MalRefreshState::new(),
         account_write_locks: AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-    }
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+    };
+    dirs.hold(state)
 }
 
 #[test]

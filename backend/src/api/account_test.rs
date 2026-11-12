@@ -82,7 +82,6 @@ fn bearer_from_headers_accepts_extra_whitespace_after_scheme() {
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tower::ServiceExt;
@@ -108,11 +107,12 @@ fn test_state(td: &TempDir) -> Arc<AppState> {
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::new(reqwest::Client::new()),
         config_path: td.path().join("config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        state_dir: td.path().join("state"),
         internal_secret: InternalSecret::from_hex_for_test("dead").unwrap(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     })
 }
 
@@ -134,11 +134,12 @@ fn test_state_with_kitsu(td: &TempDir, kitsu_uri: &str) -> Arc<AppState> {
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
         config_path: td.path().join("config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        state_dir: td.path().join("state"),
         internal_secret: InternalSecret::from_hex_for_test("dead").unwrap(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     })
 }
 

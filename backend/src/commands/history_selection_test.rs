@@ -7,15 +7,19 @@ use crate::history::{write_atomic, HistoryEntry};
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use std::path::PathBuf;
 
-fn make_state(history_path: PathBuf) -> AppState {
+fn make_state(history_path: PathBuf) -> crate::scratch::Scratch<AppState> {
     state_with(
         history_path,
         crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
     )
 }
 
-fn state_with(history_path: PathBuf, kitsu: crate::meta::kitsu::KitsuClient) -> AppState {
-    AppState {
+fn state_with(
+    history_path: PathBuf,
+    kitsu: crate::meta::kitsu::KitsuClient,
+) -> crate::scratch::Scratch<AppState> {
+    let dirs = crate::scratch::dir();
+    let state = AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -26,16 +30,18 @@ fn state_with(history_path: PathBuf, kitsu: crate::meta::kitsu::KitsuClient) -> 
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path,
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu,
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-    }
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+    };
+    dirs.hold(state)
 }
 
 /// Two rows for one show: the primary's from an earlier watch, the

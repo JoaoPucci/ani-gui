@@ -1,0 +1,74 @@
+{
+ "data": [
+  {
+   "id": "7543",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "The Last: Naruto the Movie",
+    "titles": {
+     "en": "The Last: Naruto the Movie",
+     "en_jp": "The Last: Naruto the Movie",
+     "en_us": "The Last: Naruto the Movie",
+     "ja_jp": "THE LAST NARUTO THE MOVIE"
+    },
+    "abbreviatedTitles": [
+     "Naruto Movie 10: Naruto the Movie: The Last,Naruto: Shippuuden Movie 7 - The Last",
+     "Naruto Movie 10: Naruto the Movie: The Last",
+     "Naruto: Shippuuden Movie 7 - The Last"
+    ],
+    "slug": "the-last-naruto-the-movie",
+    "startDate": "2014-12-06",
+    "endDate": "2014-12-06",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7008",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Shippuuden Movie 6 - Road to Ninja",
+    "titles": {
+     "en": "Road to Ninja: Naruto the Movie",
+     "en_jp": "Naruto: Shippuuden Movie 6 - Road to Ninja",
+     "en_us": "Road to Ninja: Naruto the Movie",
+     "ja_jp": "ROAD TO NINJA NARUTO THE MOVIE"
+    },
+    "abbreviatedTitles": [
+     "Naruto Movie 9"
+    ],
+    "slug": "naruto-shippuden-movie-6-road-to-ninja",
+    "startDate": "2012-07-28",
+    "endDate": "2012-07-28",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "2586",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ani*Kuri15",
+    "titles": {
+     "en_jp": "Ani*Kuri15",
+     "ja_jp": "アニ＊クリ15"
+    },
+    "abbreviatedTitles": [
+     "Ani*Cre15",
+     "Ani Kuri 15",
+     "Ani-Kuri 15",
+     "Anikuri 15",
+     "Neko no Shuukai"
+    ],
+    "slug": "ani-kuri15",
+    "startDate": "2007-06-07",
+    "endDate": "2007-06-27",
+    "episodeCount": 15,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

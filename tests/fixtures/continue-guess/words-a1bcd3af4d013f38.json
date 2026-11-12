@@ -1,0 +1,44 @@
+{
+ "data": [
+  {
+   "id": "44212",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen 0",
+    "titles": {
+     "en": "Jujutsu Kaisen 0",
+     "en_jp": "Jujutsu Kaisen 0",
+     "ja_jp": "呪術廻戦 0"
+    },
+    "abbreviatedTitles": [],
+    "slug": "jujutsu-kaisen-movie-0",
+    "startDate": "2021-12-24",
+    "endDate": "2021-12-24",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47880",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen 2nd Season Recap",
+    "titles": {
+     "en": "Jujutsu Kaisen Season 2 Recap",
+     "en_jp": "Jujutsu Kaisen 2nd Season Recap",
+     "ja_jp": "呪術廻戦"
+    },
+    "abbreviatedTitles": [
+     "Jujutsu Kaisen Season 2 + Movie Recap"
+    ],
+    "slug": "jujutsu-kaisen-2nd-season-recap",
+    "startDate": "2023-08-11",
+    "endDate": "2023-08-17",
+    "episodeCount": 2,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}
