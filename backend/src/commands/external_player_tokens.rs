@@ -9,9 +9,11 @@
 /// - a token the template did not start as an option never becomes one
 ///   through what was substituted into it — the title is the show's
 ///   name, the rest the provider's — and is left out too;
-/// - a token left out takes with it the option the template wrote just
-///   before it on its own (`--sub-file {subtitle}`), which alone would
-///   take the template's next token, usually the stream, as its value.
+/// - a value token left out (one the template did not write as an
+///   option) takes with it the option the template wrote just before it
+///   on its own (`--sub-file {subtitle}`), which alone would take the
+///   template's next token, usually the stream, as its value. A dropped
+///   option (`--referer={referer}`) leaves the option before it alone.
 pub(super) fn kept_tokens(
     tokens: Vec<String>,
     render: impl Fn(&str) -> Option<String>,
@@ -27,7 +29,7 @@ pub(super) fn kept_tokens(
                 out.push(rendered);
             }
             None => {
-                if bare_option_last {
+                if bare_option_last && !starts_option(&tok) {
                     out.pop();
                 }
                 bare_option_last = false;
@@ -44,6 +46,12 @@ fn starts_option(token: &str) -> bool {
 }
 
 /// An option written with no value joined to it, and no placeholder.
+/// Not `--`, the end of options, and not a path (`/home/u/x.lua`): a
+/// `/switch` has no second `/`.
 fn is_bare_option(token: &str) -> bool {
-    starts_option(token) && !token.contains('=') && !token.contains('{')
+    starts_option(token)
+        && token != "--"
+        && !token.contains('=')
+        && !token.contains('{')
+        && !token.get(1..).is_some_and(|rest| rest.contains('/'))
 }
