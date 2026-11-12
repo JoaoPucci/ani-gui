@@ -18,15 +18,14 @@
 const nodeTest = require("node:test");
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
-const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
 const { prepareTree, PROBE_BOUND_SECONDS } = require("./appimage-tree.cjs");
 
-// AppRun is a Linux launcher, run here under bash and checked through
-// /proc; on any other platform there is nothing to run it on.
+// AppRun is a Linux launcher, run here under bash in a session of its
+// own; on any other platform there is nothing to run it on.
 const test = (name, fn) => nodeTest(name, { skip: process.platform !== "linux" }, fn);
 const { SANDBOX_PROBE_SWITCH } = require("./sandbox-probe.cjs");
 
@@ -79,28 +78,26 @@ function image(template, probe) {
   fs.writeFileSync(path.join(app, "ani-gui.desktop"), fixture("ani-gui.desktop"));
   prepareTree(app);
   fs.writeFileSync(path.join(app, "ani-gui"), stubFor(probe), { mode: 0o755 });
-  // Marks every process this run starts, so one left behind is found.
-  const token = crypto.randomUUID();
   const env = (extraEnv) => ({
     PATH: process.env.PATH,
     HOME: root,
     TMPDIR: tmp,
     APPDIR: app,
-    APPRUN_TEST_TOKEN: token,
     ...extraEnv,
   });
-  return { root, app, tmp, token, env };
+  return { root, app, tmp, env };
 }
 
-/** What a finished run left behind. */
-function outcome(img, run, elapsedMs) {
+/** What a finished run left behind. `group` is the process group the
+ *  run was started in, its own. */
+function outcome(img, run, elapsedMs, group) {
   const readOr = (name, fallback) =>
     fs.existsSync(path.join(img.app, name)) ? fs.readFileSync(path.join(img.app, name), "utf8") : fallback;
   const launched = readOr("launched", null);
   return {
     run,
     elapsedMs,
-    token: img.token,
+    group,
     root: img.root,
     app: img.app,
     calls: readOr("calls", "").split("\n").filter(Boolean),
@@ -120,10 +117,21 @@ function outcome(img, run, elapsedMs) {
 function launch(template, probe, args, extraEnv = {}, shell = null) {
   const img = image(template, probe);
   const appRun = [path.join(img.app, "AppRun"), ...args];
-  const argv = shell === null ? ["bash", appRun] : ["bash", ["-c", shell, "bash", "bash", ...appRun]];
+  const inner = shell === null ? ["bash", ...appRun] : ["bash", "-c", shell, "bash", "bash", ...appRun];
+  // The run gets a session, and so a process group, of its own: setsid
+  // starts the recorder, which writes its own pid (the group's leader)
+  // and then becomes the run. Whatever the run leaves behind is in that
+  // group (assertNothingLeft, below).
+  const groupFile = path.join(img.root, "group");
+  const recordGroup = 'echo "$$" > "$1"; shift; exec "$@"';
   const started = Date.now();
-  const run = spawnSync(argv[0], argv[1], { cwd: img.root, encoding: "utf8", env: img.env(extraEnv) });
-  return outcome(img, run, Date.now() - started);
+  const run = spawnSync("setsid", ["--wait", "bash", "-c", recordGroup, "bash", groupFile, ...inner], {
+    cwd: img.root,
+    encoding: "utf8",
+    env: img.env(extraEnv),
+  });
+  const elapsedMs = Date.now() - started;
+  return outcome(img, run, elapsedMs, Number(fs.readFileSync(groupFile, "utf8").trim()));
 }
 
 /** Starts AppRun in a process group of its own, signals it after `afterMs`. */
@@ -144,33 +152,31 @@ async function launchAndSignal(template, probe, args, { afterMs, signal, group }
   const timer = setTimeout(() => (group ? process.kill(-child.pid, signal) : child.kill(signal)), afterMs);
   const [status, killedBy] = await new Promise((resolve) => child.on("close", (code, sig) => resolve([code, sig])));
   clearTimeout(timer);
-  return { ...outcome(img, { status, signal: killedBy, stderr }, Date.now() - started) };
+  // Detached: the child leads a session, and so a group, of its own.
+  return { ...outcome(img, { status, signal: killedBy, stderr }, Date.now() - started, child.pid) };
 }
 
-/** Processes still running that a launch started. */
-function leftovers(token) {
-  const found = [];
-  for (const pid of fs.readdirSync("/proc").filter((d) => /^\d+$/.test(d))) {
-    try {
-      if (fs.readFileSync(`/proc/${pid}/environ`, "utf8").includes(`APPRUN_TEST_TOKEN=${token}`)) {
-        found.push(`${pid}: ${fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").replaceAll("\0", " ")}`);
-      }
-    } catch {
-      // gone, or not ours
-    }
+/** Whether any process is still in `group`, the run's own group:
+ *  signal 0 to it, which tests delivery and delivers nothing. A test
+ *  that tries to reach a process outside its own group would be
+ *  choosing it from the process table (tests/arch/own_processes.sh). */
+function groupAlive(group) {
+  try {
+    process.kill(-group, 0);
+    return true;
+  } catch (err) {
+    if (err.code === "ESRCH") return false;
+    throw err;
   }
-  return found;
 }
 
-/** Waits briefly for processes being killed to go, then reports any left. */
-function assertNothingLeft(token) {
+/** Waits briefly for processes being killed to go, then fails if any
+ *  is left in the run's group. AppRun, the probe, its watchdog and the
+ *  app's stub all start in that group, and nothing in them leaves it. */
+function assertNothingLeft(r) {
   const until = Date.now() + 2000;
-  let left = leftovers(token);
-  while (left.length > 0 && Date.now() < until) {
-    spawnSync("sleep", ["0.05"]);
-    left = leftovers(token);
-  }
-  assert.deepEqual(left, [], "the launch left processes behind");
+  while (groupAlive(r.group) && Date.now() < until) spawnSync("sleep", ["0.05"]);
+  assert.equal(groupAlive(r.group), false, `the launch left processes behind in its group ${r.group}`);
 }
 
 function cleanup(r) {
@@ -189,7 +195,7 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
       assert.equal(r.run.stderr, "");
       assert.ok(r.elapsedMs < 3000, `an answered probe holds the launch up for ${r.elapsedMs} ms`);
       assert.deepEqual(r.tmpLeft, [], "the probe's answer file is removed");
-      assertNothingLeft(r.token);
+      assertNothingLeft(r);
     } finally {
       cleanup(r);
     }
@@ -211,7 +217,7 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
       assert.deepEqual(r.launched, ["--no-sandbox", ...USER_ARGS]);
       assert.match(r.run.stderr, FALLBACK_LINE, "one line, and nothing of the abort");
       assert.deepEqual(r.cores, [], "no core dump");
-      assertNothingLeft(r.token);
+      assertNothingLeft(r);
     } finally {
       cleanup(r);
     }
@@ -252,7 +258,7 @@ test("a probe that never returns is killed at the bound and the app starts with 
     assert.ok(r.elapsedMs >= PROBE_BOUND_SECONDS * 1000, `waited ${r.elapsedMs} ms`);
     assert.ok(r.elapsedMs < (PROBE_BOUND_SECONDS + 5) * 1000, `waited ${r.elapsedMs} ms`);
     assert.ok(r.probePid, "the probe started");
-    assertNothingLeft(r.token);
+    assertNothingLeft(r);
   } finally {
     cleanup(r);
   }
@@ -276,7 +282,7 @@ for (const probe of ["answers, then exits 1", "answers, then hangs"]) {
     try {
       assert.deepEqual(r.launched, ["--no-sandbox", ...USER_ARGS]);
       assert.match(r.run.stderr, FALLBACK_LINE);
-      assertNothingLeft(r.token);
+      assertNothingLeft(r);
     } finally {
       cleanup(r);
     }
@@ -344,7 +350,7 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
         assert.ok(r.elapsedMs < 3000, `stopped after ${r.elapsedMs} ms`);
         assert.doesNotMatch(r.run.stderr, /command not found|Terminated|Killed|Hangup/);
         assert.deepEqual(r.tmpLeft, [], "the probe's answer file is removed");
-        assertNothingLeft(r.token);
+        assertNothingLeft(r);
       } finally {
         cleanup(r);
       }
