@@ -255,7 +255,7 @@ describe('LinkSession', () => {
 
 	it('says the show was saved in a plain notice, with no Undo', async () => {
 		// Maintainer's decision: the answer is "is this my show or not",
-		// recorded once given; the ⋯ "Not this show?" changes it again.
+		// recorded once given; the ⋯ "Not this show…" changes it again.
 		const f = fake();
 		const s = new LinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS);

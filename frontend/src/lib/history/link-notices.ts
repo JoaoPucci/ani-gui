@@ -8,9 +8,9 @@ import { kitsuEntryGone } from './match';
 import type { LinkNotice } from './link-session.svelte';
 
 /** The notice a link leaves: a plain confirmation. The answer is the
- *  viewer's, recorded once given; "Not this show?" (on Home, "Not
- *  what you watched?"), which stays on the line
- *  ($lib/history/picked-offer.ts), changes it. */
+ *  viewer's, recorded once given; Home's "Not what you watched?",
+ *  the player's "Not this show…" or the show page's "Not this show?",
+ *  which stay on the line ($lib/history/picked-offer.ts), change it. */
 export function linkedNotice(title: string): LinkNotice {
 	return { kind: 'success', message: m.detail_link_done_toast({ title }) };
 }

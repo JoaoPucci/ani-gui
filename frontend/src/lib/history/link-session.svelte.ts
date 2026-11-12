@@ -13,8 +13,9 @@
  * row, refreshing it first when it is the page the link was made on,
  * unless the user left the page while the link was out. Its notice is
  * a plain confirmation: the answer is the viewer's, and the way to
- * change it is "Not this show?" (on Home, "Not what you watched?"),
- * which stays on every line the user named a show for ($lib/history/picked-offer.ts).
+ * change it is Home's "Not what you watched?", the player's "Not this
+ * show…" or the show page's "Not this show?", which stay on every
+ * line the user named a show for ($lib/history/picked-offer.ts).
  */
 
 import type { ReadOptions } from '$lib/api';
