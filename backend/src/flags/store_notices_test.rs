@@ -8,7 +8,7 @@ use crate::flags::resolve::parse_document;
 use crate::flags::test_decls::TEST_DECLS;
 
 fn doc(block: &str) -> crate::flags::resolve::Document {
-    parse_document(format!(r#"{{"flags":{{"test_kill":false,"notices":{block}}}}}"#).as_bytes())
+    parse_document(format!(r#"{{"flags":{{"test_a":false,"notices":{block}}}}}"#).as_bytes())
         .expect("doc")
 }
 
@@ -34,7 +34,7 @@ fn no_document_or_no_block_is_no_notices() {
     store.settle(None, Origin::Defaults);
     assert_eq!(store.notices(), None);
     let store = FlagStore::pending(TEST_DECLS);
-    let bare = parse_document(br#"{"flags":{"test_kill":false}}"#).expect("doc");
+    let bare = parse_document(br#"{"flags":{"test_a":false}}"#).expect("doc");
     store.settle(Some(&bare), Origin::File);
     assert_eq!(store.notices(), None);
 }
