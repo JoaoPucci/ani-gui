@@ -1,7 +1,7 @@
 // Acceptance: a guessed Continue card opens a player that asks "Is this
 // the show you meant?", whatever its play wrote on the way.
 //
-// Home shows the card's "Not this show?" pill because its history row
+// Home shows the card's "Not what you watched?" pill because its history row
 // records no Kitsu id and the show is a guess (here a remembered title
 // match). A click opens the play as a guess of that row. When the play
 // lands on the row's own listing, the backend records the guess on the

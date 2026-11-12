@@ -446,8 +446,8 @@ starting it, and delete it when you find it done.
   "(Uncensored)" and "(Part 1+2)" before comparing titles changed no
   pick.
 
-  The user can correct a card by hand: its "Not this show?" pill on
-  Home, its failed resume, the player's slip and ⋯ menu, and the show
+  The user can correct a card by hand: its "Not what you watched?" pill
+  on Home, its failed resume, the player's slip and ⋯ menu, and the show
   page its player led to all link the line to the show the user names.
   Playing the show from its own page also corrects one: when that play
   lands on the card's listing, the line records the show and the card
@@ -1045,9 +1045,10 @@ starting it, and delete it when you find it done.
   guessed-card linking work lands, the player's "Is this the show you
   meant?" and its slip, the rows' `guessed_from` notes, the failure
   overlay's "Pick the right show", and the "Which show is it?" picker
-  with "Not this show?" and the marks on rows named through it. A row
-  a normal play wrote records the show it was played from, so the
-  card cannot name the wrong show and needs no correcting. The entry
+  with "Not this show?", Home's "Not what you watched?" and the
+  marks on rows named through it. A row a normal play wrote
+  records the show it was played from, so the card cannot name the
+  wrong show and needs no correcting. The entry
   "Some guessed Continue cards still open the wrong show" goes with
   it. The maintainer has tied this removal to v1.0, with the two
   above.
