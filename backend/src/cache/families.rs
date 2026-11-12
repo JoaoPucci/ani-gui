@@ -27,7 +27,7 @@
 //!   removal reads to find the Kitsu ids a show was known by
 //!   (`history_forget*`), and which the detail page's lookup reads for
 //!   a row whose recorded entry Kitsu answered gone
-//!   (`history_forget_titles::current_title_match_ids`).
+//!   (`history_forget_titles::current_title_match_id`).
 //!
 //! The removal also reads the versions before the current one, by
 //! prefix; the detail page's lookup reads the current version alone.

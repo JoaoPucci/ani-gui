@@ -1,0 +1,71 @@
+{
+ "data": [
+  {
+   "id": "801",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Z Movie 08: Moetsukiro!! Nessen, Ressen, Chougekisen",
+    "titles": {
+     "en": "Dragon Ball Z Movie 08: Broly - The Legendary Super Saiyan",
+     "en_jp": "Dragon Ball Z Movie 08: Moetsukiro!! Nessen, Ressen, Chougekisen",
+     "ja_jp": "DRAGON BALL Z 燃えつきろ!! 熱戦・烈戦・超激戦"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Z: The Burning Battles"
+    ],
+    "slug": "dragon-ball-z-movie-08-moetsukiro-nessen-ressen-chou-gekisen",
+    "startDate": "1993-03-06",
+    "endDate": "1993-03-06",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "804",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Z Movie 11: Super Senshi Gekiha!! Katsu no wa Ore da",
+    "titles": {
+     "en": "Dragon Ball Z Movie 11: Bio-Broly",
+     "en_jp": "Dragon Ball Z Movie 11: Super Senshi Gekiha!! Katsu no wa Ore da",
+     "ja_jp": "ドラゴンボールＺ 超戦士撃破!!勝のはオレだ"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Z: Attack Super Warrior",
+     "Dragon Ball Z: Crushing Super Warrior!! I Am the Winner",
+     "Super Fighter Shootout!! I'm the One Who Will Win"
+    ],
+    "slug": "dragon-ball-z-movie-11-super-senshi-gekiha-katsu-no-wa-ore-da",
+    "startDate": "1994-07-09",
+    "endDate": "1994-07-09",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "803",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Z Movie 10: Kiken na Futari! Super Senshi wa Nemurenai",
+    "titles": {
+     "en": "Dragon Ball Z Movie 10: Broly - Second Coming",
+     "en_jp": "Dragon Ball Z Movie 10: Kiken na Futari! Super Senshi wa Nemurenai",
+     "ja_jp": "ドラゴンボールZ 危険なふたり! 超戦士はねむれない"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Z: Dangerous Rivals",
+     "Dragon Ball Z: Dangerous Partners! Super Warriors Never Rest",
+     "Dragon Ball Z: Kiken na Futari! Super Senshi wa Nemurenai"
+    ],
+    "slug": "dragon-ball-z-movie-10-kiken-na-futari-super-senshi-wa-nemurenai",
+    "startDate": "1994-03-12",
+    "endDate": "1994-03-12",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

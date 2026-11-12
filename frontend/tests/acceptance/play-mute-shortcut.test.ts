@@ -149,7 +149,7 @@ describe('play route — m / M toggles mute', () => {
 				})
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 		);
 
 		app = mount(PlayPage, { target });
@@ -222,7 +222,7 @@ describe('play route — m / M toggles mute', () => {
 				})
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 		);
 
 		app = mount(PlayPage, { target });

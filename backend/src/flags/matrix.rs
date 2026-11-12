@@ -73,10 +73,8 @@ pub(crate) fn run(decls: &[FlagDecl], cases: &[FlagCase]) {
 
 /// A flags document holding `value` for `name`.
 fn document(name: &str, value: FlagValue) -> Document {
-    let raw = match value {
-        FlagValue::Bool(b) => Value::Bool(b),
-        FlagValue::Choice(c) => Value::String(c.to_string()),
-    };
+    let FlagValue::Bool(b) = value;
+    let raw = Value::Bool(b);
     std::iter::once((name.to_string(), raw)).collect()
 }
 

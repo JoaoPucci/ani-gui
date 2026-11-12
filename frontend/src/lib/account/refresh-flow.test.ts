@@ -203,6 +203,31 @@ describe('refreshExpiredAccounts', () => {
 		);
 	});
 
+	it('refreshes only the provider it is given', async () => {
+		const byProvider = {
+			anilist: { kind: 'expired', account: account({ refresh_token: 'al-rt' }) },
+			mal: { kind: 'expired', account: account({ refresh_token: 'rt' }) },
+			inhouse: { kind: 'disconnected' }
+		} as unknown as Record<Provider, ProviderState>;
+		const refreshTokens = vi
+			.fn()
+			.mockResolvedValue({ access_token: 'new', refresh_token: 'rt2', expires_at_epoch_s: 9 });
+		const onRefreshed = vi.fn();
+		await refreshExpiredAccounts(
+			{
+				byProvider: () => byProvider,
+				onRefreshed,
+				refreshTokens,
+				persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+				generation: () => 0,
+				changing: () => false
+			},
+			'mal'
+		);
+		expect(refreshTokens).toHaveBeenCalledTimes(1);
+		expect(onRefreshed.mock.calls.map((c) => c[0])).toEqual(['mal']);
+	});
+
 	it('does not mark connected when refresh fails', async () => {
 		const byProvider = {
 			anilist: { kind: 'disconnected' },

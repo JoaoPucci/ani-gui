@@ -43,6 +43,9 @@ pub mod proxy;
 pub mod retired_provider;
 pub mod retired_provider_plan;
 pub mod scraper;
+#[cfg(test)]
+#[path = "scratch_test.rs"]
+pub(crate) mod scratch;
 pub mod shutdown;
 pub mod spawn;
 #[cfg(all(test, unix))]

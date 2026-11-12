@@ -83,12 +83,18 @@ jobs:
         # Electron's chrome process needs the standard NSS / X / GTK
         # bundle even in headless Xvfb mode. `xvfb-run` is the wrapper
         # we invoke playwright through. The list mirrors what the
-        # AppImage runtime expects on a clean runner.
+        # AppImage runtime expects on a clean runner. `dbus-daemon`
+        # gives keyring-unresponsive.spec.ts a session bus of its own,
+        # with a secret service that never answers; `libsecret-1-0` is
+        # what Chromium loads to ask it, and without it safeStorage
+        # falls back to basic_text and never asks.
         uses: ./.github/actions/apt-install
         with:
           packages: >-
             musl-tools
             xvfb
+            dbus-daemon
+            libsecret-1-0
             libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64
             libcups2t64 libdrm2 libxkbcommon0 libxcomposite1
             libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0

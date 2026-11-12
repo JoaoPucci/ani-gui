@@ -28,7 +28,7 @@ test("the wait outlasts the backend's own limit on deciding", () => {
 
 test("the backend's answer is the launch's flags", async () => {
   let asked = null;
-  const body = { origin: "file", flags: { a: false, b: "old" } };
+  const body = { origin: "file", flags: { a: false, b: true } };
   const got = await waitForLaunchFlags("http://127.0.0.1:9", {
     fetch: async (url, init) => {
       asked = url;
@@ -65,11 +65,14 @@ test("an answer of the wrong shape is no flags", () => {
     { origin: "file", flags: { a: 1 } },
     { origin: "file", flags: { a: null } },
     { origin: "file", flags: { a: { b: true } } },
+    // Flags are on/off only: a value naming a behaviour is no answer.
+    { origin: "file", flags: { a: "old" } },
+    { origin: "cache", flags: { a: true, b: "x" } },
   ]) {
     assert.equal(isFlagsAnswer(body), false, JSON.stringify(body));
   }
   assert.equal(isFlagsAnswer({ origin: "test", flags: {} }), true);
-  assert.equal(isFlagsAnswer({ origin: "cache", flags: { a: true, b: "x" } }), true);
+  assert.equal(isFlagsAnswer({ origin: "cache", flags: { a: true, b: false } }), true);
 });
 
 test("a backend that never answers is given up on at the bound, and the request cut off", async (t) => {
@@ -95,7 +98,7 @@ test("a window reopened later in the session gets the same flags as the boot's",
     internalSecret: "s",
     lanes: { image: "http://127.0.0.1:2" },
   };
-  const flags = { origin: "cache", flags: { a: false, b: "old" } };
+  const flags = { origin: "cache", flags: { a: false, b: true } };
   const opened = [];
   const keeper = windowKeeper({
     createWindow: async (against) => opened.push(against),

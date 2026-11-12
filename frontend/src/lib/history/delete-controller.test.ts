@@ -121,6 +121,73 @@ describe('executeKitsuGroupDelete — kept positions', () => {
 		).rejects.toThrow('down');
 		expect(forgetPositions).not.toHaveBeenCalled();
 	});
+
+	test('a delete that fails at its first row leaves the strip as it was', async () => {
+		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
+		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
+		const applyRemaining = vi.fn();
+		await expect(
+			executeKitsuGroupDelete('aa-1', {
+				history,
+				matches,
+				historyDelete: vi.fn().mockRejectedValue(new Error('down')),
+				applyRemaining
+			})
+		).rejects.toThrow('down');
+		expect(applyRemaining).not.toHaveBeenCalled();
+	});
+
+	test('a group delete that fails partway takes the rows it did delete off the strip, and still fails', async () => {
+		// The clicked row's sibling was hidden behind it by the dedupe.
+		// The first delete lands and the second is refused: the backend
+		// has lost aa-1 and kept aa-2, and the strip has to say the same
+		// rather than keep a card for a row that is gone.
+		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
+		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
+		const historyDelete = vi.fn(async (id: string) => {
+			if (id === 'aa-2') throw new Error('down');
+		});
+		const applyRemaining = vi.fn();
+		const forgetPositions = vi.fn();
+		const forgetRowPositions = vi.fn();
+		await expect(
+			executeKitsuGroupDelete('aa-1', {
+				history,
+				matches,
+				historyDelete,
+				applyRemaining,
+				forgetPositions,
+				forgetRowPositions
+			})
+		).rejects.toThrow('down');
+		expect(historyDelete.mock.calls.map(([id]) => id)).toEqual(['aa-1', 'aa-2']);
+		expect(applyRemaining).toHaveBeenCalledTimes(1);
+		expect(applyRemaining).toHaveBeenCalledWith([h('aa-2'), h('aa-3')], ['aa-1']);
+		// A failed delete forgets nothing, partway or not: the show still
+		// has a row, so its positions are still a card's.
+		expect(forgetPositions).not.toHaveBeenCalled();
+		expect(forgetRowPositions).not.toHaveBeenCalled();
+	});
+
+	test('a partway failure reads the remaining rows off the strip as it stands then', async () => {
+		const history = [h('aa-1'), h('aa-2')];
+		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1') };
+		// A row read again while the deletes were out.
+		const reread = [h('aa-1'), h('aa-2'), h('bb-9')];
+		const applyRemaining = vi.fn();
+		await expect(
+			executeKitsuGroupDelete('aa-1', {
+				history,
+				currentHistory: () => reread,
+				matches,
+				historyDelete: async (id) => {
+					if (id === 'aa-2') throw new Error('down');
+				},
+				applyRemaining
+			})
+		).rejects.toThrow('down');
+		expect(applyRemaining).toHaveBeenCalledWith([h('aa-2'), h('bb-9')], ['aa-1']);
+	});
 });
 
 describe('executeKitsuGroupDelete — kept positions of a card without its match', () => {

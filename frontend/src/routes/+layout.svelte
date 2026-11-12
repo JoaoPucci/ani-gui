@@ -18,6 +18,7 @@
 <script lang="ts">
 	import '$lib/design/tokens.css';
 	import { onDestroy, onMount } from 'svelte';
+	import { createLiveSearch } from '$lib/topbar/live-search';
 	import { signalAppReady } from '$lib/app-ready';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -45,6 +46,7 @@
 	import DownloadBar from '$lib/components/DownloadBar.svelte';
 	import ToastHost from '$lib/components/ToastHost.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
+	import { isModalOpen } from '$lib/components/modal-layer';
 	import UpdateBadge from '$lib/components/UpdateBadge.svelte';
 	import UpdateDialog from '$lib/components/UpdateDialog.svelte';
 	import NoticeBell from '$lib/notices/NoticeBell.svelte';
@@ -59,20 +61,23 @@
 	import { ExpiryToastTracker } from '$lib/account/expiry-toast';
 	import { signInToastCopy } from '$lib/account/sign-in-toast-copy';
 	import { needsRenewalRetry, RenewalRetry } from '$lib/account/renewal-retry';
+	import { KeyringWaitNotice } from '$lib/account/keyring-wait';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { afterNavigation, shouldShowBackButton, type NavType } from '$lib/history/nav-depth';
 	import { probeScope } from '$lib/availability/probe-scope';
 	import {
-		RECENT_LIMIT,
-		RECENT_STORAGE_KEY,
 		cycleSelectedIdx,
 		decideEnterAction,
 		freshConfigOrLast,
-		mergeRecents,
-		parseStoredRecents,
 		shouldRenderDropdown
 	} from '$lib/topbar/dropdown';
+	import {
+		RECENT_LIMIT,
+		RECENT_STORAGE_KEY,
+		mergeRecents,
+		parseStoredRecents
+	} from '$lib/topbar/recent-searches';
 
 	let { children } = $props();
 
@@ -191,6 +196,18 @@
 		renewalRetry.sync();
 	});
 
+	// Keyring notice: pinned while a saved sign-in's keyring read runs
+	// past its wait (see `$lib/account/keyring-wait`), so a signed-out
+	// home is not taken for a lost sign-in; down when the read settles.
+	const keyringWaitNotice = new KeyringWaitNotice();
+	$effect(() => {
+		keyringWaitNotice.sync(accountStore.keyringWaiting, {
+			push: () =>
+				toastStore.push({ kind: 'info', duration: null, message: m.account_keyring_waiting() }),
+			dismiss: (id) => toastStore.dismiss(id)
+		});
+	});
+
 	let topbarQuery = $state('');
 	let topbarInputEl: HTMLInputElement | undefined = $state();
 
@@ -215,7 +232,7 @@
 	const LIVE_DEBOUNCE_MS = 250;
 	const LIVE_MIN_CHARS = 2;
 	const LIVE_MAX_HITS = 5;
-	// RECENT_LIMIT + RECENT_STORAGE_KEY come from $lib/topbar/dropdown
+	// RECENT_LIMIT + RECENT_STORAGE_KEY come from $lib/topbar/recent-searches
 	// so the constants live next to the helpers that consume them.
 
 	let liveResults = $state<KitsuAnimeRef[] | null>(null);
@@ -224,7 +241,6 @@
 	let dropdownOpen = $state(false);
 	let selectedIdx = $state(-1);
 	let recentSearches = $state<string[]>([]);
-	let liveDebounce: ReturnType<typeof setTimeout> | null = null;
 	let blurDismiss: ReturnType<typeof setTimeout> | null = null;
 
 	onMount(() => {
@@ -243,13 +259,13 @@
 		// only `/account/+page.svelte` called this, which meant a cold
 		// launch directly to `/` left the rail blank for connected
 		// users until they visited Accounts first.
-		// `hydrate()` is sync (preload's `getToken` is sync IPC) so by
-		// the time the home page mounts the store is fully populated.
-		// hydrate() seeds the store from safeStorage AND kicks off a
-		// silent refresh of any expired-but-refreshable token (e.g. MAL's
-		// ~1h access token), so the user isn't pushed through OAuth every
-		// hour.
-		accountStore.hydrate();
+		// `hydrate()` is asynchronous: the keyring may be locked or slow
+		// to answer, and the page renders signed out until it does —
+		// every consumer reads the store reactively. hydrate() seeds the
+		// store from the OS keyring AND kicks off a silent refresh of any
+		// expired-but-refreshable token (e.g. MAL's ~1h access token), so
+		// the user isn't pushed through OAuth every hour.
+		void accountStore.hydrate();
 
 		// Update notifier — one-shot check on app open. Routes
 		// through the local backend (`/api/update-check`); the
@@ -257,7 +273,8 @@
 		// backend is the documented outbound HTTP boundary
 		// (`docs/architecture.md`). The
 		// `update_include_prereleases` setting (default true)
-		// drives which GitHub endpoint the backend hits.
+		// decides whether the backend counts pre-releases when it
+		// picks the newest release with this platform's package.
 		const localApiBase = window.aniGui?.apiBase ?? '';
 		if (localApiBase) {
 			void settingsGet()
@@ -284,46 +301,34 @@
 		}
 	}
 
-	function scheduleLive(q: string) {
-		if (liveDebounce) clearTimeout(liveDebounce);
-		if (q.length < LIVE_MIN_CHARS) {
-			liveResults = null;
-			liveBusy = false;
-			liveError = false;
-			return;
-		}
-		liveDebounce = setTimeout(async () => {
-			liveBusy = true;
-			liveError = false;
-			try {
-				const hits = await kitsuSearch(q);
-				// If the user kept typing past this query, ignore stale results.
-				if (q !== topbarQuery.trim()) return;
-				const trimmed = hits.slice(0, LIVE_MAX_HITS);
-				// Drop hits the availability cache already knows aren't on
-				// the streaming source. Cache-only variant — no warm, no
-				// upstream probes — since this path fires per settled
-				// keystroke and the warm should originate from lower-
-				// frequency surfaces (home rows, detail page). Match the
-				// home filter's mode source: per-user config with 'sub'
-				// fallback. The dropdown can briefly show fewer than
-				// LIVE_MAX_HITS rows when filtering trims hits;
-				// over-fetching to backfill is deliberately not done — the
-				// dropdown is a quick-jump, not a complete listing.
-				const mode: 'sub' | 'dub' = config?.mode === 'dub' ? 'dub' : 'sub';
-				const filtered = await filterAvailableCacheOnly(trimmed, mode);
-				// Re-check after the async filter — the user may have kept
-				// typing while it ran.
-				if (q !== topbarQuery.trim()) return;
-				liveResults = filtered;
-			} catch {
-				liveResults = [];
-				liveError = true;
-			} finally {
-				liveBusy = false;
-			}
-		}, LIVE_DEBOUNCE_MS);
-	}
+	// The live search's transitions — when a search goes out, is
+	// dropped or cancelled, and what the dropdown shows — live in
+	// $lib/topbar/live-search; this hands it the calls and writes back
+	// what it shows.
+	const liveSearch = createLiveSearch({
+		search: (q, signal) => kitsuSearch(q, { signal }),
+		// Drop hits the availability cache already knows aren't on the
+		// streaming source. Cache-only variant — no warm, no upstream
+		// probes — since this path fires per settled keystroke and the
+		// warm should originate from lower-frequency surfaces (home rows,
+		// detail page). Match the home filter's mode source: per-user
+		// config with 'sub' fallback. The dropdown can briefly show fewer
+		// than LIVE_MAX_HITS rows when filtering trims hits; over-fetching
+		// to backfill is deliberately not done — the dropdown is a
+		// quick-jump, not a complete listing.
+		filter: (hits, signal) =>
+			filterAvailableCacheOnly(hits, config?.mode === 'dub' ? 'dub' : 'sub', { signal }),
+		currentQuery: () => topbarQuery.trim(),
+		changed: (view) => {
+			liveResults = view.results;
+			liveBusy = view.busy;
+			liveError = view.error;
+		},
+		debounceMs: LIVE_DEBOUNCE_MS,
+		minChars: LIVE_MIN_CHARS,
+		maxHits: LIVE_MAX_HITS
+	});
+	onDestroy(liveSearch.destroy);
 
 	// Sync the topbar input with ?q= so navigating to /search shows
 	// what was searched and the field stays editable.
@@ -339,6 +344,8 @@
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const onKey = (e: KeyboardEvent) => {
+			// A modal is the only keyboard target while it is up.
+			if (isModalOpen()) return;
 			const t = e.target as HTMLElement | null;
 			const inField =
 				t &&
@@ -367,7 +374,7 @@
 
 	function onInput() {
 		selectedIdx = -1;
-		scheduleLive(topbarQuery.trim());
+		liveSearch.schedule(topbarQuery.trim());
 	}
 
 	async function onInputFocus() {
@@ -376,9 +383,9 @@
 			blurDismiss = null;
 		}
 		dropdownOpen = true;
-		// Re-pull config so the next dropdown filter sees the user's
-		// current Sub/Dub pick. Settings + the detail page mutate their
-		// page-local config but don't push it back here, so without
+		// Re-pull config so the next dropdown filter sees the current
+		// default Sub/Dub. The Settings page mutates its page-local
+		// config but doesn't push it back here, so without
 		// this refresh the dropdown filters with whatever mode was set
 		// when the layout first mounted. Bounded work: fires once per
 		// focus, not per keystroke.
@@ -411,6 +418,7 @@
 
 	function navigateToHit(hit: KitsuAnimeRef) {
 		dropdownOpen = false;
+		liveSearch.close();
 		void goto(resolve('/anime/[id]', { id: hit.id }));
 	}
 
@@ -420,6 +428,7 @@
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		void goto(target);
 		dropdownOpen = false;
+		liveSearch.close();
 	}
 
 	// Double-click-to-maximize on the frameless titlebar is handled by the
@@ -907,12 +916,15 @@
 			flex-wrap: wrap;
 		}
 	}
+	/* The small rail link steps down to the faintest text tier rather
+	   than fading with opacity: bone-300 at 0.6 read 3.8:1, short of
+	   WCAG AA for its label. */
 	.nav li.small .nav-link {
-		opacity: 0.6;
+		color: var(--bone-400);
 	}
 	.nav li.small .nav-link:hover,
 	.nav li.small .nav-link.active {
-		opacity: 1;
+		color: var(--bone-100);
 	}
 
 	.nav-link {
@@ -1295,9 +1307,9 @@
 		display: none;
 	}
 	.topbar-search input::placeholder {
-		/* Lift placeholder from bone-400 to a brighter color-mix so
-		   the call-to-action ("Search anime…") is legible at the
-		   bumped 16px size. */
+		/* The call-to-action ("Search anime…") at the bumped 16px
+		   size. Bone-100 at 55% clears WCAG AA (4.5:1) on every ink
+		   surface; tests/lint/text-contrast.test.ts holds it there. */
 		color: color-mix(in oklab, var(--bone-100) 55%, transparent);
 		font-weight: 400;
 	}

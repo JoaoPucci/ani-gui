@@ -83,8 +83,9 @@ test("remembering keeps the newest few displays and replaces a display's old siz
   assert.deepEqual(initialSize(again, { ...wayland, id: MAX_DISPLAYS + 3 }), { width: 900, height: 600 });
 });
 
-test("the remembered sizes survive a write and read back, and a missing or broken file is none", () => {
+test("the remembered sizes survive a write and read back, and a missing or broken file is none", (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ani-gui-geometry-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, "window-geometry.json");
   assert.deepEqual(readGeometry(file, fs), {});
   const store = remember({}, wayland, { x: 0, y: 32, width: 1920, height: 1048 });
@@ -94,7 +95,6 @@ test("the remembered sizes survive a write and read back, and a missing or broke
     fs.writeFileSync(file, body);
     assert.deepEqual(readGeometry(file, fs), {}, body);
   }
-  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("a write that cannot land only loses the memory", () => {

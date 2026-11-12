@@ -111,7 +111,7 @@ function useShowHandlers() {
 		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
 	);
 }
@@ -127,7 +127,7 @@ beforeEach(async () => {
 	window.localStorage.clear();
 	(window as unknown as { aniGui: unknown }).aniGui = {
 		apiBase: API_BASE,
-		account: { getToken: () => ({ ok: false, kind: 'not_found' }) }
+		account: { getToken: async () => ({ ok: false, kind: 'not_found' }) }
 	};
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;

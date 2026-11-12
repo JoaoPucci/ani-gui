@@ -9,7 +9,7 @@ use crate::history::HistoryEntry;
 use std::collections::HashSet;
 
 use super::title_match_rows::{cour_entries, own_matches, title_match_prefixes};
-pub(crate) use super::title_match_rows::{current_title_match_ids, title_match_ids};
+pub(crate) use super::title_match_rows::{current_title_match_id, title_match_ids};
 
 /// Delete the title-match rows, every version and cour, stored for
 /// the row `id` titled `title` — but for those a row in `remaining`

@@ -1,0 +1,26 @@
+{
+ "data": [
+  {
+   "id": "50237",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Yi Ren Zhi Xia 6th Season",
+    "titles": {
+     "en": "The Outcast 6th Season",
+     "en_cn": "Yi Ren Zhi Xia 6th Season",
+     "zh_cn": "一人之下 第6季"
+    },
+    "abbreviatedTitles": [
+     "一人之下6",
+     "Hitori No Shita: The Outcast 6th Season"
+    ],
+    "slug": "yi-ren-zhi-xia-6th-season",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": 26,
+    "subtype": "ONA",
+    "status": "tba"
+   }
+  }
+ ]
+}

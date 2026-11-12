@@ -1,0 +1,344 @@
+{
+ "data": [
+  {
+   "id": "42080",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dr. Stone",
+    "titles": {
+     "en": "Dr. STONE",
+     "en_jp": "Dr. Stone",
+     "ja_jp": "Dr.STONE"
+    },
+    "abbreviatedTitles": [],
+    "slug": "dr-stone",
+    "startDate": "2019-07-05",
+    "endDate": "2019-12-13",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42867",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dr. Stone: Stone Wars",
+    "titles": {
+     "en_jp": "Dr. Stone: Stone Wars",
+     "ja_jp": "ドクターストーン STONE WARS"
+    },
+    "abbreviatedTitles": [
+     "Dr. Stone 2nd Season",
+     "Dr. Stone Second Season"
+    ],
+    "slug": "dr-stone-two",
+    "startDate": "2021-01-14",
+    "endDate": "2021-03-25",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44289",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dr.STONE: NEW WORLD",
+    "titles": {
+     "en": "Dr. Stone: New World",
+     "en_jp": "Dr.STONE: NEW WORLD",
+     "ja_jp": "Dr.STONE: NEW WORLD"
+    },
+    "abbreviatedTitles": [
+     "石纪元第三季",
+     "Dr.STONE Season 3"
+    ],
+    "slug": "dr-stone-new-world",
+    "startDate": "2023-04-06",
+    "endDate": "2023-06-15",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45615",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dr. STONE: Ryuusui",
+    "titles": {
+     "en": "Dr. STONE: Ryusui",
+     "en_jp": "Dr. STONE: Ryuusui",
+     "ja_jp": "Dr.STONE 龍水"
+    },
+    "abbreviatedTitles": [],
+    "slug": "dr-stone-ryusui",
+    "startDate": "2022-07-10",
+    "endDate": "2022-07-10",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47246",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dr. STONE: NEW WORLD Part 2",
+    "titles": {
+     "en": "Dr. Stone: New World Part 2",
+     "en_jp": "Dr. STONE: NEW WORLD Part 2",
+     "ja_jp": "Dr. STONE NEW WORLD 第2クール"
+    },
+    "abbreviatedTitles": [
+     "石纪元第三季",
+     "Dr.STONE Season 3 Part 2",
+     "DR.STONE ภาค 3",
+     "Dr.STONE 第3期 第2クール"
+    ],
+    "slug": "dr-stone-new-world-part-2",
+    "startDate": "2023-10-12",
+    "endDate": "2023-12-21",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48342",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dr. STONE: SCIENCE FUTURE",
+    "titles": {
+     "en": "Dr. Stone: Science Future",
+     "en_jp": "Dr. STONE: SCIENCE FUTURE",
+     "ja_jp": "Dr.STONE SCIENCE FUTURE"
+    },
+    "abbreviatedTitles": [
+     "Dr.STONE Season 4",
+     "Dr.STONE 第4期",
+     "ドクターストーン"
+    ],
+    "slug": "dr-stone-science-future",
+    "startDate": "2025-01-09",
+    "endDate": "2025-03-27",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43682",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dr. Stone: Stone Wars Eve of the Battle Special Feature",
+    "titles": {
+     "en": "Dr. Stone: Stone Wars Eve of the Battle Special Feature",
+     "en_jp": "Dr. Stone: Stone Wars - Kaisen Zenya Special Eizou",
+     "ja_jp": "Dr.STONE STONE WARS 開戦前夜スペシャル映像"
+    },
+    "abbreviatedTitles": [
+     "Stone Wars Eve of the Battle Special Feature",
+     "DR STONE Jump Festa Special"
+    ],
+    "slug": "dr-stone-stone-wars-eve-of-the-battle-special-feature",
+    "startDate": "2020-10-11",
+    "endDate": "2020-10-11",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49751",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dr.STONE SCIENCE FUTURE Part 2",
+    "titles": {
+     "en": "Dr. Stone: Science Future Part 2",
+     "en_jp": "Dr.STONE SCIENCE FUTURE Part 2",
+     "ja_jp": "Dr.STONE SCIENCE FUTURE 2クール"
+    },
+    "abbreviatedTitles": [
+     "Dr.STONE Season 4 Part 2",
+     "ドクターストーン"
+    ],
+    "slug": "dr-stone-science-future-part-2",
+    "startDate": "2025-07-10",
+    "endDate": "2025-09-25",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50187",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dr. STONE: SCIENCE FUTURE Part 3",
+    "titles": {
+     "en": "Dr. Stone: Science Future Part 3",
+     "en_jp": "Dr. STONE: SCIENCE FUTURE Part 3",
+     "ja_jp": "Dr.STONE SCIENCE FUTURE 3クール"
+    },
+    "abbreviatedTitles": [
+     "Dr. STONE SCIENCE FUTURE Cour 3",
+     "Dr.STONE Season 4 Part 3",
+     "ドクターストーン"
+    ],
+    "slug": "dr-stone-science-future-part-3",
+    "startDate": "2026-04-02",
+    "endDate": "2026-06-25",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "51127",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dr.STONE TERRAFORMING",
+    "titles": {
+     "en_jp": "Dr.STONE TERRAFORMING"
+    },
+    "abbreviatedTitles": [],
+    "slug": "dr-stone-terraforming",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "special",
+    "status": "tba"
+   }
+  },
+  {
+   "id": "43715",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sekikashita Kusanagi",
+    "titles": {
+     "en_jp": "Sekikashita Kusanagi",
+     "ja_jp": "石化した草薙"
+    },
+    "abbreviatedTitles": [
+     "Petrified Kusanagi",
+     "SNICKERS®︎ × Dr.STONE"
+    ],
+    "slug": "sekikashita-kusanagi",
+    "startDate": "2020-10-04",
+    "endDate": "2020-10-04",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48130",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Koe Dake ga",
+    "titles": {
+     "en_jp": "Koe Dake ga",
+     "ja_jp": "こえだけが"
+    },
+    "abbreviatedTitles": [
+     "「声?」（こえだけが）",
+     "Koe? Koe Dake ga",
+     "Voice?"
+    ],
+    "slug": "koe-dake-ga",
+    "startDate": "2021-03-09",
+    "endDate": "2021-03-09",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "3117",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kodai Ouja Kyouryuu King",
+    "titles": {
+     "en": "Dinosaur King",
+     "en_jp": "Kodai Ouja Kyouryuu King",
+     "en_us": "Dinosaur King",
+     "ja_jp": "古代王者 恐竜キング Ｄキッズアドベンチャー"
+    },
+    "abbreviatedTitles": [
+     "Kodai Oja Kyoryu King D-Kids Adventure",
+     "Ancient Ruler Dinosaur King"
+    ],
+    "slug": "kodai-ouja-kyouryuu-king",
+    "startDate": "2007-02-04",
+    "endDate": "2008-01-27",
+    "episodeCount": 49,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "2377",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mirai Shounen Conan 2: Taiga Daibouken",
+    "titles": {
+     "en": "Future Boy Conan 2: River Adventure",
+     "en_jp": "Mirai Shounen Conan 2: Taiga Daibouken",
+     "en_us": "Future Boy Conan 2: River Adventure",
+     "ja_jp": "未来少年コナンII　タイガアドベンチャー"
+    },
+    "abbreviatedTitles": [],
+    "slug": "mirai-shounen-conan-2-taiga-daibouken",
+    "startDate": "1999-10-16",
+    "endDate": "2000-04-01",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8901",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jungle Taitei Movie (1997)",
+    "titles": {
+     "en": "Jungle Emperor Leo",
+     "en_jp": "Jungle Taitei Movie (1997)",
+     "en_us": "Jungle Emperor Leo",
+     "ja_jp": "ジャングル大帝　劇場版"
+    },
+    "abbreviatedTitles": [],
+    "slug": "jungle-taitei-1997",
+    "startDate": "1997-08-01",
+    "endDate": "1997-08-01",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "5385",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dr. Slump Movie 10: Arale no Bikkuriman",
+    "titles": {
+     "en": "Doctor Slump: Arale's Surprise",
+     "en_jp": "Dr. Slump Movie 10: Arale no Bikkuriman",
+     "en_us": "Doctor Slump: Arale's Surprise",
+     "ja_jp": "ドクタースランプ　アラレのびっくりバーン"
+    },
+    "abbreviatedTitles": [
+     "Dr. Slump: Arale's Amazing-man"
+    ],
+    "slug": "dr-slump-arale-no-bikkuriman",
+    "startDate": "1999-03-06",
+    "endDate": "1999-03-06",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

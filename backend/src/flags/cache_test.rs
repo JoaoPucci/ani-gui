@@ -7,7 +7,7 @@ use super::{is_fresh, read, write, CacheEntry, FRESH_FOR};
 const DAY: u64 = 24 * 60 * 60;
 
 fn entry(fetched_at: u64) -> CacheEntry {
-    let doc = serde_json::json!({ "test_kill": false });
+    let doc = serde_json::json!({ "test_a": false });
     CacheEntry::admitted(fetched_at, doc.as_object().expect("object").clone())
 }
 

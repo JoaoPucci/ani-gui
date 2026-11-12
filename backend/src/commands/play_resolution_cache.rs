@@ -1,10 +1,10 @@
 //! Long-term cache for play resolutions.
 //!
 //! Caches the *result* of a resolve (upstream URL, referer,
-//! media kind) keyed by `(canonical_title, mode, quality,
-//! episode)`. A subsequent click on the same episode skips the
-//! provider walk entirely — we just register a fresh proxy session
-//! around the cached upstream and return immediately.
+//! media kind) keyed by `(canonical_title, mode, episode)` and the
+//! entry's year, count and subtype. A subsequent click on the same
+//! episode skips the provider walk entirely — we just register a fresh
+//! proxy session around the cached upstream and return immediately.
 //!
 //! What the walk actually costs (measured 2026-09-01 against the
 //! live provider, debug build, one residential connection): a clean
@@ -210,11 +210,18 @@ use crate::proxy::MediaKind;
 // Steel Ball Run's first episode cached without Portuguese, Spanish,
 // Russian or Japanese — and a replay would keep offering that cut for
 // the row's whole life; bumping re-resolves. A row now holds each file
-// once. Past sixty-four tracks the cut follows the locale of the play
-// that wrote the row, which the key does not name: a row written
-// before a locale change keeps the earlier locale's cut until it
-// expires — no listing seen comes near the cap.
-pub(crate) const SCHEMA: &str = "v28";
+// once. Past sixty-four tracks the cut follows the remembered language
+// and the locale of the play that wrote the row, which neither the key
+// nor the row names, so a row holding the cap's worth of tracks is
+// never replayed (`play_cache::cached_row_may_be_cut`) — no listing
+// seen comes near the cap.
+// v29: the quality left the key. Every play — the built-in player, a
+// hand-off, Syncplay — resolves the master, so a row is the same answer
+// whatever quality a request names. The v28 rows kept for `best` are
+// carried to their v29 key when the cache opens
+// (`crate::cache::play_rekey`); the rest held one rendition each and
+// are left to the launch's reclaim.
+pub(crate) const SCHEMA: &str = "v29";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -281,8 +288,9 @@ pub struct CachedResolution {
 }
 
 /// Build the SQLite key for a play resolution. Keyed on what the
-/// *frontend* asks for — `(title, mode, quality, episode, year,
-/// episode_count)`. alt_titles are intentionally excluded because
+/// *frontend* asks for — `(title, mode, episode, year,
+/// episode_count)`. The quality is not among them: every play resolves
+/// the master. alt_titles are intentionally excluded because
 /// the cache is keyed on the request shape, not the title that
 /// ultimately matched the provider.
 ///
@@ -297,14 +305,13 @@ pub struct CachedResolution {
 pub fn cache_key(
     title: &str,
     mode: &str,
-    quality: &str,
     episode: &str,
     year: Option<u32>,
     episode_count: Option<u32>,
     subtype: Option<&str>,
 ) -> String {
     // `:` is the table convention. The fields don't contain it
-    // (mode/quality are enums, episode is digits, subtype is Kitsu's
+    // (mode is an enum, episode is digits, subtype is Kitsu's
     // enum). Title can contain `:` (Stone Ocean Part 2 canonical has
     // one). It's still unambiguous given the field count, and
     // serde_json never tries to parse this — it's only a SQLite text
@@ -315,7 +322,7 @@ pub fn cache_key(
     let e = episode_count.map_or_else(|| "-".to_string(), |v| v.to_string());
     let s = subtype.unwrap_or("-");
     format!(
-        "{}{title}:{mode}:{quality}:{episode}:{y}:{e}:{s}",
+        "{}{title}:{mode}:{episode}:{y}:{e}:{s}",
         crate::cache::families::play()
     )
 }
@@ -327,14 +334,13 @@ pub fn cache_key(
 pub fn cache_key_for_version(
     title: &str,
     mode: &str,
-    quality: &str,
     episode: &str,
     year: Option<u32>,
     episode_count: Option<u32>,
     subtype: Option<&str>,
     version: Option<crate::commands::play_native_versions::VersionKind>,
 ) -> String {
-    let key = cache_key(title, mode, quality, episode, year, episode_count, subtype);
+    let key = cache_key(title, mode, episode, year, episode_count, subtype);
     match version {
         // A request naming no version keeps the key it had: a show with
         // one version is asked for that way, and its row is unchanged.
@@ -394,8 +400,9 @@ pub(crate) fn store(
 
 /// Drop a single cached resolution. Two callers feed this:
 /// 1. The play flow's unservable-row branch — the row's provider is
-///    no longer walked, or the cached URL is dead — so the row should
-///    not linger if the fresh resolve also fails.
+///    no longer walked, its tracks may be a cut listing, or the cached
+///    URL is dead — so the row should not linger if the fresh resolve
+///    also fails.
 /// 2. The frontend's player-error feedback path — the player tried
 ///    the cached upstream and got a 4xx/5xx, so the URL has rotated
 ///    even though our HEAD said it was alive.

@@ -31,10 +31,10 @@ fn the_file_is_read_from_the_flags_branch_on_githubs_content_cdn() {
 #[tokio::test]
 async fn a_200_flags_document_is_returned() {
     let (_s, url) =
-        serve(ResponseTemplate::new(200).set_body_string(r#"{"flags":{"test_kill":false}}"#)).await;
+        serve(ResponseTemplate::new(200).set_body_string(r#"{"flags":{"test_a":false}}"#)).await;
     let doc = fetch(&reqwest::Client::new(), &url, FETCH_TIMEOUT).await;
     let doc = doc.expect("document");
-    assert_eq!(doc.get("test_kill"), Some(&serde_json::json!(false)));
+    assert_eq!(doc.get("test_a"), Some(&serde_json::json!(false)));
 }
 
 #[tokio::test]
@@ -49,10 +49,9 @@ async fn a_404_is_no_document() {
 #[tokio::test]
 async fn any_other_status_is_no_document() {
     for status in [204, 301, 403, 429, 500, 503] {
-        let (_s, url) = serve(
-            ResponseTemplate::new(status).set_body_string(r#"{"flags":{"test_kill":false}}"#),
-        )
-        .await;
+        let (_s, url) =
+            serve(ResponseTemplate::new(status).set_body_string(r#"{"flags":{"test_a":false}}"#))
+                .await;
         assert_eq!(
             fetch(&reqwest::Client::new(), &url, FETCH_TIMEOUT).await,
             None,
@@ -74,7 +73,7 @@ async fn malformed_json_is_no_document() {
 async fn a_slow_response_times_out_as_no_document() {
     let (_s, url) = serve(
         ResponseTemplate::new(200)
-            .set_body_string(r#"{"flags":{"test_kill":false}}"#)
+            .set_body_string(r#"{"flags":{"test_a":false}}"#)
             .set_delay(Duration::from_secs(10)),
     )
     .await;
@@ -93,7 +92,7 @@ async fn an_oversized_body_is_no_document() {
     let pad = " ".repeat(MAX_BYTES + 1);
     let (_s, url) = serve(
         ResponseTemplate::new(200)
-            .set_body_string(format!(r#"{{"flags":{{"test_kill":false}}}}{pad}"#)),
+            .set_body_string(format!(r#"{{"flags":{{"test_a":false}}}}{pad}"#)),
     )
     .await;
     assert_eq!(
@@ -120,7 +119,7 @@ async fn the_requests_own_timeout_outlasts_a_shorter_client_timeout() {
     // is given, as the metadata client's 30 s is shorter than 45 s.
     let (_s, url) = serve(
         ResponseTemplate::new(200)
-            .set_body_string(r#"{"flags":{"test_kill":false}}"#)
+            .set_body_string(r#"{"flags":{"test_a":false}}"#)
             .set_delay(Duration::from_millis(600)),
     )
     .await;
@@ -143,6 +142,6 @@ fn the_flags_client_gives_a_slow_link_most_of_the_attempt_to_connect() {
 #[tokio::test]
 async fn the_flags_client_fetches_the_file() {
     let (_s, url) =
-        serve(ResponseTemplate::new(200).set_body_string(r#"{"flags":{"test_kill":false}}"#)).await;
+        serve(ResponseTemplate::new(200).set_body_string(r#"{"flags":{"test_a":false}}"#)).await;
     assert!(fetch(&client(), &url, FETCH_TIMEOUT).await.is_some());
 }

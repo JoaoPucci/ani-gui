@@ -40,28 +40,14 @@ impl Resolved {
         self.0.get(name).copied()
     }
 
-    /// Whether the feature a kill switch gates runs. The declaration
-    /// is passed rather than its name, so a consumer cannot misspell
-    /// it, and a flag missing from this set reads as its declaration's
-    /// default rather than as whatever the caller would have guessed.
-    /// A fallback's declaration reads as `true`: it switches nothing
-    /// off.
+    /// Whether the feature `decl` gates is on: only when this set
+    /// holds `true` for it and the declaration allows that. The
+    /// declaration is passed rather than its name, so a consumer
+    /// cannot misspell it, and a flag missing from this set reads off
+    /// rather than as whatever the caller would have guessed.
     #[must_use]
     pub fn enabled(&self, decl: &FlagDecl) -> bool {
-        match self.value(decl) {
-            FlagValue::Bool(on) => on,
-            FlagValue::Choice(_) => true,
-        }
-    }
-
-    /// The behaviour a fallback selects, read the same way as
-    /// [`Resolved::enabled`]. `None` for a kill switch's declaration.
-    #[must_use]
-    pub fn choice(&self, decl: &FlagDecl) -> Option<&'static str> {
-        match self.value(decl) {
-            FlagValue::Choice(c) => Some(c),
-            FlagValue::Bool(_) => None,
-        }
+        self.value(decl) == FlagValue::Bool(true)
     }
 
     /// `decl`'s value in this set if the declaration allows it, and its

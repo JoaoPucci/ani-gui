@@ -48,7 +48,7 @@ async fn the_route_returns_the_decided_flags_and_their_origin() {
         body,
         serde_json::json!({
             "origin": "defaults",
-            "flags": { "test_kill": true, "test_fallback": "new" }
+            "flags": { "test_a": false, "test_b": false }
         })
     );
 }
@@ -63,13 +63,13 @@ async fn the_route_waits_for_the_decision() {
     };
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-        let doc = crate::flags::resolve::parse_document(br#"{"flags":{"test_kill":false}}"#);
+        let doc = crate::flags::resolve::parse_document(br#"{"flags":{"test_a":true}}"#);
         store.settle(doc.as_ref(), Origin::File);
     });
     let (status, body) = get_flags(state).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["origin"], serde_json::json!("file"));
-    assert_eq!(body["flags"]["test_kill"], serde_json::json!(false));
+    assert_eq!(body["flags"]["test_a"], serde_json::json!(true));
 }
 
 #[tokio::test(start_paused = true)]

@@ -130,7 +130,7 @@ function useHandlers(evicted: Posted[]) {
 			evicted.push((await request.json()) as Posted);
 			return new HttpResponse(null, { status: 204 });
 		}),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 	);
 }
 

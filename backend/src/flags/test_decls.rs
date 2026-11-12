@@ -1,24 +1,27 @@
-//! Declarations the tests resolve against. The production list is
-//! empty until a flag's consumer lands, so these stand in for one of
-//! each kind.
+//! Declarations the tests resolve against. This build declares no
+//! flag, and no kind a build could declare one with, so these use the
+//! test-only probe kind: two on/off flags that ship off and that the
+//! file may switch on, so a test can tell the file's values from the
+//! defaults.
 
 use super::decl::{FlagDecl, FlagKind};
 
-pub(crate) const KILL: &str = "test_kill";
-pub(crate) const FALLBACK: &str = "test_fallback";
+pub(crate) const A: &str = "test_a";
+pub(crate) const B: &str = "test_b";
 
 pub(crate) const TEST_DECLS: &[FlagDecl] = &[
     FlagDecl {
-        name: KILL,
-        kind: FlagKind::KillSwitch,
-        safe_because: "test-only: switching the feature off leaves the rest of the app working",
+        name: A,
+        kind: FlagKind::Probe {
+            may_switch_on: true,
+        },
+        safe_because: "test-only: the flag gates nothing",
     },
     FlagDecl {
-        name: FALLBACK,
-        kind: FlagKind::Fallback {
-            current: "new",
-            earlier: &["old", "older"],
+        name: B,
+        kind: FlagKind::Probe {
+            may_switch_on: true,
         },
-        safe_because: "test-only: the earlier behaviours shipped before and are known good",
+        safe_because: "test-only: the flag gates nothing",
     },
 ];
