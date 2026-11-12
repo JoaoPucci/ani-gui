@@ -171,7 +171,7 @@ jobs:
           backend=dist/linux-unpacked/resources/ani-gui-backend
           key=$(head -n 1 ../backend/tests/fixtures/flags-signature/test-run-key.pub)
           test -n "$key"
-          if grep -qF -- "$key" "$backend"; then
+          if grep -qaF -- "$key" "$backend"; then
             echo "the packaged backend carries the test-run key" >&2
             exit 1
           fi
