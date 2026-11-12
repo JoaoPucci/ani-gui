@@ -134,6 +134,31 @@ fn a_line_named_for_another_show_than_the_one_shown_is_the_pick_kept() {
 }
 
 #[test]
+fn on_the_player_a_kept_pick_is_offered_again() {
+    // The player mounted again after "Keep watching this": the line is
+    // named for the pick while the old show plays. Its ⋯ entry stays, to
+    // change the show again; elsewhere the line shows another show.
+    let kept = VerdictArgs {
+        trusted: true,
+        named: true,
+        in_player: true,
+        ..on_page(Some("4013"))
+    };
+    assert_eq!(
+        verdict(&kept),
+        Verdict {
+            offer: Some(OfferKind::Again),
+            kept: true
+        }
+    );
+    let elsewhere = VerdictArgs {
+        in_player: false,
+        ..kept
+    };
+    assert_eq!(verdict(&elsewhere).offer, None);
+}
+
+#[test]
 fn the_verdict_arrives_and_answers_as_the_renderer_speaks_it() {
     let args: VerdictArgs = serde_json::from_value(serde_json::json!({
         "page": GUESS, "show": GUESS, "trusted": false, "named": false,
@@ -226,10 +251,10 @@ fn the_rows_arrive_as_the_renderer_sends_them() {
 fn flags() -> impl Strategy<Value = VerdictArgs> {
     (
         proptest::option::of(proptest::sample::select(&["1", "2"][..])),
-        any::<[bool; 5]>(),
+        any::<[bool; 6]>(),
     )
         .prop_map(
-            |(show, [trusted, named, asks_guess, carried, picked])| VerdictArgs {
+            |(show, [trusted, named, asks_guess, carried, picked, in_player])| VerdictArgs {
                 page: "1".into(),
                 show: show.map(str::to_string),
                 trusted,
@@ -237,17 +262,20 @@ fn flags() -> impl Strategy<Value = VerdictArgs> {
                 asks_guess,
                 carried,
                 picked,
+                in_player,
             },
         )
 }
 
 proptest! {
     #[test]
-    fn an_offer_is_made_only_for_a_line_showing_the_page(args in flags()) {
+    fn an_offer_is_made_only_for_a_line_showing_the_page_or_kept_on_the_player(args in flags()) {
         let shows_page = args.show.as_deref() == Some(args.page.as_str());
         let v = verdict(&args);
         if !shows_page {
-            prop_assert_eq!(v.offer, None);
+            // Only the player offers a kept pick again.
+            let again = args.in_player && v.kept;
+            prop_assert_eq!(v.offer, again.then_some(OfferKind::Again));
         }
         prop_assert_eq!(v.kept, args.named && args.show.is_some() && !shows_page);
     }
@@ -261,7 +289,9 @@ proptest! {
             && shows_page
             && (!args.trusted || (args.carried && !args.picked && !args.named));
         prop_assert_eq!(verdict(&args).offer == Some(OfferKind::Guess), guess);
-        let again = !guess && shows_page && (args.picked || args.named);
+        let again = !guess
+            && ((shows_page && (args.picked || args.named))
+                || (args.in_player && args.named && args.show.is_some() && !shows_page));
         prop_assert_eq!(verdict(&args).offer == Some(OfferKind::Again), again);
     }
 

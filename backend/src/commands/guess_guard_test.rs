@@ -1,7 +1,7 @@
 //! A guessed session's play never records its guess over the show a row
 //! already records: a link the user made stands.
 
-use crate::commands::guess_guard::keeps_recorded;
+use crate::commands::guess_guard::{guards_row, keeps_recorded};
 use proptest::prelude::*;
 
 #[test]
@@ -37,6 +37,26 @@ fn a_play_no_guess_opened_records_what_it_names() {
         keeps_recorded(false, Some("4013"), Some("7158")),
         Some("7158")
     );
+}
+
+#[test]
+fn a_card_play_guards_the_cards_own_listing_and_no_other() {
+    let card = Some("hianime:black-clover-949");
+    // A guessed card's play guards every row it lands on.
+    assert!(guards_row(card, None, "hianime:gintama-1237"));
+    // A card no guess opened guards its own line, and a play of its
+    // listing when the card is a retired provider's bare row (a play
+    // always lands on a walked provider's key).
+    assert!(guards_row(None, card, "hianime:black-clover-949"));
+    assert!(guards_row(
+        None,
+        Some("black-clover-77"),
+        "hianime:black-clover-949"
+    ));
+    // Another listing's row is that show's history, and a play from a
+    // show's own page is the user's choice.
+    assert!(!guards_row(None, card, "hianime:gintama-1237"));
+    assert!(!guards_row(None, None, "hianime:black-clover-949"));
 }
 
 proptest! {

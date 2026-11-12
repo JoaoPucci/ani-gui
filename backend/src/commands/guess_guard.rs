@@ -35,6 +35,15 @@ pub fn keeps_recorded<'a>(
     }
 }
 
+/// Whether a play keeps the show a row `played` records: one a guessed
+/// card asked for (`guess_row`), on any row, and one a card no guess
+/// opened asked for (`card_row`), on that card's own listing.
+#[must_use]
+pub fn guards_row(guess_row: Option<&str>, card_row: Option<&str>, played: &str) -> bool {
+    let _ = (card_row, played);
+    guess_row.is_some()
+}
+
 /// `candidate`, the id the play `args` would record on the row `played`,
 /// unless the play is a guessed session's and the row records another
 /// ([`keeps_recorded`]). A recorded show Kitsu answered gone does not

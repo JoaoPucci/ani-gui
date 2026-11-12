@@ -94,6 +94,12 @@ async fn a_watch_no_guess_asked_for_records_its_id() {
 /// played `SHOW`, naming `kitsu_id`, on a row that records `recorded`,
 /// and answer the id the row then records.
 async fn recorded_over(recorded: &str, kitsu_id: &str) -> Option<String> {
+    recorded_over_from(recorded, kitsu_id, "guess_row").await
+}
+
+/// As [`recorded_over`], the card's row named in `field`: a guessed
+/// card's `guess_row`, or the `card_row` of a card no guess opened.
+async fn recorded_over_from(recorded: &str, kitsu_id: &str, field: &str) -> Option<String> {
     use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
     let td = TempDir::new().expect("tempdir");
     let state = test_app_state(&td);
@@ -130,10 +136,12 @@ async fn recorded_over(recorded: &str, kitsu_id: &str) -> Option<String> {
     )
     .expect("history");
     let router = build_api_router(Arc::new(state));
-    let body = serde_json::json!({
-        "title": TITLE, "episode": "1", "mode": "sub",
-        "kitsu_id": kitsu_id, "guess_row": SHOW,
+    let mut body = serde_json::json!({
+        "title": TITLE, "episode": "1", "mode": "sub", "kitsu_id": kitsu_id,
     });
+    if !field.is_empty() {
+        body[field] = serde_json::json!(SHOW);
+    }
     let response = router
         .oneshot(
             Request::builder()
@@ -166,4 +174,32 @@ async fn a_guessed_watch_never_records_its_guess_over_a_linked_row() {
 #[tokio::test]
 async fn a_guessed_watch_naming_the_link_keeps_it() {
     assert_eq!(recorded_over("4013", "4013").await.as_deref(), Some("4013"));
+}
+
+#[tokio::test]
+async fn a_watch_from_a_card_no_guess_opened_never_replaces_the_lines_show() {
+    // The user named the line 4013 on the player and kept watching the
+    // old show (49877); the player was mounted again and sent its next
+    // episode as the page's show before it read the line back.
+    assert_eq!(
+        recorded_over_from("4013", "49877", "card_row")
+            .await
+            .as_deref(),
+        Some("4013")
+    );
+    assert_eq!(
+        recorded_over_from("4013", "4013", "card_row")
+            .await
+            .as_deref(),
+        Some("4013")
+    );
+}
+
+#[tokio::test]
+async fn a_watch_from_a_shows_own_page_records_what_it_names() {
+    // No card: the user chose the show from its page.
+    assert_eq!(
+        recorded_over_from("4013", "49877", "").await.as_deref(),
+        Some("49877")
+    );
 }

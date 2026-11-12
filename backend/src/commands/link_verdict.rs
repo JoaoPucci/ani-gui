@@ -52,6 +52,9 @@ pub struct VerdictArgs {
     /// The line was picked on the player in this run.
     #[serde(default)]
     pub picked: bool,
+    /// The surface is the player.
+    #[serde(default)]
+    pub in_player: bool,
 }
 
 /// What a surface offers for the card's line.
