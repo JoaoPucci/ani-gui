@@ -1578,7 +1578,7 @@
 								match?.episode_count ?? null,
 								match?.status === 'finished',
 								// The line the card stands for as the rows are now.
-								cardLines.settled().then(() => cardLines.lineOf(entry.id))
+								cardLines.settled().then(() => cardLines.clickLineOf(entry.id))
 							)}
 					>
 						{@render cardFace(card, initials)}
@@ -1614,7 +1614,7 @@
 							const id = guessed.id;
 							void cardLines
 								.settled()
-								.then(() => openCardLink(cardLines.lineOf(entry.id), id, nextEpisode));
+								.then(() => openCardLink(cardLines.clickLineOf(entry.id), id, nextEpisode));
 						}}
 					>
 						<GuessMark size={14} />{m.detail_link_not_this()}

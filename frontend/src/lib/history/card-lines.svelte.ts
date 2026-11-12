@@ -14,10 +14,12 @@
  * row and offers no correction, as before its match was read, and while
  * an answer for changed rows is out they keep the last one, so a pill
  * does not blink out from under a pointer or keyboard focus whenever
- * another card's match lands. A click acts only once the answer for the
- * rows as they are has landed (`settled`). One question is out at a
- * time; rows that change meanwhile are asked once it answers. A failed
- * answer leaves the last one drawn, until the rows change again.
+ * another card's match lands. A click waits for the answer for the rows
+ * as they are (`settled`) and acts on it (`clickLineOf`); when that
+ * answer failed, it acts on each row itself, as before the cards had
+ * one. One question is out at a time; rows that change meanwhile are
+ * asked once it answers. A failed answer leaves the last one drawn,
+ * until the rows change again.
  */
 
 import type { CardLine, CardLineRow } from '$lib/api';
@@ -63,13 +65,20 @@ export class CardLines {
 		return this.#current(id)?.line ?? id;
 	}
 
+	/** The line a click on the card showing the row `id` acts on: the
+	 *  answer's for the rows as they are, else the row itself. Read once
+	 *  `settled`. */
+	clickLineOf(id: string): string {
+		return (this.#answer?.key === this.#wanted ? this.#answer.lines[id]?.line : undefined) ?? id;
+	}
+
 	/** Whether the card showing the row `id` can correct its line. */
 	correctable(id: string): boolean {
 		return this.#current(id)?.correctable === true;
 	}
 
-	/** Settles once no question is out: the lines then answer for the
-	 *  rows as they are, or, after a failed answer, are the last ones. */
+	/** Settles once no question is out: `clickLineOf` then answers for
+	 *  the rows as they are, or, after a failed answer, with each row. */
 	settled(): Promise<void> {
 		if (!this.#out) return Promise.resolve();
 		return new Promise((resolve) => this.#waiters.push(resolve));
