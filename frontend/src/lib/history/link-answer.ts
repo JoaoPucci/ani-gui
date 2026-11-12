@@ -10,8 +10,9 @@
  * to another card, it only reads the history again. A link a
  * correction asked later overtook (`overtaken`) saved nothing: nothing
  * is said or carried, the picker closes on the visit it was made from,
- * and the surface reads its history again, or on the player its line. A failed link says why: in
- * the picker while the viewer stayed, else in a notice.
+ * and the surface reads its history again, or on the player its line.
+ * A failed link says why: in the picker while the viewer stayed, else
+ * in a notice.
  */
 
 import type { KitsuAnimeRef, LinkOutcome } from '$lib/api';
