@@ -279,8 +279,8 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		history_path: 'string',
 		proxy_base_url: 'string',
 		removed_legacy_paths: 'string[]',
-		retired_provider_sweep: '?object',
-		cache_reclaim: '?object'
+		retired_provider_sweep: 'object',
+		cache_reclaim: 'object'
 	} satisfies Spec<AppInfo>,
 	RetiredSweepReport: {
 		superseded: 'string[]',
@@ -296,6 +296,7 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		ep_no: 'string',
 		id: 'string',
 		title: 'string',
+		watched_at: '?number',
 		kitsu_id: '?string',
 		key_year: '?number'
 	} satisfies Spec<HistoryEntry>,
@@ -303,8 +304,8 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		ep_no: 'string',
 		id: 'string',
 		title: 'string',
-		kitsu_id: '?string',
-		key_year: '?number'
+		watched_at: '?number',
+		kitsu_id: '?string'
 	} satisfies Spec<NonNullable<Awaited<ReturnType<typeof historyByKitsu>>>>,
 	HistoryNumber: {
 		ep_no: 'string',
@@ -314,8 +315,8 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		session_id: 'string',
 		media_url: 'string',
 		media_kind: 'string',
-		cache_hit: '?boolean',
-		subtitles: '?object[]',
+		cache_hit: 'boolean',
+		subtitles: 'object[]',
 		episode: '?string',
 		former_episode: '?string',
 		episode_unverified: '?boolean',
@@ -337,8 +338,8 @@ const RESPONSES: Record<string, Record<string, string>> = {
 	KitsuAnimeRef: {
 		id: 'string',
 		canonical_title: 'string',
-		titles: '?object',
-		abbreviated_titles: '?string[]',
+		titles: 'object',
+		abbreviated_titles: 'string[]',
 		slug: 'string|null',
 		synopsis: 'string|null',
 		start_date: 'string|null',
@@ -351,7 +352,7 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		popularity_rank: 'number|null',
 		poster_image: 'object|null',
 		cover_image: 'object|null',
-		anilist_banner: '?string|null'
+		anilist_banner: '?string'
 	} satisfies Spec<KitsuAnimeRef>,
 	KitsuPosterImage: {
 		tiny: 'string|null',
@@ -393,7 +394,7 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		aired: 'number|null',
 		next_episode: 'number|null',
 		next_airing_at: 'number|null',
-		upcoming: '?object[]'
+		upcoming: 'object[]'
 	} satisfies Spec<AiringStatus>,
 	UpcomingEpisode: {
 		episode: 'number',
@@ -435,10 +436,10 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		available: 'boolean',
 		episode_count: 'number|null',
 		extra_episodes: 'string[]',
-		episode_count_approximate: '?boolean',
+		episode_count_approximate: 'boolean',
 		gate_refused: '?boolean',
-		provider: '?string',
-		unsettled: '?boolean|string',
+		provider: 'string|null',
+		unsettled: '?string',
 		versions: '?object[]'
 	} satisfies Spec<AvailabilityResponse>,
 	AvailabilityBatchResponse: {
@@ -695,7 +696,10 @@ const ERROR_SPEC = {
 	detail: '?string',
 	status: '?number',
 	retry_after_secs: '?number|null',
-	binary: '?string'
+	refused_by: '?string',
+	binary: '?string',
+	stage: '?string',
+	host: '?string|null'
 } satisfies Spec<AniErrorPayload>;
 
 // — The tests ———————————————————————————————————————————————————————

@@ -17,6 +17,7 @@ const answer = (over: Partial<AvailabilityResponse> = {}): AvailabilityResponse 
 	episode_count: 4,
 	extra_episodes: [],
 	episode_count_approximate: false,
+	provider: 'hianime',
 	...over
 });
 

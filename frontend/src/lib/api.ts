@@ -340,18 +340,24 @@ export interface AppInfo {
 	/** What the boot sweep over a retired streaming provider's rows
 	 *  changed; empty on every launch that found none. The page decides
 	 *  what to show via `$lib/diagnostics/retired-sweep`. */
-	retired_provider_sweep?: RetiredSweepReport;
+	retired_provider_sweep: RetiredSweepReport;
 	/** What the launch's cache reclaim deleted; zero on every launch
 	 *  that found nothing to reclaim. The page decides what to show via
 	 *  `$lib/diagnostics/cache-reclaim`. */
-	cache_reclaim?: CacheReclaimReport;
+	cache_reclaim: CacheReclaimReport;
 }
 
-/** One row from the watch-history file. */
+/** One row from the watch-history file, as `/api/history` lists it. */
 export interface HistoryEntry {
 	ep_no: string;
 	id: string;
 	title: string;
+	/** The moment of the watch that wrote the row, in milliseconds since
+	 *  the epoch. Absent on a row no watch wrote and on rows from before
+	 *  the column. Continue Watching ranks by `/api/watched-at`
+	 *  ({@link watchedAtAll}), which already takes the later of this and
+	 *  the stamp kept beside the history. */
+	watched_at?: number;
 	/** Kitsu id of the show the user played, recorded with the watch.
 	 *  Absent on rows written before history recorded it. */
 	kitsu_id?: string;
@@ -360,6 +366,10 @@ export interface HistoryEntry {
 	 *  the backend; absent when it names none. */
 	key_year?: number;
 }
+
+/** A history row as `/api/history/by-kitsu/:id` answers it: the row
+ *  alone, without the year `/api/history` reads from its show key. */
+export type HistoryRowByKitsu = Omit<HistoryEntry, 'key_year'>;
 
 /** Input to `cmd_create_session`. */
 export interface CreateSessionArgs {
@@ -395,12 +405,11 @@ export interface CreateSessionResponse {
 	 *  (no fresh resolve). The play page uses it to decide
 	 *  whether a player error is silently retryable: cache hits can
 	 *  be evicted + re-resolved; fresh fetches already exhausted the
-	 *  resolve path so the user should see the error. Optional for
-	 *  forward compat with older backends — treat absence as `false`. */
-	cache_hit?: boolean;
-	/** Sidecar subtitle tracks the resolve listed; absent or empty when
-	 *  the stream carries none outside its playlist. */
-	subtitles?: SessionSubtitle[];
+	 *  resolve path so the user should see the error. */
+	cache_hit: boolean;
+	/** Sidecar subtitle tracks the resolve listed; empty when the
+	 *  stream carries none outside its playlist. */
+	subtitles: SessionSubtitle[];
 	/** The episode the session plays, as the app numbers it — the
 	 *  request, unless the request named it by a number it no longer
 	 *  carries ("24.5" for the recap that is "12.5" now). Absent from
@@ -476,7 +485,13 @@ export interface AniErrorPayload {
 	detail?: string;
 	status?: number;
 	retry_after_secs?: number | null;
+	/** The tracker that refused, on a rate limit an account write met. */
+	refused_by?: string;
 	binary?: string;
+	/** Where a stream server failed (`embed`, …) and which host, on a
+	 *  stream server failure. For logs, like `detail`. */
+	stage?: string;
+	host?: string | null;
 }
 
 /** Portrait poster URLs (5:7) at Kitsu's pre-rendered sizes. */
@@ -549,17 +564,15 @@ export interface KitsuAnimeRef {
 	 *  (kana). Missing keys are absent from the map entirely. The play
 	 *  flow uses these to retry provider lookups when the canonical
 	 *  title (often English) doesn't match the provider's index — see
-	 *  {@link altTitlesFromKitsu}. May be missing on cached responses
-	 *  produced before titles were surfaced; treat as `?:`. */
-	titles?: Record<string, string>;
+	 *  {@link altTitlesFromKitsu}. */
+	titles: Record<string, string>;
 	/** Romanized mashup aliases Kitsu serves under
 	 *  `attributes.abbreviatedTitles` (e.g. `"Yuu Gi Ou: Duel Monsters
 	 *  5DS"`). Distinct from {@link KitsuAnimeRef.titles}; for some shows
 	 *  (Yu-Gi-Oh! 5D's) one of these is the only string that resolves to
 	 *  the right series on the provider, so {@link altTitlesFromKitsu} appends
-	 *  them as last-resort fallback queries. May be missing on cached
-	 *  responses produced before the field was surfaced; treat as `?:`. */
-	abbreviated_titles?: string[];
+	 *  them as last-resort fallback queries. */
+	abbreviated_titles: string[];
 	slug: string | null;
 	synopsis: string | null;
 	start_date: string | null;
@@ -576,7 +589,7 @@ export interface KitsuAnimeRef {
 	 *  it: from the trending feed, which carries every entry's, or from
 	 *  the null-cover backfill, which asks AniList for it. Absent
 	 *  otherwise. */
-	anilist_banner?: string | null;
+	anilist_banner?: string;
 }
 
 /**
@@ -669,8 +682,11 @@ export function historyDelete(id: string): Promise<void> {
 export function historyByKitsu(
 	kitsuId: string,
 	opts: ReadOptions = {}
-): Promise<HistoryEntry | null> {
-	return getJson<HistoryEntry | null>(`/api/history/by-kitsu/${encodeURIComponent(kitsuId)}`, opts);
+): Promise<HistoryRowByKitsu | null> {
+	return getJson<HistoryRowByKitsu | null>(
+		`/api/history/by-kitsu/${encodeURIComponent(kitsuId)}`,
+		opts
+	);
 }
 
 /** The episode one history row reads as now, and the number it read as
@@ -1148,19 +1164,18 @@ export interface AvailabilityResponse {
 	 *  the per-show detail fetch — the scraper gate refused the fetch,
 	 *  or it failed. That number counts half episodes as whole ones, so
 	 *  it can run high, and by an unbounded amount when a show carries
-	 *  several. Absent on responses from before the backend reported
-	 *  provenance, which read as exact. */
-	episode_count_approximate?: boolean;
+	 *  several. */
+	episode_count_approximate: boolean;
 	/** True when the scraper gate refused the detail fetch outright,
 	 *  as opposed to the fetch being attempted and failing. Both leave
 	 *  the count approximate; only this one means nobody asked, which
-	 *  is why the cap retry does not spend an attempt on it. Absent on
-	 *  responses from before the backend reported it. */
+	 *  is why the cap retry does not spend an attempt on it. Absent
+	 *  (false) otherwise. */
 	gate_refused?: boolean;
 	/** The provider whose catalogue carries the show — the one that
-	 *  answered `available`. Absent on negative rows and on rows from
+	 *  answered `available`. `null` on negative rows and on rows from
 	 *  before the backend named it. */
-	provider?: StreamProvider;
+	provider: StreamProvider | null;
 	/** Present when the probe reached the provider and came back
 	 *  without a settled verdict, naming why ({@link UnsettledReason}).
 	 *  (A show found nowhere is the clean miss: settled, and kept.)
@@ -1168,9 +1183,9 @@ export interface AvailabilityResponse {
 	 *  persisted nothing. For every reason but `'refused'` the false
 	 *  means nothing; `'refused'` says the catalogue lists nothing
 	 *  named for the show, and reads as it not being in the catalogue.
-	 *  Read it through `$lib/availability/verdict`. A backend before
-	 *  reasons sends `true`. Absent from every settled answer. */
-	unsettled?: boolean | UnsettledReason;
+	 *  Read it through `$lib/availability/verdict`. Absent from every
+	 *  settled answer. */
+	unsettled?: UnsettledReason;
 	/** The show's versions, in the provider's order, when its pick has
 	 *  several; absent when it has one. */
 	versions?: VersionInfo[];
@@ -1396,9 +1411,8 @@ export interface AiringStatus {
 	/** Epoch seconds of the next airing, when scheduled. */
 	next_airing_at: number | null;
 	/** Published future schedule (episode number → air time). Weekly
-	 *  shows publish a few weeks ahead; optional for tolerance to
-	 *  payloads written before the field existed. */
-	upcoming?: UpcomingEpisode[];
+	 *  shows publish a few weeks ahead; empty when none is published. */
+	upcoming: UpcomingEpisode[];
 }
 
 /** One future schedule row: episode number + its air time. */

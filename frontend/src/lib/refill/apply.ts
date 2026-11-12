@@ -47,5 +47,5 @@ export function refilledImages(
 	fresh: KitsuAnimeRef
 ): RefilledImages | null {
 	if (current === null || current.id !== fresh.id || fresh.cover_image === null) return null;
-	return { cover_image: fresh.cover_image, anilist_banner: fresh.anilist_banner ?? null };
+	return { cover_image: fresh.cover_image, anilist_banner: fresh.anilist_banner };
 }

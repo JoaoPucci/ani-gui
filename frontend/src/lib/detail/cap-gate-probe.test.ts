@@ -547,7 +547,8 @@ describe('capGateAnswerFrom', () => {
 				available: true,
 				episode_count: 7,
 				extra_episodes: ['7.5'],
-				episode_count_approximate: false
+				episode_count_approximate: false,
+				provider: 'hianime'
 			})
 		).toEqual({
 			count: 7,
@@ -561,7 +562,8 @@ describe('capGateAnswerFrom', () => {
 				available: true,
 				episode_count: 4,
 				extra_episodes: [],
-				episode_count_approximate: true
+				episode_count_approximate: true,
+				provider: 'hianime'
 			})
 		).toEqual({ count: 4, approximate: true, available: true, extraEpisodes: [], versions: [] });
 	});
@@ -577,6 +579,7 @@ describe('capGateAnswerFrom', () => {
 				episode_count: 7,
 				extra_episodes: [],
 				episode_count_approximate: false,
+				provider: 'hianime',
 				versions: two
 			})?.versions
 		).toEqual(two);
@@ -595,6 +598,7 @@ describe('capGateAnswerFrom', () => {
 				episode_count: null,
 				extra_episodes: [],
 				episode_count_approximate: false,
+				provider: null,
 				unsettled: 'unanswered'
 			})
 		).toBeNull();
@@ -610,6 +614,7 @@ describe('capGateAnswerFrom', () => {
 				episode_count: null,
 				extra_episodes: [],
 				episode_count_approximate: false,
+				provider: null,
 				unsettled: 'refused'
 			})
 		).toEqual({
