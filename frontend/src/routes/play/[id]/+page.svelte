@@ -2189,7 +2189,7 @@
 			const loopGuard = new FragmentLoopGuard();
 			hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
 				stallMachine.fragmentLoaded(data);
-				if (!loopGuard.loaded(fragmentLoopKey(data.frag), data.frag.end)) return;
+				if (!loopGuard.loaded(fragmentLoopKey(data.frag), data.frag.start)) return;
 				engine.stopLoad();
 				handoff.engineStopped();
 				dropHeldRetry();
