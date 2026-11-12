@@ -95,10 +95,12 @@ place for its updates is the system's package manager.
   to its file is gone. [code]
 - **The Windows installer** is assisted (`oneClick: false`), lets the
   user change the install directory, and has `perMachine: false`. Its
-  `installer.nsh` downloads ffmpeg (about 80 MB) during install unless
-  one is on `PATH`, and its uninstall step deletes that ffmpeg —
-  including during the silent uninstall electron-builder runs before
-  an upgrade. [code: `electron/package.json`,
+  `installer.nsh` downloads ffmpeg (a ~90 MB zip) during install unless
+  one is on `PATH`. Through 0.17.0 its uninstall step deleted that
+  ffmpeg, including during the silent uninstall electron-builder runs
+  before an upgrade; the installer now sets the copy aside before that
+  uninstall and puts it back, downloading again only when a release
+  pins a different ffmpeg. [code: `electron/package.json`,
   `electron/build-resources/installer.nsh`] It is not code-signed: the
   0.17.0 installer's PE security directory is empty. [tried: read
   from the first 4 KB of the published file]
@@ -361,7 +363,11 @@ back to the whole file. [source: `src/AppUpdater.ts` at 6.3.9;
 `templates/nsis/include/installer.nsh` at 25.1.8] [unverified:
 whether today's installers already write that copy]
 
-**What the app's own installer script does on an update.** The
+**What the app's own installer script did on an update, through
+0.17.0.** The installer now keeps the copy through an update, as the
+fix below describes (`electron/build-resources/installer.nsh`, its
+"Keeping the copy across updates" header); what follows is the
+problem as it stood. The
 update replaces the install directory, and with it the ffmpeg the
 first install downloaded; the `customInstall` macro then runs again —
 electron-builder does not skip it on updates — and downloads ffmpeg
@@ -1033,7 +1039,8 @@ a day or less, **M** a few days, **L** a week or more.
 6. **ffmpeg survives a Windows update**: keep the ffmpeg the
    installer fetched through an update (section 2, for per-user and
    per-machine installs alike), with the uninstall step's cleanup to
-   match. Lands with or before phase 4. S–M.
+   match. Done in the installer itself (`installer.nsh`), ahead of
+   phase 4. S–M.
 7. **`.deb`: "Download .deb"**, saving to Downloads and revealing it.
    S.
 
