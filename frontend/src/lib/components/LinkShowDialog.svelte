@@ -288,7 +288,10 @@
 				<p class="ls-live" role="status">{status}</p>
 				{#if status}
 					<p class="ls-status" aria-hidden="true">{status}</p>
-				{:else if candidates}
+				{/if}
+				<!-- A list that could not be loaded may still hold the card's
+				     own show, under the failure. -->
+				{#if candidates && candidates.length > 0}
 					<ul bind:this={list} class="ls-list" aria-label={m.detail_link_candidates_aria()}>
 						{#each candidates as c (c.ref.id)}
 							{@const poster = imageProxyUrl(c.ref.poster_image?.small ?? c.ref.poster_image?.tiny)}
