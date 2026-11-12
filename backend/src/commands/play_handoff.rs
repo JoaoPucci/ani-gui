@@ -143,7 +143,8 @@ pub(crate) fn launch_args_for(native: NativeResolved, args: &PlayArgs, cfg: &Con
 /// the row records ([`crate::commands::guess_guard`]) — with the note
 /// of the guessed card it came from ([`crate::commands::guessed_from`]).
 /// A play no guessed card asked for records the page's id and clears
-/// the note, as before.
+/// the note, as before, unless a card no guess opened asked for it and
+/// its line records another show, which stays.
 pub(crate) async fn record_handoff_watch(
     state: &AppState,
     args: &PlayArgs,

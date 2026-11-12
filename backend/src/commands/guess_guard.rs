@@ -1,5 +1,5 @@
-//! A guessed session never records its guess over a show the row
-//! already records.
+//! A play a Continue card asked for never records its show over a show
+//! the row already records.
 //!
 //! A play a guessed Continue card asked for (`guess_row`) records the
 //! guess on the card's row once it lands on the row's own listing. The
@@ -49,10 +49,10 @@ pub fn guards_row(guess_row: Option<&str>, card_row: Option<&str>, played: &str)
 }
 
 /// `candidate`, the id the play `args` would record on the row `played`,
-/// unless the play is a guessed session's and the row records another
-/// ([`keeps_recorded`]). A recorded show Kitsu answered gone does not
-/// count. A history that cannot be read keeps a guessed session's id
-/// back: what the row records is not known.
+/// unless a card asked for the play there ([`guards_row`]) and the row
+/// records another ([`keeps_recorded`]). A recorded show Kitsu answered
+/// gone does not count. A history that cannot be read keeps such a
+/// play's id back: what the row records is not known.
 pub(crate) fn guarded<'a>(
     state: &AppState,
     args: &PlayArgs,

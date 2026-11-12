@@ -1478,8 +1478,8 @@ the AppImage and the Windows installer. It leaves out, on purpose:
 - **Three pieces of the change-show flow's logic stay in the renderer
   for now.** `AGENTS.md` §14 puts the app's decisions about its data in
   the Rust backend, and the flow's rules moved there, but three pieces
-  that sit in its grey area did not: what a player session's plays
-  record and whether trackers hear of them after a pick
+  that sit in its grey area did not: what a player session's plays go
+  out as and whether trackers hear of them after a pick
   (`frontend/src/lib/play/session-show.ts`), the Sub or Dub a picked
   show takes from the one watched in
   (`frontend/src/lib/history/carry-audio.ts`), and the notes of this

@@ -768,7 +768,7 @@ pub(crate) mod tests {
                 kitsu_id,
                 version: None,
                 guess_row: None,
-            card_row: None,
+                card_row: None,
                 guess_id: None,
                 caption: None,
             };

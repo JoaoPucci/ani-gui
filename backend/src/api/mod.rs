@@ -798,8 +798,8 @@ async fn post_play_mark_watched(
             // A guessed card's watch carries the guessed id only onto
             // that card's own listing: a resolve since the session's may
             // have landed elsewhere.
-            // A guessed session's never replaces a show the row records:
-            // a link made since the session began stands.
+            // A card's session, guessed or not, never replaces a show the
+            // row records: a link made since the session began stands.
             crate::commands::play_native_record::record_watch_requested_at(
                 &state,
                 &watch,
