@@ -473,12 +473,14 @@ which no release configuration reads; and it is an unpacked tree only,
 in `electron/dist-e2e/`, with no AppImage or `.deb`
 (`electron/lib/e2e-package.cjs`). No release script enables the
 feature, reaches that build or packages with that configuration, which
-`tests/arch/test_run_key.sh` checks for both platforms' scripts. In CI the e2e workflow builds the
-release-shaped package (`pnpm run dist`) in a parallel job and checks
-that its backend holds neither the key nor the probe, and checks that
-the e2e package's backend does hold the key, so the search is one that
-can find it. Nothing builds the Windows backend in CI: on that side the
-script check is all there is.
+`tests/arch/test_run_key.sh` checks for both platforms' scripts. In
+CI the e2e workflow builds the release-shaped package (`pnpm run
+dist`) in a parallel job and checks that its backend holds neither the
+key nor the probe, and checks that the e2e package's backend does hold
+the key, so the search is one that can find it. Another parallel job,
+on Windows, builds the backend with the script a Windows release runs
+(`pnpm run build:backend`) and makes the same check on it. The Windows
+installer is not built in CI.
 
 **Declaring a flag** (for the change that adds one). Declare it as a
 `pub const FlagDecl` of kind `FlagKind::Rollout`, list it in

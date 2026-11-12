@@ -575,8 +575,9 @@ live file is never trusted under that key. The end-to-end suite runs a
 package whose backend has the feature, so it can run every flag off and
 on (`electron/e2e/flags/`). No release script enables it
 (`tests/arch/test_run_key.sh`, both platforms), and the e2e workflow
-builds the release-shaped Linux package in a job of its own and checks
-that its backend does not contain the key. `ANI_GUI_TEST_FLAGS_FILE` means nothing
+builds the release-shaped Linux package, and the Windows backend as a
+Windows release builds it, in jobs of their own and checks that
+neither backend contains the key. `ANI_GUI_TEST_FLAGS_FILE` means nothing
 without `ANI_GUI_UNATTENDED=1`. `backend/tests/flags_launch.rs` proves
 it by watching the network: a test run never asks for
 raw.githubusercontent.com, and a normal launch does. Development runs
