@@ -1062,6 +1062,8 @@
 			// A guess names its card's row, and the session answers whether
 			// the play landed on that row's own listing.
 			guessRow: a.row,
+			// …or, with no guess, its line, whose show the backend keeps.
+			cardRow: a.cardRow,
 			// …and its guess, apart from the page's id, which the resolve
 			// records on that row when it lands there.
 			guessId: guessedId(a.guess === true, a.match.id)
@@ -1142,7 +1144,7 @@
 		resolvePlay: (a, onProgress) => {
 			const args = playArgsFor(a);
 			return getOrFire(
-				makeKey(a.match.id, a.episode, a.mode, args.version, a.row, args.caption),
+				makeKey(a.match.id, a.episode, a.mode, args.version, a.row, args.caption, a.cardRow),
 				(emit, signal) => playStream(args, emit, signal),
 				(p) => onProgress(progressLabel(p))
 			);
