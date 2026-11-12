@@ -27,7 +27,8 @@
 //! cache or from Kitsu, and a read Kitsu answers with a 404 or 410
 //! refuses the link (and marks
 //! the id gone, as any user read does). A row removed while that read
-//! was out is not linked.
+//! was out is not linked, and neither is one another link saved since:
+//! the viewer's latest answer stands.
 //!
 //! A link has no undo: the user's answer to "is this the show you
 //! meant?" stands once given, and naming another show again is how it
@@ -136,9 +137,12 @@ fn link_held(
     begun: Epoch,
 ) -> Result<LinkOutcome> {
     let mut linked = plan_held(&held.rows()?, rows);
-    linked.retain(|l| !held.show_removed_since(begun, &l.row));
+    // A row removed since, or linked again by a later request that saved
+    // first, keeps what that write left: the viewer's latest answer.
+    linked.retain(|l| !held.link_overtaken_since(begun, &l.row));
     for l in &mut linked {
         held.set_kitsu_id(&l.row, Some(kitsu_id.to_string()))?;
+        held.linked(&l.row);
         drop_other_mapping(state, &l.row, kitsu_id)?;
         // The user named the show: a refused watch leaves it on the row.
         crate::commands::linked_note::record(state, &l.row, kitsu_id)?;
