@@ -54,7 +54,8 @@ export class FragmentLoopGuard {
 	 *  loaded more times inside the window than the allowance: the
 	 *  engine the caller then stops is stopped, and a late report is
 	 *  not a second trip. */
-	loaded(key: string): boolean {
+	loaded(key: string, end: number = Infinity): boolean {
+		void end;
 		if (this.tripped) return false;
 		const at = this.now();
 		const recent = (this.loads.get(key) ?? []).filter((t) => at - t < FRAGMENT_LOAD_WINDOW_MS);
@@ -62,5 +63,10 @@ export class FragmentLoopGuard {
 		this.loads.set(key, recent);
 		this.tripped = recent.length > FRAGMENT_LOAD_ALLOWANCE;
 		return this.tripped;
+	}
+
+	/** The engine let go of everything buffered before `upTo` seconds. */
+	released(upTo: number): void {
+		void upTo;
 	}
 }
