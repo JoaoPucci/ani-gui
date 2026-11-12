@@ -347,6 +347,33 @@ test("the launch's secret is on no process's command line, and only the app's pa
   }
 });
 
+test("an image that fails to load is logged without the launch's secret", async () => {
+  // An <img> carries the secret as `secret=` in its URL, and Chromium
+  // logs a failed load with that URL; the main process relays it to its
+  // own stdout (the journal, a terminal), redacted.
+  const { app, page } = await launchAppWithStubs();
+  try {
+    const secret = await page.evaluate(() => window.aniGui?.internalSecret);
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    let out = "";
+    app.process().stdout?.on("data", (chunk: Buffer) => {
+      out += chunk.toString("utf-8");
+    });
+    // The stubs answer every /api/image with 503.
+    await page.evaluate(() => {
+      const bridge = window.aniGui!;
+      const base = bridge.lanes?.image ?? bridge.apiBase;
+      const img = new Image();
+      img.src = `${base}/api/image?url=${encodeURIComponent("https://e.example/a.jpg")}&secret=${bridge.internalSecret}`;
+      document.body.append(img);
+    });
+    await expect.poll(() => out, { timeout: 15_000 }).toContain("secret=<redacted>");
+    expect(out).not.toContain(secret as string);
+  } finally {
+    await app.close();
+  }
+});
+
 test("a test launch's scratch profile is gone once the app has quit", async () => {
   // Each launch gets a profile of its own under the system's temporary
   // directory. The launch helper removes it, and only it, once the app

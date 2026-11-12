@@ -1,0 +1,98 @@
+// What the main process writes to its log — the renderer's console
+// lines, failed loads, the backend's output — never carries the
+// launch's secret. The renderer's <img> and EventSource URLs carry it
+// as `secret=` (frontend/src/lib/backend/secret.ts), Chromium logs a
+// failed load with its URL, and the main process's stdout lands in the
+// journal or a terminal another user may read.
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fc = require("fast-check");
+
+const { REDACTED, redactSecrets } = require("./log-redact.cjs");
+
+const SECRET = "0123456789abcdef".repeat(4);
+
+test("a secret= query parameter is redacted, wherever it sits in the query", () => {
+  assert.equal(
+    redactSecrets(`http://127.0.0.1:4/api/image?url=https%3A%2F%2Fa%2Fb.jpg&secret=${SECRET}`),
+    `http://127.0.0.1:4/api/image?url=https%3A%2F%2Fa%2Fb.jpg&secret=${REDACTED}`,
+  );
+  assert.equal(
+    redactSecrets(`GET /api/play/stream?secret=${SECRET}&title=a 503`),
+    `GET /api/play/stream?secret=${REDACTED}&title=a 503`,
+  );
+  assert.equal(
+    redactSecrets(`Failed to load resource (http://h/api/image?secret=${SECRET}#x)`),
+    `Failed to load resource (http://h/api/image?secret=${REDACTED}#x)`,
+  );
+});
+
+test("a URL-encoded secret= inside another URL is redacted too", () => {
+  assert.equal(
+    redactSecrets(`next=%2Fapi%2Fimage%3Fsecret%3D${SECRET}%26url%3Dx`),
+    `next=%2Fapi%2Fimage%3Fsecret%3D${REDACTED}%26url%3Dx`,
+  );
+});
+
+test("the header and the handshake line are redacted", () => {
+  assert.equal(
+    redactSecrets(`x-ani-gui-internal-secret: ${SECRET}`),
+    `x-ani-gui-internal-secret: ${REDACTED}`,
+  );
+  assert.equal(
+    redactSecrets(`{"x-ani-gui-internal-secret":"${SECRET}"}`),
+    `{"x-ani-gui-internal-secret":"${REDACTED}"}`,
+  );
+  assert.equal(
+    redactSecrets(`ANI_GUI_INTERNAL_SECRET ${SECRET}`),
+    `ANI_GUI_INTERNAL_SECRET ${REDACTED}`,
+  );
+});
+
+test("a known secret is redacted wherever it appears, in any form", () => {
+  assert.equal(
+    redactSecrets(`token ${SECRET} and again${SECRET}`, [SECRET]),
+    `token ${REDACTED} and again${REDACTED}`,
+  );
+});
+
+test("a line with no secret in it is left as it is", () => {
+  for (const line of [
+    "[renderer:error] boom (app://localhost/a.js:12)",
+    "http://127.0.0.1:4/api/image?url=https%3A%2F%2Fa%2Fb.jpg",
+    "the secret service did not answer",
+    "?secretive=1&notsecret=2",
+    "",
+  ]) {
+    assert.equal(redactSecrets(line, [SECRET]), line);
+  }
+});
+
+test("a short or missing known secret redacts nothing by itself", () => {
+  assert.equal(redactSecrets("a b c", ["", null, undefined, "a"]), "a b c");
+});
+
+test("no known secret survives redaction, whatever surrounds it", () => {
+  const hex = fc.stringMatching(/^[0-9a-f]{64}$/);
+  fc.assert(
+    fc.property(hex, fc.string(), fc.string(), (secret, before, after) => {
+      const out = redactSecrets(`${before}${secret}${after}`, [secret]);
+      assert.ok(!out.includes(secret), out);
+    }),
+  );
+});
+
+test("no secret= value survives redaction, in a query or a header, known or not", () => {
+  const value = fc.stringMatching(/^[0-9A-Za-z_-]{8,80}$/);
+  const query = fc.stringMatching(/^[a-z]{1,8}=[a-z0-9]{0,8}$/);
+  fc.assert(
+    fc.property(value, query, fc.boolean(), (v, other, first) => {
+      const url = first
+        ? `http://127.0.0.1:9/api/image?secret=${v}&${other}`
+        : `http://127.0.0.1:9/api/image?${other}&secret=${v}`;
+      assert.ok(!redactSecrets(url).includes(`secret=${v}`), url);
+      assert.ok(!redactSecrets(`x-ani-gui-internal-secret: ${v}`).includes(v));
+    }),
+  );
+});
