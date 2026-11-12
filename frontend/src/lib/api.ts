@@ -673,7 +673,8 @@ export interface LinkedRow {
 	watched_at: number | null;
 }
 
-/** What a link wrote: the id the rows now record, and every row. */
+/** What a link wrote: the id asked for, which the rows in `linked`
+ *  record, and every row. */
 export interface LinkOutcome {
 	kitsu_id: string;
 	linked: LinkedRow[];

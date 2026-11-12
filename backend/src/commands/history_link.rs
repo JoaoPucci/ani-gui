@@ -27,9 +27,11 @@
 //! cache or from Kitsu, and a read Kitsu answers with a 404 or 410
 //! refuses the link (and marks
 //! the id gone, as any user read does). A row removed while that read
-//! was out is not linked, and neither is one a correction asked later
-//! has already saved: the viewer's latest answer stands, and the
-//! overtaken link says so (`overtaken`).
+//! was out is not linked. A link one of whose rows a correction asked
+//! later has already saved writes none of them, and says so
+//! (`overtaken`): the later answer stands on every row that correction
+//! carried. A row only the earlier link carried, when the earlier one
+//! saved first, keeps the earlier answer.
 //!
 //! A link has no undo: the user's answer to "is this the show you
 //! meant?" stands once given, and naming another show again is how it
@@ -90,7 +92,7 @@ pub struct LinkedRow {
 /// What a link wrote.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LinkOutcome {
-    /// The Kitsu id the rows now record.
+    /// The Kitsu id asked for; the rows in [`Self::linked`] record it.
     pub kitsu_id: String,
     /// Every row linked, in the order asked.
     pub linked: Vec<LinkedRow>,
@@ -145,10 +147,8 @@ fn link_held(
 ) -> Result<LinkOutcome> {
     let mut linked = plan_held(&held.rows()?, rows);
     linked.retain(|l| !held.show_removed_since(begun, &l.row));
-    // A row a correction asked after this one already saved keeps that
-    // answer: the viewer's latest stands.
-    // Overtaken on any row, it writes none: the card's rows keep one
-    // answer, the later one.
+    // Overtaken on any row, it writes none: a correction asked later
+    // already saved the line, and its answer stands.
     let overtaken = linked.iter().any(|l| held.link_overtaken(begun, &l.row));
     if overtaken {
         linked.clear();
