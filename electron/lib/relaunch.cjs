@@ -30,9 +30,13 @@
 //   (which runs from the same mount) can be what starts the new one.
 //   A detached `/bin/sh`, outside the mount, waits for this process's
 //   id to be gone and then runs the AppImage file itself ($APPIMAGE),
-//   with the person's own arguments: the ones the launcher adds
-//   (LAUNCHER_SWITCHES) are dropped, because the new AppImage's
-//   launcher adds them again. The dying mount's $APPDIR is left out of
+//   with the person's own arguments: the switch the launcher adds to
+//   every launch (LAUNCHER_SWITCHES) is dropped, because the new
+//   AppImage's launcher adds it again. A --no-sandbox is kept, whether
+//   AppRun added it (the sandbox probe got no answer) or the person
+//   passed it: the new AppRun reads it as the person's own and starts
+//   without the sandbox, as this launch did, without probing again
+//   (lib/appimage-tree.cjs). The dying mount's $APPDIR is left out of
 //   its environment (the new runtime sets its own). The other variables
 //   the old AppRun prefixed with the mount (PATH, LD_LIBRARY_PATH,
 //   XDG_DATA_DIRS, GSETTINGS_SCHEMA_DIR) pass through: the new AppRun
@@ -47,9 +51,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 /** What the packaged Linux launchers put before the person's
- *  arguments, in order: the AppImage's wrapper script
- *  (build-resources/after-pack.cjs) and its AppRun (lib/appimage-tree.cjs). */
-const LAUNCHER_SWITCHES = ["--enable-wayland-ime", "--no-sandbox"];
+ *  arguments on every launch: the AppImage's wrapper script
+ *  (build-resources/after-pack.cjs). AppRun's --no-sandbox is not one of
+ *  them; it depends on the launch (lib/appimage-tree.cjs). */
+const LAUNCHER_SWITCHES = ["--enable-wayland-ime"];
 
 /** The waiter: `$1` is the process to outlive, the rest the command to
  *  run once it is gone. Nothing is interpolated into the script. */
