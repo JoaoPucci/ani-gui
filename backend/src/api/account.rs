@@ -70,7 +70,7 @@ pub fn router() -> Router<Arc<AppState>> {
 // sibling `account_wire` module so this handler file stays under the
 // CRAP ratchet ceiling — see account_wire.rs.
 #[path = "account_wire.rs"]
-mod account_wire;
+pub(super) mod account_wire;
 use account_wire::{
     AuthUrlRequest, AuthUrlResponse, DisconnectFallbackQuery, EntryQuery, EntryView,
     ExchangeCodeRequest, ForgetCachedQuery, RefreshRequest, SetEntryRequest, TokensResponse,

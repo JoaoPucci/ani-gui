@@ -220,15 +220,22 @@ async function getJsonServed<T>(path: string, signal?: AbortSignal): Promise<Ser
 
 /** Wait until one of `tickets` has ended; `[]` past the backend's own
  *  limit. */
+/** Body of `/api/refills/wait` and `/api/refills/release`. */
+export interface RefillsBody {
+	tickets: number[];
+}
+
 export function refillsWait(tickets: number[], signal: AbortSignal): Promise<RefillEnded[]> {
-	return postJson<RefillEnded[]>('/api/refills/wait', { tickets }, { signal });
+	const body: RefillsBody = { tickets };
+	return postJson<RefillEnded[]>('/api/refills/wait', body, { signal });
 }
 
 /** The page showing these tickets' fills has gone. Best effort: a
  *  release that fails leaves the retry ranked as on screen a moment
  *  longer. */
 export function refillsRelease(tickets: number[]): void {
-	void postJson<void>('/api/refills/release', { tickets }).catch(() => {});
+	const body: RefillsBody = { tickets };
+	void postJson<void>('/api/refills/release', body).catch(() => {});
 }
 
 /** The renderer's one waiter on refills. */
@@ -1212,27 +1219,45 @@ export interface AvailabilityBatchResponse {
 	cached: Record<string, boolean>;
 	playable_episode_counts: Record<string, number>;
 }
+
+/** Body of `/api/availability/batch`. */
+export interface AvailabilityBatchBody {
+	kitsu_ids: string[];
+	mode: string;
+}
+
 export function availabilityBatch(
 	kitsu_ids: string[],
 	mode: string,
 	opts: ReadOptions = {}
 ): Promise<AvailabilityBatchResponse> {
-	return postJson<AvailabilityBatchResponse>(
-		'/api/availability/batch',
-		{ kitsu_ids, mode },
-		{ signal: opts.signal }
-	);
+	const body: AvailabilityBatchBody = { kitsu_ids, mode };
+	return postJson<AvailabilityBatchResponse>('/api/availability/batch', body, {
+		signal: opts.signal
+	});
 }
 
 /** Fire-and-forget cache warmer. Hands the backend a list of titles
  *  to probe in the background; the cache is populated for the next
  *  list-view visit. List views never wait for the warm to finish. */
+/** Body of `/api/availability/warm`. */
+export interface AvailabilityWarmBody {
+	items: AvailabilityArgs[];
+}
+
 export function availabilityWarm(items: AvailabilityArgs[]): Promise<void> {
-	return postJson<unknown>('/api/availability/warm', { items }).then(() => undefined);
+	const body: AvailabilityWarmBody = { items };
+	return postJson<unknown>('/api/availability/warm', body).then(() => undefined);
+}
+
+/** Body of `/api/kitsu/search`. */
+export interface KitsuSearchBody {
+	query: string;
 }
 
 export function kitsuSearch(query: string, opts: ReadOptions = {}): Promise<KitsuAnimeRef[]> {
-	return postJson<KitsuAnimeRef[]>('/api/kitsu/search', { query }, { signal: opts.signal });
+	const body: KitsuSearchBody = { query };
+	return postJson<KitsuAnimeRef[]>('/api/kitsu/search', body, { signal: opts.signal });
 }
 
 /** One page of a Kitsu text search: its hits, and the offset the
@@ -1313,6 +1338,11 @@ export function kitsuTrendingAnilist(opts: ReadOptions = {}): Promise<KitsuAnime
  *  can't reach the handler. Also enforces
  *  a 500-id batch cap server-side; this client doesn't pre-truncate
  *  so callers see a 4xx if they're pushing past the limit. */
+/** Body of `/api/kitsu/by-mal-ids`. */
+export interface KitsuByMalIdsBody {
+	mal_ids: number[];
+}
+
 export async function kitsuByMalIds(
 	malIds: number[],
 	opts: ReadOptions = {}
@@ -1321,7 +1351,8 @@ export async function kitsuByMalIds(
 	const headers: Record<string, string> = { 'content-type': 'application/json' };
 	const secret = typeof window !== 'undefined' ? window.aniGui?.internalSecret : undefined;
 	if (secret) headers['x-ani-gui-internal-secret'] = secret;
-	const init: RequestInit = { method: 'POST', headers, body: JSON.stringify({ mal_ids: malIds }) };
+	const body: KitsuByMalIdsBody = { mal_ids: malIds };
+	const init: RequestInit = { method: 'POST', headers, body: JSON.stringify(body) };
 	if (opts.signal) init.signal = opts.signal;
 	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), init);
 	return expect2xx<KitsuAnimeRef[]>(resp);
@@ -1354,14 +1385,28 @@ export function aniskipGet(
 	);
 }
 
-/** Mirror of the backend's `meta::anilist::AiringStatus`. All-null =
+/** Mirror of the backend's `meta::anilist_airing::AiringStatus`. All-null =
  *  unknown airing data — the detail page must not gate episode tiles
  *  on it (see $lib/detail/episode-airing). */
 export interface AiringStatus {
+	/** Episodes aired so far; null = unknown (never gate on unknown). */
 	aired: number | null;
+	/** Number of the next episode to air, when scheduled. */
 	next_episode: number | null;
+	/** Epoch seconds of the next airing, when scheduled. */
 	next_airing_at: number | null;
-	upcoming?: { episode: number; airing_at: number }[];
+	/** Published future schedule (episode number → air time). Weekly
+	 *  shows publish a few weeks ahead; optional for tolerance to
+	 *  payloads written before the field existed. */
+	upcoming?: UpcomingEpisode[];
+}
+
+/** One future schedule row: episode number + its air time. */
+export interface UpcomingEpisode {
+	/** Episode number as AniList counts it (regular episodes only). */
+	episode: number;
+	/** Epoch seconds of this episode's scheduled airing. */
+	airing_at: number;
 }
 
 /** Airing schedule for a show — how many episodes are actually out
@@ -1423,6 +1468,15 @@ export function kitsuTitleMatchGet(
 	return getJson<string | null>(`/api/title-match?${qs.toString()}`, opts);
 }
 
+/** Body of `PUT /api/title-match`. */
+export interface TitleMatchBody {
+	title: string;
+	cour: number;
+	kitsu_id: string;
+	provider: StreamProvider | null;
+	year?: number;
+}
+
 /**
  * Persist a `(title, cour) → kitsu_id` mapping resolved by the
  * frontend picker. Idempotent — re-puts overwrite any prior value.
@@ -1437,8 +1491,9 @@ export function kitsuTitleMatchPut(
 	provider: StreamProvider | null,
 	year: number | null = null
 ): Promise<void> {
-	const body = { title, cour, kitsu_id: kitsuId, provider };
-	return putJson<void>('/api/title-match', year === null ? body : { ...body, year });
+	const body: TitleMatchBody = { title, cour, kitsu_id: kitsuId, provider };
+	if (year !== null) body.year = year;
+	return putJson<void>('/api/title-match', body);
 }
 
 /**
@@ -1539,6 +1594,15 @@ export function kitsuResolveAllmangaShowId(
  * match. `search` says the hits are the title search's whole answer,
  * which the backend may refute as a whole; a lone hit is judged alone.
  */
+/** Body of `/api/history/guess/ruled-out`. */
+export interface GuessRuledOutBody {
+	key: string;
+	title: string;
+	episode: number;
+	hits: KitsuAnimeRef[];
+	search: boolean;
+}
+
 export function kitsuGuessRuledOut(
 	title: string,
 	episode: number,
@@ -1547,11 +1611,8 @@ export function kitsuGuessRuledOut(
 	search: boolean,
 	opts: ReadOptions = {}
 ): Promise<string[]> {
-	return postJson<string[]>(
-		'/api/history/guess/ruled-out',
-		{ key, title, episode, hits, search },
-		{ signal: opts.signal }
-	);
+	const body: GuessRuledOutBody = { key, title, episode, hits, search };
+	return postJson<string[]>('/api/history/guess/ruled-out', body, { signal: opts.signal });
 }
 
 /**

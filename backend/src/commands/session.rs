@@ -92,6 +92,21 @@ pub struct CreateSessionResponse {
     pub own_listing: bool,
 }
 
+/// The proxy URL a session's media is fetched at. The path segment
+/// matches the media kind — the proxy router has a separate handler
+/// for each, so picking the wrong one would 415. The renderer composes
+/// the same URL from a session id it carries in a page's address
+/// (`frontend/src/lib/play/media-url.ts`); `backend/wire-contract.json`
+/// publishes this one's answers for its test to hold it to.
+#[must_use]
+pub fn media_url(origin_base: &str, session: &str, kind: MediaKind) -> String {
+    let path = match kind {
+        MediaKind::Hls => "master.m3u8",
+        MediaKind::Mp4 => "file.mp4",
+    };
+    format!("{origin_base}/s/{session}/{path}")
+}
+
 /// Validate the inputs and register a new [`StreamSession`] in
 /// [`AppState::sessions`]. Infers the [`MediaKind`] from the upstream
 /// URL extension; callers with stronger signal (e.g. a HEAD response)
@@ -144,13 +159,7 @@ fn create_session_inner(
     state.sessions.insert(session);
 
     let session_str = id.as_string();
-    // The path segment matches the media kind — the proxy router has
-    // a separate handler for each, so picking the wrong one would 415.
-    let path = match media_kind {
-        MediaKind::Hls => "master.m3u8",
-        MediaKind::Mp4 => "file.mp4",
-    };
-    let media_url = format!("{}/s/{}/{}", state.proxy_origin.base, session_str, path);
+    let media_url = media_url(&state.proxy_origin.base, &session_str, media_kind);
     let subtitles = tracks
         .iter()
         .enumerate()

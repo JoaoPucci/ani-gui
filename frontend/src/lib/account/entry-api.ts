@@ -40,6 +40,13 @@ export function getEntry(
 	);
 }
 
+/** Body of `/api/account/set/:provider`. */
+export interface SetEntryBody {
+	kitsu_id: string;
+	status?: string;
+	progress?: number;
+}
+
 /**
  * Write an explicit list edit (status and/or progress) — the detail-page
  * editor. The backend writes it verbatim (no monotonic guard), so a
@@ -49,7 +56,7 @@ export function getEntry(
 export function setEntry(
 	provider: Provider,
 	bearer: string,
-	body: { kitsu_id: string; status?: string; progress?: number }
+	body: SetEntryBody
 ): Promise<ListEntry | null> {
 	return postJson<ListEntry | null>(`/api/account/set/${provider}`, body, bearer);
 }
