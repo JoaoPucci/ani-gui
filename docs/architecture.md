@@ -560,11 +560,9 @@ no toast or row from it, no detail page content, no line above Play, no
 read of the source's health, and nothing read from or written to its
 storage. The update badge and dialog, the download dock and the
 diagnostics page are the same either way. The flag is not declared in
-`flags::DECLARED` yet, so it is off in every build: a flag the file
-turns on is a riskier value than the build's default, which the
-remote-flags rule above does not allow. A release turns the center on
-by declaring the flag as a kill switch, which ships on and which the
-file may then only switch off.
+`flags::DECLARED`, so it is off in every build: this build has no kind
+a flag could be declared with ([Remote flags](#remote-flags)), and so
+nothing the file sends can turn the center on.
 
 **What it shows.** Each notice is a keyed row, either a *condition*
 (true for a while, resolving itself) or an *event* (happened once):
