@@ -17,15 +17,12 @@
 import { applyCaptionPick } from './caption-pick';
 import { startingTrack } from './caption-start';
 import { expectCaptions, expectedCaptions, extraBeside, showingCaption } from './caption-watch';
+import type { SessionSubtitle } from '$lib/api';
 
-/** One listed track, as the proxy answers it. */
-export interface SidecarTrack {
-	lang: string;
-	label: string;
-	default: boolean;
-	/** A proxy URL — the upstream one never reaches the renderer. */
-	url: string;
-}
+/** One listed track, as the proxy answers it: a session's subtitle,
+ *  whose `url` is a proxy URL — the upstream one never reaches the
+ *  renderer. */
+export type SidecarTrack = SessionSubtitle;
 
 /** The proxy's listing of a session's tracks. */
 export function sidecarTracksUrl(apiBase: string, sessionId: string): string {
