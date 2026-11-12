@@ -10,6 +10,8 @@
 	"hero_error_title": "Каталог недоступен.",
 	"hero_error_body": "Kitsu не отвечает. Локальный поиск работает — введите название.",
 	"hero_error_cta": "Открыть поиск",
+	"hero_empty_title": "Сейчас нечего показать.",
+	"hero_empty_body": "Список популярного пришёл пустым. Поиск работает, введите название.",
 	"hero_skeleton_eyebrow_key": "Загрузка",
 	"strip_continue_eyebrow": "Продолжить просмотр",
 	"strip_continue_caption": "продолжить из истории",
@@ -27,8 +29,7 @@
 	"delete_confirm_title": "Удалить «{title}» из истории?",
 	"delete_confirm_body": "Можно добавить обратно, начав просмотр заново.",
 	"delete_confirm_button": "Удалить",
-	"clear_menu_button_aria": "Параметры истории",
-	"clear_menu_item": "Очистить историю",
+	"clear_history_action": "Очистить историю",
 	"clear_confirm_eyebrow": "Очистить всё",
 	"clear_confirm_title": [
 		{
@@ -43,5 +44,7 @@
 	],
 	"clear_confirm_body": "Это очистит историю просмотров ani-gui. Действие необратимо.",
 	"clear_confirm_button": "Очистить всё",
+	"clear_history_failed": "Не удалось очистить историю. Попробуйте ещё раз.",
+	"delete_failed": "Не удалось удалить «{title}» из истории. Попробуйте ещё раз.",
 	"hero_error_eyebrow_value": "Kitsu не отвечает"
 }

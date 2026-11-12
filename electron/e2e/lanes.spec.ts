@@ -40,13 +40,13 @@
  * Pre-condition: `pnpm run package` has produced `dist/linux-unpacked/`.
  */
 import { expect, test, type ElectronApplication } from '@playwright/test';
-import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
+import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { appWindow, launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
 
 /** How many requests each held lane is given — more than Chromium's
  *  six, so every one of its connections is taken. */
@@ -111,7 +111,7 @@ async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 		XDG_CACHE_HOME: path.join(tmp, 'cache'),
 		XDG_DATA_HOME: path.join(tmp, 'data'),
 		ANI_GUI_UNATTENDED: '1'
-	});
+	}, { profile: tmp });
 	onLaunch(app);
 	const page = await appWindow(app);
 	return { app, page };
@@ -132,8 +132,7 @@ async function launch() {
 				const dead = pending;
 				pending = null;
 				if (dead) {
-					killTree(dead.process().pid);
-					await dead.close();
+					await stopDeadApp(dead);
 				}
 			}
 		}

@@ -45,7 +45,7 @@ function makeHarness(overrides: Partial<StartResumeDeps> = {}): Harness {
 		},
 		getSettings: vi.fn().mockImplementation(async () => {
 			log.push('settings');
-			return { mode: 'sub' as const, quality: 'best' };
+			return { mode: 'sub' as const };
 		}),
 		getPlayableCount: () => null,
 		setPlayableCount: (id, c) => counts.push([id, c]),
@@ -80,7 +80,7 @@ describe('makeStartResume (click orchestration)', () => {
 		]);
 		// Replay at the live cap: watched 12, live count 12 → episode 12.
 		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
-			expect.objectContaining({ episode: 12, mode: 'sub', quality: 'best' }),
+			expect.objectContaining({ episode: 12, mode: 'sub' }),
 			expect.any(Function)
 		);
 		expect(h.counts).toEqual([['h1', 12]]);
@@ -685,7 +685,7 @@ describe('makeStartResume (moved on before the session was asked for)', () => {
 			markStarted,
 			getSettings: vi.fn().mockImplementation(async () => {
 				holds = false;
-				return { mode: 'sub' as const, quality: 'best' };
+				return { mode: 'sub' as const };
 			})
 		});
 		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
@@ -706,7 +706,7 @@ describe('makeStartResume (moved on before its provider work)', () => {
 			claimNavigation: () => () => holds,
 			getSettings: vi.fn().mockImplementation(async () => {
 				holds = false;
-				return { mode: 'sub' as const, quality: 'best' };
+				return { mode: 'sub' as const };
 			})
 		});
 		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
@@ -751,5 +751,32 @@ describe('makeStartResume (moved on while a failure is worded)', () => {
 		expect(current?.()).toBe(true);
 		holds = false;
 		expect(current?.()).toBe(false);
+	});
+
+	it("plays the clicked show in its own audio, the settings' mode the default", async () => {
+		const h = makeHarness({
+			modeFor: (kitsuId, fallback) => (kitsuId === 'k1' ? 'dub' : fallback)
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '12', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ mode: 'dub' }),
+			expect.any(Function)
+		);
+		expect(h.deps.fetchInteractiveCount).toHaveBeenCalledWith(expect.anything(), 'dub');
+
+		const other = makeHarness({
+			modeFor: (kitsuId, fallback) => (kitsuId === 'k1' ? 'dub' : fallback)
+		});
+		await makeStartResume(other.deps)(
+			makeEntry('h2', '3', 'Other'),
+			makeMatch('k2', 24),
+			24,
+			false
+		);
+		expect(other.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ mode: 'sub' }),
+			expect.any(Function)
+		);
 	});
 });

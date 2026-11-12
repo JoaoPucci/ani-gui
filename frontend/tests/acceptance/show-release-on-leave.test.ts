@@ -129,7 +129,7 @@ function useShowHandlers() {
 		),
 		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json(null)),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
 	);
 }
@@ -186,7 +186,7 @@ describe('leaving the player', () => {
 
 		// The other show's page is already warming its own play when
 		// the player goes.
-		const othersKey = makeKey(OTHER, 1, 'sub', 'best');
+		const othersKey = makeKey(OTHER, 1, 'sub');
 		const othersWarm = getOrFire(othersKey, () => new Promise(() => {}));
 		// No flush between the route change and the unmount: SvelteKit
 		// destroys the leaving page's branch before that page's effects

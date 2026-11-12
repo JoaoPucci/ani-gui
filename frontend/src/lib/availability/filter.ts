@@ -12,7 +12,7 @@ import {
 	availabilityWarm,
 	yearFromKitsuRef
 } from '$lib/api';
-import type { KitsuAnimeRef } from '$lib/api';
+import type { KitsuAnimeRef, ReadOptions } from '$lib/api';
 import { warmLedger } from './warm-ledger';
 
 /** Whether an `available: false` verdict may hide this card. Only a
@@ -37,15 +37,19 @@ export function keepCard(cached: Record<string, boolean>, item: KitsuAnimeRef): 
  *  the warm Promise is intentionally swallowed (fire-and-forget). */
 export async function filterAvailable<T extends KitsuAnimeRef>(
 	items: T[],
-	mode: 'sub' | 'dub'
+	mode: 'sub' | 'dub',
+	opts: ReadOptions = {}
 ): Promise<T[]> {
 	if (items.length === 0) return items;
 	const ids = items.map((i) => i.id);
 	let cached: Record<string, boolean> = {};
 	try {
-		const r = await availabilityBatch(ids, mode);
+		const r = await availabilityBatch(ids, mode, opts);
 		cached = r.cached;
-	} catch {
+	} catch (e) {
+		// The page that asked has gone: no list, filtered or not, and
+		// nothing warmed for it.
+		if (opts.signal?.aborted) throw e;
 		// Cache fetch failed — render everything; lazy click path
 		// still surfaces real errors.
 		return items;
@@ -89,15 +93,18 @@ export async function filterAvailable<T extends KitsuAnimeRef>(
  *  prime the cache. */
 export async function filterAvailableCacheOnly<T extends KitsuAnimeRef>(
 	items: T[],
-	mode: 'sub' | 'dub'
+	mode: 'sub' | 'dub',
+	opts: ReadOptions = {}
 ): Promise<T[]> {
 	if (items.length === 0) return items;
 	const ids = items.map((i) => i.id);
 	let cached: Record<string, boolean> = {};
 	try {
-		const r = await availabilityBatch(ids, mode);
+		const r = await availabilityBatch(ids, mode, opts);
 		cached = r.cached;
-	} catch {
+	} catch (e) {
+		// The search that asked has moved on: no list for it.
+		if (opts.signal?.aborted) throw e;
 		// Cache fetch failed — render everything; lazy click path
 		// still surfaces real errors.
 		return items;

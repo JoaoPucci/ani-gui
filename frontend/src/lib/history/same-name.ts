@@ -120,7 +120,7 @@ const MAX_COUR = 0xffffffff;
 /** An ASCII digit run as a cour, as the backend reads it: none past
  *  `u32`, which also keeps two numbers past double precision from
  *  reading as one. */
-function courNumber(digits: string): number | null {
+export function courNumber(digits: string): number | null {
 	const trimmed = digits.replace(/^0+(?=\d)/, '');
 	if (trimmed.length > String(MAX_COUR).length) return null;
 	const n = Number(trimmed);
