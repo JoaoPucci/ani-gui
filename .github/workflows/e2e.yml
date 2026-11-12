@@ -16,6 +16,10 @@ name: 'e2e (Playwright + Electron)'
 #   - `release-package` builds the package the release scripts build
 #     (`pnpm run dist`) and checks the backend it carries: statically
 #     linked, and holding no test-run key.
+#   - `release-backend-windows` builds the Windows backend with the
+#     script a Windows release runs (`pnpm run build:backend`) and
+#     checks it holds no test-run key. The Windows installer is not
+#     built in CI.
 #
 # Always fires; the `filter` job decides whether downstream steps run
 # the real pipeline or no-op. See rust.yml for the design rationale.
@@ -249,7 +253,7 @@ jobs:
         # job finds the same key in its own package, so this search is
         # one that can find it. tests/arch/test_run_key.sh holds the
         # scripts to that on both platforms; this checks the binary they
-        # made on Linux. Nothing builds the Windows backend in CI.
+        # made on Linux, and release-backend-windows the one on Windows.
         working-directory: electron
         run: |
           set -euo pipefail
@@ -263,5 +267,64 @@ jobs:
           fi
           if grep -qaF -- test_run_probe "$backend"; then
             echo "the packaged backend declares the test-run probe" >&2
+            exit 1
+          fi
+
+  release-backend-windows:
+    needs: filter
+    name: release-shaped backend (Windows)
+    runs-on: windows-latest
+    steps:
+      - if: needs.filter.outputs.relevant != 'true'
+        run: 'echo "Not required: no backend / frontend / electron changes in this PR"'
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: actions/checkout@v4
+
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+          workspaces: backend
+          shared-key: e2e-windows-release
+
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: pnpm/action-setup@v4
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - if: needs.filter.outputs.relevant == 'true'
+        name: Build the backend as a Windows release does
+        # `build:backend` is the script `package:win` runs before the
+        # installer is made: a release build, no features, with the
+        # static C runtime backend/.cargo/config.toml sets for MSVC.
+        # The installer itself is not built here.
+        working-directory: electron
+        run: pnpm run build:backend
+
+      - if: needs.filter.outputs.relevant == 'true'
+        name: The Windows release backend trusts no test-run key
+        # As the release-shaped job checks the Linux backend: no
+        # fixture test-run key and no probe flag, which only a build
+        # with the `test-run-key` feature has. The e2e job finds the
+        # same key in its own backend, so the search is one that can
+        # find it.
+        working-directory: electron
+        shell: bash
+        run: |
+          set -euo pipefail
+          backend=../backend/target/release/ani-gui-backend.exe
+          test -f "$backend"
+          key=$(head -n 1 ../backend/tests/fixtures/flags-signature/test-run-key.pub | tr -d '\r')
+          test -n "$key"
+          if grep -qaF -- "$key" "$backend"; then
+            echo "the Windows release backend carries the test-run key" >&2
+            exit 1
+          fi
+          if grep -qaF -- test_run_probe "$backend"; then
+            echo "the Windows release backend declares the test-run probe" >&2
             exit 1
           fi

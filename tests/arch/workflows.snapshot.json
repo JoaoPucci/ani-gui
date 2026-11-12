@@ -56,6 +56,7 @@
     "e2e.yml": {
       "e2e": "Playwright + _electron",
       "filter": "filter",
+      "release-backend-windows": "release-shaped backend (Windows)",
       "release-package": "release-shaped package"
     },
     "frontend.yml": {
