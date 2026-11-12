@@ -51,6 +51,7 @@ const { messagesFor, resolveLocale } = require("./lib/main-messages.cjs");
 const { splashWords, stallTexts } = require("./lib/splash-progress.cjs");
 const { relaunch, relaunchPlan } = require("./lib/relaunch.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
+const { redactSecrets } = require("./lib/log-redact.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
 const { appDocumentFrom } = require("./lib/app-document.cjs");
 const { SECRET_CHANNEL, secretKeeper } = require("./lib/secret-handoff.cjs");
@@ -176,7 +177,9 @@ const APP_ORIGIN = `${APP_SCHEME}://localhost`;
 // page alone, over IPC, never on a command line (lib/secret-handoff.cjs).
 const secrets = secretKeeper({
   app: appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL }),
-  logError: console.error,
+  // A refused page is named by its URL, which is redacted like any
+  // other line the main process logs (lib/log-redact.cjs).
+  logError: (line) => console.error(redactSecrets(line)),
 });
 
 // Register the scheme as standard + secure BEFORE app.whenReady, so
@@ -332,15 +335,17 @@ async function spawnBackend() {
       reapOnExit(child, { platform: process.platform, signalGroup: signalBackendGroup });
     },
     handshake: (child) => {
+      // The backend's output is relayed with any secret in it redacted
+      // (lib/log-redact.cjs).
       child.stderr.on("data", (chunk) => {
-        process.stderr.write(`[backend] ${chunk.toString("utf-8")}`);
+        process.stderr.write(redactSecrets(`[backend] ${chunk.toString("utf-8")}`));
       });
       // After the handshake, downstream stdout becomes log output; it
       // is echoed through so we can see it in dev.
       return awaitHandshake(child, {
         timeoutMs: HANDSHAKE_TIMEOUT_MS,
         stopChild: killTree,
-        log: (line) => process.stdout.write(`${line}\n`),
+        log: (line) => process.stdout.write(`${redactSecrets(line)}\n`),
       });
     },
   });
@@ -554,11 +559,16 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // can tell whether the page actually loaded and whether scripts
   // are throwing. Without this, a blank window looks identical to a
   // successful load from the outside.
+  // Both carry URLs, and the renderer's URLs can carry the launch's
+  // secret: it is redacted from every line (lib/log-redact.cjs).
+  const launchSecrets = [backend.internalSecret];
   win.webContents.on("did-fail-load", (_e, code, desc, url) => {
-    console.error(`[renderer] did-fail-load ${url}: ${code} ${desc}`);
+    console.error(
+      redactSecrets(`[renderer] did-fail-load ${url}: ${code} ${desc}`, launchSecrets),
+    );
   });
   win.webContents.on("console-message", (_e, level, msg, line, source) => {
-    console.log(rendererConsoleLine(level, msg, line, source));
+    console.log(rendererConsoleLine(level, msg, line, source, launchSecrets));
   });
 
   // "Open maximized" is a two-step belt-and-suspenders pattern.

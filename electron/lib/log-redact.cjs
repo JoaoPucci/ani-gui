@@ -1,0 +1,48 @@
+"use strict";
+
+// Keeps the launch's secret out of what the main process logs.
+//
+// The renderer carries the secret on every API request: as the
+// `x-ani-gui-internal-secret` header, and as the `secret` query
+// parameter on the routes an <img> or an EventSource loads
+// (frontend/src/lib/backend/secret.ts). Chromium logs a failed load with
+// its URL, and the main process relays the renderer's console, its
+// failed loads and the backend's output to its own stdout and stderr,
+// which end up in the journal or a terminal. Everything it relays goes
+// through here first.
+
+const REDACTED = "<redacted>";
+
+// `secret=` as a query parameter, plain or URL-encoded inside another
+// URL: the value runs to the next parameter, fragment, quote, bracket
+// or whitespace.
+const QUERY_SECRET = /((?:[?&;]|%3[Ff]|%26)secret(?:=|%3[Dd]))(?:(?!%26)[^&#\s"'<>)\]])*/g;
+// The header, as `name: value` or as a JSON member.
+const HEADER_SECRET = /(x-ani-gui-internal-secret["']?\s*[:=]\s*["']?)[^\s"',;}\]]+/gi;
+// The backend's handshake line.
+const HANDSHAKE_SECRET = /(ANI_GUI_INTERNAL_SECRET\s+)\S+/g;
+
+// A known secret shorter than this is not redacted on its own: the
+// launch's is 64 hex characters, and a stray short value would blank
+// ordinary words.
+const MIN_KNOWN = 16;
+
+/**
+ * `text` with every secret in it replaced by `<redacted>`: each of
+ * `known` (the launch's secrets, wherever they appear) and any value in
+ * the shapes the secret travels in, known or not.
+ */
+function redactSecrets(text, known = []) {
+  let out = String(text);
+  for (const secret of known) {
+    if (typeof secret === "string" && secret.length >= MIN_KNOWN) {
+      out = out.split(secret).join(REDACTED);
+    }
+  }
+  return out
+    .replace(QUERY_SECRET, `$1${REDACTED}`)
+    .replace(HEADER_SECRET, `$1${REDACTED}`)
+    .replace(HANDSHAKE_SECRET, `$1${REDACTED}`);
+}
+
+module.exports = { REDACTED, redactSecrets };
