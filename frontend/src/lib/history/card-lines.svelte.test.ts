@@ -137,3 +137,14 @@ describe('CardLines', () => {
 		expect(ask).toHaveBeenCalledTimes(2);
 	});
 });
+
+describe('CardLines, an answer not the shape expected', () => {
+	it('reads as a failed answer: each card stands for its own row', async () => {
+		const lines = new CardLines(async () => null as unknown as Record<string, CardLine>);
+		lines.update(rows('7158'));
+		await lines.settled();
+		expect(lines.lineOf(PLAYED)).toBe(PLAYED);
+		expect(lines.correctable(PLAYED)).toBe(false);
+		expect(lines.clickLineOf(PLAYED)).toBe(PLAYED);
+	});
+});
