@@ -36,6 +36,11 @@ export interface LinkSessionDeps extends LinkDeps {
 	showPage: (kitsuId: string, row: string | null) => void;
 	/** Read again what the page reads from the history. */
 	refresh: () => void;
+	/** Read the card's line again after a link a later correction
+	 *  overtook, on a surface that reads nothing again on `refresh` (the
+	 *  player): its question is about a line that now records another
+	 *  answer. Omitted, `refresh` reads it. */
+	reread?: () => void;
 	/** The path the app is on now. */
 	here: () => string;
 	/** The Sub or Dub the viewer watches the show `shownId` in, as the

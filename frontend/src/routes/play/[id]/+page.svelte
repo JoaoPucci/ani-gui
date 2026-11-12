@@ -259,7 +259,10 @@
 		// switched in, else Settings — asked of the show the link was made
 		// for, whichever page is on screen when it answers.
 		audioInForce: (shown) => audioFor(shown, switchedAudio ?? playMode(config)),
-		inPlayer: true
+		inPlayer: true,
+		// A pick a correction made elsewhere overtook: read the line again,
+		// so the slip shows the answer that stands.
+		reread: () => void playLink.arrive(fromRow, id, fromGuess)
 	});
 	// A pick saved after the viewer left is still saved, and switches to
 	// nothing.

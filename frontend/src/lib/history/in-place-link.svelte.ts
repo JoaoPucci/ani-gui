@@ -61,6 +61,9 @@ export interface InPlaceLinkDeps extends LinkDeps {
 	/** The Sub or Dub the viewer watches the shown show in
 	 *  ($lib/history/carry-audio.ts). */
 	audioInForce?: LinkSessionDeps['audioInForce'];
+	/** Read the card's line again after a pick a later correction
+	 *  overtook (`LinkSessionDeps.reread`). */
+	reread?: LinkSessionDeps['reread'];
 }
 
 export class InPlaceLinkSession extends LinkSession {
