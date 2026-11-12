@@ -565,7 +565,11 @@ fetches the live file, so a flipped flag or a slow or rate-limited CDN
 cannot change a test's result. It takes its flags from the file
 `ANI_GUI_TEST_FLAGS_FILE` names, admitted and resolved like the live
 one (a `true` in it counts only when a `.minisig` beside it verifies
-under the build's keys), or the defaults when that names none. `ANI_GUI_TEST_FLAGS_FILE` means nothing
+under the build's keys), or the defaults when that names none. A
+backend built with the `test-run-key` cargo feature, which only test
+builds enable, also trusts a test run's file under a fixture key whose
+secret is public; the live file never is, and no package carries the
+key (`tests/arch/test_run_key.sh`). `ANI_GUI_TEST_FLAGS_FILE` means nothing
 without `ANI_GUI_UNATTENDED=1`. `backend/tests/flags_launch.rs` proves
 it by watching the network: a test run never asks for
 raw.githubusercontent.com, and a normal launch does. Development runs

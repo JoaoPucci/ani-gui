@@ -274,7 +274,7 @@ curl -sI http://127.0.0.1:42337/healthz
 | `ANI_GUI_UPSTREAM_BASE` | dev/test only; redirects `meta_http` to a wiremock instance |
 | `VITE_ANI_GUI_API_BASE` | browser-only dev: point the Vite renderer at a separately-running backend |
 | `ANI_GUI_UNATTENDED` | set to `1` by a harness with nobody at the screen (the e2e launch helper and the backend's integration tests always do): a packaged build whose startup fails then exits at once instead of showing its error dialog, and the backend never fetches the live remote flags file, taking its flags from `ANI_GUI_TEST_FLAGS_FILE` or the defaults ([Remote flags](#remote-flags)) |
-| `ANI_GUI_TEST_FLAGS_FILE` | only with `ANI_GUI_UNATTENDED=1`: a flags file, in the remote file's format, that the test run's flags come from. A `true` in it counts only when a `.minisig` beside it verifies under the build's keys, as for the live file. Ignored on any other launch |
+| `ANI_GUI_TEST_FLAGS_FILE` | only with `ANI_GUI_UNATTENDED=1`: a flags file, in the remote file's format, that the test run's flags come from. A `true` in it counts only when a `.minisig` beside it verifies under the build's keys, as for the live file, or, in a backend built with the `test-run-key` feature, under the fixture test-run key ([Remote flags](#remote-flags)). Ignored on any other launch |
 | `ANI_GUI_DEV` | forces the dev data profile (`ani-gui-dev` dirs) — see below. Auto-set by the Electron dev launcher; rarely needed by hand |
 
 **Dev data isolation.** Any source-built backend (`cargo run`, the
@@ -442,6 +442,19 @@ integration tests set `ANI_GUI_UNATTENDED=1`, and their flags come from
 environment variables above). That file is admitted like the live one,
 so it turns a feature on only with a `.minisig` beside it that verifies
 under the build's keys.
+
+A backend built with the `test-run-key` cargo feature also accepts a
+test run's `.minisig` made with the fixture test-run key, so a test can
+turn a feature on. That key's secret is public: it is derived from a
+fixed seed in `backend/tests/fixtures/flags-signature/make.py`, and
+the fixtures' README says which file it signs. The live file is never
+trusted under it, in any build. `cargo test --all-features` (CI and
+the pre-push hook) builds the backend's tests with the feature, and the
+coverage run without it, so its tests run both ways. No packaging
+script enables it, which `tests/arch/test_run_key.sh` checks for both
+platforms, and the e2e workflow checks that the Linux package it builds
+does not contain the key. The end-to-end suite runs that package, so
+its test runs trust the build's keys alone.
 
 **Declaring a flag** (for the change that adds one). Declare it as a
 `pub const FlagDecl` of kind `FlagKind::Rollout`, list it in
