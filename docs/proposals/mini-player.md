@@ -165,7 +165,7 @@ playback ends.
 from the same SvelteKit build: `app://localhost/mini/…` in a packaged
 build, the Vite server in development. **[data]** Nothing new is
 needed to serve it: the `app://` handler hands `index.html` to any
-extensionless path (`electron/main.js:683`), and SvelteKit's client
+extensionless path (`registerAppProtocol` in `electron/main.js`), and SvelteKit's client
 router takes the route from there.
 
 The window gets the same preload and the same `additionalArguments`
