@@ -679,3 +679,53 @@ async fn the_link_asked_last_stands_whichever_saves_first() {
         .unwrap();
     assert_eq!(row.kitsu_id.as_deref(), Some("21"));
 }
+
+#[tokio::test]
+async fn an_overtaken_link_writes_none_of_its_rows() {
+    // The older correction carries the card and its bare row; the newer
+    // one, which saves first, carries the card alone. The older one must
+    // not split the card's rows across two shows.
+    let mock = MockServer::start().await;
+    let detail = |ms: u64| {
+        ResponseTemplate::new(200)
+            .insert_header("content-type", "application/vnd.api+json")
+            .set_body_bytes(DETAIL_FIXTURE.to_vec())
+            .set_delay(std::time::Duration::from_millis(ms))
+    };
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(detail(400))
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .respond_with(detail(0))
+        .mount(&mock)
+        .await;
+    let tmp = tempfile::tempdir().unwrap();
+    let history = tmp.path().join("history");
+    write_atomic(&history, &rows()).unwrap();
+    let state = state_at(history, &mock.uri());
+    let first = args(&["hianime:black-clover-949", "black-clover-77"], "12");
+    let second = args(&["hianime:black-clover-949"], "21");
+
+    let (older, newer) = tokio::join!(link(&state, &first), async {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        link(&state, &second).await
+    });
+
+    newer.expect("newer");
+    let older = older.expect("older");
+    assert!(older.overtaken);
+    assert!(older.linked.is_empty(), "the older link writes no row");
+    let bare = read_all(&state.history_path)
+        .unwrap()
+        .into_iter()
+        .find(|r| r.id == "black-clover-77")
+        .unwrap();
+    assert_ne!(bare.kitsu_id.as_deref(), Some("12"));
+    assert_eq!(
+        crate::commands::linked_note::linked(&state, "black-clover-77"),
+        None
+    );
+}
