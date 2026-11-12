@@ -374,7 +374,7 @@ In PowerShell (on `py -3`, see step 3):
   if ($LASTEXITCODE -ne 0) { throw 'git pull failed' }
   py -3 -m json.tool flags.json
   if ($LASTEXITCODE -ne 0) { throw 'flags.json is not valid JSON' }
-  git commit -am "chore: switch some_kill_switch off"
+  git commit -am "chore: set some_feature to false"
   if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
   git push
   if ($LASTEXITCODE -ne 0) { throw 'git push failed' }

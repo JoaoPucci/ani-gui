@@ -1,8 +1,8 @@
 //! The flags file's signature, and what it decides.
 //!
 //! The file is read from GitHub without a signature check for its
-//! flags: by the rule in [`super`], no value it can select is riskier
-//! than the build's own default. The notices it may carry (see
+//! flags: by the rule in [`super`], no flag can be declared yet, so
+//! nothing it sends for one takes effect. The notices it may carry (see
 //! [`crate::notices`]) are different. Text and a link shown to every
 //! user, and a number that makes the app ask for something, are
 //! content, and content is trusted only when the file is signed.
@@ -18,7 +18,7 @@
 //!
 //! What a verdict decides is narrow: [`admit`] keeps the notices block
 //! of a verified file and drops it from any other. The flags are kept
-//! whatever the verdict, under the safer-only rule they always had.
+//! whatever the verdict, as above.
 //! The private key never enters this repository; the steps are in
 //! `docs/development.md`, "Signing the flags file".
 
