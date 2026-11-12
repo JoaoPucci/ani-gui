@@ -259,14 +259,20 @@ test("a test launch takes its flags from the test, not from GitHub", async () =>
   // backend never fetches the live flags file (backend/src/flags/
   // launch.rs, and backend/tests/flags_launch.rs, which watches the
   // network to prove it). The window was opened with the flags the
-  // backend decided, before its first page rendered.
+  // backend decided, before its first page rendered: with no file, the
+  // defaults of what the package declares. The package under test is a
+  // test-run build (`pnpm run package:e2e`), which declares the probe
+  // the flags specs turn on and off (e2e/flags/), off.
   const { app, page } = await launchAppWithStubs();
   try {
     const seen = await page.evaluate(() => ({
       origin: window.aniGui?.flagsOrigin,
       flags: window.aniGui?.flags,
     }));
-    expect(seen).toEqual({ origin: "test", flags: {} });
+    expect(seen).toEqual({
+      origin: "test",
+      flags: { test_run_probe: false },
+    });
   } finally {
     await app.close();
   }

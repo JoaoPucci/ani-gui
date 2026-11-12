@@ -16,22 +16,34 @@
 #   - no script in electron/package.json or the root package.json that
 #     runs `cargo build` passes --features, -F or --all-features, read
 #     with Python's JSON parser and split into words by its shell
-#     lexer;
-#   - no workflow line that runs `cargo build` passes one either.
+#     lexer, except electron's `build:backend:e2e`, which builds the
+#     end-to-end suite's backend. That one must exist, must enable
+#     exactly `test-run-key`, and must build into `target-e2e` with
+#     `--target-dir`, a directory no release configuration reads
+#     (package.json's `build` never names it; the e2e package's own
+#     configuration is electron/lib/e2e-package.cjs, whose tests hold
+#     where it reads from and writes to);
+#   - only `package:e2e` runs `build:backend:e2e`, and only `e2e` runs
+#     `package:e2e`, so no release script reaches the feature build;
+#   - no workflow line that runs `cargo build` passes a feature flag.
 #
 # It does not see other routes to a feature build: RUSTFLAGS or a
 # .cargo/config.toml setting `--cfg feature="test-run-key"`, other
 # spellings of the build (`cargo b`, `cargo +toolchain build`,
 # `cargo rustc`, `cargo install`, a command continued across lines), a
-# script that builds through a helper file it calls, or a script that
-# packages a binary some other command left behind (`dist:win` packages
-# whatever target/release holds; `package:win` builds it first).
+# script that builds through a helper file it calls, a script that
+# runs another through something other than `pnpm run <name>`, or a
+# script that packages a binary some other command left behind
+# (`dist:win` packages whatever target/release holds; `package:win`
+# builds it first).
 #
 # Both platforms' packaging scripts are covered, Windows's
 # `build:backend` among them. On Linux the e2e workflow also builds the
-# package and checks that the binary does not hold the key ("The
-# packaged backend trusts no test-run key"); nothing builds the Windows
-# backend in CI, so on that side this check is all there is.
+# release-shaped package in a job of its own and checks that its binary
+# does not hold the key ("The release-shaped backend trusts no test-run
+# key"), and that the e2e package's binary does, so the check is seen
+# to find it; nothing builds the Windows backend in CI, so on that side
+# this check is all there is.
 
 set -eu
 
@@ -63,21 +75,43 @@ fi
 
 if ! python3 -I - package.json electron/package.json <<'PY'; then
 import json, shlex, sys
+FEATURE_FLAGS = ('--all-features', '--features', '-F')
+E2E_BUILD = 'build:backend:e2e'
+# Which script may run each e2e step, by name.
+CALLERS = {E2E_BUILD: {'package:e2e'}, 'package:e2e': {'e2e'}}
 bad = []
 for path in sys.argv[1:]:
     with open(path, encoding='utf-8') as f:
-        scripts = json.load(f).get('scripts', {})
+        manifest = json.load(f)
+    scripts = manifest.get('scripts', {})
+    if 'target-e2e' in json.dumps(manifest.get('build', {})):
+        bad.append(f'{path} "build": names target-e2e, the e2e backend\'s directory')
     for name, cmd in scripts.items():
+        words = shlex.split(cmd)
+        for step, callers in CALLERS.items():
+            if step in words and name not in callers:
+                bad.append(f'{path} "{name}": runs {step}')
         if 'cargo build' not in cmd:
             continue
-        for word in shlex.split(cmd):
-            if word in ('--all-features', '--features', '-F') or word.startswith(('--features=', '-F')):
-                bad.append(f'{path} "{name}": {word}')
+        flags = [w for w in words if w in FEATURE_FLAGS or w.startswith(('--features=', '-F'))]
+        if not flags:
+            continue
+        if path.endswith('electron/package.json') and name == E2E_BUILD:
+            at = lambda w: words[words.index(w) + 1] if w in words and words.index(w) + 1 < len(words) else None
+            if flags != ['--features'] or at('--features') != 'test-run-key':
+                bad.append(f'{path} "{name}": enables more than test-run-key: {" ".join(flags)}')
+            if at('--target-dir') != 'target-e2e':
+                bad.append(f'{path} "{name}": does not build into --target-dir target-e2e')
+            continue
+        for word in flags:
+            bad.append(f'{path} "{name}": {word}')
+    if path.endswith('electron/package.json') and E2E_BUILD not in scripts:
+        bad.append(f'{path}: no {E2E_BUILD}, so no e2e run can turn a flag on')
 for b in bad:
     print(b, file=sys.stderr)
 sys.exit(1 if bad else 0)
 PY
-    printf 'arch/test_run_key FAIL: a packaging script builds the backend with features\n' >&2
+    printf 'arch/test_run_key FAIL: the packaging scripts (see above)\n' >&2
     failed=1
 fi
 

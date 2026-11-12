@@ -14,5 +14,14 @@ backend built with the `test-run-key` feature, which test builds enable
 and no packaged build does. The live flags file is never trusted under
 it.
 
-Regenerate with `python3 -I make.py . flags.json` from this directory
-(needs the `cryptography` package).
+`probe-on.json` turns on `test_run_probe`, the flag only a backend
+built with the `test-run-key` feature declares (`backend/src/flags`),
+and is signed by the test-run key and by key two the same way. The
+backend's integration tests run the real binary with it
+(`backend/tests/flags_launch.rs`).
+
+Regenerate with `python3 -I make.py . flags.json` and
+`python3 -I make.py . probe-on.json probe-on.json` from this directory
+(needs the `cryptography` package); the third argument names the file
+the signatures are for. The second run also writes a
+`probe-on.json.minisig` by key one, which nothing reads; delete it.
