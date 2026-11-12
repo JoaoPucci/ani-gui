@@ -102,7 +102,8 @@
 ;     "unknown" and download; if that fails, the "unknown" stamp stays,
 ;     so the next install tries again. Taken for unstamped, the copy
 ;     would read as 7.1.1 whatever it is. (Should writing that stamp
-;     fail as well, the next install does take it for unstamped.)
+;     fail too, and then the download, the next install does take it
+;     for unstamped.)
 ;   - ffmpeg.exe present, no stamp                      → treat it as
 ;     FFMPEG_UNSTAMPED_VERSION, write that stamp, and compare as above.
 ;     Every installer released, 0.1.1 through 0.17.0, pinned 7.1.1 and wrote
@@ -226,10 +227,12 @@
                     ; unstamped 7.1.1, whatever it is.
                     Delete "${FFMPEG_STAMP}"
                     StrCpy $ffmpegStampLost 1
-                    DetailPrint "ffmpeg: could not restore the previous copy's version stamp; it will be downloaded again."
+                    DetailPrint "ffmpeg: restored the previous copy but not its version stamp; it will be downloaded again."
                 ${EndIf}
             ${EndIf}
-            DetailPrint "ffmpeg: kept the copy from the previous install."
+            ${If} $ffmpegStampLost == 0
+                DetailPrint "ffmpeg: kept the copy from the previous install."
+            ${EndIf}
         ${EndIf}
     ${EndIf}
     RMDir /r "${FFMPEG_STAGING}"
