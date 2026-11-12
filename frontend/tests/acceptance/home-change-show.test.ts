@@ -219,8 +219,14 @@ async function pickAndLink(title: string) {
 describe("a guessed Continue card's pill", () => {
 	it('is on guessed cards only, with the ≈ mark, and no card carries an always-on mark', async () => {
 		await openHome();
-		expect(pill(BC_CARD)?.textContent).toContain(m.detail_link_not_this());
-		expect(pill(BC_CARD)!.querySelector('svg[data-guess-mark]')).not.toBeNull();
+		// Home's own words, tied to what the user watched: "Not this show?"
+		// on Home did not say compared to what. The ≈ mark is hidden from
+		// assistive tech, so the words are the button's whole name.
+		expect(pill(BC_CARD)?.textContent?.trim()).toBe(m.home_link_not_watched());
+		expect(pill(BC_CARD)?.getAttribute('aria-label')).toBeNull();
+		expect(pill(BC_CARD)!.querySelector('svg[data-guess-mark]')?.getAttribute('aria-hidden')).toBe(
+			'true'
+		);
 		expect(pill(JOJO_CARD)).not.toBeNull();
 		expect(pill(KNOWN)).toBeNull();
 		// The mark is the pill's alone.

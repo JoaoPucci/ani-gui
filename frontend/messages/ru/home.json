@@ -48,6 +48,7 @@
 	"delete_failed": "Не удалось удалить «{title}» из истории. Попробуйте ещё раз.",
 	"hero_error_eyebrow_value": "Kitsu не отвечает",
 	"resume_guess_note": "Возможно, это не тот тайтл. В истории он записан как «{title}».",
+	"link_not_watched": "Не то, что вы смотрели?",
 	"link_pick_button": "Выбрать правильный тайтл",
 	"link_on_card": "На карточке",
 	"link_check_failed": "Не удалось проверить тайтл. Попробуйте снова."

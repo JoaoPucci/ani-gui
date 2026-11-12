@@ -47,6 +47,7 @@
 	"delete_failed": "No se pudo quitar \"{title}\" del historial. Inténtalo de nuevo.",
 	"hero_error_eyebrow_value": "Sin respuesta de Kitsu",
 	"resume_guess_note": "Puede que no sea el anime que buscabas. En tu historial está como «{title}».",
+	"link_not_watched": "¿No es lo que viste?",
 	"link_pick_button": "Elegir el anime correcto",
 	"link_on_card": "En la tarjeta",
 	"link_check_failed": "No se pudo comprobar el anime. Inténtalo de nuevo."
