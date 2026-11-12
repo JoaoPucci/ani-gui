@@ -366,3 +366,54 @@ proptest::proptest! {
         proptest::prop_assert!(argv_options <= template_options, "{:?} from {:?}", argv, template);
     }
 }
+
+#[test]
+fn a_template_with_unbalanced_quotes_falls_back_to_the_url_alone() {
+    let a = custom("--title=\"{title} {url}");
+    assert_eq!(
+        build_argv(&a),
+        vec!["https://example.com/v.m3u8".to_string()]
+    );
+}
+
+#[test]
+fn an_unknown_or_unterminated_placeholder_passes_through_as_written() {
+    let a = custom("--x={nope} {open {url}");
+    assert_eq!(
+        build_argv(&a),
+        vec![
+            "--x={nope}".to_string(),
+            "{open".to_string(),
+            "https://example.com/v.m3u8".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn a_dropped_value_takes_the_option_the_template_wrote_before_it() {
+    // `--sub-file {subtitle}` is one option written as two tokens: with
+    // its value dropped, the option alone would take the next token,
+    // the stream, as its value.
+    let mut a = custom("--sub-file {subtitle} -o {title} /x {referer} {url}");
+    a.subtitle_urls = vec!["-v".into()];
+    a.title = Some("/evil".into());
+    a.referer = None;
+    assert_eq!(
+        build_argv(&a),
+        vec!["https://example.com/v.m3u8".to_string()]
+    );
+}
+
+#[test]
+fn an_option_whose_value_is_kept_stays_with_it() {
+    let mut a = custom("--sub-file {subtitle} {url}");
+    a.subtitle_urls = vec!["https://e.example/a.vtt".into()];
+    assert_eq!(
+        build_argv(&a),
+        vec![
+            "--sub-file".to_string(),
+            "https://e.example/a.vtt".to_string(),
+            "https://example.com/v.m3u8".to_string(),
+        ]
+    );
+}

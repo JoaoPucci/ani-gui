@@ -165,3 +165,9 @@ test("the backend's relays redact the launch's secret by value once the handshak
     "[backend] unfinished",
   ]);
 });
+
+test("a redacted value ends at a separator, and what follows it is kept", () => {
+  assert.equal(redactSecrets(`secret=${SECRET};next=1`), `secret=${REDACTED};next=1`);
+  assert.equal(redactSecrets(`x secret=${SECRET}, then more`), `x secret=${REDACTED}, then more`);
+  assert.equal(redactSecrets(`a secret=${SECRET}|next`), `a secret=${REDACTED}|next`);
+});
