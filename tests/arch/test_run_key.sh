@@ -60,7 +60,8 @@
 # ("The release-shaped backend trusts no test-run key"), with the e2e
 # package's binary checked to hold it, so the search is seen to find
 # it; on Windows a job of its own on windows-latest. This check holds
-# that both jobs exist and name the right binary (last rule below).
+# that both jobs exist, build with the release's script and name the
+# right binary (last rule below), not what their steps go on to do.
 # Nothing builds the Windows installer in CI.
 
 set -eu
@@ -176,7 +177,10 @@ fi
 # and the key's file. The Linux side is the release-shaped job's (`pnpm
 # run dist`), whose steps name dist/linux-unpacked's backend the same
 # way. What the steps do with those names is theirs; this holds that
-# the jobs are there and point at the right binaries.
+# the jobs are there and point at the right binaries. It does not read
+# whether they run or count: a job's or step's `if:` (every step here
+# carries the filter's), `continue-on-error`, the workflow's triggers,
+# or an `env` (RUSTFLAGS among them) that changes the build.
 py=''
 for candidate in python3 /usr/bin/python3; do
     if "$candidate" -I -c 'import yaml' 2>/dev/null; then

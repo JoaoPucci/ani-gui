@@ -306,12 +306,16 @@ jobs:
         run: pnpm run build:backend
 
       - if: needs.filter.outputs.relevant == 'true'
-        name: The Windows release backend trusts no test-run key
-        # As the release-shaped job checks the Linux backend: no
-        # fixture test-run key and no probe flag, which only a build
-        # with the `test-run-key` feature has. The e2e job finds the
-        # same key in its own backend, so the search is one that can
-        # find it.
+        name: The Windows release backend trusts no test-run key, and needs no VC++ runtime
+        # The same key and probe search the release-shaped job makes on
+        # the Linux backend: no fixture test-run key and no probe flag,
+        # which only a build with the `test-run-key` feature has. The
+        # key is embedded as the same bytes on either platform, and the
+        # e2e job finds it in its own (Linux) backend, so the search is
+        # one that can find it. And, as the Linux job checks its backend
+        # needs no system C library, the exe must name no vcruntime140
+        # DLL: the static C runtime backend/.cargo/config.toml sets for
+        # MSVC is what lets it start where no VC++ redistributable is.
         working-directory: electron
         shell: bash
         run: |
@@ -326,5 +330,9 @@ jobs:
           fi
           if grep -qaF -- test_run_probe "$backend"; then
             echo "the Windows release backend declares the test-run probe" >&2
+            exit 1
+          fi
+          if grep -qaiF -- vcruntime140 "$backend"; then
+            echo "the Windows release backend links the C runtime dynamically" >&2
             exit 1
           fi
