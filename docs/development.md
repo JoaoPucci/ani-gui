@@ -479,8 +479,9 @@ dist`) in a parallel job and checks that its backend holds neither the
 key nor the probe, and checks that the e2e package's backend does hold
 the key, so the search is one that can find it. Another parallel job,
 on Windows, builds the backend with the script a Windows release runs
-(`pnpm run build:backend`) and makes the same check on it. The Windows
-installer is not built in CI.
+(`pnpm run build:backend`) and makes the same key and probe search on
+it, and checks that it names no VC++ runtime DLL. The Windows installer
+is not built in CI.
 
 **Declaring a flag** (for the change that adds one). Declare it as a
 `pub const FlagDecl` of kind `FlagKind::Rollout`, list it in
