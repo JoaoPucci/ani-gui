@@ -321,6 +321,11 @@ describe('playedRecord', () => {
 			args,
 			mirror: false
 		});
+		// The session's own args name the page's show: that id goes too.
+		expect(playedRecord({ ...args, kitsu_id: '42' }, '42', false, { line_kept: true })).toEqual({
+			args,
+			mirror: false
+		});
 	});
 
 	it("records and mirrors a guess's play that landed on the card's own listing", () => {
