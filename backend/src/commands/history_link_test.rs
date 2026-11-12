@@ -706,6 +706,9 @@ async fn an_overtaken_link_writes_none_of_its_rows() {
     let history = tmp.path().join("history");
     write_atomic(&history, &rows()).unwrap();
     let state = state_at(history, &mock.uri());
+    // The bare row's stored mapping names another show; a link to 12
+    // would drop it.
+    crate::commands::kitsu::allmanga_kitsu_put(&state, "black-clover-77", "99").expect("seed");
     let first = args(&["hianime:black-clover-949", "black-clover-77"], "12");
     let second = args(&["hianime:black-clover-949"], "21");
 
@@ -727,5 +730,11 @@ async fn an_overtaken_link_writes_none_of_its_rows() {
     assert_eq!(
         crate::commands::linked_note::linked(&state, "black-clover-77"),
         None
+    );
+    assert!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, "black-clover-77")
+            .expect("read")
+            .is_some(),
+        "its stored mapping stays"
     );
 }
