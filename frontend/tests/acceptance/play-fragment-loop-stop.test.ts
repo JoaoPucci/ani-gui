@@ -41,7 +41,11 @@ vi.mock('hls.js', () => {
 	type Handler = (event: string, data: unknown) => void;
 	class FakeHls {
 		static instances: FakeHls[] = [];
-		static Events = { ERROR: 'hlsError', FRAG_LOADED: 'hlsFragLoaded' };
+		static Events = {
+			ERROR: 'hlsError',
+			FRAG_LOADED: 'hlsFragLoaded',
+			BACK_BUFFER_REACHED: 'hlsBackBufferReached'
+		};
 		static isSupported() {
 			return true;
 		}
@@ -83,6 +87,8 @@ type FakeHlsT = InstanceType<typeof Hls> & {
 const hlsInstances = () => (Hls as unknown as { instances: FakeHlsT[] }).instances;
 const FRAG_LOADED = (Hls as unknown as { Events: { FRAG_LOADED: string } }).Events.FRAG_LOADED;
 const ERROR = (Hls as unknown as { Events: { ERROR: string } }).Events.ERROR;
+const BACK_BUFFER_REACHED = (Hls as unknown as { Events: { BACK_BUFFER_REACHED: string } }).Events
+	.BACK_BUFFER_REACHED;
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -235,5 +241,21 @@ describe('play route — a fragment loaded past its allowance stops the engine',
 			}
 		}
 		expect(hls.stopLoadCalls).toBe(0);
+	});
+
+	it('does not stop a stream the viewer keeps seeking back to past the back buffer', async () => {
+		// The engine keeps a bounded stretch behind the playhead. Going
+		// back and forth between two spots further apart than that loads
+		// the far spot's fragment again on every return, each time after
+		// the engine let it go: a healthy stream, however quick the
+		// returns.
+		const hls = await mountHls();
+		const far = { frag: { type: 'main', level: 0, sn: 2, end: 12 } };
+		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE * 3; i++) {
+			hls.emit(FRAG_LOADED, far);
+			hls.emit(BACK_BUFFER_REACHED, { bufferEnd: 60 });
+		}
+		expect(hls.stopLoadCalls).toBe(0);
+		expect(target.textContent ?? '').not.toContain(m.play_error_fragment_loop());
 	});
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import fc from 'fast-check';
 import {
 	FRAGMENT_LOAD_ALLOWANCE,
 	FRAGMENT_LOAD_WINDOW_MS,
@@ -63,8 +64,9 @@ describe('the fragment loop guard', () => {
 	it('does not count loads that fell out of the window', () => {
 		const t = clock();
 		const guard = new FragmentLoopGuard(t.now);
-		// A rewind past the back buffer loads a fragment again, minutes
-		// apart; that is a healthy stream, not a loop.
+		// The same fragment loaded again at a healthy pace, as a viewer
+		// coming back to one spot every so often loads it; that is not a
+		// loop.
 		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE * 3; i++) {
 			expect(guard.loaded('0:12')).toBe(false);
 			t.advance(FRAGMENT_LOAD_WINDOW_MS);
@@ -117,5 +119,93 @@ describe('the fragment loop guard', () => {
 				expect(guard.loaded(fragmentLoopKey(frag(type, 0, 12)))).toBe(false);
 			}
 		}
+	});
+
+	it('forgets the loads of a fragment the engine let go of behind the playhead', () => {
+		// The engine keeps a bounded stretch behind the playhead. A viewer
+		// going back and forth between two spots further apart than that
+		// loads the far spot's fragment again on every return, a couple of
+		// seconds apart: each load follows a release that took it out of
+		// the buffer, so each is the first since it was let go.
+		const t = clock();
+		const guard = new FragmentLoopGuard(t.now);
+		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE * 3; i++) {
+			expect(guard.loaded('main:0:3', 12)).toBe(false);
+			guard.released(60);
+			t.advance(500);
+		}
+		expect(guard.hasTripped).toBe(false);
+	});
+
+	it('keeps counting a fragment the release did not reach', () => {
+		// A fragment that never reaches the buffer sits at the playhead,
+		// never behind it: a release up to an earlier point leaves its
+		// count alone, and the loop still trips.
+		const t = clock();
+		const guard = new FragmentLoopGuard(t.now);
+		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE; i++) {
+			expect(guard.loaded('main:0:20', 100)).toBe(false);
+			guard.released(60);
+		}
+		expect(guard.loaded('main:0:20', 100)).toBe(true);
+	});
+
+	it('releases a fragment only when it ends at or before the released point', () => {
+		const t = clock();
+		const guard = new FragmentLoopGuard(t.now);
+		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE; i++) guard.loaded('main:0:5', 30);
+		guard.released(29.9);
+		expect(guard.loaded('main:0:5', 30)).toBe(true);
+
+		const again = new FragmentLoopGuard(t.now);
+		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE; i++) again.loaded('main:0:5', 30);
+		again.released(30);
+		expect(again.loaded('main:0:5', 30)).toBe(false);
+	});
+
+	it('trips on any burst of loads with no release that reaches the fragment', () => {
+		// Property: whatever releases come in between, a fragment loaded
+		// past the allowance inside the window, with every release short
+		// of its end, trips the guard.
+		fc.assert(
+			fc.property(
+				fc.double({ min: 1, max: 10_000, noNaN: true }),
+				fc.array(fc.double({ min: 0.001, max: 100, noNaN: true }), {
+					minLength: FRAGMENT_LOAD_ALLOWANCE + 1,
+					maxLength: FRAGMENT_LOAD_ALLOWANCE + 1
+				}),
+				(end, shortBy) => {
+					const t = clock();
+					const guard = new FragmentLoopGuard(t.now);
+					let tripped = false;
+					for (const short of shortBy) {
+						tripped = guard.loaded('main:0:9', end) || tripped;
+						guard.released(end - short);
+						t.advance(1);
+					}
+					return tripped;
+				}
+			)
+		);
+	});
+
+	it('never trips on a fragment released after every load', () => {
+		fc.assert(
+			fc.property(
+				fc.double({ min: 0, max: 10_000, noNaN: true }),
+				fc.integer({ min: 1, max: 50 }),
+				fc.integer({ min: 0, max: 2_000 }),
+				(end, loads, gapMs) => {
+					const t = clock();
+					const guard = new FragmentLoopGuard(t.now);
+					for (let i = 0; i < loads; i++) {
+						if (guard.loaded('main:0:9', end)) return false;
+						guard.released(end + i);
+						t.advance(gapMs);
+					}
+					return !guard.hasTripped;
+				}
+			)
+		);
 	});
 });
