@@ -13,9 +13,10 @@
 //! counts only when a `.minisig` beside it verifies, under the build's
 //! keys and, in a backend built with the `test-run-key` feature, the
 //! fixture test-run key as well ([`build_keys`]). That feature is for
-//! test builds, so an end-to-end test can turn a feature on; no
-//! packaged build has it, and in every build the live file is trusted
-//! under the build's keys alone.
+//! test builds, so a backend test (unit or integration, built by
+//! `cargo test --all-features`) can turn a feature on; no packaged
+//! build has it, and in every build the live file is trusted under the
+//! build's keys alone.
 //!
 //! `ANI_GUI_TEST_FLAGS_FILE` means nothing without
 //! `ANI_GUI_UNATTENDED=1`: a normal launch ignores it and reads the

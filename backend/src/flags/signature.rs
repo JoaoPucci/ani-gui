@@ -28,7 +28,8 @@ use super::resolve::Document;
 pub const TRUSTED_KEYS: &[&str] = &[];
 
 /// The keys a test run's file (`ANI_GUI_TEST_FLAGS_FILE`) is trusted
-/// under as well as [`TRUSTED_KEYS`], so an end-to-end test can turn a
+/// under as well as [`TRUSTED_KEYS`], so a backend test (a unit or
+/// integration test, built by `cargo test --all-features`) can turn a
 /// feature on. Only a backend built with the `test-run-key` cargo
 /// feature has one: the fixture test-run key, whose secret anyone can
 /// derive from `tests/fixtures/flags-signature/make.py`. No packaged
