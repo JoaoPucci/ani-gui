@@ -1618,7 +1618,7 @@
 								.then(() => openCardLink(cardLines.clickLineOf(entry.id), id, nextEpisode));
 						}}
 					>
-						<GuessMark size={14} />{m.detail_link_not_this()}
+						<GuessMark size={14} />{m.home_link_not_watched()}
 					</button>
 				{/if}
 				<!-- Delete chip sits AFTER the card in DOM so role-based
@@ -2249,8 +2249,9 @@
 	   land on the exact same beat of the hover transition. The chip
 	   sits outside the card's click target (resume-card is a sibling,
 	   not an ancestor) so its click never triggers play. */
-	/* A guessed card's "≈ Not this show?" pill: shown as the delete
-	   chip is, on hover or keyboard focus, at the other top corner. */
+	/* A guessed card's "≈ Not what you watched?" pill: shown as the
+	   delete chip is, on hover or keyboard focus, at the other top
+	   corner. */
 	.resume-link {
 		position: absolute;
 		z-index: 2;
