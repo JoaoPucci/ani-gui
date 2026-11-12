@@ -57,10 +57,15 @@ pub fn line_record<'a>(
     played: &str,
     card: Option<&str>,
 ) -> Option<&'a str> {
-    let _ = card;
-    rows.iter()
-        .find(|r| r.id == played)
-        .and_then(|r| r.kitsu_id.as_deref())
+    let recorded = |id: &str| {
+        rows.iter()
+            .find(|r| r.id == id)
+            .and_then(|r| r.kitsu_id.as_deref())
+    };
+    recorded(played).or_else(|| {
+        card.filter(|c| *c != played && crate::scraper::provider::same_listing(c, played))
+            .and_then(recorded)
+    })
 }
 
 /// `candidate`, the id the play `args` would record on the row `played`,
@@ -84,10 +89,8 @@ pub(crate) fn guarded<'a>(
     };
     // A recorded show Kitsu answered gone is no link: the line is a guess
     // again, and a play of the guess on its own listing repairs it.
-    let recorded = rows
-        .iter()
-        .find(|r| r.id == played)
-        .and_then(|r| r.kitsu_id.as_deref())
+    let card = args.guess_row.as_deref().or(args.card_row.as_deref());
+    let recorded = line_record(&rows, played, card)
         .filter(|id| !crate::commands::kitsu_gone::is_gone(state, id).unwrap_or(false));
     keeps_recorded(true, recorded, candidate)
 }
