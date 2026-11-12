@@ -128,6 +128,7 @@
 	import { HOLD_RUNWAY_MARGIN_S } from '$lib/play/stall-machine';
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
+	import { HLS_BUFFER_POLICY } from '$lib/play/hls-buffer-policy';
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
 	import { moreMenuQuality } from '$lib/play/more-menu-quality';
@@ -2129,7 +2130,12 @@
 			// The page starts the engine once the levels are in and the
 			// quality control has chosen the start level
 			// ($lib/play/arm-quality), through the handoff gate (below).
-			hls = new Hls({ lowLatencyMode: false, autoStartLoad: false, ...HLS_STALL_LOAD_POLICY });
+			hls = new Hls({
+				lowLatencyMode: false,
+				autoStartLoad: false,
+				...HLS_STALL_LOAD_POLICY,
+				...HLS_BUFFER_POLICY
+			});
 			// The engine retires with its source: the next attach's
 			// flush, or the page leaving.
 			const engine = hls;
@@ -2183,13 +2189,16 @@
 			const loopGuard = new FragmentLoopGuard();
 			hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
 				stallMachine.fragmentLoaded(data);
-				if (!loopGuard.loaded(fragmentLoopKey(data.frag))) return;
+				if (!loopGuard.loaded(fragmentLoopKey(data.frag), data.frag.start)) return;
 				engine.stopLoad();
 				handoff.engineStopped();
 				dropHeldRetry();
 				console.warn('[play] fragment loop guard: engine stopped on fragment', data.frag.sn);
 				playerError = fragmentLoopOverlayMessage();
 			});
+			// A fragment the back buffer let go of is loaded again by a
+			// seek back, not by a loop.
+			hls.on(Hls.Events.BACK_BUFFER_REACHED, (_, data) => loopGuard.released(data.bufferEnd));
 			hls.on(Hls.Events.ERROR, (_, data) => {
 				if (!data.fatal) return;
 				// An engine the guard stopped stays stopped: no hold, no
