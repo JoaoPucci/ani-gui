@@ -140,12 +140,12 @@ async fn a_cache_written_before_the_signature_check_loses_its_notices() {
     let path = td.path().join("remote-flags.json");
     let older = serde_json::json!({
         "fetched_at": 42,
-        "flags": { "test_kill": false, "notices": notices_block() }
+        "flags": { "test_a": false, "notices": notices_block() }
     });
     std::fs::write(&path, older.to_string()).expect("write");
     let got = read(&path).await.expect("an entry");
     assert_eq!(got.fetched_at, 42);
-    assert_eq!(got.flags.get("test_kill"), Some(&serde_json::json!(false)));
+    assert_eq!(got.flags.get("test_a"), Some(&serde_json::json!(false)));
     assert_eq!(got.flags.get("notices"), None);
 }
 

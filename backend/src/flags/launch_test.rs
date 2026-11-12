@@ -197,7 +197,7 @@ async fn a_test_runs_file_keeps_its_flags_and_loses_unsigned_notices() {
     let file = td.path().join("flags.json");
     std::fs::write(
         &file,
-        r#"{"flags":{"test_kill":false,"notices":{"format":1,"donation_ask":3}}}"#,
+        r#"{"flags":{"test_a":true,"notices":{"format":1,"donation_ask":3}}}"#,
     )
     .expect("write");
     let store = FlagStore::pending(TEST_DECLS);
@@ -208,6 +208,6 @@ async fn a_test_runs_file_keeps_its_flags_and_loses_unsigned_notices() {
     )
     .await
     .expect("join");
-    assert_eq!(pair(&store).0, Some(FlagValue::Bool(false)));
+    assert_eq!(pair(&store).0, Some(FlagValue::Bool(true)));
     assert_eq!(store.notices(), None);
 }

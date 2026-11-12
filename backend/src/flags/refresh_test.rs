@@ -482,7 +482,7 @@ async fn a_cache_from_a_build_before_the_signature_check_decides_without_its_not
     let older = serde_json::json!({
         "fetched_at": NOW - DAY,
         "flags": {
-            "test_fallback": "old",
+            "test_b": true,
             "notices": { "format": 1, "donation_ask": 3 }
         }
     });
