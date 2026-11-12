@@ -30,6 +30,7 @@ import {
 } from "./fixtures/kitsu";
 import {
   appWindow,
+  cardLinesAnswer,
   launchPackagedApp,
   outboundAttempts,
   packagedBinary,
@@ -106,6 +107,9 @@ async function launchAppWithStubsOnce(
   // Home.
   await stub("**/api/app-info", (r) => r.fulfill(json(appInfo)));
   await stub("**/api/history", (r) => r.fulfill(json(emptyHistory)));
+  await stub("**/api/history/card-lines", (r) =>
+    r.fulfill(json(cardLinesAnswer(r.request().postDataJSON()))),
+  );
   await stub("**/api/kitsu/trending-anilist", (r) => r.fulfill(json(trending)));
   await stub("**/api/kitsu/top-rated", (r) => {
     topRatedAsked?.();
