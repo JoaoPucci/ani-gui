@@ -287,6 +287,23 @@ describe("a guessed Continue card's pill", () => {
 		await until(() => pill(BC_CARD) !== null, 'the pill, to change it again');
 	});
 
+	it('says nothing was saved when a correction asked later saved first', async () => {
+		server.use(
+			http.post(`${API_BASE}/api/history/link`, async ({ request }) => {
+				const body = (await request.json()) as { kitsu_id: string };
+				backend.linkCalls.push(body as never);
+				return HttpResponse.json({ kitsu_id: body.kitsu_id, linked: [], overtaken: true });
+			})
+		);
+		await openHome();
+		pill(BC_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(BC_RIGHT_TITLE);
+		await until(() => dialog()?.open !== true, 'the picker closed');
+		await settle();
+		expect(toastWith(m.detail_link_done_toast({ title: BC_RIGHT_TITLE }))).toBeUndefined();
+	});
+
 	it('says the show was saved, with no Undo on the notice', async () => {
 		await openHome();
 		pill(BC_CARD)!.click();

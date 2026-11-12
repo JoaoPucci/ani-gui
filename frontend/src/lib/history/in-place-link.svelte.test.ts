@@ -250,6 +250,23 @@ describe('a pick of another show on the player', () => {
 		expect(f.notices).toEqual([]);
 	});
 
+	it('keeps no pick a correction asked later overtook, and offers no switch to it', async () => {
+		const f = fake(true);
+		f.deps.link = async (_card, _rows, kitsuId) => ({
+			kitsu_id: kitsuId,
+			linked: [],
+			overtaken: true
+		});
+		const s = new InPlaceLinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS.id);
+		await s.start(2);
+		s.choose({ ref: RIGHT, current: false, warnings: [] });
+		expect(await s.confirm()).toBe(false);
+		expect(s.linked).toBeNull();
+		expect(pickedRow(CARD.id)).toBe(false);
+		expect(f.notices).toEqual([]);
+	});
+
 	it('says whether the pick was saved, so a switch never follows one that was not', async () => {
 		const f = fake(true);
 		// The session keeps the deps it was built with: the save fails by

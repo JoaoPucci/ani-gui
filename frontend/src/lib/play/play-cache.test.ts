@@ -41,6 +41,16 @@ describe('makeKey', () => {
 		expect(makeKey('show-1', 1, 'dub')).not.toBe(base);
 	});
 
+	it("keeps a session no card asked for from serving a card's play", () => {
+		// A card's play is answered for its line (`line_kept`): a session
+		// another caller fired never answered that.
+		const card = makeKey('show-1', 1, 'sub', undefined, undefined, undefined, 'hianime:x-1');
+		expect(makeKey('show-1', 1, 'sub')).not.toBe(card);
+		expect(makeKey('show-1', 1, 'sub', undefined, undefined, undefined, 'hianime:x-2')).not.toBe(
+			card
+		);
+	});
+
 	it('keeps a session warmed for one version from serving another', () => {
 		// A show the provider lists twice plays a different listing per
 		// version: a warm for the uncensored copy must never answer a

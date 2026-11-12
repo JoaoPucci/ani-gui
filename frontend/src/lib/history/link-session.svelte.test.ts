@@ -199,6 +199,24 @@ describe('LinkSession', () => {
 		expect(s.candidates?.map((c) => c.ref.id)).toEqual([RIGHT.id]);
 	});
 
+	it('says nothing and goes nowhere when a correction asked later saved first', async () => {
+		const f = fake({
+			link: async (_card, _rows, kitsuId) => ({ kitsu_id: kitsuId, linked: [], overtaken: true })
+		});
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start();
+		await s.search('gintama');
+		s.choose(s.candidates![0]);
+		expect(await s.confirm()).toBe(false);
+		expect(f.notices).toEqual([]);
+		expect(f.pages).toEqual([]);
+		expect(s.open).toBe(false);
+		expect(s.error).toBeNull();
+		// The page reads the line again, as the later answer left it.
+		expect(f.refreshed).toBe(1);
+	});
+
 	it('links to another show and goes there', async () => {
 		const f = fake();
 		const s = new LinkSession(f.deps);
