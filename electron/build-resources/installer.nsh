@@ -30,7 +30,8 @@
 ; `/S /KEEP_APP_DATA --updated` — include/installUtil.nsh lines 206 and
 ; 224; an installer launched with --delete-app-data passes that flag
 ; instead of --updated, lines 202-203, and the update then behaves as
-; an uninstall followed by a fresh install, ffmpeg download included),
+; an uninstall followed by a fresh install, ffmpeg download included:
+; step 1 below sets nothing aside then),
 ; and that uninstaller empties $INSTDIR (uninstaller.nsh line
 ; 169, `RMDir /r $INSTDIR`). `customInstall` only runs after the new
 ; files land (installSection.nsh line 82), by which time the copy is
@@ -47,7 +48,10 @@
 ;      after every page: $INSTDIR is final, and a user who cancels on a
 ;      page never reaches it. It copies ffmpeg.exe and its stamp into
 ;      FFMPEG_STAGING, beside $INSTDIR, which an uninstaller run by an
-;      update (--updated) leaves alone.
+;      update (--updated) leaves alone. Under --delete-app-data it sets
+;      nothing aside and removes any FFMPEG_STAGING it finds: an
+;      uninstaller from 0.17.0 or earlier would leave that folder, and
+;      step 2 would restore it into what should be a fresh install.
 ;
 ;      Why not `customInit` (.onInit, installer.nsi line 73): it runs
 ;      before the install-mode and directory pages, so $INSTDIR is not
@@ -164,10 +168,25 @@
                     ${EndIf}
                 !endif
             !endif
+            ; An installer run with --delete-app-data makes the update an
+            ; uninstall followed by a fresh install, ffmpeg download
+            ; included: nothing is set aside, and a staging folder an
+            ; interrupted install left is dropped rather than restored.
+            ; An uninstaller from 0.17.0 or earlier would not remove
+            ; that folder, so this cannot be left to the uninstaller.
+            ;
+            ; `isDeleteAppData` is electron-builder's own test of the flag
+            ; (its script generator defines it ahead of this file, from
+            ; StdUtils.TestParameter), the same one uninstallOldVersion
+            ; asks before passing --delete-app-data on, so the two cannot
+            ; disagree about how the flag was spelled.
             ${If} $ffmpegSetAsideHere == "0"
                 ; About to hand the install to an elevated instance,
                 ; which runs this section again.
                 DetailPrint "ffmpeg: the elevated installer sets it aside."
+            ${ElseIf} ${isDeleteAppData}
+                RMDir /r "${FFMPEG_STAGING}"
+                DetailPrint "ffmpeg: --delete-app-data; the installed copy is not kept, and ffmpeg is fetched as for a fresh install."
             ${ElseIf} ${FileExists} "${FFMPEG_EXE}"
                 DetailPrint "ffmpeg: setting the installed copy aside for the update..."
                 RMDir /r "${FFMPEG_STAGING}"
