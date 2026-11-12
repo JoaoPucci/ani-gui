@@ -56,12 +56,13 @@ pre-commit:
       root: "frontend/"
       run: pnpm run lint
 
-    # The backend's published files that frontend tests read: a commit
-    # that changes only the backend's side runs the tests that hold the
-    # renderer to it.
+    # Files outside frontend/ that frontend tests read (the backend's
+    # wire contract and error keys, the dependency fetchers the credits
+    # test reads): a commit that changes only one of them runs the
+    # tests that read it.
     frontend-contract:
-      glob: "backend/{wire-contract,error-keys}.json"
-      run: cd frontend && pnpm test src/lib/wire-contract.test.ts src/lib/play/describe-error.test.ts
+      glob: "{backend/wire-contract.json,backend/error-keys.json,electron/scripts/fetch-linux-deps.mjs,electron/scripts/fetch-windows-deps.mjs}"
+      run: cd frontend && pnpm test src/lib/wire-contract.test.ts src/lib/play/describe-error.test.ts src/lib/about/credits.test.ts
 
     rust-fmt:
       glob: "**/*.rs"
