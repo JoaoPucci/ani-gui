@@ -476,3 +476,49 @@ proptest::proptest! {
         }
     }
 }
+
+#[test]
+fn a_path_before_a_dropped_value_is_kept() {
+    let a = custom("--script /home/u/x.lua {title} {url}");
+    assert_eq!(
+        build_argv(&a),
+        vec![
+            "--script".to_string(),
+            "/home/u/x.lua".to_string(),
+            "https://example.com/v.m3u8".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn a_lone_dash_is_not_an_option_a_drop_takes() {
+    // `-` names standard input for many players, a value, not an option.
+    let a = custom("- {title} {url}");
+    assert_eq!(
+        build_argv(&a),
+        vec!["-".to_string(), "https://example.com/v.m3u8".to_string()]
+    );
+}
+
+proptest::proptest! {
+    #[test]
+    fn every_copy_of_a_literal_option_not_followed_by_a_value_is_kept(
+        referer in proptest::option::of("[a-z]{1,4}"),
+        template in proptest::collection::vec(
+            proptest::sample::select(vec!["--a", "--a", "--r={referer}", "{title}", "{url}"]),
+            0..8,
+        ),
+    ) {
+        let mut a = custom(&template.join(" "));
+        a.title = None;
+        a.referer = referer;
+        let argv = build_argv(&a);
+        let protected = template
+            .iter()
+            .enumerate()
+            .filter(|(i, t)| **t == "--a" && template.get(i + 1).is_none_or(|n| *n != "{title}"))
+            .count();
+        let kept = argv.iter().filter(|t| *t == "--a").count();
+        proptest::prop_assert!(kept >= protected, "{:?} from {:?}", argv, template);
+    }
+}

@@ -176,3 +176,10 @@ test("a secret= after a comma or a bar is redacted too", () => {
   assert.equal(redactSecrets(`a,secret=${SECRET}`), `a,secret=${REDACTED}`);
   assert.equal(redactSecrets(`a|secret=${SECRET}`), `a|secret=${REDACTED}`);
 });
+
+test("a secret= after a colon, a brace or a slash is redacted too", () => {
+  for (const sep of [":", "{", "/"]) {
+    assert.equal(redactSecrets(`a${sep}secret=${SECRET}`), `a${sep}secret=${REDACTED}`, sep);
+  }
+  assert.equal(redactSecrets("topsecret=1 secrets=2"), "topsecret=1 secrets=2");
+});
