@@ -1,0 +1,50 @@
+{
+ "data": [
+  {
+   "id": "41071",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mob Psycho 100 II",
+    "titles": {
+     "en": "Mob Psycho 100 II",
+     "en_jp": "Mob Psycho 100 II",
+     "ja_jp": "モブサイコ100 II"
+    },
+    "abbreviatedTitles": [
+     "Mob Psycho 100 2nd Season",
+     "Mob Psycho Hyaku",
+     "Mob Psycho One Hundred"
+    ],
+    "slug": "mob-psycho-100-ii",
+    "startDate": "2019-01-07",
+    "endDate": "2019-04-01",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45338",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mob Psycho 100 III",
+    "titles": {
+     "en": "Mob Psycho 100 III",
+     "en_jp": "Mob Psycho 100 III",
+     "ja_jp": "モブサイコ III"
+    },
+    "abbreviatedTitles": [
+     "Mob Psycho 100 Season 3",
+     "Mob Psycho 3rd Season",
+     "モブサイコ100 Ⅲ"
+    ],
+    "slug": "mob-psycho-100-iii",
+    "startDate": "2022-10-05",
+    "endDate": "2022-12-21",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

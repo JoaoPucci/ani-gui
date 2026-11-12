@@ -1,0 +1,49 @@
+{
+ "data": [
+  {
+   "id": "44081",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Yuukaku-hen",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba - Entertainment District Arc",
+     "en_jp": "Kimetsu no Yaiba: Yuukaku-hen",
+     "ja_jp": "鬼滅の刃 遊郭編"
+    },
+    "abbreviatedTitles": [
+     "Kimetsu no Yaiba 2",
+     "Demon Slayer: Kimetsu no Yaiba Season 2",
+     "Demon Slayer 2",
+     "Demon Slayer: Kimetsu no Yaiba - Yuukaku-hen"
+    ],
+    "slug": "kimetsu-no-yaiba-yuukaku-hen",
+    "startDate": "2021-12-05",
+    "endDate": "2022-02-13",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47122",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Jougen Shuuketsu, Soshite Katanakaji no Sato e",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba -To the Swordsmith Village-",
+     "en_jp": "Kimetsu no Yaiba: Jougen Shuuketsu, Soshite Katanakaji no Sato e",
+     "ja_jp": "「鬼滅の刃」上弦集結、そして刀鍛冶の里へ"
+    },
+    "abbreviatedTitles": [
+     "Kimetsu no Yaiba World Tour"
+    ],
+    "slug": "kimetsu-no-yaiba-jougen-shuuketsu-soshite-katanakaji-no-sato-e",
+    "startDate": "2023-02-03",
+    "endDate": "2023-02-03",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

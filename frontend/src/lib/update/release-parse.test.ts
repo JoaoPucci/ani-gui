@@ -1,7 +1,7 @@
 /**
  * Tests for `parseGitHubRelease`, the frontend's parser for a raw
  * GitHub release object. The update notifier does not call it: it
- * reads the backend's answer, built in `meta::github::normalise`,
+ * reads the backend's answer, built in `normalise` (`meta/github_choice.rs`),
  * where the rules the badge and the dialog rely on are enforced. These
  * cases hold the parser to the same rules.
  *

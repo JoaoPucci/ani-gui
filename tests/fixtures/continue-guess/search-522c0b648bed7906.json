@@ -1,0 +1,24 @@
+{
+ "data": [
+  {
+   "id": "46598",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Stone Ocean Part 3",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Stone Ocean Part 3",
+     "en_jp": "JoJo no Kimyou na Bouken: Stone Ocean Part 3",
+     "en_us": "JoJo's Bizarre Adventure STONE OCEAN Part 3",
+     "ja_jp": "ジョジョの奇妙な冒険 ストーンオーシャン 3クール"
+    },
+    "abbreviatedTitles": [],
+    "slug": "jojo-no-kimyou-na-bouken-part-6-stone-ocean-part-3",
+    "startDate": "2022-12-01",
+    "endDate": "2022-12-01",
+    "episodeCount": 14,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

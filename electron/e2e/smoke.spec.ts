@@ -1,9 +1,11 @@
 /**
  * Smoke test: launches the packaged Electron app from
  * `dist/linux-unpacked/ani-gui` (electron-builder's pre-AppImage
- * output), stubs the Rust backend's HTTP API so the renderer doesn't
- * depend on Kitsu being reachable, and asserts the home page reaches
- * a recognizable rendered state.
+ * output), stubs every request its pages make of the Rust backend's
+ * HTTP API, and asserts the home page reaches a recognizable rendered
+ * state. An API request no stub answers fails the test, and the launch
+ * helper keeps the backend itself off the network, so nothing here
+ * depends on Kitsu, AniList, GitHub or the provider being reachable.
  *
  * Targeting the packaged artifact rather than running unpacked
  * Electron directly tests the production code path: the `app://`
@@ -15,17 +17,27 @@
  * produced `dist/linux-unpacked/`.
  */
 import { expect, test, type ElectronApplication } from "@playwright/test";
-import { killTree, withColdLaunchRetry } from "../lib/cold-launch.cjs";
+import { withColdLaunchRetry } from "../lib/cold-launch.cjs";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { appInfo, emptyHistory, topRated, trending } from "./fixtures/kitsu";
+import {
+  appInfo,
+  defaultSettings,
+  emptyHistory,
+  topRated,
+  trending,
+} from "./fixtures/kitsu";
 import {
   appWindow,
   launchPackagedApp,
+  outboundAttempts,
   packagedBinary,
+  refuseUnstubbed,
+  remountFirstPage,
   routeContext,
   splashState,
+  stopDeadApp,
 } from "./launch";
 import { expectedPlatform } from "../lib/e2e-display.cjs";
 
@@ -38,14 +50,12 @@ test.beforeAll(() => {
 });
 
 /**
- * Wire all the API stubs the home page consumes onto a freshly-
- * launched Electron app, BEFORE its first window starts loading —
- * critical because the renderer fires its initial `fetch()` calls
- * (history, trending, top-rated) immediately on mount. Routes set
- * via `page.route()` after `appWindow()` resolves race those
- * requests and miss the first batch, leaving real-network responses
- * visible to the page. Setting them on `context.route()` (visible to
- * any page in the context) avoids the race.
+ * Launch the app with every API request its pages make here answered
+ * by a stub. Routes can only be set once the app is up, and by then
+ * its first page has already asked for history, trending and top
+ * rated; the launch helper keeps the backend off the network, so those
+ * first answers are errors. The page is mounted again once the stubs
+ * are in place, and everything the new mount asks goes through them.
  */
 async function launchAppWithStubsOnce(
   onLaunch: (app: ElectronApplication) => void,
@@ -74,44 +84,89 @@ async function launchAppWithStubsOnce(
     ANI_GUI_UNATTENDED: "1",
   };
 
-  const app = await launchPackagedApp(cleanEnv);
+  const app = await launchPackagedApp(cleanEnv, { profile: tmp });
   onLaunch(app);
 
   const context = app.context();
-  await routeContext(context, "**/api/app-info", (r) =>
-    r.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(appInfo),
-    }),
-  );
-  await routeContext(context, "**/api/history", (r) =>
-    r.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(emptyHistory),
-    }),
-  );
-  await routeContext(context, "**/api/kitsu/trending", (r) =>
-    r.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(trending),
-    }),
-  );
-  await routeContext(context, "**/api/kitsu/top-rated", (r) =>
-    r.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(topRated),
-    }),
+  // First, so it answers only what the stubs below leave: anything the
+  // pages here ask that no stub answers is refused and recorded, and
+  // every test ends by checking nothing was (afterEach below). What
+  // the first mount asked is forgotten at the remount (it may have
+  // asked before its stub was set); everything after it counts.
+  const unstubbed = await refuseUnstubbed(context);
+  lastUnstubbed = unstubbed;
+  let topRatedAsked: (() => void) | null = null;
+  const json = (body: unknown) => ({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+  const stub = (url: string, answer: Parameters<typeof routeContext>[2]) =>
+    routeContext(context, url, answer);
+  // Home.
+  await stub("**/api/app-info", (r) => r.fulfill(json(appInfo)));
+  await stub("**/api/history", (r) => r.fulfill(json(emptyHistory)));
+  await stub("**/api/kitsu/trending-anilist", (r) => r.fulfill(json(trending)));
+  await stub("**/api/kitsu/top-rated", (r) => {
+    topRatedAsked?.();
+    return r.fulfill(json(topRated));
+  });
+  // Every card known playable, so nothing is handed to the warm queue.
+  await stub("**/api/availability/batch", (r) => {
+    const { kitsu_ids } = r.request().postDataJSON() as { kitsu_ids: string[] };
+    return r.fulfill(
+      json({
+        cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
+        playable_episode_counts: {},
+      }),
+    );
+  });
+  await stub("**/api/availability/warm", (r) => r.fulfill({ status: 202 }));
+  await stub("**/api/watched-at", (r) => r.fulfill(json({})));
+  // No newer release: the backend's answer when there is none.
+  await stub("**/api/update-check*", (r) => r.fulfill({ status: 204 }));
+  await stub("**/api/settings", (r) =>
+    r.request().method() === "PUT"
+      ? r.fulfill({ status: 204 })
+      : r.fulfill(json(defaultSettings)),
   );
   // Block image fetches; the renderer's placeholder takes over.
-  await routeContext(context, "**/api/image*", (r) => r.fulfill({ status: 503 }));
+  await stub("**/api/image*", (r) => r.fulfill({ status: 503 }));
+  // A show's page, which a card click opens: the top-rated fixture's
+  // show, with no episodes, no history and no skip times.
+  await stub("**/api/kitsu/anime/*", (r) => r.fulfill(json(topRated[0])));
+  await stub("**/api/kitsu/episodes/*", (r) => r.fulfill(json([])));
+  await stub("**/api/kitsu/airing/*", (r) => r.fulfill(json(null)));
+  await stub("**/api/history/by-kitsu/*", (r) => r.fulfill(json(null)));
+  await stub("**/api/download/default-dir", (r) => r.fulfill(json(null)));
+  await stub("**/api/availability", (r) =>
+    r.fulfill(json({ available: true, episode_count: 12, extra_episodes: [] })),
+  );
+  // The page looks the show up by title and starts resolving its first
+  // episode ahead of a click; neither is what the click test checks.
+  await stub("**/api/kitsu/search", (r) => r.fulfill(json([])));
+  await stub("**/api/play/stream*", (r) => r.fulfill({ status: 503 }));
 
   const page = await appWindow(app);
-  return { app, page, context };
+  // The first mount asked before the stubs were in place, and the
+  // backend, kept off the network, could not answer it: mount it
+  // again, and go on once the new mount has asked a stub.
+  await remountFirstPage(
+    page,
+    () => new Promise<void>((resolve) => (topRatedAsked = resolve)),
+    { forget: unstubbed },
+  );
+  return { app, page, context, profile: tmp };
 }
+
+/** What the last launch's pages asked that no stub answered. */
+let lastUnstubbed: string[] = [];
+
+test.afterEach(() => {
+  const asked = lastUnstubbed;
+  lastUnstubbed = [];
+  expect(asked, "requests no stub answered").toEqual([]);
+});
 
 async function launchAppWithStubs() {
   // A cold launch can lose its first window before any assertion
@@ -131,11 +186,10 @@ async function launchAppWithStubs() {
       cleanup: async () => {
         const dead = pending;
         pending = null;
-        // A dead app's close() hangs while its backend lives; kill
-        // the whole tree first (lib/cold-launch.cjs).
+        // Stop what is left of the dead app: its own process group,
+        // nothing else (lib/own-group.cjs).
         if (dead) {
-          killTree(dead.process().pid);
-          await dead.close();
+          await stopDeadApp(dead);
         }
       },
     },
@@ -153,13 +207,10 @@ test("app launches, hero renders, no unexpected console errors", async () => {
     });
     page.on("pageerror", (err) => errors.push(String(err)));
 
-    // "Trending now" eyebrow is the first DOM signal the stubs
-    // were consumed and the page is past the loading state.
-    // "Top rated" eyebrow is the load signal we use across e2e —
-    // it renders for every trending-result count, including 1 (a
-    // single-entry fixture leaves "Trending now" without a Strip
-    // because that single entry becomes the hero, which uses a
-    // different eyebrow).
+    // The "Top rated" eyebrow is the load signal used across e2e: Home
+    // shows it while the row loads and once it has, whatever trending
+    // returns (a single entry becomes the hero and leaves no "Trending
+    // now" row), so it marks Home as mounted, not its data as landed.
     await expect(page.getByText(/top rated/i).first()).toBeVisible({
       timeout: 15_000,
     });
@@ -221,6 +272,42 @@ test("a test launch takes its flags from the test, not from GitHub", async () =>
   }
 });
 
+test("a test launch's backend reaches nothing beyond this machine", async () => {
+  // A spec's stubs answer what the renderer asks after they are set,
+  // but the first page asks before then, and anything a spec leaves
+  // unstubbed reaches the real backend. The launch helper gives the
+  // backend a proxy that refuses every connection and records it, so
+  // what the backend tries never reaches Kitsu, AniList, GitHub or the
+  // provider. Asked here, from outside the renderer's stubs, for the
+  // newest release, the backend tries GitHub, and the attempt lands
+  // at the helper's proxy instead.
+  const { app, page } = await launchAppWithStubs();
+  try {
+    const apiBase = await page.evaluate(() => window.aniGui?.apiBase);
+    expect(apiBase).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    const res = await fetch(`${apiBase}/api/update-check`);
+    // The backend answers a check that could not reach GitHub with no
+    // release, as it does offline.
+    expect(res.status).toBe(204);
+    expect(outboundAttempts(app)).toContain("CONNECT api.github.com:443");
+  } finally {
+    await app.close();
+  }
+});
+
+test("a test launch's scratch profile is gone once the app has quit", async () => {
+  // Each launch gets a profile of its own under the system's temporary
+  // directory. The launch helper removes it, and only it, once the app
+  // has exited, so test runs leave nothing behind there.
+  const { app, profile } = await launchAppWithStubs();
+  try {
+    expect(existsSync(profile)).toBe(true);
+  } finally {
+    await app.close();
+  }
+  await expect.poll(() => existsSync(profile), { timeout: 5_000 }).toBe(false);
+});
+
 test("the splash shows while the app starts, and is gone once the app's window has shown", async () => {
   const { app, page } = await launchAppWithStubs();
   try {
@@ -244,6 +331,10 @@ test("the splash shows while the app starts, and is gone once the app's window h
       // of the rail for each.
       steps: 3,
       railLit: 3,
+      // Its page rendered well inside the stuck threshold, so it never
+      // offered Restart or Quit (splash-stuck.spec.ts).
+      stuck: false,
+      choice: null,
     });
   } finally {
     await app.close();
@@ -414,13 +505,16 @@ test("the app's window paints the app's dark background and is revealed once its
         return main.require("./lib/app-window.cjs").lastAppReady();
       });
     // Wait out the reveal: the splash gone, and the wait for the
-    // renderer settled either way.
-    await expect.poll(() => app.windows().length, { timeout: 5_000 }).toBe(1);
+    // renderer settled. While the splash stands in that wait has no
+    // bound (a page that never says it rendered leaves the splash
+    // stuck, splash-stuck.spec.ts), so a renderer that never says it
+    // rendered fails the poll below.
+    await expect.poll(() => app.windows().length, { timeout: 20_000 }).toBe(1);
     await expect
       .poll(async () => {
         const r = await readyRecord();
         return r.rendered || r.gaveUp;
-      }, { timeout: 5_000 })
+      }, { timeout: 20_000 })
       .toBe(true);
     const backgrounds = await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
@@ -513,14 +607,8 @@ test("a test launch lands on the display the run is meant for", async () => {
 test("clicking a poster card navigates to a detail route", async () => {
   const { app, page } = await launchAppWithStubs();
   try {
-    // The first window starts loading before `context.route()`
-    // can fully register, so the trending/top-rated stubs may
-    // race the renderer's initial fetches. We stub them anyway
-    // (in case the timing wins on faster machines), but the
-    // assertion only checks that *some* /anime/<id> URL lands —
-    // not the specific id from our fixture. The point of this
-    // test is to exercise the route+navigation path, not the
-    // network stubbing.
+    // The remounted Home runs on the stubs, so the first card of the
+    // Top rated row is the top-rated fixture's first show.
     await expect(page.getByText(/top rated/i).first()).toBeVisible({
       timeout: 15_000,
     });
@@ -534,7 +622,7 @@ test("clicking a poster card navigates to a detail route", async () => {
     // becomes `app://localhost/anime/<id>`.
     await expect
       .poll(() => page.url(), { timeout: 10_000 })
-      .toMatch(/\/anime\/\w+/);
+      .toMatch(new RegExp(`/anime/${topRated[0].id}(\\?|$)`));
   } finally {
     await app.close();
   }
@@ -589,16 +677,13 @@ test("settings locale picker is wired to a reloading change handler", async () =
 test("home page hides the Continue Watching strip when history is empty", async () => {
   const { app, page } = await launchAppWithStubs();
   try {
-    // With XDG_STATE_HOME pinned to a fresh tmp dir (see
-    // `launchAppWithStubs`), the backend's history file doesn't
-    // exist, the renderer gets an empty list, and the Continue
-    // Watching strip's `{#if history && history.length > 0}`
+    // History is stubbed empty (see `launchAppWithStubs`), and the
+    // Continue Watching strip's `{#if history && history.length > 0}`
     // guard keeps the heading out of the DOM.
-    // "Top rated" eyebrow is the load signal we use across e2e —
-    // it renders for every trending-result count, including 1 (a
-    // single-entry fixture leaves "Trending now" without a Strip
-    // because that single entry becomes the hero, which uses a
-    // different eyebrow).
+    // The "Top rated" eyebrow is the load signal used across e2e: Home
+    // shows it while the row loads and once it has, whatever trending
+    // returns (a single entry becomes the hero and leaves no "Trending
+    // now" row), so it marks Home as mounted, not its data as landed.
     await expect(page.getByText(/top rated/i).first()).toBeVisible({
       timeout: 15_000,
     });

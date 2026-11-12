@@ -24,12 +24,23 @@ pull request, and it is the one an agent never takes alone: an entry
 is added, or widened to defer more, only when the maintainer has
 chosen to defer. Correcting an entry so it stays true, or removing it
 when the work lands, needs no such choice — the pull request that does
-it must say so.
+it must say so. An entry is false only when something it states no
+longer holds, or never did; a view that the work is not worth doing
+never makes it false. An entry that is wholly false is removed as its
+correction. Removing an entry, or part of one, for any other reason,
+such as work that still holds but seems not worth doing, is the
+maintainer's choice too, however it was reached. Where only part of an
+entry is false, the change corrects that part, and the rest stays
+unless the maintainer chooses to drop it.
 
-An entry is a reminder, not a constraint. A change that builds in an
-area reads the entries that concern it and prefers tackling one over
-building around it; one too large or risky to take on goes to the
-maintainer as a choice, as `AGENTS.md` §14 describes.
+An entry is a reminder, not a constraint. A change considers an entry
+only when tackling it would unblock the change, or when the change
+would otherwise have to be built differently or around it. Then, if
+the entry is still true and worth doing, the change prefers tackling
+it; one too large or risky to take on goes to the maintainer as a
+choice, as `AGENTS.md` §14 describes, and so does one that seems not
+worth doing, as above. An entry that only shares the change's area is
+not raised, and the log is not scanned by area or keyword.
 
 Write an entry about the code, not about the work in flight. An entry
 stands on its own: what is wrong, where it lives, and what should
@@ -278,23 +289,6 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app (continued)
 
-- **A connect or disconnect whose bridge call rejects leaves the
-  provider changing for good.** The account page's `connect()` and
-  `disconnect()` and the chip's disconnect
-  (`frontend/src/lib/account/chip-disconnect.ts`) await
-  `connectAccount` / `disconnectAccount` with no catch, and those let a
-  rejected preload call (`openOAuth`, `persistAccount`,
-  `clearPersistedAccount`) through. The main-process handlers catch
-  their own failures, so it takes an IPC failure in the renderer; then
-  the provider stays `connecting` (its card stuck on "Signing in…") or
-  in an account change until a reload. Since the keyring reads wait
-  for a change under way to land (`$lib/account/hydrate-flow`), a
-  provider stuck that way also keeps one waiting read per hydrate
-  alive; the hydrate itself and the other providers are not held.
-  The fix is a catch that restores the pre-click state, as a failed
-  connect already does, or sets the error state, as a failed clear
-  does.
-
 - **A stamp repair can land inside an older instance's play.** The
   repair that puts a legacy history row's display stamp back on its
   slot (the rule in `numbering_offset_drift.rs`, the repair in
@@ -356,10 +350,11 @@ starting it, and delete it when you find it done.
   did — and the routing changes how a working handoff behaves.
 
 - **The resolver's requests to a CDN pass the host's budget.** A
-  fresh resolve fetches the master playlist — and the variant, for a
-  quality other than best — through the impersonating transport, ahead
-  of the player's own fetches of the same host, and the budget does not
-  count them. Downloads running past the budget are held to what their
+  fresh resolve fetches the master playlist through the impersonating
+  transport — and the variant too, for a download whose download
+  quality is not Best; a play or hand-off fetches the master alone —
+  ahead of the player's own fetches of the same host, and the budget
+  does not count them. Downloads running past the budget are held to what their
   requests in flight leave and a cached row's liveness check waits
   for its tokens; the resolver is not counted, because it runs in
   the providers, which hold no budget, and its other requests go to the
@@ -411,37 +406,43 @@ starting it, and delete it when you find it done.
 - **Some guessed Continue cards still open the wrong show.** A
   Continue row that recorded no show is matched by a Kitsu search for
   its title (`pickKitsuMatch` in `frontend/src/lib/history/resolve.ts`,
-  narrowed first by `frontend/src/lib/history/pick-rank.ts`). Over the
-  season picker's recorded cases these still pick another entry, and a
-  click on the card opens that one, playing whatever the provider lists
-  for it, if anything:
+  narrowed first by `frontend/src/lib/history/pick-rank.ts`, after the
+  hits the row itself rules out are withheld,
+  `backend/src/commands/continue_guess.rs`). Of the hianime listings the
+  season picker's audit paired with their Kitsu entries, these still
+  pick another entry, and a click on the card opens that one, playing
+  whatever the provider lists for it, if anything:
 
-  - [Oshi no Ko], which hianime titles "My Star": "My Star" takes Fuyu
-    no Suta-furu-tsu, and "My Star: Season 2" and "My Star Season 3"
-    take My Hero Academia 7.
-  - "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2" takes Part 1,
-    the only hit Kitsu's search returns for it.
-  - "Jujutsu Kaisen (TV)" takes the New Year's Special, and "Jujutsu
-    Kaisen 2nd Season" its recap.
-  - "Haikyuu!!: To the Top (Part 1+2)" takes To the Top 2, and
-    "Haikyuu!!: To the Top 2nd Season" takes To the Top.
-  - "That Time I Got Reincarnated as a Slime Season 2" takes the 2nd
-    Season's Part 2.
+  - "Haikyuu!!: To the Top (Part 1+2)" takes To the Top 2.
   - "Attack on Titan: Final Season, Part 1" takes the Final Chapters'
-    Part 1.
-  - "Bakemonogatari (The Monogatari Series)" takes Off & Monster
-    Season.
+    Part 1: at the row's first episode nothing rules that one-episode
+    special out, and past it the resolve from the show key's words
+    answers the same entry.
   - "JoJo's Bizarre Adventure Part 2: Stardust Crusaders (Uncensored)"
-    takes Stone Ocean Part 2.
+    takes Stone Ocean Part 2, the only hit Kitsu's search returns for
+    it, which carries the title's first word and no season.
 
-  It waited because no rule tried fixed these without breaking picks
-  that are right. Refusing a season row any hit that does not carry
-  its season, rather than falling back to Kitsu's first hit, emptied
-  the pick for Gintama Season 2, 4 and 5 and for Kaguya-sama's second
-  season, whose Kitsu slugs do not spell the season the way that rule
-  reads one (Gintama' is `gintama-2`). Preferring a
-  season hit with no extra Part number sent Attack on Titan Season 3 to
-  its specials and the Slime season to a recap. Stripping "(TV)",
+  Two of the corpus's other cards pick another entry too, and nothing
+  the row carries can settle them:
+
+  - The 1993 "JoJo's Bizarre Adventure" OVA takes the 2012 series: the
+    provider lists the OVA under the bare title, as it does the 2000
+    OVA, and the OVA's show key (`jojos-bizarre-adventure-706`) names
+    no year.
+  - "My Star: Specials" takes [Oshi no Ko]: neither Kitsu's answer for
+    its title nor the one for its show key's words holds the specials.
+
+  What corrects these two is the user rather than a rule, where Kitsu
+  holds the entry at all: the player's "Is this the show you meant?"
+  on a guessed play, once it ships, or a play of the show from its own
+  page, below.
+
+  The first three waited because no rule tried fixed them without
+  breaking picks that are right. Ruling out a hit whose titles and the
+  row's each carry a word the other lacks would refuse Stone Ocean Part
+  2 here, but it also refused the right entry for "86 EIGHTY-SIX Season
+  2 Recap", which Kitsu titles "86 Part 2 Recaps", and it would refuse
+  any entry Kitsu titles only in romanized Japanese. Stripping "(TV)",
   "(Uncensored)" and "(Part 1+2)" before comparing titles changed no
   pick.
 
@@ -451,9 +452,10 @@ starting it, and delete it when you find it done.
   from then on — unless the cross-cour guard refuses the record, as it
   does for the Slime season (the entry on a later season Kitsu titles
   only with a bare number). Worth revisiting when the guess can read
-  more of the provider's listing than its title and the year its key
-  names — the year it aired, or its episode count — or when another
-  wrong pick on a user's card is reported.
+  more of the provider's listing than its title, the year and words its
+  key names and the episode it reached — the year it aired, its
+  format, or its episode count — or when another wrong pick on a
+  user's card is reported.
 
 ## Interface
 
@@ -542,15 +544,20 @@ starting it, and delete it when you find it done.
   are written into `electron/oauth-server.js`; the main process has a
   message table in every shipped locale for its dialogs
   (`electron/lib/main-messages.cjs`), and they belong in it.
-- **Adopt the `documentPictureInPicture` browser API** for the player's
-  pop-out window. Not a request to write documentation — "Document
-  Picture-in-Picture" is the W3C API's name.
+- **Picture-in-picture shows no subtitles; a mini-player window is to
+  replace it.** Chromium's picture-in-picture window draws the video's
+  picture and not its text tracks, so the subtitles stay behind in the
+  main window. The pop-out the player needs is an app-owned window
+  carrying the player itself, studied in
+  [`proposals/mini-player.md`](./proposals/mini-player.md).
 
-  Electron exposes the API but omits the window-creation glue, so it
-  cannot work today: electron/electron#39633, open since 2023. Do not
-  re-attempt until that lands. PiP as it exists now — the player's
-  video, while the player is open — ships and is described in
-  `README.md` and `docs/architecture.md`.
+  The `documentPictureInPicture` browser API ("Document
+  Picture-in-Picture" is the W3C API's name) would have been the other
+  way, but Electron exposes it without the window-creation glue, so it
+  cannot work: electron/electron#39633, open since 2023. The maintainer
+  chose not to wait for it. PiP as it exists now — the player's video,
+  while the player is open — ships and is described in `README.md` and
+  `docs/architecture.md`.
 - **An mp4 stream resumed at a point can still show its first frame
   in picture-in-picture.** The resume hold (`$lib/play/resume-hold`)
   hides the picture with the page's CSS until the resume seek lands,
@@ -600,10 +607,12 @@ starting it, and delete it when you find it done.
   and Chromium's native ones, which Settings swaps in when "Custom
   player controls" (`use_custom_player_controls`, on by default) is
   turned off. Every player feature has to work through
-  both, so it is built twice. The per-show subtitle memory is the
-  latest case: a pick in the app's captions menu is recorded as it
+  both, so it is built twice. The per-show subtitle memory is one
+  case: a pick in the app's captions menu is recorded as it
   is made, while a pick in the browser's menu has to be inferred from
-  the video's text-track changes.
+  the video's text-track changes. The quality picker is another: the
+  native bar has none, so with it the picker is in the page's ⋯ menu,
+  as Watch together is.
 
   Investigate choosing one. Before deciding, measure what the native
   path still offers that the custom one does not — the setting's own
@@ -697,7 +706,8 @@ starting it, and delete it when you find it done.
   the number the card shows beforehand, where it shows one, is not
   always the episode played. Nothing else on the card or the row
   leads to the show either: the chip on a card removes it, the
-  row's menu clears the row whole, the strip's arrows scroll it.
+  row's Clear history action clears it whole, the strip's arrows
+  scroll it.
   (An entry the matcher could not place renders as a link to search
   instead, and has no show to route to; one whose match came back
   without a title renders as a card whose click does nothing. This
@@ -805,6 +815,22 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
+- **The Home banner's message states have no artwork.** When there is
+  no show to feature (the trending list came back empty, every show in
+  it was filtered out as unavailable, or the fetch failed), the banner
+  shows a short message and an Open Search button as plain text on a
+  dark band, at the banner's full height. It works, but it looks
+  unfinished next to a banner with art. A placeholder image or
+  illustration for those states would let them look finished. It
+  waits on a design study, held to the guard rails in `AGENTS.md` §7.
+  [`proposals/luma-custom-assets.md`](proposals/luma-custom-assets.md)
+  plans original illustrations for empty, loading and error states
+  elsewhere in the app (the "Illustrated brand assets" entry above is
+  that same work); the banner would be one more surface for it,
+  though the proposal does not list it. The proposal also rules out
+  generated art standing in for a licensed show's banner, so the
+  artwork here would be the app's own, not a substitute for a show.
+
 ## A second provider, and what it would allow
 
 - **Add a second provider when one is worth having.** One provider
@@ -813,7 +839,7 @@ starting it, and delete it when you find it done.
   label are all written for several, so a second is mostly a client
   behind the `Provider` trait; the recipe in
   `backend/src/provider_set.rs` lists every place it has to be named.
-  The survey in [`proposals/additional-providers.md`](./proposals/additional-providers.md)
+  The survey in [`architecture.md`](./architecture.md#adding-a-provider)
   is the starting list; it rots quickly, so re-verify every row.
 
   anidb.app, which shipped first, left in October 2026 after its
@@ -1002,6 +1028,75 @@ starting it, and delete it when you find it done.
   older can share a profile with this one. When that cost is
   acceptable is the decision, which is why it is a version call and
   not a cleanup.
+
+## Retiring the Continue-card title guess — the v1.0 marker
+
+- **Remove everything that exists only for history rows that record
+  no Kitsu id.** That is the title guess — the rules that rule hits
+  out (`backend/src/commands/continue_guess*.rs`) and the route the
+  renderer asks them through, `/api/history/guess/ruled-out`; the
+  regression corpus under `tests/fixtures/continue-guess/`; the stored
+  title matches and their version; and `/api/kitsu/resolve-allmanga/`,
+  whose one caller is the guess and whose mappings, stored without a
+  play, come back as the guess's first answer — and, once the
+  guessed-card linking work lands, the player's "Is this the show you
+  meant?" and its slip, the rows' `guessed_from` notes, the failure
+  overlay's "Pick the right show", and the "Which show is it?" picker
+  with "Not this show?" and the marks on rows named through it. A row
+  a normal play wrote records the show it was played from, so the
+  card cannot name the wrong show and needs no correcting. The entry
+  "Some guessed Continue cards still open the wrong show" goes with
+  it. The maintainer has tied this removal to v1.0, with the two
+  above.
+
+  What stays: the rematch of a row whose recorded Kitsu entry Kitsu
+  has since deleted, still needed because Kitsu deletes and merges
+  entries. It is not separate code today. Home matches such a row
+  exactly as a row with no id (`resolveKitsuMatchWithTrust` in
+  `frontend/src/lib/history/match.ts`), and the detail page's resume
+  lookup finds it by the title match Home stored
+  (`backend/src/commands/history_claim.rs`). So the title matches,
+  and the mappings `/api/kitsu/resolve-allmanga/` stores, serve this
+  rematch as well, and it needs a route of its own before they go. The launch sweep of a retired
+  source's rows also reads a row's title matches to judge which show
+  it stands for.
+
+  Decided for v1.0: a row with no id still present stays on Continue
+  Watching with its title, the one the streaming site listed it
+  under, and its episode. A click on it opens the search page with
+  that title filled in; the site's title can differ from the
+  catalogue's ("My Star" for [Oshi no Ko]), so the viewer may have to
+  edit it. Nothing is deleted on the viewer's behalf. Rows are keyed
+  by the listing, so a play of the same listing writes the Kitsu id
+  onto the old row, while a play that lands on another listing (the
+  show now listed elsewhere, or a retired source's row) writes a new
+  row and leaves the old one; only a retired source's row can go on
+  its own, through the launch sweep, once the new row resumes over
+  it. So a small bridge goes with it: the search opened from such a
+  card remembers the row it came from, and the first play started
+  from that search replaces that row, leaving one line, on the right
+  show. What the app tracks today is the page behind a page, not the
+  row a search came from, so that part is new.
+
+  Decided for v2.0: the bridge goes too. A row with no id still
+  present then only opens the search with its title, and if the play
+  lands on another listing the viewer removes the old card by hand.
+
+  Why it waits: the guess is how such rows are shown today, and the
+  removal is a version call. The guess's own writer of rows with no
+  id — a guessed card's play that lands on a listing other than the
+  card's — goes with it. A play from a show's page records the show's
+  Kitsu id, except when the cour check refuses the pairing, or when
+  the id waits for the watch and the window closes first; both write
+  a row without one and go on doing so after v1.0, and such a row is
+  answered by the same search. The marks on named rows are what keep
+  a refused watch from clearing an id the viewer chose, so once they
+  go, a refused watch of such a show joins those rows too. A change of
+  streaming source creates no such rows of itself, since the id names
+  the show, not the listing, though a source that names its seasons
+  its own way can add cour refusals. Moving off Kitsu as the catalogue
+  would be its own migration, through the cross-catalogue id mappings
+  first, and is no reason to keep the guess.
 
 ## Recovering a download's abandoned claim automatically
 
@@ -1313,6 +1408,12 @@ is a convenience on top of that. The notifier covers installs that keep
 notifier asks only for full releases, and since every release so far is
 a pre-release, it announces none.
 
+Updating from inside the app is studied in
+[`proposals/in-app-updater.md`](proposals/in-app-updater.md), which
+recommends the app replace its own AppImage without this mechanism;
+what this entry covers is for AppImageUpdate and other third-party
+tools.
+
 Three things are worth knowing before starting:
 
 - `electron/scripts/repack-appimage.mjs` builds the final AppImage
@@ -1323,13 +1424,40 @@ Three things are worth knowing before starting:
 - Every release is published as a pre-release, and the `latest` tag of
   the usual `gh-releases-zsync|JoaoPucci|ani-gui|latest|…` string goes
   through GitHub's latest-release lookup, which skips pre-releases.
-  Whatever string is embedded has to be confirmed to find a
-  pre-release.
+  The format also defines `latest-pre` and `latest-all`, and upstream
+  AppImageUpdate reads them from the releases list, but it takes the
+  newest release and fails when that one has no matching AppImage, so
+  a release without an AppImage would stall updates until the next
+  one that has one.
 - The `.zsync` file comes from `zsyncmake`, which the release build
   does not provision: nothing in the packaging scripts fetches it, the
   way the repack fetches the runtime. Requiring it to be installed on
   the machine that builds is a system change (`AGENTS.md` §11), so the
   alternative is for the build to fetch a copy into the repository too.
+
+## What the in-app updater leaves out
+
+[`proposals/in-app-updater.md`](proposals/in-app-updater.md) plans a
+first version that downloads updates in the app and installs them for
+the AppImage and the Windows installer. It leaves out, on purpose:
+
+- **A silent Windows install.** The first version starts the
+  installer with its own window, which explains itself, asks for UAC
+  when the install is per-machine, and reports its own failures. A
+  silent install trades all three away, so it waits until the window
+  has been used across a few releases.
+- **An apt repository for the `.deb`.** The way `.deb` users expect
+  updates, but a project of its own: a signing key, hosting that can
+  serve packages over 100 MiB (GitHub Pages cannot), and a one-time
+  root setup on the user's side. The app only offers to download the
+  `.deb` meanwhile.
+- **Authenticode signing of the Windows installer.** The updater's own
+  signature check does not need it; browser downloads would benefit.
+  The cheap services want either an individual developer in the
+  United States or Canada (Azure Artifact Signing) or binaries built
+  "from source code in a verifiable way" (SignPath Foundation), which
+  in practice means CI, so it waits for release CI or a change in
+  those terms.
 
 ## Housekeeping
 

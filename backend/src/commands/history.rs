@@ -27,9 +27,10 @@ pub use super::history_remove::{history_clear, history_delete};
 /// reading the evidence proved for the row's Kitsu entry
 /// ([`super::play_native_appended::extra_for_slot`]).
 ///
-/// The row's Kitsu entry is the one it records, else `claimed_for` —
-/// the entry a lookup claimed the row for — else the one its show id
-/// maps to.
+/// The row's Kitsu entry is `claimed_for` — the entry a lookup claimed
+/// the row for, which for a row whose recorded entry Kitsu deleted is
+/// another — else the one it records, else the one its show id maps
+/// to.
 fn to_kitsu_numbering(
     state: &crate::app::AppState,
     numbering: &Numbering,

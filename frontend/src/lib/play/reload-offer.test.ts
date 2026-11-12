@@ -71,7 +71,7 @@ describe('watchDeadEndOtherAudio — what the cache says, asked only where it ma
 		const onAnswer = vi.fn();
 		watchDeadEndOtherAudio('delisted', Q, onAnswer, batch);
 		await flush();
-		expect(batch).toHaveBeenCalledWith(['42'], 'dub');
+		expect(batch).toHaveBeenCalledWith(['42'], 'dub', { signal: expect.any(AbortSignal) });
 		expect(onAnswer).toHaveBeenCalledWith(true);
 	});
 
@@ -80,7 +80,7 @@ describe('watchDeadEndOtherAudio — what the cache says, asked only where it ma
 		const onAnswer = vi.fn();
 		watchDeadEndOtherAudio('beyond-playable', Q, onAnswer, short);
 		await flush();
-		expect(short).toHaveBeenCalledWith(['42'], 'dub');
+		expect(short).toHaveBeenCalledWith(['42'], 'dub', { signal: expect.any(AbortSignal) });
 		// The other audio's count stops short of episode 10.
 		expect(onAnswer).toHaveBeenCalledWith(false);
 	});
@@ -101,6 +101,26 @@ describe('watchDeadEndOtherAudio — what the cache says, asked only where it ma
 		const onAnswer = vi.fn();
 		const cancel = watchDeadEndOtherAudio('delisted', Q, onAnswer, batch);
 		cancel();
+		await flush();
+		expect(onAnswer).not.toHaveBeenCalled();
+	});
+
+	it('cancels the lookup still out when it is cancelled, and says nothing about it', async () => {
+		const asked: AbortSignal[] = [];
+		const batch: Parameters<typeof watchDeadEndOtherAudio>[3] = (_ids, _mode, opts) =>
+			new Promise((_, reject) => {
+				const signal = opts?.signal;
+				if (signal) asked.push(signal);
+				signal?.addEventListener('abort', () =>
+					reject(new DOMException('The operation was aborted.', 'AbortError'))
+				);
+			});
+		const onAnswer = vi.fn();
+		const cancel = watchDeadEndOtherAudio('beyond-playable', Q, onAnswer, batch);
+		await flush();
+		expect(asked).toHaveLength(1);
+		cancel();
+		expect(asked[0].aborted).toBe(true);
 		await flush();
 		expect(onAnswer).not.toHaveBeenCalled();
 	});

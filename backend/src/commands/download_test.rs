@@ -274,7 +274,7 @@ fn native_test_state(
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
         config_path: td.path().join("config.toml"),
-        state_dir: std::path::PathBuf::from("/tmp/ani-gui-state"),
+        state_dir: td.path().join("state"),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),

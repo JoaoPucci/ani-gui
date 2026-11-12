@@ -9,7 +9,8 @@
  * missing or not an https page, and passing pre-releases through.
  * The notifier does not call it; only the type is imported from
  * here. The https rule the update dialog relies on is enforced where
- * the answer is built, in the backend's `meta::github::normalise`.
+ * the answer is built, in the backend's `normalise`
+ * (`meta/github_choice.rs`).
  */
 
 export interface ReleaseInfo {

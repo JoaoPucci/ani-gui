@@ -1,8 +1,8 @@
 /**
- * Pure helpers for the layout topbar's live-results dropdown +
- * recent-searches list. Extracted from `+layout.svelte` so the rules
- * are testable without mounting a Svelte component against
- * SvelteKit's runtime.
+ * Pure helpers for the layout topbar's live-results dropdown (the
+ * recent-searches list is `./recent-searches`). Extracted from
+ * `+layout.svelte` so the rules are testable without mounting a
+ * Svelte component against SvelteKit's runtime.
  *
  * What stays in the component: the reactive state ($state vars), the
  * setTimeout-based debounce + blur-dismiss timers, and the keyboard
@@ -11,13 +11,6 @@
  */
 
 import { settingsGet, type Config } from '$lib/api';
-
-/** localStorage key for the last-N user submissions. Public so the
- *  component imports it instead of redeclaring the literal. */
-export const RECENT_STORAGE_KEY = 'ani-gui:recent-searches';
-
-/** Default cap for how many recent submissions we surface. */
-export const RECENT_LIMIT = 5;
 
 /** Wrap-around index cycling for ↑/↓ navigation through a result
  *  list. Zero-length lists return `-1` (no selection).
@@ -40,44 +33,6 @@ export function cycleSelectedIdx(current: number, direction: 1 | -1, total: numb
 	// so the modulo lands there.
 	const start = current < 0 ? (direction === 1 ? -1 : total) : current;
 	return (start + direction + total) % total;
-}
-
-/** Prepend `query` to `existing`, deduplicate (keeping the freshest
- *  occurrence first), cap at `max`. Pure — caller is responsible for
- *  persisting the result.
- *
- *  Deduplication uses a Set rather than a single `!==` filter against
- *  `query`, so duplicates already present in `existing` (a corrupted
- *  localStorage blob, or a freshly-written list that hadn't been
- *  cleaned) are also collapsed. The earliest occurrence wins. */
-export function mergeRecents(
-	existing: readonly string[],
-	query: string,
-	max: number = RECENT_LIMIT
-): string[] {
-	const seen = new Set<string>([query]);
-	const out: string[] = [query];
-	for (const x of existing) {
-		if (seen.has(x)) continue;
-		seen.add(x);
-		out.push(x);
-	}
-	return out.slice(0, max);
-}
-
-/** Defensive parse of a localStorage payload that should be a JSON
- *  array of strings. Anything else (null, throwing JSON, wrong
- *  shape, mixed types) collapses to `[]`. */
-export function parseStoredRecents(raw: string | null, max: number = RECENT_LIMIT): string[] {
-	if (raw === null) return [];
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		return [];
-	}
-	if (!Array.isArray(parsed)) return [];
-	return parsed.filter((x): x is string => typeof x === 'string').slice(0, max);
 }
 
 /** Outcome the component's submit handler should run. Mapped 1:1 to
@@ -120,10 +75,10 @@ export interface DropdownVisibilityState {
 }
 
 /** Re-pull settings before the dropdown's next cache filter pass so
- *  it sees the user's current Sub/Dub pick. Settings + the detail
- *  page mutate their page-local config and call settingsPut, but the
- *  layout's copy never refreshes — without this, the topbar keeps
- *  filtering with the older mode until a reload. Falls back to the
+ *  it sees the current default Sub/Dub. The Settings page mutates its
+ *  page-local config and calls settingsPut, but the layout's copy
+ *  never refreshes — without this, the topbar keeps filtering with the
+ *  older default until a reload. Falls back to the
  *  last-known config on IPC failure so the dropdown stays usable. */
 export async function freshConfigOrLast(last: Config | null): Promise<Config | null> {
 	try {

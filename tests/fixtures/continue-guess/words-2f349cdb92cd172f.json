@@ -1,0 +1,42 @@
+{
+ "data": [
+  {
+   "id": "47659",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "[Oshi no Ko] Season 2",
+    "titles": {
+     "en": "Oshi no Ko Season 2",
+     "en_jp": "[Oshi no Ko] Season 2",
+     "ja_jp": "【推しの子】第2期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "oshi-no-ko-season-2",
+    "startDate": "2024-07-03",
+    "endDate": "2024-10-06",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49264",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "[Oshi no Ko] 3rd Season",
+    "titles": {
+     "en": "Oshi no Ko Season 3",
+     "en_jp": "[Oshi no Ko] 3rd Season",
+     "ja_jp": "【推しの子】第3期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "oshi-no-ko-season-3",
+    "startDate": "2026-01-14",
+    "endDate": "2026-03-25",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

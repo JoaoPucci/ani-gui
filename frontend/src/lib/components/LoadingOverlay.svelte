@@ -11,6 +11,13 @@
   animation JSON is bundled as a JSON module — small enough that
   inlining it beats a runtime fetch, and packaged Electron's file://
   loader has no idea what to do with `/anim/loading.json` paths.
+
+  With `modal`, the overlay holds the keyboard as it already holds the
+  pointer ($lib/components/modal-layer): it takes focus, the page behind
+  it is inert, and focus goes back to what opened it — or on to the
+  modal that replaces it — as it leaves. A page that raises it over a
+  fullscreen player leaves `modal` off: a modal leaves fullscreen to be
+  seen, and an episode switch must not.
 -->
 <script lang="ts">
 	import { onDestroy } from 'svelte';
@@ -18,9 +25,16 @@
 	import { loaderAnimation, playLottie } from '$lib/motion/lottie';
 	import loadingJson from '$lib/anim/loading.json';
 	import { m } from '$lib/paraglide/messages';
+	import { openModal } from './modal-layer';
 
-	let { visible = false, progress = null } = $props<{
+	let {
+		visible = false,
+		progress = null,
+		modal = false
+	} = $props<{
 		visible?: boolean;
+		/** Hold the keyboard while visible, not only the pointer. */
+		modal?: boolean;
 		/** Optional one-line status caption shown under the Lottie.
 		 *  Null hides the caption entirely; setting it shows the band
 		 *  in its taller variant so the layout doesn't pop on first
@@ -39,14 +53,23 @@
 	});
 
 	onDestroy(() => animation.hide());
+
+	// tabindex=-1 on the backdrop lets a modal overlay hold focus on
+	// itself while it stays out of the Tab order.
+	let backdrop: HTMLDivElement | undefined = $state();
+	$effect(() => {
+		if (modal && backdrop) return openModal(backdrop).close;
+	});
 </script>
 
 {#if visible}
 	<div
+		bind:this={backdrop}
 		class="backdrop"
 		role="status"
 		aria-live="polite"
 		aria-label={m.loading_overlay_aria_label()}
+		tabindex="-1"
 	>
 		<div class="band">
 			<div bind:this={container} class="anim"></div>

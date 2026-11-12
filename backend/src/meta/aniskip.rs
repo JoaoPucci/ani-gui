@@ -39,6 +39,14 @@ pub struct SkipInterval {
     pub end_time: f32,
 }
 
+/// The episode length as aniskip is asked with it: whole seconds.
+/// aniskip matches its submissions to this, so it is also what tells
+/// one cached answer from another.
+#[must_use]
+pub fn episode_length_param(episode_length: f32) -> String {
+    format!("{episode_length:.0}")
+}
+
 /// GET aniskip's skip times for `(mal_id, episode)`. Episode
 /// length feeds aniskip's per-episode disambiguation (some shows
 /// have alternate runtimes for movie cuts vs. TV broadcast).
@@ -66,7 +74,7 @@ pub async fn fetch_skip_times(
         .query(&[
             ("types[]", "op".to_string()),
             ("types[]", "ed".to_string()),
-            ("episodeLength", format!("{episode_length:.0}")),
+            ("episodeLength", episode_length_param(episode_length)),
         ])
         .send()
         .await

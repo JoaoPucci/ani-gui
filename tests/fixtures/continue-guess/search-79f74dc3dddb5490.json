@@ -1,0 +1,28 @@
+{
+ "data": [
+  {
+   "id": "49236",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tensei shitara Slime Datta Ken Movie 2: Soukai no Namida-hen",
+    "titles": {
+     "en": "That Time I Got Reincarnated as a Slime the Movie: Tears of the Azure Sea",
+     "en_jp": "Tensei shitara Slime Datta Ken Movie 2: Soukai no Namida-hen",
+     "ja_jp": "劇場版 転生したらスライムだった件 蒼海の涙編"
+    },
+    "abbreviatedTitles": [
+     "Tensura Movie 2",
+     "That Time I Got Reincarnated as a Slime the Movie: Tears of the Blue Sea",
+     "Tensei shitara Slime Datta Ken Movie 2 - Soukai no Namida-hen",
+     "Tensei Shitara Slime Datta Ken: Soukai no Namida-hen"
+    ],
+    "slug": "tensei-shitara-slime-datta-ken-movie-2-soukai-no-namida-hen",
+    "startDate": "2026-02-27",
+    "endDate": "2026-02-27",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

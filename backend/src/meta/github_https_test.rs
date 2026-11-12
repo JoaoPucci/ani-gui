@@ -1,7 +1,9 @@
 //! The update answer's release page must be an https URL
-//! (`normalise`). Sibling file loaded via `#[path]`; the `_test.rs`
-//! suffix keeps these cases out of `github.rs`'s CRAP roll-up.
+//! (`normalise` in `github_choice.rs`). Sibling file loaded via
+//! `#[path]`; the `_test.rs` suffix keeps these cases out of the
+//! production files' CRAP roll-up.
 
+use super::choice::*;
 use super::*;
 
 fn valid_release_json() -> serde_json::Value {
@@ -12,14 +14,22 @@ fn valid_release_json() -> serde_json::Value {
         "published_at": "2026-06-01T00:00:00Z",
         "body": "release notes",
         "draft": false,
-        "prerelease": false
+        "prerelease": false,
+        "assets": [{ "name": "ani-gui-0.5.0-x86_64.AppImage" }]
     })
 }
 
-fn release_with_page(url: &str) -> Vec<u8> {
+fn release_with_page(url: &str) -> serde_json::Value {
     let mut release = valid_release_json();
     release["html_url"] = serde_json::Value::String(url.to_owned());
-    serde_json::to_vec(&release).unwrap()
+    release
+}
+
+/// The release offered from a page holding only `release`, as the
+/// lookup picks from the page it read.
+fn parse_response(release: &serde_json::Value, include_prereleases: bool) -> Option<ReleaseInfo> {
+    let raw: RawRelease = serde_json::from_value(release.clone()).ok()?;
+    select_release(vec![raw], Platform::Linux, include_prereleases)
 }
 
 #[test]
