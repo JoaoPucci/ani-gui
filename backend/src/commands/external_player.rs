@@ -33,22 +33,25 @@ pub enum ExternalPlayerKind {
     Custom,
 }
 
-/// Arguments to the command. Frontend supplies the resolved stream URL +
-/// optional referer. The player command itself comes from the user's
-/// config (default `mpv`).
-#[derive(Debug, Deserialize)]
+/// Arguments to the command, built by the backend alone: the stream
+/// from the resolver or the play cache, the player and its settings
+/// from the user's config (default `mpv`)
+/// ([`crate::commands::play_handoff::launch_args_for`],
+/// [`crate::commands::play_cache::cached_launch_args`]). Never decoded
+/// from a request, so no caller names the program the backend runs or
+/// the arguments it is given.
+#[derive(Debug)]
 pub struct LaunchArgs {
-    /// The resolved stream URL (mp4 or m3u8).
+    /// The resolved stream URL (mp4 or m3u8). Must be an http(s) URL
+    /// ([`is_stream_url`]); it goes on the command line bare.
     pub stream_url: String,
     /// Optional `Referer:` value the upstream CDN requires.
     pub referer: Option<String>,
     /// Title shown in the player window's titlebar.
     pub title: Option<String>,
-    /// Player command, e.g. `"mpv"`. Caller resolves this from settings.
+    /// Player command, e.g. `"mpv"`, from the user's settings.
     pub player_command: String,
-    /// Which player flag syntax to use. Old payloads without this
-    /// field decode as `Mpv` so existing clients keep working.
-    #[serde(default)]
+    /// Which player flag syntax to use, from the user's settings.
     pub player_kind: ExternalPlayerKind,
     /// Free-text args template used only when `player_kind` is
     /// `Custom`. Tokens supported: `{url}`, `{referer}`, `{title}`,
@@ -58,7 +61,6 @@ pub struct LaunchArgs {
     /// A token containing a missing/empty placeholder is dropped
     /// from argv entirely (so optional flags don't end up as
     /// `--referrer=` with nothing after the equals).
-    #[serde(default)]
     pub custom_args_template: Option<String>,
     /// Sidecar subtitle tracks' upstream URLs, most wanted first
     /// ([`crate::commands::play_handoff::subtitle_urls_preferred`]) — a
@@ -66,12 +68,35 @@ pub struct LaunchArgs {
     /// that cannot carry them all keeps the first ones
     /// ([`crate::commands::command_line`]). The player fetches them
     /// itself; the referer flag it already gets covers those fetches.
-    #[serde(default)]
     pub subtitle_urls: Vec<String>,
     /// Whether the show's remembered captions choice is Off: the player
     /// starts with its subtitles off.
-    #[serde(default)]
     pub subtitles_off: bool,
+}
+
+/// Whether `s` can go on a player's command line as the stream: an
+/// http or https URL, spelled with its scheme first, so it can never
+/// read as an option (`--script=…`, which mpv would run). The value
+/// comes from the provider's answer.
+#[must_use]
+pub fn is_stream_url(s: &str) -> bool {
+    (s.starts_with("https://") || s.starts_with("http://"))
+        && url::Url::parse(s).is_ok_and(|u| u.host_str().is_some_and(|h| !h.is_empty()))
+}
+
+/// Refuse a launch whose stream is not an http(s) URL
+/// ([`is_stream_url`]), before anything is spawned.
+///
+/// # Errors
+/// [`AniError::ParseFailed`] when it is not.
+pub(crate) fn ensure_stream_url(s: &str) -> Result<()> {
+    if is_stream_url(s) {
+        Ok(())
+    } else {
+        Err(AniError::ParseFailed {
+            detail: "external launch: the stream is not an http(s) URL".into(),
+        })
+    }
 }
 
 /// Build the argv that would be passed to `Command::new(player).args(...)`.
@@ -124,11 +149,14 @@ enum SubFlag {
 /// On Windows, `Command::spawn` without `Wait()` already detaches.
 ///
 /// # Errors
+/// - [`AniError::ParseFailed`] if the stream is not an http(s) URL
+///   ([`is_stream_url`]); nothing is spawned.
 /// - [`AniError::PlayerSpawnFailed`] if the configured player command
 ///   can't be spawned (usually means it's not on PATH or the path
 ///   doesn't point at an executable). Carries the configured binary
 ///   name so the UI can name it in the error toast.
 pub fn open_external_player(args: &LaunchArgs) -> Result<()> {
+    ensure_stream_url(&args.stream_url)?;
     if args.player_command.trim().is_empty() {
         return Err(AniError::PlayerSpawnFailed {
             binary: args.player_command.clone(),

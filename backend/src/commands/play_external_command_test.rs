@@ -782,7 +782,7 @@ async fn the_player_a_request_names_is_ignored_and_the_configured_one_runs() {
     // nothing the backend reads: the player is the one configured in
     // Settings, and its arguments are built from the resolved stream.
     use axum::body::Body;
-    use axum::http::{Request, StatusCode};
+    use axum::http::Request;
     use std::os::unix::fs::PermissionsExt as _;
     use tower::ServiceExt as _;
     let mock = MockServer::start().await;

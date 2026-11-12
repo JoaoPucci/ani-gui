@@ -39,9 +39,9 @@ use sse_abort::abort_on_drop;
 use crate::app::AppState;
 use crate::commands::{
     account as account_inner, aniskip as aniskip_inner, app_info,
-    availability as availability_inner, download as download_inner, external_player,
-    history as h_inner, kitsu as kitsu_inner, play as play_inner, proxy_url,
-    session as session_inner, settings as settings_inner,
+    availability as availability_inner, download as download_inner, history as h_inner,
+    kitsu as kitsu_inner, play as play_inner, proxy_url, session as session_inner,
+    settings as settings_inner,
 };
 use crate::config::Config;
 use crate::error::AniError;
@@ -104,7 +104,6 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
             post(post_history_guess_ruled_out),
         )
         .route("/api/history/:id", delete(delete_history_entry))
-        .route("/api/external-player", post(post_external_player))
         .route("/api/sessions", post(post_session))
         .route("/api/kitsu/search", post(post_kitsu_search))
         .route("/api/kitsu/search/page", post(post_kitsu_search_page))
@@ -266,13 +265,6 @@ async fn get_history_number(
     Ok(Json(crate::commands::history_number::history_number(
         &state, &id,
     )?))
-}
-
-async fn post_external_player(
-    Json(args): Json<external_player::LaunchArgs>,
-) -> Result<StatusCode, AniError> {
-    external_player::open_external_player(&args)?;
-    Ok(StatusCode::ACCEPTED)
 }
 
 async fn post_session(
