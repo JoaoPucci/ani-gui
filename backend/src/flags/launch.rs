@@ -10,9 +10,12 @@
 //! from the file `ANI_GUI_TEST_FLAGS_FILE` names, admitted and
 //! resolved like the live one, or are the defaults when it names none
 //! or cannot be read. Admitted like the live one means a `true` in it
-//! counts only when a `.minisig` beside it verifies under the build's
-//! keys, so a test run's file cannot turn on what the live file could
-//! not.
+//! counts only when a `.minisig` beside it verifies, under the build's
+//! keys and, in a backend built with the `test-run-key` feature, the
+//! fixture test-run key as well ([`build_keys`]). That feature is for
+//! test builds, so an end-to-end test can turn a feature on; no
+//! packaged build has it, and in every build the live file is trusted
+//! under the build's keys alone.
 //!
 //! `ANI_GUI_TEST_FLAGS_FILE` means nothing without
 //! `ANI_GUI_UNATTENDED=1`: a normal launch ignores it and reads the
@@ -20,11 +23,14 @@
 
 use std::ffi::OsStr;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 
 use super::refresh::refresh;
 use super::remote::{self, FETCH_TIMEOUT, FLAGS_URL};
 use super::resolve::{parse_document, Document};
-use super::signature::{admit, verify, MAX_SIGNATURE_BYTES, SIGNATURE_SUFFIX, TRUSTED_KEYS};
+use super::signature::{
+    admit, verify, MAX_SIGNATURE_BYTES, SIGNATURE_SUFFIX, TEST_RUN_KEYS, TRUSTED_KEYS,
+};
 use super::store::{FlagStore, Origin};
 
 /// The test-run switch.
@@ -79,7 +85,20 @@ pub fn start(
     client: reqwest::Client,
     plan: LaunchPlan,
 ) -> tokio::task::JoinHandle<()> {
-    start_trusting(store, client, plan, TRUSTED_KEYS)
+    let keys = build_keys(&plan);
+    start_trusting(store, client, plan, keys)
+}
+
+/// The keys this build trusts `plan`'s file under. The live file:
+/// [`TRUSTED_KEYS`], exactly, in every build. A test run's file: those
+/// and [`TEST_RUN_KEYS`], which only a `test-run-key` build has.
+pub(crate) fn build_keys(plan: &LaunchPlan) -> &'static [&'static str] {
+    static TEST_RUN: LazyLock<Vec<&'static str>> =
+        LazyLock::new(|| TRUSTED_KEYS.iter().chain(TEST_RUN_KEYS).copied().collect());
+    match plan {
+        LaunchPlan::Live { .. } => TRUSTED_KEYS,
+        LaunchPlan::Test { .. } => TEST_RUN.as_slice(),
+    }
 }
 
 /// [`start`], trusting the signature keys `keys` instead of the

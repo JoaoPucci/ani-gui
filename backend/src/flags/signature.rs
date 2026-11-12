@@ -27,6 +27,23 @@ use super::resolve::Document;
 /// with none, no file verifies.
 pub const TRUSTED_KEYS: &[&str] = &[];
 
+/// The keys a test run's file (`ANI_GUI_TEST_FLAGS_FILE`) is trusted
+/// under as well as [`TRUSTED_KEYS`], so an end-to-end test can turn a
+/// feature on. Only a backend built with the `test-run-key` cargo
+/// feature has one: the fixture test-run key, whose secret anyone can
+/// derive from `tests/fixtures/flags-signature/make.py`. No packaged
+/// build enables the feature (`tests/arch/test_run_key.sh`), and the
+/// live file is never trusted under these keys in any build.
+#[cfg(feature = "test-run-key")]
+pub const TEST_RUN_KEYS: &[&str] = &[include_str!(
+    "../../tests/fixtures/flags-signature/test-run-key.pub"
+)];
+
+/// See the `test-run-key` build's definition: a build without the
+/// feature trusts a test run's file under [`TRUSTED_KEYS`] alone.
+#[cfg(not(feature = "test-run-key"))]
+pub const TEST_RUN_KEYS: &[&str] = &[];
+
 /// Appended to the file's address to get its signature's.
 pub const SIGNATURE_SUFFIX: &str = ".minisig";
 
