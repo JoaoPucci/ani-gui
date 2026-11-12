@@ -250,12 +250,29 @@ describe('play route — a fragment loaded past its allowance stops the engine',
 		// the engine let it go: a healthy stream, however quick the
 		// returns.
 		const hls = await mountHls();
-		const far = { frag: { type: 'main', level: 0, sn: 2, end: 12 } };
+		// The far spot's fragment runs from 28 s to 32 s and the trim
+		// point falls inside it, at 30 s: the engine drops the whole
+		// fragment and loads it again on the next return.
+		const far = { frag: { type: 'main', level: 0, sn: 2, start: 28, end: 32 } };
 		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE * 3; i++) {
 			hls.emit(FRAG_LOADED, far);
-			hls.emit(BACK_BUFFER_REACHED, { bufferEnd: 60 });
+			hls.emit(BACK_BUFFER_REACHED, { bufferEnd: 30 });
 		}
 		expect(hls.stopLoadCalls).toBe(0);
 		expect(target.textContent ?? '').not.toContain(m.play_error_fragment_loop());
+	});
+
+	it('still stops a fragment that loops ahead of the trimmed stretch', async () => {
+		// Trims behind the playhead do not reach a fragment that loads
+		// and never buffers at the playhead: the guard still stops it.
+		const hls = await mountHls();
+		const stuck = { frag: { type: 'main', level: 0, sn: 9, start: 40, end: 44 } };
+		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE; i++) {
+			hls.emit(FRAG_LOADED, stuck);
+			hls.emit(BACK_BUFFER_REACHED, { bufferEnd: 30 });
+		}
+		expect(hls.stopLoadCalls).toBe(0);
+		hls.emit(FRAG_LOADED, stuck);
+		expect(hls.stopLoadCalls).toBe(1);
 	});
 });

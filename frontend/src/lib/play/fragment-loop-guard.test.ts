@@ -129,8 +129,9 @@ describe('the fragment loop guard', () => {
 		// the buffer, so each is the first since it was let go.
 		const t = clock();
 		const guard = new FragmentLoopGuard(t.now);
+		// The fragment starts at 8 s; the trim reaches 60 s.
 		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE * 3; i++) {
-			expect(guard.loaded('main:0:3', 12)).toBe(false);
+			expect(guard.loaded('main:0:3', 8)).toBe(false);
 			guard.released(60);
 			t.advance(500);
 		}
@@ -150,23 +151,28 @@ describe('the fragment loop guard', () => {
 		expect(guard.loaded('main:0:20', 100)).toBe(true);
 	});
 
-	it('releases a fragment only when it ends at or before the released point', () => {
+	it('releases a fragment the trim reached any part of: one starting before the released point', () => {
+		// The engine drops a fragment from its record once any of it has
+		// left the buffer, and loads the whole of it again; the one the
+		// trim point falls inside is the one a viewer just past the back
+		// buffer reloads.
 		const t = clock();
-		const guard = new FragmentLoopGuard(t.now);
-		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE; i++) guard.loaded('main:0:5', 30);
-		guard.released(29.9);
-		expect(guard.loaded('main:0:5', 30)).toBe(true);
+		const straddling = new FragmentLoopGuard(t.now);
+		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE * 3; i++) {
+			expect(straddling.loaded('main:0:4', 28)).toBe(false);
+			straddling.released(30);
+		}
 
-		const again = new FragmentLoopGuard(t.now);
-		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE; i++) again.loaded('main:0:5', 30);
-		again.released(30);
-		expect(again.loaded('main:0:5', 30)).toBe(false);
+		const at = new FragmentLoopGuard(t.now);
+		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE; i++) at.loaded('main:0:5', 30);
+		at.released(30);
+		expect(at.loaded('main:0:5', 30)).toBe(true);
 	});
 
 	it('trips on any burst of loads with no release that reaches the fragment', () => {
 		// Property: whatever releases come in between, a fragment loaded
-		// past the allowance inside the window, with every release short
-		// of its end, trips the guard.
+		// past the allowance inside the window, with every release at or
+		// before its start, trips the guard.
 		fc.assert(
 			fc.property(
 				fc.double({ min: 1, max: 10_000, noNaN: true }),
@@ -174,13 +180,13 @@ describe('the fragment loop guard', () => {
 					minLength: FRAGMENT_LOAD_ALLOWANCE + 1,
 					maxLength: FRAGMENT_LOAD_ALLOWANCE + 1
 				}),
-				(end, shortBy) => {
+				(start, shortBy) => {
 					const t = clock();
 					const guard = new FragmentLoopGuard(t.now);
 					let tripped = false;
 					for (const short of shortBy) {
-						tripped = guard.loaded('main:0:9', end) || tripped;
-						guard.released(end - short);
+						tripped = guard.loaded('main:0:9', start) || tripped;
+						guard.released(start - short);
 						t.advance(1);
 					}
 					return tripped;
@@ -195,12 +201,13 @@ describe('the fragment loop guard', () => {
 				fc.double({ min: 0, max: 10_000, noNaN: true }),
 				fc.integer({ min: 1, max: 50 }),
 				fc.integer({ min: 0, max: 2_000 }),
-				(end, loads, gapMs) => {
+				fc.double({ min: 0.001, max: 100, noNaN: true }),
+				(start, loads, gapMs, past) => {
 					const t = clock();
 					const guard = new FragmentLoopGuard(t.now);
 					for (let i = 0; i < loads; i++) {
-						if (guard.loaded('main:0:9', end)) return false;
-						guard.released(end + i);
+						if (guard.loaded('main:0:9', start)) return false;
+						guard.released(start + past);
 						t.advance(gapMs);
 					}
 					return !guard.hasTripped;

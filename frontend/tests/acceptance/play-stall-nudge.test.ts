@@ -345,8 +345,8 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 
 	it('the engine is constructed with a bounded back buffer', async () => {
 		// Left at the engine default, everything already played stays
-		// in memory for as long as the episode plays: two minutes of
-		// 1080p held three minutes of video in the page process. The
+		// in memory until Chromium's own cap: five minutes of 1080p held
+		// four and a half minutes of video in the page process. The
 		// page hands the engine the bound at construction, beside the
 		// load policy, which it keeps.
 		const hls = await mountPlayingHls();

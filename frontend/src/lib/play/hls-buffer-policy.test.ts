@@ -7,9 +7,10 @@ import { PLAYER_SEEK_STEP_SECONDS } from './keyboard';
 describe('HLS_BUFFER_POLICY', () => {
 	it('lets already-played video go: the back buffer is bounded, at the 30 s mature players keep', () => {
 		// hls.js keeps everything behind the playhead by default
-		// (backBufferLength: Infinity). Measured on a 1080p stream, two
-		// minutes of playback held three minutes of video in the page
-		// process, all of it reachable only by seeking back.
+		// (backBufferLength: Infinity). Measured on a 1080p stream, five
+		// minutes in, the page held four and a half minutes of video,
+		// all but the last minute and a half reachable only by seeking
+		// back.
 		expect(HLS_BUFFER_POLICY.backBufferLength).toBe(30);
 	});
 
