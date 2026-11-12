@@ -169,6 +169,7 @@ jobs:
         run: |
           set -euo pipefail
           backend=dist/linux-unpacked/resources/ani-gui-backend
+          test -f "$backend"
           key=$(head -n 1 ../backend/tests/fixtures/flags-signature/test-run-key.pub)
           test -n "$key"
           if grep -qaF -- "$key" "$backend"; then

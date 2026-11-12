@@ -8,6 +8,7 @@ const SIG_BY_TWO: &str =
     include_str!("../../tests/fixtures/flags-signature/flags.json.by-key-two.minisig");
 const KEY_ONE: &str = include_str!("../../tests/fixtures/flags-signature/test-key-one.pub");
 const KEY_TWO: &str = include_str!("../../tests/fixtures/flags-signature/test-key-two.pub");
+const TEST_RUN_KEY: &str = include_str!("../../tests/fixtures/flags-signature/test-run-key.pub");
 
 fn keys(list: &[&'static str]) -> Vec<&'static str> {
     list.iter().map(|k| k.trim()).collect()
@@ -94,7 +95,7 @@ fn the_shipped_build_trusts_no_key_until_the_maintainer_adds_one() {
 
 #[test]
 fn no_test_key_is_ever_trusted() {
-    for key in [KEY_ONE, KEY_TWO] {
+    for key in [KEY_ONE, KEY_TWO, TEST_RUN_KEY] {
         assert!(
             !std::hint::black_box(super::TRUSTED_KEYS).contains(&key.trim()),
             "a fixture key, whose secret anyone can derive, is in TRUSTED_KEYS"

@@ -8,15 +8,23 @@
 # (`cargo test --all-features`); a package must never carry it. That a
 # build with the feature still fetches the live file under its own keys
 # alone is the backend's tests' to hold (flags/launch_keys_test.rs).
-# This check holds only that the feature cannot reach a package:
+# What this check holds is narrower than "no package can carry it":
 #
-#   - it is not among the backend's default features, read from
+#   - the feature is not among the backend's default features, directly
+#     or through another feature `default` turns on, read from
 #     backend/Cargo.toml with Python's TOML parser;
 #   - no script in electron/package.json or the root package.json that
 #     runs `cargo build` passes --features, -F or --all-features, read
 #     with Python's JSON parser and split into words by its shell
 #     lexer;
 #   - no workflow line that runs `cargo build` passes one either.
+#
+# It does not see other routes to a feature build: RUSTFLAGS or a
+# .cargo/config.toml setting `--cfg feature="test-run-key"`, other
+# spellings of the build (`cargo b`, `cargo +toolchain build`,
+# `cargo rustc`, a command continued across lines), or a script that
+# packages a binary some other command left behind (`dist:win` packages
+# whatever target/release holds; `package:win` builds it first).
 #
 # Both platforms' packaging scripts are covered, Windows's
 # `build:backend` among them. On Linux the e2e workflow also builds the
@@ -38,7 +46,14 @@ with open(sys.argv[1], 'rb') as f:
 features = manifest.get('features', {})
 if 'test-run-key' not in features:
     sys.exit('backend/Cargo.toml declares no test-run-key feature')
-if 'test-run-key' in features.get('default', []):
+on, todo = set(), list(features.get('default', []))
+while todo:
+    name = todo.pop()
+    if name in on or name not in features:
+        continue
+    on.add(name)
+    todo.extend(features[name])
+if 'test-run-key' in on:
     sys.exit('backend/Cargo.toml enables test-run-key by default')
 PY
     printf 'arch/test_run_key FAIL: backend/Cargo.toml (see above)\n' >&2
