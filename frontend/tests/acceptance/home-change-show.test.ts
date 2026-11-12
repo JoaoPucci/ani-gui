@@ -19,6 +19,9 @@ import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
 import { linkBackend, linkBackendHandlers, type LinkBackend } from './link-backend';
+import { cardLines } from '../../src/test/link-rules-fake';
+import { appLinkDeps } from '../../src/lib/history/link-deps';
+import type { CardLineRow } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -1238,6 +1241,50 @@ describe("Home draws the backend's answers", () => {
 			() => (dialog()!.textContent ?? '').includes(m.detail_link_warning_season()),
 			'the season warning'
 		);
+	});
+
+	it("keeps a card's pill, and the focus on it, while the lines are asked again", async () => {
+		let hold: Promise<void> | null = null;
+		let release!: () => void;
+		let linesAsked = 0;
+		server.use(
+			http.post(`${API_BASE}/api/history/card-lines`, async ({ request }) => {
+				const { rows } = (await request.json()) as { rows: CardLineRow[] };
+				linesAsked++;
+				if (hold) await hold;
+				return HttpResponse.json(cardLines(rows));
+			})
+		);
+		await openHome();
+		await until(() => pill(BC_CARD) !== null, 'the pill');
+		pill(BC_CARD)!.focus();
+		hold = new Promise((r) => (release = r));
+		const asked = linesAsked;
+		// Another card is linked, from anywhere: Home reads its cards again,
+		// the JoJo card is matched again, and the cards ask for their lines.
+		await appLinkDeps().link(JOJO_CARD, [JOJO_CARD], JOJO_RIGHT);
+		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the JoJo card relinked');
+		await until(() => linesAsked > asked, 'the lines asked again');
+		expect(pill(BC_CARD)).not.toBeNull();
+		expect(document.activeElement).toBe(pill(BC_CARD));
+		release();
+		await settle();
+	});
+
+	it("lists the card's own show, and says the list could not be loaded, when the backend cannot answer", async () => {
+		server.use(
+			http.post(`${API_BASE}/api/history/link-candidates`, () =>
+				HttpResponse.json({ kind: 'internal', key: 'error.internal' }, { status: 500 })
+			)
+		);
+		await openHome();
+		pill(BC_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await until(
+			() => (dialog()!.textContent ?? '').includes(m.detail_link_candidates_failed()),
+			'the failure said'
+		);
+		expect(dialog()!.textContent).toContain(BC_GUESS_TITLE);
 	});
 
 	it('opens no picker on a card the backend says is not asked about', async () => {
