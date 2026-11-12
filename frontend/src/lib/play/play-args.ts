@@ -30,6 +30,9 @@ export interface PlayArgsInput {
 	/** The history row a guessed Continue card opened the play from
 	 *  (`guessRow` in `./play-origin`). */
 	guessRow?: string;
+	/** The card's row of a session no guess opened (`sessionShow` in
+	 *  `./session-show`). */
+	cardRow?: string;
 	/** The guessed card's Kitsu id (`guessedId` in `./play-origin`). */
 	guessId?: string;
 	/** The captions choice remembered for the show (`storedCaption` in
@@ -51,6 +54,7 @@ export function buildPlayArgs(input: PlayArgsInput): PlayArgs {
 	if (input.kitsuId) args.kitsu_id = input.kitsuId;
 	if (input.version) args.version = input.version;
 	if (input.guessRow) args.guess_row = input.guessRow;
+	if (input.cardRow) args.card_row = input.cardRow;
 	if (input.guessId) args.guess_id = input.guessId;
 	if (input.caption) args.caption = input.caption;
 	return args;

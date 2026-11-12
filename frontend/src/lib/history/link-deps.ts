@@ -14,7 +14,8 @@ import {
 	historyLinkCandidates,
 	historyLinkGroup,
 	historyLinkVerdict,
-	historyList
+	historyList,
+	kitsuAnimeDetail
 } from '$lib/api';
 import type { LinkDeps } from './link-offer';
 import { resolveKitsuMatchWithTrust } from './match';
@@ -38,6 +39,7 @@ export function appLinkDeps(): LinkDeps {
 		},
 		candidates: historyLinkCandidates,
 		verdict: historyLinkVerdict,
+		show: kitsuAnimeDetail,
 		link: (card, rows, kitsuId) => announced(historyLink(card, rows, kitsuId)),
 		group: historyLinkGroup
 	};

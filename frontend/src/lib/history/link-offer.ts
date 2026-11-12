@@ -42,6 +42,9 @@ export interface LinkDeps {
 	) => Promise<{ match: KitsuAnimeRef | null; trusted: boolean }>;
 	/** The backend's candidates for a row ($lib/api `historyLinkCandidates`). */
 	candidates: (request: CandidatesRequest, opts?: ReadOptions) => Promise<LinkCandidate[]>;
+	/** A show's Kitsu record ($lib/api `kitsuAnimeDetail`): the show
+	 *  playing, for the player's offer to change a kept pick again. */
+	show?: (id: string, opts?: ReadOptions) => Promise<KitsuAnimeRef>;
 	/** Whether a surface asks about a line ($lib/api `historyLinkVerdict`). */
 	verdict: (request: VerdictRequest, opts?: ReadOptions) => Promise<LinkVerdict>;
 	/** Link `rows` from the card whose row is `card`. */

@@ -10,8 +10,8 @@
  * Back to the player a switch left — reads it back from the line: a line
  * the user named for another show than the one playing is that pick,
  * kept, as the backend's verdict says (`commands/link_verdict.rs`). It
- * brings back the pick and the slip's way to switch, not the ⋯ entry
- * to change it again, which needs the offer of the show playing.
+ * brings back the pick and the slip's way to switch, and the verdict
+ * the ⋯ entry to change it again, on the show playing.
  */
 
 import type { KitsuAnimeRef } from '$lib/api';
@@ -19,13 +19,13 @@ import type { SurfaceFind } from './picked-offer';
 
 /** The pick an arrival on the player finds kept, for the arrival that
  *  read it: the show its line was named for when another plays
- *  (`SurfaceFind.kept`, the backend's verdict), only where its offer
- *  was read and none was made. */
+ *  (`SurfaceFind.kept`, the backend's verdict), beside the offer to
+ *  change it again; none where the line could not be read. */
 export function keptOnArrival(
 	at: { inPlayer: boolean; row: string | null },
 	found: SurfaceFind
 ): KitsuAnimeRef | null {
-	if (!at.inPlayer || !at.row || found.offer !== null || found.unread) return null;
+	if (!at.inPlayer || !at.row || found.unread) return null;
 	return found.kept;
 }
 

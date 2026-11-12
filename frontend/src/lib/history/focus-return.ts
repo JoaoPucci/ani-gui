@@ -21,3 +21,15 @@ export function focusBack(
 ): HTMLElement | null {
 	return opener?.isConnected ? opener : (fallback?.() ?? null);
 }
+
+/** The Continue card standing for the history line `row` on Home: the
+ *  cell drawn as that line, else the cell showing that row, which a
+ *  click acts on when the cards' latest answer for it failed and they
+ *  still draw the line the one before named. */
+export function cardOf(root: ParentNode, row: string): HTMLElement | null {
+	const id = CSS.escape(row);
+	return (
+		root.querySelector<HTMLElement>(`.resume-cell[data-card-row="${id}"] .resume-card`) ??
+		root.querySelector<HTMLElement>(`.resume-cell[data-entry-id="${id}"] .resume-card`)
+	);
+}

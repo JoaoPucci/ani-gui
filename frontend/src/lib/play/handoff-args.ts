@@ -23,6 +23,8 @@ export function handoffArgs(input: {
 	kitsuId: string;
 	/** The guessed card's row the session's plays name (`guessRow`). */
 	guessRow?: string;
+	/** The card's row a session no guess opened names (`cardRow`). */
+	cardRow?: string;
 	/** The guess the session's plays name for the card (`guessId`). */
 	guessId?: string;
 	config: { mode: string };
@@ -40,6 +42,7 @@ export function handoffArgs(input: {
 		show: input.detail,
 		kitsuId: input.kitsuId,
 		guessRow: input.guessRow,
+		cardRow: input.cardRow,
 		guessId: input.guessId,
 		version: input.version,
 		caption: input.caption

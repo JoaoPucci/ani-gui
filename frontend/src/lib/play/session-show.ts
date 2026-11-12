@@ -22,10 +22,25 @@ export function sessionShow(o: {
 	guess: boolean;
 	row: string | null;
 	linked: string | null;
-}): { kitsuId?: string; guessRow?: string; guessId?: string; recordAs: string; mirrors: boolean } {
+}): {
+	kitsuId?: string;
+	guessRow?: string;
+	cardRow?: string;
+	guessId?: string;
+	recordAs: string;
+	mirrors: boolean;
+} {
 	if (!o.guess && o.linked === null) {
 		const kitsuId = recordableId(o.id, false);
-		return { ...(kitsuId ? { kitsuId } : {}), recordAs: o.id, mirrors: true };
+		// The card's row, so the backend keeps the show its line records:
+		// a player mounted again after "Keep watching this" sends the
+		// page's show until it has read the pick back.
+		return {
+			...(kitsuId ? { kitsuId } : {}),
+			...(o.row ? { cardRow: o.row } : {}),
+			recordAs: o.id,
+			mirrors: true
+		};
 	}
 	const show = o.linked ?? o.id;
 	const row = guessRow(true, o.row);

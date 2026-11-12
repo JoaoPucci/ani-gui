@@ -2338,7 +2338,8 @@ describe('historyLink', () => {
 			named: false,
 			asks_guess: true,
 			carried: false,
-			picked: false
+			picked: false,
+			in_player: false
 		};
 		const signal = new AbortController().signal;
 		expect(await historyLinkVerdict(request, { signal })).toEqual({ offer: 'guess', kept: false });

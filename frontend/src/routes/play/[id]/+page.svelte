@@ -2524,6 +2524,7 @@
 				// guessed card's row, naming its show, as the click would.
 				kitsuId: playingAs.kitsuId,
 				guessRow: playingAs.guessRow,
+				cardRow: playingAs.cardRow,
 				guessId: playingAs.guessId
 			});
 			void getOrFire(
@@ -2589,6 +2590,7 @@
 			caption: storedCaption(owner.showId),
 			kitsuId: as.kitsuId,
 			guessRow: as.guessRow,
+			cardRow: as.cardRow,
 			// The guess, apart from the page's id: the resolve records it on
 			// the card's row when the switch lands on that row's listing.
 			guessId: as.guessId
@@ -3172,6 +3174,7 @@
 							episode: ep,
 							kitsuId: as.kitsuId ?? '',
 							guessRow: as.guessRow,
+							cardRow: as.cardRow,
 							guessId: as.guessId,
 							config: { mode },
 							detail,
@@ -3245,6 +3248,7 @@
 							episode: ep,
 							kitsuId: as.kitsuId ?? '',
 							guessRow: as.guessRow,
+							cardRow: as.cardRow,
 							guessId: as.guessId,
 							config: { mode },
 							detail,

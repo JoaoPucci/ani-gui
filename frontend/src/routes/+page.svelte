@@ -127,6 +127,7 @@
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { CardLines } from '$lib/history/card-lines.svelte';
+	import { cardOf } from '$lib/history/focus-return';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { createConfirmRun } from '$lib/history/confirm-run';
@@ -571,9 +572,7 @@
 	});
 	/** The card that stands for the history row `row`. */
 	function cardButton(row: string): HTMLElement | null {
-		return document.querySelector<HTMLElement>(
-			`.resume-cell[data-card-row="${CSS.escape(row)}"] .resume-card`
-		);
+		return cardOf(document, row);
 	}
 
 	const trendingSplit = $derived(splitTrending(trending ?? []));

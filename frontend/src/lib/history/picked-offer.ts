@@ -14,7 +14,7 @@
  * kept across restarts) is offered again on every surface.
  */
 
-import type { KitsuAnimeRef, ReadOptions } from '$lib/api';
+import type { HistoryEntry, KitsuAnimeRef, ReadOptions } from '$lib/api';
 import type { LinkDeps, LinkOffer } from './link-offer';
 import { pickedRow } from './guess-slip';
 import { guessPlayed } from './guess-plays';
@@ -38,6 +38,22 @@ export interface SurfaceFind {
 	offer: LinkOffer | null;
 	unread: boolean;
 	kept: KitsuAnimeRef | null;
+}
+
+/** The offer to change again a line that records `match`, made on the
+ *  surface showing `pageId`: on that show, which is the match itself or,
+ *  for a kept pick on the player, the show playing. One whose show
+ *  cannot be read is not made. */
+async function againOffer(
+	deps: LinkDeps,
+	entry: HistoryEntry,
+	match: KitsuAnimeRef,
+	pageId: string,
+	opts?: ReadOptions
+): Promise<LinkOffer | null> {
+	if (match.id === pageId) return { entry, current: match, saved: pageId };
+	const current = await deps.show?.(pageId, ...readOpts(opts ?? {})).catch(() => null);
+	return current ? { entry, current, saved: match.id } : null;
 }
 
 const NONE: SurfaceFind = { offer: null, unread: false, kept: null };
@@ -68,7 +84,8 @@ export async function surfaceOfferRead(
 				named: entry.named === true,
 				asks_guess: surface.asksGuess,
 				carried: surface.carried === true && guessPlayed(row, pageId),
-				picked: surface.inPlayer && pickedRow(row)
+				picked: surface.inPlayer && pickedRow(row),
+				in_player: surface.inPlayer
 			},
 			...readOpts(opts ?? {})
 		);
@@ -76,7 +93,7 @@ export async function surfaceOfferRead(
 			verdict.offer === 'guess'
 				? { entry, current: match }
 				: verdict.offer === 'again'
-					? { entry, current: match, saved: pageId }
+					? await againOffer(deps, entry, match, pageId, opts)
 					: null;
 		return { offer, unread: false, kept: verdict.kept ? match : null };
 	} catch {

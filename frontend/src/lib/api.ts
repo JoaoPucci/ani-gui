@@ -780,6 +780,7 @@ export interface VerdictRequest {
 	asks_guess: boolean;
 	carried: boolean;
 	picked: boolean;
+	in_player: boolean;
 }
 
 /** What the surface offers for the line, and whether the line keeps a
@@ -896,6 +897,9 @@ export interface PlayArgs {
 	 *  opened the play from. The session answers whether the play
 	 *  landed on that row's own listing (`own_listing`). */
 	guess_row?: string;
+	/** The history row of a Continue card that opened the play with no
+	 *  guess: the backend keeps the show that line records against it. */
+	card_row?: string;
 	/** The Kitsu id the guessed card guessed, sent with `guess_row` in
 	 *  place of `kitsu_id`: the backend records it on the row the
 	 *  resolve writes only when the play landed on that row's own
@@ -1042,6 +1046,7 @@ export function playStream(
 	if (args.record_later === true) params.set('record_later', '1');
 	if (args.version) params.set('version', args.version);
 	if (args.guess_row) params.set('guess_row', args.guess_row);
+	if (args.card_row) params.set('card_row', args.card_row);
 	if (args.guess_id) params.set('guess_id', args.guess_id);
 	if (args.caption) params.set('caption', args.caption);
 	params.set('locale', uiLocale());
