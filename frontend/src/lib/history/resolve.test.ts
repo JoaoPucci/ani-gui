@@ -13,6 +13,8 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 const stubKitsu = (id = '13'): KitsuAnimeRef => ({
 	id,
 	canonical_title: 'Stub',
+	titles: {},
+	abbreviated_titles: [],
 	slug: null,
 	synopsis: null,
 	start_date: null,
@@ -641,7 +643,7 @@ describe('titlesPlausiblySameShow', () => {
 	const ref = (canonical_title: string, titles?: Record<string, string>): KitsuAnimeRef => ({
 		...stubKitsu('x'),
 		canonical_title,
-		titles
+		titles: titles ?? {}
 	});
 
 	it('rejects a gross mismatch sharing only a generic word (the Idol bug)', () => {
@@ -1096,6 +1098,7 @@ describe('a search hit by the words its titles share with the row', () => {
 			en_jp:
 				'Magical★Explorer: Eroge no Yuujin Chara ni Tensei Shitakedo, Game Chishiki Tsukatte Jiyuu ni Ikiru'
 		},
+		abbreviated_titles: [],
 		slug: 'magical-explorer-eroge-no-yuujin-chara-ni-tensei-shitakedo-game-chishiki-tsukatte-jiyuu-ni-ikiru',
 		synopsis: null,
 		start_date: null,

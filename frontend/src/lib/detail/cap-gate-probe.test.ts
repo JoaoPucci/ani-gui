@@ -543,7 +543,13 @@ describe('createCapGateProbe', () => {
 describe('capGateAnswerFrom', () => {
 	it('reads a settled answer whole, the extras defaulting to none', () => {
 		expect(
-			capGateAnswerFrom({ available: true, episode_count: 7, extra_episodes: ['7.5'] })
+			capGateAnswerFrom({
+				available: true,
+				episode_count: 7,
+				extra_episodes: ['7.5'],
+				episode_count_approximate: false,
+				provider: 'hianime'
+			})
 		).toEqual({
 			count: 7,
 			approximate: false,
@@ -556,7 +562,8 @@ describe('capGateAnswerFrom', () => {
 				available: true,
 				episode_count: 4,
 				extra_episodes: [],
-				episode_count_approximate: true
+				episode_count_approximate: true,
+				provider: 'hianime'
 			})
 		).toEqual({ count: 4, approximate: true, available: true, extraEpisodes: [], versions: [] });
 	});
@@ -567,8 +574,14 @@ describe('capGateAnswerFrom', () => {
 			{ kind: 'standard' as const, show_key: 'hianime:show-2' }
 		];
 		expect(
-			capGateAnswerFrom({ available: true, episode_count: 7, extra_episodes: [], versions: two })
-				?.versions
+			capGateAnswerFrom({
+				available: true,
+				episode_count: 7,
+				extra_episodes: [],
+				episode_count_approximate: false,
+				provider: 'hianime',
+				versions: two
+			})?.versions
 		).toEqual(two);
 	});
 
@@ -584,14 +597,8 @@ describe('capGateAnswerFrom', () => {
 				available: false,
 				episode_count: null,
 				extra_episodes: [],
-				unsettled: true
-			})
-		).toBeNull();
-		expect(
-			capGateAnswerFrom({
-				available: false,
-				episode_count: null,
-				extra_episodes: [],
+				episode_count_approximate: false,
+				provider: null,
 				unsettled: 'unanswered'
 			})
 		).toBeNull();
@@ -606,6 +613,8 @@ describe('capGateAnswerFrom', () => {
 				available: false,
 				episode_count: null,
 				extra_episodes: [],
+				episode_count_approximate: false,
+				provider: null,
 				unsettled: 'refused'
 			})
 		).toEqual({

@@ -7,6 +7,7 @@ const baseSession = (over: Partial<CreateSessionResponse> = {}): CreateSessionRe
 	media_url: 'http://localhost:9999/s/s-123/master.m3u8',
 	media_kind: 'hls',
 	cache_hit: false,
+	subtitles: [],
 	...over
 });
 

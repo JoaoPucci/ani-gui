@@ -273,6 +273,32 @@ shape the docs answer, in the PR that fixes it. The golden and the
 allowlist change only in a PR that changes the rules, with the reason
 in the commit body.
 
+## The wire contract
+
+The renderer's types for what crosses the HTTP seam (`frontend/src/lib/api.ts`,
+`account/types.ts` and the modules beside them) are written by hand; no
+generator makes them from the backend's structs. Two tests keep the sides
+saying the same thing:
+
+- `backend/src/api/wire_contract_test.rs` builds `backend/wire-contract.json`
+  from the backend's own types — a full and a minimal sample of each
+  response type the renderer reads, the fields each request body reads and
+  requires, every value of each enum the renderer names, the error envelope
+  of every variant, and the values the renderer keeps a copy of — and
+  `cargo test` fails until the file says the same. A field added to a
+  published type, or a variant to a published enum, does not compile until
+  the samples carry it.
+- `frontend/src/lib/wire-contract.test.ts` holds each renderer type to that
+  file through a spec the compiler derives from the type, and names each
+  field where they disagree: missing, extra, optional when always sent (or
+  the reverse), or of another JSON kind.
+
+A change to what the backend sends fails the first; replace the file with
+the contents its message prints, and the second then names what the
+renderer's types must change. Both test files' headers list what they do
+not hold, among them answers that are not a struct, map values, request
+value kinds, and URLs built as text.
+
 ## Fixture management
 
 `tests/fixtures/` is the single source of truth for golden data, shared across all test layers.
@@ -294,10 +320,8 @@ Cheap grep / AST tests under `tests/arch/`. They fail loudly when boundaries ero
 
 | Invariant | Tool |
 |---|---|
-| Frontend imports no Rust types except generated `bindings/*.ts` | custom ESLint rule |
-| Every HTTP API handler returns `Result<T, AniError>` | syn-based audit |
 | No hardcoded English in `.svelte` files or `.ts` modules under `frontend/src/` (must go through `m.<key>()`) | custom ESLint rule `no-hardcoded-strings`, `i18n-ignore` escape |
-| Crate dependency direction (`cache` doesn't depend on `reqwest`, etc.) | `cargo-deny` + `cargo-modules` |
+| Crate dependency direction (`cache` doesn't depend on `reqwest`, etc.) | `tests/arch/dep_direction.sh` (grep) |
 
 ## Mutation testing (deferred)
 

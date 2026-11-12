@@ -8,19 +8,9 @@
  * helpers so the policy is unit-testable without the page.
  */
 
-/** Mirror of the backend's `meta::anilist::AiringStatus` wire shape. */
-export interface AiringStatus {
-	/** Episodes aired so far; null = unknown (never gate on unknown). */
-	aired: number | null;
-	/** Number of the next episode to air, when scheduled. */
-	next_episode: number | null;
-	/** Epoch seconds of the next airing, when scheduled. */
-	next_airing_at: number | null;
-	/** Published future schedule (episode number → air time). Weekly
-	 *  shows publish a few weeks ahead; optional for tolerance to
-	 *  payloads written before the field existed. */
-	upcoming?: { episode: number; airing_at: number }[];
-}
+import type { AiringStatus } from '$lib/api';
+
+export type { AiringStatus };
 
 /** Per-tile verdict: aired tiles stay interactive; unaired ones grey
  *  out, and the very next episode carries its air date for the label. */

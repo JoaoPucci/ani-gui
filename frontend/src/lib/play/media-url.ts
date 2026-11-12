@@ -2,8 +2,8 @@ import type { MediaKind } from '$lib/api';
 
 /**
  * Compose the proxy URL the player should fetch given a session id and
- * its media kind. Mirrors the backend's choice in
- * `commands/session.rs > create_session`:
+ * its media kind. Mirrors the backend's `commands::session::media_url`
+ * (held to it by `$lib/wire-contract.test.ts`):
  *
  *   - HLS sessions live at `…/s/<id>/master.m3u8` and feed hls.js.
  *   - MP4 sessions live at `…/s/<id>/file.mp4` and feed `<video src>`.

@@ -22,7 +22,9 @@ describe('makeFetchAvailability', () => {
 		const ipc = vi.fn().mockResolvedValue({
 			available: true,
 			episode_count: 13,
-			extra_episodes: []
+			extra_episodes: [],
+			episode_count_approximate: false,
+			provider: 'hianime'
 		} satisfies AvailabilityResponse);
 		const fetcher = makeFetchAvailability(ipc);
 		const match = makeMatch();
@@ -47,7 +49,9 @@ describe('makeFetchAvailability', () => {
 		const ipc = vi.fn().mockResolvedValue({
 			available: true,
 			episode_count: 1,
-			extra_episodes: []
+			extra_episodes: [],
+			episode_count_approximate: false,
+			provider: 'hianime'
 		} satisfies AvailabilityResponse);
 		await makeFetchAvailability(ipc)(makeMatch({ subtype: 'movie' }), 'sub');
 		expect((ipc.mock.calls[0][0] as AvailabilityArgs).subtype).toBe('movie');
@@ -65,7 +69,9 @@ describe('makeFetchAvailability', () => {
 		const ipc = vi.fn().mockResolvedValue({
 			available: false,
 			episode_count: null,
-			extra_episodes: []
+			extra_episodes: [],
+			episode_count_approximate: false,
+			provider: null
 		} satisfies AvailabilityResponse);
 		const fetcher = makeFetchAvailability(ipc);
 		const match = makeMatch({
@@ -91,7 +97,9 @@ describe('makeFetchAvailability', () => {
 		const ipc = vi.fn().mockResolvedValue({
 			available: true,
 			episode_count: 12,
-			extra_episodes: []
+			extra_episodes: [],
+			episode_count_approximate: false,
+			provider: 'hianime'
 		} satisfies AvailabilityResponse);
 		const fetcher = makeFetchAvailability(ipc);
 		await fetcher(makeMatch(), 'sub');

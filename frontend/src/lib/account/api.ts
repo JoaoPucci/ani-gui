@@ -106,7 +106,13 @@ export function exchangeCode(provider: Provider, req: ExchangeCodeRequest): Prom
  * forced back through OAuth. The caller re-persists the result.
  */
 export function refreshTokens(provider: Provider, refreshToken: string): Promise<Tokens> {
-	return postJson<Tokens>(`/api/account/refresh/${provider}`, { refresh_token: refreshToken });
+	const body: RefreshBody = { refresh_token: refreshToken };
+	return postJson<Tokens>(`/api/account/refresh/${provider}`, body);
+}
+
+/** Body of `/api/account/refresh/:provider`. */
+export interface RefreshBody {
+	refresh_token: string;
 }
 
 export function fetchMe(provider: Provider, bearer: string): Promise<UserProfile> {
@@ -122,9 +128,16 @@ export function fetchMe(provider: Provider, bearer: string): Promise<UserProfile
 export function updateProgress(
 	provider: Provider,
 	bearer: string,
-	body: { kitsu_id: string; progress: number; status?: string }
+	body: UpdateProgressBody
 ): Promise<ListEntry | null> {
 	return postJson<ListEntry | null>(`/api/account/update/${provider}`, body, bearer);
+}
+
+/** Body of `/api/account/update/:provider`. */
+export interface UpdateProgressBody {
+	kitsu_id: string;
+	progress: number;
+	status?: string;
 }
 
 export function fetchAndCacheList(provider: Provider, bearer: string): Promise<ListEntry[]> {

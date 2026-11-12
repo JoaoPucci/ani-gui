@@ -1,0 +1,1037 @@
+{
+  "constants": {
+    "WATCH_LATER_BRIDGE_MAX_IDS": 500
+  },
+  "enums": {
+    "EntryView.status": [
+      "planning",
+      "watching",
+      "completed",
+      "paused",
+      "dropped",
+      "rewatching"
+    ],
+    "ExternalPlayerKind": [
+      "mpv",
+      "vlc",
+      "iina",
+      "custom"
+    ],
+    "ListStatus": [
+      "planning",
+      "watching",
+      "completed",
+      "paused",
+      "dropped",
+      "rewatching"
+    ],
+    "MediaKind": [
+      "hls",
+      "mp4"
+    ],
+    "PkceMethod": [
+      "plain",
+      "S256"
+    ],
+    "ProviderId": [
+      "hianime"
+    ],
+    "ProviderKind": [
+      "anilist",
+      "mal",
+      "inhouse"
+    ],
+    "SearchOrder": [
+      "relevance",
+      "year",
+      "rating"
+    ],
+    "UnsettledReason": [
+      "refused",
+      "unanswered",
+      "past_affinity",
+      "superseded"
+    ],
+    "VersionKind": [
+      "standard",
+      "uncensored"
+    ]
+  },
+  "errors": [
+    {
+      "key": "error.download.tool_failed",
+      "kind": "scraper"
+    },
+    {
+      "key": "error.download.tool_spawn_failed",
+      "kind": "scraper"
+    },
+    {
+      "key": "error.scraper.timeout",
+      "kind": "timeout"
+    },
+    {
+      "key": "error.search.no_results",
+      "kind": "no_results"
+    },
+    {
+      "key": "error.search.no_results",
+      "kind": "refused_by_name"
+    },
+    {
+      "key": "error.play.episode_unavailable",
+      "kind": "episode_unavailable"
+    },
+    {
+      "host": "zokoanime.video",
+      "key": "error.play.stream_server_failed",
+      "kind": "stream_server_failed",
+      "stage": "embed"
+    },
+    {
+      "key": "error.network.rate_limited",
+      "kind": "rate_limited",
+      "retry_after_secs": 9
+    },
+    {
+      "detail": "x",
+      "key": "error.scraper.parse_failed",
+      "kind": "parse_failed"
+    },
+    {
+      "key": "error.download.ffmpeg_missing",
+      "kind": "ffmpeg_missing"
+    },
+    {
+      "key": "error.network.upstream",
+      "kind": "upstream",
+      "status": 503
+    },
+    {
+      "key": "error.network.unreachable",
+      "kind": "network"
+    },
+    {
+      "key": "error.network.unreachable",
+      "kind": "gate_refused"
+    },
+    {
+      "binary": "vlc",
+      "key": "error.player.spawn_failed",
+      "kind": "player_spawn_failed"
+    },
+    {
+      "binary": "syncplay",
+      "key": "error.syncplay.spawn_failed",
+      "kind": "syncplay_spawn_failed"
+    },
+    {
+      "key": "error.cache.generic",
+      "kind": "cache"
+    },
+    {
+      "key": "error.io.generic",
+      "kind": "io"
+    },
+    {
+      "key": "error.config.parse",
+      "kind": "config"
+    },
+    {
+      "key": "error.metadata.source",
+      "kind": "metadata"
+    },
+    {
+      "key": "error.account.unsupported_pkce",
+      "kind": "unsupported_pkce"
+    },
+    {
+      "key": "error.request.invalid_kitsu_id",
+      "kind": "invalid_kitsu_id"
+    },
+    {
+      "key": "error.request.invalid_search_offset",
+      "kind": "invalid_search_offset"
+    },
+    {
+      "key": "error.request.invalid_body",
+      "kind": "invalid_request_body"
+    },
+    {
+      "key": "error.stream.invalid_token",
+      "kind": "invalid_token"
+    },
+    {
+      "key": "error.account.refresh_rejected",
+      "kind": "refresh_rejected"
+    },
+    {
+      "host": null,
+      "key": "error.play.stream_server_failed",
+      "kind": "stream_server_failed",
+      "stage": "embed"
+    },
+    {
+      "key": "error.network.rate_limited",
+      "kind": "rate_limited",
+      "refused_by": "anilist",
+      "retry_after_secs": null
+    }
+  ],
+  "media_urls": {
+    "base": "http://127.0.0.1:4100",
+    "session": "3f1c",
+    "urls": {
+      "hls": "http://127.0.0.1:4100/s/3f1c/master.m3u8",
+      "mp4": "http://127.0.0.1:4100/s/3f1c/file.mp4"
+    }
+  },
+  "requests": {
+    "AuthUrlRequest": {
+      "accepts": [
+        "pkce",
+        "state"
+      ],
+      "requires": [
+        "pkce",
+        "state"
+      ]
+    },
+    "AvailabilityArgs": {
+      "accepts": [
+        "alt_titles",
+        "background",
+        "bypass_cache",
+        "episode_count",
+        "kitsu_id",
+        "mode",
+        "status",
+        "subtype",
+        "title",
+        "year"
+      ],
+      "requires": [
+        "mode",
+        "title"
+      ]
+    },
+    "AvailabilityBatchArgs": {
+      "accepts": [
+        "kitsu_ids",
+        "mode"
+      ],
+      "requires": [
+        "kitsu_ids",
+        "mode"
+      ]
+    },
+    "AvailabilityWarmArgs": {
+      "accepts": [
+        "items"
+      ],
+      "requires": [
+        "items"
+      ]
+    },
+    "Config": {
+      "accepts": [
+        "auto_play_next",
+        "auto_skip_ed",
+        "auto_skip_op",
+        "cache_resolutions",
+        "download_bottom_bar_enabled",
+        "download_quality",
+        "external_player",
+        "external_player_custom_args",
+        "external_player_kind",
+        "image_cache_cap_mb",
+        "locale",
+        "mode",
+        "primary_account",
+        "syncplay_binary",
+        "update_include_prereleases",
+        "use_custom_player_controls"
+      ],
+      "requires": []
+    },
+    "CreateSessionArgs": {
+      "accepts": [
+        "referer",
+        "subtitles",
+        "upstream_url"
+      ],
+      "requires": [
+        "referer",
+        "upstream_url"
+      ]
+    },
+    "DownloadArgs": {
+      "accepts": [
+        "alt_titles",
+        "caption",
+        "download_dir",
+        "episode",
+        "episode_count",
+        "kitsu_id",
+        "locale",
+        "mode",
+        "quality",
+        "subtype",
+        "title",
+        "version",
+        "year"
+      ],
+      "requires": [
+        "episode",
+        "mode",
+        "title"
+      ]
+    },
+    "ExchangeCodeRequest": {
+      "accepts": [
+        "code",
+        "pkce"
+      ],
+      "requires": [
+        "code",
+        "pkce"
+      ]
+    },
+    "KitsuByMalIdsBody": {
+      "accepts": [
+        "mal_ids"
+      ],
+      "requires": [
+        "mal_ids"
+      ]
+    },
+    "LaunchArgs": {
+      "accepts": [
+        "custom_args_template",
+        "player_command",
+        "player_kind",
+        "referer",
+        "stream_url",
+        "subtitle_urls",
+        "subtitles_off",
+        "title"
+      ],
+      "requires": [
+        "player_command",
+        "stream_url"
+      ]
+    },
+    "PkceWire": {
+      "accepts": [
+        "challenge",
+        "method",
+        "verifier"
+      ],
+      "requires": [
+        "challenge",
+        "method",
+        "verifier"
+      ]
+    },
+    "PlayArgs": {
+      "accepts": [
+        "alt_titles",
+        "caption",
+        "episode",
+        "episode_count",
+        "guess_id",
+        "guess_row",
+        "kitsu_id",
+        "locale",
+        "mode",
+        "prefetch",
+        "subtype",
+        "title",
+        "version",
+        "year"
+      ],
+      "requires": [
+        "episode",
+        "mode",
+        "title"
+      ]
+    },
+    "RefreshRequest": {
+      "accepts": [
+        "refresh_token"
+      ],
+      "requires": [
+        "refresh_token"
+      ]
+    },
+    "RuledOutRequest": {
+      "accepts": [
+        "episode",
+        "hits",
+        "key",
+        "search",
+        "title"
+      ],
+      "requires": [
+        "episode",
+        "hits",
+        "title"
+      ]
+    },
+    "SearchBody": {
+      "accepts": [
+        "query"
+      ],
+      "requires": [
+        "query"
+      ]
+    },
+    "SetEntryRequest": {
+      "accepts": [
+        "kitsu_id",
+        "progress",
+        "status"
+      ],
+      "requires": [
+        "kitsu_id"
+      ]
+    },
+    "TitleMatchBody": {
+      "accepts": [
+        "cour",
+        "kitsu_id",
+        "provider",
+        "title",
+        "year"
+      ],
+      "requires": [
+        "cour",
+        "kitsu_id",
+        "title"
+      ]
+    },
+    "UpdateProgressRequest": {
+      "accepts": [
+        "kitsu_id",
+        "progress",
+        "score",
+        "status"
+      ],
+      "requires": [
+        "kitsu_id"
+      ]
+    },
+    "WaitBody": {
+      "accepts": [
+        "tickets"
+      ],
+      "requires": [
+        "tickets"
+      ]
+    }
+  },
+  "responses": {
+    "AiringStatus": {
+      "full": {
+        "aired": 6,
+        "next_airing_at": 1700000000,
+        "next_episode": 7,
+        "upcoming": [
+          {
+            "airing_at": 1700000000,
+            "episode": 7
+          }
+        ]
+      },
+      "min": {
+        "aired": null,
+        "next_airing_at": null,
+        "next_episode": null,
+        "upcoming": []
+      }
+    },
+    "AppInfo": {
+      "full": {
+        "cache_reclaim": {
+          "expired_rows": 5,
+          "undeclared_rows": 4
+        },
+        "history_path": "/home/u/.local/state/ani-gui/ani-hsts",
+        "proxy_base_url": "http://127.0.0.1:4100",
+        "removed_legacy_paths": [
+          "/home/u/.cache/ani-gui/ani-cli"
+        ],
+        "retired_provider_sweep": {
+          "cache_rows": 3,
+          "numbering_rows": 2,
+          "renumbered": [
+            "One Piece"
+          ],
+          "superseded": [
+            "Frieren"
+          ]
+        },
+        "version": "0.18.0"
+      },
+      "min": {
+        "cache_reclaim": {
+          "expired_rows": 5,
+          "undeclared_rows": 4
+        },
+        "history_path": "/home/u/.local/state/ani-gui/ani-hsts",
+        "proxy_base_url": "http://127.0.0.1:4100",
+        "removed_legacy_paths": [],
+        "retired_provider_sweep": {
+          "cache_rows": 3,
+          "numbering_rows": 2,
+          "renumbered": [],
+          "superseded": []
+        },
+        "version": "0.18.0"
+      }
+    },
+    "AuthUrlResponse": {
+      "full": {
+        "url": "https://myanimelist.net/v1/oauth2/authorize?state=s"
+      },
+      "min": {
+        "url": "https://myanimelist.net/v1/oauth2/authorize?state=s"
+      }
+    },
+    "AvailabilityBatchResponse": {
+      "full": {
+        "cached": {
+          "46474": true
+        },
+        "playable_episode_counts": {
+          "46474": 28
+        }
+      },
+      "min": {
+        "cached": {},
+        "playable_episode_counts": {}
+      }
+    },
+    "AvailabilityResponse": {
+      "full": {
+        "available": true,
+        "episode_count": 28,
+        "episode_count_approximate": true,
+        "extra_episodes": [
+          "12.5"
+        ],
+        "gate_refused": true,
+        "provider": "hianime",
+        "unsettled": "refused",
+        "versions": [
+          {
+            "has_mode": true,
+            "kind": "uncensored",
+            "show_key": "hianime:frieren-uncensored-18543"
+          }
+        ]
+      },
+      "min": {
+        "available": false,
+        "episode_count": null,
+        "episode_count_approximate": false,
+        "extra_episodes": [],
+        "provider": null
+      }
+    },
+    "Config": {
+      "full": {
+        "auto_play_next": true,
+        "auto_skip_ed": true,
+        "auto_skip_op": true,
+        "cache_resolutions": true,
+        "download_bottom_bar_enabled": true,
+        "download_quality": "720",
+        "external_player": "vlc",
+        "external_player_custom_args": "--fullscreen",
+        "external_player_kind": "vlc",
+        "image_cache_cap_mb": 512,
+        "locale": "pt-BR",
+        "mode": "dub",
+        "primary_account": "anilist",
+        "syncplay_binary": "syncplay",
+        "update_include_prereleases": true,
+        "use_custom_player_controls": true
+      },
+      "min": {
+        "auto_play_next": true,
+        "auto_skip_ed": true,
+        "auto_skip_op": true,
+        "cache_resolutions": true,
+        "download_bottom_bar_enabled": true,
+        "download_quality": "720",
+        "external_player": "vlc",
+        "external_player_custom_args": "--fullscreen",
+        "external_player_kind": "vlc",
+        "image_cache_cap_mb": 512,
+        "locale": "pt-BR",
+        "mode": "dub",
+        "primary_account": "anilist",
+        "syncplay_binary": "syncplay",
+        "update_include_prereleases": true,
+        "use_custom_player_controls": true
+      }
+    },
+    "CreateSessionResponse": {
+      "full": {
+        "cache_hit": true,
+        "episode": "12.5",
+        "episode_unverified": true,
+        "former_episode": "24.5",
+        "media_kind": "hls",
+        "media_url": "http://127.0.0.1:4100/s/3f1c/master.m3u8",
+        "own_listing": true,
+        "session_id": "3f1c",
+        "subtitles": [
+          {
+            "default": true,
+            "label": "English",
+            "lang": "en",
+            "url": "http://127.0.0.1:4100/s/3f1c/sub/0.vtt"
+          }
+        ],
+        "version": "uncensored",
+        "versions": [
+          {
+            "has_mode": true,
+            "kind": "uncensored",
+            "show_key": "hianime:frieren-uncensored-18543"
+          }
+        ]
+      },
+      "min": {
+        "cache_hit": false,
+        "media_kind": "hls",
+        "media_url": "http://127.0.0.1:4100/s/3f1c/master.m3u8",
+        "session_id": "3f1c",
+        "subtitles": []
+      }
+    },
+    "DownloadProgress": {
+      "full": {
+        "line": "[download] 42%"
+      },
+      "min": {
+        "line": "[download] 42%"
+      }
+    },
+    "DownloadResponse": {
+      "full": {
+        "dest_dir": "/home/u/Downloads/Frieren"
+      },
+      "min": {
+        "dest_dir": "/home/u/Downloads/Frieren"
+      }
+    },
+    "Ended": {
+      "full": {
+        "landed": true,
+        "ticket": 7
+      },
+      "min": {
+        "landed": true,
+        "ticket": 7
+      }
+    },
+    "EntryView": {
+      "full": {
+        "progress": 8,
+        "status": "watching"
+      },
+      "min": {
+        "progress": 8,
+        "status": "watching"
+      }
+    },
+    "HistoryEntry": {
+      "full": {
+        "ep_no": "8",
+        "id": "hianime:frieren-18542",
+        "kitsu_id": "46474",
+        "title": "Frieren",
+        "watched_at": 1700000000000
+      },
+      "min": {
+        "ep_no": "8",
+        "id": "hianime:frieren-18542",
+        "title": "Frieren"
+      }
+    },
+    "HistoryNumber": {
+      "full": {
+        "ep_no": "12.5",
+        "former_ep_no": "24.5"
+      },
+      "min": {
+        "ep_no": "12.5"
+      }
+    },
+    "HistoryRow": {
+      "full": {
+        "ep_no": "8",
+        "id": "hianime:frieren-18542",
+        "key_year": 2023,
+        "kitsu_id": "46474",
+        "title": "Frieren",
+        "watched_at": 1700000000000
+      },
+      "min": {
+        "ep_no": "8",
+        "id": "hianime:frieren-18542",
+        "title": "Frieren"
+      }
+    },
+    "KitsuAnimeRef": {
+      "full": {
+        "abbreviated_titles": [
+          "Frieren: Beyond Journey's End"
+        ],
+        "age_rating": "PG",
+        "anilist_banner": "https://s4.anilist.co/file/banner.jpg",
+        "average_rating": 8.5,
+        "canonical_title": "Frieren",
+        "cover_image": {
+          "large": "https://media.kitsu.app/c/large.jpg",
+          "original": "https://media.kitsu.app/c/original.jpg",
+          "small": "https://media.kitsu.app/c/small.jpg",
+          "tiny": "https://media.kitsu.app/c/tiny.jpg"
+        },
+        "end_date": "2024-03-22",
+        "episode_count": 28,
+        "id": "46474",
+        "popularity_rank": 120,
+        "poster_image": {
+          "large": "https://media.kitsu.app/p/large.jpg",
+          "medium": "https://media.kitsu.app/p/medium.jpg",
+          "original": "https://media.kitsu.app/p/original.jpg",
+          "small": "https://media.kitsu.app/p/small.jpg",
+          "tiny": "https://media.kitsu.app/p/tiny.jpg"
+        },
+        "slug": "sousou-no-frieren",
+        "start_date": "2023-09-29",
+        "status": "finished",
+        "subtype": "TV",
+        "synopsis": "An elf mage outlives her party.",
+        "titles": {
+          "en_jp": "Sousou no Frieren"
+        }
+      },
+      "min": {
+        "abbreviated_titles": [],
+        "age_rating": null,
+        "average_rating": null,
+        "canonical_title": "Frieren",
+        "cover_image": null,
+        "end_date": null,
+        "episode_count": null,
+        "id": "46474",
+        "popularity_rank": null,
+        "poster_image": null,
+        "slug": null,
+        "start_date": null,
+        "status": null,
+        "subtype": null,
+        "synopsis": null,
+        "titles": {}
+      }
+    },
+    "KitsuCoverImage": {
+      "full": {
+        "large": "https://media.kitsu.app/c/large.jpg",
+        "original": "https://media.kitsu.app/c/original.jpg",
+        "small": "https://media.kitsu.app/c/small.jpg",
+        "tiny": "https://media.kitsu.app/c/tiny.jpg"
+      },
+      "min": {
+        "large": null,
+        "original": null,
+        "small": null,
+        "tiny": null
+      }
+    },
+    "KitsuEpisode": {
+      "full": {
+        "airdate": "2023-09-29",
+        "canonical_title": "The Journey's End",
+        "id": "270001",
+        "length": 24,
+        "number": 1,
+        "relative_number": 1,
+        "season_number": 1,
+        "synopsis": "The party returns.",
+        "thumbnail": {
+          "original": "https://media.kitsu.app/e/original.jpg"
+        }
+      },
+      "min": {
+        "airdate": null,
+        "canonical_title": null,
+        "id": "270001",
+        "length": null,
+        "number": null,
+        "relative_number": null,
+        "season_number": null,
+        "synopsis": null,
+        "thumbnail": null
+      }
+    },
+    "KitsuEpisodeThumbnail": {
+      "full": {
+        "original": "https://media.kitsu.app/e/original.jpg"
+      },
+      "min": {
+        "original": null
+      }
+    },
+    "KitsuPosterImage": {
+      "full": {
+        "large": "https://media.kitsu.app/p/large.jpg",
+        "medium": "https://media.kitsu.app/p/medium.jpg",
+        "original": "https://media.kitsu.app/p/original.jpg",
+        "small": "https://media.kitsu.app/p/small.jpg",
+        "tiny": "https://media.kitsu.app/p/tiny.jpg"
+      },
+      "min": {
+        "large": null,
+        "medium": null,
+        "original": null,
+        "small": null,
+        "tiny": null
+      }
+    },
+    "KitsuSearchPage": {
+      "full": {
+        "hits": [
+          {
+            "abbreviated_titles": [
+              "Frieren: Beyond Journey's End"
+            ],
+            "age_rating": "PG",
+            "anilist_banner": "https://s4.anilist.co/file/banner.jpg",
+            "average_rating": 8.5,
+            "canonical_title": "Frieren",
+            "cover_image": {
+              "large": "https://media.kitsu.app/c/large.jpg",
+              "original": "https://media.kitsu.app/c/original.jpg",
+              "small": "https://media.kitsu.app/c/small.jpg",
+              "tiny": "https://media.kitsu.app/c/tiny.jpg"
+            },
+            "end_date": "2024-03-22",
+            "episode_count": 28,
+            "id": "46474",
+            "popularity_rank": 120,
+            "poster_image": {
+              "large": "https://media.kitsu.app/p/large.jpg",
+              "medium": "https://media.kitsu.app/p/medium.jpg",
+              "original": "https://media.kitsu.app/p/original.jpg",
+              "small": "https://media.kitsu.app/p/small.jpg",
+              "tiny": "https://media.kitsu.app/p/tiny.jpg"
+            },
+            "slug": "sousou-no-frieren",
+            "start_date": "2023-09-29",
+            "status": "finished",
+            "subtype": "TV",
+            "synopsis": "An elf mage outlives her party.",
+            "titles": {
+              "en_jp": "Sousou no Frieren"
+            }
+          }
+        ],
+        "next_offset": 20
+      },
+      "min": {
+        "hits": [],
+        "next_offset": null
+      }
+    },
+    "ListEntry": {
+      "full": {
+        "mal_id": 52991,
+        "media_id": 52991,
+        "progress_episodes": 8,
+        "provider": "mal",
+        "score_0_to_100": 90,
+        "status": "watching",
+        "title": "Frieren",
+        "updated_at_epoch_s": 1700000000
+      },
+      "min": {
+        "mal_id": null,
+        "media_id": 52991,
+        "progress_episodes": 8,
+        "provider": "mal",
+        "score_0_to_100": null,
+        "status": "watching",
+        "title": "Frieren",
+        "updated_at_epoch_s": 1700000000
+      }
+    },
+    "ProgressLine.links_fetched": {
+      "full": {
+        "kind": "links_fetched",
+        "provider": "hianime"
+      },
+      "min": {
+        "kind": "links_fetched",
+        "provider": "hianime"
+      }
+    },
+    "ProgressLine.matched": {
+      "full": {
+        "kind": "matched",
+        "title": "Frieren"
+      },
+      "min": {
+        "kind": "matched",
+        "title": "Frieren"
+      }
+    },
+    "ProgressLine.searching": {
+      "full": {
+        "kind": "searching",
+        "provider": "hianime"
+      },
+      "min": {
+        "kind": "searching",
+        "provider": "hianime"
+      }
+    },
+    "ReclaimReport": {
+      "full": {
+        "expired_rows": 5,
+        "undeclared_rows": 4
+      },
+      "min": {
+        "expired_rows": 5,
+        "undeclared_rows": 4
+      }
+    },
+    "ReleaseInfo": {
+      "full": {
+        "body": "Notes",
+        "name": "0.18.0",
+        "publishedAt": "2026-11-13T00:00:00Z",
+        "tag": "v0.18.0",
+        "url": "https://github.com/JoaoPucci/ani-gui/releases/tag/v0.18.0"
+      },
+      "min": {
+        "body": "Notes",
+        "name": "0.18.0",
+        "publishedAt": "2026-11-13T00:00:00Z",
+        "tag": "v0.18.0",
+        "url": "https://github.com/JoaoPucci/ani-gui/releases/tag/v0.18.0"
+      }
+    },
+    "RetiredSweepReport": {
+      "full": {
+        "cache_rows": 3,
+        "numbering_rows": 2,
+        "renumbered": [
+          "One Piece"
+        ],
+        "superseded": [
+          "Frieren"
+        ]
+      },
+      "min": {
+        "cache_rows": 3,
+        "numbering_rows": 2,
+        "renumbered": [],
+        "superseded": []
+      }
+    },
+    "SessionSubtitle": {
+      "full": {
+        "default": true,
+        "label": "English",
+        "lang": "en",
+        "url": "http://127.0.0.1:4100/s/3f1c/sub/0.vtt"
+      },
+      "min": {
+        "default": true,
+        "label": "English",
+        "lang": "en",
+        "url": "http://127.0.0.1:4100/s/3f1c/sub/0.vtt"
+      }
+    },
+    "SkipInterval": {
+      "full": {
+        "end_time": 180.5,
+        "skip_type": "op",
+        "start_time": 90.5
+      },
+      "min": {
+        "end_time": 180.5,
+        "skip_type": "op",
+        "start_time": 90.5
+      }
+    },
+    "TokensResponse": {
+      "full": {
+        "access_token": "at",
+        "expires_at_epoch_s": 1700000000,
+        "refresh_token": "rt"
+      },
+      "min": {
+        "access_token": "at",
+        "expires_at_epoch_s": 1700000000,
+        "refresh_token": null
+      }
+    },
+    "UpcomingEpisode": {
+      "full": {
+        "airing_at": 1700000000,
+        "episode": 7
+      },
+      "min": {
+        "airing_at": 1700000000,
+        "episode": 7
+      }
+    },
+    "UserProfile": {
+      "full": {
+        "avatar_url": "https://s4.anilist.co/file/avatar.png",
+        "provider": "anilist",
+        "stats": {
+          "anime_count": 120,
+          "mean_score_0_to_10": 7.5
+        },
+        "user_id": "42",
+        "username": "frieren"
+      },
+      "min": {
+        "avatar_url": null,
+        "provider": "anilist",
+        "stats": null,
+        "user_id": "42",
+        "username": "frieren"
+      }
+    },
+    "UserStats": {
+      "full": {
+        "anime_count": 120,
+        "mean_score_0_to_10": 7.5
+      },
+      "min": {
+        "anime_count": 120,
+        "mean_score_0_to_10": null
+      }
+    },
+    "VersionInfo": {
+      "full": {
+        "has_mode": true,
+        "kind": "uncensored",
+        "show_key": "hianime:frieren-uncensored-18543"
+      },
+      "min": {
+        "kind": "uncensored",
+        "show_key": "hianime:frieren-uncensored-18543"
+      }
+    }
+  }
+}

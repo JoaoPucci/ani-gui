@@ -114,8 +114,10 @@ describe('captureSearch', () => {
 		expect(shown(hit)).toEqual(shown(ref('7')));
 		expect(hit.synopsis).toBeNull();
 		expect(hit.cover_image).toBeNull();
-		expect(hit.titles).toBeUndefined();
-		expect(hit.abbreviated_titles).toBeUndefined();
+		// Every result carries its title variants; the snapshot keeps
+		// none of them, so its results carry them empty.
+		expect(hit.titles).toEqual({});
+		expect(hit.abbreviated_titles).toEqual([]);
 		expect(hit.anilist_banner).toBeUndefined();
 	});
 

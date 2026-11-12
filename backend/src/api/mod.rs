@@ -881,6 +881,14 @@ mod kitsu_search_page_test;
 mod flags_tests;
 
 #[cfg(test)]
+#[path = "wire_probe_test.rs"]
+mod wire_probe;
+
+#[cfg(test)]
+#[path = "wire_contract_test.rs"]
+mod wire_contract_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::meta::kitsu::KitsuClient;
