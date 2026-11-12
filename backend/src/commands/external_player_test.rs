@@ -275,7 +275,9 @@ fn a_stream_url_that_is_not_one_is_refused_and_the_player_never_starts() {
 
 proptest::proptest! {
     #[test]
-    fn nothing_taken_as_a_stream_url_reads_as_an_option(s in ".*") {
+    fn nothing_taken_as_a_stream_url_reads_as_an_option(
+        s in "(https?://|-{1,2}|/|[a-zA-Z]{1,6}:)?.{0,40}",
+    ) {
         if is_stream_url(&s) {
             proptest::prop_assert!(!s.starts_with('-'));
             proptest::prop_assert!(s.starts_with("http://") || s.starts_with("https://"));
@@ -290,5 +292,77 @@ proptest::proptest! {
     ) {
         let url = format!("{scheme}://{host}{path}");
         proptest::prop_assert!(is_stream_url(&url), "{}", url);
+    }
+}
+
+// — A custom template's values never read as options ——————————————————
+//
+// A template the user wrote substitutes the title, the referer and the
+// subtitle URL into its tokens. The title comes from the show's name,
+// the others from the provider. A token the template did not start as
+// an option never becomes one because of what was substituted into it:
+// it is dropped, as an empty value's token is. `/` counts as well as
+// `-`: many Windows players take `/switch` options.
+
+fn custom(template: &str) -> LaunchArgs {
+    let mut a = args("https://example.com/v.m3u8");
+    a.player_kind = ExternalPlayerKind::Custom;
+    a.custom_args_template = Some(template.into());
+    a
+}
+
+#[test]
+fn a_substituted_value_that_would_start_an_option_drops_its_token() {
+    let mut a = custom("{title} {referer} {subtitle} {url}");
+    a.title = Some("--script=/tmp/x.lua".into());
+    a.referer = Some("/play".into());
+    a.subtitle_urls = vec!["-v".into()];
+    assert_eq!(
+        build_argv(&a),
+        vec!["https://example.com/v.m3u8".to_string()]
+    );
+}
+
+#[test]
+fn a_token_the_template_starts_as_an_option_keeps_its_value() {
+    let mut a = custom("--title={title} /sub {subtitle} {url}");
+    a.title = Some("-dash title".into());
+    a.subtitle_urls = vec!["https://e.example/a.vtt".into()];
+    assert_eq!(
+        build_argv(&a),
+        vec![
+            "--title=-dash title".to_string(),
+            "/sub".to_string(),
+            "https://e.example/a.vtt".to_string(),
+            "https://example.com/v.m3u8".to_string(),
+        ]
+    );
+}
+
+proptest::proptest! {
+    #[test]
+    fn no_substituted_value_turns_a_token_into_an_option(
+        title in ".{0,20}",
+        referer in ".{0,20}",
+        subtitle in ".{0,20}",
+        template in proptest::collection::vec(
+            proptest::sample::select(vec![
+                "{title}", "{referer}", "{subtitle}", "{url}", "x{title}",
+                "--t={title}", "/s", "{title}{referer}", "plain",
+            ]),
+            0..6,
+        ),
+    ) {
+        let template = template.join(" ");
+        let mut a = custom(&template);
+        a.title = Some(title);
+        a.referer = Some(referer);
+        a.subtitle_urls = vec![subtitle];
+        let written: Vec<String> = shlex::split(&template).unwrap_or_default();
+        let leads = |t: &str| t.starts_with('-') || t.starts_with('/');
+        let template_options = written.iter().filter(|t| leads(t)).count();
+        let argv = build_argv(&a);
+        let argv_options = argv.iter().filter(|t| leads(t)).count();
+        proptest::prop_assert!(argv_options <= template_options, "{:?} from {:?}", argv, template);
     }
 }

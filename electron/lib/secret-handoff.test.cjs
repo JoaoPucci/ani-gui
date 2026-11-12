@@ -137,3 +137,26 @@ test("the secret goes to a page exactly when it is the app's main frame in a win
     }),
   );
 });
+
+test("a caller is judged by its frame before its window is read, and a window that cannot be read gets nothing", () => {
+  const { k } = keeper();
+  const contents = {};
+  k.hold(contents, SECRET);
+  const touched = [];
+  const forged = {
+    get sender() {
+      touched.push("sender");
+      return contents;
+    },
+    senderFrame: mainFrame("https://example.com/"),
+  };
+  assert.equal(k.answer(forged), null);
+  assert.deepEqual(touched, []);
+  const unreadable = {
+    get sender() {
+      throw new Error("gone");
+    },
+    senderFrame: mainFrame("app://localhost/"),
+  };
+  assert.equal(k.answer(unreadable), null);
+});

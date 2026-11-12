@@ -142,3 +142,26 @@ test("however the output is cut into chunks, what is written is the redacted who
     }),
   );
 });
+
+// The backend's own output is relayed before the launch's secret is
+// known (its handshake carries it), and after. Once it is known, the
+// relays redact it by value as well as by shape.
+const { backendRelay } = require("./log-redact.cjs");
+
+test("the backend's relays redact the launch's secret by value once the handshake names it", () => {
+  const out = [];
+  const err = [];
+  const relay = backendRelay({ stdout: (t) => out.push(t), stderr: (t) => err.push(t) });
+  relay.stderr(`early ${SECRET} secret=${SECRET}\n`);
+  relay.learn(SECRET);
+  relay.stdout(`late "secret":"${SECRET}"`);
+  relay.stderr(`bare ${SECRET}\n`);
+  relay.stderr("unfinished");
+  relay.end();
+  assert.deepEqual(out, [`late "secret":"${REDACTED}"\n`]);
+  assert.deepEqual(err, [
+    `[backend] early ${SECRET} secret=${REDACTED}\n`,
+    `[backend] bare ${REDACTED}\n`,
+    "[backend] unfinished",
+  ]);
+});

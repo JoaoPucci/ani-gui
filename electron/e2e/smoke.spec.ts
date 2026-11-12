@@ -314,6 +314,7 @@ test("the launch's secret is on no process's command line, and only the app's pa
       electronApp.getAppMetrics().map((m) => m.pid),
     );
     expect(pids.length).toBeGreaterThan(1);
+    let read = 0;
     for (const pid of pids) {
       let cmdline = "";
       try {
@@ -321,22 +322,21 @@ test("the launch's secret is on no process's command line, and only the app's pa
       } catch {
         continue; // a helper that exited in between
       }
+      read += 1;
       expect(cmdline, `pid ${pid}`).not.toContain(secret as string);
       expect(cmdline, `pid ${pid}`).not.toContain("--ani-gui-internal-secret");
     }
+    // The renderer and the main process at least: a run that read no
+    // command line checked nothing.
+    expect(read).toBeGreaterThan(1);
 
     // Another page in the app's window runs the same preload, and gets
     // no secret; the app's own page, loaded again, gets it again.
     const other = path.join(profile, "other.html");
     fs.writeFileSync(other, "<!doctype html><title>other</title><p>other</p>");
-    const load = (url: string) =>
-      app.evaluate(async ({ BrowserWindow }, target) => {
-        const win = BrowserWindow.getAllWindows().find((w) =>
-          /^(app:\/\/localhost|file:)/.test(w.webContents.getURL()),
-        );
-        if (!win) throw new Error("no app window");
-        await win.loadURL(target);
-      }, url);
+    // The page's own window, not the splash, which may still be up.
+    const win = await app.browserWindow(page);
+    const load = (url: string) => win.evaluate((w, target) => w.loadURL(target), url);
     await load(`file://${other}`);
     expect(await page.evaluate(() => document.title)).toBe("other");
     expect(await page.evaluate(() => window.aniGui?.internalSecret ?? null)).toBeNull();
