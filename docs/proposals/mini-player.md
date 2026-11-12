@@ -224,7 +224,7 @@ Two of the layout's effects would be wrong in a second window:
 
 AGENTS.md §6 says hls.js is a singleton inside the player page.
 **[data]** The engine is constructed in the play page
-(`+page.svelte:2009`), the one place it is built. The rule's intent
+(`+page.svelte:2132`), the one place it is built. The rule's intent
 holds: one engine per player surface, never one built ad hoc.
 
 **[proposal]** The play page's attach path (engine, sidecar tracks,
