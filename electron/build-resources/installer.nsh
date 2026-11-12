@@ -98,6 +98,11 @@
 ;   - ffmpeg.exe present, stamp names another version   → download; if
 ;     that fails, the old copy and its stamp stay, so the next install
 ;     tries again.
+;   - ffmpeg.exe restored, but its stamp not            → record it as
+;     "unknown" and download; if that fails, the "unknown" stamp stays,
+;     so the next install tries again. Taken for unstamped, the copy
+;     would read as 7.1.1 whatever it is. (Should writing that stamp
+;     fail as well, the next install does take it for unstamped.)
 ;   - ffmpeg.exe present, no stamp                      → treat it as
 ;     FFMPEG_UNSTAMPED_VERSION, write that stamp, and compare as above.
 ;     Every installer released, 0.1.1 through 0.17.0, pinned 7.1.1 and wrote
@@ -184,6 +189,11 @@
 
 !macro customInstall
     Var /GLOBAL ffmpegRecorded
+    ; Set when the restored copy's stamp could not be put back: its
+    ; version is then unknown, and the copy must not pass for an
+    ; unstamped one.
+    Var /GLOBAL ffmpegStampLost
+    StrCpy $ffmpegStampLost 0
 
     ; --- Step 2: put back what step 1 set aside -------------------
     ; Only when the new files did not bring one: nothing in the package
@@ -205,7 +215,19 @@
             DetailPrint "ffmpeg: could not restore the previous copy; it will be downloaded again."
         ${Else}
             ${If} ${FileExists} "${FFMPEG_STAGING}\ffmpeg.version"
+                ClearErrors
                 Rename "${FFMPEG_STAGING}\ffmpeg.version" "${FFMPEG_STAMP}"
+                ${If} ${Errors}
+                    ClearErrors
+                    CopyFiles /SILENT "${FFMPEG_STAGING}\ffmpeg.version" "${FFMPEG_STAMP}"
+                ${EndIf}
+                ${If} ${Errors}
+                    ; Without its stamp the copy would read as an
+                    ; unstamped 7.1.1, whatever it is.
+                    Delete "${FFMPEG_STAMP}"
+                    StrCpy $ffmpegStampLost 1
+                    DetailPrint "ffmpeg: could not restore the previous copy's version stamp; it will be downloaded again."
+                ${EndIf}
             ${EndIf}
             DetailPrint "ffmpeg: kept the copy from the previous install."
         ${EndIf}
@@ -222,6 +244,14 @@
                 FileRead $0 $ffmpegRecorded
                 FileClose $0
             ${EndIf}
+        ${ElseIf} $ffmpegStampLost == 1
+            ; A version that matches no pin: the copy is replaced, and
+            ; should the download fail, the next install tries again
+            ; rather than taking the copy for an unstamped one.
+            StrCpy $ffmpegRecorded "unknown"
+            FileOpen $0 "${FFMPEG_STAMP}" w
+            FileWrite $0 "unknown"
+            FileClose $0
         ${Else}
             StrCpy $ffmpegRecorded "${FFMPEG_UNSTAMPED_VERSION}"
             FileOpen $0 "${FFMPEG_STAMP}" w
