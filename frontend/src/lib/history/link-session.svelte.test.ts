@@ -186,6 +186,21 @@ describe('LinkSession', () => {
 		expect(s.failed).toBe(true);
 	});
 
+	it('says the opening candidates could not be read, and a typed search can try again', async () => {
+		const f = fake();
+		const candidates = f.deps.candidates;
+		f.deps.candidates = async () => Promise.reject(new Error('down'));
+		const s = new LinkSession(f.deps);
+		await s.arrive(CARD.id, GUESS);
+		await s.start();
+		expect(s.candidates).toEqual([]);
+		expect(s.failed).toBe(true);
+		f.deps.candidates = candidates;
+		await s.search('gintama');
+		expect(s.failed).toBe(false);
+		expect(s.candidates?.map((c) => c.ref.id)).toEqual([RIGHT.id]);
+	});
+
 	it('links to another show and goes there', async () => {
 		const f = fake();
 		const s = new LinkSession(f.deps);
