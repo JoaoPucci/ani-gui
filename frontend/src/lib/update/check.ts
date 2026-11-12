@@ -66,7 +66,7 @@ export async function checkForUpdate(opts: CheckForUpdateOptions): Promise<Relea
 	const url = `${opts.apiBase}/api/update-check?include_prereleases=${includePrereleases}`;
 	let resp: Response;
 	try {
-		resp = await opts.fetcher(url);
+		resp = await (opts.headers ? opts.fetcher(url, { headers: opts.headers }) : opts.fetcher(url));
 	} catch {
 		return null;
 	}

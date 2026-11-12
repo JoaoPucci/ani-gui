@@ -29,6 +29,7 @@ import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
 import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
 import { laneBase, type Lane } from '$lib/backend/lanes';
+import { withSecretHeader, withSecretQuery } from '$lib/backend/secret';
 import { getLocale } from '$lib/paraglide/runtime';
 import { probeLimiter } from '$lib/availability/probe-limiter';
 import { probeScope } from '$lib/availability/probe-scope';
@@ -203,7 +204,8 @@ async function expect2xx<T>(resp: Response): Promise<T> {
 
 async function getJson<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 	const at = await url(path, opts.lane);
-	const resp = await (opts.signal ? fetch(at, { signal: opts.signal }) : fetch(at));
+	const init = withSecretHeader(opts.signal ? { signal: opts.signal } : undefined);
+	const resp = await (init ? fetch(at, init) : fetch(at));
 	return expect2xx<T>(resp);
 }
 
@@ -211,7 +213,8 @@ async function getJson<T>(path: string, opts: RequestOptions = {}): Promise<T> {
  *  without (`$lib/refill/refill`). `signal` cancels the request. */
 async function getJsonServed<T>(path: string, signal?: AbortSignal): Promise<Served<T>> {
 	const at = await url(path);
-	const resp = await (signal ? fetch(at, { signal }) : fetch(at));
+	const init = withSecretHeader(signal ? { signal } : undefined);
+	const resp = await (init ? fetch(at, init) : fetch(at));
 	const data = await expect2xx<T>(resp);
 	// A response built without headers (a test's stand-in) has none.
 	const headers = resp.headers as Headers | undefined;
@@ -302,21 +305,24 @@ async function postJson<T>(path: string, body: unknown, opts: RequestOptions = {
 		body: JSON.stringify(body)
 	};
 	if (opts.signal) init.signal = opts.signal;
-	const resp = await fetch(await url(path, opts.lane), init);
+	const resp = await fetch(await url(path, opts.lane), withSecretHeader(init));
 	return expect2xx<T>(resp);
 }
 
 async function putJson<T>(path: string, body: unknown): Promise<T> {
-	const resp = await fetch(await url(path), {
-		method: 'PUT',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify(body)
-	});
+	const resp = await fetch(
+		await url(path),
+		withSecretHeader({
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(body)
+		})
+	);
 	return expect2xx<T>(resp);
 }
 
 async function deleteJson<T>(path: string): Promise<T> {
-	const resp = await fetch(await url(path), { method: 'DELETE' });
+	const resp = await fetch(await url(path), withSecretHeader({ method: 'DELETE' }));
 	return expect2xx<T>(resp);
 }
 
@@ -894,7 +900,9 @@ export function playStream(
 					reject(new Error('playStream: aborted'));
 					return;
 				}
-				const es = new EventSource(url);
+				// An EventSource cannot set a header: the launch's secret
+				// rides the query ($lib/backend/secret).
+				const es = new EventSource(withSecretQuery(url));
 				let settled = false;
 				const finish = (fn: () => void) => {
 					if (settled) return;
@@ -1028,7 +1036,9 @@ export function downloadStream(
 	return url(`/api/download/stream?${params.toString()}`, 'download').then(
 		(url) =>
 			new Promise<DownloadResponse>((resolve, reject) => {
-				const es = new EventSource(url);
+				// An EventSource cannot set a header: the launch's secret
+				// rides the query ($lib/backend/secret).
+				const es = new EventSource(withSecretQuery(url));
 				let settled = false;
 				const finish = (fn: () => void) => {
 					if (settled) return;
@@ -1318,12 +1328,13 @@ export async function kitsuByMalIds(
 	opts: ReadOptions = {}
 ): Promise<KitsuAnimeRef[]> {
 	if (malIds.length === 0) return [];
-	const headers: Record<string, string> = { 'content-type': 'application/json' };
-	const secret = typeof window !== 'undefined' ? window.aniGui?.internalSecret : undefined;
-	if (secret) headers['x-ani-gui-internal-secret'] = secret;
-	const init: RequestInit = { method: 'POST', headers, body: JSON.stringify({ mal_ids: malIds }) };
+	const init: RequestInit = {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ mal_ids: malIds })
+	};
 	if (opts.signal) init.signal = opts.signal;
-	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), init);
+	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), withSecretHeader(init));
 	return expect2xx<KitsuAnimeRef[]>(resp);
 }
 
@@ -1612,5 +1623,5 @@ export function imageProxyUrl(httpsUrl: string | null | undefined): string | nul
 	if (!httpsUrl || !httpsUrl.startsWith('https://')) return null;
 	const base = windowLaneBase('image');
 	if (base === null) return null;
-	return `${base}/api/image?url=${encodeURIComponent(httpsUrl)}`;
+	return withSecretQuery(`${base}/api/image?url=${encodeURIComponent(httpsUrl)}`);
 }

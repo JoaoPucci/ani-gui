@@ -39,7 +39,10 @@ export async function readErrorBody(res: Response): Promise<string> {
 
 export async function postJson<T>(path: string, body: unknown, bearer?: string): Promise<T> {
 	const base = await apiBase();
-	const headers: Record<string, string> = { 'content-type': 'application/json' };
+	const headers: Record<string, string> = {
+		'content-type': 'application/json',
+		...internalSecretHeader()
+	};
 	if (bearer) headers.authorization = `Bearer ${bearer}`; // i18n-ignore: HTTP auth scheme
 	const res = await fetch(base.replace(/\/+$/, '') + path, {
 		method: 'POST',
@@ -58,7 +61,7 @@ export async function deleteEndpoint(
 	extraHeaders?: Record<string, string>
 ): Promise<void> {
 	const base = await apiBase();
-	const headers: Record<string, string> = { ...(extraHeaders ?? {}) };
+	const headers: Record<string, string> = { ...(extraHeaders ?? {}), ...internalSecretHeader() };
 	if (bearer) headers.authorization = `Bearer ${bearer}`; // i18n-ignore: HTTP auth scheme
 	const res = await fetch(base.replace(/\/+$/, '') + path, { method: 'DELETE', headers });
 	if (!res.ok) {

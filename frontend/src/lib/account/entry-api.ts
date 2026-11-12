@@ -12,7 +12,10 @@ import type { EntryView, ListEntry, Provider } from './types';
 async function getJson<T>(path: string, bearer: string, signal?: AbortSignal): Promise<T> {
 	const base = await apiBase();
 	const init: RequestInit = {
-		headers: { authorization: `Bearer ${bearer}` } // i18n-ignore: HTTP auth scheme
+		headers: {
+			authorization: `Bearer ${bearer}`, // i18n-ignore: HTTP auth scheme
+			...internalSecretHeader()
+		}
 	};
 	if (signal) init.signal = signal;
 	const res = await fetch(base.replace(/\/+$/, '') + path, init);

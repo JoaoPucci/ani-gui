@@ -38,6 +38,7 @@
 		type KitsuAnimeRef
 	} from '$lib/api';
 	import { filterAvailableCacheOnly } from '$lib/availability/filter';
+	import { secretHeaders } from '$lib/backend/secret';
 	import AccountChip from '$lib/components/AccountChip.svelte';
 	import WindowControls from '$lib/components/WindowControls.svelte';
 	import { parsePrimaryProvider } from '$lib/account/chip-descriptor';
@@ -276,6 +277,7 @@
 						currentVersion: appVersion,
 						fetcher: window.fetch.bind(window),
 						apiBase: localApiBase,
+						headers: secretHeaders(),
 						includePrereleases: c?.update_include_prereleases ?? true
 					})
 				)
