@@ -39,8 +39,10 @@ const configLocale = localeArg ? localeArg.slice(localeFlag.length) : null;
 // to requests carrying it: the renderer sends it as the
 // `x-ani-gui-internal-secret` header, or as the `secret` query
 // parameter where an element cannot set a header
-// (frontend/src/lib/backend/secret.ts). Another program, or a page in
-// a browser, cannot guess 32 bytes of entropy.
+// (frontend/src/lib/backend/secret.ts). A page in a browser cannot
+// guess 32 bytes of entropy. It does travel on this process's command
+// line, which other local programs can read (docs/architecture.md,
+// "Who the backend answers").
 const internalSecretFlag = '--ani-gui-internal-secret=';
 const internalSecretArg = process.argv.find((a) => a.startsWith(internalSecretFlag));
 const internalSecret = internalSecretArg

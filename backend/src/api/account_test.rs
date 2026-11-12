@@ -532,9 +532,9 @@ async fn get_cached_list_serves_rows_when_offline_with_secret_fallback() {
 #[tokio::test]
 async fn delete_list_cache_fallback_rejects_when_secret_header_missing() {
     // The disconnect-after-expiry fallback
-    // requires the per-process internal secret. A cross-origin tab
-    // can send `Bearer garbage` plus a guessed user_id under
-    // permissive CORS, but it can't know the 32 bytes of entropy.
+    // requires the per-process internal secret. Another caller can
+    // send `Bearer garbage` plus a guessed user_id, but it can't know
+    // the 32 bytes of entropy.
     let td = TempDir::new().unwrap();
     let r = router()
         .with_state(test_state(&td))

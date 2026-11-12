@@ -362,7 +362,7 @@ mistakes get past it and fail differently:
   default, off.
 
 So after pushing, wait out the five-minute CDN cache, launch the app,
-and confirm the values with `GET /api/flags` (below).
+and confirm the values with `GET /api/flags` (below), from a dev run's DevTools console (`pnpm dev` opens one), since the API answers only requests carrying the launch's secret.
 
 **Setting a flag back.** Set the flag back to its default (`false`), or
 remove its entry, and push. Removing
@@ -383,7 +383,17 @@ until it is restarted. An install that cannot reach GitHub at all keeps
 its cached copy for up to seven days, then uses the defaults.
 
 To see what a running backend decided, read
-`GET <api base>/api/flags`. It returns every declared flag's value and
+`GET <api base>/api/flags` from a dev run's DevTools console (`pnpm dev`
+opens one), which has
+the launch's secret the API asks for:
+
+```js
+fetch(`${aniGui.apiBase}/api/flags`, {
+  headers: { "x-ani-gui-internal-secret": aniGui.internalSecret },
+}).then((r) => r.json());
+```
+
+It returns every declared flag's value and
 where they came from (`origin`: `file`, `cache` or `defaults`, or
 `test` in a test run). The
 backend logs the decision at `info` as `remote flags settled`, with the

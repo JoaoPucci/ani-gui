@@ -85,8 +85,9 @@ pub struct AppState {
     pub state_dir: PathBuf,
     /// Per-process random secret every API request must carry
     /// (`crate::api::gate`), printed in the handshake for the Electron
-    /// main process to hand the renderer. Another program on the
-    /// machine, or a page in a browser on it, cannot guess it.
+    /// main process to hand the renderer. A page in a browser cannot
+    /// guess it; what it does not keep out is described under "Who the
+    /// backend answers" in docs/architecture.md.
     pub internal_secret: InternalSecret,
     /// Shared refresh-coalesce state for MAL. One slot per process —
     /// every `MalProvider` the `provider_for_kind` dispatcher
