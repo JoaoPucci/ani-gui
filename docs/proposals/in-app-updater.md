@@ -100,7 +100,7 @@ place for its updates is the system's package manager.
   ffmpeg, including during the silent uninstall electron-builder runs
   before an upgrade; the installer now sets the copy aside before that
   uninstall and puts it back, downloading again only when a release
-  pins a different ffmpeg. [code: `electron/package.json`,
+  pins a different ffmpeg or the copy could not be carried over. [code: `electron/package.json`,
   `electron/build-resources/installer.nsh`] It is not code-signed: the
   0.17.0 installer's PE security directory is empty. [tried: read
   from the first 4 KB of the published file]
@@ -368,15 +368,15 @@ whether today's installers already write that copy]
 ffmpeg the first install downloaded; the `customInstall` macro then
 ran again (electron-builder does not skip it on updates) and
 downloaded ffmpeg again (a ~90 MB zip) unless one was on `PATH`. In a
-silent install the download shows no window: the inetc plug-in
+silent install the download showed no window: the inetc plug-in
 "recognizes Installer's Silent mode and in this case hides any
 output". [source: electron-builder 25.1.8,
 `templates/nsis/installSection.nsh`, `templates/nsis/uninstaller.nsh`;
 <https://nsis.sourceforge.io/Inetc_plug-in>] The same happened when a
 user ran a newer installer by hand, and an updater would have made it
-frequent and invisible: each update the installer's 105 MB plus
-ffmpeg's ~90 MB, and an update made offline after the download ending
-with no ffmpeg. electron-builder offers `${isUpdated}` to tell an
+frequent and invisible: each update would have cost the installer's
+105 MB plus ffmpeg's ~90 MB, and an update run offline after its
+download would have ended with no ffmpeg. electron-builder offers `${isUpdated}` to tell an
 update from a fresh install [source:
 <https://www.electron.build/docs/nsis>], which is set when the
 installer runs with `--updated` [source: electron-builder 25.1.8,
@@ -388,7 +388,8 @@ it runs the old version's uninstaller, in a hidden section its
 `customHeader` defines just ahead of the install section, into a
 folder beside the install directory (`$INSTDIR-ffmpeg-staging`), and
 `customInstall` puts it back when the new files did not bring one. It
-downloads again only when the release pins a different ffmpeg. The
+downloads again only when the release pins a different ffmpeg, or
+when a file copy fails and the copy could not be carried over. The
 uninstall step's own cleanup of ffmpeg is skipped under
 `${isUpdated}`. Only the same install is kept: switching between
 per-user and per-machine, or picking another folder, is a new install
