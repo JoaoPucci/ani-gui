@@ -1618,7 +1618,8 @@
 								.then(() => openCardLink(cardLines.clickLineOf(entry.id), id, nextEpisode));
 						}}
 					>
-						<GuessMark size={14} />{m.home_link_not_watched()}
+						<GuessMark size={14} />
+						<span class="resume-link-words">{m.home_link_not_watched()}</span>
 					</button>
 				{/if}
 				<!-- Delete chip sits AFTER the card in DOM so role-based
@@ -2251,15 +2252,21 @@
 	   not an ancestor) so its click never triggers play. */
 	/* A guessed card's "≈ Not what you watched?" pill: shown as the
 	   delete chip is, on hover or keyboard focus, at the other top
-	   corner. */
+	   corner. The card is a fixed 16rem and the chip, 2.25rem wide and
+	   popped 0.625rem out, covers its last 1.625rem: the pill stops a
+	   --space-2 short of it. Words that outgrow that wrap to two
+	   balanced lines, the ≈ beside the first, every word still read. */
 	.resume-link {
 		position: absolute;
 		z-index: 2;
 		inset-block-start: var(--space-2);
 		inset-inline-start: var(--space-2);
+		max-inline-size: calc(100% - 2 * var(--space-2) - 1.625rem);
 		display: inline-flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: var(--space-1);
+		line-height: 1.25;
+		text-align: start;
 		padding: var(--space-1) var(--space-3);
 		border: 1px solid color-mix(in oklab, var(--accent-persimmon) 45%, var(--ink-300));
 		border-radius: var(--radius-pill);
@@ -2296,7 +2303,14 @@
 		outline-offset: 2px;
 	}
 	.resume-link :global(.guess-mark) {
+		flex: none;
+		/* Centred on the first line's box. */
+		margin-block-start: calc((1lh - 14px) / 2);
 		color: var(--accent-persimmon);
+	}
+	.resume-link-words {
+		min-inline-size: 0;
+		text-wrap: balance;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.resume-link {
