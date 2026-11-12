@@ -9,8 +9,8 @@
 //! after it, and would record the old guess over the link. So whatever a
 //! guessed session's play would record — the watch's id, or the resolve's
 //! guess — it records only where neither the row, nor, for a row that
-//! records none, the card's own line on its listing, records another show
-//! ([`line_record`]).
+//! records none (or a show Kitsu answered gone), the card's own line on
+//! its listing, records another show ([`line_record`]).
 //! A session a card opened with no guess — a line the user named, played
 //! from Home — keeps the line's show the same way on the card's own
 //! listing (`card_row`): a player mounted again after "Keep watching

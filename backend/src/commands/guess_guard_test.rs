@@ -183,25 +183,28 @@ fn key() -> impl Strategy<Value = String> {
 proptest! {
     /// The show a play would write over is the played row's own, else
     /// the card's line's when the play is on that card's own listing,
-    /// and never another listing's.
+    /// and never another listing's; a show Kitsu answered gone counts at
+    /// neither step.
     #[test]
     fn a_play_is_guarded_by_its_row_else_its_cards_line(
         played_id in prop::option::of("[1-9][0-9]{0,3}"),
         card_id in prop::option::of("[1-9][0-9]{0,3}"),
         card in prop::option::of(key()),
         played in key(),
+        gone_id in prop::option::of("[1-9][0-9]{0,3}"),
     ) {
+        let gone = |k: &str| gone_id.as_deref() == Some(k);
         let mut rows = vec![row(&played, played_id.as_deref())];
         if let Some(c) = card.as_deref().filter(|c| *c != played) {
             rows.push(row(c, card_id.as_deref()));
         }
-        let got = line_record(&rows, &played, card.as_deref(), |_| false);
+        let got = line_record(&rows, &played, card.as_deref(), gone);
         let own_line = card.as_deref().is_some_and(|c| {
             c != played && crate::scraper::provider::same_listing(c, &played)
         });
-        let expected = played_id
-            .as_deref()
-            .or(if own_line { card_id.as_deref() } else { None });
+        let played_live = played_id.as_deref().filter(|k| !gone(k));
+        let card_live = card_id.as_deref().filter(|k| !gone(k));
+        let expected = played_live.or(if own_line { card_live } else { None });
         prop_assert_eq!(got, expected);
     }
 }
