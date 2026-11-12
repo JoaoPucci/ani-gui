@@ -16,9 +16,10 @@ const REDACTED = "<redacted>";
 // `secret=` as a query parameter, plain or URL-encoded inside another
 // URL, or standing alone at the start of a line or after a space, quote
 // or bracket: the value runs to the next parameter, fragment, quote,
-// bracket or whitespace.
+// bracket, separator (`;`, `,`, `|`) or whitespace. The secret is hex,
+// so none of those can be part of it.
 const QUERY_SECRET =
-  /((?:^|[?&;\s"'(\[]|%3[Ff]|%26)secret(?:=|%3[Dd]))(?:(?!%26)[^&#\s"'<>)\]])*/gm;
+  /((?:^|[?&;\s"'(\[]|%3[Ff]|%26)secret(?:=|%3[Dd]))(?:(?!%26)[^&#\s"'<>)\];,|])*/gm;
 // The header, as `name: value` or as a JSON member.
 const HEADER_SECRET = /(x-ani-gui-internal-secret["']?\s*[:=]\s*["']?)[^\s"',;}\]]+/gi;
 // The backend's handshake line.

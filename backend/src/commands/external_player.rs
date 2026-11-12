@@ -11,6 +11,8 @@ use crate::error::{AniError, Result};
 
 #[path = "external_player_template.rs"]
 mod template;
+#[path = "external_player_tokens.rs"]
+mod tokens;
 use template::{build_argv_custom, build_argv_with_template};
 
 /// Player flavor — controls which flag syntax `build_argv` emits.
