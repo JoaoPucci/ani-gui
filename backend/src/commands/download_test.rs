@@ -274,11 +274,12 @@ fn native_test_state(
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
         config_path: td.path().join("config.toml"),
-        state_dir: std::path::PathBuf::from("/tmp/ani-gui-state"),
+        state_dir: td.path().join("state"),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     }
 }
 
@@ -1035,6 +1036,7 @@ fn download_args_alt_titles_accepts_newline_joined_string_for_sse_query_path() {
 #[test]
 fn resolve_dest_prefers_explicit_args_over_paths_helper() {
     let a = DownloadArgs {
+        locale: None,
         title: "x".into(),
         episode: "1".into(),
         mode: "sub".into(),
@@ -1046,6 +1048,7 @@ fn resolve_dest_prefers_explicit_args_over_paths_helper() {
         kitsu_id: None,
         download_dir: Some("/tmp/explicit".into()),
         version: None,
+        caption: None,
     };
     let p = resolve_dest(&a).expect("ok");
     assert_eq!(p, PathBuf::from("/tmp/explicit"));
@@ -3677,10 +3680,11 @@ mod sidecar_suffix_props {
 
 // ── the sidecar phase is bounded in count and in flight ────────────
 
-/// A listing is a handful of languages; one that lists more tracks
-/// than the cap is malformed or hostile, and only the first cap-many
-/// are fetched — in listing order, so a well-formed listing that is
-/// merely long keeps its first tracks.
+/// The sidecar writer is a backstop behind the resolve, which has
+/// already cut every listing it builds to the cap by the user's
+/// preference: a listing that reaches the writer longer than the cap
+/// did not come through the resolve, and only its first cap-many are
+/// fetched, in listing order.
 #[tokio::test]
 async fn a_listing_beyond_the_track_cap_writes_only_the_first_cap_many() {
     use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
@@ -3707,14 +3711,26 @@ async fn a_listing_beyond_the_track_cap_writes_only_the_first_cap_many() {
             url: format!("{}/subs/l{i:02}.vtt", server.uri()),
         })
         .collect();
-    let written = write_sidecar_subtitles(
+    // The host's budget would pace the fetches past its burst at a
+    // token a second and a half, and this test is about the cap, not
+    // the pacing: the host here lets every request through at once.
+    let budget = crate::proxy::host_budget::HostBudget::new(
+        u32::try_from(total).expect("small"),
+        crate::proxy::host_budget::SEGMENT_REFILL,
+    );
+    let staged = stage_sidecar_subtitles_with(
         &reqwest::Client::new(),
+        &budget,
+        &crate::commands::download_pacing::SidecarGate::never(),
         &tracks,
         None,
         dest.path(),
         "Show Episode 16",
+        SIDECAR_PHASE_DEADLINE,
+        SIDECAR_FETCH_CONCURRENCY,
     )
     .await;
+    let written = crate::commands::download_transfer::install_staged(staged);
     let expected: Vec<std::path::PathBuf> = (0..SUBTITLE_TRACK_CAP)
         .map(|i| dest.path().join(format!("Show Episode 16.l{i:02}.vtt")))
         .collect();

@@ -37,14 +37,60 @@ pub fn slug_words(slug: &str) -> Option<&str> {
     Some(words)
 }
 
+/// The release year a show key names among its slug's words — the
+/// `2000` of `hianime:jojos-bizarre-adventure-2000-5182` — when one
+/// stands there.
+///
+/// A year is a word of four digits from 1960 to 2039: the numeric id
+/// after the words is never one, and neither is a number outside the
+/// years shows were made in ("blade-runner-2049", "mob-psycho-100").
+#[must_use]
+pub fn key_year(id: &str) -> Option<u32> {
+    slug_words(&ShowKey::parse(id).slug)?
+        .split('-')
+        .filter(|w| w.len() == 4 && w.bytes().all(|b| b.is_ascii_digit()))
+        .filter_map(|w| w.parse::<u32>().ok())
+        .find(|y| (1960..2040).contains(y))
+}
+
+/// Whether a play that landed on `played` played the listing the
+/// history row `row` names — the test a play asked from a guessed
+/// Continue card passes before the card's guess may become the row's
+/// Kitsu id.
+///
+/// A play always lands on a walked provider's key, so a bare `played`
+/// is no listing. A row a walked provider wrote is its listing only
+/// under its own key: the same words under another id are another
+/// listing — the other version of one season among them. A bare row,
+/// from a provider since retired, names its listing by the words its
+/// slug carries: anidb.app spelled a show's slug as hianime does, each
+/// with its own numeric id after the words, so the words without the
+/// id are compared, ignoring ASCII case. A row whose id carries no
+/// words — an allanime-era id — names no listing.
+#[must_use]
+pub fn same_listing(row: &str, played: &str) -> bool {
+    let played = ShowKey::parse(played);
+    if played.provider.is_none() {
+        return false;
+    }
+    let row = ShowKey::parse(row);
+    if row.provider.is_some() {
+        return row == played;
+    }
+    match (slug_words(&row.slug), slug_words(&played.slug)) {
+        (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+        _ => false,
+    }
+}
+
 /// A show id that says whose id it is. Every store stamped by a
 /// resolve — history rows, the numbering sidecar, the watched-at
 /// stamps, the reverse mapping, the cache row — keys on this key's
 /// string form. Every provider's carries its label as a prefix, so the
 /// read side can tell them apart. A bare id names no provider: it is
 /// what every row anidb.app's resolves wrote holds, and the
-/// allanime-era rows before them — nothing migrates, and nothing the
-/// app walks claims them.
+/// allanime-era rows before them. Nothing the app walks claims them;
+/// the launch sweep settles what they left ([`crate::retired_provider`]).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ShowKey {
     /// The provider whose slug this is; `None` for a bare id.
@@ -99,3 +145,11 @@ impl std::fmt::Display for ShowKey {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "show_key_test.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "show_key_year_test.rs"]
+mod year_tests;

@@ -38,6 +38,9 @@ struct RangeStartAttempt<'r> {
     args: &'r DownloadArgs,
     first: u32,
     quality: &'r str,
+    /// The user's locale, which decides the subtitle tracks a listing
+    /// past the cap keeps.
+    locale: &'r str,
     /// The evidence about the entry's last episodes, when the range
     /// knows the entry.
     tail: Option<&'r dyn super::play_native_appended::TailSource>,
@@ -74,13 +77,13 @@ impl Attempt for RangeStartAttempt<'_> {
         // The first episode from the version named, or the next that
         // carries it; the range keeps the version named for the rest,
         // and the version that served names the episode's file.
-        let (served, first) = super::play_native_version_modes::resolve_in_any_version(
+        let (served, first) = resolve_episode(
             provider,
             picked.clone(),
             &self.first.to_string(),
-            None,
-            &self.args.mode,
+            self.args,
             self.quality,
+            self.locale,
         )
         .await;
         Ok((picked, served, first?))
@@ -89,6 +92,33 @@ impl Attempt for RangeStartAttempt<'_> {
     fn missed_by(&mut self, provider: crate::scraper::provider::ProviderId) {
         self.answered_by = Some(provider);
     }
+}
+
+/// One episode of a range, from the version `picked` names or the
+/// next that carries it in the download's mode, its listing cut as the
+/// download wants ([`DownloadArgs::wanted`]): the range's first
+/// episode and each after it resolve through here alike.
+async fn resolve_episode<P: Provider + ?Sized>(
+    provider: &P,
+    picked: PickedShow,
+    episode: &str,
+    args: &DownloadArgs,
+    quality: &str,
+    locale: &str,
+) -> (
+    PickedShow,
+    std::result::Result<super::play_native_episode::ResolvedEpisode, NativeError>,
+) {
+    super::play_native_version_modes::resolve_in_any_version(
+        provider,
+        picked,
+        episode,
+        None,
+        &args.mode,
+        quality,
+        args.wanted(locale),
+    )
+    .await
 }
 
 /// Download episodes `first..=last` of the picked show. The pick and
@@ -126,6 +156,7 @@ where
         super::availability::RowAtStart::read(state, args.kitsu_id.as_deref(), &args.mode).await;
     let remembered = at_start.remembered();
     let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
+    let locale = args.ordering_locale(&state.config_path);
     // Every listing the start picks is recorded, whether or not its
     // first episode serves.
     let recorder = crate::commands::listing_tags::Recorder::new(state);
@@ -133,6 +164,7 @@ where
         args,
         first,
         quality,
+        locale: &locale,
         tail: tail
             .as_ref()
             .map(|t| t as &dyn super::play_native_appended::TailSource),
@@ -215,17 +247,7 @@ where
         // the range's start did. The file and the log name that one.
         let (serving, resolved) = match first_resolved.take() {
             Some((served, r)) => (served, Ok(r)),
-            None => {
-                super::play_native_version_modes::resolve_in_any_version(
-                    &*client,
-                    picked.clone(),
-                    &ep_no,
-                    None,
-                    &args.mode,
-                    quality,
-                )
-                .await
-            }
+            None => resolve_episode(&*client, picked.clone(), &ep_no, args, quality, &locale).await,
         };
         let resolved = match resolved {
             Ok(r) => r,

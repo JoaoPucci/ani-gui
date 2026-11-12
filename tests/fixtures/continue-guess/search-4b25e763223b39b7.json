@@ -1,0 +1,71 @@
+{
+ "data": [
+  {
+   "id": "44289",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dr.STONE: NEW WORLD",
+    "titles": {
+     "en": "Dr. Stone: New World",
+     "en_jp": "Dr.STONE: NEW WORLD",
+     "ja_jp": "Dr.STONE: NEW WORLD"
+    },
+    "abbreviatedTitles": [
+     "石纪元第三季",
+     "Dr.STONE Season 3"
+    ],
+    "slug": "dr-stone-new-world",
+    "startDate": "2023-04-06",
+    "endDate": "2023-06-15",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47246",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dr. STONE: NEW WORLD Part 2",
+    "titles": {
+     "en": "Dr. Stone: New World Part 2",
+     "en_jp": "Dr. STONE: NEW WORLD Part 2",
+     "ja_jp": "Dr. STONE NEW WORLD 第2クール"
+    },
+    "abbreviatedTitles": [
+     "石纪元第三季",
+     "Dr.STONE Season 3 Part 2",
+     "DR.STONE ภาค 3",
+     "Dr.STONE 第3期 第2クール"
+    ],
+    "slug": "dr-stone-new-world-part-2",
+    "startDate": "2023-10-12",
+    "endDate": "2023-12-21",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43715",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sekikashita Kusanagi",
+    "titles": {
+     "en_jp": "Sekikashita Kusanagi",
+     "ja_jp": "石化した草薙"
+    },
+    "abbreviatedTitles": [
+     "Petrified Kusanagi",
+     "SNICKERS®︎ × Dr.STONE"
+    ],
+    "slug": "sekikashita-kusanagi",
+    "startDate": "2020-10-04",
+    "endDate": "2020-10-04",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

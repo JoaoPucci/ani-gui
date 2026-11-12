@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AniError, Result};
 
-use super::kitsu_page::{next_offset, KitsuSearchPage, SearchOrder};
+use super::kitsu_page::{next_offset, search_text, KitsuSearchPage, SearchOrder};
 
 /// Kitsu API base URL. Override in tests via [`KitsuClient::with_base`].
 pub const KITSU_BASE: &str = "https://kitsu.io/api/edge";
@@ -641,7 +641,7 @@ impl KitsuClient {
             .get(format!("{}/anime", self.base))
             .header(reqwest::header::ACCEPT, "application/vnd.api+json")
             .query(&[
-                ("filter[text]", query.to_string()),
+                ("filter[text]", search_text(query)),
                 ("page[size]", size.to_string()),
                 ("page[number]", (index + 1).to_string()),
                 ("fields[anime]", ANIME_FIELDS.to_string()),
@@ -664,8 +664,9 @@ impl KitsuClient {
         parse_search_page(&body, index * size, limit)
     }
 
-    /// Currently-airing anime sorted by user count descending — a usable
-    /// proxy for "trending" until the AniList client lands. `limit` caps
+    /// Currently-airing anime sorted by user count descending — the
+    /// trending list's fallback when no AniList trending list was ever
+    /// kept. `limit` caps
     /// `page[limit]`.
     ///
     /// # Errors

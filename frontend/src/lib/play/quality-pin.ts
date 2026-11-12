@@ -1,9 +1,11 @@
 /**
  * The level the viewer pinned, by the height its playlist lists — or,
  * for a level that lists none, by its rank from the ladder's top — for
- * the rest of the app's run: the next episode, and a stream recovered
- * in its place, start at the same height or the nearest below it, or
- * at the same rank, rather than at the setting's. "Auto" clears it.
+ * the rest of the player session (`./quality-session`): the next
+ * episode, and a stream recovered in its place, start at the same
+ * height or the nearest below it, or at the same rank, rather than on
+ * Auto. "Auto" clears it, and so does leaving the player or turning it
+ * to another show.
  */
 
 import type { QualityGovernor } from './quality-governor';

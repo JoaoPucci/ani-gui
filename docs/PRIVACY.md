@@ -1,18 +1,25 @@
 # Privacy Policy
 
-_Last updated: 2026-10-05_
+_Last updated: 2026-11-10_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
 <https://github.com/JoaoPucci/ani-gui>.
 
 The plain version: **ani-gui runs entirely on your machine. We do
-not operate a server. We do not collect telemetry. The only data
-that leaves your computer is what you explicitly send to public
-services (your anime tracker, the anime catalogue, the video host).**
+not operate a server, and the app collects no analytics or
+telemetry. What leaves your computer is the requests the app makes
+to public services to do its job: the anime catalogues and the hosts
+that serve their images, the streaming site and the video hosts it
+names, Aniskip, GitHub's list of the app's releases, and, if you
+connect one, your anime tracker. Each is described below.**
 
-If you have not connected an account (AniList or MyAnimeList),
-ani-gui never sends any data identifying you anywhere.
+If you have not connected an account (AniList or MyAnimeList), none
+of these requests carries an account or any other identifier of
+yours. With one connected, two kinds do: the requests to your tracker
+carry your sign-in, and the request for your tracker avatar goes to an
+address that names your account (below). Like any request over the
+internet, each one shows the service your IP address.
 
 ## What ani-gui stores locally
 
@@ -22,9 +29,14 @@ ani-gui keeps the following on your computer only:
   configuration, etc. Stored as plain TOML under your OS's
   configuration directory (`$XDG_CONFIG_HOME/ani-gui/config.toml` on
   Linux, equivalent paths on macOS and Windows).
-- **Metadata cache** — anime details, episode lists, thumbnails, and
-  similar information fetched from public APIs. Stored in a local
-  SQLite database under your OS's cache directory.
+- **Metadata cache** — anime details, episode lists and similar
+  information fetched from public APIs. Stored in a local SQLite
+  database under your OS's cache directory.
+- **Image cache** — posters, covers, banners, episode thumbnails and,
+  with an account connected, your tracker avatar, as files under your
+  OS's cache directory (`$XDG_CACHE_HOME/ani-gui/images/` on Linux).
+  The oldest are removed once the cache passes the size limit set in
+  Settings, and Settings can clear it.
 - **Watch history** — a plain-text file in the app's own state
   directory. Lists what you've watched, where you left off and when,
   and the Kitsu id of the show you played. More about each show you
@@ -48,7 +60,8 @@ ani-gui keeps the following on your computer only:
   times are found by the Kitsu ids the history knows for the show:
   times under an id another show still in your history claims stay
   with that show, and times fetched under an id the history never
-  linked to the show stay until you clear your history. Clearing your
+  linked to the show stay until they expire, which the app deletes
+  when it starts, or you clear your history. Clearing your
   history deletes every row, all of these for every show, every cached
   stream address and every cached opening and ending time, including
   ones a page resolved ahead for a show you never played. Clearing
@@ -88,8 +101,9 @@ ani-gui keeps the following on your computer only:
   write the file that holds the numbering, the numbering is missed:
   the show's own stays, and so does the other catalogue's, whose
   stream addresses are removed all the same, so trying again no longer
-  finds it. A stream address that is missed stays until you clear your
-  history; numbering that is missed stays as that of any show a page
+  finds it. A stream address that is missed stays until it expires —
+  the app deletes expired stream addresses when it starts — or you
+  clear your history; numbering that is missed stays as that of any show a page
   resolved and you never played does. Catalogue data shared with
   browsing — anime details, artwork, episode lists and which catalogue
   carries a show — is not part of your history and stays in the cache,
@@ -97,8 +111,10 @@ ani-gui keeps the following on your computer only:
   entry a show in your history names no longer exists, the app notes
   that for up to a year, so the show can be found under its new entry;
   deleting the show removes the note for the entries it was known by
-  that no other show in your history names, and clearing your history
-  removes every note.
+  that no other show in your history names — though not for an entry
+  the show was known by only through a link an earlier version of the
+  app stored, which the app no longer keeps; that note stays out its
+  year — and clearing your history removes every note.
 - **Episode positions** — how far into an episode you got, so
   reopening it resumes there: an episode is marked started when you
   choose it to play, a point in its first 15 seconds is kept as its
@@ -138,6 +154,19 @@ ani-gui keeps the following on your computer only:
   playing the show again afterwards keeps its positions again, and
   where its stream stood while recovering, the same way the history
   records a show played again after removing it.
+- **Choices you make for a show** — the subtitle language you last
+  picked for it (or Off; a track of unknown language, or a play
+  opened from a guessed Continue card, leaves it as it was), the
+  audio (Sub or Dub) you picked on its page, and, for a show the
+  streaming site lists twice, the version you chose. Kept
+  in the app's local browser storage (under your OS user-data
+  directory), keyed by the show's Kitsu id, at most 500 shows for each
+  kind of choice, the least recently chosen dropped first. Choosing
+  the uncensored version, which is what plays when nothing is chosen,
+  forgets the version choice for that show. These are preferences for
+  the show rather than history, so clearing your watch history or
+  removing the show from Continue Watching leaves them; otherwise they
+  stay until newer choices push them out.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
@@ -156,29 +185,53 @@ ani-gui keeps the following on your computer only:
   example the database is momentarily unavailable), the rows are left
   on disk. Reconnecting the **same** account and re-syncing replaces
   them; otherwise they remain until you delete the local database.
+- **Window size** — the size your desktop gave the app's window when
+  the app opened it maximized, per display (the display's identifier, resolution and
+  scale identify it), in `window-geometry.json` in the app's folder under
+  your OS user-data directory, so the next launch opens at that size.
+- **Remote flags cache** — the last copy of the project's remote flags
+  file the app fetched (see below), and when it was fetched, in
+  `remote-flags.json` under your OS's cache directory. It holds only
+  the maintainer's switches, nothing about you.
 
 ## What ani-gui transmits to public services
 
-Most outbound traffic happens only when you take an action that
-requires it; the exception is the update check that runs on launch
-(below). For each kind of request:
+Most requests follow what you open: a page fetches what it shows, and
+pages resolve episodes ahead of a play (below). At launch the app
+checks for updates and fetches the remote flags file (both below) and,
+with an account connected, refreshes its sign-in if it has expired;
+the update check and the sign-in refresh happen again when changing
+the language reloads the window. The app always opens on the home
+page, which as it loads fetches its catalogue rows and their images,
+resolves your Continue Watching rows and checks that they are still
+available, checks the availability of the shows on the page — asking
+the streaming site about those it has no recent answer for — and, with
+an account connected, loads the Watch Later rail from your saved
+tracker list, asking the tracker to confirm who you are and fetching
+the list again when the saved copy is six hours old or more. For each
+kind of request:
 
-- **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
-  only if connected), and the streaming catalogue playback resolves
-  against: hianime (reached at hianime.at). anidb.app was asked first
+- **Anime catalogue lookups** — Kitsu, AniList, and the streaming
+  catalogue playback resolves against: hianime (reached at hianime.at). anidb.app was asked first
   until it was retired in October 2026, and nothing contacts it now.
-  Searches and episode listings are asked for as you browse and play,
-  and a background warm a page runs asks for what is in view — the
+  Searches and episode listings are asked for as you browse and play;
+  the rows of shows on the home page and the search page, and a show
+  page's strip of related shows, ask the streaming catalogue in the
+  background whether the shows they list are available there, for the
+  shows the app has no recent answer for; and a background warm a page runs asks
+  for what is in view — the
   detail page for the episode its Play button targets, which is the
   resume point when there is one, and the play page for the episode
   after the one playing, or, with resolution caching turned on, both
   pages for every aired and playable episode in view (the detail page's
   grid, the play page's episode strip); the warm follows the page rather
   than running once on opening, so paging the grid or the strip to new
-  episodes, or changing the audio mode or quality setting, resolves
+  episodes, or changing the audio mode, resolves
   what is newly in view. These requests carry the search terms you
-  typed or the anime IDs you're browsing; they do not carry any account
-  identifier unless you've connected one. A request to hianime's own
+  typed or the anime IDs you're browsing, and no account identifier.
+  MyAnimeList is reached only as your tracker, and reading a show's
+  details from your tracker before writing your progress to it is a
+  tracker request, which carries your sign-in (below). A request to hianime's own
   site follows a redirect only while it stays on that site; one that
   points anywhere else is not followed, so the site it names never
   receives the request. Resolving an episode through
@@ -208,6 +261,17 @@ requires it; the exception is the update check that runs on launch
   for, and asks every megaplay server for the one network whose streams
   it can play, whichever network the listing named. So the hosts a megaplay page leads
   to are that network's, and no other's.
+- **Images** — posters, covers, banners, episode thumbnails and, with
+  an account connected, your tracker avatar are fetched from the host
+  the catalogue or tracker names for them (Kitsu's and AniList's image
+  hosts, for instance), some as soon as a catalogue answer names them,
+  and cached on disk. A cached image is not fetched again until the
+  size limit removes it or you clear the cache. These requests carry
+  no identifier of yours, except the avatar's: its address is the one
+  your tracker gives for your account, and it names the account
+  (AniList's and MyAnimeList's avatar addresses carry your user id
+  when you have set an avatar), so the host serving it can tell whose
+  avatar is asked for.
 - **Video playback** — the chosen episode's playlist, its segments and
   any sidecar subtitle files are fetched directly from the source CDN
   the catalogue or its embed page names. For hianime that is, at the
@@ -228,13 +292,14 @@ requires it; the exception is the update check that runs on launch
   resolution is reused: a resolve — a page warm, a play or hand-off
   that finds nothing cached, or a download, which always resolves
   afresh — fetches the episode's master playlist, to
-  check that what the page named is a playlist, and, when the quality
-  setting is not "best" and the master offers a rendition matching
-  it whose address resolves against the master's, that rendition's
-  playlist as well — a second fetch, at whatever host the master
-  names for it; a master with no such rendition, or one whose
-  matching rendition's address does not resolve, is kept as it is,
-  with no second fetch; and any play served from the
+  check that what the page named is a playlist, and, for a download
+  whose download quality is not "Best" when the master offers a
+  rendition matching it whose address resolves against the master's,
+  that rendition's playlist as well — a second fetch, at whatever host
+  the master names for it; a play or hand-off, and a download whose
+  master has no such rendition, or whose matching rendition's address
+  does not resolve, keeps the master as it is, with no second fetch;
+  and any play served from the
   resolution cache — a page warm,
   a play in the app, or a hand-off to an external player or Syncplay —
   checks the cached stream and each of its subtitle tracks at the CDN
@@ -244,11 +309,21 @@ requires it; the exception is the update check that runs on launch
   subtitle files are fetched when playback starts — in the app, or in an
   external player or Syncplay the app hands the stream to — and by a
   download, which fetches the segments through the bundled tool and the
-  subtitle files beside them without any playback.
+  subtitle files beside them without any playback. Syncplay, once the
+  app has launched it, connects on its own to the Syncplay server and
+  room you choose in its dialog or its own settings, under the name
+  you give it there; the app passes it only the stream, its subtitle
+  files and the player's options. By default Syncplay shares the
+  stream's address and length with that server and the others in the
+  room; its own privacy settings can hash or withhold them.
 - **Tracker integration (optional)** — only if you sign in to AniList
   or MyAnimeList:
-  - Your OAuth bearer token is sent to that provider's API on every
-    request that fetches your list or updates your progress.
+  - Your OAuth bearer token is sent with every request ani-gui makes
+    to that provider as your tracker: your profile, your list, the
+    show details read to line up episode numbers before a write, and
+    the writes themselves. Renewing your sign-in sends its refresh
+    token to the provider. AniList requests made as a catalogue lookup
+    carry none.
   - We send your watch progress (episodes watched, status, score)
     when you mark an episode watched.
   - We never send tracker tokens or progress to any third party.
@@ -256,27 +331,69 @@ requires it; the exception is the update check that runs on launch
     requests:
     - AniList: <https://anilist.co/terms>
     - MyAnimeList: <https://myanimelist.net/about/privacy_policy>
-- **Update check (automatic, on launch)** — ani-gui queries GitHub's
-  public releases API to notify you when a new app version is
-  published. The settings only control whether pre-releases are
-  included, not whether the check runs. No account information is
-  sent.
+- **Update check (automatic, on launch)** — ani-gui asks GitHub's
+  public releases API (`api.github.com`) for the project's recent
+  releases, so it can tell you when a new version is out. It asks again
+  when changing the language reloads the window. Besides standard
+  headers that say nothing about you (GitHub's `Accept` and
+  API-version headers, and the compression it accepts), each request
+  carries only the User-Agent `ani-gui`: not the version you run,
+  which is compared on your machine, and no account information. It
+  asks for the ten newest releases
+  (`/repos/JoaoPucci/ani-gui/releases?per_page=10`) and picks, on your
+  machine, the newest one that has a download for your platform.
+  Should none of the files it read be named the way the app expects,
+  it picks as it did before it looked at files: the newest release, or
+  with pre-releases excluded, the newest full release. The
+  "Include pre-releases in update check" setting (on by default)
+  decides whether a pre-release can be that pick. It does not change
+  the request. When that list arrives but none of it can be offered,
+  or it cannot be read, it makes one more request, for the newest full
+  release (`/repos/JoaoPucci/ani-gui/releases/latest`). When the first
+  request fails, nothing more is asked. On a platform the app
+  publishes no download for, it makes no request at all. Otherwise the
+  check cannot be turned off.
 
   Versions before 0.12 made a second automatic request here: the
   bundled copy of the `ani-cli` script fetched its own latest version
   from upstream at every launch. The app no longer carries or runs
   that script, so that request is gone.
-- **Aniskip OP/ED timing** — when the auto-skip toggle is on, ani-gui
-  asks the Aniskip community service for crowd-sourced opening /
-  ending timestamps for the episode you're watching. No account
-  information is sent.
+- **Remote flags (automatic, on launch)** — once per launch, ani-gui
+  downloads a small file of switches from the project's GitHub
+  repository, through GitHub's content server
+  (`raw.githubusercontent.com`). If that download fails, it is tried
+  again later in the same session (after a few minutes, then at most
+  hourly) until it succeeds. It lets the maintainer change a feature's
+  setting without waiting for a release. This version declares no such
+  setting, so the file changes nothing yet.
+  Like the update check, each request tells GitHub your IP address,
+  when it was made, and that it comes from ani-gui.
+  Nothing else is sent: no account
+  information, nothing about what you watch, and no identifier of your
+  install. The file holds only the switches; GitHub's own privacy
+  statement governs the request:
+  <https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement>.
+- **Aniskip OP/ED timing (automatic, when an episode plays in the
+  app)** — once an episode playing in the app's own player has a
+  known length, ani-gui asks the Aniskip community service
+  (`api.aniskip.com`) for crowd-sourced opening and ending times. They
+  drive the Skip button, and the automatic skip when the auto-skip
+  settings are on. The request names the show's MyAnimeList id, looked
+  up from its Kitsu entry, the episode number, and the episode's
+  length in seconds. A show with no MyAnimeList id, a play with no
+  Kitsu entry, and an episode numbered 0 or with a fractional number
+  are not asked about. No account information is sent. Answers are cached per episode and length, so
+  playing the episode again at the same length does not ask again
+  while the cached times last. The auto-skip settings do not stop the request, and no setting
+  does.
 
-There is no analytics or telemetry. ani-gui does not "phone home" on
-launch or on any other schedule.
+There is no analytics or telemetry: no request reports how you use
+the app, and the update check and the remote flags file are the only
+requests that go to the project's own repository.
 
 ## Connecting and disconnecting an account
 
-Connecting AniList (and, in a future release, MyAnimeList) uses the
+Connecting AniList or MyAnimeList uses the
 standard OAuth Authorization Code flow:
 
 1. ani-gui generates a one-time random `state` value and PKCE pair.
@@ -310,5 +427,7 @@ we do not collect contact information.
 
 ## Contact
 
-Issues and questions about this policy are tracked publicly at
-<https://github.com/JoaoPucci/ani-gui/issues>.
+The project has no channel for questions about this policy. Its
+GitHub repository has issues and discussions turned off and offers
+no private reporting; it accepts pull requests, which are public. The
+policy's history is public in the git history of `docs/PRIVACY.md`.

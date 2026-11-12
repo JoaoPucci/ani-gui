@@ -519,6 +519,7 @@ async fn a_resolves_hearing_spans_its_picks_listing_fetches() {
         episode: "1",
         mode: "sub",
         quality: "best",
+        wanted: crate::scraper::track_preference::Wanted::locale("en"),
         expected_count: Some(3),
         year: Some(2020),
         subtype: Some("TV"),
@@ -578,4 +579,78 @@ fn a_record_another_run_left_is_replaced_by_a_hearing_now() {
         crate::commands::listing_tags::get(&state, key),
         Some(vec![])
     );
+}
+
+/// A listing of `lang`s, each its own file, the first the default.
+fn listing() -> BoxedStrategy<Vec<crate::scraper::provider::SubtitleTrack>> {
+    let lang = prop_oneof![
+        Just("en"),
+        Just("es-419"),
+        Just("pt-BR"),
+        Just("vi"),
+        Just("ja"),
+        Just("fr"),
+        Just("")
+    ];
+    proptest::collection::vec(lang, 0..(2 * crate::proxy::upstream::SUBTITLE_TRACK_CAP))
+        .prop_map(|langs| {
+            langs
+                .into_iter()
+                .enumerate()
+                .map(|(i, l)| crate::commands::play::tests::track(l, i == 0, &format!("u{i}")))
+                .collect()
+        })
+        .boxed()
+}
+
+fn choice() -> BoxedStrategy<Option<&'static str>> {
+    prop_oneof![
+        Just(None),
+        Just(Some("vi")),
+        Just(Some("es-419")),
+        Just(Some("ja"))
+    ]
+    .boxed()
+}
+
+proptest! {
+    /// A row the replay serves holds what any play would have kept:
+    /// whichever choice and locale cut the listing it was written from,
+    /// a row the cut check lets through is the listing a play wanting
+    /// anything else would have been given.
+    #[test]
+    fn a_replayed_row_is_the_listing_every_choice_keeps(
+        tracks in listing(),
+        wrote in choice(),
+        asks in choice(),
+        wrote_locale in prop_oneof![Just("en"), Just("pt-BR")],
+        asks_locale in prop_oneof![Just("en"), Just("vi")],
+    ) {
+        use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
+        use crate::scraper::track_preference::{most_wanted_within, Wanted};
+        let (row, _) = most_wanted_within(
+            tracks.clone(),
+            SUBTITLE_TRACK_CAP,
+            Wanted { remembered: wrote, locale: wrote_locale },
+        );
+        prop_assume!(!super::cached_row_may_be_cut(&row));
+        let (fresh, _) = most_wanted_within(
+            tracks,
+            SUBTITLE_TRACK_CAP,
+            Wanted { remembered: asks, locale: asks_locale },
+        );
+        prop_assert_eq!(row, fresh);
+    }
+
+    /// The check turns on the cap alone: a row shorter is replayed.
+    #[test]
+    fn a_row_under_the_cap_is_never_read_as_cut(n in 0usize..(2 * crate::proxy::upstream::SUBTITLE_TRACK_CAP)) {
+        let tracks: Vec<_> = (0..n)
+            .map(|i| crate::commands::play::tests::track("en", false, &format!("u{i}")))
+            .collect();
+        prop_assert_eq!(
+            super::cached_row_may_be_cut(&tracks),
+            n >= crate::proxy::upstream::SUBTITLE_TRACK_CAP
+        );
+    }
 }

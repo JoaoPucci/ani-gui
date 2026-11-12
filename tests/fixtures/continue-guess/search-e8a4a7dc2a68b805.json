@@ -1,0 +1,32 @@
+{
+ "data": [
+  {
+   "id": "48434",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Monogatari Series: Off & Monster Season",
+    "titles": {
+     "en": "MONOGATARI Series: OFF & MONSTER Season",
+     "en_jp": "Monogatari Series: Off & Monster Season",
+     "ja_jp": "〈物語〉シリーズ オフ&モンスターシーズン"
+    },
+    "abbreviatedTitles": [
+     "Orokamonogatari",
+     "Wazamonogatari",
+     "Nademonogatari",
+     "Musubimonogatari",
+     "Shinobumonogatari",
+     "Yoimonogatari",
+     "Amarimonogatari Ougimonogatari",
+     "Shinomonogatari"
+    ],
+    "slug": "monogatari-series-off-monster-season",
+    "startDate": "2024-07-06",
+    "endDate": "2024-10-19",
+    "episodeCount": 14,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

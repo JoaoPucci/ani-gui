@@ -23,9 +23,23 @@ pub(super) fn store_path(history_path: &Path) -> PathBuf {
 /// The store's body as it is now; empty when it is missing or
 /// unreadable.
 pub(super) fn read_store(history_path: &Path) -> String {
+    read_store_checked(history_path).unwrap_or_default()
+}
+
+/// The store's body as it is now; empty when it is missing, an error
+/// when it exists and cannot be read — for a caller that writes what
+/// it derives from the store, where an empty read would be taken for
+/// a store with no rows.
+///
+/// # Errors
+/// The read's failure, unless the store does not exist.
+pub(super) fn read_store_checked(history_path: &Path) -> std::io::Result<String> {
     #[cfg(test)]
     super::read_tap::reading();
-    std::fs::read_to_string(store_path(history_path)).unwrap_or_default()
+    match std::fs::read_to_string(store_path(history_path)) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        read => read,
+    }
 }
 
 /// The cross-process lock beside the store. A dedicated file rather

@@ -44,6 +44,8 @@
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { sharesWords } from './title-words';
+import { namedCandidates, rowYear } from './pick-rank';
+import { courNumber, entryNames, namesTheEntry } from './same-name';
 
 /** Kitsu's `page[limit]` hard cap on the episodes endpoint. */
 export const EPISODES_KITSU_PAGE_SIZE = 20;
@@ -102,14 +104,17 @@ export interface ResumeTarget {
 	 *  and matches nothing. Null for rows written before history
 	 *  recorded it, which keep the matching fallback. */
 	recordedKitsuId: string | null;
+	/** The release year the row names (`rowYear`), or null. */
+	year: number | null;
 }
 
-/** Matches a `Part N` / `Cour N` / `Season N` token at the *end* of
+/** Matches a `Part N` / `Cour N` / `Season N` token (a space before the
+ *  number or none, as the backend reads it) at the *end* of
  *  the title. Anchored to end so "JoJo Part 6: Stone Ocean" doesn't
  *  trip on the mid-title "Part 6" — that "Part" refers to the parent
  *  series, not the cour. Only a trailing match is treated as a cour
  *  disambiguator. */
-const COUR_SUFFIX_RE = /(?:^|[\s:])(?:Part|Cour|Season)\s+(\d+)\s*$/i;
+const COUR_SUFFIX_RE = /(?:^|[\s:])(?:Part|Cour|Season)\s*(\d+)\s*$/i;
 
 /** Ordinal-season forms — "Foo 2nd Season", "Foo 4th Part" — where the index
  *  precedes the cour word. */
@@ -135,10 +140,11 @@ const ORDINAL_TO_NUMBER: Record<string, number> = {
 /** Detect the cour index from a (tail-stripped) title. Recognizes "Season 2",
  *  "2nd Season", and "Second Season" (plus Part/Cour); 1 when none match. */
 function parseCour(stripped: string): number {
+	// A number past what the backend holds is no cour there: the first.
 	const numeric = stripped.match(COUR_SUFFIX_RE);
-	if (numeric) return parseInt(numeric[1], 10);
+	if (numeric) return courNumber(numeric[1]) ?? 1;
 	const ordinalNum = stripped.match(COUR_ORDINAL_NUM_RE);
-	if (ordinalNum) return parseInt(ordinalNum[1], 10);
+	if (ordinalNum) return courNumber(ordinalNum[1]) ?? 1;
 	const ordinalWord = stripped.match(COUR_ORDINAL_WORD_RE);
 	if (ordinalWord) return ORDINAL_TO_NUMBER[ordinalWord[1].toLowerCase()] ?? 1;
 	return 1;
@@ -224,7 +230,11 @@ export function resolveHistoryEntry(
 		kitsuEpisode,
 		mappingNote,
 		allmangaShowId: entry.id,
-		recordedKitsuId: entry.kitsu_id ?? null
+		recordedKitsuId: entry.kitsu_id ?? null,
+		// A legacy tail can follow the year ("Show (12 episodes) (2009)")
+		// and the search title drops it, so the title as written is read
+		// first.
+		year: rowYear(entry.title, null) ?? rowYear(searchTitle, entry.key_year)
 	};
 }
 
@@ -234,8 +244,11 @@ export function resolveHistoryEntry(
  *  the wrong choice for Stone Ocean Part 2 / Part 3 etc. — it lands
  *  back on Part 1.
  *
- *  Picker walks four checks in priority order, falling through to
+ *  Picker walks five checks in priority order, falling through to
  *  the next when the previous yields no candidate:
+ *    0. The hits the row names: the ones from the row's year, then
+ *       those titled as the row (`namedCandidates` in ./pick-rank.ts);
+ *       the checks below choose among what it leaves.
  *    1. Exact slug match against a slug derived from searchTitle.
  *       Kitsu URLs are mechanical (e.g.
  *       `jojo-no-kimyou-na-bouken-part-6-stone-ocean-part-2`); when
@@ -463,7 +476,11 @@ export function cachedBindingVerdict(
 		return 'reresolve';
 	if (preliminary.cour > 1) {
 		if (!cached.slug) return trustOnAbsentSlug ? 'trust' : 'reresolve';
-		return courSlugRegex(preliminary.cour).test(cached.slug) ? 'trust' : 'reresolve';
+		if (courSlugRegex(preliminary.cour).test(cached.slug)) return 'trust';
+		// A slug can mark a later season without a cour suffix
+		// ("gintama-2" is Gintama Season 2): an entry Kitsu titles as the
+		// provider does names this cour all the same.
+		return namesTheEntry(preliminary.searchTitle, entryNames(cached)) ? 'trust' : 'reresolve';
 	}
 	return 'trust';
 }
@@ -629,7 +646,15 @@ export function pickKitsuMatch(
 	// When nothing survives, surface null so resolveKitsuMatch falls through
 	// to the enrichment step (which resolves from the show id, not the title)
 	// instead of the picker landing on a wrong match.
-	const candidates = hits.filter((h) => isCandidateForRow(preliminary, h));
+	// The hits the row's year or own title names come before Kitsu's
+	// slug: the provider titles Black Clover's TV series "Black Clover",
+	// and Kitsu files that slug under its one-episode special. The
+	// rules below choose among what is left.
+	const candidates = namedCandidates(
+		hits.filter((h) => isCandidateForRow(preliminary, h)),
+		preliminary.searchTitle,
+		preliminary.year
+	);
 	if (candidates.length === 0) {
 		return null;
 	}
@@ -650,5 +675,8 @@ export function pickKitsuMatch(
 	const courInTitle = candidates.find((h) => titleRe.test(h.canonical_title ?? ''));
 	if (courInTitle) return courInTitle;
 
+	// The picks this order still gets wrong, and the rules tried against
+	// them: docs/deferred-work.md, "Some guessed Continue cards still
+	// open the wrong show".
 	return candidates[0];
 }

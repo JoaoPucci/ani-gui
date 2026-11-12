@@ -21,6 +21,13 @@ pub struct AppInfo {
     /// the diagnostics page reads nothing else that could report a
     /// file the app removed on the user's behalf.
     pub removed_legacy_paths: Vec<String>,
+    /// What the boot sweep over a retired provider's rows changed (see
+    /// `crate::retired_provider`): empty on every launch that found
+    /// nothing such a provider left.
+    pub retired_provider_sweep: crate::retired_provider::RetiredSweepReport,
+    /// What the launch's cache reclaim deleted (see `crate::cache::reclaim`):
+    /// zero on every launch that found nothing to reclaim.
+    pub cache_reclaim: crate::cache::reclaim::ReclaimReport,
 }
 
 /// Body of the command. Pure projection of `AppState` fields.
@@ -39,6 +46,8 @@ pub fn app_info(state: &crate::app::AppState) -> Result<AppInfo> {
             .iter()
             .map(|p| p.display().to_string())
             .collect(),
+        retired_provider_sweep: state.legacy_sweep.retired_provider.clone(),
+        cache_reclaim: state.legacy_sweep.cache_reclaim.clone(),
     })
 }
 
@@ -63,8 +72,9 @@ mod tests {
         );
     }
 
-    fn fake_state() -> AppState {
-        AppState {
+    fn fake_state() -> crate::scratch::Scratch<AppState> {
+        let dirs = crate::scratch::dir();
+        let state = AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -73,19 +83,21 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 42_337),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/home/u/.local/state/ani-gui/history"),
+            history_path: dirs.history(),
             providers: crate::provider_set::ProviderSet::for_tests(),
-            image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+            image_cache_dir: dirs.images(),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
-            config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-            state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            config_path: dirs.config(),
+            state_dir: dirs.state(),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-        }
+            flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+        };
+        dirs.hold(state)
     }
 
     #[test]
@@ -98,6 +110,7 @@ mod tests {
         let mut state = fake_state();
         state.legacy_sweep = crate::legacy_script::SweepReport {
             removed: vec![PathBuf::from("/home/u/.cache/ani-gui/ani-cli")],
+            ..crate::legacy_script::SweepReport::default()
         };
         let info = app_info(&state).expect("info");
         assert_eq!(
@@ -116,8 +129,47 @@ mod tests {
     }
 
     #[test]
+    fn app_info_reports_what_the_retired_provider_sweep_changed() {
+        // The sweep removes history rows a newer provider's row
+        // supersedes and rewrites the rest; the page says so.
+        let mut state = fake_state();
+        let report = crate::retired_provider::RetiredSweepReport {
+            superseded: vec!["Naruto Shippuden".into()],
+            renumbered: vec!["The Separation".into()],
+            numbering_rows: 2,
+            cache_rows: 51,
+        };
+        state.legacy_sweep.retired_provider = report.clone();
+        let json = serde_json::to_value(app_info(&state).expect("info")).expect("json");
+        assert_eq!(
+            json["retired_provider_sweep"],
+            serde_json::to_value(&report).expect("report")
+        );
+    }
+
+    #[test]
+    fn app_info_reports_what_the_cache_reclaim_deleted() {
+        let mut state = fake_state();
+        let report = crate::cache::reclaim::ReclaimReport {
+            undeclared_rows: 264,
+            expired_rows: 735,
+        };
+        let json = serde_json::to_value(app_info(&state).expect("info")).expect("json");
+        assert_eq!(json["cache_reclaim"]["undeclared_rows"], 0);
+        state.legacy_sweep.cache_reclaim = report.clone();
+        let json = serde_json::to_value(app_info(&state).expect("info")).expect("json");
+        assert_eq!(
+            json["cache_reclaim"],
+            serde_json::to_value(&report).expect("report")
+        );
+    }
+
+    #[test]
     fn app_info_projects_state_fields() {
-        let s = fake_state();
+        // A path the projection is checked against, never opened:
+        // app-info only reports where the history lives.
+        let mut s = fake_state();
+        s.history_path = PathBuf::from("/home/u/.local/state/ani-gui/history");
         let info = app_info(&s).unwrap();
         // Robust to the dev profile's `-dev` suffix (and any parallel test
         // toggling ANI_GUI_DEV): the version always starts with the crate

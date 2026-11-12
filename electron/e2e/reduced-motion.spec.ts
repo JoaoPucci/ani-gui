@@ -5,7 +5,8 @@
  * The page is emulated as `prefers-reduced-motion: reduce` before the
  * app's first real load, the way a desktop setting reaches it, and
  * each main surface is then walked: Home (the hero, the rails, a
- * Continue Watching card hovered and deleted), a show's page (loaded
+ * Continue Watching card hovered and deleted, the row's header action
+ * hovered open), a show's page (loaded
  * and scrolled) and the player with its overlay. At each step
  * `document.getAnimations()` — every CSS animation, CSS transition and
  * Web Animation on the page — must hold nothing that moves.
@@ -23,20 +24,24 @@
  * through its stub, the parallax on Home and a show's page by scrolling
  * them.
  *
- * One scenario runs the same delete with motion on and requires that
- * something does move, so the check cannot pass by looking at a page
- * where nothing could.
+ * One scenario runs the same hover and delete with motion on and
+ * requires that something does move, so the check cannot pass by
+ * looking at a page where nothing could.
+ *
+ * Standing still must not mean hidden: one scenario checks that the
+ * Continue Watching cards, once landed, show their artwork and text with
+ * the animations that reveal them taken off.
  *
  * The backend's API is stubbed per request, as in home-continue.spec.ts,
  * so nothing depends on Kitsu or the provider being reachable.
  */
 import {
-	expect,
-	test,
 	type ElectronApplication,
+	type Locator,
 	type Page
 } from '@playwright/test';
-import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
+import { expect, test } from './policy-guard';
+import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -48,7 +53,7 @@ import {
 	topRated,
 	trending
 } from './fixtures/kitsu';
-import { launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary, stopApp, stopDeadApp } from './launch';
 
 /** Two rows: the first resolves to the stubbed show and is the one
  *  deleted, so the second has a gap to close. */
@@ -71,7 +76,17 @@ test.beforeAll(() => {
 	}
 });
 
-async function launchOnce(reduced: boolean, onLaunch: (app: ElectronApplication) => void) {
+/** A 1×1 PNG: artwork that loads and decodes, so a card can show it. */
+const PIXEL = Buffer.from(
+	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+	'base64'
+);
+
+async function launchOnce(
+	reduced: boolean,
+	onLaunch: (app: ElectronApplication) => void,
+	images = false
+) {
 	const tmp = path.join(os.tmpdir(), `ani-gui-reduced-motion-${process.pid}-${Date.now()}`);
 	fs.mkdirSync(tmp, { recursive: true });
 	const app = await launchPackagedApp({
@@ -81,9 +96,9 @@ async function launchOnce(reduced: boolean, onLaunch: (app: ElectronApplication)
 		XDG_CACHE_HOME: path.join(tmp, 'cache'),
 		XDG_DATA_HOME: path.join(tmp, 'data'),
 		ANI_GUI_UNATTENDED: '1'
-	});
+	}, { profile: tmp });
 	onLaunch(app);
-	const page = await app.firstWindow();
+	const page = await appWindow(app);
 
 	let rows = [...history];
 	await page.route('**/api/**', async (r) => {
@@ -97,7 +112,11 @@ async function launchOnce(reduced: boolean, onLaunch: (app: ElectronApplication)
 		if (p === '/api/settings') return j(defaultSettings);
 		if (p === '/api/kitsu/trending-anilist') return j(trending);
 		if (p === '/api/kitsu/top-rated') return j(topRated);
-		if (p.startsWith('/api/image')) return r.fulfill({ status: 503 });
+		if (p.startsWith('/api/image')) {
+			return images
+				? r.fulfill({ status: 200, contentType: 'image/png', body: PIXEL })
+				: r.fulfill({ status: 503 });
+		}
 		if (p === '/api/history') return j(rows);
 		if (p.startsWith('/api/history/') && method === 'DELETE') {
 			const id = decodeURIComponent(p.split('/')[3] ?? '');
@@ -131,6 +150,9 @@ async function launchOnce(reduced: boolean, onLaunch: (app: ElectronApplication)
 				})}\n\n`
 			});
 		}
+		// The backend answers skip times with a list, empty when it knows
+		// none; the page reads it as one once the length is known.
+		if (p.startsWith('/api/aniskip/')) return j([]);
 		return j(null);
 	});
 
@@ -148,13 +170,17 @@ async function launchOnce(reduced: boolean, onLaunch: (app: ElectronApplication)
 	return { app, page };
 }
 
-async function launch(reduced = true) {
+async function launch(reduced = true, images = false) {
 	let pending: ElectronApplication | null = null;
 	return withColdLaunchRetry(
 		async () => {
-			const launched = await launchOnce(reduced, (app) => {
-				pending = app;
-			});
+			const launched = await launchOnce(
+				reduced,
+				(app) => {
+					pending = app;
+				},
+				images
+			);
 			pending = null;
 			return launched;
 		},
@@ -163,8 +189,7 @@ async function launch(reduced = true) {
 				const dead = pending;
 				pending = null;
 				if (dead) {
-					killTree(dead.process().pid);
-					await dead.close();
+					await stopDeadApp(dead);
 				}
 			}
 		}
@@ -194,6 +219,21 @@ function moving(page: Page): Promise<string[]> {
 	);
 }
 
+/** A row action's label opacity, and whether the button already spans
+ *  the slot that reserves its open width — read in one frame, with no
+ *  waiting, so a label still easing in reads as less than 1. */
+function openState(button: Locator) {
+	return button.evaluate((el) => {
+		const label = el.querySelector('.row-action-label') as Element;
+		const slot = el.parentElement as Element;
+		return {
+			label: getComputedStyle(label).opacity,
+			fullWidth:
+				Math.abs(el.getBoundingClientRect().width - slot.getBoundingClientRect().width) < 0.5
+		};
+	});
+}
+
 /** Samples the page through `ms`: motion can start a frame after the
  *  step that caused it. */
 async function expectStill(page: Page, step: string, ms = 600) {
@@ -220,6 +260,22 @@ test('Home, a deleted Continue Watching card and a show’s page stand still', a
 		const hero = page.locator('section.hero');
 		await hero.hover();
 		await expectStill(page, 'hovering the hero');
+
+		// The row's header action rests as an icon and opens into its
+		// labelled pill on hover. Under reduced motion it opens at once:
+		// the label is fully on show the moment the pointer arrives, and
+		// the pill is already at the width its slot holds for it.
+		// The action sits in the row's header, outside the scroller that
+		// carries the region's name, so it is found through the row.
+		const clear = page
+			.locator('section.strip', { has: strip })
+			.getByRole('button', { name: 'Clear history' });
+		await clear.hover();
+		expect(await openState(clear)).toEqual({ label: '1', fullWidth: true });
+		await expectStill(page, 'hovering a row’s header action');
+
+		// The card last: its delete chip takes the pointer only while the
+		// card is hovered, and the delete below clicks it.
 		await card.hover();
 		await expectStill(page, 'hovering a Continue Watching card');
 
@@ -246,8 +302,65 @@ test('Home, a deleted Continue Watching card and a show’s page stand still', a
 		await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 		await expectStill(page, 'scrolling a show’s page');
 	} finally {
-		killTree(app.process().pid);
-		await app.close();
+		await stopApp(app);
+	}
+});
+
+test('a Continue Watching card that has landed shows its artwork and text', async () => {
+	// The card's artwork, number, scrim and text fade in with keyframes
+	// that start from transparent. With the animations taken off, what
+	// shows is each element's own style, which must be the visible one:
+	// a reveal that only an animation finishes would leave the card
+	// blank. One card lands on its image (served here), the other,
+	// matched to nothing, on its initials.
+	const { app, page } = await launch(true, true);
+	try {
+		const strip = page.getByRole('region', { name: /continue watching/i });
+		const imageCard = strip.locator('.resume-poster[data-look="image"]');
+		const initialsCard = strip.locator('.resume-poster[data-look="placeholder"]');
+		await expect(imageCard.locator('img[data-revealed]')).toHaveCount(1, { timeout: 15_000 });
+		await expect(initialsCard).toHaveCount(1, { timeout: 10_000 });
+		await expectStill(page, 'Continue Watching landed');
+
+		const seen = await page.evaluate(() => {
+			const out: { what: string; opacity: string; visibility: string; display: string }[] = [];
+			const note = (what: string, el: Element, pseudo?: string) => {
+				const cs = getComputedStyle(el, pseudo);
+				out.push({ what, opacity: cs.opacity, visibility: cs.visibility, display: cs.display });
+			};
+			const strip = document.querySelector('.resume-poster')?.closest('section') ?? document;
+			for (const poster of strip.querySelectorAll('.resume-poster:not([data-look="pending"])')) {
+				const kind = poster.getAttribute('data-look');
+				note(`${kind} scrim`, poster, '::after');
+				for (const sel of ['img', '.resume-poster-placeholder', '.resume-ep-tag']) {
+					const el = poster.querySelector(sel);
+					if (el) note(`${kind} ${sel}`, el);
+				}
+				const body = poster.parentElement?.querySelector('.resume-body');
+				if (body) note(`${kind} .resume-body`, body);
+			}
+			return out;
+		});
+		const kinds = seen.map((s) => s.what);
+		for (const required of [
+			'image img',
+			'image .resume-ep-tag',
+			'image scrim',
+			'image .resume-body',
+			'placeholder .resume-poster-placeholder',
+			'placeholder .resume-ep-tag',
+			'placeholder scrim',
+			'placeholder .resume-body'
+		]) {
+			expect(kinds, `a landed card shows its ${required}`).toContain(required);
+		}
+		for (const s of seen) {
+			expect(Number(s.opacity), `${s.what} is not transparent`).toBeGreaterThan(0.5);
+			expect(s.visibility, `${s.what} is visible`).toBe('visible');
+			expect(s.display, `${s.what} is displayed`).not.toBe('none');
+		}
+	} finally {
+		await stopApp(app);
 	}
 });
 
@@ -270,12 +383,11 @@ test('the player and its overlay stand still', async () => {
 		await page.locator('li[data-ep-num="7"] button').first().click();
 		await expectStill(page, 'switching episodes', 1_000);
 	} finally {
-		killTree(app.process().pid);
-		await app.close();
+		await stopApp(app);
 	}
 });
 
-test('with motion on, the same delete does move', async () => {
+test('with motion on, the same hover and delete do move', async () => {
 	const { app, page } = await launch(false);
 	try {
 		expect(
@@ -284,6 +396,23 @@ test('with motion on, the same delete does move', async () => {
 		const strip = page.getByRole('region', { name: /continue watching/i });
 		const card = strip.locator('button.resume-card', { hasText: 'Continue Test Show' });
 		await expect(card).toBeVisible({ timeout: 15_000 });
+
+		// With motion on, the row's header action eases open on hover.
+		await page
+			.locator('section.strip', { has: strip })
+			.getByRole('button', { name: 'Clear history' })
+			.hover();
+		const opening: string[] = [];
+		const until = Date.now() + 600;
+		while (Date.now() < until && opening.length === 0) {
+			opening.push(...(await moving(page)).filter((m) => m.includes('row-action')));
+			await page.waitForTimeout(20);
+		}
+		expect(opening.length, 'the row action eases open').toBeGreaterThan(0);
+		// It closes once the pointer leaves; the delete below must find
+		// motion of its own, not the action's closing.
+		await page.mouse.move(0, 0);
+		await expect.poll(() => moving(page)).toEqual([]);
 
 		// With motion on the hovered card lifts while the pointer arrives,
 		// and its poster passes over the chip mid-lift; the chip is
@@ -300,7 +429,6 @@ test('with motion on, the same delete does move', async () => {
 		}
 		expect(seen.length).toBeGreaterThan(0);
 	} finally {
-		killTree(app.process().pid);
-		await app.close();
+		await stopApp(app);
 	}
 });

@@ -1,11 +1,12 @@
 <!--
   Home — the front door. Editorial repertory cinema, programmed by a
   librarian. Composition:
-    1. Hero: kitsuTrendingAnilist()[0], full-bleed cover with parallax + scrim,
+    1. Hero: the first trending shows with art of their own
+       ($lib/hero/rotation), full-bleed cover with parallax + scrim,
        "View" call. NO autoplay, NO carousel.
     2. Continue Watching: hidden when historyList() is empty; otherwise a
        horizontal strip whose cards lean on an oversized mono episode number.
-    3. Trending strip: rest of kitsuTrendingAnilist() (1..n).
+    3. Trending strip: every other trending show, in trending order.
     4. Top Rated: kitsuTopRated().
 -->
 <script lang="ts">
@@ -54,6 +55,7 @@
 	import { resolve } from '$app/paths';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { createNavigationClaims } from '$lib/navigation/claims';
+	import { beginVisit } from '$lib/navigation/visit';
 	import {
 		allmangaKitsuMapGet,
 		checkAvailability,
@@ -90,16 +92,28 @@
 		isWatchLaterStale,
 		readLastRefreshed,
 		refreshStamp,
-		markRefreshedSince
+		markRefreshedSince,
+		onWatchLaterInvalidated
 	} from '$lib/account/watch-later-refresh';
+	import {
+		statusLabel,
+		statusPhrases,
+		watchLaterStatus,
+		type StatusCopy
+	} from '$lib/account/watch-later-status';
+	import { createFreshness } from '$lib/account/watch-later-freshness';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
-	import Icon from '$lib/components/Icon.svelte';
+	import RowAction from '$lib/components/RowAction.svelte';
+	import RowStyleSwitch from '$lib/rows/RowStyleSwitch.svelte';
+	import { actionShape, loadRowPrefs, saveRowPrefs, type RowPrefs } from '$lib/rows/prefs';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import type { Provider, ProviderState } from '$lib/account/types';
 	import { accentFor } from '$lib/design/accent';
 	import { resolveHistoryEntry } from '$lib/history/resolve';
 	import { makeFetchAvailability } from '$lib/history/availability-from-match';
 	import { probeScope } from '$lib/availability/probe-scope';
 	import { resolveResumeSettings } from '$lib/history/resume-settings';
+	import { audioFor } from '$lib/play/audio-choice';
 	import { createCapAuthority } from '$lib/history/cap-authority';
 	import { makeStartResume, type ResumePlayArgs } from '$lib/history/start-resume';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
@@ -107,10 +121,12 @@
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { kitsuEntryGone, resolveKitsuMatchWithTrust } from '$lib/history/match';
 	import { createRowTrust } from '$lib/history/row-trust';
-	import { recordableId, withGuess, withRow } from '$lib/play/play-origin';
+	import { guessedId, recordableId, withGuess, withRow } from '$lib/play/play-origin';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
+	import { createConfirmRun } from '$lib/history/confirm-run';
+	import { toastStore } from '$lib/toasts/store.svelte';
 	import { nextHeroIndex, startHeroRotation } from '$lib/hero-rotation';
 	import {
 		failedHeroImages,
@@ -120,10 +136,13 @@
 		type HeroOrigin
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
+	import { splitTrending } from '$lib/hero/rotation';
+	import { heroState } from '$lib/hero/state';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayArgs } from '$lib/play/play-args';
 	import { storedChoice } from '$lib/versions/version-choice';
+	import { storedCaption } from '$lib/play/caption-choice';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
@@ -145,17 +164,32 @@
 	import { followPlayed } from '$lib/play/played-episode';
 	import { refreshedRows } from '$lib/history/row-number';
 	import { latestReads } from '$lib/history/latest-call';
+	import {
+		EPISODE_WAIT_CAP_MS,
+		cardText,
+		offeredEpisode,
+		visibleImage
+	} from '$lib/history/card-look';
+	import {
+		createLookBook,
+		lookKey,
+		sessionLooks,
+		type CardLookState
+	} from '$lib/history/look-book';
+	import { createCapTimers } from '$lib/history/cap-timers';
+	import { revealWhenDecoded } from '$lib/history/reveal-image';
 	import { m } from '$lib/paraglide/messages';
 
-	// Hero cycles through the top N trending titles. Rotation is slow
-	// (~9s) and pauses while the cursor is over the hero, so it never
-	// snatches a title out from under a user mid-read. Honors
-	// prefers-reduced-motion (cycle disabled, first item shown
-	// statically). Not a carousel — there's no scroll, no auto-advance
-	// faster than read-time, and every item is one click away from the
-	// strip below. AGENTS.md §7 anti-pattern is "auto-rotating carousels"
-	// in the marketing-page sense; this is a programmed marquee.
-	const HERO_ROTATION_COUNT = 3;
+	// Hero cycles through the first N trending titles with art of their
+	// own ($lib/hero/rotation, which also says what the trending row
+	// lists). Rotation is slow (~9s) and pauses while the cursor is over
+	// the hero, so it never snatches a title out from under a user
+	// mid-read. Honors prefers-reduced-motion (cycle disabled, first item
+	// shown statically). Not a carousel — there's no scroll, no
+	// auto-advance faster than read-time, and every item is one click
+	// away on the pager. AGENTS.md §7 anti-pattern is "auto-rotating
+	// carousels" in the marketing-page sense; this is a programmed
+	// marquee.
 
 	let trending = $state<KitsuAnimeRef[] | null>(null);
 	let topRated = $state<KitsuAnimeRef[] | null>(null);
@@ -174,6 +208,11 @@
 	// as opposed to succeeding with an empty list — so a connected user
 	// sees a retry affordance instead of a false "nothing planned".
 	let watchLaterFailed = $state(false);
+	// The row shows its failed state when the last load failed and there
+	// are no cards to keep showing (a populated rail keeps its cards).
+	const wlFailedRow = $derived(
+		accountStore.hasAny && watchLaterFailed && !(watchLater && watchLater.length > 0)
+	);
 	// What the last failed load rejected with, so the rail's hint can
 	// say what went wrong instead of always blaming the connection.
 	let watchLaterError = $state<unknown>(null);
@@ -197,6 +236,9 @@
 	// can show the actual episode thumbnail + canonical title rather than
 	// generic anime-poster + anime-title.
 	let historyEpisodes = $state<Record<string, KitsuEpisode | null>>({});
+	// The episode each entry's details above were fetched for, so a card
+	// whose offered episode has moved on does not read the last one's.
+	let historyEpisodeFor = $state<Record<string, number>>({});
 	// Per-history-entry the provider playable episode count, keyed by entry.id.
 	// Read from the shared availability cache via a single batch lookup
 	// after all matches resolve. Lets the Continue card derive the same
@@ -210,6 +252,27 @@
 	// revalidates it instead of treating it as confirmed — provenance
 	// decides, not the episode's position.
 	let historyApproximateCaps = $state<Record<string, boolean>>({});
+
+	// Which look each Continue card is in — skeleton until its final
+	// artwork is known, then that artwork for good. The decision is
+	// $lib/history/card-look, kept per card by look-book; the page holds
+	// the two inputs only it can observe: a card's episode wait running
+	// out, and an image failing.
+	const lookBook = createLookBook(imageProxyUrl, sessionLooks);
+	let capReached = $state<Record<string, true>>({});
+	let failedImages = $state<Record<string, true>>({});
+	const capTimers = createCapTimers({
+		capMs: EPISODE_WAIT_CAP_MS,
+		schedule: (fn, ms) => setTimeout(fn, ms),
+		cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+		onElapsed: (key) => {
+			capReached = { ...capReached, [key]: true };
+		}
+	});
+	onDestroy(() => capTimers.dispose());
+	const markImageFailed = (src: string) => {
+		failedImages = { ...failedImages, [src]: true };
+	};
 
 	// One stable Map instance — refilled on each history load — so the
 	// component-scope rowReady handler (shared by the loader AND the
@@ -225,17 +288,31 @@
 	// An episode left part-way keeps its position; the Continue card
 	// goes back to it rather than on to the next one.
 	const leftPartWay = (kitsuId: string, episode: number) => readPosition(kitsuId, episode) !== null;
+	// Home's reads, cancelled when it is left: each holds an API
+	// connection until it answers, and what a cancelled one answers
+	// reaches nothing ($lib/navigation/visit). A Continue card's refill
+	// landing after is not fetched either ($lib/refill/refill).
+	const pageReads = beginVisit();
+	onDestroy(pageReads.end);
 	const rowReady = makeContinueRowReadyHandler({
 		historyById,
 		fetchKitsuEpisodes: kitsuEpisodes,
+		signal: pageReads.signal,
 		setMatch: (id, m) => {
 			historyMatches = { ...historyMatches, [id]: m };
 		},
 		setPlayableCount: (id, c) => {
 			historyPlayableCounts = { ...historyPlayableCounts, [id]: c };
 		},
-		setEpisode: (id, ep) => {
+		setEpisode: (id, ep, forEpisode) => {
 			historyEpisodes = { ...historyEpisodes, [id]: ep };
+			historyEpisodeFor = { ...historyEpisodeFor, [id]: forEpisode };
+		},
+		// A held-back still landing: onto the card's own episode, in
+		// place, so the card keeps everything but its image.
+		fillThumbnail: (id, episodeId, thumbnail) => {
+			const ep = historyEpisodes[id];
+			if (ep && ep.id === episodeId && !ep.thumbnail?.original) ep.thumbnail = { ...thumbnail };
 		},
 		leftPartWay
 	});
@@ -243,7 +320,7 @@
 	// A card's row, read again for each answer that can put it right —
 	// its match, its probe, a retried probe. Those reads can answer out
 	// of order: the latest asked counts.
-	const rowNumberNow = latestReads(historyNumber);
+	const rowNumberNow = latestReads((id: string) => historyNumber(id, { signal: pageReads.signal }));
 	async function readRowAgain(id: string) {
 		const kitsuId = historyMatches[id]?.id;
 		const next = await refreshedRows(
@@ -293,84 +370,107 @@
 
 	// Delete confirmation: holds the entry pending user confirm. Null
 	// means no modal open. The modal pops over the rail; cancelling
-	// just nulls this back out, confirming fires historyDelete + local
-	// state update (optimistic — no reload to keep the deletion crisp).
+	// nulls this back out (not while a remove is out), and confirming
+	// fires historyDelete, taking the rows off the strip once the
+	// deletes land, with no reload of the history.
 	let deleteCandidate = $state<{ entry: HistoryEntry; displayTitle: string } | null>(null);
 	let deleteBusy = $state(false);
-	// Kebab menu open state for the rail header.
-	let clearMenuOpen = $state(false);
 	// Clear-all confirmation modal open state.
 	let clearConfirmOpen = $state(false);
 	let clearBusy = $state(false);
 
+	// Each dialog's run ($lib/history/confirm-run): it runs once however
+	// often confirm is pressed, the dialog is held open while it is out
+	// and neither dialog opens over it, and a failure is said in an
+	// error toast, the way the app reports other failed actions, with
+	// the cards left as the backend holds them.
+	const deleteRun = createConfirmRun({
+		setBusy: (busy) => (deleteBusy = busy),
+		close: () => (deleteCandidate = null)
+	});
+	// One modal at a time. A confirm does not open over a resume's
+	// loading or failure overlay, and a resume does not start under a
+	// confirm. The modal layer already keeps the page behind each of
+	// them out of reach; this is the rule where the openings are decided.
+	const resumeOverlayUp = () => resumeBusy !== null || resumeFailure !== null;
+	const confirmUp = () => deleteCandidate !== null || clearConfirmOpen;
 	function openDeleteFor(entry: HistoryEntry, displayTitle: string) {
-		deleteCandidate = { entry, displayTitle };
+		if (clearRun.busy || resumeOverlayUp()) return;
+		deleteRun.open(() => (deleteCandidate = { entry, displayTitle }));
 	}
 	function cancelDelete() {
-		deleteCandidate = null;
+		deleteRun.cancel();
 	}
-	async function confirmDelete() {
-		if (!deleteCandidate) return;
-		deleteBusy = true;
-		try {
-			// Decision + transition logic lives in the helper per
-			// AGENTS.md §2: group expansion +
-			// serialized backend deletes + filtered-history compute,
-			// all unit-covered in delete-controller.test.ts. The
-			// component stays as modal/busy glue.
-			// Snapshot the visible order BEFORE the IPC so we can
-			// hand the gate the exact set of ids this delete
-			// touches: the removed rows themselves + every survivor
-			// whose position shifts left to fill the gap. A
-			// concurrent dedupe firing during the gate's window has
-			// different ids and short-circuits.
-			const snapshot = dedupedHistory.map((e) => e.id);
-			await executeKitsuGroupDelete(deleteCandidate.entry.id, {
-				history: history ?? [],
-				currentHistory: () => history ?? [],
-				// Open the gate IMMEDIATELY before the optimistic mutation
-				// so the 350ms auto-close window starts when Svelte's
-				// out-transition factory is about to fire — not when the
-				// click was first received. See $lib/history/animation-gate
-				// for the per-id scope + Svelte-batched-reset story.
-				applyRemaining: (rows, removedIds) => {
-					deleteAnimationGate.open(removedIds, shiftedSurvivorIds(snapshot, removedIds));
-					history = rows;
-				},
-				matches: historyMatches,
-				historyDelete,
-				snapshotPositions,
-				forgetPositions: (kitsuId, since) => clearShowPositions(kitsuId, undefined, since),
-				forgetRowPositions: (rows, keep, since) => clearRowPositions(rows, undefined, keep, since),
-				kitsuIdOf: allmangaKitsuMapGet,
-				// Read the way the Continue resolver reads a recorded id.
-				recordedGone: (id) =>
-					kitsuAnimeDetail(id).then(
-						() => false,
-						(e) => (kitsuEntryGone(e) ? true : Promise.reject(e))
-					)
-			});
-		} finally {
-			deleteBusy = false;
-			deleteCandidate = null;
-		}
+	function confirmDelete() {
+		const candidate = deleteCandidate;
+		if (!candidate) return;
+		return deleteRun.confirm(
+			() => removeCard(candidate.entry),
+			() =>
+				toastStore.push({
+					kind: 'error',
+					message: m.home_delete_failed({ title: candidate.displayTitle })
+				})
+		);
 	}
+	async function removeCard(entry: HistoryEntry) {
+		// Decision + transition logic lives in the helper per
+		// AGENTS.md §2: group expansion +
+		// serialized backend deletes + filtered-history compute,
+		// all unit-covered in delete-controller.test.ts. The
+		// dialog's run is $lib/history/confirm-run's.
+		// Snapshot the visible order BEFORE the IPC so we can
+		// hand the gate the exact set of ids this delete
+		// touches: the removed rows themselves + every survivor
+		// whose position shifts left to fill the gap. A
+		// concurrent dedupe firing during the gate's window has
+		// different ids and short-circuits.
+		const snapshot = dedupedHistory.map((e) => e.id);
+		await executeKitsuGroupDelete(entry.id, {
+			history: history ?? [],
+			currentHistory: () => history ?? [],
+			// Open the gate IMMEDIATELY before the strip changes
+			// so the 350ms auto-close window starts when Svelte's
+			// out-transition factory is about to fire — not when the
+			// click was first received. See $lib/history/animation-gate
+			// for the per-id scope + Svelte-batched-reset story.
+			applyRemaining: (rows, removedIds) => {
+				deleteAnimationGate.open(removedIds, shiftedSurvivorIds(snapshot, removedIds));
+				history = rows;
+			},
+			matches: historyMatches,
+			historyDelete,
+			snapshotPositions,
+			forgetPositions: (kitsuId, since) => clearShowPositions(kitsuId, undefined, since),
+			forgetRowPositions: (rows, keep, since) => clearRowPositions(rows, undefined, keep, since),
+			kitsuIdOf: allmangaKitsuMapGet,
+			// Read the way the Continue resolver reads a recorded id.
+			recordedGone: (id) =>
+				kitsuAnimeDetail(id).then(
+					() => false,
+					(e) => (kitsuEntryGone(e) ? true : Promise.reject(e))
+				)
+		});
+	}
+	const clearRun = createConfirmRun({
+		setBusy: (busy) => (clearBusy = busy),
+		close: () => (clearConfirmOpen = false)
+	});
 	function openClearConfirm() {
-		clearMenuOpen = false;
-		clearConfirmOpen = true;
+		if (deleteRun.busy || resumeOverlayUp()) return;
+		clearRun.open(() => (clearConfirmOpen = true));
 	}
 	function cancelClear() {
-		clearConfirmOpen = false;
+		clearRun.cancel();
 	}
-	async function confirmClear() {
-		clearBusy = true;
-		try {
-			await historyClear();
-			history = [];
-		} finally {
-			clearBusy = false;
-			clearConfirmOpen = false;
-		}
+	function confirmClear() {
+		return clearRun.confirm(
+			async () => {
+				await historyClear();
+				history = [];
+			},
+			() => toastStore.push({ kind: 'error', message: m.home_clear_history_failed() })
+		);
 	}
 	let trendingError = $state<string | null>(null);
 	let topRatedError = $state<string | null>(null);
@@ -383,22 +483,26 @@
 	// Shared settings load — created on mount, awaited by BOTH the
 	// loader's getMode and startResume. Cards can release (and be
 	// clicked) before this resolves; the click awaits it via
-	// resolveResumeSettings so a DUB user never plays the sub/best
+	// resolveResumeSettings so a DUB user never plays the sub
 	// fallback just because they clicked fast.
 	let settingsPromise: Promise<Config | null> = Promise.resolve(null);
 	let resumeBusy = $state<string | null>(null);
 	let resumeProgress = $state<string | null>(null);
 	let resumeFailure = $state<{ title: string; message: string } | null>(null);
 
-	const heroRotation = $derived<KitsuAnimeRef[]>(
-		trending && trending.length > 0 ? trending.slice(0, HERO_ROTATION_COUNT) : []
+	const trendingSplit = $derived(splitTrending(trending ?? []));
+	const heroRotation = $derived<KitsuAnimeRef[]>(trendingSplit.hero);
+	const heroView = $derived(
+		heroState({
+			rotation: trending === null ? null : heroRotation,
+			failed: trendingError !== null,
+			index: heroIndex
+		})
 	);
-	const featured = $derived(
-		heroRotation.length > 0 ? heroRotation[heroIndex % heroRotation.length] : null
-	);
-	// Tail starts after the rotation set so the user doesn't see the
-	// hero title also pinned as the first card of the row below.
-	const trendingTail = $derived(trending ? trending.slice(HERO_ROTATION_COUNT) : []);
+	const featured = $derived(heroView.kind === 'featured' ? heroView.show : null);
+	// The row leaves out the rotation's shows, so the user doesn't see
+	// the hero title also pinned as a card of the row below.
+	const trendingTail = $derived(trendingSplit.row);
 	const featuredAccent = $derived(featured ? accentFor(featured.id) : 'var(--accent-ink)');
 
 	onMount(() => {
@@ -408,16 +512,19 @@
 		// rendered AND queued for a background warm. The next visit
 		// reads a fuller cache and filters more aggressively.
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		kitsuTrendingAnilist()
-			.then((t) => filterAvailable(t, filterMode))
+		const signal = pageReads.signal;
+		void pageReads
+			.keep(
+				kitsuTrendingAnilist({ signal }).then((t) => filterAvailable(t, filterMode, { signal }))
+			)
 			.then((t) => (trending = t))
 			.catch((e) => (trendingError = describeError(e)));
-		kitsuTopRated()
-			.then((t) => filterAvailable(t, filterMode))
+		void pageReads
+			.keep(kitsuTopRated({ signal }).then((t) => filterAvailable(t, filterMode, { signal })))
 			.then((t) => (topRated = t))
 			.catch((e) => (topRatedError = describeError(e)));
-		// Settings drive mode/quality for the Continue Watching click
-		// handler. Default {sub, best} when settings haven't loaded
+		// Settings drive the audio mode for the Continue Watching click
+		// handler. Default sub when settings haven't loaded
 		// yet — same fallback the click handler uses on /anime/[id].
 		// The shared promise lets the Continue Watching loader await
 		// the configured mode before firing its batch availability
@@ -428,11 +535,17 @@
 		// probes, ended when the page unmounts: the strip's probes stop
 		// with it.
 		const continueProbes = probeScope.begin();
-		settingsPromise = settingsGet().catch(() => null as Config | null);
+		settingsPromise = settingsGet({ signal }).catch(() => null as Config | null);
 		void settingsPromise.then((c) => {
 			if (c) config = c;
 		});
-		Promise.all([historyList(), watchedAtAll().catch(() => ({}) as Record<string, number>)])
+		void pageReads
+			.keep(
+				Promise.all([
+					historyList({ signal }),
+					watchedAtAll({ signal }).catch(() => ({}) as Record<string, number>)
+				])
+			)
 			.then(([h, watchedAt]) => {
 				// Continue Watching ordering: stamped rows on top,
 				// most recently watched first. Rows that resolved but
@@ -470,6 +583,8 @@
 					fetchAvailability: makeFetchAvailability(checkAvailability),
 					signal: continueProbes.signal,
 					getMode: () => settingsPromise.then(pickAvailabilityMode),
+					// A show with its own audio is probed in it.
+					modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
 					// Per-row state mutations are routed through the
 					// component-scope rowReady handler (row-ready.ts) —
 					// shared with startResume so a click-time cap
@@ -503,6 +618,8 @@
 						fetchAvailability: (m, mode) =>
 							makeFetchAvailability(checkAvailability)(m, mode, continueProbes.signal),
 						mode,
+						// A show with its own audio is asked about in it.
+						modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
 						// The retry pays for the listing the first probe
 						// did not: read the row again after it.
 						onRefined: (id, count) => {
@@ -559,8 +676,12 @@
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const deps = buildWatchLaterDeps();
 		const ticket = watchLaterLoads.start(true);
-		void loadWatchLater(deps)
-			.then((refs) => filterAvailable(refs, filterMode))
+		void pageReads
+			.keep(
+				loadWatchLater(deps).then((refs) =>
+					filterAvailable(refs, filterMode, { signal: pageReads.signal })
+				)
+			)
 			.then((refs) => {
 				if (!watchLaterLoads.current(ticket)) return; // a newer load superseded this one
 				watchLater = refs;
@@ -576,7 +697,8 @@
 				if (!watchLaterLoads.current(ticket)) return;
 				watchLaterError = e;
 				watchLaterFailed = true;
-			});
+			})
+			.finally(() => watchLaterLoads.finish(ticket));
 	});
 
 	// Hero auto-advance. The rules and the interval live in
@@ -618,10 +740,13 @@
 						: null;
 			if (acct) credentials[key] = { bearer: acct.access_token, userId: acct.user_id };
 		}
+		// Its reads are Home's: cancelled when Home is left.
+		const signal = pageReads.signal;
 		return {
 			credentials,
-			fetchCachedList,
-			kitsuByMalIds,
+			fetchCachedList: (provider: Provider, bearer: string, userId?: string) =>
+				fetchCachedList(provider, bearer, userId, { signal }),
+			kitsuByMalIds: (malIds: number[]) => kitsuByMalIds(malIds, { signal }),
 			primary: primaryAccountStore.value
 		};
 	}
@@ -630,12 +755,20 @@
 	// initial load path, post-refresh, and a settled tracker write — the
 	// one caller that moves the cards it changed (`moved`).
 	async function reloadWatchLaterRail(moved = false) {
+		// Whatever sent the row here — a mount, a pull, a settled write
+		// that invalidated a tracker's last pull — may have changed the
+		// stamps the freshness line reads, so it reads them again.
+		wlFreshness.stampsChanged();
 		const filterMode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const ticket = watchLaterLoads.start(false);
 		const deps = buildWatchLaterDeps();
+		// Nothing between taking the ticket and the `try` may throw: the
+		// `finally` reports the load finished, which a refresh waits on.
+		const ticket = watchLaterLoads.start(false);
 		try {
-			const refs = await loadWatchLater(deps);
-			const filtered = await filterAvailable(refs, filterMode);
+			const refs = await pageReads.keep(loadWatchLater(deps));
+			const filtered = await pageReads.keep(
+				filterAvailable(refs, filterMode, { signal: pageReads.signal })
+			);
 			if (!watchLaterLoads.current(ticket)) return; // a newer load superseded this one
 			if (moved && watchLater) {
 				watchLaterMotion.open(
@@ -656,6 +789,8 @@
 			if (!watchLaterLoads.current(ticket)) return;
 			watchLaterError = e;
 			watchLaterFailed = true;
+		} finally {
+			watchLaterLoads.finish(ticket);
 		}
 	}
 
@@ -677,6 +812,7 @@
 		const deps = buildWatchLaterDeps();
 		const providers = Object.keys(deps.credentials) as Provider[];
 		if (providers.length === 0) return;
+		wlFreshness.refreshStarted(wlStatusText, m.account_watch_later_refreshing());
 		refreshingWatchLater = true;
 		try {
 			await Promise.all(
@@ -701,10 +837,69 @@
 				})
 			);
 			await reloadWatchLaterRail();
+			// A load that started meanwhile superseded this one, so what
+			// the refresh announces is that load's result.
+			await watchLaterLoads.settled();
 		} finally {
 			refreshingWatchLater = false;
+			wlFreshness.refreshSettled(() => wlStatusText);
 		}
 	}
+
+	// The Watch Later rail's freshness line — what it reads is
+	// $lib/account/watch-later-status, and when its inputs move is
+	// $lib/account/watch-later-freshness. The last-pulled times live in
+	// local storage, which nothing reactive watches, so `stamped` moves
+	// whenever a pull may have recorded one, or a write cleared one, and
+	// the times are read again.
+	const wlFreshness = createFreshness(
+		{
+			now: () => Date.now(),
+			schedule: (fn, ms) => setTimeout(fn, ms),
+			cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>)
+		},
+		(next) => (wl = next)
+	);
+	let wl = $state(wlFreshness.state);
+	// A number, so a write that leaves it alone (the clock moving, the
+	// held label) does not have the status recomputed.
+	const wlStamped = $derived(wl.stamped);
+	onDestroy(() => wlFreshness.dispose());
+	$effect(() => onWatchLaterInvalidated(() => wlFreshness.stampsChanged()));
+	const wlCopy: StatusCopy = {
+		refreshing: () => m.account_watch_later_refreshing(),
+		never: () => m.account_watch_later_not_updated(),
+		justNow: () => m.account_watch_later_updated_now(),
+		updated: (when) => m.account_watch_later_updated({ when }),
+		failed: () => m.account_watch_later_failed()
+	};
+	const wlStatus = $derived.by(() => {
+		void wlStamped;
+		const providers = Object.keys(buildWatchLaterDeps().credentials) as Provider[];
+		// A failed load is the rail's last word until one lands: the
+		// line, and the refresh's settled announcement read from it,
+		// then say so instead of how fresh the trackers' pulls are.
+		return watchLaterStatus(
+			providers.map(readLastRefreshed),
+			refreshingWatchLater,
+			watchLaterFailed
+		);
+	});
+	const wlStatusText = $derived(statusLabel(wlStatus, wl.now, getLocale(), wlCopy));
+	// `wl.held` is the label the line had when a refresh started, held
+	// (hidden) for its width until the refresh settles; see statusPhrases.
+	const wlPhrases = $derived(statusPhrases(wlStatus, wl.now, getLocale(), wlCopy, wl.held));
+	$effect(() => wlFreshness.track(wlStatus));
+
+	// Home row style — see $lib/rows/prefs. A choice made in the switch
+	// applies to every row at once and is kept for the next load.
+	let rowPrefs = $state(loadRowPrefs(browserStorage()));
+	function chooseRowPrefs(next: RowPrefs) {
+		rowPrefs = next;
+		saveRowPrefs(browserStorage(), next);
+	}
+	const rowSurface = $derived(rowPrefs.style === 'band' ? 'band' : 'plain');
+	const rowActionShape = $derived(actionShape(rowPrefs.style));
 
 	// One-shot TTL check after the first cached render: if any connected
 	// provider's snapshot is past the TTL, re-pull in the background.
@@ -736,22 +931,28 @@
 	// cap also refreshes the badge's episode metadata (latest-wins
 	// token in row-ready.ts drops the stale fetch).
 	// Per row, whether its Continue match is only a guess: the card
-	// then opens its play as one, which records the guess nowhere
-	// ($lib/play/play-origin.ts).
+	// then opens its play as one, which records the guess only when the
+	// play lands on the card's own listing ($lib/play/play-origin.ts).
 	const rowTrust = createRowTrust((entry) =>
-		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null))
+		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null), { signal: pageReads.signal })
 	);
 	const playArgsFor = (a: ResumePlayArgs) =>
 		buildPlayArgs({
 			title: a.title,
 			episode: a.episode,
 			mode: a.mode,
-			quality: a.quality,
 			show: a.match,
 			kitsuId: recordableId(a.match.id, a.guess === true),
 			// The version remembered for the show, as its detail page
-			// would play it.
-			version: storedChoice(a.match.id)
+			// would play it, and the captions choice it starts on.
+			version: storedChoice(a.match.id),
+			caption: storedCaption(a.match.id),
+			// A guess names its card's row, and the session answers whether
+			// the play landed on that row's own listing.
+			guessRow: a.row,
+			// …and its guess, apart from the page's id, which the resolve
+			// records on that row when it lands there.
+			guessId: guessedId(a.guess === true, a.match.id)
 		});
 	// A Continue click awaits its session before it opens the player;
 	// one that answers after the viewer left home, or started a
@@ -768,7 +969,7 @@
 		movePosition: (kitsuId, from, to) => movePosition(kitsuId, from, to),
 		followPlayed: (kitsuId, session, requested) => followPlayed(kitsuId, session, requested),
 		warm: (a) => playStream({ ...playArgsFor(a), prefetch: true }, () => {}),
-		isBusy: () => !!resumeBusy,
+		isBusy: () => !!resumeBusy || confirmUp(),
 		isGuess: (entryId) => rowTrust.isGuess(entryId),
 		onBusy: (id) => {
 			resumeBusy = id;
@@ -791,6 +992,8 @@
 			resumeFailure = { title, message };
 		},
 		getSettings: () => resolveResumeSettings(config, settingsPromise),
+		// A show with its own audio plays in it.
+		modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
 		getPlayableCount: (id) => historyPlayableCounts[id] ?? null,
 		isPlayableCountApproximate: (id) => historyApproximateCaps[id] === true,
 		setPlayableCount: (id, c, approximate) => {
@@ -813,12 +1016,14 @@
 				count: r?.episode_count ?? null,
 				approximate: r?.episode_count_approximate === true
 			})),
-		resolvePlay: (a, onProgress) =>
-			getOrFire(
-				makeKey(a.match.id, a.episode, a.mode, a.quality, storedChoice(a.match.id)),
-				(emit, signal) => playStream(playArgsFor(a), emit, signal),
+		resolvePlay: (a, onProgress) => {
+			const args = playArgsFor(a);
+			return getOrFire(
+				makeKey(a.match.id, a.episode, a.mode, args.version, a.row, args.caption),
+				(emit, signal) => playStream(args, emit, signal),
 				(p) => onProgress(progressLabel(p))
-			),
+			);
+		},
 		markWatched: (a) => markWatched(playArgsFor(a)),
 		// Completion is decided against the FULL finite series total
 		// (mode-independent), NOT the dub/sub playable cap, and only
@@ -982,20 +1187,44 @@
 				{/each}
 			</div>
 		{/if}
-	{:else if trendingError}
-		<div class="hero-empty">
-			<p class="eyebrow">
-				<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
-				<span class="eyebrow-rule" aria-hidden="true"></span>
-				<span class="eyebrow-value">{m.home_hero_error_eyebrow_value()}</span>
-			</p>
-			<h1 class="hero-title">{m.home_hero_error_title()}</h1>
-			<p class="hero-snippet">{m.home_hero_error_body()}</p>
-			<div class="hero-actions">
-				<a class="btn btn-primary" href={resolve('/search')}>
-					<span>{m.home_hero_error_cta()}</span>
-					<span aria-hidden="true">→</span>
-				</a>
+	{:else if heroView.kind === 'failed'}
+		<!-- In a .hero-layer like the featured text, so the message
+		     sits low in the banner rather than under the topbar. -->
+		<div class="hero-layer">
+			<div class="hero-empty">
+				<p class="eyebrow">
+					<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
+					<span class="eyebrow-rule" aria-hidden="true"></span>
+					<span class="eyebrow-value">{m.home_hero_error_eyebrow_value()}</span>
+				</p>
+				<h1 class="hero-title">{m.home_hero_error_title()}</h1>
+				<p class="hero-snippet">{m.home_hero_error_body()}</p>
+				<div class="hero-actions">
+					<a class="btn btn-primary" href={resolve('/search')}>
+						<span>{m.home_hero_error_cta()}</span>
+						<span aria-hidden="true">→</span>
+					</a>
+				</div>
+			</div>
+		</div>
+	{:else if heroView.kind === 'empty'}
+		<!-- Trending answered with no show to feature. Kitsu did answer,
+		     so the failure's "no answer" line is left out. -->
+		<!-- In a .hero-layer like the featured text, so the message
+		     sits low in the banner rather than under the topbar. -->
+		<div class="hero-layer">
+			<div class="hero-empty">
+				<p class="eyebrow">
+					<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
+				</p>
+				<h1 class="hero-title">{m.home_hero_empty_title()}</h1>
+				<p class="hero-snippet">{m.home_hero_empty_body()}</p>
+				<div class="hero-actions">
+					<a class="btn btn-primary" href={resolve('/search')}>
+						<span>{m.home_hero_error_cta()}</span>
+						<span aria-hidden="true">→</span>
+					</a>
+				</div>
 			</div>
 		</div>
 	{:else}
@@ -1003,77 +1232,136 @@
 		<div class="hero-skel" aria-busy="true">
 			<div class="hero-skel-img"></div>
 		</div>
-		<div class="hero-body">
-			<p class="eyebrow"><span class="eyebrow-key">{m.home_hero_skeleton_eyebrow_key()}</span></p>
-			<div class="line line-skel w-50 h-3rem"></div>
-			<div class="line line-skel w-70"></div>
-			<div class="line line-skel w-60"></div>
+		<!-- Low in the banner, where the text it stands in for will sit. -->
+		<div class="hero-layer">
+			<div class="hero-body hero-body-skel">
+				<p class="eyebrow"><span class="eyebrow-key">{m.home_hero_skeleton_eyebrow_key()}</span></p>
+				<div class="line line-skel w-50 h-3rem"></div>
+				<div class="line line-skel w-70"></div>
+				<div class="line line-skel w-60"></div>
+			</div>
 		</div>
 	{/if}
 </section>
 
-{#snippet continueHeaderTrailing()}
-	<div class="continue-menu-wrap">
-		<button
-			type="button"
-			class="continue-menu-btn"
-			aria-label={m.home_clear_menu_button_aria()}
-			aria-haspopup="true"
-			aria-expanded={clearMenuOpen}
-			onclick={(e) => {
-				e.stopPropagation();
-				clearMenuOpen = !clearMenuOpen;
-			}}
-		>
-			<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-				<circle cx="5" cy="12" r="1.6" fill="currentColor" />
-				<circle cx="12" cy="12" r="1.6" fill="currentColor" />
-				<circle cx="19" cy="12" r="1.6" fill="currentColor" />
-			</svg>
-		</button>
-		{#if clearMenuOpen}
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="continue-menu-backdrop" onclick={() => (clearMenuOpen = false)}></div>
-			<menu class="continue-menu" role="menu">
-				<li role="presentation">
-					<button
-						type="button"
-						class="continue-menu-item"
-						role="menuitem"
-						onclick={openClearConfirm}
-					>
-						{m.home_clear_menu_item()}
-					</button>
-				</li>
-			</menu>
+<!-- A Continue card's artwork. A skeleton until the card's look is
+     settled; then the image, kept hidden over the skeleton (or over the
+     initials a landing still replaces) until it has decoded and faded in
+     whole, or the two-letter placeholder. The EP
+     tag is null for single-video shows (movies, finished one-episode
+     OVAs and specials): the poster IS the video, there is no episode
+     number to surface. -->
+{#snippet cardFace(card: CardLookState, initials: string)}
+	{@const src = card.look ? visibleImage(card.look.image, failedImages) : null}
+	<!-- A still that landed where the card showed its initials (the
+	     placeholder, or a poster that failed to load) keeps them under it,
+	     not the skeleton, until it is shown. -->
+	{@const overInitials =
+		src !== null &&
+		card.landedOver !== null &&
+		visibleImage(card.landedOver.image, failedImages) === null}
+	<!-- After a landing the card has been on show all along: falling back
+	     to its initials draws them as they were, without the first fades. -->
+	<span
+		class="resume-poster"
+		class:look-instant={card.instant || card.landedOver !== null}
+		data-look={card.look === null ? 'pending' : src ? 'image' : 'placeholder'}
+		data-under={overInitials ? 'placeholder' : undefined}
+	>
+		{#if overInitials}
+			<span class="resume-poster-placeholder" aria-hidden="true">{initials}</span>
+		{:else if card.look === null || src}
+			<span class="look-skeleton" aria-hidden="true"></span>
 		{/if}
-	</div>
+		{#if src}
+			<!-- One element across sources (a still that landed, a fallback):
+			     an image on show stays up until the browser has the next one,
+			     and the card never drops back to a skeleton in between. -->
+			<img
+				{src}
+				alt=""
+				loading="lazy"
+				decoding="async"
+				use:revealWhenDecoded={{ onError: () => markImageFailed(src) }}
+			/>
+		{:else if card.look}
+			<span class="resume-poster-placeholder" aria-hidden="true">{initials}</span>
+		{/if}
+		{#if card.look && card.text?.tag != null}
+			<span class="resume-ep-tag" aria-hidden="true">
+				<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
+				<span class="resume-ep-num">{card.text.tag}</span>
+			</span>
+		{/if}
+	</span>
 {/snippet}
+
+<!-- A Continue card's text. It lands with the artwork: the show's name
+     is the one the card settles on (the history row's own title can
+     differ from the show's), so while the card is a skeleton both lines
+     are bars of the tile's surface. Every state keeps the same two rows
+     — the name, then two lines for the episode title, the faint
+     "Episode N", or an empty reservation — so the card's box is the
+     same before and after it settles and the rail never reflows as
+     cards land. -->
+{#snippet cardBody(card: CardLookState, knownTitle: string)}
+	{#if card.look === null || card.text === null}
+		<!-- Still named for assistive tech, by the title known so far. -->
+		<span class="resume-sr-name">{knownTitle}</span>
+		<span class="resume-body" aria-hidden="true">
+			<span class="resume-show resume-line-skeleton"></span>
+			<span class="resume-title resume-title-reserved resume-line-skeleton"></span>
+		</span>
+	{:else}
+		<span class="resume-body" class:look-landed={!card.instant}>
+			<span class="resume-show">{card.text.show}</span>
+			{#if card.text.title}
+				<span class="resume-title">{card.text.title}</span>
+			{:else if card.text.episodeLabel !== null}
+				<span class="resume-title resume-title-faint"
+					>{m.home_resume_episode_label({ episode: card.text.episodeLabel })}</span
+				>
+			{:else}
+				<span class="resume-title resume-title-reserved" aria-hidden="true"></span>
+			{/if}
+		</span>
+	{/if}
+{/snippet}
+
+{#snippet continueActions()}
+	<RowAction
+		label={m.home_clear_history_action()}
+		icon="clear-history"
+		tone="quiet"
+		shape={rowActionShape}
+		onclick={openClearConfirm}
+	/>
+{/snippet}
+
+<!-- The row style switch, while the diagnostics page's toggle is on:
+     at the head of the rows it governs, in flow, so it scrolls with them
+     and covers no row's header. -->
+{#if rowPrefs.controls}
+	<div class="row-style-slot">
+		<RowStyleSwitch prefs={rowPrefs} onchoose={chooseRowPrefs} />
+	</div>
+{/if}
 
 <!-- Continue Watching: only when history is non-empty -->
 {#if history && history.length > 0}
 	<Strip
+		surface={rowSurface}
 		eyebrow={m.home_strip_continue_eyebrow()}
 		caption={m.home_strip_continue_caption()}
 		cardWidth="16rem"
 		padBlock="var(--space-4) var(--space-3)"
-		headerTrailing={continueHeaderTrailing}
+		headerActions={continueActions}
 	>
 		{#each dedupedHistory as entry (entry.id)}
 			{@const match = historyMatches[entry.id]}
 			{@const ep = historyEpisodes[entry.id]}
 			{@const target = resolveHistoryEntry(entry, match ?? null)}
 			{@const accent = accentFor(match?.id ?? entry.id)}
-			{@const epThumb = imageProxyUrl(ep?.thumbnail?.original ?? null)}
-			{@const animePoster = imageProxyUrl(
-				match?.poster_image?.medium ??
-					match?.poster_image?.large ??
-					match?.poster_image?.small ??
-					match?.poster_image?.original ??
-					null
-			)}
-			{@const image = epThumb ?? animePoster}
 			{@const resumable = match && target.kitsuEpisode !== null}
 			{@const isResuming = resumeBusy === match?.id}
 			{@const singleVideo = isSingleVideo(
@@ -1088,23 +1376,38 @@
 				playableCount ?? match?.episode_count ?? null,
 				match ? leftPartWay : undefined
 			)}
-			<!-- Both transitions are gated on `deleteBusy` so they only
-		     run for user-confirmed deletes. On home re-mount,
-		     `dedupeHistoryByKitsuId` collapses Kitsu-group siblings
-		     as their matches resolve, which would otherwise fire
-		     out:scale on every dedupe-removed row + animate:flip on
-		     every survivor — the resize-flicker users see when
-		     navigating Detail → back → Home. Duration 0 makes those
-		     transitions instant (no animation) during load; during
-		     `confirmDelete`, `deleteBusy=true` re-enables the smooth
-		     shrink + slide.
-
-		     Params are FUNCTIONS, not object literals, because
-		     Svelte caches the object form at element mount — by
-		     fire time, the cached duration is still the
-		     `deleteBusy=false` value and the user delete won't
-		     animate. The function form re-evaluates on every
-		     fire, so the gate reads the live state. -->
+			{@const offered = match ? nextEpisode : null}
+			<!-- The episode wait is per offered episode, armed as the card
+			     first offers it. -->
+			{@const capKey = `${entry.id}|${offered}`}
+			{@const card = lookBook.look(entry.id, lookKey(entry), {
+				match,
+				episode: ep,
+				episodeFor: historyEpisodeFor[entry.id],
+				offered,
+				capReached: offered !== null && capTimers.arm(capKey) && capReached[capKey] === true,
+				text:
+					match === undefined
+						? null
+						: cardText(
+								offeredEpisode(ep, offered, historyEpisodeFor[entry.id]),
+								singleVideo,
+								resumable ? nextEpisode : target.displayEpisode,
+								target.displayTitle
+							)
+			})}
+			{@const initials = (card.text?.show ?? target.displayTitle).slice(0, 2).toUpperCase()}
+			<!-- Both transitions are gated on `deleteAnimationGate` so
+		     they only run for user-confirmed deletes. On home
+		     re-mount, `dedupeHistoryByKitsuId` collapses Kitsu-group
+		     siblings as their matches resolve, which would otherwise
+		     fire out:scale on every dedupe-removed row + animate:flip
+		     on every survivor — the resize-flicker users see when
+		     navigating Detail → back → Home. A row the gate was not
+		     opened for leaves and shifts instantly; a confirmed
+		     remove opens it for the removed rows and the survivors
+		     they shift, just before the strip changes. The factories
+		     read the gate when they fire, per id. -->
 			<div
 				class="resume-cell"
 				style="--accent: {accent};"
@@ -1119,7 +1422,11 @@
 			       div so a click during the probe window doesn't
 			       mis-route the user to /search.
 			     - match === null : resolution definitively failed;
-			       the row falls through to a search for its title. -->
+			       the row falls through to a search for its title.
+			     The artwork and episode line are a separate question
+			     — `card`, from $lib/history/card-look — so a matched
+			     card is clickable while its artwork is still a
+			     skeleton. -->
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
 				{#if resumable && match}
 					<button
@@ -1127,74 +1434,18 @@
 						class="resume-card"
 						class:resume-card-busy={isResuming}
 						style="--accent: {accent};"
+						aria-busy={card.look === null}
 						disabled={!!resumeBusy && !isResuming}
 						onclick={() =>
 							startResume(entry, match, match?.episode_count ?? null, match?.status === 'finished')}
 					>
-						<span class="resume-poster">
-							{#if image}
-								<img src={image} alt="" loading="lazy" decoding="async" />
-							{:else}
-								<span class="resume-poster-placeholder" aria-hidden="true">
-									{target.displayTitle.slice(0, 2).toUpperCase()}
-								</span>
-							{/if}
-							{#if !singleVideo}
-								<!-- Suppress the "EP N" overlay for single-video
-							     shows (movies + finished 1-ep OVAs/specials);
-							     the poster IS the video, no episode number
-							     to surface. The number shown matches what
-							     Continue would play — i.e. the episode about
-							     to start, not the one just watched. -->
-								<span class="resume-ep-tag" aria-hidden="true">
-									<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
-									<span class="resume-ep-num">{nextEpisode}</span>
-								</span>
-							{/if}
-						</span>
-						<span class="resume-body">
-							<span class="resume-show">{target.displayTitle}</span>
-							{#if ep?.canonical_title}
-								<span class="resume-title">{ep.canonical_title}</span>
-							{:else if !singleVideo}
-								<!-- Single-video shows don't need an "Episode N"
-							     fallback subtitle — the show title above is
-							     enough, and the card is unambiguously a
-							     "continue this movie" affordance. -->
-								<span class="resume-title resume-title-faint"
-									>{m.home_resume_episode_label({ episode: nextEpisode })}</span
-								>
-							{:else}
-								<!-- Nothing to say here, but the row still has to
-							     exist: a movie card that simply dropped the
-							     episode line would be a line shorter than every
-							     other card in the rail, and a line shorter than
-							     the placeholder it replaced. -->
-								<span class="resume-title resume-title-reserved" aria-hidden="true"></span>
-							{/if}
-						</span>
+						{@render cardFace(card, initials)}
+						{@render cardBody(card, target.displayTitle)}
 					</button>
 				{:else if match === undefined}
 					<div class="resume-card resume-card-loading" style="--accent: {accent};" aria-busy="true">
-						<span class="resume-poster">
-							<span class="resume-poster-placeholder" aria-hidden="true">
-								{target.displayTitle.slice(0, 2).toUpperCase()}
-							</span>
-						</span>
-						<span class="resume-body">
-							<span class="resume-show">{target.displayTitle}</span>
-							<!-- The row the episode line will occupy, held open
-						     rather than grown into. Both terminal branches
-						     carry a second body row — the resolved card its
-						     episode title, the search fallback its faint
-						     fallback label — so reserving one here means the
-						     card's box is the same before and after, and the
-						     rail stops settling card by card as its probes
-						     land. Empty and hidden: it is space, not
-						     content, and a screen reader announcing a blank
-						     line would be worse than the reflow. -->
-							<span class="resume-title resume-title-reserved" aria-hidden="true"></span>
-						</span>
+						{@render cardFace(card, initials)}
+						{@render cardBody(card, target.displayTitle)}
 					</div>
 				{:else}
 					<a
@@ -1202,43 +1453,8 @@
 						style="--accent: {accent};"
 						href={`${resolve('/search')}?q=${encodeURIComponent(target.displayTitle)}`}
 					>
-						<span class="resume-poster">
-							{#if image}
-								<img src={image} alt="" loading="lazy" decoding="async" />
-							{:else}
-								<span class="resume-poster-placeholder" aria-hidden="true">
-									{target.displayTitle.slice(0, 2).toUpperCase()}
-								</span>
-							{/if}
-							{#if !singleVideo}
-								<!-- Suppress the "EP N" overlay for single-video
-							     shows (movies + finished 1-ep OVAs/specials);
-							     the poster IS the video, no episode number
-							     to surface. -->
-								<span class="resume-ep-tag" aria-hidden="true">
-									<span class="resume-ep-key">{m.home_resume_ep_key()}</span>
-									<span class="resume-ep-num">{target.displayEpisode}</span>
-								</span>
-							{/if}
-						</span>
-						<span class="resume-body">
-							<span class="resume-show">{target.displayTitle}</span>
-							{#if ep?.canonical_title}
-								<span class="resume-title">{ep.canonical_title}</span>
-							{:else if !singleVideo}
-								<!-- Single-video shows don't need an "Episode N"
-							     fallback subtitle — the show title above is
-							     enough, and the card is unambiguously a
-							     "continue this movie" affordance. -->
-								<span class="resume-title resume-title-faint"
-									>{m.home_resume_episode_label({ episode: target.displayEpisode })}</span
-								>
-							{:else}
-								<!-- Same reservation as the resumable branch: the
-							     row is empty but still has to be there. -->
-								<span class="resume-title resume-title-reserved" aria-hidden="true"></span>
-							{/if}
-						</span>
+						{@render cardFace(card, initials)}
+						{@render cardBody(card, target.displayTitle)}
 					</a>
 				{/if}
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
@@ -1273,7 +1489,7 @@
 	</Strip>
 {/if}
 
-<LoadingOverlay visible={resumeBusy !== null} progress={resumeProgress} />
+<LoadingOverlay modal visible={resumeBusy !== null} progress={resumeProgress} />
 {#if resumeFailure}
 	<ErrorOverlay
 		headline={m.home_error_resume_headline({ title: resumeFailure.title })}
@@ -1311,60 +1527,77 @@
        - watchLater === null  → boot, accountStore not hydrated yet
        - watchLater.length === 0 → no provider connected, or every
          connected provider's Plan-to-Watch is empty / un-bridged. -->
-{#snippet watchLaterRefresh()}
-	<button
-		type="button"
-		class="rail-refresh"
-		class:is-refreshing={refreshingWatchLater}
-		disabled={refreshingWatchLater}
-		aria-label={m.account_watch_later_refresh()}
-		title={m.account_watch_later_refresh()}
-		onclick={refreshWatchLater}
-	>
-		<Icon name="update" size={16} />
-	</button>
+{#snippet watchLaterMeta()}
+	<!-- The current phrasing, and through a refresh the one it replaced,
+	     stacked in one cell; only the current one is seen or read. -->
+	<span class="wl-status">
+		{#each wlPhrases as phrase (phrase.text)}
+			<span
+				class="wl-phrase"
+				data-shown={phrase.shown ? '' : undefined}
+				aria-hidden={phrase.shown ? undefined : 'true'}>{phrase.text}</span
+			>
+		{/each}
+	</span>
 {/snippet}
 
-{#if watchLater && (watchLater.length > 0 || (accountStore.hasAny && !watchLaterFailed))}
+{#snippet watchLaterActions()}
+	<RowAction
+		label={m.account_watch_later_refresh_action()}
+		icon="refresh"
+		shape={rowActionShape}
+		busy={refreshingWatchLater}
+		onclick={refreshWatchLater}
+	/>
+{/snippet}
+
+{#if wlFailedRow || (watchLater && (watchLater.length > 0 || (accountStore.hasAny && !watchLaterFailed)))}
 	<!-- The list, or — connected and the cached Plan-to-Watch genuinely
 	     empty — the empty row with its header and refresh, so newly-added
-	     tracker titles can be pulled in before the TTL. One strip for both,
-	     so the first card a settled write adds grows into the row and the
-	     last one it removes shrinks out of it, like any other card. -->
+	     tracker titles can be pulled in before the TTL; or, connected but
+	     the last load failed (bridge/availability down), a retry
+	     affordance rather than a false "nothing planned" — an empty list
+	     and a failed fetch are different states. One strip for all three:
+	     the first card a settled write adds grows into the row and the
+	     last one it removes shrinks out of it, like any other card, and a
+	     refresh that moves the row between failed and loaded leaves the
+	     Refresh the keyboard pressed where it was. A failed row vouches
+	     for no freshness, so it carries no status. -->
 	<Strip
+		surface={rowSurface}
 		eyebrow={m.account_watch_later_title()}
-		caption={watchLater.length > 0
-			? m.account_watch_later_caption()
-			: m.account_watch_later_empty()}
-		headerTrailing={watchLaterRefresh}
+		caption={wlFailedRow
+			? m.account_watch_later_failed()
+			: watchLater && watchLater.length > 0
+				? m.account_watch_later_caption()
+				: m.account_watch_later_empty()}
+		headerMeta={!wlFailedRow && wlStatusText ? watchLaterMeta : undefined}
+		headerActions={watchLaterActions}
 	>
-		{#each watchLater as anime (anime.id)}
-			<div class="watch-later-cell" data-anime-id={anime.id} in:wlIn out:wlOut animate:wlFlip>
-				<PosterCard {anime} />
-			</div>
-		{/each}
-		{#if watchLater.length === 0}
-			<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
+		{#if wlFailedRow}
+			<p class="watch-later-empty">
+				{m.account_watch_later_failed_hint({ reason: describeError(watchLaterError) })}
+			</p>
+		{:else if watchLater}
+			{#each watchLater as anime (anime.id)}
+				<div class="watch-later-cell" data-anime-id={anime.id} in:wlIn out:wlOut animate:wlFlip>
+					<PosterCard {anime} />
+				</div>
+			{/each}
+			{#if watchLater.length === 0}
+				<p class="watch-later-empty">{m.account_watch_later_empty_hint()}</p>
+			{/if}
 		{/if}
 	</Strip>
-{:else if accountStore.hasAny && watchLaterFailed}
-	<!-- Connected but the last load failed (bridge/availability down). Show
-	     a retry affordance rather than a false "nothing planned" — an empty
-	     list and a failed fetch are different states. -->
-	<Strip
-		eyebrow={m.account_watch_later_title()}
-		caption={m.account_watch_later_failed()}
-		headerTrailing={watchLaterRefresh}
-	>
-		<p class="watch-later-empty">
-			{m.account_watch_later_failed_hint({ reason: describeError(watchLaterError) })}
-		</p>
-	</Strip>
 {/if}
+
+<!-- The Watch Later refresh's announcement; see watch-later-freshness. -->
+<p class="wl-announce" role="status">{wl.announce}</p>
 
 <!-- Trending strip (the tail; the head is the hero) -->
 {#if trending === null && !trendingError}
 	<Strip
+		surface={rowSurface}
 		eyebrow={m.home_strip_trending_eyebrow()}
 		caption={m.home_strip_trending_caption_loading()}
 	>
@@ -1377,7 +1610,11 @@
 		{/each}
 	</Strip>
 {:else if trendingTail.length > 0}
-	<Strip eyebrow={m.home_strip_trending_eyebrow()} caption={m.home_strip_trending_caption()}>
+	<Strip
+		surface={rowSurface}
+		eyebrow={m.home_strip_trending_eyebrow()}
+		caption={m.home_strip_trending_caption()}
+	>
 		{#each trendingTail as anime (anime.id)}
 			<PosterCard {anime} />
 		{/each}
@@ -1387,6 +1624,7 @@
 <!-- Top Rated strip -->
 {#if topRated === null && !topRatedError}
 	<Strip
+		surface={rowSurface}
 		eyebrow={m.home_strip_top_rated_eyebrow()}
 		caption={m.home_strip_top_rated_caption_loading()}
 	>
@@ -1399,7 +1637,11 @@
 		{/each}
 	</Strip>
 {:else if topRated && topRated.length > 0}
-	<Strip eyebrow={m.home_strip_top_rated_eyebrow()} caption={m.home_strip_top_rated_caption()}>
+	<Strip
+		surface={rowSurface}
+		eyebrow={m.home_strip_top_rated_eyebrow()}
+		caption={m.home_strip_top_rated_caption()}
+	>
 		{#each topRated as anime (anime.id)}
 			<PosterCard {anime} />
 		{/each}
@@ -1753,6 +1995,12 @@
 		position: absolute;
 		inset: 0;
 	}
+	/* In the flex layer the body shrinks to its content, which for
+	   the placeholder is only the eyebrow, and the lines' percentage
+	   widths would resolve against that. Take the full measure. */
+	.hero-body-skel {
+		flex: 1;
+	}
 	.hero-skel-img {
 		inline-size: 100%;
 		block-size: 100%;
@@ -1852,25 +2100,39 @@
 		outline-offset: 2px;
 	}
 
-	/* Continue-Watching rail kebab + dropdown. */
-	.continue-menu-wrap {
-		position: relative;
-		display: inline-flex;
+	/* The row style switch's place: the head of the rows, flush with
+	   their end edge (the strips' gutter). */
+	.row-style-slot {
+		display: flex;
+		justify-content: flex-end;
+		padding-inline: var(--space-8);
+		margin-block-end: var(--space-4);
 	}
-	.continue-menu-btn {
+
+	/* The Watch Later status: its phrasings stacked in one grid cell, a
+	   hidden one holding the width through a refresh; digits of one
+	   width, so the minute tick does not nudge the line either. */
+	.wl-status {
 		display: inline-grid;
-		place-items: center;
-		inline-size: 2rem;
-		block-size: 2rem;
+		font-variant-numeric: tabular-nums;
+	}
+	.wl-phrase {
+		grid-area: 1 / 1;
+		white-space: nowrap;
+	}
+	.wl-phrase:not([data-shown]) {
+		visibility: hidden;
+	}
+	.wl-announce {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
 		padding: 0;
-		border: none;
-		border-radius: 999px;
-		background: transparent;
-		color: var(--bone-300);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast) var(--ease-out-soft),
-			color var(--dur-fast) var(--ease-out-soft);
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	/* Empty-state note shown in the Watch Later rail when a provider is
@@ -1881,94 +2143,6 @@
 		font-family: var(--font-body);
 		font-size: var(--type-meta);
 		color: var(--bone-400);
-	}
-
-	/* Watch Later rail refresh button (Strip headerTrailing). */
-	.rail-refresh {
-		display: inline-grid;
-		place-items: center;
-		inline-size: 2rem;
-		block-size: 2rem;
-		padding: 0;
-		border: none;
-		border-radius: 999px;
-		background: transparent;
-		color: var(--bone-300);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast) var(--ease-out-soft),
-			color var(--dur-fast) var(--ease-out-soft);
-	}
-	.rail-refresh:hover:not(:disabled) {
-		background: var(--ink-100);
-		color: var(--bone-100);
-	}
-	.rail-refresh:disabled {
-		cursor: default;
-		opacity: 0.7;
-	}
-	.rail-refresh.is-refreshing :global(svg) {
-		animation: rail-refresh-spin 0.8s linear infinite;
-	}
-	@keyframes rail-refresh-spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-	.continue-menu-btn:hover,
-	.continue-menu-btn[aria-expanded='true'] {
-		background: var(--ink-100);
-		color: var(--bone-100);
-	}
-	.continue-menu-backdrop {
-		position: fixed;
-		inset: 0;
-		z-index: 19;
-	}
-	.continue-menu {
-		position: absolute;
-		inset-block-start: calc(100% + var(--space-2));
-		inset-inline-end: 0;
-		margin: 0;
-		padding: var(--space-2);
-		list-style: none;
-		background: var(--ink-050);
-		border: 1px solid var(--ink-200);
-		border-radius: var(--radius-card);
-		box-shadow: var(--shadow-card-hover);
-		z-index: 20;
-		min-inline-size: 12rem;
-		animation: cm-rise var(--dur-fast) var(--ease-out-soft) both;
-	}
-	@keyframes cm-rise {
-		from {
-			opacity: 0;
-			transform: translateY(-4px);
-		}
-		to {
-			opacity: 1;
-			transform: none;
-		}
-	}
-	.continue-menu-item {
-		display: block;
-		inline-size: 100%;
-		text-align: start;
-		padding: var(--space-2) var(--space-3);
-		border: none;
-		border-radius: calc(var(--radius-card) - 4px);
-		background: transparent;
-		color: var(--bone-200);
-		font: inherit;
-		font-size: var(--type-meta);
-		cursor: pointer;
-		transition:
-			background var(--dur-fast) var(--ease-out-soft),
-			color var(--dur-fast) var(--ease-out-soft);
-	}
-	.continue-menu-item:hover {
-		background: var(--ink-100);
-		color: var(--accent-oxblood);
 	}
 
 	.resume-card {
@@ -2048,11 +2222,27 @@
 		opacity: 1;
 	}
 	.resume-poster img {
+		/* Over the skeleton, which it covers edge to edge once shown. */
+		position: absolute;
+		inset: 0;
 		inline-size: 100%;
 		block-size: 100%;
 		object-fit: cover;
 		object-position: center 30%;
 		filter: brightness(0.85);
+		/* Hidden until it has decoded (reveal-image.ts sets
+		   data-revealed), so it lands whole instead of painting in
+		   band by band. */
+		opacity: 0;
+		transition:
+			opacity var(--dur-slow) var(--ease-out-soft),
+			filter var(--dur-med) var(--ease-out-soft);
+	}
+	.resume-poster :global(img[data-revealed]) {
+		opacity: 1;
+	}
+	/* Already in memory when the card drew: it was never not there. */
+	.resume-poster :global(img[data-revealed='instant']) {
 		transition: filter var(--dur-med) var(--ease-out-soft);
 	}
 	.resume-card:hover .resume-poster img {
@@ -2089,7 +2279,8 @@
 		filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.65));
 		transition:
 			transform var(--dur-med) var(--ease-out-elastic),
-			filter var(--dur-fast) var(--ease-out-soft);
+			filter var(--dur-fast) var(--ease-out-soft),
+			opacity var(--dur-slow) var(--ease-out-soft);
 		z-index: 2;
 	}
 	.resume-ep-key {
@@ -2173,8 +2364,105 @@
 		block-size: 2lh;
 	}
 
-	.resume-card-loading .resume-poster-placeholder {
-		animation: pulse 1.6s var(--ease-in-out) infinite;
+	/* — Continue card skeleton: the tile's own surface with one soft
+	     band of light crossing it. The band waits a beat before its
+	     first pass, so a card whose artwork is a moment away just reads
+	     as an empty tile and never flickers into motion. The one sweep
+	     on the page, kept to this strip, whose cards wait on two answers
+	     and can sit a moment longer; the poster rows and the search page
+	     keep the opacity pulse. */
+	.look-skeleton {
+		position: absolute;
+		inset: 0;
+		overflow: hidden;
+		background: var(--ink-100);
+	}
+	.look-skeleton::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(
+			100deg,
+			transparent 20%,
+			color-mix(in oklab, var(--bone-100) 5%, transparent) 50%,
+			transparent 80%
+		);
+		transform: translateX(-100%);
+		animation: look-sheen 1.8s var(--ease-in-out) 220ms infinite;
+	}
+	/* The sweep follows reading direction: mirrors the band and its travel. */
+	.look-skeleton:dir(rtl)::before {
+		scale: -1 1;
+	}
+	@keyframes look-sheen {
+		to {
+			transform: translateX(100%);
+		}
+	}
+	/* Nothing to scrim and nothing to number while the tile is empty. */
+	.resume-poster[data-look='pending']::after {
+		opacity: 0;
+	}
+	/* The scrim and the EP number arrive with the artwork they sit on;
+	   over the initials a landing still finds them there already. */
+	.resume-poster[data-look='image']:not([data-under]):not(:has(:global(img[data-revealed])))::after,
+	.resume-poster[data-look='image']:not([data-under]):not(:has(:global(img[data-revealed])))
+		.resume-ep-tag {
+		opacity: 0;
+	}
+	/* The scrim lands at the artwork's pace, not the hover's. */
+	.resume-poster:not([data-under]):has(:global(img[data-revealed='fade']))::after,
+	.resume-poster[data-look='placeholder']:not(.look-instant)::after {
+		animation: look-in var(--dur-slow) var(--ease-out-soft);
+	}
+	.resume-poster:has(:global(img[data-revealed])) .look-skeleton {
+		display: none;
+	}
+	.resume-poster[data-look='placeholder'] .resume-poster-placeholder,
+	.resume-poster[data-look='placeholder'] .resume-ep-tag {
+		animation: look-in var(--dur-slow) var(--ease-out-soft);
+	}
+	.resume-poster.look-instant .resume-poster-placeholder,
+	.resume-poster.look-instant .resume-ep-tag {
+		animation: none;
+	}
+	@keyframes look-in {
+		from {
+			opacity: 0;
+		}
+	}
+	/* The text's stand-ins: a short bar on each line, the name's
+	   narrower than the episode title's, each in the box its line keeps
+	   once it lands. */
+	.resume-line-skeleton::before {
+		content: '';
+		display: block;
+		inline-size: 62%;
+		block-size: 0.75rem;
+		margin-block-start: calc((1lh - 0.75rem) / 2);
+		border-radius: 2px;
+		background: var(--ink-100);
+	}
+	/* Holds the one line the name will take. */
+	.resume-show.resume-line-skeleton {
+		block-size: 1lh;
+	}
+	.resume-show.resume-line-skeleton::before {
+		inline-size: 44%;
+		block-size: 0.5rem;
+		margin-block-start: calc((1lh - 0.5rem) / 2);
+	}
+	.resume-sr-name {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+	/* Lands with the artwork. */
+	.resume-body.look-landed {
+		animation: look-in var(--dur-slow) var(--ease-out-soft);
 	}
 	/* Skeleton line sizes. Classes, not static style attributes: the
 	   renderer's content security policy refuses inline style attributes,

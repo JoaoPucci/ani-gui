@@ -10,6 +10,8 @@
 	"hero_error_title": "The catalogue is unreachable.",
 	"hero_error_body": "Kitsu didn't answer. Search still works locally — type a title.",
 	"hero_error_cta": "Open Search",
+	"hero_empty_title": "Nothing to feature right now.",
+	"hero_empty_body": "The trending list came back empty. Search still works, type a title.",
 	"hero_skeleton_eyebrow_key": "Loading",
 	"strip_continue_eyebrow": "Continue watching",
 	"strip_continue_caption": "resume from history",
@@ -27,8 +29,7 @@
 	"delete_confirm_title": "Remove \"{title}\" from history?",
 	"delete_confirm_body": "You can re-add it by watching the show again.",
 	"delete_confirm_button": "Remove",
-	"clear_menu_button_aria": "History options",
-	"clear_menu_item": "Clear history",
+	"clear_history_action": "Clear history",
 	"clear_confirm_eyebrow": "Clear all",
 	"clear_confirm_title": [
 		{
@@ -42,5 +43,7 @@
 	],
 	"clear_confirm_body": "This clears ani-gui's watch history. Cannot be undone.",
 	"clear_confirm_button": "Clear all",
+	"clear_history_failed": "Couldn't clear your history. Try again.",
+	"delete_failed": "Couldn't remove \"{title}\" from history. Try again.",
 	"hero_error_eyebrow_value": "No answer from Kitsu"
 }

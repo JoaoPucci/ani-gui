@@ -27,7 +27,7 @@ pub(crate) async fn seed_airing_rows_batch(
     let mut by_anilist: Vec<(String, u32)> = Vec::new();
     let mut by_mal: Vec<(String, u32)> = Vec::new();
     for kitsu_id in kitsu_ids {
-        let key = format!("airing:v2:{kitsu_id}");
+        let key = format!("{}{kitsu_id}", crate::cache::families::AIRING);
         if matches!(meta_cache_get(&state.cache_pool, &key), Ok(Some(_))) {
             continue;
         }

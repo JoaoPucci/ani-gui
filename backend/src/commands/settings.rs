@@ -34,8 +34,9 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::TempDir;
 
-    fn state_with_config_at(config_path: PathBuf) -> AppState {
-        AppState {
+    fn state_with_config_at(config_path: PathBuf) -> crate::scratch::Scratch<AppState> {
+        let dirs = crate::scratch::dir();
+        let state = AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -44,19 +45,21 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/y/history"),
+            history_path: dirs.history(),
             providers: crate::provider_set::ProviderSet::for_tests(),
-            image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+            image_cache_dir: dirs.images(),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),
             config_path,
-            state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            state_dir: dirs.state(),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-        }
+            flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+        };
+        dirs.hold(state)
     }
 
     #[test]
@@ -73,7 +76,6 @@ mod tests {
         let state = state_with_config_at(dir.path().join("config.toml"));
         let new_cfg = Config {
             mode: "dub".into(),
-            quality: "720".into(),
             external_player: "vlc".into(),
             ..Config::default()
         };

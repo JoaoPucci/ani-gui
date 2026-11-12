@@ -10,7 +10,7 @@
  */
 
 import { recoveryResume } from '$lib/play/resume-after-recovery';
-import { holdForResume, type ResumeHold } from '$lib/play/resume-hold';
+import { holdForResume, noHold, resumeStartAt, type ResumeHold } from '$lib/play/resume-hold';
 import { stallMachine } from '$lib/play/stall-machine';
 import type { SourceScope } from '$lib/play/source-scope';
 import {
@@ -25,6 +25,16 @@ import {
 /** How far playback moves between two writes of its position. */
 const SAVE_EVERY_S = 5;
 
+/** Where the attaching stream is to start: an hls engine begins
+ *  loading there. Null starts it where it starts on its own. */
+export interface SourceStart {
+	startAt: number | null;
+	/** Ends the resume hold, if there is one, without starting
+	 *  anything: the viewer took the episode to another player, and
+	 *  the hold must not start this one once its seek lands. */
+	endHold(): void;
+}
+
 export function armSourceScopedListeners(input: {
 	video: HTMLVideoElement;
 	showId: string;
@@ -38,7 +48,11 @@ export function armSourceScopedListeners(input: {
 	/** Told when the stream's picture is held back for its resume seek
 	 *  and when it is revealed (`$lib/play/resume-hold`). */
 	onResumeHold?: (holding: boolean) => void;
-}): void {
+	/** Whether the stream is loaded from the start returned here — an
+	 *  hls engine is; an element given a `src` opens at zero whatever
+	 *  the point. */
+	startedAtPoint?: boolean;
+}): SourceStart {
 	const { video, showId, episode, scope, positions, onResumeHold } = input;
 	const row = input.row ?? null;
 	// A recovery's point resumes the stream the viewer was watching a
@@ -52,12 +66,16 @@ export function armSourceScopedListeners(input: {
 	markStarted(showId, episode, positions, row);
 	// A point to seek to holds the picture back from the attach on, so
 	// the stream's first frame is never shown, nor played, before it.
-	// A started mark, at zero, has nowhere to seek.
-	const point = recovered ?? kept;
-	const hold: ResumeHold | null =
-		point !== null && point > 0
+	// The page's CSS can only hide the picture, and picture-in-picture
+	// and a <video> that is itself fullscreen show the element directly,
+	// so an hls.js stream is also started at the point (`SourceStart`): no
+	// fragment before the point's is fetched, so nothing before it can
+	// be shown. A started mark, at zero, has nowhere to seek.
+	const startAt = resumeStartAt(recovered, kept);
+	const hold: ResumeHold =
+		startAt !== null
 			? holdForResume({ video, onHold: (holding) => onResumeHold?.(holding) })
-			: null;
+			: noHold(video);
 	// Progress means frames actually rendered — the `playing` event —
 	// never a bare timeupdate: the resume seek below emits one at the
 	// old timestamp before the fresh source has delivered anything.
@@ -103,12 +121,21 @@ export function armSourceScopedListeners(input: {
 	const stopWaiting = () => {
 		video.removeEventListener('durationchange', onDuration);
 	};
-	const seekTo = (seconds: number) => {
-		if (hold) hold.seekTo(seconds);
-		else video.currentTime = seconds;
-	};
+	const seekTo = (seconds: number) => hold.seekTo(seconds);
 	const onDuration = () => {
 		if (Number.isFinite(video.duration)) resumeKept();
+	};
+	// A forgotten point plays the stream from its start. A stream loaded
+	// from the point is sought there, even while the element still
+	// reads zero: the metadata usually comes before the point's
+	// fragment is in, and the engine, which still holds the point,
+	// would move the playhead back to it once that fragment is
+	// buffered; a seek before then is what makes it start from zero.
+	// The reveal waits for that seek like any other. Any other stream
+	// is already at its start, and is revealed there at once.
+	const startFromTheTop = () => {
+		if (input.startedAtPoint) seekTo(0);
+		else hold.release();
 	};
 	// Seeks to the kept point unless the known length puts it in the
 	// last 90 seconds, where it is forgotten instead. Decided once.
@@ -119,7 +146,7 @@ export function armSourceScopedListeners(input: {
 		if (recovered === null && kept !== null && kept > 0) {
 			if (isFinishedAt(kept, video.duration)) {
 				clearPosition(showId, episode, positions);
-				hold?.release();
+				startFromTheTop();
 			} else seekTo(kept);
 		}
 		opened = true;
@@ -134,7 +161,7 @@ export function armSourceScopedListeners(input: {
 	scope.add(() => {
 		save();
 		stopWaiting();
-		hold?.end();
+		hold.end();
 		opened = false;
 		video.removeEventListener('playing', markProgress);
 		video.removeEventListener('loadedmetadata', onMetadata);
@@ -147,4 +174,5 @@ export function armSourceScopedListeners(input: {
 	video.addEventListener('timeupdate', onTime);
 	video.addEventListener('pause', save);
 	video.addEventListener('ended', onEnded);
+	return { startAt, endHold: () => hold.end() };
 }

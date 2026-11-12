@@ -511,4 +511,26 @@ describe('reporting the rows whose cap is still unconfirmed', () => {
 			delete g.location;
 		}
 	});
+
+	it("probes each row in its show's own audio, the configured mode the default", async () => {
+		const rows = [makeEntry('h-dub', '1', 'Dubbed'), makeEntry('h-plain', '1', 'Plain')];
+		const matches: Record<string, KitsuAnimeRef> = {
+			'h-dub': makeMatch('k-dub', 12),
+			'h-plain': makeMatch('k-plain', 12)
+		};
+		const asked: [string, string][] = [];
+		await loadContinueWatchingState(rows, {
+			resolveMatch: (entry: HistoryEntry) => Promise.resolve(matches[entry.id]),
+			fetchAvailability: (match: KitsuAnimeRef, mode: 'sub' | 'dub') => {
+				asked.push([match.id, mode]);
+				return Promise.resolve({ episode_count: 12 });
+			},
+			getMode: subMode,
+			modeFor: (kitsuId, fallback) => (kitsuId === 'k-dub' ? 'dub' : fallback)
+		});
+		expect(asked.sort()).toEqual([
+			['k-dub', 'dub'],
+			['k-plain', 'sub']
+		]);
+	});
 });

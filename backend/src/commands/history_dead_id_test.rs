@@ -22,8 +22,9 @@ const DETAIL_FIXTURE: &[u8] =
 const SHOW: &str = "cowboy-bebop-1";
 const TITLE: &str = "Cowboy Bebop";
 
-fn state_at(history_path: PathBuf, kitsu_base: &str) -> AppState {
-    AppState {
+fn state_at(history_path: PathBuf, kitsu_base: &str) -> crate::scratch::Scratch<AppState> {
+    let dirs = crate::scratch::dir();
+    let state = AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -34,21 +35,43 @@ fn state_at(history_path: PathBuf, kitsu_base: &str) -> AppState {
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path,
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_base),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-    }
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+    };
+    dirs.hold(state)
 }
 
 /// A history holding one row that records `recorded`, with Kitsu
 /// answering `/anime/<recorded>` with `status`.
-async fn row_recording(recorded: &str, status: u16) -> (tempfile::TempDir, MockServer, AppState) {
+async fn row_recording(
+    recorded: &str,
+    status: u16,
+) -> (
+    tempfile::TempDir,
+    MockServer,
+    crate::scratch::Scratch<AppState>,
+) {
+    row_recording_titled(recorded, status, TITLE).await
+}
+
+/// [`row_recording`], the row titled `title`.
+async fn row_recording_titled(
+    recorded: &str,
+    status: u16,
+    title: &str,
+) -> (
+    tempfile::TempDir,
+    MockServer,
+    crate::scratch::Scratch<AppState>,
+) {
     let mock = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path(format!("/anime/{recorded}")))
@@ -62,7 +85,7 @@ async fn row_recording(recorded: &str, status: u16) -> (tempfile::TempDir, MockS
         &[HistoryEntry {
             ep_no: "5".into(),
             id: SHOW.into(),
-            title: TITLE.into(),
+            title: title.into(),
             watched_at: None,
             kitsu_id: Some(recorded.into()),
             own_number: false,
@@ -115,6 +138,94 @@ async fn a_deleted_recorded_entry_gives_way_to_the_title_match_past_a_dead_mappi
 
     assert_eq!(found(&state, "1").as_deref(), Some(SHOW));
     assert_eq!(found(&state, "999"), None);
+}
+
+/// A row whose recorded entry is gone is named by the one title match
+/// Continue Watching reads for it: the one under the cour its title
+/// names. A match stored under another cour of the same title is
+/// another row's guess, and names nothing for this one.
+#[tokio::test]
+async fn a_deleted_recorded_entry_gives_way_to_the_title_match_of_its_own_cour_alone() {
+    let (_tmp, _mock, state) = row_recording("999", 404).await;
+    title_match(&state, "1");
+    crate::commands::kitsu::title_match_put(&state, ShowKey::parse(SHOW).provider, TITLE, 2, "2")
+        .unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert_eq!(found(&state, "1").as_deref(), Some(SHOW));
+    assert_eq!(found(&state, "2"), None);
+}
+
+/// A row titled for its second season is named by the match under
+/// that cour, not by one stored under the first.
+#[tokio::test]
+async fn a_deleted_recorded_entry_of_a_later_season_gives_way_to_that_season_s_match() {
+    let title = "Cowboy Bebop Season 2";
+    let (_tmp, _mock, state) = row_recording_titled("999", 404, title).await;
+    let provider = ShowKey::parse(SHOW).provider;
+    crate::commands::kitsu::title_match_put(&state, provider, title, 1, "1").unwrap();
+    crate::commands::kitsu::title_match_put(&state, provider, title, 2, "2").unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert_eq!(found(&state, "2").as_deref(), Some(SHOW));
+    assert_eq!(found(&state, "1"), None);
+}
+
+#[tokio::test]
+async fn a_title_match_the_version_before_stored_names_no_show() {
+    // Home no longer reads a title match an earlier pick order stored —
+    // Black Clover's special for the TV series — so neither does the
+    // resume lookup: the row is named by the match Home reads now.
+    let (_tmp, _mock, state) = row_recording("999", 404).await;
+    let before = crate::commands::kitsu::TITLE_MATCH_VERSION - 1;
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &format!(
+            "{}1",
+            crate::commands::kitsu::title_match_prefix_at(
+                before,
+                ShowKey::parse(SHOW).provider,
+                TITLE
+            )
+        ),
+        "1",
+        86_400,
+    )
+    .unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert_eq!(found(&state, "1"), None);
+}
+
+#[tokio::test]
+async fn a_deleted_recorded_entry_gives_way_to_the_title_match_its_year_keyed() {
+    // A row whose title ends with the year it names keeps its guess
+    // keyed by that year; the resume lookup reads it there.
+    let (_tmp, _mock, state) = row_recording_titled("999", 404, "Show (12 episodes) (2009)").await;
+    crate::commands::kitsu::title_match_put(
+        &state,
+        ShowKey::parse(SHOW).provider,
+        "Show (2009)",
+        1,
+        "1",
+    )
+    .unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert_eq!(found(&state, "1").as_deref(), Some(SHOW));
+}
+
+#[tokio::test]
+async fn a_row_naming_a_year_is_not_named_by_the_guess_of_a_row_naming_none() {
+    // A row naming 2009 keeps its guess under "Show (2009)"; the guess
+    // under "Show" alone is another row's, titled alike but naming no
+    // year, and names a different show.
+    let (_tmp, _mock, state) = row_recording_titled("999", 404, "Show (12 episodes) (2009)").await;
+    crate::commands::kitsu::title_match_put(&state, ShowKey::parse(SHOW).provider, "Show", 1, "1")
+        .unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert_eq!(found(&state, "1"), None);
 }
 
 #[tokio::test]
@@ -257,15 +368,23 @@ const OTHER: &str = "hianime:trigun-3";
 
 /// A history of two rows, `SHOW` recording 999 and `OTHER` recording
 /// 555, with Kitsu answering `/anime/999` with a 404.
-async fn two_rows_with_a_404() -> (tempfile::TempDir, MockServer, AppState) {
+async fn two_rows_with_a_404() -> (
+    tempfile::TempDir,
+    MockServer,
+    crate::scratch::Scratch<AppState>,
+) {
     two_rows_answering_999(ResponseTemplate::new(404)).await
 }
 
 /// [`two_rows_with_a_404`], the 404 held until the returned gate is
 /// released ([`crate::held`]), so history can be removed while the read
 /// waits on Kitsu.
-async fn two_rows_with_a_held_404() -> (tempfile::TempDir, MockServer, AppState, crate::held::Gate)
-{
+async fn two_rows_with_a_held_404() -> (
+    tempfile::TempDir,
+    MockServer,
+    crate::scratch::Scratch<AppState>,
+    crate::held::Gate,
+) {
     let (hold, gate) = crate::held::gate();
     let (tmp, mock, state) =
         two_rows_answering_999(crate::held::Held::new(hold, ResponseTemplate::new(404))).await;
@@ -274,7 +393,11 @@ async fn two_rows_with_a_held_404() -> (tempfile::TempDir, MockServer, AppState,
 
 async fn two_rows_answering_999(
     answer: impl wiremock::Respond + 'static,
-) -> (tempfile::TempDir, MockServer, AppState) {
+) -> (
+    tempfile::TempDir,
+    MockServer,
+    crate::scratch::Scratch<AppState>,
+) {
     let mock = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/anime/999"))

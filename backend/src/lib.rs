@@ -26,6 +26,7 @@ pub mod cache;
 pub mod commands;
 pub mod config;
 pub mod error;
+pub mod flags;
 #[cfg(test)]
 #[path = "held_test.rs"]
 pub(crate) mod held;
@@ -38,7 +39,12 @@ pub mod meta;
 pub mod parent_watch;
 pub mod provider_set;
 pub mod proxy;
+pub mod retired_provider;
+pub mod retired_provider_plan;
 pub mod scraper;
+#[cfg(test)]
+#[path = "scratch_test.rs"]
+pub(crate) mod scratch;
 pub mod shutdown;
 pub mod spawn;
 #[cfg(all(test, unix))]

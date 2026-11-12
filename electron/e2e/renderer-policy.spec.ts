@@ -20,14 +20,14 @@
  * Pre-condition: `pnpm run package` has produced `dist/linux-unpacked/`.
  */
 import { type ElectronApplication, type Page } from '@playwright/test';
-import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
+import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import { rendererPolicy } from '../lib/renderer-csp.cjs';
 import fs, { existsSync } from 'node:fs';
 import http from 'node:http';
 import type net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
 import { expect, guardPolicy, test, type PolicyGuard } from './policy-guard';
 import {
 	appInfo,
@@ -50,17 +50,20 @@ test.beforeAll(() => {
 async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 	const tmp = path.join(os.tmpdir(), `ani-gui-e2e-policy-${process.pid}-${Date.now()}`);
 	fs.mkdirSync(tmp, { recursive: true });
-	const app = await launchPackagedApp({
-		...process.env,
-		XDG_STATE_HOME: path.join(tmp, 'state'),
-		XDG_CONFIG_HOME: path.join(tmp, 'config'),
-		XDG_CACHE_HOME: path.join(tmp, 'cache'),
-		XDG_DATA_HOME: path.join(tmp, 'data'),
-		ANI_GUI_UNATTENDED: '1'
-	});
+	const app = await launchPackagedApp(
+		{
+			...process.env,
+			XDG_STATE_HOME: path.join(tmp, 'state'),
+			XDG_CONFIG_HOME: path.join(tmp, 'config'),
+			XDG_CACHE_HOME: path.join(tmp, 'cache'),
+			XDG_DATA_HOME: path.join(tmp, 'data'),
+			ANI_GUI_UNATTENDED: '1'
+		},
+		{ profile: tmp }
+	);
 	onLaunch(app);
 	const guard = guardPolicy(app);
-	const page = await app.firstWindow();
+	const page = await appWindow(app);
 	return { app, page, guard };
 }
 
@@ -79,8 +82,7 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page; guard: 
 				const dead = pending;
 				pending = null;
 				if (dead) {
-					killTree(dead.process().pid);
-					await dead.close();
+					await stopDeadApp(dead);
 				}
 			}
 		}

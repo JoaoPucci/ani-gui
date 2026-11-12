@@ -20,6 +20,8 @@ export interface AutoPlayInput {
 	totalEpisodes: number | null;
 	/** The fractional extras the provider lists. */
 	extras?: readonly number[];
+	/** The episode was handed to another player. */
+	handedOff?: boolean;
 }
 
 export type AutoPlayDecision = { advance: true; target: number } | { advance: false };
@@ -28,9 +30,10 @@ export function decideAutoPlayNext({
 	enabled,
 	episodeNum,
 	totalEpisodes,
-	extras = []
+	extras = [],
+	handedOff = false
 }: AutoPlayInput): AutoPlayDecision {
-	if (!enabled) return { advance: false };
+	if (!enabled || handedOff) return { advance: false };
 	const target = nextEpisode(episodeNum, extras);
 	if (!stepAllowed(target, totalEpisodes, extras)) return { advance: false };
 	return { advance: true, target };

@@ -186,3 +186,89 @@ proptest::proptest! {
         }
     }
 }
+
+proptest::proptest! {
+    /// A retry of a held-back fill waits at least as long as a fresh
+    /// background fill, which waits at least as long as the user; and
+    /// none leaves while the window already holds its share. So a retry
+    /// never takes a turn a fill or the user could have had first, and
+    /// never fills the window past half the background share.
+    #[test]
+    fn a_retry_goes_behind_every_other_class_and_inside_its_share(
+        capacity in 1usize..30,
+        reserve in 0usize..10,
+        gap_ms in 0u64..300,
+        now_ms in 0u64..10_000,
+        mut sends in proptest::collection::vec(0u64..10_000, 0..40),
+    ) {
+        sends.sort_unstable();
+        let pace = small_pace(capacity, reserve, 5_000, gap_ms);
+        let base = Instant::now();
+        let mut ledger = Ledger::default();
+        for &ms in &sends {
+            ledger.record_send(&pace, base + Duration::from_millis(ms));
+        }
+        let now = base + Duration::from_millis(now_ms.max(sends.last().copied().unwrap_or(0)));
+        let retry = ledger.ready_at(&pace, Class::Retry, now);
+        let background = ledger.ready_at(&pace, Class::Background, now);
+        let interactive = ledger.ready_at(&pace, Class::Interactive, now);
+        proptest::prop_assert!(retry >= background);
+        proptest::prop_assert!(background >= interactive);
+        proptest::prop_assert!(pace.retry_capacity() <= capacity.saturating_sub(reserve).max(1));
+        proptest::prop_assert!(ledger.in_window(&pace, retry) < pace.retry_capacity());
+        proptest::prop_assert!(ledger.ready_at_without_retries(&pace, Class::Background, now) == background,
+            "with no retry recorded, nothing waits behind one");
+    }
+
+    /// A request never waits less for a retry being taken out of the
+    /// window: the count without retries is the wait no retry caused.
+    #[test]
+    fn taking_retries_out_never_makes_a_request_wait_longer(
+        capacity in 1usize..30,
+        reserve in 0usize..10,
+        now_ms in 0u64..10_000,
+        mut sends in proptest::collection::vec((0u64..10_000, proptest::bool::ANY), 0..40),
+        background in proptest::bool::ANY,
+    ) {
+        sends.sort_unstable();
+        let pace = small_pace(capacity, reserve, 5_000, 0);
+        let base = Instant::now();
+        let mut ledger = Ledger::default();
+        for &(ms, retry) in &sends {
+            let at = base + Duration::from_millis(ms);
+            ledger.record_send(&pace, at);
+            if retry {
+                ledger.record_retry(&pace, at);
+            }
+        }
+        let class = if background { Class::Background } else { Class::Interactive };
+        let now = base + Duration::from_millis(now_ms);
+        proptest::prop_assert!(ledger.ready_at_without_retries(&pace, class, now) <= ledger.ready_at(&pace, class, now));
+    }
+
+    /// The window count is the number of sends that left less than a
+    /// window ago, whatever the ledger kept.
+    #[test]
+    fn in_window_counts_the_sends_still_in_the_window(
+        capacity in 1usize..30,
+        window_ms in 1u64..5_000,
+        now_ms in 0u64..20_000,
+        mut sends in proptest::collection::vec(0u64..20_000, 0..40),
+    ) {
+        sends.sort_unstable();
+        let pace = small_pace(capacity, 0, window_ms, 0);
+        let base = Instant::now();
+        let mut ledger = Ledger::default();
+        for &ms in &sends {
+            ledger.record_send(&pace, base + Duration::from_millis(ms));
+        }
+        let now = base + Duration::from_millis(now_ms);
+        let expected = sends
+            .iter()
+            .rev()
+            .take(capacity)
+            .filter(|&&ms| base + Duration::from_millis(ms) + pace.window > now)
+            .count();
+        proptest::prop_assert_eq!(ledger.in_window(&pace, now), expected);
+    }
+}

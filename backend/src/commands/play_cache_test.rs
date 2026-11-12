@@ -98,7 +98,9 @@ async fn a_cached_track_whose_get_is_not_a_track_is_a_dead_row() {
     .await;
     let state = state_with_proxy_origin();
     assert!(
-        try_serve_cached(&state, &cached).await.is_none(),
+        try_serve_cached(&state, &cached, Default::default())
+            .await
+            .is_none(),
         "a track that does not read as a track is a dead row"
     );
     let gets: Vec<String> = server
@@ -125,7 +127,9 @@ async fn a_cached_track_whose_get_is_a_track_keeps_the_row_live() {
     .await;
     let state = state_with_proxy_origin();
     assert!(
-        try_serve_cached(&state, &cached).await.is_some(),
+        try_serve_cached(&state, &cached, Default::default())
+            .await
+            .is_some(),
         "a track that reads as a track is live"
     );
 }
@@ -146,7 +150,9 @@ async fn a_cached_rows_check_is_spent_from_the_hosts_budget() {
     // would top the second up by that moment: a budget that does not
     // refill counts the requests alone.
     state.host_budget = crate::proxy::host_budget::HostBudget::fresh_without_refill();
-    assert!(try_serve_cached(&state, &cached).await.is_some());
+    assert!(try_serve_cached(&state, &cached, Default::default())
+        .await
+        .is_some());
     let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
     let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
     let left = state.host_budget.on_hand(&host).expect("spent");
@@ -185,7 +191,9 @@ async fn a_cached_rows_check_is_spent_at_every_host_a_redirect_reaches() {
     // The app's own client for stream traffic, which follows no
     // redirect on its own.
     state.proxy_http = crate::proxy::upstream::build_client().expect("client");
-    assert!(try_serve_cached(&state, &cached).await.is_some());
+    assert!(try_serve_cached(&state, &cached, Default::default())
+        .await
+        .is_some());
     let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
     for server in [&origin, &edge] {
         let host =
@@ -236,7 +244,9 @@ async fn a_cached_rows_check_carries_its_referer_to_every_hop_and_gives_up_on_a_
         MediaKind::Mp4,
     );
     assert!(
-        try_serve_cached(&state, &landed).await.is_some(),
+        try_serve_cached(&state, &landed, Default::default())
+            .await
+            .is_some(),
         "the referer reached the edge"
     );
     let looping = cached_walked(
@@ -245,7 +255,9 @@ async fn a_cached_rows_check_carries_its_referer_to_every_hop_and_gives_up_on_a_
         MediaKind::Mp4,
     );
     assert!(
-        try_serve_cached(&state, &looping).await.is_none(),
+        try_serve_cached(&state, &looping, Default::default())
+            .await
+            .is_none(),
         "a loop is a dead row"
     );
 }
@@ -278,9 +290,13 @@ async fn a_cached_rows_check_waits_for_its_hosts_tokens() {
     for _ in 0..crate::proxy::host_budget::SEGMENT_BURST {
         state.host_budget.admit(&host).await;
     }
-    let live =
-        super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_millis(300))
-            .await;
+    let live = super::cached_row_is_live_within(
+        &state,
+        &cached,
+        std::time::Duration::from_millis(300),
+        Default::default(),
+    )
+    .await;
     assert!(!live, "nothing reached the host before the deadline");
 }
 
@@ -330,8 +346,13 @@ async fn a_cached_rows_check_never_queues_ahead_of_a_playing_players_segment() {
     let checking = {
         let state = std::sync::Arc::clone(&state);
         tokio::spawn(async move {
-            super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(10))
-                .await
+            super::cached_row_is_live_within(
+                &state,
+                &cached,
+                std::time::Duration::from_secs(10),
+                Default::default(),
+            )
+            .await
         })
     };
     // A probe of the row's is waiting at the host before the player
@@ -378,8 +399,13 @@ async fn a_cached_rows_check_is_served_beside_background_downloads() {
     })
     .await;
     // Its two tokens come at a refill and two; room for a slow runner.
-    let live =
-        super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(8)).await;
+    let live = super::cached_row_is_live_within(
+        &state,
+        &cached,
+        std::time::Duration::from_secs(8),
+        Default::default(),
+    )
+    .await;
     download.abort();
     assert!(live, "served ahead of the downloads within the deadline");
 }
@@ -458,6 +484,7 @@ fn state_in(td: &tempfile::TempDir) -> crate::app::AppState {
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     }
 }
 
@@ -540,7 +567,6 @@ async fn a_cached_handoff_refreshes_the_providers_positive_row() {
     let key = crate::commands::play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
-        "best",
         &args.episode,
         args.year,
         args.episode_count,
@@ -626,7 +652,6 @@ fn seed_cached_row(
     let key = crate::commands::play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
-        "best",
         &args.episode,
         args.year,
         args.episode_count,
@@ -832,7 +857,6 @@ async fn row_redirecting_elsewhere(
     let key = crate::commands::play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
-        "best",
         &args.episode,
         args.year,
         args.episode_count,
@@ -872,7 +896,6 @@ fn row_of(
     let key = crate::commands::play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
-        "best",
         &args.episode,
         args.year,
         args.episode_count,
@@ -896,7 +919,9 @@ async fn a_cached_row_no_walked_provider_resolved_is_not_replayed() {
         let _cdn = row_redirecting_elsewhere(&state, &args, show_id).await;
         let cached = row_of(&state, &args).expect("seeded");
         assert!(
-            try_serve_cached(&state, &cached).await.is_none(),
+            try_serve_cached(&state, &cached, Default::default())
+                .await
+                .is_none(),
             "{show_id:?}: the embedded player is not handed the row"
         );
         let cfg = crate::config::Config {
@@ -925,7 +950,9 @@ async fn the_walked_providers_row_still_replays() {
     let args = cached_args();
     let _cdn = row_redirecting_elsewhere(&state, &args, "hianime:the-show-77").await;
     let cached = row_of(&state, &args).expect("seeded");
-    assert!(try_serve_cached(&state, &cached).await.is_some());
+    assert!(try_serve_cached(&state, &cached, Default::default())
+        .await
+        .is_some());
 }
 
 // ── the replay's stamp names the version that served ───────────────
@@ -1212,4 +1239,207 @@ async fn a_replay_never_takes_back_a_mode_the_standing_row_knows() {
         .expect("read")
         .expect("row");
     assert_eq!(after, before);
+}
+
+/// A replay's check reads the stream and the few tracks the user most
+/// likely wants, not every track the row lists: a listing carries up to
+/// the cap, every read waits for a token at the host, and one track of
+/// dozens failing would evict a row whose stream and wanted tracks are
+/// fine. The tracks of one listing sit on one host, signed or not
+/// together, so the ones read stand for the rest.
+#[tokio::test]
+async fn a_cached_rows_check_reads_only_the_most_wanted_tracks() {
+    let server = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    // The default and the next three answer; the rest are gone.
+    Mock::given(method("GET"))
+        .and(wiremock::matchers::path_regex(r"^/subs/[0-3]\.vtt$"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n\n".to_vec()))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wiremock::matchers::path_regex(r"^/subs/\d+\.vtt$"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let mut cached = cached_walked(
+        format!("{}/video.mp4", server.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    cached.subtitles = (0..12)
+        .map(|i| {
+            track(
+                &format!("l{i}"),
+                i == 0,
+                &format!("{}/subs/{i}.vtt", server.uri()),
+            )
+        })
+        .collect();
+    let state = state_with_proxy_origin();
+    let live = super::cached_row_is_live_within(
+        &state,
+        &cached,
+        std::time::Duration::from_secs(8),
+        Default::default(),
+    )
+    .await;
+    let reads = server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| r.method.as_str() == "GET")
+        .count();
+    assert!(live, "the stream and the wanted tracks answer");
+    assert!(
+        reads <= 4,
+        "{reads} track reads; the default and the three next most wanted"
+    );
+}
+
+/// The tracks read are the user's: a dead track in the user's
+/// language, however late the listing puts it, makes the row not live.
+#[tokio::test]
+async fn a_cached_rows_check_reads_the_users_language() {
+    let server = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/subs/11.vtt"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wiremock::matchers::path_regex(r"^/subs/\d+\.vtt$"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n\n".to_vec()))
+        .mount(&server)
+        .await;
+    let mut cached = cached_walked(
+        format!("{}/video.mp4", server.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    cached.subtitles = (0..12)
+        .map(|i| {
+            let lang = if i == 11 {
+                "pt-BR".to_string()
+            } else {
+                format!("l{i}")
+            };
+            track(&lang, i == 0, &format!("{}/subs/{i}.vtt", server.uri()))
+        })
+        .collect();
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state_with_proxy_origin();
+    state.config_path = td.path().join("config.toml");
+    std::fs::write(&state.config_path, "locale = \"pt-BR\"\n").expect("config");
+    let live = super::cached_row_is_live_within(
+        &state,
+        &cached,
+        std::time::Duration::from_secs(8),
+        Default::default(),
+    )
+    .await;
+    assert!(!live, "the user's track is gone, so the row is not served");
+}
+
+/// The tracks a replay's check reads follow the same order as the
+/// start: the show's remembered language first, however late the
+/// listing puts it, so a dead track in it makes the row not live.
+#[tokio::test]
+async fn a_cached_rows_check_reads_the_shows_remembered_language() {
+    let server = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/subs/11.vtt"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wiremock::matchers::path_regex(r"^/subs/\d+\.vtt$"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n\n".to_vec()))
+        .mount(&server)
+        .await;
+    let mut cached = cached_walked(
+        format!("{}/video.mp4", server.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    cached.subtitles = (0..12)
+        .map(|i| {
+            // Every other track is in a known language too, so only the
+            // remembered one can lift the last track into the check.
+            const OTHERS: [&str; 11] = [
+                "ar", "de", "fr", "it", "ja", "ko", "nl", "pl", "ru", "sv", "tr",
+            ];
+            let lang = if i == 11 { "es-419" } else { OTHERS[i] };
+            track(lang, i == 0, &format!("{}/subs/{i}.vtt", server.uri()))
+        })
+        .collect();
+    let state = state_with_proxy_origin();
+    let live = super::cached_row_is_live_within(
+        &state,
+        &cached,
+        std::time::Duration::from_secs(8),
+        super::Viewer {
+            remembered: Some("es-419"),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert!(!live, "the show's track is gone, so the row is not served");
+}
+
+/// A row as long as the track cap may hold a cut listing, and the row
+/// does not say what the cut kept the tracks for: the show's
+/// remembered language, or the locale, of the play that wrote it. A
+/// later play remembering another language could be handed a listing
+/// that dropped it, so such a row is not replayed — the play resolves
+/// afresh and its own cut keeps its own choice. A row under the cap
+/// holds the whole listing, and is.
+#[tokio::test]
+async fn a_row_as_long_as_the_track_cap_is_not_replayed() {
+    use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
+    let server = MockServer::start().await;
+    let state = state_with_proxy_origin();
+    let whole = row_with_tracks(&server, SUBTITLE_TRACK_CAP - 1).await;
+    assert!(
+        try_serve_cached(
+            &state,
+            &whole,
+            super::Viewer {
+                remembered: Some("vi"),
+                locale: Some("en")
+            }
+        )
+        .await
+        .is_some(),
+        "a row under the cap holds the whole listing and is replayed"
+    );
+    let at_cap = row_with_tracks(&server, SUBTITLE_TRACK_CAP).await;
+    assert!(
+        try_serve_cached(
+            &state,
+            &at_cap,
+            super::Viewer {
+                remembered: Some("vi"),
+                locale: Some("en")
+            }
+        )
+        .await
+        .is_none(),
+        "a row at the cap may have been cut for another choice"
+    );
 }
