@@ -51,6 +51,12 @@ describe('buildPlayArgs', () => {
 		expect('guess_row' in buildPlayArgs(base)).toBe(false);
 	});
 
+	it("names the card's row of a session no guess opened when given, and only then", () => {
+		const base = { title: 'The Show', episode: 1, mode: 'sub', show } as const;
+		expect(buildPlayArgs({ ...base, cardRow: 'hianime:show-1' }).card_row).toBe('hianime:show-1');
+		expect('card_row' in buildPlayArgs(base)).toBe(false);
+	});
+
 	it("names a guessed card's guess when a guess asks, and only then", () => {
 		const base = { title: 'The Show', episode: 1, mode: 'sub', show } as const;
 		const args = buildPlayArgs({ ...base, guessId: '42', guessRow: 'hianime:show-1' });

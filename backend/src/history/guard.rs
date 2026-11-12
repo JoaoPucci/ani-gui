@@ -128,6 +128,9 @@ struct Removals {
     /// The moment Kitsu last answered each id gone, as far as this
     /// process saw: a success served before it says nothing newer.
     gone: HashMap<String, u64>,
+    /// The moment each show's row was last linked to a show the user
+    /// named, since the last clear.
+    linked: HashMap<String, u64>,
 }
 
 /// Every history this process has held, by its file. One lock for all

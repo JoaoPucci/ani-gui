@@ -136,6 +136,37 @@ pub(crate) fn launch_args_for(native: NativeResolved, args: &PlayArgs, cfg: &Con
     }
 }
 
+/// Record the watch a handoff's player started for `args`, as the
+/// embedded play's resolve records its own: under the id the play may
+/// record on the row it landed on — for a guessed Continue card's, the
+/// card's guess, and only on the card's own listing, never over a show
+/// the row records ([`crate::commands::guess_guard`]) — with the note
+/// of the guessed card it came from ([`crate::commands::guessed_from`]).
+/// A play no guessed card asked for records the page's id and clears
+/// the note, as before, unless a card no guess opened asked for it and
+/// its line records another show, which stays.
+pub(crate) async fn record_handoff_watch(
+    state: &AppState,
+    args: &PlayArgs,
+    watch: &crate::commands::play_native_record::Watch,
+    begun: crate::history::guard::Epoch,
+) {
+    let kitsu_id = crate::commands::guess_guard::guarded(
+        state,
+        args,
+        &watch.show_id,
+        args.resolve_kitsu_id(&watch.show_id),
+    );
+    crate::commands::play_native_record::record_watch_requested_at(
+        state,
+        watch,
+        kitsu_id,
+        begun,
+        args.guess_row.as_deref(),
+    )
+    .await;
+}
+
 /// The external player's window title: the show and the episode
 /// played.
 #[must_use]

@@ -18,9 +18,16 @@ export function createRowTrust(
 	resolve: (entry: HistoryEntry) => Promise<{ match: KitsuAnimeRef | null; trusted: boolean }>
 ): RowTrust {
 	const guesses = new Set<string>();
+	// The latest resolve of each row: an earlier one landing after it
+	// (the first load's, once a link matched the row again) answers for
+	// the show the row was, and its verdict is not the row's.
+	const latest = new Map<string, object>();
 	return {
 		resolveMatch: async (entry) => {
+			const ask = {};
+			latest.set(entry.id, ask);
 			const { match, trusted } = await resolve(entry);
+			if (latest.get(entry.id) !== ask) return match;
 			if (match && !trusted) guesses.add(entry.id);
 			else guesses.delete(entry.id);
 			return match;

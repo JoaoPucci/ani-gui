@@ -153,3 +153,7 @@ mod tests;
 #[cfg(test)]
 #[path = "show_key_year_test.rs"]
 mod year_tests;
+
+#[path = "show_key_term.rs"]
+mod term;
+pub use term::key_search_term;

@@ -92,6 +92,18 @@ pub struct PlayArgs {
         deserialize_with = "crate::commands::play_args::deserialize_loose_bool"
     )]
     pub prefetch: bool,
+    /// `true` when the caller records the watch itself once its player
+    /// has opened on the stream (mark-watched), so this resolve writes
+    /// no history row, fresh or replayed. Unlike [`Self::prefetch`] it
+    /// is still a user waiting on a click, at interactive priority: the
+    /// player's switch to the show the user picked for a card, which a
+    /// viewer may leave, or a player may fail to open, before anything
+    /// was watched.
+    #[serde(
+        default,
+        deserialize_with = "crate::commands::play_args::deserialize_loose_bool"
+    )]
+    pub record_later: bool,
     /// Kitsu id of the anime the user is playing. The frontend knows
     /// it (the user came from `/anime/[kitsu_id]`); we don't, until
     /// the user passes it in. Recording the
@@ -126,6 +138,13 @@ pub struct PlayArgs {
     /// reads the same way.
     #[serde(default, deserialize_with = "crate::kitsu_id::deserialize_optional")]
     pub guess_id: Option<String>,
+    /// The history row of a Continue card that opened this play with no
+    /// guess: a line the user named, or one a play recorded. Its play
+    /// never replaces the show that line records
+    /// ([`crate::commands::guess_guard`]). `None` for a guessed card's
+    /// play, which names [`Self::guess_row`], and for every other play.
+    #[serde(default)]
+    pub card_row: Option<String>,
     /// The captions choice remembered for the show
     /// (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. `None`
     /// when none is.
@@ -142,6 +161,14 @@ pub struct PlayArgs {
 }
 
 impl PlayArgs {
+    /// Whether this play's resolve writes its history row: not a warm
+    /// ([`Self::prefetch`]), nor a play its caller records once its
+    /// player opened ([`Self::record_later`]).
+    #[must_use]
+    pub fn writes_history(&self) -> bool {
+        !self.prefetch && !self.record_later
+    }
+
     /// Whether this play, asked from a guessed Continue card, landed
     /// on the card's own listing — the show key `played`
     /// ([`crate::scraper::provider::same_listing`]). False for a play
@@ -255,10 +282,11 @@ impl PlayArgs {
 /// Update Continue Watching on a play-cache hit.
 ///
 /// A cache miss records the row on its way through
-/// `play_native_record::write_history`. A hit never reaches that
+/// `play_native_record::write_history_then`. A hit never reaches that
 /// path, so the row is written here instead. No-op on prefetch calls
 /// (the page-mount loop fires concurrently and whichever finishes
-/// last would otherwise overwrite the user's real click) and on
+/// last would otherwise overwrite the user's real click), on plays
+/// their caller records once the player opened (`record_later`), and on
 /// legacy rows missing show_id.
 fn write_history_on_cache_hit(
     state: &AppState,
@@ -266,7 +294,7 @@ fn write_history_on_cache_hit(
     cached: &CachedResolution,
     asked: crate::history::guard::Asked<'_>,
 ) {
-    if args.prefetch || cached.show_id.is_empty() {
+    if !args.writes_history() || cached.show_id.is_empty() {
         return;
     }
     let entry = crate::history::HistoryEntry {
@@ -287,7 +315,12 @@ fn write_history_on_cache_hit(
         kitsu_id: crate::commands::play_native_record::resolved_id(
             state,
             &cached.show_title,
-            args.resolve_kitsu_id(&cached.show_id),
+            crate::commands::guess_guard::guarded(
+                state,
+                args,
+                &cached.show_id,
+                args.resolve_kitsu_id(&cached.show_id),
+            ),
         ),
         own_number: true,
     };
@@ -299,6 +332,9 @@ fn write_history_on_cache_hit(
         }
         held.upsert_resolved(entry)?;
         held.played_from(&cached.show_id, asked.page);
+        // Which card the row's play came from, settled with the row: a
+        // write the guard turns away settles none.
+        crate::commands::guessed_from::record(state, args.guess_row.as_deref(), &cached.show_id);
         Ok::<_, AniError>(())
     });
     if let Err(e) = wrote {
@@ -418,7 +454,10 @@ where
     if cache_resolutions {
         if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
             if let Some(mut resp) = try_serve_cached(state, &cached, args.viewer()).await {
-                resp.own_listing = args.lands_on_guess_row(&cached.show_id);
+                resp.own_listing =
+                    crate::commands::guess_guard::own_listing(state, args, &cached.show_id);
+                resp.line_kept =
+                    crate::commands::guess_guard::line_kept(state, args, &cached.show_id);
                 tracing::info!(
                     title = %args.title,
                     episode = %args.episode,
@@ -521,11 +560,12 @@ where
             return Err(ne.error);
         }
     };
-    // A prefetch stamps the numbering and stays out of the user's
-    // history; a play records its watch. Either puts the numbering right
+    // A prefetch, or a play its caller records later, stamps the
+    // numbering and stays out of the user's history; a play records its
+    // watch. Either puts the numbering right
     // before the rows this play caches: a probe that takes the fresh
     // availability row fetches no listing to repair it from.
-    if args.prefetch {
+    if !args.writes_history() {
         crate::commands::play_native_record::stamp_numbering(state, &native, asked);
     } else {
         crate::commands::play_native_record::record_fresh_watch(
@@ -533,7 +573,13 @@ where
             &native,
             &args.episode,
             asked,
-            args.resolve_kitsu_id(&native.slug),
+            crate::commands::guess_guard::guarded(
+                state,
+                args,
+                &native.slug,
+                args.resolve_kitsu_id(&native.slug),
+            ),
+            args.guess_row.as_deref(),
         );
     }
     // A successful resolve is a positive availability fact, same
@@ -580,7 +626,7 @@ where
     // skips the provider round-trips (subject to TTL + HEAD
     // validation). show_id is the provider's slug, and storing it is
     // what lets a cache hit write the same history row a fresh
-    // resolve would: `play_native_record::write_history` has the slug
+    // resolve would: `play_native_record::write_history_then` has the slug
     // in hand from the walk, `write_history_on_cache_hit` reads it
     // back from here. Nothing outside this app writes that file.
     // Written whatever cache_resolutions says: the row doubles as the
@@ -627,7 +673,12 @@ where
         episode: Some(episode),
         former_episode,
         episode_unverified: cached_resolution.episode_unverified,
-        own_listing: args.lands_on_guess_row(&cached_resolution.show_id),
+        own_listing: crate::commands::guess_guard::own_listing(
+            state,
+            args,
+            &cached_resolution.show_id,
+        ),
+        line_kept: crate::commands::guess_guard::line_kept(state, args, &cached_resolution.show_id),
         ..create_session_with_kind(state, &session_args, kind)?
     };
     with_versions_of(&mut resp, &native.versions, native.version);
@@ -713,9 +764,11 @@ pub(crate) mod tests {
                 year,
                 alt_titles: vec![],
                 prefetch,
+                record_later: false,
                 kitsu_id,
                 version: None,
                 guess_row: None,
+                card_row: None,
                 guess_id: None,
                 caption: None,
             };
@@ -815,9 +868,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("42".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -888,9 +943,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("42".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -950,9 +1007,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -1011,9 +1070,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         }
@@ -1291,9 +1352,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -1607,9 +1670,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         }
@@ -1760,9 +1825,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -1808,9 +1875,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -2388,9 +2457,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("race-1".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -2455,9 +2526,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("cap-1".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -2509,9 +2582,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("dub-2".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -2568,9 +2643,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("dub-1".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -2616,6 +2693,9 @@ mod guess_row_tests;
 #[cfg(test)]
 #[path = "play_played_test.rs"]
 mod played_tests;
+#[cfg(test)]
+#[path = "play_record_later_test.rs"]
+mod record_later_tests;
 #[cfg(test)]
 #[path = "play_records_id_test.rs"]
 mod records_id_tests;

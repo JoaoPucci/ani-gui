@@ -291,6 +291,11 @@ describe("playArgsFor — a guessed card's row", () => {
 		expect('guess_row' in playArgsFor(base)).toBe(false);
 	});
 
+	it("names the card's row of a session no guess opened when given, and only then", () => {
+		expect(playArgsFor({ ...base, cardRow: 'hianime:show-1' }).card_row).toBe('hianime:show-1');
+		expect('card_row' in playArgsFor(base)).toBe(false);
+	});
+
 	it("names the guessed card's guess when given, and only then", () => {
 		const args = playArgsFor({ ...base, guessId: '42', guessRow: 'hianime:show-1' });
 		expect(args.guess_id).toBe('42');
@@ -306,6 +311,20 @@ describe('playedRecord', () => {
 		expect(playedRecord(args, '42', false, {})).toEqual({
 			args: { ...args, kitsu_id: '42' },
 			mirror: true
+		});
+	});
+
+	it("neither records nor mirrors a card's play the backend kept off its line", () => {
+		// A player mounted again after "Keep watching this" plays the old
+		// show before it read the pick back: the line names another show.
+		expect(playedRecord(args, '42', false, { line_kept: true })).toEqual({
+			args,
+			mirror: false
+		});
+		// The session's own args name the page's show: that id goes too.
+		expect(playedRecord({ ...args, kitsu_id: '42' }, '42', false, { line_kept: true })).toEqual({
+			args,
+			mirror: false
 		});
 	});
 

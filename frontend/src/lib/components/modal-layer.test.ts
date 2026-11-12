@@ -315,6 +315,12 @@ describe('a modal opening over a fullscreen element', () => {
 		expect(exit).not.toHaveBeenCalled();
 	});
 
+	it('stays in fullscreen for a native dialog, which the page shows in the top layer', () => {
+		const exit = fullscreen(section);
+		mountIn(page, document.createElement('dialog'));
+		expect(exit).not.toHaveBeenCalled();
+	});
+
 	it('shrugs off a refused exit', async () => {
 		const exit = fullscreen(section);
 		exit.mockImplementation(async () => {
@@ -323,5 +329,45 @@ describe('a modal opening over a fullscreen element', () => {
 		mountIn(page, dialog());
 		await flush();
 		expect(exit).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('a modal opening over a native modal dialog', () => {
+	// A native <dialog> shown with showModal() sits in the top layer: a
+	// modal of the layer opening above it would be painted beneath it and,
+	// outside the dialog, held inert by the browser. The dialog steps out
+	// of the top layer while the modal above it is up, and comes back,
+	// with focus inside it, once that modal closes.
+	function nativeDialog() {
+		const el = document.createElement('dialog');
+		el.innerHTML = '<input id="search" /><button id="pick">pick</button>';
+		page.appendChild(el);
+		el.showModal();
+		open.push(openModal(el));
+		return el;
+	}
+
+	it('steps the dialog out of the top layer while the modal above is up', () => {
+		const native = nativeDialog();
+		const above = mountIn(page, dialog());
+		expect(native.open).toBe(false);
+		void above;
+	});
+
+	it('leaves a dialog gone from the page closed', () => {
+		const native = nativeDialog();
+		const above = mountIn(page, dialog());
+		native.remove();
+		const showModal = vi.spyOn(native, 'showModal');
+		above.close();
+		expect(showModal).not.toHaveBeenCalled();
+	});
+
+	it('brings it back, focus inside it, once the modal above closes', () => {
+		const native = nativeDialog();
+		const above = mountIn(page, dialog());
+		above.close();
+		expect(native.open).toBe(true);
+		expect(native.contains(document.activeElement)).toBe(true);
 	});
 });

@@ -60,6 +60,7 @@
 		allmangaKitsuMapGet,
 		checkAvailability,
 		historyClear,
+		historyCardLines,
 		historyDelete,
 		historyList,
 		historyNumber,
@@ -122,8 +123,12 @@
 	import { kitsuEntryGone, resolveKitsuMatchWithTrust } from '$lib/history/match';
 	import { createRowTrust } from '$lib/history/row-trust';
 	import { guessedId, recordableId, withGuess, withRow } from '$lib/play/play-origin';
+	import { failedResumeGuess, openCardLink as runOpenCardLink } from '$lib/history/open-card-link';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
+	import { CardLines } from '$lib/history/card-lines.svelte';
+	import { cardOf } from '$lib/history/focus-return';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { createConfirmRun } from '$lib/history/confirm-run';
 	import { toastStore } from '$lib/toasts/store.svelte';
@@ -150,6 +155,11 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
+	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
+	import GuessMark from '$lib/components/GuessMark.svelte';
+	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
+	import { appLinkDeps, onHistoryLinked } from '$lib/history/link-deps';
+	import { createCardRelink } from '$lib/history/card-relink';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
 	import { continueEpisode } from '$lib/play/next-episode';
@@ -437,6 +447,7 @@
 			applyRemaining: (rows, removedIds) => {
 				deleteAnimationGate.open(removedIds, shiftedSurvivorIds(snapshot, removedIds));
 				history = rows;
+				historyWrites++;
 			},
 			matches: historyMatches,
 			historyDelete,
@@ -468,6 +479,7 @@
 			async () => {
 				await historyClear();
 				history = [];
+				historyWrites++;
 			},
 			() => toastStore.push({ kind: 'error', message: m.home_clear_history_failed() })
 		);
@@ -488,7 +500,80 @@
 	let settingsPromise: Promise<Config | null> = Promise.resolve(null);
 	let resumeBusy = $state<string | null>(null);
 	let resumeProgress = $state<string | null>(null);
-	let resumeFailure = $state<{ title: string; message: string } | null>(null);
+	let resumeFailure = $state<{
+		title: string;
+		message: string;
+		/** A guessed card's failure: its row, guess and episode, for the
+		 *  overlay's "Pick the right show". */
+		guess?: { row: string; matchId: string; title: string; episode: number };
+	} | null>(null);
+
+	// A guessed card's way to the picker — its pill, and its failed
+	// resume's button. A link reads the cards again where they stand;
+	// nothing navigates ($lib/history/in-place-link.svelte.ts).
+	// The cards are read again on every link that answers while this
+	// Home is on screen, made from here or anywhere else — a link can
+	// answer after the Home it was made on was left
+	// ($lib/history/link-deps.ts) — so the session itself reads nothing.
+	const cardLink = new InPlaceLinkSession({
+		...appLinkDeps(),
+		notify: (notice) => toastStore.push(notice),
+		// The card's show's own Sub or Dub, else the Settings default, as
+		// its resume plays it; none known before the settings are read.
+		audioInForce: (shown) => (config ? audioFor(shown, pickAvailabilityMode(config)) : null)
+	});
+	const stopHearing = onHistoryLinked(() => void relink.reread().catch(() => {}));
+	// A link answered after the user left Home does nothing here.
+	onDestroy(() => {
+		stopHearing();
+		cardLink.leave();
+	});
+	// Its lifecycle is $lib/history/open-card-link.ts.
+	function openCardLink(row: string, matchId: string, episode: number) {
+		return runOpenCardLink(row, matchId, episode, {
+			busy: () => deleteRun.busy || clearRun.busy,
+			dismissFailure: () => {
+				resumeFailure = null;
+			},
+			stillGuessed: (r, id) => relink.stillGuessed(r, id),
+			checkFailed: () => toastStore.push({ kind: 'error', message: m.home_link_check_failed() }),
+			start: (ep) => void cardLink.start(ep)
+		});
+	}
+	// Rows found no longer guessed since the cards were read: their pill
+	// goes rather than open nothing ($lib/history/card-relink.ts).
+	const settledRows = new SvelteSet<string>();
+	// Removes and clears landed: a card read out before one answers again.
+	let historyWrites = 0;
+	const relink = createCardRelink({
+		// A check another card's overtook answers for nothing; one that
+		// could not be read answers that ($lib/history/card-relink.ts).
+		offerStands: async (row, matchId) =>
+			(await cardLink.arrive(row, matchId)) ? (cardLink.stands ?? 'unread') : null,
+		settled: settledRows,
+		current: () => history ?? [],
+		// Cancelled with Home's other reads when it is left.
+		list: () => historyList({ signal: pageReads.signal }),
+		order: (rows) => sortByWatchedAt(rows, historyWatchedAt),
+		setHistory: (rows) => {
+			history = rows;
+			for (const h of rows) historyById.set(h.id, h);
+		},
+		// rowTrust is declared further down: read it at the call.
+		resolveMatch: (h) => rowTrust.resolveMatch(h),
+		forget: (id) => {
+			capAuthority.forget(id);
+			const { [id]: _former, ...counts } = historyPlayableCounts;
+			void _former;
+			historyPlayableCounts = counts;
+		},
+		publish: (id, match) => publishLoaderCap(id, match, match?.episode_count ?? null, true),
+		writes: () => historyWrites
+	});
+	/** The card that stands for the history row `row`. */
+	function cardButton(row: string): HTMLElement | null {
+		return cardOf(document, row);
+	}
 
 	const trendingSplit = $derived(splitTrending(trending ?? []));
 	const heroRotation = $derived<KitsuAnimeRef[]>(trendingSplit.hero);
@@ -573,6 +658,10 @@
 				// Part 1's episode 1.
 				historyById.clear();
 				for (const h of history) historyById.set(h.id, h);
+				// The load's answers are about the shows the rows are now: a
+				// row linked before one lands has moved on, and the answer is
+				// dropped ($lib/history/card-relink.ts).
+				const fromLoad = relink.since();
 				void loadContinueWatchingState(history, {
 					resolveMatch: rowTrust.resolveMatch,
 					// makeFetchAvailability keeps the args-mapping closure
@@ -582,6 +671,7 @@
 					// rows and only pay the provider roundtrip on misses.
 					fetchAvailability: makeFetchAvailability(checkAvailability),
 					signal: continueProbes.signal,
+					shouldProbe: fromLoad,
 					getMode: () => settingsPromise.then(pickAvailabilityMode),
 					// A show with its own audio is probed in it.
 					modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
@@ -590,6 +680,7 @@
 					// shared with startResume so a click-time cap
 					// refinement refreshes the same badge metadata.
 					onRowReady: (id, m, count, approximate) => {
+						if (!fromLoad(id)) return;
 						publishLoaderCap(id, m, count, approximate === true);
 						// Read the row again once its match is known — the
 						// stamp can name its former number with no listing
@@ -621,7 +712,9 @@
 						// A show with its own audio is asked about in it.
 						modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
 						// The retry pays for the listing the first probe
-						// did not: read the row again after it.
+						// did not: read the row again after it. A row matched
+						// again never gets here: the retry asks shouldRetry
+						// after every answer, before this.
 						onRefined: (id, count) => {
 							publishLoaderCap(id, historyMatches[id] ?? null, count, false);
 							void readRowAgain(id);
@@ -633,7 +726,10 @@
 						// interactive lookup — or when the user removes it
 						// from the strip. The route survives a delete, so
 						// the teardown flag does not cover that one.
+						// …or when it is matched again: the retry would ask about
+						// the show it was.
 						shouldRetry: (id) =>
+							fromLoad(id) &&
 							rowWorthRetrying(
 								id,
 								new Set((history ?? []).map((h) => h.id)),
@@ -936,6 +1032,22 @@
 	const rowTrust = createRowTrust((entry) =>
 		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null), { signal: pageReads.signal })
 	);
+	// The line each card stands for, and whether its pill shows — a
+	// guess, or a line the user named a show for, which can be changed
+	// again — as the backend answers from the rows as they are matched
+	// ($lib/history/card-lines.svelte.ts).
+	const cardLines = new CardLines(historyCardLines);
+	$effect(() => {
+		cardLines.update(
+			(history ?? []).map((h) => ({
+				id: h.id,
+				guessed_from: h.guessed_from ?? null,
+				show: historyMatches[h.id]?.id ?? null,
+				guess: rowTrust.isGuess(h.id),
+				named: h.named === true
+			}))
+		);
+	});
 	const playArgsFor = (a: ResumePlayArgs) =>
 		buildPlayArgs({
 			title: a.title,
@@ -950,6 +1062,8 @@
 			// A guess names its card's row, and the session answers whether
 			// the play landed on that row's own listing.
 			guessRow: a.row,
+			// …or, with no guess, its line, whose show the backend keeps.
+			cardRow: a.cardRow,
 			// …and its guess, apart from the page's id, which the resolve
 			// records on that row when it lands there.
 			guessId: guessedId(a.guess === true, a.match.id)
@@ -963,6 +1077,7 @@
 	onDestroy(() => navigationClaims.left());
 	const startResume = makeStartResume({
 		claimNavigation: () => navigationClaims.claim(),
+		since: () => relink.since(),
 		leftPartWay,
 		markStarted: (kitsuId, episode, row) => markStarted(kitsuId, episode, undefined, row),
 		currentNumber: (entryId) => historyNumber(entryId),
@@ -989,7 +1104,17 @@
 			// Moved on while the message was worded: it is about a click
 			// the viewer left behind.
 			if (isCurrent?.() === false) return;
-			resumeFailure = { title, message };
+			// The pick it offers, for a guess ($lib/history/open-card-link).
+			const guess = await failedResumeGuess(
+				{ guess: args.guess, row: args.row, matchId: args.match.id, episode: args.episode },
+				{
+					line: (row) => historyById.get(row),
+					stillGuessed: (row, id) => relink.stillGuessed(row, id),
+					isCurrent: () => isCurrent?.() !== false
+				}
+			);
+			if (guess === null) return;
+			resumeFailure = { title, message, guess };
 		},
 		getSettings: () => resolveResumeSettings(config, settingsPromise),
 		// A show with its own audio plays in it.
@@ -1019,7 +1144,7 @@
 		resolvePlay: (a, onProgress) => {
 			const args = playArgsFor(a);
 			return getOrFire(
-				makeKey(a.match.id, a.episode, a.mode, args.version, a.row, args.caption),
+				makeKey(a.match.id, a.episode, a.mode, args.version, a.row, args.caption, a.cardRow),
 				(emit, signal) => playStream(args, emit, signal),
 				(p) => onProgress(progressLabel(p))
 			);
@@ -1397,6 +1522,16 @@
 							)
 			})}
 			{@const initials = (card.text?.show ?? target.displayTitle).slice(0, 2).toUpperCase()}
+			<!-- The line the card stands for: a row its guessed play wrote on
+			     another listing stands for the line clicked, as the backend answers
+			     ($lib/history/card-lines.svelte). -->
+			{@const line = cardLines.lineOf(entry.id)}
+			<!-- A guess, or a line the user named a show for, which can be
+			     changed again ($lib/history/card-lines.svelte). -->
+			{@const guessed =
+				resumable && match && cardLines.correctable(entry.id) && !settledRows.has(line)
+					? match
+					: null}
 			<!-- Both transitions are gated on `deleteAnimationGate` so
 		     they only run for user-confirmed deletes. On home
 		     re-mount, `dedupeHistoryByKitsuId` collapses Kitsu-group
@@ -1412,6 +1547,7 @@
 				class="resume-cell"
 				style="--accent: {accent};"
 				data-entry-id={entry.id}
+				data-card-row={line}
 				out:cwOutScale
 				animate:cwFlip
 			>
@@ -1437,7 +1573,14 @@
 						aria-busy={card.look === null}
 						disabled={!!resumeBusy && !isResuming}
 						onclick={() =>
-							startResume(entry, match, match?.episode_count ?? null, match?.status === 'finished')}
+							startResume(
+								entry,
+								match,
+								match?.episode_count ?? null,
+								match?.status === 'finished',
+								// The line the card stands for as the rows are now.
+								cardLines.settled().then(() => cardLines.clickLineOf(entry.id))
+							)}
 					>
 						{@render cardFace(card, initials)}
 						{@render cardBody(card, target.displayTitle)}
@@ -1458,6 +1601,27 @@
 					</a>
 				{/if}
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+				<!-- A guessed card's pill, on hover or keyboard focus, at the
+				     corner the delete chip leaves free: it opens the picker
+				     in place. -->
+				{#if guessed}
+					<button
+						type="button"
+						class="resume-link"
+						disabled={resumeBusy !== null || deleteBusy || clearBusy}
+						onclick={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							const id = guessed.id;
+							void cardLines
+								.settled()
+								.then(() => openCardLink(cardLines.clickLineOf(entry.id), id, nextEpisode));
+						}}
+					>
+						<GuessMark size={14} />
+						<span class="resume-link-words">{m.home_link_not_watched()}</span>
+					</button>
+				{/if}
 				<!-- Delete chip sits AFTER the card in DOM so role-based
 			     queries land on the card first (Playwright's
 			     `getByRole('button').first()` was picking up the
@@ -1493,9 +1657,44 @@
 {#if resumeFailure}
 	<ErrorOverlay
 		headline={m.home_error_resume_headline({ title: resumeFailure.title })}
-		body={resumeFailure.message}
+		body={resumeFailure.guess
+			? `${resumeFailure.message} ${m.home_resume_guess_note({ title: resumeFailure.guess.title })}`
+			: resumeFailure.message}
 		onDismiss={() => (resumeFailure = null)}
+		pickLabel={resumeFailure.guess ? m.home_link_pick_button() : undefined}
+		pickIcon={guessMarkIcon}
+		onPick={() => {
+			const g = resumeFailure?.guess;
+			if (g) void openCardLink(g.row, g.matchId, g.episode);
+		}}
 	/>
+{/if}
+
+{#snippet guessMarkIcon()}<GuessMark size={16} />{/snippet}
+
+{#if cardLink.offer}
+	{@const linkRow = cardLink.offer.entry.id}
+	<!-- Home's own accent, not the last per-show one a card set. -->
+	<div class="card-link-accent">
+		<LinkShowDialog
+			open={cardLink.open}
+			returnFocus={() => cardButton(linkRow)}
+			savedTitle={cardLink.offer.entry.title}
+			episode={cardLink.episode}
+			currentLabel={m.home_link_on_card()}
+			candidates={cardLink.candidates}
+			failed={cardLink.failed}
+			chosen={cardLink.chosen}
+			warnings={cardLink.warnings}
+			rowCount={cardLink.group?.length ?? null}
+			busy={cardLink.busy}
+			error={cardLink.error}
+			onSearch={(q) => void cardLink.search(q)}
+			onChoose={(c) => cardLink.choose(c)}
+			onConfirm={() => void cardLink.confirm()}
+			onCancel={() => cardLink.cancel()}
+		/>
+	</div>
 {/if}
 
 <ConfirmDialog
@@ -2051,6 +2250,77 @@
 	   land on the exact same beat of the hover transition. The chip
 	   sits outside the card's click target (resume-card is a sibling,
 	   not an ancestor) so its click never triggers play. */
+	/* A guessed card's "≈ Not what you watched?" pill: shown as the
+	   delete chip is, on hover or keyboard focus, at the other top
+	   corner. The card is a fixed 16rem and the chip, 2.25rem wide and
+	   popped 0.625rem out, covers its last 1.625rem: the pill stops a
+	   --space-2 short of it. Words that outgrow that wrap to two
+	   balanced lines, the ≈ beside the first, every word still read. */
+	.resume-link {
+		position: absolute;
+		z-index: 2;
+		inset-block-start: var(--space-2);
+		inset-inline-start: var(--space-2);
+		max-inline-size: calc(100% - 2 * var(--space-2) - 1.625rem);
+		display: inline-flex;
+		align-items: flex-start;
+		gap: var(--space-1);
+		line-height: 1.25;
+		text-align: start;
+		padding: var(--space-1) var(--space-3);
+		border: 1px solid color-mix(in oklab, var(--accent-persimmon) 45%, var(--ink-300));
+		border-radius: var(--radius-pill);
+		background: color-mix(in oklab, var(--ink-000) 84%, transparent);
+		font-size: var(--type-micro);
+		font-weight: 600;
+		color: var(--bone-100);
+		cursor: pointer;
+		opacity: 0;
+		transform: scale(0.92);
+		pointer-events: none;
+		transition:
+			opacity var(--dur-fast) var(--ease-out-soft),
+			transform var(--dur-fast) var(--ease-out-soft),
+			border-color var(--dur-fast) var(--ease-out-soft);
+	}
+	.resume-cell:hover .resume-link,
+	.resume-cell:focus-within .resume-link {
+		opacity: 1;
+		/* Rides the card's hover lift, as the delete chip does. */
+		transform: translateY(-3px);
+		pointer-events: auto;
+	}
+	/* Held while a resume runs: a link then would race the click's cap. */
+	.resume-link:disabled {
+		cursor: progress;
+	}
+	.resume-link:hover:not(:disabled),
+	.resume-link:focus-visible {
+		border-color: var(--accent-persimmon);
+	}
+	.resume-link:focus-visible {
+		outline: 2px solid var(--accent-persimmon);
+		outline-offset: 2px;
+	}
+	.resume-link :global(.guess-mark) {
+		flex: none;
+		/* Centred on the first line's box. */
+		margin-block-start: calc((1lh - 14px) / 2);
+		color: var(--accent-persimmon);
+	}
+	.resume-link-words {
+		min-inline-size: 0;
+		text-wrap: balance;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.resume-link {
+			transition: none;
+		}
+	}
+	.card-link-accent {
+		display: contents;
+		--accent: var(--accent-persimmon);
+	}
 	.resume-delete {
 		position: absolute;
 		/* Anchored half-outside the top-right corner so the chip

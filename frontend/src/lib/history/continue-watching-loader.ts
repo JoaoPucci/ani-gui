@@ -81,6 +81,11 @@ export interface ContinueWatchingLoaderDeps {
 	probeConcurrency?: number;
 	/** The run the load belongs to; the page's path when absent. */
 	signal?: AbortSignal;
+	/** Asked as a row's probe leaves the queue: whether it is still
+	 *  worth asking about. A row matched again while it waited (a card
+	 *  linked from Home) is another show, and the probe would ask about
+	 *  the one it was. Omitted, every row is probed. */
+	shouldProbe?: (entryId: string) => boolean;
 }
 
 /**
@@ -179,6 +184,12 @@ export async function loadContinueWatchingState(
 			const job = queue.shift();
 			if (!job) break;
 			const configured = await modePromise;
+			// Turned away while it waited: its card keeps what it has.
+			if (deps.shouldProbe && !deps.shouldProbe(job.entry.id)) {
+				pendingProbes--;
+				maybeFinishLoad();
+				continue;
+			}
 			const mode = deps.modeFor ? deps.modeFor(job.match.id, configured) : configured;
 			let count: number | null;
 			// Whether that count came from the search hit rather than the

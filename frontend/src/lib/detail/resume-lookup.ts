@@ -1,3 +1,6 @@
+import type { ReadOptions } from '$lib/api';
+import type { Visit } from '$lib/navigation/visit';
+
 /**
  * The detail page's resume lookup: the history row the page's Kitsu
  * entry resumes from, or `null` when none does.
@@ -25,4 +28,52 @@ export async function lookupResume<T>(
 		return null;
 	}
 	return lookup(kitsuId);
+}
+
+/** Numbers a page's resume lookups as they start. Each start hands back
+ *  whether that lookup is still the latest one started: an earlier
+ *  lookup answering after a later one — the page's first, sent before
+ *  a link made elsewhere landed, after the lookup the link's
+ *  announcement made — puts back nothing the later one read. */
+export function latestLookup(): () => () => boolean {
+	let latest = 0;
+	return () => {
+		const mine = ++latest;
+		return () => mine === latest;
+	};
+}
+
+/** What `readResume` needs from the page. */
+export interface ResumeRead<T> {
+	/** The show whose row is read. */
+	kitsuId: string;
+	/** The show's visit, whose signal the read takes and whose end
+	 *  answers nothing ($lib/navigation/visit). */
+	reads: Visit;
+	/** Whether this lookup is still the latest one started
+	 *  (`latestLookup`). */
+	latest: () => boolean;
+	lookup: (kitsuId: string, opts: ReadOptions) => Promise<T | null>;
+	/** The show's detail fetch, which the lookup waits for to ask again. */
+	detailServed: Promise<unknown>;
+	/** The show the page shows now. */
+	showing: () => string;
+	/** Show the row found, or none. */
+	apply: (row: T | null) => void;
+}
+
+/** Read the show's resume row under its visit and show it while the
+ *  page still shows that show and no later lookup started. A failure
+ *  is dropped: resume is a hint, not load-bearing. */
+export function readResume<T>(r: ResumeRead<T>): void {
+	const opts = { signal: r.reads.signal };
+	// A row found at once never waits on the detail, whose fetch the
+	// visit's end may cancel: its failure is the lookup's to ignore.
+	r.detailServed.catch(() => {});
+	void r.reads
+		.keep(lookupResume(r.kitsuId, (k) => r.lookup(k, opts), r.detailServed))
+		.then((row) => {
+			if (r.showing() === r.kitsuId && r.latest()) r.apply(row);
+		})
+		.catch(() => {});
 }

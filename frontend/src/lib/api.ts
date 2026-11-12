@@ -25,6 +25,7 @@
  * without a backend address.
  */
 import type { StreamProvider } from '$lib/history/show-key';
+import { notePlayed } from '$lib/history/guess-plays';
 import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
 import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
@@ -352,6 +353,14 @@ export interface HistoryEntry {
 	 *  (`hianime:jojos-bizarre-adventure-2000-5182` names 2000), read by
 	 *  the backend; absent when it names none. */
 	key_year?: number;
+	/** The Continue card whose guessed play wrote this row on another
+	 *  listing — JoJo's 2000 card for the 2012 listing's row its play
+	 *  wrote. Home's card stands for that line while both show as the
+	 *  same show, as the backend answers (`historyCardLines`). */
+	guessed_from?: string;
+	/** The row records a show the user named for it (a pick in the
+	 *  picker, or Yes): every surface offers to change it again. */
+	named?: boolean;
 }
 
 /** Input to `cmd_create_session`. */
@@ -416,6 +425,10 @@ export interface CreateSessionResponse {
 	 *  landed on that row's own listing. Absent (false) otherwise and
 	 *  from older backends. */
 	own_listing?: boolean;
+	/** A card's play no guess opened that the backend kept off its
+	 *  line, which records another show: record no id, and write no
+	 *  tracker for it. */
+	line_kept?: boolean;
 }
 
 /** Which copy of a season a version is: the provider lists some
@@ -652,6 +665,147 @@ export function historyDelete(id: string): Promise<void> {
 	return deleteJson<void>(`/api/history/${encodeURIComponent(id)}`);
 }
 
+/** A history row as a link left it, and the Kitsu id it had before. */
+export interface LinkedRow {
+	row: string;
+	previous: string | null;
+	ep_no: string;
+	watched_at: number | null;
+}
+
+/** What a link wrote: the id asked for, which the rows in `linked`
+ *  record, and every row. */
+export interface LinkOutcome {
+	kitsu_id: string;
+	linked: LinkedRow[];
+	/** A correction asked after this one saved the line first: this one
+	 *  saved nothing, and the line keeps the later answer. */
+	overtaken?: boolean;
+}
+
+/** Link history rows to the show the user named for them, from the
+ *  card whose row is `card`: only the rows of that card's listing among
+ *  `rows` are written. The card is named even when no row is left to
+ *  link. Rejects with Kitsu's 404/410 for an entry Kitsu deleted. */
+export function historyLink(card: string, rows: string[], kitsuId: string): Promise<LinkOutcome> {
+	return postJson<LinkOutcome>('/api/history/link', {
+		card,
+		rows,
+		kitsu_id: kitsuId
+	});
+}
+
+/** A history row with Continue Watching's match for it: the show's
+ *  Kitsu id (null when it matches none or could not be read), and
+ *  whether the match is one a play may record. */
+export interface RowMatch {
+	id: string;
+	show: string | null;
+	trusted: boolean;
+}
+
+/** A request for the rows a link from the card whose row is `card`
+ *  would write: the card shows `show`, `saved` is the show the user
+ *  named for its line when they did, and `rows` are the history's other
+ *  rows with their matches. */
+export interface LinkGroupRequest {
+	card: string;
+	show: string;
+	saved: string | null;
+	rows: RowMatch[];
+}
+
+/** The rows a link from the card would write: the card's own, and
+ *  every row the backend finds it stands for on the card's listing. */
+export function historyLinkGroup(request: LinkGroupRequest): Promise<string[]> {
+	return postJson<string[]>('/api/history/link-group', request);
+}
+
+/** What a link to a show would be worth a second look for: the
+ *  backend's stable key, which the picker words. */
+export type LinkWarning = 'season' | 'episode';
+
+/** A show offered for a guessed row, whether the card shows it now,
+ *  and what a link to it would be worth a second look for. */
+export interface LinkCandidate {
+	ref: KitsuAnimeRef;
+	current: boolean;
+	warnings: LinkWarning[];
+}
+
+/** A request for a guessed row's candidates: the row, its saved title
+ *  as Continue Watching searches it, the show the card shows, the
+ *  episode the card offers, and the words the user typed (null for the
+ *  picker's own searches). */
+export interface CandidatesRequest {
+	row: string;
+	title: string;
+	current: KitsuAnimeRef | null;
+	query: string | null;
+	episode: number;
+}
+
+/** The candidates for a guessed row, in the order the picker lists
+ *  them, each with its warnings. The picker's own searches never fail
+ *  the answer; a typed search's failure rejects. */
+export function historyLinkCandidates(
+	request: CandidatesRequest,
+	opts: ReadOptions = {}
+): Promise<LinkCandidate[]> {
+	return postJson<LinkCandidate[]>('/api/history/link-candidates', request, {
+		signal: opts.signal
+	});
+}
+
+/** A row as Continue Watching shows it, for the line its card stands
+ *  for: its match's show, whether that is a guess, and whether the user
+ *  named it. */
+export interface CardLineRow {
+	id: string;
+	guessed_from: string | null;
+	show: string | null;
+	guess: boolean;
+	named: boolean;
+}
+
+/** The line a card stands for, and whether it can be corrected. */
+export interface CardLine {
+	line: string;
+	correctable: boolean;
+}
+
+/** The line each card stands for, by row id. */
+export function historyCardLines(rows: CardLineRow[]): Promise<Record<string, CardLine>> {
+	return postJson<Record<string, CardLine>>('/api/history/card-lines', { rows });
+}
+
+/** What a surface knows of a card's line, for its question. */
+export interface VerdictRequest {
+	page: string;
+	show: string | null;
+	trusted: boolean;
+	named: boolean;
+	asks_guess: boolean;
+	carried: boolean;
+	picked: boolean;
+	in_player: boolean;
+}
+
+/** What the surface offers for the line, and whether the line keeps a
+ *  pick of another show. */
+export interface LinkVerdict {
+	offer: 'guess' | 'again' | null;
+	kept: boolean;
+}
+
+/** Whether a surface asks about a card's line. */
+export function historyLinkVerdict(
+	request: VerdictRequest,
+	opts: ReadOptions = {}
+): Promise<LinkVerdict> {
+	return postJson<LinkVerdict>('/api/history/link-verdict', request, { signal: opts.signal });
+}
+
 /** Find the most-recent history entry whose show id maps to this Kitsu
  *  id, via the (show id → kitsu_id) reverse cache the play path stamps
  *  on each successful resolve. Used by the detail page to swap "Play
@@ -720,6 +874,13 @@ export interface PlayArgs {
 	 *  overwrite the user's actual click. Click handlers leave this
 	 *  unset (defaults to false on the wire). */
 	prefetch?: boolean;
+	/** `true` when the caller records the watch itself once its player
+	 *  opened on the stream (mark-watched): the resolve writes no
+	 *  history row, while still running at a click's priority, which a
+	 *  prefetch does not. The player's switch to a picked show sets it,
+	 *  so a viewer who leaves, or a player that cannot open, leaves the
+	 *  history as it was. */
+	record_later?: boolean;
 	/** Kitsu id of the anime the user is playing. Frontend passes the
 	 *  id from `/anime/[kitsu_id]`'s URL so the backend can persist
 	 *  an `(provider show_id → kitsu_id)` reverse mapping. The home
@@ -744,6 +905,9 @@ export interface PlayArgs {
 	 *  opened the play from. The session answers whether the play
 	 *  landed on that row's own listing (`own_listing`). */
 	guess_row?: string;
+	/** The history row of a Continue card that opened the play with no
+	 *  guess: the backend keeps the show that line records against it. */
+	card_row?: string;
 	/** The Kitsu id the guessed card guessed, sent with `guess_row` in
 	 *  place of `kitsu_id`: the backend records it on the row the
 	 *  resolve writes only when the play landed on that row's own
@@ -788,7 +952,10 @@ export function play(args: PlayArgs): Promise<CreateSessionResponse> {
  *  No session is registered — the player streams from the upstream
  *  directly with the resolved Referer. */
 export function playExternal(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/external', withUiLocale(args), { lane: 'resolve' });
+	// Noted once its player started: a handoff that failed played nothing.
+	return postJson<void>('/api/play/external', withUiLocale(args), { lane: 'resolve' }).then(() =>
+		notePlayed(args)
+	);
 }
 
 /** Launch the resolved episode in the user's Syncplay binary. Same
@@ -798,7 +965,10 @@ export function playExternal(args: PlayArgs): Promise<void> {
  *  Syncplay binary can't be spawned — caller surfaces the failure
  *  via the play page's `ErrorOverlay` with a syncplay.pl link. */
 export function playSyncplay(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/syncplay', withUiLocale(args), { lane: 'resolve' });
+	// Noted once its player started: a handoff that failed played nothing.
+	return postJson<void>('/api/play/syncplay', withUiLocale(args), { lane: 'resolve' }).then(() =>
+		notePlayed(args)
+	);
 }
 
 /** Drop the cached play resolution for `args` so the next play call
@@ -822,6 +992,7 @@ export function evictPlayCache(args: PlayArgs): Promise<void> {
  *  Click handlers fire markWatched as a side-effect after getOrFire
  *  resolves. Best-effort: caller should `void markWatched(...).catch(()=>{})`. */
 export function markWatched(args: PlayArgs): Promise<void> {
+	notePlayed(args);
 	return postJson<void>('/api/play/mark-watched', args);
 }
 
@@ -880,8 +1051,10 @@ export function playStream(
 	if (args.alt_titles && args.alt_titles.length > 0)
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.prefetch === true) params.set('prefetch', '1');
+	if (args.record_later === true) params.set('record_later', '1');
 	if (args.version) params.set('version', args.version);
 	if (args.guess_row) params.set('guess_row', args.guess_row);
+	if (args.card_row) params.set('card_row', args.card_row);
 	if (args.guess_id) params.set('guess_id', args.guess_id);
 	if (args.caption) params.set('caption', args.caption);
 	params.set('locale', uiLocale());

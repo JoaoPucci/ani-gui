@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { RecoveryResume } from './resume-after-recovery';
 
-// The key is (show, episode): the /play route's component is reused
-// across same-route navigation, so both dimensions can change while
-// a capture is pending. Signatures updated in this red commit with
+// The key is (show, episode): the episode changes within one page,
+// and a switch to another show's player mounts a new page that takes
+// what the old one left, so both dimensions can change while a capture
+// is pending. Signatures updated in this red commit with
 // the contract: episode-only keying let show B's attach consume show
 // A's position whenever their episode numbers matched.
 

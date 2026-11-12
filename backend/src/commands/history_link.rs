@@ -1,0 +1,181 @@
+//! Linking history rows to the show the user names for them.
+//!
+//! A Continue Watching card whose row recorded no Kitsu id shows the
+//! show a guess matched it to. The guess can be wrong, and some rows
+//! never meet a play that could settle it. From the show page a guessed
+//! card opened, the user can name the show the row really is: the
+//! rows the card stands for then record that show's Kitsu id, as a
+//! play from its page would have made them.
+//!
+//! A link writes the `kitsu:` column and nothing else of the row: its
+//! episode, its marker, its watch moment and its place in the file
+//! stay as they were. A link is no watch, so no stamp moves and no
+//! tracker hears of it; the next play of the card is a play of the
+//! linked show, and writes as one. To the history guard, though, it is
+//! a write that gives the row its Kitsu id, as a watch's is
+//! ([`crate::history::guard`]): a play or watch whose request began
+//! before the link writes nothing of its own on the row, and the
+//! deferred writes of one in flight stand down — the user's naming of
+//! the show stands. A stored mapping that names another
+//! show for a linked row is dropped, since it is the guess the link
+//! replaces; one that names the linked show stays. No played mark is
+//! written: the mark says a play stored the mapping. The link is noted
+//! beside each row it linked ([`crate::commands::linked_note`]), so a
+//! later watch the cour guard refuses leaves the id the user named.
+//!
+//! The id must be one Kitsu serves: the entry is read first, from the
+//! cache or from Kitsu, and a read Kitsu answers with a 404 or 410
+//! refuses the link (and marks
+//! the id gone, as any user read does). A row removed while that read
+//! was out is not linked. A link one of whose rows a correction asked
+//! later has already saved writes none of them, and says so
+//! (`overtaken`): the later answer stands on every row that correction
+//! carried. A row only the earlier link carried, when the earlier one
+//! saved first, keeps the earlier answer.
+//!
+//! A link has no undo: the user's answer to "is this the show you
+//! meant?" stands once given, and naming another show again is how it
+//! is changed.
+
+use serde::{Deserialize, Serialize};
+
+use crate::app::AppState;
+use crate::commands::link_verdict::{group_members, RowMatch};
+use crate::error::Result;
+use crate::history::guard::{Epoch, Held};
+use crate::history::same_kitsu_id;
+
+#[path = "history_link_plan.rs"]
+mod plan;
+pub use plan::{card_listing, of_card, plan_held, plan_link};
+
+/// A request to link rows to a show.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LinkArgs {
+    /// The row of the card the link is made from.
+    pub card: String,
+    /// The history rows to link: the card's row and the guessed rows
+    /// it stands for.
+    pub rows: Vec<String>,
+    /// The Kitsu id of the show the user named.
+    pub kitsu_id: String,
+}
+
+/// A request for the rows a link from a card would write.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LinkGroupArgs {
+    /// The row of the card the link would be made from.
+    pub card: String,
+    /// The show the card shows.
+    pub show: String,
+    /// The show the user named for the card's line, when they did.
+    #[serde(default)]
+    pub saved: Option<String>,
+    /// The history's other rows, with Continue Watching's match for each
+    /// ([`crate::commands::link_verdict::group_members`]).
+    pub rows: Vec<RowMatch>,
+}
+
+/// A row a link wrote, as it left it, and the id it had before.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LinkedRow {
+    /// The row's id: its provider show key.
+    pub row: String,
+    /// The Kitsu id the row recorded before the link, if any.
+    pub previous: Option<String>,
+    /// The row's episode when the link wrote it.
+    pub ep_no: String,
+    /// The row's watch moment when the link wrote it.
+    pub watched_at: Option<i64>,
+}
+
+/// What a link wrote.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LinkOutcome {
+    /// The Kitsu id asked for; the rows in [`Self::linked`] record it.
+    pub kitsu_id: String,
+    /// Every row linked, in the order asked.
+    pub linked: Vec<LinkedRow>,
+    /// A correction asked after this one had already saved one of its
+    /// rows: the viewer's latest answer stands, and this one wrote no row.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub overtaken: bool,
+}
+
+/// The rows a link from the card `args.card` would write now: every
+/// row the card stands for ([`group_members`]) on the card's own
+/// listing — the renderer's count of what its Link covers, and the rows
+/// it links.
+///
+/// # Errors
+/// History I/O errors.
+pub fn link_group(state: &AppState, args: &LinkGroupArgs) -> Result<Vec<String>> {
+    let entries = crate::history::read_all(&state.history_path)?;
+    let members = group_members(&args.card, &args.show, args.saved.as_deref(), &args.rows);
+    Ok(plan_link(&entries, &args.card, &members)
+        .into_iter()
+        .map(|l| l.row)
+        .collect())
+}
+
+/// Link `args.rows` to `args.kitsu_id`.
+///
+/// # Errors
+/// [`crate::error::AniError::InvalidKitsuId`] for a value that is not
+/// an id; the Kitsu read's error when the entry cannot be read (a 404
+/// or 410 for one Kitsu deleted); history and cache I/O errors.
+pub async fn link(state: &AppState, args: &LinkArgs) -> Result<LinkOutcome> {
+    let kitsu_id = crate::kitsu_id::require(&args.kitsu_id)?;
+    // Taken as the request is asked: a correction asked later stands,
+    // whichever saves first.
+    let begun = crate::history::guard::hold(&state.history_path, |held| held.link_ticket());
+    crate::commands::kitsu::kitsu_anime_detail_page(state, kitsu_id).await?;
+    // Only the card's own listing: a row a guessed play wrote for
+    // another listing is that show's history ([`card_listing`]).
+    let rows = of_card(&args.card, &args.rows);
+    crate::history::guard::hold(&state.history_path, |held| {
+        link_held(state, held, &rows, kitsu_id, begun)
+    })
+}
+
+fn link_held(
+    state: &AppState,
+    held: &mut Held<'_>,
+    rows: &[String],
+    kitsu_id: &str,
+    begun: Epoch,
+) -> Result<LinkOutcome> {
+    let mut linked = plan_held(&held.rows()?, rows);
+    linked.retain(|l| !held.show_removed_since(begun, &l.row));
+    // Overtaken on any row, it writes none: a correction asked later
+    // already saved the line, and its answer stands.
+    let overtaken = linked.iter().any(|l| held.link_overtaken(begun, &l.row));
+    if overtaken {
+        linked.clear();
+    }
+    for l in &mut linked {
+        held.set_kitsu_id(&l.row, Some(kitsu_id.to_string()))?;
+        held.linked(begun, &l.row);
+        drop_other_mapping(state, &l.row, kitsu_id)?;
+        // The user named the show: a refused watch leaves it on the row.
+        crate::commands::linked_note::record(state, &l.row, kitsu_id)?;
+    }
+    Ok(LinkOutcome {
+        kitsu_id: kitsu_id.to_string(),
+        linked,
+        overtaken,
+    })
+}
+
+/// Drop the row's stored mapping when it names another show.
+fn drop_other_mapping(state: &AppState, row: &str, kitsu_id: &str) -> Result<()> {
+    let mapped = crate::commands::kitsu::allmanga_kitsu_get(state, row)?;
+    if mapped.is_some_and(|m| !same_kitsu_id(&m, kitsu_id)) {
+        crate::commands::kitsu::allmanga_kitsu_delete(state, row)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "history_link_test.rs"]
+mod tests;

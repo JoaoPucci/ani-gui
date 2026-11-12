@@ -81,7 +81,7 @@
 		type AvailabilityPatch
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
-	import { lookupResume } from '$lib/detail/resume-lookup';
+	import { latestLookup, readResume } from '$lib/detail/resume-lookup';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { runUnairedClick } from '$lib/detail/unaired-click';
 	import { airedCap, beyondPlayable, displayCap, minCap } from '$lib/detail/episode-caps';
@@ -116,7 +116,7 @@
 		versionsInMode
 	} from '$lib/versions/version-choice';
 	import { storedCaption } from '$lib/play/caption-choice';
-	import { pickAudio, storedAudio } from '$lib/play/audio-choice';
+	import { audioFor, pickAudio, storedAudio } from '$lib/play/audio-choice';
 	import { handleRadioKey } from '$lib/versions/radio-keys';
 	import { versionLabel } from '$lib/versions/version-label';
 	import { followPlayed } from '$lib/play/played-episode';
@@ -145,6 +145,11 @@
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { downloadQuality } from '$lib/download/download-quality';
 	import { decideEpisodeFetchAction, parsePageParam } from '$lib/history/url-deeplink';
+	import { guessedQuery, guessedRowOf } from '$lib/history/guessed-context';
+	import { LinkSession } from '$lib/history/link-session.svelte';
+	import { appLinkDeps, onHistoryLinked } from '$lib/history/link-deps';
+	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
+	import GuessMark from '$lib/components/GuessMark.svelte';
 	import { pageTrail } from '$lib/page-trail';
 	import { m } from '$lib/paraglide/messages';
 
@@ -497,6 +502,24 @@
 	// resumeEntry.ep_no, capped at the show's known episode count so
 	// we don't propose an episode that doesn't exist yet.
 	let resumeEntry = $state<HistoryEntry | null>(null);
+	// Only the latest resume lookup started answers ($lib/detail/resume-lookup).
+	const resumeLookups = latestLookup();
+	/** The resume row of `showId`, read under its visit `reads`
+	 *  ($lib/detail/resume-lookup). */
+	function readShowResume(showId: string, reads: Visit, detailServed: Promise<unknown>) {
+		readResume({
+			kitsuId: showId,
+			reads,
+			latest: resumeLookups(),
+			lookup: historyByKitsu,
+			detailServed,
+			showing: () => id,
+			apply: (h) => {
+				resumeEntry = h;
+				resumeRefresh.row(h);
+			}
+		});
+	}
 
 	// Episode list — fetched in parallel with the detail. Holds the
 	// CURRENT page only (not concatenated) so a 500-episode show doesn't
@@ -993,7 +1016,7 @@
 	 *  share a slot with hard play-call failures. The failure shows in
 	 *  a fixed-position overlay regardless of scroll. */
 	let playFailure = $state<{ episode: number; message: string } | null>(null);
-	// True while a play/playExternal request is in flight. Buttons
+	// True while a play request is in flight. Buttons
 	// disable themselves to keep the user from double-clicking into a second resolve
 	// into a stack of concurrent spawns.
 	let actionBusy = $state(false);
@@ -1184,18 +1207,7 @@
 				if (images && detail && id === currentId) Object.assign(detail, images);
 			}
 		});
-		void reads
-			.keep(
-				lookupResume(currentId, (k) => historyByKitsu(k, { signal: reads.signal }), detailServed)
-			)
-			.then((h) => {
-				if (id !== currentId) return;
-				resumeEntry = h;
-				resumeRefresh.row(h);
-			})
-			.catch(() => {
-				// Resume is a hint, not load-bearing — drop silently.
-			});
+		readShowResume(currentId, reads, detailServed);
 		void reads
 			.keep(detailServed)
 			.then((d) => {
@@ -1717,6 +1729,43 @@
 		});
 		downloadModalOpen = true;
 	}
+	// A page a guessed Continue card opened says, in one quiet line,
+	// which history title it was matched from, and lets the user name
+	// the show the card really is ($lib/history/link-session.svelte.ts).
+	const guessedRow = $derived(guessedRowOf(page.url.searchParams));
+	const linkSession = new LinkSession({
+		...appLinkDeps(),
+		notify: (notice) => toastStore.push(notice),
+		/* eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query */
+		showPage: (kitsuId, row) =>
+			void goto(resolve('/anime/[id]', { id: kitsuId }) + guessedQuery(row !== null, row), {
+				replaceState: true
+			}),
+		/* eslint-enable svelte/no-navigation-without-resolve */
+		// The shown show's own Sub or Dub, else the Settings default —
+		// asked of the show the link was made for, which the page may have
+		// moved on from when the link answers.
+		audioInForce: (shown) => (config ? audioFor(shown, playMode(config)) : null),
+		here: () => page.url.pathname,
+		// The page's own links are heard below, as every other one is.
+		refresh: () => {}
+	});
+	// Every link answered while the page is on screen, made here or on a
+	// page since left ($lib/history/link-deps.ts), reads the show's
+	// history again: the page's Continue follows the rows the link wrote.
+	// The re-read is the shown show's, cancelled with its other reads.
+	const stopHearing = onHistoryLinked(() => {
+		const reads = showReads;
+		readShowResume(id, reads, kitsuAnimeDetail(id, { signal: reads.signal }));
+	});
+	// The page going cancels the show question's reads still out; a link
+	// still out is saved all the same.
+	onDestroy(() => {
+		stopHearing();
+		linkSession.endReads();
+	});
+	$effect(() => void linkSession.arrive(guessedRow, id));
+
 	function onPickEpisode(n: number) {
 		// Honour the availability gate — episode tiles call this too,
 		// not just the masthead Play CTA. Without this guard a click
@@ -1822,7 +1871,28 @@
 						<span class="eyebrow-value">{statusLabel(detail.status)}</span>
 					</p>
 
-					<h1 class="title">{detail.canonical_title}</h1>
+					<h1 class="title" class:title-noted={guessedRow !== null}>{detail.canonical_title}</h1>
+					{#if guessedRow !== null && !(linkSession.settled && !linkSession.offer)}
+						<!-- Held open from the first paint when a guessed card opened
+						     the page, so the line arriving moves nothing below it. -->
+						<p class="guess-note">
+							{#if linkSession.offer}
+								<GuessMark size={16} />
+								<span class="guess-note-text" title={linkSession.offer.entry.title}
+									>{m.detail_link_matched({ title: linkSession.offer.entry.title })}</span
+								>
+								<span class="guess-note-ask">{m.detail_link_not_this()}</span>
+								<button
+									type="button"
+									class="guess-note-change"
+									onclick={() =>
+										void linkSession.start(
+											resumeEntry?.id === linkSession.offer?.entry.id ? defaultEpisode() : undefined
+										)}>{m.detail_link_change()}</button
+								>
+							{/if}
+						</p>
+					{/if}
 
 					<!-- Action row: primary play, secondary download. Gated
 					     by the availability probe — until it lands, render
@@ -2397,6 +2467,25 @@
 			{/if}
 		</div>
 	{/if}
+	{#if linkSession.offer}
+		<LinkShowDialog
+			open={linkSession.open}
+			savedTitle={linkSession.offer.entry.title}
+			episode={linkSession.episode}
+			currentLabel={m.detail_link_shown_now()}
+			candidates={linkSession.candidates}
+			failed={linkSession.failed}
+			chosen={linkSession.chosen}
+			warnings={linkSession.warnings}
+			rowCount={linkSession.group?.length ?? null}
+			busy={linkSession.busy}
+			error={linkSession.error}
+			onSearch={(q) => void linkSession.search(q)}
+			onChoose={(c) => linkSession.choose(c)}
+			onConfirm={() => void linkSession.confirm()}
+			onCancel={() => linkSession.cancel()}
+		/>
+	{/if}
 </main>
 
 <LoadingOverlay modal visible={actionBusy || resumeWaiting} progress={actionProgress} />
@@ -2731,6 +2820,62 @@
 			opacity: 1;
 			transform: translateY(0);
 		}
+	}
+
+	/* The history line a guessed card's page carries: it takes its
+	   room from the title's own margin, held from the first paint. */
+	.title-noted {
+		margin-block-end: var(--space-2);
+	}
+	.guess-note {
+		display: flex;
+		align-items: baseline;
+		column-gap: var(--space-2);
+		min-inline-size: 0;
+		min-block-size: calc(var(--type-meta) * var(--leading-prose));
+		margin: 0 0 var(--space-5);
+		font-size: var(--type-meta);
+		line-height: var(--leading-prose);
+		color: var(--bone-300);
+	}
+	/* One line, whatever the title: the saved title gives way, the ask
+	   and its button never do, and nothing below moves when it lands. */
+	.guess-note > * {
+		animation: text-in var(--dur-med) var(--ease-out-soft) both;
+	}
+	/* The app's one mark for a guess ($lib/components/GuessMark). */
+	.guess-note :global(.guess-mark) {
+		align-self: center;
+		color: color-mix(in oklab, var(--accent) 85%, var(--bone-100));
+	}
+	.guess-note-text {
+		min-inline-size: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.guess-note-ask {
+		flex: none;
+		color: var(--bone-400);
+	}
+	.guess-note-change {
+		flex: none;
+		padding: 2px 0;
+		margin-block: -2px;
+		border: 0;
+		background: none;
+		font: inherit;
+		color: var(--bone-200);
+		text-decoration: underline;
+		text-decoration-color: color-mix(in oklab, var(--accent) 70%, transparent);
+		text-underline-offset: 0.2em;
+		cursor: pointer;
+		transition: color var(--dur-fast) var(--ease-out-soft);
+	}
+	.guess-note-change:hover,
+	.guess-note-change:focus-visible {
+		color: var(--bone-100);
+		text-decoration-color: var(--accent);
 	}
 
 	/* — Action row. */

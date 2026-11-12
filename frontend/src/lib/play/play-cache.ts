@@ -43,15 +43,18 @@ export function makeKey(
 	mode: string,
 	version?: VersionKind,
 	guessRow?: string,
-	caption?: string
+	caption?: string,
+	cardRow?: string
 ): CacheKey {
 	// A guessed card's plays ask whether they landed on that card's own
-	// listing: a session fired by any other caller never answered that
-	// for this row. The row and the captions choice go before the
-	// version, which stays the key's last axis
+	// listing, and a card's play no guess opened whether it keeps the
+	// line's show (`line_kept`): a session fired by any other caller never
+	// answered that for this row. The rows and the captions choice go
+	// before the version, which stays the key's last axis
 	// (clearBackgroundForOtherVersions).
 	const axes: string[] = [showId, String(episode), mode];
 	if (guessRow) axes.push(`guess=${encodeURIComponent(guessRow)}`);
+	if (cardRow) axes.push(`card=${encodeURIComponent(cardRow)}`);
 	if (caption) axes.push(`cc=${encodeURIComponent(caption)}`);
 	axes.push(version ?? '');
 	return axes.join('|') as CacheKey;

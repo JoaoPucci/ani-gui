@@ -26,6 +26,7 @@ mod availability_served_mode;
 pub(crate) mod availability_ttl;
 mod availability_unread;
 pub(crate) mod availability_warm;
+pub(crate) mod card_line;
 pub mod command_line;
 pub mod continue_guess;
 pub mod cour;
@@ -53,12 +54,15 @@ pub(crate) mod download_tool;
 mod download_tool_output;
 mod download_transfer;
 pub mod external_player;
+pub(crate) mod guess_guard;
+pub(crate) mod guessed_from;
 pub mod history;
 pub(crate) mod history_claim;
 pub(crate) mod history_forget;
 pub(crate) mod history_forget_resolutions;
 pub(crate) mod history_forget_skips;
 pub(crate) mod history_forget_titles;
+pub mod history_link;
 pub mod history_number;
 mod history_remove;
 pub(crate) mod history_resume;
@@ -70,6 +74,10 @@ pub(crate) mod kitsu_search;
 pub mod kitsu_tail;
 pub(crate) mod kitsu_title_words;
 pub mod kitsu_warm;
+pub(crate) mod link_candidates;
+pub(crate) mod link_rules;
+pub(crate) mod link_verdict;
+pub(crate) mod linked_note;
 pub mod play;
 pub mod play_args;
 pub mod play_cache;
@@ -147,3 +155,15 @@ mod kitsu_id_compare_test;
 #[cfg(test)]
 #[path = "anilist_unanswered_test.rs"]
 mod anilist_unanswered_test;
+
+#[cfg(test)]
+#[path = "guessed_from_test.rs"]
+mod guessed_from_test;
+
+#[cfg(test)]
+#[path = "guess_guard_test.rs"]
+mod guess_guard_test;
+
+#[cfg(test)]
+#[path = "linked_note_test.rs"]
+mod linked_note_test;

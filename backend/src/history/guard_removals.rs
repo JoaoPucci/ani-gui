@@ -13,6 +13,7 @@ impl Held<'_> {
         let now = self.removals.moment;
         self.removals.shows.insert(id.to_owned(), now);
         self.removals.watched.remove(id);
+        self.removals.linked.remove(id);
         self.removals.pages.remove(id);
         for kitsu_id in kitsu_ids {
             self.removals.kitsu.insert(kitsu_id.clone(), now);
@@ -26,6 +27,7 @@ impl Held<'_> {
         // The clear stands for everything removed before it.
         self.removals.shows.clear();
         self.removals.watched.clear();
+        self.removals.linked.clear();
         self.removals.kitsu.clear();
         self.removals.pages.clear();
     }
@@ -36,6 +38,25 @@ impl Held<'_> {
     pub fn show_removed_since(&self, begun: Epoch, id: &str) -> bool {
         let removed = self.removals.shows.get(id).copied().unwrap_or(0);
         removed.max(self.removals.cleared) > begun.0
+    }
+
+    /// A ticket for a link asked now: later than every one handed out
+    /// before, and the moment its removal checks start from.
+    pub fn link_ticket(&mut self) -> Epoch {
+        self.removals.moment += 1;
+        Epoch(self.removals.moment)
+    }
+
+    /// Record that the link with `ticket` linked the show `id`'s row.
+    pub fn linked(&mut self, ticket: Epoch, id: &str) {
+        self.removals.linked.insert(id.to_owned(), ticket.0);
+    }
+
+    /// Whether the link with `ticket` was overtaken on the show `id`'s
+    /// row: a link asked after it saved the row first.
+    #[must_use]
+    pub fn link_overtaken(&self, ticket: Epoch, id: &str) -> bool {
+        self.removals.linked.get(id).copied().unwrap_or(0) > ticket.0
     }
 
     /// Whether the show `id`'s row changed since `begun`: the show was

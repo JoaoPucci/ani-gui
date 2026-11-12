@@ -23,11 +23,17 @@
  *
  * A modal the user cannot see would hold a keyboard they cannot use: a
  * page element in fullscreen hides everything outside it, so a modal
- * opening outside the fullscreen element leaves fullscreen first.
+ * opening outside the fullscreen element leaves fullscreen first — all
+ * but a <dialog>, which the app only ever shows with showModal(): the
+ * top layer shows it above fullscreen (the change-show picker over a
+ * fullscreen player). That same top layer would hide a modal opening
+ * above such a dialog, so the dialog is hidden while one is up, and
+ * shown again once that one closes.
  */
 
 import { nextInCycle, tabbablesIn } from './focus-cycle';
 import { holdOutside } from './page-inert';
+import { leaveHidingFullscreen, stepAside, stepBack } from './top-layer';
 
 export interface ModalOptions {
 	/** What Escape does while this is the topmost modal. Without it,
@@ -69,11 +75,6 @@ function onKeydown(e: KeyboardEvent): void {
 	}
 }
 
-function leaveHidingFullscreen(doc: Document, root: HTMLElement): void {
-	const full = doc.fullscreenElement;
-	if (full && !full.contains(root)) doc.exitFullscreen().catch(() => {});
-}
-
 function close(layer: Layer): void {
 	const at = stack.indexOf(layer);
 	if (at === -1) return;
@@ -86,6 +87,8 @@ function close(layer: Layer): void {
 	// Only the topmost modal held focus; one closing beneath another
 	// leaves it where it is.
 	if (at < stack.length) return;
+	const beneath = top();
+	if (beneath) stepBack(beneath.root);
 	// A return target that is a modal's own surface (one opened with
 	// focus on nothing) is entered like a modal: at its control.
 	const back = layer.returnTo;
@@ -109,6 +112,7 @@ export function openModal(root: HTMLElement, opts: ModalOptions = {}): ModalHand
 	const held = active instanceof HTMLElement && active !== doc.body ? active : null;
 	const layer: Layer = { root, opts, returnTo: held ?? top()?.root ?? null };
 	if (stack.length === 0) doc.addEventListener('keydown', onKeydown, true);
+	stepAside(top()?.root);
 	stack.push(layer);
 	leaveHidingFullscreen(doc, root);
 	holdOutside(root);

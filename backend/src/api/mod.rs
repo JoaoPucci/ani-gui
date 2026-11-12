@@ -29,6 +29,7 @@ use tower_http::cors::CorsLayer;
 mod account;
 mod airing;
 mod flags;
+mod link_rules;
 mod refill;
 mod sse_abort;
 mod syncplay;
@@ -99,6 +100,17 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/history", get(get_history).delete(delete_history))
         .route("/api/history/by-kitsu/:kitsu_id", get(get_history_by_kitsu))
         .route("/api/history/:id/number", get(get_history_number))
+        .route("/api/history/link", post(post_history_link))
+        .route("/api/history/link-group", post(post_history_link_group))
+        .route(
+            "/api/history/link-candidates",
+            post(link_rules::post_link_candidates),
+        )
+        .route("/api/history/card-lines", post(link_rules::post_card_lines))
+        .route(
+            "/api/history/link-verdict",
+            post(link_rules::post_link_verdict),
+        )
         .route(
             "/api/history/guess/ruled-out",
             post(post_history_guess_ruled_out),
@@ -179,27 +191,49 @@ async fn get_proxy_base_url(State(state): State<Arc<AppState>>) -> Result<Json<S
     Ok(Json(proxy_url::proxy_base_url(&state)?))
 }
 
-/// A history row as Continue Watching reads it: the row, and the
-/// release year its show key names among its slug's words
-/// ([`crate::scraper::provider::key_year`]) — the renderer does not
-/// read slugs, and the year is what tells apart listings a provider
-/// titles alike ("JoJo's Bizarre Adventure", three times over).
+/// A history row as Continue Watching reads it: the row, and what its
+/// show key carries that the renderer needs, since the renderer does
+/// not read slugs — the release year its slug's words name
+/// ([`crate::scraper::provider::key_year`]), which tells apart listings
+/// a provider titles alike ("JoJo's Bizarre Adventure", three times
+/// over), and the words themselves, for the change-show picker's
+/// search.
 #[derive(serde::Serialize)]
 struct HistoryRow {
     #[serde(flatten)]
     entry: HistoryEntry,
     #[serde(skip_serializing_if = "Option::is_none")]
     key_year: Option<u32>,
+    /// The Continue card whose guessed play wrote this row on another
+    /// listing ([`crate::commands::guessed_from`]): the renderer stands
+    /// the card for that line while both show as the same show.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guessed_from: Option<String>,
+    /// The row records a show the user named for it: its link's note
+    /// ([`crate::commands::linked_note`]) still stands, so every surface
+    /// offers to change it again.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    named: bool,
 }
 
 async fn get_history(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<HistoryRow>>, AniError> {
+    // A cache that cannot list the notes leaves every card standing for
+    // its newer row, as before the notes existed.
+    let mut from = crate::commands::guessed_from::all(&state).unwrap_or_default();
+    // One that cannot list the link notes offers no row to change again.
+    let notes = crate::commands::linked_note::all(&state).unwrap_or_default();
     Ok(Json(
         h_inner::history_list(&state)?
             .into_iter()
             .map(|entry| HistoryRow {
                 key_year: crate::scraper::provider::key_year(&entry.id),
+                guessed_from: from.remove(&entry.id),
+                named: crate::commands::linked_note::stands(
+                    entry.kitsu_id.as_deref(),
+                    notes.get(&entry.id).map(String::as_str),
+                ),
                 entry,
             })
             .collect(),
@@ -238,6 +272,28 @@ async fn get_history_number(
 ) -> Result<Json<Option<crate::commands::history_number::HistoryNumber>>, AniError> {
     Ok(Json(crate::commands::history_number::history_number(
         &state, &id,
+    )?))
+}
+
+/// Link history rows to the show the user named for them
+/// ([`crate::commands::history_link::link`]).
+async fn post_history_link(
+    State(state): State<Arc<AppState>>,
+    Json(args): Json<crate::commands::history_link::LinkArgs>,
+) -> Result<Json<crate::commands::history_link::LinkOutcome>, AniError> {
+    Ok(Json(
+        crate::commands::history_link::link(&state, &args).await?,
+    ))
+}
+
+/// The rows a link would write
+/// ([`crate::commands::history_link::link_group`]).
+async fn post_history_link_group(
+    State(state): State<Arc<AppState>>,
+    Json(args): Json<crate::commands::history_link::LinkGroupArgs>,
+) -> Result<Json<Vec<String>>, AniError> {
+    Ok(Json(crate::commands::history_link::link_group(
+        &state, &args,
     )?))
 }
 
@@ -742,11 +798,21 @@ async fn post_play_mark_watched(
             // A guessed card's watch carries the guessed id only onto
             // that card's own listing: a resolve since the session's may
             // have landed elsewhere.
+            // A card's session, guessed or not, never replaces a show the
+            // row records: a link made since the session began stands.
             crate::commands::play_native_record::record_watch_requested_at(
                 &state,
                 &watch,
-                args.recordable_kitsu_id(&cached.show_id),
+                crate::commands::guess_guard::guarded(
+                    &state,
+                    &args,
+                    &cached.show_id,
+                    args.recordable_kitsu_id(&cached.show_id),
+                ),
                 begun,
+                // Which card the row's play came from, when a guessed
+                // card's play landed on another listing; none otherwise.
+                args.guess_row.as_deref(),
             )
             .await;
         }
@@ -865,6 +931,10 @@ mod title_match_year_tests;
 mod mark_watched_guess_tests;
 
 #[cfg(test)]
+#[path = "history_guessed_from_test.rs"]
+mod history_guessed_from_tests;
+
+#[cfg(test)]
 #[path = "kitsu_id_boundary_test.rs"]
 mod kitsu_id_boundary_test;
 
@@ -920,10 +990,11 @@ mod tests {
 
     /// Build a stub AppState for router tests. Uses an in-memory SQLite
     /// pool, a tempdir for image cache + config, and a Kitsu client
-    /// pointing at an unused base URL (tests that don't need Kitsu
-    /// won't touch the network).
+    /// pointing at a local address that refuses at once: a route that
+    /// reads Kitsu meets a network failure, never the network.
     pub(super) fn test_app_state(td: &TempDir) -> AppState {
-        let kitsu_base = "http://127.0.0.1:1"; // never reached by these tests
+        // Refused at once: a route that reads Kitsu meets a network failure.
+        let kitsu_base = "http://127.0.0.1:1";
         AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),

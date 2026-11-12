@@ -70,9 +70,14 @@ pub(crate) fn record_fresh_watch(
     requested: &str,
     asked: Asked<'_>,
     kitsu_id: Option<&str>,
+    guess_row: Option<&str>,
 ) {
     stamp_numbering(state, native, asked);
-    write_history(state, native, requested, asked, kitsu_id);
+    // The card note goes with the row, in the guard's step: a write the
+    // guard turns away settles none.
+    write_history_then(state, native, requested, asked, kitsu_id, || {
+        crate::commands::guessed_from::record(state, guess_row, &native.slug);
+    });
 }
 
 /// The wall clock's moment, in milliseconds since the epoch.
@@ -173,11 +178,16 @@ impl Watch {
 /// stay, and this watch writes nothing. That is not a failure — the
 /// show's latest watch is on the row — so it returns quietly, like
 /// every other outcome of a recording.
+///
+/// `guess_row` is the guessed card whose play this is, or none: the
+/// note of which card the row came from ([`crate::commands::guessed_from`])
+/// is settled with the watch.
 pub(crate) async fn record_watch_requested_at(
     state: &AppState,
     watch: &Watch,
     kitsu_id: Option<&str>,
     requested: Epoch,
+    guess_row: Option<&str>,
 ) {
     if watch.show_id.is_empty() {
         return;
@@ -221,6 +231,9 @@ pub(crate) async fn record_watch_requested_at(
         // removal before then still has to know it.
         held.played_from(&watch.show_id, given);
         stamp_watched_at(state, &watch.show_id, now);
+        // The card note goes with the row it is about: a watch the
+        // guard turned away settles none.
+        crate::commands::guessed_from::record(state, guess_row, &watch.show_id);
         Ok::<_, crate::error::AniError>(Some((held.epoch(), previous)))
     });
     let (begun, previous) = match recorded {
@@ -273,12 +286,17 @@ pub(crate) async fn record_watch_requested_at(
 /// whose watch is never recorded — the window closed before
 /// mark-watched — still names its show. Otherwise the row keeps the id
 /// it had, and the watch settles it.
-pub(crate) fn write_history(
+///
+/// `then` runs in the guard's step once the row is written, and only
+/// then: what is settled with the row — the card note — is settled
+/// only for a row the guard accepted.
+pub(crate) fn write_history_then(
     state: &AppState,
     native: &NativeResolved,
     requested: &str,
     asked: Asked<'_>,
     kitsu_id: Option<&str>,
+    then: impl FnOnce(),
 ) {
     let entry = crate::history::HistoryEntry {
         ep_no: matched_episode(native, requested),
@@ -296,6 +314,7 @@ pub(crate) fn write_history(
         }
         held.upsert_resolved(entry)?;
         held.played_from(&native.slug, asked.page);
+        then();
         Ok::<_, crate::error::AniError>(())
     });
     if let Err(e) = wrote {
@@ -308,15 +327,6 @@ pub(crate) fn write_history(
     }
 }
 
-/// [`record_watch_requested_at`] for a watch whose request begins as it
-/// is recorded — the form the tests record with. Every production
-/// caller takes its request's moment first.
-#[cfg(test)]
-pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Option<&str>) {
-    let now = crate::history::guard::epoch(&state.history_path);
-    record_watch_requested_at(state, watch, kitsu_id, now).await;
-}
-
 #[cfg(test)]
 #[path = "play_native_record_test.rs"]
 mod tests;
@@ -324,3 +334,9 @@ mod tests;
 #[cfg(test)]
 #[path = "play_native_record_ids_test.rs"]
 mod ids_tests;
+
+#[cfg(test)]
+#[path = "play_native_record_test_support.rs"]
+mod test_support;
+#[cfg(test)]
+pub(crate) use test_support::{record_watch, write_history};

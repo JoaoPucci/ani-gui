@@ -11,12 +11,20 @@
 //     else should fail loudly rather than silently return undefined.
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { afterAll, afterEach, aroundEach, beforeAll } from 'vitest';
+import { afterAll, afterEach, aroundEach, beforeAll, beforeEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 
 import { installElementAnimateStub } from './stubs/element-animate';
 import { isSession } from './session-contract';
+import { __resetGuessPlaysForTests } from '../../src/lib/history/guess-plays';
+import { candidates, cardLines, verdict } from '../../src/test/link-rules-fake';
+import type {
+	CandidatesRequest,
+	CardLineRow,
+	KitsuAnimeRef,
+	VerdictRequest
+} from '../../src/lib/api';
 
 // Before any component mounts. See the stub for why happy-dom needs
 // it and why only post-mount DOM changes trip over its absence.
@@ -41,6 +49,9 @@ export const API_BASE = 'http://127.0.0.1:31337';
  * - the download folder the detail and play pages show beside the
  *   download action;
  * - a show's watch history, which the detail page reads for resume;
+ * - the whole history, which a guessed Continue session's player reads
+ *   to ask whether the card's row is still a guess (and, failing,
+ *   offers nothing);
  * - the title search a page runs to name a show's provider entry;
  * - the backend's answer to which of a guessed Continue row's hits the
  *   row rules out, which a failed call answers with none;
@@ -63,6 +74,7 @@ const absentBackend = () => HttpResponse.error();
 const incidental = [
 	http.get(`${API_BASE}/api/download/default-dir`, absentBackend),
 	http.get(`${API_BASE}/api/history/by-kitsu/:id`, absentBackend),
+	http.get(`${API_BASE}/api/history`, absentBackend),
 	http.post(`${API_BASE}/api/kitsu/search`, absentBackend),
 	http.post(`${API_BASE}/api/history/guess/ruled-out`, absentBackend),
 	http.post(`${API_BASE}/api/availability/batch`, absentBackend),
@@ -75,6 +87,45 @@ const incidental = [
 			.catch(() => null)) as { prefetch?: boolean } | null;
 		if (body?.prefetch !== true) undescribedRequest(request, requestId);
 		return absentBackend();
+	})
+];
+
+/**
+ * The change-show flow's rules, which the backend answers from what the
+ * renderer sends (`commands/card_line.rs`, `link_verdict.rs`,
+ * `link_candidates.rs`), answered as it does (`frontend/src/test/link-rules-fake.ts`):
+ * Home asks for its cards' lines whatever the scenario, and a surface
+ * opened from a Continue card asks whether to ask about its line. The
+ * picker's candidates run their searches against the scenario's own
+ * search route, as the backend's run against Kitsu. A scenario that
+ * cares about one installs its own handler, which takes precedence.
+ */
+const linkRules = [
+	http.post(`${API_BASE}/api/history/card-lines`, async ({ request }) => {
+		const body = (await request.json()) as { rows: CardLineRow[] };
+		return HttpResponse.json(cardLines(body.rows));
+	}),
+	http.post(`${API_BASE}/api/history/link-verdict`, async ({ request }) =>
+		HttpResponse.json(verdict((await request.json()) as VerdictRequest))
+	),
+	http.post(`${API_BASE}/api/history/link-candidates`, async ({ request }) => {
+		const search = async (query: string): Promise<KitsuAnimeRef[]> => {
+			const res = await fetch(`${API_BASE}/api/kitsu/search`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ query }),
+				signal: request.signal
+			});
+			if (!res.ok) throw new Error(`search answered ${res.status}`);
+			return (await res.json()) as KitsuAnimeRef[];
+		};
+		try {
+			return HttpResponse.json(
+				await candidates((await request.json()) as CandidatesRequest, search)
+			);
+		} catch {
+			return HttpResponse.json({ kind: 'upstream', key: 'error.upstream' }, { status: 502 });
+		}
 	})
 ];
 
@@ -97,6 +148,7 @@ const undescribedAnswer = http.all('*', ({ request, requestId }) => {
 export const server = setupServer(
 	http.get(`${API_BASE}/s/:session/subtitles`, () => HttpResponse.json([])),
 	...incidental,
+	...linkRules,
 	undescribedAnswer
 );
 
@@ -467,6 +519,11 @@ beforeAll(() => {
 	// assertion failure somewhere else entirely.
 	server.listen({ onUnhandledRequest: 'error' });
 });
+
+// The guessed plays the app notes for its run ($lib/history/guess-plays)
+// are a scenario's own: one left by an earlier scenario would make a
+// guessed surface ask where this one expects nothing.
+beforeEach(() => __resetGuessPlaysForTests());
 
 aroundEach(async (runScenario, context) => {
 	await owner.run({ name: context.task.name, ended: false, reported: false }, runScenario);

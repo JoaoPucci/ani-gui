@@ -54,7 +54,14 @@ import {
 	topRated,
 	trending
 } from './fixtures/kitsu';
-import { appWindow, launchPackagedApp, packagedBinary, stopApp, stopDeadApp } from './launch';
+import {
+	appWindow,
+	cardLinesAnswer,
+	launchPackagedApp,
+	packagedBinary,
+	stopApp,
+	stopDeadApp
+} from './launch';
 
 /** Two rows: the first resolves to the stubbed show and is the one
  *  deleted, so the second has a gap to close. */
@@ -119,6 +126,7 @@ async function launchOnce(
 				: r.fulfill({ status: 503 });
 		}
 		if (p === '/api/history') return j(rows);
+		if (p === '/api/history/card-lines') return j(cardLinesAnswer(r.request().postDataJSON()));
 		if (p.startsWith('/api/history/') && method === 'DELETE') {
 			const id = decodeURIComponent(p.split('/')[3] ?? '');
 			rows = rows.filter((row) => row.id !== id);

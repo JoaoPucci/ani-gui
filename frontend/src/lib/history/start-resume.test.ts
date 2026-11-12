@@ -270,6 +270,31 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 		);
 	});
 
+	it("names the card's row on a play no guess opened, so the backend keeps the line's show", async () => {
+		// Codex review: a link landing while the resume awaited its cap
+		// rematches the row; the resume still names the old show, and with
+		// the card's row the backend keeps the correction.
+		const h = makeHarness({ isGuess: () => false });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: false, cardRow: 'h1' }),
+			expect.any(Function)
+		);
+		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ cardRow: 'h1' }));
+	});
+
+	it('records no id and writes no tracker for a play the backend kept off its line', async () => {
+		const h = makeHarness({
+			isGuess: () => false,
+			resolvePlay: vi.fn().mockResolvedValue({ session_id: 's1', line_kept: true })
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ guess: true }));
+		expect(h.deps.syncTrackers).not.toHaveBeenCalled();
+	});
+
 	it("records a guess whose play landed on the card's own listing, and writes the trackers", async () => {
 		const h = makeHarness({
 			isGuess: (id) => id === 'h1',
@@ -296,6 +321,28 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 
 		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ guess: false }));
 		expect(h.deps.syncTrackers).not.toHaveBeenCalled();
+	});
+
+	it("opens a card that stands for the line clicked as a guess of that line, from the shown row's progress", async () => {
+		// JoJo: the card shows the 2012 listing's row, which a guessed play
+		// of the 2000 card wrote, and stands for the 2000 card's line.
+		const h = makeHarness({ isGuess: (id) => id === 'h-card' });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h-played', '5', 'Show'), makeMatch('k1', 12), 12, true, 'h-card');
+
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: true, row: 'h-card', episode: 6 }),
+			expect.any(Function)
+		);
+		expect(h.deps.navigateToSession).toHaveBeenCalledWith(
+			'k1',
+			{ session_id: 's1' },
+			6,
+			true,
+			'h-card'
+		);
+		// The cap is the shown row's, as its progress is.
+		expect(h.counts).toEqual([['h-played', 12]]);
 	});
 
 	it('opens a trusted match as the show itself', async () => {
@@ -627,6 +674,34 @@ describe('makeStartResume (after the viewer moved on)', () => {
 		expect(c.claims).toEqual(['claim']);
 	});
 
+	it('claims navigation and holds the card busy before its line is known, and plays as that line once it is', async () => {
+		const c = claimed();
+		let line!: (row: string) => void;
+		const h = makeHarness({
+			isGuess: (id) => id === 'h-card',
+			claimNavigation: () => {
+				h.log.push('claim');
+				return c.claimNavigation();
+			}
+		});
+		const started = makeStartResume(h.deps)(
+			makeEntry('h-played', '5', 'Show'),
+			makeMatch('k1', 12),
+			12,
+			true,
+			new Promise<string>((r) => (line = r))
+		);
+		await Promise.resolve();
+		// A second click meanwhile finds the card busy.
+		expect(h.log).toEqual(['claim', 'busy:k1']);
+		line('h-card');
+		await started;
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: true, row: 'h-card' }),
+			expect.any(Function)
+		);
+	});
+
 	it('opens no player once the claim lapsed, and lets the card go', async () => {
 		const c = claimed();
 		const h = makeHarness({
@@ -778,5 +853,36 @@ describe('makeStartResume (moved on while a failure is worded)', () => {
 			expect.objectContaining({ mode: 'sub' }),
 			expect.any(Function)
 		);
+	});
+});
+
+describe('a resume whose row is matched again while it works', () => {
+	it("pins no cap: the one it learned is the former show's", async () => {
+		// The card is linked (from its pill, by keyboard, behind the
+		// resume's overlay) while the click's cap lookup is out.
+		let relinked = false;
+		const h = makeHarness({
+			since: () => {
+				h.log.push('view');
+				return () => !relinked;
+			},
+			fetchInteractiveCount: vi.fn().mockImplementation(async () => {
+				h.log.push('interactive-count');
+				relinked = true;
+				return { count: 1, approximate: false };
+			})
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '1', 'Show'), makeMatch('k1', 1), 1, true);
+		expect(h.counts).toEqual([]);
+		// The view is the row as the click found it.
+		expect(h.log.indexOf('view')).toBeLessThan(h.log.indexOf('settings'));
+	});
+
+	it('pins the cap while the row is still matched as the click found it', async () => {
+		const h = makeHarness({ since: () => () => true });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '12', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(h.counts).toEqual([['h1', 12]]);
 	});
 });

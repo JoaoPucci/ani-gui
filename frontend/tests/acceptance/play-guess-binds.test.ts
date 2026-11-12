@@ -213,7 +213,13 @@ function openStreamFor(episode: number): FakeEventSource | undefined {
 		.at(-1);
 }
 
-function land(es: FakeEventSource, episode: number, unverified = false, ownListing = false) {
+function land(
+	es: FakeEventSource,
+	episode: number,
+	unverified = false,
+	ownListing = false,
+	lineKept = false
+) {
 	es.landed = true;
 	es.dispatch(
 		'done',
@@ -223,7 +229,8 @@ function land(es: FakeEventSource, episode: number, unverified = false, ownListi
 			media_kind: 'hls',
 			episode: `${episode}`,
 			...(unverified ? { episode_unverified: true } : {}),
-			...(ownListing ? { own_listing: true } : {})
+			...(ownListing ? { own_listing: true } : {}),
+			...(lineKept ? { line_kept: true } : {})
 		})
 	);
 }
@@ -285,6 +292,48 @@ describe("play route — a guessed card's session", () => {
 		const asked = await switchInGuessedSession(3, 4, true, true);
 		expect(asked.searchParams.get('guess_row')).toBe(ROW);
 		expect(stamped.at(-1)).toMatchObject({ episode: '4', kitsu_id: KITSU_ID });
+		await noTrackerWriteWindow();
+		expect(writes).toEqual([]);
+	});
+});
+
+// A session a card opened with no guess (a line the user named, played
+// from Home) names the card's row on its plays (`card_row`). The
+// backend answers whether it kept the play off the line, which records
+// another show (`line_kept`): a player mounted again after "Keep
+// watching this", before it read the pick back. Such a play is stamped
+// with no id and written to no tracker.
+describe("play route — a card's session no guess opened", () => {
+	async function switchInCardSession(lineKept: boolean) {
+		const show = { kitsuCount: 12, status: 'finished', providerCount: 12 };
+		setUrl(`/play/${KITSU_ID}`, { episode: '3', row: ROW });
+		serve(show);
+		app = mount(PlayPage, { target });
+		await until(() => card(4) !== null, 'the card for episode 4');
+		card(4)!.click();
+		let asked: URL | null = null;
+		await until(() => {
+			const es = openStreamFor(4);
+			if (es) {
+				asked = new URL(es.url);
+				land(es, 4, false, false, lineKept);
+			}
+			return marked.includes('4');
+		}, 'episode 4 marked watched');
+		return asked as unknown as URL;
+	}
+
+	it("names the card's row, and writes the trackers for a play the line records", async () => {
+		const asked = await switchInCardSession(false);
+		expect(asked.searchParams.get('card_row')).toBe(ROW);
+		expect(asked.searchParams.get('kitsu_id')).toBe(KITSU_ID);
+		expect(stamped.at(-1)).toMatchObject({ episode: '4', kitsu_id: KITSU_ID });
+		await until(() => writes.length >= TRACKERS.length, 'both trackers written');
+	});
+
+	it('records no id and writes no tracker for a play kept off the line', async () => {
+		await switchInCardSession(true);
+		expect(stamped.at(-1)).not.toHaveProperty('kitsu_id');
 		await noTrackerWriteWindow();
 		expect(writes).toEqual([]);
 	});

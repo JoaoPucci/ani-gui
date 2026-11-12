@@ -316,6 +316,27 @@ export async function routeContext(
 	}
 }
 
+/** The backend's answer to Home's `POST /api/history/card-lines` for the
+ *  rows `body` names (`commands/card_line.rs`): each card stands for its
+ *  own row, or for the line its guessed play came from while both show
+ *  as the same show, and offers its pill while that line is a guess or
+ *  one the user named. */
+export function cardLinesAnswer(body: unknown): Record<string, { line: string; correctable: boolean }> {
+	type Row = { id: string; guessed_from?: string | null; show?: string | null; guess?: boolean; named?: boolean };
+	const rows = ((body as { rows?: Row[] } | null)?.rows ?? []) as Row[];
+	const lineOf = (shown: Row): Row => {
+		const from = shown.guessed_from;
+		if (!from || from === shown.id || !shown.guess || !shown.show) return shown;
+		return rows.find((r) => r.id === from && r.show === shown.show) ?? shown;
+	};
+	return Object.fromEntries(
+		rows.map((shown) => {
+			const line = lineOf(shown);
+			return [shown.id, { line: line.id, correctable: line.guess === true || line.named === true }];
+		})
+	);
+}
+
 /** Answers every backend API request that none of a spec's own stubs
  *  answers with a 501, and records it as `METHOD /path`. Registered
  *  before the spec's stubs, since Playwright tries the most recently

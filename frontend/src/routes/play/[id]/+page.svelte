@@ -78,7 +78,8 @@
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { captionChoiceOf, storedCaption } from '$lib/play/caption-choice';
-	import { storedAudio } from '$lib/play/audio-choice';
+	import { audioFor, storedAudio } from '$lib/play/audio-choice';
+	import { carrySwitchAudio, takeSwitchAudio } from '$lib/play/switch-audio';
 	import { rememberPickMoved } from '$lib/play/caption-repick';
 	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
@@ -208,14 +209,25 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
-		guessedId,
-		guessRow,
 		openedFromGuess,
 		openedFromRow,
 		recordableId,
 		withGuess,
 		withRow
 	} from '$lib/play/play-origin';
+	import { guessedQuery } from '$lib/history/guessed-context';
+	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
+	import { noteSwitch } from '$lib/history/guess-slip';
+	import { appLinkDeps } from '$lib/history/link-deps';
+	import { switchShow, type SwitchRequest, type SwitchShowDeps } from '$lib/play/switch-show';
+	import { switchToPick as runPickSwitch } from '$lib/play/pick-switch';
+	import { sessionShow } from '$lib/play/session-show';
+	import { applyCarriedRate, carryRate, takeRate } from '$lib/play/rate-carry';
+	import { takeSwitch } from '$lib/history/guess-slip';
+	import { holdPlayback } from '$lib/play/hold-playback';
+	import GuessSlip from '$lib/components/GuessSlip.svelte';
+	import GuessMark from '$lib/components/GuessMark.svelte';
+	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
 
 	const id = $derived(page.params.id ?? '');
 	// A session opened from a guessed Continue match records the guess —
@@ -228,7 +240,51 @@
 	// card's history row, so removing the card forgets them whatever
 	// show it names by then; every URL this page builds carries it on.
 	const fromRow = $derived(openedFromRow(page.url.searchParams));
+	// The show page a guessed card's session goes up to says which
+	// history title the card was matched from ($lib/history/guessed-context).
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
+	// A guessed session's slip, its ⋯ entry and the picker they open
+	// ($lib/history/in-place-link.svelte.ts): "Is this the show you
+	// meant?". The player stays where it is through a pick until the
+	// viewer switches to it (switchToPick); the picker holds playback
+	// while it is open ($lib/play/hold-playback). What a pick did is
+	// said in the slip, not a toast, unless the pick is saved after the
+	// viewer left, when a toast says it. A session a switch opened, or one
+	// of a row picked for here since the app started, keeps the ⋯ entry
+	// to change the show again ($lib/history/guess-slip.ts).
+	const playLink = new InPlaceLinkSession({
+		...appLinkDeps(),
+		notify: (notice) => toastStore.push(notice),
+		// The shown show's own Sub or Dub, else the one this session was
+		// switched in, else Settings — asked of the show the link was made
+		// for, whichever page is on screen when it answers.
+		audioInForce: (shown) => audioFor(shown, switchedAudio ?? playMode(config)),
+		inPlayer: true,
+		// A pick a correction made elsewhere overtook: read the line again,
+		// so the slip shows the answer that stands.
+		reread: () => void playLink.arrive(fromRow, id, fromGuess)
+	});
+	// A pick saved after the viewer left is still saved, and switches to
+	// nothing.
+	onDestroy(() => playLink.leave());
+	// Every session of a card's line arrives with it: its offer decides
+	// whether the line is asked about (a guess) or can be changed again
+	// (a line the user named a show for, $lib/history/picked-offer).
+	$effect(() => void playLink.arrive(fromRow, id, fromGuess));
+	// The line goes up with the link while the session can ask about it:
+	// a guess, or a line the user named a show for ($lib/history/picked-offer).
+	const showHref = $derived(
+		resolve('/anime/[id]', { id }) + guessedQuery(fromGuess || playLink.offer !== null, fromRow)
+	);
+	// What the session's plays name as their show: its page's, its guess
+	// named apart, or once the card was linked from here, the link
+	// ($lib/play/play-origin).
+	const playingAs = $derived(
+		sessionShow({ id, guess: fromGuess, row: fromRow, linked: playLink.linked?.id ?? null })
+	);
+	$effect(() => {
+		if (playLink.open) return holdPlayback(untrack(() => videoEl));
+	});
 	// A fractional extra (a 7.5 recap) stays itself: see
 	// $lib/play/episode-number.
 	const episodeNum = $derived(parseEpisodeNumber(page.url.searchParams.get('episode')) ?? 1);
@@ -273,10 +329,10 @@
 	const UI_PAGE_SIZE = 5;
 	const KITSU_PAGE_SIZE = 20;
 	// Per-show — the id-change $effect below drops it on /play/A →
-	// /play/B (defensive: no in-app path triggers that today, but
-	// browser back/forward + URL-bar edits can, and a stale page-1
-	// would serve A's thumbnails for B's first paint). See
-	// lib/detail/episode-page-cache.
+	// /play/B (defensive: the route mounts a new page for another show,
+	// ./+layout.svelte, so only a page mounted without that layout
+	// would see the id change, and a stale page-1 would serve A's
+	// thumbnails for B's first paint). See lib/detail/episode-page-cache.
 	const kitsuPageCache = createEpisodePageCache();
 	let theaterMode = $state(false);
 	let similar = $state<KitsuAnimeRef[] | null>(null);
@@ -285,7 +341,10 @@
 	// ($lib/play/audio-choice); a show never chosen on plays the
 	// Settings value, which is only the default.
 	let chosenAudio = $derived<'sub' | 'dub' | undefined>(storedAudio(id));
-	const audio = $derived(chosenAudio ?? playMode(config));
+	// The audio a switch to this show carried, kept for the session when
+	// the storage refused it as the show's choice ($lib/play/switch-audio).
+	const switchedAudio = takeSwitchAudio(untrack(() => id));
+	const audio = $derived(chosenAudio ?? switchedAudio ?? playMode(config));
 	let detailError = $state<string | null>(null);
 	let playerError = $state<string | null>(null);
 	let switchBusy = $state(false);
@@ -1267,10 +1326,12 @@
 	 * Which visit to this route the answer belongs to.
 	 *
 	 * The show and the mode describe the ROW being asked about, and
-	 * both come back when the user does. SvelteKit reuses this
-	 * component across an A→B→A round trip, so nothing is destroyed
-	 * and a click abandoned two navigations ago finds the context it
-	 * left behind and acts on it. This advances on every id
+	 * both come back when the user does. The route mounts a new page
+	 * for another show (./+layout.svelte), but this guard predates that
+	 * and still holds for any page that sees the id change: one reused
+	 * across an A→B→A round trip destroys nothing, and a click
+	 * abandoned two navigations ago would find the context it left
+	 * behind and act on it. This advances on every id
 	 * transition, so a question can only be answered to the page that
 	 * asked it.
 	 *
@@ -2053,6 +2114,10 @@
 		if (handoff.handedOff) endHold();
 		playerError = null;
 		failedStreamError = null;
+		// A switch from another show's player hands its speed over, played
+		// once the stream's metadata has loaded ($lib/play/rate-carry).
+		const stopRate = applyCarriedRate(videoEl, id);
+		if (stopRate) sourceScope.add(stopRate);
 
 		// One held retry pending per source: a second failure inside
 		// a hold re-arms it rather than adding a second startLoad,
@@ -2318,11 +2383,11 @@
 	 *  even if they've scrolled to the episode strip. */
 	let playFailure = $state<{ episode: number; message: string } | null>(null);
 
-	// Drop the per-show page-cache when the show id changes. No in-app
-	// path navigates /play/A → /play/B today (PosterCard sends to
-	// /anime/[id], prev/next reuses the same id), so the only way to
-	// land here with a stale cache is browser back/forward or URL-bar
-	// edits — but the defense is one line. Same contract /anime/[id]'s
+	// Drop the per-show page-cache when the show id changes. The route
+	// mounts the page afresh for another show (./+layout.svelte), which
+	// a switch to a card's pick does (switchToPick), so this only
+	// guards a page mounted without that layout — but the defense is
+	// one line. Same contract /anime/[id]'s
 	// id-change reset enforces. Episode changes within the same show
 	// keep the cache (id stable → effect doesn't refire), so prev/next
 	// pagination stays instant.
@@ -2397,7 +2462,7 @@
 		const title = detail?.canonical_title ?? null;
 		pageTrail.name(page.url.pathname, [
 			{ label: m.breadcrumb_home(), href: '/' },
-			{ label: title ?? m.breadcrumb_anime(), href: resolve('/anime/[id]', { id }) },
+			{ label: title ?? m.breadcrumb_anime(), href: showHref },
 			{ label: m.play_head_title_episode_prefix({ episode: String(episodeNum) }) }
 		]);
 	});
@@ -2455,17 +2520,18 @@
 				episode: targetEp,
 				mode,
 				show: detail,
-				kitsuId: recordableId(id, fromGuess),
 				prefetch: true,
 				version,
 				caption: storedCaption(id),
 				// The click may take this warm's session: it answers for the
-				// guessed card's row as the click would.
-				guessRow: guessRow(fromGuess, fromRow),
-				guessId: guessedId(fromGuess, id)
+				// guessed card's row, naming its show, as the click would.
+				kitsuId: playingAs.kitsuId,
+				guessRow: playingAs.guessRow,
+				cardRow: playingAs.cardRow,
+				guessId: playingAs.guessId
 			});
 			void getOrFire(
-				makeKey(id, targetEp, mode, version, args.guess_row, args.caption),
+				makeKey(id, targetEp, mode, version, args.guess_row, args.caption, args.card_row),
 				(emit, signal) => playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
@@ -2501,9 +2567,10 @@
 		if (!title) return;
 		const mode = audio;
 		// The show, visit and flags this switch is for, and its request,
-		// taken at the click ($lib/play/owned-play): the route's component
-		// is reused across shows and across a round trip back, so a late
-		// answer is judged against them. (`detail` loads only on mount.)
+		// taken at the click ($lib/play/owned-play): a late answer is
+		// judged against them, as the visit it was for may be over. (The
+		// route mounts a new page for another show, ./+layout.svelte,
+		// since `detail` loads only on mount.)
 		const here = navigationClaims.claim();
 		const owner = claimPlay(
 			id,
@@ -2513,19 +2580,23 @@
 		const show = detail;
 		const guess = fromGuess;
 		const row = fromRow;
+		// What the switch names as its show: the page's, or a guess named
+		// apart — the link, once the card was linked from here.
+		const as = playingAs;
 		const version = storedChoice(owner.showId);
 		const playArgs = playArgsFor({
 			title,
 			episode: targetEp,
 			mode,
 			show,
-			kitsuId: recordableId(owner.showId, guess),
 			version,
 			caption: storedCaption(owner.showId),
-			guessRow: guessRow(guess, row),
+			kitsuId: as.kitsuId,
+			guessRow: as.guessRow,
+			cardRow: as.cardRow,
 			// The guess, apart from the page's id: the resolve records it on
 			// the card's row when the switch lands on that row's listing.
-			guessId: guessedId(guess, owner.showId)
+			guessId: as.guessId
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
@@ -2547,7 +2618,15 @@
 				owner,
 				() =>
 					getOrFire(
-						makeKey(owner.showId, targetEp, mode, version, playArgs.guess_row, playArgs.caption),
+						makeKey(
+							owner.showId,
+							targetEp,
+							mode,
+							version,
+							playArgs.guess_row,
+							playArgs.caption,
+							playArgs.card_row
+						),
 						(emit, signal) => playStream(playArgs, emit, signal),
 						(p) => {
 							switchProgress = progressLabel(p);
@@ -2600,7 +2679,7 @@
 			// and mirrored as a play from the show's page is.
 			const record = playedRecord(
 				{ ...playArgs, episode: String(played) },
-				owner.showId,
+				as.recordAs,
 				guess,
 				outcome.session
 			);
@@ -2610,7 +2689,7 @@
 					showId: owner.showId,
 					episode: played,
 					show,
-					mirror: record.mirror,
+					mirror: record.mirror && as.mirrors,
 					unverified: outcome.session.episode_unverified
 				},
 				{ markWatched, syncTrackers: syncWatchedToTrackers }
@@ -2641,6 +2720,91 @@
 		} finally {
 			switchBusy = false;
 		}
+	}
+
+	/** "Switch to it now": the same episode, from the point playback
+	 *  stands at, on the stream of the show picked for the card
+	 *  ($lib/play/switch-show.ts). The between-episodes loading band
+	 *  holds the player meanwhile. The route mounts the page afresh for
+	 *  the other show (./+layout.svelte); a stream that cannot be had
+	 *  leaves the episode on screen and says so. */
+	async function switchToPick() {
+		await runPickSwitch(playLink.linked, {
+			busy: () => switchBusy,
+			setBusy: (busy) => {
+				switchBusy = busy;
+				if (busy) switchProgress = null;
+			},
+			playback: () => ({
+				at: videoEl?.currentTime ?? currentTime,
+				playing: videoEl ? !videoEl.paused : false,
+				rate: videoEl?.playbackRate ?? playbackRate
+			}),
+			pause: () => videoEl?.pause(),
+			resume: () => void videoEl?.play().catch(() => {}),
+			storedAudio,
+			sessionAudio: () => audio,
+			carryAudio: carrySwitchAudio,
+			takeAudio: (showId) => void takeSwitchAudio(showId),
+			choices: (showId) => ({ version: storedChoice(showId), caption: storedCaption(showId) }),
+			episode: () => episodeNum,
+			row: () => fromRow,
+			// Claimed as the switch runs, never by a click the lock turns
+			// away: that would outdate the play holding it.
+			run: (req) => switchShow(pickSwitchEffects(req, navigationClaims.claim()), req),
+			failed: (pick) =>
+				toastStore.push({
+					kind: 'error',
+					message: m.play_link_switch_failed({ title: pick.title })
+				})
+		});
+	}
+
+	/** The app's effects for a switch to `req.to` ($lib/play/switch-show). */
+	function pickSwitchEffects(req: SwitchRequest, here: () => boolean): SwitchShowDeps {
+		const pickId = req.to.id;
+		return {
+			resolve: (args) =>
+				getOrFire(
+					makeKey(pickId, req.episode, req.mode, req.version, undefined, args.caption),
+					(emit, signal) => playStream(args, emit, signal),
+					(p) => {
+						switchProgress = progressLabel(p);
+					}
+				),
+			record: (args, session, episode) =>
+				void recordPlayed(
+					{
+						args,
+						showId: pickId,
+						episode,
+						show: req.to,
+						mirror: true,
+						unverified: session.episode_unverified
+					},
+					{ markWatched, syncTrackers: syncWatchedToTrackers }
+				),
+			carry: (showId, episode, seconds) => recoveryResume.capture(showId, episode, seconds),
+			noteSwitch,
+			played: (showId, session, requested) => followPlayed(showId, session, requested),
+			carryRate,
+			forget: (showId, row) => {
+				recoveryResume.forgetShow(showId);
+				takeRate(showId);
+				takeSwitch(row);
+			},
+			open: (showId, session, episode, row) =>
+				/* eslint-disable svelte/no-navigation-without-resolve */
+				goto(
+					resolve('/play/[id]', { id: showId }) + withRow(buildPlayQuery(session, episode), row),
+					{ replaceState: true }
+				).then(
+					() => true,
+					() => false
+				),
+			/* eslint-enable svelte/no-navigation-without-resolve */
+			isCurrent: () => !gone && here()
+		};
 	}
 
 	/** Hand off to a fresh resolve when the player layer fails
@@ -2993,6 +3157,9 @@
 		const cfg = config;
 		const mode = audio;
 		const launch = { kitsuId: id, mode, episode: ep };
+		// What the session's own plays name: the card's row and its guess
+		// (the pick, once one was made here).
+		const as = playingAs;
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on (another show, or away and back) is
 		// not shown to them, and asks the cache nothing.
@@ -3016,7 +3183,10 @@
 						handoffArgs({
 							title,
 							episode: ep,
-							kitsuId: recordableId(id, fromGuess) ?? '',
+							kitsuId: as.kitsuId ?? '',
+							guessRow: as.guessRow,
+							cardRow: as.cardRow,
+							guessId: as.guessId,
 							config: { mode },
 							detail,
 							version: storedChoice(id),
@@ -3065,6 +3235,9 @@
 		const ep = episodeNum;
 		const mode = audio;
 		const launch = { kitsuId: id, mode, episode: ep };
+		// What the session's own plays name: the card's row and its guess
+		// (the pick, once one was made here).
+		const as = playingAs;
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on is not shown to them.
 		const owner = claimPlay(
@@ -3084,7 +3257,10 @@
 						handoffArgs({
 							title,
 							episode: ep,
-							kitsuId: recordableId(id, fromGuess) ?? '',
+							kitsuId: as.kitsuId ?? '',
+							guessRow: as.guessRow,
+							cardRow: as.cardRow,
+							guessId: as.guessId,
 							config: { mode },
 							detail,
 							version: storedChoice(id),
@@ -3157,8 +3333,9 @@
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const onKey = (e: KeyboardEvent) => {
-			// A modal over the player (a play failure, the download
-			// dialog) is the only keyboard target while it is up.
+			// A modal over the player (the change-show picker, a play
+			// failure, the download dialog) is the only keyboard target
+			// while it is up.
 			if (isModalOpen()) return;
 			const t = e.target as HTMLElement | null;
 			const inField =
@@ -3174,7 +3351,8 @@
 				inField,
 				inButton,
 				modifier: e.ctrlKey || e.metaKey || e.altKey,
-				repeat: e.repeat
+				repeat: e.repeat,
+				overDialog: playLink.open
 			});
 			if (!action) return;
 			// All player shortcuts swallow the default browser action:
@@ -3275,14 +3453,15 @@
 					<p class="player-error-body">
 						{deadEndMessage(reloadEnd, availabilityMode, deadEndOtherAudio)}
 					</p>
+					<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query -->
 					<a
 						class="player-error-action"
-						href={resolve('/anime/[id]', { id })}
+						href={showHref}
 						onclick={(e) => {
 							// Replace, like the now-playing link: the show's page
 							// is "up" from the player.
 							e.preventDefault();
-							void goto(resolve('/anime/[id]', { id }), { replaceState: true });
+							void goto(showHref, { replaceState: true });
 						}}
 					>
 						<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -3293,6 +3472,7 @@
 						</svg>
 						<span>{m.play_error_stream_back_to_show()}</span>
 					</a>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 				{:else}
 					<!-- Held while the airing lookup is out: the switch the
 					     Reload hands to would decline it ($lib/play/reload-offer). -->
@@ -3926,19 +4106,34 @@
 	</section>
 
 	<div class="watch-column">
+		{#if playLink.slip !== 'none'}
+			<GuessSlip
+				view={playLink.slip}
+				title={playLink.offer?.entry.title ?? null}
+				linkedTitle={playLink.linked?.title ?? null}
+				switchedTitle={playLink.switchedTitle}
+				busy={playLink.busy}
+				switching={switchBusy}
+				onchange={() => void playLink.start(episodeNum)}
+				onright={() => void playLink.answerYes()}
+				onswitch={() => void switchToPick()}
+				onhide={() => playLink.hide()}
+			/>
+		{/if}
 		<!-- Now-playing row: compact breadcrumb under the player so the
 		     page hierarchy reads "video → context → more episodes →
 		     similar". Show title links back to the detail page; episode
 		     prev/next + external player live on the right. -->
 		<header class="now-playing">
+			<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query -->
 			<a
 				class="np-link"
-				href={resolve('/anime/[id]', { id })}
+				href={showHref}
 				onclick={(e) => {
 					// Replace, not push — treats poster → details as an "up"
 					// navigation rather than burying the player in history.
 					e.preventDefault();
-					void goto(resolve('/anime/[id]', { id }), { replaceState: true });
+					void goto(showHref, { replaceState: true });
 				}}
 			>
 				{#if npPoster}
@@ -3983,6 +4178,7 @@
 					</span>
 				</span>
 			</a>
+			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
 			<div class="np-actions">
 				{#if !singleVideo}
@@ -4162,6 +4358,20 @@
 								</div>
 							{:else}
 								<div class="more-pane" in:fade={{ duration: 120 }}>
+									{#if playLink.offer}
+										<button
+											type="button"
+											class="more-item"
+											role="menuitem"
+											onclick={() => {
+												closeMore();
+												void playLink.start(episodeNum);
+											}}
+										>
+											<GuessMark class="more-icon" />
+											<span>{m.play_link_menu_item()}</span>
+										</button>
+									{/if}
 									<button
 										type="button"
 										class="more-item"
@@ -4603,6 +4813,33 @@
 			</div>
 		{/if}
 	</div>
+	{#if playLink.offer}
+		<LinkShowDialog
+			open={playLink.open}
+			savedTitle={playLink.offer.entry.title}
+			episode={playLink.episode}
+			playing
+			currentLabel={m.play_link_playing_now()}
+			candidates={playLink.candidates}
+			failed={playLink.failed}
+			chosen={playLink.chosen}
+			warnings={playLink.warnings}
+			rowCount={playLink.group?.length ?? null}
+			busy={playLink.busy}
+			error={playLink.error}
+			onSearch={(q) => void playLink.search(q)}
+			onChoose={(c) => playLink.choose(c)}
+			onConfirm={() => void playLink.confirm()}
+			onCancel={() => playLink.cancel()}
+			switchAt={formatTime(currentTime)}
+			shown={detail}
+			onSwitch={async () => {
+				// Only a pick that was saved: a failed one leaves its error in
+				// the picker, and an earlier pick's switch is not this one.
+				if (await playLink.confirm()) void switchToPick();
+			}}
+		/>
+	{/if}
 </main>
 
 <LoadingOverlay visible={switchBusy} progress={switchProgress} />

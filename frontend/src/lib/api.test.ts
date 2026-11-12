@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { guessPlayed, notePlayed, __resetGuessPlaysForTests } from '$lib/history/guess-plays';
 import { readPosition, savePosition } from './play/watch-position';
 import { getLocale } from '$lib/paraglide/runtime';
 import {
@@ -20,6 +21,11 @@ import {
 	historyByKitsu,
 	historyClear,
 	historyDelete,
+	historyLink,
+	historyCardLines,
+	historyLinkCandidates,
+	historyLinkGroup,
+	historyLinkVerdict,
 	historyList,
 	historyNumber,
 	imageCacheClear,
@@ -345,6 +351,41 @@ describe('playExternal', () => {
 	});
 });
 
+describe('a handoff and the guessed plays it settles ($lib/history/guess-plays)', () => {
+	beforeEach(() => __resetGuessPlaysForTests());
+
+	it("settles the show's guessed line only once the handoff's player started", async () => {
+		for (const handoff of [playExternal, playSyncplay]) {
+			__resetGuessPlaysForTests();
+			notePlayed({ guess_row: 'hianime:show-1', guess_id: '42' });
+			globalThis.fetch = mockFetchOnce(
+				{ code: 'error.play.failed' },
+				500
+			) as unknown as typeof fetch;
+			await expect(
+				handoff({ title: 'Show', episode: '1', mode: 'sub', kitsu_id: '42' })
+			).rejects.toBeDefined();
+			// A handoff that failed played nothing.
+			expect(guessPlayed('hianime:show-1', '42')).toBe(true);
+			globalThis.fetch = mockFetchOnce(null, 202) as unknown as typeof fetch;
+			await handoff({ title: 'Show', episode: '1', mode: 'sub', kitsu_id: '42' });
+			expect(guessPlayed('hianime:show-1', '42')).toBe(false);
+		}
+	});
+
+	it("notes a guessed session's handoff for its line", async () => {
+		globalThis.fetch = mockFetchOnce(null, 202) as unknown as typeof fetch;
+		await playExternal({
+			title: 'Show',
+			episode: '1',
+			mode: 'sub',
+			guess_row: 'hianime:show-1',
+			guess_id: '42'
+		});
+		expect(guessPlayed('hianime:show-1', '42')).toBe(true);
+	});
+});
+
 describe('playSyncplay', () => {
 	it('POSTs the PlayArgs payload to /api/play/syncplay', async () => {
 		// Mirror of playExternal: the backend resolves the stream the
@@ -541,6 +582,26 @@ describe('playStream', () => {
 		await promise;
 	});
 
+	it('appends record_later=1 when the caller records the watch itself, and only then', async () => {
+		const promise = playStream(
+			{ title: 'X', episode: '5', mode: 'sub', record_later: true },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(es.url).toContain('record_later=1');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+		const plain = playStream({ title: 'X', episode: '5', mode: 'sub' }, () => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		const es2 = FakeEventSource.instances[1];
+		expect(es2.url).not.toContain('record_later');
+		es2.dispatch('done', JSON.stringify(donePayload()));
+		await plain;
+	});
+
 	it('names the version to play in the query when one is set, and only then', async () => {
 		// The SSE endpoint reads the version from its query string; a
 		// show whose pick has versions plays the uncensored one when
@@ -639,6 +700,19 @@ describe('playStream', () => {
 		await promise;
 	});
 
+	it("names the card's row of a session no guess opened on the SSE query", async () => {
+		const promise = playStream(
+			{ title: 'X', episode: '1', mode: 'sub', kitsu_id: '42', card_row: 'hianime:x-1' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(new URL(es.url).searchParams.get('card_row')).toBe('hianime:x-1');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+	});
+
 	it("names the guessed card's row on the SSE query when given, and only then", async () => {
 		// The session then says whether the play landed on that row's own
 		// listing, which is what lets the guess be recorded on it.
@@ -661,6 +735,7 @@ describe('playStream', () => {
 		const es2 = FakeEventSource.instances[1];
 		expect(new URL(es2.url).searchParams.has('guess_row')).toBe(false);
 		expect(new URL(es2.url).searchParams.has('guess_id')).toBe(false);
+		expect(new URL(es2.url).searchParams.has('card_row')).toBe(false);
 		es2.dispatch('done', JSON.stringify(donePayload()));
 		await plain;
 	});
@@ -2159,6 +2234,119 @@ describe('downloadStream', () => {
 		es.dispatch('done', 'not-json');
 		await expect(promise).rejects.toBeDefined();
 		expect(es.closed).toBe(true);
+	});
+});
+
+describe('historyLink', () => {
+	it('posts the rows and the id, and reads back what was written', async () => {
+		const outcome = {
+			kitsu_id: '13209',
+			linked: [{ row: 'hianime:black-clover-949', previous: null, ep_no: '1', watched_at: 5 }]
+		};
+		const fetchMock = mockFetchOnce(outcome);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		expect(
+			await historyLink('hianime:black-clover-949', ['hianime:black-clover-949'], '13209')
+		).toEqual(outcome);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/link`);
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(String(init?.body))).toEqual({
+			card: 'hianime:black-clover-949',
+			rows: ['hianime:black-clover-949'],
+			kitsu_id: '13209'
+		});
+	});
+
+	it("names the card's row as the link's card", async () => {
+		const fetchMock = mockFetchOnce({ kitsu_id: '13209', linked: [] });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await historyLink(
+			'hianime:jojo-2000-5182',
+			['hianime:jojo-2000-5182', 'hianime:jojo-2012-708'],
+			'13209'
+		);
+		expect(JSON.parse(String(lastCall(fetchMock).init?.body)).card).toBe('hianime:jojo-2000-5182');
+	});
+
+	it('names the card even when no row is left to link', async () => {
+		// The backend refuses a link with no card: an empty group still
+		// says which card it was made from.
+		const fetchMock = mockFetchOnce({ kitsu_id: '13209', linked: [] });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await historyLink('hianime:jojo-2000-5182', [], '13209');
+		expect(JSON.parse(String(lastCall(fetchMock).init?.body))).toEqual({
+			card: 'hianime:jojo-2000-5182',
+			rows: [],
+			kitsu_id: '13209'
+		});
+	});
+
+	it('asks which rows a link from the card would write, from each row and its match', async () => {
+		const fetchMock = mockFetchOnce(['hianime:jojo-2000-5182']);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const request = {
+			card: 'hianime:jojo-2000-5182',
+			show: '7158',
+			saved: null,
+			rows: [{ id: 'hianime:jojo-2012-708', show: '7158', trusted: false }]
+		};
+		expect(await historyLinkGroup(request)).toEqual(['hianime:jojo-2000-5182']);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/link-group`);
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(String(init?.body))).toEqual(request);
+	});
+
+	it("asks for a row's candidates, with the visit's signal", async () => {
+		const fetchMock = mockFetchOnce([]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const request = {
+			row: 'hianime:black-clover-949',
+			title: 'Black Clover',
+			current: null,
+			query: null,
+			episode: 2
+		};
+		const signal = new AbortController().signal;
+		expect(await historyLinkCandidates(request, { signal })).toEqual([]);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/link-candidates`);
+		expect(init?.method).toBe('POST');
+		expect(init?.signal).toBe(signal);
+		expect(JSON.parse(String(init?.body))).toEqual(request);
+	});
+
+	it('asks for the line each card stands for', async () => {
+		const lines = { a: { line: 'b', correctable: true } };
+		const fetchMock = mockFetchOnce(lines);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const rows = [{ id: 'a', guessed_from: 'b', show: '1', guess: true, named: false }];
+		expect(await historyCardLines(rows)).toEqual(lines);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/card-lines`);
+		expect(JSON.parse(String(init?.body))).toEqual({ rows });
+	});
+
+	it("asks whether a surface asks about a card's line, with the visit's signal", async () => {
+		const fetchMock = mockFetchOnce({ offer: 'guess', kept: false });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const request = {
+			page: '7158',
+			show: '7158',
+			trusted: false,
+			named: false,
+			asks_guess: true,
+			carried: false,
+			picked: false,
+			in_player: false
+		};
+		const signal = new AbortController().signal;
+		expect(await historyLinkVerdict(request, { signal })).toEqual({ offer: 'guess', kept: false });
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/link-verdict`);
+		expect(init?.signal).toBe(signal);
+		expect(JSON.parse(String(init?.body))).toEqual(request);
 	});
 });
 

@@ -179,9 +179,14 @@ async function availabilityApplied(read: PageFetch[]) {
 
 /** Mount on episode `episode`'s session, wait for what the page learns
  *  about the show, then fail the stream with MediaError `code`. */
-async function failStream(episode: number, code: number) {
+async function failStream(episode: number, code: number, query: Record<string, string> = {}) {
 	const { read } = watchPageFetches();
-	setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: String(episode), kind: 'mp4' });
+	setUrl(`/play/${KITSU_ID}`, {
+		session: 'session-1',
+		episode: String(episode),
+		kind: 'mp4',
+		...query
+	});
 	app = mount(PlayPage, { target });
 	await until(() => playerVideoInSlot(), 'the video in its slot');
 	await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
@@ -218,6 +223,20 @@ describe('play route — the player-error overlay offers Reload only where it ca
 		await failStream(1, DECODE);
 		await bodyBecomes(m.detail_unavailable_message());
 		expectDeadEnd();
+	});
+
+	it("a guessed card's session goes back to the show page with the card's row", async () => {
+		// The show page a guessed card leads to can say what history
+		// title it was matched from; the way back from a dead end is one
+		// of the links up to it.
+		const ROW = 'hianime:finished-show-7';
+		useHandlers({ availability: { available: false, episode_count: null } });
+		await failStream(1, DECODE, { guess: '1', row: ROW });
+		await bodyBecomes(m.detail_unavailable_message());
+		const back = overlay()?.querySelector<HTMLAnchorElement>('a.player-error-action');
+		expect(back?.getAttribute('href')).toBe(
+			`/anime/${KITSU_ID}?guessed=${encodeURIComponent(ROW)}`
+		);
 	});
 
 	it('a show delisted in dub that the cache has subtitled names the other audio', async () => {

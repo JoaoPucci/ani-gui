@@ -33,4 +33,23 @@ describe('which Continue rows are matched by a guess', () => {
 		expect(await trust.resolveMatch(row('a'))).toBeNull();
 		expect(trust.isGuess('a')).toBe(false);
 	});
+
+	it("keeps the latest resolve's verdict when an earlier one lands after it", async () => {
+		// The first load's guess, still on its way when the row is linked:
+		// the link's trusted match is the row's verdict.
+		const answers: ((trusted: boolean) => void)[] = [];
+		const trust = createRowTrust(
+			() =>
+				new Promise((resolve) => {
+					answers.push((trusted) => resolve({ match: ref('1'), trusted }));
+				})
+		);
+		const first = trust.resolveMatch(row('a'));
+		const second = trust.resolveMatch(row('a'));
+		answers[1](true);
+		await second;
+		answers[0](false);
+		await first;
+		expect(trust.isGuess('a')).toBe(false);
+	});
 });

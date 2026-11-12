@@ -211,6 +211,15 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedAllmangaDelete).not.toHaveBeenCalled();
 	});
 
+	it('says its trust could not be read when the played read of a standing mapping fails', async () => {
+		mockedAllmangaMap.mockResolvedValue('49877');
+		mockedDetail.mockResolvedValue(seitokai());
+		mockedPlayed.mockRejectedValue(new Error('backend down'));
+		mockedSearch.mockResolvedValue([greenwood()]);
+		const got = await resolveKitsuMatchWithTrust(seitokaiRow());
+		expect(got.trustUnread).toBe(true);
+	});
+
 	it('does not keep a title-doubted mapping no play stored', async () => {
 		// A guess an earlier resolve stored: Greenwood for the same row.
 		mockedAllmangaMap.mockResolvedValue('1623');
@@ -473,6 +482,20 @@ describe('resolveKitsuMatch', () => {
 	// has a deterministic id-keyed mapping that beats fuzzy text
 	// search. Resolver checks this first; on hit, no kitsuSearch /
 	// title-match round-trip is necessary.
+
+	it('says its trust could not be read when a mapping whose show checks out cannot read its played mark', async () => {
+		mockedAllmangaMap.mockResolvedValue('11061');
+		mockedDetail.mockResolvedValue(stubKitsu('11061', 'Naruto: Shippuuden', 500));
+		mockedPlayed.mockRejectedValue(new Error('backend down'));
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(
+				{ id: 'vDTSJHSpYnrkZnAvG', ep_no: '150', title: 'Nato: Shippuuden (500 episodes)' },
+				null
+			)
+		);
+		expect(got).toMatchObject({ trusted: false, trustUnread: true });
+		expect(got.match?.id).toBe('11061');
+	});
 
 	it('uses the provider→kitsu reverse mapping when present', async () => {
 		// Naruto's provider title is typo'd ("Nato: Shippuuden") so
@@ -1289,5 +1312,146 @@ describe('a resolution the page that asked can cancel', () => {
 			name: 'AbortError'
 		});
 		expect(mockedPutMatch).not.toHaveBeenCalled();
+	});
+});
+
+// A match that could not be read is told apart from a row with none: a
+// card check that could not read it must not take the card for one no
+// longer guessed ($lib/history/link-deps.ts).
+describe('a match that could not be read', () => {
+	it('says so when the recorded show cannot be read', async () => {
+		mockedDetail.mockRejectedValue(new Error('offline'));
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:x-1', ep_no: '1', title: 'X', kitsu_id: '49877' }, null)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
+	});
+
+	it('says so when the live search itself fails', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockRejectedValue(new Error('network down'));
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(entry('Obscure (12 episodes)', '1'), null)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
+	});
+
+	it('says so when the search found nothing and the show-id enrichment failed', async () => {
+		mockedAllmangaMap.mockResolvedValue(null);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([]);
+		mockedResolveAllmanga.mockRejectedValue(new Error('backend busy'));
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(
+				{ id: 'ReooPAxPMsHM4KPMY', ep_no: '1', title: '1P (1161 episodes)' },
+				null
+			)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
+	});
+
+	it("says so when the stored mapping's show could not be read and no guess was found", async () => {
+		mockedAllmangaMap.mockResolvedValue('4013');
+		mockedDetail.mockRejectedValue({
+			kind: 'upstream',
+			status: 503,
+			key: 'error.network.upstream'
+		});
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([]);
+		mockedResolveAllmanga.mockResolvedValue(null);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:show-1', ep_no: '1', title: 'Show (12 episodes)' }, null)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true, trustUnread: true });
+	});
+
+	it('reads a stored mapping Kitsu answered gone as no mapping, not as unread', async () => {
+		mockedAllmangaMap.mockResolvedValue('4013');
+		mockedDetail.mockRejectedValue({
+			kind: 'upstream',
+			status: 404,
+			key: 'error.network.upstream'
+		});
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([]);
+		mockedResolveAllmanga.mockResolvedValue(null);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:show-1', ep_no: '1', title: 'Show (12 episodes)' }, null)
+		);
+		expect(got).toEqual({ match: null, trusted: false });
+	});
+
+	it('says nothing of the kind for a row the search read and matched to nothing', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([]);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(entry('Obscure (12 episodes)', '1'), null)
+		);
+		expect(got.match).toBeNull();
+		expect(got.unread).toBeUndefined();
+	});
+});
+
+// A stored mapping a play may have stored makes the row's match one a
+// play may record. When it cannot be read, whether the row is a guess
+// at all is not known, whatever the guess steps found after it.
+describe('a match whose trust could not be read', () => {
+	it("says so when the stored mapping's show cannot be read, though a guess is found", async () => {
+		mockedAllmangaMap.mockResolvedValue('stale-kitsu');
+		mockedDetail.mockRejectedValueOnce({
+			kind: 'upstream',
+			status: 503,
+			key: 'error.network.upstream'
+		});
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('fresh-id', 'Demon Slayer')]);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(
+				{ id: 'show-stale', ep_no: '5', title: 'Demon Slayer (26 episodes)' },
+				null
+			)
+		);
+		expect(got.match?.id).toBe('fresh-id');
+		expect(got.trustUnread).toBe(true);
+	});
+
+	it('says nothing of it for a row with no stored mapping', async () => {
+		mockedAllmangaMap.mockResolvedValue(null);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('fresh-id', 'Demon Slayer')]);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'show-new', ep_no: '5', title: 'Demon Slayer (26 episodes)' }, null)
+		);
+		expect(got.trustUnread).toBeUndefined();
+	});
+});
+
+describe('a guess the title-match cache could not answer', () => {
+	it('says the match could not be read when nothing was found after it', async () => {
+		mockedAllmangaMap.mockResolvedValue(null);
+		mockedGetMatch.mockRejectedValue(new Error('cache down'));
+		mockedSearch.mockResolvedValue([]);
+		mockedResolveAllmanga.mockResolvedValue(null);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:show-1', ep_no: '1', title: 'Show (12 episodes)' }, null)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
+	});
+
+	it("says so when the cached match's show failed to read, and nothing was found after it", async () => {
+		mockedAllmangaMap.mockResolvedValue(null);
+		mockedGetMatch.mockResolvedValue('4013');
+		mockedDetail.mockRejectedValue({
+			kind: 'upstream',
+			status: 503,
+			key: 'error.network.upstream'
+		});
+		mockedSearch.mockResolvedValue([]);
+		mockedResolveAllmanga.mockResolvedValue(null);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:show-1', ep_no: '1', title: 'Show (12 episodes)' }, null)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
 	});
 });

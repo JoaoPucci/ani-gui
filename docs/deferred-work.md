@@ -434,8 +434,8 @@ starting it, and delete it when you find it done.
 
   What corrects these two is the user rather than a rule, where Kitsu
   holds the entry at all: the player's "Is this the show you meant?"
-  on a guessed play, once it ships, or a play of the show from its own
-  page, below.
+  on a guessed play, the other ways to correct a card by hand, or a
+  play of the show from its own page, all below.
 
   The first three waited because no rule tried fixed them without
   breaking picks that are right. Ruling out a hit whose titles and the
@@ -446,12 +446,15 @@ starting it, and delete it when you find it done.
   "(Uncensored)" and "(Part 1+2)" before comparing titles changed no
   pick.
 
-  There is no control on a card to correct its show. What corrects one
-  is playing the show from its own page: when that play lands on the
-  card's listing, the line records the show and the card goes by it
-  from then on — unless the cross-cour guard refuses the record, as it
-  does for the Slime season (the entry on a later season Kitsu titles
-  only with a bare number). Worth revisiting when the guess can read
+  The user can correct a card by hand: its "Not what you watched?" pill
+  on Home, its failed resume, the player's slip and ⋯ menu, and the show
+  page its player led to all link the line to the show the user names.
+  Playing the show from its own page also corrects one: when that play
+  lands on the card's listing, the line records the show and the card
+  goes by it from then on — unless the cross-cour guard refuses the
+  record, as it does for the Slime season (the entry on a later season
+  Kitsu titles only with a bare number). The guess itself is what
+  waits, and it is worth revisiting when the guess can read
   more of the provider's listing than its title, the year and words its
   key names and the episode it reached — the year it aired, its
   format, or its episode count — or when another wrong pick on a
@@ -1042,9 +1045,10 @@ starting it, and delete it when you find it done.
   guessed-card linking work lands, the player's "Is this the show you
   meant?" and its slip, the rows' `guessed_from` notes, the failure
   overlay's "Pick the right show", and the "Which show is it?" picker
-  with "Not this show?" and the marks on rows named through it. A row
-  a normal play wrote records the show it was played from, so the
-  card cannot name the wrong show and needs no correcting. The entry
+  with "Not this show?", Home's "Not what you watched?" and the
+  marks on rows named through it. A row a normal play wrote
+  records the show it was played from, so the card cannot name the
+  wrong show and needs no correcting. The entry
   "Some guessed Continue cards still open the wrong show" goes with
   it. The maintainer has tied this removal to v1.0, with the two
   above.
@@ -1496,3 +1500,18 @@ not keep up drawing the interface.
   only. Either wire a file appender to the helper or remove it; a
   file sink would also give packaged desktop launches, which have no
   terminal, somewhere to leave a trace.
+- **Three pieces of the change-show flow's logic stay in the renderer
+  for now.** `AGENTS.md` §14 puts the app's decisions about its data in
+  the Rust backend, and the flow's rules moved there, but three pieces
+  that sit in its grey area did not: what a player session's plays go
+  out as and whether trackers hear of them after a pick
+  (`frontend/src/lib/play/session-show.ts`), the Sub or Dub a picked
+  show takes from the one watched in
+  (`frontend/src/lib/history/carry-audio.ts`), and the notes of this
+  run's guessed plays that bound what a revisited guessed URL may ask
+  (`frontend/src/lib/history/guess-plays.ts`). They are worth
+  reconsidering for the backend. The maintainer chose to wait because
+  each is tied to something the renderer owns by design — the tracker
+  sending, the per-show Sub or Dub storage, notes that last one run
+  of the app — so moving one means moving that too, a refactor larger
+  than the change that found them.
