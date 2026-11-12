@@ -55,7 +55,8 @@
     },
     "e2e.yml": {
       "e2e": "Playwright + _electron",
-      "filter": "filter"
+      "filter": "filter",
+      "release-package": "release-shaped package"
     },
     "frontend.yml": {
       "filter": "filter",

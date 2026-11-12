@@ -14,8 +14,9 @@
 //! keys and, in a backend built with the `test-run-key` feature, the
 //! fixture test-run key as well ([`build_keys`]). That feature is for
 //! test builds, so a backend test (unit or integration, built by
-//! `cargo test --all-features`) can turn a feature on; no packaged
-//! build has it, and in every build the live file is trusted under the
+//! `cargo test --all-features`) and the end-to-end suite's package
+//! (electron's `build:backend:e2e`) can turn a feature on; no release
+//! has it, and in every build the live file is trusted under the
 //! build's keys alone.
 //!
 //! `ANI_GUI_TEST_FLAGS_FILE` means nothing without

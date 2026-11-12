@@ -24,8 +24,8 @@
  * (outboundAttempts); smoke.spec.ts asks the backend for something
  * only GitHub knows and finds the attempt there.
  *
- * Pre-condition: `pnpm run package` (or the chained `pnpm e2e`) has
- * produced `dist/linux-unpacked/`.
+ * Pre-condition: `pnpm run package:e2e` (or the chained `pnpm e2e`)
+ * has produced `dist-e2e/linux-unpacked/`.
  */
 import {
 	_electron,
@@ -40,12 +40,16 @@ import path from 'node:path';
 import { launchRefusal } from '../lib/e2e-display.cjs';
 import { stopOwnGroup } from '../lib/own-group.cjs';
 
-/** electron-builder's pre-AppImage output — the production code path:
- *  the `app://` protocol handler, the bundled SvelteKit assets and the
- *  sidecar backend under `process.resourcesPath`. */
+/** The e2e package (`pnpm run package:e2e`, lib/e2e-package.cjs):
+ *  electron-builder's unpacked tree of the release's Linux package —
+ *  the production code path: the `app://` protocol handler, the bundled
+ *  SvelteKit assets and the sidecar backend under
+ *  `process.resourcesPath` — except that its backend is a test-run
+ *  build, so a flags file signed by the test-run key can turn a flag
+ *  on (flags-file.ts). */
 export const packagedBinary = path.join(
 	path.resolve(__dirname, '..'),
-	'dist/linux-unpacked/ani-gui'
+	'dist-e2e/linux-unpacked/ani-gui'
 );
 
 /** The switches every test launch carries.

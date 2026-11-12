@@ -21,9 +21,12 @@ path = "src/bin/backend.rs"
 [features]
 # Test builds only. A test run's flags file (ANI_GUI_TEST_FLAGS_FILE)
 # is then trusted under the fixture test-run key as well, whose secret
-# anyone can derive from tests/fixtures/flags-signature/make.py. The
-# live fetch never trusts it. `cargo test --all-features` turns it on;
-# no build that is packaged may (tests/arch/test_run_key.sh).
+# anyone can derive from tests/fixtures/flags-signature/make.py, and the
+# backend declares the probe flag the e2e suite drives (src/flags/
+# test_run.rs). The live fetch never trusts the key. `cargo test
+# --all-features` turns it on, and so does the e2e suite's package
+# (electron's `build:backend:e2e`, into target-e2e); no release script
+# may (tests/arch/test_run_key.sh).
 test-run-key = []
 
 [dependencies]

@@ -51,13 +51,18 @@ pub mod remote;
 pub mod resolve;
 pub mod signature;
 pub mod store;
+#[cfg(feature = "test-run-key")]
+pub mod test_run;
 
 pub use decl::{FlagDecl, FlagKind, FlagValue};
 pub use resolve::Resolved;
 pub use store::FlagStore;
 
-/// Every flag this build declares. Empty: a declaration comes with the
-/// code that reads it.
+/// Every flag this build declares. None yet: a declaration comes with
+/// the code that reads it. A test-run build (the `test-run-key`
+/// feature, which no release has) also declares [`test_run::PROBE`],
+/// which gates nothing and lets the end-to-end suite drive the flags in
+/// each state.
 ///
 /// Declare each flag as a `pub const FlagDecl`, list it here, and read
 /// it through that same constant with [`Resolved::enabled`] — never
@@ -65,7 +70,10 @@ pub use store::FlagStore;
 /// silent off. Then register a test case for its default and for every
 /// other value it allows in `matrix::CASES`: a test fails while any
 /// value of a declared flag has none.
-pub const DECLARED: &[FlagDecl] = &[];
+pub const DECLARED: &[FlagDecl] = &[
+    #[cfg(feature = "test-run-key")]
+    test_run::PROBE,
+];
 
 #[cfg(test)]
 pub(crate) mod test_decls;

@@ -45,7 +45,7 @@ fn every_declared_flag_has_an_end_to_end_spec() {
 /// A backend built for test runs declares the probe the end-to-end
 /// suite turns on and off, so the suite can prove on the packaged app
 /// that a signed test-run file turns a flag on and every other leaves
-/// it off. A build without the feature, every packaged one, declares
+/// it off. A build without the feature, every release, declares
 /// no such flag.
 #[test]
 fn only_a_test_run_build_declares_the_probe() {

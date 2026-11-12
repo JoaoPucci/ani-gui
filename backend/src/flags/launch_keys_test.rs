@@ -121,8 +121,8 @@ mod with_the_feature {
 mod without_the_feature {
     use super::*;
 
-    /// What every packaged build is: the packaging scripts never enable
-    /// the feature (`tests/arch/test_run_key.sh`).
+    /// What every release is: the release scripts never enable the
+    /// feature (`tests/arch/test_run_key.sh`).
     #[test]
     fn a_build_without_the_feature_trusts_no_test_run_key() {
         assert!(std::hint::black_box(TEST_RUN_KEYS).is_empty());

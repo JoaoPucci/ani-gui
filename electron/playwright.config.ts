@@ -5,11 +5,10 @@
  * shared helper `e2e/launch.ts` (which mutes audio) — this config
  * just sets defaults for test discovery, retries, and reports.
  *
- * Pre-test setup is the responsibility of a global setup hook (or the
- * `pnpm package` script run beforehand): the Rust backend binary at
- * `../backend/target/x86_64-unknown-linux-musl/release/ani-gui-backend`
- * (`pnpm run build:backend:linux`) and the SvelteKit static
- * bundle at `../frontend/build/index.html` must both exist.
+ * Pre-test setup is the `pnpm run package:e2e` script run beforehand
+ * (`pnpm e2e` chains it): the e2e package at
+ * `dist-e2e/linux-unpacked/`, whose backend is the test-run build
+ * `pnpm run build:backend:e2e` makes (lib/e2e-package.cjs).
  */
 import { defineConfig } from '@playwright/test';
 
