@@ -4,7 +4,7 @@
  * than usual and offers Restart and Quit (lib/splash-stuck.cjs).
  *
  * The late page is real. Each test runs a copy of the packaged tree,
- * hard-linked from `dist/linux-unpacked/`, whose `resources/frontend/
+ * hard-linked from `dist-e2e/linux-unpacked/`, whose `resources/frontend/
  * build` holds a fixture page instead of the app's frontend
  * (e2e/fixtures/first-page/): one that never says it rendered, one
  * that says so 20 s after it loaded. Everything else — the splash, the
@@ -46,7 +46,7 @@ import { launchPackagedApp, packagedBinary, splashState, splashWindow, stopApp }
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
-		throw new Error(`prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package`);
+		throw new Error(`prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package:e2e`);
 	}
 });
 

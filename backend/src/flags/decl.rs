@@ -6,11 +6,11 @@
 //! declaration does not allow and a flag the file does not mention
 //! all leave it there.
 //!
-//! This build declares no flag and has no kind one could be declared
-//! with: [`FlagKind`] has no variant outside the tests, so a
-//! [`FlagDecl`] cannot be built and [`super::DECLARED`] can only be
-//! empty. A kind arrives with the change that verifies the file, and
-//! with it the values that kind lets the file send.
+//! The one kind is [`FlagKind::Rollout`]: a feature that ships off.
+//! Any file may send `false`. `true` turns the feature on, which is
+//! riskier than the build's own default, so only a file whose
+//! signature verifies may send it ([`FlagDecl::signed_only`];
+//! [`super::signature::admit`] drops it from any other file).
 //!
 //! What the type cannot see is whether a flag's other values are safe
 //! for the feature it gates. That is a review question, so every
@@ -28,18 +28,12 @@ pub enum FlagValue {
     Bool(bool),
 }
 
-/// Which values the file may send for a flag. No kind is declarable
-/// in this build.
+/// Which values the file may send for a flag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlagKind {
-    /// A test double for the mechanism: an on/off flag that ships
-    /// off. `may_switch_on` says whether the file may send `true` as
-    /// well as `false`. Never declarable outside the tests.
-    #[cfg(test)]
-    Probe {
-        /// Whether the file may switch the flag on.
-        may_switch_on: bool,
-    },
+    /// Gates a feature that ships off. Default `false`; any file may
+    /// send `false`, and only a verified file `true`.
+    Rollout,
 }
 
 /// One declared flag.
@@ -50,8 +44,8 @@ pub struct FlagDecl {
     pub name: &'static str,
     /// Which values the file may send.
     pub kind: FlagKind,
-    /// Why the values the file may send are safe for the feature this
-    /// flag gates.
+    /// Why the feature may be turned on from a signed file: what it
+    /// does once on, and that its off state is the build's own.
     pub safe_because: &'static str,
 }
 
@@ -67,11 +61,7 @@ impl FlagDecl {
     #[must_use]
     pub fn allowed(&self) -> Vec<FlagValue> {
         match self.kind {
-            #[cfg(test)]
-            FlagKind::Probe { may_switch_on } => std::iter::once(false)
-                .chain(may_switch_on.then_some(true))
-                .map(FlagValue::Bool)
-                .collect(),
+            FlagKind::Rollout => vec![FlagValue::Bool(false), FlagValue::Bool(true)],
         }
     }
 
@@ -82,6 +72,16 @@ impl FlagDecl {
         self.allowed()
             .into_iter()
             .find(|FlagValue::Bool(b)| raw.as_bool() == Some(*b))
+    }
+
+    /// Whether `v` may come only from a file whose signature
+    /// verifies: a rollout's `true`, which turns its feature on. Off is
+    /// the default, and any file may say so.
+    #[must_use]
+    pub fn signed_only(&self, v: FlagValue) -> bool {
+        match self.kind {
+            FlagKind::Rollout => v == FlagValue::Bool(true),
+        }
     }
 }
 

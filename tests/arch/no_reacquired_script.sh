@@ -39,7 +39,7 @@ APP_DIRS='backend frontend electron'
 
 # Build artifacts (target/, node_modules/, bundles) are gitignored but
 # may sit on disk and contain stale copies. Skip them.
-GREP_EXCLUDE='--exclude-dir=target --exclude-dir=node_modules --exclude-dir=build --exclude-dir=dist --exclude-dir=.svelte-kit'
+GREP_EXCLUDE='--exclude-dir=target --exclude-dir=target-e2e --exclude-dir=node_modules --exclude-dir=build --exclude-dir=dist --exclude-dir=dist-e2e --exclude-dir=.svelte-kit'
 
 # 1. No sourcing. The cheapest way to reacquire the dependency is to
 # pull the script's functions into a shell the app runs.

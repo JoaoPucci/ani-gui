@@ -35,9 +35,10 @@
 #     under `build.linux.extraResources` so electron-builder copies
 #     the staged binaries into both AppImage and .deb payloads.
 #   - `build.deb.recommends` must include "ffmpeg".
-#   - `dist` / `dist:release` scripts must chain `fetch:linux-deps`
-#     so any invocation path (package, dist, e2e) gets the bin
-#     dir populated before electron-builder runs.
+#   - `dist` / `dist:release` and the e2e suite's `package:e2e` must
+#     chain `fetch:linux-deps` so any invocation path (package, dist,
+#     package:e2e) gets the bin dir populated before electron-builder
+#     runs.
 #   - The Linux packages carry a backend built for
 #     `x86_64-unknown-linux-musl`, statically linked, and the scripts
 #     that package them build that one. A backend linked against the
@@ -45,8 +46,10 @@
 #     one — v0.14.1, built on a 2026 Ubuntu, asked for glibc 2.39 and
 #     failed on Ubuntu 22.04 and Debian 12 before the window had
 #     anything to show. The rest of the payload asks for 2.25 at most.
-#     The e2e workflow, which builds the Linux package, then runs the
-#     packaged backend's own check that it needs no system C library.
+#     The e2e workflow's release-shaped job, which builds the Linux
+#     package, then runs the packaged backend's own check that it needs
+#     no system C library. The e2e suite's package (`package:e2e`)
+#     builds its own backend first too, for the same target.
 
 set -eu
 
@@ -83,9 +86,11 @@ if ! grep -Pzo '"recommends"\s*:\s*\[[^]]*"ffmpeg"' "$PKG" >/dev/null 2>&1; then
 fi
 
 # 4. `dist` / `dist:release` scripts must chain `fetch:linux-deps` so
-#    callers that invoke dist directly (e2e workflow) still get the bin
-#    populated. The fetch-by-package pattern alone leaves a gap.
-for s in dist dist:release; do
+#    callers that invoke dist directly (the e2e workflow's
+#    release-shaped job) still get the bin populated, and so must
+#    `package:e2e`, which packages without `dist`. The fetch-by-package
+#    pattern alone leaves a gap.
+for s in dist dist:release package:e2e; do
     line=$(grep -E "\"$s\"" "$PKG" || true)
     case "$line" in
         *fetch:linux-deps*) ;;
@@ -136,7 +141,15 @@ fi
 
 # 7. Every script that packages for Linux builds that backend first:
 #    the `package` scripts, and `dist` / `dist:release`, which are run
-#    on their own as well (the e2e workflow runs `dist`). Asserted on
+#    on their own as well (the e2e workflow's release-shaped job runs
+#    `dist`); and the e2e suite's `package:e2e` builds its own, the
+#    same musl build with the test-run feature into target-e2e. Both
+#    e2e scripts, and `e2e`, which runs one, are pinned as exact text:
+#    `package:e2e` packages an unpacked tree only (`--linux dir`), since
+#    a target given there, or appended by its caller, would override the
+#    e2e configuration's and make an installable package carrying the
+#    test-run backend. tests/arch/test_run_key.sh
+#    holds which scripts may name them. Asserted on
 #    the parsed scripts as exact text: each one begins with the build
 #    followed by `&&`, so nothing runs before it and a failed build
 #    stops the packaging, and the build script is exactly the musl
@@ -148,9 +161,14 @@ const first = "pnpm run build:backend:linux && ";
 const bad = ["package", "package:release", "dist", "dist:release"]
   .filter((n) => typeof s[n] !== "string" || !s[n].startsWith(first));
 if (s["build:backend:linux"] !== build) bad.push("build:backend:linux");
+const e2e = "pnpm run build:backend:e2e && pnpm run build:frontend && pnpm run fetch:linux-deps && electron-builder --linux dir --config electron-builder.e2e.cjs";
+if (s["package:e2e"] !== e2e) bad.push("package:e2e");
+// e2e runs it unchanged: arguments after a script name reach its last command.
+if (s.e2e !== "pnpm run package:e2e && playwright test") bad.push("e2e");
+if (s["build:backend:e2e"] !== build + " --features test-run-key --target-dir target-e2e") bad.push("build:backend:e2e");
 if (bad.length) { console.error(bad.join(" ")); process.exit(1); }
 ' "$REPO_ROOT/$PKG"; then
-    printf 'arch/linux_deps FAIL: %s scripts above do not begin with the static backend build, or build:backend:linux is not exactly the musl build\n' "$PKG" >&2
+    printf 'arch/linux_deps FAIL: %s scripts above do not begin with the static backend build, or build:backend:linux, build:backend:e2e, package:e2e or e2e is not exactly its pinned text\n' "$PKG" >&2
     failed=1
 fi
 

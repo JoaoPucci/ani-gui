@@ -5,7 +5,9 @@ use std::time::Duration;
 use proptest::prelude::*;
 use tokio::io::AsyncReadExt;
 
-use super::{plan, plan_from_env, start, LaunchPlan, TEST_FLAGS_ENV, UNATTENDED_ENV};
+use super::{
+    plan, plan_from_env, start, start_trusting, LaunchPlan, TEST_FLAGS_ENV, UNATTENDED_ENV,
+};
 use crate::flags::decl::FlagValue;
 use crate::flags::store::{FlagStore, Origin};
 use crate::flags::test_decls::{A, B, TEST_DECLS};
@@ -122,17 +124,41 @@ fn pair(store: &FlagStore) -> (Option<FlagValue>, Option<FlagValue>) {
     (r.get(A), r.get(B))
 }
 
+const SIGNED_FILE: &str = include_str!("../../tests/fixtures/flags-signature/flags.json");
+const SIGNATURE: &str = include_str!("../../tests/fixtures/flags-signature/flags.json.minisig");
+const KEY_ONE: &str = include_str!("../../tests/fixtures/flags-signature/test-key-one.pub");
+
+/// The fixture's test key, as a build's key list.
+fn key_one() -> &'static [&'static str] {
+    let key: &'static str = Box::leak(KEY_ONE.trim().to_owned().into_boxed_str());
+    Box::leak(vec![key].into_boxed_slice())
+}
+
+/// The signed fixture written as a test run's file, its signature
+/// beside it when `signed`.
+fn test_file(dir: &std::path::Path, signed: bool) -> std::path::PathBuf {
+    let file = dir.join("flags.json");
+    std::fs::write(&file, SIGNED_FILE).expect("write");
+    if signed {
+        std::fs::write(dir.join("flags.json.minisig"), SIGNATURE).expect("write");
+    }
+    file
+}
+
+/// A test run's file is admitted like a fetched one, so the values it
+/// turns on show only under a signature the build trusts: here the
+/// fixture's test key.
 #[tokio::test]
 async fn a_test_run_with_a_file_takes_its_flags_and_makes_no_request() {
     let td = tempfile::tempdir().expect("tempdir");
-    let file = td.path().join("flags.json");
-    std::fs::write(&file, r#"{"flags":{"test_a":true,"test_b":false}}"#).expect("write");
+    let file = test_file(td.path(), true);
     let mut proxy = proxy().await;
     let store = FlagStore::pending(TEST_DECLS);
-    start(
+    start_trusting(
         store.clone(),
         client_through(&proxy),
         LaunchPlan::Test { file: Some(file) },
+        key_one(),
     )
     .await
     .expect("join");
@@ -143,6 +169,30 @@ async fn a_test_run_with_a_file_takes_its_flags_and_makes_no_request() {
     );
     let none = tokio::time::timeout(Duration::from_millis(300), proxy.seen.recv()).await;
     assert!(none.is_err(), "a test run reached the network: {none:?}");
+}
+
+/// The same file with no signature beside it, or signed by a key the
+/// shipped build does not trust, turns nothing on.
+#[tokio::test]
+async fn a_test_runs_unverified_file_cannot_turn_a_feature_on() {
+    for (signed, shipped_keys) in [(false, false), (true, true)] {
+        let td = tempfile::tempdir().expect("tempdir");
+        let file = test_file(td.path(), signed);
+        let store = FlagStore::pending(TEST_DECLS);
+        let plan = LaunchPlan::Test { file: Some(file) };
+        let task = if shipped_keys {
+            start(store.clone(), reqwest::Client::new(), plan)
+        } else {
+            start_trusting(store.clone(), reqwest::Client::new(), plan, key_one())
+        };
+        task.await.expect("join");
+        assert_eq!(store.origin(), Origin::Test);
+        assert_eq!(
+            pair(&store),
+            (Some(FlagValue::Bool(false)), Some(FlagValue::Bool(false))),
+            "signed {signed}, shipped keys {shipped_keys}"
+        );
+    }
 }
 
 #[tokio::test]

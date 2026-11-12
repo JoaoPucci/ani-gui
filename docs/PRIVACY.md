@@ -190,9 +190,10 @@ ani-gui keeps the following on your computer only:
   scale identify it), in `window-geometry.json` in the app's folder under
   your OS user-data directory, so the next launch opens at that size.
 - **Remote flags cache** — the last copy of the project's remote flags
-  file the app fetched (see below), and when it was fetched, in
-  `remote-flags.json` under your OS's cache directory. It holds only
-  the maintainer's switches, nothing about you.
+  file the app fetched (see below), when it was fetched, and whether
+  it holds a switch only a verified signature could have turned on,
+  in `remote-flags.json` under your OS's cache directory. It holds
+  only the maintainer's switches, nothing about you.
 
 ## What ani-gui transmits to public services
 
@@ -363,9 +364,13 @@ kind of request:
   repository, through GitHub's content server
   (`raw.githubusercontent.com`). If that download fails, it is tried
   again later in the same session (after a few minutes, then at most
-  hourly) until it succeeds. It lets the maintainer change a feature's
-  setting without waiting for a release. This version declares no such
-  setting, so the file changes nothing yet.
+  hourly) until it succeeds. It lets the maintainer switch on a new
+  feature, once it has been checked, without waiting for a release.
+  Beside it, the same launch downloads the file's signature
+  (`flags.json.minisig`), a second small request to the same server.
+  The app switches a feature on only when that signature proves the
+  maintainer wrote the file; this version trusts no signing key yet,
+  and declares no such feature, so the file changes nothing yet.
   Like the update check, each request tells GitHub your IP address,
   when it was made, and that it comes from ani-gui.
   Nothing else is sent: no account
@@ -388,8 +393,9 @@ kind of request:
   does.
 
 There is no analytics or telemetry: no request reports how you use
-the app, and the update check and the remote flags file are the only
-requests that go to the project's own repository.
+the app, and the update check and the remote flags file with its
+signature are the only requests that go to the project's own
+repository.
 
 ## Connecting and disconnecting an account
 

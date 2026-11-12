@@ -1,6 +1,6 @@
 use super::{parse_document, resolve, MAX_BYTES};
+use crate::flags::decl::FlagDecl;
 use crate::flags::decl::FlagValue;
-use crate::flags::decl::{FlagDecl, FlagKind};
 use crate::flags::test_decls::{A, B, TEST_DECLS};
 use crate::flags::DECLARED;
 
@@ -154,30 +154,4 @@ fn a_declaration_missing_from_the_set_reads_off() {
         parse_document(br#"{"flags":{"test_a":true}}"#).as_ref(),
     );
     assert!(!r.enabled(&A_DECL));
-}
-
-#[test]
-fn a_value_this_declaration_does_not_allow_reads_off() {
-    // A set resolved against a same-named declaration with other
-    // values must not leak them through the typed read.
-    const WIDER: &[FlagDecl] = &[FlagDecl {
-        name: A,
-        kind: FlagKind::Probe {
-            may_switch_on: true,
-        },
-        safe_because: "test-only",
-    }];
-    const NARROW: FlagDecl = FlagDecl {
-        name: A,
-        kind: FlagKind::Probe {
-            may_switch_on: false,
-        },
-        safe_because: "test-only",
-    };
-    let r = resolve(
-        WIDER,
-        parse_document(br#"{"flags":{"test_a":true}}"#).as_ref(),
-    );
-    assert!(r.enabled(&WIDER[0]));
-    assert!(!r.enabled(&NARROW));
 }

@@ -8,11 +8,15 @@ Cargo.lock.bak
 
 # Tauri
 backend/target/
+# The end-to-end suite's test-run backend (electron/lib/e2e-package.cjs)
+backend/target-e2e/
 backend/gen/
 backend/WixTools/
 
 # Electron packaging output (electron-builder + manual --appimage-extract)
 electron/dist/
+# The end-to-end suite's package, never a release
+electron/dist-e2e/
 electron/squashfs-root/
 electron/.appimage-cache/
 electron/.win-deps-cache/

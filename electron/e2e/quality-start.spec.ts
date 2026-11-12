@@ -45,7 +45,7 @@ const settings = {
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
     throw new Error(
-      `prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package`,
+      `prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package:e2e`,
     );
   }
 });

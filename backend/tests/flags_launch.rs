@@ -102,28 +102,89 @@ async fn a_test_run_makes_no_request_for_the_flags_file() {
     assert_eq!(heard, None);
 }
 
-/// The shipped build declares no flags yet, so the file's values cannot
-/// show here; what this proves is that naming a file keeps the run a
-/// test run and off the network. That a test run's file decides the
-/// flags is `flags::launch`'s own tests, with test declarations.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_test_run_takes_the_file_the_test_names() {
+/// The declared flags at their defaults: none in a build without the
+/// `test-run-key` feature, every release; the probe a test-run
+/// build declares, off, in one with it.
+fn defaults() -> serde_json::Value {
+    if cfg!(feature = "test-run-key") {
+        serde_json::json!({ "test_run_probe": false })
+    } else {
+        serde_json::json!({})
+    }
+}
+
+/// The real binary in a test run whose file is `files[0]`, with the
+/// rest written beside it, as `(name, contents)`. The flags it
+/// answers with, and whether it reached for the live file.
+async fn test_run_with(files: &[(&str, &str)]) -> (serde_json::Value, Option<String>) {
     let home = tempfile::tempdir().expect("tempdir");
-    let file = home.path().join("flags.json");
-    std::fs::write(&file, r#"{"flags":{}}"#).expect("write");
+    for (name, body) in files {
+        std::fs::write(home.path().join(name), body).expect("write");
+    }
     let (url, rx) = proxy();
     let mut cmd = common::command(
         Path::new(env!("CARGO_BIN_EXE_ani-gui-backend")),
         home.path(),
     );
     through(&mut cmd, &url);
-    cmd.env("ANI_GUI_TEST_FLAGS_FILE", &file);
+    cmd.env("ANI_GUI_TEST_FLAGS_FILE", home.path().join(files[0].0));
     let backend = common::start(cmd);
     let body = flags(&backend.api_base).await;
     let heard = heard_raw(&rx, Duration::from_secs(2));
     stop(backend);
-    assert_eq!(body, serde_json::json!({ "origin": "test", "flags": {} }));
+    (body, heard)
+}
+
+/// Naming a file keeps the run a test run and off the network, and the
+/// file decides the flags: one that says nothing leaves every declared
+/// flag at its default.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_test_run_takes_the_file_the_test_names() {
+    let (body, heard) = test_run_with(&[("flags.json", r#"{"flags":{}}"#)]).await;
+    assert_eq!(
+        body,
+        serde_json::json!({ "origin": "test", "flags": defaults() })
+    );
     assert_eq!(heard, None);
+}
+
+/// The binary a test-run build makes, with the probe: a file signed by
+/// the test-run key turns it on; the same file unsigned, or signed by a
+/// key no build trusts, leaves it off. The end-to-end suite runs the
+/// same states on the packaged app (`electron/e2e/flags/`).
+#[cfg(feature = "test-run-key")]
+mod the_probe {
+    use super::*;
+
+    const ON: &str = include_str!("fixtures/flags-signature/probe-on.json");
+    const BY_TEST_RUN_KEY: &str =
+        include_str!("fixtures/flags-signature/probe-on.json.by-test-run-key.minisig");
+    const BY_KEY_TWO: &str =
+        include_str!("fixtures/flags-signature/probe-on.json.by-key-two.minisig");
+
+    fn probe(body: &serde_json::Value) -> &serde_json::Value {
+        &body["flags"]["test_run_probe"]
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_file_signed_by_the_test_run_key_turns_it_on() {
+        let (body, _) =
+            test_run_with(&[("flags.json", ON), ("flags.json.minisig", BY_TEST_RUN_KEY)]).await;
+        assert_eq!(probe(&body), true, "{body}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_same_file_unsigned_leaves_it_off() {
+        let (body, _) = test_run_with(&[("flags.json", ON)]).await;
+        assert_eq!(probe(&body), false, "{body}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_same_file_signed_by_an_untrusted_key_leaves_it_off() {
+        let (body, _) =
+            test_run_with(&[("flags.json", ON), ("flags.json.minisig", BY_KEY_TWO)]).await;
+        assert_eq!(probe(&body), false, "{body}");
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

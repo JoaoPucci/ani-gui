@@ -27,7 +27,7 @@ failed=0
 # the gui/ wrapper flattened away with the CLI it distinguished from.
 APP_DIRS='backend frontend electron'
 
-GREP_EXCLUDE='--exclude-dir=target --exclude-dir=node_modules --exclude-dir=build --exclude-dir=dist --exclude-dir=.svelte-kit'
+GREP_EXCLUDE='--exclude-dir=target --exclude-dir=target-e2e --exclude-dir=node_modules --exclude-dir=build --exclude-dir=dist --exclude-dir=dist-e2e --exclude-dir=.svelte-kit'
 
 # 1. No active `use tauri::` or `extern crate tauri` in Rust.
 # shellcheck disable=SC2086

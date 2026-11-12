@@ -35,7 +35,7 @@
  * to frame — the default framing paints an enlarged, blurred copy of
  * it behind the image, which the band itself clips.
  *
- * Pre-condition: `pnpm run package` has produced `dist/linux-unpacked/`.
+ * Pre-condition: `pnpm run package:e2e` has produced `dist-e2e/linux-unpacked/`.
  */
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
@@ -81,7 +81,7 @@ const showAt = (id: string) => ({
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
-		throw new Error(`prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package`);
+		throw new Error(`prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package:e2e`);
 	}
 });
 
