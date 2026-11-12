@@ -25,15 +25,18 @@
 //!
 //! Every list is built from the types themselves: a struct literal names
 //! every field, and each enum list sits behind a `match` with no
-//! wildcard, so a field or variant added here does not compile until
-//! the samples say what it sends, and the published file then differs.
+//! wildcard whose every arm carries its value, so a field added to a
+//! published type, or a variant to a published enum, does not compile
+//! until the samples say what it sends, and the published file then
+//! differs. A type or enum not published here is not held at all.
 //!
 //! What it does not hold: answers that are not a struct (the
 //! `/api/watched-at` map, a bare string or list of strings, and whether
 //! a route may answer `null`); which route answers which type; query
 //! strings (the renderer builds them as text, with no type to compare);
 //! the search-page body (read through structs local to
-//! `commands::kitsu_search`'s readers); the launch flags (read by the
+//! `commands::kitsu_search`'s readers); a body nested in another (the
+//! guess's `hits`); the value types of a map (`titles`, `cached`); the launch flags (read by the
 //! Electron main process, not the renderer); and the value types of
 //! request fields — a request's fields are held by name and by whether
 //! they are required. Only the `full` samples are probed: a `min` sample
@@ -86,8 +89,9 @@ use crate::scraper::provider::ProviderId;
 /// One value per variant of an enum, each value written beside the
 /// pattern that names its variant: the patterns make a `match` with no
 /// wildcard, so a variant added does not compile until it has a pattern
-/// here, and with it a value in the list. `except` names variants the
-/// list leaves out on purpose.
+/// here, and with it a value in the list; each value is checked to be
+/// the variant its pattern names. `except` names variants the list
+/// leaves out on purpose.
 macro_rules! listed {
     ($ty:ty { $($pat:pat => $val:expr),+ $(,)? } $(except $ex:pat)?) => {{
         #[allow(dead_code)]
@@ -97,7 +101,16 @@ macro_rules! listed {
                 $($ex => {})?
             }
         }
-        vec![$($val),+]
+        let all: Vec<$ty> = vec![$($val),+];
+        let mut values = all.iter();
+        $(
+            let value = values.next().expect("one value per pattern");
+            assert!(
+                matches!(value, $pat),
+                "{value:?} is not the variant its pattern names"
+            );
+        )+
+        all
     }};
 }
 

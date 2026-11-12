@@ -285,8 +285,9 @@ saying the same thing:
   response type the renderer reads, the fields each request body reads and
   requires, every value of each enum the renderer names, the error envelope
   of every variant, and the values the renderer keeps a copy of — and
-  `cargo test` fails until the file says the same. A field or enum variant
-  added to the backend does not compile until the samples carry it.
+  `cargo test` fails until the file says the same. A field added to a
+  published type, or a variant to a published enum, does not compile until
+  the samples carry it.
 - `frontend/src/lib/wire-contract.test.ts` holds each renderer type to that
   file through a spec the compiler derives from the type, and names each
   field where they disagree: missing, extra, optional when always sent (or

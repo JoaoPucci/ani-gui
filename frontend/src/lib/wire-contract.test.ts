@@ -18,7 +18,9 @@
 // What the check cannot see, it says so:
 // - It reads kinds, not values: a string field's allowed strings are
 //   held only where the renderer names them as a union, through the
-//   enum lists at the end, and the error kinds it compares against.
+//   enum lists at the end, and through a hand-kept list of the error
+//   kinds it compares an error against (a new comparison is held only
+//   once someone adds its kind to that list).
 // - A nested object field is held as an object; the struct it holds
 //   is held by its own entry. A map's values (`titles`, `cached`,
 //   `playable_episode_counts`) and the elements of an array of arrays
@@ -715,7 +717,8 @@ const ERROR_SPEC = {
 	host: '?string|null'
 } satisfies Spec<AniErrorPayload>;
 
-/** The error kinds the renderer compares an error's `kind` against. */
+/** The error kinds the renderer compares an error's `kind` against,
+ *  kept by hand: a comparison added elsewhere is held once listed here. */
 const ERROR_KINDS_NAMED = [
 	'config',
 	'episode_unavailable',
