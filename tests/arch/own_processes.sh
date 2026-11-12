@@ -62,7 +62,7 @@ patterns='\b(pkill|killall|pgrep|pidof)\b
 regex=$(printf '%s\n' "$patterns" | paste -sd'|' -)
 
 found=$(grep -rnE \
-    --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.bats-vendor \
+    --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=dist-e2e --exclude-dir=.bats-vendor \
     --exclude-dir=playwright-report --exclude-dir=test-results \
     -e "$regex" \
     electron/e2e electron/lib electron/scripts tools tests |

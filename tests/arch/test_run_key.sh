@@ -23,8 +23,13 @@
 #     (package.json's `build` never names it; the e2e package's own
 #     configuration is electron/lib/e2e-package.cjs, whose tests hold
 #     where it reads from and writes to);
-#   - only `package:e2e` runs `build:backend:e2e`, and only `e2e` runs
-#     `package:e2e`, so no release script reaches the feature build;
+#   - only electron's `package:e2e` names `build:backend:e2e` or the
+#     e2e package's configuration (electron-builder.e2e.cjs), only `e2e`
+#     names `package:e2e`, and no script names `e2e`, so no release
+#     script reaches the feature build or packages it under that
+#     configuration with a target of its own (a CLI target overrides
+#     the configuration's `dir`). Words are split at shell operators,
+#     so a step glued to `&&` is still seen;
 #   - no workflow line that runs `cargo build` passes a feature flag.
 #
 # It does not see other routes to a feature build: RUSTFLAGS or a
@@ -77,26 +82,43 @@ if ! python3 -I - package.json electron/package.json <<'PY'; then
 import json, shlex, sys
 FEATURE_FLAGS = ('--all-features', '--features', '-F')
 E2E_BUILD = 'build:backend:e2e'
-# Which script may run each e2e step, by name.
-CALLERS = {E2E_BUILD: {'package:e2e'}, 'package:e2e': {'e2e'}}
+E2E_CONFIG = 'electron-builder.e2e.cjs'
+# Which electron script may name each e2e step; a root script may name
+# none. `e2e` itself is run by people, never by another script.
+CALLERS = {E2E_BUILD: {'package:e2e'}, 'package:e2e': {'e2e'}, 'e2e': set(), E2E_CONFIG: {'package:e2e'}}
+
+
+def words_of(cmd):
+    # Operators (`&&`, `;`, `|`) come out as words of their own, so a
+    # step glued to one is still seen.
+    lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    return list(lex)
+
+
+def names(word, step):
+    return word == step or (step == E2E_CONFIG and word.endswith(('/' + step, '=' + step)))
+
+
 bad = []
 for path in sys.argv[1:]:
+    electron = path.endswith('electron/package.json')
     with open(path, encoding='utf-8') as f:
         manifest = json.load(f)
     scripts = manifest.get('scripts', {})
     if 'target-e2e' in json.dumps(manifest.get('build', {})):
         bad.append(f'{path} "build": names target-e2e, the e2e backend\'s directory')
     for name, cmd in scripts.items():
-        words = shlex.split(cmd)
+        words = words_of(cmd)
         for step, callers in CALLERS.items():
-            if step in words and name not in callers:
+            if any(names(w, step) for w in words) and not (electron and name in callers):
                 bad.append(f'{path} "{name}": runs {step}')
         if 'cargo build' not in cmd:
             continue
         flags = [w for w in words if w in FEATURE_FLAGS or w.startswith(('--features=', '-F'))]
         if not flags:
             continue
-        if path.endswith('electron/package.json') and name == E2E_BUILD:
+        if electron and name == E2E_BUILD:
             at = lambda w: words[words.index(w) + 1] if w in words and words.index(w) + 1 < len(words) else None
             if flags != ['--features'] or at('--features') != 'test-run-key':
                 bad.append(f'{path} "{name}": enables more than test-run-key: {" ".join(flags)}')
@@ -105,7 +127,7 @@ for path in sys.argv[1:]:
             continue
         for word in flags:
             bad.append(f'{path} "{name}": {word}')
-    if path.endswith('electron/package.json') and E2E_BUILD not in scripts:
+    if electron and E2E_BUILD not in scripts:
         bad.append(f'{path}: no {E2E_BUILD}, so no e2e run can turn a flag on')
 for b in bad:
     print(b, file=sys.stderr)

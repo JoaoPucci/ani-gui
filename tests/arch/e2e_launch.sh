@@ -44,7 +44,7 @@ if [ ! -f "$HELPER" ]; then
 fi
 
 others=$(grep -rlF \
-    --exclude-dir=node_modules --exclude-dir=dist \
+    --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=dist-e2e \
     --exclude-dir=playwright-report --exclude-dir=test-results \
     '_electron' electron | grep -vxF "$HELPER" || true)
 if [ -n "$others" ]; then
@@ -59,7 +59,7 @@ fi
 # appWindow. The token is absent from electron/ outright, comments
 # included, as `_electron` is from everywhere but the helper.
 first=$(grep -rlF \
-    --exclude-dir=node_modules --exclude-dir=dist \
+    --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=dist-e2e \
     --exclude-dir=playwright-report --exclude-dir=test-results \
     'firstWindow' electron || true)
 if [ -n "$first" ]; then

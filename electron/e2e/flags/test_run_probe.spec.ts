@@ -55,9 +55,12 @@ async function launchWith(
 ): Promise<{ origin: unknown; flags: unknown }> {
 	const { dir, env } = scratchProfile();
 	const named = file(dir);
+	// A flags file named in the shell that runs the suite is not this
+	// launch's: each case names its own, or none.
+	const { ANI_GUI_TEST_FLAGS_FILE: _inherited, ...inherited } = process.env as Record<string, string>;
 	const app = await launchPackagedApp(
 		{
-			...(process.env as Record<string, string>),
+			...inherited,
 			...env,
 			...(named === null ? {} : { ANI_GUI_TEST_FLAGS_FILE: named })
 		},
