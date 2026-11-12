@@ -63,7 +63,8 @@ fn is_https_page(url: &str) -> bool {
 
 /// The release to offer from `releases`, newest first: the first
 /// that counts under the pre-release setting, carries a package for
-/// `platform`, and normalises (published, with a tag and a URL).
+/// `platform`, and normalises (published, with a tag and an https
+/// release page).
 pub(super) fn select_release(
     releases: Vec<RawRelease>,
     platform: Platform,
