@@ -204,16 +204,16 @@ fn anilist_eps_thumbs_key_namespace_separates_kitsu_ids() {
 /// Build a state wired to a nowhere-Kitsu so any network call in
 /// `thumbs_for_show`'s miss path errors out — exercising the
 /// happy hit path without standing up a wiremock.
-fn state_for_cache_only_tests() -> AppState {
+fn state_for_cache_only_tests() -> crate::scratch::Scratch<AppState> {
     state_with_kitsu_at("http://127.0.0.1:1")
 }
 
 /// AppState whose Kitsu client points at `kitsu_uri`.
-fn state_with_kitsu_at(kitsu_uri: &str) -> AppState {
+fn state_with_kitsu_at(kitsu_uri: &str) -> crate::scratch::Scratch<AppState> {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::path::PathBuf;
-    AppState {
+    let dirs = crate::scratch::dir();
+    let state = AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -222,19 +222,20 @@ fn state_with_kitsu_at(kitsu_uri: &str) -> AppState {
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: PathBuf::from("/y/history"),
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
-    }
+    };
+    dirs.hold(state)
 }
 
 #[test]
