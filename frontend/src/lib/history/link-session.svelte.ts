@@ -169,7 +169,15 @@ export class LinkSession extends LinkPicker {
 		this.error = null;
 		try {
 			const rows = this.group ?? (await guessedGroup(this.#deps, offer));
-			await this.#deps.link(offer.entry.id, rows, chosen.ref.id);
+			const outcome = await this.#deps.link(offer.entry.id, rows, chosen.ref.id);
+			// A correction asked later saved the line first: nothing was
+			// saved here, so nothing is said or carried, and the surface
+			// reads the line again as the later answer left it.
+			if (outcome.overtaken === true) {
+				if (stayed()) this.open = false;
+				if (onSurface()) this.#deps.refresh();
+				return false;
+			}
 			// A picked show with no Sub or Dub of its own takes the one the
 			// viewer was watching in ($lib/history/carry-audio.ts).
 			carryAudio(this.#deps, offer.current.id, chosen.ref.id);

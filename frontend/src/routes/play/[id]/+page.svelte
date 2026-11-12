@@ -2528,7 +2528,7 @@
 				guessId: playingAs.guessId
 			});
 			void getOrFire(
-				makeKey(id, targetEp, mode, version, args.guess_row, args.caption),
+				makeKey(id, targetEp, mode, version, args.guess_row, args.caption, args.card_row),
 				(emit, signal) => playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
@@ -2615,7 +2615,15 @@
 				owner,
 				() =>
 					getOrFire(
-						makeKey(owner.showId, targetEp, mode, version, playArgs.guess_row, playArgs.caption),
+						makeKey(
+							owner.showId,
+							targetEp,
+							mode,
+							version,
+							playArgs.guess_row,
+							playArgs.caption,
+							playArgs.card_row
+						),
 						(emit, signal) => playStream(playArgs, emit, signal),
 						(p) => {
 							switchProgress = progressLabel(p);

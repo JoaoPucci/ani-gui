@@ -677,6 +677,9 @@ export interface LinkedRow {
 export interface LinkOutcome {
 	kitsu_id: string;
 	linked: LinkedRow[];
+	/** A correction asked after this one saved the line first: this one
+	 *  saved nothing, and the line keeps the later answer. */
+	overtaken?: boolean;
 }
 
 /** Link history rows to the show the user named for them, from the
