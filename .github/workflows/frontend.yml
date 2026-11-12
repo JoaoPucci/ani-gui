@@ -34,7 +34,10 @@ jobs:
           # See tools/rust-workflow-filter.sh for why we avoid `git diff | grep -q`
           # under pipefail (SIGPIPE on early grep exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if grep -qE '^(frontend/|tests/fixtures/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/frontend\.yml$|\.github/actions/pnpm-install/)' <<<"$changed"; then
+          # The two backend files are what frontend tests read across the
+          # seam: a PR that changes only the backend's side of either must
+          # run the tests that hold the renderer to it.
+          if grep -qE '^(frontend/|tests/fixtures/|backend/wire-contract\.json$|backend/error-keys\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/frontend\.yml$|\.github/actions/pnpm-install/)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
