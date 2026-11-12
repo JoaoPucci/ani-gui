@@ -129,7 +129,7 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 			http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 		);
 
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
@@ -207,7 +207,7 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 			http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 		);
 
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
@@ -271,7 +271,7 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 				})
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 		);
 
 		// A session id no other case uses, so the case reads alone.
@@ -333,7 +333,7 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 			http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 		);
 
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
@@ -417,7 +417,7 @@ describe('play route — a recovery for a show the page has left', () => {
 					await held;
 					return new HttpResponse(null, { status: 204 });
 				}),
-				http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+				http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 			);
 
 			setUrl(`/play/${KITSU_ID}`, { session: 'session-left', episode: '1', kind: 'mp4' });

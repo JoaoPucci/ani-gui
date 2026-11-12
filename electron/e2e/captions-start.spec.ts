@@ -40,7 +40,7 @@ import {
   continueKitsuMatch,
   defaultSettings,
 } from "./fixtures/kitsu";
-import { launchPackagedApp, packagedBinary } from "./launch";
+import { appWindow, launchPackagedApp, packagedBinary } from "./launch";
 
 const mediaDir = path.join(__dirname, "fixtures", "captions");
 
@@ -61,8 +61,8 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
     XDG_CACHE_HOME: path.join(tmp, "cache"),
     XDG_DATA_HOME: path.join(tmp, "data"),
     ANI_GUI_UNATTENDED: "1",
-  });
-  const page = await app.firstWindow();
+  }, { profile: tmp });
+  const page = await appWindow(app);
   return { app, page };
 }
 
@@ -128,6 +128,9 @@ async function stubMetadata(page: Page, apiBase: string) {
     if (p.startsWith("/api/kitsu/episodes/")) return j([continueKitsuEpisode6]);
     if (p === "/api/history") return j([]);
     if (p.startsWith("/api/image")) return r.fulfill({ status: 503 });
+    // The backend answers skip times with a list, empty when it
+    // knows none; the page reads it as one once the length is known.
+    if (p.startsWith("/api/aniskip/")) return j([]);
     return j(null);
   });
 }

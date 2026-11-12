@@ -4,7 +4,7 @@ use super::*;
 
 const SHOW: &str = "hianime:stitched-show-4";
 
-fn state(td: &tempfile::TempDir) -> AppState {
+fn state(td: &tempfile::TempDir) -> crate::scratch::Scratch<AppState> {
     let mut state = crate::commands::play::tests::state_with_proxy_origin();
     state.history_path = td.path().join("history");
     state
@@ -88,7 +88,7 @@ async fn the_route_answers_with_the_rows_number() {
     let state = state(&td);
     seed_former_recap_row(&state);
     repair(&state);
-    let router = crate::api::build_api_router(std::sync::Arc::new(state));
+    let router = crate::api::build_api_router(std::sync::Arc::new((*state).clone()));
     let response = router
         .oneshot(
             axum::http::Request::builder()

@@ -1,0 +1,87 @@
+{
+ "data": [
+  {
+   "id": "48269",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dandadan",
+    "titles": {
+     "en": "DAN DA DAN",
+     "en_jp": "Dandadan",
+     "ja_jp": "ダンダダン"
+    },
+    "abbreviatedTitles": [
+     "ดันดาดัน",
+     "膽大黨",
+     "DAN DA DAN: FIRST ENCOUNTER",
+     "Dan Da Dan"
+    ],
+    "slug": "DAN-DA-DAN",
+    "startDate": "2024-10-03",
+    "endDate": "2024-12-19",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49425",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dandadan 2nd Season",
+    "titles": {
+     "en": "DAN DA DAN Season 2",
+     "en_jp": "Dandadan 2nd Season",
+     "ja_jp": "ダンダダン 第2期"
+    },
+    "abbreviatedTitles": [
+     "DAN DA DAN: EVIL EYE"
+    ],
+    "slug": "dandadan-2",
+    "startDate": "2025-07-03",
+    "endDate": "2025-09-18",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50163",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dandadan 3rd Season",
+    "titles": {
+     "en": "DAN DA DAN Season 3",
+     "en_jp": "Dandadan 3rd Season",
+     "ja_jp": "ダンダダン 第3期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "dandadan-3",
+    "startDate": "2027-12-31",
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "unreleased"
+   }
+  },
+  {
+   "id": "49419",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "TAIDADA",
+    "titles": {
+     "en": "TAIDADA",
+     "en_jp": "TAIDADA",
+     "ja_jp": "TAIDADA"
+    },
+    "abbreviatedTitles": [],
+    "slug": "TAIDADA",
+    "startDate": "2024-12-05",
+    "endDate": "2024-12-05",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  }
+ ]
+}

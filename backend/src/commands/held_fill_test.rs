@@ -3,7 +3,6 @@
 //! it landed. Each test shares one gate for its AniList mock, so a 429
 //! puts that gate in a pause as it would AniList's own.
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use wiremock::matchers::{method, path, query_param};
@@ -23,8 +22,9 @@ const BANNER: &str = r#"{"data":{"Media":{"bannerImage":"https://al/b.jpg"}}}"#;
 /// Long enough for every retry a test starts to end.
 const WAIT: Duration = Duration::from_secs(20);
 
-fn state(kitsu_uri: &str) -> AppState {
-    AppState {
+fn state(kitsu_uri: &str) -> crate::scratch::Scratch<AppState> {
+    let dirs = crate::scratch::dir();
+    let state = AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -33,18 +33,20 @@ fn state(kitsu_uri: &str) -> AppState {
         proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: PathBuf::from("/tmp/ani-gui-held-fill/history"),
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-held-fill/images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
-        config_path: PathBuf::from("/tmp/ani-gui-held-fill/config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-held-fill/state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-    }
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+    };
+    dirs.hold(state)
 }
 
 /// Kitsu mapping each show to an AniList id, its detail with no cover.

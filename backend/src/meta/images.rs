@@ -155,8 +155,8 @@ pub async fn get_or_fetch(
 ) -> Result<(Vec<u8>, &'static str)> {
     if let Some(cached) = read_cached(cache_dir, url) {
         // Bump mtime to "now" so LRU prune treats this hit as fresh.
-        // std::fs::File::set_modified is in stable since 1.75 — we
-        // pin 1.88, so it's available without an extra crate.
+        // std::fs::File::set_modified is in stable since 1.75, older
+        // than the pinned toolchain, so it needs no extra crate.
         let hash = hash_url(url);
         let (_, ext) = sniff_extension(url);
         let path = disk_path(cache_dir, &hash, ext);

@@ -3,7 +3,7 @@
 use super::*;
 use crate::commands::play_native_test_provider::{stitched_recap, STITCHED, STITCHED_SLUG};
 
-fn state(td: &tempfile::TempDir) -> AppState {
+fn state(td: &tempfile::TempDir) -> crate::scratch::Scratch<AppState> {
     let mut state = super::tests::state_with_proxy_origin();
     state
         .providers
@@ -69,7 +69,6 @@ async fn a_replay_opens_a_session_named_for_the_episode_its_resolve_played() {
     let key = play_resolution_cache::cache_key(
         &asked.title,
         &asked.mode,
-        "best",
         &asked.episode,
         asked.year,
         asked.episode_count,
@@ -126,7 +125,6 @@ fn key_for(asked: &PlayArgs, episode: &str) -> String {
     play_resolution_cache::cache_key(
         &asked.title,
         &asked.mode,
-        "best",
         episode,
         asked.year,
         asked.episode_count,

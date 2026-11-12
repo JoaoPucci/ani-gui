@@ -1,0 +1,78 @@
+{
+ "data": [
+  {
+   "id": "13237",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord II",
+    "titles": {
+     "en_jp": "Overlord II",
+     "en_us": "Overlord II",
+     "ja_jp": "オーバーロードⅡ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "overlord-ii",
+    "startDate": "2018-01-09",
+    "endDate": "2018-04-03",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "14269",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord: Ple Ple Pleiades 2",
+    "titles": {
+     "en_jp": "Overlord: Ple Ple Pleiades 2",
+     "ja_jp": "オーバーロード　ぷれぷれぷれあです2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "overlord-ple-ple-pleiades-2",
+    "startDate": "2018-01-09",
+    "endDate": "2018-04-03",
+    "episodeCount": 13,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41174",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord III",
+    "titles": {
+     "en": "Overlord III",
+     "en_jp": "Overlord III",
+     "ja_jp": "オーバーロードⅢ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "overlord-iii",
+    "startDate": "2018-07-10",
+    "endDate": "2018-10-02",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41482",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord: Ple Ple Pleiades 3",
+    "titles": {
+     "en_jp": "Overlord: Ple Ple Pleiades 3",
+     "ja_jp": "オーバーロード　ぷれぷれぷれあです3"
+    },
+    "abbreviatedTitles": [],
+    "slug": "overlord-ple-ple-pleiades-3",
+    "startDate": "2018-07-10",
+    "endDate": "2018-10-02",
+    "episodeCount": 13,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

@@ -10,7 +10,7 @@
 // listing opened the 2012 series and played it.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse, type HttpHandler } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
@@ -116,13 +116,15 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 async function playTheCard(
 	row: { ep_no: string; id: string; title: string; key_year?: number },
 	hits: ReturnType<typeof hit>[],
-	shown: string
+	shown: string,
+	more: HttpHandler[] = []
 ): Promise<URLSearchParams> {
 	server.use(
 		...homeHandlers({}, [
 			http.get(`${API_BASE}/api/history`, () => HttpResponse.json([row])),
 			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json(hits)),
-			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 }))
+			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
+			...more
 		])
 	);
 	app = mount(HomePage, { target });
@@ -288,5 +290,54 @@ describe('two guessed Continue cards titled alike, from different years', () => 
 		// The next visit reads the stored guesses.
 		app = mount(HomePage, { target });
 		await until(both, 'both cards again, each its own show');
+	});
+});
+
+describe('a guessed Continue card for hianime\'s "Jujutsu Kaisen (TV)"', () => {
+	it('opens and plays the series, not the special the row rules out', async () => {
+		// Kitsu's search for the title returns the New Year's Special
+		// alone. The backend answers that the row rules it out (its title
+		// names a series, and it is twelve episodes in), so no hit is
+		// left, and the resolve from the show key's words answers the
+		// series.
+		const special = hit(
+			'43886',
+			"Jujutsu Kaisen New Year's Special",
+			'jujutsu-kaisen-new-year-s-special',
+			'special',
+			'2021-01-01',
+			1,
+			{ en: "Jujutsu Kaisen New Year's Special" }
+		);
+		const series = hit('42765', 'Jujutsu Kaisen', 'jujutsu-kaisen', 'TV', '2020-10-03', 24, {
+			en: 'Jujutsu Kaisen',
+			en_jp: 'Jujutsu Kaisen'
+		});
+		let asked: { key: string; title: string; episode: number; hits: { id: string }[] } | null =
+			null;
+		const play = await playTheCard(
+			{ ep_no: '12', id: 'hianime:jujutsu-kaisen-237', title: 'Jujutsu Kaisen (TV)' },
+			[special],
+			'Jujutsu Kaisen',
+			[
+				http.post(`${API_BASE}/api/history/guess/ruled-out`, async ({ request }) => {
+					asked = (await request.json()) as typeof asked;
+					return HttpResponse.json(['43886']);
+				}),
+				http.get(`${API_BASE}/api/kitsu/resolve-allmanga/:showId`, ({ params }) =>
+					HttpResponse.json(params.showId === 'hianime:jujutsu-kaisen-237' ? series : null)
+				)
+			]
+		);
+		expect(asked).toMatchObject({
+			key: 'hianime:jujutsu-kaisen-237',
+			title: 'Jujutsu Kaisen (TV)',
+			episode: 12,
+			hits: [{ id: '43886' }]
+		});
+		expect(play.get('title')).toBe('Jujutsu Kaisen');
+		expect(play.get('subtype')).toBe('TV');
+		expect(play.get('episode_count')).toBe('24');
+		expect(play.get('episode')).toBe('13');
 	});
 });

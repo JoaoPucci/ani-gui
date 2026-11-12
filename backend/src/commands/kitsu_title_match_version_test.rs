@@ -13,11 +13,10 @@ use super::*;
 use crate::history::HistoryEntry;
 use crate::scraper::provider::ProviderId;
 
-fn state(history: std::path::PathBuf) -> AppState {
-    AppState {
-        history_path: history,
-        ..super::title_match_tests::state()
-    }
+fn state(history: std::path::PathBuf) -> crate::scratch::Scratch<AppState> {
+    let mut state = super::title_match_tests::state();
+    state.history_path = history;
+    state
 }
 
 const BEFORE: &str = "title-match:v4:hianime:black clover:c1";
@@ -29,6 +28,45 @@ fn a_title_match_the_version_before_stored_is_not_read() {
     crate::cache::meta_cache_put(&s.cache_pool, BEFORE, "12625", 86_400).expect("put");
     assert_eq!(
         title_match_get(&s, Some(ProviderId::Hianime), "black clover", 1).expect("get"),
+        None
+    );
+}
+
+/// A match stored before the row's own episode and title ruled hits
+/// out may be one of the hits they rule out: hianime's "Jujutsu Kaisen
+/// (TV)" took the New Year's Special. It is not read; the next load
+/// picks again.
+#[test]
+fn a_title_match_stored_before_the_row_ruled_hits_out_is_not_read() {
+    let td = tempfile::tempdir().expect("td");
+    let s = state(td.path().join("history"));
+    let before = "title-match:v5:hianime:jujutsu kaisen (tv):c1";
+    crate::cache::meta_cache_put(&s.cache_pool, before, "43886", 86_400).expect("put");
+    assert_eq!(
+        title_match_get(&s, Some(ProviderId::Hianime), "jujutsu kaisen (tv)", 1).expect("get"),
+        None
+    );
+}
+
+/// A match stored before the row's search could be refuted as a
+/// whole may be one of the hits it refutes: hianime's "One Piece: The
+/// Movie 14 - Stampede" took One Piece Movie 1. A stored match is
+/// checked alone, by the rules that do not read a search as a whole, so
+/// it is not read; the next load picks again.
+#[test]
+fn a_title_match_stored_before_a_search_could_be_refuted_is_not_read() {
+    let td = tempfile::tempdir().expect("td");
+    let s = state(td.path().join("history"));
+    let before = "title-match:v6:hianime:one piece: the movie 14 - stampede:c1";
+    crate::cache::meta_cache_put(&s.cache_pool, before, "421", 86_400).expect("put");
+    assert_eq!(
+        title_match_get(
+            &s,
+            Some(ProviderId::Hianime),
+            "one piece: the movie 14 - stampede",
+            1
+        )
+        .expect("get"),
         None
     );
 }
