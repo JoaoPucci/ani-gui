@@ -4,11 +4,14 @@
  * On hover or keyboard focus a guessed card shows "≈ Not what you
  * watched?" at the top corner its delete chip leaves free. The card is
  * a fixed 16rem whatever the window's size, and the chip pops out of
- * the opposite corner, so the pill has under 13rem of room, which the
- * longer locales' sentence does not fit on one line at the app's type
- * size. The pill wraps instead, to balanced lines: its words are all
- * there to read, inside the card, clear of the chip, and its button
- * keeps the whole sentence for a name.
+ * the opposite corner: the pill stops at 13.375rem, a --space-2 short
+ * of it. Every locale's sentence fits on one line at the app's type
+ * size with the fonts this was measured on, Portuguese with the least
+ * to spare. Words that outgrow the room, on a wider face or in a
+ * longer locale, wrap to balanced lines: every word on show, inside
+ * the card, clear of the chip, and the button keeps the whole sentence
+ * for a name. The third view below spaces the letters a fifth wider
+ * to make that happen here.
  *
  * Layout is the subject, so this runs in the packaged app's Chromium
  * with the fonts the platform has, at the smallest window the app
@@ -208,7 +211,10 @@ const views = [
 ] as const;
 
 for (const locale of ['en', 'pt-BR', 'es-419', 'ru']) {
+	// A cold launch, a remount and three views, each hovered, measured
+	// and shot: more than the suite's default 30 s on a slow runner.
 	test(`the guessed card's pill fits its card in ${locale}`, async () => {
+		test.setTimeout(120_000);
 		const testInfo = test.info();
 		const { app, page } = await launch(locale);
 		try {

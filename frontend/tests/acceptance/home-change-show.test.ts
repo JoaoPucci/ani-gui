@@ -1,8 +1,8 @@
 // Acceptance: a guessed Continue card's own ways to the change-show
 // picker, on Home.
 //
-// A guessed card carries, on hover or keyboard focus only, a "Not this
-// show?" pill with the ≈ mark at the corner the delete chip leaves
+// A guessed card carries, on hover or keyboard focus only, a "Not what
+// you watched?" pill with the ≈ mark at the corner the delete chip leaves
 // free; a card whose show the row recorded carries none, and no card
 // carries an always-on mark. The pill opens the picker in place, and a
 // link reads the cards again where they stand. Black Clover's guess —
