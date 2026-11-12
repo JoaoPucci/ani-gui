@@ -267,7 +267,12 @@ for (const locale of ['en', 'pt-BR', 'es-419', 'ru']) {
 				expect(Math.min(...g.lineWidths) / Math.max(...g.lineWidths), at).toBeGreaterThan(0.5);
 				expect(g.markOffFirstLine, at).toBeLessThanOrEqual(2);
 
-				// The chip pops out of the card's corner: the shot keeps it.
+				// A screenshot in CI's Chromium let the hover go (the pill was
+				// hidden right after it), so the shot also holds the card's
+				// keyboard focus, which shows the pill without a pointer (the
+				// shot may then carry the card's focus ring). The chip pops
+				// out of the card's corner: the shot keeps it.
+				await cell.locator('.resume-card').focus();
 				const around = 16;
 				await page.screenshot({
 					path: testInfo.outputPath(`pill-${locale}-${view.label}.png`),
@@ -278,8 +283,9 @@ for (const locale of ['en', 'pt-BR', 'es-419', 'ru']) {
 						height: g.poster.bottom - g.chip.top + 2 * around
 					}
 				});
-				// The shot shows the pill on show, as measured.
+				// The shot shows the pill on show.
 				expect((await geometry(page)).opacity, `${at}, after the shot`).toBe('1');
+				await cell.locator('.resume-card').blur();
 			}
 		} finally {
 			await stopApp(app);
