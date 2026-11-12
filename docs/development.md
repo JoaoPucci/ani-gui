@@ -436,7 +436,8 @@ environment variables above).
 constant, and register a test case for its default and for each other
 value it allows in `flags::matrix::CASES`. A test fails until every
 value has one. This build has no kind to declare it with: a kind
-arrives with the change that verifies the file.
+arrives with the change that reads the flags themselves only under a
+verified signature, which the signing below does not yet do.
 
 ## Signing the flags file
 

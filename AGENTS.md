@@ -242,7 +242,7 @@ authority directed, never a route an agent picks for itself:
 
 ### A flagged feature ships switched off
 
-The remote flags file (`flags.json` on the `flags` branch, read by `backend/src/flags/`) is not signed. **Flags are default OFF, and any read failure means OFF.** A flag's built-in default is off, and no file, a broken one, a value its declaration does not allow and a flag the file does not mention all leave it off (`backend/src/flags/decl.rs`). The renderer reads a flag through `flagOn` (`frontend/src/lib/flags.ts`), which is on only for exactly `true`. This build declares no flag and has no kind one could be declared with, so the unsigned file can change nothing. A kind arrives with the change that verifies the file. The rules for a flagged feature follow from that:
+The remote flags file (`flags.json` on the `flags` branch, read by `backend/src/flags/`) may be signed, but the signature covers only the notices it carries (`backend/src/flags/signature.rs`): its flags are read whatever the signature says. **Flags are default OFF, and any read failure means OFF.** A flag's built-in default is off, and no file, a broken one, a value its declaration does not allow and a flag the file does not mention all leave it off (`backend/src/flags/decl.rs`). The renderer reads a flag through `flagOn` (`frontend/src/lib/flags.ts`), which is on only for exactly `true`. This build declares no flag and has no kind one could be declared with, so the file can change no flag. A kind arrives with the change that reads the flags themselves only under a verified signature. The rules for a flagged feature follow from that:
 
 - **A flagged feature ships with its flag off.** Until a flag kind exists, that flag is a build-time default, off in the release that introduces the feature.
 - **A release switches it on after a grace period, never the remote file.** The release that turns a flagged feature on comes about four released versions after the one that introduced it. Turning it on is a change to its build-time default, shipped in a release like any other change. The grace period is a policy that review holds; nothing in the code counts releases.
@@ -252,7 +252,7 @@ The remote flags file (`flags.json` on the `flags` branch, read by `backend/src/
 
 The launch splash, including its progress rail and stall line (`electron/lib/splash.cjs`, `electron/lib/splash-progress.cjs`, `electron/splash/`), is part of the flags mechanism and is not behind a flag. It is what is on screen while the backend starts and the launch's flags are decided, so gating it would put the flags mechanism behind a feature flag of its own.
 
-Once `flags.json` is signed and the app verifies it, switching a feature on remotely becomes possible, and the rules for a flagged feature are to be revised then.
+Once the app reads the flags themselves only under a verified signature, switching a feature on remotely becomes possible, and the rules for a flagged feature are to be revised then.
 
 ## 14. Scope is negotiable, delivery is not
 

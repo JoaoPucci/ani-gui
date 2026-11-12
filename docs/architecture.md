@@ -307,8 +307,9 @@ declaration's own, never one copied from the file.
 
 **This build declares no flag, and has no kind to declare one with.**
 `flags::FlagKind` has no variant outside the tests, so `DECLARED` can
-only be empty, and the unsigned file can change nothing. A kind arrives
-with the change that verifies the file (below).
+only be empty, and the file can change no flag. A kind arrives with the
+change that reads the flags themselves only under a verified signature;
+the signature below covers only the file's notices.
 
 **Read through the declaration, on only for `true`.** Consumers read a
 flag through its declaration (`Resolved::enabled`), never through a name

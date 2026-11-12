@@ -22,8 +22,8 @@
  * switch needs no migration.
  *
  * Not wired yet: the number would come from the published notices,
- * whose showing waits on the maintainer's decision about content read
- * from the unsigned flags file.
+ * which are kept only from a verified flags file (the build trusts no
+ * key yet) and are not shown yet.
  */
 
 export const GRACE_MS = 14 * 24 * 3600_000;
