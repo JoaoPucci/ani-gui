@@ -128,6 +128,7 @@
 	import { HOLD_RUNWAY_MARGIN_S } from '$lib/play/stall-machine';
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
+	import { HLS_BUFFER_POLICY } from '$lib/play/hls-buffer-policy';
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
 	import { moreMenuQuality } from '$lib/play/more-menu-quality';
@@ -2129,7 +2130,12 @@
 			// The page starts the engine once the levels are in and the
 			// quality control has chosen the start level
 			// ($lib/play/arm-quality), through the handoff gate (below).
-			hls = new Hls({ lowLatencyMode: false, autoStartLoad: false, ...HLS_STALL_LOAD_POLICY });
+			hls = new Hls({
+				lowLatencyMode: false,
+				autoStartLoad: false,
+				...HLS_STALL_LOAD_POLICY,
+				...HLS_BUFFER_POLICY
+			});
 			// The engine retires with its source: the next attach's
 			// flush, or the page leaving.
 			const engine = hls;
