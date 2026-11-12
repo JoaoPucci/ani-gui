@@ -54,12 +54,14 @@
 # builds it first).
 #
 # Both platforms' packaging scripts are covered, Windows's
-# `build:backend` among them. On Linux the e2e workflow also builds the
-# release-shaped package in a job of its own and checks that its binary
-# does not hold the key ("The release-shaped backend trusts no test-run
-# key"), and that the e2e package's binary does, so the check is seen
-# to find it; nothing builds the Windows backend in CI, so on that side
-# this check is all there is.
+# `build:backend` among them. CI also builds each platform's release
+# backend with the release's own script and checks that the binary does
+# not hold the key: on Linux the e2e workflow's release-shaped job
+# ("The release-shaped backend trusts no test-run key"), with the e2e
+# package's binary checked to hold it, so the search is seen to find
+# it; on Windows a job of its own on windows-latest. This check holds
+# that both jobs exist and name the right binary (last rule below).
+# Nothing builds the Windows installer in CI.
 
 set -eu
 
@@ -164,6 +166,63 @@ fi
 
 if grep -nE 'cargo build.*(--all-features|--features|[[:space:]]-F)' .github/workflows/*.yml >&2; then
     printf 'arch/test_run_key FAIL: a workflow builds the backend with features\n' >&2
+    failed=1
+fi
+
+# Both platforms' release backends are built in CI and searched for the
+# key. Read with PyYAML: some job runs on windows-latest, builds the
+# backend with electron's own `build:backend` (the script `package:win`
+# runs), and has a later step that names the binary that build makes
+# and the key's file. The Linux side is the release-shaped job's (`pnpm
+# run dist`), whose steps name dist/linux-unpacked's backend the same
+# way. What the steps do with those names is theirs; this holds that
+# the jobs are there and point at the right binaries.
+py=''
+for candidate in python3 /usr/bin/python3; do
+    if "$candidate" -I -c 'import yaml' 2>/dev/null; then
+        py=$candidate
+        break
+    fi
+done
+if [ -z "$py" ]; then
+    printf 'arch/test_run_key FAIL: no python3 with PyYAML to read the workflows (install python3-yaml)\n' >&2
+    failed=1
+elif ! "$py" -I - <<'PY'; then
+import glob, sys
+import yaml
+
+KEY = 'backend/tests/fixtures/flags-signature/test-run-key.pub'
+PLATFORMS = {
+    'windows-latest': ('pnpm run build:backend', 'target/release/ani-gui-backend.exe'),
+    'ubuntu-latest': ('pnpm run dist', 'dist/linux-unpacked/resources/ani-gui-backend'),
+}
+
+
+def checks(job, build, binary):
+    steps = job.get('steps') or []
+    for i, step in enumerate(steps):
+        run = step.get('run')
+        if isinstance(run, str) and run.strip() == build and step.get('working-directory') == 'electron':
+            later = [str(t.get('run', '')) for t in steps[i + 1:]]
+            return any(binary in r and KEY.split('backend/', 1)[1] in r for r in later)
+    return False
+
+
+found = set()
+for path in sorted(glob.glob('.github/workflows/*.yml')):
+    with open(path, encoding='utf-8') as f:
+        doc = yaml.safe_load(f) or {}
+    for job in (doc.get('jobs') or {}).values():
+        for runner, (build, binary) in PLATFORMS.items():
+            if job.get('runs-on') == runner and checks(job, build, binary):
+                found.add(runner)
+missing = sorted(set(PLATFORMS) - found)
+for runner in missing:
+    build, binary = PLATFORMS[runner]
+    print(f'no {runner} job runs `{build}` in electron/ and then searches {binary} for the test-run key', file=sys.stderr)
+sys.exit(1 if missing else 0)
+PY
+    printf 'arch/test_run_key FAIL: a release backend is not checked for the key in CI (see above)\n' >&2
     failed=1
 fi
 
