@@ -8,7 +8,9 @@
 //! begun before the link; a later episode of the same session is begun
 //! after it, and would record the old guess over the link. So whatever a
 //! guessed session's play would record — the watch's id, or the resolve's
-//! guess — it records only on a row that records no id, or the same one.
+//! guess — it records only where neither the row, nor, for a row that
+//! records none, the card's own line on its listing, records another show
+//! ([`line_record`]).
 //! A session a card opened with no guess — a line the user named, played
 //! from Home — keeps the line's show the same way on the card's own
 //! listing (`card_row`): a player mounted again after "Keep watching
@@ -50,7 +52,8 @@ pub fn guards_row(guess_row: Option<&str>, card_row: Option<&str>, played: &str)
 
 /// The show a play landing on `played` would write over: the one that
 /// row records, or, for a row that records none, the one the card's line
-/// `card` records when the play landed on that card's own listing.
+/// `card` records when the play landed on that card's own listing. A
+/// show Kitsu answered gone (`gone`) counts at neither step.
 #[must_use]
 pub fn line_record<'a>(
     rows: &'a [crate::history::HistoryEntry],
@@ -58,11 +61,13 @@ pub fn line_record<'a>(
     card: Option<&str>,
     gone: impl Fn(&str) -> bool,
 ) -> Option<&'a str> {
-    let _ = &gone;
+    // A show Kitsu answered gone is no show to keep: the line is a guess
+    // again, and the next step is asked.
     let recorded = |id: &str| {
         rows.iter()
             .find(|r| r.id == id)
             .and_then(|r| r.kitsu_id.as_deref())
+            .filter(|k| !gone(k))
     };
     recorded(played).or_else(|| {
         card.filter(|c| *c != played && crate::scraper::provider::same_listing(c, played))
@@ -71,10 +76,11 @@ pub fn line_record<'a>(
 }
 
 /// `candidate`, the id the play `args` would record on the row `played`,
-/// unless a card asked for the play there ([`guards_row`]) and the row
-/// records another ([`keeps_recorded`]). A recorded show Kitsu answered
-/// gone does not count. A history that cannot be read keeps such a
-/// play's id back: what the row records is not known.
+/// unless a card asked for the play there ([`guards_row`]) and the row,
+/// or else the card's line on its own listing ([`line_record`]), records
+/// another ([`keeps_recorded`]). A recorded show Kitsu answered gone does
+/// not count. A history that cannot be read keeps such a play's id back:
+/// what the row records is not known.
 pub(crate) fn guarded<'a>(
     state: &AppState,
     args: &PlayArgs,
@@ -94,8 +100,7 @@ pub(crate) fn guarded<'a>(
     let card = args.guess_row.as_deref().or(args.card_row.as_deref());
     let recorded = line_record(&rows, played, card, |id| {
         crate::commands::kitsu_gone::is_gone(state, id).unwrap_or(false)
-    })
-    .filter(|id| !crate::commands::kitsu_gone::is_gone(state, id).unwrap_or(false));
+    });
     keeps_recorded(true, recorded, candidate)
 }
 
