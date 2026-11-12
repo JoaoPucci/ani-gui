@@ -95,6 +95,9 @@ pub(super) fn assemble(anchor: &str, run: &Run, look: &Lookup<'_>) -> Franchise 
     for id in &run.beside {
         s.place_beside(id, is_movie(id, run, look));
     }
+    for id in &run.moved {
+        s.place_moved(id, is_movie(id, run, look));
+    }
     let members: BTreeSet<String> = run.members.keys().cloned().collect();
     let main = entries(&members, run, look);
     let [versions, films, sides, recaps] =

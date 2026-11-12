@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use super::alt::listed;
+use super::alt::linked;
 use super::rules::Walk;
 use super::MAX_LISTINGS;
 
@@ -21,12 +21,13 @@ impl Walk<'_, '_> {
         by_start.sort_by_key(|f| self.key(f));
         let mut met: BTreeMap<String, Met> = BTreeMap::new();
         for f in &by_start {
-            for r in listed(self.look, f, &["prequel", "sequel"]) {
-                if self.members.contains_key(&r.id) || self.left_out.contains(&r.id) {
+            let mut ids = linked(self.look, f, "prequel", &self.reverse);
+            ids.extend(linked(self.look, f, "sequel", &self.reverse));
+            for id in ids {
+                if self.members.contains_key(&id) || self.left_out.contains(&id) {
                     continue;
                 }
-                met.entry(r.id.clone())
-                    .or_insert_with(|| Met { via: f.clone() });
+                met.entry(id).or_insert_with(|| Met { via: f.clone() });
             }
         }
         met

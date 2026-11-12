@@ -25,9 +25,10 @@ pub(super) fn links(run: &Run, look: &Lookup<'_>) -> Vec<(String, String)> {
     out
 }
 
-/// The side-story anchor's parents in the run, in start order.
+/// The side-story anchor's parents in the run, in start order; none
+/// when the main story holds none of them.
 pub(super) fn parents(anchor: &str, run: &Run) -> BTreeMap<String, Vec<String>> {
-    if !run.side_anchor {
+    if !run.side_anchor || run.parents.is_empty() {
         return BTreeMap::new();
     }
     BTreeMap::from([(anchor.to_string(), run.parents.clone())])

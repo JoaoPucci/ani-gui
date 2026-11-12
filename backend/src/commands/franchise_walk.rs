@@ -8,7 +8,9 @@
 //! the listings say, never on the order they arrived in.
 //!
 //! The run follows the rules of `docs/proposals/franchise-watch-order.md`
-//! section 4 ([`rules`]); the strips around it are attached from the run
+//! section 4 ([`rules`]), walked from the franchise's root rather than
+//! from the anchor, so every page of a franchise answers with one main
+//! story ([`root`]); the strips around it are attached from the run
 //! members' listings ([`around`]).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -160,6 +162,8 @@ mod name;
 mod parents;
 #[path = "franchise_walk_place.rs"]
 mod place;
+#[path = "franchise_walk_root.rs"]
+mod root;
 #[path = "franchise_walk_rules.rs"]
 pub(crate) mod rules;
 #[path = "franchise_walk_sections.rs"]

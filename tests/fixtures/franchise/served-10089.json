@@ -24,12 +24,22 @@
       "cover": null
     },
     {
-      "id": "10089",
-      "title": "Boruto: Naruto the Movie",
-      "subtype": "movie",
-      "start": "2015-08-07",
-      "episodes": 1,
+      "id": "13051",
+      "title": "Boruto: Naruto Next Generations",
+      "subtype": "TV",
+      "start": "2017-04-05",
+      "episodes": 293,
       "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47181",
+      "title": "Boruto: Naruto Next Generations Part 2",
+      "subtype": "TV",
+      "start": null,
+      "episodes": null,
+      "status": "tba",
       "poster": null,
       "cover": null
     }
@@ -41,21 +51,14 @@
     ],
     [
       "1555",
-      "10089"
+      "13051"
+    ],
+    [
+      "13051",
+      "47181"
     ]
   ],
-  "versions": [
-    {
-      "id": "13051",
-      "title": "Boruto: Naruto Next Generations",
-      "subtype": "TV",
-      "start": "2017-04-05",
-      "episodes": 293,
-      "status": "finished",
-      "poster": null,
-      "cover": null
-    }
-  ],
+  "versions": [],
   "films": [
     {
       "id": "405",
@@ -152,6 +155,16 @@
       "title": "The Last: Naruto the Movie",
       "subtype": "movie",
       "start": "2014-12-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "10089",
+      "title": "Boruto: Naruto the Movie",
+      "subtype": "movie",
+      "start": "2015-08-07",
       "episodes": 1,
       "status": "finished",
       "poster": null,

@@ -2,11 +2,13 @@
 //! its earliest parent story when it is a side story alone or in a run
 //! of one-offs (which entries are its parent stories:
 //! `franchise_walk_parents.rs`; what a one-off is:
-//! `franchise_walk_series.rs`).
+//! `franchise_walk_series.rs`), settled to the franchise's main story
+//! (`franchise_walk_root.rs`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::place::place;
+use super::root::settle;
 use super::rules::Walk;
 use super::series::is_series;
 use super::Lookup;
@@ -30,6 +32,12 @@ pub(crate) struct Run {
     /// walk moved to their parent's run and that run left them out:
     /// listed around it like the anchor, music videos aside.
     pub(crate) beside: BTreeSet<String>,
+    /// The entries of the run first walked to that the main story
+    /// (`franchise_walk_root.rs`) leaves out, the anchor among them when
+    /// it was a member: listed around it, where its members' listings
+    /// place them, else among the other versions (a movie, the films),
+    /// music videos aside.
+    pub(crate) moved: BTreeSet<String>,
 }
 
 /// Walk from `root`, the listings in `consulted` already counted.
@@ -39,7 +47,21 @@ pub(crate) struct Run {
 pub(crate) fn walk(
     root: &str,
     look: &Lookup<'_>,
+    consulted: BTreeSet<String>,
+) -> Result<Run, Vec<String>> {
+    walk_with(root, look, consulted, BTreeSet::new())
+}
+
+/// Walk from `root`, the listings in `consulted` already counted, the
+/// links of the `reverse` listings also counted from the other side.
+///
+/// # Errors
+/// The listings to read before the walk can go on.
+pub(crate) fn walk_with(
+    root: &str,
+    look: &Lookup<'_>,
     mut consulted: BTreeSet<String>,
+    reverse: BTreeSet<String>,
 ) -> Result<Run, Vec<String>> {
     consulted.insert(root.to_string());
     if look.listing(root).is_none() {
@@ -51,6 +73,7 @@ pub(crate) fn walk(
         left_out: BTreeSet::new(),
         consulted,
         complete: true,
+        reverse,
     };
     let mut frontier = vec![root.to_string()];
     while !frontier.is_empty() {
@@ -69,6 +92,7 @@ pub(crate) fn walk(
         side_anchor: false,
         parents: Vec::new(),
         beside: BTreeSet::new(),
+        moved: BTreeSet::new(),
     })
 }
 
@@ -80,13 +104,51 @@ fn holds_series(run: &Run, look: &Lookup<'_>) -> bool {
         .any(|e| is_series(&e))
 }
 
+/// The franchise's main story (`franchise_walk_root.rs`), settled from
+/// the run [`first`] walks to; a side-story anchor keeps those of its
+/// parents that are in it.
+///
+/// # Errors
+/// The listings to read before the walk can go on.
+pub(crate) fn run(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>> {
+    let first = first(anchor, look)?;
+    let settled = settle(first.clone(), look)?;
+    let is_music = |m: &String| {
+        look.entry(m, &settled.consulted)
+            .is_some_and(|e| e.subtype.as_deref() == Some("music"))
+    };
+    let outside = |m: &&String| !settled.members.contains_key(*m);
+    let moved = first
+        .members
+        .keys()
+        .filter(outside)
+        .filter(|m| m.as_str() == anchor || !is_music(m))
+        .cloned()
+        .collect();
+    let beside = first.beside.iter().filter(outside).cloned().collect();
+    let side_anchor = first.side_anchor && !settled.members.contains_key(anchor);
+    let parents = first
+        .parents
+        .iter()
+        .filter(|p| side_anchor && settled.members.contains_key(*p))
+        .cloned()
+        .collect();
+    Ok(Run {
+        side_anchor,
+        parents,
+        beside,
+        moved,
+        ..settled
+    })
+}
+
 /// The anchor's run, or, for a side story whose run is itself alone or
 /// a run of one-offs (no series among them) that names a parent story,
 /// its earliest parent story's.
 ///
 /// # Errors
 /// The listings to read before the walk can go on.
-pub(crate) fn run(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>> {
+fn first(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>> {
     let own = walk(anchor, look, BTreeSet::new())?;
     if own.members.len() > 1 && holds_series(&own, look) {
         return Ok(own);

@@ -42,6 +42,26 @@
       "status": "finished",
       "poster": null,
       "cover": null
+    },
+    {
+      "id": "7882",
+      "title": "Fate/stay night: Unlimited Blade Works",
+      "subtype": "TV",
+      "start": "2014-10-12",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "10052",
+      "title": "Fate/stay night: Unlimited Blade Works 2nd Season",
+      "subtype": "TV",
+      "start": "2015-04-05",
+      "episodes": 13,
+      "status": "finished",
+      "poster": null,
+      "cover": null
     }
   ],
   "links": [
@@ -56,6 +76,14 @@
     [
       "7658",
       "9718"
+    ],
+    [
+      "7882",
+      "10052"
+    ],
+    [
+      "9718",
+      "7882"
     ]
   ],
   "versions": [
@@ -70,11 +98,11 @@
       "cover": null
     },
     {
-      "id": "7882",
-      "title": "Fate/stay night: Unlimited Blade Works",
-      "subtype": "TV",
-      "start": "2014-10-12",
-      "episodes": 12,
+      "id": "11321",
+      "title": "Fate/stay night: Unlimited Blade Works 2nd Season - Sunny Day",
+      "subtype": "special",
+      "start": "2015-10-07",
+      "episodes": 1,
       "status": "finished",
       "poster": null,
       "cover": null
