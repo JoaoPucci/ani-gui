@@ -143,8 +143,13 @@ fi
 #    the `package` scripts, and `dist` / `dist:release`, which are run
 #    on their own as well (the e2e workflow's release-shaped job runs
 #    `dist`); and the e2e suite's `package:e2e` builds its own, the
-#    same musl build with the test-run feature into target-e2e
-#    (tests/arch/test_run_key.sh holds the rest of that script). Asserted on
+#    same musl build with the test-run feature into target-e2e. Both
+#    e2e scripts, and `e2e`, which runs one, are pinned as exact text:
+#    `package:e2e` packages an unpacked tree only (`--linux dir`), since
+#    a target given there, or appended by its caller, would override the
+#    e2e configuration's and make an installable package carrying the
+#    test-run backend. tests/arch/test_run_key.sh
+#    holds which scripts may name them. Asserted on
 #    the parsed scripts as exact text: each one begins with the build
 #    followed by `&&`, so nothing runs before it and a failed build
 #    stops the packaging, and the build script is exactly the musl
@@ -156,11 +161,14 @@ const first = "pnpm run build:backend:linux && ";
 const bad = ["package", "package:release", "dist", "dist:release"]
   .filter((n) => typeof s[n] !== "string" || !s[n].startsWith(first));
 if (s["build:backend:linux"] !== build) bad.push("build:backend:linux");
-if (typeof s["package:e2e"] !== "string" || !s["package:e2e"].startsWith("pnpm run build:backend:e2e && ")) bad.push("package:e2e");
+const e2e = "pnpm run build:backend:e2e && pnpm run build:frontend && pnpm run fetch:linux-deps && electron-builder --linux dir --config electron-builder.e2e.cjs";
+if (s["package:e2e"] !== e2e) bad.push("package:e2e");
+// e2e runs it unchanged: arguments after a script name reach its last command.
+if (s.e2e !== "pnpm run package:e2e && playwright test") bad.push("e2e");
 if (s["build:backend:e2e"] !== build + " --features test-run-key --target-dir target-e2e") bad.push("build:backend:e2e");
 if (bad.length) { console.error(bad.join(" ")); process.exit(1); }
 ' "$REPO_ROOT/$PKG"; then
-    printf 'arch/linux_deps FAIL: %s scripts above do not begin with the static backend build, or build:backend:linux is not exactly the musl build\n' "$PKG" >&2
+    printf 'arch/linux_deps FAIL: %s scripts above do not begin with the static backend build, or build:backend:linux, build:backend:e2e, package:e2e or e2e is not exactly its pinned text\n' "$PKG" >&2
     failed=1
 fi
 

@@ -1,14 +1,15 @@
 #!/bin/sh
-# Architectural invariant: no packaged backend trusts the test-run key.
+# Architectural invariant: no release's backend trusts the test-run key.
 #
 # A backend built with its `test-run-key` cargo feature trusts a test
 # run's flags file (ANI_GUI_TEST_FLAGS_FILE) under a fixture key whose
 # secret anyone can derive from
 # backend/tests/fixtures/flags-signature/make.py. The tests enable it
-# (`cargo test --all-features`); a package must never carry it. That a
+# (`cargo test --all-features`), and so does the end-to-end suite's own
+# package (electron's `package:e2e`); a release must never carry it. That a
 # build with the feature still fetches the live file under its own keys
 # alone is the backend's tests' to hold (flags/launch_keys_test.rs).
-# What this check holds is narrower than "no package can carry it":
+# What this check holds is narrower than "no release can carry it":
 #
 #   - the feature is not among the backend's default features, directly
 #     or through another feature `default` turns on, read from
@@ -25,20 +26,25 @@
 #     where it reads from and writes to);
 #   - only electron's `package:e2e` names `build:backend:e2e` or the
 #     e2e package's configuration (electron-builder.e2e.cjs), only `e2e`
-#     names `package:e2e`, and no script names `e2e`, so no release
-#     script reaches the feature build or packages it under that
-#     configuration with a target of its own (a CLI target overrides
-#     the configuration's `dir`). Words are split at shell operators,
-#     so a step glued to `&&` is still seen;
+#     names `package:e2e`, only `build:backend:e2e` names `target-e2e`,
+#     no script names `dist-e2e`, and no script runs `e2e` (the word
+#     after pnpm, npm, yarn or `run`); a root script names none of them.
+#     The names are matched as text anywhere in a script, quoted strings
+#     included. So no release script reaches the feature build, or
+#     packages under that configuration with a target of its own (a CLI
+#     target overrides the configuration's `dir`), or points a release
+#     build at the e2e directories;
 #   - no workflow line that runs `cargo build` passes a feature flag.
 #
 # It does not see other routes to a feature build: RUSTFLAGS or a
 # .cargo/config.toml setting `--cfg feature="test-run-key"`, other
 # spellings of the build (`cargo b`, `cargo +toolchain build`,
 # `cargo rustc`, `cargo install`, a command continued across lines), a
-# script that builds through a helper file it calls, a script that
-# runs another through something other than `pnpm run <name>`, or a
-# script that packages a binary some other command left behind
+# script that builds through a helper file it calls, a name spelled
+# another way (built from parts, an environment variable, a glob), a
+# script that runs `e2e` other than as the word after a package
+# manager or `run`, or a script that packages a binary some other
+# command left behind
 # (`dist:win` packages whatever target/release holds; `package:win`
 # builds it first).
 #
@@ -83,9 +89,19 @@ import json, shlex, sys
 FEATURE_FLAGS = ('--all-features', '--features', '-F')
 E2E_BUILD = 'build:backend:e2e'
 E2E_CONFIG = 'electron-builder.e2e.cjs'
-# Which electron script may name each e2e step; a root script may name
-# none. `e2e` itself is run by people, never by another script.
-CALLERS = {E2E_BUILD: {'package:e2e'}, 'package:e2e': {'e2e'}, 'e2e': set(), E2E_CONFIG: {'package:e2e'}}
+# Which electron script may name each e2e step or e2e path; a root
+# script may name none. Matched as text anywhere in the script, quoted
+# strings included.
+CALLERS = {
+    E2E_BUILD: {'package:e2e'},
+    'package:e2e': {'e2e'},
+    E2E_CONFIG: {'package:e2e'},
+    'target-e2e': {E2E_BUILD},
+    'dist-e2e': set(),
+}
+# `e2e` itself is run by people, never by another script: refused as
+# the word after a package manager or its `run`.
+RUNNERS = ('pnpm', 'npm', 'yarn', 'run')
 
 
 def words_of(cmd):
@@ -96,8 +112,8 @@ def words_of(cmd):
     return list(lex)
 
 
-def names(word, step):
-    return word == step or (step == E2E_CONFIG and word.endswith(('/' + step, '=' + step)))
+def runs_e2e(words):
+    return any(w == 'e2e' and i > 0 and words[i - 1] in RUNNERS for i, w in enumerate(words))
 
 
 bad = []
@@ -111,8 +127,12 @@ for path in sys.argv[1:]:
     for name, cmd in scripts.items():
         words = words_of(cmd)
         for step, callers in CALLERS.items():
-            if any(names(w, step) for w in words) and not (electron and name in callers):
-                bad.append(f'{path} "{name}": runs {step}')
+            # `package:e2e` names build:backend:e2e's directory only
+            # through that script, never as text of its own.
+            if step in cmd and not (electron and name in callers):
+                bad.append(f'{path} "{name}": names {step}')
+        if runs_e2e(words):
+            bad.append(f'{path} "{name}": runs e2e')
         if 'cargo build' not in cmd:
             continue
         flags = [w for w in words if w in FEATURE_FLAGS or w.startswith(('--features=', '-F'))]

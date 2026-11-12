@@ -112,6 +112,19 @@ function proxyEnv(origin: string): Record<string, string> {
 	return env;
 }
 
+/** `env` without a test run's flags file. */
+function withoutFlagsFile(
+	env: Record<string, string | undefined> | undefined
+): Record<string, string | undefined> {
+	const { ANI_GUI_TEST_FLAGS_FILE: _dropped, ...rest } = env ?? {};
+	return rest;
+}
+
+/** The variable that names `file` as the test run's flags file. */
+function flagsEnv(file: string | undefined): Record<string, string> {
+	return file === undefined ? {} : { ANI_GUI_TEST_FLAGS_FILE: file };
+}
+
 /** Removes the scratch directory `dir`, that path alone. A failure is
  *  reported, never thrown: it would surface in whatever test is running
  *  when the app exits, or hide the launch failure being reported. */
@@ -154,10 +167,19 @@ function removeAfterExit(dir: string): void {
  *  (its HOME or XDG directories): it is removed, that path alone, once
  *  the app has exited, and again once its backend has had time to stop,
  *  or at once if the launch never starts. A worker killed before its
- *  app exits leaves the profile behind. */
+ *  app exits leaves the profile behind.
+ *
+ *  `flagsFile` is the test run's flags file (`ANI_GUI_TEST_FLAGS_FILE`)
+ *  and the only way to name one: a value in `env`, inherited from the
+ *  shell that runs the suite or not, is dropped, so a launch without
+ *  it runs with the defaults (flags-file.ts writes one). */
 export async function launchPackagedApp(
 	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env'],
-	{ binary = packagedBinary, profile }: { binary?: string; profile?: string } = {}
+	{
+		binary = packagedBinary,
+		profile,
+		flagsFile
+	}: { binary?: string; profile?: string; flagsFile?: string } = {}
 ): Promise<ElectronApplication> {
 	const refusal = launchRefusal(env ?? {});
 	if (refusal) {
@@ -177,7 +199,12 @@ export async function launchPackagedApp(
 		app = await _electron.launch({
 			executablePath: binary,
 			args: [...testLaunchSwitches],
-			env: { ...env, ...proxyEnv(proxy.origin), ...testRunEnv }
+			env: {
+				...withoutFlagsFile(env),
+				...flagsEnv(flagsFile),
+				...proxyEnv(proxy.origin),
+				...testRunEnv
+			}
 		});
 	} catch (err) {
 		proxy.close();

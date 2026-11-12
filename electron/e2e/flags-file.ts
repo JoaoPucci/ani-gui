@@ -63,7 +63,7 @@ export function minisign(data: Buffer, signer: Exclude<Signer, 'unsigned'>, name
 
 /** Write `flags` as a flags file in `dir`, with its signature beside it
  *  unless `signer` is `'unsigned'`, and return the file's path: the
- *  value for `ANI_GUI_TEST_FLAGS_FILE`. */
+ *  value for launchPackagedApp's `flagsFile`. */
 export function writeFlagsFile(
 	dir: string,
 	flags: Record<string, unknown>,
