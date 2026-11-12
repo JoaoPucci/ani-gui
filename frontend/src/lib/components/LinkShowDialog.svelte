@@ -13,9 +13,9 @@
   show than the one playing is answered "Switch to it now" (focused)
   or "Keep watching this": the pick is saved either way. Anywhere else,
   and for the show playing, the answer is one button. The candidates,
-  the search and saving the pick are the caller's
-  ($lib/history/link-offer.ts); this only renders them and reports the
-  choice. It speaks of shows, never of links or guesses.
+  their warnings, the search and saving the pick are the caller's
+  ($lib/history/link-offer.ts, from the backend); this only renders them
+  and reports the choice. It speaks of shows, never of links or guesses.
 
   Esc and the backdrop close it while nothing is in flight. The show
   the card shows now is labelled as the surface it opened from names

@@ -361,7 +361,7 @@ export interface HistoryEntry {
 	/** The Continue card whose guessed play wrote this row on another
 	 *  listing — JoJo's 2000 card for the 2012 listing's row its play
 	 *  wrote. Home's card stands for that line while both show as the
-	 *  same show ($lib/history/card-row.ts). */
+	 *  same show, as the backend answers (`historyCardLines`). */
 	guessed_from?: string;
 	/** The row records a show the user named for it (a pick in the
 	 *  picker, or Yes): every surface offers to change it again. */

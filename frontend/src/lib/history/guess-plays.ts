@@ -3,7 +3,8 @@
  * the app, and the show each named.
  *
  * A session a guessed card opened keeps the card's verdict for its
- * life ($lib/history/link-offer.ts, `carried`): its player and the show
+ * life (`carried`, $lib/history/picked-offer.ts, which the backend's
+ * verdict reads, `commands/link_verdict.rs`): its player and the show
  * page it goes up to ask about the line even once the session's own
  * play recorded the guess on it. The verdict travels in the session's
  * URL, and a URL stays in navigation history, so it stands only while

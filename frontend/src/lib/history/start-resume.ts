@@ -158,7 +158,7 @@ export function makeStartResume(deps: StartResumeDeps): (
 	seriesTotal: number | null,
 	seriesFinished: boolean,
 	/** The line the card stands for, when it is another row than the
-	 *  one it shows ($lib/history/card-row.ts): the play is a guess of
+	 *  one it shows ($lib/history/card-lines.svelte.ts): the play is a guess of
 	 *  that line, from the shown row's progress. */
 	cardRow?: string
 ) => Promise<void> {
