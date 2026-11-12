@@ -56,7 +56,9 @@ pub fn line_record<'a>(
     rows: &'a [crate::history::HistoryEntry],
     played: &str,
     card: Option<&str>,
+    gone: impl Fn(&str) -> bool,
 ) -> Option<&'a str> {
+    let _ = &gone;
     let recorded = |id: &str| {
         rows.iter()
             .find(|r| r.id == id)
@@ -90,8 +92,10 @@ pub(crate) fn guarded<'a>(
     // A recorded show Kitsu answered gone is no link: the line is a guess
     // again, and a play of the guess on its own listing repairs it.
     let card = args.guess_row.as_deref().or(args.card_row.as_deref());
-    let recorded = line_record(&rows, played, card)
-        .filter(|id| !crate::commands::kitsu_gone::is_gone(state, id).unwrap_or(false));
+    let recorded = line_record(&rows, played, card, |id| {
+        crate::commands::kitsu_gone::is_gone(state, id).unwrap_or(false)
+    })
+    .filter(|id| !crate::commands::kitsu_gone::is_gone(state, id).unwrap_or(false));
     keeps_recorded(true, recorded, candidate)
 }
 

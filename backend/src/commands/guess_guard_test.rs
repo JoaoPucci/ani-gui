@@ -78,7 +78,12 @@ fn a_new_row_of_the_cards_listing_is_guarded_by_the_show_its_line_records() {
     // yet): the line's show is what the play must not write over.
     let rows = [row("black-clover-77", Some("4013"))];
     assert_eq!(
-        line_record(&rows, "hianime:black-clover-949", Some("black-clover-77")),
+        line_record(
+            &rows,
+            "hianime:black-clover-949",
+            Some("black-clover-77"),
+            |_| false
+        ),
         Some("4013")
     );
     let walked = [
@@ -86,8 +91,48 @@ fn a_new_row_of_the_cards_listing_is_guarded_by_the_show_its_line_records() {
         row("hianime:black-clover-949", None),
     ];
     assert_eq!(
-        line_record(&walked, "hianime:black-clover-949", Some("black-clover-77")),
+        line_record(
+            &walked,
+            "hianime:black-clover-949",
+            Some("black-clover-77"),
+            |_| false
+        ),
         Some("4013")
+    );
+}
+
+#[test]
+fn a_show_kitsu_answered_gone_on_the_played_row_leaves_the_cards_line_to_guard() {
+    // The walked row records a show Kitsu deleted: no show to keep there,
+    // so the card's line, the user's named 4013, is what the play must
+    // not write over.
+    let rows = [
+        row("black-clover-77", Some("4013")),
+        row("hianime:black-clover-949", Some("404")),
+    ];
+    let gone = |id: &str| id == "404";
+    assert_eq!(
+        line_record(
+            &rows,
+            "hianime:black-clover-949",
+            Some("black-clover-77"),
+            gone
+        ),
+        Some("4013")
+    );
+    // And a card line Kitsu deleted guards nothing either.
+    let both = [
+        row("black-clover-77", Some("404")),
+        row("hianime:black-clover-949", None),
+    ];
+    assert_eq!(
+        line_record(
+            &both,
+            "hianime:black-clover-949",
+            Some("black-clover-77"),
+            gone
+        ),
+        None
     );
 }
 
@@ -99,15 +144,25 @@ fn the_played_rows_own_show_comes_first_and_another_listing_is_not_the_lines() {
         row("hianime:gintama-1237", None),
     ];
     assert_eq!(
-        line_record(&rows, "hianime:black-clover-949", Some("black-clover-77")),
+        line_record(
+            &rows,
+            "hianime:black-clover-949",
+            Some("black-clover-77"),
+            |_| false
+        ),
         Some("12")
     );
     assert_eq!(
-        line_record(&rows, "hianime:gintama-1237", Some("black-clover-77")),
+        line_record(
+            &rows,
+            "hianime:gintama-1237",
+            Some("black-clover-77"),
+            |_| false
+        ),
         None
     );
     assert_eq!(
-        line_record(&rows, "hianime:black-clover-949", None),
+        line_record(&rows, "hianime:black-clover-949", None, |_| false),
         Some("12")
     );
 }
@@ -140,7 +195,7 @@ proptest! {
         if let Some(c) = card.as_deref().filter(|c| *c != played) {
             rows.push(row(c, card_id.as_deref()));
         }
-        let got = line_record(&rows, &played, card.as_deref());
+        let got = line_record(&rows, &played, card.as_deref(), |_| false);
         let own_line = card.as_deref().is_some_and(|c| {
             c != played && crate::scraper::provider::same_listing(c, &played)
         });

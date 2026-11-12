@@ -308,5 +308,6 @@ async fn a_card_watch_on_a_new_row_of_its_listing_never_names_another_show() {
         .expect("rows")
         .into_iter()
         .find(|r| r.id == SHOW);
-    assert_ne!(walked.and_then(|r| r.kitsu_id).as_deref(), Some("49877"));
+    // The watch is recorded on the walked row, naming no show.
+    assert_eq!(walked.map(|r| r.kitsu_id), Some(None));
 }
