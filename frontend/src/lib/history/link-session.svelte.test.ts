@@ -7,7 +7,7 @@ import type { HistoryEntry, KitsuAnimeRef, ReadOptions } from '$lib/api';
 import { m } from '$lib/paraglide/messages';
 import { LinkSession, type LinkNotice, type LinkSessionDeps } from './link-session.svelte';
 import { notePlayed, __resetGuessPlaysForTests } from './guess-plays';
-import { ruleDeps } from '../../../tests/fakes/link-rules';
+import { ruleDeps } from '../../test/link-rules-fake';
 
 function ref(id: string, over: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {

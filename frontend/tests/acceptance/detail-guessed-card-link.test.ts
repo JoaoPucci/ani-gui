@@ -19,7 +19,7 @@ import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
 import { served } from './link-backend';
-import { groupMembers } from '../fakes/link-rules';
+import { groupMembers } from '../../src/test/link-rules-fake';
 import type { LinkGroupRequest } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 

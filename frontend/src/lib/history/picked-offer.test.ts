@@ -2,7 +2,7 @@
 // and hands the backend, and how it reads the backend's answer. Which
 // line is asked about, offered again or kept is the backend's rule
 // (commands/link_verdict.rs, its own tests); the fake below answers as
-// it does (tests/fakes/link-rules.ts), so the cases read as the app.
+// it does (frontend/src/test/link-rules-fake.ts), so the cases read as the app.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HistoryEntry, KitsuAnimeRef, LinkVerdict, VerdictRequest } from '$lib/api';
@@ -10,7 +10,7 @@ import type { LinkDeps } from './link-offer';
 import { notePick, __resetHiddenRowsForTests } from './guess-slip';
 import { surfaceOfferRead } from './picked-offer';
 import { notePlayed, __resetGuessPlaysForTests } from './guess-plays';
-import { verdict } from '../../../tests/fakes/link-rules';
+import { verdict } from '../../test/link-rules-fake';
 
 const ref = (id: string) => ({ id, canonical_title: `Show ${id}` }) as KitsuAnimeRef;
 const CARD: HistoryEntry = { id: 'hianime:black-clover-949', title: 'Black Clover', ep_no: '1' };

@@ -20,7 +20,7 @@ import {
 	type LinkDeps,
 	type LinkOffer
 } from './link-offer';
-import { groupMembers } from '../../../tests/fakes/link-rules';
+import { groupMembers } from '../../test/link-rules-fake';
 
 const ref = (id: string) => ({ id, canonical_title: `Show ${id}` }) as KitsuAnimeRef;
 

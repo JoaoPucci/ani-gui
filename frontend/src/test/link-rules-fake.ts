@@ -23,8 +23,8 @@ import type {
 	ReadOptions,
 	RowMatch,
 	VerdictRequest
-} from '../../src/lib/api';
-import { parseCour } from '../../src/lib/history/resolve';
+} from '../lib/api';
+import { parseCour } from '../lib/history/resolve';
 
 export function verdict(r: VerdictRequest): LinkVerdict {
 	const showsPage = r.show === r.page;

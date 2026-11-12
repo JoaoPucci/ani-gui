@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CardLine, CardLineRow } from '$lib/api';
 import { CardLines } from './card-lines.svelte';
-import { cardLines } from '../../../tests/fakes/link-rules';
+import { cardLines } from '../../test/link-rules-fake';
 
 const CARD = 'hianime:jojos-bizarre-adventure-2000-5182';
 const PLAYED = 'hianime:jojos-bizarre-adventure-2012-708';

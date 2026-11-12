@@ -11,7 +11,7 @@ import {
 	type InPlaceLinkDeps
 } from './in-place-link.svelte';
 import { notePick, noteSwitch, pickedRow } from './guess-slip';
-import { ruleDeps } from '../../../tests/fakes/link-rules';
+import { ruleDeps } from '../../test/link-rules-fake';
 
 function ref(id: string, title: string): KitsuAnimeRef {
 	return {

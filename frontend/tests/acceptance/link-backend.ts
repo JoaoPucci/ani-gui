@@ -5,7 +5,7 @@
 //
 // The group's members are the rows the backend finds the card stands
 // for from each row's match (link_verdict.rs `group_members`, faked in
-// tests/fakes/link-rules.ts). Of those, it answers as the backend does
+// frontend/src/test/link-rules-fake.ts). Of those, it answers as the backend does
 // (history_link_plan.rs,
 // `card_listing`): a row shares the card's listing when it is the
 // card's own row, or when one of the two is a bare row of a retired
@@ -15,7 +15,7 @@
 
 import { http, HttpResponse, type HttpHandler } from 'msw';
 import { API_BASE } from './setup';
-import { groupMembers } from '../fakes/link-rules';
+import { groupMembers } from '../../src/test/link-rules-fake';
 import type { LinkGroupRequest } from '../../src/lib/api';
 
 export interface Row {

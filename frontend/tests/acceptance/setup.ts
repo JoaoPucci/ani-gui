@@ -18,7 +18,7 @@ import { setupServer } from 'msw/node';
 import { installElementAnimateStub } from './stubs/element-animate';
 import { isSession } from './session-contract';
 import { __resetGuessPlaysForTests } from '../../src/lib/history/guess-plays';
-import { candidates, cardLines, verdict } from '../fakes/link-rules';
+import { candidates, cardLines, verdict } from '../../src/test/link-rules-fake';
 import type {
 	CandidatesRequest,
 	CardLineRow,
@@ -93,7 +93,7 @@ const incidental = [
 /**
  * The change-show flow's rules, which the backend answers from what the
  * renderer sends (`commands/card_line.rs`, `link_verdict.rs`,
- * `link_candidates.rs`), answered as it does (`tests/fakes/link-rules.ts`):
+ * `link_candidates.rs`), answered as it does (`frontend/src/test/link-rules-fake.ts`):
  * Home asks for its cards' lines whatever the scenario, and a surface
  * opened from a Continue card asks whether to ask about its line. The
  * picker's candidates run their searches against the scenario's own
