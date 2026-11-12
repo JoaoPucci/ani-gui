@@ -245,3 +245,68 @@ fn a_card_play_of_the_lines_own_show_or_on_a_bare_line_is_no_keep() {
     // No card: a play from the show's page records what it names.
     assert!(!kept(Some("4013"), "49877", None));
 }
+
+#[tokio::test]
+async fn a_card_watch_on_a_new_row_of_its_listing_never_names_another_show() {
+    // The card is a retired provider's bare row the user named 4013. The
+    // remounted player's watch lands on the walked listing, which has no
+    // row yet, naming the page's show (49877): the new row must not
+    // record it.
+    use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+    let td = TempDir::new().expect("tempdir");
+    let state = test_app_state(&td);
+    put(
+        &state.cache_pool,
+        &cache_key(TITLE, "sub", "1", None, None, None),
+        &CachedResolution {
+            upstream_url: "https://video.example/master.m3u8".into(),
+            referer: String::new(),
+            media_kind: crate::proxy::MediaKind::Hls,
+            show_id: SHOW.into(),
+            show_title: TITLE.into(),
+            resolved_slot: Some(1),
+            subtitles: Vec::new(),
+            kitsu_id: None,
+            versions: Vec::new(),
+            version: None,
+            played: None,
+            former_episode: None,
+            episode_unverified: false,
+        },
+    );
+    let history = state.history_path.clone();
+    crate::history::write_atomic(
+        &history,
+        &[crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: "seitokai-ni-mo-ana-wa-aru-77".into(),
+            title: TITLE.into(),
+            watched_at: None,
+            kitsu_id: Some("4013".into()),
+            own_number: true,
+        }],
+    )
+    .expect("history");
+    let router = build_api_router(Arc::new(state));
+    let body = serde_json::json!({
+        "title": TITLE, "episode": "1", "mode": "sub",
+        "kitsu_id": "49877", "card_row": "seitokai-ni-mo-ana-wa-aru-77",
+    });
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/play/mark-watched")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .expect("req"),
+        )
+        .await
+        .expect("oneshot");
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    let walked = crate::history::read_all(&history)
+        .expect("rows")
+        .into_iter()
+        .find(|r| r.id == SHOW);
+    assert_ne!(walked.and_then(|r| r.kitsu_id).as_deref(), Some("49877"));
+}

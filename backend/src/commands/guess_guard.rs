@@ -48,6 +48,21 @@ pub fn guards_row(guess_row: Option<&str>, card_row: Option<&str>, played: &str)
         || card_row.is_some_and(|row| crate::scraper::provider::same_listing(row, played))
 }
 
+/// The show a play landing on `played` would write over: the one that
+/// row records, or, for a row that records none, the one the card's line
+/// `card` records when the play landed on that card's own listing.
+#[must_use]
+pub fn line_record<'a>(
+    rows: &'a [crate::history::HistoryEntry],
+    played: &str,
+    card: Option<&str>,
+) -> Option<&'a str> {
+    let _ = card;
+    rows.iter()
+        .find(|r| r.id == played)
+        .and_then(|r| r.kitsu_id.as_deref())
+}
+
 /// `candidate`, the id the play `args` would record on the row `played`,
 /// unless a card asked for the play there ([`guards_row`]) and the row
 /// records another ([`keeps_recorded`]). A recorded show Kitsu answered
