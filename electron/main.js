@@ -52,6 +52,8 @@ const { splashWords, stallTexts } = require("./lib/splash-progress.cjs");
 const { relaunch, relaunchPlan } = require("./lib/relaunch.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
+const { appDocumentFrom } = require("./lib/app-document.cjs");
+const { SECRET_CHANNEL, secretKeeper } = require("./lib/secret-handoff.cjs");
 const { revealMaximized, splashController, splashVersionLabel } = require("./lib/splash.cjs");
 const { abortWhenLost, appReadyBound, appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
 const {
@@ -169,6 +171,13 @@ if (!claimSingleInstance(app, { summon: () => keeper.summon() })) {
 // other path to index.html.
 const APP_SCHEME = "app";
 const APP_ORIGIN = `${APP_SCHEME}://localhost`;
+
+// The launch's secret, kept per window and handed to the app's own
+// page alone, over IPC, never on a command line (lib/secret-handoff.cjs).
+const secrets = secretKeeper({
+  app: appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL }),
+  logError: console.error,
+});
 
 // Register the scheme as standard + secure BEFORE app.whenReady, so
 // fetch + service-worker-style guarantees apply to assets loaded
@@ -467,8 +476,10 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // GNOME gives Chromium no server-side decorations
   // (electron/electron#48422). The icon is for the dev session;
   // packaged builds get theirs from the .desktop file. The backend's
-  // handshake, the configured locale and the launch's flags reach the
-  // preload as additional arguments (lib/window-args.cjs).
+  // origins, the configured locale and the launch's flags reach the
+  // preload as additional arguments (lib/window-args.cjs); the
+  // launch's secret does not, and is answered over IPC to the app's
+  // own page (lib/secret-handoff.cjs).
   const win = new BrowserWindow(
     appWindowOptions({
       width: workW,
@@ -478,6 +489,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
       additionalArguments: windowArguments(backend, readConfigLocale(), launchFlags),
     }),
   );
+  secrets.hold(win.webContents, backend.internalSecret);
   // Started now, so the renderer's word is not missed however early it
   // comes; the reveal waits for it (bounded) as well as for the splash.
   // While the boot's splash stands in for the window the wait has no
@@ -812,6 +824,13 @@ ipcMain.on("ani-gui:active-downloads", (_event, count) => {
 // happens once per renderer load.
 ipcMain.on("ani-gui:read-config-locale", (event) => {
   event.returnValue = readConfigLocale();
+});
+
+// The preload's one synchronous ask for the launch's secret, answered
+// only to the app's own page in a window it was handed to; anything
+// else gets null (lib/secret-handoff.cjs).
+ipcMain.on(SECRET_CHANNEL, (event) => {
+  event.returnValue = secrets.answer(event);
 });
 
 // ─── Account integration IPC handlers ──────────────────────────────
