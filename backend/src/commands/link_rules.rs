@@ -53,16 +53,33 @@ pub fn merge_candidates(
     title_hits: &[KitsuAnimeRef],
     slug_hits: &[KitsuAnimeRef],
 ) -> Vec<(KitsuAnimeRef, bool)> {
-    let _ = (current, title_hits, slug_hits);
-    Vec::new()
+    let longest = title_hits.len().max(slug_hits.len());
+    let interleaved =
+        (0..longest).flat_map(|i| title_hits.get(i).into_iter().chain(slug_hits.get(i)));
+    let mut seen = std::collections::HashSet::new();
+    current
+        .into_iter()
+        .chain(interleaved)
+        .filter(|show| !is_music(show) && seen.insert(show.id.clone()))
+        .map(|show| (show.clone(), current.is_some_and(|c| c.id == show.id)))
+        .collect()
+}
+
+fn is_music(show: &KitsuAnimeRef) -> bool {
+    show.subtype
+        .as_deref()
+        .is_some_and(|s| s.eq_ignore_ascii_case("music"))
 }
 
 /// The season a show names: the highest its titles or its slug carry,
 /// 1 when none does.
 #[must_use]
 pub fn season_of(show: &KitsuAnimeRef) -> u32 {
-    let _ = (show, cour_from_slug, cour_from_title);
-    1
+    let by_title = std::iter::once(&show.canonical_title)
+        .chain(show.titles.values())
+        .filter_map(|t| cour_from_title(t));
+    let by_slug = show.slug.as_deref().and_then(cour_from_slug);
+    by_title.chain(by_slug).fold(1, u32::max)
 }
 
 /// What to point out before linking a row whose saved title is `title`
@@ -70,8 +87,14 @@ pub fn season_of(show: &KitsuAnimeRef) -> u32 {
 /// that the show does not, and an episode past the show's count.
 #[must_use]
 pub fn link_warnings(title: &str, show: &KitsuAnimeRef, episode: f64) -> Vec<LinkWarning> {
-    let _ = (title, show, episode);
-    Vec::new()
+    let mut warnings = Vec::new();
+    if cour_from_title(title).unwrap_or(1) != season_of(show) {
+        warnings.push(LinkWarning::Season);
+    }
+    if show.episode_count.is_some_and(|n| episode > f64::from(n)) {
+        warnings.push(LinkWarning::Episode);
+    }
+    warnings
 }
 
 /// The candidates for a row whose saved title is `title`, the card

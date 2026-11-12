@@ -49,7 +49,9 @@ pub struct KitsuAnimeRef {
     /// Common keys: `en`, `en_jp` (romanized JP), `en_us`, `ja_jp` (kana).
     /// Used by the play flow to retry provider lookups under the romanized
     /// form when the canonical (often English) name doesn't match its
-    /// index — see `commands/play.rs`. Always present, possibly empty.
+    /// index — see `commands/play.rs`. Always present, possibly empty;
+    /// absent in a ref the renderer sends back from an older cache.
+    #[serde(default)]
     pub titles: HashMap<String, String>,
     /// Romanized mashup aliases Kitsu serves under
     /// `attributes.abbreviatedTitles` (e.g. `"Yuu Gi Ou: Duel Monsters
@@ -58,7 +60,9 @@ pub struct KitsuAnimeRef {
     /// when the canonical/localized names surface a wrong sibling — so
     /// the play/availability resolver appends them as last-resort
     /// fallback queries (see `altTitlesFromKitsu`). Always present,
-    /// possibly empty.
+    /// possibly empty; absent in a ref the renderer sends back from an
+    /// older cache.
+    #[serde(default)]
     pub abbreviated_titles: Vec<String>,
     /// URL slug Kitsu uses on its public site (`kitsu.io/anime/<slug>`).
     pub slug: Option<String>,

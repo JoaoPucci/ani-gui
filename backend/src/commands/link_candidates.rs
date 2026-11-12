@@ -15,6 +15,7 @@ use crate::commands::kitsu_search::kitsu_search;
 use crate::commands::link_rules::{merge_candidates, with_warnings, LinkCandidate};
 use crate::error::Result;
 use crate::meta::kitsu::KitsuAnimeRef;
+use crate::scraper::provider::key_search_term;
 
 /// A request for a row's candidates.
 #[derive(Debug, Clone, Deserialize)]
@@ -43,8 +44,37 @@ pub async fn link_candidates(
     state: &AppState,
     args: &CandidatesArgs,
 ) -> Result<Vec<LinkCandidate>> {
-    let _ = (state, kitsu_search, merge_candidates);
-    Ok(with_warnings(Vec::new(), &args.title, args.episode))
+    let shows = match args.query.as_deref() {
+        Some(typed) => {
+            let hits = kitsu_search(state, typed.trim()).await?;
+            let current = args.current.as_ref().map(|c| c.id.as_str());
+            merge_candidates(None, &hits, &[])
+                .into_iter()
+                .map(|(show, _)| {
+                    let is_current = current == Some(show.id.as_str());
+                    (show, is_current)
+                })
+                .collect()
+        }
+        None => {
+            let slug = key_search_term(&args.row);
+            let (title_hits, slug_hits) = tokio::join!(
+                quiet(state, Some(&args.title)),
+                quiet(state, slug.as_deref())
+            );
+            merge_candidates(args.current.as_ref(), &title_hits, &slug_hits)
+        }
+    };
+    Ok(with_warnings(shows, &args.title, args.episode))
+}
+
+/// The hits of a search the picker runs on its own: none for no words,
+/// and none when it fails.
+async fn quiet(state: &AppState, query: Option<&str>) -> Vec<KitsuAnimeRef> {
+    match query.map(str::trim) {
+        Some(q) if !q.is_empty() => kitsu_search(state, q).await.unwrap_or_default(),
+        _ => Vec::new(),
+    }
 }
 
 #[cfg(test)]

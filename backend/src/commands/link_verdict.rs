@@ -77,10 +77,21 @@ pub struct Verdict {
 /// The surface's answer for the card's line.
 #[must_use]
 pub fn verdict(args: &VerdictArgs) -> Verdict {
-    let _ = args;
+    let shows_page = args.show.as_deref() == Some(args.page.as_str());
+    // A line picked on the player is named, though its note may not
+    // have been read: it is only offered again.
+    let carried = args.carried && !args.picked;
+    let guess = args.asks_guess && shows_page && (!args.trusted || (carried && !args.named));
+    let offer = if guess {
+        Some(OfferKind::Guess)
+    } else if shows_page && (args.picked || args.named) {
+        Some(OfferKind::Again)
+    } else {
+        None
+    };
     Verdict {
-        offer: None,
-        kept: false,
+        offer,
+        kept: args.named && args.show.is_some() && !shows_page,
     }
 }
 
@@ -109,8 +120,17 @@ pub fn group_members(
     saved: Option<&str>,
     rows: &[RowMatch],
 ) -> Vec<String> {
-    let _ = (current, saved, rows);
-    vec![card.to_string()]
+    let covered = |r: &RowMatch| match saved {
+        None => r.show.as_deref() == Some(current) && !r.trusted,
+        Some(named) => r.show.as_deref() == Some(named),
+    };
+    std::iter::once(card.to_string())
+        .chain(
+            rows.iter()
+                .filter(|r| r.id != card && covered(r))
+                .map(|r| r.id.clone()),
+        )
+        .collect()
 }
 
 #[cfg(test)]

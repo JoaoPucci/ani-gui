@@ -54,11 +54,20 @@ pub struct CardLine {
     pub correctable: bool,
 }
 
-/// The line the card showing `shown` stands for, among `rows`.
+/// The line the card showing `shown` stands for, among `rows`: the
+/// row its guessed play came from while that row is held and shows as
+/// the same show, else `shown` itself.
 #[must_use]
 pub fn card_line<'a>(shown: &'a CardRow, rows: &'a [CardRow]) -> &'a CardRow {
-    let _ = rows;
-    shown
+    let Some(from) = shown.guessed_from.as_deref() else {
+        return shown;
+    };
+    if from == shown.id || !shown.guess || shown.show.is_none() {
+        return shown;
+    }
+    rows.iter()
+        .find(|r| r.id == from && r.show == shown.show)
+        .unwrap_or(shown)
 }
 
 /// The line each of `rows` stands for as a card, by row id.
@@ -71,7 +80,7 @@ pub fn card_lines(rows: &[CardRow]) -> HashMap<String, CardLine> {
                 shown.id.clone(),
                 CardLine {
                     line: line.id.clone(),
-                    correctable: false,
+                    correctable: line.guess || line.named,
                 },
             )
         })
