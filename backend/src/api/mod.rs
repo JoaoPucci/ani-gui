@@ -39,9 +39,9 @@ use sse_abort::abort_on_drop;
 use crate::app::AppState;
 use crate::commands::{
     account as account_inner, aniskip as aniskip_inner, app_info,
-    availability as availability_inner, download as download_inner, external_player,
-    history as h_inner, kitsu as kitsu_inner, play as play_inner, proxy_url,
-    session as session_inner, settings as settings_inner,
+    availability as availability_inner, download as download_inner, history as h_inner,
+    kitsu as kitsu_inner, play as play_inner, proxy_url, session as session_inner,
+    settings as settings_inner,
 };
 use crate::config::Config;
 use crate::error::AniError;
@@ -104,7 +104,6 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
             post(post_history_guess_ruled_out),
         )
         .route("/api/history/:id", delete(delete_history_entry))
-        .route("/api/external-player", post(post_external_player))
         .route("/api/sessions", post(post_session))
         .route("/api/kitsu/search", post(post_kitsu_search))
         .route("/api/kitsu/search/page", post(post_kitsu_search_page))
@@ -266,13 +265,6 @@ async fn get_history_number(
     Ok(Json(crate::commands::history_number::history_number(
         &state, &id,
     )?))
-}
-
-async fn post_external_player(
-    Json(args): Json<external_player::LaunchArgs>,
-) -> Result<StatusCode, AniError> {
-    external_player::open_external_player(&args)?;
-    Ok(StatusCode::ACCEPTED)
 }
 
 async fn post_session(
@@ -2771,20 +2763,31 @@ mod tests {
         assert_eq!(body_string(response).await, "null");
     }
 
-    /// `/api/external-player` is the only handler that fans out to
-    /// the OS (it spawns the user's mpv). Pin the contract on a
-    /// payload that intentionally points at a missing binary so we
-    /// exercise the body decode + error-into-response path without
-    /// actually launching anything.
+    /// No request names a program for the backend to run. The route
+    /// that once took a player command and its arguments from the
+    /// request body is gone: the external player and Syncplay start
+    /// from `/api/play/external` and `/api/play/syncplay`, which take
+    /// the show and episode and run the player the user configured in
+    /// Settings, with arguments the backend builds. A request naming a
+    /// program, even one carrying the launch's secret, runs nothing.
+    #[cfg(unix)]
     #[tokio::test]
-    async fn external_player_route_returns_5xx_when_binary_is_missing() {
+    async fn no_request_names_a_program_for_the_backend_to_run() {
+        use std::os::unix::fs::PermissionsExt as _;
         let td = TempDir::new().expect("tempdir");
+        let ran = td.path().join("ran");
+        let program = td.path().join("program");
+        std::fs::write(&program, format!("#!/bin/sh\ntouch '{}'\n", ran.display()))
+            .expect("write program");
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).expect("chmod");
         let router = test_router(Arc::new(test_app_state(&td)));
         let body = serde_json::json!({
-            "command": "/nonexistent/no-such-player-binary",
-            "url": "https://example.com/test.m3u8",
+            "stream_url": "https://example.com/test.m3u8",
             "referer": null,
-            "media_kind": "hls"
+            "title": null,
+            "player_command": program.display().to_string(),
+            "player_kind": "custom",
+            "custom_args_template": "{url}"
         });
         let response = router
             .oneshot(
@@ -2797,14 +2800,9 @@ mod tests {
             )
             .await
             .expect("oneshot");
-        // The route either rejects the body (422 / 400 — body shape
-        // depends on LaunchArgs's serde derives) or accepts it and
-        // surfaces a spawn failure as 500. We don't care which —
-        // only that the route is registered and the handler runs.
-        assert!(
-            response.status() != StatusCode::NOT_FOUND,
-            "/api/external-player returned 404 — route missing"
-        );
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(!ran.exists(), "a program named by a request must not run");
     }
 
     /// `/api/sessions` requires a valid CreateSessionArgs body. We

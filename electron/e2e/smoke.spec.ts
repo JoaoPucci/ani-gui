@@ -301,6 +301,79 @@ test("a test launch's backend reaches nothing beyond this machine", async () => 
   }
 });
 
+test("the launch's secret is on no process's command line, and only the app's page is handed it", async () => {
+  // Any local program can read a process's command line
+  // (/proc/<pid>/cmdline here). The preload asks the main process for
+  // the secret instead, which answers only the app's own page in the
+  // app's window (lib/secret-handoff.cjs).
+  const { app, page, profile } = await launchAppWithStubs();
+  try {
+    const secret = await page.evaluate(() => window.aniGui?.internalSecret);
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    const pids = await app.evaluate(({ app: electronApp }) =>
+      electronApp.getAppMetrics().map((m) => m.pid),
+    );
+    expect(pids.length).toBeGreaterThan(1);
+    let read = 0;
+    for (const pid of pids) {
+      let cmdline = "";
+      try {
+        cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, "utf-8");
+      } catch {
+        continue; // a helper that exited in between
+      }
+      read += 1;
+      expect(cmdline, `pid ${pid}`).not.toContain(secret as string);
+      expect(cmdline, `pid ${pid}`).not.toContain("--ani-gui-internal-secret");
+    }
+    // The renderer and the main process at least: a run that read no
+    // command line checked nothing.
+    expect(read).toBeGreaterThan(1);
+
+    // Another page in the app's window runs the same preload, and gets
+    // no secret; the app's own page, loaded again, gets it again.
+    const other = path.join(profile, "other.html");
+    fs.writeFileSync(other, "<!doctype html><title>other</title><p>other</p>");
+    // The page's own window, not the splash, which may still be up.
+    const win = await app.browserWindow(page);
+    const load = (url: string) => win.evaluate((w, target) => w.loadURL(target), url);
+    await load(`file://${other}`);
+    expect(await page.evaluate(() => document.title)).toBe("other");
+    expect(await page.evaluate(() => window.aniGui?.internalSecret ?? null)).toBeNull();
+    await load("app://localhost/");
+    expect(await page.evaluate(() => window.aniGui?.internalSecret)).toBe(secret);
+  } finally {
+    await app.close();
+  }
+});
+
+test("an image that fails to load is logged without the launch's secret", async () => {
+  // An <img> carries the secret as `secret=` in its URL, and Chromium
+  // logs a failed load with that URL; the main process relays it to its
+  // own stdout (the journal, a terminal), redacted.
+  const { app, page } = await launchAppWithStubs();
+  try {
+    const secret = await page.evaluate(() => window.aniGui?.internalSecret);
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    let out = "";
+    app.process().stdout?.on("data", (chunk: Buffer) => {
+      out += chunk.toString("utf-8");
+    });
+    // The stubs answer every /api/image with 503.
+    await page.evaluate(() => {
+      const bridge = window.aniGui!;
+      const base = bridge.lanes?.image ?? bridge.apiBase;
+      const img = new Image();
+      img.src = `${base}/api/image?url=${encodeURIComponent("https://e.example/a.jpg")}&secret=${bridge.internalSecret}`;
+      document.body.append(img);
+    });
+    await expect.poll(() => out, { timeout: 15_000 }).toContain("secret=<redacted>");
+    expect(out).not.toContain(secret as string);
+  } finally {
+    await app.close();
+  }
+});
+
 test("a test launch's scratch profile is gone once the app has quit", async () => {
   // Each launch gets a profile of its own under the system's temporary
   // directory. The launch helper removes it, and only it, once the app

@@ -74,7 +74,6 @@ const ROUTES: &[(&str, &str, &str)] = &[
         "/api/sessions",
         r#"{"upstream_url":"https://e.example/m.m3u8","referer":""}"#,
     ),
-    ("POST", "/api/external-player", "{}"),
     ("POST", "/api/kitsu/search", r#"{"query":"x"}"#),
     ("GET", "/api/kitsu/trending", ""),
     ("GET", "/api/image?url=https%3A%2F%2Fe.example%2Fa.jpg", ""),

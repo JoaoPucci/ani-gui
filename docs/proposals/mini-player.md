@@ -165,14 +165,16 @@ playback ends.
 from the same SvelteKit build: `app://localhost/mini/…` in a packaged
 build, the Vite server in development. **[data]** Nothing new is
 needed to serve it: the `app://` handler hands `index.html` to any
-extensionless path (`electron/main.js:683`), and SvelteKit's client
+extensionless path (`registerAppProtocol` in `electron/main.js`), and SvelteKit's client
 router takes the route from there.
 
 The window gets the same preload and the same `additionalArguments`
-as the main one (`electron/main.js:457`, `windowArguments(backend, …)`),
-so it sees the same backend handshake: `window.aniGui.apiBase`, the
-secret and the six loopback lanes, with the configured locale and the
-launch's flags. **[data]** The main process already
+as the main one (`windowArguments(backend, …)` in `electron/main.js`),
+and is handed the launch's secret the same way, which the preload asks
+the main process for over IPC (`secrets.hold`,
+`electron/lib/secret-handoff.cjs`), so it sees the same backend
+handshake: `window.aniGui.apiBase`, the secret and the six loopback
+lanes, with the configured locale and the launch's flags. **[data]** The main process already
 keeps that handshake for a later window: `keeper.booted(backend)`
 records it for the single-instance reopen path
 (`electron/lib/single-instance.cjs:70`). Both windows share Electron's

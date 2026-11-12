@@ -7,18 +7,31 @@ const assert = require("node:assert/strict");
 
 const { windowArguments } = require("./window-args.cjs");
 
-test("the API's origin, the locale and the secret go as they always have", () => {
+test("the API's origin and the locale go on the window's command line", () => {
   assert.deepEqual(
     windowArguments({ apiBase: "http://127.0.0.1:1", internalSecret: "s", lanes: {} }, "pt-BR"),
-    [
-      "--ani-gui-api-base=http://127.0.0.1:1",
-      "--ani-gui-locale=pt-BR",
-      "--ani-gui-internal-secret=s",
-    ],
+    ["--ani-gui-api-base=http://127.0.0.1:1", "--ani-gui-locale=pt-BR"],
   );
 });
 
-test("a missing locale or secret is left out rather than sent empty", () => {
+// A renderer's command line is readable by other local programs
+// (/proc/<pid>/cmdline on Linux, the process list on Windows). The
+// launch's secret reaches the preload over IPC instead
+// (lib/secret-handoff.cjs).
+test("the launch's secret never goes on the window's command line", () => {
+  const secret = "c0ffee".repeat(10) + "abcd";
+  const args = windowArguments(
+    { apiBase: "http://127.0.0.1:1", internalSecret: secret, lanes: { image: "http://127.0.0.1:4" } },
+    "en",
+    { origin: "file", flags: { a: true } },
+  );
+  for (const a of args) {
+    assert.ok(!a.includes(secret), a);
+    assert.ok(!a.startsWith("--ani-gui-internal-secret"), a);
+  }
+});
+
+test("a missing locale is left out rather than sent empty", () => {
   assert.deepEqual(windowArguments({ apiBase: "http://127.0.0.1:1" }, null), [
     "--ani-gui-api-base=http://127.0.0.1:1",
   ]);
@@ -35,7 +48,6 @@ test("every lane goes as a flag of its own, named after the lane", () => {
   );
   assert.deepEqual(args, [
     "--ani-gui-api-base=http://127.0.0.1:1",
-    "--ani-gui-internal-secret=s",
     "--ani-gui-lane-probe=http://127.0.0.1:3",
     "--ani-gui-lane-image=http://127.0.0.1:4",
   ]);
