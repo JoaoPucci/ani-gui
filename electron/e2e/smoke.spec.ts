@@ -1,7 +1,7 @@
 /**
  * Smoke test: launches the packaged Electron app from
- * `dist/linux-unpacked/ani-gui` (electron-builder's pre-AppImage
- * output), stubs every request its pages make of the Rust backend's
+ * `dist-e2e/linux-unpacked/ani-gui` (electron-builder's unpacked tree
+ * of the e2e package, lib/e2e-package.cjs), stubs every request its pages make of the Rust backend's
  * HTTP API, and asserts the home page reaches a recognizable rendered
  * state. An API request no stub answers fails the test, and the launch
  * helper keeps the backend itself off the network, so nothing here
@@ -13,8 +13,8 @@
  * sidecar backend at `process.resourcesPath/ani-gui-backend`. None
  * of those wire correctly when `electron .` is run from source.
  *
- * Pre-condition: `pnpm run package` (or the chained `pnpm e2e`) has
- * produced `dist/linux-unpacked/`.
+ * Pre-condition: `pnpm run package:e2e` (or the chained `pnpm e2e`)
+ * has produced `dist-e2e/linux-unpacked/`.
  */
 import { expect, test, type ElectronApplication } from "@playwright/test";
 import { withColdLaunchRetry } from "../lib/cold-launch.cjs";
@@ -44,7 +44,7 @@ import { expectedPlatform } from "../lib/e2e-display.cjs";
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
     throw new Error(
-      `prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package`,
+      `prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package:e2e`,
     );
   }
 });
@@ -553,6 +553,13 @@ test("the renderer cannot change the launch's flags", async () => {
         // Strict code throws; sloppy code is ignored. Either way it fails.
       }
       try {
+        // The probe the package under test declares, off: turning it
+        // on from the page fails the same way.
+        flags.test_run_probe = true;
+      } catch {
+        // As above.
+      }
+      try {
         bridge.flags = { injected: true };
       } catch {
         // As above.
@@ -563,7 +570,11 @@ test("the renderer cannot change the launch's flags", async () => {
         flags: window.aniGui?.flags,
       };
     });
-    expect(seen).toEqual({ flagsFrozen: true, bridgeFrozen: true, flags: {} });
+    expect(seen).toEqual({
+      flagsFrozen: true,
+      bridgeFrozen: true,
+      flags: { test_run_probe: false },
+    });
   } finally {
     await app.close();
   }
