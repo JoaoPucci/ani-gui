@@ -14,7 +14,13 @@ const DETAIL_FIXTURE: &[u8] =
 /// The id the fixture is: the show the user names.
 const LINKED: &str = "12";
 
+/// A state whose files sit beside `history_path`, in the test's own
+/// directory.
 fn state_at(history_path: PathBuf, kitsu_base: &str) -> AppState {
+    let dir = history_path
+        .parent()
+        .expect("a history path inside the test's directory")
+        .to_path_buf();
     AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
@@ -26,11 +32,11 @@ fn state_at(history_path: PathBuf, kitsu_base: &str) -> AppState {
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path,
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dir.join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_base),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dir.join("config.toml"),
+        state_dir: dir.join("state"),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
