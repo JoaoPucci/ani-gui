@@ -62,7 +62,10 @@ pub struct LaunchArgs {
     /// a show remembered Off).
     /// A token containing a missing/empty placeholder is dropped
     /// from argv entirely (so optional flags don't end up as
-    /// `--referrer=` with nothing after the equals).
+    /// `--referrer=` with nothing after the equals), as is one a
+    /// substituted value would turn into an option; a dropped value
+    /// token takes the option written on its own before it
+    /// ([`tokens::kept_tokens`]).
     pub custom_args_template: Option<String>,
     /// Sidecar subtitle tracks' upstream URLs, most wanted first
     /// ([`crate::commands::play_handoff::subtitle_urls_preferred`]) — a

@@ -59,7 +59,10 @@ pub(super) fn build_argv_with_template(
 /// and substituting placeholders per token. A token containing a
 /// missing/empty placeholder is dropped from argv entirely so the
 /// user can write `--referrer={referer}` without it landing as
-/// `--referrer=` when the stream needs no referer.
+/// `--referrer=` when the stream needs no referer. Which tokens are
+/// kept is [`super::tokens::kept_tokens`]: also left out is a token a
+/// substituted value would turn into an option, and with a dropped
+/// value token the option written on its own just before it.
 ///
 /// Empty/None template falls back to URL only.
 pub(super) fn build_argv_custom(args: &LaunchArgs) -> Vec<String> {
