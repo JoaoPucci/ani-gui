@@ -99,8 +99,11 @@ place for its updates is the system's package manager.
   one is on `PATH`. Through 0.17.0 its uninstall step deleted that
   ffmpeg, including during the silent uninstall electron-builder runs
   before an upgrade; the installer now sets the copy aside before that
-  uninstall and puts it back, downloading again only when a release
-  pins a different ffmpeg or the copy could not be carried over. [code: `electron/package.json`,
+  uninstall and puts it back. In the same install it downloads again
+  only when a release pins a different ffmpeg or the copy or its
+  version stamp could not be carried over; a new install folder, a
+  per-user/per-machine switch or `--delete-app-data` downloads as a
+  fresh install does. [code: `electron/package.json`,
   `electron/build-resources/installer.nsh`] It is not code-signed: the
   0.17.0 installer's PE security directory is empty. [tried: read
   from the first 4 KB of the published file]
@@ -388,8 +391,9 @@ it runs the old version's uninstaller, in a hidden section its
 `customHeader` defines just ahead of the install section, into a
 folder beside the install directory (`$INSTDIR-ffmpeg-staging`), and
 `customInstall` puts it back when the new files did not bring one. It
-downloads again only when the release pins a different ffmpeg, or
-when a file copy fails and the copy could not be carried over. The
+downloads again, in the same install, only when the release pins a
+different ffmpeg, or when the copy or its version stamp could not be
+carried over or read. The
 uninstall step's own cleanup of ffmpeg is skipped under
 `${isUpdated}`. Only the same install is kept: switching between
 per-user and per-machine, or picking another folder, is a new install
