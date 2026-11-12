@@ -303,3 +303,37 @@ async fn a_guessed_play_repairs_a_line_whose_recorded_show_kitsu_deleted() {
         .expect("plays");
     assert!(resp.own_listing);
 }
+
+#[tokio::test]
+async fn a_cards_play_over_a_line_naming_another_show_says_it_kept_the_line() {
+    // A card no guess opened (`card_row`) plays the page's show (49877)
+    // on a line the user named 4013: the session says the line is kept.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    crate::history::write_atomic(
+        &state.history_path,
+        &[crate::history::HistoryEntry {
+            ep_no: "4".into(),
+            id: played_key(),
+            title: STITCHED.into(),
+            watched_at: None,
+            kitsu_id: Some("4013".into()),
+            own_number: true,
+        }],
+    )
+    .expect("history");
+    let mut card = args(None);
+    card.card_row = Some(played_key());
+    card.kitsu_id = Some("49877".into());
+    let resp = play_with_progress(&state, &card, |_| {})
+        .await
+        .expect("plays");
+    assert!(resp.line_kept);
+    assert!(!resp.own_listing);
+    // A play the line records is no keep.
+    card.kitsu_id = Some("4013".into());
+    let resp = play_with_progress(&state, &card, |_| {})
+        .await
+        .expect("plays");
+    assert!(!resp.line_kept);
+}
