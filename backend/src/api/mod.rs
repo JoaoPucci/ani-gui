@@ -2946,7 +2946,7 @@ mod tests {
     #[tokio::test]
     async fn kitsu_by_mal_ids_rejects_without_internal_secret_header() {
         let td = TempDir::new().expect("tempdir");
-        let router = test_router(Arc::new(test_app_state(&td)));
+        let router = build_api_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
