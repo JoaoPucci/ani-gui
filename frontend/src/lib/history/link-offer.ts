@@ -61,8 +61,9 @@ export interface LinkOffer {
 }
 
 /** The picker's candidates for the offer's row, the card offering
- *  `episode`. A backend that cannot answer leaves none, and says so
- *  (`failed`). */
+ *  `episode`. A backend that cannot answer says so (`failed`), and
+ *  leaves the card's own show to pick, as a picker whose searches both
+ *  failed always did; what it would be worth a look for is not known. */
 export async function loadCandidates(
 	deps: LinkDeps,
 	offer: LinkOffer,
@@ -73,7 +74,7 @@ export async function loadCandidates(
 		const found = await deps.candidates(request(offer, episode, null), ...readOpts(opts ?? {}));
 		return { candidates: found, failed: false };
 	} catch {
-		return { candidates: [], failed: true };
+		return { candidates: [{ ref: offer.current, current: true, warnings: [] }], failed: true };
 	}
 }
 

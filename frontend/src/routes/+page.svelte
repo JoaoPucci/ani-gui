@@ -1572,18 +1572,14 @@
 						aria-busy={card.look === null}
 						disabled={!!resumeBusy && !isResuming}
 						onclick={() =>
-							// The line the card stands for as the rows are now.
-							void cardLines
-								.settled()
-								.then(() =>
-									startResume(
-										entry,
-										match,
-										match?.episode_count ?? null,
-										match?.status === 'finished',
-										cardLines.lineOf(entry.id)
-									)
-								)}
+							startResume(
+								entry,
+								match,
+								match?.episode_count ?? null,
+								match?.status === 'finished',
+								// The line the card stands for as the rows are now.
+								cardLines.settled().then(() => cardLines.lineOf(entry.id))
+							)}
 					>
 						{@render cardFace(card, initials)}
 						{@render cardBody(card, target.displayTitle)}

@@ -9,13 +9,15 @@
  * Watching matches them, each with its show and whether that is a
  * guess.
  *
- * Home hands over the rows each time they change. Only the answer for
- * the rows as they are now counts: while one is out, a card stands for
- * its own row and offers no correction, as before its match was read,
- * and an answer about rows since changed is not shown. One question is
- * out at a time; rows that change meanwhile are asked once it answers.
- * A failed answer leaves the cards standing for their own rows until
- * the rows change again.
+ * Home hands over the rows each time they change. The cards draw the
+ * latest answer: until the first arrives, each card stands for its own
+ * row and offers no correction, as before its match was read, and while
+ * an answer for changed rows is out they keep the last one, so a pill
+ * does not blink out from under a pointer or keyboard focus whenever
+ * another card's match lands. A click acts only once the answer for the
+ * rows as they are has landed (`settled`). One question is out at a
+ * time; rows that change meanwhile are asked once it answers. A failed
+ * answer leaves the last one drawn, until the rows change again.
  */
 
 import type { CardLine, CardLineRow } from '$lib/api';
@@ -53,7 +55,7 @@ export class CardLines {
 	}
 
 	#current(id: string): CardLine | undefined {
-		return this.#answer?.key === this.#wanted ? this.#answer.lines[id] : undefined;
+		return this.#answer?.lines[id];
 	}
 
 	/** The line the card showing the row `id` stands for. */
@@ -67,7 +69,7 @@ export class CardLines {
 	}
 
 	/** Settles once no question is out: the lines then answer for the
-	 *  rows as they are, or, after a failed answer, stand for each row. */
+	 *  rows as they are, or, after a failed answer, are the last ones. */
 	settled(): Promise<void> {
 		if (!this.#out) return Promise.resolve();
 		return new Promise((resolve) => this.#waiters.push(resolve));

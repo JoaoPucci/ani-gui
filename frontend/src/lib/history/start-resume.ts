@@ -159,11 +159,11 @@ export function makeStartResume(deps: StartResumeDeps): (
 	seriesFinished: boolean,
 	/** The line the card stands for, when it is another row than the
 	 *  one it shows ($lib/history/card-lines.svelte.ts): the play is a guess of
-	 *  that line, from the shown row's progress. */
-	cardRow?: string
+	 *  that line, from the shown row's progress. Home hands it while it may
+	 *  still be asking. */
+	cardRow?: string | Promise<string>
 ) => Promise<void> {
 	return async (entry, match, seriesTotal, seriesFinished, cardRow) => {
-		const line = cardRow ?? entry.id;
 		if (deps.isBusy()) return;
 		const title = match.canonical_title;
 		if (!title) return;
@@ -171,6 +171,9 @@ export function makeStartResume(deps: StartResumeDeps): (
 		const asFound = deps.since?.() ?? (() => true);
 		deps.onBusy(match.id);
 		deps.onProgress(null);
+		// Home may still be asking which line the card stands for: the
+		// click's claim and busy state come first, the line once known.
+		const line = (await cardRow) ?? entry.id;
 
 		const settings = await deps.getSettings();
 		const mode = deps.modeFor ? deps.modeFor(match.id, settings.mode) : settings.mode;
