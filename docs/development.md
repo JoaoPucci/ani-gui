@@ -345,8 +345,9 @@ Create the branch before the first release that carries this.
 OFF: a flag the file does not mention, or one it gives any other value,
 is off. `true` turns a flag's feature on, and counts only in a signed
 file (see [Signing the flags file](#signing-the-flags-file)); `false`
-counts in any file. This build declares no flag, so the file changes
-nothing yet:
+counts in any file. A release declares no flag yet, so the file
+changes nothing (only a test-run build declares one, the probe the
+end-to-end suite drives):
 
 ```json
 {
@@ -465,13 +466,14 @@ target directory; it trusts the key only in a test run
 
 The end-to-end suite runs a package of its own, `pnpm run
 package:e2e`. It is the release's Linux package except for two
-things, so it cannot be taken for a release: its backend is built by
+things, which keep it apart from a release (inside, its name, id and
+version are the release's): its backend is built by
 `build:backend:e2e` with the feature, into `backend/target-e2e/`,
 which no release configuration reads; and it is an unpacked tree only,
 in `electron/dist-e2e/`, with no AppImage or `.deb`
 (`electron/lib/e2e-package.cjs`). No release script enables the
-feature or reaches that build, which `tests/arch/test_run_key.sh`
-checks for both platforms. In CI the e2e workflow builds the
+feature, reaches that build or packages with that configuration, which
+`tests/arch/test_run_key.sh` checks for both platforms' scripts. In CI the e2e workflow builds the
 release-shaped package (`pnpm run dist`) in a parallel job and checks
 that its backend holds neither the key nor the probe, and checks that
 the e2e package's backend does hold the key, so the search is one that

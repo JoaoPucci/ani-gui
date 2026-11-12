@@ -10,8 +10,8 @@ leaves `test_b` off. `flags.json.minisig` is minisign's prehashed format
 
 Keys one and two are trusted by no build. The test-run key is trusted
 only for a test run's file (`ANI_GUI_TEST_FLAGS_FILE`), and only by a
-backend built with the `test-run-key` feature, which test builds enable
-and no packaged build does. The live flags file is never trusted under
+backend built with the `test-run-key` feature, which test builds and
+the end-to-end suite's package enable and no release does. The live flags file is never trusted under
 it.
 
 `probe-on.json` turns on `test_run_probe`, the flag only a backend

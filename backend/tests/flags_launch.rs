@@ -103,7 +103,7 @@ async fn a_test_run_makes_no_request_for_the_flags_file() {
 }
 
 /// The declared flags at their defaults: none in a build without the
-/// `test-run-key` feature, every packaged one; the probe a test-run
+/// `test-run-key` feature, every release; the probe a test-run
 /// build declares, off, in one with it.
 fn defaults() -> serde_json::Value {
     if cfg!(feature = "test-run-key") {

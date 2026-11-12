@@ -7,8 +7,9 @@
  * verifies under the fixture test-run key may turn a flag on. That
  * key's secret is derived from a fixed seed, the same way
  * backend/tests/fixtures/flags-signature/make.py derives it, so it is
- * public, and no packaged release trusts it (the release-shaped job in
- * .github/workflows/e2e.yml checks the shipped binary for it).
+ * public, and no release trusts it (the release-shaped job in
+ * .github/workflows/e2e.yml checks a package built by the release
+ * scripts for it).
  *
  * The signature is minisign's prehashed format: Ed25519 over the
  * file's BLAKE2b-512 hash, then over that signature and the trusted

@@ -1,7 +1,9 @@
 "use strict";
 
 // The end-to-end suite's package: the release's Linux package in every
-// respect but two, so a test-key build can never be taken for a release.
+// respect but two, which keep a test-key build apart from a release.
+// Inside, the tree is the release's (name, id, version); what tells it
+// apart is where it comes from and where it lands.
 //
 // - Its backend is the one `pnpm run build:backend:e2e` builds, with
 //   the `test-run-key` cargo feature, into backend/target-e2e: a test
@@ -12,10 +14,12 @@
 //   no .deb, nothing installable, beside nothing a release writes.
 //
 // electron-builder.e2e.cjs hands this to electron-builder in place of
-// package.json's `build` (`pnpm run package:e2e`). The release scripts
-// never run it (tests/arch/test_run_key.sh), and the e2e workflow
-// builds the release-shaped package in a job of its own and checks
-// that its backend holds no test-run key.
+// package.json's `build` (`pnpm run package:e2e`, with `--linux dir`;
+// a target given on the command line would override `dir`). Only that
+// script names the configuration or the backend build, and no release
+// script runs it (tests/arch/test_run_key.sh). The e2e workflow builds
+// the release-shaped package in a job of its own and checks that its
+// backend holds no test-run key.
 
 const TRIPLE = "x86_64-unknown-linux-musl";
 

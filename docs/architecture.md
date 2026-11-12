@@ -311,8 +311,10 @@ declaration's own, never one copied from the file.
 declared as a `flags::FlagKind::Rollout`: a feature that ships off. Any
 file may send `false` for it. `true` turns the feature on, and counts
 only in a file whose signature verifies (see "What a signature adds"
-below); from any other file it is dropped, and the flag stays off. This
-build declares no flag yet, so even a signed file changes nothing.
+below); from any other file it is dropped, and the flag stays off. A
+release declares no flag yet, so even a signed file changes nothing
+(only a test-run build declares one, the probe the end-to-end suite
+drives).
 
 **Read through the declaration, on only for `true`.** Consumers read a
 flag through its declaration (`Resolved::enabled`), never through a name
