@@ -2189,13 +2189,16 @@
 			const loopGuard = new FragmentLoopGuard();
 			hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
 				stallMachine.fragmentLoaded(data);
-				if (!loopGuard.loaded(fragmentLoopKey(data.frag))) return;
+				if (!loopGuard.loaded(fragmentLoopKey(data.frag), data.frag.end)) return;
 				engine.stopLoad();
 				handoff.engineStopped();
 				dropHeldRetry();
 				console.warn('[play] fragment loop guard: engine stopped on fragment', data.frag.sn);
 				playerError = fragmentLoopOverlayMessage();
 			});
+			// A fragment the back buffer let go of is loaded again by a
+			// seek back, not by a loop.
+			hls.on(Hls.Events.BACK_BUFFER_REACHED, (_, data) => loopGuard.released(data.bufferEnd));
 			hls.on(Hls.Events.ERROR, (_, data) => {
 				if (!data.fatal) return;
 				// An engine the guard stopped stays stopped: no hold, no
