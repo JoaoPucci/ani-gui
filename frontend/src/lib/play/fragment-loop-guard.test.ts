@@ -176,7 +176,7 @@ describe('the fragment loop guard', () => {
 		fc.assert(
 			fc.property(
 				fc.double({ min: 1, max: 10_000, noNaN: true }),
-				fc.array(fc.double({ min: 0.001, max: 100, noNaN: true }), {
+				fc.array(fc.double({ min: 0, max: 100, noNaN: true }), {
 					minLength: FRAGMENT_LOAD_ALLOWANCE + 1,
 					maxLength: FRAGMENT_LOAD_ALLOWANCE + 1
 				}),
