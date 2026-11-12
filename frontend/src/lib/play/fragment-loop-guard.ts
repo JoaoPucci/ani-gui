@@ -17,8 +17,10 @@
  * loads the whole of a fragment again once any part of it has left
  * the buffer, so a trim forgets the loads of every fragment starting
  * before its point. A fragment that loads and never buffers sits at
- * the playhead, and a trim point is always at least 30 s behind the
- * playhead, so no trim reaches a fragment shorter than that.
+ * the playhead, and a trim point is always at least the back buffer's
+ * length (`$lib/play/hls-buffer-policy`, 30 s) or one target duration,
+ * whichever is longer, behind the playhead: no trim reaches a fragment
+ * shorter than that.
  *
  * The guard counts loads of one fragment inside a short window, and
  * past the allowance it tells the player to stop the engine rather
