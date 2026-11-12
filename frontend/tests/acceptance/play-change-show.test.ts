@@ -21,6 +21,7 @@ import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { linkBackend, linkBackendHandlers, type LinkBackend } from './link-backend';
+import { appLinkDeps } from '../../src/lib/history/link-deps';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -533,6 +534,50 @@ describe('a pick of another show on the player, kept watching here', () => {
 		await until(() => watched.length > 0, 'the watch');
 		expect(watched.every((w) => w.kitsu_id !== GUESS && w.guess_id !== GUESS)).toBe(true);
 		expect(backend.rows.find((r) => r.id === CARD)?.kitsu_id).toBe(RIGHT);
+	});
+});
+
+describe('a pick on the player that a correction made elsewhere overtook', () => {
+	// The viewer picks on the player, and while that save is out, the
+	// same line is corrected again from another surface (as Home's pill
+	// does, through the app's link dependency), which saves first. The
+	// player's pick saves nothing; the player reads its line again and
+	// shows the later answer, not its own question.
+	it('reads the line again and shows the answer that stands', async () => {
+		let release: () => void = () => {};
+		const held = new Promise<void>((r) => (release = r));
+		let calls = 0;
+		server.use(
+			http.post(`${API_BASE}/api/history/link`, async ({ request }) => {
+				const body = (await request.json()) as { card: string; rows: string[]; kitsu_id: string };
+				backend.linkCalls.push(body);
+				calls++;
+				if (calls === 1) {
+					// The player's: asked first, its read slow.
+					await held;
+					return HttpResponse.json({ kitsu_id: body.kitsu_id, linked: [], overtaken: true });
+				}
+				backend.rows = backend.rows.map((r) =>
+					r.id === CARD ? { ...r, kitsu_id: body.kitsu_id, named: true } : r
+				);
+				return HttpResponse.json({
+					kitsu_id: body.kitsu_id,
+					linked: [{ row: CARD, previous: null, ep_no: '1', watched_at: null }]
+				});
+			})
+		);
+		await openPlayer();
+		await openPicker();
+		await pickAndLinkHeld(THIRD_TITLE);
+		await until(() => calls === 1, "the player's save out");
+		// Another surface names the line the OVA, and saves first.
+		await appLinkDeps().link(CARD, [CARD], RIGHT);
+		release();
+		await until(
+			() => slipText().includes(m.play_link_linked_note({ title: RIGHT_TITLE })),
+			'the line read again, as the OVA'
+		);
+		expect(slipText()).not.toContain(guessNote());
 	});
 });
 

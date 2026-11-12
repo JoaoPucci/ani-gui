@@ -73,6 +73,15 @@ describe('linkAnswered', () => {
 	});
 });
 
+describe('an overtaken link on a surface that reads its line again its own way', () => {
+	it('re-reads the line rather than the page', () => {
+		const { a, done } = asked(true);
+		(a.deps as unknown as { reread: () => void }).reread = () => done.push('reread');
+		linkAnswered({ ...saved, overtaken: true }, a);
+		expect(done).toEqual(['reread']);
+	});
+});
+
 describe('linkFailed', () => {
 	it('says why in the picker for a viewer who stayed, else in a notice', () => {
 		const stayed = asked(true);
