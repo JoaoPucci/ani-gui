@@ -533,7 +533,7 @@ async fn get_cached_list_serves_rows_when_offline_with_secret_fallback() {
 async fn delete_list_cache_fallback_rejects_when_secret_header_missing() {
     // The disconnect-after-expiry fallback
     // requires the per-process internal secret. Another caller can
-    // send `Bearer garbage` plus a guessed user_id, but it can't know
+    // send `Bearer garbage` plus a guessed user_id, but it can't guess
     // the 32 bytes of entropy.
     let td = TempDir::new().unwrap();
     let r = router()

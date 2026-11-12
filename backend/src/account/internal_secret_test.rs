@@ -1,8 +1,8 @@
 //! Tests for the `InternalSecret` every API request must carry.
 //!
-//! A per-process random secret only the Electron renderer sees (via
-//! the stdout handshake + preload bridge): other callers can't guess
-//! 32 bytes of entropy.
+//! A per-process random secret handed to the Electron renderer (via
+//! the stdout handshake + preload bridge): a caller that has to guess
+//! it can't guess 32 bytes of entropy.
 
 use super::*;
 use axum::http::HeaderMap;

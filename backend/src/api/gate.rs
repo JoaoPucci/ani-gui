@@ -1,4 +1,4 @@
-//! The API answers the app's own callers only.
+//! The API answers only requests carrying the launch's secret.
 //!
 //! Every lane is a loopback listener any program on the machine can
 //! connect to, and any page a browser on it opens can send requests

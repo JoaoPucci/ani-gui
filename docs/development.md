@@ -362,7 +362,10 @@ mistakes get past it and fail differently:
   default, off.
 
 So after pushing, wait out the five-minute CDN cache, launch the app,
-and confirm the values with `GET /api/flags` (below), from a dev run's DevTools console (`pnpm dev` opens one), since the API answers only requests carrying the launch's secret.
+and confirm the values with `GET /api/flags` (below), from the
+DevTools console of an Electron dev run (`pnpm dev` in `electron/`
+opens one), since the API answers only requests carrying the
+launch's secret.
 
 **Setting a flag back.** Set the flag back to its default (`false`), or
 remove its entry, and push. Removing
@@ -383,9 +386,9 @@ until it is restarted. An install that cannot reach GitHub at all keeps
 its cached copy for up to seven days, then uses the defaults.
 
 To see what a running backend decided, read
-`GET <api base>/api/flags` from a dev run's DevTools console (`pnpm dev`
-opens one), which has
-the launch's secret the API asks for:
+`GET <api base>/api/flags` from the DevTools console of an Electron
+dev run (`pnpm dev` in `electron/` opens one), which has the launch's
+secret the API asks for:
 
 ```js
 fetch(`${aniGui.apiBase}/api/flags`, {
@@ -429,4 +432,4 @@ The GUI plays inside the window using hls.js + a local stream proxy. `mpv` is on
 In its own state directory, as `history` — the CLI keeps its own file separately. The two used to share one, but the provider switch re-keyed both sides onto different show ids, so a shared file no longer carried anything either could read.
 
 **Does the dev server work in a plain browser tab?**
-Opening `http://localhost:5173` in any browser loads the same UI the Electron renderer loads, but it no longer reaches the backend. The backend answers its API only to requests carrying the secret it prints at startup ([Who the backend answers](architecture.md#who-the-backend-answers)), which the Electron preload hands the renderer; a plain browser tab has no preload, so every API request it makes, even with `VITE_ANI_GUI_API_BASE` pointing at a running backend, is refused with `403`. Iterate under Electron (`pnpm dev`) instead.
+Opening `http://localhost:5173` in any browser loads the same UI the Electron renderer loads, but it no longer reaches the backend. The backend answers its API only to requests carrying the secret it prints at startup ([Who the backend answers](architecture.md#who-the-backend-answers)), which the Electron preload hands the renderer; a plain browser tab has no preload, so every API request it makes, even with `VITE_ANI_GUI_API_BASE` pointing at a running backend, is refused with `403`. Iterate under Electron (`pnpm dev` in `electron/`) instead.
