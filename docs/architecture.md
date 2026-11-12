@@ -568,10 +568,13 @@ one (a `true` in it counts only when a `.minisig` beside it verifies
 under the build's keys), or the defaults when that names none. A
 backend built with the `test-run-key` cargo feature, which only test
 builds enable, also trusts a test run's file under a fixture key whose
-secret is public; the live file never is. No packaging script enables
-the feature (`tests/arch/test_run_key.sh`, both platforms), and the
-e2e workflow checks that the Linux package it builds does not contain
-the key. `ANI_GUI_TEST_FLAGS_FILE` means nothing
+secret is public, and declares a probe flag that gates nothing; the
+live file is never trusted under that key. The end-to-end suite runs a
+package whose backend has the feature, so it can run every flag off and
+on (`electron/e2e/flags/`). No release script enables it
+(`tests/arch/test_run_key.sh`, both platforms), and the e2e workflow
+builds the release-shaped Linux package in a job of its own and checks
+that its backend does not contain the key. `ANI_GUI_TEST_FLAGS_FILE` means nothing
 without `ANI_GUI_UNATTENDED=1`. `backend/tests/flags_launch.rs` proves
 it by watching the network: a test run never asks for
 raw.githubusercontent.com, and a normal launch does. Development runs

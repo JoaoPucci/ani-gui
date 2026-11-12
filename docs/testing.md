@@ -94,8 +94,14 @@ python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
 
 ## End-to-end (Playwright + Electron)
 
-The suite under `electron/e2e/` drives the packaged app
-(`electron/dist/linux-unpacked/`). Every spec launches it through
+The suite under `electron/e2e/` drives the packaged app: the e2e
+package (`pnpm run package:e2e`, in `electron/dist-e2e/linux-unpacked/`),
+which is the release's Linux package with a backend built for test
+runs, so a flags file signed by the fixture test-run key can turn a
+flag on. Every declared flag has a spec under `electron/e2e/flags/`
+that runs it off and on ([Remote flags](./development.md#remote-flags)).
+The release-shaped package is built and checked by a job of its own in
+the same workflow. Every spec launches it through
 `electron/e2e/launch.ts`, which mutes it and refuses to open it on a
 display someone may be looking at (`electron/lib/e2e-display.cjs`).
 
@@ -134,7 +140,7 @@ Shell session that `tools/headless-wayland.sh` starts and tears down:
 
 ```sh
 cd electron
-pnpm run package      # when main, preload or the backend changed
+pnpm run package:e2e  # when main, preload or the backend changed
 ../tools/headless-wayland.sh pnpm run e2e:fast
 ```
 
@@ -191,7 +197,7 @@ temporary profile (the single-instance lock, a symlink to
 `<host>-<pid>`), and signals that one pid only after `/proc/<pid>/exe`
 shows it running the spec's own copy of the binary.
 `splash-stuck.spec.ts` runs a hard-linked copy of
-`dist/linux-unpacked/` whose `resources/frontend/build` holds a fixture
+`dist-e2e/linux-unpacked/` whose `resources/frontend/build` holds a fixture
 page (`electron/e2e/fixtures/first-page/`), so the late first page is
 real and nothing in the app reads a test switch.
 

@@ -190,10 +190,13 @@ keeps using the ordinary debug build.
 
 Artifacts land in `electron/dist/`. There is no release-packaging CI —
 no workflow triggers on a tag and nothing publishes installers. (The
-e2e workflow does run `pnpm run dist` on Linux to produce the
-`linux-unpacked/` build it tests against, so electron-builder itself is
-exercised in CI; publishing is not.) Release artifacts are built on a
-matching host and uploaded to the GitHub release by hand:
+e2e workflow does run `pnpm run dist` on Linux, in its release-shaped
+job, and checks the backend it packages, so electron-builder itself is
+exercised in CI; publishing is not. The package the end-to-end suite
+drives is a different one, `pnpm run package:e2e`, written to
+`electron/dist-e2e/`: see [Remote flags](#remote-flags).) Release
+artifacts are built on a matching host and uploaded to the GitHub
+release by hand:
 
 | Target | Host | Command |
 |---|---|---|
@@ -445,26 +448,46 @@ under the build's keys.
 
 A backend built with the `test-run-key` cargo feature also accepts a
 test run's `.minisig` made with the fixture test-run key, so a backend
-test (unit or integration) can turn a feature on. That key's secret is
-public: it is derived from a fixed seed in
-`backend/tests/fixtures/flags-signature/make.py`, and the fixtures'
-README says which file it signs. The live file is never trusted under
-it, in any build. `cargo test --all-features` (CI and the pre-push
-hook) builds the backend's tests with the feature, and the coverage run
-without it, so its tests run both ways. No packaging script enables it,
-which `tests/arch/test_run_key.sh` checks for both platforms, and the
-e2e workflow checks that the Linux package it builds does not contain
-the key. The end-to-end suite runs that package, so its test runs trust
-the build's keys alone. A `cargo test --all-features` run also leaves a
-debug `ani-gui-backend` built with the feature in the target directory;
-it trusts the key only in a test run (`ANI_GUI_UNATTENDED=1`), and
-nothing is packaged from there.
+test (unit or integration) and the end-to-end suite can turn a feature
+on. It also declares `test_run_probe`, a flag that gates nothing, so
+the suite can drive the mechanism in each state whether or not a real
+flag is declared. That key's secret is public: it is derived from a
+fixed seed in `backend/tests/fixtures/flags-signature/make.py` (the
+suite's own signer, `electron/e2e/flags-file.ts`, derives it the same
+way and is checked against those fixtures), and the fixtures' README
+says which files it signs. The live file is never trusted under it, in
+any build. `cargo test --all-features` (CI and the pre-push hook)
+builds the backend's tests with the feature, and the coverage run
+without it, so its tests run both ways. A `cargo test --all-features`
+run also leaves a debug `ani-gui-backend` built with the feature in the
+target directory; it trusts the key only in a test run
+(`ANI_GUI_UNATTENDED=1`), and nothing is packaged from there.
+
+The end-to-end suite runs a package of its own, `pnpm run
+package:e2e`. It is the release's Linux package except for two
+things, so it cannot be taken for a release: its backend is built by
+`build:backend:e2e` with the feature, into `backend/target-e2e/`,
+which no release configuration reads; and it is an unpacked tree only,
+in `electron/dist-e2e/`, with no AppImage or `.deb`
+(`electron/lib/e2e-package.cjs`). No release script enables the
+feature or reaches that build, which `tests/arch/test_run_key.sh`
+checks for both platforms. In CI the e2e workflow builds the
+release-shaped package (`pnpm run dist`) in a parallel job and checks
+that its backend holds neither the key nor the probe, and checks that
+the e2e package's backend does hold the key, so the search is one that
+can find it. Nothing builds the Windows backend in CI: on that side the
+script check is all there is.
 
 **Declaring a flag** (for the change that adds one). Declare it as a
 `pub const FlagDecl` of kind `FlagKind::Rollout`, list it in
 `DECLARED`, read it through that constant, and register a test case for
 both its values, off and on, in `flags::matrix::CASES`. A test fails
-until both have one.
+until both have one. Then add `electron/e2e/flags/<name>.spec.ts`, which
+launches the packaged app with the flag off (no file, and an unsigned
+file turning it on) and on (a file signed by the test-run key, written
+with `writeFlagsFile`), and asserts what the person sees in each state;
+`flags/test_run_probe.spec.ts` is the pattern. A backend test fails
+while a declared flag has no such spec.
 
 ## Signing the flags file
 
