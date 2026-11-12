@@ -17,12 +17,12 @@
  * which the last scenario reads.
  */
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
+import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { appInfo, emptyHistory, topRated, trending } from './fixtures/kitsu';
-import { launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -66,9 +66,9 @@ async function launchOnce(asked: string[], onLaunch: (app: ElectronApplication) 
 		XDG_CACHE_HOME: path.join(tmp, 'cache'),
 		XDG_DATA_HOME: path.join(tmp, 'data'),
 		ANI_GUI_UNATTENDED: '1'
-	});
+	}, { profile: tmp });
 	onLaunch(app);
-	const page = await app.firstWindow();
+	const page = await appWindow(app);
 
 	// One handler on the PAGE, registered after the first window is up.
 	// Routes on the context registered before the window existed were
@@ -148,8 +148,7 @@ async function launch(asked: string[]) {
 			cleanup: async () => {
 				const dead = pending as ElectronApplication | null;
 				pending = null;
-				const pid = dead?.process().pid;
-				if (pid) killTree(pid);
+				if (dead) await stopDeadApp(dead);
 			}
 		}
 	);

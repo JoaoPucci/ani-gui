@@ -32,8 +32,9 @@ use super::kitsu_search::SEARCH_PAGE_LIMIT;
 // Old un-versioned keys become misses on first access and the data
 // re-fetches with the new schema.
 
-/// Currently-airing anime ranked by user count — a usable proxy for
-/// "trending" until the AniList client lands. Cache key: `kitsu:trending`,
+/// Currently-airing anime ranked by user count — the home page's
+/// trending list when no AniList trending list was ever kept
+/// ([`kitsu_trending_anilist`]). Cache key: `kitsu:trending`,
 /// TTL [`TRENDING_TTL`] (1 hour).
 ///
 /// # Errors
@@ -344,7 +345,21 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 ///   wrong — a pick among the hits Kitsu returned for Re:ZERO without
 ///   "Starting", or Season 2 Part 2 for Re:ZERO Season 2; re-keying
 ///   lets the next load re-derive it.
-pub(crate) const TITLE_MATCH_VERSION: u32 = 5;
+/// - v6: the guess no longer offers the picker a hit the row rules out
+///   by the episode it reached or its title
+///   ([`crate::commands::continue_guess`]). A v5 row can hold one of
+///   those — the New Year's Special for "Jujutsu Kaisen (TV)", Fuyu no
+///   Suta-furu-tsu for hianime's "My Star" — so v5 rows are not read
+///   and the next load picks again.
+/// - v7: when the row refutes every hit its title search returns — a
+///   movie the title names that the hit is not, a recap neither its
+///   title nor its show key names, a later season its key names — the
+///   guess withholds them all and goes on to the show key's words
+///   ([`crate::commands::continue_guess::refutes`]). A v6 row can hold
+///   one of those — One Piece Movie 1 for "One Piece: The Movie 14 -
+///   Stampede" — and a v6 match is checked alone, which the refuting
+///   rules do not judge, so v6 rows are not read.
+pub(crate) const TITLE_MATCH_VERSION: u32 = 7;
 
 /// The first version whose keys name the provider segment
 /// ([`title_match_prefix`]); the versions before it keyed the title
@@ -1260,7 +1275,6 @@ mod tests {
     use crate::app::AppState;
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::path::PathBuf;
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -1269,8 +1283,9 @@ mod tests {
     const DETAIL_FIXTURE: &[u8] =
         include_bytes!("../../../tests/fixtures/kitsu/anime_one_piece_detail.json");
 
-    pub(super) fn state_with_kitsu_at(uri: &str) -> AppState {
-        AppState {
+    pub(super) fn state_with_kitsu_at(uri: &str) -> crate::scratch::Scratch<AppState> {
+        let dirs = crate::scratch::dir();
+        let state = AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -1279,19 +1294,21 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/y/history"),
+            history_path: dirs.history(),
             providers: crate::provider_set::ProviderSet::for_tests(),
-            image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+            image_cache_dir: dirs.images(),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), uri),
-            config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-            state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            config_path: dirs.config(),
+            state_dir: dirs.state(),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-        }
+            flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+        };
+        dirs.hold(state)
     }
 
     #[tokio::test]
@@ -2316,7 +2333,7 @@ mod tests {
 
     #[tokio::test]
     async fn bridge_preserves_anilist_ranking() {
-        // Order matters — home hero takes items 0..5. AniList's
+        // Order matters — home hero takes the first three with art. AniList's
         // TRENDING_DESC is the SOURCE of the ordering; the bridge
         // shouldn't reshuffle.
         let server = MockServer::start().await;

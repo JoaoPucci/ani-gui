@@ -75,9 +75,9 @@ async fn kitsu(shows: &[(&str, &[(&str, &str)])]) -> MockServer {
     server
 }
 
-fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
-    use std::path::PathBuf;
-    Arc::new(AppState {
+fn state_with_kitsu(kitsu_uri: &str) -> crate::scratch::Scratch<Arc<AppState>> {
+    let dirs = crate::scratch::dir();
+    let state = Arc::new(AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -86,18 +86,20 @@ fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
         proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: PathBuf::from("/tmp/ani-gui-unanswered/history"),
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-unanswered/images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
-        config_path: PathBuf::from("/tmp/ani-gui-unanswered/config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-unanswered/state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-    })
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+    });
+    dirs.hold(state)
 }
 
 fn row(state: &AppState, key: &str) -> Option<String> {

@@ -1,0 +1,108 @@
+{
+ "data": [
+  {
+   "id": "44544",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Super: Super Hero",
+    "titles": {
+     "en": "Dragon Ball Super: SUPER HERO",
+     "en_jp": "Dragon Ball Super: Super Hero",
+     "ja_jp": "ドラゴンボール超：スーパーヒーロー"
+    },
+    "abbreviatedTitles": [],
+    "slug": "dragon-ball-super-super-hero",
+    "startDate": "2022-06-11",
+    "endDate": "2022-06-11",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41319",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Super Dragon Ball Heroes",
+    "titles": {
+     "en_jp": "Super Dragon Ball Heroes",
+     "ja_jp": "ドラゴンボールヒーローズ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "super-dragon-ball-heroes",
+    "startDate": "2018-07-01",
+    "endDate": "2024-08-08",
+    "episodeCount": 56,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "10879",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Super",
+    "titles": {
+     "en": "Dragon Ball Super",
+     "en_jp": "Dragon Ball Super",
+     "en_us": "Dragon Ball Super",
+     "ja_jp": "ドラゴンボール超（スーパー）"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Chou",
+     "DB Super",
+     "DBS"
+    ],
+    "slug": "dragon-ball-super",
+    "startDate": "2015-07-05",
+    "endDate": "2018-03-25",
+    "episodeCount": 131,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "877",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball GT: Goku Gaiden! Yuuki no Akashi wa Suushinchuu",
+    "titles": {
+     "en": "Dragon Ball GT: A Hero's Legacy",
+     "en_jp": "Dragon Ball GT: Goku Gaiden! Yuuki no Akashi wa Suushinchuu",
+     "ja_jp": "ドラゴンボールGT 悟空外伝! 勇気の証しは四星球(スーシンチュウ)"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball GT: 100 Years After - TV Special"
+    ],
+    "slug": "dragon-ball-gt-goku-gaiden-yuuki-no-akashi-wa-suushinchuu",
+    "startDate": "1997-03-26",
+    "endDate": "1997-03-26",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "798",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Z Movie 05: Tobikkiri no Saikyou tai Saikyou",
+    "titles": {
+     "en": "Dragon Ball Z Movie 05: Cooler's Revenge",
+     "en_jp": "Dragon Ball Z Movie 05: Tobikkiri no Saikyou tai Saikyou",
+     "ja_jp": "ドラゴンボールZ とびっきりの最強対最強"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Z: The Strongest Rivals",
+     "Dragon Ball Z: The Best of Strongest versus Strongest"
+    ],
+    "slug": "dragon-ball-z-movie-05-tobikkiri-no-saikyou-tai-saikyou",
+    "startDate": "1991-07-20",
+    "endDate": "1991-07-20",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

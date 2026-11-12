@@ -159,10 +159,10 @@ export function shouldResetStaleStreamBudget(args: {
  *  recovery flow. Only the kitsu detail row is hard-required — its
  *  canonical_title + alt_titles + episode_count + year populate the
  *  eviction payload, and there's no sensible fallback. Settings is
- *  intentionally NOT required: the recovery flow falls back to
- *  sub/best (matching switchToEpisode's `config?.mode` /
- *  `config?.quality` pattern), so a permanently null config from a
- *  rejected settingsGet shouldn't disable the Reload button.
+ *  intentionally NOT required: the recovery flow plays the show's own
+ *  audio, else the default, else sub when the settings never load (as
+ *  switchToEpisode does), so a permanently null config from a rejected
+ *  settingsGet shouldn't disable the Reload button.
  *
  *  Also blocked while a switchToEpisode is in flight (switchBusy).
  *  A stale network error from the old video can fire mid-foreground-
@@ -176,8 +176,13 @@ export function shouldResetStaleStreamBudget(args: {
  *  playerError instead of consuming hasAutoRetried on a no-op
  *  recovery; the user sees the overlay, and clicking Reload once
  *  detail loads runs the recovery successfully. */
-export function canRecoverFromStaleStream(args: { detail: unknown; switchBusy: boolean }): boolean {
-	return args.detail !== null && !args.switchBusy;
+export function canRecoverFromStaleStream(args: {
+	detail: unknown;
+	switchBusy: boolean;
+	/** The episode was handed to another player. */
+	handedOff?: boolean;
+}): boolean {
+	return args.detail !== null && !args.switchBusy && !args.handedOff;
 }
 
 /** What a recovery's eviction answered into. */

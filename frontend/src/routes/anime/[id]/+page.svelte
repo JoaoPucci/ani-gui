@@ -3,12 +3,13 @@
   Composition:
     - Hero band (cover_image with blurred-poster fallback) + parallax.
     - Masthead: poster hangs into the hero. Right column carries title +
-      action row (Play / Download / External) + Sub-Dub + Quality + meta-row.
+      action row (Play / Download / External) + Sub-Dub + meta-row.
     - 2-column body: left = synopsis (≤60ch, drop cap kept), right =
       Episodes panel (12 placeholder tiles with per-anime accent on hover).
       Vertical accent-tinted hairline divides the columns.
   CLI features represented even when wiring is M2:
-    Mode (sub/dub) and Quality persist via settingsGet/settingsPut today.
+    Mode (sub/dub) is the show's own once picked here (local storage), the
+    Settings default until then.
     Play / Download / External are wired to TODOs with inline notice.
 -->
 <script lang="ts">
@@ -41,7 +42,6 @@
 		playStream,
 		airingGet,
 		settingsGet,
-		settingsPut,
 		type AiringStatus,
 		type Config,
 		type HistoryEntry,
@@ -65,7 +65,6 @@
 		claimPlay,
 		playArgsFor,
 		playMode,
-		playQuality,
 		recordPlayed,
 		runOwnedPlay
 	} from '$lib/play/owned-play';
@@ -106,6 +105,7 @@
 	} from '$lib/play/play-cache';
 	import { createShowReleases } from '$lib/play/show-release';
 	import { createNavigationClaims } from '$lib/navigation/claims';
+	import { beginVisit, visitSeries, type Visit } from '$lib/navigation/visit';
 	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import {
@@ -116,6 +116,7 @@
 		versionsInMode
 	} from '$lib/versions/version-choice';
 	import { storedCaption } from '$lib/play/caption-choice';
+	import { pickAudio, storedAudio } from '$lib/play/audio-choice';
 	import { handleRadioKey } from '$lib/versions/radio-keys';
 	import { versionLabel } from '$lib/versions/version-label';
 	import { followPlayed } from '$lib/play/played-episode';
@@ -142,6 +143,7 @@
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
 	import type { DownloadArgs } from '$lib/api';
 	import { buildDownloadArgs } from '$lib/download/build-args';
+	import { downloadQuality } from '$lib/download/download-quality';
 	import { decideEpisodeFetchAction, parsePageParam } from '$lib/history/url-deeplink';
 	import { pageTrail } from '$lib/page-trail';
 	import { m } from '$lib/paraglide/messages';
@@ -149,6 +151,14 @@
 	let detail = $state<KitsuAnimeRef | null>(null);
 	let config = $state<Config | null>(null);
 	const id = $derived(page.params.id ?? '');
+	// The show's own Sub or Dub, read whenever the page turns to a show
+	// ($lib/play/audio-choice); a show never chosen on plays the
+	// Settings value, which is only the default.
+	let chosenAudio = $derived<'sub' | 'dub' | undefined>(storedAudio(id));
+	const audio = $derived(chosenAudio ?? playMode(config));
+	// What the control shows as picked: nothing while neither a choice
+	// nor the settings are known.
+	const pickedAudio = $derived(chosenAudio ?? (config ? playMode(config) : null));
 	const accent = $derived(id ? accentFor(id) : 'var(--accent-ink)');
 	let error = $state<{ headline: string; detail: string | null } | null>(null);
 	let scrollY = $state(0);
@@ -175,7 +185,7 @@
 	// about one audio says nothing about the other. A music title is
 	// unavailable in both by this page's own rule, asked or not.
 	let availabilityRow = $state<AvailabilityRow | null>(null);
-	const rowKey = $derived(audioKey(detail?.id, playMode(config)));
+	const rowKey = $derived(audioKey(detail?.id, audio));
 	const knownRow = $derived(rowFor(availabilityRow, rowKey));
 	const availability = $derived(isMusicSubtype(detail?.subtype ?? null) ? false : knownRow.listed);
 	// True once the availability probe settled (result, error, or the
@@ -247,7 +257,7 @@
 	 * the page does, so a click in that gap asks with the fallback and
 	 * the real mode can arrive while the answer is out.
 	 */
-	const capGateMode = (): 'sub' | 'dub' => playMode(config);
+	const capGateMode = (): 'sub' | 'dub' => audio;
 	/**
 	 * The context once this page is gone.
 	 *
@@ -551,20 +561,21 @@
 			airingResolved = true;
 			return;
 		}
-		let cancelled = false;
-		void airingGet(currentId)
+		// Asked again for another show or status: the read before is
+		// cancelled, and nothing of it is applied ($lib/navigation/visit).
+		const reads = beginVisit();
+		void reads
+			.keep(airingGet(currentId, { signal: reads.signal }))
 			.then((a) => {
-				if (!cancelled) airingSchedule = a;
+				airingSchedule = a;
 			})
 			.catch(() => {
 				/* unknown airing data → tiles stay ungated */
 			})
 			.finally(() => {
-				if (!cancelled) airingResolved = true;
+				airingResolved = true;
 			});
-		return () => {
-			cancelled = true;
-		};
+		return reads.end;
 	});
 
 	// In-flight beat between mount and the airing answer: tiles and
@@ -683,16 +694,23 @@
 		return out;
 	}
 
-	// What says the show this page shows has gone: a refill landing
-	// after it is not fetched ($lib/refill/refill).
-	let refillSignal: AbortSignal | undefined;
+	// The reads the page makes once, whichever show it shows, ended
+	// when the page goes; and the reads of the show it shows, ended when
+	// the viewer moves to another show or leaves. Each read holds an API
+	// connection until it answers, so a read nobody will look at is
+	// cancelled, and its answer, or its failure, never reaches the page
+	// ($lib/navigation/visit). A refill landing after the show's visit
+	// is not fetched either ($lib/refill/refill).
+	const pageReads = beginVisit();
+	onDestroy(pageReads.end);
+	let showReads: Visit = beginVisit();
 
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
 		const eps = await kitsuEpisodes(id, p, {
-			signal: refillSignal,
+			signal: showReads.signal,
 			// Thumbnails AniList's pacing held back, filled in once
 			// they land.
 			onRefill: (filled) => {
@@ -706,11 +724,15 @@
 	async function fetchEpisodesPage(p: number, opts: { initial?: boolean } = {}) {
 		if (!id) return;
 		const wantPage = Math.max(1, p);
+		// A show left meanwhile answers nothing here, not even a failure.
+		const reads = showReads;
 		episodesLoading = true;
 		try {
 			const start = (wantPage - 1) * UI_PAGE_SIZE + 1;
 			const end = wantPage * UI_PAGE_SIZE;
-			const merged = (await Promise.all(kitsuPagesForUiPage(wantPage).map(getKitsuPage))).flat();
+			const merged = (
+				await reads.keep(Promise.all(kitsuPagesForUiPage(wantPage).map(getKitsuPage)))
+			).flat();
 			rawWindowed = merged.filter((ep) => {
 				const n = ep.number ?? ep.relative_number ?? -1;
 				return n >= start && n <= end;
@@ -833,7 +855,7 @@
 	// unchanged, and a derived that compares equal does not wake its
 	// dependents — so the common case costs one lookup, not two
 	// identical ones against a source that rate-limits.
-	const availabilityMode = $derived(playMode(config));
+	const availabilityMode = $derived(audio);
 
 	// Availability against the provider. Result gates the Play + Download
 	// CTAs so titles outside the catalogue (Western animation, etc.)
@@ -841,10 +863,11 @@
 	// names the other audio when the cache has the title there, never
 	// for a music title — see $lib/detail/unavailable-copy), and its episode count caps the tiles.
 	//
-	// Its own effect, reading the mode directly, because the mode
-	// arrives after the page does: settings resolve late, so the first
-	// lookup goes out with the fallback `sub`, and a sub count says
-	// nothing about the dub catalogue. Reading the mode inside the
+	// Its own effect, reading the mode directly, because the mode can
+	// change after the page lands: a show with no audio of its own
+	// waits on the settings, which resolve late, so its first lookup
+	// goes out with the fallback `sub`; and a pick on the page changes
+	// it too. A sub count says nothing about the dub catalogue. Reading the mode inside the
 	// load callback made it invisible to the effect, so nothing
 	// reissued the question and the page kept no cap at all — every
 	// aired dub tile playable until the user navigated. The play route already worked this way.
@@ -899,6 +922,7 @@
 		const showId = id;
 		if (!showId) return;
 		const atVisit = visit;
+		const reads = showReads;
 		// No measured cap means no listing stood behind the lookup. The
 		// warm comes after the row is read, so only for a page still on
 		// this visit: a viewer who left meanwhile has had the show's
@@ -907,12 +931,14 @@
 			playableEpisodeCount === null && detail
 				? (ep: number) => (!gone && visit === atVisit ? warmResume(ep, showId) : Promise.resolve())
 				: undefined;
-		const next = await refreshedResume(
-			entry,
-			showId,
-			historyNumber,
-			(k, f, t) => movePosition(k, f, t),
-			warm
+		const next = await reads.keep(
+			refreshedResume(
+				entry,
+				showId,
+				(rowId) => historyNumber(rowId, { signal: reads.signal }),
+				(k, f, t) => movePosition(k, f, t),
+				warm
+			)
 		);
 		// The row the refresh read, still the page's: compared by value,
 		// since the page keeps its own copy of the row.
@@ -931,8 +957,7 @@
 		const d = detail;
 		const title = playTitle();
 		if (!d || !title) return Promise.resolve();
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
 		// The version a click on the row would play: its warm puts that
 		// copy's numbering right and keeps its stream under the key the
 		// click reads.
@@ -941,13 +966,12 @@
 			title,
 			episode: ep,
 			mode,
-			quality,
 			show: d,
 			kitsuId: d.id,
 			version,
 			caption: storedCaption(d.id)
 		});
-		return warmResumeEpisode({ showId, episode: ep, mode, quality, version }, args, playStream);
+		return warmResumeEpisode({ showId, episode: ep, mode, version }, args, playStream);
 	}
 
 	// Synopsis collapse/expand. Default collapsed (long synopses are
@@ -1005,6 +1029,10 @@
 	// reconcile) supersedes any in-flight one — including one waiting
 	// out a retry, which checks the sequence again when its wait ends.
 	let listEntryReadSeq = 0;
+	// Each read's requests, cancelled once a newer read supersedes it or
+	// the page goes ($lib/navigation/visit).
+	const listEntryReads = visitSeries();
+	onDestroy(listEntryReads.end);
 
 	// Read every connected tracker and fold to the seed entry, retrying a
 	// transient failure on the plan in `read-retry` so a passing failure
@@ -1020,6 +1048,7 @@
 		// quiet reconcile that comes meanwhile takes over loud.
 		if (quiet && listEntryLoading) quiet = false;
 		const seq = ++listEntryReadSeq;
+		const reads = listEntryReads.next();
 		const kitsuId = id;
 		const connected = accountStore.connected;
 		if (!quiet) {
@@ -1044,7 +1073,7 @@
 					providers.map(async (p) => {
 						const bearer = await freshBearerFor(p);
 						if (!bearer) throw new Error(`no bearer for ${p}`);
-						return getEntry(p, bearer, kitsuId);
+						return getEntry(p, bearer, kitsuId, { signal: reads.signal });
 					})
 				),
 			isCurrent: () => seq === listEntryReadSeq,
@@ -1078,6 +1107,7 @@
 		readListEntry(false);
 		return () => {
 			listEntryReadSeq += 1; // cancel any in-flight read on teardown
+			listEntryReads.end();
 		};
 	});
 
@@ -1105,16 +1135,6 @@
 			? m.detail_ep_airs({ date: formatAirDate(airsAt, getLocale()) })
 			: m.detail_ep_unaired();
 	}
-
-	// Labels are message functions, called at render, so a locale
-	// switch relabels the buttons without rebuilding the table.
-	const QUALITIES: Array<{ key: string; label: () => string }> = [
-		{ key: 'best', label: m.app_quality_best },
-		{ key: '1080', label: () => '1080' },
-		{ key: '720', label: () => '720' },
-		{ key: '480', label: () => '480' },
-		{ key: 'worst', label: m.app_quality_worst }
-	];
 
 	// Cancel the plays of every show this page showed on unmount —
 	// warms and clicks alike. Prevents abandoned resolves from holding
@@ -1153,10 +1173,10 @@
 		resumeEntry = null;
 		resumeRefresh.reset();
 		resetEpisodePageCache(kitsuPageCache);
-		const refills = new AbortController();
-		refillSignal = refills.signal;
+		const reads = beginVisit();
+		showReads = reads;
 		const detailServed = kitsuAnimeDetail(currentId, {
-			signal: refills.signal,
+			signal: reads.signal,
 			// A banner AniList's pacing held back, put on the hero once
 			// it lands.
 			onRefill: (fresh) => {
@@ -1164,7 +1184,10 @@
 				if (images && detail && id === currentId) Object.assign(detail, images);
 			}
 		});
-		void lookupResume(currentId, historyByKitsu, detailServed)
+		void reads
+			.keep(
+				lookupResume(currentId, (k) => historyByKitsu(k, { signal: reads.signal }), detailServed)
+			)
 			.then((h) => {
 				if (id !== currentId) return;
 				resumeEntry = h;
@@ -1173,12 +1196,13 @@
 			.catch(() => {
 				// Resume is a hint, not load-bearing — drop silently.
 			});
-		void detailServed
+		void reads
+			.keep(detailServed)
 			.then((d) => {
 				// Navigation raced ahead: another show, or another page
 				// altogether (the player keeps the same id), whose trail
 				// this show must not name.
-				if (id !== currentId || refills.signal.aborted) return;
+				if (id !== currentId) return;
 				detail = d;
 				if (isMusicSubtype(d.subtype)) {
 					// Music videos (a YOASOBI MV, say) never exist on the provider —
@@ -1204,15 +1228,18 @@
 					// warms uncached entries for the next visit. Without this
 					// the strip happily renders dead shows whose detail pages
 					// only dead-end on the Watch click.
-					void kitsuSearch(seed)
-						.then((hits) => {
-							if (id !== currentId) return null;
-							const trimmed = hits.filter((h) => h.id !== d.id).slice(0, 12);
-							const mode: 'sub' | 'dub' = playMode(config);
-							return filterAvailable(trimmed, mode);
-						})
+					void reads
+						.keep(
+							kitsuSearch(seed, { signal: reads.signal }).then((hits) => {
+								const trimmed = hits.filter((h) => h.id !== d.id).slice(0, 12);
+								// A list of other shows: the Settings default, not
+								// this show's own audio.
+								const mode: 'sub' | 'dub' = playMode(config);
+								return filterAvailable(trimmed, mode, { signal: reads.signal });
+							})
+						)
 						.then((filtered) => {
-							if (id !== currentId || filtered === null) return;
+							if (id !== currentId) return;
 							similar = filtered;
 						})
 						.catch(() => {
@@ -1231,19 +1258,20 @@
 		// click's own play runs on and records its show's watch. Only
 		// when the id moved: this effect also re-runs on the same show.
 		return () => {
-			refills.abort();
+			reads.end();
 			if (id !== currentId) clearBackgroundForShow(currentId);
 		};
 	});
 
 	onMount(() => {
-		void settingsGet()
+		void pageReads
+			.keep(settingsGet({ signal: pageReads.signal }))
 			.then((c) => (config = c))
 			.catch((e) => (configError = describeSettingsFailure(e)));
 	});
 
 	// Background prefetch: as soon as we have the show title + the
-	// user's current mode/quality, fire a play() for the default
+	// show's audio mode, fire a play() for the default
 	// episode in the background so the eventual hero-button click is
 	// instant. The play-cache dedupes against the click handler — both
 	// share the same promise, so there's never a duplicate
@@ -1268,8 +1296,7 @@
 		// cap as unbounded, so the warm would resolve
 		// aired-but-uncatalogued padded tiles.
 		if (!availabilityResolved) return;
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
 		// Read here so a new choice re-warms under its own keys; the
 		// other version's warmed sessions are never served for it.
 		const version = versionChoice;
@@ -1309,7 +1336,6 @@
 				title,
 				episode: ep,
 				mode,
-				quality,
 				show: detail,
 				kitsuId: id,
 				prefetch: true,
@@ -1318,7 +1344,7 @@
 			});
 			const warmedVisit = visit;
 			const warm = getOrFire(
-				makeKey(id, ep, mode, quality, version, undefined, args.caption),
+				makeKey(id, ep, mode, version, undefined, args.caption),
 				(emit, signal) => playStream(args, emit, signal)
 			);
 			// The warm paid for a listing: the resume row is read again —
@@ -1443,25 +1469,13 @@
 		return heroParallaxTransform(y, isCover, reducedMotion.current);
 	}
 
-	async function setMode(mode: 'sub' | 'dub') {
-		if (!config || config.mode === mode) return;
-		const next: Config = { ...config, mode };
-		config = next;
-		try {
-			await settingsPut(next);
-		} catch (e) {
-			configError = describeSettingsFailure(e);
-		}
-	}
-	async function setQuality(q: string) {
-		if (!config || config.quality === q) return;
-		const next: Config = { ...config, quality: q };
-		config = next;
-		try {
-			await settingsPut(next);
-		} catch (e) {
-			configError = describeSettingsFailure(e);
-		}
+	// Sub or Dub is the show's own once picked here, remembered per show
+	// ($lib/play/audio-choice); the settings are not written.
+	function setMode(mode: 'sub' | 'dub') {
+		if (!id) return;
+		// What the storage kept: the player reads the show's audio back
+		// from it, so a pick the storage refused changes nothing here.
+		chosenAudio = pickAudio(id, mode);
 	}
 
 	function notify(msg: string) {
@@ -1541,8 +1555,7 @@
 			notify(m.detail_notify_no_title());
 			return;
 		}
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
 		const version = versionChoice;
 		// The show and visit this play is for, and its request, taken at
 		// the click ($lib/play/owned-play): a late answer is judged
@@ -1558,7 +1571,6 @@
 			title,
 			episode: ep,
 			mode,
-			quality,
 			show,
 			kitsuId: owner.showId,
 			version,
@@ -1576,14 +1588,14 @@
 		actionNotice = null;
 		actionProgress = null;
 		// Hits the play-cache: a prefetch from onMount or an earlier
-		// click against the same (show, ep, mode, quality, version)
+		// click against the same (show, ep, mode, version)
 		// completes instantly here. The streaming variant feeds progress
 		// events into the overlay so the user sees `<provider> ✓` ticks.
 		const outcome = await runOwnedPlay(
 			owner,
 			() =>
 				getOrFire(
-					makeKey(owner.showId, ep, mode, quality, version, undefined, playArgs.caption),
+					makeKey(owner.showId, ep, mode, version, undefined, playArgs.caption),
 					(emit, signal) => playStream(playArgs, emit, signal),
 					(p) => {
 						actionProgress = progressLabel(p);
@@ -1676,7 +1688,8 @@
 	let downloadModalOpen = $state(false);
 	let downloadArgs = $state<DownloadArgs | null>(null);
 	let downloadDefaultDir = $state('');
-	void downloadDefaultDirApi()
+	void pageReads
+		.keep(downloadDefaultDirApi({ signal: pageReads.signal }))
 		.then((d) => {
 			if (d) downloadDefaultDir = d;
 		})
@@ -1686,8 +1699,8 @@
 		if (!detail || nothingAiredYet || airingIsPending) return;
 		if (resumeRefresh.refreshing() && !(await resumeRowSettled())) return;
 		if (!detail || nothingAiredYet || airingIsPending) return;
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
+		const quality = downloadQuality(config);
 		// `episode_count` must stay Kitsu's announced total — that's
 		// what the backend picker compares against the provider's planned
 		// `episodeCount`. The modal's range cap (the provider's released-
@@ -1888,39 +1901,27 @@
 						</div>
 					{/if}
 
-					<!-- Sub/Dub + Quality controls. Reads/writes ani-gui config. -->
+					<!-- Sub/Dub control: the show's own choice once picked, the
+					     Settings default until then. The label says when the
+					     show has a choice of its own. -->
 					<div class="controls">
 						<div class="seg-group" role="group" aria-label={m.detail_audio_group_aria_label()}>
-							<span class="seg-label">{m.detail_audio_group_label()}</span>
+							<span class="seg-label"
+								>{m.detail_audio_group_label()}{#if chosenAudio}<span class="seg-scope"
+										>&nbsp;·&nbsp;{m.detail_audio_note_show()}</span
+									>{/if}</span
+							>
 							<div class="seg">
 								{#each ['sub', 'dub'] as mode (mode)}
 									<button
 										type="button"
 										class="seg-btn"
-										class:active={config?.mode === mode}
-										aria-pressed={config?.mode === mode}
-										disabled={!config}
+										class:active={pickedAudio === mode}
+										aria-pressed={pickedAudio === mode}
+										disabled={!id}
 										onclick={() => setMode(mode as 'sub' | 'dub')}
 									>
 										{mode.toUpperCase()}
-									</button>
-								{/each}
-							</div>
-						</div>
-
-						<div class="seg-group" role="group" aria-label={m.detail_quality_group_aria_label()}>
-							<span class="seg-label">{m.detail_quality_group_label()}</span>
-							<div class="seg seg-narrow">
-								{#each QUALITIES as q (q.key)}
-									<button
-										type="button"
-										class="seg-btn"
-										class:active={config?.quality === q.key}
-										aria-pressed={config?.quality === q.key}
-										disabled={!config}
-										onclick={() => setQuality(q.key)}
-									>
-										{q.label()}
 									</button>
 								{/each}
 							</div>
@@ -2398,7 +2399,7 @@
 	{/if}
 </main>
 
-<LoadingOverlay visible={actionBusy || resumeWaiting} progress={actionProgress} />
+<LoadingOverlay modal visible={actionBusy || resumeWaiting} progress={actionProgress} />
 
 {#if playFailure}
 	<ErrorOverlay
@@ -2818,7 +2819,7 @@
 	.btn-outline:hover {
 		border-color: var(--bone-100);
 	}
-	/* — Segmented controls (sub/dub + quality). */
+	/* — Segmented controls (sub/dub, version). */
 	.controls {
 		display: flex;
 		flex-wrap: wrap;
@@ -2829,6 +2830,7 @@
 	.seg-group {
 		display: inline-flex;
 		flex-direction: column;
+		align-items: flex-start;
 		gap: var(--space-2);
 	}
 	.seg-label {
@@ -2872,8 +2874,8 @@
 		opacity: 0.5;
 		cursor: progress;
 	}
-	.seg-narrow .seg-btn {
-		padding-inline: var(--space-3);
+	.seg-scope {
+		color: var(--accent, var(--bone-300));
 	}
 	.seg-error {
 		font-family: var(--font-mono);

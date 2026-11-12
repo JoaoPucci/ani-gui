@@ -190,6 +190,13 @@ describe('fetchAndCacheList', () => {
 });
 
 describe('fetchCachedList', () => {
+	it("hands the visit's signal to the request, so the page that asked can cancel it", async () => {
+		const spy = mockFetchJson([]);
+		const visit = new AbortController();
+		await fetchCachedList('anilist', 'tok', undefined, { signal: visit.signal });
+		expect((spy.mock.calls[0][1] as RequestInit).signal).toBe(visit.signal);
+	});
+
 	it('hits the cached endpoint with the bearer (no user_id when no fallback)', async () => {
 		const spy = mockFetchJson([]);
 		await fetchCachedList('anilist', 'tok');

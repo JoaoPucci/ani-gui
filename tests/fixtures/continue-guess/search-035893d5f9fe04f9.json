@@ -1,0 +1,445 @@
+{
+ "data": [
+  {
+   "id": "1555",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Shippuuden",
+    "titles": {
+     "en": "Naruto: Shippuden",
+     "en_jp": "Naruto: Shippuuden",
+     "en_us": "Naruto: Shippuden",
+     "ja_jp": "ナルト- 疾風伝"
+    },
+    "abbreviatedTitles": [
+     "Naruto Hurricane Chronicles"
+    ],
+    "slug": "naruto-shippuden",
+    "startDate": "2007-02-15",
+    "endDate": "2017-03-23",
+    "episodeCount": 500,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "11",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto",
+    "titles": {
+     "en": "Naruto",
+     "en_jp": "Naruto",
+     "ja_jp": "ナルト"
+    },
+    "abbreviatedTitles": [
+     "NARUTO"
+    ],
+    "slug": "naruto",
+    "startDate": "2002-10-03",
+    "endDate": "2007-02-08",
+    "episodeCount": 220,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7008",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Shippuuden Movie 6 - Road to Ninja",
+    "titles": {
+     "en": "Road to Ninja: Naruto the Movie",
+     "en_jp": "Naruto: Shippuuden Movie 6 - Road to Ninja",
+     "en_us": "Road to Ninja: Naruto the Movie",
+     "ja_jp": "ROAD TO NINJA NARUTO THE MOVIE"
+    },
+    "abbreviatedTitles": [
+     "Naruto Movie 9"
+    ],
+    "slug": "naruto-shippuden-movie-6-road-to-ninja",
+    "startDate": "2012-07-28",
+    "endDate": "2012-07-28",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "405",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto the Movie: Ninja Clash in the Land of Snow",
+    "titles": {
+     "en": "Naruto the Movie: Ninja Clash in the Land of Snow",
+     "en_jp": "Naruto Movie 1: Dai Katsugeki!! Yuki Hime Shinobu Houjou Dattebayo!",
+     "ja_jp": "劇場版　NARUTO　大活劇！雪姫忍法帖だってばよ!!"
+    },
+    "abbreviatedTitles": [
+     "Naruto: Daikatsugeki! Yukihime Ninpocho Dattebayo!",
+     "Naruto: It's the Snow Princess' Ninja Art Book!"
+    ],
+    "slug": "naruto-the-movie-ninja-clash-in-the-land-of-snow",
+    "startDate": "2004-08-21",
+    "endDate": "2004-08-21",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "2245",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Shippuuden Movie 1",
+    "titles": {
+     "en": "Naruto: Shippuden the Movie",
+     "en_jp": "Naruto: Shippuuden Movie 1",
+     "en_us": "Naruto: Shippuden the Movie",
+     "ja_jp": "劇場版NARUTO -ナルト- 疾風伝"
+    },
+    "abbreviatedTitles": [
+     "Naruto Shippuuden Movie",
+     "Naruto Movie 4",
+     "Gekijouban Naruto Shippuuden"
+    ],
+    "slug": "naruto-shippuden-movie-1",
+    "startDate": "2007-08-04",
+    "endDate": "2007-08-04",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "3606",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Shippuuden Movie 2 - Kizuna",
+    "titles": {
+     "en": "Naruto: Shippuden the Movie 2 -Bonds-",
+     "en_jp": "Naruto: Shippuuden Movie 2 - Kizuna",
+     "en_us": "Naruto: Shippuden the Movie 2 -Bonds-",
+     "ja_jp": "劇場版NARUTO-ナルト- 疾風伝 絆"
+    },
+    "abbreviatedTitles": [
+     "Naruto Movie 5",
+     "Naruto Shippuuden Movie 2",
+     "Naruto Shippuuden: Bonds"
+    ],
+    "slug": "naruto-shippuden-movie-2-kizuna",
+    "startDate": "2008-08-02",
+    "endDate": "2008-08-02",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "13051",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Boruto: Naruto Next Generations",
+    "titles": {
+     "en_jp": "Boruto: Naruto Next Generations",
+     "en_us": "Boruto: Naruto Next Generations",
+     "ja_jp": "BORUTO-ボルト- NARUTO NEXT GENERATIONS"
+    },
+    "abbreviatedTitles": [],
+    "slug": "boruto-naruto-next-generations",
+    "startDate": "2017-04-05",
+    "endDate": "2023-03-26",
+    "episodeCount": 293,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "833",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto Movie 2: Dai Gekitotsu! Maboroshi no Chiteiiseki Dattebayo!",
+    "titles": {
+     "en": "Naruto the Movie 2: Legend of the Stone of Gelel",
+     "en_jp": "Naruto Movie 2: Dai Gekitotsu! Maboroshi no Chiteiiseki Dattebayo!",
+     "ja_jp": "劇場版　NARUTO　大激突！幻の地底遺跡だってばよ"
+    },
+    "abbreviatedTitles": [
+     "Naruto THE Movie vol.2",
+     "Naruto Movie 2",
+     "Gekijouban Naruto"
+    ],
+    "slug": "naruto-movie-2-daigekitotsu-maboroshi-no-chiteiiseki-dattebayo",
+    "startDate": "2005-08-06",
+    "endDate": "2005-08-06",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "5266",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Shippuuden Movie 4 - The Lost Tower",
+    "titles": {
+     "en_jp": "Naruto: Shippuuden Movie 4 - The Lost Tower",
+     "ja_jp": "劇場版 NARUTO-ナルト-疾風伝 ザ・ロストタワー"
+    },
+    "abbreviatedTitles": [
+     "Naruto Movie 7",
+     "Gekijouban Naruto Shippuuden: The Lost Tower"
+    ],
+    "slug": "naruto-shippuden-movie-4-the-lost-tower",
+    "startDate": "2010-07-31",
+    "endDate": "2010-07-31",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "6256",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Shippuuden Movie 5 - Blood Prison",
+    "titles": {
+     "en_jp": "Naruto: Shippuuden Movie 5 - Blood Prison",
+     "ja_jp": "劇場版NARUTO-ナルト- ブラッド・プリズン"
+    },
+    "abbreviatedTitles": [
+     "Naruto Movie 8",
+     "Gekijouban Naruto: Blood Prison"
+    ],
+    "slug": "naruto-shippuden-movie-5-blood-prison",
+    "startDate": "2011-07-30",
+    "endDate": "2011-07-30",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "1941",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto Movie 3: Dai Koufun! Mikazuki Jima no Animaru Panikku Dattebayo!",
+    "titles": {
+     "en": "Naruto the Movie 3: Guardians of the Crescent Moon Kingdom",
+     "en_jp": "Naruto Movie 3: Dai Koufun! Mikazuki Jima no Animaru Panikku Dattebayo!",
+     "en_us": "Naruto the Movie 3: Guardians of the Crescent Moon Kingdom",
+     "ja_jp": "劇場版 NARUTO -ナルト- 大興奮!みかづき島のアニマル騒動だってばよ"
+    },
+    "abbreviatedTitles": [
+     "Naruto Movie Volume 3",
+     "Naruto: Gekijouban Naruto: Dai Koufun! Mikazuki-jima no Animal Panic Datte ba yo!"
+    ],
+    "slug": "naruto-movie-3-dai-koufun-mikazuki-jima-no-animaru-panikku-dattebayo",
+    "startDate": "2006-08-05",
+    "endDate": "2006-08-05",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "4520",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Shippuuden Movie 3 - Hi no Ishi wo Tsugu Mono",
+    "titles": {
+     "en": "Naruto Shippuden the Movie: Will of Fire",
+     "en_jp": "Naruto: Shippuuden Movie 3 - Hi no Ishi wo Tsugu Mono",
+     "ja_jp": "ナルト- 疾風伝 火の意志を継ぐ者"
+    },
+    "abbreviatedTitles": [
+     "Naruto Shippuuden: Gekijouban Naruto Shippuuden: Hi no Ishi o Tsugu Mono",
+     "Naruto Shippuuden Movie 3",
+     "Naruto Movie 6",
+     "Naruto Shippuuden 3: Inheritors of Will of Fire"
+    ],
+    "slug": "naruto-shippuden-movie-3-hi-no-ishi-wo-tsugu-mono",
+    "startDate": "2009-08-01",
+    "endDate": "2009-08-01",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "549",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Takigakure no Shitou - Ore ga Eiyuu Dattebayo!",
+    "titles": {
+     "en": "Naruto: The Lost Story - Mission: Protect the Waterfall Village",
+     "en_jp": "Naruto: Takigakure no Shitou - Ore ga Eiyuu Dattebayo!",
+     "ja_jp": "滝隠れの死闘　オレが英雄だってばよ!"
+    },
+    "abbreviatedTitles": [
+     "Battle at Hidden Falls. I am the Hero!",
+     "Naruto OVA 2",
+     "Naruto: Jump Festa 2004"
+    ],
+    "slug": "naruto-takigakure-no-shitou-ore-ga-eiyuu-dattebayo",
+    "startDate": "2003-12-20",
+    "endDate": "2003-12-20",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "683",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Akaki Yotsuba no Clover wo Sagase",
+    "titles": {
+     "en": "Naruto: Find the Crimson Four-leaf Clover!",
+     "en_jp": "Naruto: Akaki Yotsuba no Clover wo Sagase",
+     "ja_jp": "ナルト 紅き四つ葉のクローバーを探せ"
+    },
+    "abbreviatedTitles": [
+     "Naruto: Find the Crimson Four Leaf Clover!",
+     "Naruto: Jump Festa 2003"
+    ],
+    "slug": "naruto-find-the-crimson-four-leaf-clover",
+    "startDate": "2003-05-24",
+    "endDate": "2003-05-24",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "960",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto Narutimate Hero 3: Tsuini Gekitotsu! Jounin vs. Genin!! Musabetsu Dairansen taikai Kaisai!!",
+    "titles": {
+     "en_jp": "Naruto Narutimate Hero 3: Tsuini Gekitotsu! Jounin vs. Genin!! Musabetsu Dairansen taikai Kaisai!!",
+     "ja_jp": "NARUTO ナルティメットヒーロー3 ついに激突! 上忍VS下忍!! 無差別大乱戦大会開催!!"
+    },
+    "abbreviatedTitles": [
+     "Naruto Narutimate Hero 3 OVA",
+     "Naruto: Finally a Clash!! Jounin vs. Genin!"
+    ],
+    "slug": "naruto-finally-a-clash-jounin-vs-genin",
+    "startDate": "2005-12-22",
+    "endDate": "2005-12-22",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46581",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "ROAD OF NARUTO",
+    "titles": {
+     "en": "ROAD OF NARUTO",
+     "en_jp": "ROAD OF NARUTO",
+     "ja_jp": "ROAD OF NARUTO"
+    },
+    "abbreviatedTitles": [
+     "NARUTO - ナルト - 20 周年記念",
+     "NARUTO 20 Shuunenkinen",
+     "Naruto 20th Anniversary PV"
+    ],
+    "slug": "road-of-naruto",
+    "startDate": "2022-10-03",
+    "endDate": "2022-10-03",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "3484",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto Shippuuden: Shippuu! \"Konoha Gakuen\" Den",
+    "titles": {
+     "en": "Naruto Shippuden: Konoha Gakuen - Special",
+     "en_jp": "Naruto Shippuuden: Shippuu! \"Konoha Gakuen\" Den",
+     "en_us": "Naruto Shippuden: Konoha Gakuen - Special",
+     "ja_jp": "NARUTO 疾風伝「疾風! \"木ノ葉学園\"伝」"
+    },
+    "abbreviatedTitles": [
+     "NARUTO Shippu Konoha Gakuen Den Special",
+     "Konoha High"
+    ],
+    "slug": "naruto-shippuden-konoha-gakuen-special",
+    "startDate": "2008-02-06",
+    "endDate": "2008-02-06",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "2036",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Dai Katsugeki!! Yuki Hime Shinobu Houjou Dattebayo! Special: Konoha Annual Sports Festival",
+    "titles": {
+     "en": "Hidden Leaf Village Grand Sports Festival",
+     "en_jp": "Naruto: Dai Katsugeki!! Yuki Hime Shinobu Houjou Dattebayo! Special: Konoha Annual Sports Festival",
+     "en_us": "Hidden Leaf Village Grand Sports Festival",
+     "ja_jp": "木ノ葉の里と大うん動会"
+    },
+    "abbreviatedTitles": [
+     "Gekijouban Naruto: Dai Katsugeki! Yuki Hime Ninpouchou Datte ba yo! - S1 Konoha Annual Sports Festival",
+     "Konoha no Sato no Daiun Douaki"
+    ],
+    "slug": "naruto-dai-katsugeki-yuki-hime-shinobu-houjou-dattebayo-special-konoha-annual-sports-festival",
+    "startDate": "2004-08-21",
+    "endDate": "2004-08-21",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "4953",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: The Cross Roads",
+    "titles": {
+     "en_jp": "Naruto: The Cross Roads",
+     "ja_jp": "ナルト サ・クロスローズ"
+    },
+    "abbreviatedTitles": [
+     "Naruto's 10th Anniversary"
+    ],
+    "slug": "naruto-the-cross-roads",
+    "startDate": "2009-10-12",
+    "endDate": "2009-10-12",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "6861",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto SD: Rock Lee no Seishun Full-Power Ninden",
+    "titles": {
+     "en": "NARUTO Spin-Off: Rock Lee & His Ninja Pals",
+     "en_jp": "Naruto SD: Rock Lee no Seishun Full-Power Ninden",
+     "en_us": "NARUTO Spin-Off: Rock Lee & His Ninja Pals",
+     "ja_jp": "ナルトSD ロック・リーの青春フルパワー忍伝"
+    },
+    "abbreviatedTitles": [],
+    "slug": "rock-lee-no-seishun-full-power-ninden",
+    "startDate": "2012-04-03",
+    "endDate": "2013-03-26",
+    "episodeCount": 51,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

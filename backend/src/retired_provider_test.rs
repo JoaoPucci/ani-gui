@@ -7,7 +7,7 @@ use crate::app::AppState;
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::history::{read_all, write_atomic, HistoryEntry};
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const DAY: u64 = 86_400;
 
@@ -23,7 +23,7 @@ fn state_in(dir: &Path) -> AppState {
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: dir.join("history"),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dir.join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
         config_path: dir.join("config.toml"),
@@ -32,6 +32,7 @@ fn state_in(dir: &Path) -> AppState {
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     }
 }
 

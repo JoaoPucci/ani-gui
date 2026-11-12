@@ -9,10 +9,12 @@ use crate::account::pkce::PkceMethod;
 /// wiremock server) so id-resolution tests can mock the mappings
 /// endpoint. Everything else is throwaway.
 #[cfg(test)]
-fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
-    use std::path::PathBuf;
+fn state_with_kitsu(
+    kitsu_uri: &str,
+) -> crate::scratch::Scratch<std::sync::Arc<crate::app::AppState>> {
     use std::sync::Arc;
-    Arc::new(crate::app::AppState {
+    let dirs = crate::scratch::dir();
+    let state = Arc::new(crate::app::AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -21,18 +23,20 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
         proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: PathBuf::from("/tmp/ani-gui/history"),
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-    })
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+    });
+    dirs.hold(state)
 }
 
 /// Kitsu `/anime/:id?include=mappings` body carrying a MAL mapping.
@@ -958,8 +962,8 @@ fn build_entry_update_rejects_empty_and_unknown_status() {
 
 #[test]
 fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
-    use std::path::PathBuf;
     use std::sync::Arc;
+    let dirs = crate::scratch::dir();
     let state = Arc::new(crate::app::AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
@@ -969,17 +973,18 @@ fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
         proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: PathBuf::from("/tmp/ani-gui/history"),
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     });
     assert!(provider_for_kind(&state, ProviderKind::AniList).is_some());
     assert!(provider_for_kind(&state, ProviderKind::MyAnimeList).is_some());
@@ -1383,18 +1388,12 @@ async fn watch_later_bridge_warms_a_presigned_image_when_it_seeds_the_detail_cac
         .mount(&kitsu)
         .await;
 
-    // The image cache must be this test's own. The shared default
-    // directory persists across runs, and its key is the signature-
-    // stripped URL — `http://127.0.0.1:<port>/cover.jpg` — so once an
-    // earlier run had cached the bytes under the port the OS hands
-    // this mock server again, the warm was served from disk, the
-    // server saw no request, and the assertion failed. Every passing
-    // run left one more port behind, so the flake grew with use.
-    let image_cache = tempfile::tempdir().expect("image cache tempdir");
-    let mut state = state_with_kitsu(&kitsu.uri());
-    std::sync::Arc::get_mut(&mut state)
-        .expect("state not yet shared")
-        .image_cache_dir = image_cache.path().join("images");
+    // The state's image cache is its own and starts empty: the cache
+    // key is the signature-stripped URL, `http://127.0.0.1:<port>/cover.jpg`,
+    // so bytes another run cached under a port the OS hands this mock
+    // server again would serve the warm from disk and the server would
+    // see no request.
+    let state = state_with_kitsu(&kitsu.uri());
     let _ = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], None).await;
 
     // The warm is spawned, so poll for its effect rather than asserting
@@ -1735,5 +1734,59 @@ async fn a_list_read_whose_owner_lookup_spans_a_disconnect_does_not_refill_the_c
     assert!(
         cached.is_empty(),
         "the disconnected account's list came back"
+    );
+}
+
+/// Kitsu's `/mappings` answer for MAL id 22, naming the same Kitsu show
+/// as [`KITSU_MAL_MAPPINGS_HIT_BODY`] does for MAL id 21.
+#[cfg(test)]
+const KITSU_MAL_22_SAME_SHOW_BODY: &str = r#"{
+    "data": [{
+        "id": "9101",
+        "type": "mappings",
+        "attributes": { "externalSite": "myanimelist/anime", "externalId": "22" },
+        "relationships": { "item": { "data": { "type": "anime", "id": "12" } } }
+    }],
+    "included": [{
+        "id": "12",
+        "type": "anime",
+        "attributes": { "canonicalTitle": "One Piece", "titles": { "en": "One Piece" } }
+    }]
+}"#;
+
+#[tokio::test]
+async fn watch_later_bridge_lists_a_show_two_mal_ids_map_to_once() {
+    // Kitsu maps MAL 21 and MAL 22 to the same show. The rail keys its
+    // cards by Kitsu id, so handing it the show twice gives it two
+    // equal keys; the first card stands for the show.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    for (mal, body) in [
+        ("21", KITSU_MAL_MAPPINGS_HIT_BODY),
+        ("22", KITSU_MAL_22_SAME_SHOW_BODY),
+    ] {
+        wiremock::Mock::given(method("GET"))
+            .and(path("/mappings"))
+            .and(query_param("filter[externalSite]", "myanimelist/anime"))
+            .and(query_param("filter[externalId]", mal))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+            // Each MAL id is looked up once, so both cards reach the
+            // bridge's last step: one card here would otherwise also be
+            // what a lookup that silently found nothing leaves.
+            .expect(1)
+            .mount(&kitsu)
+            .await;
+    }
+    let state = state_with_kitsu(&kitsu.uri());
+
+    let refs = kitsu_for_mal_ids_with_anilist_base(&state, vec![21, 22], None).await;
+    kitsu.verify().await;
+
+    assert_eq!(refs.len(), 1, "one card per Kitsu show: {refs:?}");
+    assert_eq!(refs[0].id, "12");
+    assert_eq!(
+        refs[0].episode_count,
+        Some(1100),
+        "the first card stands for the show"
     );
 }

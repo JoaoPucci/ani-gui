@@ -40,6 +40,9 @@ let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
+	// What a case picks on a show's page is kept per show in local
+	// storage: each case starts from none.
+	window.localStorage.clear();
 	__resetApiBaseForTests(API_BASE);
 	setParams({ id: KITSU_ID });
 	target = document.createElement('div');

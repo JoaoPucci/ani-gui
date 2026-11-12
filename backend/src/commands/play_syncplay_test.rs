@@ -59,6 +59,7 @@ fn state_for(dir: &std::path::Path, provider: &Arc<TableProvider>) -> crate::app
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     }
 }
 
@@ -68,7 +69,6 @@ fn play_args() -> PlayArgs {
         title: "the show".into(),
         episode: "2".into(),
         mode: "sub".into(),
-        quality: None,
         subtype: None,
         episode_count: Some(2),
         year: None,
@@ -143,7 +143,6 @@ async fn a_cached_syncplay_launch_records_the_watch_after_the_spawn() {
     let key = crate::commands::play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
-        "best",
         &args.episode,
         args.year,
         args.episode_count,
@@ -226,7 +225,6 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
     let key = crate::commands::play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
-        "best",
         &args.episode,
         args.year,
         args.episode_count,
@@ -376,7 +374,6 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
     let key = crate::commands::play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
-        "best",
         &args.episode,
         args.year,
         args.episode_count,
