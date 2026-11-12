@@ -78,6 +78,31 @@ use crate::proxy::{MediaKind, SessionSubtitle};
 use crate::retired_provider::RetiredSweepReport;
 use crate::scraper::provider::ProviderId;
 
+/// One value per variant of an enum, each value written beside the
+/// pattern that names its variant: the patterns make a `match` with no
+/// wildcard, so a variant added does not compile until it has a pattern
+/// here, and with it a value in the list. `except` names variants the
+/// list leaves out on purpose.
+macro_rules! listed {
+    ($ty:ty { $($pat:pat => $val:expr),+ $(,)? } $(except $ex:pat)?) => {{
+        #[allow(dead_code)]
+        fn exhaustive(v: &$ty) {
+            match v {
+                $($pat => {})+
+                $($ex => {})?
+            }
+        }
+        vec![$($val),+]
+    }};
+}
+
+/// [`listed!`] for an enum of unit variants.
+macro_rules! units {
+    ($ty:ident: $($v:ident),+ $(; except $ex:pat)?) => {
+        listed!($ty { $($ty::$v => $ty::$v),+ } $(except $ex)?)
+    };
+}
+
 const PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wire-contract.json");
 
 #[test]
@@ -161,7 +186,9 @@ fn responses() -> Value {
     put("SkipInterval", response(&skip(), &skip()));
     put("AiringStatus", response(&airing(true), &airing(false)));
     put("UpcomingEpisode", response(&upcoming(), &upcoming()));
-    put("Config", response(&config(), &Config::default()));
+    // No field of the config can be left out, so its one sample is both.
+    // Not `Config::default()`: its Syncplay path differs per platform.
+    put("Config", response(&config(), &config()));
     for line in every_progress_line() {
         let kind = serde_json::to_value(&line).expect("serializes")["kind"]
             .as_str()
@@ -415,25 +442,17 @@ fn config() -> Config {
 }
 
 fn every_progress_line() -> Vec<ProgressLine> {
-    let lines = vec![
-        ProgressLine::Searching {
+    listed!(ProgressLine {
+        ProgressLine::Searching { .. } => ProgressLine::Searching {
             provider: "hianime".into(),
         },
-        ProgressLine::Matched {
+        ProgressLine::Matched { .. } => ProgressLine::Matched {
             title: "Frieren".into(),
         },
-        ProgressLine::LinksFetched {
+        ProgressLine::LinksFetched { .. } => ProgressLine::LinksFetched {
             provider: "hianime".into(),
         },
-    ];
-    for line in &lines {
-        match line {
-            ProgressLine::Searching { .. }
-            | ProgressLine::Matched { .. }
-            | ProgressLine::LinksFetched { .. } => {}
-        }
-    }
-    lines
+    })
 }
 
 fn download_progress() -> DownloadProgress {
@@ -641,131 +660,40 @@ fn enums() -> Value {
 }
 
 fn media_kinds() -> Vec<MediaKind> {
-    let all = vec![MediaKind::Hls, MediaKind::Mp4];
-    for v in &all {
-        match v {
-            MediaKind::Hls | MediaKind::Mp4 => {}
-        }
-    }
-    all
+    units!(MediaKind: Hls, Mp4)
 }
 
 fn version_kinds() -> Vec<VersionKind> {
-    let all = vec![VersionKind::Standard, VersionKind::Uncensored];
-    for v in &all {
-        match v {
-            VersionKind::Standard | VersionKind::Uncensored => {}
-        }
-    }
-    all
+    units!(VersionKind: Standard, Uncensored)
 }
 
 fn unsettled_reasons() -> Vec<UnsettledReason> {
-    let all = vec![
-        UnsettledReason::Refused,
-        UnsettledReason::Unanswered,
-        UnsettledReason::PastAffinity,
-        UnsettledReason::Superseded,
-    ];
-    for v in &all {
-        match v {
-            UnsettledReason::Refused
-            | UnsettledReason::Unanswered
-            | UnsettledReason::PastAffinity
-            | UnsettledReason::Superseded => {}
-        }
-    }
-    all
+    units!(UnsettledReason: Refused, Unanswered, PastAffinity, Superseded)
 }
 
 /// The providers a release walks: the test builds' stand-ins are not.
 fn provider_ids() -> Vec<ProviderId> {
-    let all = vec![ProviderId::Hianime];
-    for v in &all {
-        match v {
-            ProviderId::Hianime => {}
-            ProviderId::TestA | ProviderId::TestB => unreachable!("test-only providers"),
-        }
-    }
-    all
+    units!(ProviderId: Hianime; except ProviderId::TestA | ProviderId::TestB)
 }
 
 fn player_kinds() -> Vec<ExternalPlayerKind> {
-    let all = vec![
-        ExternalPlayerKind::Mpv,
-        ExternalPlayerKind::Vlc,
-        ExternalPlayerKind::Iina,
-        ExternalPlayerKind::Custom,
-    ];
-    for v in &all {
-        match v {
-            ExternalPlayerKind::Mpv
-            | ExternalPlayerKind::Vlc
-            | ExternalPlayerKind::Iina
-            | ExternalPlayerKind::Custom => {}
-        }
-    }
-    all
+    units!(ExternalPlayerKind: Mpv, Vlc, Iina, Custom)
 }
 
 fn search_orders() -> Vec<SearchOrder> {
-    let all = vec![
-        SearchOrder::Relevance,
-        SearchOrder::Year,
-        SearchOrder::Rating,
-    ];
-    for v in &all {
-        match v {
-            SearchOrder::Relevance | SearchOrder::Year | SearchOrder::Rating => {}
-        }
-    }
-    all
+    units!(SearchOrder: Relevance, Year, Rating)
 }
 
 fn list_statuses() -> Vec<ListStatus> {
-    let all = vec![
-        ListStatus::Planning,
-        ListStatus::Watching,
-        ListStatus::Completed,
-        ListStatus::Paused,
-        ListStatus::Dropped,
-        ListStatus::Rewatching,
-    ];
-    for v in &all {
-        match v {
-            ListStatus::Planning
-            | ListStatus::Watching
-            | ListStatus::Completed
-            | ListStatus::Paused
-            | ListStatus::Dropped
-            | ListStatus::Rewatching => {}
-        }
-    }
-    all
+    units!(ListStatus: Planning, Watching, Completed, Paused, Dropped, Rewatching)
 }
 
 fn provider_kinds() -> Vec<ProviderKind> {
-    let all = vec![
-        ProviderKind::AniList,
-        ProviderKind::MyAnimeList,
-        ProviderKind::InHouse,
-    ];
-    for v in &all {
-        match v {
-            ProviderKind::AniList | ProviderKind::MyAnimeList | ProviderKind::InHouse => {}
-        }
-    }
-    all
+    units!(ProviderKind: AniList, MyAnimeList, InHouse)
 }
 
 fn pkce_methods() -> Vec<PkceMethod> {
-    let all = vec![PkceMethod::Plain, PkceMethod::S256];
-    for v in &all {
-        match v {
-            PkceMethod::Plain | PkceMethod::S256 => {}
-        }
-    }
-    all
+    units!(PkceMethod: Plain, S256)
 }
 
 // — Errors, constants, URLs ——————————————————————————————————————————
