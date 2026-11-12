@@ -1475,3 +1475,18 @@ the AppImage and the Windows installer. It leaves out, on purpose:
   only. Either wire a file appender to the helper or remove it; a
   file sink would also give packaged desktop launches, which have no
   terminal, somewhere to leave a trace.
+- **Three pieces of the change-show flow's logic stay in the renderer
+  for now.** `AGENTS.md` §14 puts the app's decisions about its data in
+  the Rust backend, and the flow's rules moved there, but three pieces
+  that sit in its grey area did not: what a player session's plays
+  record and whether trackers hear of them after a pick
+  (`frontend/src/lib/play/session-show.ts`), the Sub or Dub a picked
+  show takes from the one watched in
+  (`frontend/src/lib/history/carry-audio.ts`), and the notes of this
+  run's guessed plays that bound what a revisited guessed URL may ask
+  (`frontend/src/lib/history/guess-plays.ts`). They are worth
+  reconsidering for the backend. The maintainer chose to wait because
+  each is tied to something the renderer owns by design — the tracker
+  sending, the per-show Sub or Dub storage, notes that last one run
+  of the app — so moving one means moving that too, a refactor larger
+  than the change that found them.
