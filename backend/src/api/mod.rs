@@ -204,11 +204,6 @@ struct HistoryRow {
     entry: HistoryEntry,
     #[serde(skip_serializing_if = "Option::is_none")]
     key_year: Option<u32>,
-    /// The Kitsu-searchable words its show key carries
-    /// ([`crate::scraper::provider::key_search_term`]), which the
-    /// change-show picker searches beside the saved title.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    slug_term: Option<String>,
     /// The Continue card whose guessed play wrote this row on another
     /// listing ([`crate::commands::guessed_from`]): the renderer stands
     /// the card for that line while both show as the same show.
@@ -234,7 +229,6 @@ async fn get_history(
             .into_iter()
             .map(|entry| HistoryRow {
                 key_year: crate::scraper::provider::key_year(&entry.id),
-                slug_term: crate::scraper::provider::key_search_term(&entry.id),
                 guessed_from: from.remove(&entry.id),
                 named: crate::commands::linked_note::stands(
                     entry.kitsu_id.as_deref(),

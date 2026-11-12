@@ -1,5 +1,4 @@
-//! The history route names, beside each row, what its key carries: its
-//! year and its search words.
+//! The history route names each row's key year beside the row.
 
 use super::tests::{body_string, test_app_state};
 use super::*;
@@ -63,51 +62,5 @@ async fn the_history_names_the_year_a_rows_key_carries() {
     assert!(
         clover.get("key_year").is_none(),
         "a key with no year names none"
-    );
-}
-
-#[tokio::test]
-async fn the_history_names_the_search_words_a_rows_key_carries() {
-    let td = TempDir::new().expect("tempdir");
-    let state = test_app_state(&td);
-    crate::history::write_atomic(
-        &state.history_path,
-        &[
-            row(
-                "hianime:jojos-bizarre-adventure-2000-5182",
-                "JoJo's Bizarre Adventure",
-            ),
-            row("vDTSJHSpYnrkZnAvG", "Old Show"),
-        ],
-    )
-    .expect("history");
-    let router = build_api_router(Arc::new(state));
-    let response = router
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/api/history")
-                .body(Body::empty())
-                .expect("req"),
-        )
-        .await
-        .expect("oneshot");
-    assert_eq!(response.status(), StatusCode::OK);
-    let rows: serde_json::Value = serde_json::from_str(&body_string(response).await).expect("json");
-    let by_id = |id: &str| {
-        rows.as_array()
-            .expect("array")
-            .iter()
-            .find(|r| r["id"] == id)
-            .cloned()
-            .expect("row")
-    };
-    assert_eq!(
-        by_id("hianime:jojos-bizarre-adventure-2000-5182")["slug_term"],
-        "jojos bizarre adventure 2000"
-    );
-    assert!(
-        by_id("vDTSJHSpYnrkZnAvG").get("slug_term").is_none(),
-        "a key that is not slug-shaped names no words"
     );
 }

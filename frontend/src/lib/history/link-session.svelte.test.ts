@@ -32,9 +32,7 @@ function ref(id: string, over: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 const CARD: HistoryEntry = {
 	id: 'hianime:gintama-season-4-1381',
 	title: 'Gintama Season 4',
-	ep_no: '3',
-	// As the history route serves it: the words its key carries.
-	slug_term: 'gintama season 4'
+	ep_no: '3'
 };
 const GUESS = '10083';
 const RIGHT = ref('9969', { canonical_title: 'Gintama', episode_count: 51 });

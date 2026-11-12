@@ -18,7 +18,6 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
-import { served } from './link-backend';
 import { groupMembers } from '../../src/test/link-rules-fake';
 import type { LinkGroupRequest } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
@@ -140,7 +139,7 @@ function show(id: string) {
 function serveBackend() {
 	server.use(
 		...homeHandlers({}, [
-			http.get(`${API_BASE}/api/history`, () => HttpResponse.json(served(rows))),
+			http.get(`${API_BASE}/api/history`, () => HttpResponse.json(rows)),
 			http.get(`${API_BASE}/api/history/:id/number`, ({ params }) => {
 				const row = rows.find((r) => r.id === params.id);
 				return HttpResponse.json(row ? { ep_no: row.ep_no } : null);
