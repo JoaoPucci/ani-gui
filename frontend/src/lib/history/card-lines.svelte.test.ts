@@ -1,7 +1,7 @@
 // Home's cards' lines, as the backend answers them: the cards draw the
 // latest answer, and a click acts only on the answer for the rows as
-// they are now. Which line a card stands for is
-// the backend's rule (commands/card_line.rs, its own tests).
+// they are now. Which line a card stands for is the backend's rule
+// (commands/card_line.rs, its own tests).
 
 import { describe, expect, it, vi } from 'vitest';
 import type { CardLine, CardLineRow } from '$lib/api';

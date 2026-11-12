@@ -92,12 +92,12 @@ const ORDINALS = [
 	'tenth'
 ];
 
-/** A slug's season as the backend reads it (`cour_from_slug`): a
- *  trailing `-part-N` / `-cour-N` / `-season-N`, or an ordinal before
- *  the keyword, spelled, with a suffix, or a bare number. */
 /** A number the backend holds as a season (a u32), else none. */
 const held = (n: number): number | null => (n <= 4_294_967_295 ? n : null);
 
+/** A slug's season as the backend reads it (`cour_from_slug`): a
+ *  trailing `-part-N` / `-cour-N` / `-season-N`, or an ordinal before
+ *  the keyword, spelled, with a suffix, or a bare number. */
 function slugSeason(slug: string): number | null {
 	const keyword = slug.match(/(?:^|-)(?:part|cour|season)-(\d+)$/i);
 	if (keyword) return held(Number(keyword[1]));

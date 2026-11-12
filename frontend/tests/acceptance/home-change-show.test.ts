@@ -1259,16 +1259,20 @@ describe("Home draws the backend's answers", () => {
 		await until(() => pill(BC_CARD) !== null, 'the pill');
 		pill(BC_CARD)!.focus();
 		hold = new Promise((r) => (release = r));
-		const asked = linesAsked;
-		// Another card is linked, from anywhere: Home reads its cards again,
-		// the JoJo card is matched again, and the cards ask for their lines.
-		await appLinkDeps().link(JOJO_CARD, [JOJO_CARD], JOJO_RIGHT);
-		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the JoJo card relinked');
-		await until(() => linesAsked > asked, 'the lines asked again');
-		expect(pill(BC_CARD)).not.toBeNull();
-		expect(document.activeElement).toBe(pill(BC_CARD));
-		release();
-		await settle();
+		try {
+			const asked = linesAsked;
+			// Another card is linked, from anywhere: Home reads its cards again,
+			// the JoJo card is matched again, and the cards ask for their lines.
+			await appLinkDeps().link(JOJO_CARD, [JOJO_CARD], JOJO_RIGHT);
+			await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the JoJo card relinked');
+			await until(() => linesAsked > asked, 'the lines asked again');
+			expect(pill(BC_CARD)).not.toBeNull();
+			expect(document.activeElement).toBe(pill(BC_CARD));
+		} finally {
+			// No ask is left unanswered when the page goes.
+			release();
+			await settle();
+		}
 	});
 
 	it("lists the card's own show, and says the list could not be loaded, when the backend cannot answer", async () => {
