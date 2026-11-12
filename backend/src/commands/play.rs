@@ -456,6 +456,8 @@ where
             if let Some(mut resp) = try_serve_cached(state, &cached, args.viewer()).await {
                 resp.own_listing =
                     crate::commands::guess_guard::own_listing(state, args, &cached.show_id);
+                resp.line_kept =
+                    crate::commands::guess_guard::line_kept(state, args, &cached.show_id);
                 tracing::info!(
                     title = %args.title,
                     episode = %args.episode,
@@ -676,6 +678,7 @@ where
             args,
             &cached_resolution.show_id,
         ),
+        line_kept: crate::commands::guess_guard::line_kept(state, args, &cached_resolution.show_id),
         ..create_session_with_kind(state, &session_args, kind)?
     };
     with_versions_of(&mut resp, &native.versions, native.version);

@@ -81,8 +81,11 @@ pub(crate) fn guarded<'a>(
 /// (`card_row`), keeps the other show the card's line `played` records:
 /// it records nothing there, and the renderer writes no tracker for it.
 pub(crate) fn line_kept(state: &AppState, args: &PlayArgs, played: &str) -> bool {
-    let _ = (state, args, played);
-    false
+    let named = args.kitsu_id.as_deref();
+    args.guess_row.is_none()
+        && guards_row(None, args.card_row.as_deref(), played)
+        && named.is_some()
+        && guarded(state, args, played, named) != named
 }
 
 /// Whether the guessed play `args` landed on the card's own listing

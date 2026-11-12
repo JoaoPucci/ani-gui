@@ -425,6 +425,10 @@ export interface CreateSessionResponse {
 	 *  landed on that row's own listing. Absent (false) otherwise and
 	 *  from older backends. */
 	own_listing?: boolean;
+	/** A card's play no guess opened that the backend kept off its
+	 *  line, which records another show: record no id, and write no
+	 *  tracker for it. */
+	line_kept?: boolean;
 }
 
 /** Which copy of a season a version is: the provider lists some

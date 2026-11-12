@@ -133,9 +133,10 @@ export function playedRecord(
 	args: PlayArgs,
 	showId: string,
 	guess: boolean,
-	session: { own_listing?: boolean }
+	session: { own_listing?: boolean; line_kept?: boolean }
 ): { args: PlayArgs; mirror: boolean } {
-	const binds = guessBinds(guess, session);
+	// A card's play the backend kept off its line records nothing there.
+	const binds = guessBinds(guess, session) && session.line_kept !== true;
 	const kitsuId = recordableId(showId, !binds);
 	return { args: kitsuId ? { ...args, kitsu_id: kitsuId } : args, mirror: binds };
 }
