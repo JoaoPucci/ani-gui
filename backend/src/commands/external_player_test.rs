@@ -144,21 +144,6 @@ fn argv_for_custom_with_empty_template_falls_back_to_url_only() {
 }
 
 #[test]
-fn launch_args_decode_without_player_kind_field_for_back_compat() {
-    // Old client payloads (pre-multi-player) don't include
-    // `player_kind`. They must still decode and default to Mpv.
-    let json = r#"{
-            "stream_url": "https://example.com/v.mp4",
-            "referer": null,
-            "title": null,
-            "player_command": "mpv"
-        }"#;
-    let a: LaunchArgs = serde_json::from_str(json).expect("decodes with default kind");
-    assert_eq!(a.player_kind, ExternalPlayerKind::Mpv);
-    assert!(a.custom_args_template.is_none());
-}
-
-#[test]
 fn open_external_player_with_blank_command_returns_player_spawn_failed() {
     let mut a = args("https://example.com/v.mp4");
     a.player_command = String::new();
@@ -238,4 +223,72 @@ fn a_busy_executable_is_waited_out_rather_than_failed() {
     // give it that moment before the tempdir (and the script it is
     // about to open) goes away.
     std::thread::sleep(std::time::Duration::from_millis(50));
+}
+
+// — The stream URL is the stream, never an option ————————————————————
+//
+// The URL goes on the player's command line as a bare argument, last.
+// It comes from the provider's answer, so a value that is not an
+// http(s) URL — `--script=…`, say, which mpv would run — never
+// reaches the player.
+
+#[test]
+fn a_stream_url_must_be_http_or_https() {
+    assert!(is_stream_url("https://example.com/master.m3u8"));
+    assert!(is_stream_url("http://127.0.0.1:9/x/master.m3u8"));
+    for bad in [
+        "",
+        "--script=/tmp/x.lua",
+        "-v",
+        "file:///etc/passwd",
+        "/tmp/x.mp4",
+        "C:\\x.mp4",
+        "ytdl://x",
+        " https://example.com/x",
+        "https://",
+        "HTTPS://example.com/x",
+    ] {
+        assert!(!is_stream_url(bad), "{bad:?}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_stream_url_that_is_not_one_is_refused_and_the_player_never_starts() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = tempfile::tempdir().expect("tmp");
+    let ran = dir.path().join("ran");
+    let player = dir.path().join("player");
+    std::fs::write(&player, format!("#!/bin/sh\ntouch '{}'\n", ran.display()))
+        .expect("write player");
+    std::fs::set_permissions(&player, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let mut a = args("--script=/tmp/x.lua");
+    a.player_command = player.display().to_string();
+    let r = open_external_player(&a);
+    assert!(
+        matches!(r, Err(AniError::ParseFailed { .. })),
+        "expected a refusal, got {r:?}"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(!ran.exists(), "the player must not have been started");
+}
+
+proptest::proptest! {
+    #[test]
+    fn nothing_taken_as_a_stream_url_reads_as_an_option(s in ".*") {
+        if is_stream_url(&s) {
+            proptest::prop_assert!(!s.starts_with('-'));
+            proptest::prop_assert!(s.starts_with("http://") || s.starts_with("https://"));
+        }
+    }
+
+    #[test]
+    fn every_http_url_is_a_stream_url(
+        scheme in proptest::sample::select(vec!["http", "https"]),
+        host in "[a-z][a-z0-9]{0,10}(\\.[a-z]{2,5})?",
+        path in "(/[A-Za-z0-9._~-]{0,8}){0,4}",
+    ) {
+        let url = format!("{scheme}://{host}{path}");
+        proptest::prop_assert!(is_stream_url(&url), "{}", url);
+    }
 }
