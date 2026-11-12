@@ -9,42 +9,24 @@
  * the show playing. A player mounted again — the renderer reloaded, or
  * Back to the player a switch left — reads it back from the line: a line
  * the user named for another show than the one playing is that pick,
- * kept. It brings back the pick and the slip's way to switch, not the ⋯
- * entry to change it again, which needs the offer of the show playing.
+ * kept, as the backend's verdict says (`commands/link_verdict.rs`). It
+ * brings back the pick and the slip's way to switch, not the ⋯ entry
+ * to change it again, which needs the offer of the show playing.
  */
 
-import type { KitsuAnimeRef, ReadOptions } from '$lib/api';
-import type { LinkDeps, LinkOffer } from './link-offer';
-import { readOpts } from './read-opts';
-
-/** The show the line `row` was named for, when it is not `pageId`, the
- *  show playing; null otherwise, and when it cannot be read. */
-export async function keptPick(
-	deps: LinkDeps,
-	row: string,
-	pageId: string,
-	opts?: ReadOptions
-): Promise<KitsuAnimeRef | null> {
-	try {
-		const entry = (await deps.history(...readOpts(opts ?? {}))).find((e) => e.id === row);
-		if (!entry?.named) return null;
-		const { match } = await deps.resolve(entry, ...readOpts(opts ?? {}));
-		return match && match.id !== pageId ? match : null;
-	} catch {
-		return null;
-	}
-}
+import type { KitsuAnimeRef } from '$lib/api';
+import type { SurfaceFind } from './picked-offer';
 
 /** The pick an arrival on the player finds kept, for the arrival that
- *  read it: only where its offer was read and none was made. */
-export async function keptOnArrival(
-	deps: LinkDeps,
-	at: { inPlayer: boolean; row: string | null; pageId: string },
-	found: { offer: LinkOffer | null; unread: boolean },
-	opts?: ReadOptions
-): Promise<KitsuAnimeRef | null> {
+ *  read it: the show its line was named for when another plays
+ *  (`SurfaceFind.kept`, the backend's verdict), only where its offer
+ *  was read and none was made. */
+export function keptOnArrival(
+	at: { inPlayer: boolean; row: string | null },
+	found: SurfaceFind
+): KitsuAnimeRef | null {
 	if (!at.inPlayer || !at.row || found.offer !== null || found.unread) return null;
-	return keptPick(deps, at.row, at.pageId, opts);
+	return found.kept;
 }
 
 /** The picks arrivals found kept, each taken only by its own arrival:

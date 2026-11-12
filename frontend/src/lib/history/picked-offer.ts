@@ -1,59 +1,28 @@
 /**
- * The way to change again the show of a line the user named one for —
- * split from $lib/history/link-offer.ts for the per-file complexity bar.
+ * The offer a surface makes for a Continue card's line — a guess's, or
+ * the way to change again the show of a line the user named one for —
+ * and, on the player, the pick the line keeps.
+ *
+ * The surface reads the line and Continue Watching's match for it, and
+ * the backend says what it offers (`commands/link_verdict.rs`). What
+ * the surface brings is its own session: whether it may ask about a
+ * guess, whether it is the player, whether its session carries the
+ * verdict of the guessed card it was opened from while that guessed
+ * play stands ($lib/history/guess-plays.ts), and whether the line was
+ * picked on the player since the app started ($lib/history/guess-slip.ts).
  * A line the history marks as named (`named`, the backend's link note,
- * kept across restarts) is offered on every surface; on the player, a
- * line picked there is offered too until the app restarts
- * ($lib/history/guess-slip.ts).
+ * kept across restarts) is offered again on every surface.
  */
 
-import type { HistoryEntry, ReadOptions } from '$lib/api';
-import { linkOffer, type LinkDeps, type LinkOffer } from './link-offer';
+import type { KitsuAnimeRef, ReadOptions } from '$lib/api';
+import type { LinkDeps, LinkOffer } from './link-offer';
 import { pickedRow } from './guess-slip';
 import { guessPlayed } from './guess-plays';
 import { readOpts } from './read-opts';
 
-/** The offer to change again the show of `row`, while it records
- *  `pageId`, the show the surface shows; only for a row `offered`
- *  accepts. A failure to read makes none, and so does a read cancelled
- *  with the visit `opts` names. */
-export async function pickedOffer(
-	deps: LinkDeps,
-	row: string,
-	pageId: string,
-	offered: (entry: HistoryEntry) => boolean = () => true,
-	opts?: ReadOptions
-): Promise<LinkOffer | null> {
-	try {
-		const entry = (await deps.history(...readOpts(opts ?? {}))).find((e) => e.id === row);
-		if (!entry || !offered(entry)) return null;
-		const { match } = await deps.resolve(entry, ...readOpts(opts ?? {}));
-		return match && match.id === pageId ? { entry, current: match, saved: pageId } : null;
-	} catch {
-		return null;
-	}
-}
-
-/** The offer to change it again that the surface of the page `pageId`
- *  makes for `row`: for a row the user named a show for, anywhere, and
- *  on the player (`inPlayer`) for one picked there since the app
- *  started; null otherwise. */
-export function offerAgain(
-	deps: LinkDeps,
-	row: string | null,
-	pageId: string,
-	inPlayer: boolean,
-	opts?: ReadOptions
-): Promise<LinkOffer | null> {
-	if (!row) return Promise.resolve(null);
-	const picked = inPlayer && pickedRow(row);
-	return pickedOffer(deps, row, pageId, (entry) => picked || entry.named === true, opts);
-}
-
 /** What a surface is, for its offer: whether it may ask about a guess
  *  (`asksGuess`), whether it is the player (`inPlayer`), and whether
- *  its session carries the verdict of the guessed card it was opened
- *  from (`carried`, $lib/history/link-offer.ts `linkOffer`), which
+ *  its session was opened from the card as a guess (`carried`), which
  *  stands only while the line's guessed play does
  *  ($lib/history/guess-plays.ts). */
 export interface OfferSurface {
@@ -62,49 +31,55 @@ export interface OfferSurface {
 	carried?: boolean;
 }
 
-/** The offer a surface showing `pageId` makes for the card row `row`:
- *  a guess's when the surface may ask about one (`asksGuess`), else the
- *  way to change again a row the user named a show for (`offerAgain`). */
-export async function surfaceOffer(
-	deps: LinkDeps,
-	row: string | null,
-	pageId: string,
-	surface: OfferSurface,
-	opts?: ReadOptions
-): Promise<LinkOffer | null> {
-	// A line picked on the player since the app started is named, though
-	// its note may not have been read: it is only offered again.
-	// The URL's verdict stands only while the line's guessed play does
-	// ($lib/history/guess-plays.ts).
-	const carried =
-		surface.carried === true &&
-		row !== null &&
-		guessPlayed(row, pageId) &&
-		!(surface.inPlayer && pickedRow(row));
-	const guess = surface.asksGuess ? await linkOffer(deps, row, pageId, opts, carried) : null;
-	return guess ?? offerAgain(deps, row, pageId, surface.inPlayer, opts);
+/** What a surface found for a line: its offer, whether the line could
+ *  not be read (`unread`: no offer is known either way), and the show
+ *  the line was named for when it is not the one shown (`kept`). */
+export interface SurfaceFind {
+	offer: LinkOffer | null;
+	unread: boolean;
+	kept: KitsuAnimeRef | null;
 }
 
-/** `surfaceOffer`, and whether it could not be read (`unread`): a
- *  history or match read failed, so no offer is known either way. */
+const NONE: SurfaceFind = { offer: null, unread: false, kept: null };
+const UNREAD: SurfaceFind = { offer: null, unread: true, kept: null };
+
+/** What the surface showing `pageId` finds for the card row `row`. A
+ *  line gone from the history, or matching no show, finds nothing. A
+ *  failure to read, or a read cancelled with the visit `opts` names,
+ *  finds no offer, and says it could not read. */
 export async function surfaceOfferRead(
 	deps: LinkDeps,
 	row: string | null,
 	pageId: string,
 	surface: OfferSurface,
 	opts?: ReadOptions
-): Promise<{ offer: LinkOffer | null; unread: boolean }> {
-	let failed = false;
-	const noted = <T>(read: Promise<T>): Promise<T> =>
-		read.catch((e: unknown) => {
-			failed = true;
-			throw e;
-		});
-	const watched: LinkDeps = {
-		...deps,
-		history: (...a) => noted(deps.history(...a)),
-		resolve: (...a) => noted(deps.resolve(...a))
-	};
-	const offer = await surfaceOffer(watched, row, pageId, surface, opts);
-	return { offer, unread: offer === null && failed };
+): Promise<SurfaceFind> {
+	if (!row) return NONE;
+	try {
+		const entry = (await deps.history(...readOpts(opts ?? {}))).find((e) => e.id === row);
+		if (!entry) return NONE;
+		const { match, trusted } = await deps.resolve(entry, ...readOpts(opts ?? {}));
+		if (!match) return NONE;
+		const verdict = await deps.verdict(
+			{
+				page: pageId,
+				show: match.id,
+				trusted,
+				named: entry.named === true,
+				asks_guess: surface.asksGuess,
+				carried: surface.carried === true && guessPlayed(row, pageId),
+				picked: surface.inPlayer && pickedRow(row)
+			},
+			...readOpts(opts ?? {})
+		);
+		const offer =
+			verdict.offer === 'guess'
+				? { entry, current: match }
+				: verdict.offer === 'again'
+					? { entry, current: match, saved: pageId }
+					: null;
+		return { offer, unread: false, kept: verdict.kept ? match : null };
+	} catch {
+		return UNREAD;
+	}
 }

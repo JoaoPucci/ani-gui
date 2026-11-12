@@ -692,10 +692,114 @@ export function historyLink(card: string, rows: string[], kitsuId: string): Prom
 	});
 }
 
-/** The rows of `rows` a link from the card whose row is `card` would
- *  write: those of the card's own listing. */
-export function historyLinkGroup(card: string, rows: string[]): Promise<string[]> {
-	return postJson<string[]>('/api/history/link-group', { card, rows });
+/** A history row with Continue Watching's match for it: the show's
+ *  Kitsu id (null when it matches none or could not be read), and
+ *  whether the match is one a play may record. */
+export interface RowMatch {
+	id: string;
+	show: string | null;
+	trusted: boolean;
+}
+
+/** A request for the rows a link from the card whose row is `card`
+ *  would write: the card shows `show`, `saved` is the show the user
+ *  named for its line when they did, and `rows` are the history's other
+ *  rows with their matches. */
+export interface LinkGroupRequest {
+	card: string;
+	show: string;
+	saved: string | null;
+	rows: RowMatch[];
+}
+
+/** The rows a link from the card would write: the card's own, and
+ *  every row the backend finds it stands for on the card's listing. */
+export function historyLinkGroup(request: LinkGroupRequest): Promise<string[]> {
+	return postJson<string[]>('/api/history/link-group', request);
+}
+
+/** What a link to a show would be worth a second look for: the
+ *  backend's stable key, which the picker words. */
+export type LinkWarning = 'season' | 'episode';
+
+/** A show offered for a guessed row, whether the card shows it now,
+ *  and what a link to it would be worth a second look for. */
+export interface LinkCandidate {
+	ref: KitsuAnimeRef;
+	current: boolean;
+	warnings: LinkWarning[];
+}
+
+/** A request for a guessed row's candidates: the row, its saved title
+ *  as Continue Watching searches it, the show the card shows, the
+ *  episode the card offers, and the words the user typed (null for the
+ *  picker's own searches). */
+export interface CandidatesRequest {
+	row: string;
+	title: string;
+	current: KitsuAnimeRef | null;
+	query: string | null;
+	episode: number;
+}
+
+/** The candidates for a guessed row, in the order the picker lists
+ *  them, each with its warnings. The picker's own searches never fail
+ *  the answer; a typed search's failure rejects. */
+export function historyLinkCandidates(
+	request: CandidatesRequest,
+	opts: ReadOptions = {}
+): Promise<LinkCandidate[]> {
+	return postJson<LinkCandidate[]>('/api/history/link-candidates', request, {
+		signal: opts.signal
+	});
+}
+
+/** A row as Continue Watching shows it, for the line its card stands
+ *  for: its match's show, whether that is a guess, and whether the user
+ *  named it. */
+export interface CardLineRow {
+	id: string;
+	guessed_from: string | null;
+	show: string | null;
+	guess: boolean;
+	named: boolean;
+}
+
+/** The line a card stands for, and whether it can be corrected. */
+export interface CardLine {
+	line: string;
+	correctable: boolean;
+}
+
+/** The line each card stands for, by row id. */
+export function historyCardLines(rows: CardLineRow[]): Promise<Record<string, CardLine>> {
+	return postJson<Record<string, CardLine>>('/api/history/card-lines', { rows });
+}
+
+/** What a surface knows of a card's line, for its question. */
+export interface VerdictRequest {
+	page: string;
+	show: string | null;
+	trusted: boolean;
+	named: boolean;
+	asks_guess: boolean;
+	carried: boolean;
+	picked: boolean;
+}
+
+/** What the surface offers for the line, and whether the line keeps a
+ *  pick of another show. */
+export interface LinkVerdict {
+	offer: 'guess' | 'again' | null;
+	kept: boolean;
+}
+
+/** Whether a surface asks about a card's line. */
+export function historyLinkVerdict(
+	request: VerdictRequest,
+	opts: ReadOptions = {}
+): Promise<LinkVerdict> {
+	return postJson<LinkVerdict>('/api/history/link-verdict', request, { signal: opts.signal });
 }
 
 /** Find the most-recent history entry whose show id maps to this Kitsu

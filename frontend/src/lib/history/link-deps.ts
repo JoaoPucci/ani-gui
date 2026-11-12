@@ -9,7 +9,13 @@
  * screen when it answers may not be the one it was made from.
  */
 
-import { historyLink, historyLinkGroup, historyList, kitsuSearch } from '$lib/api';
+import {
+	historyLink,
+	historyLinkCandidates,
+	historyLinkGroup,
+	historyLinkVerdict,
+	historyList
+} from '$lib/api';
 import type { LinkDeps } from './link-offer';
 import { resolveKitsuMatchWithTrust } from './match';
 import { readOpts } from './read-opts';
@@ -30,7 +36,8 @@ export function appLinkDeps(): LinkDeps {
 				throw new Error('the match could not be read');
 			return read;
 		},
-		search: kitsuSearch,
+		candidates: historyLinkCandidates,
+		verdict: historyLinkVerdict,
 		link: (card, rows, kitsuId) => announced(historyLink(card, rows, kitsuId)),
 		group: historyLinkGroup
 	};

@@ -17,7 +17,7 @@ import { m } from '$lib/paraglide/messages';
 import type { KitsuAnimeRef } from '$lib/api';
 import { isSingleVideo } from '$lib/detail/play-label';
 import { subtypeLabel } from '$lib/search/subtype-label';
-import type { LinkCandidate } from './link-candidates';
+import type { LinkCandidate } from '$lib/api';
 import { focusBack, openerOf } from './focus-return';
 
 /** Where focus goes inside the open picker. */

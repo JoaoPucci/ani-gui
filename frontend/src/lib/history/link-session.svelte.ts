@@ -21,8 +21,8 @@ import type { ReadOptions } from '$lib/api';
 import { linkedNotice, linkFailure } from './link-notices';
 import { carryAudio } from './carry-audio';
 import { LinkPicker } from './link-picker.svelte';
-import { guessedGroup, type LinkDeps, type LinkOffer } from './link-offer';
-import { surfaceOfferRead, type OfferSurface } from './picked-offer';
+import { guessedGroup, type LinkDeps } from './link-offer';
+import { surfaceOfferRead, type OfferSurface, type SurfaceFind } from './picked-offer';
 
 /** A notice to the user. */
 export interface LinkNotice {
@@ -105,7 +105,7 @@ export class LinkSession extends LinkPicker {
 		row: string | null,
 		pageId: string,
 		opts: ReadOptions
-	): Promise<{ offer: LinkOffer | null; unread: boolean }> {
+	): Promise<SurfaceFind> {
 		return surfaceOfferRead(this.#deps, row, pageId, this.surface, opts);
 	}
 

@@ -13,7 +13,7 @@
 
 import { continueEpisode } from '$lib/play/next-episode';
 import { visitSeries, type Visit } from '$lib/navigation/visit';
-import { linkWarnings, type LinkCandidate, type LinkWarning } from './link-candidates';
+import type { LinkCandidate, LinkWarning } from '$lib/api';
 import { loadCandidates, searchCandidates, type LinkDeps, type LinkOffer } from './link-offer';
 
 export class LinkPicker {
@@ -36,11 +36,10 @@ export class LinkPicker {
 		this.#pickerDeps = deps;
 	}
 
-	/** What the chosen show would be worth a second look for. */
+	/** What the chosen show would be worth a second look for, as the
+	 *  backend answered with the candidates. */
 	get warnings(): LinkWarning[] {
-		return this.offer && this.chosen
-			? linkWarnings(this.offer.entry, this.chosen.ref, this.#episodeNumber(this.offer))
-			: [];
+		return this.offer && this.chosen ? this.chosen.warnings : [];
 	}
 
 	/** The episode the card offers, as the card, the breadcrumb and the
@@ -77,8 +76,11 @@ export class LinkPicker {
 		this.failed = false;
 		this.candidates = null;
 		const query = ++this.#query;
-		const found = await this.kept((opts) => loadCandidates(this.#pickerDeps, offer, opts));
-		if (query === this.#query && this.offer === offer) this.candidates = found;
+		const episode = this.#episodeNumber(offer);
+		const found = await this.kept((opts) => loadCandidates(this.#pickerDeps, offer, episode, opts));
+		if (query !== this.#query || this.offer !== offer) return;
+		this.candidates = found.candidates;
+		this.failed = found.failed;
 	}
 
 	/** The candidates a typed search answers with. */
@@ -90,8 +92,9 @@ export class LinkPicker {
 		const asked = ++this.#query;
 		const current = () => asked === this.#query && this.offer === offer;
 		try {
+			const episode = this.#episodeNumber(offer);
 			const found = await this.kept((opts) =>
-				searchCandidates(this.#pickerDeps, offer, query, opts)
+				searchCandidates(this.#pickerDeps, offer, query, episode, opts)
 			);
 			if (current()) this.candidates = found;
 		} catch {

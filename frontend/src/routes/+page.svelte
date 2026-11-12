@@ -60,6 +60,7 @@
 		allmangaKitsuMapGet,
 		checkAvailability,
 		historyClear,
+		historyCardLines,
 		historyDelete,
 		historyList,
 		historyNumber,
@@ -125,7 +126,7 @@
 	import { failedResumeGuess, openCardLink as runOpenCardLink } from '$lib/history/open-card-link';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
-	import { cardRow } from '$lib/history/card-row';
+	import { CardLines } from '$lib/history/card-lines.svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { createConfirmRun } from '$lib/history/confirm-run';
@@ -568,12 +569,6 @@
 		publish: (id, match) => publishLoaderCap(id, match, match?.episode_count ?? null, true),
 		writes: () => historyWrites
 	});
-	// The rows the user named a show for: their cards keep the pill.
-	const namedRows = $derived(new Set((history ?? []).filter((h) => h.named).map((h) => h.id)));
-	/** Whether the card for the history row `row` offers its pill. */
-	function askable(row: string): boolean {
-		return rowTrust.isGuess(row) || namedRows.has(row);
-	}
 	/** The card that stands for the history row `row`. */
 	function cardButton(row: string): HTMLElement | null {
 		return document.querySelector<HTMLElement>(
@@ -1038,6 +1033,22 @@
 	const rowTrust = createRowTrust((entry) =>
 		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null), { signal: pageReads.signal })
 	);
+	// The line each card stands for, and whether its pill shows — a
+	// guess, or a line the user named a show for, which can be changed
+	// again — as the backend answers from the rows as they are matched
+	// ($lib/history/card-lines.svelte.ts).
+	const cardLines = new CardLines(historyCardLines);
+	$effect(() => {
+		cardLines.update(
+			(history ?? []).map((h) => ({
+				id: h.id,
+				guessed_from: h.guessed_from ?? null,
+				show: historyMatches[h.id]?.id ?? null,
+				guess: rowTrust.isGuess(h.id),
+				named: h.named === true
+			}))
+		);
+	});
 	const playArgsFor = (a: ResumePlayArgs) =>
 		buildPlayArgs({
 			title: a.title,
@@ -1512,11 +1523,13 @@
 			{@const initials = (card.text?.show ?? target.displayTitle).slice(0, 2).toUpperCase()}
 			<!-- The line the card stands for: a row its guessed play wrote on
 			     another listing stands for the line clicked ($lib/history/card-row). -->
-			{@const line = cardRow(entry, history ?? [], historyMatches, (id) => rowTrust.isGuess(id))}
+			{@const line = cardLines.lineOf(entry.id)}
 			<!-- A guess, or a line the user named a show for, which can be
-			     changed again ($lib/history/picked-offer). -->
+			     changed again ($lib/history/card-lines.svelte). -->
 			{@const guessed =
-				resumable && match && askable(line) && !settledRows.has(line) ? match : null}
+				resumable && match && cardLines.correctable(entry.id) && !settledRows.has(line)
+					? match
+					: null}
 			<!-- Both transitions are gated on `deleteAnimationGate` so
 		     they only run for user-confirmed deletes. On home
 		     re-mount, `dedupeHistoryByKitsuId` collapses Kitsu-group
@@ -1558,13 +1571,18 @@
 						aria-busy={card.look === null}
 						disabled={!!resumeBusy && !isResuming}
 						onclick={() =>
-							startResume(
-								entry,
-								match,
-								match?.episode_count ?? null,
-								match?.status === 'finished',
-								line
-							)}
+							// The line the card stands for as the rows are now.
+							void cardLines
+								.settled()
+								.then(() =>
+									startResume(
+										entry,
+										match,
+										match?.episode_count ?? null,
+										match?.status === 'finished',
+										cardLines.lineOf(entry.id)
+									)
+								)}
 					>
 						{@render cardFace(card, initials)}
 						{@render cardBody(card, target.displayTitle)}
@@ -1596,7 +1614,10 @@
 						onclick={(e) => {
 							e.preventDefault();
 							e.stopPropagation();
-							void openCardLink(line, guessed.id, nextEpisode);
+							const id = guessed.id;
+							void cardLines
+								.settled()
+								.then(() => openCardLink(cardLines.lineOf(entry.id), id, nextEpisode));
 						}}
 					>
 						<GuessMark size={14} />{m.detail_link_not_this()}

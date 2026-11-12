@@ -35,9 +35,9 @@
 
 import type { KitsuAnimeRef, ReadOptions } from '$lib/api';
 import { LinkSession, type LinkNotice, type LinkSessionDeps } from './link-session.svelte';
-import type { LinkDeps, LinkOffer } from './link-offer';
+import type { LinkDeps } from './link-offer';
 import { keptOnArrival, KeptPicks } from './kept-pick';
-import type { OfferSurface } from './picked-offer';
+import type { OfferSurface, SurfaceFind } from './picked-offer';
 import { playerNotify } from './link-notices';
 import { surface, type Surface } from './surface';
 import {
@@ -75,7 +75,6 @@ export class InPlaceLinkSession extends LinkSession {
 	switchedTitle = $state<string | null>(null);
 
 	#row = $state<string | null>(null);
-	#deps: LinkDeps;
 	/** The pick an arrival's line keeps, read with its offer. */
 	#kept = new KeptPicks();
 	#guess = $state(true);
@@ -103,7 +102,6 @@ export class InPlaceLinkSession extends LinkSession {
 			here: place.here
 		} satisfies LinkSessionDeps);
 		this.#surface = place;
-		this.#deps = deps;
 		this.#refresh = refresh;
 		this.#notify = deps.notify;
 		this.#inPlayer = inPlayer;
@@ -144,11 +142,10 @@ export class InPlaceLinkSession extends LinkSession {
 		row: string | null,
 		pageId: string,
 		opts: ReadOptions
-	): Promise<{ offer: LinkOffer | null; unread: boolean }> {
+	): Promise<SurfaceFind> {
 		const arrival = this.arrivals;
 		const found = await super.findOffer(row, pageId, opts);
-		const at = { inPlayer: this.#inPlayer, row, pageId };
-		this.#kept.note(arrival, await keptOnArrival(this.#deps, at, found, opts));
+		this.#kept.note(arrival, keptOnArrival({ inPlayer: this.#inPlayer, row }, found));
 		return found;
 	}
 
@@ -199,7 +196,8 @@ export class InPlaceLinkSession extends LinkSession {
 	async confirmCurrent(): Promise<void> {
 		const offer = this.offer;
 		if (!offer || this.busy) return;
-		this.choose({ ref: offer.current, current: true });
+		// No picker is open to show what it would be worth a look for.
+		this.choose({ ref: offer.current, current: true, warnings: [] });
 		await this.confirm();
 		// The picker that shows a link's error is closed: say it here.
 		if (this.error) this.#notify({ kind: 'error', message: this.error });

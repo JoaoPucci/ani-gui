@@ -25,7 +25,7 @@
 	import { modal } from './modal-layer';
 	import { m } from '$lib/paraglide/messages';
 	import { imageProxyUrl, type KitsuAnimeRef } from '$lib/api';
-	import type { LinkCandidate, LinkWarning } from '$lib/history/link-candidates';
+	import type { LinkCandidate, LinkWarning } from '$lib/api';
 	import {
 		candidateMeta,
 		createDialogFocus,
