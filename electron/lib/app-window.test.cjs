@@ -21,6 +21,25 @@ const {
   revealGate,
 } = require("./app-window.cjs");
 const { splashWindowOptions } = require("./splash.cjs");
+const { appDocumentFrom } = require("./app-document.cjs");
+const { guardedIpc } = require("./ipc-guard.cjs");
+
+const APP = appDocumentFrom({ isDev: false });
+/** The frame a word from the app's own document comes from. */
+const APP_FRAME = { url: "app://localhost/", parent: null };
+
+/**
+ * The waiter listens through the guarded IPC (lib/ipc-guard.cjs), the
+ * way main.js hands it over. `emit` sends as the app's main frame unless
+ * the event names another; `listenerCount` reads the ipcMain beneath.
+ */
+function guardedChannel(refusals = []) {
+  const raw = new EventEmitter();
+  const ipc = guardedIpc(raw, { app: APP, logError: (line) => refusals.push(line) });
+  ipc.emit = (channel, event) => raw.emit(channel, { senderFrame: APP_FRAME, ...event });
+  ipc.listenerCount = (channel) => raw.listenerCount(channel);
+  return ipc;
+}
 
 test("the app's window is made with the app's own dark background, the splash's too", () => {
   const tokens = fs.readFileSync(
@@ -43,6 +62,8 @@ test("the app's window is made with the app's own dark background, the splash's 
   assert.deepEqual([o.width, o.height], [1920, 1048]);
   assert.equal(o.webPreferences.preload, "p");
   assert.equal(o.webPreferences.contextIsolation, true);
+  // A file or link dropped on the window does not become a navigation.
+  assert.equal(o.webPreferences.navigateOnDragDrop, false);
 });
 
 let ids = 0;
@@ -50,7 +71,7 @@ const sender = () => ({ id: (ids += 1) });
 
 test("the reveal waits for the renderer's word that its first page has rendered", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const ipc = new EventEmitter();
+  const ipc = guardedChannel();
   const contents = sender();
   const waiter = appReadyWaiter(contents, ipc);
   let ready = null;
@@ -68,6 +89,24 @@ test("the reveal waits for the renderer's word that its first page has rendered"
   assert.deepEqual(lastAppReady(), { rendered: true, gaveUp: false, beforeReveal: true });
 });
 
+test("a word from a document that is not the app's does not count, even from the window's own contents", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const refusals = [];
+  const ipc = guardedChannel(refusals);
+  const contents = sender();
+  const waiter = appReadyWaiter(contents, ipc);
+  let ready = null;
+  waiter.ready.then((v) => (ready = v));
+  ipc.emit(APP_READY_CHANNEL, { sender: contents, senderFrame: { url: "file:///tmp/dropped.html", parent: null } });
+  for (let i = 0; i < 3; i++) await Promise.resolve();
+  assert.equal(ready, null, "the guard drops it before the waiter sees it");
+  assert.ok(refusals.some((l) => l.includes(APP_READY_CHANNEL)), refusals.join("\n"));
+  ipc.emit(APP_READY_CHANNEL, { sender: contents });
+  for (let i = 0; i < 3; i++) await Promise.resolve();
+  assert.equal(ready, true);
+  assert.equal(ipc.listenerCount(APP_READY_CHANNEL), 0, "it stops listening");
+});
+
 test("a renderer that never says so holds the reveal no longer than the bound", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   // A safety net for a page that never says it rendered, not the time a
@@ -75,7 +114,7 @@ test("a renderer that never says so holds the reveal no longer than the bound", 
   // machine had the first page render past the 4 s this used to be, and
   // the window showed black after the splash.
   assert.equal(APP_READY_WAIT_MS, 15_000);
-  const ipc = new EventEmitter();
+  const ipc = guardedChannel();
   const waiter = appReadyWaiter(sender(), ipc);
   let ready = null;
   waiter.ready.then((v) => (ready = v));
@@ -91,7 +130,7 @@ test("a renderer that never says so holds the reveal no longer than the bound", 
 test("a word that comes late, inside the bound, still counts as rendered", async (t) => {
   // A cold dev start: Vite compiles the first page for many seconds.
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const ipc = new EventEmitter();
+  const ipc = guardedChannel();
   const contents = sender();
   const waiter = appReadyWaiter(contents, ipc);
   let ready = null;
@@ -107,7 +146,7 @@ test("a word that comes late, inside the bound, still counts as rendered", async
 
 test("a word that comes after the wait gave up changes nothing", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const ipc = new EventEmitter();
+  const ipc = guardedChannel();
   const contents = sender();
   const waiter = appReadyWaiter(contents, ipc);
   t.mock.timers.tick(APP_READY_WAIT_MS);
@@ -118,7 +157,7 @@ test("a word that comes after the wait gave up changes nothing", async (t) => {
 });
 
 test("the word can come before the wait is looked at, and still counts", async () => {
-  const ipc = new EventEmitter();
+  const ipc = guardedChannel();
   const contents = sender();
   const waiter = appReadyWaiter(contents, ipc);
   ipc.emit(APP_READY_CHANNEL, { sender: contents });
@@ -126,7 +165,7 @@ test("the word can come before the wait is looked at, and still counts", async (
 });
 
 test("the record says whether the word came while the window was still hidden", async () => {
-  const ipc = new EventEmitter();
+  const ipc = guardedChannel();
   let shown = true;
   const late = sender();
   const waiter = appReadyWaiter(late, ipc, { isShown: () => shown, timeoutMs: 50 });
@@ -145,7 +184,7 @@ test("the reveal waits for the renderer's word even once the splash is done", as
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let splashDone;
   const splashShown = new Promise((resolve) => (splashDone = resolve));
-  const ipc = new EventEmitter();
+  const ipc = guardedChannel();
   const contents = sender();
   const waiter = appReadyWaiter(contents, ipc);
   let open = false;
@@ -161,7 +200,7 @@ test("the reveal waits for the renderer's word even once the splash is done", as
 test("the reveal waits for the splash even once the page has rendered", async () => {
   let splashDone;
   const splashShown = new Promise((resolve) => (splashDone = resolve));
-  const ipc = new EventEmitter();
+  const ipc = guardedChannel();
   const contents = sender();
   const waiter = appReadyWaiter(contents, ipc, { timeoutMs: 50 });
   ipc.emit(APP_READY_CHANNEL, { sender: contents });
@@ -185,7 +224,7 @@ test("a page that never says it rendered still has the splash complete its rail,
   // The wait for the render gives up (here at once); the window is then
   // revealed anyway, but only after the splash has lit its last stretch
   // and held it.
-  const ipc = new EventEmitter();
+  const ipc = guardedChannel();
   const contents = sender();
   const waiter = appReadyWaiter(contents, ipc, { timeoutMs: 1 });
   let release;
@@ -201,7 +240,7 @@ test("a page that never says it rendered still has the splash complete its rail,
 });
 
 test("a page that rendered has the splash complete its rail the same way", async () => {
-  const ipc = new EventEmitter();
+  const ipc = guardedChannel();
   const contents = sender();
   const waiter = appReadyWaiter(contents, ipc, { timeoutMs: 50 });
   let release;
@@ -223,7 +262,7 @@ test("a page that rendered has the splash complete its rail the same way", async
 // rendered, and sometimes it had not.
 test("with no bound the wait never gives up, and the word still counts however late", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const ipc = new EventEmitter();
+  const ipc = guardedChannel();
   const contents = sender();
   const waiter = appReadyWaiter(contents, ipc, { timeoutMs: null });
   let ready = null;
@@ -237,7 +276,7 @@ test("with no bound the wait never gives up, and the word still counts however l
 
 test("a renderer that goes, or a window destroyed, ends the wait without a render and without completing the rail", async () => {
   for (const event of ["render-process-gone", "destroyed"]) {
-    const ipc = new EventEmitter();
+    const ipc = guardedChannel();
     const contents = Object.assign(new EventEmitter(), sender());
     const waiter = appReadyWaiter(contents, ipc, { timeoutMs: null });
     contents.emit(event, {}, { reason: "crashed" });
@@ -258,7 +297,7 @@ test("a renderer that goes, or a window destroyed, ends the wait without a rende
 
 test("a word, or the bound, takes the renderer's listeners down too", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const ipc = new EventEmitter();
+  const ipc = guardedChannel();
   const contents = Object.assign(new EventEmitter(), sender());
   const waiter = appReadyWaiter(contents, ipc, { timeoutMs: 50 });
   ipc.emit(APP_READY_CHANNEL, { sender: contents });

@@ -37,14 +37,15 @@ pub(super) struct RawAsset {
 }
 
 /// Normalise a `RawRelease` into the smaller `ReleaseInfo` or
-/// `None` when load-bearing fields are missing. Drafts are
-/// filtered (badge would link to a release the user can't see).
+/// `None` when load-bearing fields are missing or the release page
+/// is not an https URL. Drafts are filtered (badge would link to a
+/// release the user can't see).
 fn normalise(raw: RawRelease) -> Option<ReleaseInfo> {
     if raw.draft {
         return None;
     }
     let tag = raw.tag_name?;
-    let url = raw.html_url?;
+    let url = raw.html_url.filter(|u| is_https_page(u))?;
     Some(ReleaseInfo {
         tag: tag.clone(),
         name: raw.name.unwrap_or(tag),
@@ -54,9 +55,16 @@ fn normalise(raw: RawRelease) -> Option<ReleaseInfo> {
     })
 }
 
+/// Whether `url` parses as an https URL. The update dialog links to
+/// the release's page, so anything else is not offered.
+fn is_https_page(url: &str) -> bool {
+    url::Url::parse(url).is_ok_and(|u| u.scheme() == "https")
+}
+
 /// The release to offer from `releases`, newest first: the first
 /// that counts under the pre-release setting, carries a package for
-/// `platform`, and normalises (published, with a tag and a URL).
+/// `platform`, and normalises (published, with a tag and an https
+/// release page).
 pub(super) fn select_release(
     releases: Vec<RawRelease>,
     platform: Platform,

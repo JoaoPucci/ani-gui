@@ -95,7 +95,7 @@ function splashWindowOptions() {
 
 /**
  * The splash's lifecycle. `createWindow(options)` makes the window
- * (main.js passes `new BrowserWindow`).
+ * (main.js passes the guarded window maker, lib/guarded-window.cjs).
  *
  * - `show` opens it, marked, and shows it once it has painted.
  * - `close` closes it: the boot's window has shown, so it is not the

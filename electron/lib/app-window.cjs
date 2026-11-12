@@ -85,17 +85,28 @@ function appWindowOptions({ width, height, icon, preload, additionalArguments })
     // Frameless: the renderer draws its titlebar and controls. Resizable
     // stays at its default (true), so the OS resize edges still work.
     frame: false,
-    webPreferences: { preload, contextIsolation: true, nodeIntegration: false, additionalArguments },
+    webPreferences: {
+      preload,
+      contextIsolation: true,
+      nodeIntegration: false,
+      additionalArguments,
+      // Electron's default, stated: a file or link dropped on the window
+      // must not become a navigation. Were one asked for, it would come
+      // from the page and meet the navigation guard (window-guard.cjs).
+      navigateOnDragDrop: false,
+    },
   };
 }
 
 let current = { rendered: false, gaveUp: false, beforeReveal: false };
 
 /**
- * Wait for `contents`' renderer to say, on APP_READY_CHANNEL of `ipc`,
- * that its first page has rendered. `ready` settles true when it does,
- * false after `timeoutMs` (never, when that is null), and false when
- * the renderer goes or the contents are destroyed first — `gone()` then
+ * Wait for `contents`' renderer to say, on APP_READY_CHANNEL of `ipc`
+ * (the main process's guarded IPC, lib/ipc-guard.cjs, so a word from
+ * any document but the app's is dropped before it gets here), that its
+ * first page has rendered. `ready` settles true when it does, false
+ * after `timeoutMs` (never, when that is null), and false when the
+ * renderer goes or the contents are destroyed first — `gone()` then
  * says so. A renderer gone fails the boot (lib/startup.cjs
  * waitBeforeShow); destroyed contents are a window closed by a quit,
  * which reveals nothing (revealMaximized).
@@ -116,13 +127,14 @@ function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown 
   let settle;
   const ready = new Promise((resolve) => (settle = resolve));
   let timer = null;
+  let stopListening = () => {};
   let settled = false;
   let lost = false;
   const watchesContents = typeof contents.on === "function";
   const done = (rendered, { gaveUp = !rendered } = {}) => {
     if (settled) return;
     settled = true;
-    ipc.removeListener(APP_READY_CHANNEL, onReady);
+    stopListening();
     if (watchesContents) {
       contents.removeListener("render-process-gone", onGone);
       contents.removeListener("destroyed", onGone);
@@ -145,7 +157,7 @@ function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown 
     lost = true;
     done(false, { gaveUp: false });
   }
-  ipc.on(APP_READY_CHANNEL, onReady);
+  stopListening = ipc.on(APP_READY_CHANNEL, onReady);
   if (watchesContents) {
     contents.on("render-process-gone", onGone);
     contents.on("destroyed", onGone);

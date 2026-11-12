@@ -24,6 +24,17 @@ const {
 const { STALL_MS, STEPS, stallTexts } = require("./splash-progress.cjs");
 const { LOCALES, messagesFor } = require("./main-messages.cjs");
 const { APP_READY_CHANNEL, APP_READY_WAIT_MS, appReadyBound, appReadyWaiter, revealGate } = require("./app-window.cjs");
+const { guardedIpc } = require("./ipc-guard.cjs");
+const { appDocumentFrom } = require("./app-document.cjs");
+
+/** The guarded IPC main.js hands the app-ready wait (lib/ipc-guard.cjs);
+ *  `emit` sends as the app's main frame unless the event names another. */
+function appIpc() {
+  const raw = new EventEmitter();
+  const ipc = guardedIpc(raw, { app: appDocumentFrom({ isDev: false }), logError: () => {} });
+  ipc.emit = (channel, event) => raw.emit(channel, { senderFrame: { url: "app://localhost/", parent: null }, ...event });
+  return ipc;
+}
 
 test("the splash is a small frameless window above everything, shown once painted", () => {
   const o = splashWindowOptions();
@@ -1425,7 +1436,7 @@ async function splashBeforeAPage(t, { bound = false } = {}) {
   const painted = await paintedSplash(t, { log: (line) => logs.push(line) });
   await painted.splash.progress("backend");
   await painted.splash.progress("flags");
-  const ipc = new EventEmitter();
+  const ipc = appIpc();
   const contents = { id: 1 };
   // `bound`: the wait main.js makes, with no bound while the splash
   // stands in.
