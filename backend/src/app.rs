@@ -83,11 +83,10 @@ pub struct AppState {
     /// `$XDG_STATE_HOME/ani-gui/` — backing store for the watch
     /// history and the account tokens.
     pub state_dir: PathBuf,
-    /// Per-process random secret renderer-only paths require as the
-    /// `x-ani-gui-internal-secret` header. Currently used to gate the
-    /// disconnect-after-expiry cache wipe so a
-    /// cross-origin tab under the permissive CORS layer can't poison
-    /// another user's local cache.
+    /// Per-process random secret every API request must carry
+    /// (`crate::api::gate`), printed in the handshake for the Electron
+    /// main process to hand the renderer. Another program on the
+    /// machine, or a page in a browser on it, cannot guess it.
     pub internal_secret: InternalSecret,
     /// Shared refresh-coalesce state for MAL. One slot per process —
     /// every `MalProvider` the `provider_for_kind` dispatcher

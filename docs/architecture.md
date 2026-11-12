@@ -14,7 +14,15 @@ The app talks to three things a browser tab cannot reach on its own:
 2. The watch-history file — needs filesystem access.
 3. Anime stream CDNs — hianime's serve a playlist only to a request naming the embed page's own origin as `Referer:`, a header browser fetch APIs cannot set, and none serves segments with permissive CORS. The proxy sends only what the resolved stream named — the embed page's origin for a hianime stream — never a referer of its own.
 
-So the app embeds a Rust backend, bound to `127.0.0.1` on a kernel-assigned port, that orchestrates these pieces. It runs as a sidecar process the desktop shell launches at startup — a localhost daemon, not a server anyone else can reach.
+So the app embeds a Rust backend, bound to `127.0.0.1` on a kernel-assigned port, that orchestrates these pieces. It runs as a sidecar process the desktop shell launches at startup — a localhost daemon, not a server another machine can reach. On this machine it answers the app alone ([below](#who-the-backend-answers)).
+
+## Who the backend answers
+
+Binding to `127.0.0.1` keeps the backend off the network, not away from the machine: every program on it, and every page any browser on it opens, can send requests to a loopback port. So the API answers only the app's own callers. The backend draws a 32-byte secret at random each launch and prints it last in its handshake (`ANI_GUI_INTERNAL_SECRET <hex>`); the Electron main process reads it from the backend's stdout and passes it to each window it opens as a command-line switch, which the preload puts on `window.aniGui.internalSecret`. Every route under `/api`, on every lane, answers a request that does not carry it with an empty `403 Forbidden` before any handler runs (`backend/src/api/gate.rs`). The renderer sends it as the `x-ani-gui-internal-secret` header. Three requests are made by elements that cannot set a header — the play and download progress streams (an `EventSource`) and `/api/image` (an `<img src>`) — and send it as the `secret` query parameter, which no other route reads. The main process sends it on its own one request, the launch's flags.
+
+The stream proxy (`/s/<session>/…`) is not behind the secret: the player's media element and a download's tools fetch it without headers. Its guard is the session id in the path, a random UUID that only the play that made the session learns, and the HMAC on every URI it rewrites.
+
+CORS, on the API and the proxy alike, allows only the renderer's origins (`backend/src/renderer_origin.rs`): `app://localhost`, the scheme the packaged app serves its pages under on Linux and Windows, and a loopback `http` origin on any port, for the Vite server a dev run loads. A page at any other origin is shown no answer, and its browser does not send it a request that needs a preflight. The header makes every request from the renderer one that does, so a preflight's answer is cached for the two hours Chromium allows.
 
 ## Components
 

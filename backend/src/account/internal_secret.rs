@@ -1,15 +1,16 @@
-//! `InternalSecret` — random per-process secret that gates renderer-
-//! only backend paths.
+//! `InternalSecret` — random per-process secret every API request
+//! must carry.
 //!
-//! The `delete_list_cache` fallback path accepts
-//! a renderer-supplied `fallback_user_id` when the bearer has expired.
-//! Under the permissive CORS layer that opens a cross-origin cache-
-//! wipe vector — any tab in the user's browser can send `Authorization:
-//! Bearer garbage` plus a guessed user_id and clear the rows. The fix
-//! is a per-process random secret only the Electron renderer learns
-//! (via stdout handshake at backend startup + preload bridge into the
-//! page), required as the `x-ani-gui-internal-secret` header on
-//! gated paths.
+//! The backend's loopback ports are reachable by every program on the
+//! machine and every page a browser on it opens. Only the Electron
+//! renderer learns this secret (via the stdout handshake at backend
+//! startup and the preload bridge into the page), and the API's gate
+//! (`crate::api::gate`) answers no request without it, as the
+//! `x-ani-gui-internal-secret` header or, on the routes loaded by
+//! elements that cannot set a header, the `secret` query parameter.
+//! A few account handlers check it again themselves, the
+//! `delete_list_cache` fallback that accepts a renderer-supplied
+//! `fallback_user_id` among them.
 
 use axum::http::{HeaderMap, HeaderName};
 use rand::RngCore;
@@ -22,7 +23,7 @@ pub const INTERNAL_SECRET_HEADER: HeaderName = HeaderName::from_static("x-ani-gu
 /// 32-byte random secret printed to stdout once at backend startup as
 /// `ANI_GUI_INTERNAL_SECRET <hex>`. Electron parses the line, threads
 /// the hex string through preload into `window.aniGui.internalSecret`,
-/// and the renderer sends it as a header on the few gated paths.
+/// and the renderer sends it with every API request.
 #[derive(Clone)]
 pub struct InternalSecret {
     hex: String,

@@ -35,11 +35,12 @@ const localeArg = process.argv.find((a) => a.startsWith(localeFlag));
 const configLocale = localeArg ? localeArg.slice(localeFlag.length) : null;
 
 // Per-process random secret printed by the backend at startup and
-// passed through additionalArguments. The renderer attaches it as the
-// `x-ani-gui-internal-secret` header on the few backend paths that
-// need a renderer-only gate (the disconnect-after-expiry cache wipe).
-// A cross-origin tab under the permissive CORS
-// layer can't guess 32 bytes of entropy, so the attack closes.
+// passed through additionalArguments. The backend answers its API only
+// to requests carrying it: the renderer sends it as the
+// `x-ani-gui-internal-secret` header, or as the `secret` query
+// parameter where an element cannot set a header
+// (frontend/src/lib/backend/secret.ts). Another program, or a page in
+// a browser, cannot guess 32 bytes of entropy.
 const internalSecretFlag = '--ani-gui-internal-secret=';
 const internalSecretArg = process.argv.find((a) => a.startsWith(internalSecretFlag));
 const internalSecret = internalSecretArg

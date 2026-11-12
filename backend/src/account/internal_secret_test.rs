@@ -1,11 +1,8 @@
-//! Tests for the renderer-only `InternalSecret` gate.
+//! Tests for the `InternalSecret` every API request must carry.
 //!
-//! The disconnect-after-expiry cache wipe path
-//! accepts a renderer-supplied `fallback_user_id`. Under the permissive
-//! CORS layer that's a cross-origin tab away from poisoning another
-//! user's local cache. The fix is a per-process random secret only the
-//! Electron renderer sees (via stdout handshake + preload bridge) —
-//! cross-origin callers can't guess 32 bytes of entropy.
+//! A per-process random secret only the Electron renderer sees (via
+//! the stdout handshake + preload bridge): other callers can't guess
+//! 32 bytes of entropy.
 
 use super::*;
 use axum::http::HeaderMap;

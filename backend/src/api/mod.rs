@@ -280,9 +280,9 @@ async fn post_session(
     Json(args): Json<session_inner::CreateSessionArgs>,
 ) -> Result<Json<session_inner::CreateSessionResponse>, AniError> {
     // Sidecar tracks are attached by the resolver, never by the
-    // caller of this route: it is reachable from any page that finds
-    // the loopback port, and the proxy fetches a session's tracks on
-    // the caller's behalf.
+    // caller of this route: the proxy fetches a session's tracks on
+    // the caller's behalf, and what it fetches is the resolver's to
+    // name.
     if !args.subtitles.is_empty() {
         return Err(AniError::ParseFailed {
             detail: "subtitles: attached by the resolver, not accepted here".into(),
@@ -354,14 +354,12 @@ struct KitsuByMalIdsBody {
     mal_ids: Vec<u32>,
 }
 
-/// This route lives under the API router's
-/// permissive CORS layer, so any cross-origin page on the user's
-/// machine could otherwise POST a giant `mal_ids` array and burn N
-/// concurrent Kitsu requests per call. Two gates protect it:
+/// A giant `mal_ids` array would burn N concurrent Kitsu requests
+/// per call. Two gates protect it:
 ///
-///   1. The renderer-only internal secret — only Electron's preload
-///      knows the per-process random value, so cross-origin tabs
-///      can't reach the handler body at all.
+///   1. The launch's internal secret — the API's gate
+///      ([`gate`]) refuses a request without it before any handler
+///      runs, and this handler checks it again.
 ///   2. A hard upper bound on the batch size, applied both at the
 ///      route boundary (400 Bad Request when exceeded) and inside
 ///      the `kitsu_for_mal_ids` helper (truncates) so an internal
@@ -1374,10 +1372,10 @@ mod tests {
 
     /// In Electron-dev the renderer lives on `http://localhost:<vite>`
     /// while the backend binds 127.0.0.1:<random>. Browsers treat that
-    /// as cross-origin, so every response must carry permissive CORS
-    /// headers — otherwise the renderer's `fetch()` calls fail with no
-    /// useful error. The packaged build (file:// origin) needs the same
-    /// headers for the same reason.
+    /// as cross-origin, so every response must allow the renderer's
+    /// origin — otherwise the renderer's `fetch()` calls fail with no
+    /// useful error. The packaged build (`app://localhost`) needs the
+    /// same for the same reason (`crate::renderer_origin`).
     #[tokio::test]
     async fn cors_get_response_carries_acao_for_external_origin() {
         let td = TempDir::new().expect("tempdir");
@@ -2942,10 +2940,10 @@ mod tests {
         }
     }
 
-    /// The renderer-only secret gate must
-    /// reject calls from anything that isn't Electron's preload.
-    /// Without the header, the handler bails before reaching the
-    /// Kitsu fan-out so a cross-origin tab can't trigger the DoS
+    /// The secret gate must
+    /// reject calls from anything that isn't Electron's renderer.
+    /// Without the header, the request is refused before reaching the
+    /// Kitsu fan-out, so another caller can't trigger the DoS
     /// even with a giant `mal_ids` body.
     #[tokio::test]
     async fn kitsu_by_mal_ids_rejects_without_internal_secret_header() {

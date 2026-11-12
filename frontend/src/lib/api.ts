@@ -19,7 +19,9 @@
  *   1. `window.aniGui.apiBase` — Electron preload script injection.
  *   2. `import.meta.env.VITE_ANI_GUI_API_BASE` — browser-only dev
  *      (run `cargo run --bin ani-gui-backend` and `pnpm dev` with
- *      the env var set to the printed URL).
+ *      the env var set to the printed URL). Such a tab has no
+ *      launch secret ($lib/backend/secret), so the backend refuses
+ *      its API requests.
  *
  * Throws if neither is available — the renderer can't function
  * without a backend address.
@@ -55,10 +57,10 @@ declare global {
 			 *  `apiBase`. */
 			lanes?: Partial<Record<string, string>>;
 			/** Per-process random secret printed by the Rust backend at
-			 *  startup and threaded through Electron's preload. Sent as
-			 *  the `x-ani-gui-internal-secret` header on the few backend
-			 *  paths that need a renderer-only gate beyond the bearer —
-			 *  specifically the disconnect-after-expiry cache wipe. Absent in browser-only dev. */
+			 *  startup and threaded through Electron's preload. Every
+			 *  request to the backend's API carries it, which the backend
+			 *  answers no request without (`$lib/backend/secret`). Absent
+			 *  in browser-only dev. */
 			internalSecret?: string;
 			/** Node's `process.platform` value forwarded from the Electron
 			 *  main process — 'win32' | 'linux' | 'darwin' | 'freebsd' |
@@ -1318,9 +1320,9 @@ export function kitsuTrendingAnilist(opts: ReadOptions = {}): Promise<KitsuAnime
  *  matching the rest of the home. Empty input → empty
  *  output (no round-trip needed).
  *
- *  Sends the renderer-only internal-secret header — backend gates
- *  the route on it so a cross-origin page under permissive CORS
- *  can't reach the handler. Also enforces
+ *  Like every API request it carries the launch's secret
+ *  ($lib/backend/secret), which this route's handler checks as well
+ *  as the API's gate. The backend also enforces
  *  a 500-id batch cap server-side; this client doesn't pre-truncate
  *  so callers see a 4xx if they're pushing past the limit. */
 export async function kitsuByMalIds(

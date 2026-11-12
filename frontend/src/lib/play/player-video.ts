@@ -18,8 +18,8 @@ export function createPlayerVideo(): HTMLVideoElement {
 	// the proxy, which is another origin from the page on every build
 	// (a loopback port against the app's own origin). The browser
 	// refuses a <track> from another origin outright unless the media
-	// element asks in CORS mode; the proxy answers every route with a
-	// permissive allow-origin, so anonymous mode is what makes the
+	// element asks in CORS mode; the proxy allows the renderer's origin
+	// on every route, so anonymous mode is what makes the
 	// sidecar tracks loadable. Media sources are unaffected: hls.js
 	// feeds MSE, and the mp4 route carries the same header.
 	video.setAttribute('crossorigin', 'anonymous');
