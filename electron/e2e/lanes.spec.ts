@@ -165,6 +165,8 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 					for (let i = 0; i < heldPerLane; i++) {
 						const hang = `https://127.0.0.1:${silentPort}/${lane}-${i}.jpg`;
 						void fetch(`${lanes[lane]}/api/image?url=${encodeURIComponent(hang)}`, {
+							// The API answers only a request carrying the launch's secret.
+							headers: { 'x-ani-gui-internal-secret': window.aniGui?.internalSecret ?? '' },
 							signal: stop.signal
 						})
 							.catch(() => {})
@@ -218,6 +220,12 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 				const ordered = async (url: string, init?: RequestInit) => {
 					const settled = await fetch(url, {
 						...init,
+						// The API answers only a request carrying the launch's
+						// secret; the proxy's /healthz needs none and ignores it.
+						headers: {
+							...((init?.headers as Record<string, string> | undefined) ?? {}),
+							'x-ani-gui-internal-secret': bridge.internalSecret ?? ''
+						},
 						signal: stop.signal
 					}).then(
 						async (r) => ({ ok: r.ok, body: await r.text() }),
