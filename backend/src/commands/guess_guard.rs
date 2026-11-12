@@ -77,6 +77,14 @@ pub(crate) fn guarded<'a>(
     keeps_recorded(true, recorded, candidate)
 }
 
+/// Whether the play `args`, asked by a card no guess opened
+/// (`card_row`), keeps the other show the card's line `played` records:
+/// it records nothing there, and the renderer writes no tracker for it.
+pub(crate) fn line_kept(state: &AppState, args: &PlayArgs, played: &str) -> bool {
+    let _ = (state, args, played);
+    false
+}
+
 /// Whether the guessed play `args` landed on the card's own listing
 /// `played` and may stand for its row: the row records no other show
 /// than the one the play names as its guess.

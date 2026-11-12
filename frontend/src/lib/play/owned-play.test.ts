@@ -314,6 +314,15 @@ describe('playedRecord', () => {
 		});
 	});
 
+	it("neither records nor mirrors a card's play the backend kept off its line", () => {
+		// A player mounted again after "Keep watching this" plays the old
+		// show before it read the pick back: the line names another show.
+		expect(playedRecord(args, '42', false, { line_kept: true })).toEqual({
+			args,
+			mirror: false
+		});
+	});
+
 	it("records and mirrors a guess's play that landed on the card's own listing", () => {
 		expect(playedRecord(args, '42', true, { own_listing: true })).toEqual({
 			args: { ...args, kitsu_id: '42' },

@@ -59,6 +59,37 @@ fn a_card_play_guards_the_cards_own_listing_and_no_other() {
     assert!(!guards_row(None, None, "hianime:black-clover-949"));
 }
 
+fn key() -> impl Strategy<Value = String> {
+    proptest::sample::select(
+        &[
+            "hianime:black-clover-949",
+            "hianime:black-clover-950",
+            "black-clover-77",
+            "hianime:gintama-1237",
+            "vDTSJHSpYnrkZnAvG",
+        ][..],
+    )
+    .prop_map(str::to_string)
+}
+
+proptest! {
+    /// A guessed card's play guards every row; a card no guess opened
+    /// guards its own listing; no card guards nothing.
+    #[test]
+    fn a_play_guards_a_row_exactly_when_a_card_asked_for_it_there(
+        guess in prop::option::of(key()),
+        card in prop::option::of(key()),
+        played in key(),
+    ) {
+        let expected = guess.is_some()
+            || card
+                .as_deref()
+                .is_some_and(|c| crate::scraper::provider::same_listing(c, &played));
+        prop_assert_eq!(guards_row(guess.as_deref(), card.as_deref(), &played), expected);
+        prop_assert!(!guards_row(None, None, &played));
+    }
+}
+
 proptest! {
     /// A guessed session records an id only where the row records none
     /// or the same one; any other play records what it names.

@@ -203,3 +203,45 @@ async fn a_watch_from_a_shows_own_page_records_what_it_names() {
         Some("49877")
     );
 }
+
+/// Whether a play a card no guess opened for `SHOW`, naming `named`
+/// and `card_row`, keeps the show the line records (`recorded`).
+fn kept(recorded: Option<&str>, named: &str, card_row: Option<&str>) -> bool {
+    let td = TempDir::new().expect("tempdir");
+    let state = test_app_state(&td);
+    crate::history::write_atomic(
+        &state.history_path,
+        &[crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: SHOW.into(),
+            title: TITLE.into(),
+            watched_at: None,
+            kitsu_id: recorded.map(str::to_string),
+            own_number: true,
+        }],
+    )
+    .expect("history");
+    let mut args = serde_json::json!({
+        "title": TITLE, "episode": "1", "mode": "sub", "kitsu_id": named,
+    });
+    if let Some(row) = card_row {
+        args["card_row"] = serde_json::json!(row);
+    }
+    let args: crate::commands::play::PlayArgs = serde_json::from_value(args).expect("args");
+    crate::commands::guess_guard::line_kept(&state, &args, SHOW)
+}
+
+#[test]
+fn a_card_play_over_a_line_naming_another_show_keeps_it() {
+    // The line names 4013; the remounted player plays 49877 before it
+    // read the pick back: nothing is recorded, and no tracker hears.
+    assert!(kept(Some("4013"), "49877", Some(SHOW)));
+}
+
+#[test]
+fn a_card_play_of_the_lines_own_show_or_on_a_bare_line_is_no_keep() {
+    assert!(!kept(Some("4013"), "4013", Some(SHOW)));
+    assert!(!kept(None, "49877", Some(SHOW)));
+    // No card: a play from the show's page records what it names.
+    assert!(!kept(Some("4013"), "49877", None));
+}
