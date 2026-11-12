@@ -26,6 +26,12 @@
  * Every lane serves every route, so a lane nobody announced falls
  * back to the API's origin and still answers — it just shares the
  * API's budget, as everything did before lanes.
+ *
+ * A lane bounds one class against the others, not a page against the
+ * next: the reads a page makes on the API lane to show itself take its
+ * visit's signal and are cancelled when the viewer leaves
+ * (`$lib/navigation/visit`), so the next page's reads do not queue
+ * behind ones nobody will read.
  */
 
 /** Every lane the backend announces. */

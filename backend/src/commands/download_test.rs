@@ -274,7 +274,7 @@ fn native_test_state(
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
         config_path: td.path().join("config.toml"),
-        state_dir: std::path::PathBuf::from("/tmp/ani-gui-state"),
+        state_dir: td.path().join("state"),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
@@ -1036,6 +1036,7 @@ fn download_args_alt_titles_accepts_newline_joined_string_for_sse_query_path() {
 #[test]
 fn resolve_dest_prefers_explicit_args_over_paths_helper() {
     let a = DownloadArgs {
+        locale: None,
         title: "x".into(),
         episode: "1".into(),
         mode: "sub".into(),
@@ -1047,6 +1048,7 @@ fn resolve_dest_prefers_explicit_args_over_paths_helper() {
         kitsu_id: None,
         download_dir: Some("/tmp/explicit".into()),
         version: None,
+        caption: None,
     };
     let p = resolve_dest(&a).expect("ok");
     assert_eq!(p, PathBuf::from("/tmp/explicit"));

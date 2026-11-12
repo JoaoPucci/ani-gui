@@ -29,6 +29,7 @@ import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
 import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
 import { laneBase, type Lane } from '$lib/backend/lanes';
+import { getLocale } from '$lib/paraglide/runtime';
 import { probeLimiter } from '$lib/availability/probe-limiter';
 import { probeScope } from '$lib/availability/probe-scope';
 import {
@@ -67,7 +68,7 @@ declare global {
 			/** The launch's remote flags, decided by the backend before
 			 *  the window opened and fixed for the session
 			 *  (`$lib/flags`). Absent in browser-only dev. */
-			flags?: Readonly<Record<string, boolean | string>>;
+			flags?: Readonly<Record<string, boolean>>;
 			/** Where those flags came from: `file`, `cache`,
 			 *  `defaults` or `test`; null when the window opened
 			 *  without them. */
@@ -200,15 +201,17 @@ async function expect2xx<T>(resp: Response): Promise<T> {
 	return JSON.parse(text) as T;
 }
 
-async function getJson<T>(path: string): Promise<T> {
-	const resp = await fetch(await url(path));
+async function getJson<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+	const at = await url(path, opts.lane);
+	const resp = await (opts.signal ? fetch(at, { signal: opts.signal }) : fetch(at));
 	return expect2xx<T>(resp);
 }
 
 /** A GET's JSON body, with the tickets of the refills it was served
- *  without (`$lib/refill/refill`). */
-async function getJsonServed<T>(path: string): Promise<Served<T>> {
-	const resp = await fetch(await url(path));
+ *  without (`$lib/refill/refill`). `signal` cancels the request. */
+async function getJsonServed<T>(path: string, signal?: AbortSignal): Promise<Served<T>> {
+	const at = await url(path);
+	const resp = await (signal ? fetch(at, { signal }) : fetch(at));
 	const data = await expect2xx<T>(resp);
 	// A response built without headers (a test's stand-in) has none.
 	const headers = resp.headers as Headers | undefined;
@@ -233,7 +236,7 @@ const refillWaiter = new RefillWaiter(refillsWait, undefined, refillsRelease);
 
 /** What a read the page waits on a refill for takes: what to do with
  *  the read fetched once more after the refill landed, and what says
- *  the page has gone. */
+ *  the page has gone — which cancels the read itself too. */
 export interface RefillOptions<T> {
 	onRefill?: (data: T) => void;
 	signal?: AbortSignal;
@@ -247,7 +250,7 @@ async function getJsonRefilled<T>(
 	refetchPath: string,
 	opts: RefillOptions<T>
 ): Promise<T> {
-	const served = await getJsonServed<T>(path);
+	const served = await getJsonServed<T>(path, opts.signal);
 	const apply = opts.onRefill;
 	if (apply) {
 		void refetchOnRefill(served, {
@@ -279,6 +282,16 @@ async function getJsonLettingGo<T>(path: string): Promise<T> {
 /** Where a request goes and what can cancel it. */
 interface RequestOptions {
 	lane?: Lane;
+	signal?: AbortSignal;
+}
+
+/**
+ * What a read takes: the signal of the visit that asked for it. A read
+ * holds one of the API lane's six connections until it answers, so the
+ * page that started it passes the signal and aborts it when the viewer
+ * leaves ($lib/navigation/visit); the read then rejects with the abort.
+ */
+export interface ReadOptions {
 	signal?: AbortSignal;
 }
 
@@ -480,7 +493,10 @@ export interface KitsuCoverImage {
 export interface Config {
 	locale: string;
 	mode: string; // "sub" | "dub"
-	quality: string; // "best" | "worst" | "1080" | "720" | "480"
+	/** The quality downloads take: "best" | "worst" | a height such as
+	 *  "720". Downloads only — the player always starts on Auto, and the
+	 *  external players and Syncplay get the master. */
+	download_quality: string;
 	external_player: string;
 	external_player_kind: ExternalPlayerKind;
 	external_player_custom_args: string;
@@ -618,16 +634,16 @@ export function sourceHealth(): Promise<unknown> {
 	return getJson<unknown>('/api/source-health');
 }
 
-export function appInfo(): Promise<AppInfo> {
-	return getJson<AppInfo>('/api/app-info');
+export function appInfo(opts: ReadOptions = {}): Promise<AppInfo> {
+	return getJson<AppInfo>('/api/app-info', opts);
 }
 
 export function proxyBaseUrl(): Promise<string> {
 	return getJson<string>('/api/proxy-base-url');
 }
 
-export function historyList(): Promise<HistoryEntry[]> {
-	return getJson<HistoryEntry[]>('/api/history');
+export function historyList(opts: ReadOptions = {}): Promise<HistoryEntry[]> {
+	return getJson<HistoryEntry[]>('/api/history', opts);
 }
 
 /** Clears the history, and with it where each episode was left. */
@@ -650,8 +666,11 @@ export function historyDelete(id: string): Promise<void> {
  *  this show before. Returns `null` when there's no such mapped entry,
  *  which includes a row the cache has never been stamped for — a play
  *  made without a Kitsu id, or a row older than the mapping. */
-export function historyByKitsu(kitsuId: string): Promise<HistoryEntry | null> {
-	return getJson<HistoryEntry | null>(`/api/history/by-kitsu/${encodeURIComponent(kitsuId)}`);
+export function historyByKitsu(
+	kitsuId: string,
+	opts: ReadOptions = {}
+): Promise<HistoryEntry | null> {
+	return getJson<HistoryEntry | null>(`/api/history/by-kitsu/${encodeURIComponent(kitsuId)}`, opts);
 }
 
 /** The episode one history row reads as now, and the number it read as
@@ -664,8 +683,8 @@ export interface HistoryNumber {
 /** What the history row of show `id` reads as now — a Continue card
  *  asks before it resumes, since the row may have been put right since
  *  the page read it. `null` when no row is the show's. */
-export function historyNumber(id: string): Promise<HistoryNumber | null> {
-	return getJson<HistoryNumber | null>(`/api/history/${encodeURIComponent(id)}/number`);
+export function historyNumber(id: string, opts: ReadOptions = {}): Promise<HistoryNumber | null> {
+	return getJson<HistoryNumber | null>(`/api/history/${encodeURIComponent(id)}/number`, opts);
 }
 
 export function createSession(args: CreateSessionArgs): Promise<CreateSessionResponse> {
@@ -684,7 +703,6 @@ export interface PlayArgs {
 	title: string;
 	episode: string;
 	mode: 'sub' | 'dub';
-	quality?: string;
 	/** Kitsu's authoritative episode count. The backend uses this to
 	 *  disambiguate the provider candidates that share a title — e.g.
 	 *  picking the 500-ep "Naruto: Shippuden" main show over the
@@ -745,17 +763,39 @@ export interface PlayArgs {
 	caption?: string;
 }
 
+/** `args` naming the locale the renderer runs in. The backend orders
+ *  the subtitle tracks it hands a player, a download or a cut listing
+ *  by it, so they follow the locale the built-in player starts by
+ *  rather than `config.toml`'s, which the renderer adopts only when it
+ *  is one of the app's own (`$lib/settings/boot-locale.ts`). */
+function withUiLocale<T extends object>(args: T): T & { locale: string } {
+	return { ...args, locale: uiLocale() };
+}
+
+/** The locale the renderer runs in, or an empty one when Paraglide
+ *  can resolve none (it throws then, as `boot-locale.ts` also allows
+ *  for). The play page reads the same empty locale for the built-in
+ *  player, and the backend reads it as no language, as the player
+ *  does — so both orders still agree, and the play does not fail. */
+function uiLocale(): string {
+	try {
+		return getLocale();
+	} catch {
+		return '';
+	}
+}
+
 /** Play an episode in the embedded player. Returns the session URLs
  *  the renderer feeds to hls.js after navigating to /play. */
 export function play(args: PlayArgs): Promise<CreateSessionResponse> {
-	return postJson<CreateSessionResponse>('/api/play', args, { lane: 'resolve' });
+	return postJson<CreateSessionResponse>('/api/play', withUiLocale(args), { lane: 'resolve' });
 }
 
 /** Play an episode in the user's external media player (default mpv).
  *  No session is registered — the player streams from the upstream
  *  directly with the resolved Referer. */
 export function playExternal(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/external', args, { lane: 'resolve' });
+	return postJson<void>('/api/play/external', withUiLocale(args), { lane: 'resolve' });
 }
 
 /** Launch the resolved episode in the user's Syncplay binary. Same
@@ -765,7 +805,7 @@ export function playExternal(args: PlayArgs): Promise<void> {
  *  Syncplay binary can't be spawned — caller surfaces the failure
  *  via the play page's `ErrorOverlay` with a syncplay.pl link. */
 export function playSyncplay(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/syncplay', args, { lane: 'resolve' });
+	return postJson<void>('/api/play/syncplay', withUiLocale(args), { lane: 'resolve' });
 }
 
 /** Drop the cached play resolution for `args` so the next play call
@@ -835,7 +875,6 @@ export function playStream(
 	params.set('title', args.title);
 	params.set('episode', args.episode);
 	params.set('mode', args.mode);
-	if (args.quality) params.set('quality', args.quality);
 	if (typeof args.episode_count === 'number')
 		params.set('episode_count', String(args.episode_count));
 	if (typeof args.year === 'number') params.set('year', String(args.year));
@@ -852,6 +891,7 @@ export function playStream(
 	if (args.guess_row) params.set('guess_row', args.guess_row);
 	if (args.guess_id) params.set('guess_id', args.guess_id);
 	if (args.caption) params.set('caption', args.caption);
+	params.set('locale', uiLocale());
 
 	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
 		(url) =>
@@ -939,6 +979,10 @@ export interface DownloadArgs {
 	download_dir?: string;
 	/** Which version to download — {@link PlayArgs.version}. */
 	version?: VersionKind;
+	/** The captions choice remembered for the show —
+	 *  {@link PlayArgs.caption} — which decides the subtitle tracks a
+	 *  listing past the backend's cap keeps. */
+	caption?: string;
 }
 
 /** SSE progress event body — one line of the download's progress
@@ -985,6 +1029,8 @@ export function downloadStream(
 	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
 	if (args.download_dir) params.set('download_dir', args.download_dir);
 	if (args.version) params.set('version', args.version);
+	if (args.caption) params.set('caption', args.caption);
+	params.set('locale', uiLocale());
 
 	return url(`/api/download/stream?${params.toString()}`, 'download').then(
 		(url) =>
@@ -1042,8 +1088,8 @@ export function downloadStream(
  *  Returns null when neither $XDG_DOWNLOAD_DIR nor $HOME is available
  *  on the backend — the modal then asks the user to pick a path
  *  explicitly. */
-export function downloadDefaultDir(): Promise<string | null> {
-	return getJson<string | null>('/api/download/default-dir');
+export function downloadDefaultDir(opts: ReadOptions = {}): Promise<string | null> {
+	return getJson<string | null>('/api/download/default-dir', opts);
 }
 
 /** Wire payload for {@link checkAvailability}. Same title/mode/alt
@@ -1175,12 +1221,14 @@ export interface AvailabilityBatchResponse {
 }
 export function availabilityBatch(
 	kitsu_ids: string[],
-	mode: string
+	mode: string,
+	opts: ReadOptions = {}
 ): Promise<AvailabilityBatchResponse> {
-	return postJson<AvailabilityBatchResponse>('/api/availability/batch', {
-		kitsu_ids,
-		mode
-	});
+	return postJson<AvailabilityBatchResponse>(
+		'/api/availability/batch',
+		{ kitsu_ids, mode },
+		{ signal: opts.signal }
+	);
 }
 
 /** Fire-and-forget cache warmer. Hands the backend a list of titles
@@ -1190,8 +1238,8 @@ export function availabilityWarm(items: AvailabilityArgs[]): Promise<void> {
 	return postJson<unknown>('/api/availability/warm', { items }).then(() => undefined);
 }
 
-export function kitsuSearch(query: string): Promise<KitsuAnimeRef[]> {
-	return postJson<KitsuAnimeRef[]>('/api/kitsu/search', { query });
+export function kitsuSearch(query: string, opts: ReadOptions = {}): Promise<KitsuAnimeRef[]> {
+	return postJson<KitsuAnimeRef[]>('/api/kitsu/search', { query }, { signal: opts.signal });
 }
 
 /** One page of a Kitsu text search: its hits, and the offset the
@@ -1209,12 +1257,13 @@ export type SearchOrder = 'relevance' | 'year' | 'rating';
 export function kitsuSearchPage(
 	query: string,
 	offset: number,
-	order: SearchOrder = 'relevance'
+	order: SearchOrder = 'relevance',
+	opts: ReadOptions = {}
 ): Promise<KitsuSearchPage> {
 	// Kitsu's ranking is the route's default, so a ranked request
 	// carries no order.
 	const body = order === 'relevance' ? { query, offset } : { query, offset, sort: order };
-	return postJson<KitsuSearchPage>('/api/kitsu/search/page', body);
+	return postJson<KitsuSearchPage>('/api/kitsu/search/page', body, { signal: opts.signal });
 }
 
 /** One show's detail. A page showing its banner passes `onRefill`: when
@@ -1234,12 +1283,18 @@ export function kitsuAnimeDetail(
  * search misses a sequel — Kitsu's `filter[text]` drops Stone Ocean
  * Part 2 from its results entirely, but `filter[slug]` finds it.
  */
-export function kitsuAnimeBySlug(slug: string): Promise<KitsuAnimeRef | null> {
-	return getJson<KitsuAnimeRef | null>(`/api/kitsu/anime-by-slug/${encodeURIComponent(slug)}`);
+export function kitsuAnimeBySlug(
+	slug: string,
+	opts: ReadOptions = {}
+): Promise<KitsuAnimeRef | null> {
+	return getJson<KitsuAnimeRef | null>(
+		`/api/kitsu/anime-by-slug/${encodeURIComponent(slug)}`,
+		opts
+	);
 }
 
-export function kitsuTrending(): Promise<KitsuAnimeRef[]> {
-	return getJson<KitsuAnimeRef[]>('/api/kitsu/trending');
+export function kitsuTrending(opts: ReadOptions = {}): Promise<KitsuAnimeRef[]> {
+	return getJson<KitsuAnimeRef[]>('/api/kitsu/trending', opts);
 }
 
 /** AniList-backed trending — recency-weighted (AniList's `trending`
@@ -1248,12 +1303,13 @@ export function kitsuTrending(): Promise<KitsuAnimeRef[]> {
  *  trending endpoint. When AniList cannot answer, the backend serves
  *  the last list AniList gave, however stale, and Kitsu's own airing
  *  list only when it has none; the page still loads either way. */
-export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
-	return getJson<KitsuAnimeRef[]>('/api/kitsu/trending-anilist');
+export function kitsuTrendingAnilist(opts: ReadOptions = {}): Promise<KitsuAnimeRef[]> {
+	return getJson<KitsuAnimeRef[]>('/api/kitsu/trending-anilist', opts);
 }
 
 /** Bridge a batch of MAL ids to Kitsu refs in one round-trip.
- *  Order is preserved; ids Kitsu can't map drop out of the response.
+ *  Order is preserved; ids Kitsu can't map drop out of the response,
+ *  and a Kitsu show two ids lead to is listed once, at the first.
  *  Used by the home Watch Later rail to render the merged
  *  Plan-to-Watch list with Kitsu metadata + availability filtering
  *  matching the rest of the home. Empty input → empty
@@ -1264,16 +1320,17 @@ export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
  *  can't reach the handler. Also enforces
  *  a 500-id batch cap server-side; this client doesn't pre-truncate
  *  so callers see a 4xx if they're pushing past the limit. */
-export async function kitsuByMalIds(malIds: number[]): Promise<KitsuAnimeRef[]> {
+export async function kitsuByMalIds(
+	malIds: number[],
+	opts: ReadOptions = {}
+): Promise<KitsuAnimeRef[]> {
 	if (malIds.length === 0) return [];
 	const headers: Record<string, string> = { 'content-type': 'application/json' };
 	const secret = typeof window !== 'undefined' ? window.aniGui?.internalSecret : undefined;
 	if (secret) headers['x-ani-gui-internal-secret'] = secret;
-	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), {
-		method: 'POST',
-		headers,
-		body: JSON.stringify({ mal_ids: malIds })
-	});
+	const init: RequestInit = { method: 'POST', headers, body: JSON.stringify({ mal_ids: malIds }) };
+	if (opts.signal) init.signal = opts.signal;
+	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), init);
 	return expect2xx<KitsuAnimeRef[]>(resp);
 }
 
@@ -1294,11 +1351,13 @@ export interface SkipInterval {
 export function aniskipGet(
 	kitsuId: string,
 	episode: string,
-	episodeLength: number
+	episodeLength: number,
+	opts: ReadOptions = {}
 ): Promise<SkipInterval[]> {
 	const qs = new URLSearchParams({ episode_length: String(episodeLength) });
 	return getJson<SkipInterval[]>(
-		`/api/aniskip/${encodeURIComponent(kitsuId)}/${encodeURIComponent(episode)}?${qs.toString()}`
+		`/api/aniskip/${encodeURIComponent(kitsuId)}/${encodeURIComponent(episode)}?${qs.toString()}`,
+		opts
 	);
 }
 
@@ -1317,16 +1376,18 @@ export interface AiringStatus {
  *  shows to grey out unaired tiles. */
 export function airingGet(
 	kitsuId: string,
-	opts: { refresh?: boolean } = {}
+	opts: { refresh?: boolean } & ReadOptions = {}
 ): Promise<AiringStatus> {
 	// `refresh` skips the cached row — only a click on an unaired tile
 	// sends it. `=true`, not `=1`: the backend parses a Rust bool.
 	const qs = opts.refresh ? '?refresh=true' : '';
-	return getJson<AiringStatus>(`/api/kitsu/airing/${encodeURIComponent(kitsuId)}${qs}`);
+	return getJson<AiringStatus>(`/api/kitsu/airing/${encodeURIComponent(kitsuId)}${qs}`, {
+		signal: opts.signal
+	});
 }
 
-export function kitsuTopRated(): Promise<KitsuAnimeRef[]> {
-	return getJson<KitsuAnimeRef[]>('/api/kitsu/top-rated');
+export function kitsuTopRated(opts: ReadOptions = {}): Promise<KitsuAnimeRef[]> {
+	return getJson<KitsuAnimeRef[]>('/api/kitsu/top-rated', opts);
 }
 
 /** One page of a show's episodes. A page showing their stills passes
@@ -1357,7 +1418,8 @@ export function kitsuTitleMatchGet(
 	title: string,
 	cour: number,
 	provider: StreamProvider | null,
-	year: number | null = null
+	year: number | null = null,
+	opts: ReadOptions = {}
 ): Promise<string | null> {
 	const qs = new URLSearchParams({ title, cour: String(cour) });
 	// A history row whose key names no provider asks without one.
@@ -1365,7 +1427,7 @@ export function kitsuTitleMatchGet(
 	// A row that names a year keeps its guess apart from a row titled
 	// alike that names another.
 	if (year !== null) qs.set('year', String(year));
-	return getJson<string | null>(`/api/title-match?${qs.toString()}`);
+	return getJson<string | null>(`/api/title-match?${qs.toString()}`, opts);
 }
 
 /**
@@ -1399,8 +1461,11 @@ export function kitsuTitleMatchPut(
  * Shippuuden" for Naruto Shippuuden) that Kitsu's text search
  * can't recover from. Show_id is unambiguous; the title isn't.
  */
-export function allmangaKitsuMapGet(showId: string): Promise<string | null> {
-	return getJson<string | null>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}`);
+export function allmangaKitsuMapGet(
+	showId: string,
+	opts: ReadOptions = {}
+): Promise<string | null> {
+	return getJson<string | null>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}`, opts);
 }
 
 /**
@@ -1410,8 +1475,14 @@ export function allmangaKitsuMapGet(showId: string): Promise<string | null> {
  * doubts it. The mapping can change after a caller read it, so the
  * answer vouches only for the id it names.
  */
-export function allmangaKitsuMapPlayed(showId: string): Promise<string | null> {
-	return getJson<string | null>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}/played`);
+export function allmangaKitsuMapPlayed(
+	showId: string,
+	opts: ReadOptions = {}
+): Promise<string | null> {
+	return getJson<string | null>(
+		`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}/played`,
+		opts
+	);
 }
 
 /**
@@ -1450,7 +1521,8 @@ export function allmangaKitsuMapDelete(showId: string, kitsuId?: string): Promis
  */
 export function kitsuResolveAllmangaShowId(
 	showId: string,
-	bypassCache = false
+	bypassCache = false,
+	opts: ReadOptions = {}
 ): Promise<KitsuAnimeRef | null> {
 	// bypassCache: the resolver already read + rejected the reverse-cache row, so
 	// tell the backend to skip its fast path and re-resolve from the show id —
@@ -1460,7 +1532,32 @@ export function kitsuResolveAllmangaShowId(
 	// stub fallback.
 	const qs = bypassCache ? '?bypass_cache=true' : '';
 	return getJson<KitsuAnimeRef | null>(
-		`/api/kitsu/resolve-allmanga/${encodeURIComponent(showId)}${qs}`
+		`/api/kitsu/resolve-allmanga/${encodeURIComponent(showId)}${qs}`,
+		opts
+	);
+}
+
+/**
+ * The ids of the `hits` a Continue row's guess may not take: the
+ * backend reads the row's search title, the episode it reached and its
+ * show key against each hit (`backend/src/commands/continue_guess.rs`).
+ * The call itself asks nothing of Kitsu or the provider; the hits are
+ * the ones the row's own search or slug lookup returned, or its stored
+ * match. `search` says the hits are the title search's whole answer,
+ * which the backend may refute as a whole; a lone hit is judged alone.
+ */
+export function kitsuGuessRuledOut(
+	title: string,
+	episode: number,
+	hits: KitsuAnimeRef[],
+	key: string,
+	search: boolean,
+	opts: ReadOptions = {}
+): Promise<string[]> {
+	return postJson<string[]>(
+		'/api/history/guess/ruled-out',
+		{ key, title, episode, hits, search },
+		{ signal: opts.signal }
 	);
 }
 
@@ -1471,12 +1568,12 @@ export function kitsuResolveAllmangaShowId(
  * page Continue Watching sort: stamped rows on top (most recent
  * first), unstamped rows at the bottom in original file order.
  */
-export function watchedAtAll(): Promise<Record<string, number>> {
-	return getJson<Record<string, number>>('/api/watched-at');
+export function watchedAtAll(opts: ReadOptions = {}): Promise<Record<string, number>> {
+	return getJson<Record<string, number>>('/api/watched-at', opts);
 }
 
-export function settingsGet(): Promise<Config> {
-	return getJson<Config>('/api/settings');
+export function settingsGet(opts: ReadOptions = {}): Promise<Config> {
+	return getJson<Config>('/api/settings', opts);
 }
 
 export function settingsPut(cfg: Config): Promise<void> {

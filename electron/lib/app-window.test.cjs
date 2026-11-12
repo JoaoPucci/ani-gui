@@ -13,6 +13,8 @@ const {
   APP_BACKGROUND,
   APP_READY_CHANNEL,
   APP_READY_WAIT_MS,
+  abortWhenLost,
+  appReadyBound,
   appReadyWaiter,
   appWindowOptions,
   lastAppReady,
@@ -68,7 +70,11 @@ test("the reveal waits for the renderer's word that its first page has rendered"
 
 test("a renderer that never says so holds the reveal no longer than the bound", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  assert.equal(APP_READY_WAIT_MS, 4000);
+  // A safety net for a page that never says it rendered, not the time a
+  // render is expected to take: a cold Vite start on the maintainer's
+  // machine had the first page render past the 4 s this used to be, and
+  // the window showed black after the splash.
+  assert.equal(APP_READY_WAIT_MS, 15_000);
   const ipc = new EventEmitter();
   const waiter = appReadyWaiter(sender(), ipc);
   let ready = null;
@@ -79,6 +85,35 @@ test("a renderer that never says so holds the reveal no longer than the bound", 
   t.mock.timers.tick(1);
   assert.equal(await waiter.ready, false);
   assert.equal(ipc.listenerCount(APP_READY_CHANNEL), 0);
+  assert.deepEqual(lastAppReady(), { rendered: false, gaveUp: true, beforeReveal: false });
+});
+
+test("a word that comes late, inside the bound, still counts as rendered", async (t) => {
+  // A cold dev start: Vite compiles the first page for many seconds.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const waiter = appReadyWaiter(contents, ipc);
+  let ready = null;
+  waiter.ready.then((v) => (ready = v));
+  t.mock.timers.tick(APP_READY_WAIT_MS - 1);
+  await Promise.resolve();
+  assert.equal(ready, null, "still waiting one millisecond before the bound");
+  ipc.emit(APP_READY_CHANNEL, { sender: contents });
+  assert.equal(await waiter.ready, true);
+  t.mock.timers.tick(1);
+  assert.deepEqual(lastAppReady(), { rendered: true, gaveUp: false, beforeReveal: true });
+});
+
+test("a word that comes after the wait gave up changes nothing", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const waiter = appReadyWaiter(contents, ipc);
+  t.mock.timers.tick(APP_READY_WAIT_MS);
+  assert.equal(await waiter.ready, false);
+  ipc.emit(APP_READY_CHANNEL, { sender: contents });
+  assert.equal(await waiter.ready, false);
   assert.deepEqual(lastAppReady(), { rendered: false, gaveUp: true, beforeReveal: false });
 });
 
@@ -180,4 +215,157 @@ test("a page that rendered has the splash complete its rail the same way", async
   release();
   for (let i = 0; i < 5; i++) await Promise.resolve();
   assert.equal(open, true);
+});
+
+// The splash's stuck state (lib/splash-stuck.cjs) stands in for the
+// window while its page is late, so the wait for the page has no bound
+// then: past one the window was revealed whether or not it had
+// rendered, and sometimes it had not.
+test("with no bound the wait never gives up, and the word still counts however late", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const waiter = appReadyWaiter(contents, ipc, { timeoutMs: null });
+  let ready = null;
+  waiter.ready.then((v) => (ready = v));
+  t.mock.timers.tick(APP_READY_WAIT_MS * 100);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(ready, null);
+  ipc.emit(APP_READY_CHANNEL, { sender: contents });
+  assert.equal(await waiter.ready, true);
+});
+
+test("a renderer that goes, or a window destroyed, ends the wait without a render and without completing the rail", async () => {
+  for (const event of ["render-process-gone", "destroyed"]) {
+    const ipc = new EventEmitter();
+    const contents = Object.assign(new EventEmitter(), sender());
+    const waiter = appReadyWaiter(contents, ipc, { timeoutMs: null });
+    contents.emit(event, {}, { reason: "crashed" });
+    assert.equal(await waiter.ready, false, event);
+    assert.equal(waiter.gone(), true, event);
+    assert.deepEqual(lastAppReady(), { rendered: false, gaveUp: false, beforeReveal: false }, event);
+    // Nothing listens any more.
+    assert.equal(ipc.listenerCount(APP_READY_CHANNEL), 0, event);
+    assert.equal(contents.listenerCount("render-process-gone"), 0, event);
+    assert.equal(contents.listenerCount("destroyed"), 0, event);
+    // The rail is not completed for a page that is gone: the boot is
+    // about to fail (lib/startup.cjs waitBeforeShow).
+    const splash = gateSplash(Promise.resolve());
+    await revealGate(splash, waiter);
+    assert.deepEqual(splash.told, [], event);
+  }
+});
+
+test("a word, or the bound, takes the renderer's listeners down too", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ipc = new EventEmitter();
+  const contents = Object.assign(new EventEmitter(), sender());
+  const waiter = appReadyWaiter(contents, ipc, { timeoutMs: 50 });
+  ipc.emit(APP_READY_CHANNEL, { sender: contents });
+  assert.equal(await waiter.ready, true);
+  assert.equal(waiter.gone(), false);
+  assert.equal(contents.listenerCount("render-process-gone"), 0);
+  assert.equal(contents.listenerCount("destroyed"), 0);
+});
+
+test("the wait is unbounded exactly while a splash stands in for the window", () => {
+  assert.equal(appReadyBound({ standsIn: () => true }), null);
+  // No splash (a later window, or one that could not be made): the
+  // bound stays, so the window is not left hidden for good.
+  assert.equal(appReadyBound({ standsIn: () => false }), APP_READY_WAIT_MS);
+});
+
+// A splash lost to crashes (lib/splash.cjs `lost`) no longer stands in
+// for the window. The page gets back the bound it has without a splash:
+// one that renders within it is revealed as usual, one that does not
+// fails the boot (main.js passes this as openFirstPage's `abort`).
+test("a lost splash gives the page the bound back: rendered within it, nothing fails", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let lose;
+  const lost = new Promise((_r, reject) => (lose = reject));
+  let render;
+  const ready = new Promise((resolve) => (render = resolve));
+  let failed = null;
+  abortWhenLost(lost, ready).catch((err) => (failed = err));
+  lose(new Error("lost"));
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  t.mock.timers.tick(APP_READY_WAIT_MS - 1);
+  render(true);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  t.mock.timers.tick(APP_READY_WAIT_MS * 2);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(failed, null);
+});
+
+test("a lost splash and a page that does not render within the bound fail the boot", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let lose;
+  const lost = new Promise((_r, reject) => (lose = reject));
+  let failed = null;
+  abortWhenLost(lost, new Promise(() => {})).catch((err) => (failed = err));
+  lose(new Error("the launch splash's page crashed 3 times"));
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  t.mock.timers.tick(APP_READY_WAIT_MS - 1);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(failed, null, "not before the bound");
+  t.mock.timers.tick(1);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.match(String(failed), /crashed 3 times/);
+});
+
+test("a page that rendered before the splash was lost is never failed by it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let lose;
+  const lost = new Promise((_r, reject) => (lose = reject));
+  let failed = null;
+  abortWhenLost(lost, Promise.resolve(true)).catch((err) => (failed = err));
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  lose(new Error("lost"));
+  t.mock.timers.tick(APP_READY_WAIT_MS * 2);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(failed, null);
+});
+
+test("a splash never lost never fails anything", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let failed = null;
+  abortWhenLost(new Promise(() => {}), new Promise(() => {})).catch((err) => (failed = err));
+  t.mock.timers.tick(APP_READY_WAIT_MS * 10);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(failed, null);
+});
+
+test("a lost splash leaves a page whose renderer went to the boot's own renderer-gone failure", async (t) => {
+  // That guard (lib/startup.cjs waitBeforeShow) names the real cause;
+  // the splash's loss would otherwise race it and be blamed.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let lose;
+  const lost = new Promise((_r, reject) => (lose = reject));
+  let gone;
+  const ready = new Promise((resolve) => (gone = resolve));
+  let failed = null;
+  abortWhenLost(lost, ready).catch((err) => (failed = err));
+  lose(new Error("lost"));
+  gone(false);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  t.mock.timers.tick(APP_READY_WAIT_MS * 2);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(failed, null);
+});
+
+test("a page that renders only after the bound has run out does not undo the failure", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let lose;
+  const lost = new Promise((_r, reject) => (lose = reject));
+  let render;
+  const ready = new Promise((resolve) => (render = resolve));
+  let failed = null;
+  abortWhenLost(lost, ready).catch((err) => (failed = err));
+  lose(new Error("lost"));
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  t.mock.timers.tick(APP_READY_WAIT_MS);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  render(true);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.match(String(failed), /lost/);
 });

@@ -387,6 +387,27 @@ describe('concurrent config loads (shared load promise)', () => {
 	});
 });
 
+describe('a search replaced by another', () => {
+	it('has its page read cancelled, and the new search reads under a run of its own', async () => {
+		const signals: AbortSignal[] = [];
+		const h = makeHarness({
+			searchPage: vi.fn().mockImplementation((_q, _offset, _order, s: AbortSignal) => {
+				signals.push(s);
+				return new Promise<KitsuSearchPage>(() => {});
+			})
+		});
+		const runner = createSearchRunner(h.deps);
+		void runner.run('a');
+		await drain();
+		void runner.run('b');
+		await drain();
+		expect(signals).toHaveLength(2);
+		expect(signals[0].aborted).toBe(true);
+		expect(signals[1].aborted).toBe(false);
+		expect(h.errors).toEqual([]);
+	});
+});
+
 describe('stop', () => {
 	it('ends the current search: a page still loading reaches nothing', async () => {
 		const pending = defer<KitsuSearchPage>();
@@ -402,6 +423,23 @@ describe('stop', () => {
 		expect(h.results).toEqual([]);
 		expect(runner.checkpoint()).toBeNull();
 		expect(h.busyLog).toEqual([true, false]);
+	});
+
+	it('cancels the page read still out', async () => {
+		let signal: AbortSignal | undefined;
+		const h = makeHarness({
+			searchPage: vi.fn().mockImplementation((_q, _offset, _order, s: AbortSignal) => {
+				signal = s;
+				return new Promise<KitsuSearchPage>(() => {});
+			})
+		});
+		const runner = createSearchRunner(h.deps);
+		void runner.run('a');
+		await drain();
+		expect(signal?.aborted).toBe(false);
+
+		runner.stop();
+		expect(signal?.aborted).toBe(true);
 	});
 
 	it('ends the probes the search was asking', async () => {

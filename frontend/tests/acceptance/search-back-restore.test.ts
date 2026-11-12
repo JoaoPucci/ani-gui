@@ -64,7 +64,7 @@ let mode = 'sub';
 const config = () => ({
 	locale: 'en',
 	mode,
-	quality: 'best',
+	download_quality: 'best',
 	external_player: '',
 	external_player_kind: 'mpv',
 	external_player_custom_args: '',

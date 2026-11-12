@@ -9,17 +9,16 @@
 //! written by another build, or edited by hand, still resolves only to
 //! values this build declares.
 //!
-//! **Why seven days.** Every value a document can resolve to is a
-//! flag's default or a declared retreat from it, so a cached document
-//! is never less safe than the defaults it stands in for; what its age
-//! bounds is how long a retreat the maintainer has since lifted
-//! lingers on a machine that cannot reach GitHub. A week rides out a
-//! run of launches without the network — a trip, a captive portal, a
-//! blocked CDN — so a feature switched off for a bad release stays off
-//! through them, while a lifted retreat clears within a week even on a
-//! machine that never reaches the file again. An entry dated in the
-//! future (a clock set back) is not fresh: it could otherwise outlive
-//! the window by however far the clock moved.
+//! **Why seven days.** Every value a document can resolve to is one
+//! its flag's declaration allows, so a cached document resolves only
+//! to what this build accepts; what its age bounds is how long a value
+//! the maintainer has since changed lingers on a machine that cannot
+//! reach GitHub. A week rides out a run of launches without the
+//! network — a trip, a captive portal, a blocked CDN — so a flag keeps
+//! its value through them, while a changed value clears within a week
+//! even on a machine that never reaches the file again. An entry dated
+//! in the future (a clock set back) is not fresh: it could otherwise
+//! outlive the window by however far the clock moved.
 
 use std::path::Path;
 use std::time::Duration;

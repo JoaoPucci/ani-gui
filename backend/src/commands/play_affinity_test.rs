@@ -10,10 +10,14 @@ use std::sync::Arc;
 /// An `AppState` over an in-memory cache with both providers answered
 /// by the given tables. Mirrors the play tests' own builder, which is
 /// private to their module.
-fn state_over(primary: &Arc<TableProvider>, fallback: &Arc<TableProvider>) -> AppState {
+fn state_over(
+    primary: &Arc<TableProvider>,
+    fallback: &Arc<TableProvider>,
+) -> crate::scratch::Scratch<AppState> {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    AppState {
+    let dirs = crate::scratch::dir();
+    let state = AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -22,24 +26,25 @@ fn state_over(primary: &Arc<TableProvider>, fallback: &Arc<TableProvider>) -> Ap
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: std::path::PathBuf::from("/tmp/ani-gui/history"),
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::listing(vec![
             ProviderId::TestA,
             ProviderId::TestB,
         ])
         .with_stub(Arc::clone(primary))
         .with_stub(Arc::clone(fallback)),
-        image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::new(reqwest::Client::new()),
-        config_path: std::path::PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: std::path::PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
-    }
+    };
+    dirs.hold(state)
 }
 
 /// A fallback that lists the show with one episode, so a play of its
@@ -84,10 +89,10 @@ async fn an_episode_the_remembered_fallback_does_not_serve_does_not_write_the_pr
     let state = state_over(&primary, &fallback);
     write_cache(&state, "580", "sub", true, Some(ProviderId::TestB));
     let args = PlayArgs {
+        locale: None,
         title: "The Show".into(),
         episode: "2".into(),
         mode: "sub".into(),
-        quality: None,
         subtype: None,
         episode_count: None,
         year: None,

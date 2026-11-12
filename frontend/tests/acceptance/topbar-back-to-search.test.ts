@@ -66,7 +66,7 @@ beforeEach(async () => {
 	__resetApiBaseForTests(API_BASE);
 	(window as unknown as { aniGui: unknown }).aniGui = {
 		apiBase: API_BASE,
-		account: { getToken: () => ({ ok: false, kind: 'not_found' }) }
+		account: { getToken: async () => ({ ok: false, kind: 'not_found' }) }
 	};
 	vi.mocked(afterNavigate).mockClear();
 	vi.mocked(replaceState).mockReset();

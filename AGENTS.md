@@ -4,7 +4,7 @@ Operational contract for any AI agent (Claude Code, Codex, others) working in th
 
 ## 1. Project map
 
-`ani-gui` is a desktop app: an Electron shell (`electron/`) hosts a SvelteKit static SPA (`frontend/`) and launches a Rust sidecar (`backend/`) that resolves streams natively.
+`ani-gui` is a desktop app: an Electron shell (`electron/`) hosts a SvelteKit static SPA (`frontend/`) and launches a Rust sidecar (`backend/`) that resolves streams natively. The app's logic belongs in the Rust backend by default, and its rendering in the renderer's own stack; "Choosing between options" in §14 says what each covers.
 
 The project began as a fork of [`pystardust/ani-cli`](https://github.com/pystardust/ani-cli) that drove the vendored shell scraper as a subprocess. Nothing of that remains in the tree: resolution went native, the packages stopped carrying the script, and the repository stopped vendoring it. `backend/src/legacy_script.rs` exists only to delete the copy earlier versions maintained in the user's cache, and pulling from upstream ended with the vendoring.
 
@@ -15,7 +15,9 @@ Read first:
 - `docs/development.md` — dev environment, build, debug
 - `docs/i18n.md` — adding a locale
 - `docs/title-resolution.md` — the cross-API bridge (Kitsu ↔ the streaming provider ↔ MAL ↔ aniskip / AniList) and how disambiguation by episode count works
-- `docs/proposals/` — future-feature proposals (Cast/multi-viewer, etc.)
+- `docs/proposals/` — plans for features nobody is building yet
+
+A proposal exists so that a plan made well before it is built is remembered until it is actually built. It lives in `docs/proposals/` only until its feature ships. The change that ships the feature moves what is still true of it and still useful — the design rationale, the privacy reasoning, the constraints the feature works under — into `docs/architecture.md`, or into the document that covers that area, and deletes the proposal. A proposal that covers several features loses each part as that part ships, and the change that ships the last part deletes the file. A proposal written for a feature that is already being built does not land on its own; the build's pull requests carry the final docs. So a file in `docs/proposals/` always describes something the app does not do yet, and a shipped feature is described in one place.
 
 ## 2. Test discipline (non-negotiable, TDD)
 
@@ -103,11 +105,11 @@ The full pyramid (unit → acceptance → e2e → property → architectural inv
 
 **The coverage floors (`rust.*`, `frontend.*`, `bash.*`) are also firm — tighten-only.** `node tools/check-coverage-baseline.mjs --update` now refuses to lower a floor below the recorded baseline, even if the current measurement would drop it. A PR that removes coverage must restore it (delete-with-tests, port the assertions to a new layer), not paper over the regression by re-baselining. Use `--update` when tests were deliberately added or scope grew and the floor should genuinely rise; never as a workaround for new code that skipped testing.
 
-**Svelte component logic must be testable.** The M3 design + UX detour shipped several pieces of behaviour inside `.svelte` files (BackButton depth tracking, topbar dropdown state machine, detail-page URL `$effect`s, hero rotation). Mounting Svelte 5 components against SvelteKit's runtime in vitest is brittle, so the rule is: **when you find yourself writing more than a couple of lines of imperative logic inside a `<script>`, extract it into a sibling `.ts` module under `$lib` and unit-test the module.** The component becomes a thin adapter that pulls inputs from the Svelte runtime and hands them to the pure function. `$lib/history/nav-depth.ts` is the canonical example — the layout's `afterNavigate` hook is glue around a tested function: it passes the event, `page.state` and the browser's index for the entry in, and writes back the stamp it gets.
+**Svelte component logic must be testable.** The M3 design + UX detour shipped several pieces of behaviour inside `.svelte` files (BackButton depth tracking, topbar dropdown state machine, detail-page URL `$effect`s, hero rotation). Mounting Svelte 5 components against SvelteKit's runtime in vitest is brittle, so the rule is: **when you find yourself writing more than a couple of lines of imperative code inside a `<script>`, extract it into a sibling `.ts` module under `$lib` and unit-test the module.** The component becomes a thin adapter that pulls inputs from the Svelte runtime and hands them to the pure function. This keeps rendering code, as §14's "Choosing between options" defines it, testable; logic in that subsection's sense belongs in the backend by default, not in this module. `$lib/history/nav-depth.ts` is the canonical example — the layout's `afterNavigate` hook is glue around a tested function: it passes the event, `page.state` and the browser's index for the entry in, and writes back the stamp it gets.
 
 Known test debt (extract + unit-test next time you touch them):
 
-- Topbar live-results dropdown state machine in `+layout.svelte` (debounced search, ↑/↓ navigation, blur-dismiss timing, recent-search persistence).
+- Topbar live-results dropdown state machine in `+layout.svelte` (↑/↓ navigation, blur-dismiss timing, recent-search persistence). The debounced live search itself is `$lib/topbar/live-search`.
 
 ## 3. Provenance
 
@@ -238,18 +240,19 @@ authority directed, never a route an agent picks for itself:
 - **Milestones are decoupled from the version file.** After a tag, create the next-minor GitHub milestone for tracking and assign new PRs to it explicitly — do **not** infer the milestone from the in-tree version.
 - **Releases publish as pre-releases** (`gh release create --prerelease`); pre-1.0, none are promoted to "Latest".
 
-### New features ship switched off
+### A flagged feature ships switched off
 
-The remote flags file (`flags.json` on the `flags` branch, read by `backend/src/flags/`) is not signed. Because of that, it must only ever move a declared flag toward the safer side: a kill switch to `false`, or a fallback to an earlier behaviour (`backend/src/flags/decl.rs`). Nothing in the code checks which side is safer. Each declaration states its case in `safe_because`, and review holds it to that. So no declaration may list a value that switches a feature on, and a feature's on-state is never a fallback's "earlier" behaviour. The rule follows from that:
+The remote flags file (`flags.json` on the `flags` branch, read by `backend/src/flags/`) is not signed. **Flags are default OFF, and any read failure means OFF.** A flag's built-in default is off, and no file, a broken one, a value its declaration does not allow and a flag the file does not mention all leave it off (`backend/src/flags/decl.rs`). The renderer reads a flag through `flagOn` (`frontend/src/lib/flags.ts`), which is on only for exactly `true`. This build declares no flag and has no kind one could be declared with, so the unsigned file can change nothing. A kind arrives with the change that verifies the file. The rules for a flagged feature follow from that:
 
-- **Every new user-facing feature ships off by default.** In the release that introduces it, the gate is a build-time default that is off, not a declared flag. No declared kind defaults to off (a kill switch defaults to `true`), so declaring the feature as a kill switch "to gate it" would ship it on.
-- **A release switches it on after a grace period, never the remote file.** The release that turns a feature on comes about four released versions after the one that introduced it. Turning it on is a change to its default, shipped in a release like any other change. The grace period is a policy that review holds; nothing in the code counts releases.
-- **The remote file stays the emergency off switch.** The release that turns a feature on also declares it in `DECLARED`: as a kill switch, or as a fallback whose earlier behaviour is what the feature replaced. From then on `flags.json` can switch it off, or back, without a release.
-- **Both states are tested.** While the feature ships off, its tests cover it off and on. That is a review rule; nothing checks it until the feature is declared. Once it is declared, the flag matrix (`backend/src/flags/matrix.rs`) holds it to a case for every value it allows.
+- **A flagged feature ships with its flag off.** Until a flag kind exists, that flag is a build-time default, off in the release that introduces the feature.
+- **A release switches it on after a grace period, never the remote file.** The release that turns a flagged feature on comes about four released versions after the one that introduced it. Turning it on is a change to its build-time default, shipped in a release like any other change. The grace period is a policy that review holds; nothing in the code counts releases.
+- **Both states are tested.** While the feature ships off, its tests cover it off and on. That is a review rule; nothing checks it unless the feature is declared as a flag. A declared flag is held by the flag matrix (`backend/src/flags/matrix.rs`) to a case for every value it allows.
 
-The rule covers user-facing features, not the flags mechanism itself. The launch splash, including its progress rail and stall line (`electron/lib/splash.cjs`, `electron/lib/splash-progress.cjs`, `electron/splash/`), is part of that mechanism. It is what is on screen while the backend starts and the launch's flags are decided, so gating it would put the flags mechanism behind a feature flag of its own. It is the only exemption. Every other user-facing feature follows the rule.
+**Whether a feature gets a flag is the maintainer's decision.** A feature without one ships as any other change does, and needs no exception from anything here. An agent that thinks a feature should be behind a flag asks (§14, **Ask**) and does not add one on its own judgement.
 
-Once `flags.json` is signed and the app verifies it, switching a feature on remotely becomes possible, and this rule is to be revised then.
+The launch splash, including its progress rail and stall line (`electron/lib/splash.cjs`, `electron/lib/splash-progress.cjs`, `electron/splash/`), is part of the flags mechanism and is not behind a flag. It is what is on screen while the backend starts and the launch's flags are decided, so gating it would put the flags mechanism behind a feature flag of its own.
+
+Once `flags.json` is signed and the app verifies it, switching a feature on remotely becomes possible, and the rules for a flagged feature are to be revised then.
 
 ## 14. Scope is negotiable, delivery is not
 
@@ -263,10 +266,30 @@ mid-task, exactly one of these is an acceptable outcome:
 - **Do it here.** The default. Estimate the work before declining it —
   an estimate made in order to justify not doing something tends to
   come out high.
-- **Do it in its own PR.** Open the follow-up PR, land it, then update
-  the original. Say on the thread which PR carries it.
-- **Add an entry to the deferred-work log**, and link it wherever you
-  deferred it. An unwritten deferral is a dropped one, and a deferral
+- **Do it in its own PR.** Yours to choose, as long as you open that
+  PR now. Land it, then update the original, and say on the thread
+  which PR carries it.
+- **Add an entry to the deferred-work log — only when the maintainer
+  has chosen it.** A deferral is never yours to pick: **Ask**, below,
+  with do it here, its own PR now, or defer as the options and your
+  recommendation. That covers everything that defers: a new entry, an
+  existing one extended or reworded so it defers more, and a note such
+  as "later", "not covered", "left open" or "out of scope" in a PR
+  body, a commit or a doc that leaves known work undone with no PR
+  opened now to carry it. Keeping an entry true is not a deferral: when
+  a change makes part of one false, correct it in that change, or
+  remove it when the work lands, and say so in the PR body. An entry
+  is false only when something it states no longer holds, or never
+  did; a view that the work is not worth doing never makes it false.
+  An entry that is wholly false is removed as its correction. Removing
+  an entry, or part of one, for any other reason, such as work that
+  still holds but that you think is not worth doing, is the
+  maintainer's choice, however you came to it: put it to them as a
+  choice to drop it. Where only part of an entry is false, correct
+  that part; the rest stays unless the maintainer chooses to drop it.
+
+  Once the maintainer has chosen it, link the entry wherever the work
+  was deferred. An unwritten deferral is a dropped one, and a deferral
   written only where you happen to be standing is the same thing: the
   internal planning directory is ignored by git, so an entry there
   leaves with your checkout and a thread citing it points at a file
@@ -293,7 +316,7 @@ mid-task, exactly one of these is an acceptable outcome:
 
 <!-- record-path: docs/deferred-work.md -->
 - **Ask.** If the tradeoff is genuinely the maintainer's call, put the
-  options to them. Silence is not a way to ask.
+  options to them. A deferral always is. Silence is not a way to ask.
 
 What is never acceptable is the fifth outcome: replying that the fix
 is out of scope or too costly and leaving nothing behind. That reads
@@ -307,17 +330,110 @@ knows about — one it introduced, uncovered, or was told of in
 review — records the gap where it will be read once, as context,
 and then merged past. That defect leaves the change by one of the
 four outcomes above, and the note links whichever carries it: the
-PR, the deferred-work entry, or the question put to the maintainer.
-A reviewer reading such a note with no link beside it treats it as a
-finding, not as a disclosure that settles it. Saying which checks
-were not run, as §10 asks, or describing behaviour that is
-intended, is not such a note.
+PR, the deferred-work entry the maintainer chose, or the question put
+to them, which the change then waits on. A reviewer reading such a
+note with no link beside it treats it as a finding, not as a
+disclosure that settles it. Saying which checks were not run, as §10
+asks, or describing behaviour that is intended, is not such a note.
 
 The same rule applies to your own estimates. Before invoking cost,
 check the cheap path actually is closed: existing conventions in the
 package, a helper already extracted, a test glob that already covers
 the directory. More than once the "large refactor" turned out to be
 one new file next to two just like it.
+
+An entry already in the log is considered only when it bears on the
+change directly: tackling it would unblock the change, or without it
+the change would have to be built differently or around it, with a
+workaround the entry's fix would remove. Then check the entry is still
+true and still worth doing, and prefer tackling it within the change —
+that is **Do it here**, and the change removes the entry it lands. If
+tackling it is genuinely large or risky, put the options to the
+maintainer, as **Ask** describes. An entry you think is not worth
+doing is also the maintainer's to drop, as above. An entry that merely
+sits in the same area is not a reason to raise it, so do not scan the
+log by area or by keyword for work to add. An entry the change makes
+false is still corrected in that change, as above. An entry is a
+reminder, never a constraint the design has to respect.
+
+### Choosing between options
+
+When a change can be made more than one way, rank the options on
+correctness, safety, maintainability and the user's experience,
+weighed together rather than in a fixed order.
+
+"Faster to write" is not an argument on its own. Development effort
+counts only when it would become a real blocker for the schedule.
+Compile time and binary size are different: they are real costs, and
+may be weighed against the rest.
+
+The ranking is how a recommendation is made, not a licence to decide
+alone. When the choice is the maintainer's — anything users see,
+scope (deferring work always is), anything new to the stack, or a
+real trade-off between these criteria — put the options to them, as
+**Ask** above describes, with the ranking as the recommendation.
+
+The stack is a Rust backend and a SvelteKit frontend in an Electron
+shell, plus the tools the app already uses: the binaries its packages
+bundle, listed in the `DEPS` of `electron/scripts/fetch-linux-deps.mjs`
+and `fetch-windows-deps.mjs`, the external programs it runs, listed
+under External processes in `docs/architecture.md`, and the libraries
+its manifests already declare. Anything new to it is the
+maintainer's decision: another language, a library or binary in any
+language, a new runtime, toolchain or build step, or a piece of logic
+placed outside the Rust backend against the default below. It is put
+to them before it is built, with the investigation and the ranking as
+the recommendation, and never appears first in a pull request.
+
+Where the code a change adds lives, and so its language, is one of
+these choices. Logic — the app's decisions about its data and the
+rules it follows whatever the screen shows: matching, naming,
+grouping, ranking and validating its data, and its maths — belongs in
+the Rust backend by default. That includes repeating a decision the
+backend already makes, outside the backend. A check at a trust
+boundary, or the handling of an answer that fails or is not the shape
+expected, is not such a repeat. New logic is not written in another
+language because the code it touches is there; "it was already written
+that way" is not a reason for where new logic goes. A different choice
+needs a reason specific to that logic, naming what Rust would cost
+there by the criteria above, and it is the maintainer's, put to them
+as the stack paragraph describes.
+
+The default is Rust because this repository is developed mostly by AI
+agents. A compiler that checks types, ownership and exhaustive
+matches turns their mistakes into build failures rather than defects
+a user meets at runtime.
+
+Rendering — the code that draws and drives the interface, and state
+that exists only on screen — is written in the renderer's own stack
+and needs no language reason. A decision that would come out the same
+with nothing on screen is logic; one that exists only because of what
+is on screen is rendering. Text shown to the user is resolved as §4
+describes. Rendering is not put in Rust to satisfy this rule, whether
+behind a request to the backend or compiled to WebAssembly.
+
+The split is the default, not a sorting machine every piece has to
+fit. A piece the test above does not settle — part of it would stand
+with nothing on screen and part would not, or it is a protocol
+carried across both sides — is decided for that piece by the criteria
+above. Where any of its logic would land outside the Rust backend,
+the choice and its reason go to the maintainer before it is built, as
+the stack paragraph describes, and the pull request repeats them.
+Showing a decision on screen does not make it such a piece. A
+well-reasoned exception is the rule working, not breaking.
+
+Code doing a job the backend cannot do — starting it, building or
+packaging the app, checking it — is written where that job runs, in
+the language already used there; another is new to the stack. Tests
+are written for their subject's layer, as §2 requires. Configuration
+is not logic in this sense.
+
+This decides where the logic a change adds goes. It does not ask for
+existing code to be ported. A fix, making existing code do what it
+already sets out to do, stays where that code is. When added logic
+cannot stand apart from a rule that lives elsewhere, adding it there
+and moving the rule are both options, and the choice is the
+maintainer's: put both to them, as **Ask** describes.
 
 ## 15. Every change ships on every platform we package
 
@@ -351,17 +467,31 @@ Windows installer in CI, so on that side the configuration is the only
 thing under guard — which is worth knowing before trusting a green
 run about a platform nobody is building.
 
-When a platform genuinely cannot be served in the same change, the
-obligation moves rather than disappearing, and the half that matters
-is user-facing:
+When a platform genuinely cannot be served in the same change — a
+deferral, so the maintainer's call under §14 — the obligation moves
+rather than disappearing, and the half that matters is user-facing:
 
 - A release announces itself to everyone, not to the platforms it
   carries assets for.
-- The update notifier compares versions and nothing else. It does not
-  read a release's assets and has no concept of platform, so shipping
-  a release with no asset for a platform actively prompts that
-  platform's users toward a page with nothing on it for them. Any
-  change to which platforms a release serves has to answer for that
+- From 0.18.0 the update notifier offers a release to an install only
+  when the release carries a package for that install's platform,
+  matched by file name (`Platform::carries` in
+  `backend/src/meta/github.rs`). A newer release without one is
+  passed over for the newest of the ten most recent releases that
+  carries one, or, failing that, for the newest full release, if that
+  release carries one. The file names are matched by their endings,
+  listed in `backend/src/meta/release_assets.json`, and
+  `electron/lib/release-asset-names.test.cjs` fails when the names
+  electron-builder gives the packages stop ending that way. Should no
+  release read carry a file any packaged platform recognises, the
+  notifier takes the naming to have changed and offers what it offered
+  before it read files: the newest release, or with pre-releases
+  excluded, the latest full release. Installs on 0.17.0 or earlier compare versions
+  and nothing else: they do not read a release's assets and have no
+  concept of platform, so shipping a release with no asset for a
+  platform still prompts those of that platform's users toward a page
+  with nothing on it for them. Any change to which platforms a release
+  serves, or to how their files are named, has to answer for that
   path.
 - Say it in the release notes, and record the gap where the next
   person will find it.
@@ -432,4 +562,4 @@ what makes external review affordable.
 - `docs/testing.md` — test pyramid, fixture management, coverage targets
 - `docs/development.md` — dev setup
 - `docs/i18n.md` — locale-addition guide
-- `docs/proposals/cast-multiviewer.md` — Cast/multi-viewer future-feature proposal
+- `docs/proposals/` — plans for features not yet built, kept until they ship (§1)

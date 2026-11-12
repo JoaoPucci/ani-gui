@@ -11,6 +11,8 @@
 -->
 <script lang="ts">
 	import { startDownload } from '$lib/download/start';
+	import { modal } from './modal-layer';
+	import { downloadQualityLabel } from '$lib/download/download-quality';
 	import { defaultRangeOnEnter } from '$lib/download/default-range';
 	import { rangeError as rangeErrorFor } from '$lib/download/range-error';
 	import type { DownloadArgs } from '$lib/api';
@@ -164,21 +166,19 @@
 		open = false;
 		onClose();
 	}
-
-	function onBackdropKey(e: KeyboardEvent) {
-		if (e.key === 'Escape') close();
-	}
 </script>
 
 {#if open && args}
-	<!-- Backdrop. role="dialog" + aria-modal=true keeps screen readers
-	     trapped inside until close. Click on backdrop dismisses. -->
+	<!-- Backdrop. A modal ($lib/components/modal-layer): its first
+	     control takes focus, Tab stays inside it, the page behind it is
+	     inert, Escape closes it, and focus goes back to what opened it.
+	     Click on backdrop dismisses. -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="dl-backdrop"
 		onclick={close}
-		onkeydown={onBackdropKey}
+		use:modal={{ onEscape: close }}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="dl-confirm-title"
@@ -423,6 +423,10 @@
 						>{m.download_hint_filename_template({ title: args.title })}</code
 					>{m.download_hint_filename_suffix()}
 				</p>
+				<!-- The quality is Settings' alone: named here, changed there. -->
+				<p class="dl-hint">
+					{m.download_hint_quality({ quality: downloadQualityLabel(args.quality ?? 'best') })}
+				</p>
 			</div>
 
 			<footer class="dl-foot">
@@ -662,7 +666,7 @@
 		color: var(--bone-300);
 	}
 	.dl-range-faint {
-		color: color-mix(in oklab, var(--bone-300) 60%, transparent);
+		color: var(--bone-400);
 		margin-inline-start: var(--space-1);
 	}
 	.dl-input {

@@ -38,13 +38,13 @@
  * Pre-condition: `pnpm run package` has produced `dist/linux-unpacked/`.
  */
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
+import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { appInfo, defaultSettings } from './fixtures/kitsu';
-import { appWindow, launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
 
 /** The app's minimum window; a width where the topbar is short of
  *  room, so the order in which pill and trail give way shows (the spec
@@ -137,7 +137,7 @@ async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 		XDG_CACHE_HOME: path.join(tmp, 'cache'),
 		XDG_DATA_HOME: path.join(tmp, 'data'),
 		ANI_GUI_UNATTENDED: '1'
-	});
+	}, { profile: tmp });
 	onLaunch(app);
 	const page = await appWindow(app);
 	const png = bannerPng();
@@ -186,8 +186,7 @@ async function launch() {
 				const dead = pending;
 				pending = null;
 				if (dead) {
-					killTree(dead.process().pid);
-					await dead.close();
+					await stopDeadApp(dead);
 				}
 			}
 		}
@@ -197,13 +196,15 @@ async function launch() {
 /** Resizes the window's content to `width` and waits for the page to
  *  see it. Under Xvfb there is no window manager, and the app's own
  *  maximize can land after launch, so the request is repeated until
- *  the width holds. */
+ *  the width holds. The window resized is the page's own: the splash
+ *  opens first and can still be open here, so the first of the app's
+ *  windows may be the splash rather than the page under test. */
 async function resize(app: ElectronApplication, page: Page, width: number) {
+	const win = await app.browserWindow(page);
 	for (let i = 0; i < 50; i++) {
-		await app.evaluate(({ BrowserWindow }, w) => {
-			const win = BrowserWindow.getAllWindows()[0];
-			if (win.isMaximized()) win.unmaximize();
-			win.setContentSize(w, 800);
+		await win.evaluate((w, size) => {
+			if (w.isMaximized()) w.unmaximize();
+			w.setContentSize(size, 800);
 		}, width);
 		if (await page.evaluate((w) => window.innerWidth === w, width)) return;
 		await page.waitForTimeout(200);

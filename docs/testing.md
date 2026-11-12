@@ -99,6 +99,36 @@ The suite under `electron/e2e/` drives the packaged app
 `electron/e2e/launch.ts`, which mutes it and refuses to open it on a
 display someone may be looking at (`electron/lib/e2e-display.cjs`).
 
+The same helper keeps the backend off the network. A spec can set its
+stubs only once the app is up, by which time the first page has
+already made its requests. Every launch therefore points the backend's
+proxy settings at a local proxy that refuses every connection and
+records it (`outboundAttempts`). Loopback is exempt, so a spec's own
+local servers still answer. `smoke.spec.ts` checks that a request only
+GitHub could answer ends up at that proxy instead. A spec whose page
+should run on stubs alone does three things: it sets `refuseUnstubbed`
+before its stubs, mounts the page again with `remountFirstPage`, and
+asserts that no request was left unanswered. `smoke.spec.ts` and
+`keyring-unresponsive.spec.ts` do.
+
+Each launch runs on a scratch profile the spec makes under the
+system's temporary directory. The spec passes that directory to
+`launchPackagedApp` as `profile`. The helper removes that path, and
+nothing else, once the app has exited. Because the backend can go on
+writing there briefly while it stops, the helper removes the path
+again once the backend has had time to stop, or as the test worker
+exits if that comes first. A launch that never starts has its profile
+removed at once. `smoke.spec.ts` checks that the profile is gone after
+the app quits. Two specs manage their profile themselves, removing it
+in their own teardown and, if the launch fails, at once: the keyring
+spec, whose profile also holds its session bus, and the splash-stuck
+spec, whose restarted app outlives the launch. A worker that is killed
+before its app exits leaves the profile behind.
+
+The Node tests that make temporary directories (`electron/lib/`,
+`tests/tools/`, `tests/complexity/`) remove them in their own
+teardown.
+
 Locally, the suite runs on Wayland, inside a private headless GNOME
 Shell session that `tools/headless-wayland.sh` starts and tears down:
 
@@ -112,7 +142,12 @@ The session has its own runtime directory, D-Bus session, HOME and XDG
 directories, and no `DISPLAY`, so the app's windows open on a
 compositor nobody can see, and a setting changed on the desktop does
 not reach it. It needs `gnome-shell`, `dbus-run-session`,
-`dbus-update-activation-environment`, `setsid` and `pgrep`. The command
+`dbus-update-activation-environment`, `setsid`, and systemd 254 or later
+(`systemd-run`, `systemctl`) with a user service manager running: the
+whole session runs in a transient scope of its own (the tool prints its
+name, `ani-gui-wl-<suffix>.scope`), and what is still
+running in it at the end — a service that daemonized, a process that
+made a session of its own — is stopped by stopping that one scope. The command
 runs without a terminal, so the tool is for the suite, not for an
 interactive shell. The compositor keeps the desktop's system bus, which
 it cannot start without; its settings forbid it to lock, since a lock
@@ -121,12 +156,44 @@ desktop shell, or under `xvfb-run`, where the packaged launcher still
 picked the desktop's Wayland compositor — throws before any window
 opens, saying how to run the suite.
 
+A spec stops the app it launched through `stopApp` in
+`electron/e2e/launch.ts`, and nothing else but the one exception
+below. Playwright starts the app
+in a process group of its own; `electron/lib/own-group.cjs` sends
+SIGTERM to that group, then SIGKILL to the same group if the app is
+still there, and only while the group is provably the app's: its main
+process not yet reaped, leading the group, running the binary it was
+launched from. What the app leaves in its group as it exits is killed in the
+turn its exit is reported; after that nothing is signalled, since an
+emptied group's id can be handed to someone else. The backend runs
+outside that group and stops itself when the app's end of its stdin
+closes. No test or tool picks a process out of the process table — by
+name, path, command line, environment, or parent: a test that walked
+from a relaunched app to its parent once signalled the user's service
+manager and ended the desktop session. `tests/arch/own_processes.sh`
+catches the usual spellings of such a selection (the selecting tools,
+the parent-pid field's name, listings of `/proc`); its header lists
+what it cannot see.
+
 CI runs the same suite on X11, under Xvfb (`xvfb-run`): GitHub's
 runners have no Wayland. Wayland behaviour is covered by local runs
 only. The launch helper accepts Xvfb only on a GitHub Actions runner
 (`GITHUB_ACTIONS=true`), and refuses any Wayland session there.
 `smoke.spec.ts` checks that the app landed on Wayland in the headless
 session and on X11 in CI.
+
+One process is not launched by the helper: the app the splash's Restart
+starts again (`splash-stuck.spec.ts`). It is outside the test's process
+tree and group, reparented to the session's subreaper when its parent
+exits, so `stopApp` cannot reach it and nothing may walk to it. The
+spec takes its pid from what the app writes into the spec's own
+temporary profile (the single-instance lock, a symlink to
+`<host>-<pid>`), and signals that one pid only after `/proc/<pid>/exe`
+shows it running the spec's own copy of the binary.
+`splash-stuck.spec.ts` runs a hard-linked copy of
+`dist/linux-unpacked/` whose `resources/frontend/build` holds a fixture
+page (`electron/e2e/fixtures/first-page/`), so the late first page is
+real and nothing in the app reads a test switch.
 
 ## Coverage targets
 

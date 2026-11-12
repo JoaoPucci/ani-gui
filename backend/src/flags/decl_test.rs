@@ -3,29 +3,45 @@ use serde_json::json;
 use super::{validate, FlagDecl, FlagKind, FlagValue};
 use crate::flags::test_decls::TEST_DECLS;
 
-const KILL: FlagDecl = TEST_DECLS[0];
-const FALLBACK: FlagDecl = TEST_DECLS[1];
+const A: FlagDecl = TEST_DECLS[0];
+
+fn probe(name: &'static str, may_switch_on: bool) -> FlagDecl {
+    FlagDecl {
+        name,
+        kind: FlagKind::Probe { may_switch_on },
+        safe_because: "reason",
+    }
+}
+
+/// The rule: a flag ships off.
+#[test]
+fn every_declaration_ships_off() {
+    for decl in TEST_DECLS
+        .iter()
+        .copied()
+        .chain([probe("narrow", false), probe("wide", true)])
+    {
+        assert_eq!(
+            decl.default_value(),
+            FlagValue::Bool(false),
+            "{}",
+            decl.name
+        );
+    }
+}
 
 #[test]
-fn a_kill_switch_ships_on_and_may_only_be_switched_off() {
-    assert_eq!(KILL.default_value(), FlagValue::Bool(true));
+fn a_flag_the_file_may_switch_on_allows_off_and_on() {
     assert_eq!(
-        KILL.allowed(),
-        vec![FlagValue::Bool(true), FlagValue::Bool(false)]
+        probe("p", true).allowed(),
+        vec![FlagValue::Bool(false), FlagValue::Bool(true)]
     );
 }
 
 #[test]
-fn a_fallback_ships_its_current_behaviour_and_may_only_select_an_earlier_one() {
-    assert_eq!(FALLBACK.default_value(), FlagValue::Choice("new"));
-    assert_eq!(
-        FALLBACK.allowed(),
-        vec![
-            FlagValue::Choice("new"),
-            FlagValue::Choice("old"),
-            FlagValue::Choice("older"),
-        ]
-    );
+fn a_flag_the_file_may_not_switch_on_allows_off_alone() {
+    assert_eq!(probe("p", false).allowed(), vec![FlagValue::Bool(false)]);
+    assert_eq!(probe("p", false).accept(&json!(true)), None);
 }
 
 #[test]
@@ -40,53 +56,19 @@ fn every_test_default_is_one_of_its_allowed_values() {
 }
 
 #[test]
-fn a_kill_switch_accepts_a_boolean_and_nothing_else() {
-    assert_eq!(KILL.accept(&json!(false)), Some(FlagValue::Bool(false)));
-    assert_eq!(KILL.accept(&json!(true)), Some(FlagValue::Bool(true)));
+fn a_flag_accepts_a_boolean_and_nothing_else() {
+    assert_eq!(A.accept(&json!(false)), Some(FlagValue::Bool(false)));
+    assert_eq!(A.accept(&json!(true)), Some(FlagValue::Bool(true)));
     for wrong in [
-        json!("false"),
-        json!(0),
+        json!("true"),
+        json!("on"),
+        json!(1),
         json!(null),
-        json!([false]),
-        json!({ "value": false }),
+        json!([true]),
+        json!({ "value": true }),
     ] {
-        assert_eq!(KILL.accept(&wrong), None, "{wrong}");
+        assert_eq!(A.accept(&wrong), None, "{wrong}");
     }
-}
-
-#[test]
-fn a_fallback_accepts_only_a_declared_name() {
-    assert_eq!(
-        FALLBACK.accept(&json!("old")),
-        Some(FlagValue::Choice("old"))
-    );
-    assert_eq!(
-        FALLBACK.accept(&json!("new")),
-        Some(FlagValue::Choice("new"))
-    );
-    for wrong in [
-        json!("newer"),
-        json!("OLD"),
-        json!(" old"),
-        json!(""),
-        json!(false),
-        json!(["old"]),
-    ] {
-        assert_eq!(FALLBACK.accept(&wrong), None, "{wrong}");
-    }
-}
-
-#[test]
-fn an_accepted_choice_is_the_declarations_string_not_the_files() {
-    let raw = json!("old");
-    let Some(FlagValue::Choice(s)) = FALLBACK.accept(&raw) else {
-        panic!("old is declared");
-    };
-    let declared = match FALLBACK.kind {
-        FlagKind::Fallback { earlier, .. } => earlier[0],
-        FlagKind::KillSwitch => unreachable!(),
-    };
-    assert!(std::ptr::eq(s, declared));
 }
 
 #[test]
@@ -94,55 +76,22 @@ fn the_test_declarations_are_valid() {
     assert_eq!(validate(TEST_DECLS), Ok(()));
 }
 
-fn kill(name: &'static str) -> FlagDecl {
-    FlagDecl {
-        name,
-        kind: FlagKind::KillSwitch,
-        safe_because: "reason",
-    }
-}
-
-fn fallback(current: &'static str, earlier: &'static [&'static str]) -> FlagDecl {
-    FlagDecl {
-        name: "f",
-        kind: FlagKind::Fallback { current, earlier },
-        safe_because: "reason",
-    }
-}
-
 #[test]
 fn validation_refuses_a_malformed_name() {
     for bad in ["", "Upper", "has space", "dash-ed", "dot.ted"] {
-        assert!(validate(&[kill(bad)]).is_err(), "{bad:?}");
+        assert!(validate(&[probe(bad, true)]).is_err(), "{bad:?}");
     }
-    assert_eq!(validate(&[kill("ok_name_2")]), Ok(()));
+    assert_eq!(validate(&[probe("ok_name_2", true)]), Ok(()));
 }
 
 #[test]
 fn validation_refuses_a_name_declared_twice() {
-    assert!(validate(&[kill("same"), kill("same")]).is_err());
+    assert!(validate(&[probe("same", true), probe("same", false)]).is_err());
 }
 
 #[test]
 fn validation_refuses_a_declaration_without_its_reason() {
-    let mut d = kill("k");
+    let mut d = probe("k", true);
     d.safe_because = "  ";
     assert!(validate(&[d]).is_err());
-}
-
-#[test]
-fn validation_refuses_a_fallback_with_nothing_earlier() {
-    assert!(validate(&[fallback("new", &[])]).is_err());
-}
-
-#[test]
-fn validation_refuses_a_fallback_that_lists_its_current_behaviour_as_earlier() {
-    assert!(validate(&[fallback("new", &["old", "new"])]).is_err());
-}
-
-#[test]
-fn validation_refuses_a_fallback_with_a_repeated_or_empty_value() {
-    assert!(validate(&[fallback("new", &["old", "old"])]).is_err());
-    assert!(validate(&[fallback("new", &[""])]).is_err());
-    assert!(validate(&[fallback("", &["old"])]).is_err());
 }

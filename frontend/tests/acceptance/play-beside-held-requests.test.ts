@@ -119,7 +119,7 @@ describe('a play beside held requests', () => {
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
 			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
 			// A provider that never answers: every probe holds.
 			http.post(`${LANES.probe}/api/availability`, async () => {
 				probesInFlight += 1;

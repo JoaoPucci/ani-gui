@@ -1,0 +1,76 @@
+{
+ "data": [
+  {
+   "id": "2245",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Shippuuden Movie 1",
+    "titles": {
+     "en": "Naruto: Shippuden the Movie",
+     "en_jp": "Naruto: Shippuuden Movie 1",
+     "en_us": "Naruto: Shippuden the Movie",
+     "ja_jp": "劇場版NARUTO -ナルト- 疾風伝"
+    },
+    "abbreviatedTitles": [
+     "Naruto Shippuuden Movie",
+     "Naruto Movie 4",
+     "Gekijouban Naruto Shippuuden"
+    ],
+    "slug": "naruto-shippuden-movie-1",
+    "startDate": "2007-08-04",
+    "endDate": "2007-08-04",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "3606",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Shippuuden Movie 2 - Kizuna",
+    "titles": {
+     "en": "Naruto: Shippuden the Movie 2 -Bonds-",
+     "en_jp": "Naruto: Shippuuden Movie 2 - Kizuna",
+     "en_us": "Naruto: Shippuden the Movie 2 -Bonds-",
+     "ja_jp": "劇場版NARUTO-ナルト- 疾風伝 絆"
+    },
+    "abbreviatedTitles": [
+     "Naruto Movie 5",
+     "Naruto Shippuuden Movie 2",
+     "Naruto Shippuuden: Bonds"
+    ],
+    "slug": "naruto-shippuden-movie-2-kizuna",
+    "startDate": "2008-08-02",
+    "endDate": "2008-08-02",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "4520",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Naruto: Shippuuden Movie 3 - Hi no Ishi wo Tsugu Mono",
+    "titles": {
+     "en": "Naruto Shippuden the Movie: Will of Fire",
+     "en_jp": "Naruto: Shippuuden Movie 3 - Hi no Ishi wo Tsugu Mono",
+     "ja_jp": "ナルト- 疾風伝 火の意志を継ぐ者"
+    },
+    "abbreviatedTitles": [
+     "Naruto Shippuuden: Gekijouban Naruto Shippuuden: Hi no Ishi o Tsugu Mono",
+     "Naruto Shippuuden Movie 3",
+     "Naruto Movie 6",
+     "Naruto Shippuuden 3: Inheritors of Will of Fire"
+    ],
+    "slug": "naruto-shippuden-movie-3-hi-no-ishi-wo-tsugu-mono",
+    "startDate": "2009-08-01",
+    "endDate": "2009-08-01",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

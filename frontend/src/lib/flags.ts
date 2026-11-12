@@ -5,13 +5,16 @@
  * and never changes them in the session (backend/src/flags). The Electron main
  * process asks for them before it opens the window and hands them to
  * the preload, so they are on `window.aniGui.flags` before the first
- * page renders — this module only reads them. A window opened without
- * them, and a browser-only dev run, has none: every flag then takes
- * its default, which the feature reading it owns.
+ * page renders — this module only reads them.
+ *
+ * Flags are default OFF, and any read failure means OFF. A feature
+ * reads its flag through `flagOn`, which is on only for exactly `true`:
+ * a window opened without flags, a browser-only dev run, a backend
+ * that never answered and a flag the set does not hold all read off.
  */
 
 /** Every flag the window was opened with, by name. */
-export type LaunchFlags = Readonly<Record<string, boolean | string>>;
+export type LaunchFlags = Readonly<Record<string, boolean>>;
 
 type FlagsWindow = { aniGui?: { flags?: LaunchFlags } } | undefined;
 
@@ -20,4 +23,11 @@ const NONE: LaunchFlags = Object.freeze({});
 
 export function launchFlags(win: FlagsWindow = globalThis.window): LaunchFlags {
 	return win?.aniGui?.flags ?? NONE;
+}
+
+/** Whether flag `name` is on for this launch: only when the window was
+ *  opened with exactly `true` for it. Anything else, a missing flag or
+ *  a missing set included, is off. */
+export function flagOn(name: string, win: FlagsWindow = globalThis.window): boolean {
+	return launchFlags(win)[name] === true;
 }

@@ -3,7 +3,7 @@
 use super::*;
 use crate::meta::kitsu::KitsuAnimeRef;
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use wiremock::matchers::method;
@@ -21,10 +21,10 @@ fn state_at(dir: &Path, kitsu_uri: &str) -> AppState {
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: dir.join("history"),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dir.join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
+        config_path: dir.join("config.toml"),
         state_dir: dir.join("state"),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),

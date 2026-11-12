@@ -10,6 +10,8 @@
 	"hero_error_title": "El catálogo no está disponible.",
 	"hero_error_body": "Kitsu no respondió. La búsqueda local sigue funcionando — escribe un título.",
 	"hero_error_cta": "Abrir búsqueda",
+	"hero_empty_title": "Nada para destacar por ahora.",
+	"hero_empty_body": "La lista de tendencias llegó vacía. La búsqueda sigue funcionando, escribe un título.",
 	"hero_skeleton_eyebrow_key": "Cargando",
 	"strip_continue_eyebrow": "Seguir viendo",
 	"strip_continue_caption": "retomar desde el historial",
@@ -27,8 +29,7 @@
 	"delete_confirm_title": "¿Quitar \"{title}\" del historial?",
 	"delete_confirm_body": "Puedes volver a agregarlo viendo el programa de nuevo.",
 	"delete_confirm_button": "Quitar",
-	"clear_menu_button_aria": "Opciones del historial",
-	"clear_menu_item": "Borrar historial",
+	"clear_history_action": "Borrar historial",
 	"clear_confirm_eyebrow": "Borrar todo",
 	"clear_confirm_title": [
 		{
@@ -42,5 +43,7 @@
 	],
 	"clear_confirm_body": "Esto borra el historial de reproducción de ani-gui. No se puede deshacer.",
 	"clear_confirm_button": "Borrar todo",
+	"clear_history_failed": "No se pudo borrar el historial. Inténtalo de nuevo.",
+	"delete_failed": "No se pudo quitar \"{title}\" del historial. Inténtalo de nuevo.",
 	"hero_error_eyebrow_value": "Sin respuesta de Kitsu"
 }

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readPosition, savePosition } from './play/watch-position';
+import { getLocale } from '$lib/paraglide/runtime';
 import {
 	__resetApiBaseForTests,
 	allmangaKitsuMapDelete,
@@ -27,6 +28,7 @@ import {
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
 	kitsuEpisodes,
+	kitsuGuessRuledOut,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
 	kitsuSearchPage,
@@ -297,18 +299,18 @@ describe('play', () => {
 		const resp = await play({
 			title: 'Cowboy Bebop',
 			episode: '5',
-			mode: 'sub',
-			quality: 'best'
+			mode: 'sub'
 		});
 		expect(resp).toEqual(sessionResponse);
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/play`);
 		expect(init?.method).toBe('POST');
+		// The body names the renderer's locale too (`api-locale.test.ts`).
 		expect(JSON.parse(init?.body as string)).toEqual({
 			title: 'Cowboy Bebop',
 			episode: '5',
 			mode: 'sub',
-			quality: 'best'
+			locale: getLocale()
 		});
 	});
 });
@@ -404,8 +406,7 @@ describe('markWatched', () => {
 		await markWatched({
 			title: 'Naruto: Shippuuden',
 			episode: '150',
-			mode: 'sub',
-			quality: 'best'
+			mode: 'sub'
 		});
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/play/mark-watched`);
@@ -428,8 +429,7 @@ describe('evictPlayCache', () => {
 		await evictPlayCache({
 			title: 'Stone Ocean',
 			episode: '1',
-			mode: 'sub',
-			quality: 'best'
+			mode: 'sub'
 		});
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/play/cache/evict`);
@@ -490,10 +490,10 @@ describe('playStream', () => {
 		};
 	}
 
-	it('opens an SSE URL with title/episode/mode/quality/episode_count query params', async () => {
+	it('opens an SSE URL with title/episode/mode/episode_count query params', async () => {
 		const onProgress = vi.fn();
 		const promise = playStream(
-			{ title: 'One Piece', episode: '1', mode: 'sub', quality: 'best', episode_count: 1100 },
+			{ title: 'One Piece', episode: '1', mode: 'sub', episode_count: 1100 },
 			onProgress
 		);
 		// `apiBase()` is async — give the promise chain one tick to construct
@@ -503,7 +503,7 @@ describe('playStream', () => {
 		const es = FakeEventSource.instances[0];
 		expect(es).toBeTruthy();
 		expect(es.url).toBe(
-			`${BASE}/api/play/stream?title=One+Piece&episode=1&mode=sub&quality=best&episode_count=1100`
+			`${BASE}/api/play/stream?title=One+Piece&episode=1&mode=sub&episode_count=1100&locale=${getLocale()}`
 		);
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
@@ -622,12 +622,12 @@ describe('playStream', () => {
 		await promise;
 	});
 
-	it('omits quality and episode_count when not provided', async () => {
+	it('omits episode_count when not provided', async () => {
 		const promise = playStream({ title: 'X', episode: '2', mode: 'dub' }, () => {});
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
-		expect(es.url).toBe(`${BASE}/api/play/stream?title=X&episode=2&mode=dub`);
+		expect(es.url).toBe(`${BASE}/api/play/stream?title=X&episode=2&mode=dub&locale=${getLocale()}`);
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
 	});
@@ -1068,6 +1068,35 @@ describe('kitsuSearch', () => {
 	});
 });
 
+describe('kitsuGuessRuledOut', () => {
+	it('POSTs the row and its hits and returns the ids the row rules out', async () => {
+		const fetchMock = mockFetchOnce(['43886']);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const hit = {
+			id: '43886',
+			canonical_title: "Jujutsu Kaisen New Year's Special"
+		} as KitsuAnimeRef;
+		const ids = await kitsuGuessRuledOut(
+			'Jujutsu Kaisen (TV)',
+			24,
+			[hit],
+			'hianime:jujutsu-kaisen-237',
+			true
+		);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/guess/ruled-out`);
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(init?.body as string)).toEqual({
+			key: 'hianime:jujutsu-kaisen-237',
+			title: 'Jujutsu Kaisen (TV)',
+			episode: 24,
+			hits: [hit],
+			search: true
+		});
+		expect(ids).toEqual(['43886']);
+	});
+});
+
 describe('kitsuSearchPage', () => {
 	it('POSTs the query and offset to the paged route and returns the page', async () => {
 		const fetchMock = mockFetchOnce({ hits: [], next_offset: 40 });
@@ -1452,7 +1481,7 @@ describe('settingsGet', () => {
 		const cfg: Config = {
 			locale: 'en',
 			mode: 'sub',
-			quality: 'best',
+			download_quality: 'best',
 			external_player: 'mpv',
 			external_player_kind: 'mpv',
 			external_player_custom_args: '',
@@ -1480,7 +1509,7 @@ describe('settingsPut', () => {
 		const cfg: Config = {
 			locale: 'pt-BR',
 			mode: 'dub',
-			quality: '1080',
+			download_quality: '1080',
 			external_player: 'vlc',
 			external_player_kind: 'vlc',
 			external_player_custom_args: '',
@@ -2141,5 +2170,71 @@ describe('downloadStream', () => {
 		es.dispatch('done', 'not-json');
 		await expect(promise).rejects.toBeDefined();
 		expect(es.closed).toBe(true);
+	});
+});
+
+// A read a page starts holds one of the API lane's six connections
+// until it answers. Each read takes the signal of the visit that asked
+// for it and hands it to its request, so the page that goes can cancel
+// what nobody will read.
+describe('reads a page can cancel', () => {
+	const reads: Array<[string, (signal: AbortSignal) => Promise<unknown>]> = [
+		['appInfo', (signal) => appInfo({ signal })],
+		['historyList', (signal) => historyList({ signal })],
+		['historyByKitsu', (signal) => historyByKitsu('7', { signal })],
+		['historyNumber', (signal) => historyNumber('show-1', { signal })],
+		['watchedAtAll', (signal) => watchedAtAll({ signal })],
+		['settingsGet', (signal) => settingsGet({ signal })],
+		['downloadDefaultDir', (signal) => downloadDefaultDir({ signal })],
+		['kitsuSearch', (signal) => kitsuSearch('frieren', { signal })],
+		['kitsuSearchPage', (signal) => kitsuSearchPage('frieren', 0, 'relevance', { signal })],
+		['kitsuAnimeDetail', (signal) => kitsuAnimeDetail('7', { signal })],
+		['kitsuAnimeBySlug', (signal) => kitsuAnimeBySlug('frieren', { signal })],
+		['kitsuTrending', (signal) => kitsuTrending({ signal })],
+		['kitsuTrendingAnilist', (signal) => kitsuTrendingAnilist({ signal })],
+		['kitsuTopRated', (signal) => kitsuTopRated({ signal })],
+		['kitsuByMalIds', (signal) => kitsuByMalIds([1], { signal })],
+		['kitsuEpisodes', (signal) => kitsuEpisodes('7', 1, { signal })],
+		['airingGet', (signal) => airingGet('7', { signal })],
+		['aniskipGet', (signal) => aniskipGet('7', '1', 1420, { signal })],
+		['kitsuTitleMatchGet', (signal) => kitsuTitleMatchGet('Frieren', 1, null, null, { signal })],
+		['allmangaKitsuMapGet', (signal) => allmangaKitsuMapGet('show-1', { signal })],
+		['allmangaKitsuMapPlayed', (signal) => allmangaKitsuMapPlayed('show-1', { signal })],
+		[
+			'kitsuResolveAllmangaShowId',
+			(signal) => kitsuResolveAllmangaShowId('show-1', false, { signal })
+		],
+		[
+			'kitsuGuessRuledOut',
+			(signal) => kitsuGuessRuledOut('Frieren', 1, [], 'show-1', true, { signal })
+		],
+		['availabilityBatch', (signal) => availabilityBatch(['7'], 'sub', { signal })]
+	];
+
+	it.each(reads)('%s hands its signal to the request', async (_name, read) => {
+		const fetchMock = mockFetchOnce([]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const visit = new AbortController();
+		await read(visit.signal);
+		expect(lastCall(fetchMock).init?.signal).toBe(visit.signal);
+	});
+
+	it('a GET asked without a signal sends no request options, as before', async () => {
+		const fetchMock = mockFetchOnce([]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTopRated();
+		expect(lastCall(fetchMock).init).toBeUndefined();
+	});
+
+	it('a read whose signal is aborted rejects with the abort, not with a backend failure', async () => {
+		globalThis.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+			if (init?.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+			return new Response('[]');
+		}) as unknown as typeof fetch;
+		const visit = new AbortController();
+		visit.abort();
+		await expect(settingsGet({ signal: visit.signal })).rejects.toMatchObject({
+			name: 'AbortError'
+		});
 	});
 });

@@ -4,7 +4,8 @@
   The motifs are restraint: serif voice, mono numerals, hairline rules.
 -->
 <script lang="ts">
-	import { onMount, tick, untrack } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
+	import { beginVisit } from '$lib/navigation/visit';
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { Snapshot } from '@sveltejs/kit';
 	import { page } from '$app/state';
@@ -167,6 +168,15 @@
 		};
 	}
 
+	// The page's own reads (the settings and the two discovery rows),
+	// cancelled when it goes, with the search the runner has out; what
+	// they answer after reaches nothing ($lib/navigation/visit).
+	const pageReads = beginVisit();
+	onDestroy(() => {
+		pageReads.end();
+		searchRunner.stop();
+	});
+
 	onMount(async () => {
 		// Resolve settings before kicking off the discovery requests
 		// so the filter calls below see the user's actual mode. Naive
@@ -176,18 +186,19 @@
 		// settingsGet is a single fast IPC; awaiting once on mount is
 		// cheap.
 		try {
-			config = await settingsGet();
+			config = await pageReads.keep(settingsGet({ signal: pageReads.signal }));
 		} catch {
 			// Settings fetch failed — fall through with config null;
 			// pickAvailabilityMode handles that with 'sub' default.
 		}
 		const mode = pickAvailabilityMode(config);
-		kitsuTrending()
-			.then((t) => filterAvailable(t, mode))
+		const signal = pageReads.signal;
+		void pageReads
+			.keep(kitsuTrending({ signal }).then((t) => filterAvailable(t, mode, { signal })))
 			.then((t) => (trending = t))
 			.catch(() => (trending = []));
-		kitsuTopRated()
-			.then((t) => filterAvailable(t, mode))
+		void pageReads
+			.keep(kitsuTopRated({ signal }).then((t) => filterAvailable(t, mode, { signal })))
 			.then((t) => (topRated = t))
 			.catch(() => (topRated = []));
 	});
@@ -292,13 +303,13 @@
 	// The closures below are the page-side adapter, one Svelte
 	// reassignment each.
 	const searchRunner = createSearchRunner({
-		searchPage: kitsuSearchPage,
+		searchPage: (q, offset, order, signal) => kitsuSearchPage(q, offset, order, { signal }),
 		getConfig: async () => {
 			// Same race as onMount: a fast ?q= deeplink can fire before
 			// settingsGet has resolved on first load. The runner caches
 			// the result so DUB users never search under the 'sub'
 			// fallback twice.
-			if (!config) config = await settingsGet();
+			if (!config) config = await settingsGet({ signal: pageReads.signal });
 			return config;
 		},
 		pickMode: pickAvailabilityMode,
