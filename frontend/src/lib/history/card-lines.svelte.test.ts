@@ -1,5 +1,6 @@
-// Home's cards' lines, as the backend answers them: only the answer
-// for the rows as they are now counts. Which line a card stands for is
+// Home's cards' lines, as the backend answers them: the cards draw the
+// latest answer, and a click acts only on the answer for the rows as
+// they are now. Which line a card stands for is
 // the backend's rule (commands/card_line.rs, its own tests).
 
 import { describe, expect, it, vi } from 'vitest';
@@ -99,6 +100,29 @@ describe('CardLines', () => {
 		asks[0].answer(true);
 		await tick();
 		expect(settled).toBe(true);
+	});
+
+	it('draws the last answer after a failed later one, while a click acts on each row itself', async () => {
+		const { ask, asks } = gated();
+		const lines = new CardLines(ask);
+		lines.update(rows('7158'));
+		asks[0].answer(true);
+		await lines.settled();
+		lines.update(rows('4013'));
+		asks[1].answer(false);
+		await lines.settled();
+		expect(lines.lineOf(PLAYED)).toBe(CARD);
+		expect(lines.clickLineOf(PLAYED)).toBe(PLAYED);
+	});
+
+	it('acts on the line the answer for the rows as they are names', async () => {
+		const { ask, asks } = gated();
+		const lines = new CardLines(ask);
+		lines.update(rows('7158'));
+		expect(lines.clickLineOf(PLAYED)).toBe(PLAYED);
+		asks[0].answer(true);
+		await lines.settled();
+		expect(lines.clickLineOf(PLAYED)).toBe(CARD);
 	});
 
 	it('stands each card for its own row after a failed first answer, and asks again when the rows change', async () => {
