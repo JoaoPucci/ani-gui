@@ -649,6 +649,34 @@ describe('makeStartResume (after the viewer moved on)', () => {
 		expect(c.claims).toEqual(['claim']);
 	});
 
+	it('claims navigation and holds the card busy before its line is known, and plays as that line once it is', async () => {
+		const c = claimed();
+		let line!: (row: string) => void;
+		const h = makeHarness({
+			isGuess: (id) => id === 'h-card',
+			claimNavigation: () => {
+				h.log.push('claim');
+				return c.claimNavigation();
+			}
+		});
+		const started = makeStartResume(h.deps)(
+			makeEntry('h-played', '5', 'Show'),
+			makeMatch('k1', 12),
+			12,
+			true,
+			new Promise<string>((r) => (line = r))
+		);
+		await Promise.resolve();
+		// A second click meanwhile finds the card busy.
+		expect(h.log).toEqual(['claim', 'busy:k1']);
+		line('h-card');
+		await started;
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: true, row: 'h-card' }),
+			expect.any(Function)
+		);
+	});
+
 	it('opens no player once the claim lapsed, and lets the card go', async () => {
 		const c = claimed();
 		const h = makeHarness({

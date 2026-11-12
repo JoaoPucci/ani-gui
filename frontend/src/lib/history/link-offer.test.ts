@@ -75,9 +75,12 @@ describe('loadCandidates', () => {
 		expect(out).toEqual({ candidates: FOUND, failed: false });
 	});
 
-	it('says it found none when the backend cannot answer', async () => {
+	it("says so when the backend cannot answer, keeping the card's own show to pick", async () => {
 		const down = deps({ candidates: async () => Promise.reject(new Error('down')) });
-		expect(await loadCandidates(down, OFFER, 1)).toEqual({ candidates: [], failed: true });
+		expect(await loadCandidates(down, OFFER, 1)).toEqual({
+			candidates: [{ ref: ref(GUESS), current: true, warnings: [] }],
+			failed: true
+		});
 	});
 
 	it("asks with the arrival's signal", async () => {

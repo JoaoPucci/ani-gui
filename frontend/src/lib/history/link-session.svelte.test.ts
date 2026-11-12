@@ -193,7 +193,7 @@ describe('LinkSession', () => {
 		const s = new LinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS);
 		await s.start();
-		expect(s.candidates).toEqual([]);
+		expect(s.candidates?.map((c) => [c.ref.id, c.current])).toEqual([[GUESS, true]]);
 		expect(s.failed).toBe(true);
 		f.deps.candidates = candidates;
 		await s.search('gintama');

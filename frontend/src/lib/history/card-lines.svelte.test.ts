@@ -55,22 +55,36 @@ describe('CardLines', () => {
 		expect(ask).toHaveBeenCalledTimes(1);
 	});
 
-	it('shows no answer about rows since changed, and asks for the rows as they are once it lands', async () => {
+	it('keeps drawing the last answer while one for changed rows is out, and asks for the rows as they are', async () => {
 		const { ask, asks } = gated();
 		const lines = new CardLines(ask);
 		lines.update(rows('7158'));
-		// The 2000 line is linked to its own show while the first ask is out.
-		lines.update(rows('4013'));
-		expect(ask).toHaveBeenCalledTimes(1);
 		asks[0].answer(true);
-		await tick();
-		// The first answer was about the rows before the link.
-		expect(lines.lineOf(PLAYED)).toBe(PLAYED);
+		await lines.settled();
+		// Another row's match lands: the cards keep their lines and pills
+		// until the answer for the rows as they are now.
+		lines.update(rows('4013'));
+		expect(lines.lineOf(PLAYED)).toBe(CARD);
+		expect(lines.correctable(PLAYED)).toBe(true);
 		expect(asks[1].rows).toEqual(rows('4013'));
 		asks[1].answer(true);
 		await lines.settled();
 		expect(lines.lineOf(PLAYED)).toBe(PLAYED);
 		expect(lines.lineOf(CARD)).toBe(CARD);
+	});
+
+	it('asks once for rows that changed while an answer was out, with the latest rows', async () => {
+		const { ask, asks } = gated();
+		const lines = new CardLines(ask);
+		lines.update(rows('7158'));
+		lines.update(rows('4013'));
+		expect(ask).toHaveBeenCalledTimes(1);
+		asks[0].answer(true);
+		await tick();
+		expect(asks[1].rows).toEqual(rows('4013'));
+		asks[1].answer(true);
+		await lines.settled();
+		expect(lines.lineOf(PLAYED)).toBe(PLAYED);
 	});
 
 	it('settles once no ask is out, and at once when none is', async () => {
@@ -87,7 +101,7 @@ describe('CardLines', () => {
 		expect(settled).toBe(true);
 	});
 
-	it('stands each card for its own row after a failed answer, and asks again when the rows change', async () => {
+	it('stands each card for its own row after a failed first answer, and asks again when the rows change', async () => {
 		const { ask, asks } = gated();
 		const lines = new CardLines(ask);
 		lines.update(rows('7158'));
