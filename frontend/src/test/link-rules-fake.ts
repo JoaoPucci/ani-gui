@@ -95,15 +95,18 @@ const ORDINALS = [
 /** A slug's season as the backend reads it (`cour_from_slug`): a
  *  trailing `-part-N` / `-cour-N` / `-season-N`, or an ordinal before
  *  the keyword, spelled, with a suffix, or a bare number. */
+/** A number the backend holds as a season (a u32), else none. */
+const held = (n: number): number | null => (n <= 4_294_967_295 ? n : null);
+
 function slugSeason(slug: string): number | null {
 	const keyword = slug.match(/(?:^|-)(?:part|cour|season)-(\d+)$/i);
-	if (keyword) return Number(keyword[1]);
+	if (keyword) return held(Number(keyword[1]));
 	const ordinal = slug.match(/(?:^|-)([a-z0-9]+)-(?:part|cour|season)$/i)?.[1]?.toLowerCase();
 	if (!ordinal) return null;
 	const spelled = ORDINALS.indexOf(ordinal);
 	if (spelled >= 0) return spelled + 1;
 	const digits = ordinal.replace(/(?:st|nd|rd|th)$/, '');
-	return /^\d+$/.test(digits) ? Number(digits) : null;
+	return /^\d+$/.test(digits) ? held(Number(digits)) : null;
 }
 
 function seasonOf(ref: KitsuAnimeRef): number {

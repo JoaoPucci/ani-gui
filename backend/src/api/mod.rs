@@ -990,8 +990,8 @@ mod tests {
 
     /// Build a stub AppState for router tests. Uses an in-memory SQLite
     /// pool, a tempdir for image cache + config, and a Kitsu client
-    /// pointing at an unused base URL (tests that don't need Kitsu
-    /// won't touch the network).
+    /// pointing at a local address that refuses at once: a route that
+    /// reads Kitsu meets a network failure, never the network.
     pub(super) fn test_app_state(td: &TempDir) -> AppState {
         // Refused at once: a route that reads Kitsu meets a network failure.
         let kitsu_base = "http://127.0.0.1:1";
