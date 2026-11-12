@@ -30,7 +30,9 @@
 #     no script names `dist-e2e`, and no script runs `e2e` (the word
 #     after pnpm, npm, yarn or `run`); a root script names none of them.
 #     The names are matched as text anywhere in a script, quoted strings
-#     included. So no release script reaches the feature build, or
+#     included, so a script that only mentions one (a clean script
+#     removing dist-e2e, say) is refused too and belongs in the allowed
+#     list above if it is wanted. So no release script reaches the feature build, or
 #     packages under that configuration with a target of its own (a CLI
 #     target overrides the configuration's `dir`), or points a release
 #     build at the e2e directories;
@@ -43,8 +45,11 @@
 # script that builds through a helper file it calls, a name spelled
 # another way (built from parts, an environment variable, a glob), a
 # script that runs `e2e` other than as the word after a package
-# manager or `run`, or a script that packages a binary some other
-# command left behind
+# manager or `run`, anything outside package.json scripts (a workflow
+# step, or a person, running package:e2e or build:backend:e2e, with or
+# without a target appended, which makes an installable package that
+# carries the test-run backend), or a script that packages a binary
+# some other command left behind
 # (`dist:win` packages whatever target/release holds; `package:win`
 # builds it first).
 #

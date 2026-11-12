@@ -113,9 +113,7 @@ function proxyEnv(origin: string): Record<string, string> {
 }
 
 /** `env` without a test run's flags file. */
-function withoutFlagsFile(
-	env: Record<string, string | undefined> | undefined
-): Record<string, string | undefined> {
+function withoutFlagsFile(env: Record<string, string> | undefined): Record<string, string> {
 	const { ANI_GUI_TEST_FLAGS_FILE: _dropped, ...rest } = env ?? {};
 	return rest;
 }
@@ -169,10 +167,10 @@ function removeAfterExit(dir: string): void {
  *  or at once if the launch never starts. A worker killed before its
  *  app exits leaves the profile behind.
  *
- *  `flagsFile` is the test run's flags file (`ANI_GUI_TEST_FLAGS_FILE`)
- *  and the only way to name one: a value in `env`, inherited from the
- *  shell that runs the suite or not, is dropped, so a launch without
- *  it runs with the defaults (flags-file.ts writes one). */
+ *  `flagsFile` is the test run's flags file (`ANI_GUI_TEST_FLAGS_FILE`,
+ *  which flags-file.ts writes) and the only way to name one: a value in
+ *  `env`, inherited from the shell that runs the suite or not, is
+ *  dropped, so a launch without it runs with the defaults. */
 export async function launchPackagedApp(
 	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env'],
 	{
