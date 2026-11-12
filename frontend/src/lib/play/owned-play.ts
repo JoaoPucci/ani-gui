@@ -87,7 +87,6 @@ export function playArgsFor(input: {
 	title: string;
 	episode: number;
 	mode: 'sub' | 'dub';
-	quality: string;
 	show: KitsuAnimeRef | null;
 	kitsuId: string | undefined;
 	prefetch?: boolean;
@@ -107,7 +106,6 @@ export function playArgsFor(input: {
 		title: input.title,
 		episode: String(input.episode),
 		mode: input.mode,
-		quality: input.quality,
 		episode_count: input.show?.episode_count ?? null,
 		year: yearFromKitsuRef(input.show),
 		subtype: input.show?.subtype ?? null,
@@ -141,11 +139,6 @@ export function playedRecord(
 /** The audio a play asks for: anything but "dub" reads as sub. */
 export function playMode(config: { mode: string } | null | undefined): 'sub' | 'dub' {
 	return config?.mode === 'dub' ? 'dub' : 'sub';
-}
-
-/** The quality a play asks for; none set reads as "best". */
-export function playQuality(config: { quality: string } | null | undefined): string {
-	return config?.quality ?? 'best';
 }
 
 /** Record a played episode for the clicked show: stamp Continue

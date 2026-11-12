@@ -37,13 +37,21 @@ export interface ContinueWatchingLoaderDeps {
 		signal: AbortSignal
 	) => Promise<{ episode_count: number | null; episode_count_approximate?: boolean } | null>;
 	/**
-	 * Resolves to the configured availability mode. Async because the
-	 * home page bootstraps settingsGet() in parallel with historyList()
-	 * — the loader must hold on per-row probes until the configured
-	 * mode is known, otherwise it would read the wrong (sub vs. dub)
-	 * playable count while startResume later uses the loaded mode.
+	 * Resolves to the configured availability mode, the default for a
+	 * show with no audio of its own (`modeFor`). Async because the home
+	 * page bootstraps settingsGet() in parallel with historyList() — the
+	 * loader must hold on per-row probes until the default is known,
+	 * otherwise it would read the wrong (sub vs. dub) playable count
+	 * while startResume later plays in the show's mode, which falls back
+	 * to the same default.
 	 */
 	getMode: () => Promise<'sub' | 'dub'>;
+	/**
+	 * The audio a row's show plays in, given the configured mode as the
+	 * default (`audioFor` in `$lib/play/audio-choice`). Omitted, every
+	 * row reads the configured mode.
+	 */
+	modeFor?: (kitsuId: string, fallback: 'sub' | 'dub') => 'sub' | 'dub';
 	/**
 	 * Fired per entry the moment its match is known — WITHOUT waiting
 	 * on the availability probe — and a second time if a probe later
@@ -170,7 +178,8 @@ export async function loadContinueWatchingState(
 			}
 			const job = queue.shift();
 			if (!job) break;
-			const mode = await modePromise;
+			const configured = await modePromise;
+			const mode = deps.modeFor ? deps.modeFor(job.match.id, configured) : configured;
 			let count: number | null;
 			// Whether that count came from the search hit rather than the
 			// detail fetch. Forwarded explicitly — see finalizeRow.

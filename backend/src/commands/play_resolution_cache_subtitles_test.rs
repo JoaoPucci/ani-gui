@@ -57,7 +57,7 @@ fn a_row_written_without_tracks_reads_as_none() {
 /// move past it for the tracks to be read again.
 #[test]
 fn a_row_whose_tracks_took_the_label_as_language_is_not_read() {
-    let key = cache_key("t", "sub", "best", "1", None, None, None);
+    let key = cache_key("t", "sub", "1", None, None, None);
     assert!(
         !key.starts_with("play:v26:"),
         "the key must have moved past play:v26: — {key}"
@@ -72,7 +72,7 @@ fn a_row_whose_tracks_took_the_label_as_language_is_not_read() {
 /// must move past it.
 #[test]
 fn a_row_cut_at_the_old_cap_is_not_read() {
-    let key = cache_key("t", "sub", "best", "1", None, None, None);
+    let key = cache_key("t", "sub", "1", None, None, None);
     assert!(
         !key.starts_with("play:v27:"),
         "the key must have moved past play:v27: — {key}"

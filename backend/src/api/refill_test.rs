@@ -2,7 +2,6 @@
 //! header only when there are any, and a wait answers for each ended
 //! ticket.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -13,8 +12,9 @@ use super::{with_refills, REFILL_HEADER};
 use crate::app::AppState;
 use crate::cache::meta_cache_put;
 
-fn test_state() -> Arc<AppState> {
-    Arc::new(AppState {
+fn test_state() -> crate::scratch::Scratch<Arc<AppState>> {
+    let dirs = crate::scratch::dir();
+    let state = Arc::new(AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -23,21 +23,23 @@ fn test_state() -> Arc<AppState> {
         proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: PathBuf::from("/tmp/ani-gui-refill/history"),
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-refill/images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(
             reqwest::Client::new(),
             "http://127.0.0.1:1",
         ),
-        config_path: PathBuf::from("/tmp/ani-gui-refill/config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-refill/state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-    })
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+    });
+    dirs.hold(state)
 }
 
 async fn send(
@@ -91,15 +93,16 @@ async fn a_fully_served_episode_page_carries_no_refill() {
         3600,
     )
     .expect("seed");
-    let resp = send(state, "GET", "/api/kitsu/episodes/12?page=1", "").await;
+    let resp = send(state.clone(), "GET", "/api/kitsu/episodes/12?page=1", "").await;
     assert_eq!(resp.status(), StatusCode::OK);
     assert!(resp.headers().get(REFILL_HEADER).is_none());
 }
 
 #[tokio::test]
 async fn a_wait_on_a_ticket_never_issued_answers_it_ended_unlanded() {
+    let state = test_state();
     let resp = send(
-        test_state(),
+        state.clone(),
         "POST",
         "/api/refills/wait",
         r#"{"tickets":[18446744073709551615]}"#,

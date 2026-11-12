@@ -145,7 +145,7 @@ describe('canRecoverFromStaleStream', () => {
 	it('is true when detail is populated and no switch is in flight', () => {
 		// Only detail is hard-required for the
 		// eviction payload (canonical_title, alt_titles, episode_count,
-		// year). settings has graceful fallbacks (sub/best) inside the
+		// year). settings has a graceful fallback (sub) inside the
 		// recovery flow, mirroring switchToEpisode's pattern.
 		expect(canRecoverFromStaleStream({ detail, switchBusy: false })).toBe(true);
 	});
@@ -421,5 +421,13 @@ describe('recoveryAfterEviction, with the switch lock held', () => {
 
 	it('stands down for a page left, whatever holds the lock', () => {
 		expect(recoveryAfterEviction({ ...quiet, left: true, switchBusyNow: true })).toBe('stand-down');
+	});
+});
+
+describe('canRecoverFromStaleStream — an episode handed to another player', () => {
+	it('recovers nothing: a recovery would resolve and start the embedded video again', () => {
+		const detail = {} as unknown;
+		expect(canRecoverFromStaleStream({ detail, switchBusy: false, handedOff: true })).toBe(false);
+		expect(canRecoverFromStaleStream({ detail, switchBusy: false, handedOff: false })).toBe(true);
 	});
 });

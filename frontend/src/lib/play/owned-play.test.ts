@@ -5,7 +5,6 @@ import {
 	playArgsFor,
 	playedRecord,
 	playMode,
-	playQuality,
 	recordPlayed,
 	runOwnedPlay
 } from './owned-play';
@@ -213,7 +212,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: 5,
 			mode: 'dub',
-			quality: '1080',
 			show,
 			kitsuId: '42'
 		});
@@ -221,7 +219,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: '5',
 			mode: 'dub',
-			quality: '1080',
 			episode_count: 12,
 			year: 2019,
 			subtype: 'TV',
@@ -229,6 +226,8 @@ describe('playArgsFor', () => {
 		});
 		expect(args.alt_titles).toEqual(altTitlesFromKitsu(show));
 		expect(args.alt_titles).toContain('Show EN');
+		// No quality: the backend resolves the master for every play.
+		expect('quality' in args).toBe(false);
 	});
 
 	it('carries no Kitsu id when the play records none', () => {
@@ -236,7 +235,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: 5,
 			mode: 'sub',
-			quality: 'best',
 			show,
 			kitsuId: undefined
 		});
@@ -248,7 +246,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: 1,
 			mode: 'sub' as const,
-			quality: 'best',
 			show,
 			kitsuId: '42'
 		};
@@ -261,7 +258,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: 1,
 			mode: 'sub' as const,
-			quality: 'best',
 			show,
 			kitsuId: '42'
 		};
@@ -274,7 +270,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: 1,
 			mode: 'sub',
-			quality: 'best',
 			show: null,
 			kitsuId: '42'
 		});
@@ -287,7 +282,6 @@ describe("playArgsFor — a guessed card's row", () => {
 		title: 'Show',
 		episode: 3,
 		mode: 'sub' as const,
-		quality: 'best',
 		show: null,
 		kitsuId: undefined
 	};
@@ -306,7 +300,7 @@ describe("playArgsFor — a guessed card's row", () => {
 });
 
 describe('playedRecord', () => {
-	const args = { title: 'Show', episode: '5', mode: 'sub', quality: 'best' } as const;
+	const args = { title: 'Show', episode: '5', mode: 'sub' } as const;
 
 	it('records and mirrors a play no guess opened under the show', () => {
 		expect(playedRecord(args, '42', false, {})).toEqual({
@@ -342,7 +336,6 @@ describe('playArgsFor — warms', () => {
 			title: 'Show',
 			episode: 3,
 			mode: 'sub',
-			quality: 'best',
 			show: null,
 			kitsuId: '42',
 			prefetch: true
@@ -355,7 +348,6 @@ describe('playArgsFor — warms', () => {
 			title: 'Show',
 			episode: 3,
 			mode: 'sub',
-			quality: 'best',
 			show: null,
 			kitsuId: '42'
 		});
@@ -363,20 +355,18 @@ describe('playArgsFor — warms', () => {
 	});
 });
 
-describe('playMode / playQuality', () => {
-	it('reads anything but dub as sub, and a missing quality as best', () => {
+describe('playMode', () => {
+	it('reads anything but dub as sub', () => {
 		expect(playMode({ mode: 'dub' })).toBe('dub');
 		expect(playMode({ mode: 'sub' })).toBe('sub');
 		expect(playMode({ mode: 'weird' })).toBe('sub');
 		expect(playMode(null)).toBe('sub');
-		expect(playQuality({ quality: '720' })).toBe('720');
-		expect(playQuality(null)).toBe('best');
 	});
 });
 
 describe('recordPlayed', () => {
 	const show = { episode_count: 12, status: 'finished' } as unknown as KitsuAnimeRef;
-	const args = { title: 'Show', episode: '5', mode: 'sub', quality: 'best' } as const;
+	const args = { title: 'Show', episode: '5', mode: 'sub' } as const;
 
 	it('stamps the watch and mirrors it to the trackers for the clicked show', async () => {
 		const markWatched = vi.fn(async () => {});

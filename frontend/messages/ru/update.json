@@ -7,5 +7,6 @@
 	"dialog_latest_label": "Последняя",
 	"dialog_close_label": "Закрыть",
 	"dialog_open_releases_label": "Открыть страницу релизов",
-	"dialog_open_releases_aria_label": "Открыть страницу релизов GitHub в браузере"
+	"dialog_open_releases_aria_label": "Открыть страницу релизов GitHub в браузере",
+	"dialog_notes_aria_label": "Примечания к выпуску"
 }

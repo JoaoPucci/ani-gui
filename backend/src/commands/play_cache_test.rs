@@ -484,6 +484,7 @@ fn state_in(td: &tempfile::TempDir) -> crate::app::AppState {
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     }
 }
 
@@ -566,7 +567,6 @@ async fn a_cached_handoff_refreshes_the_providers_positive_row() {
     let key = crate::commands::play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
-        "best",
         &args.episode,
         args.year,
         args.episode_count,
@@ -652,7 +652,6 @@ fn seed_cached_row(
     let key = crate::commands::play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
-        "best",
         &args.episode,
         args.year,
         args.episode_count,
@@ -858,7 +857,6 @@ async fn row_redirecting_elsewhere(
     let key = crate::commands::play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
-        "best",
         &args.episode,
         args.year,
         args.episode_count,
@@ -898,7 +896,6 @@ fn row_of(
     let key = crate::commands::play_resolution_cache::cache_key(
         &args.title,
         &args.mode,
-        "best",
         &args.episode,
         args.year,
         args.episode_count,

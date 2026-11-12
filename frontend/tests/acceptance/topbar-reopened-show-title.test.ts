@@ -111,7 +111,7 @@ function useBackend() {
 		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json(null)),
 		http.post(`${API_BASE}/api/play`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
 	);
 }

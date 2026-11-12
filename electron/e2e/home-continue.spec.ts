@@ -21,7 +21,7 @@
  * match. Live `kitsuSearch` is stubbed for the orphan case only.
  */
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
+import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -37,7 +37,7 @@ import {
 	topRated,
 	trending
 } from './fixtures/kitsu';
-import { launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -116,10 +116,10 @@ async function launchAppWithContinueStubsOnce(
 		ANI_GUI_UNATTENDED: '1'
 	};
 
-	const app = await launchPackagedApp(cleanEnv);
+	const app = await launchPackagedApp(cleanEnv, { profile: tmp });
 	onLaunch(app);
 	const context = app.context();
-	const page = await app.firstWindow();
+	const page = await appWindow(app);
 
 	const watchedAt: Record<string, number> = {};
 	for (const h of opts.history) watchedAt[h.id] = 1_700_000_000;
@@ -128,11 +128,11 @@ async function launchAppWithContinueStubsOnce(
 	// the context). page.route() applies to the specific page from the
 	// moment it's registered onward; the bounce below then forces a
 	// fresh navigation whose fetches all flow through this handler.
-	// Earlier attempts to register on context.route before firstWindow
+	// Earlier attempts to register on context.route before appWindow
 	// raced the renderer's initial onMount fetch batch (CI runs
 	// 26891889692, 26892237750, 26893103223 — test #4 screenshot
 	// consistently showed real-Kitsu content despite the bounce).
-	// Registering AFTER firstWindow on the page means there's no
+	// Registering AFTER appWindow on the page means there's no
 	// pre-page window where the route can be missed.
 	await page.route('**/api/**', async (r) => {
 		const u = new URL(r.request().url());
@@ -193,7 +193,6 @@ async function launchAppWithContinueStubsOnce(
 				title: u.searchParams.get('title'),
 				episode: u.searchParams.get('episode'),
 				mode: u.searchParams.get('mode'),
-				quality: u.searchParams.get('quality'),
 				prefetch: u.searchParams.get('prefetch')
 			};
 			opts.onPlay?.(body);
@@ -237,6 +236,10 @@ async function launchAppWithContinueStubsOnce(
 				media_kind: 'Hls'
 			});
 		}
+
+		// The backend answers skip times with a list, empty when it knows
+		// none; the page reads it as one once the length is known.
+		if (p.startsWith('/api/aniskip/')) return j([]);
 
 		// Default: empty 200 so unknown probes don't blow up under Xvfb
 		// (the test cares about the home-strip surfaces; everything else
@@ -287,11 +290,10 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 			cleanup: async () => {
 				const dead = pending;
 				pending = null;
-				// A dead app's close() hangs while its backend lives; kill
-				// the whole tree first (lib/cold-launch.cjs).
+				// Stop what is left of the dead app: its own process group,
+				// nothing else (lib/own-group.cjs).
 				if (dead) {
-					killTree(dead.process().pid);
-					await dead.close();
+					await stopDeadApp(dead);
 				}
 			}
 		}
@@ -530,9 +532,10 @@ async function continueCardHeight(opts: StubOptions, selector: string): Promise<
 		await waitForStripVisible(page);
 		const strip = page.getByRole('region', { name: /continue watching/i });
 		await expect(strip).toBeVisible({ timeout: 10_000 });
-		// Class locators, not roles: the strip also holds the rail's
-		// kebab and each card's delete chip, so `getByRole('button')`
-		// picks up a 33px chip and compares it against a card.
+		// Class locators, not roles: the strip also holds each card's
+		// delete chip, so `getByRole('button')` picks up a 33px chip and
+		// compares it against a card. (The row's Clear history action
+		// sits in the row's header, outside this region.)
 		const card = strip.locator(selector).first();
 		await expect(card).toBeVisible({ timeout: 10_000 });
 		return (await card.boundingBox())?.height ?? 0;
