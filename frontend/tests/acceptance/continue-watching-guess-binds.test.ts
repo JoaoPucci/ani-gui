@@ -310,7 +310,9 @@ describe('a guessed Continue card beside a session the show page warmed', () => 
 		await getOrFire(makeKey(KITSU_ID, 4, 'sub'), async () => ({
 			session_id: 'warm',
 			media_url: `${API_BASE}/s/warm/file.mp4`,
-			media_kind: 'mp4' as const
+			media_kind: 'mp4' as const,
+			cache_hit: false,
+			subtitles: []
 		}));
 
 		const { stream } = await playTheCard(true);

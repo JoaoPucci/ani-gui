@@ -475,7 +475,9 @@ describe('playStream', () => {
 		return {
 			session_id: 'sid',
 			media_url: `${BASE}/s/sid/master.m3u8`,
-			media_kind: 'hls'
+			media_kind: 'hls',
+			cache_hit: false,
+			subtitles: []
 		};
 	}
 
@@ -863,7 +865,8 @@ describe('altTitlesFromKitsu', () => {
 	const baseRef = (overrides: Partial<KitsuAnimeRef>): KitsuAnimeRef => ({
 		id: '12',
 		canonical_title: 'Stub',
-		titles: undefined,
+		titles: {},
+		abbreviated_titles: [],
 		slug: null,
 		synopsis: null,
 		start_date: null,
@@ -879,7 +882,7 @@ describe('altTitlesFromKitsu', () => {
 		...overrides
 	});
 
-	it('returns empty list when titles is missing', () => {
+	it('returns empty list when titles is empty', () => {
 		expect(altTitlesFromKitsu(baseRef({}))).toEqual([]);
 	});
 
@@ -962,7 +965,7 @@ describe('altTitlesFromKitsu', () => {
 		]);
 	});
 
-	it('includes abbreviated_titles even when titles is missing', () => {
+	it('includes abbreviated_titles even when titles is empty', () => {
 		const ref = baseRef({ canonical_title: 'Canon', abbreviated_titles: ['alias'] });
 		expect(altTitlesFromKitsu(ref)).toEqual(['alias']);
 	});
