@@ -46,11 +46,12 @@ fn starts_option(token: &str) -> bool {
 }
 
 /// An option written with no value joined to it, and no placeholder.
-/// Not `--`, the end of options, and not a path (`/home/u/x.lua`): a
-/// `/switch` has no second `/`.
+/// Not `--`, the end of options, not `-`, which names standard input,
+/// and not a path (`/home/u/x.lua`): a `/switch` has no second `/`.
 fn is_bare_option(token: &str) -> bool {
     starts_option(token)
         && token != "--"
+        && token != "-"
         && !token.contains('=')
         && !token.contains('{')
         && !token.get(1..).is_some_and(|rest| rest.contains('/'))
