@@ -66,16 +66,22 @@ impl InternalSecret {
     ///   across failure modes — no oracle for whether the header was
     ///   present but malformed vs. simply wrong.
     pub fn validate_header(&self, headers: &HeaderMap) -> Result<(), AniError> {
-        use subtle::ConstantTimeEq;
         let raw = headers
             .get(&INTERNAL_SECRET_HEADER)
             .ok_or(AniError::InvalidToken)?;
         let got = raw.to_str().map_err(|_| AniError::InvalidToken)?;
-        if got.as_bytes().ct_eq(self.hex.as_bytes()).into() {
+        if self.matches(got) {
             Ok(())
         } else {
             Err(AniError::InvalidToken)
         }
+    }
+
+    /// Whether `got` is the secret, compared in constant time.
+    #[must_use]
+    pub fn matches(&self, got: &str) -> bool {
+        use subtle::ConstantTimeEq;
+        got.as_bytes().ct_eq(self.hex.as_bytes()).into()
     }
 }
 

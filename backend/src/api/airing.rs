@@ -93,7 +93,7 @@ mod tests {
             3600,
         )
         .expect("seed cache");
-        let router = crate::api::build_api_router(state.clone());
+        let router = crate::api::test_router(state.clone());
         let r = router
             .oneshot(
                 Request::builder()
