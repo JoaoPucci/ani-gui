@@ -236,11 +236,20 @@ for (const locale of ['en', 'pt-BR', 'es-419', 'ru']) {
 					document.head.append(style);
 				}, view.wider);
 				await expect(cell).toBeVisible({ timeout: 15_000 });
-				await cell.locator('.resume-card').hover();
 				await expect(pill).toHaveCount(1);
-				await expect.poll(async () => (await geometry(page)).opacity).toBe('1');
-
-				const g = await geometry(page);
+				// The pill shows only while its card is hovered. A single hover
+				// once left it hidden for the whole wait in CI, so each try
+				// leaves the card and enters it again, and the geometry
+				// asserted is the one read while the pill was on show.
+				let g = await geometry(page);
+				await expect
+					.poll(async () => {
+						await page.mouse.move(0, 0);
+						await cell.locator('.resume-card').hover();
+						g = await geometry(page);
+						return g.opacity;
+					})
+					.toBe('1');
 				const at = `${locale}, ${view.label}: ${JSON.stringify(g)}`;
 				testInfo.annotations.push({ type: 'geometry', description: at });
 				// Every word on show: nothing scrolled away or cut inside the pill.
@@ -269,6 +278,8 @@ for (const locale of ['en', 'pt-BR', 'es-419', 'ru']) {
 						height: g.poster.bottom - g.chip.top + 2 * around
 					}
 				});
+				// The shot shows the pill on show, as measured.
+				expect((await geometry(page)).opacity, `${at}, after the shot`).toBe('1');
 			}
 		} finally {
 			await stopApp(app);
