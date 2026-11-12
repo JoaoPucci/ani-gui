@@ -18,8 +18,7 @@
  */
 
 import type { ReadOptions } from '$lib/api';
-import { linkedNotice, linkFailure } from './link-notices';
-import { carryAudio } from './carry-audio';
+import { linkAnswered, linkFailed } from './link-answer';
 import { LinkPicker } from './link-picker.svelte';
 import { guessedGroup, type LinkDeps } from './link-offer';
 import { surfaceOfferRead, type OfferSurface, type SurfaceFind } from './picked-offer';
@@ -167,41 +166,24 @@ export class LinkSession extends LinkPicker {
 		const stayed = () => arrival === this.#arrival && onSurface();
 		this.busy = true;
 		this.error = null;
+		const asked = {
+			session: this,
+			deps: this.#deps,
+			offer,
+			chosen: chosen.ref,
+			from,
+			stayed,
+			onSurface
+		};
 		try {
 			const rows = this.group ?? (await guessedGroup(this.#deps, offer));
 			const outcome = await this.#deps.link(offer.entry.id, rows, chosen.ref.id);
-			// A correction asked later saved the line first: nothing was
-			// saved here, so nothing is said or carried, and the surface
-			// reads the line again as the later answer left it.
-			if (outcome.overtaken === true) {
-				if (stayed()) this.open = false;
-				if (onSurface()) this.#deps.refresh();
-				return false;
-			}
-			// A picked show with no Sub or Dub of its own takes the one the
-			// viewer was watching in ($lib/history/carry-audio.ts).
-			carryAudio(this.#deps, offer.current.id, chosen.ref.id);
-			this.#deps.notify(linkedNotice(chosen.ref.canonical_title));
-			if (stayed()) this.#landed(chosen.ref.id, from);
-			else if (onSurface()) this.#deps.refresh();
-			return true;
+			// $lib/history/link-answer.ts: an overtaken link saved nothing.
+			return linkAnswered(outcome, asked);
 		} catch (e) {
-			if (stayed()) this.error = linkFailure(e);
-			else this.#deps.notify({ kind: 'error', message: linkFailure(e) });
-			return false;
+			return linkFailed(e, asked);
 		} finally {
 			this.busy = false;
 		}
-	}
-
-	/** A link to `to` made and answered on the page `from`, the visit
-	 *  still on screen: the page is opened again without the card's row,
-	 *  since the row is linked and there is nothing left to offer, nor
-	 *  room to hold. */
-	#landed(to: string, from: string): void {
-		this.open = false;
-		this.offer = null;
-		if (to === from) this.#deps.refresh();
-		this.#deps.showPage(to, null);
 	}
 }
