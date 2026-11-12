@@ -27,8 +27,9 @@
 //! cache or from Kitsu, and a read Kitsu answers with a 404 or 410
 //! refuses the link (and marks
 //! the id gone, as any user read does). A row removed while that read
-//! was out is not linked, and neither is one another link saved since:
-//! the viewer's latest answer stands.
+//! was out is not linked, and neither is one a correction asked later
+//! has already saved: the viewer's latest answer stands, and the
+//! overtaken link says so (`overtaken`).
 //!
 //! A link has no undo: the user's answer to "is this the show you
 //! meant?" stands once given, and naming another show again is how it
@@ -123,7 +124,9 @@ pub fn link_group(state: &AppState, args: &LinkGroupArgs) -> Result<Vec<String>>
 /// or 410 for one Kitsu deleted); history and cache I/O errors.
 pub async fn link(state: &AppState, args: &LinkArgs) -> Result<LinkOutcome> {
     let kitsu_id = crate::kitsu_id::require(&args.kitsu_id)?;
-    let begun = crate::history::guard::epoch(&state.history_path);
+    // Taken as the request is asked: a correction asked later stands,
+    // whichever saves first.
+    let begun = crate::history::guard::hold(&state.history_path, |held| held.link_ticket());
     crate::commands::kitsu::kitsu_anime_detail_page(state, kitsu_id).await?;
     // Only the card's own listing: a row a guessed play wrote for
     // another listing is that show's history ([`card_listing`]).
@@ -141,12 +144,14 @@ fn link_held(
     begun: Epoch,
 ) -> Result<LinkOutcome> {
     let mut linked = plan_held(&held.rows()?, rows);
-    // A row removed since, or linked again by a later request that saved
-    // first, keeps what that write left: the viewer's latest answer.
-    linked.retain(|l| !held.link_overtaken_since(begun, &l.row));
+    linked.retain(|l| !held.show_removed_since(begun, &l.row));
+    // A row a correction asked after this one already saved keeps that
+    // answer: the viewer's latest stands.
+    let overtaken = linked.iter().any(|l| held.link_overtaken(begun, &l.row));
+    linked.retain(|l| !held.link_overtaken(begun, &l.row));
     for l in &mut linked {
         held.set_kitsu_id(&l.row, Some(kitsu_id.to_string()))?;
-        held.linked(&l.row);
+        held.linked(begun, &l.row);
         drop_other_mapping(state, &l.row, kitsu_id)?;
         // The user named the show: a refused watch leaves it on the row.
         crate::commands::linked_note::record(state, &l.row, kitsu_id)?;
@@ -154,7 +159,7 @@ fn link_held(
     Ok(LinkOutcome {
         kitsu_id: kitsu_id.to_string(),
         linked,
-        overtaken: false,
+        overtaken,
     })
 }
 

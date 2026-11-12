@@ -40,21 +40,23 @@ impl Held<'_> {
         removed.max(self.removals.cleared) > begun.0
     }
 
-    /// Record that the show `id`'s row was linked to a show the user
-    /// named.
-    pub fn linked(&mut self, id: &str) {
+    /// A ticket for a link asked now: later than every one handed out
+    /// before, and the moment its removal checks start from.
+    pub fn link_ticket(&mut self) -> Epoch {
         self.removals.moment += 1;
-        let now = self.removals.moment;
-        self.removals.linked.insert(id.to_owned(), now);
+        Epoch(self.removals.moment)
     }
 
-    /// Whether the show `id` was removed, the history cleared, or the
-    /// row linked to a show since `begun`: a link begun before then
-    /// leaves the row as the later write left it.
+    /// Record that the link with `ticket` linked the show `id`'s row.
+    pub fn linked(&mut self, ticket: Epoch, id: &str) {
+        self.removals.linked.insert(id.to_owned(), ticket.0);
+    }
+
+    /// Whether the link with `ticket` was overtaken on the show `id`'s
+    /// row: a link asked after it saved the row first.
     #[must_use]
-    pub fn link_overtaken_since(&self, begun: Epoch, id: &str) -> bool {
-        self.show_removed_since(begun, id)
-            || self.removals.linked.get(id).copied().unwrap_or(0) > begun.0
+    pub fn link_overtaken(&self, ticket: Epoch, id: &str) -> bool {
+        self.removals.linked.get(id).copied().unwrap_or(0) > ticket.0
     }
 
     /// Whether the show `id`'s row changed since `begun`: the show was
