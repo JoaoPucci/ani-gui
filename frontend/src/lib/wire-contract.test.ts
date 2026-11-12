@@ -18,12 +18,23 @@
 // What the check cannot see, it says so:
 // - It reads kinds, not values: a string field's allowed strings are
 //   held only where the renderer names them as a union, through the
-//   enum lists at the end.
+//   enum lists at the end, and the error kinds it compares against.
+// - A nested object field is held as an object; the struct it holds
+//   is held by its own entry. A map's values (`titles`, `cached`,
+//   `playable_episode_counts`) and the elements of an array of arrays
+//   are not held at all, and a field typed `any` would pass any spec.
+// - Which route answers which type is not held: each entry names its
+//   renderer type by hand. Answers that are not a struct (a map such
+//   as `/api/watched-at`, a bare string, a list of strings, and
+//   whether a route may answer `null`) are not in the contract.
+// - The backend's minimal samples are taken as written: a field set
+//   in one would read here as always sent.
 // - Request bodies are held by field name and by which fields the
-//   backend requires, not by the kinds of their values.
-// - Query strings, which the renderer builds as text, are not held.
-// - A nested object field is held as an object here; its own type is
-//   held by its own entry.
+//   backend requires, not by the kinds of their values, and a body
+//   nested in another (the guess's `hits`) is not held.
+// - Query strings and URL paths the renderer builds as text are not
+//   held, but for the proxy media URL below; nor is the search-page
+//   body, which the backend reads through structs local to its reader.
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -95,6 +106,7 @@ import type {
 import type { SetEntryBody } from './account/entry-api';
 import { WATCH_LATER_BRIDGE_MAX_IDS } from './account/watch-later-loader';
 import { buildMediaUrl } from './play/media-url';
+import type { SidecarTrack } from './play/sidecar-tracks';
 
 // — The spec a type implies ————————————————————————————————————————
 
@@ -672,6 +684,7 @@ same<(typeof PKCE_METHODS)[number], PkceWire['method']>(true);
 same<(typeof MEDIA_KINDS)[number], CreateSessionResponse['media_kind']>(true);
 same<(typeof VERSION_KINDS)[number], VersionInfo['kind']>(true);
 same<ExternalPlayerKind, Config['external_player_kind']>(true);
+same<SidecarTrack, SessionSubtitle>(true);
 const PROGRESS_KINDS = ['searching', 'matched', 'links_fetched'] as const;
 same<(typeof PROGRESS_KINDS)[number], PlayProgress['kind']>(true);
 
@@ -701,6 +714,25 @@ const ERROR_SPEC = {
 	stage: '?string',
 	host: '?string|null'
 } satisfies Spec<AniErrorPayload>;
+
+/** The error kinds the renderer compares an error's `kind` against. */
+const ERROR_KINDS_NAMED = [
+	'config',
+	'episode_unavailable',
+	'ffmpeg_missing',
+	'gate_refused',
+	'io',
+	'network',
+	'no_results',
+	'parse_failed',
+	'player_spawn_failed',
+	'rate_limited',
+	'scraper',
+	'stream_server_failed',
+	'syncplay_spawn_failed',
+	'timeout',
+	'upstream'
+];
 
 // — The tests ———————————————————————————————————————————————————————
 
@@ -736,6 +768,11 @@ describe('the renderer holds the backend wire contract', () => {
 		// The backend always sends `key`; the type leaves it optional for
 		// the `{ kind, status }` api.ts builds from a body that is not JSON.
 		expect(responseDrift('AniErrorPayload', CONTRACT.errors, ERROR_SPEC, ['key'])).toEqual([]);
+	});
+
+	it('every error kind the renderer names is one the backend sends', () => {
+		const sent = new Set(CONTRACT.errors.map((e) => e.kind));
+		expect(ERROR_KINDS_NAMED.filter((k) => !sent.has(k))).toEqual([]);
 	});
 
 	it('the Watch Later bridge cap is the backend cap', () => {

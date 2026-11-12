@@ -28,12 +28,17 @@
 //! wildcard, so a field or variant added here does not compile until
 //! the samples say what it sends, and the published file then differs.
 //!
-//! What it does not hold: query strings (the renderer builds them as
-//! text, with no type to compare), the search-page body (read by hand
-//! in `commands::kitsu_search`, not through a type), the launch flags
-//! (read by the Electron main process, not the renderer), and the value
-//! types of request fields — a request's fields are held by name and by
-//! whether they are required.
+//! What it does not hold: answers that are not a struct (the
+//! `/api/watched-at` map, a bare string or list of strings, and whether
+//! a route may answer `null`); which route answers which type; query
+//! strings (the renderer builds them as text, with no type to compare);
+//! the search-page body (read through structs local to
+//! `commands::kitsu_search`'s readers); the launch flags (read by the
+//! Electron main process, not the renderer); and the value types of
+//! request fields — a request's fields are held by name and by whether
+//! they are required. Only the `full` samples are probed: a `min` sample
+//! is taken as written, so a field set in one would publish as always
+//! sent.
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
