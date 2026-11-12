@@ -434,10 +434,9 @@ pub fn status_from_snake(s: &str) -> Option<ListStatus> {
 /// Cap on the renderer-supplied Watch-Later bridge batch. The home
 /// rail's largest plausible Plan-to-Watch is a few hundred titles;
 /// 500 leaves comfortable headroom while bounding the fan-out cost
-/// per request to a fixed worst case. Under
-/// the permissive CORS layer a cross-origin page could otherwise
-/// POST an unbounded `mal_ids` array and burn N concurrent Kitsu
-/// requests per call.
+/// per request to a fixed worst case, so even a caller holding the
+/// launch's secret cannot POST an unbounded `mal_ids` array and burn
+/// N concurrent Kitsu requests per call.
 pub const WATCH_LATER_BRIDGE_MAX_IDS: usize = 500;
 
 /// Concurrent in-flight Kitsu `/mappings` lookups during the

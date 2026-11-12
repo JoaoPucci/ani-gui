@@ -12,7 +12,7 @@ use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 async fn post_page(state: AppState, body: &str) -> axum::response::Response {
-    build_api_router(Arc::new(state))
+    test_router(Arc::new(state))
         .oneshot(
             Request::builder()
                 .method("POST")

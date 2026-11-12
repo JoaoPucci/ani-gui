@@ -135,4 +135,17 @@ describe('checkForUpdate', () => {
 		});
 		expect(fetcher).toHaveBeenCalledWith(`${BASE}/api/update-check?include_prereleases=false`);
 	});
+
+	it('carries the headers it is given, the launch secret among them', async () => {
+		const fetcher = vi.fn().mockResolvedValue(noContent());
+		await checkForUpdate({
+			currentVersion: '0.4.0',
+			fetcher,
+			apiBase: BASE,
+			headers: { 'x-ani-gui-internal-secret': 'c0ffee' }
+		});
+		expect(fetcher).toHaveBeenCalledWith(`${BASE}/api/update-check?include_prereleases=true`, {
+			headers: { 'x-ani-gui-internal-secret': 'c0ffee' }
+		});
+	});
 });

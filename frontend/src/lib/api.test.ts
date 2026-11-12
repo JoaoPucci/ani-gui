@@ -2227,3 +2227,82 @@ describe('reads a page can cancel', () => {
 		});
 	});
 });
+
+describe('the launch secret reaches every request to the API', () => {
+	// The backend answers /api only to a request carrying the secret
+	// the preload bridge hands the renderer (`$lib/backend/secret`).
+	type Bridge = { apiBase: string; internalSecret: string };
+	type WinHolder = { window?: { aniGui?: Bridge } };
+	type EsHolder = { EventSource?: unknown };
+	const g = globalThis as unknown as WinHolder & EsHolder;
+	const SECRET = 'c0ffee';
+
+	class FakeEventSource {
+		static urls: string[] = [];
+		constructor(url: string) {
+			FakeEventSource.urls.push(url);
+		}
+		addEventListener() {}
+		close() {}
+	}
+
+	beforeEach(() => {
+		g.window = { aniGui: { apiBase: BASE, internalSecret: SECRET } };
+		FakeEventSource.urls.length = 0;
+	});
+
+	afterEach(() => {
+		delete g.window;
+		delete g.EventSource;
+	});
+
+	function headersOf(init: RequestInit | undefined): Record<string, string> {
+		return (init?.headers ?? {}) as Record<string, string>;
+	}
+
+	const calls: Array<[string, () => Promise<unknown>]> = [
+		['a GET', () => settingsGet()],
+		['a GET with a signal', () => kitsuTrending({ signal: new AbortController().signal })],
+		['a GET that waits on refills', () => kitsuAnimeDetail('7')],
+		['a POST', () => createSession({ upstream_url: 'https://e.example/m.m3u8', referer: '' })],
+		['a PUT', () => settingsPut({} as Config)],
+		['a DELETE', () => historyClear()],
+		['the MAL bridge', () => kitsuByMalIds([1])]
+	];
+
+	it.each(calls)('%s carries it as a header', async (_name, call) => {
+		const fetchMock = mockFetchOnce([]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await call().catch(() => {});
+		expect(headersOf(lastCall(fetchMock).init)['x-ani-gui-internal-secret']).toBe(SECRET);
+	});
+
+	it('a POST keeps its content type beside it', async () => {
+		const fetchMock = mockFetchOnce({ session_id: 's' });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await createSession({ upstream_url: 'https://e.example/m.m3u8', referer: '' });
+		expect(headersOf(lastCall(fetchMock).init)['content-type']).toBe('application/json');
+	});
+
+	it('an <img> URL carries it in the query', () => {
+		expect(imageProxyUrl('https://media.kitsu.app/a.jpg')).toBe(
+			`${BASE}/api/image?url=${encodeURIComponent('https://media.kitsu.app/a.jpg')}&secret=${SECRET}`
+		);
+	});
+
+	it("a play's progress stream carries it in the query", async () => {
+		g.EventSource = FakeEventSource;
+		void playStream({ title: 'T', episode: '1', mode: 'sub' }, () => {}).catch(() => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(new URL(FakeEventSource.urls[0]).searchParams.get('secret')).toBe(SECRET);
+	});
+
+	it("a download's progress stream carries it in the query", async () => {
+		g.EventSource = FakeEventSource;
+		void downloadStream({ title: 'T', episode: '1', mode: 'sub' }, () => {}).catch(() => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(new URL(FakeEventSource.urls[0]).searchParams.get('secret')).toBe(SECRET);
+	});
+});

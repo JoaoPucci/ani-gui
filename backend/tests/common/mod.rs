@@ -28,6 +28,9 @@ pub struct Backend {
     /// The other lanes it announced ahead of that line, by name, each
     /// an origin of its own.
     pub lanes: std::collections::BTreeMap<String, String>,
+    /// The launch's secret it printed last, which its API answers no
+    /// request without.
+    pub secret: String,
 }
 
 /// A command for the backend at `exe`, its data under `home`, stdin a
@@ -93,6 +96,7 @@ pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout
     type Handshake = (
         String,
         std::collections::BTreeMap<String, String>,
+        String,
         BufReader<ChildStdout>,
     );
     let said: Arc<Mutex<String>> = Arc::default();
@@ -102,9 +106,9 @@ pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout
         let mut output = BufReader::new(stdout);
         let mut api_base = None;
         let mut lanes = std::collections::BTreeMap::new();
-        let mut secret_seen = false;
+        let mut secret = None;
         let mut line = String::new();
-        while api_base.is_none() || !secret_seen {
+        while api_base.is_none() || secret.is_none() {
             line.clear();
             match output.read_line(&mut line) {
                 Ok(n) if n > 0 => heard.lock().expect("stdout so far").push_str(&line),
@@ -123,12 +127,19 @@ pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout
                     lanes.insert(name.to_string(), base.trim().to_string());
                 }
             }
-            secret_seen |= line.starts_with("ANI_GUI_INTERNAL_SECRET ");
+            if let Some(s) = line.strip_prefix("ANI_GUI_INTERNAL_SECRET ") {
+                secret = Some(s.trim().to_string());
+            }
         }
-        let _ = tx.send((api_base.expect("checked by the loop"), lanes, output));
+        let _ = tx.send((
+            api_base.expect("checked by the loop"),
+            lanes,
+            secret.expect("checked by the loop"),
+            output,
+        ));
     });
 
-    let (api_base, lanes, output) = match rx.recv_timeout(HANDSHAKE_TIMEOUT) {
+    let (api_base, lanes, secret, output) = match rx.recv_timeout(HANDSHAKE_TIMEOUT) {
         Ok(handshake) => handshake,
         // The reader dropped its sender: the output ended first.
         // Output that ended usually means an exit on its way, so the
@@ -154,6 +165,7 @@ pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout
             child,
             api_base,
             lanes,
+            secret,
         },
         output,
     )

@@ -40,7 +40,7 @@ async fn recorded_id(guess_row: Option<&str>) -> Option<String> {
         },
     );
     let history = state.history_path.clone();
-    let router = build_api_router(Arc::new(state));
+    let router = test_router(Arc::new(state));
     let mut body = serde_json::json!({
         "title": TITLE, "episode": "1", "mode": "sub", "kitsu_id": "49877",
     });

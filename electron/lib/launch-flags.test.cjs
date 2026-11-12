@@ -26,6 +26,18 @@ test("the wait outlasts the backend's own limit on deciding", () => {
   assert.ok(FLAGS_WAIT_MS > 3000);
 });
 
+test("the request carries the launch's secret, which the backend answers only with", async () => {
+  let headers = null;
+  await waitForLaunchFlags("http://127.0.0.1:9", {
+    secret: "c0ffee",
+    fetch: async (_url, init) => {
+      headers = init.headers;
+      return answer(200, { origin: "file", flags: {} })();
+    },
+  });
+  assert.deepEqual(headers, { "x-ani-gui-internal-secret": "c0ffee" });
+});
+
 test("the backend's answer is the launch's flags", async () => {
   let asked = null;
   const body = { origin: "file", flags: { a: false, b: true } };

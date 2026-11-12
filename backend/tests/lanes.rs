@@ -80,7 +80,10 @@ async fn every_lane_serves_the_whole_router() {
     let mut failures = Vec::new();
     for base in &bases {
         for route in ["/healthz", "/api/app-info"] {
-            match client.get(format!("{base}{route}")).send().await {
+            let request = client
+                .get(format!("{base}{route}"))
+                .header("x-ani-gui-internal-secret", &backend.secret);
+            match request.send().await {
                 Ok(r) if r.status().is_success() => {}
                 other => failures.push(format!("{base}{route}: {other:?}")),
             }
@@ -113,6 +116,7 @@ async fn the_stream_proxy_is_stamped_with_the_stream_lane() {
 
     let info: serde_json::Value = client
         .get(format!("{api}/api/app-info"))
+        .header("x-ani-gui-internal-secret", &backend.secret)
         .send()
         .await
         .expect("app-info")
@@ -121,6 +125,7 @@ async fn the_stream_proxy_is_stamped_with_the_stream_lane() {
         .expect("app-info json");
     let session: serde_json::Value = client
         .post(format!("{api}/api/sessions"))
+        .header("x-ani-gui-internal-secret", &backend.secret)
         .json(&serde_json::json!({
             "upstream_url": format!("{}/master.m3u8", upstream.uri()),
             "referer": "",

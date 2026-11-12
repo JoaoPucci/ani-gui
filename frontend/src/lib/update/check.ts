@@ -56,6 +56,9 @@ export interface CheckForUpdateOptions {
 	 *  `meta::github` on the backend, which offers the newest
 	 *  release with a package for this platform. */
 	includePrereleases?: boolean;
+	/** Headers the request carries: the launch's secret, which the
+	 *  backend answers `/api` only with (`$lib/backend/secret`). */
+	headers?: Record<string, string>;
 }
 
 export async function checkForUpdate(opts: CheckForUpdateOptions): Promise<ReleaseInfo | null> {
@@ -63,7 +66,7 @@ export async function checkForUpdate(opts: CheckForUpdateOptions): Promise<Relea
 	const url = `${opts.apiBase}/api/update-check?include_prereleases=${includePrereleases}`;
 	let resp: Response;
 	try {
-		resp = await opts.fetcher(url);
+		resp = await (opts.headers ? opts.fetcher(url, { headers: opts.headers }) : opts.fetcher(url));
 	} catch {
 		return null;
 	}

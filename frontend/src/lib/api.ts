@@ -19,7 +19,9 @@
  *   1. `window.aniGui.apiBase` — Electron preload script injection.
  *   2. `import.meta.env.VITE_ANI_GUI_API_BASE` — browser-only dev
  *      (run `cargo run --bin ani-gui-backend` and `pnpm dev` with
- *      the env var set to the printed URL).
+ *      the env var set to the printed URL). Such a tab has no
+ *      launch secret ($lib/backend/secret), so the backend refuses
+ *      its API requests.
  *
  * Throws if neither is available — the renderer can't function
  * without a backend address.
@@ -29,6 +31,7 @@ import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
 import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
 import { laneBase, type Lane } from '$lib/backend/lanes';
+import { withSecretHeader, withSecretQuery } from '$lib/backend/secret';
 import { getLocale } from '$lib/paraglide/runtime';
 import { probeLimiter } from '$lib/availability/probe-limiter';
 import { probeScope } from '$lib/availability/probe-scope';
@@ -54,10 +57,10 @@ declare global {
 			 *  `apiBase`. */
 			lanes?: Partial<Record<string, string>>;
 			/** Per-process random secret printed by the Rust backend at
-			 *  startup and threaded through Electron's preload. Sent as
-			 *  the `x-ani-gui-internal-secret` header on the few backend
-			 *  paths that need a renderer-only gate beyond the bearer —
-			 *  specifically the disconnect-after-expiry cache wipe. Absent in browser-only dev. */
+			 *  startup and threaded through Electron's preload. Every
+			 *  request to the backend's API carries it, which the backend
+			 *  answers no request without (`$lib/backend/secret`). Absent
+			 *  in browser-only dev. */
 			internalSecret?: string;
 			/** Node's `process.platform` value forwarded from the Electron
 			 *  main process — 'win32' | 'linux' | 'darwin' | 'freebsd' |
@@ -203,7 +206,8 @@ async function expect2xx<T>(resp: Response): Promise<T> {
 
 async function getJson<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 	const at = await url(path, opts.lane);
-	const resp = await (opts.signal ? fetch(at, { signal: opts.signal }) : fetch(at));
+	const init = withSecretHeader(opts.signal ? { signal: opts.signal } : undefined);
+	const resp = await (init ? fetch(at, init) : fetch(at));
 	return expect2xx<T>(resp);
 }
 
@@ -211,7 +215,8 @@ async function getJson<T>(path: string, opts: RequestOptions = {}): Promise<T> {
  *  without (`$lib/refill/refill`). `signal` cancels the request. */
 async function getJsonServed<T>(path: string, signal?: AbortSignal): Promise<Served<T>> {
 	const at = await url(path);
-	const resp = await (signal ? fetch(at, { signal }) : fetch(at));
+	const init = withSecretHeader(signal ? { signal } : undefined);
+	const resp = await (init ? fetch(at, init) : fetch(at));
 	const data = await expect2xx<T>(resp);
 	// A response built without headers (a test's stand-in) has none.
 	const headers = resp.headers as Headers | undefined;
@@ -302,21 +307,24 @@ async function postJson<T>(path: string, body: unknown, opts: RequestOptions = {
 		body: JSON.stringify(body)
 	};
 	if (opts.signal) init.signal = opts.signal;
-	const resp = await fetch(await url(path, opts.lane), init);
+	const resp = await fetch(await url(path, opts.lane), withSecretHeader(init));
 	return expect2xx<T>(resp);
 }
 
 async function putJson<T>(path: string, body: unknown): Promise<T> {
-	const resp = await fetch(await url(path), {
-		method: 'PUT',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify(body)
-	});
+	const resp = await fetch(
+		await url(path),
+		withSecretHeader({
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(body)
+		})
+	);
 	return expect2xx<T>(resp);
 }
 
 async function deleteJson<T>(path: string): Promise<T> {
-	const resp = await fetch(await url(path), { method: 'DELETE' });
+	const resp = await fetch(await url(path), withSecretHeader({ method: 'DELETE' }));
 	return expect2xx<T>(resp);
 }
 
@@ -894,7 +902,9 @@ export function playStream(
 					reject(new Error('playStream: aborted'));
 					return;
 				}
-				const es = new EventSource(url);
+				// An EventSource cannot set a header: the launch's secret
+				// rides the query ($lib/backend/secret).
+				const es = new EventSource(withSecretQuery(url));
 				let settled = false;
 				const finish = (fn: () => void) => {
 					if (settled) return;
@@ -1028,7 +1038,9 @@ export function downloadStream(
 	return url(`/api/download/stream?${params.toString()}`, 'download').then(
 		(url) =>
 			new Promise<DownloadResponse>((resolve, reject) => {
-				const es = new EventSource(url);
+				// An EventSource cannot set a header: the launch's secret
+				// rides the query ($lib/backend/secret).
+				const es = new EventSource(withSecretQuery(url));
 				let settled = false;
 				const finish = (fn: () => void) => {
 					if (settled) return;
@@ -1308,9 +1320,9 @@ export function kitsuTrendingAnilist(opts: ReadOptions = {}): Promise<KitsuAnime
  *  matching the rest of the home. Empty input → empty
  *  output (no round-trip needed).
  *
- *  Sends the renderer-only internal-secret header — backend gates
- *  the route on it so a cross-origin page under permissive CORS
- *  can't reach the handler. Also enforces
+ *  Like every API request it carries the launch's secret
+ *  ($lib/backend/secret), which this route's handler checks as well
+ *  as the API's gate. The backend also enforces
  *  a 500-id batch cap server-side; this client doesn't pre-truncate
  *  so callers see a 4xx if they're pushing past the limit. */
 export async function kitsuByMalIds(
@@ -1318,12 +1330,13 @@ export async function kitsuByMalIds(
 	opts: ReadOptions = {}
 ): Promise<KitsuAnimeRef[]> {
 	if (malIds.length === 0) return [];
-	const headers: Record<string, string> = { 'content-type': 'application/json' };
-	const secret = typeof window !== 'undefined' ? window.aniGui?.internalSecret : undefined;
-	if (secret) headers['x-ani-gui-internal-secret'] = secret;
-	const init: RequestInit = { method: 'POST', headers, body: JSON.stringify({ mal_ids: malIds }) };
+	const init: RequestInit = {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ mal_ids: malIds })
+	};
 	if (opts.signal) init.signal = opts.signal;
-	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), init);
+	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), withSecretHeader(init));
 	return expect2xx<KitsuAnimeRef[]>(resp);
 }
 
@@ -1612,5 +1625,5 @@ export function imageProxyUrl(httpsUrl: string | null | undefined): string | nul
 	if (!httpsUrl || !httpsUrl.startsWith('https://')) return null;
 	const base = windowLaneBase('image');
 	if (base === null) return null;
-	return `${base}/api/image?url=${encodeURIComponent(httpsUrl)}`;
+	return withSecretQuery(`${base}/api/image?url=${encodeURIComponent(httpsUrl)}`);
 }

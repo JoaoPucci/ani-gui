@@ -1120,7 +1120,8 @@ app.whenReady().then(() => {
     // The launch's remote flags, decided by the backend within its
     // two-second cap; the window opens with them, so the renderer has
     // them before its first page (lib/launch-flags.cjs).
-    fetchFlags: (backend) => waitForLaunchFlags(backend.apiBase, { fetch }),
+    fetchFlags: (backend) =>
+      waitForLaunchFlags(backend.apiBase, { fetch, secret: backend.internalSecret }),
     // The backend's handshake and the flags' decision, each lighting a
     // stretch of the splash's rail as it lands.
     stepDone: (step) => {
