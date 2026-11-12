@@ -183,3 +183,9 @@ test("a secret= after a colon, a brace or a slash is redacted too", () => {
   }
   assert.equal(redactSecrets("topsecret=1 secrets=2"), "topsecret=1 secrets=2");
 });
+
+test("a redacted value ends at a slash, a colon or a question mark, and the rest is kept", () => {
+  assert.equal(redactSecrets(`http://h/a/secret=${SECRET}/next`), `http://h/a/secret=${REDACTED}/next`);
+  assert.equal(redactSecrets(`http://h/a/secret=${SECRET}?x=1`), `http://h/a/secret=${REDACTED}?x=1`);
+  assert.equal(redactSecrets(`GET /secret=${SECRET}:extra`), `GET /secret=${REDACTED}:extra`);
+});

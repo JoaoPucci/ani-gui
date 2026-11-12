@@ -522,3 +522,13 @@ proptest::proptest! {
         proptest::prop_assert!(kept >= protected, "{:?} from {:?}", argv, template);
     }
 }
+
+#[test]
+fn a_lone_slash_is_not_an_option_a_drop_takes() {
+    // `/` alone is the root directory, a value, not a `/switch`.
+    let a = custom("/ {title} {url}");
+    assert_eq!(
+        build_argv(&a),
+        vec!["/".to_string(), "https://example.com/v.m3u8".to_string()]
+    );
+}
