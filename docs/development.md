@@ -445,19 +445,20 @@ under the build's keys.
 
 A backend built with the `test-run-key` cargo feature also accepts a
 test run's `.minisig` made with the fixture test-run key, so a backend
-test (unit or integration) can turn a feature on. That key's secret is public: it is derived from a
-fixed seed in `backend/tests/fixtures/flags-signature/make.py`, and
-the fixtures' README says which file it signs. The live file is never
-trusted under it, in any build. `cargo test --all-features` (CI and
-the pre-push hook) builds the backend's tests with the feature, and the
-coverage run without it, so its tests run both ways. No packaging
-script enables it, which `tests/arch/test_run_key.sh` checks for both
-platforms, and the e2e workflow checks that the Linux package it builds
-does not contain the key. The end-to-end suite runs that package, so
-its test runs trust the build's keys alone. A `cargo test
---all-features` run also leaves a debug `ani-gui-backend` built with
-the feature in the target directory; it trusts the key only in a test
-run (`ANI_GUI_UNATTENDED=1`), and nothing is packaged from there.
+test (unit or integration) can turn a feature on. That key's secret is
+public: it is derived from a fixed seed in
+`backend/tests/fixtures/flags-signature/make.py`, and the fixtures'
+README says which file it signs. The live file is never trusted under
+it, in any build. `cargo test --all-features` (CI and the pre-push
+hook) builds the backend's tests with the feature, and the coverage run
+without it, so its tests run both ways. No packaging script enables it,
+which `tests/arch/test_run_key.sh` checks for both platforms, and the
+e2e workflow checks that the Linux package it builds does not contain
+the key. The end-to-end suite runs that package, so its test runs trust
+the build's keys alone. A `cargo test --all-features` run also leaves a
+debug `ani-gui-backend` built with the feature in the target directory;
+it trusts the key only in a test run (`ANI_GUI_UNATTENDED=1`), and
+nothing is packaged from there.
 
 **Declaring a flag** (for the change that adds one). Declare it as a
 `pub const FlagDecl` of kind `FlagKind::Rollout`, list it in

@@ -22,7 +22,8 @@
 # It does not see other routes to a feature build: RUSTFLAGS or a
 # .cargo/config.toml setting `--cfg feature="test-run-key"`, other
 # spellings of the build (`cargo b`, `cargo +toolchain build`,
-# `cargo rustc`, a command continued across lines), or a script that
+# `cargo rustc`, `cargo install`, a command continued across lines), a
+# script that builds through a helper file it calls, or a script that
 # packages a binary some other command left behind (`dist:win` packages
 # whatever target/release holds; `package:win` builds it first).
 #
