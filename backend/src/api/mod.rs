@@ -24,7 +24,6 @@ use futures_util::stream::Stream;
 use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tower_http::cors::CorsLayer;
 
 mod account;
 mod airing;
@@ -158,14 +157,19 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .merge(account::router())
         .merge(airing::router())
         .merge(refill::router())
-        .with_state(state)
-        // The Electron renderer in dev runs at `http://localhost:<vite>`
-        // while we bind 127.0.0.1:<random> — that's cross-origin, so
-        // every response (and every preflight) needs permissive CORS
-        // headers. Safe at the loopback boundary: the listener never
-        // accepts non-loopback connections, so `*` here only opens the
-        // door to other apps on the same machine, not the internet.
-        .layer(CorsLayer::permissive())
+        .with_state(state.clone())
+        // Every route answers only the app's own callers: a request
+        // without the launch's secret is refused before any handler
+        // runs (`gate`).
+        .layer(axum::middleware::from_fn_with_state(
+            state,
+            gate::require_secret,
+        ))
+        // Outermost, so a preflight is answered before the gate (a
+        // browser sends no custom header on one) and a refusal still
+        // tells the renderer what it was. Only the renderer's origins
+        // are allowed (`crate::renderer_origin`).
+        .layer(crate::renderer_origin::cors())
 }
 
 /// The API router for tests about anything but the gate: the

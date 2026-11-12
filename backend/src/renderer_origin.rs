@@ -39,15 +39,39 @@ pub const PREFLIGHT_MAX_AGE: Duration = Duration::from_secs(2 * 60 * 60);
 /// Whether `origin` — an `Origin` request header's value — is one the
 /// app's renderer runs at.
 #[must_use]
-pub fn is_renderer_origin(_origin: &[u8]) -> bool {
-    true
+pub fn is_renderer_origin(origin: &[u8]) -> bool {
+    let Ok(origin) = std::str::from_utf8(origin) else {
+        return false;
+    };
+    if origin == PACKAGED {
+        return true;
+    }
+    let Some(rest) = origin.strip_prefix("http://") else {
+        return false;
+    };
+    ["localhost", "127.0.0.1", "[::1]"]
+        .iter()
+        .any(|host| rest.strip_prefix(host).is_some_and(is_port_suffix))
+}
+
+/// `""` or `:<port>`, a port being one to five ASCII digits naming a
+/// value up to 65535.
+fn is_port_suffix(rest: &str) -> bool {
+    if rest.is_empty() {
+        return true;
+    }
+    let Some(port) = rest.strip_prefix(':') else {
+        return false;
+    };
+    (1..=5).contains(&port.len())
+        && port.bytes().all(|b| b.is_ascii_digit())
+        && port.parse::<u32>().is_ok_and(|p| p <= 65_535)
 }
 
 /// The CORS layer every router the renderer reads from carries: the
 /// renderer's origins only, any method and header (the origin is what
 /// narrows it), every response header readable (the renderer reads the
 /// refill header), preflights cached for [`PREFLIGHT_MAX_AGE`].
-#[must_use]
 pub fn cors() -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(|origin, _| {

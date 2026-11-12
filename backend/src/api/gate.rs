@@ -44,13 +44,22 @@ pub const QUERY_SECRET_PATHS: [&str; 3] =
 /// [`QUERY_SECRET_PATHS`].
 #[must_use]
 pub fn admits(
-    _secret: &InternalSecret,
-    _method: &Method,
-    _path: &str,
-    _query: Option<&str>,
-    _headers: &HeaderMap,
+    secret: &InternalSecret,
+    method: &Method,
+    path: &str,
+    query: Option<&str>,
+    headers: &HeaderMap,
 ) -> bool {
-    true
+    if secret.validate_header(headers).is_ok() {
+        return true;
+    }
+    if method != Method::GET || !QUERY_SECRET_PATHS.contains(&path) {
+        return false;
+    }
+    query.is_some_and(|q| {
+        url::form_urlencoded::parse(q.as_bytes())
+            .any(|(k, v)| k == SECRET_QUERY && secret.matches(&v))
+    })
 }
 
 /// The middleware: pass an admitted request on, refuse the rest.
