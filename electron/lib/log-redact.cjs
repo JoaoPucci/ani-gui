@@ -45,4 +45,30 @@ function redactSecrets(text, known = []) {
     .replace(HANDSHAKE_SECRET, `$1${REDACTED}`);
 }
 
-module.exports = { REDACTED, redactSecrets };
+/**
+ * A writer for output that arrives in chunks of any size (a pipe's),
+ * redacting it a whole line at a time, so a secret split across two
+ * chunks is whole when it is matched. `write` gets the complete lines,
+ * redacted, newlines and all; `end()` writes what is left of an
+ * unfinished last line. `known` answers the secrets to redact by value
+ * (redactSecrets).
+ */
+function redactingLines(write, known = () => []) {
+  let pending = "";
+  return {
+    push(chunk) {
+      pending += chunk;
+      const cut = pending.lastIndexOf("\n");
+      if (cut < 0) return;
+      const lines = pending.slice(0, cut + 1);
+      pending = pending.slice(cut + 1);
+      write(redactSecrets(lines, known()));
+    },
+    end() {
+      if (pending) write(redactSecrets(pending, known()));
+      pending = "";
+    },
+  };
+}
+
+module.exports = { REDACTED, redactSecrets, redactingLines };

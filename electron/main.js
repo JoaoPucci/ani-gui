@@ -51,7 +51,7 @@ const { messagesFor, resolveLocale } = require("./lib/main-messages.cjs");
 const { splashWords, stallTexts } = require("./lib/splash-progress.cjs");
 const { relaunch, relaunchPlan } = require("./lib/relaunch.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
-const { redactSecrets } = require("./lib/log-redact.cjs");
+const { redactingLines, redactSecrets } = require("./lib/log-redact.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
 const { appDocumentFrom } = require("./lib/app-document.cjs");
 const { SECRET_CHANNEL, secretKeeper } = require("./lib/secret-handoff.cjs");
@@ -336,10 +336,14 @@ async function spawnBackend() {
     },
     handshake: (child) => {
       // The backend's output is relayed with any secret in it redacted
-      // (lib/log-redact.cjs).
-      child.stderr.on("data", (chunk) => {
-        process.stderr.write(redactSecrets(`[backend] ${chunk.toString("utf-8")}`));
-      });
+      // (lib/log-redact.cjs), a whole line at a time. Each line keeps
+      // the `[backend] ` tag the relay has always put on a chunk.
+      const stderrLines = redactingLines((text) =>
+        process.stderr.write(text.replace(/^(?=.)/gm, "[backend] ")),
+      );
+      child.stderr.setEncoding("utf-8");
+      child.stderr.on("data", (chunk) => stderrLines.push(chunk));
+      child.stderr.on("end", () => stderrLines.end());
       // After the handshake, downstream stdout becomes log output; it
       // is echoed through so we can see it in dev.
       return awaitHandshake(child, {
