@@ -270,6 +270,31 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 		);
 	});
 
+	it("names the card's row on a play no guess opened, so the backend keeps the line's show", async () => {
+		// Codex review: a link landing while the resume awaited its cap
+		// rematches the row; the resume still names the old show, and with
+		// the card's row the backend keeps the correction.
+		const h = makeHarness({ isGuess: () => false });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: false, cardRow: 'h1' }),
+			expect.any(Function)
+		);
+		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ cardRow: 'h1' }));
+	});
+
+	it('records no id and writes no tracker for a play the backend kept off its line', async () => {
+		const h = makeHarness({
+			isGuess: () => false,
+			resolvePlay: vi.fn().mockResolvedValue({ session_id: 's1', line_kept: true })
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ guess: true }));
+		expect(h.deps.syncTrackers).not.toHaveBeenCalled();
+	});
+
 	it("records a guess whose play landed on the card's own listing, and writes the trackers", async () => {
 		const h = makeHarness({
 			isGuess: (id) => id === 'h1',
