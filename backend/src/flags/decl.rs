@@ -9,8 +9,9 @@
 //! This build declares no flag and has no kind one could be declared
 //! with: [`FlagKind`] has no variant outside the tests, so a
 //! [`FlagDecl`] cannot be built and [`super::DECLARED`] can only be
-//! empty. A kind arrives with the change that verifies the file, and
-//! with it the values that kind lets the file send.
+//! empty. A kind arrives with the change that reads the flags
+//! themselves only under a verified signature, and with it the values
+//! that kind lets the file send.
 //!
 //! What the type cannot see is whether a flag's other values are safe
 //! for the feature it gates. That is a review question, so every

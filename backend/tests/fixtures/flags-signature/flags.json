@@ -1,0 +1,1 @@
+{ "flags": { "some_feature": false, "notices": { "format": 1, "donation_ask": 2, "items": [{ "id": "a", "title": "A notice" }] } } }

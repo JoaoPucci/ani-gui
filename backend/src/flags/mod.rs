@@ -28,9 +28,11 @@
 //!
 //! This build declares no flag, and no kind a flag could be declared
 //! with ([`decl::FlagKind`] has no variant outside the tests), so the
-//! file it reads can change nothing, and the file is not signed. A
-//! kind arrives with the change that verifies the file with the
-//! minisign verifier proposed for the update path (see
+//! file it reads can change no flag, and the flags need no signature.
+//! The file is signed all the same, for the notices it may carry:
+//! [`signature`] keeps those only from a verified file, and reads the
+//! flags whatever the verdict. A kind arrives with the change that
+//! reads the flags themselves only under a verified signature (see
 //! `docs/architecture.md`, "Remote flags"). Whether a flag's other
 //! values are safe for the feature it gates is not something a type
 //! can see: that is the declaration's `safe_because`, and review.
@@ -44,6 +46,7 @@ pub mod launch;
 pub mod refresh;
 pub mod remote;
 pub mod resolve;
+pub mod signature;
 pub mod store;
 
 pub use decl::{FlagDecl, FlagKind, FlagValue};
