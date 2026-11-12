@@ -196,6 +196,8 @@ async fn the_image_route_takes_the_secret_in_its_query() {
     )
     .await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    // The handler's own refusal, not a query the extractor could not read.
+    assert_eq!(body_bytes(resp).await, b"url must be https://");
 }
 
 /// The progress streams are opened by an `EventSource`, which cannot
