@@ -137,20 +137,24 @@ fn jojo() -> Catalogue {
     c
 }
 
-/// From the 2000 OVA, the run is the 2012 series → the 2000 OVA → the
-/// 1993 OVA: Stardust Crusaders lists the OVA as another version, so
-/// rule 3 leaves it out, and it is listed with the rest of the versions.
-/// The Phantom Blood film is a film.
+/// From the 2000 OVA, the main story is the franchise's, as from a TV
+/// part: the 2012 series names Stardust Crusaders its sequel, and the
+/// OVA names the series its prequel, so both follow the series; they
+/// are versions of each other, and Stardust Crusaders, in the series'
+/// format, is kept. Both OVAs are other versions, the Phantom Blood
+/// film a film.
 #[test]
-fn from_the_2000_jojo_ova_the_run_is_the_ovas_after_the_2012_series() {
+fn from_the_2000_jojo_ova_the_main_story_is_the_series() {
     let f = drive("7730", &jojo());
-    assert_eq!(ids(&f.entries), ["610", "7730", "7158"]);
-    assert_eq!(f.links, [pair("7158", "7730"), pair("7730", "610")]);
-    assert_eq!(ids(&f.versions), ["13306", "8063", "8739"]);
+    assert_eq!(ids(&f.entries), ["7158", "8063", "8739"]);
+    assert_eq!(f.links, [pair("7158", "8063"), pair("8063", "8739")]);
+    assert_eq!(ids(&f.versions), ["610", "7730", "13306"]);
     assert_eq!(ids(&f.films), ["3136"]);
     assert!(f.sides.is_empty() && f.recaps.is_empty());
     assert!(f.parents.is_empty());
     assert!(f.complete);
+    let tv = drive("8063", &jojo());
+    assert_eq!((f.name, f.name_from), (tv.name, tv.name_from));
 }
 
 /// From a TV part, no member lists either OVA as a prequel or sequel:
@@ -235,15 +239,115 @@ fn fate_zero_forks_and_the_same_format_series_wins_its_group() {
     assert!(f.parents.is_empty());
 }
 
-/// From the UBW series, the 2006 series it lists as a version is left
-/// out of the run by rule 3 and listed as a version; the films listed
-/// as versions are films.
+/// From the UBW series, the main story is the walk from Fate/Zero, the
+/// franchise's root, as from the 2nd season: the 2006 series, which
+/// the UBW series lists as a version, is in it, though a walk from the
+/// UBW series itself would leave it out by rule 3. The films listed as
+/// versions are films.
 #[test]
-fn from_unlimited_blade_works_the_2006_series_is_a_version() {
+fn from_unlimited_blade_works_the_main_story_is_the_franchises() {
     let f = drive("7882", &fate());
-    assert_eq!(ids(&f.entries), ["6028", "7658", "9718", "7882", "10052"]);
-    assert_eq!(ids(&f.versions), ["323"]);
+    assert_eq!(
+        ids(&f.entries),
+        ["323", "6028", "7658", "9718", "7882", "10052"]
+    );
+    assert!(f.versions.is_empty());
     assert_eq!(ids(&f.films), ["4788", "7873", "8675"]);
+}
+
+/// Berserk as Kitsu relates it: the 1997 series, the three 2012 films,
+/// and the 2016 series that names both the 1997 series and the third
+/// film its prequel, with its second season.
+fn berserk() -> Catalogue {
+    let mut c = Catalogue::default();
+    c.add("24", "TV", Some("1997-10-08"))
+        .add("6084", "movie", Some("2012-02-04"))
+        .add("6664", "movie", Some("2012-06-23"))
+        .add("6665", "movie", Some("2013-02-01"))
+        .add("11655", "TV", Some("2016-07-01"))
+        .add("12569", "TV", Some("2017-04-07"));
+    c.rel("24", "sequel", "11655")
+        .rel("24", "alternative_version", "6084")
+        .rel("24", "alternative_version", "6664")
+        .rel("24", "alternative_version", "6665")
+        .rel("6084", "alternative_version", "24")
+        .rel("6084", "sequel", "6664")
+        .rel("6664", "prequel", "6084")
+        .rel("6664", "sequel", "6665")
+        .rel("6665", "prequel", "6664")
+        .rel("6665", "sequel", "11655")
+        .rel("11655", "sequel", "12569")
+        .rel("11655", "prequel", "24")
+        .rel("11655", "prequel", "6665")
+        .rel("12569", "prequel", "11655");
+    c
+}
+
+/// Every Berserk page answers with one main story: the 2016 series
+/// keeps the 1997 series, in its own format, over the third film among
+/// its prequels, so the franchise starts at the 1997 series, and the
+/// films, which a walk from the first film would make its main story,
+/// are films.
+#[test]
+fn every_berserk_page_has_the_1997_series_main_story() {
+    let c = berserk();
+    for anchor in ["24", "6084", "6664", "6665", "11655", "12569"] {
+        let f = drive(anchor, &c);
+        assert_eq!(ids(&f.entries), ["24", "11655", "12569"], "from {anchor}");
+        assert_eq!(f.name_from, "24", "from {anchor}");
+        assert_eq!(ids(&f.films), ["6084", "6664", "6665"], "from {anchor}");
+        assert!(f.parents.is_empty(), "from {anchor}");
+    }
+}
+
+/// A prequel that names nothing back still leads the main story: the
+/// link counts from the side that lists it.
+#[test]
+fn a_prequel_that_names_nothing_back_leads_the_main_story() {
+    let mut c = Catalogue::default();
+    c.add("1", "TV", Some("2000-01-01"))
+        .add("2", "TV", Some("2002-01-01"));
+    c.rel("2", "prequel", "1");
+    let f = drive("2", &c);
+    assert_eq!(ids(&f.entries), ["1", "2"]);
+    assert_eq!(f.links, [pair("1", "2")]);
+    assert_eq!(f.name_from, "1");
+}
+
+/// Two entries that name each other as prequel and sequel both ways
+/// round have no first by links: the earlier stands for the root, from
+/// either page.
+#[test]
+fn a_loop_of_links_has_one_main_story_from_either_side() {
+    let mut c = Catalogue::default();
+    c.add("1", "TV", Some("2000-01-01"))
+        .add("2", "TV", Some("2002-01-01"));
+    c.rel("1", "sequel", "2")
+        .rel("1", "prequel", "2")
+        .rel("2", "sequel", "1")
+        .rel("2", "prequel", "1");
+    let one = drive("1", &c);
+    let two = drive("2", &c);
+    assert_eq!(ids(&one.entries), ["1", "2"]);
+    assert_eq!(one.entries, two.entries);
+    assert_eq!(one.name_from, two.name_from);
+}
+
+/// A franchise past the listing bound beyond what the anchor's own run
+/// reaches is read only to the bound, and the answer is incomplete.
+#[test]
+fn a_franchise_past_the_listing_bound_is_incomplete() {
+    let mut c = Catalogue::default();
+    c.add("1", "TV", Some("2000-01-01"))
+        .add("2", "OVA", Some("2001-01-01"));
+    c.rel("1", "sequel", "2")
+        .rel("2", "alternative_version", "1");
+    for i in 3..=120 {
+        c.add(&i.to_string(), "OVA", Some(&format!("{}-01-01", 1900 + i)));
+        c.rel(&(i - 1).to_string(), "sequel", &i.to_string());
+    }
+    let f = drive("1", &c);
+    assert!(!f.complete);
 }
 
 /// A side story with two parents walks from the earlier parent; it is

@@ -196,3 +196,7 @@ mod series_tests;
 #[cfg(test)]
 #[path = "franchise_walk_name_test.rs"]
 mod name_tests;
+
+#[cfg(test)]
+#[path = "franchise_walk_root_prop_test.rs"]
+mod root_prop_tests;

@@ -122,11 +122,12 @@ proptest! {
         prop_assert_eq!(base, again);
     }
 
-    /// The shape of the answer: the anchor is a member or a side-story
-    /// anchor among the sides (the films, for a movie); every movie
-    /// around the run is a film, and no TV series is a recap; the run
-    /// is bounded; sections are disjoint from one another and from the
-    /// run; every link joins members; asked again, the walk answers
+    /// The shape of the answer: the anchor is a member, or a side-story
+    /// anchor among the sides (the films, for a movie) under parents in
+    /// the run, or listed around a main story that leaves it out; every
+    /// movie around the run is a film, and no TV series is a recap; the
+    /// run is bounded; sections are disjoint from one another and from
+    /// the run; every link joins members; asked again, the walk answers
     /// the same.
     #[test]
     fn the_answer_keeps_its_shape((cat, anchor) in catalogue()) {
@@ -134,11 +135,14 @@ proptest! {
         let members = id_set(&f.entries);
         if members.contains(&anchor) {
             prop_assert!(f.parents.is_empty());
-        } else {
+        } else if let Some(parents) = f.parents.get(&anchor) {
             let film = cat.entries[&anchor].subtype.as_deref() == Some("movie");
             let around = if film { &f.films } else { &f.sides };
             prop_assert!(id_set(around).contains(&anchor));
-            prop_assert!(f.parents.contains_key(&anchor));
+            prop_assert!(parents.iter().all(|p| members.contains(p)));
+        } else {
+            let around = [&f.versions, &f.films, &f.sides, &f.recaps];
+            prop_assert!(around.iter().any(|s| id_set(s).contains(&anchor)));
         }
         prop_assert!(members.len() <= MAX_MEMBERS);
         let sections = [&f.versions, &f.films, &f.sides, &f.recaps];

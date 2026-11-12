@@ -165,6 +165,47 @@ fn every_corpus_anchor_reads_as_pinned() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+/// What every page of a franchise must show the same: the name, the
+/// entry it comes from (the front of the poster stack) and the main
+/// story.
+fn main_story(f: &Franchise) -> (String, String, Vec<String>) {
+    let ids = f.entries.iter().map(|e| e.id.clone()).collect();
+    (f.name.clone(), f.name_from.clone(), ids)
+}
+
+/// Every anchor of one franchise answers with the same name, front
+/// entry and main story: they belong to the franchise, not to the page
+/// asked from. Two anchors are of one franchise when `cases.json` files
+/// them under one, or when their main stories share an entry, so an
+/// anchor filed under a franchise of its own is held to it too.
+#[test]
+fn every_anchor_of_a_franchise_has_one_main_story() {
+    let c = corpus();
+    let cases: Vec<Case> = serde_json::from_slice(&fixture("cases.json")).expect("cases.json");
+    let answers: Vec<(&Case, Franchise)> = cases.iter().map(|k| (k, walk(&c, &k.anchor))).collect();
+    let mut failures = Vec::new();
+    for (i, (a, f)) in answers.iter().enumerate() {
+        for (b, g) in &answers[i + 1..] {
+            let shared = f
+                .entries
+                .iter()
+                .any(|e| g.entries.iter().any(|x| x.id == e.id));
+            if (a.franchise == b.franchise || shared) && main_story(f) != main_story(g) {
+                failures.push(format!(
+                    "{} ({}) {:?} and {} ({}) {:?}",
+                    a.franchise,
+                    a.anchor,
+                    main_story(f),
+                    b.franchise,
+                    b.anchor,
+                    main_story(g)
+                ));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
 /// The relations of Kitsu's pages `names` (under
 /// `tests/fixtures/kitsu/`), artwork dropped as the corpus drops it.
 fn served(names: &[&str]) -> Vec<crate::meta::kitsu::FranchiseRelation> {
