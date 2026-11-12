@@ -96,3 +96,49 @@ test("no secret= value survives redaction, in a query or a header, known or not"
     }),
   );
 });
+
+// The backend's stderr reaches the main process in chunks of whatever
+// size the pipe delivers; a value split across two of them would slip
+// past a redaction run on each chunk alone.
+const { redactingLines } = require("./log-redact.cjs");
+
+test("output relayed in chunks is redacted a whole line at a time", () => {
+  const written = [];
+  const lines = redactingLines((text) => written.push(text));
+  lines.push("GET /api/image?sec");
+  lines.push(`ret=${SECRET.slice(0, 20)}`);
+  lines.push(`${SECRET.slice(20)}&url=x\nnext `);
+  assert.deepEqual(written, [`GET /api/image?secret=${REDACTED}&url=x\n`]);
+  lines.push("line\n");
+  lines.end();
+  lines.end();
+  assert.deepEqual(written.slice(1), ["next line\n"]);
+});
+
+test("an unfinished last line is written, redacted, at the end", () => {
+  const written = [];
+  const lines = redactingLines((text) => written.push(text));
+  lines.push(`x-ani-gui-internal-secret: ${SECRET}`);
+  assert.deepEqual(written, []);
+  lines.end();
+  assert.deepEqual(written, [`x-ani-gui-internal-secret: ${REDACTED}`]);
+});
+
+test("however the output is cut into chunks, what is written is the redacted whole", () => {
+  fc.assert(
+    fc.property(fc.array(fc.nat(), { maxLength: 8 }), (cuts) => {
+      const text = `a\nGET /api/play/stream?title=a&secret=${SECRET}&mode=sub\nb ${SECRET}\nc`;
+      const at = [...new Set(cuts.map((c) => c % text.length))].sort((x, y) => x - y);
+      const written = [];
+      const lines = redactingLines((t) => written.push(t), () => [SECRET]);
+      let from = 0;
+      for (const cut of at) {
+        lines.push(text.slice(from, cut));
+        from = cut;
+      }
+      lines.push(text.slice(from));
+      lines.end();
+      assert.equal(written.join(""), redactSecrets(text, [SECRET]));
+    }),
+  );
+});
