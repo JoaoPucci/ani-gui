@@ -397,7 +397,8 @@ export interface CreateSessionResponse {
 	session_id: string;
 	/** Full proxy URL the player should fetch. For HLS sessions this
 	 *  points at `…/s/<id>/master.m3u8`; for MP4 sessions at
-	 *  `…/s/<id>/file.mp4`. The frontend never composes the path itself. */
+	 *  `…/s/<id>/file.mp4`. A page that carries only the session id
+	 *  composes the same URL with `$lib/play/media-url`. */
 	media_url: string;
 	/** Tells the renderer which player to mount around `media_url`. */
 	media_kind: MediaKind;

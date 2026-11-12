@@ -281,8 +281,8 @@ generator makes them from the backend's structs. Two tests keep the sides
 saying the same thing:
 
 - `backend/src/api/wire_contract_test.rs` builds `backend/wire-contract.json`
-  from the backend's own types — a full and a minimal sample of every
-  response the renderer reads, the fields each request body reads and
+  from the backend's own types — a full and a minimal sample of each
+  response type the renderer reads, the fields each request body reads and
   requires, every value of each enum the renderer names, the error envelope
   of every variant, and the values the renderer keeps a copy of — and
   `cargo test` fails until the file says the same. A field or enum variant
@@ -294,9 +294,9 @@ saying the same thing:
 
 A change to what the backend sends fails the first; replace the file with
 the contents its message prints, and the second then names what the
-renderer's types must change. The frontend test's header lists what it
-does not hold (request value kinds, query strings, string values outside the
-enums).
+renderer's types must change. Both test files' headers list what they do
+not hold, among them answers that are not a struct, map values, request
+value kinds, and URLs built as text.
 
 ## Fixture management
 
@@ -319,9 +319,8 @@ Cheap grep / AST tests under `tests/arch/`. They fail loudly when boundaries ero
 
 | Invariant | Tool |
 |---|---|
-| Every HTTP API handler returns `Result<T, AniError>` | syn-based audit |
 | No hardcoded English in `.svelte` files or `.ts` modules under `frontend/src/` (must go through `m.<key>()`) | custom ESLint rule `no-hardcoded-strings`, `i18n-ignore` escape |
-| Crate dependency direction (`cache` doesn't depend on `reqwest`, etc.) | `cargo-deny` + `cargo-modules` |
+| Crate dependency direction (`cache` doesn't depend on `reqwest`, etc.) | `tests/arch/dep_direction.sh` (grep) |
 
 ## Mutation testing (deferred)
 
