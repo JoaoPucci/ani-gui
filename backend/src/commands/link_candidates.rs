@@ -23,7 +23,10 @@ pub struct CandidatesArgs {
     /// The row's id: its provider show key, whose words the second
     /// search reads.
     pub row: String,
-    /// The row's saved title, as Continue Watching searches it.
+    /// The row's saved title, as Continue Watching searches it: with a
+    /// legacy `(N episodes)` tail, in any of the forms the renderer's
+    /// matcher strips, already taken off, since the season is read from
+    /// what is left.
     pub title: String,
     /// The show the card shows now.
     #[serde(default)]
