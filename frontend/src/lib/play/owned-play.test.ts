@@ -291,6 +291,11 @@ describe("playArgsFor — a guessed card's row", () => {
 		expect('guess_row' in playArgsFor(base)).toBe(false);
 	});
 
+	it("names the card's row of a session no guess opened when given, and only then", () => {
+		expect(playArgsFor({ ...base, cardRow: 'hianime:show-1' }).card_row).toBe('hianime:show-1');
+		expect('card_row' in playArgsFor(base)).toBe(false);
+	});
+
 	it("names the guessed card's guess when given, and only then", () => {
 		const args = playArgsFor({ ...base, guessId: '42', guessRow: 'hianime:show-1' });
 		expect(args.guess_id).toBe('42');

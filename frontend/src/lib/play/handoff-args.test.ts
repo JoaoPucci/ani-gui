@@ -114,6 +114,19 @@ describe('handoffArgs', () => {
 		expect(args.kitsu_id).toBeUndefined();
 	});
 
+	it("names the card's row of a session no guess opened, as the embedded play does", () => {
+		const args = handoffArgs({
+			title: 'The Show',
+			episode: 3,
+			kitsuId: '42',
+			cardRow: 'hianime:the-show-2000-5',
+			config: { mode: 'sub' },
+			detail
+		});
+		expect(args.card_row).toBe('hianime:the-show-2000-5');
+		expect(args.kitsu_id).toBe('42');
+	});
+
 	it('names no card when it is given none', () => {
 		const args = handoffArgs({
 			title: 'The Show',
@@ -124,5 +137,6 @@ describe('handoffArgs', () => {
 		});
 		expect('guess_row' in args).toBe(false);
 		expect('guess_id' in args).toBe(false);
+		expect('card_row' in args).toBe(false);
 	});
 });

@@ -7,8 +7,17 @@ import { sessionShow } from './session-show';
 describe('the show a session plays as', () => {
 	const CARD = 'hianime:jojos-bizarre-adventure-2000-5182';
 
-	it('is the page for a session no guess opened', () => {
+	it("is the page for a session no guess opened, naming the card's row it came from", () => {
+		// The backend keeps the show the card's line records against the
+		// session's plays: a player mounted again after "Keep watching
+		// this" sends them as the page's show until it has read the pick.
 		expect(sessionShow({ id: '7158', guess: false, row: CARD, linked: null })).toEqual({
+			kitsuId: '7158',
+			cardRow: CARD,
+			recordAs: '7158',
+			mirrors: true
+		});
+		expect(sessionShow({ id: '7158', guess: false, row: null, linked: null })).toEqual({
 			kitsuId: '7158',
 			recordAs: '7158',
 			mirrors: true

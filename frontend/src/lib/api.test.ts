@@ -700,6 +700,19 @@ describe('playStream', () => {
 		await promise;
 	});
 
+	it("names the card's row of a session no guess opened on the SSE query", async () => {
+		const promise = playStream(
+			{ title: 'X', episode: '1', mode: 'sub', kitsu_id: '42', card_row: 'hianime:x-1' },
+			() => {}
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		const es = FakeEventSource.instances[0];
+		expect(new URL(es.url).searchParams.get('card_row')).toBe('hianime:x-1');
+		es.dispatch('done', JSON.stringify(donePayload()));
+		await promise;
+	});
+
 	it("names the guessed card's row on the SSE query when given, and only then", async () => {
 		// The session then says whether the play landed on that row's own
 		// listing, which is what lets the guess be recorded on it.
@@ -722,6 +735,7 @@ describe('playStream', () => {
 		const es2 = FakeEventSource.instances[1];
 		expect(new URL(es2.url).searchParams.has('guess_row')).toBe(false);
 		expect(new URL(es2.url).searchParams.has('guess_id')).toBe(false);
+		expect(new URL(es2.url).searchParams.has('card_row')).toBe(false);
 		es2.dispatch('done', JSON.stringify(donePayload()));
 		await plain;
 	});

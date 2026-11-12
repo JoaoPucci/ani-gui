@@ -30,10 +30,9 @@ export function verdict(r: VerdictRequest): LinkVerdict {
 	const showsPage = r.show === r.page;
 	const carried = r.carried && !r.picked;
 	const guess = r.asks_guess && showsPage && (!r.trusted || (carried && !r.named));
-	return {
-		offer: guess ? 'guess' : showsPage && (r.picked || r.named) ? 'again' : null,
-		kept: r.named && r.show !== null && !showsPage
-	};
+	const kept = r.named && r.show !== null && !showsPage;
+	const again = (showsPage && (r.picked || r.named)) || (r.in_player && kept);
+	return { offer: guess ? 'guess' : again ? 'again' : null, kept };
 }
 
 export function groupMembers(

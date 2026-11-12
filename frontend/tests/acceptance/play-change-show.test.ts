@@ -566,6 +566,55 @@ describe('a player opened again on a line picked for another show', () => {
 		expect(asked.get('guess_id')).toBe(RIGHT);
 		expect(asked.get('kitsu_id')).toBeNull();
 	});
+
+	it.each([
+		['a guessed session', { guess: '1', row: CARD }],
+		['a session of the named line', { row: CARD }]
+	])('keeps the ⋯ entry to change the show again (%s)', async (_name, query) => {
+		backend.rows = backend.rows.map((r) =>
+			r.id === CARD ? { ...r, kitsu_id: RIGHT, named: true } : r
+		);
+		await openPlayer(query);
+		await until(
+			() => slipText().includes(m.play_link_linked_note({ title: RIGHT_TITLE })),
+			'the note that the pick is saved'
+		);
+		await moreMenu();
+		await until(() => button(m.play_link_menu_item()) !== null, 'the menu entry');
+	});
+
+	it("names the card's row on a session of the named line's plays before the pick is read", async () => {
+		// The line's history read is held: the next episode goes out as the
+		// page's show, naming the card's row, so the backend keeps the show
+		// the user named on the line.
+		let release: () => void = () => {};
+		const read = new Promise<void>((resolve) => (release = resolve));
+		backend.rows = backend.rows.map((r) =>
+			r.id === CARD ? { ...r, kitsu_id: RIGHT, named: true } : r
+		);
+		server.use(
+			http.get(`${API_BASE}/api/history`, async () => {
+				await read;
+				return HttpResponse.json(backend.rows);
+			})
+		);
+		try {
+			await openPlayer({ row: CARD });
+			const next = target.querySelector<HTMLButtonElement>(
+				`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
+			)!;
+			await until(() => !next.disabled, 'the next episode button');
+			const before = FakeEventSource.instances.length;
+			next.click();
+			await until(() => FakeEventSource.instances.length > before, 'the next episode play');
+			const asked = new URL(FakeEventSource.instances.at(-1)!.url, 'http://x').searchParams;
+			expect(asked.get('kitsu_id')).toBe(GUESS);
+			expect(asked.get('card_row')).toBe(CARD);
+		} finally {
+			release();
+			await new Promise((r) => setTimeout(r, 50));
+		}
+	});
 });
 
 describe('switching to the pick', () => {

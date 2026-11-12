@@ -65,7 +65,8 @@ describe('what a surface tells the backend about the line', () => {
 				named: true,
 				asks_guess: true,
 				carried: false,
-				picked: false
+				picked: false,
+				in_player: false
 			}
 		]);
 	});
@@ -136,6 +137,19 @@ describe('how a surface reads the answer', () => {
 		expect(found.offer).toEqual({ entry: picked, current: ref('4013'), saved: '4013' });
 	});
 
+	it('offers a kept pick again on the show playing, as the player held it before a remount', async () => {
+		// The line records the pick (4013); the old show (7158) plays.
+		const shown = vi.fn(async (id: string) => ref(id));
+		const deps = d({ show: shown, verdict: async () => ({ offer: 'again', kept: true }) });
+		const found = await surfaceOfferRead(deps, CARD.id, '7158', PLAYER);
+		expect(found).toEqual({
+			offer: { entry: picked, current: ref('7158'), saved: '4013' },
+			unread: false,
+			kept: ref('4013')
+		});
+		expect(shown.mock.calls[0][0]).toBe('7158');
+	});
+
 	it("hands back the line's kept pick", async () => {
 		const found = await surfaceOfferRead(
 			answering({ offer: null, kept: true }),
@@ -201,9 +215,15 @@ describe('the offer a surface finds', () => {
 		expect((await surfaceOfferRead(d(), CARD.id, '4013', PLAYER)).offer?.saved).toBe('4013');
 	});
 
-	it('finds the pick a line named for another show keeps', async () => {
-		const named = d({ history: async () => [{ ...picked, named: true }] });
-		expect((await surfaceOfferRead(named, CARD.id, '7158', PLAYER)).kept).toEqual(ref('4013'));
+	it('finds the pick a line named for another show keeps, and on the player offers it again', async () => {
+		const named = d({
+			history: async () => [{ ...picked, named: true }],
+			show: async (id) => ref(id)
+		});
+		const found = await surfaceOfferRead(named, CARD.id, '7158', PLAYER);
+		expect(found.kept).toEqual(ref('4013'));
+		expect(found.offer).toMatchObject({ current: ref('7158'), saved: '4013' });
+		expect((await surfaceOfferRead(named, CARD.id, '7158', SHOW_PAGE)).offer).toBeNull();
 		expect((await surfaceOfferRead(named, CARD.id, '4013', PLAYER)).kept).toBeNull();
 	});
 });

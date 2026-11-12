@@ -20,11 +20,14 @@ describe('keptOnArrival', () => {
 		expect(keptOnArrival(at, { ...found, kept: null })).toBeNull();
 	});
 
-	it('is none on Home, with no row, past an offer, or after a failed read', () => {
+	it('is taken beside the offer to change it again that the player makes for it', () => {
+		const offer = { entry: LINE, current: ref('7158'), saved: '4013' };
+		expect(keptOnArrival(at, { ...found, offer })?.id).toBe('4013');
+	});
+
+	it('is none on Home, with no row, or after a failed read', () => {
 		expect(keptOnArrival({ ...at, inPlayer: false }, found)).toBeNull();
 		expect(keptOnArrival({ ...at, row: null }, found)).toBeNull();
-		const offer = { entry: LINE, current: ref('7158') };
-		expect(keptOnArrival(at, { ...found, offer })).toBeNull();
 		expect(keptOnArrival(at, { ...found, unread: true })).toBeNull();
 	});
 });
