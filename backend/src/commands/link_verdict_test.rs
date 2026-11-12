@@ -289,9 +289,9 @@ proptest! {
             && shows_page
             && (!args.trusted || (args.carried && !args.picked && !args.named));
         prop_assert_eq!(verdict(&args).offer == Some(OfferKind::Guess), guess);
-        let again = !guess
-            && ((shows_page && (args.picked || args.named))
-                || (args.in_player && args.named && args.show.is_some() && !shows_page));
+        let named_here = shows_page && (args.picked || args.named);
+        let kept_on_player = args.in_player && args.named && args.show.is_some() && !shows_page;
+        let again = !guess && (named_here || kept_on_player);
         prop_assert_eq!(verdict(&args).offer == Some(OfferKind::Again), again);
     }
 
