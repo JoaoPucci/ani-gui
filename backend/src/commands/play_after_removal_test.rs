@@ -16,7 +16,7 @@ use crate::history::guard::epoch;
 const SHOW: &str = "the-show-77";
 const KEY: &str = "play:v14:The Show:sub:best:1:::";
 
-fn state_in(dir: &std::path::Path) -> AppState {
+fn state_in(dir: &std::path::Path) -> crate::scratch::Scratch<AppState> {
     // These cases store resolutions under a fixed key from an earlier
     // version; which version is beside the point here.
     crate::cache::families::allow_undeclared_on_this_thread();

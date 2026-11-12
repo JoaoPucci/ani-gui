@@ -13,11 +13,10 @@ use super::*;
 use crate::history::HistoryEntry;
 use crate::scraper::provider::ProviderId;
 
-fn state(history: std::path::PathBuf) -> AppState {
-    AppState {
-        history_path: history,
-        ..super::title_match_tests::state()
-    }
+fn state(history: std::path::PathBuf) -> crate::scratch::Scratch<AppState> {
+    let mut state = super::title_match_tests::state();
+    state.history_path = history;
+    state
 }
 
 const BEFORE: &str = "title-match:v4:hianime:black clover:c1";

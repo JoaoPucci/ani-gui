@@ -964,7 +964,6 @@ mod tests {
     use axum::body::Body;
     use axum::http::Request;
     use http_body_util::BodyExt;
-    use std::path::PathBuf;
     use std::sync::Arc;
     use tempfile::TempDir;
     use tower::ServiceExt;
@@ -1016,7 +1015,7 @@ mod tests {
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu_base),
             config_path: td.path().join("config.toml"),
-            state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            state_dir: td.path().join("state"),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),

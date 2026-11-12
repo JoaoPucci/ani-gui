@@ -21,7 +21,6 @@
 
 #![cfg(target_os = "linux")]
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use ani_gui::api::build_api_router;
@@ -60,7 +59,7 @@ fn build_state(tmp: &std::path::Path, hianime_base: &str) -> AppState {
         cache_pool: cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
         config_path: tmp.join("config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        state_dir: tmp.join("state"),
         internal_secret: ani_gui::account::InternalSecret::random(),
         mal_refresh: ani_gui::meta::mal_user::MalRefreshState::new(),
         account_write_locks: ani_gui::commands::account::AccountWriteLocks::new(),
