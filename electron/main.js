@@ -51,7 +51,7 @@ const { messagesFor, resolveLocale } = require("./lib/main-messages.cjs");
 const { splashWords, stallTexts } = require("./lib/splash-progress.cjs");
 const { relaunch, relaunchPlan } = require("./lib/relaunch.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
-const { redactingLines, redactSecrets } = require("./lib/log-redact.cjs");
+const { backendRelay, redactSecrets } = require("./lib/log-redact.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
 const { appDocumentFrom } = require("./lib/app-document.cjs");
 const { SECRET_CHANNEL, secretKeeper } = require("./lib/secret-handoff.cjs");
@@ -322,6 +322,10 @@ function readConfigLocale() {
  * see the module), so bootApp can end the boot.
  */
 async function spawnBackend() {
+  const relay = backendRelay({
+    stdout: (text) => process.stdout.write(text),
+    stderr: (text) => process.stderr.write(text),
+  });
   // A parent pipe on stdin, the flag to watch it, and its own process
   // group — see lib/backend-spawn.cjs. `child.stdin` is never written
   // to or closed: it stays open exactly as long as this process lives.
@@ -336,21 +340,20 @@ async function spawnBackend() {
     },
     handshake: (child) => {
       // The backend's output is relayed with any secret in it redacted
-      // (lib/log-redact.cjs), a whole line at a time. Each line keeps
-      // the `[backend] ` tag the relay has always put on a chunk.
-      const stderrLines = redactingLines((text) =>
-        process.stderr.write(text.replace(/^(?=.)/gm, "[backend] ")),
-      );
+      // (lib/log-redact.cjs): by shape from the start, and by value once
+      // the handshake has named the launch's secret.
       child.stderr.setEncoding("utf-8");
-      child.stderr.on("data", (chunk) => stderrLines.push(chunk));
-      child.stderr.on("end", () => stderrLines.end());
+      child.stderr.on("data", (chunk) => relay.stderr(chunk));
+      child.stderr.on("end", () => relay.end());
       // After the handshake, downstream stdout becomes log output; it
       // is echoed through so we can see it in dev.
-      return awaitHandshake(child, {
+      const handshake = awaitHandshake(child, {
         timeoutMs: HANDSHAKE_TIMEOUT_MS,
         stopChild: killTree,
-        log: (line) => process.stdout.write(`${redactSecrets(line)}\n`),
+        log: (line) => relay.stdout(line),
       });
+      handshake.then((ready) => relay.learn(ready.internalSecret), () => {});
+      return handshake;
     },
   });
 }

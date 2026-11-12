@@ -14,9 +14,11 @@
 const REDACTED = "<redacted>";
 
 // `secret=` as a query parameter, plain or URL-encoded inside another
-// URL: the value runs to the next parameter, fragment, quote, bracket
-// or whitespace.
-const QUERY_SECRET = /((?:[?&;]|%3[Ff]|%26)secret(?:=|%3[Dd]))(?:(?!%26)[^&#\s"'<>)\]])*/g;
+// URL, or standing alone at the start of a line or after a space, quote
+// or bracket: the value runs to the next parameter, fragment, quote,
+// bracket or whitespace.
+const QUERY_SECRET =
+  /((?:^|[?&;\s"'(\[]|%3[Ff]|%26)secret(?:=|%3[Dd]))(?:(?!%26)[^&#\s"'<>)\]])*/gm;
 // The header, as `name: value` or as a JSON member.
 const HEADER_SECRET = /(x-ani-gui-internal-secret["']?\s*[:=]\s*["']?)[^\s"',;}\]]+/gi;
 // The backend's handshake line.
@@ -71,4 +73,34 @@ function redactingLines(write, known = () => []) {
   };
 }
 
-module.exports = { REDACTED, redactSecrets, redactingLines };
+/**
+ * The relays of the backend's output: `stdout(line)` for each line the
+ * handshake hands on once it has completed, `stderr(chunk)` for each
+ * chunk of its stderr, tagged `[backend] ` a line at a time. Both redact
+ * by shape from the start, and by value the launch's secret once
+ * `learn` is handed it — from the handshake, which carries it. `end()`
+ * writes what is left of an unfinished stderr line.
+ */
+function backendRelay({ stdout, stderr }) {
+  const known = [];
+  const lines = redactingLines(
+    (text) => stderr(text.replace(/^(?=.)/gm, "[backend] ")),
+    () => known,
+  );
+  return {
+    learn(secret) {
+      if (typeof secret === "string" && secret.length > 0) known.push(secret);
+    },
+    stdout(line) {
+      stdout(`${redactSecrets(line, known)}\n`);
+    },
+    stderr(chunk) {
+      lines.push(chunk);
+    },
+    end() {
+      lines.end();
+    },
+  };
+}
+
+module.exports = { REDACTED, backendRelay, redactSecrets, redactingLines };

@@ -40,6 +40,16 @@ function frameUrl(frame) {
   }
 }
 
+/** The secret held for the event's window, or undefined, including
+ *  when the window cannot be read. */
+function heldBy(held, event) {
+  try {
+    return event.sender ? held.get(event.sender) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function isAppMainFrame(frame, app) {
   try {
     return Boolean(frame) && frame.parent === null && isAppDocument(frame.url, app);
@@ -64,14 +74,16 @@ function secretKeeper({ app, logError }) {
     /** The answer to an IPC `event` asking for the secret: the secret,
      *  or null. */
     answer(event) {
-      const secret = event && event.sender ? held.get(event.sender) : undefined;
+      // The frame first: a caller that is not the app's page is
+      // refused before anything else of it is read.
       const frame = senderFrameOf(event);
-      if (secret === undefined) {
-        logError(`[secret] refused a window it was not handed to (${frameUrl(frame)})`);
-        return null;
-      }
       if (!isAppMainFrame(frame, app)) {
         logError(`[secret] refused a page that is not the app's (${frameUrl(frame)})`);
+        return null;
+      }
+      const secret = heldBy(held, event);
+      if (secret === undefined) {
+        logError(`[secret] refused a window it was not handed to (${frameUrl(frame)})`);
         return null;
       }
       return secret;

@@ -85,8 +85,25 @@ pub(super) fn build_argv_custom(args: &LaunchArgs) -> Vec<String> {
     let url = args.stream_url.as_str();
     tokens
         .into_iter()
-        .filter_map(|tok| substitute_token(&tok, url, referer, title, subtitle))
+        .filter_map(|tok| {
+            let rendered = substitute_token(&tok, url, referer, title, subtitle)?;
+            // A token the template did not start as an option never
+            // becomes one through what was substituted into it: the
+            // title is the show's name, the rest the provider's. `/`
+            // too, the option mark of many Windows players.
+            if starts_option(&rendered) && !starts_option(&tok) {
+                None
+            } else {
+                Some(rendered)
+            }
+        })
         .collect()
+}
+
+/// Whether a command-line token reads as an option: `-…`, or `/…` as
+/// many Windows players take theirs.
+fn starts_option(token: &str) -> bool {
+    token.starts_with('-') || token.starts_with('/')
 }
 
 /// Returns `Some(rendered)` when every placeholder in `tok` had a
