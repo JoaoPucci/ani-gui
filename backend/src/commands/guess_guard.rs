@@ -9,8 +9,12 @@
 //! after it, and would record the old guess over the link. So whatever a
 //! guessed session's play would record — the watch's id, or the resolve's
 //! guess — it records only on a row that records no id, or the same one.
-//! Any other play is the user's choice of show, from its own page, and
-//! records what it names.
+//! A session a card opened with no guess — a line the user named, played
+//! from Home — keeps the line's show the same way on the card's own
+//! listing (`card_row`): a player mounted again after "Keep watching
+//! this" sends its plays as the page's show until it has read the
+//! line's pick back. Any other play is the user's choice of show, from
+//! its own page, and records what it names.
 //!
 //! Such a play does not stand for the row either: it reports that it did
 //! not land on the card's own listing (`own_listing`), so the renderer
@@ -40,8 +44,8 @@ pub fn keeps_recorded<'a>(
 /// opened asked for (`card_row`), on that card's own listing.
 #[must_use]
 pub fn guards_row(guess_row: Option<&str>, card_row: Option<&str>, played: &str) -> bool {
-    let _ = (card_row, played);
     guess_row.is_some()
+        || card_row.is_some_and(|row| crate::scraper::provider::same_listing(row, played))
 }
 
 /// `candidate`, the id the play `args` would record on the row `played`,
@@ -55,7 +59,9 @@ pub(crate) fn guarded<'a>(
     played: &str,
     candidate: Option<&'a str>,
 ) -> Option<&'a str> {
-    if args.guess_row.is_none() || candidate.is_none() {
+    if !guards_row(args.guess_row.as_deref(), args.card_row.as_deref(), played)
+        || candidate.is_none()
+    {
         return candidate;
     }
     let Ok(rows) = crate::history::read_all(&state.history_path) else {

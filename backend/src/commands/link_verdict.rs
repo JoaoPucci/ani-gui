@@ -12,7 +12,7 @@
 //! show for it. A line the user named, anywhere, or picked on the
 //! player in this run, is offered again instead, as the way to change
 //! it. On the player, a line named for another show than the one
-//! playing is that pick, kept.
+//! playing is that pick, kept, and is offered again too.
 //!
 //! A correction covers every guessed row the card stands for on the
 //! card's own listing: the rows Continue Watching guesses as the same
@@ -84,18 +84,18 @@ pub fn verdict(args: &VerdictArgs) -> Verdict {
     // A line picked on the player is named, though its note may not
     // have been read: it is only offered again.
     let carried = args.carried && !args.picked;
+    // Named for another show than the one shown: on the player, the pick
+    // kept, and offered again to change it, as before a remount.
+    let kept = args.named && args.show.is_some() && !shows_page;
     let guess = args.asks_guess && shows_page && (!args.trusted || (carried && !args.named));
     let offer = if guess {
         Some(OfferKind::Guess)
-    } else if shows_page && (args.picked || args.named) {
+    } else if (shows_page && (args.picked || args.named)) || (args.in_player && kept) {
         Some(OfferKind::Again)
     } else {
         None
     };
-    Verdict {
-        offer,
-        kept: args.named && args.show.is_some() && !shows_page,
-    }
+    Verdict { offer, kept }
 }
 
 /// A history row with Continue Watching's match for it.

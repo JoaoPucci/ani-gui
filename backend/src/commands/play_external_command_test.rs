@@ -118,6 +118,7 @@ fn play_args() -> PlayArgs {
         kitsu_id: None,
         version: None,
         guess_row: None,
+        card_row: None,
         guess_id: None,
         caption: None,
     }
@@ -824,6 +825,7 @@ fn guessed_card() -> String {
 fn guessed_args(row: &str, guess: &str) -> PlayArgs {
     PlayArgs {
         guess_row: Some(row.into()),
+        card_row: None,
         guess_id: Some(guess.into()),
         ..play_args()
     }

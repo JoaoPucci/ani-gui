@@ -138,6 +138,13 @@ pub struct PlayArgs {
     /// reads the same way.
     #[serde(default, deserialize_with = "crate::kitsu_id::deserialize_optional")]
     pub guess_id: Option<String>,
+    /// The history row of a Continue card that opened this play with no
+    /// guess: a line the user named, or one a play recorded. Its play
+    /// never replaces the show that line records
+    /// ([`crate::commands::guess_guard`]). `None` for a guessed card's
+    /// play, which names [`Self::guess_row`], and for every other play.
+    #[serde(default)]
+    pub card_row: Option<String>,
     /// The captions choice remembered for the show
     /// (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. `None`
     /// when none is.
@@ -758,6 +765,7 @@ pub(crate) mod tests {
                 kitsu_id,
                 version: None,
                 guess_row: None,
+            card_row: None,
                 guess_id: None,
                 caption: None,
             };
@@ -861,6 +869,7 @@ pub(crate) mod tests {
             kitsu_id: Some("42".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -935,6 +944,7 @@ pub(crate) mod tests {
             kitsu_id: Some("42".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -998,6 +1008,7 @@ pub(crate) mod tests {
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -1060,6 +1071,7 @@ pub(crate) mod tests {
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         }
@@ -1341,6 +1353,7 @@ pub(crate) mod tests {
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -1658,6 +1671,7 @@ pub(crate) mod tests {
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         }
@@ -1812,6 +1826,7 @@ pub(crate) mod tests {
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -1861,6 +1876,7 @@ pub(crate) mod tests {
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -2442,6 +2458,7 @@ pub(crate) mod tests {
             kitsu_id: Some("race-1".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -2510,6 +2527,7 @@ pub(crate) mod tests {
             kitsu_id: Some("cap-1".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -2565,6 +2583,7 @@ pub(crate) mod tests {
             kitsu_id: Some("dub-2".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -2625,6 +2644,7 @@ pub(crate) mod tests {
             kitsu_id: Some("dub-1".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
