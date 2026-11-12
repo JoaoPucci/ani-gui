@@ -103,6 +103,22 @@ fn a_show_carrying_the_same_season_by_title_or_slug_earns_none() {
 }
 
 #[test]
+fn a_shows_slug_is_read_as_the_backend_reads_every_kitsu_slug() {
+    // The number before the keyword, as Kitsu writes `…-2nd-season` and
+    // the page's own slug matcher reads it: the second season.
+    assert_eq!(season_of(&titled("1", "Show", "show-2-season")), 2);
+    assert_eq!(season_of(&titled("1", "Show", "show-2nd-season")), 2);
+    assert_eq!(season_of(&titled("1", "Show", "show-second-season")), 2);
+    assert_eq!(
+        link_warnings("Show Season 2", &titled("1", "Show", "show-2-season"), 1.0),
+        []
+    );
+    // Kitsu slugs keep every word apart: a keyword glued to its number
+    // names no season.
+    assert_eq!(season_of(&titled("1", "Show", "show-season2")), 1);
+}
+
+#[test]
 fn a_season_any_of_the_shows_titles_carries_counts() {
     let mut second = titled("5", "Shingeki", "shingeki");
     second

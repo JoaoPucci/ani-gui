@@ -8,8 +8,8 @@
 // - `groupMembers`: commands/link_verdict.rs `group_members`
 // - `cardLines`: commands/card_line.rs `card_lines`
 // - `candidates`: commands/link_candidates.rs and link_rules.rs. A
-//   season is read here with the renderer's own reader, which the
-//   backend's mirrors.
+//   title's season is read here with the renderer's own reader, which
+//   the backend's mirrors on titles; a slug's as the backend reads it.
 
 import type {
 	CandidatesRequest,
@@ -79,10 +79,37 @@ export function mergeCandidates(
 		.map((ref) => [ref, ref.id === current?.id]);
 }
 
+const ORDINALS = [
+	'first',
+	'second',
+	'third',
+	'fourth',
+	'fifth',
+	'sixth',
+	'seventh',
+	'eighth',
+	'ninth',
+	'tenth'
+];
+
+/** A slug's season as the backend reads it (`cour_from_slug`): a
+ *  trailing `-part-N` / `-cour-N` / `-season-N`, or an ordinal before
+ *  the keyword, spelled, with a suffix, or a bare number. */
+function slugSeason(slug: string): number | null {
+	const keyword = slug.match(/(?:^|-)(?:part|cour|season)-(\d+)$/i);
+	if (keyword) return Number(keyword[1]);
+	const ordinal = slug.match(/(?:^|-)([a-z0-9]+)-(?:part|cour|season)$/i)?.[1]?.toLowerCase();
+	if (!ordinal) return null;
+	const spelled = ORDINALS.indexOf(ordinal);
+	if (spelled >= 0) return spelled + 1;
+	const digits = ordinal.replace(/(?:st|nd|rd|th)$/, '');
+	return /^\d+$/.test(digits) ? Number(digits) : null;
+}
+
 function seasonOf(ref: KitsuAnimeRef): number {
-	const names = [ref.canonical_title, ...Object.values(ref.titles ?? {})];
-	if (ref.slug) names.push(ref.slug.replace(/-/g, ' '));
-	return Math.max(1, ...names.map((n) => parseCour(n)));
+	const titles = [ref.canonical_title, ...Object.values(ref.titles ?? {})].map((n) => parseCour(n));
+	const slug = ref.slug ? slugSeason(ref.slug) : null;
+	return Math.max(1, ...titles, ...(slug === null ? [] : [slug]));
 }
 
 export function linkWarnings(title: string, ref: KitsuAnimeRef, episode: number): LinkWarning[] {

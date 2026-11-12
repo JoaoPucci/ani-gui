@@ -287,6 +287,14 @@ proptest! {
         let out = group_members("c", "1", saved, &rows);
         prop_assert_eq!(out[0].as_str(), "c");
         prop_assert_eq!(out.iter().filter(|r| r.as_str() == "c").count(), 1);
+        // Every row the correction covers is in it.
+        for r in rows.iter().filter(|r| r.id != "c") {
+            let covered = match saved {
+                None => r.show.as_deref() == Some("1") && !r.trusted,
+                Some(s) => r.show.as_deref() == Some(s),
+            };
+            prop_assert_eq!(out.contains(&r.id), covered);
+        }
         for member in &out[1..] {
             let r = rows.iter().find(|r| &r.id == member).expect("asked");
             match saved {

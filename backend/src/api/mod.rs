@@ -993,7 +993,8 @@ mod tests {
     /// pointing at an unused base URL (tests that don't need Kitsu
     /// won't touch the network).
     pub(super) fn test_app_state(td: &TempDir) -> AppState {
-        let kitsu_base = "http://127.0.0.1:1"; // never reached by these tests
+        // Refused at once: a route that reads Kitsu meets a network failure.
+        let kitsu_base = "http://127.0.0.1:1";
         AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
