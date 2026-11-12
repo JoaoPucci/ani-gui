@@ -11,6 +11,7 @@ import {
 	type InPlaceLinkDeps
 } from './in-place-link.svelte';
 import { notePick, noteSwitch, pickedRow } from './guess-slip';
+import { ruleDeps } from '../../../tests/fakes/link-rules';
 
 function ref(id: string, title: string): KitsuAnimeRef {
 	return {
@@ -56,8 +57,7 @@ function fake(inPlayer = false): Fake {
 			e.kitsu_id
 				? { match: ref(e.kitsu_id, 'linked'), trusted: true }
 				: { match: GUESS, trusted: false },
-		search: async () => [GUESS, RIGHT],
-		group: async (_card, rows) => rows,
+		...ruleDeps(async () => [GUESS, RIGHT]),
 		link: async (_card, rows, kitsuId) => {
 			f.rows = f.rows.map((r) => (rows.includes(r.id) ? { ...r, kitsu_id: kitsuId } : r));
 			return {
@@ -158,7 +158,7 @@ describe('"Yes" on the player', () => {
 		const yes = await writes((s) => s.answerYes());
 		const picked = await writes(async (s) => {
 			await s.start(2);
-			s.choose({ ref: GUESS, current: true });
+			s.choose({ ref: GUESS, current: true, warnings: [] });
 			return s.confirm();
 		});
 		expect(yes.calls).toEqual([[CARD.id, [CARD.id], GUESS.id]]);
@@ -194,7 +194,7 @@ describe('a pick on Home', () => {
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
 		await s.start(2);
-		s.choose({ ref: RIGHT, current: false });
+		s.choose({ ref: RIGHT, current: false, warnings: [] });
 		await s.confirm();
 		expect(f.notices).toEqual([
 			{ kind: 'success', message: m.detail_link_done_toast({ title: RIGHT.canonical_title }) }
@@ -206,7 +206,7 @@ describe('a pick on Home', () => {
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
 		await s.start(2);
-		s.choose({ ref: RIGHT, current: false });
+		s.choose({ ref: RIGHT, current: false, warnings: [] });
 		await s.confirm();
 		expect(s.offer).toBeNull();
 		expect(pickedRow(CARD.id)).toBe(false);
@@ -219,7 +219,7 @@ describe('a pick of another show on the player', () => {
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
 		await s.start(2);
-		s.choose({ ref: RIGHT, current: false });
+		s.choose({ ref: RIGHT, current: false, warnings: [] });
 		await s.confirm();
 		expect(f.rows[0].kitsu_id).toBe(RIGHT.id);
 		expect(s.slip).toBe('linked');
@@ -234,14 +234,14 @@ describe('a pick of another show on the player', () => {
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
 		await s.start(2);
-		s.choose({ ref: RIGHT, current: false });
+		s.choose({ ref: RIGHT, current: false, warnings: [] });
 		await s.confirm();
 		expect(s.offer?.current.id).toBe(GUESS.id);
 		expect(s.offer?.saved).toBe(RIGHT.id);
 		expect(pickedRow(CARD.id)).toBe(true);
 		// Picking the show playing after all: nothing left to switch to.
 		await s.start(2);
-		s.choose({ ref: GUESS, current: true });
+		s.choose({ ref: GUESS, current: true, warnings: [] });
 		await s.confirm();
 		expect(f.rows[0].kitsu_id).toBe(GUESS.id);
 		expect(s.linked).toBeNull();
@@ -261,12 +261,12 @@ describe('a pick of another show on the player', () => {
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
 		await s.start(2);
-		s.choose({ ref: RIGHT, current: false });
+		s.choose({ ref: RIGHT, current: false, warnings: [] });
 		expect(await s.confirm()).toBe(true);
 		// A second pick that fails: the first one's switch stays as it was.
 		down = true;
 		await s.start(2);
-		s.choose({ ref: ref('9999', 'JoJo 2007'), current: false });
+		s.choose({ ref: ref('9999', 'JoJo 2007'), current: false, warnings: [] });
 		expect(await s.confirm()).toBe(false);
 		expect(s.linked?.id).toBe(RIGHT.id);
 	});
@@ -277,7 +277,7 @@ describe('a pick of another show on the player', () => {
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
 		await s.start(2);
-		s.choose({ ref: RIGHT, current: false });
+		s.choose({ ref: RIGHT, current: false, warnings: [] });
 		expect(await s.confirm()).toBe(false);
 		expect(s.slip).toBe('guess');
 		expect(s.linked).toBeNull();
@@ -358,7 +358,7 @@ describe('a surface that reads nothing from the history', () => {
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
 		await s.start(2);
-		s.choose({ ref: RIGHT, current: false });
+		s.choose({ ref: RIGHT, current: false, warnings: [] });
 		await s.confirm();
 		expect(s.slip).toBe('linked');
 		expect(f.rows[0].kitsu_id).toBe(RIGHT.id);
@@ -372,7 +372,7 @@ describe('a pick that lands after the player moved to another card', () => {
 		const other: HistoryEntry = { ...CARD, id: 'hianime:other-1' };
 		const f = fake(true);
 		f.rows = [CARD, other];
-		f.deps.group = async (card) => [card];
+		f.deps.group = async (r) => [r.card];
 		const link = f.deps.link;
 		f.deps.link = async (card, rows, kitsuId) => {
 			await held;
@@ -381,7 +381,7 @@ describe('a pick that lands after the player moved to another card', () => {
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
 		await s.start(2);
-		s.choose({ ref: RIGHT, current: false });
+		s.choose({ ref: RIGHT, current: false, warnings: [] });
 		const confirming = s.confirm();
 		await s.arrive(other.id, GUESS.id);
 		release();
@@ -400,7 +400,7 @@ describe('a pick that lands after the player moved to another card', () => {
 		const other: HistoryEntry = { ...CARD, id: 'hianime:other-1' };
 		const f = fake();
 		f.rows = [CARD, other];
-		f.deps.group = async (card) => [card];
+		f.deps.group = async (r) => [r.card];
 		const link = f.deps.link;
 		f.deps.link = async (card, rows, kitsuId) => {
 			await held;
@@ -409,7 +409,7 @@ describe('a pick that lands after the player moved to another card', () => {
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
 		await s.start(2);
-		s.choose({ ref: RIGHT, current: false });
+		s.choose({ ref: RIGHT, current: false, warnings: [] });
 		const confirming = s.confirm();
 		// Another card's offer checked meanwhile (a failed resume's).
 		await s.arrive(other.id, GUESS.id);
@@ -439,7 +439,7 @@ describe('a later arrival', () => {
 		const f = fake();
 		const other: HistoryEntry = { ...CARD, id: 'hianime:other-1' };
 		f.rows = [CARD, other];
-		f.deps.group = async (card) => [card];
+		f.deps.group = async (r) => [r.card];
 		const linked: string[][] = [];
 		const link = f.deps.link;
 		f.deps.link = async (card, rows, id) => {
@@ -472,7 +472,7 @@ describe('a link that lands after the user left the surface', () => {
 		const s = new InPlaceLinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS.id);
 		await s.start(2);
-		s.choose({ ref: RIGHT, current: false });
+		s.choose({ ref: RIGHT, current: false, warnings: [] });
 		return { f, s, release };
 	}
 
@@ -530,7 +530,7 @@ describe('a link that lands after the user left the surface', () => {
 		expect(s.linked?.id).toBe(RIGHT.id);
 		// A second pick, and the viewer leaves while it is out.
 		await s.start(2);
-		s.choose({ ref: ref('9999', 'JoJo 2007'), current: false });
+		s.choose({ ref: ref('9999', 'JoJo 2007'), current: false, warnings: [] });
 		const confirming = s.confirm();
 		s.leave();
 		expect(await confirming).toBe(true);

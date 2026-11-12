@@ -19,6 +19,8 @@ import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
 import { served } from './link-backend';
+import { groupMembers } from '../fakes/link-rules';
+import type { LinkGroupRequest } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -189,8 +191,9 @@ function serveBackend() {
 			// Both rows are Black Clover's one listing: the card's own and
 			// a retired provider's bare row with the same words.
 			http.post(`${API_BASE}/api/history/link-group`, async ({ request }) => {
-				const body = (await request.json()) as { card: string; rows: string[] };
-				return HttpResponse.json(body.rows.filter((r) => rows.some((h) => h.id === r)));
+				const body = (await request.json()) as LinkGroupRequest;
+				const members = groupMembers(body.card, body.show, body.saved, body.rows);
+				return HttpResponse.json(members.filter((r) => rows.some((h) => h.id === r)));
 			}),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),

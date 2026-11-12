@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { KitsuAnimeRef } from '$lib/api';
-import type { LinkCandidate } from './link-candidates';
+import type { LinkCandidate } from '$lib/api';
 import {
 	candidateMeta,
 	createDialogFocus,
@@ -36,7 +36,8 @@ const candidate = (over: Partial<KitsuAnimeRef> = {}): LinkCandidate => ({
 		episode_count: 13,
 		...over
 	} as KitsuAnimeRef,
-	current: false
+	current: false,
+	warnings: []
 });
 
 describe('the picker opening', () => {

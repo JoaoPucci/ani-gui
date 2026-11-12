@@ -3,10 +3,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rememberAudio, storedAudio } from '$lib/play/audio-choice';
-import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
+import type { HistoryEntry, KitsuAnimeRef, ReadOptions } from '$lib/api';
 import { m } from '$lib/paraglide/messages';
 import { LinkSession, type LinkNotice, type LinkSessionDeps } from './link-session.svelte';
 import { notePlayed, __resetGuessPlaysForTests } from './guess-plays';
+import { ruleDeps } from '../../../tests/fakes/link-rules';
 
 function ref(id: string, over: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {
@@ -40,6 +41,8 @@ const RIGHT = ref('9969', { canonical_title: 'Gintama', episode_count: 51 });
 
 interface Fake {
 	deps: LinkSessionDeps;
+	/** Kitsu's search, as the backend's candidates run it. */
+	search: (query: string, opts?: ReadOptions) => Promise<KitsuAnimeRef[]>;
 	/** The path the app is on. */
 	path: string;
 	notices: LinkNotice[];
@@ -48,16 +51,20 @@ interface Fake {
 	rows: HistoryEntry[];
 }
 
-function fake(over: Partial<LinkSessionDeps> = {}): Fake {
+function fake(
+	over: Partial<LinkSessionDeps> = {},
+	search: Fake['search'] = async (q) => (q === 'gintama' ? [RIGHT] : [ref(GUESS)])
+): Fake {
 	const f = { notices: [], pages: [], refreshed: 0, rows: [CARD] } as unknown as Fake;
 	f.path = `/anime/${GUESS}`;
+	f.search = search;
 	f.deps = {
+		...ruleDeps((q, opts) => f.search(q, opts)),
 		history: async () => f.rows,
 		resolve: async (e) =>
 			e.kitsu_id
 				? { match: ref(e.kitsu_id), trusted: true }
 				: { match: ref(GUESS), trusted: false },
-		search: async (q) => (q === 'gintama' ? [RIGHT] : [ref(GUESS)]),
 		link: async (_card, rows, kitsuId) => {
 			f.rows = f.rows.map((r) => (rows.includes(r.id) ? { ...r, kitsu_id: kitsuId } : r));
 			return {
@@ -65,7 +72,6 @@ function fake(over: Partial<LinkSessionDeps> = {}): Fake {
 				linked: rows.map((row) => ({ row, previous: null, ep_no: '3', watched_at: null }))
 			};
 		},
-		group: async (_card, rows) => rows,
 		notify: (n) => f.notices.push(n),
 		showPage: (id, row) => {
 			f.pages.push([id, row]);
@@ -96,15 +102,25 @@ describe('the episode the picker names', () => {
 		expect(s.episode).toBe('4');
 	});
 
-	it('is what the episode warning measures against the chosen show', async () => {
-		const s = new LinkSession(fake().deps);
+	it('is the one the backend measures the candidates against', async () => {
+		const asked: number[] = [];
+		const f = fake();
+		const candidates = f.deps.candidates;
+		f.deps.candidates = (r, opts) => {
+			asked.push(r.episode);
+			return candidates(r, opts);
+		};
+		const s = new LinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS);
 		await s.start(52);
-		s.choose({ ref: RIGHT, current: false });
+		await s.search('gintama');
+		s.choose(s.candidates![0]);
 		expect(s.warnings).toContain('episode');
 		await s.start(51);
-		s.choose({ ref: RIGHT, current: false });
+		await s.search('gintama');
+		s.choose(s.candidates![0]);
 		expect(s.warnings).not.toContain('episode');
+		expect(asked).toEqual([52, 52, 51, 51]);
 	});
 });
 
@@ -148,7 +164,7 @@ describe('LinkSession', () => {
 		await s.arrive(CARD.id, GUESS);
 		await s.start();
 		expect(s.open).toBe(true);
-		expect(s.candidates?.[0]).toEqual({ ref: ref(GUESS), current: true });
+		expect(s.candidates?.[0]).toEqual({ ref: ref(GUESS), current: true, warnings: ['season'] });
 		await s.search('gintama');
 		expect(s.candidates?.map((c) => c.ref.id)).toEqual([RIGHT.id]);
 		s.choose(s.candidates![0]);
@@ -164,7 +180,7 @@ describe('LinkSession', () => {
 		const s = new LinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS);
 		await s.start();
-		f.deps.search = async () => Promise.reject(new Error('down'));
+		f.search = async () => Promise.reject(new Error('down'));
 		await s.search('gintama');
 		expect(s.candidates).toEqual([]);
 		expect(s.failed).toBe(true);
@@ -294,12 +310,13 @@ describe('LinkSession', () => {
 
 	it('keeps the latest search’s answer, whatever lands last', async () => {
 		const gates: Record<string, () => void> = {};
-		const f = fake({
-			search: (q) =>
+		const f = fake(
+			{},
+			(q) =>
 				new Promise((resolve) => {
 					gates[q] = () => resolve([ref(q === 'second' ? '2' : q === 'first' ? '1' : GUESS)]);
 				})
-		});
+		);
 		const s = new LinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS);
 		const opening = s.start();
@@ -529,7 +546,7 @@ describe('the audio a correction carries', () => {
 		const s = new LinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS);
 		await s.start();
-		s.choose({ ref: s.offer!.current, current: true });
+		s.choose({ ref: s.offer!.current, current: true, warnings: [] });
 		expect(await s.confirm()).toBe(true);
 		expect(storedAudio(GUESS)).toBeUndefined();
 	});
@@ -552,7 +569,8 @@ describe('the reads of an arrival', () => {
 	/** `f`'s reads, each recording the signal it was asked with. */
 	function signalled(f: Fake) {
 		const asked: { read: string; signal: AbortSignal | undefined }[] = [];
-		const { history, resolve, search } = f.deps;
+		const { history, resolve } = f.deps;
+		const search = f.search;
 		f.deps.history = (opts) => {
 			asked.push({ read: 'history', signal: opts?.signal });
 			return history();
@@ -561,7 +579,7 @@ describe('the reads of an arrival', () => {
 			asked.push({ read: 'resolve', signal: opts?.signal });
 			return resolve(e);
 		};
-		f.deps.search = (q, opts) => {
+		f.search = (q, opts) => {
 			asked.push({ read: 'search', signal: opts?.signal });
 			return search(q);
 		};
@@ -602,7 +620,7 @@ describe('the reads of an arrival', () => {
 		const s = new LinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS);
 		let answer!: (hits: KitsuAnimeRef[]) => void;
-		f.deps.search = (_q, opts) => {
+		f.search = (_q, opts) => {
 			asked.push({ read: 'search', signal: opts?.signal });
 			return new Promise((r) => (answer = r));
 		};
@@ -653,7 +671,7 @@ describe('the reads of an arrival', () => {
 		const s = new LinkSession(f.deps);
 		await s.arrive(CARD.id, GUESS);
 		asked.length = 0;
-		s.choose({ ref: RIGHT, current: false });
+		s.choose({ ref: RIGHT, current: false, warnings: [] });
 		expect(await s.confirm()).toBe(true);
 		expect(asked.length).toBeGreaterThan(0);
 		expect(asked.every((a) => a.signal === undefined)).toBe(true);

@@ -1165,3 +1165,90 @@ describe('the picker holds the keyboard while it is up', () => {
 		expect(isModalOpen()).toBe(false);
 	});
 });
+
+// The pill, the picker's list and its warnings, and whether a card's
+// line is asked about at all are the backend's to say
+// (commands/card_line.rs, link_rules.rs, link_verdict.rs): Home draws
+// what it answers, whatever the renderer would have made of the rows.
+describe("Home draws the backend's answers", () => {
+	it('shows the pill on the cards the backend says can be corrected, and only those', async () => {
+		server.use(
+			http.post(`${API_BASE}/api/history/card-lines`, async ({ request }) => {
+				const { rows } = (await request.json()) as { rows: { id: string }[] };
+				return HttpResponse.json(
+					Object.fromEntries(rows.map((r) => [r.id, { line: r.id, correctable: r.id === KNOWN }]))
+				);
+			})
+		);
+		await openHome();
+		await until(() => pill(KNOWN) !== null, 'the pill the backend names');
+		expect(pill(BC_CARD)).toBeNull();
+		expect(pill(JOJO_CARD)).toBeNull();
+	});
+
+	it('stands a card for the line the backend names', async () => {
+		server.use(
+			http.post(`${API_BASE}/api/history/card-lines`, async ({ request }) => {
+				const { rows } = (await request.json()) as { rows: { id: string }[] };
+				return HttpResponse.json(
+					Object.fromEntries(
+						rows.map((r) => [
+							r.id,
+							{ line: r.id === BC_CARD ? BC_HIDDEN : r.id, correctable: r.id === BC_CARD }
+						])
+					)
+				);
+			})
+		);
+		await openHome();
+		await until(
+			() => cell(BC_CARD)?.dataset.cardRow === BC_HIDDEN,
+			'the card standing for the line'
+		);
+	});
+
+	it('lists the candidates the backend answers, with the warnings it names', async () => {
+		const asked: { title: string; episode: number; query: string | null }[] = [];
+		server.use(
+			http.post(`${API_BASE}/api/history/link-candidates`, async ({ request }) => {
+				const body = (await request.json()) as {
+					title: string;
+					episode: number;
+					query: string | null;
+				};
+				asked.push({ title: body.title, episode: body.episode, query: body.query });
+				return HttpResponse.json([
+					{ ref: show(BC_RIGHT), current: false, warnings: ['season', 'episode'] }
+				]);
+			})
+		);
+		await openHome();
+		pill(BC_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		const rowOf = () =>
+			Array.from(dialog()?.querySelectorAll<HTMLButtonElement>('li button') ?? []).find((b) =>
+				(b.textContent ?? '').includes(BC_RIGHT_TITLE)
+			);
+		await until(() => rowOf() !== undefined, 'the candidate the backend answered');
+		// The guess the renderer would have put first is not listed.
+		expect(dialog()!.textContent).not.toContain(BC_GUESS_TITLE);
+		expect(asked).toEqual([{ title: BC_TITLE, episode: 2, query: null }]);
+		rowOf()!.click();
+		await until(
+			() => (dialog()!.textContent ?? '').includes(m.detail_link_warning_season()),
+			'the season warning'
+		);
+	});
+
+	it('opens no picker on a card the backend says is not asked about', async () => {
+		server.use(
+			http.post(`${API_BASE}/api/history/link-verdict`, () =>
+				HttpResponse.json({ offer: null, kept: false })
+			)
+		);
+		await openHome();
+		pill(BC_CARD)!.click();
+		await until(() => pill(BC_CARD) === null, 'the pill gone');
+		expect(dialog()?.open ?? false).toBe(false);
+	});
+});

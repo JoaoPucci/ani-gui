@@ -152,8 +152,8 @@ function serve() {
 				})
 			),
 			http.post(`${API_BASE}/api/history/link-group`, async ({ request }) => {
-				const body = (await request.json()) as { card: string; rows: string[] };
-				return HttpResponse.json(body.rows.filter((r) => r === body.card));
+				const body = (await request.json()) as { card: string };
+				return HttpResponse.json([body.card]);
 			}),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 			http.get(`${API_BASE}/api/account/entry/:provider`, () => HttpResponse.json(null)),

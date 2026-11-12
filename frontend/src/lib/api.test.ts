@@ -22,7 +22,10 @@ import {
 	historyClear,
 	historyDelete,
 	historyLink,
+	historyCardLines,
+	historyLinkCandidates,
 	historyLinkGroup,
+	historyLinkVerdict,
 	historyList,
 	historyNumber,
 	imageCacheClear,
@@ -2265,22 +2268,70 @@ describe('historyLink', () => {
 		});
 	});
 
-	it('asks which of the rows a link from the card would write', async () => {
+	it('asks which rows a link from the card would write, from each row and its match', async () => {
 		const fetchMock = mockFetchOnce(['hianime:jojo-2000-5182']);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		expect(
-			await historyLinkGroup('hianime:jojo-2000-5182', [
-				'hianime:jojo-2000-5182',
-				'hianime:jojo-2012-708'
-			])
-		).toEqual(['hianime:jojo-2000-5182']);
+		const request = {
+			card: 'hianime:jojo-2000-5182',
+			show: '7158',
+			saved: null,
+			rows: [{ id: 'hianime:jojo-2012-708', show: '7158', trusted: false }]
+		};
+		expect(await historyLinkGroup(request)).toEqual(['hianime:jojo-2000-5182']);
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/history/link-group`);
 		expect(init?.method).toBe('POST');
-		expect(JSON.parse(String(init?.body))).toEqual({
-			card: 'hianime:jojo-2000-5182',
-			rows: ['hianime:jojo-2000-5182', 'hianime:jojo-2012-708']
-		});
+		expect(JSON.parse(String(init?.body))).toEqual(request);
+	});
+
+	it("asks for a row's candidates, with the visit's signal", async () => {
+		const fetchMock = mockFetchOnce([]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const request = {
+			row: 'hianime:black-clover-949',
+			title: 'Black Clover',
+			current: null,
+			query: null,
+			episode: 2
+		};
+		const signal = new AbortController().signal;
+		expect(await historyLinkCandidates(request, { signal })).toEqual([]);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/link-candidates`);
+		expect(init?.method).toBe('POST');
+		expect(init?.signal).toBe(signal);
+		expect(JSON.parse(String(init?.body))).toEqual(request);
+	});
+
+	it('asks for the line each card stands for', async () => {
+		const lines = { a: { line: 'b', correctable: true } };
+		const fetchMock = mockFetchOnce(lines);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const rows = [{ id: 'a', guessed_from: 'b', show: '1', guess: true, named: false }];
+		expect(await historyCardLines(rows)).toEqual(lines);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/card-lines`);
+		expect(JSON.parse(String(init?.body))).toEqual({ rows });
+	});
+
+	it("asks whether a surface asks about a card's line, with the visit's signal", async () => {
+		const fetchMock = mockFetchOnce({ offer: 'guess', kept: false });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const request = {
+			page: '7158',
+			show: '7158',
+			trusted: false,
+			named: false,
+			asks_guess: true,
+			carried: false,
+			picked: false
+		};
+		const signal = new AbortController().signal;
+		expect(await historyLinkVerdict(request, { signal })).toEqual({ offer: 'guess', kept: false });
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/link-verdict`);
+		expect(init?.signal).toBe(signal);
+		expect(JSON.parse(String(init?.body))).toEqual(request);
 	});
 });
 

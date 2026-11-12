@@ -18,6 +18,13 @@ import { setupServer } from 'msw/node';
 import { installElementAnimateStub } from './stubs/element-animate';
 import { isSession } from './session-contract';
 import { __resetGuessPlaysForTests } from '../../src/lib/history/guess-plays';
+import { candidates, cardLines, verdict } from '../fakes/link-rules';
+import type {
+	CandidatesRequest,
+	CardLineRow,
+	KitsuAnimeRef,
+	VerdictRequest
+} from '../../src/lib/api';
 
 // Before any component mounts. See the stub for why happy-dom needs
 // it and why only post-mount DOM changes trip over its absence.
@@ -84,6 +91,45 @@ const incidental = [
 ];
 
 /**
+ * The change-show flow's rules, which the backend answers from what the
+ * renderer sends (`commands/card_line.rs`, `link_verdict.rs`,
+ * `link_candidates.rs`), answered as it does (`tests/fakes/link-rules.ts`):
+ * Home asks for its cards' lines whatever the scenario, and a surface
+ * opened from a Continue card asks whether to ask about its line. The
+ * picker's candidates run their searches against the scenario's own
+ * search route, as the backend's run against Kitsu. A scenario that
+ * cares about one installs its own handler, which takes precedence.
+ */
+const linkRules = [
+	http.post(`${API_BASE}/api/history/card-lines`, async ({ request }) => {
+		const body = (await request.json()) as { rows: CardLineRow[] };
+		return HttpResponse.json(cardLines(body.rows));
+	}),
+	http.post(`${API_BASE}/api/history/link-verdict`, async ({ request }) =>
+		HttpResponse.json(verdict((await request.json()) as VerdictRequest))
+	),
+	http.post(`${API_BASE}/api/history/link-candidates`, async ({ request }) => {
+		const search = async (query: string): Promise<KitsuAnimeRef[]> => {
+			const res = await fetch(`${API_BASE}/api/kitsu/search`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ query }),
+				signal: request.signal
+			});
+			if (!res.ok) throw new Error(`search answered ${res.status}`);
+			return (await res.json()) as KitsuAnimeRef[];
+		};
+		try {
+			return HttpResponse.json(
+				await candidates((await request.json()) as CandidatesRequest, search)
+			);
+		} catch {
+			return HttpResponse.json({ kind: 'upstream', key: 'error.upstream' }, { status: 502 });
+		}
+	})
+];
+
+/**
  * Last of all, behind every handler a scenario installs (`server.use`
  * puts those first): anything still unanswered here — no handler
  * matched it, or every one that did returned nothing, which in MSW
@@ -102,6 +148,7 @@ const undescribedAnswer = http.all('*', ({ request, requestId }) => {
 export const server = setupServer(
 	http.get(`${API_BASE}/s/:session/subtitles`, () => HttpResponse.json([])),
 	...incidental,
+	...linkRules,
 	undescribedAnswer
 );
 

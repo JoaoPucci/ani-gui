@@ -3,7 +3,10 @@
 // each row's key carries), the link and the group a link from a card
 // would write.
 //
-// The group answers as the backend does (history_link_plan.rs,
+// The group's members are the rows the backend finds the card stands
+// for from each row's match (link_verdict.rs `group_members`, faked in
+// tests/fakes/link-rules.ts). Of those, it answers as the backend does
+// (history_link_plan.rs,
 // `card_listing`): a row shares the card's listing when it is the
 // card's own row, or when one of the two is a bare row of a retired
 // provider whose slug carries the same words as the other's. Two rows
@@ -12,6 +15,8 @@
 
 import { http, HttpResponse, type HttpHandler } from 'msw';
 import { API_BASE } from './setup';
+import { groupMembers } from '../fakes/link-rules';
+import type { LinkGroupRequest } from '../../src/lib/api';
 
 export interface Row {
 	ep_no: string;
@@ -74,8 +79,9 @@ export function linkBackendHandlers(b: LinkBackend): HttpHandler[] {
 			return HttpResponse.json(row ? { ep_no: row.ep_no } : null);
 		}),
 		http.post(`${API_BASE}/api/history/link-group`, async ({ request }) => {
-			const body = (await request.json()) as { card: string; rows: string[] };
-			return HttpResponse.json(held(b, body.card, body.rows));
+			const body = (await request.json()) as LinkGroupRequest;
+			const members = groupMembers(body.card, body.show, body.saved, body.rows);
+			return HttpResponse.json(held(b, body.card, members));
 		}),
 		http.post(`${API_BASE}/api/history/link`, async ({ request }) => {
 			const body = (await request.json()) as { card: string; rows: string[]; kitsu_id: string };

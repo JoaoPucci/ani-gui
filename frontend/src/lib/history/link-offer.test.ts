@@ -1,43 +1,30 @@
-// Whether a show page offers to link the guessed card it was opened
-// from, and the flow that links it.
+// The picker's reads for a guessed card's line: what it asks the
+// backend for its candidates and for the rows a link covers, and how it
+// reads the answers. The candidates' order and warnings, and which rows
+// a correction covers, are the backend's rules (commands/link_rules.rs,
+// link_verdict.rs, their own tests).
 
 import { describe, expect, it, vi } from 'vitest';
-import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
+import type {
+	CandidatesRequest,
+	HistoryEntry,
+	KitsuAnimeRef,
+	LinkCandidate,
+	LinkGroupRequest
+} from '$lib/api';
 import {
 	confirmLink,
 	guessedGroup,
-	linkOffer,
 	loadCandidates,
 	searchCandidates,
-	type LinkDeps
+	type LinkDeps,
+	type LinkOffer
 } from './link-offer';
+import { groupMembers } from '../../../tests/fakes/link-rules';
 
-function ref(id: string, over: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
-	return {
-		id,
-		canonical_title: `Show ${id}`,
-		slug: null,
-		synopsis: null,
-		start_date: null,
-		end_date: null,
-		episode_count: null,
-		average_rating: null,
-		subtype: 'TV',
-		status: 'finished',
-		age_rating: null,
-		popularity_rank: null,
-		poster_image: null,
-		cover_image: null,
-		...over
-	};
-}
+const ref = (id: string) => ({ id, canonical_title: `Show ${id}` }) as KitsuAnimeRef;
 
-const CARD: HistoryEntry = {
-	id: 'hianime:black-clover-949',
-	title: 'Black Clover',
-	ep_no: '1',
-	slug_term: 'black clover'
-};
+const CARD: HistoryEntry = { id: 'hianime:black-clover-949', title: 'Black Clover', ep_no: '1' };
 const HIDDEN: HistoryEntry = { id: 'black-clover-77', title: 'Black Clover', ep_no: '3' };
 const PLAYED: HistoryEntry = {
 	id: 'hianime:black-clover-special-3392',
@@ -47,7 +34,8 @@ const PLAYED: HistoryEntry = {
 };
 const OTHER: HistoryEntry = { id: 'hianime:gintama-1237', title: 'Gintama', ep_no: '175' };
 const GUESS = '12625';
-const TITLE_GONE = 'Black Clover';
+const OFFER: LinkOffer = { entry: CARD, current: ref(GUESS) };
+const FOUND: LinkCandidate[] = [{ ref: ref(GUESS), current: true, warnings: ['episode'] }];
 
 /** Every row guessed as the special, Gintama as itself. */
 function deps(over: Partial<LinkDeps> = {}): LinkDeps {
@@ -59,172 +47,105 @@ function deps(over: Partial<LinkDeps> = {}): LinkDeps {
 				: e.id === OTHER.id
 					? { match: ref('818'), trusted: false }
 					: { match: ref(GUESS), trusted: false },
-		search: async () => [],
+		candidates: async () => FOUND,
+		verdict: async () => ({ offer: null, kept: false }),
 		link: async (_card, rows, kitsuId) => ({
 			kitsu_id: kitsuId,
 			linked: rows.map((row) => ({ row, previous: null, ep_no: '1', watched_at: null }))
 		}),
-		// Every row asked shares the card's listing unless a test says
-		// otherwise: the backend's rule (history_link_plan.rs).
-		group: async (_card, rows) => rows,
+		// As the backend chooses them, every row sharing the card's listing.
+		group: async (r) => groupMembers(r.card, r.show, r.saved, r.rows),
 		...over
 	};
 }
 
-describe('linkOffer', () => {
-	it('offers the guessed card row the page was opened from', async () => {
-		const offer = await linkOffer(deps(), CARD.id, GUESS);
-		expect(offer?.entry).toEqual(CARD);
-		expect(offer?.current.id).toBe(GUESS);
-	});
-
-	it('offers nothing for a page opened without a card', async () => {
-		expect(await linkOffer(deps(), null, GUESS)).toBeNull();
-	});
-
-	it('offers nothing once the row records an id, or is gone', async () => {
-		expect(await linkOffer(deps(), PLAYED.id, GUESS)).toBeNull();
-		expect(await linkOffer(deps(), 'hianime:removed-1', GUESS)).toBeNull();
-	});
-
-	it('offers nothing when the row is not guessed as this show', async () => {
-		expect(await linkOffer(deps(), CARD.id, '13209')).toBeNull();
-		const trusted = deps({ resolve: async () => ({ match: ref(GUESS), trusted: true }) });
-		expect(await linkOffer(trusted, CARD.id, GUESS)).toBeNull();
-	});
-
-	it('offers nothing when the history cannot be read', async () => {
-		const failing = deps({ history: async () => Promise.reject(new Error('down')) });
-		expect(await linkOffer(failing, CARD.id, GUESS)).toBeNull();
-	});
-});
-
-describe('a row whose recorded show Kitsu no longer serves', () => {
-	// Continue Watching matches such a row as one with no id, by a
-	// guess, and its card opens a guessed session.
-	const GONE: HistoryEntry = {
-		id: 'hianime:black-clover-1',
-		title: TITLE_GONE,
-		ep_no: '2',
-		kitsu_id: '404'
-	};
-	const fallback = (over: Partial<LinkDeps> = {}) =>
-		deps({
-			history: async () => [CARD, GONE],
-			resolve: async () => ({ match: ref(GUESS), trusted: false }),
-			...over
-		});
-
-	it('is offered like any guessed row', async () => {
-		expect((await linkOffer(fallback(), GONE.id, GUESS))?.entry).toEqual(GONE);
-	});
-
-	it('is linked with the card it hides behind', async () => {
-		const offer = (await linkOffer(fallback(), CARD.id, GUESS))!;
-		expect(await guessedGroup(fallback(), offer)).toEqual([CARD.id, GONE.id]);
-	});
-});
-
 describe('loadCandidates', () => {
-	it('searches the saved title and the slug words, the guess first', async () => {
-		const search = vi.fn(async (q: string) =>
-			q === 'Black Clover' ? [ref('13209'), ref(GUESS)] : [ref('44242')]
-		);
-		const offer = (await linkOffer(deps(), CARD.id, GUESS))!;
-		const out = await loadCandidates(deps({ search }), offer);
-		expect(search.mock.calls.map((c) => c[0]).sort()).toEqual(['Black Clover', 'black clover']);
-		expect(out.map((c) => c.ref.id)).toEqual([GUESS, '13209', '44242']);
-	});
-
-	it('keeps what one search found when the other fails', async () => {
-		const search = vi.fn(async (q: string) => {
-			if (q === 'Black Clover') throw new Error('down');
-			return [ref('13209')];
+	it("asks for the row's candidates by its saved title, the card's show and the episode offered", async () => {
+		const candidates = vi.fn<(r: CandidatesRequest) => Promise<LinkCandidate[]>>(async () => FOUND);
+		const legacy = { ...OFFER, entry: { ...CARD, title: 'Black Clover (170 episodes)' } };
+		const out = await loadCandidates(deps({ candidates }), legacy, 4);
+		expect(candidates.mock.calls[0][0]).toEqual({
+			row: CARD.id,
+			// As Continue Watching searches it.
+			title: 'Black Clover',
+			current: ref(GUESS),
+			query: null,
+			episode: 4
 		});
-		const offer = (await linkOffer(deps(), CARD.id, GUESS))!;
-		const out = await loadCandidates(deps({ search }), offer);
-		expect(out.map((c) => c.ref.id)).toEqual([GUESS, '13209']);
+		expect(out).toEqual({ candidates: FOUND, failed: false });
 	});
 
-	it("searches the words the backend read off the row's key, never reading the id itself", async () => {
-		const search = vi.fn<(q: string) => Promise<KitsuAnimeRef[]>>(async () => []);
-		const offer = {
-			entry: { ...CARD, slug_term: 'words the backend read' },
-			current: ref(GUESS)
-		};
-		await loadCandidates(deps({ search }), offer);
-		expect(search.mock.calls.map((c) => c[0]).sort()).toEqual([
-			'Black Clover',
-			'words the backend read'
-		]);
+	it('says it found none when the backend cannot answer', async () => {
+		const down = deps({ candidates: async () => Promise.reject(new Error('down')) });
+		expect(await loadCandidates(down, OFFER, 1)).toEqual({ candidates: [], failed: true });
 	});
 
-	it('searches only the title for a row the backend names no words for', async () => {
-		const search = vi.fn<(q: string) => Promise<KitsuAnimeRef[]>>(async () => []);
-		// Slug-shaped, but the backend named no words: the renderer reads
-		// none of its own.
-		const offer = { entry: { ...CARD, slug_term: undefined }, current: ref(GUESS) };
-		await loadCandidates(deps({ search }), offer);
-		expect(search.mock.calls.map((c) => c[0])).toEqual(['Black Clover']);
-	});
-
-	it('searches only the title for an id with no slug words', async () => {
-		const search = vi.fn<(q: string) => Promise<KitsuAnimeRef[]>>(async () => []);
-		const offer = {
-			entry: { id: 'vDTSJHSpYnrkZnAvG', title: 'Old', ep_no: '1' },
-			current: ref(GUESS)
-		};
-		await loadCandidates(deps({ search }), offer);
-		expect(search.mock.calls.map((c) => c[0])).toEqual(['Old']);
+	it("asks with the arrival's signal", async () => {
+		const candidates = vi.fn<
+			(r: CandidatesRequest, o?: { signal?: AbortSignal }) => Promise<LinkCandidate[]>
+		>(async () => FOUND);
+		const signal = new AbortController().signal;
+		await loadCandidates(deps({ candidates }), OFFER, 1, { signal });
+		expect(candidates.mock.calls[0][1]).toEqual({ signal });
 	});
 });
 
 describe('searchCandidates', () => {
-	it('answers the typed search, marking the show shown now', async () => {
-		const search = vi.fn(async () => [ref('7730'), ref(GUESS)]);
-		const offer = (await linkOffer(deps(), CARD.id, GUESS))!;
-		const out = await searchCandidates(deps({ search }), offer, '  jojo 2000 ');
-		expect(search).toHaveBeenCalledWith('jojo 2000');
-		expect(out.map((c) => [c.ref.id, c.current])).toEqual([
-			['7730', false],
-			[GUESS, true]
-		]);
+	it('asks for the typed words, and lets their failure through', async () => {
+		const candidates = vi.fn<(r: CandidatesRequest) => Promise<LinkCandidate[]>>(async () => FOUND);
+		expect(await searchCandidates(deps({ candidates }), OFFER, '  jojo 2000 ', 2)).toEqual(FOUND);
+		expect(candidates.mock.calls[0][0]).toMatchObject({ query: '  jojo 2000 ', episode: 2 });
+		const down = deps({ candidates: async () => Promise.reject(new Error('down')) });
+		await expect(searchCandidates(down, OFFER, 'jojo', 2)).rejects.toThrow('down');
 	});
 });
 
 describe('guessedGroup', () => {
-	it('is the card row and every other unrecorded row guessed as the same show', async () => {
-		const offer = (await linkOffer(deps(), CARD.id, GUESS))!;
-		expect(await guessedGroup(deps(), offer)).toEqual([CARD.id, HIDDEN.id]);
+	it("hands the backend every other row with its match, and answers the backend's rows", async () => {
+		const group = vi.fn<(r: LinkGroupRequest) => Promise<string[]>>(async () => [
+			CARD.id,
+			HIDDEN.id
+		]);
+		expect(await guessedGroup(deps({ group }), OFFER)).toEqual([CARD.id, HIDDEN.id]);
+		expect(group).toHaveBeenCalledWith({
+			card: CARD.id,
+			show: GUESS,
+			saved: null,
+			rows: [
+				{ id: HIDDEN.id, show: GUESS, trusted: false },
+				{ id: PLAYED.id, show: GUESS, trusted: true },
+				{ id: OTHER.id, show: '818', trusted: false }
+			]
+		});
 	});
 
-	it('leaves out a row whose match cannot be read', async () => {
+	it('names no show for a row whose match cannot be read', async () => {
+		const group = vi.fn(async (r: LinkGroupRequest) =>
+			groupMembers(r.card, r.show, r.saved, r.rows)
+		);
 		const flaky = deps({
+			group,
 			resolve: async (e) => {
 				if (e.id === HIDDEN.id) throw new Error('down');
-				if (e.kitsu_id) return { match: ref(e.kitsu_id), trusted: true };
 				return { match: ref(GUESS), trusted: false };
 			}
 		});
-		const offer = { entry: CARD, current: ref(GUESS) };
-		expect(await guessedGroup(flaky, offer)).toEqual([CARD.id, OTHER.id]);
+		expect(await guessedGroup(flaky, OFFER)).toEqual([CARD.id, PLAYED.id, OTHER.id]);
+		expect(group.mock.calls[0][0].rows[0]).toEqual({ id: HIDDEN.id, show: null, trusted: false });
 	});
-});
 
-describe('guessedGroup, for a card picked again on the player', () => {
-	it('stands for the rows recorded as the pick, which a guess no longer matches', async () => {
-		// The card and the row it hides were saved as 4013 by a pick on
-		// the player; the special plays still, and a new pick changes
-		// both rows again, never the special's own.
+	it("names the show the user named for the card's line", async () => {
+		const group = vi.fn(async (r: LinkGroupRequest) =>
+			groupMembers(r.card, r.show, r.saved, r.rows)
+		);
 		const picked = (e: HistoryEntry) => ({ ...e, kitsu_id: '4013' });
-		const d = deps({ history: async () => [picked(CARD), picked(HIDDEN), PLAYED, OTHER] });
+		const d = deps({ group, history: async () => [picked(CARD), picked(HIDDEN), PLAYED, OTHER] });
 		const offer = { entry: picked(CARD), current: ref(GUESS), saved: '4013' };
 		expect(await guessedGroup(d, offer)).toEqual([CARD.id, HIDDEN.id]);
+		expect(group.mock.calls[0][0].saved).toBe('4013');
 	});
-});
 
-describe('guessedGroup, over a long history', () => {
-	it('asks for the rows’ matches side by side', async () => {
+	it('matches the rows side by side', async () => {
 		let inFlight = 0;
 		let most = 0;
 		const many: HistoryEntry[] = Array.from({ length: 6 }, (_, i) => ({
@@ -242,55 +163,15 @@ describe('guessedGroup, over a long history', () => {
 				return { match: ref(GUESS), trusted: false };
 			}
 		});
-		const offer = { entry: CARD, current: ref(GUESS) };
-		expect(await guessedGroup(slow, offer)).toEqual([CARD.id, ...many.map((r) => r.id)]);
+		expect(await guessedGroup(slow, OFFER)).toEqual([CARD.id, ...many.map((r) => r.id)]);
 		expect(most).toBeGreaterThan(1);
 	});
 });
 
-describe("a row of another listing the card's guess matches", () => {
-	// The JoJo card's own row is the 2000 OVA's listing, guessed as the
-	// 2012 series; its guessed play wrote the 2012 listing's row, which
-	// the same guess matches. The backend says it is not the card's
-	// listing, so the link leaves it as the 2012 series' history.
-	const JOJO_2000: HistoryEntry = {
-		id: 'hianime:jojos-bizarre-adventure-2000-5182',
-		title: "JoJo's Bizarre Adventure",
-		ep_no: '1'
-	};
-	const JOJO_2012: HistoryEntry = {
-		id: 'hianime:jojos-bizarre-adventure-2012-708',
-		title: "JoJo's Bizarre Adventure",
-		ep_no: '2'
-	};
-	const jojo = (over: Partial<LinkDeps> = {}) =>
-		deps({
-			history: async () => [JOJO_2012, JOJO_2000],
-			resolve: async () => ({ match: ref('7158'), trusted: false }),
-			group: async (card, rows) => rows.filter((r) => r === card),
-			...over
-		});
-
-	it('asks the backend which rows share the card listing, the card first', async () => {
-		const group = vi.fn(jojo().group);
-		const offer = (await linkOffer(jojo(), JOJO_2000.id, '7158'))!;
-		expect(await guessedGroup(jojo({ group }), offer)).toEqual([JOJO_2000.id]);
-		expect(group).toHaveBeenCalledWith(JOJO_2000.id, [JOJO_2000.id, JOJO_2012.id]);
-	});
-
-	it('is not linked with the card', async () => {
-		const link = vi.fn(jojo().link);
-		const offer = (await linkOffer(jojo(), JOJO_2000.id, '7158'))!;
-		await confirmLink(jojo({ link }), offer, '4013');
-		expect(link).toHaveBeenCalledWith(JOJO_2000.id, [JOJO_2000.id], '4013');
-	});
-});
-
 describe('confirmLink', () => {
-	it('links the whole group to the chosen show', async () => {
+	it('links the rows the backend says the card stands for to the chosen show', async () => {
 		const link = vi.fn(deps().link);
-		const offer = (await linkOffer(deps(), CARD.id, GUESS))!;
-		const outcome = await confirmLink(deps({ link }), offer, '13209');
+		const outcome = await confirmLink(deps({ link }), OFFER, '13209');
 		expect(link).toHaveBeenCalledWith(CARD.id, [CARD.id, HIDDEN.id], '13209');
 		expect(outcome.kitsu_id).toBe('13209');
 	});

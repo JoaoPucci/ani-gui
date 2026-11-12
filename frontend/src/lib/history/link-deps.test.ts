@@ -15,15 +15,16 @@ vi.mock('$lib/api', async (importOriginal) => ({
 	...api
 }));
 
-import { historyLinkGroup, historyList, kitsuSearch } from '$lib/api';
+import { historyLinkCandidates, historyLinkGroup, historyLinkVerdict, historyList } from '$lib/api';
 import { appLinkDeps, onHistoryLinked } from './link-deps';
 import { resolveHistoryEntry } from './resolve';
 
 describe('appLinkDeps', () => {
-	it("hands the session the app's history, search and link routes", () => {
+	it("hands the session the app's history and the backend's link rules", () => {
 		const deps = appLinkDeps();
 		expect(deps.history).toBe(historyList);
-		expect(deps.search).toBe(kitsuSearch);
+		expect(deps.candidates).toBe(historyLinkCandidates);
+		expect(deps.verdict).toBe(historyLinkVerdict);
 		expect(deps.group).toBe(historyLinkGroup);
 	});
 
