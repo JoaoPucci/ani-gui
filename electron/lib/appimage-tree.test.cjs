@@ -161,3 +161,59 @@ test('an AppRun the patch does not recognise stops the repack', () => {
 		fs.rmSync(root, { recursive: true, force: true });
 	}
 });
+
+// electron-builder 26 rewrote the AppRun template: it probes
+// `unshare -Ur true` and passes `--no-sandbox` only when the probe
+// fails, through a `NO_SANDBOX` array spliced into both exec lines.
+// The image still mounts read-only through FUSE, so `chrome-sandbox`
+// inside it still cannot carry the SUID bit, and a host where the
+// probe succeeds while Chromium's namespace sandbox cannot start would
+// abort at launch. The flag stays unconditional: both exec lines carry
+// it whatever the probe says.
+const TEMPLATE_26 = [
+	'#!/usr/bin/env bash',
+	'NO_SANDBOX=()',
+	'if [ $HAVE_NO_SANDBOX -eq 0 ] && ! unshare -Ur true 2>/dev/null ; then',
+	'  NO_SANDBOX=(--no-sandbox)',
+	'fi',
+	'atexit()',
+	'{',
+	'  if [ $isEulaAccepted == 1 ] ; then',
+	'    if [ $NUMBER_OF_ARGS -eq 0 ] ; then',
+	'      exec "$BIN" "${NO_SANDBOX[@]}"',
+	'    else',
+	'      exec "$BIN" "${NO_SANDBOX[@]}" "${args[@]}"',
+	'    fi',
+	'  fi',
+	'}',
+	'',
+].join('\n');
+
+test("electron-builder 26's AppRun passes --no-sandbox on both exec lines, whatever the probe says", () => {
+	const { root, app } = withAppRun(TEMPLATE_26);
+	try {
+		assert.equal(prepareTree(app), true, 'AppRun was patched');
+		const appRun = fs.readFileSync(path.join(app, 'AppRun'), 'utf8');
+		assert.match(appRun, /^\s*exec "\$BIN" --no-sandbox$/m);
+		assert.match(appRun, /^\s*exec "\$BIN" --no-sandbox "\$\{args\[@\]\}"$/m);
+		assert.doesNotMatch(appRun, /exec "\$BIN" "\$\{NO_SANDBOX\[@\]\}"/);
+		assert.equal(prepareTree(app), false, 'a second pass finds the patch already there');
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+// A template that drifts on one exec line only would otherwise be
+// written half-patched and reported as done; the next pass would then
+// find `exec "$BIN" --no-sandbox` and call it fully patched. Both lines
+// are patched or the repack stops.
+test('an AppRun where only one exec line is recognised stops the repack, unchanged', () => {
+	const drifted = TEMPLATE.replace('exec "$BIN" "${args[@]}"', 'exec "$BIN" --some-new-flag "${args[@]}"');
+	const { root, app } = withAppRun(drifted);
+	try {
+		assert.throws(() => prepareTree(app), /AppRun patch matched/);
+		assert.equal(fs.readFileSync(path.join(app, 'AppRun'), 'utf8'), drifted);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});

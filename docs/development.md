@@ -38,7 +38,7 @@ sudo apt install -y build-essential libssl-dev pkg-config
 # Renderer + Electron shell (Node + pnpm via nvm)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 # (open a new shell, or `source ~/.bashrc`)
-nvm install 20
+nvm install 22   # packaging needs 22.12 or later
 # pnpm needs no separate install or version choice: package.json's
 # packageManager field pins it, and corepack fetches that version.
 corepack enable

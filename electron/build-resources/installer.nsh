@@ -105,12 +105,13 @@
 !macroend
 
 !macro customUnInstall
-    ; Remove the ffmpeg.exe we dropped at install. The rest of
-    ; resources/bin came in through electron-builder's manifest and
-    ; gets cleaned up by the standard uninstall sequence; ours is the only
-    ; file we have to take care of explicitly because customInstall
-    ; brought it in outside the manifest.
-    Delete "$INSTDIR\resources\bin\ffmpeg.exe"
+    ; Nothing here removes the ffmpeg.exe customInstall fetched. The
+    ; standard uninstall sequence removes the whole of $INSTDIR, that
+    ; file included. From electron-builder 26 this macro runs before
+    ; that sequence, and on an update the sequence moves the tree aside
+    ; and moves it back if a file is busy; a deletion here would land
+    ; anyway and leave the restored install without ffmpeg.
+    ; tests/arch/windows_deps.sh keeps $INSTDIR removals out of this file.
 
     ; Skip the purge prompt during the silent pre-upgrade uninstall.
     ; electron-builder runs the previous version's uninstaller with
