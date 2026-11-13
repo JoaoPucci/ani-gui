@@ -5,7 +5,7 @@
 # 4755 (setuid) for the renderer sandbox to attach. electron-builder's
 # stock packaging stopped setting this in newer releases (the kernel
 # trend is toward unprivileged user namespaces instead) — but Ubuntu
-# 24.04+ restricts those via AppArmor, so the fallback path is the
+# 23.10+ restricts those via AppArmor, so the fallback path is the
 # classic SUID sandbox. Without this, launching from the menu fails
 # with `setuid_sandbox_host.cc(163) … not configured correctly`.
 

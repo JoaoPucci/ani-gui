@@ -1163,13 +1163,15 @@ starting it, and delete it when you find it done.
   through its open handler but installs no `will-navigate` guard, so
   nothing stops the renderer's own document from navigating away
   from the app's origin; that closes together with the policy, in a
-  few lines of the main process. And the sandbox: the AppImage is
-  repacked to start Electron with `--no-sandbox`, because the
-  unprivileged FUSE mount an AppImage runs from does not honour
-  setuid execution, so Chromium's setuid sandbox helper cannot be
-  used from inside it (the `.deb` sets the helper's SUID bit in its
-  postinst and keeps the sandbox), which is a packaging question of
-  its own and not part of this entry.
+  few lines of the main process. And the sandbox: the AppImage
+  starts Electron with `--no-sandbox` wherever Chromium's namespace
+  sandbox cannot start for it — Ubuntu 23.10 and later, by default —
+  because the unprivileged FUSE mount an AppImage runs from does not
+  honour setuid execution, so Chromium's setuid sandbox helper cannot
+  be used from inside it (the `.deb` sets the helper's SUID bit in
+  its postinst and keeps the sandbox). That is a packaging question
+  of its own, described in `docs/architecture.md`, and not part of
+  this entry.
 
   Two things a grep will not surface. The manual diagnostic route
   hands a pasted public URL straight to the player, the one place

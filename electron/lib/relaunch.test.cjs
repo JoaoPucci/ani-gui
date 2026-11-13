@@ -20,15 +20,42 @@ const appImageEnv = {
 };
 const appImageExec = "/tmp/.mount_ani-guXYZ/ani-gui.bin";
 
-test("the launcher's switches are the AppImage wrapper's then AppRun's, in that order", () => {
+test("the launcher's own switch is the AppImage wrapper's; AppRun's sandbox switch is decided per launch", () => {
   // electron/build-resources/after-pack.cjs puts --enable-wayland-ime
-  // first; AppRun (lib/appimage-tree.cjs) puts --no-sandbox between the
-  // wrapper and the person's own arguments.
-  assert.deepEqual(LAUNCHER_SWITCHES, ["--enable-wayland-ime", "--no-sandbox"]);
+  // first. AppRun (lib/appimage-tree.cjs) passes --no-sandbox only when
+  // the sandbox probe got no answer, or when the person passed it: it is
+  // not a switch every launch carries, so the restart keeps it.
+  assert.deepEqual(LAUNCHER_SWITCHES, ["--enable-wayland-ime"]);
   const wrapper = fs.readFileSync(path.join(__dirname, "..", "build-resources", "after-pack.cjs"), "utf-8");
   assert.match(wrapper, /exec "\$HERE\/\$\{exe\}\.bin" --enable-wayland-ime "\$@"/);
   const tree = fs.readFileSync(path.join(__dirname, "appimage-tree.cjs"), "utf-8");
-  assert.match(tree, /exec "\$BIN" --no-sandbox "\$\{args\[@\]\}"/);
+  assert.match(tree, /exec "\$BIN" "\$\{ANI_GUI_SANDBOX\[@\]\}" "\$\{args\[@\]\}"/);
+  assert.doesNotMatch(tree, /exec "\$BIN" --no-sandbox/);
+});
+
+test("in the AppImage, a --no-sandbox the launch ran with is kept for the restart", () => {
+  // Whether the probe's fallback added it or the person passed it, the
+  // new AppRun reads it as the person's own and starts without the
+  // sandbox, as this launch did, without probing again.
+  for (const rest of [[], ["--some-user-flag"]]) {
+    const plan = relaunchPlan({
+      platform: "linux",
+      env: appImageEnv,
+      execPath: appImageExec,
+      argv: [appImageExec, "--enable-wayland-ime", "--no-sandbox", ...rest],
+      pid: 7,
+    });
+    assert.deepEqual(plan.args.slice(5), ["--no-sandbox", ...rest]);
+  }
+  // A sandboxed launch carries none, and its restart probes afresh.
+  const sandboxed = relaunchPlan({
+    platform: "linux",
+    env: appImageEnv,
+    execPath: appImageExec,
+    argv: [appImageExec, "--enable-wayland-ime", "--some-user-flag"],
+    pid: 7,
+  });
+  assert.deepEqual(sandboxed.args.slice(5), ["--some-user-flag"]);
 });
 
 test("in the AppImage, the relaunch waits for this process and then runs the AppImage file itself", () => {
@@ -36,7 +63,7 @@ test("in the AppImage, the relaunch waits for this process and then runs the App
     platform: "linux",
     env: appImageEnv,
     execPath: appImageExec,
-    argv: [appImageExec, "--enable-wayland-ime", "--no-sandbox", "--some-user-flag"],
+    argv: [appImageExec, "--enable-wayland-ime", "--some-user-flag"],
     pid: 4242,
   });
   assert.equal(plan.kind, "spawn");
@@ -118,7 +145,7 @@ test("a path only beside the mount is not inside it", () => {
 });
 
 test("property: only the launcher's own leading switches are dropped from the person's arguments", () => {
-  const arg = fc.oneof(fc.constantFrom(...LAUNCHER_SWITCHES, "--x", "-v", ""), fc.string());
+  const arg = fc.oneof(fc.constantFrom(...LAUNCHER_SWITCHES, "--no-sandbox", "--x", "-v", ""), fc.string());
   fc.assert(
     fc.property(fc.array(arg, { maxLength: 6 }), (rest) => {
       assert.deepEqual(userArgs(["bin", ...LAUNCHER_SWITCHES, ...rest]), rest);
@@ -127,7 +154,7 @@ test("property: only the launcher's own leading switches are dropped from the pe
   // An argv without them (a launch that bypassed the wrapper) keeps all.
   fc.assert(
     fc.property(fc.array(arg, { maxLength: 6 }), (rest) => {
-      fc.pre(rest[0] !== LAUNCHER_SWITCHES[0] && rest[0] !== LAUNCHER_SWITCHES[1]);
+      fc.pre(!LAUNCHER_SWITCHES.includes(rest[0]));
       assert.deepEqual(userArgs(["bin", ...rest]), rest);
     }),
   );
