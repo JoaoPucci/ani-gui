@@ -1,0 +1,73 @@
+{
+	"bell_label": "Notifications",
+	"bell_label_unread": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Notifications, {count} unread",
+				"countPlural=*": "Notifications, {count} unread"
+			}
+		}
+	],
+	"panel_title": "Notifications",
+	"mark_all_read": "Mark all as read",
+	"empty_title": "You're all caught up",
+	"empty_body": "Updates, finished and failed downloads, and trouble with the streaming source show up here.",
+	"dismiss": "Dismiss",
+	"dismiss_aria": "Dismiss: {title}",
+	"unread_sr": "Unread.",
+	"resolved_sr": "Resolved.",
+	"toast_view": "View",
+	"detail_missing": "This notification is no longer here. It may have been dismissed or resolved.",
+	"detail_off": "Notifications are turned off.",
+	"update_title": "ani-gui {tag} is available",
+	"update_meta": "You have {current}",
+	"update_body": "A newer release of ani-gui is out. Open it to read what changed and how to install it.",
+	"update_action": "See what's new",
+	"outage_title": "The streaming source isn't answering",
+	"outage_meta": [
+		{
+			"declarations": ["input time", "input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Since {time} · {count} attempt failed",
+				"countPlural=*": "Since {time} · {count} attempts failed"
+			}
+		}
+	],
+	"outage_body": "The source hasn't answered since {time}. We don't know why yet: it may be down, or something between you and it may be blocking it. From here the two look the same.",
+	"outage_body_still": "Browsing, search and your lists still work. Only playing and downloading need the source.",
+	"outage_evidence_label": "What ani-gui saw",
+	"outage_evidence": [
+		{
+			"declarations": ["input last", "input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} attempt to reach it failed ({last}). ani-gui made no extra requests to find this out.",
+				"countPlural=*": "{count} attempts in a row to reach it failed. Latest: {last}. ani-gui made no extra requests to find this out."
+			}
+		}
+	],
+	"outage_resolved_title": "The streaming source is answering again",
+	"outage_resolved_meta": "Back since {time}",
+	"outage_resolved_body": "The source answered again ({time}). Playing should work as usual.",
+	"outage_line": "The streaming source hasn't answered since {time}. We don't know why yet. Playing may fail.",
+	"outage_line_details": "Details",
+	"download_done_title": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} episode downloaded",
+				"countPlural=*": "{count} episodes downloaded"
+			}
+		}
+	],
+	"download_done_body": "Saved to {folder}",
+	"download_done_action": "Show in folder",
+	"download_failed_title": "A download failed",
+	"download_failed_meta": "{title} · Episode {episode}",
+	"download_failed_reason_label": "What went wrong",
+	"download_failed_reason_unknown": "The download stopped without saying why."
+}

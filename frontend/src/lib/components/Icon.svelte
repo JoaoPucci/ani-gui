@@ -24,7 +24,8 @@
 		| 'arrow-right'
 		| 'update'
 		| 'refresh'
-		| 'clear-history';
+		| 'clear-history'
+		| 'bell';
 
 	let { name, size = 18 }: { name: IconName; size?: number } = $props();
 </script>
@@ -239,5 +240,23 @@
 		<path d="M11 6.5 V11 H14.5" />
 		<path d="M14.5 14.5 L21 21" />
 		<path d="M21 14.5 L14.5 21" />
+	</svg>
+{:else if name === 'bell'}
+	<!-- The notification center's bell: crown, straight-shouldered
+	     body, flared lip and the clapper as a short bar below. -->
+	<svg
+		viewBox="0 0 24 24"
+		width={size}
+		height={size}
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.5"
+		stroke-linecap="square"
+		stroke-linejoin="miter"
+		aria-hidden="true"
+	>
+		<path d="M12 3 V4.5" />
+		<path d="M6.5 16.5 V10.5 A5.5 5.5 0 0 1 17.5 10.5 V16.5 L19.5 18.5 H4.5 Z" />
+		<path d="M10.5 21 H13.5" />
 	</svg>
 {/if}

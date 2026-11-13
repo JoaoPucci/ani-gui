@@ -13,6 +13,7 @@
     Play / Download / External are wired to TODOs with inline notice.
 -->
 <script lang="ts">
+	import OutageLine from '$lib/notices/OutageLine.svelte';
 	import {
 		failedHeroImages,
 		naturalRatio,
@@ -1834,6 +1835,9 @@
 					<!-- Availability-specific, non-editor content: a loading skeleton
 					     while the probe is in flight; the unavailable notice when the
 					     show can't be streamed in the chosen audio. -->
+					<!-- While the streaming source is not answering, one line
+					     says so above Play (the notification center's). -->
+					<OutageLine />
 					{#if cta === 'loading'}
 						<div
 							class="actions actions-loading"

@@ -18,6 +18,7 @@
 pub mod fetch;
 pub mod gate;
 pub mod gated;
+pub mod health;
 pub mod hianime;
 pub mod hls;
 pub mod outcome;
