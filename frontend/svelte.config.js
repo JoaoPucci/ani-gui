@@ -20,6 +20,21 @@ const config = {
 		paths: {
 			relative: true
 		},
+		// The renderer's content security policy, the half the build owns:
+		// SvelteKit writes it into every page as a <meta http-equiv>, with
+		// the hash of its own inline bootstrap script added to script-src
+		// (the hash changes with every build). The main process sends the
+		// other half as a header — the fetch directives, which name the
+		// backend's loopback lanes and can only be known at launch
+		// (electron/lib/renderer-csp.cjs). A resource has to pass both.
+		csp: {
+			mode: 'hash',
+			directives: {
+				'script-src': ['self'],
+				'object-src': ['none'],
+				'base-uri': ['none']
+			}
+		},
 		alias: {
 			$lib: 'src/lib'
 		}

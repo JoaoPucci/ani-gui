@@ -29,7 +29,10 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			// See tests/acceptance/stubs/lottie-web.ts
-			'lottie-web': new URL('./tests/acceptance/stubs/lottie-web.ts', import.meta.url).pathname
+			'lottie-web/build/player/lottie_light': new URL(
+				'./tests/acceptance/stubs/lottie-web.ts',
+				import.meta.url
+			).pathname
 		},
 		conditions: ['browser']
 	},

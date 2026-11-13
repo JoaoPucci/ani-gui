@@ -36,12 +36,11 @@
  * so nothing depends on Kitsu or the provider being reachable.
  */
 import {
-	expect,
-	test,
 	type ElectronApplication,
 	type Locator,
 	type Page
 } from '@playwright/test';
+import { expect, test } from './policy-guard';
 import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';

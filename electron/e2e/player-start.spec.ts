@@ -11,11 +11,10 @@
  * server that holds every fragment back the way a slow host does.
  */
 import {
-  expect,
-  test,
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
+import { expect, test } from "./policy-guard";
 import fs, { existsSync } from "node:fs";
 import http from "node:http";
 import type net from "node:net";

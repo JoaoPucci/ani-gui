@@ -16,7 +16,8 @@
  * detail is stubbed so the show page names the show in the breadcrumb,
  * which the last scenario reads.
  */
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test } from './policy-guard';
 import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';

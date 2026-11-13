@@ -8,7 +8,10 @@
  * to the preference while the overlay is up is followed.
  *
  * lottie-web is imported lazily here, as the overlay always did, so its
- * runtime only loads when an overlay first shows.
+ * runtime only loads when an overlay first shows. It is the light build:
+ * the full one compiles After Effects expressions with `eval`, which the
+ * renderer's content security policy refuses, so the animations carry
+ * their motion as keyframes and need no expression engine.
  */
 import { reducedMotion, type ReducedMotion } from './reduced-motion.svelte';
 
@@ -46,7 +49,7 @@ export async function playLottie(
 	animationData: unknown,
 	preference: Preference = reducedMotion
 ): Promise<{ destroy(): void }> {
-	const lottie = (await import('lottie-web')).default;
+	const lottie = (await import('lottie-web/build/player/lottie_light')).default;
 	const player = lottie.loadAnimation({
 		container,
 		renderer: 'svg',
