@@ -136,10 +136,12 @@ describe('checkpoint', () => {
 
 	it('leaves out a page still loading', async () => {
 		let release: () => void = () => {};
-		const searchPage = vi.fn(async (q: string, offset: number) => {
-			if (offset === 20) await new Promise<void>((r) => (release = r));
-			return kitsu(5)(q, offset);
-		});
+		const searchPage = vi.fn<NonNullable<SearchRunnerDeps['searchPage']>>(
+			async (q: string, offset: number) => {
+				if (offset === 20) await new Promise<void>((r) => (release = r));
+				return kitsu(5)(q, offset);
+			}
+		);
 		const runner = createSearchRunner(harness({ searchPage }).deps);
 		await runner.run('frieren');
 		runner.loadMore();
@@ -176,7 +178,7 @@ describe('resume, with results still fresh', () => {
 
 	it('goes on from the page after the saved ones, skipping shows already seen', async () => {
 		const saved = await savedSearch();
-		const searchPage = vi.fn(async () => ({
+		const searchPage = vi.fn<NonNullable<SearchRunnerDeps['searchPage']>>(async () => ({
 			hits: [ref('40'), ref('41')],
 			next_offset: null
 		}));
@@ -261,10 +263,12 @@ describe('resume, asking again', () => {
 
 	it('gives up on the card when a page fails, leaving the failure to retry', async () => {
 		const saved = await savedSearch();
-		const searchPage = vi.fn(async (q: string, offset: number) => {
-			if (offset === 20) throw new Error('kitsu down');
-			return kitsu(5)(q, offset);
-		});
+		const searchPage = vi.fn<NonNullable<SearchRunnerDeps['searchPage']>>(
+			async (q: string, offset: number) => {
+				if (offset === 20) throw new Error('kitsu down');
+				return kitsu(5)(q, offset);
+			}
+		);
 		const h = harness({ searchPage });
 		await createSearchRunner(h.deps).resume(saved, { now: saved.capturedAt, reload: true });
 		await drain();

@@ -347,7 +347,9 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 
 describe('makeStartResume — an episode left part-way', () => {
 	it('goes back to the last watched episode when it was left part-way', async () => {
-		const leftPartWay = vi.fn((kitsuId: string, ep: number) => kitsuId === 'k1' && ep === 5);
+		const leftPartWay = vi.fn<NonNullable<StartResumeDeps['leftPartWay']>>(
+			(kitsuId: string, ep: number) => kitsuId === 'k1' && ep === 5
+		);
 		const h = makeHarness({ getPlayableCount: () => 12, leftPartWay });
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, false);
@@ -738,7 +740,7 @@ describe('makeStartResume (after the viewer moved on)', () => {
 describe('makeStartResume (moved on before the session was asked for)', () => {
 	it('resolves nothing and marks nothing started once the claim lapsed', async () => {
 		let holds = true;
-		const markStarted = vi.fn();
+		const markStarted = vi.fn<NonNullable<StartResumeDeps['markStarted']>>();
 		const h = makeHarness({
 			claimNavigation: () => () => holds,
 			markStarted,

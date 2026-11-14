@@ -7,9 +7,10 @@ import { loadContinueWatchingState } from './continue-watching-loader';
 // path is reached; nothing here mocks them, so nothing needs the delay.
 import { makeFetchAvailability } from './availability-from-match';
 import { resolveResumeSettings } from './resume-settings';
-import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
+import type { AvailabilityResponse, HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
 import { availabilityAnswer, configAnswer, kitsuRefAnswer } from '$lib/testing/wire-answers';
+import type { ContinueWatchingLoaderDeps } from './continue-watching-loader';
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
 	return { id, ep_no: ep, title };
 }
@@ -74,9 +75,13 @@ describe('acceptance: early click on a just-released card (loader + resolver)', 
 		// phantom episode 13.
 		const entry = makeEntry('hist-a', '12', 'Show A');
 		const match = makeMatch('k-a', 24);
-		const resolveMatch = vi.fn().mockResolvedValue(match);
-		const backgroundProbe = new Promise<{ episode_count: number }>(() => {});
-		const fetchAvailability = vi.fn().mockReturnValue(backgroundProbe);
+		const resolveMatch = vi
+			.fn<NonNullable<ContinueWatchingLoaderDeps['resolveMatch']>>()
+			.mockResolvedValue(match);
+		const backgroundProbe = new Promise<AvailabilityResponse>(() => {});
+		const fetchAvailability = vi
+			.fn<NonNullable<ContinueWatchingLoaderDeps['fetchAvailability']>>()
+			.mockReturnValue(backgroundProbe);
 
 		let releasedMatch: KitsuAnimeRef | null = null;
 		let releasedCount: number | null = null;

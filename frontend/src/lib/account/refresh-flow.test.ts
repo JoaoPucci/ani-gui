@@ -141,7 +141,9 @@ describe('refreshAccount', () => {
 		// back. The bump simulates a disconnect/re-auth landing mid-await,
 		// even before the store's account snapshot catches up.
 		let gen = 7;
-		const persistAccount = vi.fn().mockResolvedValue({ ok: true });
+		const persistAccount = vi
+			.fn<NonNullable<RefreshFlowDeps['persistAccount']>>()
+			.mockResolvedValue({ ok: true });
 		const deps: RefreshFlowDeps = {
 			refreshTokens: vi
 				.fn<NonNullable<RefreshFlowDeps['refreshTokens']>>()
@@ -163,10 +165,12 @@ describe('refreshAccount', () => {
 		// post-persist re-check must also catch it, so onRefreshed never
 		// reconnects the superseded account.
 		let gen = 0;
-		const persistAccount = vi.fn().mockImplementation(async () => {
-			gen = 1; // disconnect/re-auth raced the safeStorage write
-			return { ok: true };
-		});
+		const persistAccount = vi
+			.fn<NonNullable<RefreshFlowDeps['persistAccount']>>()
+			.mockImplementation(async () => {
+				gen = 1; // disconnect/re-auth raced the safeStorage write
+				return { ok: true };
+			});
 		const deps: RefreshFlowDeps = {
 			refreshTokens: vi
 				.fn()
@@ -179,7 +183,9 @@ describe('refreshAccount', () => {
 	});
 
 	it('persists when the generation is unchanged across the refresh', async () => {
-		const persistAccount = vi.fn().mockResolvedValue({ ok: true });
+		const persistAccount = vi
+			.fn<NonNullable<RefreshFlowDeps['persistAccount']>>()
+			.mockResolvedValue({ ok: true });
 		const deps: RefreshFlowDeps = {
 			refreshTokens: vi
 				.fn()
@@ -200,7 +206,7 @@ describe('refreshExpiredAccounts', () => {
 			mal: { kind: 'expired', account: account({ refresh_token: 'rt' }) },
 			inhouse: { kind: 'disconnected' }
 		} as unknown as Record<Provider, ProviderState>;
-		const onRefreshed = vi.fn();
+		const onRefreshed = vi.fn<NonNullable<RefreshExpiredDeps['onRefreshed']>>();
 		await refreshExpiredAccounts({
 			byProvider: () => byProvider,
 			onRefreshed,
@@ -227,9 +233,9 @@ describe('refreshExpiredAccounts', () => {
 			inhouse: { kind: 'disconnected' }
 		} as unknown as Record<Provider, ProviderState>;
 		const refreshTokens = vi
-			.fn()
+			.fn<NonNullable<RefreshExpiredDeps['refreshTokens']>>()
 			.mockResolvedValue({ access_token: 'new', refresh_token: 'rt2', expires_at_epoch_s: 9 });
-		const onRefreshed = vi.fn();
+		const onRefreshed = vi.fn<NonNullable<RefreshExpiredDeps['onRefreshed']>>();
 		await refreshExpiredAccounts(
 			{
 				byProvider: () => byProvider,
@@ -253,7 +259,7 @@ describe('refreshExpiredAccounts', () => {
 			mal: { kind: 'expired', account: account() },
 			inhouse: { kind: 'disconnected' }
 		} as unknown as Record<Provider, ProviderState>;
-		const onRefreshed = vi.fn();
+		const onRefreshed = vi.fn<NonNullable<RefreshExpiredDeps['onRefreshed']>>();
 		await refreshExpiredAccounts({
 			byProvider: () => byProvider,
 			onRefreshed,
@@ -282,9 +288,9 @@ describe('refreshExpiredAccounts', () => {
 			mal: { kind: 'expired', account: account({ refresh_token: 'rt' }) },
 			inhouse: { kind: 'disconnected' }
 		} as unknown as Record<Provider, ProviderState>;
-		const onRefreshed = vi.fn();
+		const onRefreshed = vi.fn<NonNullable<RefreshExpiredDeps['onRefreshed']>>();
 		const refreshTokens = vi
-			.fn()
+			.fn<NonNullable<RefreshExpiredDeps['refreshTokens']>>()
 			.mockResolvedValue({ access_token: 'new', refresh_token: 'rt2', expires_at_epoch_s: 9 });
 		await refreshExpiredAccounts({
 			byProvider: () => byProvider,
@@ -441,7 +447,7 @@ describe('a failed renewal says why', () => {
 	});
 
 	it('tells the store when an expired sign-in fails to renew', async () => {
-		const onRenewalFailed = vi.fn();
+		const onRenewalFailed = vi.fn<NonNullable<FreshBearerDeps['onRenewalFailed']>>();
 		await refreshExpiredAccounts({
 			byProvider: () =>
 				({
@@ -462,7 +468,7 @@ describe('a failed renewal says why', () => {
 	});
 
 	it('tells the store when a proactive renewal fails, and still hands back the bearer', async () => {
-		const onRenewalFailed = vi.fn();
+		const onRenewalFailed = vi.fn<NonNullable<FreshBearerDeps['onRenewalFailed']>>();
 		const bearer = await freshBearer(
 			{
 				refreshTokens: vi

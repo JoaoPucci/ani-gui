@@ -206,7 +206,10 @@ describe('startDownload', () => {
 		// The episode verdict says this audio lacks the episode; what
 		// the dock row adds about the other audio comes from the
 		// availability cache and nowhere else.
-		const verdict = { kind: 'episode_unavailable', key: 'error.play.episode_unavailable' };
+		const verdict: AniErrorPayload = {
+			kind: 'episode_unavailable',
+			key: 'error.play.episode_unavailable'
+		};
 		const cases: [AvailabilityBatchResponse | Error, string][] = [
 			[
 				{ cached: { '40684': true }, playable_episode_counts: { '40684': 12 } },
@@ -288,7 +291,8 @@ describe('startDownload', () => {
 	});
 
 	it('shows describeError copy for a thrown string, never the string', async () => {
-		apiMock.downloadStream.mockRejectedValueOnce('aborted by user');
+		// Not an envelope: a thrown string, on purpose.
+		apiMock.downloadStream.mockRejectedValueOnce(malformedAs<AniErrorPayload>('aborted by user'));
 		startDownload(baseArgs);
 		await Promise.resolve();
 		await Promise.resolve();
@@ -303,7 +307,7 @@ describe('startDownload', () => {
 		// and a parse failure there is the provider's page no longer
 		// read by this version. The row says so, as the play overlay
 		// does, instead of the shared try-again-later sentence.
-		const failure = {
+		const failure: AniErrorPayload = {
 			kind: 'parse_failed',
 			key: 'error.scraper.parse_failed',
 			detail: 'the page is not the search shape'
@@ -326,11 +330,11 @@ describe('startDownload', () => {
 		// catalogue miss, a source outage and any other upstream status
 		// read the same on both surfaces.
 		for (const failure of [
-			{ kind: 'no_results' },
-			{ kind: 'upstream', status: 503 },
-			{ kind: 'upstream', status: 404 },
-			{ kind: 'upstream', status: 403 }
-		]) {
+			{ kind: 'no_results', key: 'error.search.no_results' },
+			{ kind: 'upstream', key: 'error.network.upstream', status: 503 },
+			{ kind: 'upstream', key: 'error.network.upstream', status: 404 },
+			{ kind: 'upstream', key: 'error.network.upstream', status: 403 }
+		] satisfies AniErrorPayload[]) {
 			storeMock.downloadStore.markError.mockReset();
 			apiMock.downloadStream.mockRejectedValueOnce(failure);
 			startDownload(baseArgs);
@@ -348,7 +352,7 @@ describe('startDownload', () => {
 		// stream server not serving reads the same in the dock: the
 		// source's video server, never the user's connection — and the
 		// host the verdict carries for the log stays out of the row.
-		const failure = {
+		const failure: AniErrorPayload = {
 			kind: 'stream_server_failed',
 			key: 'error.play.stream_server_failed',
 			stage: 'embed',
@@ -374,7 +378,7 @@ describe('startDownload', () => {
 		// deadline, which is not a service being slow; `io` is the
 		// destination folder refusing the file; `config` is no folder
 		// being set; `scraper` is the download tool exiting non-zero.
-		const cases: Array<[object, RegExp]> = [
+		const cases: Array<[AniErrorPayload, RegExp]> = [
 			[{ kind: 'timeout', key: 'error.scraper.timeout' }, /download took too long/i],
 			[{ kind: 'io', key: 'error.io.generic' }, /download folder/i],
 			[{ kind: 'config', key: 'error.config.parse' }, /no download folder/i],
@@ -397,8 +401,8 @@ describe('startDownload', () => {
 		// when yt-dlp or ffmpeg is found but cannot be started; a tool
 		// that ran and failed carries the other key. The user acts on
 		// the two differently, so they read differently.
-		const spawn = { kind: 'scraper', key: 'error.download.tool_spawn_failed' };
-		const ran = { kind: 'scraper', key: 'error.download.tool_failed' };
+		const spawn: AniErrorPayload = { kind: 'scraper', key: 'error.download.tool_spawn_failed' };
+		const ran: AniErrorPayload = { kind: 'scraper', key: 'error.download.tool_failed' };
 		const shown: string[] = [];
 		for (const failure of [spawn, ran]) {
 			storeMock.downloadStore.markError.mockReset();

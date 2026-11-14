@@ -189,7 +189,7 @@ describe('createSearchRunner paging', () => {
 	it('asking for more while a page is in flight starts no second request', async () => {
 		const next = defer<KitsuSearchPage>();
 		const searchPage = vi
-			.fn()
+			.fn<NonNullable<SearchRunnerDeps['searchPage']>>()
 			.mockResolvedValueOnce(page(['1'], 20))
 			.mockReturnValueOnce(next.promise);
 		const h = harness({ searchPage });
@@ -211,11 +211,13 @@ describe('createSearchRunner paging', () => {
 
 	it('a new query silences the previous query’s page in flight and starts over', async () => {
 		const stale = defer<KitsuSearchPage>();
-		const searchPage = vi.fn(async (q: string, offset: number) => {
-			if (q === 'a' && offset === 0) return page(['a1'], 20);
-			if (q === 'a') return stale.promise;
-			return page(['b1'], 20);
-		});
+		const searchPage = vi.fn<NonNullable<SearchRunnerDeps['searchPage']>>(
+			async (q: string, offset: number) => {
+				if (q === 'a' && offset === 0) return page(['a1'], 20);
+				if (q === 'a') return stale.promise;
+				return page(['b1'], 20);
+			}
+		);
 		const h = harness({ searchPage });
 		await h.runner.run('a');
 		h.runner.loadMore();
@@ -239,10 +241,12 @@ describe('createSearchRunner paging', () => {
 
 	it('a stale page failure does not mark the new query failed', async () => {
 		const stale = defer<KitsuSearchPage>();
-		const searchPage = vi.fn(async (q: string, offset: number) => {
-			if (q === 'a' && offset === 20) return stale.promise;
-			return page([`${q}1`], 20);
-		});
+		const searchPage = vi.fn<NonNullable<SearchRunnerDeps['searchPage']>>(
+			async (q: string, offset: number) => {
+				if (q === 'a' && offset === 20) return stale.promise;
+				return page([`${q}1`], 20);
+			}
+		);
 		const h = harness({ searchPage });
 		await h.runner.run('a');
 		h.runner.loadMore();

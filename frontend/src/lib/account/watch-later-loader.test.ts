@@ -128,7 +128,7 @@ describe('loadWatchLater', () => {
 		const rows: ListEntry[] = Array.from({ length: WATCH_LATER_BRIDGE_MAX_IDS + 50 }, (_, i) =>
 			row({ provider: 'anilist', media_id: i + 1, mal_id: i + 1, status: 'planning' })
 		);
-		const bridge = vi.fn().mockResolvedValue([]);
+		const bridge = vi.fn<NonNullable<WatchLaterDeps['kitsuByMalIds']>>().mockResolvedValue([]);
 		const deps: WatchLaterDeps = {
 			credentials: { anilist: { bearer: 'a', userId: 'u' } },
 			fetchCachedList: vi

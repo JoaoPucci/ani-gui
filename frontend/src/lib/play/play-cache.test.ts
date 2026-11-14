@@ -9,14 +9,13 @@ import {
 	makeKey
 } from './play-cache';
 
+import { sessionAnswer } from '$lib/testing/wire-answers';
 function fakeResp(seed: string): CreateSessionResponse {
-	return {
+	return sessionAnswer({
 		session_id: seed,
 		media_url: `http://x/s/${seed}/master.m3u8`,
-		media_kind: 'hls',
-		cache_hit: false,
-		subtitles: []
-	};
+		media_kind: 'hls'
+	});
 }
 
 /** A `fire` that doesn't emit progress — equivalent to the legacy

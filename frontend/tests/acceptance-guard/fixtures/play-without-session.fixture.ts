@@ -77,7 +77,9 @@ const sessionWith = (wrong: Record<string, unknown>) =>
 	});
 
 /** A whole session less `field`. */
-const sessionWithout = (field: 'session_id' | 'media_url' | 'cache_hit' | 'subtitles') => {
+const sessionWithout = (
+	field: 'session_id' | 'media_url' | 'media_kind' | 'cache_hit' | 'subtitles'
+) => {
 	const whole: Record<string, unknown> = {
 		...sessionAnswer({
 			session_id: 's-1',
@@ -107,6 +109,48 @@ const ONE_WRONG: [string, () => HttpResponse<never>][] = [
 	['that leaves out subtitles', () => sessionWithout('subtitles')],
 	['that leaves out session_id', () => sessionWithout('session_id')],
 	['that leaves out media_url', () => sessionWithout('media_url')],
+	['that leaves out media_kind', () => sessionWithout('media_kind')],
+	[
+		'whose subtitles are not a list',
+		() =>
+			sessionWith({
+				subtitles: { lang: 'en', label: 'English', default: true, url: '/s/s-1/sub/0.vtt' }
+			})
+	],
+	[
+		'whose versions are not a list',
+		() => sessionWith({ versions: { kind: 'standard', show_key: 'k' } })
+	],
+	[
+		'whose subtitle language is not text',
+		() =>
+			sessionWith({
+				subtitles: [
+					{ ...{ lang: 'en', label: 'English', default: true, url: '/s/s-1/sub/0.vtt' }, lang: 1 }
+				]
+			})
+	],
+	[
+		'whose subtitle label is not text',
+		() =>
+			sessionWith({
+				subtitles: [
+					{
+						...{ lang: 'en', label: 'English', default: true, url: '/s/s-1/sub/0.vtt' },
+						label: null
+					}
+				]
+			})
+	],
+	[
+		'whose subtitle url is not text',
+		() =>
+			sessionWith({
+				subtitles: [
+					{ ...{ lang: 'en', label: 'English', default: true, url: '/s/s-1/sub/0.vtt' }, url: 0 }
+				]
+			})
+	],
 	['whose session_id is not text', () => sessionWith({ session_id: 7 })],
 	['whose media_url is not text', () => sessionWith({ media_url: null })],
 	['whose former_episode is not text', () => sessionWith({ former_episode: 24.5 })],

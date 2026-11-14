@@ -154,7 +154,7 @@ describe('createSearchRunner (generation guard)', () => {
 	it('a superseded run rejection does not surface as the current run error', async () => {
 		const firstSearch = defer<KitsuSearchPage>();
 		const searchPage = vi
-			.fn()
+			.fn<NonNullable<SearchRunnerDeps['searchPage']>>()
 			.mockReturnValueOnce(firstSearch.promise)
 			.mockResolvedValueOnce(lastPage([ref('ok')]));
 		const h = makeHarness({ searchPage });
@@ -181,7 +181,9 @@ describe('createSearchRunner (generation guard)', () => {
 		// place before the settings have answered. The replaced run must
 		// not go on to ask Kitsu for a page nobody will see.
 		const settings = defer<Config | null>();
-		const searchPage = vi.fn().mockResolvedValue(lastPage([ref('b')]));
+		const searchPage = vi
+			.fn<NonNullable<SearchRunnerDeps['searchPage']>>()
+			.mockResolvedValue(lastPage([ref('b')]));
 		const h = makeHarness({
 			getConfig: vi
 				.fn<NonNullable<SearchRunnerDeps['getConfig']>>()
@@ -201,7 +203,9 @@ describe('createSearchRunner (generation guard)', () => {
 	});
 
 	it('caches config only after a successful load, reused across runs', async () => {
-		const getConfig = vi.fn().mockResolvedValue(configAnswer({ mode: 'dub' }));
+		const getConfig = vi
+			.fn<NonNullable<SearchRunnerDeps['getConfig']>>()
+			.mockResolvedValue(configAnswer({ mode: 'dub' }));
 		const modes: string[] = [];
 		const h = makeHarness({
 			getConfig,
@@ -227,7 +231,7 @@ describe('createSearchRunner (generation guard)', () => {
 		// mount; a later run must ask again and pick up the config
 		// that has since loaded.
 		const getConfig = vi
-			.fn()
+			.fn<NonNullable<SearchRunnerDeps['getConfig']>>()
 			.mockRejectedValueOnce(new Error('settings down'))
 			.mockResolvedValueOnce(configAnswer({ mode: 'dub' }));
 		const modes: string[] = [];
@@ -388,7 +392,7 @@ describe('concurrent config loads (shared load promise)', () => {
 		const first = defer<Config | null>();
 		const second = defer<Config | null>();
 		const getConfig = vi
-			.fn()
+			.fn<NonNullable<SearchRunnerDeps['getConfig']>>()
 			.mockReturnValueOnce(first.promise)
 			.mockReturnValueOnce(second.promise);
 		const modes: string[] = [];

@@ -18,6 +18,7 @@ import {
 
 import type * as Api from '$lib/api';
 import { errorEnvelope } from '$lib/testing/wire-answers';
+import type { AniErrorPayload } from '$lib/api';
 // Mock the api module wholesale — `match.ts` is decoupled from the
 // transport (HTTP fetch to the backend), and the assertions
 // here are about which api functions get called with what args.
@@ -896,7 +897,8 @@ describe('a recorded id Kitsu cannot read', () => {
 		expect(mockedSearch).toHaveBeenCalled();
 	});
 
-	it.each([
+	// `http` is the envelope `$lib/api` builds for an error with no body.
+	it.each<[string, AniErrorPayload]>([
 		['a provider 503', { kind: 'upstream', status: 503, key: 'error.network.upstream' }],
 		['a rate limit', { kind: 'upstream', status: 429, key: 'error.network.upstream' }],
 		['an unreachable network', { kind: 'network', key: 'error.network.unreachable' }],

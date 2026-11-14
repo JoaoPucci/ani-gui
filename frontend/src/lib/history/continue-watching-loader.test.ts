@@ -70,9 +70,11 @@ describe('loadContinueWatchingState', () => {
 			});
 
 		const ready: { id: string; count: number | null }[] = [];
-		const onRowReady = vi.fn().mockImplementation((id: string, _m, count: number | null) => {
-			ready.push({ id, count });
-		});
+		const onRowReady = vi
+			.fn<NonNullable<ContinueWatchingLoaderDeps['onRowReady']>>()
+			.mockImplementation((id: string, _m, count: number | null) => {
+				ready.push({ id, count });
+			});
 
 		const loaderPromise = loadContinueWatchingState([fast, slow], {
 			resolveMatch,
@@ -421,7 +423,7 @@ describe('first paint releases before availability (render-then-refine)', () => 
 			.fn<ContinueWatchingLoaderDeps['fetchAvailability']>()
 			.mockRejectedValue(new Error('breaker open'));
 
-		const onRowReady = vi.fn();
+		const onRowReady = vi.fn<NonNullable<ContinueWatchingLoaderDeps['onRowReady']>>();
 		const result = await loadContinueWatchingState([entry], {
 			resolveMatch,
 			fetchAvailability,
@@ -444,7 +446,7 @@ it('forwards approximate provenance from the background probe', async () => {
 	// still advance to a phantom episode.
 	const entry = makeEntry('hist-a', '5', 'Show A');
 	const match = makeMatch('k-a', 24);
-	const onRowReady = vi.fn();
+	const onRowReady = vi.fn<NonNullable<ContinueWatchingLoaderDeps['onRowReady']>>();
 	await loadContinueWatchingState([entry], {
 		resolveMatch: vi
 			.fn<NonNullable<ContinueWatchingLoaderDeps['resolveMatch']>>()
@@ -461,7 +463,7 @@ it('forwards approximate provenance from the background probe', async () => {
 it('reports an exact background count as exact', async () => {
 	const entry = makeEntry('hist-b', '5', 'Show B');
 	const match = makeMatch('k-b', 24);
-	const onRowReady = vi.fn();
+	const onRowReady = vi.fn<NonNullable<ContinueWatchingLoaderDeps['onRowReady']>>();
 	await loadContinueWatchingState([entry], {
 		resolveMatch: vi
 			.fn<NonNullable<ContinueWatchingLoaderDeps['resolveMatch']>>()

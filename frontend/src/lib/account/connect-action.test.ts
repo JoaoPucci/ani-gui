@@ -295,10 +295,12 @@ describe('cancelConnect', () => {
 
 	it('an abandoned sign-in that completes in the browser anyway is not saved', async () => {
 		const oauth = deferred<{ ok: true; code: string; state: string }>();
-		const persist = vi.fn(async (p: Provider, payload: PersistedAccount) => {
-			disk[p] = payload;
-			return { ok: true as const };
-		});
+		const persist = vi.fn<NonNullable<ConnectFlowDeps['persistAccount']>>(
+			async (p: Provider, payload: PersistedAccount) => {
+				disk[p] = payload;
+				return { ok: true as const };
+			}
+		);
 		const running = connectProvider(
 			'anilist',
 			deps(flow({ openOAuth: () => oauth.promise, persistAccount: persist }))
@@ -430,10 +432,12 @@ describe('cancelConnect', () => {
 		await firstRun;
 		await settle();
 		const second = deferred<{ ok: true; code: string; state: string }>();
-		const persist = vi.fn(async (p: Provider, payload: PersistedAccount) => {
-			disk[p] = payload;
-			return { ok: true as const };
-		});
+		const persist = vi.fn<NonNullable<ConnectFlowDeps['persistAccount']>>(
+			async (p: Provider, payload: PersistedAccount) => {
+				disk[p] = payload;
+				return { ok: true as const };
+			}
+		);
 		const secondRun = connectProvider(
 			'anilist',
 			deps(flow({ openOAuth: () => second.promise, persistAccount: persist }))

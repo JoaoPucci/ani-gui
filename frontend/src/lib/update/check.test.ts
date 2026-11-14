@@ -41,7 +41,7 @@ function release(overrides: Partial<ReleaseInfo> = {}): ReleaseInfo {
 
 describe('checkForUpdate', () => {
 	it('returns ReleaseInfo when backend serves a newer release', async () => {
-		const fetcher = vi.fn().mockResolvedValue(ok(release()));
+		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok(release()));
 		const out = await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,
@@ -52,7 +52,7 @@ describe('checkForUpdate', () => {
 	});
 
 	it('returns null when backend returns 204 (no release / soft failure)', async () => {
-		const fetcher = vi.fn().mockResolvedValue(noContent());
+		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(noContent());
 		const out = await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,
@@ -62,7 +62,7 @@ describe('checkForUpdate', () => {
 	});
 
 	it('returns null when the served tag is the same as current', async () => {
-		const fetcher = vi.fn().mockResolvedValue(ok(release({ tag: 'v0.4.0' })));
+		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok(release({ tag: 'v0.4.0' })));
 		const out = await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,
@@ -72,7 +72,7 @@ describe('checkForUpdate', () => {
 	});
 
 	it('returns null when the served tag is older', async () => {
-		const fetcher = vi.fn().mockResolvedValue(ok(release({ tag: 'v0.3.0' })));
+		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok(release({ tag: 'v0.3.0' })));
 		const out = await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,
@@ -82,7 +82,7 @@ describe('checkForUpdate', () => {
 	});
 
 	it('returns null on a malformed payload shape', async () => {
-		const fetcher = vi.fn().mockResolvedValue(malformed({ unexpected: true }));
+		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(malformed({ unexpected: true }));
 		const out = await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,
@@ -92,7 +92,7 @@ describe('checkForUpdate', () => {
 	});
 
 	it('returns null on non-200 / non-204 responses', async () => {
-		const fetcher = vi.fn().mockResolvedValue(new Response('boom', { status: 500 }));
+		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('boom', { status: 500 }));
 		const out = await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,
@@ -102,7 +102,7 @@ describe('checkForUpdate', () => {
 	});
 
 	it('returns null on fetch rejection (backend unreachable)', async () => {
-		const fetcher = vi.fn().mockRejectedValue(new Error('econnrefused'));
+		const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error('econnrefused'));
 		const out = await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,
@@ -114,7 +114,9 @@ describe('checkForUpdate', () => {
 	it('returns null when the response body is not valid JSON', async () => {
 		// 200 status but body fails to parse — the helper catches and
 		// collapses to null rather than throwing into the caller.
-		const fetcher = vi.fn().mockResolvedValue(new Response('not-json {', { status: 200 }));
+		const fetcher = vi
+			.fn<typeof fetch>()
+			.mockResolvedValue(new Response('not-json {', { status: 200 }));
 		const out = await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,
@@ -124,7 +126,7 @@ describe('checkForUpdate', () => {
 	});
 
 	it('forwards include_prereleases=true to the backend by default', async () => {
-		const fetcher = vi.fn().mockResolvedValue(noContent());
+		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(noContent());
 		await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,
@@ -134,7 +136,7 @@ describe('checkForUpdate', () => {
 	});
 
 	it('forwards include_prereleases=false when the option is off', async () => {
-		const fetcher = vi.fn().mockResolvedValue(noContent());
+		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(noContent());
 		await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,
@@ -145,7 +147,7 @@ describe('checkForUpdate', () => {
 	});
 
 	it('carries the headers it is given, the launch secret among them', async () => {
-		const fetcher = vi.fn().mockResolvedValue(noContent());
+		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(noContent());
 		await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,

@@ -204,7 +204,9 @@ describe('createLiveSearch', () => {
 	it('runs on the real timer when none is given', async () => {
 		vi.useFakeTimers();
 		try {
-			const search = vi.fn(async () => [] as KitsuAnimeRef[]);
+			const search = vi.fn<NonNullable<LiveSearchDeps['search']>>(
+				async () => [] as KitsuAnimeRef[]
+			);
 			const live = createLiveSearch({
 				search,
 				filter: async (hits) => hits,
