@@ -3,7 +3,7 @@ import fc from 'fast-check';
 import { arrive, emptyView, restoredView } from './arrival';
 import { captureSearch, type SearchSnapshot } from './snapshot';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 const ref = (id: string) => kitsuRefAnswer({ id, canonical_title: id });
 
 function saved(q = 'frieren', withResults = true): SearchSnapshot {

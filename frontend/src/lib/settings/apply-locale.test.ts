@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import type { Config } from '$lib/api';
 import { applyLocale } from './apply-locale';
 
-import { configAnswer } from '../../../tests/answers';
+import { configAnswer } from '$lib/testing/wire-answers';
 function cfg(): Config {
 	return configAnswer({
 		locale: 'en',

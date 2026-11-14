@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { altTitlesFromKitsu, yearFromKitsuRef, type KitsuAnimeRef } from '$lib/api';
 import { handoffArgs } from './handoff-args';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 const detail: KitsuAnimeRef = kitsuRefAnswer({
 	id: '42',
 	canonical_title: 'The Show',

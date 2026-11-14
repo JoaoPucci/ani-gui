@@ -13,7 +13,7 @@ vi.mock('$lib/api', () => apiMock);
 import { createSearchRunner, type SearchRunnerDeps } from './run-search';
 import { filterAvailableProgressive } from '$lib/availability/progressive';
 
-import { availabilityAnswer, configAnswer } from '../../../tests/answers';
+import { availabilityAnswer, configAnswer } from '$lib/testing/wire-answers';
 import type * as Api from '$lib/api';
 function ref(id: string, overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {

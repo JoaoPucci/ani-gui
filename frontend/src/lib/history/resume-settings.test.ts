@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveResumeSettings } from './resume-settings';
 import type { Config } from '$lib/api';
 
-import { configAnswer } from '../../../tests/answers';
+import { configAnswer } from '$lib/testing/wire-answers';
 function cfg(mode: string): Config {
 	return configAnswer({ mode });
 }

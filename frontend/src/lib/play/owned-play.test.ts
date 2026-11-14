@@ -9,7 +9,7 @@ import {
 	runOwnedPlay
 } from './owned-play';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 /** A route's visit counter, as the pages keep it: it advances on every
  *  change of the show id, including a round trip back. */
 function routeVisits() {

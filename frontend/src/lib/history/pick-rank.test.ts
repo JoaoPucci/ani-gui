@@ -3,7 +3,7 @@ import * as fc from 'fast-check';
 import { namedCandidates, rowYear } from './pick-rank';
 import type { KitsuAnimeRef } from '$lib/api';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 const hit = (
 	id: string,
 	canonical_title: string,

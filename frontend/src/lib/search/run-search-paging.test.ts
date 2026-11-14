@@ -10,7 +10,7 @@ vi.mock('$lib/api', () => ({}));
 import { createSearchRunner, type SearchRunnerDeps } from './run-search';
 import { MAX_EMPTY_PAGES, type PagingPhase } from './paging';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 function ref(id: string): KitsuAnimeRef {
 	return kitsuRefAnswer({ id, canonical_title: `Title ${id}` });
 }

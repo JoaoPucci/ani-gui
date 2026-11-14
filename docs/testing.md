@@ -311,7 +311,10 @@ type check reads, and ESLint refuses one that does not
 the rest: `errorAnswer` for an error and its envelope, builders that fill
 the fields a test does not care about with what the backend sends when it
 has nothing to say, and `malformedAnswer` / `malformedAs` for a fake that is
-wrong on purpose, so it reads as deliberate. The unit tests' `fetch` stubs
+wrong on purpose, so it reads as deliberate. The builders the unit tests
+share live in `frontend/src/lib/testing/wire-answers.ts` (unit tests import
+nothing from outside `src/`; `tests/arch/dep_direction.sh` holds that), and
+`tests/answers.ts` re-exports them. The unit tests' `fetch` stubs
 and replaced API functions take the route's or the function's type the same
 way. When a renderer type changes, the type check names every fake that no
 longer matches it.

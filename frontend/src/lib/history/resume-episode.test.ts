@@ -9,7 +9,7 @@ import { makeFetchAvailability } from './availability-from-match';
 import { resolveResumeSettings } from './resume-settings';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
 	return { id, ep_no: ep, title };
 }

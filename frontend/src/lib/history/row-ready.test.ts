@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { makeContinueRowReadyHandler } from './row-ready';
 import type { HistoryEntry, KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 
-import { episodeAnswer, kitsuRefAnswer } from '../../../tests/answers';
+import { episodeAnswer, kitsuRefAnswer } from '$lib/testing/wire-answers';
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
 	return { id, ep_no: ep, title };
 }

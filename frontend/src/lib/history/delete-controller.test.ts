@@ -10,7 +10,7 @@ import {
 	type PositionStorage
 } from '$lib/play/watch-position';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 function memory(): PositionStorage {
 	const data = new Map<string, string>();
 	return { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) };

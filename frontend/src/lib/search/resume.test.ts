@@ -11,7 +11,7 @@ import {
 } from './resume';
 import { captureSearch, FRESH_FOR_MS } from './snapshot';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 const ref = (id: string) => kitsuRefAnswer({ id, canonical_title: id });
 
 const phaseArb = fc.constantFrom<PagingPhase['kind']>('idle', 'loading-more', 'end', 'held');

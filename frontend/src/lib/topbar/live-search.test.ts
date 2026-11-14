@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { KitsuAnimeRef } from '$lib/api';
 import { createLiveSearch, type LiveSearchDeps, type LiveSearchView } from './live-search';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 const hit = (id: string) => kitsuRefAnswer({ id, canonical_title: `Show ${id}` });
 const flush = () => new Promise((r) => setTimeout(r, 0));
 

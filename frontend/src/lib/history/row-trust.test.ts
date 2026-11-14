@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createRowTrust } from './row-trust';
 import type { HistoryEntry } from '$lib/api';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 const row = (id: string): HistoryEntry => ({ id, ep_no: '1', title: 'Show' });
 const ref = (id: string) => kitsuRefAnswer({ id });
 

@@ -13,7 +13,7 @@ import {
 	type Reach
 } from './paging';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 const ref = (id: string) => kitsuRefAnswer({ id, canonical_title: `Title ${id}` });
 
 const PHASES: PagingPhase[] = [

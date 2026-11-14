@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import type { KitsuAnimeRef } from '$lib/api';
 import { entryNames, namesTheEntry } from './same-name';
 
-import { malformedAs } from '../../../tests/answers';
+import { malformedAs } from '$lib/testing/wire-answers';
 interface Vector {
 	case: string;
 	title: string;

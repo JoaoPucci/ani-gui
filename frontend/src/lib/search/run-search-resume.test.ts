@@ -19,7 +19,7 @@ import { createSearchRunner, type SearchRunnerDeps } from './run-search';
 import type { PagingPhase } from './paging';
 import { captureSearch, FRESH_FOR_MS, type SearchSnapshot } from './snapshot';
 
-import { configAnswer } from '../../../tests/answers';
+import { configAnswer } from '$lib/testing/wire-answers';
 import type * as Api from '$lib/api';
 function ref(id: string): KitsuAnimeRef {
 	return {

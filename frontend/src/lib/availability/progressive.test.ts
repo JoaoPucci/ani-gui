@@ -19,7 +19,7 @@ import { filterAvailableProgressive } from './progressive';
 import { probeScope } from './probe-scope';
 
 import type * as Api from '$lib/api';
-import { availabilityAnswer, malformedAs } from '../../../tests/answers';
+import { availabilityAnswer, malformedAs } from '$lib/testing/wire-answers';
 function ref(id: string, overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {
 		id,

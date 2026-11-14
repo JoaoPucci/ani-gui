@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { kitsuGroupSiblingIds } from './delete-group';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 // Stub builder so the test stays focused on the id-grouping logic
 // without dragging every HistoryEntry field through each case.
 function h(id: string, kitsu_id?: string): HistoryEntry {

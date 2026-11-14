@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { makeFetchAvailability } from './availability-from-match';
 import type { AvailabilityArgs, AvailabilityResponse, KitsuAnimeRef } from '$lib/api';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 function makeMatch(overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return kitsuRefAnswer({
 		id: 'kitsu-id',

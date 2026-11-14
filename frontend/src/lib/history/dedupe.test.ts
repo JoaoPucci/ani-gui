@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { dedupeHistoryByKitsuId } from './dedupe';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 function entry(id: string, ep = '1', title = `Show ${id}`): HistoryEntry {
 	return { id, ep_no: ep, title };
 }

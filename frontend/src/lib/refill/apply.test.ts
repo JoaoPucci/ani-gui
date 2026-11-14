@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 import { refillEpisodes, refilledImages } from './apply';
 
-import { episodeAnswer, kitsuRefAnswer } from '../../../tests/answers';
+import { episodeAnswer, kitsuRefAnswer } from '$lib/testing/wire-answers';
 function ep(id: string, number: number, thumb: string | null = null): KitsuEpisode {
 	return episodeAnswer({
 		id,

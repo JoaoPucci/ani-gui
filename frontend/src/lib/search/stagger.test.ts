@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { staggerSlots } from './stagger';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 const list = (...ids: string[]) => ids.map((id) => kitsuRefAnswer({ id }));
 
 describe('staggerSlots', () => {

@@ -8,7 +8,7 @@ import type { ListEntry, Provider } from './types';
 import { AccountApiError } from './api';
 import type { KitsuAnimeRef } from '$lib/api';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 function row(over: Partial<ListEntry> = {}): ListEntry {
 	return {
 		provider: 'anilist',

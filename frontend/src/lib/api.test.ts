@@ -69,7 +69,7 @@ import {
 	type PlayProgress
 } from './api';
 
-import { configAnswer, kitsuRefAnswer } from '../../tests/answers';
+import { configAnswer, kitsuRefAnswer } from '$lib/testing/wire-answers';
 const BASE = 'http://127.0.0.1:1234';
 
 /**

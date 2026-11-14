@@ -35,7 +35,7 @@ import {
 	type KitsuAnimeRef
 } from '$lib/api';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 import type * as Api from '$lib/api';
 vi.mock('$lib/api', () => ({
 	allmangaKitsuMapDelete: vi.fn<typeof Api.allmangaKitsuMapDelete>(),

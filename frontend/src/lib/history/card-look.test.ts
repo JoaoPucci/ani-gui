@@ -9,7 +9,7 @@ import {
 	type LookInputs
 } from './card-look';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 const proxy = (u: string | null) => (u ? `proxy:${u}` : null);
 
 function ref(id: string, poster: string | null = `https://img/${id}.jpg`): KitsuAnimeRef {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { configOnce } from './config-once';
 
-import { configAnswer } from '../../../tests/answers';
+import { configAnswer } from '$lib/testing/wire-answers';
 const dub = configAnswer({ mode: 'dub' });
 
 describe('configOnce', () => {

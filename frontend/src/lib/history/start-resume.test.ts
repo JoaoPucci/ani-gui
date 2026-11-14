@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { makeStartResume, type ResumePlayArgs, type StartResumeDeps } from './start-resume';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
-import { kitsuRefAnswer } from '../../../tests/answers';
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
 	return { id, ep_no: ep, title };
 }
