@@ -237,3 +237,7 @@ mod corpus_page_tests;
 #[cfg(test)]
 #[path = "franchise_corpus_chain_test.rs"]
 mod corpus_chain_tests;
+
+#[cfg(test)]
+#[path = "franchise_walk_chain_test.rs"]
+mod chain_tests;
