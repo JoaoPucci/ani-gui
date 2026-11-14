@@ -72,6 +72,24 @@ describe('watchOrderPage on a page outside the main story', () => {
 		expect(p.seams).toEqual({ before: null, after: null });
 	});
 
+	it("stacks the strip's franchise link from the main story, and hides the whole franchise from Similar titles", () => {
+		const p = watchOrderPage(
+			{ franchise: fate('12007', heavensFeel), rows: [] },
+			'12007',
+			'linked'
+		)!;
+		expect(ids(p.mainRun.entries)).toEqual(['323', '6028', '7658']);
+		expect(ids(p.run.entries)).toEqual(['7658', '8675', '12007', '12008']);
+		for (const other of ['323', '6028', '7658', '8675', '12008'])
+			expect(p.similarHidden.has(other)).toBe(true);
+		const main = watchOrderPage(
+			{ franchise: fate('7658', undefined), rows: [] },
+			'7658',
+			'linked'
+		)!;
+		expect(main.mainRun).toBe(main.run);
+	});
+
 	it('shows the main-story title it branches off from, uncounted, as where it comes from', () => {
 		const p = watchOrderPage({ franchise: fate('8675', heavensFeel), rows: [] }, '8675', 'linked')!;
 		expect(p.caption).toEqual({ kind: 'position', position: 1, total: 3 });
