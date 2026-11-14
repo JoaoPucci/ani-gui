@@ -132,6 +132,31 @@ describe('switching to the picked show', () => {
 		expect(calls).toEqual(['resolve']);
 	});
 
+	it('abandons, rather than fails, a stream that cannot be had once the viewer left', async () => {
+		// A failure said on the page the viewer went to would be about a
+		// player they are no longer on.
+		const { d, calls } = deps({
+			resolve: vi.fn(async () => Promise.reject(new Error('no stream'))),
+			isCurrent: () => false
+		});
+		expect(await switchShow(d, request())).toBe('abandoned');
+		expect(calls).toEqual([]);
+	});
+
+	it('abandons a player that could not be opened once the viewer left, leaving nothing behind', async () => {
+		let here = true;
+		const { d } = deps({
+			open: vi.fn(async () => {
+				here = false;
+				return false;
+			}),
+			isCurrent: () => here
+		});
+		expect(await switchShow(d, request())).toBe('abandoned');
+		expect(d.record).not.toHaveBeenCalled();
+		expect(d.forget).toHaveBeenCalledWith(RIGHT.id, CARD);
+	});
+
 	it('fails at once for a show with no title to ask by', async () => {
 		const { d, calls } = deps();
 		expect(await switchShow(d, request({ to: ref('4013', null) }))).toBe('failed');
