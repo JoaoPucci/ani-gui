@@ -24,7 +24,7 @@
 		total: number | null;
 	} = $props();
 
-	const box = fanBox();
+	const box = $derived(fanBox(cards.length));
 	const open = $derived(fanPoses(cards.length, 'open'));
 	const rest = $derived(reducedMotion.current ? open : fanPoses(cards.length, 'rest'));
 	// A poster that fails to load is drawn as a blank frame, not an empty card.

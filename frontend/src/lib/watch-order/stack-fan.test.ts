@@ -137,10 +137,10 @@ describe('fanBox', () => {
 	};
 
 	it('holds every card whole, at rest and fanned out, for one to three cards', () => {
-		const box = fanBox();
 		for (const count of [1, 2, 3])
 			for (const state of ['rest', 'open'] as const)
 				for (const c of fanPoses(count, state).flatMap(corners)) {
+					const box = fanBox(count);
 					expect(Math.abs(c.x)).toBeLessThanOrEqual(box.inline / 2 + 1e-9);
 					// The foot stands `box.foot` above the box's bottom edge.
 					expect(c.y).toBeLessThanOrEqual(box.foot + 1e-9);
@@ -149,8 +149,19 @@ describe('fanBox', () => {
 	});
 
 	it('is no bigger than the cards need', () => {
-		const box = fanBox();
+		const box = fanBox(3);
 		expect(box.inline).toBeLessThan(6.5);
 		expect(box.block).toBeLessThan(4);
+	});
+
+	it('fits a lone card to the card itself, lifted, and three to their widest spread', () => {
+		// Worked by hand: a lone card stands upright, 2.3rem wide, and
+		// rises 0.25rem when the fan opens; three cards fanned out at 9°
+		// on an arc of 1.3125 / sin 9° reach 2.952rem either side.
+		const lone = fanBox(1);
+		expect(lone.inline).toBeCloseTo(2.3, 6);
+		expect(lone.block).toBeCloseTo(3.22 + 0.25, 6);
+		expect(lone.foot).toBeCloseTo(0, 6);
+		expect(fanBox(3).inline).toBeCloseTo(5.904, 3);
 	});
 });

@@ -100,7 +100,8 @@ function cornersAt(pose: FanPose): { x: number; y: number }[] {
  * the feet standing as far above the bottom edge as a turned card's
  * corner drops below its foot.
  */
-export function fanBox(): FanBox {
+export function fanBox(count: number): FanBox {
+	void count;
 	const all = [1, 2, 3].flatMap((count) =>
 		(['rest', 'open'] as const).flatMap((state) => fanPoses(count, state).flatMap(cornersAt))
 	);
