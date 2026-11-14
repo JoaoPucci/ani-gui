@@ -11,17 +11,20 @@
 //
 // ESLint (eslint.config.js) holds the call's shape in every test file:
 // `HttpResponse.json` without a type argument, or with one that types
-// nothing (`unknown`, `any`, `object`, `Object`, `never`, MSW's
-// `JsonBodyType`), is refused. It also refuses an import of
-// `$lib/testing`, where the shared fakes live, from app code. This file
+// nothing, is refused: `unknown` or `any` anywhere in it
+// (`Record<string, unknown>`, `any[]`, `unknown | null`; no route's type
+// holds either), `object` or `{}` anywhere in it, and `Object`, `never`
+// or MSW's `JsonBodyType` as the whole type. It also refuses app code
+// importing `$lib/testing`, where the shared fakes live: a static import
+// or re-export by any path that names it, a dynamic `import()` of a
+// string that names it, and an `import.meta.glob` over it. This file
 // runs ESLint over small fixtures to prove the rules are configured and
 // fire.
 //
 // What it does not see, and review holds instead:
 // - whether the type named is the right route's (a handler for one
-//   route answering another's type), or a type broader than the
-//   route's (`Record<string, unknown>`, which is also the honest type
-//   of a route that answers a map);
+//   route answering another's type);
+// - an import of `$lib/testing` whose path is built at run time;
 // - a body cast before the call (`body as KitsuAnimeRef`), or a call
 //   reached another way (`HttpResponse['json'](...)`, an alias of it);
 // - an answer built without `HttpResponse.json`: `new HttpResponse` or
@@ -69,6 +72,18 @@ const refused: [string, string][] = [
 	['an answer typed object', `export const h = () => HttpResponse.json<object>({});\n`],
 	['an answer typed never', `export const h = () => HttpResponse.json<never>([] as never);\n`],
 	[
+		'an answer typed as a list of unknown',
+		`export const h = () => HttpResponse.json<unknown[]>([]);\n`
+	],
+	['an answer typed any or null', `export const h = () => HttpResponse.json<any | null>(null);\n`],
+	['an answer typed Partial<any>', `export const h = () => HttpResponse.json<Partial<any>>({});\n`],
+	['an answer typed a list of object', `export const h = () => HttpResponse.json<object[]>([]);\n`],
+	['an answer typed {}', `export const h = () => HttpResponse.json<{}>({});\n`],
+	[
+		'an answer typed a map of unknown',
+		`export const h = () => HttpResponse.json<Record<string, unknown>>({});\n`
+	],
+	[
 		"an answer typed as MSW's any body",
 		`import type { JsonBodyType } from 'msw';\nexport const h = () => HttpResponse.json<JsonBodyType>([]);\n`
 	]
@@ -94,23 +109,49 @@ describe('typed fake answers', () => {
 		30_000
 	);
 
+	it.each(testFiles)(
+		'ESLint allows the map a route answers in %s',
+		async (file) => {
+			const code = `export const h = () => HttpResponse.json<Record<string, number>>({});\n`;
+			expect(await lint(code, file)).toEqual([]);
+		},
+		30_000
+	);
+
 	const importsTesting = `import { kitsuRefAnswer } from '$lib/testing/wire-answers';\nexport const x = kitsuRefAnswer();\n`;
 
 	async function restrictedImports(code: string, file: string): Promise<string[]> {
 		const eslint = new ESLint({ cwd: FRONTEND });
 		const [result] = await eslint.lintText(code, { filePath: join(FRONTEND, file) });
 		return result.messages
-			.filter((msg) => msg.ruleId === 'no-restricted-imports')
+			.filter(
+				(msg) => msg.ruleId === 'no-restricted-imports' || msg.ruleId === 'no-restricted-syntax'
+			)
 			.map((msg) => msg.message);
 	}
 
-	it.each(['src/lib/history/a-module.ts', 'src/lib/motion/a-module.ts', 'src/routes/+page.svelte'])(
-		'ESLint refuses an import of $lib/testing from app code in %s',
-		async (file) => {
-			const code = file.endsWith('.svelte')
-				? `<script lang="ts">\n${importsTesting}</script>\n`
-				: importsTesting;
-			expect((await restrictedImports(code, file)).join('\n')).toMatch(/\$lib\/testing/);
+	const appImports: [string, string][] = [
+		['a static import', importsTesting],
+		[
+			'a relative import naming the .js',
+			`import { kitsuRefAnswer } from '../testing/wire-answers.js';\nexport const x = kitsuRefAnswer();\n`
+		],
+		['a re-export', `export { kitsuRefAnswer } from '$lib/testing/wire-answers';\n`],
+		['a dynamic import', `export const x = () => import('$lib/testing/wire-answers');\n`],
+		['a glob over it', `export const x = import.meta.glob('$lib/testing/*.ts');\n`]
+	];
+
+	it.each(
+		[
+			'src/lib/history/a-module.ts',
+			'src/lib/motion/a-module.ts',
+			'src/routes/+page.svelte'
+		].flatMap((file) => appImports.map(([what, code]) => [what, file, code]))
+	)(
+		'ESLint refuses %s of $lib/testing from app code in %s',
+		async (_what, file, code) => {
+			const text = file.endsWith('.svelte') ? `<script lang="ts">\n${code}</script>\n` : code;
+			expect((await restrictedImports(text, file)).join('\n')).toMatch(/\$lib\/testing/);
 		},
 		30_000
 	);
