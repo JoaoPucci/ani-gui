@@ -31,6 +31,8 @@ const isVersion = (v: unknown) =>
 	isString(v.show_key) &&
 	optional(v.has_mode, (m) => typeof m === 'boolean');
 
+const isBoolean = (v: unknown) => typeof v === 'boolean';
+
 /** Every field the contract requires, with its type, and every
  *  optional one that is present with its declared type. */
 export function isSession(v: unknown): boolean {
@@ -39,11 +41,13 @@ export function isSession(v: unknown): boolean {
 		isString(v.session_id) &&
 		isString(v.media_url) &&
 		oneOf(MEDIA_KINDS)(v.media_kind) &&
-		optional(v.cache_hit, (c) => typeof c === 'boolean') &&
-		optional(v.subtitles, listOf(isSubtitle)) &&
+		isBoolean(v.cache_hit) &&
+		listOf(isSubtitle)(v.subtitles) &&
 		optional(v.episode, isString) &&
 		optional(v.former_episode, isString) &&
+		optional(v.episode_unverified, isBoolean) &&
 		optional(v.versions, listOf(isVersion)) &&
-		optional(v.version, oneOf(VERSION_KINDS))
+		optional(v.version, oneOf(VERSION_KINDS)) &&
+		optional(v.own_listing, isBoolean)
 	);
 }
