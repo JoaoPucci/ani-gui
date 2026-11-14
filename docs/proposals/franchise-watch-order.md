@@ -813,6 +813,22 @@ by default, release order if chosen. The strip has no toggle of its
 own and marks nothing as "out of order"; each card already shows its
 year.
 
+**A page outside the main story** [decided] draws its own chain
+(section 4) rather than the main story. Its own titles are numbered
+among themselves: *Heaven's Feel II* reads "02 of 03", in the strip's
+centre and the masthead eyebrow alike. The main-story title the chain
+meets stands beside them, uncounted, in the column it falls in by the
+order setting, keyed "From the main story" or "Into the main story"
+instead of Prequel or Sequel: *Fate/Zero 2nd Season* before *Heaven's
+Feel I*, the 2016 *Berserk* series after the third Golden Age film.
+In release order the 2000 *JoJo* OVA is "02 of 02", after the 1993
+OVA, with the 2012 series after it, into the main story. The heading
+reads "Watch order", a rule, then "Outside the main story", also in a
+franchise read in part, which numbers nothing as anywhere else. A
+chain of one film (the *Unlimited Blade Works* film, *Boruto: Naruto
+the Movie*) reads "Film", not "01 of 01"; one of anything else shows
+no number.
+
 **Edge cases.**
 
 - A fork, in link order (*Fate/Zero 2nd Season* continues into
