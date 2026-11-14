@@ -13,7 +13,8 @@ const local = {
 // The tests' fake backend answers (`src/lib/testing/`) are test code:
 // app code imports nothing through a path segment named `testing` — a
 // static import or re-export, a dynamic `import()` of a string or a
-// template, or an `import.meta.glob` pattern. (`no-restricted-imports`
+// template, an `import.meta.glob` pattern, or a `new URL(…)`, which Vite
+// bundles. (`no-restricted-imports`
 // sees only the first, so these are syntax rules.)
 const TESTING_SEGMENT = '/(^|\\/)testing(\\/|\\.|$)/';
 const TESTING_MESSAGE = '$lib/testing holds test fakes; app code does not import it.';
@@ -28,6 +29,10 @@ const TESTING_ONLY_SYNTAX = [
 	},
 	{
 		selector: `CallExpression[callee.object.meta.name='import'][callee.property.name=/^glob/] :matches(Literal[value=${TESTING_SEGMENT}], TemplateElement[value.raw=${TESTING_SEGMENT}])`,
+		message: TESTING_MESSAGE
+	},
+	{
+		selector: `NewExpression[callee.name='URL'] > :matches(Literal[value=${TESTING_SEGMENT}], TemplateLiteral > TemplateElement[value.raw=${TESTING_SEGMENT}])`,
 		message: TESTING_MESSAGE
 	}
 ];
