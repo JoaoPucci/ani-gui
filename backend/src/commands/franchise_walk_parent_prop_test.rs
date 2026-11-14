@@ -38,7 +38,8 @@ fn placers(cat: &super::tests::Catalogue, anchor: &str, f: &Franchise) -> Vec<St
     if !one_offs {
         return vec![anchor.to_string()];
     }
-    let mine = parent_stories(anchor, &look, &BTreeSet::new()).expect("every listing is known");
+    let mine = parent_stories(anchor, &look, &BTreeSet::new(), &BTreeSet::new())
+        .expect("every listing is known");
     let in_answer = |p: &String| f.entries.iter().any(|e| &e.id == p);
     if mine
         .parents

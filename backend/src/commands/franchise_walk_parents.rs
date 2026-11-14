@@ -9,13 +9,15 @@
 //! anchor back as its parent story, and names more of them. Every
 //! candidate's listing read to decide counts as read: toward the
 //! walk's bound on what it reads after, and toward whether the answer
-//! is complete. The candidates themselves are read whatever the bound.
+//! is complete. The candidates are read only as far as the bound leaves
+//! room (`franchise_walk_candidates.rs`); a candidate past it is not
+//! decided, and the answer is incomplete.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::alt::listed;
+use super::candidates::{candidates, to_read};
 use super::{order_key, Lookup};
-use crate::meta::kitsu::FranchiseRelation;
 
 /// Roles under which a listing names an entry beneath it.
 const BENEATH: [&str; 3] = ["side_story", "spinoff", "summary"];
@@ -28,10 +30,12 @@ fn beneath(look: &Lookup<'_>, id: &str) -> Option<usize> {
 }
 
 /// What the parent check found: the parent stories, earliest first,
-/// and every candidate whose listing it read to decide.
+/// every candidate whose listing it read to decide, and whether the
+/// bound left room to read every candidate.
 pub(super) struct Found {
     pub(super) parents: Vec<String>,
     pub(super) read: BTreeSet<String>,
+    pub(super) complete: bool,
 }
 
 /// The anchor's parent stories: those it names as its parent story
@@ -42,7 +46,9 @@ pub(super) struct Found {
 ///
 /// The anchor's start is read from its details or, for an entry whose
 /// details the walk never reads (another member of the anchor's run),
-/// from the `consulted` listings that relate it.
+/// from the `consulted` listings that relate it. Only the candidates
+/// the bound leaves room for, beside the listings already `counted`
+/// toward it, are read and decided (`to_read`).
 ///
 /// # Errors
 /// The candidates' listings to read first.
@@ -50,20 +56,17 @@ pub(super) fn parent_stories(
     anchor: &str,
     look: &Lookup<'_>,
     consulted: &BTreeSet<String>,
+    counted: &BTreeSet<String>,
 ) -> Result<Found, Vec<String>> {
-    let start = |r: &FranchiseRelation| r.entry.as_ref().and_then(|e| e.start.clone());
-    let own_start = look.entry(anchor, consulted).and_then(|e| e.start);
-    let named: BTreeMap<&str, Option<String>> = listed(look, anchor, &["parent_story"])
-        .map(|r| (r.id.as_str(), start(r)))
+    let (named, earlier, own_start) = candidates(anchor, look, consulted);
+    let (read, cut) = to_read(anchor, look, consulted, counted);
+    let named: BTreeMap<&str, Option<String>> = named
+        .into_iter()
+        .filter(|(id, _)| read.contains(*id))
         .collect();
-    let earlier: BTreeMap<&str, Option<String>> = listed(look, anchor, &["side_story", "spinoff"])
-        .filter(|r| matches!((start(r), &own_start), (Some(a), Some(b)) if a < *b))
-        .map(|r| (r.id.as_str(), start(r)))
-        .collect();
-    let read: BTreeSet<String> = named
-        .keys()
-        .chain(earlier.keys())
-        .map(|id| (*id).to_string())
+    let earlier: BTreeMap<&str, Option<String>> = earlier
+        .into_iter()
+        .filter(|(id, _)| read.contains(*id))
         .collect();
     let unread: Vec<String> = read
         .iter()
@@ -92,5 +95,6 @@ pub(super) fn parent_stories(
     Ok(Found {
         parents: parents.into_iter().map(|(id, _)| id.to_string()).collect(),
         read,
+        complete: !cut,
     })
 }

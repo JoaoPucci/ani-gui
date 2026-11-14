@@ -30,10 +30,15 @@ pub(super) fn first(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>>
         return Ok(own);
     }
     let placed = place(anchor, &own, look)?;
+    let complete = own.complete && placed.complete;
     let mut consulted = own.consulted.clone();
     consulted.extend(placed.read.iter().cloned());
     let Some(parent) = placed.root.clone() else {
-        return Ok(Run { consulted, ..own });
+        return Ok(Run {
+            consulted,
+            complete,
+            ..own
+        });
     };
     let theirs = walk(&parent, look, consulted)?;
     let side_anchor = !theirs.members.contains_key(anchor);
@@ -53,7 +58,7 @@ pub(super) fn first(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>>
         .cloned()
         .collect();
     Ok(Run {
-        complete: own.complete && theirs.complete,
+        complete: complete && theirs.complete,
         side_anchor,
         parents,
         beside,

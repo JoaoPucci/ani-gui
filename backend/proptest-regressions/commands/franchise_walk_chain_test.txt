@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc ba640993c841806dbbd60df6a5b92837af2fb9bbcf46aaf8e59e89105a3d9c63 # shrinks to (cat, anchor) = (Catalogue { entries: {"1": FranchiseEntry { id: "1", title: "T1", subtype: Some("TV"), start: None, episodes: Some(12), status: Some("finished"), poster: None, cover: None }, "2": FranchiseEntry { id: "2", title: "T2", subtype: Some("TV"), start: None, episodes: Some(12), status: Some("finished"), poster: None, cover: None }}, listings: {"1": FranchiseListing { relations: [FranchiseRelation { role: "alternative_version", kind: "anime", id: "2", subtype: Some("TV"), entry: Some(FranchiseEntry { id: "2", title: "T2", subtype: Some("TV"), start: None, episodes: Some(12), status: Some("finished"), poster: None, cover: None }) }], complete: false }, "2": FranchiseListing { relations: [FranchiseRelation { role: "prequel", kind: "anime", id: "1", subtype: Some("TV"), entry: Some(FranchiseEntry { id: "1", title: "T1", subtype: Some("TV"), start: None, episodes: Some(12), status: Some("finished"), poster: None, cover: None }) }], complete: false }} }, "2")
