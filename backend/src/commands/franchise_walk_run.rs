@@ -103,8 +103,8 @@ pub(crate) fn walk_with(
 /// its parents in the main story and no chain; else, where the main
 /// story leaves them all out, those in the franchise, on the chain of
 /// the earliest, or on that parent alone where it is chained to nothing
-/// (its only link being to a version of it). Any other anchor has no
-/// parents, and its own chain.
+/// (its only links being to versions or settings of it, or to music
+/// videos). Any other anchor has no parents, and its own chain.
 fn side_chain(
     anchor: &str,
     side_anchor: bool,

@@ -35,7 +35,7 @@ pub(crate) struct ChainIds {
 }
 
 /// Whether `a` and `b` are linked on a chain: by prequel or sequel,
-/// either listing naming the other, and not versions of each other.
+/// either listing naming the other, and not versions or settings of each other.
 pub(crate) fn linked(look: &Lookup<'_>, a: &str, b: &str) -> bool {
     let names =
         |of: &str, other: &str| listed(look, of, &["prequel", "sequel"]).any(|r| r.id == other);

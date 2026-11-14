@@ -655,8 +655,8 @@ franchise, so every title of it answers with the same chain, where
 Kitsu lists its links from both sides. A main-story page has none, and
 neither has a page linked to nothing else; a side story whose parents
 the main story leaves out keeps them, and is drawn on the earliest
-one's chain, or on that parent alone where it is chained to nothing
-(its only link being to a version of it). Music videos are no titles of a chain. The franchise page is
+one's chain, or on that parent alone where it is chained to nothing.
+Music videos are no titles of a chain. The franchise page is
 unchanged by it: the chain's titles stay where the sections list them.
 
 With these tie-breaks every entry has one path and one decision, so

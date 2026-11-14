@@ -5,8 +5,9 @@
 //! to. The members share the walk's bound on what it reads: each one's
 //! check gets the room the run's walk and the members before it (in the
 //! order of their ids as text) left. A member's candidates come from
-//! its own listing alone, so every member's share is known before any
-//! candidate is read, and one round asks for all of them.
+//! its own listing and the run's consulted ones alone, so every
+//! member's share is known before any candidate is read, and one round
+//! asks for all of them.
 
 use std::collections::{BTreeMap, BTreeSet};
 

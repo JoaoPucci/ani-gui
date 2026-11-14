@@ -1,7 +1,7 @@
 //! The anchor's own chain as the response serves it
 //! (`franchise_walk_chain.rs` cuts it): its titles and seams in start
 //! order, then numeric id, and the prequel and sequel links between
-//! them, none between two versions of one another.
+//! them, none between two versions or settings of one another.
 
 use std::collections::BTreeSet;
 
