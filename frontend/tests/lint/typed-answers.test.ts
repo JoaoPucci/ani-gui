@@ -17,8 +17,9 @@
 // or MSW's `JsonBodyType` as the whole type. It also refuses app code
 // importing through a path segment named `testing`, which is where the
 // shared fakes live (`$lib/testing`): a static import or re-export, a
-// dynamic `import()` of a string or template, and an `import.meta.glob`
-// pattern that names the segment. This file runs ESLint over small
+// dynamic `import()` of a string or template, an `import.meta.glob`
+// pattern, and a `new URL(…, import.meta.url)` (which Vite bundles, as
+// an asset or a worker) that names the segment. This file runs ESLint over small
 // fixtures to prove the rules are configured and fire.
 //
 // What it does not see, and review holds instead:
@@ -26,7 +27,8 @@
 //   route answering another's type);
 // - an import of `$lib/testing` whose path does not name the segment:
 //   one built at run time (`'../' + 'testing/x'`), or a glob that
-//   reaches it through a wildcard (`import.meta.glob('../**/*.ts')`);
+//   reaches it through a wildcard (`import.meta.glob('../**/*.ts')`, or
+//   a template whose segment is an expression, which Vite reads as one);
 // - a body cast before the call (`body as KitsuAnimeRef`), or a call
 //   reached another way (`HttpResponse['json'](...)`, an alias of it);
 // - an answer built without `HttpResponse.json`: `new HttpResponse` or
@@ -147,7 +149,15 @@ describe('typed fake answers', () => {
 		],
 		['an import of the directory', `import * as t from '../testing/';\nexport const x = t;\n`],
 		['an import through ./testing', `import * as t from './testing';\nexport const x = t;\n`],
-		['a glob written as a template', 'export const x = import.meta.glob(`../testing/*.ts`);\n']
+		['a glob written as a template', 'export const x = import.meta.glob(`../testing/*.ts`);\n'],
+		[
+			'a URL Vite bundles',
+			`export const x = new URL('../testing/wire-answers.ts', import.meta.url);\n`
+		],
+		[
+			'a worker',
+			`export const x = new Worker(new URL('../testing/wire-answers.ts', import.meta.url), { type: 'module' });\n`
+		]
 	];
 
 	it.each(
