@@ -40,8 +40,9 @@
 //! strings (the renderer builds them as text, with no type to compare),
 //! among them which routes take the secret as a query parameter; the
 //! search-page body (read through structs local to
-//! `commands::kitsu_search`'s readers); a body nested in another (the
-//! guess's `hits`); the value types of a map (`titles`, `cached`); the
+//! `commands::kitsu_search`'s readers); a body nested in another that
+//! has no entry of its own (the guess's `hits`: `RowMatch` and `CardRow`
+//! are held by their own entries); the value types of a map (`titles`, `cached`); the
 //! launch flags, and the copy of the secret header's name the Electron
 //! main process sends with its read of them (both the main process's,
 //! not the renderer's); and the value types of request fields — a

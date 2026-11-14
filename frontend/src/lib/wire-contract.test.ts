@@ -32,8 +32,9 @@
 // - The backend's minimal samples are taken as written: a field set
 //   in one would read here as always sent.
 // - Request bodies are held by field name and by which fields the
-//   backend requires, not by the kinds of their values, and a body
-//   nested in another (the guess's `hits`) is not held.
+//   backend requires, not by the kinds of their values. A body nested
+//   in another is held only by an entry of its own (`RowMatch`,
+//   `CardRow`); the guess's `hits` has none, and is not held.
 // - Query strings and URL paths the renderer builds as text are not
 //   held, but for the proxy media URL below, and neither is which routes
 //   the renderer sends the secret to as a query parameter; nor is the
