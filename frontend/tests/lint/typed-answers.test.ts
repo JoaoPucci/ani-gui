@@ -155,6 +155,10 @@ describe('typed fake answers', () => {
 			`export const x = new URL('../testing/wire-answers.ts', import.meta.url);\n`
 		],
 		[
+			'a URL written as a template',
+			'export const x = new URL(`../testing/wire-answers.ts`, import.meta.url);\n'
+		],
+		[
 			'a worker',
 			`export const x = new Worker(new URL('../testing/wire-answers.ts', import.meta.url), { type: 'module' });\n`
 		]
@@ -178,7 +182,15 @@ describe('typed fake answers', () => {
 
 	it.each([
 		['a module whose name ends in testing', `export const x = () => import('./attesting');\n`],
-		['a directory whose name ends in testing', `export const x = () => import('./contesting/x');\n`]
+		[
+			'a directory whose name ends in testing',
+			`export const x = () => import('./contesting/x');\n`
+		],
+		[
+			'a remote URL with a testing path',
+			`export const x = new URL('https://example.com/testing/x');\n`
+		],
+		['a URL against another base', `export const x = (base: string) => new URL('testing', base);\n`]
 	])(
 		'ESLint allows %s in app code',
 		async (_what, code) => {
