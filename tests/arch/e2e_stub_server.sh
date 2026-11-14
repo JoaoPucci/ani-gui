@@ -13,9 +13,9 @@
 # the backend's gate and CORS rules in front, as the backend would.
 #
 # A syntactic constraint, not interpretation: Playwright's in-place
-# answer is `fulfill`, and the word appears nowhere under electron/,
-# comments included. The constraint is that the token is absent, not
-# that it is unused.
+# answer is `fulfill`, and the word appears in no text file under
+# electron/ that git tracks or would track, comments included. The
+# constraint is that the token is absent, not that it is unused.
 #
 # What this does not cover: a spec outside electron/, or Playwright's
 # in-place answer reached under a name that never spells the word —
@@ -26,10 +26,10 @@ set -eu
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-found=$(grep -rlF \
-    --exclude-dir=node_modules --exclude-dir=dist \
-    --exclude-dir=playwright-report --exclude-dir=test-results \
-    'fulfill' electron || true)
+# Text files git tracks or would track (untracked, not ignored): the
+# fetched bundled binaries and the build output are ignored, and a
+# binary can hold the word by chance.
+found=$(git grep -lIF --untracked 'fulfill' -- electron || true)
 if [ -n "$found" ]; then
     printf 'arch/e2e_stub_server FAIL: Playwright'\''s in-place answer is named under electron/;\n' >&2
     printf 'answer a stubbed request through answer() in electron/e2e/stubs.ts:\n%s\n' "$found" >&2
