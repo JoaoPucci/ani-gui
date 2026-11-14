@@ -37,16 +37,18 @@ const MIN_KNOWN = 16;
  * the shapes the secret travels in, known or not.
  */
 function redactSecrets(text, known = []) {
-  let out = String(text);
+  // The shapes first: a value already replaced by `<redacted>` would
+  // read to them as an empty one, and take a second marker.
+  let out = String(text)
+    .replace(QUERY_SECRET, `$1${REDACTED}`)
+    .replace(HEADER_SECRET, `$1${REDACTED}`)
+    .replace(HANDSHAKE_SECRET, `$1${REDACTED}`);
   for (const secret of known) {
     if (typeof secret === "string" && secret.length >= MIN_KNOWN) {
       out = out.split(secret).join(REDACTED);
     }
   }
-  return out
-    .replace(QUERY_SECRET, `$1${REDACTED}`)
-    .replace(HEADER_SECRET, `$1${REDACTED}`)
-    .replace(HANDSHAKE_SECRET, `$1${REDACTED}`);
+  return out;
 }
 
 /**
