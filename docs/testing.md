@@ -303,21 +303,25 @@ renderer's types must change. Both test files' headers list what they do
 not hold, among them answers that are not a struct, map values, request
 value kinds, and URLs built as text.
 
-The tests' fake backend is held to the same types, so a fake cannot keep a
+The tests' fake backend is held to the same types, so a fake does not keep a
 test green on an answer no backend sends. An MSW handler names the route's
 type at the answer (`HttpResponse.json<KitsuAnimeRef[]>([...])`), which the
-type check reads, and ESLint refuses one that does not
-(`tests/lint/typed-answers.test.ts`). `frontend/tests/answers.ts` carries
-the rest: `errorAnswer` for an error and its envelope, builders that fill
-the fields a test does not care about with what the backend sends when it
-has nothing to say, and `malformedAnswer` / `malformedAs` for a fake that is
-wrong on purpose, so it reads as deliberate. The builders the unit tests
-share live in `frontend/src/lib/testing/wire-answers.ts` (unit tests import
-nothing from outside `src/`; `tests/arch/dep_direction.sh` holds that), and
-`tests/answers.ts` re-exports them. The unit tests' `fetch` stubs
-and replaced API functions take the route's or the function's type the same
-way. When a renderer type changes, the type check names every fake that no
-longer matches it.
+type check reads; stream event data goes through `wire<T>`; the unit
+tests' `fetch` stubs (`mockFetchOnce<T>`) and the stand-ins for API
+functions and injected dependencies (`vi.fn<typeof f>()`) take the type of
+what they replace. `frontend/tests/answers.ts` carries the MSW side:
+`errorAnswer` for an error and its envelope, and `malformedAnswer` for an
+answer that is wrong on purpose, so it reads as deliberate. The builders
+that fill the fields a test does not care about with values the backend
+sends (`kitsuRefAnswer`, `sessionAnswer`, `configAnswer` and the rest), with
+`wire` and `malformedAs`, live in `frontend/src/lib/testing/wire-answers.ts`,
+where the unit tests can reach them (they import nothing from outside
+`src/`; `tests/arch/dep_direction.sh` holds that), and `tests/answers.ts`
+re-exports them. ESLint refuses an `HttpResponse.json` with no type, or one
+that types nothing, and an import of `$lib/testing` from app code;
+`tests/lint/typed-answers.test.ts` lists what it does not see, such as a
+`vi.fn()` left untyped, which only review catches. When a renderer type
+changes, the type check names every typed fake that no longer matches it.
 
 ## Fixture management
 
