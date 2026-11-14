@@ -42,7 +42,7 @@
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
 	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { settledOrder } from '$lib/watch-order/page-model';
-	import { finaleCard } from '$lib/watch-order/up-next';
+	import { chainEndCard, finaleCard } from '$lib/watch-order/up-next';
 	import { atVideoEnd, upNextShown as upNextShownFor } from '$lib/play/up-next-window';
 	import {
 		altTitlesFromKitsu,
@@ -1615,6 +1615,17 @@
 			detail ? { status: detail.status, episodes: detail.episode_count } : null
 		)
 	);
+	// At a chain's dead end: the whole franchise, where nothing is next.
+	const chainEnd = $derived(
+		chainEndCard(
+			upNextData,
+			id,
+			settledOrder(config, configFailed),
+			upNextToday,
+			episodeNum,
+			detail ? { status: detail.status, episodes: detail.episode_count } : null
+		)
+	);
 	let upNextDismissed = $state(false);
 	let upNextAnnounced = $state(false);
 	$effect(() => {
@@ -1626,7 +1637,7 @@
 	});
 	const upNextShown = $derived(
 		upNextShownFor({
-			card: upNextCard !== null,
+			card: upNextCard !== null || chainEnd !== null,
 			hasNext,
 			resumeHolding,
 			dismissed: upNextDismissed,
@@ -3244,6 +3255,16 @@
 				<UpNextCard
 					progress={upNextCard.progress}
 					upNext={upNextCard.upNext}
+					today={upNextToday}
+					announce={!upNextAnnounced}
+					onannounce={() => (upNextAnnounced = true)}
+					ondismiss={() => (upNextDismissed = true)}
+				/>
+			{:else if upNextShown && chainEnd}
+				<UpNextCard
+					progress={{}}
+					upNext={null}
+					franchise={chainEnd}
 					today={upNextToday}
 					announce={!upNextAnnounced}
 					onannounce={() => (upNextAnnounced = true)}

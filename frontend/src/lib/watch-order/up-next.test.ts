@@ -5,7 +5,7 @@ import type { WatchOrderData } from './loader';
 import { runOf } from './strip-model';
 import { franchiseArb } from './testing/arbitraries';
 import type { FranchiseData } from './types';
-import { finaleCard, isFinale, upNextFor, type FinaleSelf } from './up-next';
+import { chainEndCard, finaleCard, isFinale, upNextFor, type FinaleSelf } from './up-next';
 
 const TODAY = '2026-11-02';
 const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
@@ -214,5 +214,88 @@ describe('finaleCard', () => {
 				}
 			)
 		);
+	});
+});
+
+describe('finaleCard on an entry outside the main story', () => {
+	const e = (id: string, start: string, subtype = 'movie') => ({
+		id,
+		title: `T${id}`,
+		subtype,
+		start,
+		episodes: 1,
+		status: 'finished',
+		poster: null,
+		cover: null
+	});
+	const main = [e('1', '2000-01-01', 'TV'), e('2', '2004-01-01', 'TV')];
+	const f1 = e('10', '2001-01-01');
+	const f2 = e('11', '2002-01-01');
+	const chainData = (anchor: string, into: boolean): WatchOrderData => ({
+		franchise: {
+			anchor,
+			name: 'The franchise',
+			name_from: '1',
+			entries: main,
+			links: [['1', '2']],
+			versions: [],
+			films: [f1, f2],
+			sides: [],
+			recaps: [],
+			parents: {},
+			complete: true,
+			chain: {
+				entries: into ? [f1, f2, main[1]] : [f1, f2],
+				links: into
+					? [
+							['10', '11'],
+							['11', '2']
+						]
+					: [['10', '11']],
+				seams: into ? ['2'] : []
+			}
+		},
+		rows: []
+	});
+
+	it("names the chain's next title", () => {
+		expect(ids(finaleCard(chainData('10', false), '10', 'linked', TODAY, 1, null))).toEqual(['11']);
+	});
+
+	it('goes on into the main story at the end of a chain that leads into it', () => {
+		expect(ids(finaleCard(chainData('11', true), '11', 'linked', TODAY, 1, null))).toEqual(['2']);
+	});
+
+	it('names nothing at the end of a chain that leads nowhere', () => {
+		expect(finaleCard(chainData('11', false), '11', 'linked', TODAY, 1, null)).toBeNull();
+	});
+
+	it('offers the franchise page at the end of a chain that leads nowhere', () => {
+		const end = chainEndCard(chainData('11', false), '11', 'linked', TODAY, 1, null)!;
+		expect(end.name).toBe('The franchise');
+		expect(end.id).toBe('11');
+		// The strip link's stack: the main story's two titles, the films.
+		expect(end.summary.main).toBe(2);
+		expect(end.summary.films).toBe(2);
+	});
+
+	it('offers no franchise card where the card names a next title, or short of the finale', () => {
+		expect(chainEndCard(chainData('10', false), '10', 'linked', TODAY, 1, null)).toBeNull();
+		expect(chainEndCard(chainData('11', true), '11', 'linked', TODAY, 1, null)).toBeNull();
+		const unfinished = { status: 'current', episodes: 1 };
+		expect(chainEndCard(chainData('11', false), '11', 'linked', TODAY, 1, unfinished)).toBeNull();
+	});
+
+	it('offers no franchise card in a franchise read in part, or on a main-story page', () => {
+		const partial = chainData('11', false);
+		const cut = { ...partial, franchise: { ...partial.franchise!, complete: false } };
+		expect(chainEndCard(cut, '11', 'linked', TODAY, 1, null)).toBeNull();
+		const main = {
+			...partial,
+			franchise: { ...partial.franchise!, anchor: '2', chain: undefined }
+		};
+		expect(chainEndCard(main, '2', 'linked', TODAY, 1, null)).toBeNull();
+		expect(chainEndCard(partial, '11', null, TODAY, 1, null)).toBeNull();
+		expect(chainEndCard(null, '11', 'linked', TODAY, 1, null)).toBeNull();
 	});
 });

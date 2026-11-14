@@ -1404,8 +1404,9 @@ export interface Franchise {
 	/** The main-story entry the name comes from: the franchise page's
 	 *  artwork and the front card of the strip's poster stack. */
 	name_from: string;
-	/** The run, anchor included (unless the anchor is a side story
-	 *  outside it): start order, then numeric id. */
+	/** The main story: start order, then numeric id. The anchor is
+	 *  among them unless it is a side story, or an entry the main story
+	 *  leaves out, listed around it (and then, mostly, on its `chain`). */
 	entries: FranchiseEntry[];
 	/** Prequel → sequel pairs between two run members. */
 	links: [string, string][];
@@ -1418,11 +1419,30 @@ export interface Franchise {
 	/** Recaps. */
 	recaps: FranchiseEntry[];
 	/** A side-story anchor outside any run → its parent stories in the
-	 *  run, in start order. Empty otherwise. */
+	 *  run, or, where the main story leaves them all out, in its
+	 *  `chain`, in start order. Empty otherwise. */
 	parents: Record<string, string[]>;
 	/** False when the walk stopped at its bound or a listing was cut
 	 *  short. */
 	complete: boolean;
+	/** The page's own chain, when the main story leaves the page out,
+	 *  or the chain a side story whose parents it leaves out is drawn on
+	 *  (its earliest parent's); absent otherwise. */
+	chain?: FranchiseChain;
+}
+
+/** A chain outside the main story (backend
+ *  `commands::franchise_walk::Chain`): the franchise's entries outside
+ *  it joined by prequel and sequel links to the page (or, for a side
+ *  story, to its parent), and the main-story titles one of them is
+ *  linked to, its seams. */
+export interface FranchiseChain {
+	/** Its own titles and its seams: start order, then numeric id. */
+	entries: FranchiseEntry[];
+	/** Prequel → sequel pairs between two of its entries. */
+	links: [string, string][];
+	/** The ids of `entries` that are main-story titles. */
+	seams: string[];
 }
 
 /** The franchise around `kitsuId`: the run it belongs to and what sits

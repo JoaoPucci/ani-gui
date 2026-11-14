@@ -5,11 +5,13 @@
  * them whether or not the provider carries them, and nothing here asks
  * the provider.
  */
+import { chainFranchise } from './chain-view';
 import { isUnaired } from './entry';
 import type { WatchOrderData } from './loader';
 import { placement, type WatchOrder } from './order';
 import { progressFromHistory } from './progress';
 import { runOf } from './strip-model';
+import { franchiseSummary, type FranchiseSummary } from './strip-view';
 import type { Progress, WatchEntry, WatchRun } from './types';
 
 export type UpNext =
@@ -51,7 +53,9 @@ export interface FinaleCard {
  * the entry that really comes next may be missing), the settings not
  * settled (`order` null), `id` outside the run, or nothing after it.
  * `self` is the player's own reading of the entry; without one the
- * run's entry decides the finale.
+ * run's entry decides the finale. An entry outside the main story is
+ * read on its own chain, as its strip draws it, so the card names the
+ * chain's next title, or the main-story title the chain leads into.
  */
 export function finaleCard(
 	data: WatchOrderData | null,
@@ -63,11 +67,54 @@ export function finaleCard(
 ): FinaleCard | null {
 	if (data?.franchise == null || order === null || data.franchise.anchor !== id) return null;
 	if (!data.franchise.complete) return null;
-	const run = runOf(data.franchise);
+	const run = runOf(chainFranchise(data.franchise) ?? data.franchise);
 	const entry = run?.entries.find((e) => e.id === id);
 	if (!run || !entry || !isFinale(self ?? entry, episode)) return null;
 	const upNext = upNextFor(run, id, order, today);
 	if (upNext.kind === 'none') return null;
 	const shown = upNext.kind === 'choices' ? upNext.entries : [upNext.entry];
 	return { upNext, progress: progressFromHistory(data.rows, shown) };
+}
+
+/**
+ * The card at the last title of a chain outside the main story that
+ * leads nowhere: the franchise page, by its name, fronted by the entry
+ * the name comes from, with the poster stack and the counts the strip's
+ * franchise link shows.
+ */
+export interface ChainEndCard {
+	/** The franchise's name. */
+	readonly name: string;
+	/** The id the franchise page is opened for. */
+	readonly id: string;
+	/** The franchise link's stack: its posters and its counts. */
+	readonly summary: FranchiseSummary;
+}
+
+/**
+ * The chain-end card `id`'s `episode` shows, or null: anywhere the
+ * Up next card names something, or on anything but the finale of a
+ * chain's last title that leads nowhere, read whole.
+ */
+export function chainEndCard(
+	data: WatchOrderData | null,
+	id: string,
+	order: WatchOrder | null,
+	today: string,
+	episode: number,
+	self: FinaleSelf | null
+): ChainEndCard | null {
+	if (finaleCard(data, id, order, today, episode, self) !== null) return null;
+	if (data?.franchise == null || order === null || data.franchise.anchor !== id) return null;
+	if (!data.franchise.complete) return null;
+	const drawn = chainFranchise(data.franchise);
+	const run = drawn ? runOf(drawn) : null;
+	const entry = run?.entries.find((e) => e.id === id);
+	const main = runOf(data.franchise);
+	if (!entry || !main || !isFinale(self ?? entry, episode)) return null;
+	return {
+		name: data.franchise.name,
+		id,
+		summary: franchiseSummary(main, data.franchise.name_from)
+	};
 }

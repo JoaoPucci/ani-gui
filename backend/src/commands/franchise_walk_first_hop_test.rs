@@ -22,7 +22,10 @@ use crate::meta::kitsu::{FranchiseEntry, FranchiseListing};
 /// would list anything but the anchor (`franchiseLinkOnly`); else
 /// nothing.
 fn drawn(f: &Franchise) -> FirstHop {
-    let members: BTreeSet<&str> = f.entries.iter().map(|e| e.id.as_str()).collect();
+    // A page with a chain is drawn on it, as the strip draws it
+    // (`frontend/src/lib/watch-order/chain-view.ts`).
+    let run = f.chain.as_ref().map_or(&f.entries, |c| &c.entries);
+    let members: BTreeSet<&str> = run.iter().map(|e| e.id.as_str()).collect();
     let anchor = f.anchor.as_str();
     let side_with_parent = !members.contains(anchor)
         && f.parents

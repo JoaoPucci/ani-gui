@@ -9,7 +9,9 @@
   them; the footer is its fourth. An empty column
   drops its key and keeps the line saying why it is empty, except in a
   franchise read in part, where it may only be missing its entries and
-  stays blank, as does the centre's place.
+  stays blank, as does the centre's place. On a page outside the main
+  story, drawn on a chain, the heading says so, and a column holding
+  only the main-story title the chain meets is keyed by it.
 
   Everything sits on a faint band, one step of the page's own ink, so
   the columns read as one thing without becoming a card. Its footer,
@@ -28,7 +30,13 @@
 	import StripWatching from './StripWatching.svelte';
 	import { metaLine, numeral } from './meta';
 	import type { WatchOrderPage } from './page-model';
-	import { captionText, columnCountText, columnKeyText, emptyColumnText } from './strip-copy';
+	import {
+		captionText,
+		columnCountText,
+		columnKeyText,
+		emptyColumnText,
+		seamKeyText
+	} from './strip-copy';
 	import { emptyColumn } from './strip-view';
 	import { relationKey } from './strip-wording';
 	import type { WatchEntry } from './types';
@@ -40,6 +48,8 @@
 	const headingId = $props.id();
 	const keyOf = (side: 'before' | 'after') => {
 		const list = side === 'before' ? view.before : view.after;
+		const seam = model.seams[side];
+		if (seam) return seamKeyText(seam);
 		return columnKeyText(relationKey(model.order, view.kind, side, list.length));
 	};
 </script>
@@ -83,6 +93,10 @@
 	<div class="band">
 		<h2 class="eyebrow" id="{headingId}-h">
 			<span class="eyebrow-key">{m.watchorder_strip_eyebrow()}</span>
+			{#if model.outside}
+				<span class="eyebrow-rule" aria-hidden="true"></span>
+				<span class="eyebrow-value">{m.watchorder_strip_outside()}</span>
+			{/if}
 			<span class="sr-only">{caption}</span>
 		</h2>
 
@@ -113,7 +127,12 @@
 					</div>
 				{/if}
 				<div class="slot">
-					<StripFranchiseLink run={model.run} front={model.front} {id} complete={model.complete} />
+					<StripFranchiseLink
+						run={model.mainRun}
+						front={model.front}
+						{id}
+						complete={model.complete}
+					/>
 				</div>
 			</footer>
 		</div>

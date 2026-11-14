@@ -89,6 +89,9 @@
 	"strip_last": "Nothing after this yet",
 	"strip_leads_into": "Leads into {title}",
 	"strip_of_total": "of {total}",
+	"strip_outside": "Outside the main story",
+	"strip_seam_from": "From the main story",
+	"strip_seam_into": "Into the main story",
 	"strip_position": "{position} of {total}",
 	"strip_position_open": "Position {position}",
 	"strip_side_story": "Side story",
@@ -127,5 +130,7 @@
 	"upnext_choices": "Ways to continue",
 	"upnext_coming": "Next, when it airs",
 	"upnext_dismiss": "Dismiss",
+	"upnext_franchise_key": "The whole franchise",
+	"upnext_franchise_announce": "Up next: the whole franchise, {name}",
 	"upnext_eyebrow": "Up next"
 }
