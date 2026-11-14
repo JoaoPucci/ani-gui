@@ -1409,15 +1409,17 @@ export interface Franchise {
 	/** False when the walk stopped at its bound or a listing was cut
 	 *  short. */
 	complete: boolean;
-	/** The page's own chain, when the main story leaves the page out;
-	 *  absent otherwise. */
+	/** The page's own chain, when the main story leaves the page out,
+	 *  or the chain a side story whose parents it leaves out is drawn on
+	 *  (its earliest parent's); absent otherwise. */
 	chain?: FranchiseChain;
 }
 
-/** A page's own chain, outside the main story (backend
+/** A chain outside the main story (backend
  *  `commands::franchise_walk::Chain`): the franchise's entries outside
- *  it joined to the page by prequel and sequel links, and the
- *  main-story titles one of them is linked to, its seams. */
+ *  it joined by prequel and sequel links to the page (or, for a side
+ *  story, to its parent), and the main-story titles one of them is
+ *  linked to, its seams. */
 export interface FranchiseChain {
 	/** Its own titles and its seams: start order, then numeric id. */
 	entries: FranchiseEntry[];
