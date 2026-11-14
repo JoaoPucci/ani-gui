@@ -150,6 +150,25 @@ describe('handoffFrom', () => {
 		expect(handoffFrom(payload('bleach', '244'), '43078', 'linked', TODAY, none)).toBeNull();
 	});
 
+	it('moves an entry outside the main story on along its own chain', () => {
+		const r = run('bleach');
+		const [first, second, third] = r.entries;
+		const chained: FranchiseData = {
+			...payload('bleach', second.id),
+			entries: [first],
+			links: [],
+			chain: {
+				entries: [first, second, third],
+				links: [
+					[first.id, second.id],
+					[second.id, third.id]
+				],
+				seams: [first.id]
+			}
+		};
+		expect(handoffFrom(chained, second.id, 'linked', TODAY, none)?.next.id).toBe(third.id);
+	});
+
 	it('keeps the ordinary card for an entry outside the series it was read with', () => {
 		const lone = { ...payload('bleach', '999'), entries: run('bleach').entries };
 		expect(handoffFrom(lone, '999', 'linked', TODAY, none)).toBeNull();

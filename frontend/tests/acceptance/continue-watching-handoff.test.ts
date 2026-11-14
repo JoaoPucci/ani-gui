@@ -4,7 +4,8 @@
 // show's page; it does not start playback. It moves on only to one
 // aired show, in the order the Watch order setting chooses, that has
 // no history row of its own; otherwise the row keeps its ordinary
-// card. Only a row at such a finale asks for its series.
+// card. Only a row at such a finale asks for its series. A show outside
+// the main story moves on along its own chain.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -290,6 +291,31 @@ describe('Continue Watching after a finale', () => {
 			)
 		).not.toBeNull();
 		expect(asked).toEqual(['10']);
+	});
+
+	it('moves a show outside the main story on along its own chain', async () => {
+		const main = entry('5', 'Arc of the Moon', '2019-01-01', 13);
+		mountHome({
+			history: [row('13')],
+			franchise: () =>
+				HttpResponse.json({
+					...lineFrom10,
+					entries: [main],
+					links: [],
+					chain: {
+						entries: [main, FIRST_E, SECOND_E],
+						links: [
+							['5', '10'],
+							['10', '20']
+						],
+						seams: ['5']
+					}
+				})
+		});
+		await until(() => handoffTo('20') !== null, 'the card to move on along the chain');
+		expect(handoffTo('20')!.getAttribute('aria-label')).toBe(
+			m.watchorder_handoff_aria({ title: SECOND, finished: FIRST })
+		);
 	});
 
 	it('keeps both ordinary cards once the next show has a row of its own', async () => {
