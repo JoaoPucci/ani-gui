@@ -924,6 +924,9 @@ entry's own chain (section 4), as its strip draws it: *Heaven's Feel
 I*'s finale names *Heaven's Feel II*, and the third Golden Age film's
 names the 2016 *Berserk* series, the main-story title the chain leads
 into.
+Continue Watching's hand-off follows the same chain, by its own rules:
+at a chain's dead end nothing comes next, and the row keeps its
+ordinary card.
 
 **Edge cases.** The 2000 *JoJo* OVA's finale names the 1993 OVA in
 link order and the 2012 TV series in release order — whichever the
