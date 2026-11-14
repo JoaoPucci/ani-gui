@@ -138,6 +138,26 @@
       "status": "finished",
       "poster": null,
       "cover": null
+    },
+    {
+      "id": "12007",
+      "title": "Fate/stay night: Heaven's Feel II. Lost Butterfly",
+      "subtype": "movie",
+      "start": "2019-01-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12008",
+      "title": "Fate/stay night: Heaven's Feel - III. Spring Song",
+      "subtype": "movie",
+      "start": "2020-08-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
     }
   ],
   "sides": [

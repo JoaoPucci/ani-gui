@@ -1,6 +1,8 @@
 //! The alternative-version and alternative-setting links rules 2 and 3
 //! read, and the relations an entry lists under given roles.
 
+use std::collections::BTreeSet;
+
 use super::Lookup;
 use crate::meta::kitsu::FranchiseRelation;
 
@@ -32,6 +34,30 @@ pub(crate) fn listed<'a>(
         .filter(move |r| {
             r.kind == "anime" && r.id != listing_of && roles.contains(&r.role.as_str())
         })
+}
+
+/// The anime `of` is linked to under `role` (`prequel` or `sequel`):
+/// what its own listing names under it, and every `reverse` listing
+/// that names `of` under the other.
+pub(crate) fn linked(
+    look: &Lookup<'_>,
+    of: &str,
+    role: &str,
+    reverse: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    let other = if role == "prequel" {
+        "sequel"
+    } else {
+        "prequel"
+    };
+    let mut out: BTreeSet<String> = listed(look, of, &[role]).map(|r| r.id.clone()).collect();
+    out.extend(
+        reverse
+            .iter()
+            .filter(|c| c.as_str() != of && listed(look, c, &[other]).any(|r| r.id == of))
+            .cloned(),
+    );
+    out
 }
 
 /// The groups of `ids` joined, directly or through one another, by an
