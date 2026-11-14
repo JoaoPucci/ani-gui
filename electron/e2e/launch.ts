@@ -180,15 +180,6 @@ export async function launchPackagedApp(
 		if (profile) removeScratch(profile);
 		throw err;
 	}
-	mainLog.length = 0;
-	routeLog.length = 0;
-	const t0m = Date.now();
-	for (const stream of [app.process().stdout, app.process().stderr]) {
-		stream?.on('data', (d: Buffer) => {
-			for (const line of d.toString().split('\n')) if (line.trim()) mainLog.push(`${Date.now() % 1000000} ${line.slice(0, 300)}`);
-		});
-	}
-	app.process().once('exit', (code, sig) => mainLog.push(`${Date.now() % 1000000} EXIT ${code} ${sig}`));
 	app.process().once('exit', () => {
 		proxy.close();
 		if (profile) removeAfterExit(profile);
@@ -208,8 +199,6 @@ export function outboundAttempts(app: ElectronApplication): string[] {
 	return [...seen];
 }
 
-export const mainLog: string[] = [];
-export const routeLog: string[] = [];
 const refused = new WeakMap<ElectronApplication, string[]>();
 
 /** The process each launch started, recorded as it starts: Playwright
@@ -316,13 +305,9 @@ export async function routeContext(
 	url: Parameters<BrowserContext['route']>[0],
 	handler: Parameters<BrowserContext['route']>[1]
 ): Promise<void> {
-	const wrapped: typeof handler = (route, req) => {
-		routeLog.push(`${Date.now() % 1000000} ROUTE ${String(url)} <- ${route.request().url().slice(0, 120)}`);
-		return (handler as (r: typeof route, q: typeof req) => unknown)(route, req) as never;
-	};
 	for (let attempt = 0; ; attempt += 1) {
 		try {
-			await context.route(url, wrapped);
+			await context.route(url, handler);
 			return;
 		} catch (err) {
 			const closed = String(err).includes('Target page, context or browser has been closed');
@@ -381,30 +366,9 @@ export async function remountFirstPage(
 	// Settling is normally a second or two; bounded, so a request that
 	// never answers does not hold the bounce for the full timeout.
 	await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
-	const dbg: string[] = [];
-	const t0 = Date.now();
-	const note = (s: string) => dbg.push(`${Date.now() % 1000000} ${s}`);
-	page.on('console', (m) => note(`console.${m.type()} ${m.text().slice(0, 300)}`));
-	page.on('pageerror', (e) => note(`pageerror ${e}`));
-	page.on('close', () => note('page close'));
-	page.on('crash', () => note('page crash'));
-	page.on('request', (r) => { if (!r.url().includes('/_app/')) note(`request ${r.method()} ${r.url().slice(0, 150)}`); });
-	page.on('response', (r) => { if (!r.url().includes('/_app/')) note(`response ${r.status()} ${r.url().slice(0, 150)}`); });
-	page.on('requestfailed', (r) => note(`requestfailed ${r.url().slice(0, 150)} ${r.failure()?.errorText}`));
-	page.on('framenavigated', (f) => note(`framenavigated ${f === page.mainFrame() ? 'main' : 'sub'} ${f.url()}`));
-	page.on('load', () => note('load'));
-	page.on('domcontentloaded', () => note('domcontentloaded'));
-	note(`first=${first}`);
 	await page.goto('about:blank');
-	note('at blank');
 	forget?.splice(0);
 	const live = witness();
 	await page.goto(first, { waitUntil: 'domcontentloaded' });
-	note('goto done');
-	const timer = setTimeout(() => {
-		console.log('DBG-HANG\n' + dbg.join('\n') + '\nMAIN\n' + mainLog.join('\n') + '\nROUTES\n' + routeLog.join('\n'));
-	}, 10_000);
 	await live;
-	clearTimeout(timer);
-	if (process.env.DBG_ALWAYS) console.log('DBG-OK\n' + dbg.join('\n') + '\nMAIN\n' + mainLog.join('\n'));
 }
