@@ -94,16 +94,16 @@ function cornersAt(pose: FanPose): { x: number; y: number }[] {
 }
 
 /**
- * The box every card of a fan stays inside, at rest and fanned out,
- * for one to three cards: as wide as the widest spread on both sides
- * of the middle, as tall as the highest card above the lowest corner,
- * the feet standing as far above the bottom edge as a turned card's
- * corner drops below its foot.
+ * The box `count` cards of a fan stay inside, at rest and fanned out:
+ * as wide as their widest spread on both sides of the middle, as tall
+ * as the highest card above the lowest corner, the feet standing as far
+ * above the bottom edge as a turned card's corner drops below its foot.
+ * The open transition's elastic ease overshoots the open pose for a
+ * moment, by a pixel or two past this box.
  */
 export function fanBox(count: number): FanBox {
-	void count;
-	const all = [1, 2, 3].flatMap((count) =>
-		(['rest', 'open'] as const).flatMap((state) => fanPoses(count, state).flatMap(cornersAt))
+	const all = (['rest', 'open'] as const).flatMap((state) =>
+		fanPoses(count, state).flatMap(cornersAt)
 	);
 	const reach = Math.max(...all.map((c) => Math.abs(c.x)));
 	const foot = Math.max(0, ...all.map((c) => c.y));

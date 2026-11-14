@@ -1,10 +1,11 @@
 <!--
   The franchise's poster stack, fanned on one arc (./stack-fan): the
   strip's link to the franchise page and the player's franchise card
-  both draw it. Its box holds every card whole, at rest and fanned out
-  (./stack-fan's fanBox), so the text beside it never sits under a card. The element that holds it
-  carries `data-fan-host`: hovering or focusing that element opens the
-  fan outwards along the arc. With no poster the stack is three blank
+  both draw it. Its box fits the cards it holds, whole, at rest and
+  fanned out (./stack-fan's fanBox), so the text beside it never sits
+  under a card (the open ease's overshoot aside, a pixel or two). The
+  element that holds it carries `data-fan-host`: hovering or focusing
+  that element opens the fan outwards along the arc. With no poster the stack is three blank
   frames, the front one carrying `total` (none when it is null).
   Under reduced motion the fan is drawn open and does not move; in a
   right-to-left page it spreads the other way.
@@ -82,8 +83,8 @@
 	/* Every card stands at the middle of the box and is rotated about
 	   the arc's centre, FAN_RADIUS_REM below its foot, so the
 	   transition between the rest and open angles moves it along the
-	   arc. The box is ./stack-fan's fanBox, which holds every card whole
-	   at rest and fanned out. */
+	   arc. The box is ./stack-fan's fanBox for these cards, which holds
+	   them whole at rest and fanned out. */
 	.fan-card {
 		position: absolute;
 		inset-block-end: var(--foot);
