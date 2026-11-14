@@ -37,7 +37,8 @@ pub(crate) struct Run {
     /// the franchise's, so every page of it lists the same ones.
     pub(crate) moved: BTreeSet<String>,
     /// The anchor's own chain, when the main story leaves it out
-    /// (`franchise_walk_chain.rs`).
+    /// (`franchise_walk_chain.rs`), or, for a side story whose parents
+    /// the main story leaves out, its earliest parent's chain.
     pub(crate) chain: Option<ChainIds>,
 }
 
@@ -98,9 +99,38 @@ pub(crate) fn walk_with(
     })
 }
 
+/// A side-story anchor's parents and the chain it is drawn on: those of
+/// its parents in the main story and no chain; else, where the main
+/// story leaves them all out, those in the franchise, on the chain of
+/// the earliest. Any other anchor has no parents, and its own chain.
+fn side_chain(
+    anchor: &str,
+    side_anchor: bool,
+    first: &Run,
+    main: &Run,
+    franchise: &BTreeSet<String>,
+    look: &Lookup<'_>,
+) -> (Vec<String>, Option<ChainIds>) {
+    if !side_anchor {
+        return (Vec::new(), chain(anchor, franchise, main, look));
+    }
+    let among = |set: &dyn Fn(&String) -> bool| -> Vec<String> {
+        first.parents.iter().filter(|p| set(p)).cloned().collect()
+    };
+    let in_main = among(&|p| main.members.contains_key(p));
+    if !in_main.is_empty() {
+        return (in_main, None);
+    }
+    let in_franchise = among(&|p| franchise.contains(p));
+    let drawn = in_franchise
+        .first()
+        .and_then(|p| chain(p, franchise, main, look));
+    (in_franchise, drawn)
+}
+
 /// The franchise's main story (`franchise_walk_root.rs`), settled from
 /// the run the walk first goes to (`franchise_walk_first.rs`); a
-/// side-story anchor keeps those of its parents that are in it.
+/// side-story anchor keeps its parents (`side_chain`).
 ///
 /// # Errors
 /// The listings to read before the walk can go on.
@@ -120,13 +150,7 @@ pub(crate) fn run(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>> {
         .collect();
     let beside = first.beside.iter().filter(outside).cloned().collect();
     let side_anchor = first.side_anchor && !settled.members.contains_key(anchor);
-    let parents = first
-        .parents
-        .iter()
-        .filter(|p| side_anchor && settled.members.contains_key(*p))
-        .cloned()
-        .collect();
-    let chain = chain(anchor, &franchise, &settled, look);
+    let (parents, chain) = side_chain(anchor, side_anchor, &first, &settled, &franchise, look);
     Ok(Run {
         side_anchor,
         parents,

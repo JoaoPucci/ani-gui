@@ -5,10 +5,14 @@
 //! where the chain leaves the main story or leads into it (its seams).
 //! A link counts from either side of the listings read.
 //!
-//! The franchise is the same from every page of it, so every title of a
-//! chain answers with the same chain. A page in the main story, a page
-//! outside the franchise (a side story placed beside it), and a page
-//! linked to nothing else have none.
+//! Every page that reaches the same franchise reads it the same way, so
+//! every title of a chain answers with the same chain where Kitsu lists
+//! each link from both sides (a link listed on one side only is seen
+//! only by a page that reaches that listing). A page in the main story,
+//! a page outside the franchise, and a page linked to nothing else have
+//! none, but a side story whose parents the main story leaves out is
+//! drawn on its earliest parent's chain (`franchise_walk_run.rs`).
+//! Music videos are no titles of a chain, the page aside.
 
 use std::collections::BTreeSet;
 
@@ -19,7 +23,8 @@ use super::Lookup;
 /// A page's chain, by id.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ChainIds {
-    /// The chain's own titles, the page among them.
+    /// The chain's own titles, the page among them (a side story drawn
+    /// on its parent's chain is not).
     pub(crate) own: BTreeSet<String>,
     /// The main-story titles the chain is linked to.
     pub(crate) seams: BTreeSet<String>,
@@ -43,9 +48,14 @@ pub(crate) fn chain(
     if main.members.contains_key(anchor) || !franchise.contains(anchor) {
         return None;
     }
+    let music = |m: &str| {
+        look.entry(m, &main.consulted)
+            .is_some_and(|e| e.subtype.as_deref() == Some("music"))
+    };
     let outside: Vec<&String> = franchise
         .iter()
         .filter(|m| !main.members.contains_key(*m))
+        .filter(|m| m.as_str() == anchor || !music(m))
         .collect();
     let mut own = BTreeSet::from([anchor.to_string()]);
     let mut todo = vec![anchor.to_string()];
