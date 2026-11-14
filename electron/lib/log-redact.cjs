@@ -36,7 +36,10 @@ const MIN_KNOWN = 16;
 /**
  * `text` with every secret in it replaced by `<redacted>`: each of
  * `known` (the launch's secrets, wherever they appear) and any value in
- * the shapes the secret travels in, known or not.
+ * the shapes the secret travels in, known or not. The shapes go first,
+ * and that relies on a known secret being hex, as the launch's is: no
+ * character a shape's value ends at is a hex digit, so a shape takes a
+ * known secret whole or leaves it whole for the value pass.
  */
 function redactSecrets(text, known = []) {
   // The shapes first: a value already replaced by `<redacted>` would

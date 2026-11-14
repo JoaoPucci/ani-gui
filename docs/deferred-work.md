@@ -1203,20 +1203,18 @@ starting it, and delete it when you find it done.
   `PUT /api/settings` (`external_player`, `syncplay_binary`), and the
   backend starts whatever path it was handed when the user next opens
   an episode in the external player or watches together. No request
-  names a program any more, but a script running in the app's page —
-  the one caller holding the launch's secret — can still pick the
-  program by rewriting Settings first. The Browse buttons open a
+  names a program any more, but a script running in the app's page,
+  which holds the launch's secret, can still pick the program by
+  rewriting Settings first. The Browse buttons open a
   main-process file picker, but its answer comes back to the page and
   is saved through the same `PUT`, like a typed path.
 
-  The plan: a path is set only through the main-process file picker,
-  so what runs is always something the user picked in a native
-  dialog, and the custom-arguments template
-  (`external_player_custom_args`) gets its own answer, since no
-  picker can choose arguments — a native confirmation when it
-  changes, for example. It waited for a small Settings UI study:
+  The direction chosen is that a path is set only through the
+  main-process file picker. It waited for a small Settings UI study:
   dropping the free-text path changes how both fields look and
-  behave, and how a path typed or pasted today is carried over.
+  behave. What a picker cannot cover is the custom-arguments template
+  (`external_player_custom_args`): no dialog picks arguments, so it
+  needs an answer of its own.
 
 ## Metadata the app does not use yet
 
