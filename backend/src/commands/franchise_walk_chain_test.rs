@@ -1,4 +1,4 @@
-//! Worked cases for a page's own chain (`franchise_walk_chain.rs`).
+//! Worked cases and a property for a page's own chain (`franchise_walk_chain.rs`).
 
 use super::tests::{drive, Catalogue};
 use super::*;
@@ -119,4 +119,28 @@ fn a_chain_does_not_go_on_into_a_version_of_its_title() {
     assert_eq!(ids(&chain.entries), ["1", "3", "4"]);
     assert!(chain.links.iter().all(|(a, b)| a != "5" && b != "5"));
     assert_eq!(drive("5", &c).chain, None);
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::prelude::ProptestConfig::with_cases(256))]
+
+    /// Over random catalogues, no served chain links two entries that
+    /// list each other as versions, and every seam is linked to one of
+    /// the chain's own titles by a served link.
+    #[test]
+    fn a_chain_links_no_two_versions((cat, anchor) in super::prop_tests::catalogue()) {
+        let (f, (known, details)) = super::prop_tests::drive_with(&anchor, &cat, &[]);
+        let look = Lookup { known: &known, details: &details };
+        if let Some(chain) = &f.chain {
+            for (a, b) in &chain.links {
+                proptest::prop_assert!(!super::rules::alt(&look, a, b), "{} -> {}", a, b);
+            }
+            for s in &chain.seams {
+                let joined = chain.links.iter().any(|(a, b)| {
+                    (a == s && !chain.seams.contains(b)) || (b == s && !chain.seams.contains(a))
+                });
+                proptest::prop_assert!(joined, "seam {} joins no own title", s);
+            }
+        }
+    }
 }
