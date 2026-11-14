@@ -2,7 +2,11 @@
 //! one-offs (`franchise_walk_series.rs`): the parent stories its run's
 //! members name outside the run, each checked with its own start
 //! (`franchise_walk_parents.rs`), the earliest the one the walk moves
-//! to.
+//! to. The members share the walk's bound on what it reads: each one's
+//! check gets the room the run's walk and the members checked before it
+//! (in id order) left, and a member is checked only once those before
+//! it are decided, so no round asks for more than the bound has room
+//! for.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -20,6 +24,8 @@ pub(super) struct Placed {
     all: Vec<String>,
     /// Every candidate listing read to decide.
     pub(super) read: BTreeSet<String>,
+    /// False when the bound left a member's candidate unread.
+    pub(super) complete: bool,
 }
 
 impl Placed {
@@ -46,28 +52,24 @@ impl Placed {
 /// anchor's own are the ones it is placed under, else every member's.
 pub(super) fn place(anchor: &str, own: &Run, look: &Lookup<'_>) -> Result<Placed, Vec<String>> {
     let mut read = BTreeSet::new();
-    let mut unread = BTreeSet::new();
+    let mut counted = own.consulted.clone();
+    let mut complete = true;
     let mut mine = Vec::new();
     let mut all = BTreeSet::new();
     for m in own.members.keys() {
-        match parent_stories(m, look, &own.consulted) {
-            Ok(found) => {
-                read.extend(found.read);
-                let outside: Vec<String> = found
-                    .parents
-                    .into_iter()
-                    .filter(|p| !own.members.contains_key(p))
-                    .collect();
-                if m == anchor {
-                    mine.clone_from(&outside);
-                }
-                all.extend(outside);
-            }
-            Err(need) => unread.extend(need),
+        let found = parent_stories(m, look, &own.consulted, &counted)?;
+        complete &= found.complete;
+        counted.extend(found.read.iter().cloned());
+        read.extend(found.read);
+        let outside: Vec<String> = found
+            .parents
+            .into_iter()
+            .filter(|p| !own.members.contains_key(p))
+            .collect();
+        if m == anchor {
+            mine.clone_from(&outside);
         }
-    }
-    if !unread.is_empty() {
-        return Err(unread.into_iter().collect());
+        all.extend(outside);
     }
     let mut consulted = own.consulted.clone();
     consulted.extend(read.iter().cloned());
@@ -83,5 +85,6 @@ pub(super) fn place(anchor: &str, own: &Run, look: &Lookup<'_>) -> Result<Placed
         mine,
         all,
         read,
+        complete,
     })
 }

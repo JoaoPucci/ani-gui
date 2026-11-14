@@ -582,8 +582,9 @@ stories, spin-offs and recaps than the anchor's; and an entry the
 anchor names as its side story or spin-off is taken as its parent
 story when it started before the anchor, names the anchor back as its
 parent story, and names more of them. A listing read for this counts
-toward the bound on what the walk reads after it, and one cut short
-makes the answer incomplete. *One Piece* names sixty-three;
+toward the bound on what the walk reads after it; the candidates are
+read only as far as the bound leaves room, and one left unread, or cut
+short, makes the answer incomplete. *One Piece* names sixty-three;
 *LEGO ONE PIECE* names one.
 
 **One main story per franchise.** Rule 3 never leaves out the entry
