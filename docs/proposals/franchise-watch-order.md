@@ -910,7 +910,9 @@ card shows:
 - exactly one that has not aired: that entry with its date
   ("Coming January 2027"), as information only;
 - several: all of them, as the choices;
-- none: no card.
+- none: no card, except at the last title of a chain outside the main
+  story that leads nowhere, where the card offers the whole franchise
+  (below).
 
 Continue moves to the next entry in the first case only, and only to
 an entry the viewer has not played yet; in every other case it keeps
@@ -924,7 +926,12 @@ own chain (section 4), as its strip draws it: *Heaven's Feel I*'s
 finale names *Heaven's Feel II*, and the third Golden Age film's names
 the 2016 *Berserk* series, the main-story title the chain leads into.
 At the last title of a chain that leads nowhere the card offers the
-franchise page (part 5).
+franchise page (part 5): keyed "The whole franchise", named after the
+franchise, fanning the strip link's poster stack (three blank frames,
+the front one counting the page's titles, when no title has a poster)
+beside the first two counts the link names, in the accent of the entry
+the franchise's name comes from, as on its page. Only one card shows at
+a finale: the next title where there is one, else this one.
 
 **Edge cases.** The 2000 *JoJo* OVA's finale names the 1993 OVA in
 link order and the 2012 TV series in release order — whichever the
@@ -1270,7 +1277,8 @@ them introduces a new widget style.
     keeps today's card.
   - An unaired sequel: the player card shows it with its date and no
     action. Continue keeps today's card.
-  - No sequel: no card.
+  - No sequel: no card, except at the end of a chain outside the main
+    story, where the card offers the whole franchise.
 
 ### The franchise page
 
@@ -1497,7 +1505,8 @@ The rules below hold on every surface:
 - **States.** One aired next entry: a link to its page. Several (a
   fork): "Ways to continue" over one row per branch. One not yet
   aired: "Next, when it airs", its date or "Date not announced", and
-  no link. None: no card. A franchise read only in part (the walk
+  no link. None: no card, except at the end of a chain outside the
+  main story, where it offers the whole franchise. A franchise read only in part (the walk
   reached its bound, or a listing came back cut short) also gets no
   card, since the entry that really comes next may be missing from
   it. The mockup showed the card from the start of a last episode, so
