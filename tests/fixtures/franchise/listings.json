@@ -185,6 +185,7 @@
     "11655": {"id":"11655","title":"Berserk","subtype":"TV","start":"2016-07-01","episodes":12,"status":"finished","poster":null,"cover":null},
     "11961": {"id":"11961","title":"FLCL Progressive","subtype":"TV","start":"2018-06-02","episodes":6,"status":"finished","poster":null,"cover":null},
     "12": {"id":"12","title":"One Piece","subtype":"TV","start":"1999-10-20","episodes":null,"status":"current","poster":null,"cover":null},
+    "12007": {"id":"12007","title":"Fate/stay night: Heaven's Feel II. Lost Butterfly","subtype":"movie","start":"2019-01-12","episodes":1,"status":"finished","poster":null,"cover":null},
     "1265": {"id":"1265","title":"Lupin III","subtype":"TV","start":"1971-10-24","episodes":23,"status":"finished","poster":null,"cover":null},
     "13051": {"id":"13051","title":"Boruto: Naruto Next Generations","subtype":"TV","start":"2017-04-05","episodes":293,"status":"finished","poster":null,"cover":null},
     "13881": {"id":"13881","title":"Boku no Hero Academia 3","subtype":"TV","start":"2018-04-07","episodes":25,"status":"finished","poster":null,"cover":null},
@@ -207,11 +208,13 @@
     "45513": {"id":"45513","title":"One Piece Film: Red","subtype":"movie","start":"2022-08-06","episodes":1,"status":"finished","poster":null,"cover":null},
     "46874": {"id":"46874","title":"SPY×FAMILY CODE: White","subtype":"movie","start":"2023-12-22","episodes":1,"status":"finished","poster":null,"cover":null},
     "47844": {"id":"47844","title":"Boku no Hero Academia THE MOVIE: YOU'RE NEXT","subtype":"movie","start":"2024-08-02","episodes":1,"status":"finished","poster":null,"cover":null},
+    "4788": {"id":"4788","title":"Fate/stay night Movie: Unlimited Blade Works","subtype":"movie","start":"2010-01-23","episodes":1,"status":"finished","poster":null,"cover":null},
     "486": {"id":"486","title":"Pocket Monsters","subtype":"TV","start":"1997-04-01","episodes":276,"status":"finished","poster":null,"cover":null},
     "50409": {"id":"50409","title":"CHOPPER's","subtype":"TV","start":"2026-01-05","episodes":null,"status":"current","poster":null,"cover":null},
     "50656": {"id":"50656","title":"LEGO ONE PIECE","subtype":"ONA","start":"2026-09-29","episodes":2,"status":"finished","poster":null,"cover":null},
     "6028": {"id":"6028","title":"Fate/Zero","subtype":"TV","start":"2011-10-02","episodes":13,"status":"finished","poster":null,"cover":null},
     "6084": {"id":"6084","title":"Berserk: Ougon Jidai-hen I - Haou no Tamago","subtype":"movie","start":"2012-02-04","episodes":1,"status":"finished","poster":null,"cover":null},
+    "6665": {"id":"6665","title":"Berserk: Ougon Jidai-hen III - Kourin","subtype":"movie","start":"2013-02-01","episodes":1,"status":"finished","poster":null,"cover":null},
     "6928": {"id":"6928","title":"Fate/Zero: Onegai! Einzbern Soudanshitsu","subtype":"special","start":"2012-03-07","episodes":6,"status":"finished","poster":null,"cover":null},
     "696": {"id":"696","title":"Detective Conan Movie 01: The Timed Skyscraper","subtype":"movie","start":"1997-04-19","episodes":1,"status":"finished","poster":null,"cover":null},
     "7124": {"id":"7124","title":"Persona 3 the Movie 1: Spring of Birth","subtype":"movie","start":"2013-11-23","episodes":1,"status":"finished","poster":null,"cover":null},
@@ -222,6 +225,7 @@
     "7543": {"id":"7543","title":"The Last: Naruto the Movie","subtype":"movie","start":"2014-12-06","episodes":1,"status":"finished","poster":null,"cover":null},
     "7730": {"id":"7730","title":"JoJo no Kimyou na Bouken: Adventure","subtype":"OVA","start":"2000-05-25","episodes":7,"status":"finished","poster":null,"cover":null},
     "818": {"id":"818","title":"Gintama","subtype":"TV","start":"2006-04-04","episodes":201,"status":"finished","poster":null,"cover":null},
-    "841": {"id":"841","title":"Top wo Nerae! Gunbuster","subtype":"OVA","start":"1988-10-07","episodes":6,"status":"finished","poster":null,"cover":null}
+    "841": {"id":"841","title":"Top wo Nerae! Gunbuster","subtype":"OVA","start":"1988-10-07","episodes":6,"status":"finished","poster":null,"cover":null},
+    "8675": {"id":"8675","title":"Fate/stay night: Heaven's Feel I. Presage Flower","subtype":"movie","start":"2017-10-14","episodes":1,"status":"finished","poster":null,"cover":null}
   }
 }
