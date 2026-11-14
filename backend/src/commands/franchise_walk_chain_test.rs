@@ -73,17 +73,50 @@ fn seams_are_in_start_then_numeric_order() {
         .rel("10", "prequel", "9")
         .rel("10", "sequel", "11")
         .rel("10", "alternative_version", "30")
+        .rel("10", "alternative_version", "31")
         .rel("11", "prequel", "10")
         .rel("11", "prequel", "31")
-        .rel("11", "alternative_version", "31")
         .rel("30", "prequel", "9")
         .rel("30", "alternative_version", "10")
         .rel("30", "sequel", "31")
         .rel("31", "prequel", "30")
         .rel("31", "sequel", "11")
-        .rel("31", "alternative_version", "11");
+        .rel("31", "alternative_version", "10");
     let f = drive("30", &c);
     assert_eq!(ids(&f.entries), ["9", "10", "11"]);
     let chain = f.chain.expect("a chain");
     assert_eq!(chain.seams, ["9", "11"]);
+}
+
+/// A page that lists one entry as both its prequel and its other
+/// version is not on a chain through it: the two are versions of one
+/// another, and a version is never the next title of the chain it
+/// retells, so the page gets no seam into its own version.
+#[test]
+fn a_page_is_not_chained_to_its_own_version() {
+    let mut c = Catalogue::default();
+    c.add("1", "OVA", Some("2005-01-01"))
+        .add("2", "TV", Some("2000-01-01"))
+        .rel("1", "prequel", "2")
+        .rel("1", "alternative_version", "2");
+    let f = drive("1", &c);
+    assert_eq!(ids(&f.entries), ["2"]);
+    assert_eq!(f.chain, None);
+}
+
+/// Two titles outside the main story that list each other as sequel
+/// and as other version are not chained either: the chain stops before
+/// the version, which is no title of it.
+#[test]
+fn a_chain_does_not_go_on_into_a_version_of_its_title() {
+    let mut c = films_after_a_series();
+    c.add("5", "movie", Some("2005-01-01"))
+        .rel("4", "sequel", "5")
+        .rel("5", "prequel", "4")
+        .rel("5", "alternative_version", "4");
+    let f = drive("3", &c);
+    let chain = f.chain.expect("a chain");
+    assert_eq!(ids(&chain.entries), ["1", "3", "4"]);
+    assert!(chain.links.iter().all(|(a, b)| a != "5" && b != "5"));
+    assert_eq!(drive("5", &c).chain, None);
 }
