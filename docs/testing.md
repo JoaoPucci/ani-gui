@@ -303,6 +303,19 @@ renderer's types must change. Both test files' headers list what they do
 not hold, among them answers that are not a struct, map values, request
 value kinds, and URLs built as text.
 
+The tests' fake backend is held to the same types, so a fake cannot keep a
+test green on an answer no backend sends. An MSW handler names the route's
+type at the answer (`HttpResponse.json<KitsuAnimeRef[]>([...])`), which the
+type check reads, and ESLint refuses one that does not
+(`tests/lint/typed-answers.test.ts`). `frontend/tests/answers.ts` carries
+the rest: `errorAnswer` for an error and its envelope, builders that fill
+the fields a test does not care about with what the backend sends when it
+has nothing to say, and `malformedAnswer` / `malformedAs` for a fake that is
+wrong on purpose, so it reads as deliberate. The unit tests' `fetch` stubs
+and replaced API functions take the route's or the function's type the same
+way. When a renderer type changes, the type check names every fake that no
+longer matches it.
+
 ## Fixture management
 
 `tests/fixtures/` is the single source of truth for golden data, shared across all test layers.
