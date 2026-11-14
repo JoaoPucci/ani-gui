@@ -132,3 +132,7 @@ pub(super) fn settle(
     };
     Ok((run, g.entries))
 }
+
+#[cfg(test)]
+#[path = "franchise_walk_root_test.rs"]
+mod tests;

@@ -12,7 +12,7 @@ use crate::meta::kitsu::FranchiseEntry;
 
 /// What the franchise page shows: everything but which page asked, and
 /// that page's own parents and chain.
-fn page(f: &Franchise) -> serde_json::Value {
+pub(super) fn page(f: &Franchise) -> serde_json::Value {
     let mut v = serde_json::to_value(f).expect("json");
     let map = v.as_object_mut().expect("object");
     for own in ["anchor", "parents", "chain"] {
