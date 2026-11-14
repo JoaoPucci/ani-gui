@@ -124,6 +124,17 @@ fn a_parent_story_foretells_the_strip() {
 
 /// The franchise page lists a film, a side story, a recap or another
 /// version beside a show with no run: the link comes alone.
+/// A side story the parent check reads, whose own listing names the
+/// show as its prequel (the show's listing does not name it back): the
+/// franchise counts that link from either side, so the walk draws the
+/// strip, and the first hop foretells it.
+#[test]
+fn a_link_named_only_by_a_listing_the_parent_check_reads_foretells_the_strip() {
+    let mut c = with(&[("2", "TV"), ("1", "TV")]);
+    c.rel("1", "side_story", "2").rel("2", "prequel", "1");
+    assert_eq!(both(&c, "1"), (FirstHop::Strip, FirstHop::Strip));
+}
+
 #[test]
 fn a_relation_around_the_show_foretells_the_link() {
     for role in ["side_story", "summary", "alternative_version", "spinoff"] {
