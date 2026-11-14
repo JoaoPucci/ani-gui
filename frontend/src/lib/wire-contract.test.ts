@@ -35,8 +35,10 @@
 //   backend requires, not by the kinds of their values, and a body
 //   nested in another (the guess's `hits`) is not held.
 // - Query strings and URL paths the renderer builds as text are not
-//   held, but for the proxy media URL below; nor is the search-page
-//   body, which the backend reads through structs local to its reader.
+//   held, but for the proxy media URL below, and neither is which routes
+//   the renderer sends the secret to as a query parameter; nor is the
+//   search-page body, which the backend reads through structs local to
+//   its reader.
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -107,6 +109,8 @@ import type {
 } from './account/api';
 import type { SetEntryBody } from './account/entry-api';
 import { WATCH_LATER_BRIDGE_MAX_IDS } from './account/watch-later-loader';
+import { SECRET_HEADER, SECRET_QUERY } from './backend/secret';
+import { REFILL_HEADER } from './refill/refill';
 import { buildMediaUrl } from './play/media-url';
 import type { SidecarTrack } from './play/sidecar-tracks';
 
@@ -183,6 +187,7 @@ interface Contract {
 	enums: Record<string, string[]>;
 	errors: Json[];
 	constants: Record<string, number>;
+	names: Record<string, string>;
 	media_urls: { base: string; session: string; urls: Record<string, string> };
 }
 
@@ -780,6 +785,14 @@ describe('the renderer holds the backend wire contract', () => {
 
 	it('the Watch Later bridge cap is the backend cap', () => {
 		expect(WATCH_LATER_BRIDGE_MAX_IDS).toBe(CONTRACT.constants.WATCH_LATER_BRIDGE_MAX_IDS);
+	});
+
+	it('the secret and refill headers, and the secret query parameter, are the backend names', () => {
+		expect({ SECRET_HEADER, SECRET_QUERY, REFILL_HEADER }).toEqual({
+			SECRET_HEADER: CONTRACT.names.INTERNAL_SECRET_HEADER,
+			SECRET_QUERY: CONTRACT.names.SECRET_QUERY,
+			REFILL_HEADER: CONTRACT.names.REFILL_HEADER
+		});
 	});
 
 	it.each(MEDIA_KINDS)('a %s session plays at the URL the backend gives it', (kind) => {

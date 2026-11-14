@@ -186,6 +186,11 @@
       "mp4": "http://127.0.0.1:4100/s/3f1c/file.mp4"
     }
   },
+  "names": {
+    "INTERNAL_SECRET_HEADER": "x-ani-gui-internal-secret",
+    "REFILL_HEADER": "x-ani-gui-refill",
+    "SECRET_QUERY": "secret"
+  },
   "requests": {
     "AuthUrlRequest": {
       "accepts": [

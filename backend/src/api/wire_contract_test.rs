@@ -21,7 +21,10 @@
 //! - `enums`: every value a string the renderer names can take.
 //! - `errors`: the envelope of every error variant, and of the optional
 //!   fields some variants carry.
-//! - `constants` and `media_urls`: values the renderer keeps a copy of.
+//! - `constants`, `names` and `media_urls`: values the renderer keeps a
+//!   copy of (the Watch Later bridge cap; the headers and the query
+//!   parameter it sends the launch's secret and reads refill tickets in;
+//!   the proxy's media URL shape).
 //!
 //! Every list is built from the types themselves: a struct literal names
 //! every field, and each enum list sits behind a `match` with no
@@ -33,7 +36,8 @@
 //! What it does not hold: answers that are not a struct (the
 //! `/api/watched-at` map, a bare string or list of strings, and whether
 //! a route may answer `null`); which route answers which type; query
-//! strings (the renderer builds them as text, with no type to compare);
+//! strings (the renderer builds them as text, with no type to compare),
+//! among them which routes take the secret as a query parameter;
 //! the search-page body (read through structs local to
 //! `commands::kitsu_search`'s readers); a body nested in another (the
 //! guess's `hits`); the value types of a map (`titles`, `cached`); the launch flags (read by the
@@ -51,9 +55,11 @@ use super::account::account_wire::{
     AuthUrlRequest, AuthUrlResponse, EntryView, ExchangeCodeRequest, PkceWire, RefreshRequest,
     SetEntryRequest, TokensResponse, UpdateProgressRequest,
 };
-use super::refill::{Ended, WaitBody};
+use super::gate::SECRET_QUERY;
+use super::refill::{Ended, WaitBody, REFILL_HEADER};
 use super::wire_probe::{accepted_fields, skipped_fields};
 use super::{ani_error_payload, HistoryRow, KitsuByMalIdsBody, SearchBody, TitleMatchBody};
+use crate::account::internal_secret::INTERNAL_SECRET_HEADER;
 use crate::account::pkce::PkceMethod;
 use crate::account::provider::{ListEntry, ProviderKind, ProviderMediaId, UserProfile, UserStats};
 use crate::account::status::ListStatus;
@@ -143,6 +149,11 @@ fn contract() -> Value {
         "enums": enums(),
         "errors": errors(),
         "constants": { "WATCH_LATER_BRIDGE_MAX_IDS": WATCH_LATER_BRIDGE_MAX_IDS },
+        "names": {
+            "INTERNAL_SECRET_HEADER": INTERNAL_SECRET_HEADER.as_str(),
+            "SECRET_QUERY": SECRET_QUERY,
+            "REFILL_HEADER": REFILL_HEADER,
+        },
         "media_urls": media_urls(),
     })
 }

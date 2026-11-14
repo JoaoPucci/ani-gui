@@ -284,7 +284,9 @@ saying the same thing:
   from the backend's own types — a full and a minimal sample of each
   response type the renderer reads, the fields each request body reads and
   requires, every value of each enum the renderer names, the error envelope
-  of every variant, and the values the renderer keeps a copy of — and
+  of every variant, and the values the renderer keeps a copy of (the Watch
+  Later bridge cap, the names of the secret and refill headers and of the
+  secret's query parameter, and the proxy's media URL shape) — and
   `cargo test` fails until the file says the same. A field added to a
   published type, or a variant to a published enum, does not compile until
   the samples carry it.
