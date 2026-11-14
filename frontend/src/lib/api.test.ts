@@ -13,7 +13,6 @@ import {
 	availabilityBatch,
 	availabilityWarm,
 	checkAvailability,
-	createSession,
 	downloadDefaultDir,
 	downloadStream,
 	evictPlayCache,
@@ -216,43 +215,6 @@ describe('historyDelete', () => {
 		await historyDelete('weird/id with spaces');
 		const { url } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/history/weird%2Fid%20with%20spaces`);
-	});
-});
-
-describe('createSession', () => {
-	it('POSTs JSON to /api/sessions', async () => {
-		const fetchMock = mockFetchOnce({
-			session_id: '11111111-1111-1111-1111-111111111111',
-			media_url: 'http://127.0.0.1:42337/s/11111111-.../master.m3u8',
-			media_kind: 'hls'
-		});
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-
-		const resp = await createSession({
-			upstream_url: 'https://cdn.example/master.m3u8',
-			referer: 'https://allmanga.to'
-		});
-
-		const { url, init } = lastCall(fetchMock);
-		expect(url).toBe(`${BASE}/api/sessions`);
-		expect(init?.method).toBe('POST');
-		expect(JSON.parse(init?.body as string)).toMatchObject({
-			upstream_url: 'https://cdn.example/master.m3u8',
-			referer: 'https://allmanga.to'
-		});
-		expect(resp.session_id).toBe('11111111-1111-1111-1111-111111111111');
-	});
-
-	it('propagates rejection so callers can render the error', async () => {
-		const fetchMock = mockFetchOnce({ kind: 'parse_failed', detail: 'upstream_url: invalid' }, 400);
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-
-		await expect(
-			createSession({
-				upstream_url: 'not a url',
-				referer: ''
-			})
-		).rejects.toMatchObject({ kind: 'parse_failed' });
 	});
 });
 
@@ -2267,7 +2229,7 @@ describe('the launch secret reaches every request to the API', () => {
 		['a GET', () => settingsGet()],
 		['a GET with a signal', () => kitsuTrending({ signal: new AbortController().signal })],
 		['a GET that waits on refills', () => kitsuAnimeDetail('7')],
-		['a POST', () => createSession({ upstream_url: 'https://e.example/m.m3u8', referer: '' })],
+		['a POST', () => kitsuSearch('Frieren')],
 		['a PUT', () => settingsPut({} as Config)],
 		['a DELETE', () => historyClear()],
 		['the MAL bridge', () => kitsuByMalIds([1])]
@@ -2281,9 +2243,9 @@ describe('the launch secret reaches every request to the API', () => {
 	});
 
 	it('a POST keeps its content type beside it', async () => {
-		const fetchMock = mockFetchOnce({ session_id: 's' });
+		const fetchMock = mockFetchOnce([]);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		await createSession({ upstream_url: 'https://e.example/m.m3u8', referer: '' });
+		await kitsuSearch('Frieren');
 		expect(headersOf(lastCall(fetchMock).init)['content-type']).toBe('application/json');
 	});
 

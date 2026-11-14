@@ -57,7 +57,6 @@ import {
 	type AvailabilityResponse,
 	type AvailabilityWarmBody,
 	type Config,
-	type CreateSessionArgs,
 	type CreateSessionResponse,
 	type DownloadArgs,
 	type DownloadProgress,
@@ -585,11 +584,6 @@ const REQUESTS: Record<string, { spec: Record<string, string>; unsent?: string[]
 		// The renderer launches external players through the play
 		// routes, which attach a resolve's tracks themselves.
 		unsent: ['subtitle_urls', 'subtitles_off']
-	},
-	CreateSessionArgs: {
-		spec: { upstream_url: 'required', referer: 'required' } satisfies BodySpec<CreateSessionArgs>,
-		// The route refuses any: the resolver attaches a session's tracks.
-		unsent: ['subtitles']
 	},
 	Config: {
 		spec: {

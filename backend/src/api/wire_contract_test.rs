@@ -79,7 +79,7 @@ use crate::commands::history_number::HistoryNumber;
 use crate::commands::play::PlayArgs;
 use crate::commands::play_native_versions::{VersionInfo, VersionKind};
 use crate::commands::progress::ProgressLine;
-use crate::commands::session::{media_url, CreateSessionArgs, CreateSessionResponse};
+use crate::commands::session::{media_url, CreateSessionResponse};
 use crate::config::Config;
 use crate::error::AniError;
 use crate::history::HistoryEntry;
@@ -641,9 +641,6 @@ fn requests() -> Value {
         "AvailabilityWarmArgs": request::<AvailabilityWarmArgs>(&json!({ "items": [] })),
         "LaunchArgs": request::<LaunchArgs>(&json!({
             "stream_url": "https://cdn.example/master.m3u8", "player_command": "mpv"
-        })),
-        "CreateSessionArgs": request::<CreateSessionArgs>(&json!({
-            "upstream_url": "https://cdn.example/master.m3u8", "referer": "https://example/"
         })),
         "Config": request::<Config>(&json!({})),
         "RuledOutRequest": request::<RuledOutRequest>(&json!({
