@@ -5,11 +5,13 @@
 // The renderer carries the secret on every API request: as the
 // `x-ani-gui-internal-secret` header, and as the `secret` query
 // parameter on the routes an <img> or an EventSource loads
-// (frontend/src/lib/backend/secret.ts). Chromium logs a failed load with
-// its URL, and the main process relays the renderer's console, its
-// failed loads and the backend's output to its own stdout and stderr,
-// which end up in the journal or a terminal. Everything it relays goes
-// through here first.
+// (frontend/src/lib/backend/secret.ts), so a console line that names
+// one of those URLs names the secret. The main process relays the
+// renderer's console, its failed page loads and the backend's output to
+// its own stdout and stderr, which end up in the journal or a terminal.
+// Everything it relays goes through here first. (Chromium's own
+// "Failed to load resource" lines are not among them: they go to
+// DevTools only, and Electron's console-message event never sees them.)
 
 const REDACTED = "<redacted>";
 
