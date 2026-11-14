@@ -110,7 +110,7 @@ pub async fn franchise(state: &AppState, anchor: &str) -> Result<Franchise> {
     let mut details = BTreeMap::new();
     loop {
         let (listings, wanted) = match plan(anchor, &known, &details) {
-            Plan::Done(f) => return Ok(f),
+            Plan::Done(f) => return Ok(*f),
             Plan::Need { listings, details } => (listings, details),
         };
         let read: Vec<(String, Result<FranchiseListing>)> = stream::iter(listings)

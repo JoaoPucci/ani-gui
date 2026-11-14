@@ -35,6 +35,17 @@ export interface FranchiseData {
 	readonly parents: Readonly<Record<string, readonly string[]>>;
 	/** False when the walk stopped at its bound or a listing was cut short. */
 	readonly complete: boolean;
+	/** The page's own chain, when the main story leaves the page out. */
+	readonly chain?: ChainData;
+}
+
+/** A page's own chain ($lib/api's `FranchiseChain`) read-only. */
+export interface ChainData {
+	/** Its own titles and its seams, start order. */
+	readonly entries: readonly WatchEntry[];
+	readonly links: readonly RunLink[];
+	/** The ids of `entries` that are main-story titles. */
+	readonly seams: readonly string[];
 }
 
 /**
