@@ -745,7 +745,7 @@ async fn a_mark_watched_of_one_recap_after_another_reads_back_as_the_one_watched
     let mut args = play_args();
     args.episode = "12.5".into();
     let show = two_recaps(&state, "http://127.0.0.1:1", &args);
-    let router = crate::api::build_api_router(Arc::new(state.clone()));
+    let router = crate::api::test_router(Arc::new(state.clone()));
     let response = router
         .oneshot(
             axum::http::Request::builder()

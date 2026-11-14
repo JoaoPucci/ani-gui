@@ -524,7 +524,7 @@ async fn a_watch_marked_on_a_prefetched_recap_reads_back_as_the_recap() {
     play_with_progress(&state, &prefetch, |_| {})
         .await
         .expect("prefetches the recap");
-    let router = crate::api::build_api_router(std::sync::Arc::new(state.clone()));
+    let router = crate::api::test_router(std::sync::Arc::new(state.clone()));
     let response = router
         .oneshot(
             axum::http::Request::builder()
@@ -756,7 +756,7 @@ async fn a_mark_watched_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
     play_with_progress(&state, &prefetch, |_| {})
         .await
         .expect("prefetches the recap");
-    let router = crate::api::build_api_router(std::sync::Arc::new(state.clone()));
+    let router = crate::api::test_router(std::sync::Arc::new(state.clone()));
     let body = serde_json::json!({
         "title": CUMULATIVE_S2,
         "episode": "0.5",

@@ -525,3 +525,28 @@ describe('openExternal', () => {
 		expect(await openExternal('https://x')).toBe(false);
 	});
 });
+
+describe('the launch secret reaches every account request', () => {
+	// The backend answers /api only to a request carrying the secret
+	// the preload bridge hands the renderer (`$lib/backend/secret`).
+	beforeEach(() => {
+		(globalThis as { window?: unknown }).window = {
+			aniGui: { apiBase: 'http://127.0.0.1:42337', internalSecret: 'c0ffee' }
+		};
+	});
+
+	const calls: Array<[string, () => Promise<unknown>]> = [
+		['a POST', () => buildAuthUrl('anilist', { state: 's', pkce: PKCE })],
+		['a POST with a bearer', () => fetchMe('anilist', 'tok')],
+		['a DELETE with a bearer', () => dropListCache('anilist', 'tok')],
+		['a GET of the cached list', () => fetchCachedList('anilist', 'tok')]
+	];
+
+	it.each(calls)('%s carries it as a header', async (_name, call) => {
+		const spy = mockFetchJson({});
+		await call().catch(() => {});
+		const [, init] = spy.mock.calls[0];
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers['x-ani-gui-internal-secret']).toBe('c0ffee');
+	});
+});
