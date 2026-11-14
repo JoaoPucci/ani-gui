@@ -223,13 +223,13 @@ async function getJsonServed<T>(path: string, signal?: AbortSignal): Promise<Ser
 	return { data, refills: parseRefills(headers?.get(REFILL_HEADER)) };
 }
 
-/** Wait until one of `tickets` has ended; `[]` past the backend's own
- *  limit. */
 /** Body of `/api/refills/wait` and `/api/refills/release`. */
 export interface RefillsBody {
 	tickets: number[];
 }
 
+/** Wait until one of `tickets` has ended; `[]` past the backend's own
+ *  limit. */
 export function refillsWait(tickets: number[], signal: AbortSignal): Promise<RefillEnded[]> {
 	const body: RefillsBody = { tickets };
 	return postJson<RefillEnded[]>('/api/refills/wait', body, { signal });
@@ -391,7 +391,6 @@ export interface CreateSessionArgs {
 export const MEDIA_KINDS = ['hls', 'mp4'] as const;
 export type MediaKind = (typeof MEDIA_KINDS)[number];
 
-/** Output of `cmd_create_session` — proxy URLs the player should fetch. */
 /** One sidecar subtitle track a session offers, behind the proxy. */
 export interface SessionSubtitle {
 	lang: string;
@@ -401,6 +400,7 @@ export interface SessionSubtitle {
 	url: string;
 }
 
+/** Output of `cmd_create_session` — proxy URLs the player should fetch. */
 export interface CreateSessionResponse {
 	session_id: string;
 	/** Full proxy URL the player should fetch. For HLS sessions this
@@ -1265,14 +1265,14 @@ export function availabilityBatch(
 	});
 }
 
-/** Fire-and-forget cache warmer. Hands the backend a list of titles
- *  to probe in the background; the cache is populated for the next
- *  list-view visit. List views never wait for the warm to finish. */
 /** Body of `/api/availability/warm`. */
 export interface AvailabilityWarmBody {
 	items: AvailabilityArgs[];
 }
 
+/** Fire-and-forget cache warmer. Hands the backend a list of titles
+ *  to probe in the background; the cache is populated for the next
+ *  list-view visit. List views never wait for the warm to finish. */
 export function availabilityWarm(items: AvailabilityArgs[]): Promise<void> {
 	const body: AvailabilityWarmBody = { items };
 	return postJson<unknown>('/api/availability/warm', body).then(() => undefined);
@@ -1353,6 +1353,11 @@ export function kitsuTrendingAnilist(opts: ReadOptions = {}): Promise<KitsuAnime
 	return getJson<KitsuAnimeRef[]>('/api/kitsu/trending-anilist', opts);
 }
 
+/** Body of `/api/kitsu/by-mal-ids`. */
+export interface KitsuByMalIdsBody {
+	mal_ids: number[];
+}
+
 /** Bridge a batch of MAL ids to Kitsu refs in one round-trip.
  *  Order is preserved; ids Kitsu can't map drop out of the response,
  *  and a Kitsu show two ids lead to is listed once, at the first.
@@ -1366,11 +1371,6 @@ export function kitsuTrendingAnilist(opts: ReadOptions = {}): Promise<KitsuAnime
  *  as the API's gate. The backend also enforces
  *  a 500-id batch cap server-side; this client doesn't pre-truncate
  *  so callers see a 4xx if they're pushing past the limit. */
-/** Body of `/api/kitsu/by-mal-ids`. */
-export interface KitsuByMalIdsBody {
-	mal_ids: number[];
-}
-
 export async function kitsuByMalIds(
 	malIds: number[],
 	opts: ReadOptions = {}
@@ -1613,15 +1613,6 @@ export function kitsuResolveAllmangaShowId(
 	);
 }
 
-/**
- * The ids of the `hits` a Continue row's guess may not take: the
- * backend reads the row's search title, the episode it reached and its
- * show key against each hit (`backend/src/commands/continue_guess.rs`).
- * The call itself asks nothing of Kitsu or the provider; the hits are
- * the ones the row's own search or slug lookup returned, or its stored
- * match. `search` says the hits are the title search's whole answer,
- * which the backend may refute as a whole; a lone hit is judged alone.
- */
 /** Body of `/api/history/guess/ruled-out`. */
 export interface GuessRuledOutBody {
 	key: string;
@@ -1631,6 +1622,15 @@ export interface GuessRuledOutBody {
 	search: boolean;
 }
 
+/**
+ * The ids of the `hits` a Continue row's guess may not take: the
+ * backend reads the row's search title, the episode it reached and its
+ * show key against each hit (`backend/src/commands/continue_guess.rs`).
+ * The call itself asks nothing of Kitsu or the provider; the hits are
+ * the ones the row's own search or slug lookup returned, or its stored
+ * match. `search` says the hits are the title search's whole answer,
+ * which the backend may refute as a whole; a lone hit is judged alone.
+ */
 export function kitsuGuessRuledOut(
 	title: string,
 	episode: number,
