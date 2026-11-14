@@ -646,6 +646,35 @@ describe('the Up next card at a finale', () => {
 		expect(card()!.textContent).not.toContain('Saga: Final Arc');
 	});
 
+	it('offers the whole franchise at the end of a chain that leads nowhere', async () => {
+		const { video } = await openEpisode({
+			franchise: franchise({
+				entries: [SAGA, FINAL],
+				links: [['10', '50']],
+				chain: {
+					entries: [SAGA, SECOND],
+					links: [['10', KITSU_ID]],
+					seams: ['10']
+				}
+			})
+		});
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card');
+		expect(card()!.textContent).toContain(m.watchorder_upnext_franchise_key());
+		expect(card()!.textContent).toContain('Saga');
+		const links = cardLinks();
+		expect(links.map((a) => a.getAttribute('href'))).toEqual([`/anime/${KITSU_ID}/franchise`]);
+		expect(links[0].getAttribute('aria-label')).toBe(
+			`${m.watchorder_upnext_franchise_key()}: Saga`
+		);
+		await until(
+			() =>
+				card()!.querySelector('[role="status"]')?.textContent ===
+				m.watchorder_upnext_franchise_announce({ name: 'Saga' }),
+			'the announcement'
+		);
+	});
+
 	it('goes on into the main story where the chain leads into it', async () => {
 		const { video } = await openEpisode({
 			franchise: franchise({
