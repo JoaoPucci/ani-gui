@@ -819,7 +819,7 @@ among themselves: *Heaven's Feel II* reads "02 of 03", in the strip's
 centre and the masthead eyebrow alike. The main-story title the chain
 meets stands beside them, uncounted, in the column it falls in by the
 order setting, keyed "From the main story" or "Into the main story"
-instead of Prequel or Sequel: *Fate/Zero 2nd Season* before *Heaven's
+instead of the column's usual key: *Fate/Zero 2nd Season* before *Heaven's
 Feel I*, the 2016 *Berserk* series after the third Golden Age film.
 In release order the 2000 *JoJo* OVA is "02 of 02", after the 1993
 OVA, with the 2012 series after it, into the main story. The heading
@@ -827,7 +827,15 @@ reads "Watch order", a rule, then "Outside the main story", also in a
 franchise read in part, which numbers nothing as anywhere else. A
 chain of one film (the *Unlimited Blade Works* film, *Boruto: Naruto
 the Movie*) reads "Film", not "01 of 01"; one of anything else shows
-no number.
+no number. A side story whose parent is a chain title is drawn under
+it on that chain, as a side story, with the same note. A seam keys its
+column only when it stands there alone: where a fork or a join puts it
+beside one of the chain's own titles, the column keeps its usual key
+and count, the seam counted among the ways on. In release order a
+seam takes its place by date like any title, so one that started
+between two of the chain's own titles stands between them, keyed as
+the main story each of them meets, while their places are still
+counted over the chain's own titles.
 
 **Edge cases.**
 
