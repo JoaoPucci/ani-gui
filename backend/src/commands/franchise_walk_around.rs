@@ -19,16 +19,16 @@
 //! listings placed it, else is a film when it is a movie, else a
 //! version. The anchor's own chain, outside the main story
 //! (`franchise_walk_chain.rs`), is served beside the sections, which it
-//! leaves as they are.
+//! leaves as they are (`franchise_walk_chain_served.rs`).
 
 use std::collections::BTreeSet;
 
-use super::chain::linked;
-use super::links::{links, links_among, parents};
+use super::chain_served::served;
+use super::links::{links, parents};
 use super::name::named;
 use super::rules::Run;
 use super::sections::{is_movie, Sections};
-use super::{order_key, Chain, Franchise, Lookup};
+use super::{order_key, Franchise, Lookup};
 use crate::meta::kitsu::FranchiseEntry;
 
 /// Roles that never place an entry around the run.
@@ -83,7 +83,7 @@ fn sections(run: &Run, look: &Lookup<'_>) -> Sections {
 /// The entries of `ids` in start order. Every id the walk names was
 /// met through a relation of a listing it read, or is the anchor, whose
 /// details it read first, so each has an entry.
-fn entries(ids: &BTreeSet<String>, run: &Run, look: &Lookup<'_>) -> Vec<FranchiseEntry> {
+pub(super) fn entries(ids: &BTreeSet<String>, run: &Run, look: &Lookup<'_>) -> Vec<FranchiseEntry> {
     let mut found: Vec<FranchiseEntry> = ids
         .iter()
         .filter_map(|id| look.entry(id, &run.consulted))
@@ -120,28 +120,11 @@ pub(super) fn assemble(anchor: &str, run: &Run, look: &Lookup<'_>) -> Franchise 
         recaps,
         links: links(run, look),
         parents: parents(anchor, run),
-        chain: chain(run, look),
+        chain: served(run, look),
         complete: run.complete
             && run
                 .consulted
                 .iter()
                 .all(|c| look.listing(c).is_some_and(|l| l.complete)),
     }
-}
-
-/// The anchor's own chain, as served.
-fn chain(run: &Run, look: &Lookup<'_>) -> Option<Chain> {
-    let ids = run.chain.as_ref()?;
-    let all: BTreeSet<String> = ids.own.union(&ids.seams).cloned().collect();
-    Some(Chain {
-        entries: entries(&all, run, look),
-        links: links_among(&all, look)
-            .into_iter()
-            .filter(|(a, b)| linked(look, a, b))
-            .collect(),
-        seams: entries(&ids.seams, run, look)
-            .into_iter()
-            .map(|e| e.id)
-            .collect(),
-    })
 }

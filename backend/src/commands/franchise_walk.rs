@@ -168,8 +168,12 @@ pub(crate) fn id_key(id: &str) -> (u64, String) {
 mod alt;
 #[path = "franchise_walk_around.rs"]
 mod around;
+#[path = "franchise_walk_candidates.rs"]
+mod candidates;
 #[path = "franchise_walk_chain.rs"]
 mod chain;
+#[path = "franchise_walk_chain_served.rs"]
+mod chain_served;
 #[path = "franchise_walk_first.rs"]
 mod first;
 #[path = "franchise_walk_graph.rs"]

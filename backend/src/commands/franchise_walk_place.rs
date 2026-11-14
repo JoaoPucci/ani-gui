@@ -10,7 +10,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::parents::{parent_stories, to_read};
+use super::candidates::to_read;
+use super::parents::parent_stories;
 use super::rules::Run;
 use super::{order_key, Lookup};
 
