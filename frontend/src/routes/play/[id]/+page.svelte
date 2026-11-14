@@ -2736,7 +2736,8 @@
 	 *  ($lib/play/switch-show.ts). The between-episodes loading band
 	 *  holds the player meanwhile. The route mounts the page afresh for
 	 *  the other show (./+layout.svelte); a stream that cannot be had
-	 *  leaves the episode on screen and says so. */
+	 *  leaves the episode on screen and says so, while the viewer is
+	 *  still on the player. */
 	async function switchToPick() {
 		await runPickSwitch(playLink.linked, {
 			busy: () => switchBusy,
@@ -2758,9 +2759,11 @@
 			choices: (showId) => ({ version: storedChoice(showId), caption: storedCaption(showId) }),
 			episode: () => episodeNum,
 			row: () => fromRow,
-			// Claimed as the switch runs, never by a click the lock turns
-			// away: that would outdate the play holding it.
-			run: (req) => switchShow(pickSwitchEffects(req, navigationClaims.claim()), req),
+			claim: () => {
+				const claimed = navigationClaims.claim();
+				return () => !gone && claimed();
+			},
+			run: (req, here) => switchShow(pickSwitchEffects(req, here), req),
 			failed: (pick) =>
 				toastStore.push({
 					kind: 'error',

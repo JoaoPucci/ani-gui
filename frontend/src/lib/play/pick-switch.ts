@@ -13,7 +13,9 @@
  * player took it as it mounted. A switch that failed — one whose own
  * effects threw among them — says so, and the
  * episode on screen goes on as it was: playing again if it was playing.
- * One abandoned — the viewer left — does neither.
+ * One abandoned — the viewer left — does neither, and so does one that
+ * threw once the viewer had left: the player is claimed as the switch
+ * runs, and the switch gets that claim.
  *
  * The page is an adapter: it hands in the video, the lock, the audio
  * stores and the switch with its own effects.
@@ -57,8 +59,12 @@ export interface PickSwitchDeps {
 	/** The episode playing, and the card row the session is for. */
 	episode: () => number;
 	row: () => string | null;
-	/** The switch itself, with the page's effects. */
-	run: (req: SwitchRequest) => Promise<SwitchOutcome>;
+	/** Claim the player for this switch: whether the viewer is still on
+	 *  it. Claimed once, as the switch runs, never by a click the lock
+	 *  turns away (that would outdate the play holding it). */
+	claim: () => () => boolean;
+	/** The switch itself, with the page's effects, while `here` holds. */
+	run: (req: SwitchRequest, here: () => boolean) => Promise<SwitchOutcome>;
 	/** Say the switch to `pick` failed. */
 	failed: (pick: Pick) => void;
 }
@@ -76,21 +82,26 @@ export async function switchToPick(
 	deps.carryAudio(pick.id, mode);
 	const { version, caption } = deps.choices(pick.id);
 	deps.setBusy(true);
+	const here = deps.claim();
 	let outcome: SwitchOutcome;
 	try {
-		outcome = await deps.run({
-			to: pick.show,
-			episode: deps.episode(),
-			at: playback.at,
-			row: deps.row(),
-			mode,
-			version,
-			caption,
-			rate: playback.rate
-		});
+		outcome = await deps.run(
+			{
+				to: pick.show,
+				episode: deps.episode(),
+				at: playback.at,
+				row: deps.row(),
+				mode,
+				version,
+				caption,
+				rate: playback.rate
+			},
+			here
+		);
 	} catch {
-		// A switch whose own effects threw switched to nothing.
-		outcome = 'failed';
+		// A switch whose own effects threw switched to nothing, and is the
+		// player's to say only while the viewer is still on it.
+		outcome = here() ? 'failed' : 'abandoned';
 	} finally {
 		deps.takeAudio(pick.id);
 		deps.setBusy(false);
