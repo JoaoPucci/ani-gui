@@ -56,6 +56,10 @@ import {
 	type AvailabilityBatchResponse,
 	type AvailabilityResponse,
 	type AvailabilityWarmBody,
+	type CandidatesRequest,
+	type CardLine,
+	type CardLineRow,
+	type CardLinesBody,
 	type Config,
 	type CreateSessionArgs,
 	type CreateSessionResponse,
@@ -74,15 +78,24 @@ import {
 	type KitsuPosterImage,
 	type KitsuSearchBody,
 	type KitsuSearchPage,
+	type LinkBody,
+	type LinkCandidate,
+	type LinkGroupRequest,
+	type LinkOutcome,
+	type LinkVerdict,
+	type LinkWarning,
+	type LinkedRow,
 	type PlayArgs,
 	type PlayProgress,
 	type RefillsBody,
+	type RowMatch,
 	type SearchOrder,
 	type SessionSubtitle,
 	type SkipInterval,
 	type TitleMatchBody,
 	type UnsettledReason,
 	type UpcomingEpisode,
+	type VerdictRequest,
 	type VersionInfo,
 	type historyByKitsu
 } from './api';
@@ -511,7 +524,31 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		url: 'string',
 		publishedAt: 'string',
 		body: 'string'
-	} satisfies Spec<ReleaseInfo>
+	} satisfies Spec<ReleaseInfo>,
+	LinkOutcome: {
+		kitsu_id: 'string',
+		linked: 'object[]',
+		overtaken: '?boolean'
+	} satisfies Spec<LinkOutcome>,
+	LinkedRow: {
+		row: 'string',
+		previous: 'string|null',
+		ep_no: 'string',
+		watched_at: 'number|null'
+	} satisfies Spec<LinkedRow>,
+	LinkCandidate: {
+		ref: 'object',
+		current: 'boolean',
+		warnings: 'string[]'
+	} satisfies Spec<LinkCandidate>,
+	CardLine: {
+		line: 'string',
+		correctable: 'boolean'
+	} satisfies Spec<CardLine>,
+	Verdict: {
+		offer: 'string|null',
+		kept: 'boolean'
+	} satisfies Spec<LinkVerdict>
 };
 
 /** Each body the backend reads, by its backend name: the spec of the
@@ -652,6 +689,59 @@ const REQUESTS: Record<string, { spec: Record<string, string>; unsent?: string[]
 			status: 'optional',
 			progress: 'optional'
 		} satisfies BodySpec<SetEntryBody>
+	},
+	LinkArgs: {
+		spec: {
+			card: 'required',
+			rows: 'required',
+			kitsu_id: 'required'
+		} satisfies BodySpec<LinkBody>
+	},
+	LinkGroupArgs: {
+		spec: {
+			card: 'required',
+			show: 'required',
+			saved: 'required',
+			rows: 'required'
+		} satisfies BodySpec<LinkGroupRequest>
+	},
+	RowMatch: {
+		spec: {
+			id: 'required',
+			show: 'required',
+			trusted: 'required'
+		} satisfies BodySpec<RowMatch>
+	},
+	CandidatesArgs: {
+		spec: {
+			row: 'required',
+			title: 'required',
+			current: 'required',
+			query: 'required',
+			episode: 'required'
+		} satisfies BodySpec<CandidatesRequest>
+	},
+	CardLinesArgs: { spec: { rows: 'required' } satisfies BodySpec<CardLinesBody> },
+	CardRow: {
+		spec: {
+			id: 'required',
+			guessed_from: 'required',
+			show: 'required',
+			guess: 'required',
+			named: 'required'
+		} satisfies BodySpec<CardLineRow>
+	},
+	VerdictArgs: {
+		spec: {
+			page: 'required',
+			show: 'required',
+			trusted: 'required',
+			named: 'required',
+			asks_guess: 'required',
+			carried: 'required',
+			picked: 'required',
+			in_player: 'required'
+		} satisfies BodySpec<VerdictRequest>
 	}
 };
 
@@ -688,6 +778,10 @@ same<ExternalPlayerKind, Config['external_player_kind']>(true);
 same<SidecarTrack, SessionSubtitle>(true);
 const PROGRESS_KINDS = ['searching', 'matched', 'links_fetched'] as const;
 same<(typeof PROGRESS_KINDS)[number], PlayProgress['kind']>(true);
+const LINK_WARNINGS = ['season', 'episode'] as const;
+same<(typeof LINK_WARNINGS)[number], LinkWarning>(true);
+const OFFER_KINDS = ['guess', 'again'] as const;
+same<(typeof OFFER_KINDS)[number], NonNullable<LinkVerdict['offer']>>(true);
 
 const ENUMS: Record<string, readonly string[]> = {
 	MediaKind: MEDIA_KINDS,
@@ -700,7 +794,9 @@ const ENUMS: Record<string, readonly string[]> = {
 	'EntryView.status': LIST_STATUSES,
 	ProviderKind: PROVIDERS,
 	PkceMethod: PKCE_METHODS,
-	Lane: LANES
+	Lane: LANES,
+	LinkWarning: LINK_WARNINGS,
+	OfferKind: OFFER_KINDS
 };
 
 // — The error envelope ——————————————————————————————————————————————
