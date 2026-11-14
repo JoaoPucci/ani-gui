@@ -641,7 +641,10 @@ anchors.
 without a run of its own. Its chain is the franchise's entries outside
 the main story joined to it by prequel and sequel links, a link counted
 from either side, with the main-story titles one of them is linked to:
-its seams, where the chain leaves the main story or leads into it.
+its seams, where the chain leaves the main story or leads into it. Two
+entries that list each other as other versions are never linked on a
+chain, as rule 3 never puts both in a run: a page listing one entry as
+both its prequel and its other version gets no seam into it.
 [data] *Heaven's Feel* I to III, with *Fate/Zero 2nd Season*; the three
 *Berserk* Golden Age films, with the 2016 series they lead into; the two
 *JoJo* OVAs, with the 2012 series the 2000 OVA names as its prequel; the

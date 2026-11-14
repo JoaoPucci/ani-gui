@@ -23,6 +23,7 @@
 
 use std::collections::BTreeSet;
 
+use super::chain::linked;
 use super::links::{links, links_among, parents};
 use super::name::named;
 use super::rules::Run;
@@ -134,7 +135,10 @@ fn chain(run: &Run, look: &Lookup<'_>) -> Option<Chain> {
     let all: BTreeSet<String> = ids.own.union(&ids.seams).cloned().collect();
     Some(Chain {
         entries: entries(&all, run, look),
-        links: links_among(&all, look),
+        links: links_among(&all, look)
+            .into_iter()
+            .filter(|(a, b)| linked(look, a, b))
+            .collect(),
         seams: entries(&ids.seams, run, look)
             .into_iter()
             .map(|e| e.id)
