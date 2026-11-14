@@ -81,7 +81,7 @@ const nearMiss = fc.oneof(
   fc.string(),
 );
 
-test("only the secret itself is admitted, in the carrier its route allows", () => {
+test("only the secret itself, as the header, is admitted", () => {
   const method = fc.constantFrom("GET", "POST", "PUT", "DELETE");
   const route = fc.constantFrom(...HEADERLESS, "/api/history", "/api/sessions");
   fc.assert(
@@ -280,13 +280,15 @@ test("a URL nothing was held at is a 404, and the server's URLs are its own", as
   });
 });
 
-test("a query secret on anything but a GET is refused through the server, as the gate refuses it", async () => {
+test("a query secret is refused through the server, as the gate refuses it", async () => {
   await withServer(async (server) => {
-    const res = await fetch(
-      server.hold({ json: 1 }, { path: "/api/image", query: `secret=${SECRET}`, secret: SECRET }),
-      { method: "POST" },
-    );
-    assert.equal(res.status, 403);
+    for (const method of ["GET", "POST"]) {
+      const res = await fetch(
+        server.hold({ json: 1 }, { path: "/api/image", query: `secret=${SECRET}`, secret: SECRET }),
+        { method },
+      );
+      assert.equal(res.status, 403, method);
+    }
   });
 });
 

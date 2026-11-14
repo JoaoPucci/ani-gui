@@ -198,3 +198,22 @@ test("the header is added exactly when the app's page asks a header-less route o
     }),
   );
 });
+
+// The main process's copy of the header name and of the header-less
+// routes is held to the backend's own source, verbatim: a renamed
+// header or a moved route would otherwise leave every poster and
+// progress stream refused, with no test to say so.
+test("the header's name and the header-less routes are the backend's", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const root = path.join(__dirname, "..", "..", "backend", "src");
+  const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
+  assert.ok(
+    read("account/internal_secret.rs").includes(`HeaderName::from_static("${SECRET_HEADER}")`),
+    "backend/src/account/internal_secret.rs INTERNAL_SECRET_HEADER",
+  );
+  const router = read("api/mod.rs");
+  for (const p of HEADERLESS_PATHS) {
+    assert.ok(router.includes(`.route("${p}", get(`), `backend/src/api/mod.rs GET ${p}`);
+  }
+});
