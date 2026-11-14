@@ -827,8 +827,9 @@ reads "Watch order", a rule, then "Outside the main story", also in a
 franchise read in part, which numbers nothing as anywhere else. A
 chain of one film (the *Unlimited Blade Works* film, *Boruto: Naruto
 the Movie*) reads "Film", not "01 of 01"; one of anything else shows
-no number. A side story whose parent is a chain title is drawn under
-it on that chain, as a side story, with the same note. A seam keys its
+no number. A side story whose parents are all outside the main story
+is drawn under the earliest on its chain, as a side story, with the
+same note. A seam keys its
 column only when it stands there alone: where a fork or a join puts it
 beside one of the chain's own titles, the column keeps its usual key
 and count, the seam counted among the ways on. In release order a
