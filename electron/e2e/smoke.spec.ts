@@ -350,13 +350,13 @@ test("the launch's secret is on no process's command line, and only the app's pa
   }
 });
 
-test("a renderer line naming a secret-bearing URL is logged without the launch's secret", async () => {
-  // The routes an <img> or an EventSource loads carry the secret as
-  // `secret=` in their URL, and the main process relays the renderer's
-  // console to its own stdout (the journal, a terminal), redacted.
-  // Chromium's own "Failed to load resource" lines are not part of that
-  // relay: Electron's console-message event never receives network
-  // messages, so the line is one the page itself logs.
+test("a renderer line naming the launch's secret is logged without it", async () => {
+  // The main process relays the renderer's console to its own stdout
+  // (the journal, a terminal), redacted: by the secret's value and by
+  // the shapes a secret travels in. Chromium's own "Failed to load
+  // resource" lines are not part of that relay (Electron's
+  // console-message event never receives network messages), so the
+  // lines here are ones the page itself logs.
   const { app, page } = await launchAppWithStubs();
   try {
     const secret = await page.evaluate(() => window.aniGui?.internalSecret);
@@ -366,15 +366,15 @@ test("a renderer line naming a secret-bearing URL is logged without the launch's
       out += chunk.toString("utf-8");
     });
     await page.evaluate(() => {
-      const bridge = window.aniGui!;
-      const base = bridge.lanes?.image ?? bridge.apiBase;
-      const url = `${base}/api/image?url=${encodeURIComponent("https://e.example/a.jpg")}&secret=${bridge.internalSecret}`;
-      console.error(`poster failed: ${url}`);
-      console.log(`relayed: ${encodeURIComponent(url)}`);
+      const secret = window.aniGui!.internalSecret;
+      console.error(`handed: ${secret}`);
+      console.warn(`x-ani-gui-internal-secret: ${secret}`);
+      console.log(`relayed: ${encodeURIComponent(`http://h/api/image?secret=${secret}`)}`);
     });
-    await expect.poll(() => out, { timeout: 15_000 }).toContain("poster failed:");
-    await expect.poll(() => out, { timeout: 15_000 }).toContain("relayed:");
-    expect(out).toContain("secret=<redacted>");
+    for (const line of ["handed:", "x-ani-gui-internal-secret:", "relayed:"]) {
+      await expect.poll(() => out, { timeout: 15_000 }).toContain(line);
+    }
+    expect(out).toContain("<redacted>");
     expect(out).not.toContain(secret as string);
   } finally {
     await app.close();
