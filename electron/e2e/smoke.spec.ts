@@ -285,7 +285,13 @@ test("a test launch's backend reaches nothing beyond this machine", async () => 
   try {
     const apiBase = await page.evaluate(() => window.aniGui?.apiBase);
     expect(apiBase).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
-    const res = await fetch(`${apiBase}/api/update-check`);
+    // The API answers only a request carrying the launch's secret,
+    // which the preload bridge hands the renderer.
+    const secret = await page.evaluate(() => window.aniGui?.internalSecret);
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    const res = await fetch(`${apiBase}/api/update-check`, {
+      headers: { "x-ani-gui-internal-secret": secret ?? "" },
+    });
     // The backend answers a check that could not reach GitHub with no
     // release, as it does offline.
     expect(res.status).toBe(204);

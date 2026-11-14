@@ -132,7 +132,13 @@ async function session(page: Page, base: string, upstream: string) {
     async ({ base, upstream }) => {
       const res = await fetch(`${base}/api/sessions`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          // The API answers only a request carrying the launch's secret.
+          "x-ani-gui-internal-secret":
+            (window as { aniGui?: { internalSecret?: string } }).aniGui
+              ?.internalSecret ?? "",
+        },
         body: JSON.stringify({ upstream_url: upstream, referer: "" }),
       });
       if (!res.ok)
