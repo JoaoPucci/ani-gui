@@ -7,11 +7,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Config, KitsuAnimeRef, KitsuSearchPage } from '$lib/api';
 
 const apiMock = vi.hoisted(() => ({
-	availabilityBatch: vi.fn(),
-	availabilityWarm: vi.fn(),
-	checkAvailability: vi.fn(),
-	altTitlesFromKitsu: vi.fn(() => []),
-	yearFromKitsuRef: vi.fn(() => null)
+	availabilityBatch: vi.fn<typeof Api.availabilityBatch>(),
+	availabilityWarm: vi.fn<typeof Api.availabilityWarm>(),
+	checkAvailability: vi.fn<typeof Api.checkAvailability>(),
+	altTitlesFromKitsu: vi.fn<typeof Api.altTitlesFromKitsu>(() => []),
+	yearFromKitsuRef: vi.fn<typeof Api.yearFromKitsuRef>(() => null)
 }));
 vi.mock('$lib/api', () => apiMock);
 
@@ -19,6 +19,8 @@ import { createSearchRunner, type SearchRunnerDeps } from './run-search';
 import type { PagingPhase } from './paging';
 import { captureSearch, FRESH_FOR_MS, type SearchSnapshot } from './snapshot';
 
+import { configAnswer } from '../../../tests/answers';
+import type * as Api from '$lib/api';
 function ref(id: string): KitsuAnimeRef {
 	return {
 		id,
@@ -66,7 +68,7 @@ function harness(overrides: Partial<SearchRunnerDeps> = {}) {
 	const reached: boolean[] = [];
 	const deps: SearchRunnerDeps = {
 		searchPage: kitsu(5),
-		getConfig: vi.fn().mockResolvedValue({ mode: 'sub' } as unknown as Config),
+		getConfig: vi.fn().mockResolvedValue(configAnswer({ mode: 'sub' })),
 		pickMode: (c) => (c as unknown as { mode: 'sub' | 'dub' } | null)?.mode ?? 'sub',
 		filter: vi.fn().mockImplementation(async (items, _mode, emit) => emit(items)),
 		onResults: (v) => results.push(v),
@@ -228,7 +230,7 @@ describe('resume, asking again', () => {
 	it('runs it again when the audio setting changed since', async () => {
 		const saved = await savedSearch();
 		const h = harness({
-			getConfig: vi.fn().mockResolvedValue({ mode: 'dub' } as unknown as Config)
+			getConfig: vi.fn().mockResolvedValue(configAnswer({ mode: 'dub' }))
 		});
 		await createSearchRunner(h.deps).resume(saved, { now: saved.capturedAt, reload: false });
 		await drain();
@@ -284,7 +286,7 @@ describe('resume against other runs', () => {
 		const runner = createSearchRunner(h.deps);
 		const run = runner.run('frieren');
 		const resumed = runner.resume(saved, { now: saved.capturedAt, reload: false });
-		answer({ mode: 'sub' } as unknown as Config);
+		answer(configAnswer({ mode: 'sub' }));
 		await run;
 		await resumed;
 		expect(h.deps.searchPage).not.toHaveBeenCalled();
@@ -300,7 +302,7 @@ describe('resume against other runs', () => {
 		const runner = createSearchRunner(h.deps);
 		const resumed = runner.resume(saved, { now: saved.capturedAt, reload: false });
 		const run = runner.run('himmel');
-		answer({ mode: 'sub' } as unknown as Config);
+		answer(configAnswer({ mode: 'sub' }));
 		await resumed;
 		await run;
 		expect(h.reached).toEqual([]);

@@ -14,9 +14,17 @@ import { accountStore } from './store.svelte';
 import { refreshAccount } from './refresh-flow';
 import { freshBearerFor, __resetInFlightRefreshes } from './fresh-bearer';
 import { persistAccount, refreshTokens } from './api';
-import type { PersistedAccount } from './types';
+import type { PersistedAccount, Tokens } from './types';
 import { KEYRING_WAIT_MS } from './keyring-wait';
 
+import type { AniErrorPayload } from '../api';
+
+/** The renewal route answering the tokens it renewed. */
+const renewed = (tokens: Tokens) => Response.json(tokens);
+
+/** A refusal: `status`, with the error envelope the backend sends. */
+const refused = (status: number, envelope: AniErrorPayload) =>
+	new Response(JSON.stringify(envelope), { status });
 function payload(overrides: Partial<PersistedAccount> = {}): PersistedAccount {
 	return {
 		access_token: 'a',
@@ -698,12 +706,8 @@ describe('accountStore.refreshExpired and a refused renewal', () => {
 		(globalThis as { window?: { aniGui?: unknown } }).window = {
 			aniGui: { apiBase: 'http://127.0.0.1:1' }
 		};
-		const fetch = vi.fn(
-			async () =>
-				new Response(
-					JSON.stringify({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' }),
-					{ status: 401 }
-				)
+		const fetch = vi.fn(async () =>
+			refused(401, { kind: 'refresh_rejected', key: 'error.account.refresh_rejected' })
 		);
 		vi.stubGlobal('fetch', fetch);
 		try {
@@ -767,12 +771,8 @@ describe('a renewal that a hydrate overtakes', () => {
 	const fresh = payload({ access_token: 'new', refresh_token: 'rt-new' });
 
 	it('does not pin the old renewal’s refusal on the sign-in the re-read found', async () => {
-		const r = race(
-			() =>
-				new Response(
-					JSON.stringify({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' }),
-					{ status: 401 }
-				)
+		const r = race(() =>
+			refused(401, { kind: 'refresh_rejected', key: 'error.account.refresh_rejected' })
 		);
 		accountStore.setExpired(
 			'mal',
@@ -794,7 +794,7 @@ describe('a renewal that a hydrate overtakes', () => {
 
 	it('does not overwrite the sign-in the re-read found with the old one renewed', async () => {
 		const r = race(() =>
-			Response.json({
+			renewed({
 				access_token: 'old-renewed',
 				refresh_token: 'rt2',
 				expires_at_epoch_s: 1_999_999_999
@@ -820,7 +820,7 @@ describe('a renewal that a hydrate overtakes', () => {
 
 	it('still credits a renewal the re-read did not overtake', async () => {
 		const r = race(() =>
-			Response.json({
+			renewed({
 				access_token: 'old-renewed',
 				refresh_token: 'rt2',
 				expires_at_epoch_s: 1_999_999_999
@@ -845,7 +845,7 @@ describe('a renewal that a hydrate overtakes', () => {
 
 	it('still credits a renewal when the re-read finds only that the same sign-in’s date passed', async () => {
 		const r = race(() =>
-			Response.json({
+			renewed({
 				access_token: 'renewed',
 				refresh_token: 'rt2',
 				expires_at_epoch_s: 1_999_999_999
@@ -880,7 +880,7 @@ describe('a renewal that a hydrate overtakes', () => {
 		// earlier write for the provider. The re-read lands while it
 		// waits: the save must not reach the keychain.
 		const r = race(() =>
-			Response.json({
+			renewed({
 				access_token: 'old-renewed',
 				refresh_token: 'rt2',
 				expires_at_epoch_s: 1_999_999_999
@@ -931,7 +931,7 @@ describe('a renewal that a hydrate overtakes', () => {
 		// write: the caller must get the renewed bearer, not the old one.
 		__resetInFlightRefreshes();
 		const r = race(() =>
-			Response.json({
+			renewed({
 				access_token: 'renewed',
 				refresh_token: 'rt2',
 				expires_at_epoch_s: 1_999_999_999

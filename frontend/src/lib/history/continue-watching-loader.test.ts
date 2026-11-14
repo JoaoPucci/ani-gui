@@ -3,12 +3,13 @@ import { loadContinueWatchingState } from './continue-watching-loader';
 import { probeScope } from '$lib/availability/probe-scope';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
+import { kitsuRefAnswer } from '../../../tests/answers';
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
 	return { id, ep_no: ep, title };
 }
 
 function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
-	return {
+	return kitsuRefAnswer({
 		id,
 		slug: `slug-${id}`,
 		canonical_title: `Title ${id}`,
@@ -18,7 +19,7 @@ function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
 		status: 'current',
 		poster_image: null,
 		start_date: null
-	} as unknown as KitsuAnimeRef;
+	});
 }
 
 // Defer helper — returns a promise and its resolver so the test

@@ -8,6 +8,7 @@ import type { ListEntry, Provider } from './types';
 import { AccountApiError } from './api';
 import type { KitsuAnimeRef } from '$lib/api';
 
+import { kitsuRefAnswer } from '../../../tests/answers';
 function row(over: Partial<ListEntry> = {}): ListEntry {
 	return {
 		provider: 'anilist',
@@ -23,27 +24,22 @@ function row(over: Partial<ListEntry> = {}): ListEntry {
 }
 
 function kref(id: string): KitsuAnimeRef {
-	return {
+	return kitsuRefAnswer({
 		id,
 		slug: `slug-${id}`,
 		canonical_title: `Title ${id}`,
-		alt_titles: [],
 		poster_image: null,
 		cover_image: null,
 		synopsis: null,
 		episode_count: null,
-		episode_length_minutes: null,
 		status: null,
 		subtype: null,
 		start_date: null,
 		end_date: null,
 		age_rating: null,
-		age_rating_guide: null,
 		average_rating: null,
-		ratings_rank: null,
-		popularity_rank: null,
-		mal_id: null
-	} as unknown as KitsuAnimeRef;
+		popularity_rank: null
+	});
 }
 
 describe('loadWatchLater', () => {

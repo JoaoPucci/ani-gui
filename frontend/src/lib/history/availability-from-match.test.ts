@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { makeFetchAvailability } from './availability-from-match';
 import type { AvailabilityArgs, AvailabilityResponse, KitsuAnimeRef } from '$lib/api';
 
+import { kitsuRefAnswer } from '../../../tests/answers';
 function makeMatch(overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
-	return {
+	return kitsuRefAnswer({
 		id: 'kitsu-id',
 		slug: 'slug',
 		canonical_title: 'Canonical Title',
@@ -14,7 +15,7 @@ function makeMatch(overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 		poster_image: null,
 		start_date: '2024-01-12',
 		...overrides
-	} as unknown as KitsuAnimeRef;
+	});
 }
 
 describe('makeFetchAvailability', () => {

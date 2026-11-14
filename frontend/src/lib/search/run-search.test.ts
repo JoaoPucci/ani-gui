@@ -1,18 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Config, KitsuAnimeRef, KitsuSearchPage } from '$lib/api';
+import type { AvailabilityResponse, Config, KitsuAnimeRef, KitsuSearchPage } from '$lib/api';
 
 const apiMock = vi.hoisted(() => ({
-	availabilityBatch: vi.fn(),
-	availabilityWarm: vi.fn(),
-	checkAvailability: vi.fn(),
-	altTitlesFromKitsu: vi.fn(() => []),
-	yearFromKitsuRef: vi.fn(() => null)
+	availabilityBatch: vi.fn<typeof Api.availabilityBatch>(),
+	availabilityWarm: vi.fn<typeof Api.availabilityWarm>(),
+	checkAvailability: vi.fn<typeof Api.checkAvailability>(),
+	altTitlesFromKitsu: vi.fn<typeof Api.altTitlesFromKitsu>(() => []),
+	yearFromKitsuRef: vi.fn<typeof Api.yearFromKitsuRef>(() => null)
 }));
 vi.mock('$lib/api', () => apiMock);
 
 import { createSearchRunner, type SearchRunnerDeps } from './run-search';
 import { filterAvailableProgressive } from '$lib/availability/progressive';
 
+import { availabilityAnswer, configAnswer } from '../../../tests/answers';
+import type * as Api from '$lib/api';
 function ref(id: string, overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {
 		id,
@@ -186,7 +188,7 @@ describe('createSearchRunner (generation guard)', () => {
 	});
 
 	it('caches config only after a successful load, reused across runs', async () => {
-		const getConfig = vi.fn().mockResolvedValue({ mode: 'dub' } as unknown as Config);
+		const getConfig = vi.fn().mockResolvedValue(configAnswer({ mode: 'dub' }));
 		const modes: string[] = [];
 		const h = makeHarness({
 			getConfig,
@@ -212,7 +214,7 @@ describe('createSearchRunner (generation guard)', () => {
 		const getConfig = vi
 			.fn()
 			.mockRejectedValueOnce(new Error('settings down'))
-			.mockResolvedValueOnce({ mode: 'dub' } as unknown as Config);
+			.mockResolvedValueOnce(configAnswer({ mode: 'dub' }));
 		const modes: string[] = [];
 		const h = makeHarness({
 			getConfig,
@@ -262,7 +264,7 @@ describe('acceptance: progressive search rendering (runner + real filter)', () =
 		// availability probes hang must still show its results after
 		// the grace, with the spinner gone.
 		vi.useFakeTimers();
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
 		apiMock.checkAvailability.mockReturnValue(new Promise(() => {}));
 		const hits = [ref('a'), ref('b', { status: 'finished' }), ref('c')];
 		const { runner, results, busyLog } = runnerWithRealFilter(hits);
@@ -277,11 +279,13 @@ describe('acceptance: progressive search rendering (runner + real filter)', () =
 
 	it('a late negative verdict prunes its card from the rendered grid', async () => {
 		vi.useFakeTimers();
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
-		const probes = new Map<string, (r: { available: boolean }) => void>();
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
+		const probes = new Map<string, (r: Partial<AvailabilityResponse>) => void>();
 		apiMock.checkAvailability.mockImplementation(
-			(req: { kitsu_id: string }) =>
-				new Promise<{ available: boolean }>((res) => probes.set(req.kitsu_id, res))
+			(req) =>
+				new Promise<AvailabilityResponse>((res) =>
+					probes.set(req.kitsu_id ?? '', (r) => res(availabilityAnswer(r)))
+				)
 		);
 		const keep = ref('keep');
 		const gone = ref('gone', { status: 'finished' });
@@ -376,7 +380,7 @@ describe('concurrent config loads (shared load promise)', () => {
 		const run2 = runner.run('b');
 		// The would-be second load resolves DUB before the first
 		// rejects — the exact interleaving that used to clobber.
-		second.resolve({ mode: 'dub' } as unknown as Config);
+		second.resolve(configAnswer({ mode: 'dub' }));
 		await Promise.resolve();
 		first.reject(new Error('stale load failed'));
 		await run1;

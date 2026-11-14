@@ -10,6 +10,7 @@ import {
 	type PositionStorage
 } from '$lib/play/watch-position';
 
+import { kitsuRefAnswer } from '../../../tests/answers';
 function memory(): PositionStorage {
 	const data = new Map<string, string>();
 	return { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) };
@@ -31,7 +32,7 @@ async function deleteAndForget(...args: Parameters<typeof executeKitsuGroupDelet
 	return result;
 }
 function m(id: string): KitsuAnimeRef {
-	return { id, canonical_title: 'Stub' } as KitsuAnimeRef;
+	return kitsuRefAnswer({ id, canonical_title: 'Stub' });
 }
 
 describe('executeKitsuGroupDelete', () => {

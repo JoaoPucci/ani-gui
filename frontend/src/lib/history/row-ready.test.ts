@@ -2,12 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { makeContinueRowReadyHandler } from './row-ready';
 import type { HistoryEntry, KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 
+import { episodeAnswer, kitsuRefAnswer } from '../../../tests/answers';
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
 	return { id, ep_no: ep, title };
 }
 
 function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
-	return {
+	return kitsuRefAnswer({
 		id,
 		slug: `slug-${id}`,
 		canonical_title: `Title ${id}`,
@@ -17,17 +18,17 @@ function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
 		status: 'current',
 		poster_image: null,
 		start_date: null
-	} as unknown as KitsuAnimeRef;
+	});
 }
 
 function makeKitsuEpisode(number: number, relative = number): KitsuEpisode {
-	return {
+	return episodeAnswer({
 		id: `ep-${number}`,
 		number,
 		relative_number: relative,
 		canonical_title: `Episode ${number}`,
 		thumbnail: null
-	} as unknown as KitsuEpisode;
+	});
 }
 
 interface Spy {
@@ -154,13 +155,13 @@ describe('makeContinueRowReadyHandler', () => {
 		const match = makeMatch('k-a', 12);
 		const spy = makeSpy([entry], () =>
 			Promise.resolve([
-				{
+				episodeAnswer({
 					id: 'wrong-1',
 					number: 26,
 					relative_number: 6,
 					canonical_title: 'rel-6',
 					thumbnail: null
-				} as unknown as KitsuEpisode
+				})
 			])
 		);
 		const handle = makeContinueRowReadyHandler(spy.deps);
@@ -518,7 +519,7 @@ describe('a held-back thumbnail landing later', () => {
 		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(2));
 
 		refills[0]([
-			{ ...makeKitsuEpisode(6), thumbnail: { original: 'https://x/6.jpg' } } as KitsuEpisode
+			episodeAnswer({ ...makeKitsuEpisode(6), thumbnail: { original: 'https://x/6.jpg' } })
 		]);
 		expect(spy.calls.setEpisode).toHaveLength(2);
 		expect(fillThumbnail).not.toHaveBeenCalled();

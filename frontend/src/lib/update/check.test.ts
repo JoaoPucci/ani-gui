@@ -9,10 +9,18 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { checkForUpdate } from './check';
+import type { ReleaseInfo } from './release-parse';
 
 const BASE = 'http://127.0.0.1:38123';
 
-function ok(body: unknown): Response {
+/** `/api/update-check` answering `body`. */
+function ok(body: ReleaseInfo | null): Response {
+	return new Response(JSON.stringify(body), { status: 200 });
+}
+
+/** An answer no backend sends, deliberately: the test is about what
+ *  the check does with one. */
+function malformed(body: unknown): Response {
 	return new Response(JSON.stringify(body), { status: 200 });
 }
 
@@ -20,7 +28,7 @@ function noContent(): Response {
 	return new Response(null, { status: 204 });
 }
 
-function release(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function release(overrides: Partial<ReleaseInfo> = {}): ReleaseInfo {
 	return {
 		tag: 'v0.5.0',
 		name: 'v0.5.0 — newer',
@@ -74,7 +82,7 @@ describe('checkForUpdate', () => {
 	});
 
 	it('returns null on a malformed payload shape', async () => {
-		const fetcher = vi.fn().mockResolvedValue(ok({ unexpected: true }));
+		const fetcher = vi.fn().mockResolvedValue(malformed({ unexpected: true }));
 		const out = await checkForUpdate({
 			currentVersion: '0.4.0',
 			fetcher,

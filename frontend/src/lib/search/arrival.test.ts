@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import type { KitsuAnimeRef } from '$lib/api';
 import { arrive, emptyView, restoredView } from './arrival';
 import { captureSearch, type SearchSnapshot } from './snapshot';
 
-const ref = (id: string) => ({ id, canonical_title: id }) as KitsuAnimeRef;
+import { kitsuRefAnswer } from '../../../tests/answers';
+const ref = (id: string) => kitsuRefAnswer({ id, canonical_title: id });
 
 function saved(q = 'frieren', withResults = true): SearchSnapshot {
 	return captureSearch({

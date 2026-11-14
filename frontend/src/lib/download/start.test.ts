@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // imports inside `start.ts` resolve to these stubs at load time.
 
 const apiMock = vi.hoisted(() => ({
-	downloadStream: vi.fn(),
-	availabilityBatch: vi.fn()
+	downloadStream: vi.fn<typeof Api.downloadStream>(),
+	availabilityBatch: vi.fn<typeof Api.availabilityBatch>()
 }));
 vi.mock('$lib/api', () => apiMock);
 
@@ -49,6 +49,8 @@ import { startDownload } from './start';
 import { m } from '$lib/paraglide/messages';
 import { describeError, describePlayFailure } from '$lib/play/error-copy';
 
+import type * as Api from '$lib/api';
+import type { AvailabilityBatchResponse } from '$lib/api';
 const baseArgs = {
 	title: 'Demon Slayer',
 	episode: '5',
@@ -200,7 +202,7 @@ describe('startDownload', () => {
 		// the dock row adds about the other audio comes from the
 		// availability cache and nowhere else.
 		const verdict = { kind: 'episode_unavailable', key: 'error.play.episode_unavailable' };
-		const cases: [Record<string, unknown> | Error, string][] = [
+		const cases: [AvailabilityBatchResponse | Error, string][] = [
 			[
 				{ cached: { '40684': true }, playable_episode_counts: { '40684': 12 } },
 				m.play_play_failure_episode_unavailable_try_other_audio()

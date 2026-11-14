@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { KitsuAnimeRef } from '$lib/api';
 import { createLiveSearch, type LiveSearchDeps, type LiveSearchView } from './live-search';
 
-const hit = (id: string) => ({ id, canonical_title: `Show ${id}` }) as unknown as KitsuAnimeRef;
+import { kitsuRefAnswer } from '../../../tests/answers';
+const hit = (id: string) => kitsuRefAnswer({ id, canonical_title: `Show ${id}` });
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 /** A search held until the case answers it, with the signal it went out with. */

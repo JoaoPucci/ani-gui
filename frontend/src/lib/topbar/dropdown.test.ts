@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fc from 'fast-check';
 
 const apiMock = vi.hoisted(() => ({
-	settingsGet: vi.fn()
+	settingsGet: vi.fn<typeof Api.settingsGet>()
 }));
 vi.mock('$lib/api', () => apiMock);
 
@@ -13,6 +13,7 @@ import {
 	shouldRenderDropdown
 } from './dropdown';
 
+import type * as Api from '$lib/api';
 describe('cycleSelectedIdx', () => {
 	it('returns -1 for an empty result list (no selection possible)', () => {
 		expect(cycleSelectedIdx(-1, 1, 0)).toBe(-1);

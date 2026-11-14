@@ -2,12 +2,13 @@ import { describe, expect, test, vi } from 'vitest';
 import type { Config } from '$lib/api';
 import { applyLocale } from './apply-locale';
 
+import { configAnswer } from '../../../tests/answers';
 function cfg(): Config {
-	return {
+	return configAnswer({
 		locale: 'en',
 		mode: 'sub',
 		download_quality: 'best'
-	} as Config;
+	});
 }
 
 describe('applyLocale', () => {

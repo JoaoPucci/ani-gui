@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Config } from '$lib/api';
 import { configOnce } from './config-once';
 
-const dub = { mode: 'dub' } as unknown as Config;
+import { configAnswer } from '../../../tests/answers';
+const dub = configAnswer({ mode: 'dub' });
 
 describe('configOnce', () => {
 	it('loads once, shared by everyone waiting, and keeps what loaded', async () => {

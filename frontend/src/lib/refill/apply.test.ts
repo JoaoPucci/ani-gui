@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 import { refillEpisodes, refilledImages } from './apply';
 
+import { episodeAnswer, kitsuRefAnswer } from '../../../tests/answers';
 function ep(id: string, number: number, thumb: string | null = null): KitsuEpisode {
-	return {
+	return episodeAnswer({
 		id,
 		canonical_title: null,
 		season_number: 1,
@@ -13,15 +14,15 @@ function ep(id: string, number: number, thumb: string | null = null): KitsuEpiso
 		synopsis: null,
 		airdate: null,
 		thumbnail: thumb ? { original: thumb } : null
-	} as KitsuEpisode;
+	});
 }
 
 function detail(id: string, cover: string | null): KitsuAnimeRef {
-	return {
+	return kitsuRefAnswer({
 		id,
 		cover_image: cover ? { tiny: null, small: null, large: cover, original: cover } : null,
-		anilist_banner: cover
-	} as KitsuAnimeRef;
+		...(cover ? { anilist_banner: cover } : {})
+	});
 }
 
 describe('refillEpisodes', () => {
