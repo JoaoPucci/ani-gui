@@ -41,9 +41,9 @@ test("the relayed line carries no secret, in the message or where it came from",
   const url = `http://127.0.0.1:4/api/image?url=x&secret=${secret}`;
   const line = rendererConsoleLine(
     3,
-    `Failed to load resource: the server responded with a status of 503 (${url})`,
+    `poster failed: ${url}`,
     0,
-    url,
+    `app://localhost/_app/x.js?ref=${encodeURIComponent(url)}`,
     [secret],
   );
   assert.ok(!line.includes(secret), line);

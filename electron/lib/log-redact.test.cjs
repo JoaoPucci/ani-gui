@@ -23,8 +23,8 @@ test("a secret= query parameter is redacted, wherever it sits in the query", () 
     `GET /api/play/stream?secret=${REDACTED}&title=a 503`,
   );
   assert.equal(
-    redactSecrets(`Failed to load resource (http://h/api/image?secret=${SECRET}#x)`),
-    `Failed to load resource (http://h/api/image?secret=${REDACTED}#x)`,
+    redactSecrets(`poster failed (http://h/api/image?secret=${SECRET}#x)`),
+    `poster failed (http://h/api/image?secret=${REDACTED}#x)`,
   );
 });
 
