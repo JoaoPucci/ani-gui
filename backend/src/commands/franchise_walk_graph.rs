@@ -51,7 +51,9 @@ pub(super) fn graph(run: &Run, look: &Lookup<'_>) -> Result<Graph, Vec<String>> 
         let mut need = Vec::new();
         let mut added = Vec::new();
         for n in next {
-            if !g.consulted.contains(&n) && g.consulted.len() >= MAX_LISTINGS {
+            // A listing still to read counts toward the bound as one
+            // read: the IO loop reads every listing asked for at once.
+            if !g.consulted.contains(&n) && g.consulted.len() + need.len() >= MAX_LISTINGS {
                 g.complete = false;
                 continue;
             }
