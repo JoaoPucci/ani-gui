@@ -23,7 +23,7 @@ pub(super) fn page(f: &Franchise) -> serde_json::Value {
 
 /// The answer from every listing the corpus holds, where the corpus
 /// holds all the walk reads.
-fn answers() -> Vec<(String, Franchise)> {
+pub(super) fn answers() -> Vec<(String, Franchise)> {
     let mut c = corpus();
     let ids: Vec<String> = c.listings.keys().cloned().collect();
     for id in &ids {

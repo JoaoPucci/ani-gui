@@ -212,3 +212,7 @@ mod root_prop_tests;
 #[cfg(test)]
 #[path = "franchise_corpus_page_test.rs"]
 mod corpus_page_tests;
+
+#[cfg(test)]
+#[path = "franchise_corpus_chain_test.rs"]
+mod corpus_chain_tests;

@@ -156,6 +156,50 @@ fn main_story(f: &Franchise) -> BTreeSet<String> {
     f.entries.iter().map(|e| e.id.clone()).collect()
 }
 
+/// A page's chain as served: its own titles, its seams, and its links.
+type Served = (BTreeSet<String>, BTreeSet<String>, Vec<(String, String)>);
+
+fn chain_of(f: &Franchise) -> Option<Served> {
+    let served = serde_json::to_value(f).expect("json");
+    let chain = served.get("chain").filter(|c| !c.is_null())?;
+    let seams: BTreeSet<String> = chain["seams"]
+        .as_array()
+        .expect("seams")
+        .iter()
+        .map(|v| v.as_str().expect("id").to_string())
+        .collect();
+    let own = chain["entries"]
+        .as_array()
+        .expect("entries")
+        .iter()
+        .map(|e| e["id"].as_str().expect("id").to_string())
+        .filter(|id| !seams.contains(id))
+        .collect();
+    let links = serde_json::from_value(chain["links"].clone()).expect("links");
+    Some((own, seams, links))
+}
+
+/// The ids `links` joins to `from` through `within`, `from` included.
+fn reach(from: &str, links: &[(String, String)], within: &BTreeSet<String>) -> BTreeSet<String> {
+    let mut seen = BTreeSet::from([from.to_string()]);
+    let mut todo = vec![from.to_string()];
+    while let Some(at) = todo.pop() {
+        for (a, b) in links {
+            let next = if *a == at {
+                b
+            } else if *b == at {
+                a
+            } else {
+                continue;
+            };
+            if within.contains(next) && seen.insert(next.clone()) {
+                todo.push(next.clone());
+            }
+        }
+    }
+    seen
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(512))]
 
@@ -196,6 +240,37 @@ proptest! {
                 prop_assert_eq!(&f.name, &g.name);
                 prop_assert_eq!(&f.name_from, &g.name_from);
                 prop_assert_eq!(page(f), page(g), "from {} and from {}", &f.anchor, &g.anchor);
+            }
+        }
+    }
+
+    /// A page in the main story has no chain. A page outside it that has
+    /// one is among its own titles; those are outside the main story and
+    /// joined to the page by the chain's links; its seams are in the
+    /// main story, each linked to one of its own titles; and every one of
+    /// its own titles answers with the same chain.
+    #[test]
+    fn a_page_outside_the_main_story_walks_a_chain_of_its_own((cat, all) in franchise()) {
+        for id in &all {
+            let (f, _) = drive_with(id, &cat, &[]);
+            let main = main_story(&f);
+            let chain = chain_of(&f);
+            if main.contains(id) {
+                prop_assert!(chain.is_none(), "{} is in the main story", id);
+                continue;
+            }
+            let Some((own, seams, links)) = chain else { continue };
+            prop_assert!(own.contains(id), "{} not among its own titles", id);
+            prop_assert!(own.iter().all(|o| !main.contains(o)), "{:?} meets {:?}", own, main);
+            prop_assert!(seams.is_subset(&main), "seams {:?}", seams);
+            prop_assert_eq!(reach(id, &links, &own), own.clone(), "from {}", id);
+            for s in &seams {
+                let linked = links.iter().any(|(a, b)| (a == s && own.contains(b)) || (b == s && own.contains(a)));
+                prop_assert!(linked, "seam {} meets no title of {:?}", s, own);
+            }
+            for o in own.iter().filter(|o| *o != id) {
+                let (g, _) = drive_with(o, &cat, &[]);
+                prop_assert_eq!(chain_of(&g), Some((own.clone(), seams.clone(), links.clone())), "from {} and from {}", o, id);
             }
         }
     }
