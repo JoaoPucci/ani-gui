@@ -8,9 +8,8 @@
 // `testing` (but not one whose path is built at run time, or a glob
 // that reaches it through a wildcard).
 //
-// The MSW side (an error answer, an answer wrong on purpose, and the
-// answers only the acceptance tier builds) is `frontend/tests/answers.ts`,
-// which re-exports these.
+// The MSW side (an error answer, and an answer wrong on purpose) is
+// `frontend/tests/answers.ts`, which re-exports these.
 
 import { AccountApiError } from '$lib/account/api';
 import type {
