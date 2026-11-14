@@ -1516,10 +1516,10 @@ The rules below hold on every surface:
   fork): "Ways to continue" over one row per branch. One not yet
   aired: "Next, when it airs", its date or "Date not announced", and
   no link. None: no card, except at the end of a chain outside the
-  main story, where it offers the whole franchise. A franchise read only in part (the walk
-  reached its bound, or a listing came back cut short) also gets no
-  card, since the entry that really comes next may be missing from
-  it. The mockup showed the card from the start of a last episode, so
+  main story, where it offers the whole franchise. A franchise read
+  only in part (the walk reached its bound, or a listing came back cut
+  short) also gets no card, since the entry that really comes next may
+  be missing from it. The mockup showed the card from the start of a last episode, so
   a screenshot could catch it; the player shows it once the video
   ends.
 - **Keyboard and screen readers.** The card never takes focus; Esc
