@@ -19,7 +19,7 @@ use crate::commands::play_native_test_provider::{
 };
 use crate::meta::kitsu::KitsuAnimeRef;
 
-fn state(td: &tempfile::TempDir) -> AppState {
+fn state(td: &tempfile::TempDir) -> crate::scratch::Scratch<AppState> {
     let mut state = super::tests::state_with_proxy_origin();
     state
         .providers

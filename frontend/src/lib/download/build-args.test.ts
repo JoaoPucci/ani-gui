@@ -14,6 +14,7 @@ function refWithCount(episode_count: number | null): KitsuAnimeRef {
 		id: 'k1',
 		canonical_title: 'Some Show',
 		titles: { en_jp: 'Some Show JP' },
+		abbreviated_titles: [],
 		slug: null,
 		synopsis: null,
 		start_date: '2026-01-15',

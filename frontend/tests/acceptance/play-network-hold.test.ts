@@ -166,7 +166,7 @@ function useShowHandlers() {
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
 		// The mount's next-episode prefetch.
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 	);
 }
 

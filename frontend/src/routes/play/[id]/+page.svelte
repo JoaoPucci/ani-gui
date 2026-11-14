@@ -106,6 +106,7 @@
 	import { createAniskipFetchTrigger, lengthReady } from '$lib/play/aniskip-fetch-trigger';
 	import { shouldShowSkipButton } from '$lib/play/skip-button-window';
 	import { decidePlayerKeyAction } from '$lib/play/keyboard';
+	import { isModalOpen } from '$lib/components/modal-layer';
 	import { createVolumeReveal } from '$lib/play/volume-reveal';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import {
@@ -115,6 +116,7 @@
 	import { clearBackgroundForShow, clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { createShowReleases } from '$lib/play/show-release';
 	import { createNavigationClaims } from '$lib/navigation/claims';
+	import { beginVisit, visitSeries, type Visit } from '$lib/navigation/visit';
 	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
 	import { createSourceScope } from '$lib/play/source-scope';
 	import { markStarted } from '$lib/play/watch-position';
@@ -134,6 +136,7 @@
 	import { HOLD_RUNWAY_MARGIN_S } from '$lib/play/stall-machine';
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
+	import { HLS_BUFFER_POLICY } from '$lib/play/hls-buffer-policy';
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
 	import { moreMenuQuality } from '$lib/play/more-menu-quality';
@@ -207,6 +210,10 @@
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
+	import { chromeReadsPlaying, type StartPhase } from '$lib/play/start-state';
+	import { watchStart, type StartWatch } from '$lib/play/start-watch';
+	import { HandoffGate } from '$lib/play/handoff-gate';
+	import { startEngine } from '$lib/play/quality-sink';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
@@ -334,7 +341,90 @@
 	// our own progress bar / play / volume / fullscreen UI on top
 	// of the video. Bindings keep the bar in sync with the video
 	// element's actual state without polling.
-	let isPaused = $state(true);
+	//
+	// Where the stream stands ($lib/play/start-state), not the element's
+	// `paused`: an autoplaying element reads paused from the attach to
+	// its first frame, and offering Play over a stream on its way is
+	// what makes a viewer press it. The button and the fullscreen
+	// keep-alive read the viewer's intent from here, and the loading
+	// indicator shows through a start and a stall.
+	let startPhase = $state<StartPhase>('idle');
+	// Watches the page's own video for as long as the page has it, not
+	// the slot the video sits in: a stream can attach while the error
+	// panel stands in for the slot.
+	// Ends the attached stream's resume hold, if it has one.
+	let endResumeHold: () => void = () => {};
+	// Whether the episode went to another player ($lib/play/handoff-gate).
+	// Until the viewer comes back to the embedded player nothing starts
+	// it again by itself: the engine is stopped, the element does not
+	// autoplay, a stream attaching meanwhile does not load, and the
+	// recoveries, retries and auto-play stand down. Coming back is the
+	// element's own `play` (its button, Space, a click, a media key,
+	// picture-in-picture), picking an episode, or Reload.
+	// The handoff's state ($lib/play/handoff-gate): the episode handed
+	// off, a start held for the viewer, a pick waiting for its stream,
+	// and whether the attached engine was started. The page only wires
+	// it to the element and the engine.
+	const handoff = new HandoffGate(
+		() => hls?.startLoad(),
+		// A manifest the handoff cut off is asked for again; the engine,
+		// its listeners and the fragment-loop guard stay as they are.
+		() => {
+			if (hls && attachedUrl) hls.loadSource(attachedUrl);
+		}
+	);
+	// Bumped when the viewer comes back, so the attach runs again for a
+	// src stream the handoff let go of (the gate holds which, and where).
+	let handoffReturns = $state(0);
+	/** The episode went to another player: a hold ends without
+	 *  starting anything, a start stops, the engine stops loading, and
+	 *  the element no longer starts on its own. A stream the element
+	 *  plays from its `src` (mp4, or HLS without hls.js), which has no
+	 *  engine to stop, is unloaded, and attached again on the viewer's
+	 *  return, exactly where it was. */
+	function stopForHandoff() {
+		endResumeHold();
+		ownVideo.autoplay = false;
+		startWatch.cancel();
+		hls?.stopLoad();
+		handoff.handOff();
+		// A stream the element plays from its src has no engine to stop,
+		// and paused, the browser may go on buffering it: it is let go of
+		// as a switch lets go of one. The flush keeps where it was (its
+		// listeners write the playhead while the stream is still open)
+		// and retires them, so nothing the unload reports is written;
+		// the teardown then unloads it. The attach waits while its URL
+		// is the one let go of, and the viewer's return attaches it
+		// again as a resume: at its kept point, with its subtitles.
+		if (hls === null && attachedUrl !== null) {
+			// The return goes back to the playhead itself: the kept
+			// position reads the first seconds as the start and the last
+			// stretch as finished. Kept with the page's gate, so leaving
+			// the page or picking another episode forgets it.
+			handoff.letGo(attachedUrl, videoEl?.currentTime ?? 0);
+			sourceScope.flush();
+			teardown();
+		}
+	}
+	/** The viewer picked another stream from here (an episode, Reload). */
+	function comeBackWith() {
+		handoff.picked();
+	}
+	/** The viewer is back on the embedded player. */
+	function comeBack() {
+		if (handoff.handedOff) ownVideo.autoplay = true;
+		// A stream the handoff let go of attaches again, at its playhead,
+		// as a recovery's stream does.
+		const point = handoff.comeBack();
+		if (point !== null) recoveryResume.capture(id, episodeNum, point);
+		handoffReturns += 1;
+	}
+	ownVideo.addEventListener('play', comeBack);
+	const startWatch: StartWatch = watchStart(ownVideo, (phase) => {
+		startPhase = phase;
+	});
+	const isPaused = $derived(!chromeReadsPlaying(startPhase));
+	const streamLoading = $derived(startPhase === 'starting' || startPhase === 'stalled');
 	let currentTime = $state(0);
 	let duration = $state(0);
 	// The element is in its ended state, as its `ended` event, every
@@ -461,6 +551,10 @@
 	// stream on screen.
 	const playheadOnScreen = $derived(lengthFor === sessionId);
 	const aniskipTrigger = createAniskipFetchTrigger();
+	// Each ask for skip times, cancelled by the next ask, a clear, or
+	// the page going ($lib/navigation/visit).
+	const aniskipReads = visitSeries();
+	onDestroy(aniskipReads.end);
 	$effect(() => {
 		// Subscribing to the fetch-key derived re-runs the effect on
 		// episode boundaries; subscribing to the readiness boolean
@@ -473,6 +567,7 @@
 		const key = aniskipFetchKey;
 		const decision = aniskipTrigger.step(id, episodeNum, aniskipDurationReady);
 		if (decision.kind === 'clear') {
+			aniskipReads.end();
 			skipIntervals = [];
 			return;
 		}
@@ -486,7 +581,10 @@
 		// An answer counts only for the episode on screen, and only while
 		// no later request or clear has happened: the same episode asked
 		// again, after a switch away and back, with its stream's length.
-		void aniskipGet(decision.showId, decision.episode, len)
+		// The ask before is cancelled: its answer would be dropped.
+		const reads = aniskipReads.next();
+		void reads
+			.keep(aniskipGet(decision.showId, decision.episode, len, { signal: reads.signal }))
 			.then((v) => {
 				if (aniskipFetchKey === key && aniskipTrigger.answers(ask)) {
 					skipIntervals = v;
@@ -554,6 +652,11 @@
 	function togglePlay() {
 		// The resume starts playback itself once its seek lands.
 		if (!videoEl || resumeHolding) return;
+		// A start on its way reads as playing, so the button stops it.
+		if (startPhase === 'starting') {
+			startWatch.cancel();
+			return;
+		}
 		if (videoEl.paused) {
 			// `play()` returns a promise that can reject with AbortError
 			// when a pause() lands on top of an in-flight play() — the
@@ -928,8 +1031,8 @@
 	// black screen with nothing to explain it.
 	let videoFullscreen = $state(false);
 	let mouseIdle = $state(false);
-	// `isPaused` already declared above (driven by the video's
-	// play/pause events) — reuse it as a keep-alive input.
+	// `isPaused` already declared above (the viewer's intent, from the
+	// start phase) — reuse it as a keep-alive input.
 	let controlsFocusWithin = $state(false);
 	let idleTimer: ReturnType<typeof setTimeout> | null = null;
 	const fullscreenControlsHidden = $derived(
@@ -1292,6 +1395,7 @@
 		onCleared: (episode, _count, refresh) => {
 			applyCapGateRefresh(refresh);
 			switchBusy = false;
+			comeBackWith();
 			void switchToEpisode(episode);
 		},
 		onStillGated: (_episode, refresh) => {
@@ -1357,7 +1461,10 @@
 			isAired: () => !epAirState(n, airing).unaired,
 			beyondPlayable: () => beyondPlayable(n, playableEpisodeCount),
 			currentContext: () => (gone ? GONE : `${visit}:${navigationClaims.epoch}:${id ?? ''}`),
-			play: () => void switchToEpisode(n),
+			play: () => {
+				comeBackWith();
+				void switchToEpisode(n);
+			},
 			recheckProvider: () => onRecheckEpisode(n),
 			notifyStillUnaired: () =>
 				toastStore.push({ kind: 'info', message: m.detail_ep_unaired_still() }),
@@ -1469,20 +1576,21 @@
 			airingResolved = true;
 			return;
 		}
-		let cancelled = false;
-		void airingGet(currentId)
+		// Asked again for another show or status: the read before is
+		// cancelled, and nothing of it is applied ($lib/navigation/visit).
+		const reads = beginVisit();
+		void reads
+			.keep(airingGet(currentId, { signal: reads.signal }))
 			.then((a) => {
-				if (!cancelled) airingSchedule = a;
+				airingSchedule = a;
 			})
 			.catch(() => {
 				/* unknown airing data → tiles stay ungated */
 			})
 			.finally(() => {
-				if (!cancelled) airingResolved = true;
+				airingResolved = true;
 			});
-		return () => {
-			cancelled = true;
-		};
+		return reads.end;
 	});
 	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
 	/** What the page knows about episode `n`, for the plays it refuses
@@ -1692,18 +1800,24 @@
 		return out;
 	}
 
-	// What says the show this page shows has gone — the page closed, or
-	// moved to another show: a refill landing after it is not fetched
-	// ($lib/refill/refill). Renewed per show below.
-	let refills = new AbortController();
-	onDestroy(() => refills.abort());
+	// The reads the page makes once, ended when the page goes; and the
+	// reads of the show it plays, ended when the page closes or moves to
+	// another show, renewed per show below. Each read holds an API
+	// connection until it answers, so a read nobody will look at is
+	// cancelled, and its answer, or its failure, never reaches the page
+	// ($lib/navigation/visit). A refill landing after the show's visit
+	// is not fetched either ($lib/refill/refill).
+	const pageReads = beginVisit();
+	onDestroy(pageReads.end);
+	let showReads: Visit = beginVisit();
+	onDestroy(() => showReads.end());
 
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
 		const eps = await kitsuEpisodes(id, p, {
-			signal: refills.signal,
+			signal: showReads.signal,
 			// Thumbnails AniList's pacing held back, filled in once
 			// they land.
 			onRefill: (filled) => {
@@ -1722,11 +1836,15 @@
 
 	async function fetchEpisodesPage(page: number, gen: number, opts: { initial?: boolean } = {}) {
 		if (!id) return;
+		// A show left meanwhile answers nothing here, not even a failure.
+		const reads = showReads;
 		episodesLoading = true;
 		try {
 			const start = (page - 1) * UI_PAGE_SIZE + 1;
 			const end = page * UI_PAGE_SIZE;
-			const merged = (await Promise.all(kitsuPagesForUiPage(page).map(getKitsuPage))).flat();
+			const merged = (
+				await reads.keep(Promise.all(kitsuPagesForUiPage(page).map(getKitsuPage)))
+			).flat();
 			if (!stripPager.completed(gen)) return;
 			rawWindowed = merged.filter((ep) => {
 				const n = ep.number ?? ep.relative_number ?? -1;
@@ -1864,7 +1982,6 @@
 		currentTime = v.currentTime;
 		duration = isFinite(v.duration) ? v.duration : 0;
 		videoEnded = v.ended;
-		isPaused = v.paused;
 		videoVolume = v.volume;
 		isMuted = v.muted;
 		playbackRate = v.playbackRate;
@@ -1882,12 +1999,6 @@
 		};
 		const onDuration = () => {
 			duration = isFinite(v.duration) ? v.duration : 0;
-		};
-		const onPlay = () => {
-			isPaused = false;
-		};
-		const onPause = () => {
-			isPaused = true;
 		};
 		const onVol = () => {
 			videoVolume = v.volume;
@@ -1944,8 +2055,6 @@
 		v.addEventListener('progress', onProg);
 		v.addEventListener('durationchange', onDuration);
 		v.addEventListener('loadedmetadata', onMeta);
-		v.addEventListener('play', onPlay);
-		v.addEventListener('pause', onPause);
 		v.addEventListener('volumechange', onVol);
 		v.addEventListener('ratechange', onRate);
 		v.addEventListener('ended', onEnded);
@@ -1959,8 +2068,6 @@
 			v.removeEventListener('progress', onProg);
 			v.removeEventListener('durationchange', onDuration);
 			v.removeEventListener('loadedmetadata', onMeta);
-			v.removeEventListener('play', onPlay);
-			v.removeEventListener('pause', onPause);
 			v.removeEventListener('volumechange', onVol);
 			v.removeEventListener('ratechange', onRate);
 			v.removeEventListener('ended', onEnded);
@@ -1982,6 +2089,11 @@
 
 	$effect(() => {
 		if (!videoEl || !mediaUrl) return;
+		// The stream a handoff let go of waits for the viewer, whose return
+		// bumps handoffReturns and runs this again; another one (a pick, a
+		// Reload's fresh session) attaches, and ends the wait.
+		void handoffReturns;
+		if (untrack(() => handoff.attachWaits(mediaUrl))) return;
 		// The stream already attached from this URL keeps playing: the
 		// effect can run again without its source changing, and
 		// re-attaching would restart playback from 0. A recovery lands
@@ -1999,6 +2111,14 @@
 		teardown();
 		attachedUrl = mediaUrl;
 		lengthFor = untrack(() => sessionId);
+		// A new engine, not started yet; and a stream the viewer picked
+		// while the episode was handed off ends the handoff: it plays
+		// here, as any pick does.
+		if (handoff.attaching()) ownVideo.autoplay = true;
+		// The unload above set the element paused without a `pause`
+		// event; the stream attaching now is on its way. Told before the
+		// resume hold, below, takes the element's autoplay off.
+		startWatch.attach(videoEl.autoplay);
 		// Source-scoped listeners — the resume seek, the progress
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
@@ -2006,7 +2126,7 @@
 		// It also says where the stream starts: an hls engine begins
 		// loading at a resume point's fragment, below, so nothing
 		// before that fragment is fetched or shown.
-		const { startAt } = armSourceScopedListeners({
+		const { startAt, endHold } = armSourceScopedListeners({
 			video: videoEl,
 			showId: id,
 			episode: episodeNum,
@@ -2018,6 +2138,10 @@
 			// Only hls.js is handed the start, below.
 			startedAtPoint: mediaKind !== 'mp4' && Hls.isSupported()
 		});
+		endResumeHold = endHold;
+		// Handed off: a resume hold would start the stream itself once
+		// its seek lands. The seek still goes to the point.
+		if (handoff.handedOff) endHold();
 		playerError = null;
 		failedStreamError = null;
 
@@ -2066,7 +2190,7 @@
 			// out: the switch would decline it ($lib/play/reload-offer).
 			if (
 				shouldAttemptStaleStreamRetry({ err: { source: 'video', code }, hasAutoRetried }) &&
-				canRecoverFromStaleStream({ detail, switchBusy }) &&
+				canRecoverFromStaleStream({ detail, switchBusy, handedOff: handoff.handedOff }) &&
 				reloadEnd === null &&
 				!airingIsPending
 			) {
@@ -2093,9 +2217,15 @@
 		if (mediaKind === 'mp4') {
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
-			// The quality control starts the engine once it has chosen the
-			// start level as the levels arrive ($lib/play/arm-quality).
-			hls = new Hls({ lowLatencyMode: false, autoStartLoad: false, ...HLS_STALL_LOAD_POLICY });
+			// The page starts the engine once the levels are in and the
+			// quality control has chosen the start level
+			// ($lib/play/arm-quality), through the handoff gate (below).
+			hls = new Hls({
+				lowLatencyMode: false,
+				autoStartLoad: false,
+				...HLS_STALL_LOAD_POLICY,
+				...HLS_BUFFER_POLICY
+			});
 			// The engine retires with its source: the next attach's
 			// flush, or the page leaving.
 			const engine = hls;
@@ -2111,8 +2241,9 @@
 				engine,
 				events: Hls.Events,
 				video: videoEl,
-				holdsStart: true,
-				startAt,
+				// The page starts the engine (below), so a handoff can hold
+				// the start until the viewer comes back.
+				holdsStart: false,
 				onView: (view) => {
 					// A stream retiring takes its levels with it; both menus'
 					// Quality lists follow the model this feeds, and close
@@ -2125,6 +2256,19 @@
 				quality.dispose();
 				if (qualityControl === quality) qualityControl = null;
 			});
+			// Started once the levels are in and the quality control has
+			// set the start level (its handler is the earlier one): at
+			// once, or, with the episode handed to another player, when
+			// the viewer comes back.
+			const startHere = () => {
+				handoff.engineStarted();
+				startEngine(engine, startAt);
+			};
+			hls.on(Hls.Events.MANIFEST_PARSED, () => {
+				handoff.manifestParsed();
+				handoff.whenWatching(startHere);
+			});
+			sourceScope.add(() => handoff.drop(startHere));
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);
 			// One guard per source: a fragment the engine keeps asking
@@ -2135,12 +2279,16 @@
 			const loopGuard = new FragmentLoopGuard();
 			hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
 				stallMachine.fragmentLoaded(data);
-				if (!loopGuard.loaded(fragmentLoopKey(data.frag))) return;
+				if (!loopGuard.loaded(fragmentLoopKey(data.frag), data.frag.start)) return;
 				engine.stopLoad();
+				handoff.engineStopped();
 				dropHeldRetry();
 				console.warn('[play] fragment loop guard: engine stopped on fragment', data.frag.sn);
 				playerError = fragmentLoopOverlayMessage();
 			});
+			// A fragment the back buffer let go of is loaded again by a
+			// seek back, not by a loop.
+			hls.on(Hls.Events.BACK_BUFFER_REACHED, (_, data) => loopGuard.released(data.bufferEnd));
 			hls.on(Hls.Events.ERROR, (_, data) => {
 				if (!data.fatal) return;
 				// An engine the guard stopped stays stopped: no hold, no
@@ -2181,6 +2329,8 @@
 						marginSeconds: HOLD_RUNWAY_MARGIN_S,
 						fire: () => {
 							cancelHeldRetry = null;
+							// Handed off, the viewer's return restarts it.
+							if (handoff.handedOff) return;
 							engine.startLoad();
 						}
 					});
@@ -2192,6 +2342,8 @@
 				// re-resolve would return the same crawling URL at the
 				// price of a full interruption.
 				if (action.act === 'nudge' && hls) {
+					// Handed off, the viewer's return restarts it.
+					if (handoff.handedOff) return;
 					if (action.toast) toastStore.push(stallNudgeToast());
 					hls.startLoad();
 					return;
@@ -2202,7 +2354,7 @@
 				// budget on a no-op recovery.
 				if (
 					action.act === 'recover' &&
-					canRecoverFromStaleStream({ detail, switchBusy }) &&
+					canRecoverFromStaleStream({ detail, switchBusy, handedOff: handoff.handedOff }) &&
 					reloadEnd === null &&
 					!airingIsPending
 				) {
@@ -2249,6 +2401,8 @@
 		// page and hold the provider's rate-limit slots.
 		sourceScope.flush();
 		teardown();
+		startWatch.dispose();
+		ownVideo.removeEventListener('play', comeBack);
 		releasePlayerVideo(ownVideo);
 		showReleases.leave();
 	});
@@ -2271,12 +2425,23 @@
 	// id-change reset enforces. Episode changes within the same show
 	// keep the cache (id stable → effect doesn't refire), so prev/next
 	// pagination stays instant.
+	// A show change under the page cancels the old show's reads, so the
+	// strip is opened again for the new show: nothing else would read it.
+	// The show the strip was opened for at mount.
+	let stripShow = untrack(() => id);
 	$effect(() => {
-		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
-		id;
+		const current = id;
 		resetEpisodePageCache(kitsuPageCache);
-		refills.abort();
-		refills = new AbortController();
+		showReads.end();
+		showReads = beginVisit();
+		if (current === stripShow) return;
+		stripShow = current;
+		untrack(() => {
+			rawWindowed = null;
+			episodesError = null;
+			const req = stripPager.open(stripPager.pageOf(episodeNum));
+			if (req.fetch) void fetchEpisodesPage(req.page, req.gen, { initial: true });
+		});
 	});
 
 	onMount(() => {
@@ -2284,12 +2449,14 @@
 			detailError = m.play_error_no_show_id();
 			return;
 		}
-		void kitsuAnimeDetail(id)
+		void pageReads
+			.keep(kitsuAnimeDetail(id, { signal: pageReads.signal }))
 			.then((d) => {
 				detail = d;
 				const seed = (d.canonical_title ?? '').split(/\s+/).slice(0, 2).join(' ').trim();
 				if (seed.length >= 2) {
-					void kitsuSearch(seed)
+					void pageReads
+						.keep(kitsuSearch(seed, { signal: pageReads.signal }))
 						.then((hits) => {
 							similar = hits.filter((h) => h.id !== d.id).slice(0, 12);
 						})
@@ -2310,7 +2477,8 @@
 		const startReq = stripPager.open(stripPager.pageOf(episodeNum));
 		if (startReq.fetch) void fetchEpisodesPage(startReq.page, startReq.gen, { initial: true });
 
-		void settingsGet()
+		void pageReads
+			.keep(settingsGet({ signal: pageReads.signal }))
 			.then((c) => {
 				config = c;
 			})
@@ -2620,7 +2788,9 @@
 		// place so the fresh attach can seek back, and tell the user
 		// what the upcoming loading overlay is (silence here is what
 		// made recoveries read as the app breaking).
-		recoveryResume.capture(id, episodeNum, videoEl?.currentTime ?? 0);
+		// A stream a handoff let go of reads zero: its playhead is the
+		// one it was let go of at.
+		recoveryResume.capture(id, episodeNum, handoff.reloadPoint(videoEl?.currentTime ?? 0));
 		// The fresh session gets its own same-stream retry budget.
 		stallMachine.reset();
 		const toast = stallRecoveryToast(reason);
@@ -2668,6 +2838,15 @@
 		// Reload, or with the dead end it is at.
 		if (turn === 'offer-reload') playerError = restore;
 		if (turn !== 'resolve') return;
+		// Handed to another player while the eviction was out: resolving
+		// again would only load the episode behind it. The failed stream's
+		// error comes back, with its Reload, for when the viewer does. A
+		// Reload goes on while it is still the viewer's latest word: a
+		// handoff since it was pressed clears the pick it made.
+		if (handoff.recoveryStandsDown(reason === 'manual reload')) {
+			playerError = restore;
+			return;
+		}
 		clearForShow(id);
 		// The error went off screen as the recovery began; a fresh
 		// resolve that fails leaves the failed stream, so it comes back.
@@ -2690,21 +2869,25 @@
 	 *  loading leaves the overlay in place to try again rather than
 	 *  flashing into a blank frame. */
 	function onReloadStream() {
+		comeBackWith();
 		void recoverFromStaleStream('manual reload');
 	}
 
 	function onPrev() {
 		if (!hasPrev) return;
+		comeBackWith();
 		void switchToEpisode(prevEpisodeNum);
 	}
 	function onNext() {
 		if (!hasNext) return;
+		comeBackWith();
 		void switchToEpisode(nextEpisodeNum);
 	}
 	function onPickEpisode(ep: KitsuEpisode) {
 		const n = ep.number ?? ep.relative_number ?? null;
 		if (n === null) return;
 		if (n === episodeNum) return; // already playing
+		comeBackWith();
 		void switchToEpisode(n);
 	}
 
@@ -2732,6 +2915,7 @@
 	function onVideoEnded() {
 		const decision = decideAutoPlayNext({
 			enabled: autoPlayNext,
+			handedOff: handoff.handedOff,
 			episodeNum,
 			totalEpisodes,
 			extras: extraNums
@@ -2917,11 +3101,12 @@
 			() => visit,
 			() => gone
 		);
-		// Pause the embedded video so the user isn't watching two
-		// instances simultaneously. The notice/launch flow continues
-		// regardless; if the external player fails to start the user
-		// can press space (or click the embedded player) to resume.
-		videoEl?.pause();
+		// Stop the embedded video, and anything that would start it
+		// again, so the user isn't watching two instances at once. The
+		// notice/launch flow continues regardless; if the external
+		// player fails to start, the user plays the embedded one again
+		// (Space, a click) and it comes back.
+		stopForHandoff();
 		externalBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
@@ -2987,10 +3172,9 @@
 			() => visit,
 			() => gone
 		);
-		// Same pause-the-embedded-video logic as the external flow:
-		// Syncplay opens its own player window so two instances would
-		// otherwise stack audio.
-		videoEl?.pause();
+		// Same handoff as the external flow: Syncplay opens its own
+		// player window, so two instances would otherwise stack audio.
+		stopForHandoff();
 		syncplayBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
@@ -3035,7 +3219,8 @@
 	let downloadArgs = $state<DownloadArgs | null>(null);
 	let downloadDefaultDir = $state('');
 
-	void downloadDefaultDirApi()
+	void pageReads
+		.keep(downloadDefaultDirApi({ signal: pageReads.signal }))
 		.then((d) => {
 			if (d) downloadDefaultDir = d;
 		})
@@ -3072,6 +3257,9 @@
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const onKey = (e: KeyboardEvent) => {
+			// A modal over the player (a play failure, the download
+			// dialog) is the only keyboard target while it is up.
+			if (isModalOpen()) return;
 			const t = e.target as HTMLElement | null;
 			const inField =
 				!!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
@@ -3160,7 +3348,7 @@
 		class="player-frame"
 		class:player-busy={switchBusy}
 		class:player-resuming={resumeHolding && !videoFullscreen}
-		aria-busy={switchBusy || (resumeHolding && !playerError)}
+		aria-busy={switchBusy || ((resumeHolding || streamLoading) && !playerError)}
 		class:fs-controls-hidden={fullscreenControlsHidden}
 		style:--player-letterbox-x="{letterboxX}px"
 		style:--player-letterbox-y="{letterboxY}px"
@@ -3827,15 +4015,19 @@
 				</div>
 			{/if}
 		{/if}
-		<!-- Mounted across a switch and the resume hold that follows it,
-		     and toggled: the two states are set in different places, and
-		     the moment between them must not restart the indicator. An
-		     error unmounts it outright, so nothing lingers over the
-		     panel. -->
+		<!-- On through a switch, the resume hold that follows it, and any
+		     start or stall of the stream ($lib/play/start-state). Mounted
+		     across them and toggled: the states are set in different
+		     places, and the moment between them must not restart the
+		     indicator. With Chromium's own controls a start or a stall
+		     shows theirs, not this one. An error unmounts it outright,
+		     so nothing lingers over the panel. -->
 		{#if !playerError}
 			<span
 				class="player-spinner"
-				class:player-spinner-on={switchBusy || resumeHolding}
+				class:player-spinner-on={switchBusy ||
+					resumeHolding ||
+					(streamLoading && USE_CUSTOM_PLAYER_CONTROLS)}
 				aria-hidden="true"
 			>
 				<span class="player-spinner-track"><span class="player-spinner-sweep"></span></span>
@@ -5630,9 +5822,9 @@
 	/* Loading indicator over the player: the app's indeterminate
 	   hairline (the search bar's and the download bar's sweep), set
 	   in the show's accent and centred in the frame. It waits a beat
-	   before fading in, so a switch or a resume that lands quickly
-	   never flashes it, and goes at once when the load ends, so it
-	   never lingers over the picture. Toggled rather than remounted,
+	   before fading in, so a switch, a resume, a start or a stall that
+	   lands quickly never flashes it, and goes at once when the load
+	   ends, so it never lingers over the picture. Toggled rather than remounted,
 	   it runs on unbroken from a switch into the resume hold that
 	   follows it: the switch stays busy until the next stream has
 	   attached and started its hold. Off, it leaves the layout, so

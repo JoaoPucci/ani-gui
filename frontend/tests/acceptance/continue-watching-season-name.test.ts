@@ -274,8 +274,11 @@ describe('a remembered title match to a later season', () => {
 		app = mount(HomePage, { target });
 
 		await until(() => card(GINTAMA_2.canonical_title) !== null, "the card resolved to Gintama'");
-		const searchLink = Array.from(target.querySelectorAll('a')).find((a) =>
-			a.getAttribute('href')?.includes('/search')
+		// The card's own search fallback, which carries the row's title:
+		// Home has other links to Search (the hero's, when trending has
+		// no show to feature) that say nothing about this card.
+		const searchLink = Array.from(target.querySelectorAll('a')).find(
+			(a) => a.getAttribute('href')?.includes('/search') && a.textContent?.includes('Gintama')
 		);
 		expect(searchLink).toBeUndefined();
 	});

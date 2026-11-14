@@ -140,7 +140,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 			// this scenario asserts, but both have to be answered or the
 			// tier's unhandled-request error fires.
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 		);
 
 		app = mount(PlayPage, { target });
@@ -202,7 +202,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 				});
 			}),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 		);
 
 		app = mount(PlayPage, { target });
@@ -474,7 +474,7 @@ describe('play route — clicking a dimmed aired episode', () => {
 				});
 			}),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 		);
 
 		const { sent, read } = watchPageFetches();
@@ -548,7 +548,7 @@ describe('play route — a navigation the viewer starts while a dimmed episode i
 				});
 			}),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 		);
 
 		const { sent, read, failed } = watchPageFetches();
