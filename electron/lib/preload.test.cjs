@@ -12,7 +12,7 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "preload.js"), "utf-8");
 
-function exposedWith(argv) {
+function exposedWith(argv, { sendSync = () => undefined } = {}) {
   const exposed = {};
   const electron = {
     contextBridge: {
@@ -20,7 +20,7 @@ function exposedWith(argv) {
         exposed[name] = value;
       },
     },
-    ipcRenderer: { invoke() {}, send() {}, sendSync() {}, on() {}, removeListener() {} },
+    ipcRenderer: { invoke() {}, send() {}, sendSync, on() {}, removeListener() {} },
   };
   vm.runInNewContext(source, {
     require: (id) => {
@@ -33,14 +33,46 @@ function exposedWith(argv) {
   return exposed.aniGui;
 }
 
-test("the API's origin and the secret come off their flags", () => {
+test("the API's origin comes off its flag", () => {
+  const bridge = exposedWith(["electron", "--ani-gui-api-base=http://127.0.0.1:1"]);
+  assert.equal(bridge.apiBase, "http://127.0.0.1:1");
+});
+
+// The secret is not on the renderer's command line, where other local
+// programs can read it: the preload asks the main process for it, which
+// answers only the app's own page (lib/secret-handoff.cjs).
+test("the secret comes from the main process, asked once, synchronously, before the page runs", () => {
+  const asked = [];
+  const bridge = exposedWith(["electron", "--ani-gui-api-base=http://127.0.0.1:1"], {
+    sendSync: (channel) => {
+      asked.push(channel);
+      return "c0ffee";
+    },
+  });
+  assert.deepEqual(asked, ["ani-gui:internal-secret"]);
+  assert.equal(bridge.internalSecret, "c0ffee");
+});
+
+test("a secret flag on the command line is not read", () => {
   const bridge = exposedWith([
     "electron",
     "--ani-gui-api-base=http://127.0.0.1:1",
     "--ani-gui-internal-secret=s",
   ]);
-  assert.equal(bridge.apiBase, "http://127.0.0.1:1");
-  assert.equal(bridge.internalSecret, "s");
+  assert.equal(bridge.internalSecret, null);
+});
+
+test("a page the main process refuses, or an answer that is not a secret, leaves none", () => {
+  for (const answer of [null, undefined, "", 42, { secret: "s" }]) {
+    const bridge = exposedWith(["electron"], { sendSync: () => answer });
+    assert.equal(bridge.internalSecret, null, JSON.stringify(answer));
+  }
+  const bridge = exposedWith(["electron"], {
+    sendSync: () => {
+      throw new Error("no handler");
+    },
+  });
+  assert.equal(bridge.internalSecret, null);
 });
 
 test("every lane flag becomes a lane by name", () => {
@@ -141,6 +173,9 @@ test("reading a saved sign-in is asynchronous: a keyring that waits holds no ren
     process: { argv: ["electron"], platform: "linux" },
     console: { error() {} },
   });
+  // What loading the preload asked (the launch's secret) is not the
+  // sign-in read.
+  calls.length = 0;
   const result = exposed.aniGui.account.getToken("anilist");
   assert.equal(typeof result.then, "function");
   assert.deepEqual(calls, [["invoke", "ani-gui:account:get-token", "anilist"]]);

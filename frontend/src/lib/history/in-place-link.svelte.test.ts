@@ -17,6 +17,8 @@ function ref(id: string, title: string): KitsuAnimeRef {
 	return {
 		id,
 		canonical_title: title,
+		titles: {},
+		abbreviated_titles: [],
 		slug: null,
 		synopsis: null,
 		start_date: null,

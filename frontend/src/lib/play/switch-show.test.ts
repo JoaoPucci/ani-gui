@@ -10,6 +10,8 @@ function ref(id: string, title: string | null): KitsuAnimeRef {
 	return {
 		id,
 		canonical_title: title as string,
+		titles: {},
+		abbreviated_titles: [],
 		slug: null,
 		synopsis: null,
 		start_date: '2000-03-03',
@@ -30,7 +32,9 @@ const CARD = 'hianime:jojos-bizarre-adventure-2000-5182';
 const SESSION: CreateSessionResponse = {
 	session_id: 'session-2',
 	media_url: '/s/t/file.mp4',
-	media_kind: 'mp4'
+	media_kind: 'mp4',
+	cache_hit: false,
+	subtitles: []
 };
 
 function deps(over: Partial<SwitchShowDeps> = {}) {

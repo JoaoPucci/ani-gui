@@ -9,11 +9,13 @@ import type { KitsuAnimeRef } from '$lib/api';
 
 /** A result as the grid shows it: what the search page renders of a
  *  card, and nothing it does not (the synopsis, the cover, the title
- *  variants), to keep the snapshot small. */
+ *  variants, which it keeps empty), to keep the snapshot small. */
 export function compactHit(hit: KitsuAnimeRef): KitsuAnimeRef {
 	return {
 		id: hit.id,
 		canonical_title: hit.canonical_title,
+		titles: {},
+		abbreviated_titles: [],
 		slug: hit.slug,
 		synopsis: null,
 		start_date: hit.start_date,
@@ -55,6 +57,8 @@ export function readHit(v: unknown): KitsuAnimeRef | null {
 	return compactHit({
 		id: v.id,
 		canonical_title: v.canonical_title,
+		titles: {},
+		abbreviated_titles: [],
 		slug: strOrNull(v.slug),
 		synopsis: null,
 		start_date: strOrNull(v.start_date),

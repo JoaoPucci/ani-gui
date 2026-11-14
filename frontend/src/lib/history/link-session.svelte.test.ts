@@ -13,6 +13,8 @@ function ref(id: string, over: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {
 		id,
 		canonical_title: `Show ${id}`,
+		titles: {},
+		abbreviated_titles: [],
 		slug: null,
 		synopsis: null,
 		start_date: null,

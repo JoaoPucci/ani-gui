@@ -11,25 +11,13 @@
  * accepts snake_case in API DTO interfaces only.
  */
 
-/**
- * Resolve the base URL of the local backend (e.g.
- * `http://127.0.0.1:42337`). Cached after the first call.
- *
- * Detection order:
- *   1. `window.aniGui.apiBase` — Electron preload script injection.
- *   2. `import.meta.env.VITE_ANI_GUI_API_BASE` — browser-only dev
- *      (run `cargo run --bin ani-gui-backend` and `pnpm dev` with
- *      the env var set to the printed URL).
- *
- * Throws if neither is available — the renderer can't function
- * without a backend address.
- */
 import type { StreamProvider } from '$lib/history/show-key';
 import { notePlayed } from '$lib/history/guess-plays';
 import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
 import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
 import { laneBase, type Lane } from '$lib/backend/lanes';
+import { withSecretHeader, withSecretQuery } from '$lib/backend/secret';
 import { getLocale } from '$lib/paraglide/runtime';
 import { probeLimiter } from '$lib/availability/probe-limiter';
 import { probeScope } from '$lib/availability/probe-scope';
@@ -55,10 +43,10 @@ declare global {
 			 *  `apiBase`. */
 			lanes?: Partial<Record<string, string>>;
 			/** Per-process random secret printed by the Rust backend at
-			 *  startup and threaded through Electron's preload. Sent as
-			 *  the `x-ani-gui-internal-secret` header on the few backend
-			 *  paths that need a renderer-only gate beyond the bearer —
-			 *  specifically the disconnect-after-expiry cache wipe. Absent in browser-only dev. */
+			 *  startup and threaded through Electron's preload. Every
+			 *  request to the backend's API carries it, which the backend
+			 *  answers no request without (`$lib/backend/secret`). Absent
+			 *  in browser-only dev. */
 			internalSecret?: string;
 			/** Node's `process.platform` value forwarded from the Electron
 			 *  main process — 'win32' | 'linux' | 'darwin' | 'freebsd' |
@@ -125,6 +113,21 @@ declare global {
 	}
 }
 
+/**
+ * Resolve the base URL of the local backend (e.g.
+ * `http://127.0.0.1:42337`). Cached after the first call.
+ *
+ * Detection order:
+ *   1. `window.aniGui.apiBase` — Electron preload script injection.
+ *   2. `import.meta.env.VITE_ANI_GUI_API_BASE` — browser-only dev
+ *      (run `cargo run --bin ani-gui-backend` and `pnpm dev` with
+ *      the env var set to the printed URL). Such a tab has no
+ *      launch secret ($lib/backend/secret), so the backend refuses
+ *      its API requests.
+ *
+ * Throws if neither is available — the renderer can't function
+ * without a backend address.
+ */
 async function apiBase(): Promise<string> {
 	if (apiBaseCache !== null) return apiBaseCache;
 	if (typeof window !== 'undefined' && window.aniGui?.apiBase) {
@@ -192,8 +195,8 @@ async function expect2xx<T>(resp: Response): Promise<T> {
 		}
 		throw detail;
 	}
-	// Tolerate any 2xx with an empty body (the external-player
-	// endpoint returns 202 Accepted with no JSON to parse). `.json()`
+	// Tolerate any 2xx with an empty body (a 202 Accepted with no
+	// JSON to parse, say). `.json()`
 	// throws "Unexpected end of JSON input" on an empty body, which
 	// surfaced as a confusing toast even though the action succeeded.
 	if (resp.status === 204) return undefined as T;
@@ -204,7 +207,8 @@ async function expect2xx<T>(resp: Response): Promise<T> {
 
 async function getJson<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 	const at = await url(path, opts.lane);
-	const resp = await (opts.signal ? fetch(at, { signal: opts.signal }) : fetch(at));
+	const init = withSecretHeader(opts.signal ? { signal: opts.signal } : undefined);
+	const resp = await (init ? fetch(at, init) : fetch(at));
 	return expect2xx<T>(resp);
 }
 
@@ -212,24 +216,32 @@ async function getJson<T>(path: string, opts: RequestOptions = {}): Promise<T> {
  *  without (`$lib/refill/refill`). `signal` cancels the request. */
 async function getJsonServed<T>(path: string, signal?: AbortSignal): Promise<Served<T>> {
 	const at = await url(path);
-	const resp = await (signal ? fetch(at, { signal }) : fetch(at));
+	const init = withSecretHeader(signal ? { signal } : undefined);
+	const resp = await (init ? fetch(at, init) : fetch(at));
 	const data = await expect2xx<T>(resp);
 	// A response built without headers (a test's stand-in) has none.
 	const headers = resp.headers as Headers | undefined;
 	return { data, refills: parseRefills(headers?.get(REFILL_HEADER)) };
 }
 
+/** Body of `/api/refills/wait` and `/api/refills/release`. */
+export interface RefillsBody {
+	tickets: number[];
+}
+
 /** Wait until one of `tickets` has ended; `[]` past the backend's own
  *  limit. */
 export function refillsWait(tickets: number[], signal: AbortSignal): Promise<RefillEnded[]> {
-	return postJson<RefillEnded[]>('/api/refills/wait', { tickets }, { signal });
+	const body: RefillsBody = { tickets };
+	return postJson<RefillEnded[]>('/api/refills/wait', body, { signal });
 }
 
 /** The page showing these tickets' fills has gone. Best effort: a
  *  release that fails leaves the retry ranked as on screen a moment
  *  longer. */
 export function refillsRelease(tickets: number[]): void {
-	void postJson<void>('/api/refills/release', { tickets }).catch(() => {});
+	const body: RefillsBody = { tickets };
+	void postJson<void>('/api/refills/release', body).catch(() => {});
 }
 
 /** The renderer's one waiter on refills. */
@@ -303,21 +315,24 @@ async function postJson<T>(path: string, body: unknown, opts: RequestOptions = {
 		body: JSON.stringify(body)
 	};
 	if (opts.signal) init.signal = opts.signal;
-	const resp = await fetch(await url(path, opts.lane), init);
+	const resp = await fetch(await url(path, opts.lane), withSecretHeader(init));
 	return expect2xx<T>(resp);
 }
 
 async function putJson<T>(path: string, body: unknown): Promise<T> {
-	const resp = await fetch(await url(path), {
-		method: 'PUT',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify(body)
-	});
+	const resp = await fetch(
+		await url(path),
+		withSecretHeader({
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(body)
+		})
+	);
 	return expect2xx<T>(resp);
 }
 
 async function deleteJson<T>(path: string): Promise<T> {
-	const resp = await fetch(await url(path), { method: 'DELETE' });
+	const resp = await fetch(await url(path), withSecretHeader({ method: 'DELETE' }));
 	return expect2xx<T>(resp);
 }
 
@@ -334,18 +349,24 @@ export interface AppInfo {
 	/** What the boot sweep over a retired streaming provider's rows
 	 *  changed; empty on every launch that found none. The page decides
 	 *  what to show via `$lib/diagnostics/retired-sweep`. */
-	retired_provider_sweep?: RetiredSweepReport;
+	retired_provider_sweep: RetiredSweepReport;
 	/** What the launch's cache reclaim deleted; zero on every launch
 	 *  that found nothing to reclaim. The page decides what to show via
 	 *  `$lib/diagnostics/cache-reclaim`. */
-	cache_reclaim?: CacheReclaimReport;
+	cache_reclaim: CacheReclaimReport;
 }
 
-/** One row from the watch-history file. */
+/** One row from the watch-history file, as `/api/history` lists it. */
 export interface HistoryEntry {
 	ep_no: string;
 	id: string;
 	title: string;
+	/** The moment of the watch that wrote the row, in milliseconds since
+	 *  the epoch. Absent on a row no watch wrote and on rows from before
+	 *  the column. Continue Watching ranks by `/api/watched-at`
+	 *  ({@link watchedAtAll}), which already takes the later of this and
+	 *  the stamp kept beside the history. */
+	watched_at?: number;
 	/** Kitsu id of the show the user played, recorded with the watch.
 	 *  Absent on rows written before history recorded it. */
 	kitsu_id?: string;
@@ -363,6 +384,12 @@ export interface HistoryEntry {
 	named?: boolean;
 }
 
+/** A history row as `/api/history/by-kitsu/:id` answers it: the row
+ *  alone, without what `/api/history` reads beside it (the year its
+ *  show key names, the card a guessed play wrote it from, and whether
+ *  the user named its show). */
+export type HistoryRowByKitsu = Omit<HistoryEntry, 'key_year' | 'guessed_from' | 'named'>;
+
 /** Input to `cmd_create_session`. */
 export interface CreateSessionArgs {
 	upstream_url: string;
@@ -375,7 +402,6 @@ export interface CreateSessionArgs {
 export const MEDIA_KINDS = ['hls', 'mp4'] as const;
 export type MediaKind = (typeof MEDIA_KINDS)[number];
 
-/** Output of `cmd_create_session` — proxy URLs the player should fetch. */
 /** One sidecar subtitle track a session offers, behind the proxy. */
 export interface SessionSubtitle {
 	lang: string;
@@ -385,11 +411,13 @@ export interface SessionSubtitle {
 	url: string;
 }
 
+/** Output of `cmd_create_session` — proxy URLs the player should fetch. */
 export interface CreateSessionResponse {
 	session_id: string;
 	/** Full proxy URL the player should fetch. For HLS sessions this
 	 *  points at `…/s/<id>/master.m3u8`; for MP4 sessions at
-	 *  `…/s/<id>/file.mp4`. The frontend never composes the path itself. */
+	 *  `…/s/<id>/file.mp4`. A page that carries only the session id
+	 *  composes the same URL with `$lib/play/media-url`. */
 	media_url: string;
 	/** Tells the renderer which player to mount around `media_url`. */
 	media_kind: MediaKind;
@@ -397,12 +425,11 @@ export interface CreateSessionResponse {
 	 *  (no fresh resolve). The play page uses it to decide
 	 *  whether a player error is silently retryable: cache hits can
 	 *  be evicted + re-resolved; fresh fetches already exhausted the
-	 *  resolve path so the user should see the error. Optional for
-	 *  forward compat with older backends — treat absence as `false`. */
-	cache_hit?: boolean;
-	/** Sidecar subtitle tracks the resolve listed; absent or empty when
-	 *  the stream carries none outside its playlist. */
-	subtitles?: SessionSubtitle[];
+	 *  resolve path so the user should see the error. */
+	cache_hit: boolean;
+	/** Sidecar subtitle tracks the resolve listed; empty when the
+	 *  stream carries none outside its playlist. */
+	subtitles: SessionSubtitle[];
 	/** The episode the session plays, as the app numbers it — the
 	 *  request, unless the request named it by a number it no longer
 	 *  carries ("24.5" for the recap that is "12.5" now). Absent from
@@ -451,16 +478,6 @@ export interface VersionInfo {
  *  emits on the backend. Snake_case to match the Rust serde tag. */
 export type ExternalPlayerKind = 'mpv' | 'vlc' | 'iina' | 'custom';
 
-/** Input to `cmd_open_external_player`. */
-export interface LaunchExternalPlayerArgs {
-	stream_url: string;
-	referer?: string | null;
-	title?: string | null;
-	player_command: string;
-	player_kind?: ExternalPlayerKind;
-	custom_args_template?: string | null;
-}
-
 /**
  * The backend's error envelope, as every error the app raises carries
  * it — an HTTP error body or an SSE error event — and so what api.ts
@@ -482,7 +499,13 @@ export interface AniErrorPayload {
 	detail?: string;
 	status?: number;
 	retry_after_secs?: number | null;
+	/** The tracker that refused, on a rate limit an account write met. */
+	refused_by?: string;
 	binary?: string;
+	/** Where a stream server failed (`embed`, …) and which host, on a
+	 *  stream server failure. For logs, like `detail`. */
+	stage?: string;
+	host?: string | null;
 }
 
 /** Portrait poster URLs (5:7) at Kitsu's pre-rendered sizes. */
@@ -555,17 +578,15 @@ export interface KitsuAnimeRef {
 	 *  (kana). Missing keys are absent from the map entirely. The play
 	 *  flow uses these to retry provider lookups when the canonical
 	 *  title (often English) doesn't match the provider's index — see
-	 *  {@link altTitlesFromKitsu}. May be missing on cached responses
-	 *  produced before titles were surfaced; treat as `?:`. */
-	titles?: Record<string, string>;
+	 *  {@link altTitlesFromKitsu}. */
+	titles: Record<string, string>;
 	/** Romanized mashup aliases Kitsu serves under
 	 *  `attributes.abbreviatedTitles` (e.g. `"Yuu Gi Ou: Duel Monsters
 	 *  5DS"`). Distinct from {@link KitsuAnimeRef.titles}; for some shows
 	 *  (Yu-Gi-Oh! 5D's) one of these is the only string that resolves to
 	 *  the right series on the provider, so {@link altTitlesFromKitsu} appends
-	 *  them as last-resort fallback queries. May be missing on cached
-	 *  responses produced before the field was surfaced; treat as `?:`. */
-	abbreviated_titles?: string[];
+	 *  them as last-resort fallback queries. */
+	abbreviated_titles: string[];
 	slug: string | null;
 	synopsis: string | null;
 	start_date: string | null;
@@ -582,7 +603,7 @@ export interface KitsuAnimeRef {
 	 *  it: from the trending feed, which carries every entry's, or from
 	 *  the null-cover backfill, which asks AniList for it. Absent
 	 *  otherwise. */
-	anilist_banner?: string | null;
+	anilist_banner?: string;
 }
 
 /**
@@ -816,8 +837,11 @@ export function historyLinkVerdict(
 export function historyByKitsu(
 	kitsuId: string,
 	opts: ReadOptions = {}
-): Promise<HistoryEntry | null> {
-	return getJson<HistoryEntry | null>(`/api/history/by-kitsu/${encodeURIComponent(kitsuId)}`, opts);
+): Promise<HistoryRowByKitsu | null> {
+	return getJson<HistoryRowByKitsu | null>(
+		`/api/history/by-kitsu/${encodeURIComponent(kitsuId)}`,
+		opts
+	);
 }
 
 /** The episode one history row reads as now, and the number it read as
@@ -836,10 +860,6 @@ export function historyNumber(id: string, opts: ReadOptions = {}): Promise<Histo
 
 export function createSession(args: CreateSessionArgs): Promise<CreateSessionResponse> {
 	return postJson<CreateSessionResponse>('/api/sessions', args);
-}
-
-export function openExternalPlayer(args: LaunchExternalPlayerArgs): Promise<void> {
-	return postJson<void>('/api/external-player', args);
 }
 
 /** Body for the play endpoints — same shape on both `/api/play` and
@@ -1067,7 +1087,9 @@ export function playStream(
 					reject(new Error('playStream: aborted'));
 					return;
 				}
-				const es = new EventSource(url);
+				// An EventSource cannot set a header: the launch's secret
+				// rides the query ($lib/backend/secret).
+				const es = new EventSource(withSecretQuery(url));
 				let settled = false;
 				const finish = (fn: () => void) => {
 					if (settled) return;
@@ -1201,7 +1223,9 @@ export function downloadStream(
 	return url(`/api/download/stream?${params.toString()}`, 'download').then(
 		(url) =>
 			new Promise<DownloadResponse>((resolve, reject) => {
-				const es = new EventSource(url);
+				// An EventSource cannot set a header: the launch's secret
+				// rides the query ($lib/backend/secret).
+				const es = new EventSource(withSecretQuery(url));
 				let settled = false;
 				const finish = (fn: () => void) => {
 					if (settled) return;
@@ -1314,19 +1338,18 @@ export interface AvailabilityResponse {
 	 *  the per-show detail fetch — the scraper gate refused the fetch,
 	 *  or it failed. That number counts half episodes as whole ones, so
 	 *  it can run high, and by an unbounded amount when a show carries
-	 *  several. Absent on responses from before the backend reported
-	 *  provenance, which read as exact. */
-	episode_count_approximate?: boolean;
+	 *  several. */
+	episode_count_approximate: boolean;
 	/** True when the scraper gate refused the detail fetch outright,
 	 *  as opposed to the fetch being attempted and failing. Both leave
 	 *  the count approximate; only this one means nobody asked, which
-	 *  is why the cap retry does not spend an attempt on it. Absent on
-	 *  responses from before the backend reported it. */
+	 *  is why the cap retry does not spend an attempt on it. Absent
+	 *  (false) otherwise. */
 	gate_refused?: boolean;
 	/** The provider whose catalogue carries the show — the one that
-	 *  answered `available`. Absent on negative rows and on rows from
+	 *  answered `available`. `null` on negative rows and on rows from
 	 *  before the backend named it. */
-	provider?: StreamProvider;
+	provider: StreamProvider | null;
 	/** Present when the probe reached the provider and came back
 	 *  without a settled verdict, naming why ({@link UnsettledReason}).
 	 *  (A show found nowhere is the clean miss: settled, and kept.)
@@ -1334,9 +1357,9 @@ export interface AvailabilityResponse {
 	 *  persisted nothing. For every reason but `'refused'` the false
 	 *  means nothing; `'refused'` says the catalogue lists nothing
 	 *  named for the show, and reads as it not being in the catalogue.
-	 *  Read it through `$lib/availability/verdict`. A backend before
-	 *  reasons sends `true`. Absent from every settled answer. */
-	unsettled?: boolean | UnsettledReason;
+	 *  Read it through `$lib/availability/verdict`. Absent from every
+	 *  settled answer. */
+	unsettled?: UnsettledReason;
 	/** The show's versions, in the provider's order, when its pick has
 	 *  several; absent when it has one. */
 	versions?: VersionInfo[];
@@ -1385,27 +1408,45 @@ export interface AvailabilityBatchResponse {
 	cached: Record<string, boolean>;
 	playable_episode_counts: Record<string, number>;
 }
+
+/** Body of `/api/availability/batch`. */
+export interface AvailabilityBatchBody {
+	kitsu_ids: string[];
+	mode: string;
+}
+
 export function availabilityBatch(
 	kitsu_ids: string[],
 	mode: string,
 	opts: ReadOptions = {}
 ): Promise<AvailabilityBatchResponse> {
-	return postJson<AvailabilityBatchResponse>(
-		'/api/availability/batch',
-		{ kitsu_ids, mode },
-		{ signal: opts.signal }
-	);
+	const body: AvailabilityBatchBody = { kitsu_ids, mode };
+	return postJson<AvailabilityBatchResponse>('/api/availability/batch', body, {
+		signal: opts.signal
+	});
+}
+
+/** Body of `/api/availability/warm`. */
+export interface AvailabilityWarmBody {
+	items: AvailabilityArgs[];
 }
 
 /** Fire-and-forget cache warmer. Hands the backend a list of titles
  *  to probe in the background; the cache is populated for the next
  *  list-view visit. List views never wait for the warm to finish. */
 export function availabilityWarm(items: AvailabilityArgs[]): Promise<void> {
-	return postJson<unknown>('/api/availability/warm', { items }).then(() => undefined);
+	const body: AvailabilityWarmBody = { items };
+	return postJson<unknown>('/api/availability/warm', body).then(() => undefined);
+}
+
+/** Body of `/api/kitsu/search`. */
+export interface KitsuSearchBody {
+	query: string;
 }
 
 export function kitsuSearch(query: string, opts: ReadOptions = {}): Promise<KitsuAnimeRef[]> {
-	return postJson<KitsuAnimeRef[]>('/api/kitsu/search', { query }, { signal: opts.signal });
+	const body: KitsuSearchBody = { query };
+	return postJson<KitsuAnimeRef[]>('/api/kitsu/search', body, { signal: opts.signal });
 }
 
 /** One page of a Kitsu text search: its hits, and the offset the
@@ -1473,6 +1514,11 @@ export function kitsuTrendingAnilist(opts: ReadOptions = {}): Promise<KitsuAnime
 	return getJson<KitsuAnimeRef[]>('/api/kitsu/trending-anilist', opts);
 }
 
+/** Body of `/api/kitsu/by-mal-ids`. */
+export interface KitsuByMalIdsBody {
+	mal_ids: number[];
+}
+
 /** Bridge a batch of MAL ids to Kitsu refs in one round-trip.
  *  Order is preserved; ids Kitsu can't map drop out of the response,
  *  and a Kitsu show two ids lead to is listed once, at the first.
@@ -1481,9 +1527,9 @@ export function kitsuTrendingAnilist(opts: ReadOptions = {}): Promise<KitsuAnime
  *  matching the rest of the home. Empty input → empty
  *  output (no round-trip needed).
  *
- *  Sends the renderer-only internal-secret header — backend gates
- *  the route on it so a cross-origin page under permissive CORS
- *  can't reach the handler. Also enforces
+ *  Like every API request it carries the launch's secret
+ *  ($lib/backend/secret), which this route's handler checks as well
+ *  as the API's gate. The backend also enforces
  *  a 500-id batch cap server-side; this client doesn't pre-truncate
  *  so callers see a 4xx if they're pushing past the limit. */
 export async function kitsuByMalIds(
@@ -1491,12 +1537,14 @@ export async function kitsuByMalIds(
 	opts: ReadOptions = {}
 ): Promise<KitsuAnimeRef[]> {
 	if (malIds.length === 0) return [];
-	const headers: Record<string, string> = { 'content-type': 'application/json' };
-	const secret = typeof window !== 'undefined' ? window.aniGui?.internalSecret : undefined;
-	if (secret) headers['x-ani-gui-internal-secret'] = secret;
-	const init: RequestInit = { method: 'POST', headers, body: JSON.stringify({ mal_ids: malIds }) };
+	const body: KitsuByMalIdsBody = { mal_ids: malIds };
+	const init: RequestInit = {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(body)
+	};
 	if (opts.signal) init.signal = opts.signal;
-	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), init);
+	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), withSecretHeader(init));
 	return expect2xx<KitsuAnimeRef[]>(resp);
 }
 
@@ -1527,14 +1575,27 @@ export function aniskipGet(
 	);
 }
 
-/** Mirror of the backend's `meta::anilist::AiringStatus`. All-null =
+/** Mirror of the backend's `meta::anilist_airing::AiringStatus`. All-null =
  *  unknown airing data — the detail page must not gate episode tiles
  *  on it (see $lib/detail/episode-airing). */
 export interface AiringStatus {
+	/** Episodes aired so far; null = unknown (never gate on unknown). */
 	aired: number | null;
+	/** Number of the next episode to air, when scheduled. */
 	next_episode: number | null;
+	/** Epoch seconds of the next airing, when scheduled. */
 	next_airing_at: number | null;
-	upcoming?: { episode: number; airing_at: number }[];
+	/** Published future schedule (episode number → air time). Weekly
+	 *  shows publish a few weeks ahead; empty when none is published. */
+	upcoming: UpcomingEpisode[];
+}
+
+/** One future schedule row: episode number + its air time. */
+export interface UpcomingEpisode {
+	/** Episode number as AniList counts it (regular episodes only). */
+	episode: number;
+	/** Epoch seconds of this episode's scheduled airing. */
+	airing_at: number;
 }
 
 /** Airing schedule for a show — how many episodes are actually out
@@ -1596,6 +1657,15 @@ export function kitsuTitleMatchGet(
 	return getJson<string | null>(`/api/title-match?${qs.toString()}`, opts);
 }
 
+/** Body of `PUT /api/title-match`. */
+export interface TitleMatchBody {
+	title: string;
+	cour: number;
+	kitsu_id: string;
+	provider: StreamProvider | null;
+	year?: number;
+}
+
 /**
  * Persist a `(title, cour) → kitsu_id` mapping resolved by the
  * frontend picker. Idempotent — re-puts overwrite any prior value.
@@ -1610,8 +1680,9 @@ export function kitsuTitleMatchPut(
 	provider: StreamProvider | null,
 	year: number | null = null
 ): Promise<void> {
-	const body = { title, cour, kitsu_id: kitsuId, provider };
-	return putJson<void>('/api/title-match', year === null ? body : { ...body, year });
+	const body: TitleMatchBody = { title, cour, kitsu_id: kitsuId, provider };
+	if (year !== null) body.year = year;
+	return putJson<void>('/api/title-match', body);
 }
 
 /**
@@ -1703,6 +1774,15 @@ export function kitsuResolveAllmangaShowId(
 	);
 }
 
+/** Body of `/api/history/guess/ruled-out`. */
+export interface GuessRuledOutBody {
+	key: string;
+	title: string;
+	episode: number;
+	hits: KitsuAnimeRef[];
+	search: boolean;
+}
+
 /**
  * The ids of the `hits` a Continue row's guess may not take: the
  * backend reads the row's search title, the episode it reached and its
@@ -1720,11 +1800,8 @@ export function kitsuGuessRuledOut(
 	search: boolean,
 	opts: ReadOptions = {}
 ): Promise<string[]> {
-	return postJson<string[]>(
-		'/api/history/guess/ruled-out',
-		{ key, title, episode, hits, search },
-		{ signal: opts.signal }
-	);
+	const body: GuessRuledOutBody = { key, title, episode, hits, search };
+	return postJson<string[]>('/api/history/guess/ruled-out', body, { signal: opts.signal });
 }
 
 /**
@@ -1785,5 +1862,5 @@ export function imageProxyUrl(httpsUrl: string | null | undefined): string | nul
 	if (!httpsUrl || !httpsUrl.startsWith('https://')) return null;
 	const base = windowLaneBase('image');
 	if (base === null) return null;
-	return `${base}/api/image?url=${encodeURIComponent(httpsUrl)}`;
+	return withSecretQuery(`${base}/api/image?url=${encodeURIComponent(httpsUrl)}`);
 }

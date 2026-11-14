@@ -1199,6 +1199,27 @@ starting it, and delete it when you find it done.
   that path, and the diagnostic route's pasted URL exercises neither
   the proxy nor the event stream.
 
+## Which program the app runs is the page's choice
+
+- **The external player's and Syncplay's program paths are stored
+  from Settings unchecked, so the app's own page chooses what runs.**
+  The page writes them, with the rest of Settings, through
+  `PUT /api/settings` (`external_player`, `syncplay_binary`), and the
+  backend starts whatever path it was handed when the user next opens
+  an episode in the external player or watches together. No request
+  names a program any more, but a script running in the app's page,
+  which holds the launch's secret, can still pick the program by
+  rewriting Settings first. The Browse buttons open a
+  main-process file picker, but its answer comes back to the page and
+  is saved through the same `PUT`, like a typed path.
+
+  The direction chosen is that a path is set only through the
+  main-process file picker. It waited for a small Settings UI study:
+  dropping the free-text path changes how both fields look and
+  behave. What a picker cannot cover is the custom-arguments template
+  (`external_player_custom_args`): no dialog picks arguments, so it
+  needs an answer of its own.
+
 ## Metadata the app does not use yet
 
 A survey, on 2026-10-12, of fields the metadata sources answer that the
@@ -1467,24 +1488,27 @@ the AppImage and the Windows installer. It leaves out, on purpose:
 
 ## Studying a frontend written in Rust
 
-The maintainer wants a study of rewriting the frontend in Rust.
-Today the interface is SvelteKit in an Electron shell, and `AGENTS.md`
-§14 keeps rendering in the renderer's own stack, and says the Rust
-default never moves rendering into Rust, "whether behind a request to
-the backend or compiled to WebAssembly". That rule holds until the
-study is decided; revisiting it is the study's job.
+The maintainer wants a study of rewriting the frontend as a native
+Rust interface: drawn by a Rust toolkit, with no web engine, not the
+same web interface moved into another shell. Today the interface is
+SvelteKit in an Electron shell, and `AGENTS.md` §14 keeps rendering
+in the renderer's own stack, and says the Rust default never moves
+rendering into Rust, "whether behind a request to the backend or
+compiled to WebAssembly". That rule holds until the study is decided;
+revisiting it is the study's job.
 
 It waited because it rewrites the whole interface, far beyond any one
 change, and because a Rust interface is new to the stack, which is the
 maintainer's decision after an investigation.
 
-It is more than a change of language. The Rust toolkit chosen decides
-the shell too: Electron can stay, with Rust compiled to WebAssembly in
-its renderer, give way to a Rust shell around the system webview, or
-go entirely for a native window. That choice reaches the
-packaging on both platforms (§15), the player built on hls.js and the
-Paraglide translations (§6), and the frontend layers of the test
-pyramid.
+It is more than a change of language. With no web engine there is no
+Electron and no hls.js, so playback needs a native player embedded in
+the window on both platforms, likely the largest unknown. The
+Paraglide translations (§6), packaging on both platforms (§15) and the
+frontend layers of the test pyramid all change with it. A shell around
+the system webview is not the alternative it looks like: the app ran
+on Tauri until it moved to Electron, because the Linux webview could
+not keep up drawing the interface.
 
 ## Housekeeping
 
