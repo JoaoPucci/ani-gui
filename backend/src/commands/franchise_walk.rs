@@ -204,3 +204,7 @@ mod name_tests;
 #[cfg(test)]
 #[path = "franchise_walk_root_prop_test.rs"]
 mod root_prop_tests;
+
+#[cfg(test)]
+#[path = "franchise_corpus_page_test.rs"]
+mod corpus_page_tests;
