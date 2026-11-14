@@ -97,7 +97,9 @@ async fn serve(server: &MockServer, id: &str, offset: &str, body: Value) {
 
 /// From the 2000 OVA, the walk reads the OVA's, both neighbours' and
 /// Stardust Crusaders' listings once each — the 2012 series' over two
-/// pages — and a second ask is answered from the cache.
+/// pages — and a second ask is answered from the cache. The main story
+/// is the franchise's, the series, and the OVA, an other version of
+/// Stardust Crusaders, keeps the fields of its own detail.
 #[tokio::test]
 async fn the_walk_reads_each_listing_once_and_pages() {
     let server = MockServer::start().await;
@@ -139,16 +141,16 @@ async fn the_walk_reads_each_listing_once_and_pages() {
 
     let first = franchise(&state, "7730").await.expect("franchise");
     let ids: Vec<&str> = first.entries.iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(ids, ["610", "7730", "7158"]);
+    assert_eq!(ids, ["7158", "8063"]);
     let versions: Vec<&str> = first.versions.iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(versions, ["8063"]);
+    assert_eq!(versions, ["610", "7730"]);
     let films: Vec<&str> = first.films.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(films, ["3136"]);
     assert_eq!(
-        first.entries[1].title,
+        first.versions[1].title,
         "JoJo no Kimyou na Bouken: Adventure"
     );
-    assert_eq!(first.entries[1].poster.as_deref(), Some("m.jpg"));
+    assert_eq!(first.versions[1].poster.as_deref(), Some("m.jpg"));
     assert!(first.complete);
 
     let again = franchise(&state, "7730").await.expect("franchise");

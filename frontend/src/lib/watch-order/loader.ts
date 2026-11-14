@@ -43,9 +43,10 @@ export interface WatchOrderData {
 	readonly rows: readonly HistoryRow[];
 }
 
-/** Every id the franchise names. */
+/** Every id the franchise names, its chain's included. */
 function idsOf(f: FranchiseData): string[] {
-	const all = [...f.entries, ...f.versions, ...f.films, ...f.sides, ...f.recaps];
+	const sections = [...f.entries, ...f.versions, ...f.films, ...f.sides, ...f.recaps];
+	const all = [...sections, ...(f.chain?.entries ?? [])];
 	return [...new Set(all.map((e) => e.id))];
 }
 

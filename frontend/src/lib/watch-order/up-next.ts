@@ -5,6 +5,7 @@
  * them whether or not the provider carries them, and nothing here asks
  * the provider.
  */
+import { chainFranchise } from './chain-view';
 import { isUnaired } from './entry';
 import type { WatchOrderData } from './loader';
 import { placement, type WatchOrder } from './order';
@@ -51,7 +52,9 @@ export interface FinaleCard {
  * the entry that really comes next may be missing), the settings not
  * settled (`order` null), `id` outside the run, or nothing after it.
  * `self` is the player's own reading of the entry; without one the
- * run's entry decides the finale.
+ * run's entry decides the finale. An entry outside the main story is
+ * read on its own chain, as its strip draws it, so the card names the
+ * chain's next title, or the main-story title the chain leads into.
  */
 export function finaleCard(
 	data: WatchOrderData | null,
@@ -63,7 +66,7 @@ export function finaleCard(
 ): FinaleCard | null {
 	if (data?.franchise == null || order === null || data.franchise.anchor !== id) return null;
 	if (!data.franchise.complete) return null;
-	const run = runOf(data.franchise);
+	const run = runOf(chainFranchise(data.franchise) ?? data.franchise);
 	const entry = run?.entries.find((e) => e.id === id);
 	if (!run || !entry || !isFinale(self ?? entry, episode)) return null;
 	const upNext = upNextFor(run, id, order, today);

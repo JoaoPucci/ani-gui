@@ -1,10 +1,12 @@
 //! Rule 1's step: the entries one distance further from the root, each
-//! met through the earliest-starting entry that lists it, as many as the
-//! listing bound leaves room to read.
+//! met through the earliest-starting entry that lists it (or, in the
+//! main story's walk, that a read listing names from the other side,
+//! `franchise_walk_root.rs`), as many as the listing bound leaves room
+//! to read.
 
 use std::collections::BTreeMap;
 
-use super::alt::listed;
+use super::alt::linked;
 use super::rules::Walk;
 use super::MAX_LISTINGS;
 
@@ -14,19 +16,21 @@ pub(super) struct Met {
 }
 
 impl Walk<'_, '_> {
-    /// The entries `frontier` lists as prequel or sequel and nothing
-    /// has decided yet, each met through the earliest of them.
+    /// The entries `frontier` lists as prequel or sequel (or the walk's
+    /// `reverse` listings name from the other side) and nothing has
+    /// decided yet, each met through the earliest of them.
     pub(super) fn meet(&self, frontier: &[String]) -> BTreeMap<String, Met> {
         let mut by_start = frontier.to_vec();
         by_start.sort_by_key(|f| self.key(f));
         let mut met: BTreeMap<String, Met> = BTreeMap::new();
         for f in &by_start {
-            for r in listed(self.look, f, &["prequel", "sequel"]) {
-                if self.members.contains_key(&r.id) || self.left_out.contains(&r.id) {
+            let mut ids = linked(self.look, f, "prequel", &self.reverse);
+            ids.extend(linked(self.look, f, "sequel", &self.reverse));
+            for id in ids {
+                if self.members.contains_key(&id) || self.left_out.contains(&id) {
                     continue;
                 }
-                met.entry(r.id.clone())
-                    .or_insert_with(|| Met { via: f.clone() });
+                met.entry(id).or_insert_with(|| Met { via: f.clone() });
             }
         }
         met

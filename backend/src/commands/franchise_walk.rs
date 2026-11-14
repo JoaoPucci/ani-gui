@@ -8,7 +8,9 @@
 //! the listings say, never on the order they arrived in.
 //!
 //! The run follows the rules of `docs/proposals/franchise-watch-order.md`
-//! section 4 ([`rules`]); the strips around it are attached from the run
+//! section 4 ([`rules`]), walked from the franchise's root rather than
+//! from the anchor, so every page of a franchise answers with one main
+//! story ([`root`]); the strips around it are attached from the run
 //! members' listings ([`around`]).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -52,6 +54,24 @@ pub struct Franchise {
     /// False when the walk stopped at its bound or a listing was cut
     /// short.
     pub complete: bool,
+    /// The page's own chain, when the main story leaves the page out, or
+    /// the chain a side story whose parents it leaves out is drawn on
+    /// (`franchise_walk_chain.rs`); absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain: Option<Chain>,
+}
+
+/// A page's own chain, outside the main story.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Chain {
+    /// The chain's own titles and its seams, start order (unknown last),
+    /// then numeric id.
+    pub entries: Vec<FranchiseEntry>,
+    /// Prequel → sequel pairs between two of its entries.
+    pub links: Vec<(String, String)>,
+    /// The entries that are main-story titles, where the chain leaves
+    /// the main story or leads into it; the rest are its own.
+    pub seams: Vec<String>,
 }
 
 /// What the walk needs next, or what it decided.
@@ -64,8 +84,8 @@ pub enum Plan {
         /// Ids whose own details are needed.
         details: Vec<String>,
     },
-    /// The franchise.
-    Done(Franchise),
+    /// The franchise, boxed: it is many times the size of a need.
+    Done(Box<Franchise>),
 }
 
 /// The walk from `anchor` over the `known` listings and `details`.
@@ -98,7 +118,7 @@ pub fn plan(
             listings,
             details: Vec::new(),
         },
-        Ok(run) => Plan::Done(around::assemble(anchor, &run, &lookup)),
+        Ok(run) => Plan::Done(Box::new(around::assemble(anchor, &run, &lookup))),
     }
 }
 
@@ -148,6 +168,12 @@ pub(crate) fn id_key(id: &str) -> (u64, String) {
 mod alt;
 #[path = "franchise_walk_around.rs"]
 mod around;
+#[path = "franchise_walk_chain.rs"]
+mod chain;
+#[path = "franchise_walk_first.rs"]
+mod first;
+#[path = "franchise_walk_graph.rs"]
+mod graph;
 #[path = "franchise_walk_joined.rs"]
 mod joined;
 #[path = "franchise_walk_links.rs"]
@@ -160,6 +186,10 @@ mod name;
 mod parents;
 #[path = "franchise_walk_place.rs"]
 mod place;
+#[path = "franchise_walk_prequels.rs"]
+mod prequels;
+#[path = "franchise_walk_root.rs"]
+mod root;
 #[path = "franchise_walk_rules.rs"]
 pub(crate) mod rules;
 #[path = "franchise_walk_sections.rs"]
@@ -196,3 +226,19 @@ mod series_tests;
 #[cfg(test)]
 #[path = "franchise_walk_name_test.rs"]
 mod name_tests;
+
+#[cfg(test)]
+#[path = "franchise_walk_root_prop_test.rs"]
+mod root_prop_tests;
+
+#[cfg(test)]
+#[path = "franchise_corpus_page_test.rs"]
+mod corpus_page_tests;
+
+#[cfg(test)]
+#[path = "franchise_corpus_chain_test.rs"]
+mod corpus_chain_tests;
+
+#[cfg(test)]
+#[path = "franchise_walk_chain_test.rs"]
+mod chain_tests;
