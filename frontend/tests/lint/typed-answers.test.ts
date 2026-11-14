@@ -11,15 +11,27 @@
 //
 // ESLint (eslint.config.js) holds the call's shape in every test file:
 // `HttpResponse.json` without a type argument, or with one that types
-// nothing (`unknown`, `any`, MSW's `JsonBodyType`), is refused. This
-// file runs ESLint over small fixtures to prove the rule is configured
-// and fires.
+// nothing (`unknown`, `any`, `object`, `Object`, `never`, MSW's
+// `JsonBodyType`), is refused. It also refuses an import of
+// `$lib/testing`, where the shared fakes live, from app code. This file
+// runs ESLint over small fixtures to prove the rules are configured and
+// fire.
 //
-// What it does not see: whether the type named is the right route's
-// (a handler for one route answering another's type), a `fetch` stub
-// built by hand (the unit tests' typed `mockFetchOnce` and its kind
-// are held by the compiler, not by this rule), and a body cast to the
-// type before the call (`body as KitsuAnimeRef`).
+// What it does not see, and review holds instead:
+// - whether the type named is the right route's (a handler for one
+//   route answering another's type), or a type broader than the
+//   route's (`Record<string, unknown>`, which is also the honest type
+//   of a route that answers a map);
+// - a body cast before the call (`body as KitsuAnimeRef`), or a call
+//   reached another way (`HttpResponse['json'](...)`, an alias of it);
+// - an answer built without `HttpResponse.json`: `new HttpResponse` or
+//   `HttpResponse.text` with a JSON string or a stream, `Response.json`
+//   and `new Response(...)` in a `fetch` stub, and stream event data
+//   that does not go through `wire<T>`. The shared helpers for these
+//   take a type, and the tests use them, but nothing refuses one that
+//   does not;
+// - an untyped `vi.fn()` standing in for an API function or a
+//   dependency, which is typed by convention.
 
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -54,6 +66,8 @@ const refused: [string, string][] = [
 		`export const h = http.get('/x', () => HttpResponse.json({ kind: 'io' }, { status: 500 }));\n`
 	],
 	['an answer typed unknown', `export const h = () => HttpResponse.json<unknown>([]);\n`],
+	['an answer typed object', `export const h = () => HttpResponse.json<object>({});\n`],
+	['an answer typed never', `export const h = () => HttpResponse.json<never>([] as never);\n`],
 	[
 		"an answer typed as MSW's any body",
 		`import type { JsonBodyType } from 'msw';\nexport const h = () => HttpResponse.json<JsonBodyType>([]);\n`
@@ -76,6 +90,35 @@ describe('typed fake answers', () => {
 		async (file) => {
 			const code = `export const h = http.get('/x', () => HttpResponse.json<KitsuAnimeRef[]>([]));\n`;
 			expect(await lint(code, file)).toEqual([]);
+		},
+		30_000
+	);
+
+	const importsTesting = `import { kitsuRefAnswer } from '$lib/testing/wire-answers';\nexport const x = kitsuRefAnswer();\n`;
+
+	async function restrictedImports(code: string, file: string): Promise<string[]> {
+		const eslint = new ESLint({ cwd: FRONTEND });
+		const [result] = await eslint.lintText(code, { filePath: join(FRONTEND, file) });
+		return result.messages
+			.filter((msg) => msg.ruleId === 'no-restricted-imports')
+			.map((msg) => msg.message);
+	}
+
+	it.each(['src/lib/history/a-module.ts', 'src/lib/motion/a-module.ts', 'src/routes/+page.svelte'])(
+		'ESLint refuses an import of $lib/testing from app code in %s',
+		async (file) => {
+			const code = file.endsWith('.svelte')
+				? `<script lang="ts">\n${importsTesting}</script>\n`
+				: importsTesting;
+			expect((await restrictedImports(code, file)).join('\n')).toMatch(/\$lib\/testing/);
+		},
+		30_000
+	);
+
+	it.each(testFiles)(
+		'ESLint allows an import of $lib/testing in %s',
+		async (file) => {
+			expect(await restrictedImports(importsTesting, file)).toEqual([]);
 		},
 		30_000
 	);
