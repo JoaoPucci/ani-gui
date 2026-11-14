@@ -22,7 +22,9 @@
  * be had, or a player that cannot be opened on it, is a failed switch
  * that records nothing and leaves nothing for a later page: the
  * episode on screen goes on, and the caller says so. A viewer who left the player while
- * the stream was on its way is not taken back to it.
+ * the stream was on its way is not taken back to it, and a switch that
+ * failed after they left is abandoned, not failed: nothing is said or
+ * played on the page they went to.
  *
  * The page is an adapter: it hands in the app's effects and shows the
  * between-episodes loading band while this runs.
@@ -101,7 +103,9 @@ export async function switchShow(deps: SwitchShowDeps, req: SwitchRequest): Prom
 		// recorded below, once the player opened on the stream.
 		session = await deps.resolve({ ...args, record_later: true });
 	} catch {
-		return 'failed';
+		// A failure is the player's to say, and only while the viewer is
+		// still on it.
+		return deps.isCurrent() ? 'failed' : 'abandoned';
 	}
 	if (!deps.isCurrent()) return 'abandoned';
 	// The session may name the episode by the number it has now.
@@ -117,7 +121,7 @@ export async function switchShow(deps: SwitchShowDeps, req: SwitchRequest): Prom
 		.catch(() => false);
 	if (!opened) {
 		deps.forget(req.to.id, req.row);
-		return 'failed';
+		return deps.isCurrent() ? 'failed' : 'abandoned';
 	}
 	// The player is on the pick now: the switch happened, whatever
 	// recording its watch does.
