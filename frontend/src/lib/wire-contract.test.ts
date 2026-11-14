@@ -74,7 +74,6 @@ import {
 	type KitsuPosterImage,
 	type KitsuSearchBody,
 	type KitsuSearchPage,
-	type LaunchExternalPlayerArgs,
 	type PlayArgs,
 	type PlayProgress,
 	type RefillsBody,
@@ -572,19 +571,6 @@ const REQUESTS: Record<string, { spec: Record<string, string>; unsent?: string[]
 	},
 	AvailabilityWarmArgs: {
 		spec: { items: 'required' } satisfies BodySpec<AvailabilityWarmBody>
-	},
-	LaunchArgs: {
-		spec: {
-			stream_url: 'required',
-			referer: 'optional',
-			title: 'optional',
-			player_command: 'required',
-			player_kind: 'optional',
-			custom_args_template: 'optional'
-		} satisfies BodySpec<LaunchExternalPlayerArgs>,
-		// The renderer launches external players through the play
-		// routes, which attach a resolve's tracks themselves.
-		unsent: ['subtitle_urls', 'subtitles_off']
 	},
 	CreateSessionArgs: {
 		spec: { upstream_url: 'required', referer: 'required' } satisfies BodySpec<CreateSessionArgs>,
