@@ -910,6 +910,13 @@ order *Kizumonogatari III*'s finale names *Nisemonogatari*, and
 without it Continue could lead round the ten-entry *Monogatari* loop
 to entries already watched. The card still names the entry.
 
+**Outside the main story** [decided], the card follows the entry's
+own chain (section 4), as its strip draws it: *Heaven's Feel I*'s
+finale names *Heaven's Feel II*, and the third Golden Age film's names
+the 2016 *Berserk* series, the main-story title the chain leads into.
+At the last title of a chain that leads nowhere the card offers the
+franchise page (part 5).
+
 **Edge cases.** The 2000 *JoJo* OVA's finale names the 1993 OVA in
 link order and the 2012 TV series in release order — whichever the
 setting chooses, as one entry. The 2012 *JoJo* series' finale names
