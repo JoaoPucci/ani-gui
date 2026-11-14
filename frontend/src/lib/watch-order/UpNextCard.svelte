@@ -1,5 +1,5 @@
 <!--
-  The player's "Up next" card at a finale (./up-next's playerUpNext
+  The player's "Up next" card at a finale (./chain-end's playerUpNext
   decides which). It takes the skip pill's corner, surface and accent
   border, and grows into a card: the next entry's poster beside its
   title and meta, the ways on, the next entry not aired yet, or, at
@@ -25,7 +25,7 @@
 	import { stackCards } from './stack-fan';
 	import { stackTotal } from './strip-copy';
 	import type { WatchEntry } from './types';
-	import type { PlayerUpNext } from './up-next';
+	import type { PlayerUpNext } from './chain-end';
 	import {
 		cardAccentId,
 		cardAnnouncement,

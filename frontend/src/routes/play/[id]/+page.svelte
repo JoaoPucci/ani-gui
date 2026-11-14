@@ -42,7 +42,7 @@
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
 	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { settledOrder } from '$lib/watch-order/page-model';
-	import { playerUpNext } from '$lib/watch-order/up-next';
+	import { playerUpNext } from '$lib/watch-order/chain-end';
 	import { atVideoEnd, upNextShown as upNextShownFor } from '$lib/play/up-next-window';
 	import {
 		altTitlesFromKitsu,
@@ -1598,7 +1598,7 @@
 	// step to, once the video has ended, it names the entry the order
 	// setting puts next, or, at the end of a chain outside the main
 	// story that leads nowhere, the whole franchise, and waits for a
-	// click ($lib/watch-order/up-next's playerUpNext decides which,
+	// click ($lib/watch-order/chain-end's playerUpNext decides which,
 	// $lib/play/up-next-window when). Nothing asks the provider about
 	// that entry, and the card plays nothing: auto-play only ever steps
 	// within the entry. Dismissed, it stays away for the rest of that

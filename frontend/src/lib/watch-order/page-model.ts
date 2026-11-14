@@ -61,23 +61,7 @@ export interface WatchOrderPage {
 
 export type { Seam };
 
-/** The order setting as stored: anything but `released` reads as linked. */
-export function orderOf(value: string | null | undefined): WatchOrder {
-	return value === 'released' ? 'released' : 'linked';
-}
-
-/**
- * The order to draw in once the settings read has settled (`loaded`
- * or `failed`), else null: the strip waits for it rather than
- * re-ordering under the viewer.
- */
-export function settledOrder(
-	config: { readonly watch_order: string } | null,
-	failed: boolean
-): WatchOrder | null {
-	if (config) return orderOf(config.watch_order);
-	return failed ? 'linked' : null;
-}
+export { orderOf, settledOrder } from './order-setting';
 
 /**
  * The caption for a view; `loop` is the size of the cycle `view` sits
