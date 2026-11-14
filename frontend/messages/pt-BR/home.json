@@ -10,6 +10,8 @@
 	"hero_error_title": "O catálogo está inacessível.",
 	"hero_error_body": "O Kitsu não respondeu. A busca ainda funciona localmente — digite um título.",
 	"hero_error_cta": "Abrir busca",
+	"hero_empty_title": "Nada em destaque agora.",
+	"hero_empty_body": "A lista de em alta veio vazia. A busca continua funcionando, digite um título.",
 	"hero_skeleton_eyebrow_key": "Carregando",
 	"strip_continue_eyebrow": "Continuar assistindo",
 	"strip_continue_caption": "retomar do histórico",

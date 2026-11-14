@@ -30,7 +30,7 @@ The current design has several surfaces that are typographically resolved but vi
 | Network-down / Kitsu timeout | "Couldn't reach Kitsu" alert | A poster-style illustration that frames the failure as part of the world (closed-for-the-day sign, projector dark) rather than a system error. |
 | Locale chooser / settings empty states | Plain copy | Small editorial vignettes per locale — a quiet way to signal "we built this for you, specifically". |
 | Loading transitions between pages | Skeleton cards | Optional: a brief mascot glyph that fades while the data loads. Sparingly. |
-| About / credits | Doesn't exist yet | A long-form illustrated slate (mascot + the app's manifest + the upstream `ani-cli` credit) that doubles as the FOSS-license + GPL-3.0 attribution surface. |
+| About / credits | An About page of credits, with no illustration | A long-form illustrated slate (mascot + the app's manifest + the upstream `ani-cli` credit) that doubles as the FOSS-license + GPL-3.0 attribution surface. |
 | Error / 404 | None | Same illustrative pattern as network-down. |
 | Player end-card | Stock | A "the projectionist is taking a break" frame for between-episode autoplay pauses. Optional, post-MVP. |
 

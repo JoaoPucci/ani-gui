@@ -122,7 +122,7 @@ async fn franchise_route_serves_the_walk_from_the_cache() {
     )
     .expect("seed detail");
 
-    let router = crate::api::build_api_router(state);
+    let router = crate::api::test_router(state);
     let r = router
         .oneshot(
             Request::builder()

@@ -13,9 +13,10 @@
 // (frontend/project.inlang/settings.json), so adding a locale there
 // turns this red until it is added here.
 //
-// The table is those two dialogs and the line the launch splash shows
-// when a step of the boot stalls (lib/splash-progress.cjs), and no
-// more. The pages the OAuth callback server answers the browser with
+// The table is those two dialogs and the launch splash's own words
+// (lib/splash-progress.cjs): the line it shows when a step of the boot
+// stalls, its stuck state's line and actions (lib/splash-stuck.cjs),
+// and the name it carries for assistive technology. No more. The pages the OAuth callback server answers the browser with
 // (oauth-server.js) are the main process's text too, and are still
 // English.
 
@@ -44,6 +45,13 @@ const TRANSLATIONS = {
     // decided yet (the file if it lands in time, else the saved copy or
     // the defaults), so the line says only that the start goes ahead.
     splashNetworkSlow: "Network is slow — starting in a moment…",
+    // The splash's stuck state: the first page has not rendered 15 s
+    // after the splash appeared. One short sentence, and two actions.
+    splashStuck: "Taking longer than usual to start.",
+    splashRestart: "Restart",
+    splashQuit: "Quit",
+    // The splash's name for assistive technology.
+    splashStarting: "ani-gui is starting",
   },
   "pt-BR": {
     bootFailed: "Não foi possível iniciar o ani-gui",
@@ -59,6 +67,10 @@ const TRANSLATIONS = {
     // The splash's line under its progress rail, while a step stalls.
     splashStartingUp: "Iniciando…",
     splashNetworkSlow: "A conexão está lenta — iniciando em instantes…",
+    splashStuck: "Está demorando mais que o normal.",
+    splashRestart: "Reiniciar",
+    splashQuit: "Sair",
+    splashStarting: "O ani-gui está iniciando",
   },
   "es-419": {
     bootFailed: "No se pudo iniciar ani-gui",
@@ -74,6 +86,10 @@ const TRANSLATIONS = {
     // The splash's line under its progress rail, while a step stalls.
     splashStartingUp: "Iniciando…",
     splashNetworkSlow: "La conexión está lenta — iniciando en un momento…",
+    splashStuck: "Está tardando más de lo normal.",
+    splashRestart: "Reiniciar",
+    splashQuit: "Salir",
+    splashStarting: "ani-gui se está iniciando",
   },
   ru: {
     bootFailed: "Не удалось запустить ani-gui",
@@ -90,6 +106,10 @@ const TRANSLATIONS = {
     // The splash's line under its progress rail, while a step stalls.
     splashStartingUp: "Запуск…",
     splashNetworkSlow: "Сеть работает медленно — запуск через мгновение…",
+    splashStuck: "Запуск идёт дольше обычного.",
+    splashRestart: "Перезапустить",
+    splashQuit: "Выйти",
+    splashStarting: "ani-gui запускается",
   },
 };
 

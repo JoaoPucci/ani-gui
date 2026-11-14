@@ -99,10 +99,11 @@ export async function filterAvailableProgressive<T extends KitsuAnimeRef>(
 	const ids = items.map((i) => i.id);
 	let cached: Record<string, boolean> = {};
 	try {
-		const r = await availabilityBatch(ids, mode);
+		const r = await availabilityBatch(ids, mode, { signal: run });
 		cached = r.cached;
 	} catch {
-		emit(items);
+		// A run that ended has nobody to show the list to.
+		if (!run?.aborted) emit(items);
 		return;
 	}
 

@@ -52,6 +52,7 @@ import { asksOtherAudio } from '$lib/detail/unavailable-copy';
 import { m } from '$lib/paraglide/messages';
 import type { OtherAudio } from './error-copy';
 import { lookupOtherAudio, lookupOtherAudioShow } from './other-audio';
+import { beginVisit } from '$lib/navigation/visit';
 
 type Batch = typeof availabilityBatch;
 
@@ -117,24 +118,24 @@ export interface DeadEndQuery {
  *  title (asked only where the detail page would ask), for an episode
  *  past the count whether it has the episode, and nothing for an
  *  unaired one. Returns a cancel: an answer that lands after it is
- *  about a question the page no longer asks, and is dropped. */
+ *  about a question the page no longer asks, and is dropped, and a
+ *  lookup still out is cancelled. */
 export function watchDeadEndOtherAudio(
 	end: DeadEnd,
 	q: DeadEndQuery,
 	onAnswer: (answer: OtherAudio) => void,
 	batch: Batch = availabilityBatch
 ): () => void {
+	// Cancelling ends the lookup's visit: its request is cancelled too,
+	// and an answer it still gives is dropped.
+	const reads = beginVisit();
+	const ownBatch: Batch = (ids, mode) => batch(ids, mode, { signal: reads.signal });
 	let ask: Promise<OtherAudio> | null = null;
 	if (end === 'delisted' && asksOtherAudio({ unavailable: true, ...q })) {
-		ask = lookupOtherAudioShow(q, batch);
+		ask = lookupOtherAudioShow(q, ownBatch);
 	} else if (end === 'beyond-playable') {
-		ask = lookupOtherAudio(q, batch);
+		ask = lookupOtherAudio(q, ownBatch);
 	}
-	let live = true;
-	void ask?.then((answer) => {
-		if (live) onAnswer(answer);
-	});
-	return () => {
-		live = false;
-	};
+	if (ask) void reads.keep(ask).then(onAnswer);
+	return reads.end;
 }

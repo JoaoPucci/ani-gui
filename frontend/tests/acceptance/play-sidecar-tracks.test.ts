@@ -92,7 +92,7 @@ describe('sidecar subtitle tracks', () => {
 				HttpResponse.json({ available: true, episode_count: 12, extra_episodes: [] })
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
 			http.get(`${API_BASE}/s/session-1/subtitles`, () =>
 				HttpResponse.json([
 					{

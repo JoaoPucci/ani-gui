@@ -111,3 +111,14 @@ describe('decideAutoPlayNext — where the player has no next step', () => {
 		);
 	});
 });
+
+describe('decideAutoPlayNext — an episode handed to another player', () => {
+	it('never advances the embedded player on its own', () => {
+		expect(
+			decideAutoPlayNext({ enabled: true, episodeNum: 1, totalEpisodes: 12, handedOff: true })
+		).toEqual({ advance: false });
+		expect(
+			decideAutoPlayNext({ enabled: true, episodeNum: 1, totalEpisodes: 12, handedOff: false })
+		).toEqual({ advance: true, target: 2 });
+	});
+});

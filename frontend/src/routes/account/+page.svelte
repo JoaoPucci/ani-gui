@@ -12,7 +12,8 @@
   — per AGENTS.md §2.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
+	import { beginVisit } from '$lib/navigation/visit';
 	import { m } from '$lib/paraglide/messages';
 	import { imageProxyUrl, settingsGet, settingsPut, type Config } from '$lib/api';
 	import { accountStore } from '$lib/account/store.svelte';
@@ -71,9 +72,14 @@
 		return chosen && ids.includes(chosen) ? chosen : ids[0];
 	});
 
+	// The page's read of the settings, cancelled when it goes; nothing
+	// it answers after reaches it ($lib/navigation/visit).
+	const reads = beginVisit();
+	onDestroy(reads.end);
 	onMount(() => {
 		void accountStore.hydrate();
-		void settingsGet()
+		void reads
+			.keep(settingsGet({ signal: reads.signal }))
 			.then((c) => {
 				config = c;
 				primaryAccountStore.set(parsePrimaryProvider(c.primary_account));

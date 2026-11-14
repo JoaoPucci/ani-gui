@@ -11,8 +11,17 @@ fn provider_ep_no(episode: &str, offset: u32) -> String {
     }
 }
 
-fn make_state_at(history_path: std::path::PathBuf) -> crate::app::AppState {
-    crate::app::AppState {
+fn make_state_at(
+    history_path: std::path::PathBuf,
+) -> crate::scratch::Scratch<crate::app::AppState> {
+    let mut state = make_state();
+    state.history_path = history_path;
+    state
+}
+
+fn make_state() -> crate::scratch::Scratch<crate::app::AppState> {
+    let dirs = crate::scratch::dir();
+    let state = crate::app::AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -21,27 +30,20 @@ fn make_state_at(history_path: std::path::PathBuf) -> crate::app::AppState {
         proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 0),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path,
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
-        config_path: std::path::PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: std::path::PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
-    }
-}
-
-fn make_state() -> crate::app::AppState {
-    let tmp = tempfile::tempdir().expect("tmp");
-    // Leak the tempdir so the per-test history path stays alive; the
-    // OS reclaims it after the test process exits.
-    let dir = Box::leak(Box::new(tmp));
-    make_state_at(dir.path().join("history"))
+    };
+    dirs.hold(state)
 }
 
 #[test]

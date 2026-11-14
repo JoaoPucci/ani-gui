@@ -92,6 +92,21 @@ pub struct CreateSessionResponse {
     pub own_listing: bool,
 }
 
+/// The proxy URL a session's media is fetched at. The path segment
+/// matches the media kind — the proxy router has a separate handler
+/// for each, so picking the wrong one would 415. The renderer composes
+/// the same URL from a session id it carries in a page's address
+/// (`frontend/src/lib/play/media-url.ts`); `backend/wire-contract.json`
+/// publishes this one's answers for its test to hold it to.
+#[must_use]
+pub fn media_url(origin_base: &str, session: &str, kind: MediaKind) -> String {
+    let path = match kind {
+        MediaKind::Hls => "master.m3u8",
+        MediaKind::Mp4 => "file.mp4",
+    };
+    format!("{origin_base}/s/{session}/{path}")
+}
+
 /// Validate the inputs and register a new [`StreamSession`] in
 /// [`AppState::sessions`]. Infers the [`MediaKind`] from the upstream
 /// URL extension; callers with stronger signal (e.g. a HEAD response)
@@ -144,13 +159,7 @@ fn create_session_inner(
     state.sessions.insert(session);
 
     let session_str = id.as_string();
-    // The path segment matches the media kind — the proxy router has
-    // a separate handler for each, so picking the wrong one would 415.
-    let path = match media_kind {
-        MediaKind::Hls => "master.m3u8",
-        MediaKind::Mp4 => "file.mp4",
-    };
-    let media_url = format!("{}/s/{}/{}", state.proxy_origin.base, session_str, path);
+    let media_url = media_url(&state.proxy_origin.base, &session_str, media_kind);
     let subtitles = tracks
         .iter()
         .enumerate()
@@ -190,13 +199,17 @@ fn parse_http_url(s: &str, field: &str) -> Result<Url> {
 mod subtitle_tests;
 
 #[cfg(test)]
+#[path = "session_media_url_test.rs"]
+mod media_url_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::path::PathBuf;
 
-    fn make_state(port: u16) -> AppState {
-        AppState {
+    fn make_state(port: u16) -> crate::scratch::Scratch<AppState> {
+        let dirs = crate::scratch::dir();
+        let state = AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -205,20 +218,21 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", port),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/y/history"),
+            history_path: dirs.history(),
             providers: crate::provider_set::ProviderSet::for_tests(),
-            image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+            image_cache_dir: dirs.images(),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
-            config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-            state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            config_path: dirs.config(),
+            state_dir: dirs.state(),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
             flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
-        }
+        };
+        dirs.hold(state)
     }
 
     #[test]
