@@ -51,7 +51,10 @@ const { messagesFor, resolveLocale } = require("./lib/main-messages.cjs");
 const { splashWords, stallTexts } = require("./lib/splash-progress.cjs");
 const { relaunch, relaunchPlan } = require("./lib/relaunch.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
+const { backendRelay, redactSecrets } = require("./lib/log-redact.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
+const { appDocumentFrom } = require("./lib/app-document.cjs");
+const { SECRET_CHANNEL, secretKeeper } = require("./lib/secret-handoff.cjs");
 const { revealMaximized, splashController, splashVersionLabel } = require("./lib/splash.cjs");
 const { abortWhenLost, appReadyBound, appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
 const {
@@ -169,6 +172,15 @@ if (!claimSingleInstance(app, { summon: () => keeper.summon() })) {
 // other path to index.html.
 const APP_SCHEME = "app";
 const APP_ORIGIN = `${APP_SCHEME}://localhost`;
+
+// The launch's secret, kept per window and handed to the app's own
+// page alone, over IPC, never on a command line (lib/secret-handoff.cjs).
+const secrets = secretKeeper({
+  app: appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL }),
+  // A refused page is named by its URL, which is redacted like any
+  // other line the main process logs (lib/log-redact.cjs).
+  logError: (line) => console.error(redactSecrets(line)),
+});
 
 // Register the scheme as standard + secure BEFORE app.whenReady, so
 // fetch + service-worker-style guarantees apply to assets loaded
@@ -310,6 +322,10 @@ function readConfigLocale() {
  * see the module), so bootApp can end the boot.
  */
 async function spawnBackend() {
+  const relay = backendRelay({
+    stdout: (text) => process.stdout.write(text),
+    stderr: (text) => process.stderr.write(text),
+  });
   // A parent pipe on stdin, the flag to watch it, and its own process
   // group — see lib/backend-spawn.cjs. `child.stdin` is never written
   // to or closed: it stays open exactly as long as this process lives.
@@ -323,16 +339,21 @@ async function spawnBackend() {
       reapOnExit(child, { platform: process.platform, signalGroup: signalBackendGroup });
     },
     handshake: (child) => {
-      child.stderr.on("data", (chunk) => {
-        process.stderr.write(`[backend] ${chunk.toString("utf-8")}`);
-      });
+      // The backend's output is relayed with any secret in it redacted
+      // (lib/log-redact.cjs): by shape from the start, and by value once
+      // the handshake has named the launch's secret.
+      child.stderr.setEncoding("utf-8");
+      child.stderr.on("data", (chunk) => relay.stderr(chunk));
+      child.stderr.on("end", () => relay.end());
       // After the handshake, downstream stdout becomes log output; it
       // is echoed through so we can see it in dev.
-      return awaitHandshake(child, {
+      const handshake = awaitHandshake(child, {
         timeoutMs: HANDSHAKE_TIMEOUT_MS,
         stopChild: killTree,
-        log: (line) => process.stdout.write(`${line}\n`),
+        log: (line) => relay.stdout(line),
       });
+      handshake.then((ready) => relay.learn(ready.internalSecret), () => {});
+      return handshake;
     },
   });
 }
@@ -467,8 +488,10 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // GNOME gives Chromium no server-side decorations
   // (electron/electron#48422). The icon is for the dev session;
   // packaged builds get theirs from the .desktop file. The backend's
-  // handshake, the configured locale and the launch's flags reach the
-  // preload as additional arguments (lib/window-args.cjs).
+  // origins, the configured locale and the launch's flags reach the
+  // preload as additional arguments (lib/window-args.cjs); the
+  // launch's secret does not, and is answered over IPC to the app's
+  // own page (lib/secret-handoff.cjs).
   const win = new BrowserWindow(
     appWindowOptions({
       width: workW,
@@ -478,6 +501,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
       additionalArguments: windowArguments(backend, readConfigLocale(), launchFlags),
     }),
   );
+  secrets.hold(win.webContents, backend.internalSecret);
   // Started now, so the renderer's word is not missed however early it
   // comes; the reveal waits for it (bounded) as well as for the splash.
   // While the boot's splash stands in for the window the wait has no
@@ -542,11 +566,16 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // can tell whether the page actually loaded and whether scripts
   // are throwing. Without this, a blank window looks identical to a
   // successful load from the outside.
+  // Both carry URLs, and the renderer's URLs can carry the launch's
+  // secret: it is redacted from every line (lib/log-redact.cjs).
+  const launchSecrets = [backend.internalSecret];
   win.webContents.on("did-fail-load", (_e, code, desc, url) => {
-    console.error(`[renderer] did-fail-load ${url}: ${code} ${desc}`);
+    console.error(
+      redactSecrets(`[renderer] did-fail-load ${url}: ${code} ${desc}`, launchSecrets),
+    );
   });
   win.webContents.on("console-message", (_e, level, msg, line, source) => {
-    console.log(rendererConsoleLine(level, msg, line, source));
+    console.log(rendererConsoleLine(level, msg, line, source, launchSecrets));
   });
 
   // "Open maximized" is a two-step belt-and-suspenders pattern.
@@ -812,6 +841,13 @@ ipcMain.on("ani-gui:active-downloads", (_event, count) => {
 // happens once per renderer load.
 ipcMain.on("ani-gui:read-config-locale", (event) => {
   event.returnValue = readConfigLocale();
+});
+
+// The preload's one synchronous ask for the launch's secret, answered
+// only to the app's own page in a window it was handed to; anything
+// else gets null (lib/secret-handoff.cjs).
+ipcMain.on(SECRET_CHANNEL, (event) => {
+  event.returnValue = secrets.answer(event);
 });
 
 // ─── Account integration IPC handlers ──────────────────────────────
