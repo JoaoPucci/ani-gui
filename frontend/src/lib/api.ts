@@ -11,21 +11,6 @@
  * accepts snake_case in API DTO interfaces only.
  */
 
-/**
- * Resolve the base URL of the local backend (e.g.
- * `http://127.0.0.1:42337`). Cached after the first call.
- *
- * Detection order:
- *   1. `window.aniGui.apiBase` — Electron preload script injection.
- *   2. `import.meta.env.VITE_ANI_GUI_API_BASE` — browser-only dev
- *      (run `cargo run --bin ani-gui-backend` and `pnpm dev` with
- *      the env var set to the printed URL). Such a tab has no
- *      launch secret ($lib/backend/secret), so the backend refuses
- *      its API requests.
- *
- * Throws if neither is available — the renderer can't function
- * without a backend address.
- */
 import type { StreamProvider } from '$lib/history/show-key';
 import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
 import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
@@ -127,6 +112,21 @@ declare global {
 	}
 }
 
+/**
+ * Resolve the base URL of the local backend (e.g.
+ * `http://127.0.0.1:42337`). Cached after the first call.
+ *
+ * Detection order:
+ *   1. `window.aniGui.apiBase` — Electron preload script injection.
+ *   2. `import.meta.env.VITE_ANI_GUI_API_BASE` — browser-only dev
+ *      (run `cargo run --bin ani-gui-backend` and `pnpm dev` with
+ *      the env var set to the printed URL). Such a tab has no
+ *      launch secret ($lib/backend/secret), so the backend refuses
+ *      its API requests.
+ *
+ * Throws if neither is available — the renderer can't function
+ * without a backend address.
+ */
 async function apiBase(): Promise<string> {
 	if (apiBaseCache !== null) return apiBaseCache;
 	if (typeof window !== 'undefined' && window.aniGui?.apiBase) {
