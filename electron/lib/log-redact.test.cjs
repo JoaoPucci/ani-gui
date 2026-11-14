@@ -189,3 +189,31 @@ test("a redacted value ends at a slash, a colon or a question mark, and the rest
   assert.equal(redactSecrets(`http://h/a/secret=${SECRET}?x=1`), `http://h/a/secret=${REDACTED}?x=1`);
   assert.equal(redactSecrets(`GET /secret=${SECRET}:extra`), `GET /secret=${REDACTED}:extra`);
 });
+
+test("a known secret in a secret= parameter or the header is redacted once, not twice", () => {
+  assert.equal(
+    redactSecrets(`http://h/api/image?secret=${SECRET}&url=x`, [SECRET]),
+    `http://h/api/image?secret=${REDACTED}&url=x`,
+  );
+  assert.equal(
+    redactSecrets(`next=%2Fapi%2Fimage%3Fsecret%3D${SECRET}%26url%3Dx`, [SECRET]),
+    `next=%2Fapi%2Fimage%3Fsecret%3D${REDACTED}%26url%3Dx`,
+  );
+  assert.equal(
+    redactSecrets(`x-ani-gui-internal-secret: ${SECRET}`, [SECRET]),
+    `x-ani-gui-internal-secret: ${REDACTED}`,
+  );
+});
+
+test("redacting by value and by shape together never doubles the marker", () => {
+  const hex = fc.stringMatching(/^[0-9a-f]{64}$/);
+  const plain = fc.string().filter((s) => !s.includes("<"));
+  fc.assert(
+    fc.property(hex, plain, plain, fc.boolean(), (secret, before, after, encoded) => {
+      const eq = encoded ? "%3D" : "=";
+      const out = redactSecrets(`${before}?secret${eq}${secret}${after}`, [secret]);
+      assert.ok(!out.includes(`${REDACTED}${REDACTED}`), out);
+      assert.ok(!out.includes(secret), out);
+    }),
+  );
+});
