@@ -306,8 +306,10 @@ saying the same thing:
   launch announces each connection lane under), the error envelope
   of every variant, and the values the renderer keeps a copy of (the Watch
   Later bridge cap, the names of the secret and refill headers, and the
-  proxy's media URL shape; the Electron
-  main process's own copy of the secret header's name is not held) — and
+  proxy's media URL shape; the Electron main process's own copy of the
+  secret header's name is not in the contract, and
+  `electron/lib/secret-header.test.cjs` holds it to the backend's source
+  instead) — and
   `cargo test` fails until the file says the same. A field added to a
   published type, or a variant to a published enum, does not compile until
   the samples carry it.

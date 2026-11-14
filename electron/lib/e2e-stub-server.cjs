@@ -6,8 +6,9 @@
 // used to answer them in place, inside Playwright. That answer reaches
 // the page without its status or headers once the main process has
 // a webRequest listener on the window's session, as it does to add the
-// secret header (lib/secret-header.cjs): Electron then sends every request through its own loader, and an answer made
-// up in place arrives with status 0. So a spec holds its answer here
+// secret header (lib/secret-header.cjs): Electron then sends every
+// request through its own loader, and an answer made up in place
+// arrives with status 0. So a spec holds its answer here
 // and sends the request on to the URL `hold` returns (electron/e2e/
 // stubs.ts does both). The request then travels through Chromium's
 // network stack as a request to the backend does, and is answered as

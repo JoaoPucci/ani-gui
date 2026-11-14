@@ -43,8 +43,9 @@
 //! guess's `hits`); the value types of a map (`titles`, `cached`); the
 //! launch flags, and the copy of the secret header's name the Electron
 //! main process keeps (`electron/lib/secret-handoff.cjs`, held to this
-//! source by its own test; both the main process's, not the renderer's); and the value types of request fields — a
-//! request's fields are held by name and by whether they are required.
+//! source by its own test; both the main process's, not the
+//! renderer's); and the value types of request fields — a request's
+//! fields are held by name and by whether they are required.
 //! Only the `full` samples are probed: a `min` sample is taken as
 //! written, so a field set in one would publish as always sent.
 
