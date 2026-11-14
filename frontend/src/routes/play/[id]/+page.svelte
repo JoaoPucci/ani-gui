@@ -42,7 +42,7 @@
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
 	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { settledOrder } from '$lib/watch-order/page-model';
-	import { chainEndCard, finaleCard } from '$lib/watch-order/up-next';
+	import { playerUpNext } from '$lib/watch-order/up-next';
 	import { atVideoEnd, upNextShown as upNextShownFor } from '$lib/play/up-next-window';
 	import {
 		altTitlesFromKitsu,
@@ -1596,28 +1596,18 @@
 	// The "Up next" card at a finale: on the last episode of an entry
 	// that has finished airing, with no further episode of the entry to
 	// step to, once the video has ended, it names the entry the order
-	// setting puts next and waits for a click
-	// ($lib/watch-order/up-next, $lib/play/up-next-window). Nothing
-	// asks the provider about that entry, and the card plays nothing:
-	// auto-play only ever steps within the entry. Dismissed, it stays
-	// away for the rest of that viewing, and it is announced once per
-	// viewing.
+	// setting puts next, or, at the end of a chain outside the main
+	// story that leads nowhere, the whole franchise, and waits for a
+	// click ($lib/watch-order/up-next's playerUpNext decides which,
+	// $lib/play/up-next-window when). Nothing asks the provider about
+	// that entry, and the card plays nothing: auto-play only ever steps
+	// within the entry. Dismissed, it stays away for the rest of that
+	// viewing, and it is announced once per viewing.
 	let upNextData = $state<WatchOrderData | null>(null);
 	let configFailed = $state(false);
 	const upNextToday = localDay(new Date());
 	const upNextCard = $derived(
-		finaleCard(
-			upNextData,
-			id,
-			settledOrder(config, configFailed),
-			upNextToday,
-			episodeNum,
-			detail ? { status: detail.status, episodes: detail.episode_count } : null
-		)
-	);
-	// At a chain's dead end: the whole franchise, where nothing is next.
-	const chainEnd = $derived(
-		chainEndCard(
+		playerUpNext(
 			upNextData,
 			id,
 			settledOrder(config, configFailed),
@@ -1637,7 +1627,7 @@
 	});
 	const upNextShown = $derived(
 		upNextShownFor({
-			card: upNextCard !== null || chainEnd !== null,
+			card: upNextCard !== null,
 			hasNext,
 			resumeHolding,
 			dismissed: upNextDismissed,
@@ -3253,18 +3243,7 @@
 			{#if upNextShown && upNextCard}
 				<!-- Takes the Skip Ending pill's place and corner. -->
 				<UpNextCard
-					progress={upNextCard.progress}
-					upNext={upNextCard.upNext}
-					today={upNextToday}
-					announce={!upNextAnnounced}
-					onannounce={() => (upNextAnnounced = true)}
-					ondismiss={() => (upNextDismissed = true)}
-				/>
-			{:else if upNextShown && chainEnd}
-				<UpNextCard
-					progress={{}}
-					upNext={null}
-					franchise={chainEnd}
+					card={upNextCard}
 					today={upNextToday}
 					announce={!upNextAnnounced}
 					onannounce={() => (upNextAnnounced = true)}

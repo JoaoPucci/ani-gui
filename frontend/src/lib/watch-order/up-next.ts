@@ -118,7 +118,7 @@ export function chainEndCard(
 	return {
 		name: data.franchise.name,
 		id,
-		front: '',
+		front: data.franchise.name_from,
 		summary: franchiseSummary(main, data.franchise.name_from)
 	};
 }
@@ -128,7 +128,11 @@ export type PlayerUpNext =
 	| { readonly kind: 'entry'; readonly card: FinaleCard }
 	| { readonly kind: 'franchise'; readonly card: ChainEndCard };
 
-/** The card `id`'s `episode` shows at its finale, or null. */
+/**
+ * The one card `id`'s `episode` shows at its finale, or null: the
+ * finale card where it names a next title (`finaleCard`), else the
+ * franchise card at a chain's dead end (`chainEndCard`), else none.
+ */
 export function playerUpNext(
 	data: WatchOrderData | null,
 	id: string,
@@ -137,6 +141,8 @@ export function playerUpNext(
 	episode: number,
 	self: FinaleSelf | null
 ): PlayerUpNext | null {
-	void [data, id, order, today, episode, self];
-	return null;
+	const finale = finaleCard(data, id, order, today, episode, self);
+	if (finale) return { kind: 'entry', card: finale };
+	const end = chainEndCard(data, id, order, today, episode, self);
+	return end ? { kind: 'franchise', card: end } : null;
 }
