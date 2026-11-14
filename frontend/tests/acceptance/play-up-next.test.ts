@@ -27,6 +27,8 @@ import { watchPageFetches } from './page-fetches';
 import { recordMotion, setReducedMotion } from './motion';
 import { playerVideo, playerVideoInSlot } from './player-video';
 import { m } from '../../src/lib/paraglide/messages';
+import { accentFor } from '../../src/lib/design/accent';
+import { numeral } from '../../src/lib/watch-order/meta';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -665,8 +667,14 @@ describe('the Up next card at a finale', () => {
 		const links = cardLinks();
 		expect(links.map((a) => a.getAttribute('href'))).toEqual([`/anime/${KITSU_ID}/franchise`]);
 		expect(links[0].getAttribute('aria-label')).toBe(
-			`${m.watchorder_upnext_franchise_key()}: Saga`
+			m.watchorder_upnext_franchise_label({ name: 'Saga' })
 		);
+		// The accent is the franchise's front entry's, as on its page.
+		expect(card()!.style.getPropertyValue('--accent')).toBe(accentFor('10'));
+		// No title has a poster: blank frames, the front one counting
+		// the titles the franchise page lists.
+		expect(card()!.querySelectorAll('img')).toHaveLength(0);
+		expect(card()!.querySelector('[data-testid="fan-count"]')?.textContent).toBe(numeral(2));
 		await until(
 			() =>
 				card()!.querySelector('[role="status"]')?.textContent ===

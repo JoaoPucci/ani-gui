@@ -79,11 +79,18 @@ pub fn first_hop(
     }
     // No run beside the show: the walk's parent check decides whether
     // it walks from a parent story, from the show's start and the
-    // candidates' own listings.
+    // candidates' own listings, as far as the walk's bound leaves room
+    // beside the show's own listing.
     if !details.contains_key(anchor) {
         return read(Vec::new(), vec![anchor.to_string()]);
     }
-    match parent_stories(anchor, &Lookup { known, details }, &BTreeSet::new()) {
+    let counted = BTreeSet::from([anchor.to_string()]);
+    match parent_stories(
+        anchor,
+        &Lookup { known, details },
+        &BTreeSet::new(),
+        &counted,
+    ) {
         Err(listings) => read(listings, Vec::new()),
         Ok(found) if !found.parents.is_empty() => Step::Done(FirstHop::Strip),
         Ok(_) if named_from_the_other_side(anchor, listing, known) => Step::Done(FirstHop::Strip),

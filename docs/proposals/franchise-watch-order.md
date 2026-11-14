@@ -582,8 +582,9 @@ stories, spin-offs and recaps than the anchor's; and an entry the
 anchor names as its side story or spin-off is taken as its parent
 story when it started before the anchor, names the anchor back as its
 parent story, and names more of them. A listing read for this counts
-toward the bound on what the walk reads after it, and one cut short
-makes the answer incomplete. *One Piece* names sixty-three;
+toward the bound on what the walk reads after it; the candidates are
+read only as far as the bound leaves room, and one left unread, or cut
+short, makes the answer incomplete. *One Piece* names sixty-three;
 *LEGO ONE PIECE* names one.
 
 **One main story per franchise.** Rule 3 never leaves out the entry
@@ -640,7 +641,11 @@ anchors.
 without a run of its own. Its chain is the franchise's entries outside
 the main story joined to it by prequel and sequel links, a link counted
 from either side, with the main-story titles one of them is linked to:
-its seams, where the chain leaves the main story or leads into it.
+its seams, where the chain leaves the main story or leads into it. Two
+entries are never linked on a chain where either lists the other as
+another version or setting, as rule 3 never puts both in a run: a page
+listing one entry as both its prequel and its other version gets no
+seam into it.
 [data] *Heaven's Feel* I to III, with *Fate/Zero 2nd Season*; the three
 *Berserk* Golden Age films, with the 2016 series they lead into; the two
 *JoJo* OVAs, with the 2012 series the 2000 OVA names as its prequel; the
@@ -650,7 +655,8 @@ franchise, so every title of it answers with the same chain, where
 Kitsu lists its links from both sides. A main-story page has none, and
 neither has a page linked to nothing else; a side story whose parents
 the main story leaves out keeps them, and is drawn on the earliest
-one's chain. Music videos are no titles of a chain. The franchise page is
+one's chain, or on that parent alone where it is chained to nothing.
+Music videos are no titles of a chain. The franchise page is
 unchanged by it: the chain's titles stay where the sections list them.
 
 With these tie-breaks every entry has one path and one decision, so
@@ -910,7 +916,9 @@ card shows:
 - exactly one that has not aired: that entry with its date
   ("Coming January 2027"), as information only;
 - several: all of them, as the choices;
-- none: no card.
+- none: no card, except at the last title of a chain outside the main
+  story that leads nowhere, where the card offers the whole franchise
+  (below).
 
 Continue moves to the next entry in the first case only, and only to
 an entry the viewer has not played yet; in every other case it keeps
@@ -919,12 +927,21 @@ order *Kizumonogatari III*'s finale names *Nisemonogatari*, and
 without it Continue could lead round the ten-entry *Monogatari* loop
 to entries already watched. The card still names the entry.
 
-**Outside the main story** [decided], the card follows the entry's
-own chain (section 4), as its strip draws it: *Heaven's Feel I*'s
-finale names *Heaven's Feel II*, and the third Golden Age film's names
-the 2016 *Berserk* series, the main-story title the chain leads into.
-At the last title of a chain that leads nowhere the card offers the
-franchise page (part 5).
+**Outside the main story** [decided], the Up next card follows the
+entry's own chain (section 4), as its strip draws it: *Heaven's Feel
+I*'s finale names *Heaven's Feel II*, and the third Golden Age film's
+names the 2016 *Berserk* series, the main-story title the chain leads
+into. At the last title of a chain that leads nowhere the card offers
+the franchise page (part 5): keyed "The whole franchise", named after
+the franchise, fanning the strip link's poster stack (three blank
+frames, the front one counting the page's titles, when no title has a
+poster) beside the first two counts the link names, in the accent of
+the entry the franchise's name comes from, as on its page. Only one
+card shows at a finale: the next title where there is one, else this
+one.
+Continue Watching's hand-off follows the same chain, by its own rules:
+at a chain's dead end nothing comes next, and the row keeps its
+ordinary card.
 
 **Edge cases.** The 2000 *JoJo* OVA's finale names the 1993 OVA in
 link order and the 2012 TV series in release order — whichever the
@@ -1279,7 +1296,8 @@ them introduces a new widget style.
     keeps today's card.
   - An unaired sequel: the player card shows it with its date and no
     action. Continue keeps today's card.
-  - No sequel: no card.
+  - No sequel: no card, except at the end of a chain outside the main
+    story, where the card offers the whole franchise.
 
 ### The franchise page
 
@@ -1511,7 +1529,8 @@ The rules below hold on every surface:
 - **States.** One aired next entry: a link to its page. Several (a
   fork): "Ways to continue" over one row per branch. One not yet
   aired: "Next, when it airs", its date or "Date not announced", and
-  no link. None: no card. A franchise read only in part (the walk
+  no link. None: no card, except at the end of a chain outside the
+  main story, where it offers the whole franchise. A franchise read only in part (the walk
   reached its bound, or a listing came back cut short) also gets no
   card, since the entry that really comes next may be missing from
   it. The mockup showed the card from the start of a last episode, so

@@ -209,6 +209,23 @@ describe('watchOrderPage on a page outside the main story', () => {
 		expect(p.seams).toEqual({ before: null, after: null });
 	});
 
+	it('draws a side story under a parent chained to nothing, the parent its chain alone', () => {
+		// The backend draws a side story on its parent alone where the
+		// parent's only link is to a version of it: one title, no seam.
+		const special = e('9000', '2018-01-01', 'special');
+		const chain: ChainData = { entries: [hf1], links: [], seams: [] };
+		const franchise: FranchiseData = {
+			...fate('9000', chain),
+			sides: [special],
+			parents: { '9000': ['8675'] }
+		};
+		const p = watchOrderPage({ franchise, rows: [] }, '9000', 'linked')!;
+		expect(p.view.kind).toBe('side');
+		expect(ids(p.view.before)).toEqual(['8675']);
+		expect(p.caption).toEqual({ kind: 'side' });
+		expect(p.seams).toEqual({ before: null, after: null });
+	});
+
 	it('keys a column that holds a seam beside an own title as usual, and counts both', () => {
 		// Heaven's Feel I forks: on to II, and back into the 2006 series.
 		const chain: ChainData = {

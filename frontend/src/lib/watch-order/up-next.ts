@@ -87,6 +87,9 @@ export interface ChainEndCard {
 	readonly name: string;
 	/** The id the franchise page is opened for. */
 	readonly id: string;
+	/** The main-story entry the name comes from, which fronts the
+	 *  stack and gives the card its accent. */
+	readonly front: string;
 	/** The franchise link's stack: its posters and its counts. */
 	readonly summary: FranchiseSummary;
 }
@@ -115,6 +118,31 @@ export function chainEndCard(
 	return {
 		name: data.franchise.name,
 		id,
+		front: data.franchise.name_from,
 		summary: franchiseSummary(main, data.franchise.name_from)
 	};
+}
+
+/** The one card the player shows at a finale: an entry card, or the franchise card. */
+export type PlayerUpNext =
+	| { readonly kind: 'entry'; readonly card: FinaleCard }
+	| { readonly kind: 'franchise'; readonly card: ChainEndCard };
+
+/**
+ * The one card `id`'s `episode` shows at its finale, or null: the
+ * finale card where it names a next title (`finaleCard`), else the
+ * franchise card at a chain's dead end (`chainEndCard`), else none.
+ */
+export function playerUpNext(
+	data: WatchOrderData | null,
+	id: string,
+	order: WatchOrder | null,
+	today: string,
+	episode: number,
+	self: FinaleSelf | null
+): PlayerUpNext | null {
+	const finale = finaleCard(data, id, order, today, episode, self);
+	if (finale) return { kind: 'entry', card: finale };
+	const end = chainEndCard(data, id, order, today, episode, self);
+	return end ? { kind: 'franchise', card: end } : null;
 }
