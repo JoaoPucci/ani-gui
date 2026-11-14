@@ -21,8 +21,8 @@ function rendererLogTag(level) {
 /**
  * The line the main process logs for a renderer console message, with
  * the launch's secret redacted from the message and from where it came
- * from (lib/log-redact.cjs): a line that names an <img> or EventSource
- * URL names its secret. `secrets` are the launch's own.
+ * from (lib/log-redact.cjs), should a line name it. `secrets` are the
+ * launch's own.
  */
 function rendererConsoleLine(level, message, line, source, secrets = []) {
   return redactSecrets(
