@@ -38,7 +38,9 @@
 //   held, but for the proxy media URL below; nor is the search-page
 //   body, which the backend reads through structs local to its reader.
 // - The Electron main process keeps its own copy of the secret header's
-//   name (`electron/lib/launch-flags.cjs`); only the renderer's is held.
+//   name (`electron/lib/secret-handoff.cjs`); only the renderer's is held
+//   here, and the main process's is held to the backend's source by its
+//   own test (`electron/lib/secret-header.test.cjs`).
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';

@@ -124,9 +124,10 @@ the header, on every route; an empty 403 otherwise) and the
 backend's CORS rules on the answer. A preflight never reaches it:
 Playwright answers preflights itself, for any origin, so the CORS a
 spec meets is the answer's own. An answer to the request made in place
-loses its status and headers whenever the main process has a
-webRequest listener on the window's session: every stubbed page then
-reads its data as unreachable. `tests/arch/e2e_stub_server.sh` keeps
+loses its status and headers once the main process has a webRequest
+listener on the window's session, as it has to add the secret header
+(`electron/lib/secret-header.cjs`): every stubbed page then reads its
+data as unreachable. `tests/arch/e2e_stub_server.sh` keeps
 Playwright's in-place answer out of `electron/`.
 
 Each launch runs on a scratch profile the spec makes under the
