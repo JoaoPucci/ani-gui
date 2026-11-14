@@ -1423,6 +1423,22 @@ export interface Franchise {
 	/** False when the walk stopped at its bound or a listing was cut
 	 *  short. */
 	complete: boolean;
+	/** The page's own chain, when the main story leaves the page out;
+	 *  absent otherwise. */
+	chain?: FranchiseChain;
+}
+
+/** A page's own chain, outside the main story (backend
+ *  `commands::franchise_walk::Chain`): the franchise's entries outside
+ *  it joined to the page by prequel and sequel links, and the
+ *  main-story titles one of them is linked to, its seams. */
+export interface FranchiseChain {
+	/** Its own titles and its seams: start order, then numeric id. */
+	entries: FranchiseEntry[];
+	/** Prequel → sequel pairs between two of its entries. */
+	links: [string, string][];
+	/** The ids of `entries` that are main-story titles. */
+	seams: string[];
 }
 
 /** The franchise around `kitsuId`: the run it belongs to and what sits

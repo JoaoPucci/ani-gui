@@ -39,7 +39,15 @@ export interface WatchOrderPage {
 	readonly watching: { readonly entry: WatchEntry; readonly episode: number } | null;
 	/** Ids "Similar titles" leaves out: what the strip shows. */
 	readonly similarHidden: ReadonlySet<string>;
+	/** Whether the page is outside the main story, on its own chain. */
+	readonly outside: boolean;
+	/** Where a column holds a main-story title the chain meets, alone. */
+	readonly seams: { readonly before: Seam | null; readonly after: Seam | null };
 }
+
+/** A main-story title beside a chain's own: the one it comes from, or
+ *  the one it leads into. */
+export type Seam = 'from' | 'into';
 
 /** The order setting as stored: anything but `released` reads as linked. */
 export function orderOf(value: string | null | undefined): WatchOrder {
@@ -104,6 +112,8 @@ export function watchOrderPage(
 			caption.kind === 'position' ? { position: caption.position, total: caption.total } : null,
 		progress,
 		watching,
-		similarHidden: shownOnStrip(view, watching?.entry ?? null)
+		similarHidden: shownOnStrip(view, watching?.entry ?? null),
+		outside: false,
+		seams: { before: null, after: null }
 	};
 }
