@@ -52,6 +52,8 @@ const stubKitsu = (
 ): KitsuAnimeRef => ({
 	id,
 	canonical_title,
+	titles: {},
+	abbreviated_titles: [],
 	slug: null,
 	synopsis: null,
 	start_date: null,
