@@ -131,14 +131,6 @@ export default ts.config(
 		// per file but recent eslint flags those as unused-disable
 		// when there's nothing to disable. Skip the directory wholesale
 		// so paraglide-js upgrades don't churn lint output.
-		ignores: [
-			'.svelte-kit/',
-			'build/',
-			'coverage/',
-			'dist/',
-			'node_modules/',
-			'src/lib/bindings/',
-			'src/lib/paraglide/'
-		]
+		ignores: ['.svelte-kit/', 'build/', 'coverage/', 'dist/', 'node_modules/', 'src/lib/paraglide/']
 	}
 );
