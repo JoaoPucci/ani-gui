@@ -159,6 +159,48 @@ describe('watchOrderPage on a page outside the main story', () => {
 		expect(p.seams).toEqual({ before: 'from', after: null });
 	});
 
+	it('reads a chain of one title that is not a film with no number', () => {
+		const ova = e('5000', '2013-01-01', 'OVA');
+		const chain: ChainData = { entries: [fz2, ova], links: [['7658', '5000']], seams: ['7658'] };
+		const p = watchOrderPage({ franchise: fate('5000', chain), rows: [] }, '5000', 'linked')!;
+		expect(p.caption).toEqual({ kind: 'alone' });
+		expect(p.eyebrow).toBeNull();
+		expect(p.outside).toBe(true);
+	});
+
+	it('draws a side story of a chain title under it, on the chain, outside the main story', () => {
+		const special = e('9000', '2018-01-01', 'special');
+		const franchise: FranchiseData = {
+			...fate('9000', heavensFeel),
+			sides: [special],
+			parents: { '9000': ['8675'] }
+		};
+		const p = watchOrderPage({ franchise, rows: [] }, '9000', 'linked')!;
+		expect(p.view.kind).toBe('side');
+		expect(ids(p.view.before)).toEqual(['8675']);
+		expect(p.caption).toEqual({ kind: 'side' });
+		expect(p.outside).toBe(true);
+		expect(p.seams).toEqual({ before: null, after: null });
+	});
+
+	it('keys a column that holds a seam beside an own title as usual, and counts both', () => {
+		// Heaven's Feel I forks: on to II, and back into the 2006 series.
+		const chain: ChainData = {
+			entries: [fsn, fz2, hf1, hf2, hf3],
+			links: [
+				['7658', '8675'],
+				['8675', '12007'],
+				['8675', '323'],
+				['12007', '12008']
+			],
+			seams: ['7658', '323']
+		};
+		const p = watchOrderPage({ franchise: fate('8675', chain), rows: [] }, '8675', 'linked')!;
+		expect(ids(p.view.after).sort()).toEqual(['12007', '323']);
+		expect(p.seams.after).toBeNull();
+		expect(p.caption).toEqual({ kind: 'position', position: 1, total: 3 });
+	});
+
 	it('reads no number in a franchise read in part, and still says it is outside', () => {
 		const p = watchOrderPage(
 			{ franchise: fate('12007', heavensFeel, false), rows: [] },
