@@ -3,14 +3,14 @@
 //! members name outside the run, each checked with its own start
 //! (`franchise_walk_parents.rs`), the earliest the one the walk moves
 //! to. The members share the walk's bound on what it reads: each one's
-//! check gets the room the run's walk and the members checked before it
-//! (in id order) left, and a member is checked only once those before
-//! it are decided, so no round asks for more than the bound has room
-//! for.
+//! check gets the room the run's walk and the members before it (in the
+//! order of their ids as text) left. A member's candidates come from
+//! its own listing alone, so every member's share is known before any
+//! candidate is read, and one round asks for all of them.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::parents::parent_stories;
+use super::parents::{parent_stories, to_read};
 use super::rules::Run;
 use super::{order_key, Lookup};
 
@@ -51,6 +51,16 @@ impl Placed {
 /// checked with its own start), the earliest the one to walk from; the
 /// anchor's own are the ones it is placed under, else every member's.
 pub(super) fn place(anchor: &str, own: &Run, look: &Lookup<'_>) -> Result<Placed, Vec<String>> {
+    let mut counted = own.consulted.clone();
+    let mut unread = BTreeSet::new();
+    for m in own.members.keys() {
+        let (kept, _) = to_read(m, look, &own.consulted, &counted);
+        unread.extend(kept.iter().filter(|id| look.listing(id).is_none()).cloned());
+        counted.extend(kept);
+    }
+    if !unread.is_empty() {
+        return Err(unread.into_iter().collect());
+    }
     let mut read = BTreeSet::new();
     let mut counted = own.consulted.clone();
     let mut complete = true;

@@ -63,6 +63,50 @@ fn within_bound(
     (kept, cut)
 }
 
+/// The candidates `anchor`'s check decides, by id with their starts:
+/// those it names as its parent story, and those it names as its side
+/// story or spin-off that started before it. Read from its own listing
+/// and the `consulted` ones alone, so known before any candidate is.
+type Candidates<'l> = (
+    BTreeMap<&'l str, Option<String>>,
+    BTreeMap<&'l str, Option<String>>,
+    Option<String>,
+);
+
+fn candidates<'l>(
+    anchor: &'l str,
+    look: &'l Lookup<'_>,
+    consulted: &BTreeSet<String>,
+) -> Candidates<'l> {
+    let start = |r: &FranchiseRelation| r.entry.as_ref().and_then(|e| e.start.clone());
+    let own_start = look.entry(anchor, consulted).and_then(|e| e.start);
+    let named = listed(look, anchor, &["parent_story"])
+        .map(|r| (r.id.as_str(), start(r)))
+        .collect();
+    let earlier = listed(look, anchor, &["side_story", "spinoff"])
+        .filter(|r| matches!((start(r), &own_start), (Some(a), Some(b)) if a < *b))
+        .map(|r| (r.id.as_str(), start(r)))
+        .collect();
+    (named, earlier, own_start)
+}
+
+/// The candidates `anchor`'s check reads, beside the listings already
+/// `counted` toward the bound, and whether the bound cut any.
+pub(super) fn to_read(
+    anchor: &str,
+    look: &Lookup<'_>,
+    consulted: &BTreeSet<String>,
+    counted: &BTreeSet<String>,
+) -> (BTreeSet<String>, bool) {
+    let (named, earlier, _) = candidates(anchor, look, consulted);
+    let all = named
+        .keys()
+        .chain(earlier.keys())
+        .map(|id| (*id).to_string())
+        .collect();
+    within_bound(all, counted)
+}
+
 /// The anchor's parent stories: those it names as its parent story
 /// that started before it or name at least as many entries beneath
 /// them as it does, and
@@ -73,7 +117,7 @@ fn within_bound(
 /// details the walk never reads (another member of the anchor's run),
 /// from the `consulted` listings that relate it. Only the candidates
 /// the bound leaves room for, beside the listings already `counted`
-/// toward it, are read and decided.
+/// toward it, are read and decided (`to_read`).
 ///
 /// # Errors
 /// The candidates' listings to read first.
@@ -83,21 +127,8 @@ pub(super) fn parent_stories(
     consulted: &BTreeSet<String>,
     counted: &BTreeSet<String>,
 ) -> Result<Found, Vec<String>> {
-    let start = |r: &FranchiseRelation| r.entry.as_ref().and_then(|e| e.start.clone());
-    let own_start = look.entry(anchor, consulted).and_then(|e| e.start);
-    let named: BTreeMap<&str, Option<String>> = listed(look, anchor, &["parent_story"])
-        .map(|r| (r.id.as_str(), start(r)))
-        .collect();
-    let earlier: BTreeMap<&str, Option<String>> = listed(look, anchor, &["side_story", "spinoff"])
-        .filter(|r| matches!((start(r), &own_start), (Some(a), Some(b)) if a < *b))
-        .map(|r| (r.id.as_str(), start(r)))
-        .collect();
-    let candidates: BTreeSet<String> = named
-        .keys()
-        .chain(earlier.keys())
-        .map(|id| (*id).to_string())
-        .collect();
-    let (read, cut) = within_bound(candidates, counted);
+    let (named, earlier, own_start) = candidates(anchor, look, consulted);
+    let (read, cut) = to_read(anchor, look, consulted, counted);
     let named: BTreeMap<&str, Option<String>> = named
         .into_iter()
         .filter(|(id, _)| read.contains(*id))
