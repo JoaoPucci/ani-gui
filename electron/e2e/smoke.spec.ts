@@ -381,6 +381,49 @@ test("a renderer line naming a secret-bearing URL is logged without the launch's
   }
 });
 
+test("an image the app's page loads reaches the backend with no secret in its URL, and a frame's does not get in", async () => {
+  // An <img> cannot set a header, and a URL is kept where a header is
+  // not (Chromium's disk cache, a log line). The main process adds the
+  // secret header to the app's own page's image and progress-stream
+  // requests (lib/secret-header.cjs); a subframe's get nothing. These
+  // two go to the real backend rather than the stubs: the app's is let
+  // in and fails upstream, at the helper's refusing proxy (503); the
+  // frame's is refused at the gate (403) and the backend never tries.
+  const { app, page, context } = await launchAppWithStubs();
+  try {
+    await routeContext(context, /gate-(app|frame)\.example/, (r) => r.continue());
+    const statuses = new Map<string, number>();
+    const urls: string[] = [];
+    context.on("response", (res) => {
+      const m = /gate-(app|frame)\.example/.exec(decodeURIComponent(res.url()));
+      if (m) {
+        statuses.set(m[1], res.status());
+        urls.push(res.url());
+      }
+    });
+    await page.evaluate(() => {
+      const bridge = window.aniGui!;
+      const base = bridge.lanes?.image ?? bridge.apiBase;
+      const src = (host: string) =>
+        `${base}/api/image?url=${encodeURIComponent(`https://${host}/a.jpg`)}`;
+      const img = new Image();
+      img.src = src("gate-app.example");
+      document.body.append(img);
+      const frame = document.createElement("iframe");
+      frame.srcdoc = `<img src="${src("gate-frame.example")}">`;
+      document.body.append(frame);
+    });
+    await expect.poll(() => statuses.size, { timeout: 15_000 }).toBe(2);
+    expect(Object.fromEntries(statuses)).toEqual({ app: 503, frame: 403 });
+    expect(outboundAttempts(app)).toContain("CONNECT gate-app.example:443");
+    expect(outboundAttempts(app)).not.toContain("CONNECT gate-frame.example:443");
+    const secret = await page.evaluate(() => window.aniGui?.internalSecret);
+    for (const url of urls) expect(url).not.toContain(secret as string);
+  } finally {
+    await app.close();
+  }
+});
+
 test("a test launch's scratch profile is gone once the app has quit", async () => {
   // Each launch gets a profile of its own under the system's temporary
   // directory. The launch helper removes it, and only it, once the app

@@ -110,7 +110,7 @@ import type {
 } from './account/api';
 import type { SetEntryBody } from './account/entry-api';
 import { WATCH_LATER_BRIDGE_MAX_IDS } from './account/watch-later-loader';
-import { SECRET_HEADER, SECRET_QUERY } from './backend/secret';
+import { SECRET_HEADER } from './backend/secret';
 import { LANES } from './backend/lanes';
 import { REFILL_HEADER } from './refill/refill';
 import { buildMediaUrl } from './play/media-url';
@@ -777,12 +777,12 @@ describe('the renderer holds the backend wire contract', () => {
 		expect(WATCH_LATER_BRIDGE_MAX_IDS).toBe(CONTRACT.constants.WATCH_LATER_BRIDGE_MAX_IDS);
 	});
 
-	it('the secret and refill headers, and the secret query parameter, are the backend names', () => {
-		expect({ SECRET_HEADER, SECRET_QUERY, REFILL_HEADER }).toEqual({
+	it('the secret and refill headers are the backend names, and the secret has no query name', () => {
+		expect({ SECRET_HEADER, REFILL_HEADER }).toEqual({
 			SECRET_HEADER: CONTRACT.names.INTERNAL_SECRET_HEADER,
-			SECRET_QUERY: CONTRACT.names.SECRET_QUERY,
 			REFILL_HEADER: CONTRACT.names.REFILL_HEADER
 		});
+		expect(Object.keys(CONTRACT.names).sort()).toEqual(['INTERNAL_SECRET_HEADER', 'REFILL_HEADER']);
 	});
 
 	it.each(MEDIA_KINDS)('a %s session plays at the URL the backend gives it', (kind) => {

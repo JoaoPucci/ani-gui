@@ -57,7 +57,6 @@ use super::account::account_wire::{
     AuthUrlRequest, AuthUrlResponse, EntryView, ExchangeCodeRequest, PkceWire, RefreshRequest,
     SetEntryRequest, TokensResponse, UpdateProgressRequest,
 };
-use super::gate::SECRET_QUERY;
 use super::refill::{Ended, WaitBody, REFILL_HEADER};
 use super::wire_probe::{accepted_fields, skipped_fields};
 use super::{ani_error_payload, HistoryRow, KitsuByMalIdsBody, SearchBody, TitleMatchBody};
@@ -154,7 +153,6 @@ fn contract() -> Value {
         "constants": { "WATCH_LATER_BRIDGE_MAX_IDS": WATCH_LATER_BRIDGE_MAX_IDS },
         "names": {
             "INTERNAL_SECRET_HEADER": INTERNAL_SECRET_HEADER.as_str(),
-            "SECRET_QUERY": SECRET_QUERY,
             "REFILL_HEADER": REFILL_HEADER,
         },
         "media_urls": media_urls(),
