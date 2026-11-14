@@ -53,6 +53,8 @@ export function malformedAs<T>(value: unknown): T {
 /** An answer no backend sends, deliberately: its body is not the
  *  route's type. */
 export function malformedAnswer(body: unknown, init?: ResponseInit): HttpResponse<never> {
+	// The one answer typed as any body, by design: see the ESLint rule.
+	// eslint-disable-next-line no-restricted-syntax
 	return HttpResponse.json<JsonBodyType>(body as JsonBodyType, init) as HttpResponse<never>;
 }
 

@@ -126,6 +126,31 @@ export default ts.config(
 		}
 	},
 	{
+		// A fake backend answer names the route's type, so the compiler
+		// holds it to what the backend sends: `HttpResponse.json<T>(...)`,
+		// or a helper from `tests/answers.ts` (an error's envelope, an
+		// answer wrong on purpose). `tests/lint/typed-answers.test.ts`
+		// runs these over fixtures and says what they do not see.
+		files: ['tests/**/*.ts', 'src/**/*.test.ts', 'src/**/*.spec.ts'],
+		rules: {
+			'no-restricted-syntax': [
+				'error',
+				{
+					selector:
+						"CallExpression[callee.type='MemberExpression'][callee.object.name='HttpResponse'][callee.property.name='json']:not([typeArguments])",
+					message:
+						"Name the route's type, HttpResponse.json<T>(…), or answer through tests/answers (errorAnswer, malformedAnswer)."
+				},
+				{
+					selector:
+						"CallExpression[callee.object.name='HttpResponse'][callee.property.name='json'] > TSTypeParameterInstantiation > :matches(TSUnknownKeyword, TSAnyKeyword, TSTypeReference[typeName.name='JsonBodyType'])",
+					message:
+						"That type holds the body to nothing: name the route's type, or mark a wrong answer with malformedAnswer from tests/answers."
+				}
+			]
+		}
+	},
+	{
 		// `src/lib/paraglide/` is the typed-TS output of the Paraglide
 		// compiler — it ships with `/* eslint-disable */` headers
 		// per file but recent eslint flags those as unused-disable
