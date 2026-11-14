@@ -14,7 +14,6 @@ import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { readPosition, savePosition } from '../../src/lib/play/watch-position';
 import { watchPageFetches } from './page-fetches';
-import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -148,10 +147,11 @@ function useShowHandlers(
 }
 
 const frame = () => target.querySelector('section.player-frame') as HTMLElement;
+// The custom controls' play / pause button, found by place: from the
+// attach to the first frame it reads Pause, the viewer's intent, and
+// Play only once the viewer has paused ($lib/play/start-state).
 const playButton = () =>
-	target.querySelector(
-		`button[aria-label="${m.play_controls_play_aria_label()}"]`
-	) as HTMLButtonElement | null;
+	target.querySelector('.pc-buttons-row .pc-btn') as HTMLButtonElement | null;
 const busy = () => frame()?.getAttribute('aria-busy') === 'true';
 const inert = (el: Element | null) => el?.closest('[inert]') != null;
 
@@ -294,10 +294,15 @@ describe('play route — a resumed episode opens at its point', () => {
 		// turn then puts whatever that call decided on the page.
 		await until(() => readPosition(KITSU_ID, 1) === 0, 'the source to attach');
 		await new Promise((r) => setTimeout(r, 0));
-		expect(busy()).toBe(false);
+		// No hold: the picture shows and the controls answer. The frame
+		// is busy all the same — the stream is on its way until its
+		// first frame — but that is the start, not a resume.
 		expect(frame().classList.contains('player-resuming')).toBe(false);
 		expect(inert(playButton())).toBe(false);
 		expect(video.autoplay).toBe(true);
+		expect(busy()).toBe(true);
+		video.dispatchEvent(new Event('playing'));
+		await until(() => !busy(), 'the start to end at the first frame');
 	});
 
 	it('a point inside an auto-skipped opening is not skipped from under the hold', async () => {

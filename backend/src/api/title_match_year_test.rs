@@ -76,7 +76,7 @@ async fn get(router: &Router, year: Option<u32>) -> serde_json::Value {
 #[tokio::test]
 async fn rows_titled_alike_keep_the_guess_their_year_named() {
     let td = TempDir::new().expect("tempdir");
-    let router = build_api_router(Arc::new(state(&td)));
+    let router = test_router(Arc::new(state(&td)));
     put(&router, 2000, "7730").await;
     put(&router, 2012, "7158").await;
     assert_eq!(get(&router, Some(2000)).await, "7730");
@@ -92,7 +92,7 @@ async fn rows_titled_alike_keep_the_guess_their_year_named() {
 async fn removing_a_row_takes_the_guess_its_year_keyed() {
     let td = TempDir::new().expect("tempdir");
     let state = Arc::new(state(&td));
-    let router = build_api_router(state.clone());
+    let router = test_router(state.clone());
     put(&router, 2000, "7730").await;
     put(&router, 2012, "7158").await;
     assert!(crate::commands::history::history_delete(

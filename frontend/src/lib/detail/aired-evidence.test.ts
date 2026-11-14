@@ -95,7 +95,12 @@ describe('withAiredFloor', () => {
 	});
 
 	it('leaves a schedule that already reaches the floor exactly as it was', () => {
-		const weekly: AiringStatus = { aired: 8, next_episode: 9, next_airing_at: 1791532800 };
+		const weekly: AiringStatus = {
+			aired: 8,
+			next_episode: 9,
+			next_airing_at: 1791532800,
+			upcoming: []
+		};
 		expect(withAiredFloor(weekly, 8)).toBe(weekly);
 		expect(withAiredFloor(weekly, 3)).toBe(weekly);
 		expect(withAiredFloor(weekly, 0)).toBe(weekly);
@@ -105,13 +110,23 @@ describe('withAiredFloor', () => {
 		// Unknown means nothing is gated. A floor would start gating
 		// everything above it on evidence that only ever proves
 		// episodes out, never episodes pending.
-		const unknown: AiringStatus = { aired: null, next_episode: null, next_airing_at: null };
+		const unknown: AiringStatus = {
+			aired: null,
+			next_episode: null,
+			next_airing_at: null,
+			upcoming: []
+		};
 		expect(withAiredFloor(unknown, 3)).toBe(unknown);
 		expect(withAiredFloor(null, 3)).toBeNull();
 	});
 
 	it('keeps a show that has not premiered gated when nothing is dated', () => {
-		const unreleased: AiringStatus = { aired: 0, next_episode: 1, next_airing_at: 1796914800 };
+		const unreleased: AiringStatus = {
+			aired: 0,
+			next_episode: 1,
+			next_airing_at: 1796914800,
+			upcoming: []
+		};
 		expect(withAiredFloor(unreleased, 0)).toBe(unreleased);
 	});
 
@@ -136,17 +151,23 @@ describe('withAiredFloor', () => {
 	});
 
 	it('keeps a next episode that is still ahead of the floor', () => {
-		const ahead: AiringStatus = { aired: 1, next_episode: 5, next_airing_at: 1791532800 };
+		const ahead: AiringStatus = {
+			aired: 1,
+			next_episode: 5,
+			next_airing_at: 1791532800,
+			upcoming: []
+		};
 		expect(withAiredFloor(ahead, 3)).toEqual({
 			aired: 3,
 			next_episode: 5,
-			next_airing_at: 1791532800
+			next_airing_at: 1791532800,
+			upcoming: []
 		});
 	});
 
-	it('does not invent a schedule list the answer never carried', () => {
-		const legacy: AiringStatus = { aired: 1, next_episode: null, next_airing_at: null };
-		expect(withAiredFloor(legacy, 2)).not.toHaveProperty('upcoming');
+	it('keeps an empty schedule list empty', () => {
+		const none: AiringStatus = { aired: 1, next_episode: null, next_airing_at: null, upcoming: [] };
+		expect(withAiredFloor(none, 2)?.upcoming).toEqual([]);
 	});
 });
 

@@ -21,10 +21,8 @@
 
 #![cfg(target_os = "linux")]
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
-use ani_gui::api::build_api_router;
 use ani_gui::app::AppState;
 use ani_gui::cache;
 use ani_gui::meta::kitsu::KitsuClient;
@@ -36,6 +34,24 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use tempfile::TempDir;
 use tower::ServiceExt;
+
+/// The API router as the renderer reaches it: every request carries
+/// the launch's secret, which the router refuses a request without.
+fn build_api_router(state: Arc<AppState>) -> axum::Router {
+    let secret = state.internal_secret.as_hex().to_owned();
+    ani_gui::api::build_api_router(state).layer(axum::middleware::map_request(
+        move |mut req: axum::extract::Request| {
+            let secret = secret.clone();
+            async move {
+                if let Ok(v) = axum::http::HeaderValue::from_str(&secret) {
+                    req.headers_mut()
+                        .insert(ani_gui::account::INTERNAL_SECRET_HEADER, v);
+                }
+                req
+            }
+        },
+    ))
+}
 
 /// Build an `AppState` that walks hianime alone, pointed at a local
 /// stub. There is no script path to neutralise any more — the field
@@ -60,7 +76,7 @@ fn build_state(tmp: &std::path::Path, hianime_base: &str) -> AppState {
         cache_pool: cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
         config_path: tmp.join("config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        state_dir: tmp.join("state"),
         internal_secret: ani_gui::account::InternalSecret::random(),
         mal_refresh: ani_gui::meta::mal_user::MalRefreshState::new(),
         account_write_locks: ani_gui::commands::account::AccountWriteLocks::new(),

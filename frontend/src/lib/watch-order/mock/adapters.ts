@@ -11,6 +11,8 @@ export function asRef(entry: MockEntry): KitsuAnimeRef {
 	return {
 		id: entry.id,
 		canonical_title: entry.title,
+		titles: {},
+		abbreviated_titles: [],
 		slug: null,
 		synopsis: null,
 		start_date: entry.start,

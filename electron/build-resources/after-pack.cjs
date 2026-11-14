@@ -12,7 +12,8 @@ const path = require("node:path");
 // into `--ozone-platform-hint=auto` crashed on Wayland (the parent inits on
 // XWayland, then the re-exec'd child SIGTRAPs in Ozone init — 100% on
 // GNOME/ibus). The only reliable knob is the process environment, set by the
-// launcher.
+// launcher. (The splash's Restart relaunches too, lib/relaunch.cjs, but on
+// the display platform it already runs on: the crash was the switch.)
 //
 // So: rename the packed `ani-gui` ELF to `ani-gui.bin` and drop a tiny `ani-gui`
 // shell wrapper in its place that exports the hint and execs the real binary.
@@ -41,7 +42,9 @@ module.exports = async function afterPack(context) {
 # re-exec that crashed on Wayland. Honors a value the user already exported.
 # \`--enable-wayland-ime\` keeps IME composition (IBus/Fcitx — Japanese/Chinese/
 # Korean) working under native Wayland; Chromium does not infer it from the
-# ozone hint. It's safe here because this is a direct launch, not a relaunch.
+# ozone hint. It's safe here because every launch, a Restart's relaunch
+# included, starts on the platform the hint picks: nothing re-execs into
+# another one.
 : "\${ELECTRON_OZONE_PLATFORM_HINT:=auto}"
 export ELECTRON_OZONE_PLATFORM_HINT
 HERE="$(dirname "$(readlink -f "$0")")"

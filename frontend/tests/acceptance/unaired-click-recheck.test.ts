@@ -127,7 +127,7 @@ function serve(
 			});
 		}),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 	);
 }
 
