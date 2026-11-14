@@ -11,6 +11,7 @@
 import type { WatchOrder } from './order';
 import type { FranchiseData, WatchEntry } from './types';
 import { parseHistoryEpisode } from '$lib/play/episode-number';
+import { chainFranchise } from './chain-view';
 import { runOf } from './strip-model';
 import { isFinale, upNextFor } from './up-next';
 
@@ -71,7 +72,8 @@ export function handoffFrom(
 	if (franchise === null || order === null || franchise.anchor !== id) return null;
 	// Read only in part, the entry that really comes next may be missing.
 	if (!franchise.complete) return null;
-	const run = runOf(franchise);
+	// Outside the main story, the show moves on along its own chain.
+	const run = runOf(chainFranchise(franchise) ?? franchise);
 	const entry = run?.entries.find((e) => e.id === id);
 	if (!run || !entry) return null;
 	const up = upNextFor(run, id, order, today);
