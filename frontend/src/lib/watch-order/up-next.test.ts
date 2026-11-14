@@ -5,7 +5,14 @@ import type { WatchOrderData } from './loader';
 import { runOf } from './strip-model';
 import { franchiseArb } from './testing/arbitraries';
 import type { FranchiseData } from './types';
-import { chainEndCard, finaleCard, isFinale, upNextFor, type FinaleSelf } from './up-next';
+import {
+	chainEndCard,
+	finaleCard,
+	isFinale,
+	playerUpNext,
+	upNextFor,
+	type FinaleSelf
+} from './up-next';
 
 const TODAY = '2026-11-02';
 const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
@@ -217,6 +224,28 @@ describe('finaleCard', () => {
 	});
 });
 
+describe('playerUpNext', () => {
+	it('is the finale card where there is one, else the chain-end card, else none', () => {
+		fc.assert(
+			fc.property(
+				franchiseArb(),
+				fc.constantFrom('linked' as const, 'released' as const),
+				fc.integer({ min: 1, max: 40 }),
+				(franchise: FranchiseData, order, episode) => {
+					const data: WatchOrderData = { franchise, rows: [] };
+					const id = franchise.anchor;
+					const finale = finaleCard(data, id, order, TODAY, episode, null);
+					const end = chainEndCard(data, id, order, TODAY, episode, null);
+					const shown = playerUpNext(data, id, order, TODAY, episode, null);
+					if (finale) expect(shown).toEqual({ kind: 'entry', card: finale });
+					else if (end) expect(shown).toEqual({ kind: 'franchise', card: end });
+					else expect(shown).toBeNull();
+				}
+			)
+		);
+	});
+});
+
 describe('finaleCard on an entry outside the main story', () => {
 	const e = (id: string, start: string, subtype = 'movie') => ({
 		id,
@@ -297,5 +326,20 @@ describe('finaleCard on an entry outside the main story', () => {
 		expect(chainEndCard(main, '2', 'linked', TODAY, 1, null)).toBeNull();
 		expect(chainEndCard(partial, '11', null, TODAY, 1, null)).toBeNull();
 		expect(chainEndCard(null, '11', 'linked', TODAY, 1, null)).toBeNull();
+	});
+
+	it('fronts the franchise card with the entry the name comes from', () => {
+		const end = chainEndCard(chainData('11', false), '11', 'linked', TODAY, 1, null)!;
+		expect(end.front).toBe('1');
+	});
+
+	it('shows one card: the next title where the finale names one, else the franchise', () => {
+		const next = playerUpNext(chainData('10', false), '10', 'linked', TODAY, 1, null);
+		expect(next?.kind).toBe('entry');
+		const end = playerUpNext(chainData('11', false), '11', 'linked', TODAY, 1, null);
+		expect(end?.kind).toBe('franchise');
+		expect(end?.kind === 'franchise' && end.card.name).toBe('The franchise');
+		const unfinished = { status: 'current', episodes: 1 };
+		expect(playerUpNext(chainData('11', false), '11', 'linked', TODAY, 1, unfinished)).toBeNull();
 	});
 });

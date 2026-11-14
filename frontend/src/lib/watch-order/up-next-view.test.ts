@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { m } from '$lib/paraglide/messages';
 import type { WatchEntry } from './types';
-import { franchiseCardMeta, upNextAnnouncement, upNextKey } from './up-next-view';
+import {
+	franchiseCardLabel,
+	franchiseCardMeta,
+	cardAccentId,
+	cardAnnouncement,
+	cardKey
+} from './up-next-view';
+import type { PlayerUpNext } from './up-next';
 
 const e = (id: string): WatchEntry => ({
 	id,
@@ -14,24 +21,43 @@ const e = (id: string): WatchEntry => ({
 	cover: null
 });
 const summary = { total: 7, main: 3, films: 4, sides: 0, recaps: 0, posters: [] };
+const entryCard = (upNext: Extract<PlayerUpNext, { kind: 'entry' }>['card']['upNext']) =>
+	({ kind: 'entry', card: { upNext, progress: {} } }) as const;
+const franchiseCard: PlayerUpNext = {
+	kind: 'franchise',
+	card: { name: 'Fate/stay night', id: '9', front: '3', summary }
+};
 
 describe('the Up next card copy', () => {
 	it('keys each form of the card', () => {
-		expect(upNextKey({ kind: 'one', entry: e('1') })).toBe(m.watchorder_upnext_eyebrow());
-		expect(upNextKey({ kind: 'unaired', entry: e('1') })).toBe(m.watchorder_upnext_coming());
-		expect(upNextKey({ kind: 'choices', entries: [e('1'), e('2')] })).toBe(
+		expect(cardKey(entryCard({ kind: 'one', entry: e('1') }))).toBe(m.watchorder_upnext_eyebrow());
+		expect(cardKey(entryCard({ kind: 'unaired', entry: e('1') }))).toBe(
+			m.watchorder_upnext_coming()
+		);
+		expect(cardKey(entryCard({ kind: 'choices', entries: [e('1'), e('2')] }))).toBe(
 			m.watchorder_upnext_choices()
 		);
-		expect(upNextKey(null)).toBe(m.watchorder_upnext_franchise_key());
+		expect(cardKey(franchiseCard)).toBe(m.watchorder_upnext_franchise_key());
 	});
 
 	it('announces the first title, or the whole franchise by its name', () => {
-		expect(upNextAnnouncement({ kind: 'choices', entries: [e('1'), e('2')] }, null)).toBe(
+		expect(cardAnnouncement(entryCard({ kind: 'choices', entries: [e('1'), e('2')] }))).toBe(
 			m.watchorder_upnext_announce({ title: 'T1' })
 		);
-		expect(upNextAnnouncement(null, { name: 'Fate/stay night', id: '1', summary })).toBe(
+		expect(cardAnnouncement(franchiseCard)).toBe(
 			m.watchorder_upnext_franchise_announce({ name: 'Fate/stay night' })
 		);
+	});
+
+	it("labels the franchise card's link with its key and the franchise's name", () => {
+		expect(franchiseCard.kind === 'franchise' && franchiseCardLabel(franchiseCard.card)).toBe(
+			m.watchorder_upnext_franchise_label({ name: 'Fate/stay night' })
+		);
+	});
+
+	it("takes the accent from the first title named, or the franchise's front entry", () => {
+		expect(cardAccentId(entryCard({ kind: 'choices', entries: [e('4'), e('2')] }))).toBe('4');
+		expect(cardAccentId(franchiseCard)).toBe('3');
 	});
 
 	it("gives the franchise card the first two parts the strip's link names", () => {

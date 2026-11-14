@@ -132,5 +132,6 @@
 	"upnext_dismiss": "Descartar",
 	"upnext_franchise_key": "La franquicia completa",
 	"upnext_franchise_announce": "A continuación: la franquicia completa, {name}",
+	"upnext_franchise_label": "La franquicia completa: {name}",
 	"upnext_eyebrow": "A continuación"
 }

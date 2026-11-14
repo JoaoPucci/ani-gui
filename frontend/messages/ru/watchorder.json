@@ -113,5 +113,6 @@
 	"upnext_dismiss": "Закрыть",
 	"upnext_franchise_key": "Вся франшиза",
 	"upnext_franchise_announce": "Далее: вся франшиза, {name}",
+	"upnext_franchise_label": "Вся франшиза: {name}",
 	"upnext_eyebrow": "Далее"
 }

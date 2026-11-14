@@ -6,7 +6,7 @@
 import { m } from '$lib/paraglide/messages';
 import { stackPartsText } from './strip-copy';
 import type { FranchiseSummary } from './strip-view';
-import type { ChainEndCard, UpNext } from './up-next';
+import type { ChainEndCard, PlayerUpNext, UpNext } from './up-next';
 
 export type ShownUpNext = Exclude<UpNext, { readonly kind: 'none' }>;
 
@@ -32,4 +32,28 @@ export function upNextAnnouncement(
 /** The franchise card's meta line: the first two parts the strip's link names. */
 export function franchiseCardMeta(summary: FranchiseSummary): string {
 	return stackPartsText(summary, true).slice(0, 2).join(' · ');
+}
+
+/** The card's key over its title or its list. */
+export function cardKey(card: PlayerUpNext): string {
+	void card;
+	return '';
+}
+
+/** What the card announces once, politely, when it appears. */
+export function cardAnnouncement(card: PlayerUpNext): string {
+	void card;
+	return '';
+}
+
+/** The id the card's accent is taken from. */
+export function cardAccentId(card: PlayerUpNext): string {
+	void card;
+	return '';
+}
+
+/** The franchise card's link label. */
+export function franchiseCardLabel(card: ChainEndCard): string {
+	void card;
+	return '';
 }
