@@ -130,5 +130,7 @@
 	"upnext_choices": "Caminhos para continuar",
 	"upnext_coming": "A seguir, quando estrear",
 	"upnext_dismiss": "Dispensar",
+	"upnext_franchise_key": "A franquia inteira",
+	"upnext_franchise_announce": "A seguir: a franquia inteira, {name}",
 	"upnext_eyebrow": "A seguir"
 }

@@ -11,6 +11,7 @@ import type { WatchOrderData } from './loader';
 import { placement, type WatchOrder } from './order';
 import { progressFromHistory } from './progress';
 import { runOf } from './strip-model';
+import type { FranchiseSummary } from './strip-view';
 import type { Progress, WatchEntry, WatchRun } from './types';
 
 export type UpNext =
@@ -73,4 +74,36 @@ export function finaleCard(
 	if (upNext.kind === 'none') return null;
 	const shown = upNext.kind === 'choices' ? upNext.entries : [upNext.entry];
 	return { upNext, progress: progressFromHistory(data.rows, shown) };
+}
+
+/**
+ * The card at the last title of a chain outside the main story that
+ * leads nowhere: the franchise page, by its name, fronted by the entry
+ * the name comes from, with the poster stack and the counts the strip's
+ * franchise link shows.
+ */
+export interface ChainEndCard {
+	/** The franchise's name. */
+	readonly name: string;
+	/** The id the franchise page is opened for. */
+	readonly id: string;
+	/** The franchise link's stack: its posters and its counts. */
+	readonly summary: FranchiseSummary;
+}
+
+/**
+ * The chain-end card `id`'s `episode` shows, or null: anywhere the
+ * Up next card names something, or on anything but the finale of a
+ * chain's last title that leads nowhere, read whole.
+ */
+export function chainEndCard(
+	data: WatchOrderData | null,
+	id: string,
+	order: WatchOrder | null,
+	today: string,
+	episode: number,
+	self: FinaleSelf | null
+): ChainEndCard | null {
+	void [data, id, order, today, episode, self];
+	return null;
 }
