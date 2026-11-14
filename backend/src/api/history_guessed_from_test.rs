@@ -53,7 +53,7 @@ fn router_with_resolution(td: &TempDir) -> (axum::Router, std::path::PathBuf) {
         }],
     )
     .expect("history");
-    (build_api_router(Arc::new(state)), history)
+    (test_router(Arc::new(state)), history)
 }
 
 async fn mark_watched(router: &axum::Router, guess_row: Option<&str>, kitsu_id: Option<&str>) {

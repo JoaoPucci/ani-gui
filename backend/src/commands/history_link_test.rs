@@ -274,7 +274,7 @@ async fn the_route_links() {
 
     let (_tmp, _mock, state) = setup(200).await;
     let history = state.history_path.clone();
-    let router = crate::api::build_api_router(Arc::new(state));
+    let router = crate::api::test_router(Arc::new(state));
     let post = |uri: &str, body: serde_json::Value| {
         Request::builder()
             .method("POST")
@@ -442,7 +442,7 @@ async fn the_group_route_answers_the_rows_a_link_would_write() {
     use tower::ServiceExt;
 
     let (_tmp, _mock, state) = setup(200).await;
-    let router = crate::api::build_api_router(Arc::new(state));
+    let router = crate::api::test_router(Arc::new(state));
     let response = router
         .oneshot(
             Request::builder()
@@ -545,7 +545,7 @@ async fn the_history_route_marks_the_rows_the_user_named_a_show_for() {
         .await
         .expect("link");
     let history = state.history_path.clone();
-    let router = crate::api::build_api_router(Arc::new(state));
+    let router = crate::api::test_router(Arc::new(state));
     let named = |router: axum::Router| async move {
         let response = router
             .oneshot(

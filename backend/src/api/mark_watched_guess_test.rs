@@ -135,7 +135,7 @@ async fn recorded_over_from(recorded: &str, kitsu_id: &str, field: &str) -> Opti
         }],
     )
     .expect("history");
-    let router = build_api_router(Arc::new(state));
+    let router = test_router(Arc::new(state));
     let mut body = serde_json::json!({
         "title": TITLE, "episode": "1", "mode": "sub", "kitsu_id": kitsu_id,
     });
@@ -287,7 +287,7 @@ async fn a_card_watch_on_a_new_row_of_its_listing_never_names_another_show() {
         }],
     )
     .expect("history");
-    let router = build_api_router(Arc::new(state));
+    let router = test_router(Arc::new(state));
     let body = serde_json::json!({
         "title": TITLE, "episode": "1", "mode": "sub",
         "kitsu_id": "49877", "card_row": "seitokai-ni-mo-ana-wa-aru-77",

@@ -1,6 +1,6 @@
 //! The change-show flow's routes answer with the backend's rules.
 
-use super::super::build_api_router;
+use super::super::test_router;
 use super::super::tests::{body_string, test_app_state};
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -10,7 +10,7 @@ use tower::ServiceExt;
 
 async fn post(uri: &str, body: serde_json::Value) -> (StatusCode, serde_json::Value) {
     let td = TempDir::new().expect("tempdir");
-    let router = build_api_router(Arc::new(test_app_state(&td)));
+    let router = test_router(Arc::new(test_app_state(&td)));
     let response = router
         .oneshot(
             Request::builder()
