@@ -48,6 +48,10 @@ jobs:
     needs: filter
     name: Playwright + _electron
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        loop: [1, 2, 3, 4, 5, 6]
     steps:
       - if: needs.filter.outputs.relevant != 'true'
         run: 'echo "Not required: no backend / frontend / electron changes in this PR"'
@@ -160,12 +164,12 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         name: Run Playwright tests under Xvfb
         working-directory: electron
-        run: xvfb-run --auto-servernum pnpm run e2e:fast
+        run: xvfb-run --auto-servernum pnpm run e2e:fast --repeat-each 3
 
       - if: failure() && needs.filter.outputs.relevant == 'true'
         name: Upload Playwright report on failure
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.loop }}
           path: electron/playwright-report/
           retention-days: 14
