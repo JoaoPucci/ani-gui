@@ -15,16 +15,18 @@
 // (`Record<string, unknown>`, `any[]`, `unknown | null`; no route's type
 // holds either), `object` or `{}` anywhere in it, and `Object`, `never`
 // or MSW's `JsonBodyType` as the whole type. It also refuses app code
-// importing `$lib/testing`, where the shared fakes live: a static import
-// or re-export by any path that names it, a dynamic `import()` of a
-// string that names it, and an `import.meta.glob` over it. This file
-// runs ESLint over small fixtures to prove the rules are configured and
-// fire.
+// importing through a path segment named `testing`, which is where the
+// shared fakes live (`$lib/testing`): a static import or re-export, a
+// dynamic `import()` of a string or template, and an `import.meta.glob`
+// pattern that names the segment. This file runs ESLint over small
+// fixtures to prove the rules are configured and fire.
 //
 // What it does not see, and review holds instead:
 // - whether the type named is the right route's (a handler for one
 //   route answering another's type);
-// - an import of `$lib/testing` whose path is built at run time;
+// - an import of `$lib/testing` whose path does not name the segment:
+//   one built at run time (`'../' + 'testing/x'`), or a glob that
+//   reaches it through a wildcard (`import.meta.glob('../**/*.ts')`);
 // - a body cast before the call (`body as KitsuAnimeRef`), or a call
 //   reached another way (`HttpResponse['json'](...)`, an alias of it);
 // - an answer built without `HttpResponse.json`: `new HttpResponse` or
@@ -138,7 +140,14 @@ describe('typed fake answers', () => {
 		],
 		['a re-export', `export { kitsuRefAnswer } from '$lib/testing/wire-answers';\n`],
 		['a dynamic import', `export const x = () => import('$lib/testing/wire-answers');\n`],
-		['a glob over it', `export const x = import.meta.glob('$lib/testing/*.ts');\n`]
+		['a glob over it', `export const x = import.meta.glob('$lib/testing/*.ts');\n`],
+		[
+			'a relative import of another module there',
+			`import { other } from '../testing/other';\nexport const x = other;\n`
+		],
+		['an import of the directory', `import * as t from '../testing/';\nexport const x = t;\n`],
+		['an import through ./testing', `import * as t from './testing';\nexport const x = t;\n`],
+		['a glob written as a template', 'export const x = import.meta.glob(`../testing/*.ts`);\n']
 	];
 
 	it.each(
@@ -152,6 +161,18 @@ describe('typed fake answers', () => {
 		async (_what, file, code) => {
 			const text = file.endsWith('.svelte') ? `<script lang="ts">\n${code}</script>\n` : code;
 			expect((await restrictedImports(text, file)).join('\n')).toMatch(/\$lib\/testing/);
+			expect(await restrictedImports(text, file)).not.toEqual([]);
+		},
+		30_000
+	);
+
+	it.each([
+		['a module whose name ends in testing', `export const x = () => import('./attesting');\n`],
+		['a directory whose name ends in testing', `export const x = () => import('./contesting/x');\n`]
+	])(
+		'ESLint allows %s in app code',
+		async (_what, code) => {
+			expect(await restrictedImports(code, 'src/lib/history/a-module.ts')).toEqual([]);
 		},
 		30_000
 	);
