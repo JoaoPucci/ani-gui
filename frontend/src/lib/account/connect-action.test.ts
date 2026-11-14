@@ -18,6 +18,7 @@ import { cancelConnect, connectProvider, type ConnectActionDeps } from './connec
 import type { ConnectFlowDeps } from './connect-flow';
 import type { PersistedAccount, Provider } from './types';
 
+import { AccountApiError } from './api';
 // Resolve the locale once while no window is stubbed. Paraglide's first
 // lookup records the locale it resolved, in localStorage when a window
 // exists; the fake windows below carry none.
@@ -551,7 +552,7 @@ describe('connectProvider: outcomes that answer', () => {
 	it('an API failure carries its status', async () => {
 		await connectProvider(
 			'anilist',
-			deps(flow({ exchangeCode: () => Promise.reject({ status: 502 }) }))
+			deps(flow({ exchangeCode: () => Promise.reject(new AccountApiError(502, '')) }))
 		);
 		expect(messages()).toEqual([`${m.account_connect_error_unknown()} (502)`]);
 	});

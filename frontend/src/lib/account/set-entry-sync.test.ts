@@ -65,12 +65,14 @@ import { SupersededError } from './save-when-allowed';
 import type * as AccountApi from './api';
 import type * as EntryApi from './entry-api';
 import type { ListEntry } from './types';
+import { wire } from '$lib/testing/wire-answers';
+import type { AniErrorPayload } from '../api';
 /** The backend holding a write back: 429 with the wait, by shape (the
  *  api module is mocked here). */
 const refused = (secs: number) =>
 	Object.assign(new Error('rate limited'), {
 		status: 429,
-		detail: JSON.stringify({ kind: 'rate_limited', retry_after_secs: secs })
+		detail: wire<AniErrorPayload>({ kind: 'rate_limited', retry_after_secs: secs })
 	});
 
 /** A 0 s wait: the notice says the save is going now. */

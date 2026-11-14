@@ -39,7 +39,7 @@ function m(id: string): KitsuAnimeRef {
 describe('executeKitsuGroupDelete', () => {
 	test('serializes backend deletes — next call starts only after the previous resolves', async () => {
 		const callOrder: string[] = [];
-		const historyDelete = vi.fn(async (id: string) => {
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>(async (id: string) => {
 			callOrder.push(`start:${id}`);
 			await new Promise((r) => setTimeout(r, 5));
 			callOrder.push(`end:${id}`);
@@ -61,7 +61,7 @@ describe('executeKitsuGroupDelete', () => {
 	test('removes every Kitsu-group sibling from history and reports the removed ids', async () => {
 		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
 		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
-		const historyDelete = vi.fn().mockResolvedValue(undefined);
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>().mockResolvedValue(undefined);
 
 		const result = await deleteAndForget('aa-1', { history, matches, historyDelete });
 
@@ -73,7 +73,7 @@ describe('executeKitsuGroupDelete', () => {
 	test('with no resolved match, deletes only the clicked id', async () => {
 		const history = [h('aa-1'), h('aa-2')];
 		const matches = { 'aa-1': null, 'aa-2': m('k-1') };
-		const historyDelete = vi.fn().mockResolvedValue(undefined);
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>().mockResolvedValue(undefined);
 
 		const result = await deleteAndForget('aa-1', { history, matches, historyDelete });
 
@@ -86,7 +86,7 @@ describe('executeKitsuGroupDelete', () => {
 	test('singleton group (clicked entry resolves but no siblings share its Kitsu id)', async () => {
 		const history = [h('aa-1'), h('aa-2')];
 		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-2') };
-		const historyDelete = vi.fn().mockResolvedValue(undefined);
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>().mockResolvedValue(undefined);
 
 		const result = await deleteAndForget('aa-1', { history, matches, historyDelete });
 
@@ -100,7 +100,7 @@ describe('executeKitsuGroupDelete — kept positions', () => {
 		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
 		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
 		const order: string[] = [];
-		const historyDelete = vi.fn(async (id: string) => {
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>(async (id: string) => {
 			order.push(`delete:${id}`);
 		});
 		const forgetPositions = vi.fn((kitsuId: string) => {
@@ -115,7 +115,9 @@ describe('executeKitsuGroupDelete — kept positions', () => {
 	test('a failed delete forgets nothing', async () => {
 		const history = [h('aa-1')];
 		const matches = { 'aa-1': m('k-1') };
-		const historyDelete = vi.fn().mockRejectedValue(new Error('down'));
+		const historyDelete = vi
+			.fn<ConfirmDeleteDeps['historyDelete']>()
+			.mockRejectedValue(new Error('down'));
 		const forgetPositions = vi.fn();
 
 		await expect(
@@ -148,7 +150,7 @@ describe('executeKitsuGroupDelete — kept positions', () => {
 		// rather than keep a card for a row that is gone.
 		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
 		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
-		const historyDelete = vi.fn(async (id: string) => {
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>(async (id: string) => {
 			if (id === 'aa-2') throw new Error('down');
 		});
 		const applyRemaining = vi.fn();
@@ -200,7 +202,7 @@ describe('executeKitsuGroupDelete — kept positions of a card without its match
 	// its match resolved still has that mapping to forget by.
 	test('forgets by the stamped mapping when the match never resolved', async () => {
 		const history = [h('aa-1')];
-		const historyDelete = vi.fn().mockResolvedValue(undefined);
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>().mockResolvedValue(undefined);
 		const forgetPositions = vi.fn();
 		const kitsuIdOf = vi.fn(async (showId: string) => (showId === 'aa-1' ? 'k-9' : null));
 
@@ -544,7 +546,7 @@ describe('executeKitsuGroupDelete — positions written for the removed rows', (
 		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
 		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
 		const order: string[] = [];
-		const historyDelete = vi.fn(async (id: string) => {
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>(async (id: string) => {
 			order.push(`delete:${id}`);
 		});
 		const forgetRowPositions = vi.fn((rows: string[]) => {

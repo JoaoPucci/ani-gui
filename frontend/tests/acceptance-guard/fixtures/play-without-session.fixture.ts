@@ -77,7 +77,7 @@ const sessionWith = (wrong: Record<string, unknown>) =>
 	});
 
 /** A whole session less `field`. */
-const sessionWithout = (field: 'cache_hit' | 'subtitles') => {
+const sessionWithout = (field: 'session_id' | 'media_url' | 'cache_hit' | 'subtitles') => {
 	const whole: Record<string, unknown> = {
 		...sessionAnswer({
 			session_id: 's-1',
@@ -104,7 +104,22 @@ const ONE_WRONG: [string, () => HttpResponse<never>][] = [
 	['whose episode_unverified is not a flag', () => sessionWith({ episode_unverified: 'no' })],
 	['whose own_listing is not a flag', () => sessionWith({ own_listing: 1 })],
 	['that leaves out cache_hit', () => sessionWithout('cache_hit')],
-	['that leaves out subtitles', () => sessionWithout('subtitles')]
+	['that leaves out subtitles', () => sessionWithout('subtitles')],
+	['that leaves out session_id', () => sessionWithout('session_id')],
+	['that leaves out media_url', () => sessionWithout('media_url')],
+	['whose session_id is not text', () => sessionWith({ session_id: 7 })],
+	['whose media_url is not text', () => sessionWith({ media_url: null })],
+	['whose former_episode is not text', () => sessionWith({ former_episode: 24.5 })],
+	[
+		'whose version entry is not a kind there is',
+		() => sessionWith({ versions: [{ kind: 'directors-cut', show_key: 'hianime:a-1' }] })
+	],
+	['whose version entry has no show key', () => sessionWith({ versions: [{ kind: 'standard' }] })],
+	[
+		'whose version entry has_mode is not a flag',
+		() =>
+			sessionWith({ versions: [{ kind: 'standard', show_key: 'hianime:a-1', has_mode: 'yes' }] })
+	]
 ];
 
 for (const [what, answer] of ONE_WRONG) {

@@ -390,7 +390,11 @@ describe('freshBearer', () => {
 	it('falls back to the existing bearer when persistAccount rejects (no throw)', async () => {
 		// A rejected safeStorage write must not escape
 		// freshBearer and abort the caller's best-effort write-back / refresh.
-		const deps = freshDeps({ persistAccount: vi.fn().mockRejectedValue(new Error('io_error')) });
+		const deps = freshDeps({
+			persistAccount: vi
+				.fn<NonNullable<FreshBearerDeps['persistAccount']>>()
+				.mockRejectedValue(new Error('io_error'))
+		});
 		const acct = account({ access_token: 'old', expires_at_epoch_s: nowSec + 30 });
 		const bearer = await freshBearer(deps, 'mal', acct);
 		expect(bearer).toBe('old');

@@ -4,6 +4,8 @@ import fc from 'fast-check';
 import { handleRefusedBearer, refusalApplies, type RefusedBearerDeps } from './read-refusal';
 import type { PersistedAccount, Provider, ProviderState } from './types';
 
+import { wire } from '$lib/testing/wire-answers';
+import type { AniErrorPayload } from '../api';
 function acc(refresh_token: string | null): PersistedAccount {
 	return {
 		access_token: 'old',
@@ -37,11 +39,11 @@ function deps(state: ProviderState, over: Partial<RefusedBearerDeps> = {}): Refu
 
 const refused = new AccountApiError(
 	401,
-	JSON.stringify({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' })
+	wire<AniErrorPayload>({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' })
 );
 const down = new AccountApiError(
 	502,
-	JSON.stringify({ kind: 'upstream', key: 'error.network.upstream', status: 503 })
+	wire<AniErrorPayload>({ kind: 'upstream', key: 'error.network.upstream', status: 503 })
 );
 
 describe('handleRefusedBearer', () => {

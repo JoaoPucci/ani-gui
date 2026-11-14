@@ -234,7 +234,9 @@ describe('resume, asking again', () => {
 	it('runs it again when the audio setting changed since', async () => {
 		const saved = await savedSearch();
 		const h = harness({
-			getConfig: vi.fn().mockResolvedValue(configAnswer({ mode: 'dub' }))
+			getConfig: vi
+				.fn<NonNullable<SearchRunnerDeps['getConfig']>>()
+				.mockResolvedValue(configAnswer({ mode: 'dub' }))
 		});
 		await createSearchRunner(h.deps).resume(saved, { now: saved.capturedAt, reload: false });
 		await drain();
@@ -285,7 +287,9 @@ describe('resume against other runs', () => {
 		const saved = await savedSearch();
 		let answer: (c: Config) => void = () => {};
 		const h = harness({
-			getConfig: vi.fn(() => new Promise<Config>((r) => (answer = r)))
+			getConfig: vi.fn<NonNullable<SearchRunnerDeps['getConfig']>>(
+				() => new Promise<Config>((r) => (answer = r))
+			)
 		});
 		const runner = createSearchRunner(h.deps);
 		const run = runner.run('frieren');
@@ -301,7 +305,9 @@ describe('resume against other runs', () => {
 		const saved = await savedSearch();
 		let answer: (c: Config) => void = () => {};
 		const h = harness({
-			getConfig: vi.fn(() => new Promise<Config>((r) => (answer = r)))
+			getConfig: vi.fn<NonNullable<SearchRunnerDeps['getConfig']>>(
+				() => new Promise<Config>((r) => (answer = r))
+			)
 		});
 		const runner = createSearchRunner(h.deps);
 		const resumed = runner.resume(saved, { now: saved.capturedAt, reload: false });

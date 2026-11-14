@@ -100,10 +100,12 @@ describe('createSearchRunner (generation guard)', () => {
 		// of the same text.
 		const emits: ((visible: KitsuAnimeRef[]) => void)[] = [];
 		const h = makeHarness({
-			filter: vi.fn().mockImplementation((_items, _mode, emit) => {
-				emits.push(emit);
-				return new Promise<void>(() => {}); // probes never settle
-			})
+			filter: vi
+				.fn<NonNullable<SearchRunnerDeps['filter']>>()
+				.mockImplementation((_items, _mode, emit) => {
+					emits.push(emit);
+					return new Promise<void>(() => {}); // probes never settle
+				})
 		});
 		const runner = createSearchRunner(h.deps);
 
@@ -126,10 +128,12 @@ describe('createSearchRunner (generation guard)', () => {
 	it('a superseded run cannot clear the current run busy state', async () => {
 		const emits: ((visible: KitsuAnimeRef[]) => void)[] = [];
 		const h = makeHarness({
-			filter: vi.fn().mockImplementation((_items, _mode, emit) => {
-				emits.push(emit);
-				return new Promise<void>(() => {});
-			})
+			filter: vi
+				.fn<NonNullable<SearchRunnerDeps['filter']>>()
+				.mockImplementation((_items, _mode, emit) => {
+					emits.push(emit);
+					return new Promise<void>(() => {});
+				})
 		});
 		const runner = createSearchRunner(h.deps);
 
@@ -178,7 +182,12 @@ describe('createSearchRunner (generation guard)', () => {
 		// not go on to ask Kitsu for a page nobody will see.
 		const settings = defer<Config | null>();
 		const searchPage = vi.fn().mockResolvedValue(lastPage([ref('b')]));
-		const h = makeHarness({ getConfig: vi.fn().mockReturnValue(settings.promise), searchPage });
+		const h = makeHarness({
+			getConfig: vi
+				.fn<NonNullable<SearchRunnerDeps['getConfig']>>()
+				.mockReturnValue(settings.promise),
+			searchPage
+		});
 		const runner = createSearchRunner(h.deps);
 
 		const run1 = runner.run('a');
@@ -197,10 +206,12 @@ describe('createSearchRunner (generation guard)', () => {
 		const h = makeHarness({
 			getConfig,
 			pickMode: (c) => ((c as unknown as { mode: 'dub' })?.mode === 'dub' ? 'dub' : 'sub'),
-			filter: vi.fn().mockImplementation(async (items, mode, emit) => {
-				modes.push(mode);
-				emit(items);
-			})
+			filter: vi
+				.fn<NonNullable<SearchRunnerDeps['filter']>>()
+				.mockImplementation(async (items, mode, emit) => {
+					modes.push(mode);
+					emit(items);
+				})
 		});
 		const runner = createSearchRunner(h.deps);
 		await runner.run('a');
@@ -223,11 +234,15 @@ describe('createSearchRunner (generation guard)', () => {
 		const h = makeHarness({
 			getConfig,
 			pickMode: (c) => ((c as unknown as { mode: 'dub' })?.mode === 'dub' ? 'dub' : 'sub'),
-			searchPage: vi.fn().mockResolvedValue(lastPage([ref('ok')])),
-			filter: vi.fn().mockImplementation(async (items, mode, emit) => {
-				modes.push(mode);
-				emit(items);
-			})
+			searchPage: vi
+				.fn<NonNullable<SearchRunnerDeps['searchPage']>>()
+				.mockResolvedValue(lastPage([ref('ok')])),
+			filter: vi
+				.fn<NonNullable<SearchRunnerDeps['filter']>>()
+				.mockImplementation(async (items, mode, emit) => {
+					modes.push(mode);
+					emit(items);
+				})
 		});
 		const runner = createSearchRunner(h.deps);
 		await runner.run('a');
@@ -239,7 +254,9 @@ describe('createSearchRunner (generation guard)', () => {
 
 	it('surfaces the current run error and ends busy', async () => {
 		const h = makeHarness({
-			searchPage: vi.fn().mockRejectedValue(new Error('kitsu down'))
+			searchPage: vi
+				.fn<NonNullable<SearchRunnerDeps['searchPage']>>()
+				.mockRejectedValue(new Error('kitsu down'))
 		});
 		const runner = createSearchRunner(h.deps);
 		await runner.run('a');
@@ -257,7 +274,9 @@ describe('acceptance: progressive search rendering (runner + real filter)', () =
 
 	function runnerWithRealFilter(hits: KitsuAnimeRef[]) {
 		const h = makeHarness({
-			searchPage: vi.fn().mockResolvedValue(lastPage(hits)),
+			searchPage: vi
+				.fn<NonNullable<SearchRunnerDeps['searchPage']>>()
+				.mockResolvedValue(lastPage(hits)),
 			filter: (items, mode, emit) => filterAvailableProgressive(items, mode, emit)
 		});
 		return { ...h, runner: createSearchRunner(h.deps) };
@@ -313,10 +332,12 @@ describe('a superseded run stops its probes', () => {
 		// the renderer-wide limiter, and the new one's probes wait.
 		const signals: (AbortSignal | undefined)[] = [];
 		const h = makeHarness({
-			filter: vi.fn().mockImplementation((_items, _mode, _emit, signal) => {
-				signals.push(signal);
-				return new Promise<void>(() => {});
-			})
+			filter: vi
+				.fn<NonNullable<SearchRunnerDeps['filter']>>()
+				.mockImplementation((_items, _mode, _emit, signal) => {
+					signals.push(signal);
+					return new Promise<void>(() => {});
+				})
 		});
 		const runner = createSearchRunner(h.deps);
 		void runner.run('a');
@@ -336,10 +357,12 @@ describe('a superseded run stops its probes', () => {
 				.fn()
 				.mockResolvedValueOnce({ hits: [ref('1')], next_offset: 20 })
 				.mockResolvedValue(lastPage([ref('2')])),
-			filter: vi.fn().mockImplementation(async (items, _mode, emit, signal) => {
-				signals.push(signal);
-				emit(items);
-			})
+			filter: vi
+				.fn<NonNullable<SearchRunnerDeps['filter']>>()
+				.mockImplementation(async (items, _mode, emit, signal) => {
+					signals.push(signal);
+					emit(items);
+				})
 		});
 		const runner = createSearchRunner(h.deps);
 		await runner.run('a');
@@ -371,12 +394,16 @@ describe('concurrent config loads (shared load promise)', () => {
 		const modes: string[] = [];
 		const h = makeHarness({
 			getConfig,
-			searchPage: vi.fn().mockResolvedValue(lastPage([ref('hit')])),
+			searchPage: vi
+				.fn<NonNullable<SearchRunnerDeps['searchPage']>>()
+				.mockResolvedValue(lastPage([ref('hit')])),
 			pickMode: (c) => ((c as unknown as { mode: 'dub' } | null)?.mode === 'dub' ? 'dub' : 'sub'),
-			filter: vi.fn().mockImplementation(async (items, mode, emit) => {
-				modes.push(mode);
-				emit(items);
-			})
+			filter: vi
+				.fn<NonNullable<SearchRunnerDeps['filter']>>()
+				.mockImplementation(async (items, mode, emit) => {
+					modes.push(mode);
+					emit(items);
+				})
 		});
 		const runner = createSearchRunner(h.deps);
 
@@ -401,10 +428,12 @@ describe('a search replaced by another', () => {
 	it('has its page read cancelled, and the new search reads under a run of its own', async () => {
 		const signals: AbortSignal[] = [];
 		const h = makeHarness({
-			searchPage: vi.fn().mockImplementation((_q, _offset, _order, s: AbortSignal) => {
-				signals.push(s);
-				return new Promise<KitsuSearchPage>(() => {});
-			})
+			searchPage: vi
+				.fn<NonNullable<SearchRunnerDeps['searchPage']>>()
+				.mockImplementation((_q, _offset, _order, s: AbortSignal) => {
+					signals.push(s);
+					return new Promise<KitsuSearchPage>(() => {});
+				})
 		});
 		const runner = createSearchRunner(h.deps);
 		void runner.run('a');
@@ -421,7 +450,11 @@ describe('a search replaced by another', () => {
 describe('stop', () => {
 	it('ends the current search: a page still loading reaches nothing', async () => {
 		const pending = defer<KitsuSearchPage>();
-		const h = makeHarness({ searchPage: vi.fn().mockReturnValue(pending.promise) });
+		const h = makeHarness({
+			searchPage: vi
+				.fn<NonNullable<SearchRunnerDeps['searchPage']>>()
+				.mockReturnValue(pending.promise)
+		});
 		const runner = createSearchRunner(h.deps);
 		const run = runner.run('a');
 		await drain();
@@ -438,10 +471,12 @@ describe('stop', () => {
 	it('cancels the page read still out', async () => {
 		let signal: AbortSignal | undefined;
 		const h = makeHarness({
-			searchPage: vi.fn().mockImplementation((_q, _offset, _order, s: AbortSignal) => {
-				signal = s;
-				return new Promise<KitsuSearchPage>(() => {});
-			})
+			searchPage: vi
+				.fn<NonNullable<SearchRunnerDeps['searchPage']>>()
+				.mockImplementation((_q, _offset, _order, s: AbortSignal) => {
+					signal = s;
+					return new Promise<KitsuSearchPage>(() => {});
+				})
 		});
 		const runner = createSearchRunner(h.deps);
 		void runner.run('a');
@@ -455,11 +490,15 @@ describe('stop', () => {
 	it('ends the probes the search was asking', async () => {
 		let signal: AbortSignal | undefined;
 		const h = makeHarness({
-			filter: vi.fn().mockImplementation((_items, _mode, _emit, s: AbortSignal) => {
-				signal = s;
-				return new Promise<void>(() => {});
-			}),
-			searchPage: vi.fn().mockResolvedValue(lastPage([ref('a')]))
+			filter: vi
+				.fn<NonNullable<SearchRunnerDeps['filter']>>()
+				.mockImplementation((_items, _mode, _emit, s) => {
+					signal = s;
+					return new Promise<void>(() => {});
+				}),
+			searchPage: vi
+				.fn<NonNullable<SearchRunnerDeps['searchPage']>>()
+				.mockResolvedValue(lastPage([ref('a')]))
 		});
 		const runner = createSearchRunner(h.deps);
 		void runner.run('a');

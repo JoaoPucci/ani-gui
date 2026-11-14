@@ -34,6 +34,8 @@ import { __resetInFlightRefreshes, bearerRefusedFor, freshBearerFor } from './fr
 import { AccountApiError } from './api';
 
 import type * as AccountApi from './api';
+import { wire } from '$lib/testing/wire-answers';
+import type { AniErrorPayload } from '../api';
 function account(over: Partial<PersistedAccount> = {}): PersistedAccount {
 	return {
 		access_token: 'old',
@@ -221,7 +223,7 @@ describe('freshBearerFor', () => {
 const refused = () =>
 	new AccountApiError(
 		401,
-		JSON.stringify({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' })
+		wire<AniErrorPayload>({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' })
 	);
 
 describe('freshBearerFor and a failed renewal', () => {

@@ -10,7 +10,9 @@
 // answers only the acceptance tier builds) is `frontend/tests/answers.ts`,
 // which re-exports these.
 
+import { AccountApiError } from '$lib/account/api';
 import type {
+	AniErrorPayload,
 	AppInfo,
 	AvailabilityResponse,
 	Config,
@@ -136,4 +138,16 @@ export function sessionAnswer(
 		Partial<CreateSessionResponse>
 ): CreateSessionResponse {
 	return { cache_hit: false, subtitles: [], ...fields };
+}
+
+/** An error as the backend sends it and `$lib/api` rejects with it: the
+ *  envelope, typed, for a fake rejection or a thrown answer. */
+export function errorEnvelope(envelope: AniErrorPayload): AniErrorPayload {
+	return envelope;
+}
+
+/** An account route's refusal as `$lib/account/api` rejects with it: the
+ *  status, and the backend's error envelope as the body. */
+export function accountRefusal(status: number, envelope: AniErrorPayload): AccountApiError {
+	return new AccountApiError(status, JSON.stringify(envelope));
 }

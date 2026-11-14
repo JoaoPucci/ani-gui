@@ -271,7 +271,15 @@ describe('acceptance request guard', () => {
 			'answers a play with a session whose episode_unverified is not a flag',
 			'answers a play with a session whose own_listing is not a flag',
 			'answers a play with a session that leaves out cache_hit',
-			'answers a play with a session that leaves out subtitles'
+			'answers a play with a session that leaves out subtitles',
+			'answers a play with a session that leaves out session_id',
+			'answers a play with a session that leaves out media_url',
+			'answers a play with a session whose session_id is not text',
+			'answers a play with a session whose media_url is not text',
+			'answers a play with a session whose former_episode is not text',
+			'answers a play with a session whose version entry is not a kind there is',
+			'answers a play with a session whose version entry has no show key',
+			'answers a play with a session whose version entry has_mode is not a flag'
 		]) {
 			failedOn(f.scenarios[name], /POST \S+\/api\/play — a play answered with no session/);
 		}

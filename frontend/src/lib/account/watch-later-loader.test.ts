@@ -5,10 +5,9 @@ import {
 	type WatchLaterDeps
 } from './watch-later-loader';
 import type { ListEntry, Provider } from './types';
-import { AccountApiError } from './api';
 import type { KitsuAnimeRef } from '$lib/api';
 
-import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+import { accountRefusal, errorEnvelope, kitsuRefAnswer } from '$lib/testing/wire-answers';
 function row(over: Partial<ListEntry> = {}): ListEntry {
 	return {
 		provider: 'anilist',
@@ -172,12 +171,12 @@ describe('loadWatchLater', () => {
 	// a message of its own. The cached-list route answers with the
 	// error envelope as the body of an AccountApiError.
 	it('keeps the backend error kind when every provider fails', async () => {
-		const envelope = { kind: 'cache', key: 'error.cache.generic' };
+		const envelope = errorEnvelope({ kind: 'cache', key: 'error.cache.generic' });
 		const deps: WatchLaterDeps = {
 			credentials: { anilist: { bearer: 'a', userId: 'u' } },
 			fetchCachedList: vi
-				.fn()
-				.mockRejectedValue(new AccountApiError(500, JSON.stringify(envelope))),
+				.fn<NonNullable<WatchLaterDeps['fetchCachedList']>>()
+				.mockRejectedValue(accountRefusal(500, envelope)),
 			kitsuByMalIds: vi.fn<NonNullable<WatchLaterDeps['kitsuByMalIds']>>().mockResolvedValue([])
 		};
 		await expect(loadWatchLater(deps)).rejects.toMatchObject({ kind: 'cache' });
@@ -202,7 +201,9 @@ describe('loadWatchLater', () => {
 				.mockResolvedValue([row({ mal_id: 1 })]),
 			kitsuByMalIds: vi
 				.fn<NonNullable<WatchLaterDeps['kitsuByMalIds']>>()
-				.mockRejectedValue({ kind: 'upstream', status: 503 })
+				.mockRejectedValue(
+					errorEnvelope({ kind: 'upstream', key: 'error.network.upstream', status: 503 })
+				)
 		};
 		await expect(loadWatchLater(deps)).rejects.toMatchObject({ kind: 'upstream', status: 503 });
 	});

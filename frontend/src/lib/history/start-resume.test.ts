@@ -477,10 +477,12 @@ describe('makeStartResume (the row as it reads now)', () => {
 					log.push('interactive-count');
 					return { count: 36, approximate: false };
 				}),
-			currentNumber: vi.fn().mockImplementation(async () => {
-				log.push('current-number');
-				return { ep_no: '12.5', former_ep_no: '24.5' };
-			})
+			currentNumber: vi
+				.fn<NonNullable<StartResumeDeps['currentNumber']>>()
+				.mockImplementation(async () => {
+					log.push('current-number');
+					return { ep_no: '12.5', former_ep_no: '24.5' };
+				})
 		});
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '24.5', 'Show'), makeMatch('k1', 36), 36, false);
@@ -496,10 +498,14 @@ describe('makeStartResume (the row as it reads now)', () => {
 		// moves to "12.5" before Continue asks whether it was.
 		const kept = new Set(['k1:24.5']);
 		const h = makeHarness({
-			currentNumber: vi.fn().mockResolvedValue({ ep_no: '12.5', former_ep_no: '24.5' }),
-			movePosition: vi.fn().mockImplementation((id: string, from: number, to: number) => {
-				if (kept.delete(`${id}:${from}`)) kept.add(`${id}:${to}`);
-			}),
+			currentNumber: vi
+				.fn<NonNullable<StartResumeDeps['currentNumber']>>()
+				.mockResolvedValue({ ep_no: '12.5', former_ep_no: '24.5' }),
+			movePosition: vi
+				.fn<NonNullable<StartResumeDeps['movePosition']>>()
+				.mockImplementation((id: string, from: number, to: number) => {
+					if (kept.delete(`${id}:${from}`)) kept.add(`${id}:${to}`);
+				}),
 			leftPartWay: (id, ep) => kept.has(`${id}:${ep}`)
 		});
 		const start = makeStartResume(h.deps);
@@ -513,7 +519,9 @@ describe('makeStartResume (the row as it reads now)', () => {
 
 	it('resumes from what the card read when the row cannot be asked', async () => {
 		const h = makeHarness({
-			currentNumber: vi.fn().mockRejectedValue(new Error('offline'))
+			currentNumber: vi
+				.fn<NonNullable<StartResumeDeps['currentNumber']>>()
+				.mockRejectedValue(new Error('offline'))
 		});
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, false);
@@ -531,7 +539,7 @@ describe('makeStartResume (the row as it reads now)', () => {
 			resolvePlay: vi
 				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
 				.mockResolvedValue({ session_id: 's1', episode: '12.5' }),
-			followPlayed: vi.fn().mockReturnValue(12.5)
+			followPlayed: vi.fn<NonNullable<StartResumeDeps['followPlayed']>>().mockReturnValue(12.5)
 		});
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '24', 'Show'), makeMatch('k1', 36), 36, false);
@@ -566,7 +574,7 @@ describe('makeStartResume (no listing behind the cap)', () => {
 				.mockImplementation(async () =>
 					warmed ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' }
 				),
-			warm: vi.fn().mockImplementation(async () => {
+			warm: vi.fn<NonNullable<StartResumeDeps['warm']>>().mockImplementation(async () => {
 				warmed = true;
 			})
 		});
@@ -581,8 +589,10 @@ describe('makeStartResume (no listing behind the cap)', () => {
 
 	it('warms nothing when a lookup measured the cap or the row is a whole episode', async () => {
 		const measured = makeHarness({
-			currentNumber: vi.fn().mockResolvedValue({ ep_no: '24.5' }),
-			warm: vi.fn().mockResolvedValue(undefined)
+			currentNumber: vi
+				.fn<NonNullable<StartResumeDeps['currentNumber']>>()
+				.mockResolvedValue({ ep_no: '24.5' }),
+			warm: vi.fn<NonNullable<StartResumeDeps['warm']>>().mockResolvedValue(undefined)
 		});
 		await makeStartResume(measured.deps)(
 			makeEntry('h1', '24.5', 'Show'),
@@ -595,7 +605,7 @@ describe('makeStartResume (no listing behind the cap)', () => {
 			fetchInteractiveCount: vi
 				.fn<NonNullable<StartResumeDeps['fetchInteractiveCount']>>()
 				.mockRejectedValue(new Error('offline')),
-			warm: vi.fn().mockResolvedValue(undefined)
+			warm: vi.fn<NonNullable<StartResumeDeps['warm']>>().mockResolvedValue(undefined)
 		});
 		await makeStartResume(whole.deps)(makeEntry('h1', '5', 'Show'), makeMatch('k1', 36), 36, false);
 		expect(whole.deps.warm).not.toHaveBeenCalled();
@@ -606,8 +616,10 @@ describe('makeStartResume (no listing behind the cap)', () => {
 			fetchInteractiveCount: vi
 				.fn<NonNullable<StartResumeDeps['fetchInteractiveCount']>>()
 				.mockRejectedValue(new Error('offline')),
-			currentNumber: vi.fn().mockResolvedValue({ ep_no: '24.5' }),
-			warm: vi.fn().mockRejectedValue(new Error('offline'))
+			currentNumber: vi
+				.fn<NonNullable<StartResumeDeps['currentNumber']>>()
+				.mockResolvedValue({ ep_no: '24.5' }),
+			warm: vi.fn<NonNullable<StartResumeDeps['warm']>>().mockRejectedValue(new Error('offline'))
 		});
 		await makeStartResume(h.deps)(makeEntry('h1', '24.5', 'Show'), makeMatch('k1', 36), 36, false);
 		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
@@ -628,7 +640,7 @@ describe('makeStartResume (what the watch records)', () => {
 			resolvePlay: vi
 				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
 				.mockResolvedValue({ session_id: 's1', episode: '12.5' }),
-			followPlayed: vi.fn().mockReturnValue(12.5)
+			followPlayed: vi.fn<NonNullable<StartResumeDeps['followPlayed']>>().mockReturnValue(12.5)
 		});
 		await makeStartResume(h.deps)(makeEntry('h1', '24', 'Show'), makeMatch('k1', 36), 36, false);
 		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ episode: 12.5 }));
@@ -774,11 +786,13 @@ describe('makeStartResume (moved on before its provider work)', () => {
 			fetchInteractiveCount: vi
 				.fn<NonNullable<StartResumeDeps['fetchInteractiveCount']>>()
 				.mockRejectedValue(new Error('offline')),
-			currentNumber: vi.fn().mockImplementation(async () => {
-				holds = false;
-				return { ep_no: '24.5' };
-			}),
-			warm: vi.fn().mockResolvedValue(undefined)
+			currentNumber: vi
+				.fn<NonNullable<StartResumeDeps['currentNumber']>>()
+				.mockImplementation(async () => {
+					holds = false;
+					return { ep_no: '24.5' };
+				}),
+			warm: vi.fn<NonNullable<StartResumeDeps['warm']>>().mockResolvedValue(undefined)
 		});
 		await makeStartResume(h.deps)(makeEntry('h1', '24.5', 'Show'), makeMatch('k1', 36), 36, false);
 		expect(h.deps.warm).not.toHaveBeenCalled();

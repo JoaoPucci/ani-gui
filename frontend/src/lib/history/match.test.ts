@@ -17,6 +17,7 @@ import {
 } from '$lib/api';
 
 import type * as Api from '$lib/api';
+import { errorEnvelope } from '$lib/testing/wire-answers';
 // Mock the api module wholesale — `match.ts` is decoupled from the
 // transport (HTTP fetch to the backend), and the assertions
 // here are about which api functions get called with what args.
@@ -883,7 +884,8 @@ describe('a recorded id Kitsu cannot read', () => {
 
 	it.each([404, 410])('matches the row anew when Kitsu answers %i for it', async (status) => {
 		mockedDetail.mockImplementation(async (id) => {
-			if (id === '999') throw { kind: 'upstream', status, key: 'error.network.upstream' };
+			if (id === '999')
+				throw errorEnvelope({ kind: 'upstream', status, key: 'error.network.upstream' });
 			return stubKitsu(id, 'Cowboy Bebop', 26);
 		});
 		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
@@ -1000,7 +1002,8 @@ describe('which Continue matches a play may record', () => {
 
 	it('does not record the match a row whose recorded id is gone falls back to', async () => {
 		mockedDetail.mockImplementation(async (id) => {
-			if (id === '999') throw { kind: 'upstream', status: 404, key: 'error.network.upstream' };
+			if (id === '999')
+				throw errorEnvelope({ kind: 'upstream', status: 404, key: 'error.network.upstream' });
 			return stubKitsu(id, 'Cowboy Bebop', 26);
 		});
 		mockedGetMatch.mockResolvedValue(null);

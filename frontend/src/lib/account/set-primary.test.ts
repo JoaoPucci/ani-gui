@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { applyPrimarySelection } from './set-primary';
 import type { Config } from '$lib/api';
 
+import type { ApplyPrimaryDeps } from './set-primary';
 function cfg(primary = ''): Config {
 	return {
 		locale: 'en',
@@ -60,7 +61,11 @@ describe('applyPrimarySelection', () => {
 	});
 
 	it('rolls the store back to the previous provider and keeps the old config when the write fails', async () => {
-		const d = deps({ persist: vi.fn().mockRejectedValue(new Error('disk full')) });
+		const d = deps({
+			persist: vi
+				.fn<NonNullable<ApplyPrimaryDeps['persist']>>()
+				.mockRejectedValue(new Error('disk full'))
+		});
 		const config = cfg('anilist');
 		const out = await applyPrimarySelection(config, 'mal', d);
 		// Page keeps the original config (so re-selecting can retry).
@@ -72,7 +77,11 @@ describe('applyPrimarySelection', () => {
 	});
 
 	it('rolls back to null when the previous primary was unset', async () => {
-		const d = deps({ persist: vi.fn().mockRejectedValue(new Error('nope')) });
+		const d = deps({
+			persist: vi
+				.fn<NonNullable<ApplyPrimaryDeps['persist']>>()
+				.mockRejectedValue(new Error('nope'))
+		});
 		await applyPrimarySelection(cfg(''), 'mal', d);
 		expect(d.applyToStore).toHaveBeenLastCalledWith(null);
 	});

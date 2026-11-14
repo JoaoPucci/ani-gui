@@ -14,7 +14,8 @@
 //   `sessionAnswer`, `kitsuRefAnswer`, `episodeAnswer`, `configAnswer`)
 //   build an answer with every field the backend always sends, so a
 //   fake names only the ones its test is about; `wire<T>` types a
-//   stream event's data, and `malformedAs` a value wrong on purpose.
+//   stream event's data, `errorEnvelope` and `accountRefusal` an error
+//   a fake rejects with, and `malformedAs` a value wrong on purpose.
 //   They live in `src/lib/testing/wire-answers.ts`, inside the tree the
 //   unit tests may import from, and are re-exported here.
 // - `malformedAnswer` is an answer no backend sends, on purpose: the test is
@@ -29,10 +30,12 @@ import { HttpResponse, type JsonBodyType } from 'msw';
 import type { AniErrorPayload } from '../src/lib/api';
 
 export {
+	accountRefusal,
 	appInfoAnswer,
 	availabilityAnswer,
 	configAnswer,
 	episodeAnswer,
+	errorEnvelope,
 	kitsuRefAnswer,
 	malformedAs,
 	sessionAnswer,
