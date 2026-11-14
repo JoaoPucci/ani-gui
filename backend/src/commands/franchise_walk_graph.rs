@@ -1,7 +1,8 @@
 //! The franchise around a run (`franchise_walk_root.rs`): every entry
 //! joined to its members by prequel and sequel links, a link counted
 //! from either side, and every listing read on the way. Every listing
-//! read counts toward the walk's bound; an entry past it is not read,
+//! read counts toward the walk's bound; the entries of a step are read in
+//! the order of their ids as text, and one past it is not read,
 //! and the franchise is incomplete.
 
 use std::collections::BTreeSet;
