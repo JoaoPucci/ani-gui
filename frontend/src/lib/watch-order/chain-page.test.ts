@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
+import { m } from '$lib/paraglide/messages';
 import { watchOrderPage } from './page-model';
+import { columnCountText } from './strip-copy';
 import type { ChainData, FranchiseData, RunLink, WatchEntry } from './types';
 
 const e = (id: string, start: string, subtype = 'movie'): WatchEntry => ({
@@ -157,6 +159,79 @@ describe('watchOrderPage on a page outside the main story', () => {
 		expect(p.caption).toEqual({ kind: 'film' });
 		expect(p.eyebrow).toBeNull();
 		expect(p.seams).toEqual({ before: 'from', after: null });
+	});
+
+	it('reads a chain of one title that is not a film with no number', () => {
+		const ova = e('5000', '2013-01-01', 'OVA');
+		const chain: ChainData = { entries: [fz2, ova], links: [['7658', '5000']], seams: ['7658'] };
+		const p = watchOrderPage({ franchise: fate('5000', chain), rows: [] }, '5000', 'linked')!;
+		expect(p.caption).toEqual({ kind: 'alone' });
+		expect(p.eyebrow).toBeNull();
+		expect(p.outside).toBe(true);
+	});
+
+	it('draws a side story of a chain title under it, on the chain, outside the main story', () => {
+		const special = e('9000', '2018-01-01', 'special');
+		const franchise: FranchiseData = {
+			...fate('9000', heavensFeel),
+			sides: [special],
+			parents: { '9000': ['8675'] }
+		};
+		const p = watchOrderPage({ franchise, rows: [] }, '9000', 'linked')!;
+		expect(p.view.kind).toBe('side');
+		expect(ids(p.view.before)).toEqual(['8675']);
+		expect(p.caption).toEqual({ kind: 'side' });
+		expect(p.outside).toBe(true);
+		expect(p.seams).toEqual({ before: null, after: null });
+	});
+
+	it('keys a column that holds a seam beside an own title as usual, and counts both', () => {
+		// Heaven's Feel I forks: on to II, and back into the 2006 series.
+		const chain: ChainData = {
+			entries: [fsn, fz2, hf1, hf2, hf3],
+			links: [
+				['7658', '8675'],
+				['8675', '12007'],
+				['8675', '323'],
+				['12007', '12008']
+			],
+			seams: ['7658', '323']
+		};
+		const p = watchOrderPage({ franchise: fate('8675', chain), rows: [] }, '8675', 'linked')!;
+		expect(ids(p.view.after).sort()).toEqual(['12007', '323']);
+		expect(p.seams.after).toBeNull();
+		expect(columnCountText(p.view.kind, 'after', p.view.after.length, p.complete)).toBe(
+			m.watchorder_strip_ways({ count: 2 })
+		);
+		expect(p.caption).toEqual({ kind: 'position', position: 1, total: 3 });
+	});
+
+	it('in release order, places a seam by date, between two own titles where it falls', () => {
+		const a = e('100', '2001-01-01');
+		const b = e('101', '2015-01-01');
+		const s = e('1', '2010-01-01', 'TV');
+		const franchise = (anchor: string): FranchiseData => ({
+			...fate(anchor, undefined),
+			entries: [s],
+			links: [],
+			films: [a, b],
+			chain: {
+				entries: [a, s, b],
+				links: [
+					['100', '1'],
+					['100', '101']
+				],
+				seams: ['1']
+			}
+		});
+		const first = watchOrderPage({ franchise: franchise('100'), rows: [] }, '100', 'released')!;
+		expect(first.caption).toEqual({ kind: 'position', position: 1, total: 2 });
+		expect(ids(first.view.after)).toEqual(['1']);
+		expect(first.seams.after).toBe('into');
+		const second = watchOrderPage({ franchise: franchise('101'), rows: [] }, '101', 'released')!;
+		expect(second.caption).toEqual({ kind: 'position', position: 2, total: 2 });
+		expect(ids(second.view.before)).toEqual(['1']);
+		expect(second.seams.before).toBe('from');
 	});
 
 	it('reads no number in a franchise read in part, and still says it is outside', () => {

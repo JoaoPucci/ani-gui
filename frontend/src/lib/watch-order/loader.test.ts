@@ -63,6 +63,19 @@ describe('loadWatchOrder', () => {
 		expect([...named.mock.calls[0][0]].sort()).toEqual(['20', '30', '40', '50', '7', '8']);
 	});
 
+	it("asks for the rows of a chain's titles too, wherever the sections list them", async () => {
+		const named = vi.fn((ids: readonly string[]) => {
+			void ids;
+			return Promise.resolve({});
+		});
+		const chained: FranchiseData = {
+			...FRANCHISE,
+			chain: { entries: [entry('8'), entry('60')], links: [['8', '60']], seams: ['8'] }
+		};
+		await loadWatchOrder('60', { franchise: () => Promise.resolve(chained), named });
+		expect([...named.mock.calls[0][0]].sort()).toEqual(['20', '30', '40', '50', '60', '7', '8']);
+	});
+
 	it('counts a row toward the entry that named it, whatever id the row recorded', async () => {
 		// The row recorded entry 4, which Kitsu has since deleted; the
 		// backend names it for 8, its replacement (history_claim::names).
