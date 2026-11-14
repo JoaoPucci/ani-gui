@@ -12,7 +12,9 @@
 // it. A fork lists the ways on; a next entry that has not aired shows
 // when it airs and links nowhere. Esc dismisses the card while it has
 // focus. It stays clear of the controls that hide in fullscreen, and
-// under reduced motion it simply appears.
+// under reduced motion it simply appears. On an entry outside the main
+// story, the card follows the entry's own chain, on into the main story
+// where the chain leads into it.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -76,7 +78,7 @@ const SECOND = entry(KITSU_ID, TITLE, '2012-01-01');
 const FINAL = entry('50', 'Saga: Final Arc', '2014-01-01');
 
 function franchise(
-	over: Partial<{ entries: unknown[]; links: string[][]; complete: boolean }> = {}
+	over: Partial<{ entries: unknown[]; links: string[][]; complete: boolean; chain: unknown }> = {}
 ) {
 	return {
 		anchor: KITSU_ID,
@@ -615,6 +617,48 @@ describe('the Up next card at a finale', () => {
 			() => (card()!.textContent ?? '').includes(m.watchorder_meta_progress_open({ episode: 3 })),
 			"the replacement's progress"
 		);
+	});
+
+	// Second Arc outside the main story (Saga → Final Arc), on a chain of
+	// its own after Saga.
+	const FILM = entry('60', 'Saga: The Movie', '2013-01-01', { subtype: 'movie' });
+
+	it("names the next title of the entry's own chain, not the main story's", async () => {
+		const { video } = await openEpisode({
+			franchise: franchise({
+				entries: [SAGA, FINAL],
+				links: [['10', '50']],
+				chain: {
+					entries: [SAGA, SECOND, FILM],
+					links: [
+						['10', KITSU_ID],
+						[KITSU_ID, '60']
+					],
+					seams: ['10']
+				}
+			})
+		});
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card');
+		expect(cardLinks().map((a) => a.getAttribute('href'))).toEqual(['/anime/60']);
+		expect(card()!.textContent).not.toContain('Saga: Final Arc');
+	});
+
+	it('goes on into the main story where the chain leads into it', async () => {
+		const { video } = await openEpisode({
+			franchise: franchise({
+				entries: [SAGA, FINAL],
+				links: [['10', '50']],
+				chain: {
+					entries: [SECOND, FINAL],
+					links: [[KITSU_ID, '50']],
+					seams: ['50']
+				}
+			})
+		});
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card');
+		expect(cardLinks().map((a) => a.getAttribute('href'))).toEqual(['/anime/50']);
 	});
 
 	it('shows no card at the end of the run', async () => {

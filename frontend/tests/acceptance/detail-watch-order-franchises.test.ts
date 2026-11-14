@@ -8,7 +8,9 @@
 // side story of it. LEGO ONE PIECE's page is the side story, under One
 // Piece. A film that names a series its parent story reads "Film",
 // any other side story "Side story". Every tile names its entry by its
-// whole title.
+// whole title. A page outside the main story walks its own chain: its
+// own titles numbered among themselves, the main-story title it meets
+// shown beside them under its own key, and a note in the heading.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -41,6 +43,7 @@ interface Served {
 	entries: { id: string; title: string }[];
 	sides: { id: string; title: string }[];
 	films: { id: string; title: string }[];
+	versions: { id: string; title: string }[];
 }
 
 /** The walk's answer for `id`, as the endpoint serves it. */
@@ -51,7 +54,7 @@ function served(id: string): Served {
 
 /** The title the walk knows for `id`, from its own payload. */
 function titleOf(f: Served, id: string): string {
-	return [...f.entries, ...f.sides, ...f.films].find((e) => e.id === id)!.title;
+	return [...f.entries, ...f.sides, ...f.films, ...f.versions].find((e) => e.id === id)!.title;
 }
 
 let target: HTMLElement;
@@ -79,12 +82,12 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 }
 
 /** Open `id`'s show page with the walk's answer for it. */
-function openShow(id: string) {
+function openShow(id: string, order: 'linked' | 'released' = 'linked') {
 	const f = served(id);
 	setParams({ id });
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({ ...appConfig(), watch_order: 'linked' })
+			HttpResponse.json({ ...appConfig(), watch_order: order })
 		),
 		http.get(`${API_BASE}/api/kitsu/anime/${id}`, () =>
 			HttpResponse.json({ ...kitsuRef(id, titleOf(f, id), 12), subtype: 'TV' })
@@ -128,6 +131,9 @@ const strip = (): HTMLElement | null =>
 	) ?? null;
 const tile = (id: string) => strip()?.querySelector(`a[href="/anime/${id}"]`) ?? null;
 const tileTitle = (id: string) => tile(id)?.querySelector('.tile-title')?.textContent ?? null;
+const heading = () => strip()?.querySelector('h2')?.textContent ?? '';
+const columnKey = (side: 'before' | 'after') =>
+	strip()?.querySelector(`.col-key.key-${side}`)?.textContent?.trim() ?? null;
 
 describe('detail route — the watch-order strip on real franchises', () => {
 	it('never calls One Piece a side story of its spin-off LEGO ONE PIECE', async () => {
@@ -211,5 +217,46 @@ describe('detail route — the watch-order strip on real franchises', () => {
 		openShow('199');
 		await until(() => strip() !== null, 'the strip');
 		expect(tileTitle('720')).toBe('Dragon Ball Z');
+	});
+
+	it("numbers Berserk's first Golden Age film among the films, outside the main story", async () => {
+		openShow('6084');
+		await until(() => strip() !== null, 'the strip');
+		expect(heading()).toContain(m.watchorder_strip_outside());
+		expect(heading()).toContain(m.watchorder_strip_position({ position: '01', total: '03' }));
+		expect(tile('6664')).not.toBeNull();
+		expect(tile('24')).toBeNull();
+	});
+
+	it('shows the JoJo series the 2000 OVA follows, keyed as the main story it comes from', async () => {
+		openShow('7730');
+		await until(() => strip() !== null, 'the strip');
+		expect(heading()).toContain(m.watchorder_strip_position({ position: '01', total: '02' }));
+		expect(tile('7158')).not.toBeNull();
+		expect(columnKey('before')).toBe(m.watchorder_strip_seam_from());
+		expect(tile('610')).not.toBeNull();
+	});
+
+	it('in release order, shows the JoJo series after the 2000 OVA, keyed as the main story it leads into', async () => {
+		openShow('7730', 'released');
+		await until(() => strip() !== null, 'the strip');
+		expect(heading()).toContain(m.watchorder_strip_position({ position: '02', total: '02' }));
+		expect(columnKey('after')).toBe(m.watchorder_strip_seam_into());
+	});
+
+	it('calls Boruto: Naruto the Movie a film, after Shippuden from the main story', async () => {
+		openShow('10089');
+		await until(() => strip() !== null, 'the strip');
+		expect(heading()).toContain(m.watchorder_strip_outside());
+		expect(strip()!.textContent).toContain(m.watchorder_strip_film());
+		expect(tile('1555')).not.toBeNull();
+		expect(columnKey('before')).toBe(m.watchorder_strip_seam_from());
+	});
+
+	it("says nothing of a chain on the main story's pages", async () => {
+		openShow('11655');
+		await until(() => strip() !== null, 'the strip');
+		expect(heading()).not.toContain(m.watchorder_strip_outside());
+		expect(columnKey('before')).not.toBe(m.watchorder_strip_seam_from());
 	});
 });

@@ -5,6 +5,7 @@
  */
 import { m } from '$lib/paraglide/messages';
 import { loopText, numeral } from './meta';
+import type { Seam } from './chain-view';
 import type { StripCaption } from './page-model';
 import type { EmptyColumn } from './strip-view';
 import type { ColumnKey, ColumnWord } from './strip-wording';
@@ -19,6 +20,11 @@ const WORDS: Record<ColumnWord, readonly [() => string, () => string]> = {
 	],
 	released_after: [m.watchorder_strip_word_released_after, m.watchorder_strip_word_released_after]
 };
+
+/** The key over a column a chain's seam stands in. */
+export function seamKeyText(seam: Seam): string {
+	return seam === 'from' ? m.watchorder_strip_seam_from() : m.watchorder_strip_seam_into();
+}
 
 export function columnKeyText(key: ColumnKey): string {
 	return WORDS[key.word][key.plural ? 1 : 0]();
@@ -69,5 +75,7 @@ export function captionText(caption: StripCaption): string {
 			return loopText(caption.count);
 		case 'branch':
 			return m.watchorder_strip_unnumbered_branch();
+		case 'alone':
+			return '';
 	}
 }
