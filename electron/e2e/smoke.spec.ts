@@ -387,18 +387,29 @@ test("an image the app's page loads reaches the backend with no secret in its UR
   // secret header to the app's own page's image and progress-stream
   // requests (lib/secret-header.cjs); a subframe's get nothing. These
   // two go to the real backend rather than the stubs: the app's is let
-  // in and fails upstream, at the helper's refusing proxy (503); the
-  // frame's is refused at the gate (403) and the backend never tries.
+  // in, and the backend tries the upstream (at the helper's refusing
+  // proxy); the frame's is refused at the gate (403) and the backend
+  // never tries. The app's answer is the backend's 503 error body,
+  // which Chromium withholds from an <img> (ORB) and reports as a
+  // failed request rather than a response.
   const { app, page, context } = await launchAppWithStubs();
   try {
     await routeContext(context, /gate-(app|frame)\.example/, (r) => r.continue());
-    const statuses = new Map<string, number>();
+    const statuses = new Map<string, number | string>();
     const urls: string[] = [];
+    const which = (url: string) => /gate-(app|frame)\.example/.exec(decodeURIComponent(url))?.[1];
     context.on("response", (res) => {
-      const m = /gate-(app|frame)\.example/.exec(decodeURIComponent(res.url()));
+      const m = which(res.url());
       if (m) {
-        statuses.set(m[1], res.status());
+        statuses.set(m, res.status());
         urls.push(res.url());
+      }
+    });
+    context.on("requestfailed", (req) => {
+      const m = which(req.url());
+      if (m) {
+        statuses.set(m, "failed");
+        urls.push(req.url());
       }
     });
     await page.evaluate(() => {
@@ -414,7 +425,7 @@ test("an image the app's page loads reaches the backend with no secret in its UR
       document.body.append(frame);
     });
     await expect.poll(() => statuses.size, { timeout: 15_000 }).toBe(2);
-    expect(Object.fromEntries(statuses)).toEqual({ app: 503, frame: 403 });
+    expect(statuses.get("frame")).toBe(403);
     expect(outboundAttempts(app)).toContain("CONNECT gate-app.example:443");
     expect(outboundAttempts(app)).not.toContain("CONNECT gate-frame.example:443");
     const secret = await page.evaluate(() => window.aniGui?.internalSecret);
