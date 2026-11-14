@@ -66,9 +66,9 @@ impl Sections {
         to.insert(id.to_string());
     }
 
-    /// An entry of the run first walked to that the main story leaves
-    /// out: where the run's listings placed it, else among the films
-    /// when it is a movie, else the other versions.
+    /// An entry of the franchise that the main story leaves out: where
+    /// the run's listings placed it, else among the films when it is a
+    /// movie, else the other versions.
     pub(super) fn place_moved(&mut self, id: &str, film: bool) {
         let placed = [&self.versions, &self.recaps, &self.films, &self.sides]
             .iter()

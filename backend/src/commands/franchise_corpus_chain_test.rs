@@ -1,9 +1,9 @@
-//! A page outside the main story walks its own chain: the titles its
-//! own walk reaches outside the main story, joined to it, with the
-//! main-story titles where the chain leaves it or leads into it (its
-//! seams). Pinned on the corpus (`franchise_corpus_test.rs`), asked
-//! from every title of each chain, and from main-story pages, which
-//! have none.
+//! A page outside the main story walks its own chain: the franchise's
+//! entries outside the main story joined to it by prequel and sequel
+//! links, with the main-story titles where the chain leaves it or leads
+//! into it (its seams), as `franchise_walk_chain.rs` cuts it. Pinned on
+//! the corpus (`franchise_corpus_test.rs`), asked from every title of
+//! each chain, and from main-story pages, which have none.
 
 use std::collections::BTreeMap;
 

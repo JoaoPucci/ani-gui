@@ -3,14 +3,14 @@
  "fixtures": {
   "cases.json": {
    "source": "Hand-written: one case per anchor, what the walk must answer for it (the title of the run's first entry by start, which section holds the anchor, a side story's parent stories, ids a section must hold), pinned by backend/src/commands/franchise_corpus_test.rs.",
-   "size": 12247,
-   "sha256": "ef68468c388d7c44d9eb8f462d992b6b3a76b8fec7b9216ec43cf8de8b8868ca"
+   "size": 13641,
+   "sha256": "b2046e91f9ae5f7d0df93ac7e13e393571346c08dc8e633772cca29d554fe1ce"
   },
   "listings.json": {
    "source": "Recorded by backend/src/commands/franchise_corpus_record_test.rs: the franchise walk run from every anchor in cases.json, each listing it asked for read with the app's query (KitsuClient::franchise_relations) and each detail with KitsuClient::anime_detail, artwork dropped (the walk never reads it).",
-   "captured_at": "2026-11-11; My Hero Academia's seasons and its second and fourth films, Heaven's Feel II and III, Dragon Ball Super: Beerus and Dragon Ball Kai: Mirai ni Heiwa wo! 2026-11-12",
-   "size": 241594,
-   "sha256": "aff65bb0e2c7c8bf8e77d67c47f2982ba29986bd7cb24f82ae13649823ea6b2f"
+   "captured_at": "2026-11-11; My Hero Academia's seasons and its second and fourth films, Heaven's Feel II and III, Dragon Ball Super: Beerus and Dragon Ball Kai: Mirai ni Heiwa wo! 2026-11-12; the details of Heaven's Feel I and II, the Unlimited Blade Works film and Berserk's third Golden Age film 2026-11-15",
+   "size": 242322,
+   "sha256": "2688abafe0299310a52907b5a92da6c39322b00980c1f05b7f38916921706b5a"
   },
   "served-10089.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Boruto: Naruto the Movie (anime/10089) over listings.json, as GET /api/kitsu/franchise/10089 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -61,6 +61,11 @@
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from One Piece (anime/12) over listings.json, as GET /api/kitsu/franchise/12 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
    "size": 18818,
    "sha256": "7efa1852da059f6d496c96ef89e7afc21fef460c2ebc613058851f17a3771e39"
+  },
+  "served-12007.json": {
+   "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Fate/stay night: Heaven's Feel II. Lost Butterfly (anime/12007) over listings.json, as GET /api/kitsu/franchise/12007 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
+   "size": 5639,
+   "sha256": "c7abf59e0464004ddb23768ed588252224a3914f65af5159167d69254ecea6eb"
   },
   "served-1265.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Lupin III (anime/1265) over listings.json, as GET /api/kitsu/franchise/1265 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -172,6 +177,11 @@
    "size": 5832,
    "sha256": "55748ba2f5c70d2ea4c1c1d061b69a1937df0da29cc2c5cb7e598371618208d7"
   },
+  "served-4788.json": {
+   "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Fate/stay night Movie: Unlimited Blade Works (anime/4788) over listings.json, as GET /api/kitsu/franchise/4788 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
+   "size": 4999,
+   "sha256": "2d309326998d3c4679ac5beeb628962830c09b44690c1cf2371fed8e42f47954"
+  },
   "served-486.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Pocket Monsters (anime/486) over listings.json, as GET /api/kitsu/franchise/486 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
    "size": 29406,
@@ -196,6 +206,11 @@
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Berserk: Ougon Jidai-hen I - Haou no Tamago (anime/6084) over listings.json, as GET /api/kitsu/franchise/6084 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
    "size": 3334,
    "sha256": "701c1d199f3cd292f49c2314a2fc8aa5d8dcc0856f11c80549b2bfa6fc020e7b"
+  },
+  "served-6665.json": {
+   "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Berserk: Ougon Jidai-hen III - Kourin (anime/6665) over listings.json, as GET /api/kitsu/franchise/6665 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
+   "size": 3334,
+   "sha256": "4b0abf8b75b3c230a9037f38d4ff5313255dca3dc6768480b9644c3b84bb0df0"
   },
   "served-6928.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Fate/Zero: Onegai! Einzbern Soudanshitsu (anime/6928) over listings.json, as GET /api/kitsu/franchise/6928 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -251,6 +266,11 @@
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Top wo Nerae! Gunbuster (anime/841) over listings.json, as GET /api/kitsu/franchise/841 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
    "size": 2110,
    "sha256": "52fecfa5686b3b4911805cacb5c5fd0cd168fe2235430b916dfb3c51c872a521"
+  },
+  "served-8675.json": {
+   "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Fate/stay night: Heaven's Feel I. Presage Flower (anime/8675) over listings.json, as GET /api/kitsu/franchise/8675 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
+   "size": 5638,
+   "sha256": "3e65114828fa0cda4a4a04eed7a1dd0ac5061aa8bea3bb22e3205cc997cd2645"
   }
  }
 }

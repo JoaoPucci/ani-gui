@@ -606,8 +606,9 @@ story's) is therefore only where the walk starts:
   rule 2 chooses; the others are passed over.
 - The franchise's root is the earliest entry reached that has no
   prequel and was not passed over, so the choice made where two lines
-  meet decides. Where every way back leads into a loop, the earliest
-  entry reached stands for it.
+  meet decides. Where no entry reached is one (every way back leads
+  into a loop, or every first entry reached was passed over somewhere),
+  the earliest entry reached that was not passed over stands for it.
 - The main story is the walk from the root, links counted from either
   side.
 
@@ -622,7 +623,7 @@ entry of the franchise that the main story leaves out is listed around
 it, where the main story's listings place it, else a movie under Films
 and anything else under other versions, so every page lists the same
 ones: [data] from every *Fate* page, Films holds *Heaven's Feel* II and
-III beside I, though only *Heaven's Feel I*'s listing names them. A
+III beside I, though only a walk through *Heaven's Feel I* reaches them. A
 side story keeps those of its parents that are in the main story.
 Every page that reaches the same franchise reads it the same way, and
 so answers with the same main story, name, front poster and franchise
@@ -645,9 +646,11 @@ its seams, where the chain leaves the main story or leads into it.
 *JoJo* OVAs, with the 2012 series the 2000 OVA names as its prequel; the
 *Unlimited Blade Works* film and *Boruto: Naruto the Movie*, each alone
 with the title it branches off after. The chain is cut from the
-franchise, so every title of it answers with the same chain. A
-main-story page has none, and neither has a side story placed beside
-the franchise, nor a page linked to nothing else. The franchise page is
+franchise, so every title of it answers with the same chain, where
+Kitsu lists its links from both sides. A main-story page has none, and
+neither has a page linked to nothing else; a side story whose parents
+the main story leaves out keeps them, and is drawn on the earliest
+one's chain. Music videos are no titles of a chain. The franchise page is
 unchanged by it: the chain's titles stay where the sections list them.
 
 With these tie-breaks every entry has one path and one decision, so
@@ -939,10 +942,9 @@ design section. Below it, sections:
    setting chooses, numbered as section 4 describes, with branches
    unnumbered beside the numbered path, progress bars per entry and a
    "you are here" marker.
-2. **Other versions** — section 4's rule 4: from the JoJo TV run, both
-   OVAs; from the UBW run, the 2006 *Fate/stay night*. Movies are not
-   listed here but under Films: the 2010 UBW film and the first
-   *Heaven's Feel* film, *Gintama*'s retelling films.
+2. **Other versions** — section 4's rule 4: from every JoJo page, both
+   OVAs. Movies are not listed here but under Films: the 2010 UBW film
+   and the three *Heaven's Feel* films, *Gintama*'s retelling films.
 3. From `around`: **Films** (every movie around the run, whatever its
    role: a version, a recap or a side story), **Side stories &
    specials** (everything else: side stories, parent stories,

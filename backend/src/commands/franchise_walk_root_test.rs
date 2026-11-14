@@ -5,9 +5,10 @@
 use std::collections::BTreeSet;
 
 use super::super::graph::{neighbours, Graph};
+use super::super::prequels::prequels;
 use super::super::tests::Catalogue;
 use super::super::Lookup;
-use super::{prequels, root};
+use super::root;
 
 fn ids(list: &[&str]) -> BTreeSet<String> {
     list.iter().map(|s| (*s).to_string()).collect()

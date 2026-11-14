@@ -244,11 +244,12 @@ proptest! {
         }
     }
 
-    /// A page in the main story has no chain. A page outside it that has
-    /// one is among its own titles; those are outside the main story and
-    /// joined to the page by the chain's links; its seams are in the
-    /// main story, each linked to one of its own titles; and every one of
-    /// its own titles answers with the same chain.
+    /// A page in the main story has no chain, and a page outside it has
+    /// one. The page is among its own titles; those are outside the main
+    /// story and joined to the page by the chain's links; its seams are
+    /// in the main story, each linked to one of its own titles; every
+    /// entry linked to one of its own titles is one of them or a seam;
+    /// and every one of its own titles answers with the same chain.
     #[test]
     fn a_page_outside_the_main_story_walks_a_chain_of_its_own((cat, all) in franchise()) {
         for id in &all {
@@ -259,11 +260,24 @@ proptest! {
                 prop_assert!(chain.is_none(), "{} is in the main story", id);
                 continue;
             }
-            let Some((own, seams, links)) = chain else { continue };
+            let Some((own, seams, links)) = chain else {
+                return Err(TestCaseError::fail(format!("{id}, outside the main story, has no chain")));
+            };
             prop_assert!(own.contains(id), "{} not among its own titles", id);
             prop_assert!(own.iter().all(|o| !main.contains(o)), "{:?} meets {:?}", own, main);
             prop_assert!(seams.is_subset(&main), "seams {:?}", seams);
             prop_assert_eq!(reach(id, &links, &own), own.clone(), "from {}", id);
+            // Whole: every entry linked to one of its own titles is one
+            // of them, or, in the main story, a seam.
+            for o in &own {
+                for r in &cat.listings[o].relations {
+                    if r.role != "prequel" && r.role != "sequel" {
+                        continue;
+                    }
+                    let held = own.contains(&r.id) || seams.contains(&r.id);
+                    prop_assert!(held, "{} is linked to {} but not in its chain", r.id, o);
+                }
+            }
             for s in &seams {
                 let linked = links.iter().any(|(a, b)| (a == s && own.contains(b)) || (b == s && own.contains(a)));
                 prop_assert!(linked, "seam {} meets no title of {:?}", s, own);

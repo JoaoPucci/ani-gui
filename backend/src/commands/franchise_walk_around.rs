@@ -135,6 +135,9 @@ fn chain(run: &Run, look: &Lookup<'_>) -> Option<Chain> {
     Some(Chain {
         entries: entries(&all, run, look),
         links: links_among(&all, look),
-        seams: ids.seams.iter().cloned().collect(),
+        seams: entries(&ids.seams, run, look)
+            .into_iter()
+            .map(|e| e.id)
+            .collect(),
     })
 }
