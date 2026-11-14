@@ -24,10 +24,6 @@ const crypto = require("node:crypto");
 /** The header the backend reads the launch's secret from. */
 const SECRET_HEADER = "x-ani-gui-internal-secret";
 
-/** The routes whose callers cannot set a header, and so may carry the
- *  secret as the `secret` query parameter. `GET` only. */
-const QUERY_SECRET_PATHS = Object.freeze(["/api/image", "/api/play/stream", "/api/download/stream"]);
-
 /** How long a browser may reuse a preflight's answer, as the backend
  *  says (two hours). */
 const PREFLIGHT_MAX_AGE_SECS = 7200;
@@ -41,14 +37,14 @@ function sameSecret(got, secret) {
 
 /**
  * Whether the backend's gate lets a request through: the secret as the
- * header on any route, or as the `secret` query parameter on a GET of
- * one of QUERY_SECRET_PATHS. `headers` has lowercase names, as Node's
- * do; `secret` is the launch's, and nothing is admitted without it.
+ * header, on any route. No route reads it from the query: the main
+ * process adds the header to the requests an <img> or an EventSource
+ * makes (lib/secret-header.cjs). `headers` has lowercase names, as
+ * Node's do; `secret` is the launch's, and nothing is admitted without
+ * it. The request's method, path and query are taken, and not read.
  */
-function gateAdmits({ method, path, query, headers, secret }) {
-  if (sameSecret(headers?.[SECRET_HEADER], secret)) return true;
-  if (method !== "GET" || !QUERY_SECRET_PATHS.includes(path)) return false;
-  return new URLSearchParams(query ?? "").getAll("secret").some((v) => sameSecret(v, secret));
+function gateAdmits({ headers, secret }) {
+  return sameSecret(headers?.[SECRET_HEADER], secret);
 }
 
 /** Whether `origin` is one the app's renderer runs at: the packaged
@@ -176,7 +172,6 @@ async function startStubServer() {
 }
 
 module.exports = {
-  QUERY_SECRET_PATHS,
   SECRET_HEADER,
   corsHeaders,
   gateAdmits,
