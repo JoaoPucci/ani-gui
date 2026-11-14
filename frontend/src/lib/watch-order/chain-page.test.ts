@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
+import { m } from '$lib/paraglide/messages';
 import { watchOrderPage } from './page-model';
+import { columnCountText } from './strip-copy';
 import type { ChainData, FranchiseData, RunLink, WatchEntry } from './types';
 
 const e = (id: string, start: string, subtype = 'movie'): WatchEntry => ({
@@ -198,7 +200,38 @@ describe('watchOrderPage on a page outside the main story', () => {
 		const p = watchOrderPage({ franchise: fate('8675', chain), rows: [] }, '8675', 'linked')!;
 		expect(ids(p.view.after).sort()).toEqual(['12007', '323']);
 		expect(p.seams.after).toBeNull();
+		expect(columnCountText(p.view.kind, 'after', p.view.after.length, p.complete)).toBe(
+			m.watchorder_strip_ways({ count: 2 })
+		);
 		expect(p.caption).toEqual({ kind: 'position', position: 1, total: 3 });
+	});
+
+	it('in release order, places a seam by date, between two own titles where it falls', () => {
+		const a = e('100', '2001-01-01');
+		const b = e('101', '2015-01-01');
+		const s = e('1', '2010-01-01', 'TV');
+		const franchise = (anchor: string): FranchiseData => ({
+			...fate(anchor, undefined),
+			entries: [s],
+			links: [],
+			films: [a, b],
+			chain: {
+				entries: [a, s, b],
+				links: [
+					['100', '1'],
+					['100', '101']
+				],
+				seams: ['1']
+			}
+		});
+		const first = watchOrderPage({ franchise: franchise('100'), rows: [] }, '100', 'released')!;
+		expect(first.caption).toEqual({ kind: 'position', position: 1, total: 2 });
+		expect(ids(first.view.after)).toEqual(['1']);
+		expect(first.seams.after).toBe('into');
+		const second = watchOrderPage({ franchise: franchise('101'), rows: [] }, '101', 'released')!;
+		expect(second.caption).toEqual({ kind: 'position', position: 2, total: 2 });
+		expect(ids(second.view.before)).toEqual(['1']);
+		expect(second.seams.before).toBe('from');
 	});
 
 	it('reads no number in a franchise read in part, and still says it is outside', () => {
