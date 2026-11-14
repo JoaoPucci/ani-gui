@@ -17,6 +17,14 @@
       "iina",
       "custom"
     ],
+    "Lane": [
+      "api",
+      "stream",
+      "image",
+      "probe",
+      "resolve",
+      "download"
+    ],
     "ListStatus": [
       "planning",
       "watching",

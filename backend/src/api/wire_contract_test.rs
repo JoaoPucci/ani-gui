@@ -18,7 +18,8 @@
 //!   without (`requires`: each is shown required by the body failing
 //!   without it, and the rest optional by the body reading without
 //!   them).
-//! - `enums`: every value a string the renderer names can take.
+//! - `enums`: every value a string the renderer names can take, and the
+//!   names the launch handshake announces each lane under.
 //! - `errors`: the envelope of every error variant, and of the optional
 //!   fields some variants carry.
 //! - `constants`, `names` and `media_urls`: values the renderer keeps a
@@ -37,15 +38,16 @@
 //! `/api/watched-at` map, a bare string or list of strings, and whether
 //! a route may answer `null`); which route answers which type; query
 //! strings (the renderer builds them as text, with no type to compare),
-//! among them which routes take the secret as a query parameter;
-//! the search-page body (read through structs local to
+//! among them which routes take the secret as a query parameter; the
+//! search-page body (read through structs local to
 //! `commands::kitsu_search`'s readers); a body nested in another (the
-//! guess's `hits`); the value types of a map (`titles`, `cached`); the launch flags (read by the
-//! Electron main process, not the renderer); and the value types of
-//! request fields — a request's fields are held by name and by whether
-//! they are required. Only the `full` samples are probed: a `min` sample
-//! is taken as written, so a field set in one would publish as always
-//! sent.
+//! guess's `hits`); the value types of a map (`titles`, `cached`); the
+//! launch flags, and the copy of the secret header's name the Electron
+//! main process sends with its read of them (both the main process's,
+//! not the renderer's); and the value types of request fields — a
+//! request's fields are held by name and by whether they are required.
+//! Only the `full` samples are probed: a `min` sample is taken as
+//! written, so a field set in one would publish as always sent.
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -81,6 +83,7 @@ use crate::commands::session::{media_url, CreateSessionArgs, CreateSessionRespon
 use crate::config::Config;
 use crate::error::AniError;
 use crate::history::HistoryEntry;
+use crate::lanes::Lane;
 use crate::meta::anilist_airing::{AiringStatus, UpcomingEpisode};
 use crate::meta::aniskip::SkipInterval;
 use crate::meta::github::ReleaseInfo;
@@ -685,7 +688,14 @@ fn enums() -> Value {
         "EntryView.status": list_statuses().into_iter().map(status_to_snake).collect::<Vec<_>>(),
         "ProviderKind": names(&provider_kinds()),
         "PkceMethod": pkce_methods().into_iter().map(PkceMethod::as_param).collect::<Vec<_>>(),
+        "Lane": lanes().into_iter().map(Lane::name).collect::<Vec<_>>(),
     })
+}
+
+/// The lanes the launch handshake announces, by the names the renderer
+/// looks each one's origin up under.
+fn lanes() -> Vec<Lane> {
+    units!(Lane: Api, Stream, Image, Probe, Resolve, Download)
 }
 
 fn media_kinds() -> Vec<MediaKind> {

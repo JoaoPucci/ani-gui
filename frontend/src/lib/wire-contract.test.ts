@@ -39,6 +39,8 @@
 //   the renderer sends the secret to as a query parameter; nor is the
 //   search-page body, which the backend reads through structs local to
 //   its reader.
+// - The Electron main process keeps its own copy of the secret header's
+//   name (`electron/lib/launch-flags.cjs`); only the renderer's is held.
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -110,6 +112,7 @@ import type {
 import type { SetEntryBody } from './account/entry-api';
 import { WATCH_LATER_BRIDGE_MAX_IDS } from './account/watch-later-loader';
 import { SECRET_HEADER, SECRET_QUERY } from './backend/secret';
+import { LANES } from './backend/lanes';
 import { REFILL_HEADER } from './refill/refill';
 import { buildMediaUrl } from './play/media-url';
 import type { SidecarTrack } from './play/sidecar-tracks';
@@ -705,7 +708,8 @@ const ENUMS: Record<string, readonly string[]> = {
 	ListStatus: LIST_STATUSES,
 	'EntryView.status': LIST_STATUSES,
 	ProviderKind: PROVIDERS,
-	PkceMethod: PKCE_METHODS
+	PkceMethod: PKCE_METHODS,
+	Lane: LANES
 };
 
 // — The error envelope ——————————————————————————————————————————————

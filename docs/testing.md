@@ -283,10 +283,12 @@ saying the same thing:
 - `backend/src/api/wire_contract_test.rs` builds `backend/wire-contract.json`
   from the backend's own types — a full and a minimal sample of each
   response type the renderer reads, the fields each request body reads and
-  requires, every value of each enum the renderer names, the error envelope
+  requires, every value of each enum the renderer names (and the names the
+  launch announces each connection lane under), the error envelope
   of every variant, and the values the renderer keeps a copy of (the Watch
   Later bridge cap, the names of the secret and refill headers and of the
-  secret's query parameter, and the proxy's media URL shape) — and
+  secret's query parameter, and the proxy's media URL shape; the Electron
+  main process's own copy of the secret header's name is not held) — and
   `cargo test` fails until the file says the same. A field added to a
   published type, or a variant to a published enum, does not compile until
   the samples carry it.
