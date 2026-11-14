@@ -11,30 +11,24 @@ const local = {
 };
 
 // The tests' fake backend answers (`src/lib/testing/`) are test code:
-// nothing in the app may import them.
-const TESTING_ONLY = {
-	group: [
-		'$lib/testing',
-		'$lib/testing/**',
-		'**/lib/testing',
-		'**/lib/testing/**',
-		'**/testing/wire-answers*'
-	],
-	message: '$lib/testing holds test fakes; app code does not import it.'
-};
-
-// The same, for the imports `no-restricted-imports` does not read: a
-// dynamic `import()` of a string, and an `import.meta.glob`.
+// app code imports nothing through a path segment named `testing` — a
+// static import or re-export, a dynamic `import()` of a string or a
+// template, or an `import.meta.glob` pattern. (`no-restricted-imports`
+// sees only the first, so these are syntax rules.)
+const TESTING_SEGMENT = '/(^|\\/)testing(\\/|\\.|$)/';
+const TESTING_MESSAGE = '$lib/testing holds test fakes; app code does not import it.';
 const TESTING_ONLY_SYNTAX = [
 	{
-		selector:
-			'ImportExpression > :matches(Literal[value=/(lib\\/)?testing(\\/|$)|testing\\/wire-answers/], TemplateLiteral[quasis.0.value.raw=/(lib\\/)?testing(\\/|$)|testing\\/wire-answers/])',
-		message: TESTING_ONLY.message
+		selector: `:matches(ImportDeclaration, ExportAllDeclaration, ExportNamedDeclaration, ImportExpression)[source.value=${TESTING_SEGMENT}]`,
+		message: TESTING_MESSAGE
 	},
 	{
-		selector:
-			"CallExpression[callee.object.meta.name='import'][callee.property.name=/^glob/] Literal[value=/(lib\\/)?testing(\\/|$)|testing\\/wire-answers/]",
-		message: TESTING_ONLY.message
+		selector: `ImportExpression > TemplateLiteral > TemplateElement[value.raw=${TESTING_SEGMENT}]`,
+		message: TESTING_MESSAGE
+	},
+	{
+		selector: `CallExpression[callee.object.meta.name='import'][callee.property.name=/^glob/] :matches(Literal[value=${TESTING_SEGMENT}], TemplateElement[value.raw=${TESTING_SEGMENT}])`,
+		message: TESTING_MESSAGE
 	}
 ];
 
@@ -97,8 +91,7 @@ export default ts.config(
 							message:
 								'Motion goes through $lib/motion, which stands it still under reduced motion.'
 						})
-					),
-					patterns: [TESTING_ONLY]
+					)
 				}
 			],
 			'no-restricted-syntax': [
@@ -140,7 +133,6 @@ export default ts.config(
 		files: ['src/lib/motion/**/*.{ts,js,svelte}'],
 		ignores: ['src/**/*.test.ts', 'src/**/*.spec.ts'],
 		rules: {
-			'no-restricted-imports': ['error', { patterns: [TESTING_ONLY] }],
 			'no-restricted-syntax': ['error', ...TESTING_ONLY_SYNTAX]
 		}
 	},
