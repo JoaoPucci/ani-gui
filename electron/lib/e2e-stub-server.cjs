@@ -12,7 +12,7 @@
 // stubs.ts does both). The request then travels through Chromium's
 // network stack as a request to the backend does, and is answered as
 // the backend would answer it: the backend's gate in front of every API
-// path (backend/src/api/gate.rs) and its CORS rules on every answer
+// path (backend/src/api/gate.rs) and its CORS rules on the answer
 // (backend/src/renderer_origin.rs). A stub that the real backend would
 // refuse is refused here too.
 //
@@ -60,14 +60,27 @@ function isRendererOrigin(origin) {
   return Boolean(m) && (m[2] === undefined || Number(m[2]) <= 65535);
 }
 
+/** What every answer varies on, as the backend's CORS layer says. */
+const VARY = "origin, access-control-request-method, access-control-request-headers";
+
 /** The CORS headers on an answer to a request from `origin`. */
 function corsHeaders(origin) {
-  if (!isRendererOrigin(origin)) return { vary: "origin" };
+  if (!isRendererOrigin(origin)) return { vary: VARY };
   return {
     "access-control-allow-origin": origin,
     "access-control-expose-headers": "*",
-    vary: "origin",
+    vary: VARY,
   };
+}
+
+/** A stub's own headers, less any CORS header: CORS is the backend's
+ *  rules alone. */
+function withoutCors(headers) {
+  return Object.fromEntries(
+    Object.entries(headers ?? {}).filter(
+      ([name]) => !name.toLowerCase().startsWith("access-control-") && name.toLowerCase() !== "vary",
+    ),
+  );
 }
 
 function bodyOf(answer) {
@@ -95,16 +108,20 @@ async function startStubServer() {
   const server = http.createServer((req, res) => {
     const origin = req.headers.origin;
     const cors = corsHeaders(origin);
-    if (req.method === "OPTIONS" && req.headers["access-control-request-method"]) {
-      const preflight = isRendererOrigin(origin)
-        ? {
-            ...cors,
-            "access-control-allow-methods": "*",
-            "access-control-allow-headers": "*",
-            "access-control-max-age": String(PREFLIGHT_MAX_AGE_SECS),
-          }
-        : cors;
-      res.writeHead(200, preflight).end();
+    // Any OPTIONS is a preflight to the backend's CORS layer, which
+    // names the methods, headers and age whatever the origin, and the
+    // origin only when it is the renderer's. In the e2e specs
+    // Playwright answers a preflight itself before it reaches here, so
+    // what a spec meets from these rules is the answer's own CORS.
+    if (req.method === "OPTIONS") {
+      res
+        .writeHead(200, {
+          ...cors,
+          "access-control-allow-methods": "*",
+          "access-control-allow-headers": "*",
+          "access-control-max-age": String(PREFLIGHT_MAX_AGE_SECS),
+        })
+        .end();
       return;
     }
     const token = new URL(req.url ?? "/", "http://stub").pathname.slice(1);
@@ -129,9 +146,14 @@ async function startStubServer() {
       return;
     }
     const body = bodyOf(answer);
-    const headers = { ...(answer.headers ?? {}), ...cors, "content-length": String(body.length) };
+    const headers = { ...withoutCors(answer.headers), ...cors, "content-length": String(body.length) };
     const type = contentTypeOf(answer);
-    if (type) headers["content-type"] = type;
+    if (type) {
+      for (const name of Object.keys(headers)) {
+        if (name.toLowerCase() === "content-type") delete headers[name];
+      }
+      headers["content-type"] = type;
+    }
     res.writeHead(answer.status ?? 200, headers).end(body);
   });
   // A spec worker keeps it for its whole run; it must not keep the

@@ -122,8 +122,10 @@ network stack, as the backend's does. The stub server answers an API
 request as the backend would: the gate in front (the launch's secret as
 the header, or as the `secret` query parameter on the three routes an
 `<img>` or an `EventSource` loads; an empty 403 otherwise) and the
-backend's CORS rules on every answer. Answering in place loses the
-answer's status and headers whenever the main process has a
+backend's CORS rules on the answer. A preflight never reaches it:
+Playwright answers preflights itself, for any origin, so the CORS a
+spec meets is the answer's own. An answer to the request made in place
+loses its status and headers whenever the main process has a
 webRequest listener on the window's session: every stubbed page then
 reads its data as unreachable. `tests/arch/e2e_stub_server.sh` keeps
 Playwright's in-place answer out of `electron/`.

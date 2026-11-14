@@ -186,7 +186,7 @@ test("a secret service that never answers keeps neither the window nor the first
     // Every card known playable, so nothing is handed to the warm queue.
     await routeContext(context, "**/api/availability/batch", (r) => {
       const { kitsu_ids } = r.request().postDataJSON() as { kitsu_ids: string[] };
-      return answer(r, 
+      return answer(r,
         json({
           cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
           playable_episode_counts: {},
