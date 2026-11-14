@@ -18,9 +18,10 @@
 //! - **Its root** is the earliest (by start, then the lowest id) entry
 //!   reached that has no prequel and was not passed over anywhere: the
 //!   choice made where two lines meet decides, so a line that loses
-//!   there does not offer its own first entry. Where every way back
-//!   leads into a loop, the earliest entry reached that was not passed
-//!   over stands for the root.
+//!   there does not offer its own first entry. Where no entry reached
+//!   is one (every way back leads into a loop, or every first entry
+//!   reached was passed over somewhere), the earliest entry reached that
+//!   was not passed over stands for the root.
 //! - **The main story** is the walk from the root, the franchise's links
 //!   counted from either side.
 //!

@@ -54,7 +54,8 @@ pub struct Franchise {
     /// False when the walk stopped at its bound or a listing was cut
     /// short.
     pub complete: bool,
-    /// The page's own chain, when the main story leaves the page out
+    /// The page's own chain, when the main story leaves the page out, or
+    /// the chain a side story whose parents it leaves out is drawn on
     /// (`franchise_walk_chain.rs`); absent otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chain: Option<Chain>,
