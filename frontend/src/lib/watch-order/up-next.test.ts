@@ -214,3 +214,55 @@ describe('finaleCard', () => {
 		);
 	});
 });
+
+describe('finaleCard on an entry outside the main story', () => {
+	const e = (id: string, start: string, subtype = 'movie') => ({
+		id,
+		title: `T${id}`,
+		subtype,
+		start,
+		episodes: 1,
+		status: 'finished',
+		poster: null,
+		cover: null
+	});
+	const main = [e('1', '2000-01-01', 'TV'), e('2', '2004-01-01', 'TV')];
+	const f1 = e('10', '2001-01-01');
+	const f2 = e('11', '2002-01-01');
+	const chainData = (anchor: string, into: boolean): WatchOrderData => ({
+		franchise: {
+			anchor,
+			entries: main,
+			links: [['1', '2']],
+			versions: [],
+			films: [f1, f2],
+			sides: [],
+			recaps: [],
+			parents: {},
+			complete: true,
+			chain: {
+				entries: into ? [f1, f2, main[1]] : [f1, f2],
+				links: into
+					? [
+							['10', '11'],
+							['11', '2']
+						]
+					: [['10', '11']],
+				seams: into ? ['2'] : []
+			}
+		},
+		rows: []
+	});
+
+	it("names the chain's next title", () => {
+		expect(ids(finaleCard(chainData('10', false), '10', 'linked', TODAY, 1, null))).toEqual(['11']);
+	});
+
+	it('goes on into the main story at the end of a chain that leads into it', () => {
+		expect(ids(finaleCard(chainData('11', true), '11', 'linked', TODAY, 1, null))).toEqual(['2']);
+	});
+
+	it('names nothing at the end of a chain that leads nowhere', () => {
+		expect(finaleCard(chainData('11', false), '11', 'linked', TODAY, 1, null)).toBeNull();
+	});
+});
