@@ -1519,9 +1519,9 @@ The rules below hold on every surface:
   main story, where it offers the whole franchise. A franchise read
   only in part (the walk reached its bound, or a listing came back cut
   short) also gets no card, since the entry that really comes next may
-  be missing from it. The mockup showed the card from the start of a last episode, so
-  a screenshot could catch it; the player shows it once the video
-  ends.
+  be missing from it. The mockup showed the card from the start of a
+  last episode, so a screenshot could catch it; the player shows it
+  once the video ends.
 - **Keyboard and screen readers.** The card never takes focus; Esc
   dismisses it while it has focus; the dismiss button is its own tab
   stop. The announcement is written into a polite live region after
