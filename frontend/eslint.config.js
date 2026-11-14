@@ -32,7 +32,13 @@ const TESTING_ONLY_SYNTAX = [
 		message: TESTING_MESSAGE
 	},
 	{
-		selector: `NewExpression[callee.name='URL'] > :matches(Literal[value=${TESTING_SEGMENT}], TemplateLiteral > TemplateElement[value.raw=${TESTING_SEGMENT}])`,
+		// Only `new URL(<path>, import.meta.url)` is bundled, and only its
+		// first argument is the path.
+		selector: `NewExpression[callee.name='URL'][arguments.1.type='MemberExpression'][arguments.1.object.type='MetaProperty'][arguments.1.property.name='url'][arguments.0.value=${TESTING_SEGMENT}]`,
+		message: TESTING_MESSAGE
+	},
+	{
+		selector: `NewExpression[callee.name='URL'][arguments.1.type='MemberExpression'][arguments.1.object.type='MetaProperty'][arguments.1.property.name='url'] > TemplateLiteral:first-child > TemplateElement[value.raw=${TESTING_SEGMENT}]`,
 		message: TESTING_MESSAGE
 	}
 ];
