@@ -42,11 +42,12 @@
 //! search-page body (read through structs local to
 //! `commands::kitsu_search`'s readers); a body nested in another that
 //! has no entry of its own (the guess's `hits`: `RowMatch` and `CardRow`
-//! are held by their own entries); the value types of a map (`titles`, `cached`); the
-//! launch flags, and the copy of the secret header's name the Electron
-//! main process sends with its read of them (both the main process's,
-//! not the renderer's); and the value types of request fields — a
-//! request's fields are held by name and by whether they are required.
+//! are held by their own entries); the value types of a map (`titles`,
+//! `cached`); the launch flags, and the copy of the secret header's
+//! name the Electron main process sends with its read of them (both the
+//! main process's, not the renderer's); and the value types of request
+//! fields — a request's fields are held by name and by whether they are
+//! required.
 //! Only the `full` samples are probed: a `min` sample is taken as
 //! written, so a field set in one would publish as always sent.
 
