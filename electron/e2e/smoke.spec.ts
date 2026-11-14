@@ -347,10 +347,13 @@ test("the launch's secret is on no process's command line, and only the app's pa
   }
 });
 
-test("an image that fails to load is logged without the launch's secret", async () => {
-  // An <img> carries the secret as `secret=` in its URL, and Chromium
-  // logs a failed load with that URL; the main process relays it to its
-  // own stdout (the journal, a terminal), redacted.
+test("a renderer line naming a secret-bearing URL is logged without the launch's secret", async () => {
+  // The routes an <img> or an EventSource loads carry the secret as
+  // `secret=` in their URL, and the main process relays the renderer's
+  // console to its own stdout (the journal, a terminal), redacted.
+  // Chromium's own "Failed to load resource" lines are not part of that
+  // relay: Electron's console-message event never receives network
+  // messages, so the line is one the page itself logs.
   const { app, page } = await launchAppWithStubs();
   try {
     const secret = await page.evaluate(() => window.aniGui?.internalSecret);
@@ -359,15 +362,16 @@ test("an image that fails to load is logged without the launch's secret", async 
     app.process().stdout?.on("data", (chunk: Buffer) => {
       out += chunk.toString("utf-8");
     });
-    // The stubs answer every /api/image with 503.
     await page.evaluate(() => {
       const bridge = window.aniGui!;
       const base = bridge.lanes?.image ?? bridge.apiBase;
-      const img = new Image();
-      img.src = `${base}/api/image?url=${encodeURIComponent("https://e.example/a.jpg")}&secret=${bridge.internalSecret}`;
-      document.body.append(img);
+      const url = `${base}/api/image?url=${encodeURIComponent("https://e.example/a.jpg")}&secret=${bridge.internalSecret}`;
+      console.error(`poster failed: ${url}`);
+      console.log(`relayed: ${encodeURIComponent(url)}`);
     });
-    await expect.poll(() => out, { timeout: 15_000 }).toContain("secret=<redacted>");
+    await expect.poll(() => out, { timeout: 15_000 }).toContain("poster failed:");
+    await expect.poll(() => out, { timeout: 15_000 }).toContain("relayed:");
+    expect(out).toContain("secret=<redacted>");
     expect(out).not.toContain(secret as string);
   } finally {
     await app.close();
