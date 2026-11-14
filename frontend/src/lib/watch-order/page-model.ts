@@ -21,7 +21,8 @@ export type StripCaption =
 	/** A run member's place in a franchise read in part: nothing about it is sure. */
 	| { readonly kind: 'partial' }
 	| { readonly kind: 'side' }
-	/** A side story that is a film: the payload lists it under films. */
+	/** A side story the payload lists under films, or the one own title
+	 *  of a chain when it is a movie. */
 	| { readonly kind: 'film' }
 	| { readonly kind: 'cycle'; readonly count: number }
 	| { readonly kind: 'branch' }
@@ -42,7 +43,8 @@ export interface WatchOrderPage {
 	readonly watching: { readonly entry: WatchEntry; readonly episode: number } | null;
 	/** Ids "Similar titles" leaves out: what the strip shows. */
 	readonly similarHidden: ReadonlySet<string>;
-	/** Whether the page is outside the main story, on its own chain. */
+	/** Whether the page is outside the main story, drawn on a chain: its
+	 *  own, or, for a side story, its parent's. */
 	readonly outside: boolean;
 	/** Where a column holds a main-story title the chain meets, alone. */
 	readonly seams: { readonly before: Seam | null; readonly after: Seam | null };

@@ -1,10 +1,11 @@
 /**
- * A page outside the main story, drawn on its own chain (the backend's
+ * A page outside the main story, drawn on a chain (the backend's
  * `chain`: the franchise's entries outside the main story joined to the
- * page, and the main-story titles it meets, its seams). The backend
- * decides the chain; these only reshape it for the strip's readings.
+ * page, or, for a side story, to its parent, and the main-story titles
+ * it meets, its seams). The backend decides the chain; these only
+ * reshape it for the strip's readings.
  */
-import type { FranchiseData, RunLink, WatchEntry } from './types';
+import type { FranchiseData, WatchEntry } from './types';
 
 /** A main-story title beside a chain's own: the one it comes from, or
  *  the one it leads into. */
@@ -40,7 +41,7 @@ export function ownFranchise(f: FranchiseData): FranchiseData | null {
 	const seams = new Set(f.chain.seams);
 	const entries = drawn.entries.filter((e) => !seams.has(e.id));
 	const own = new Set(entries.map((e) => e.id));
-	const links = drawn.links.filter(([a, b]) => own.has(a) && own.has(b)) as RunLink[];
+	const links = drawn.links.filter(([a, b]) => own.has(a) && own.has(b));
 	return { ...drawn, entries, links };
 }
 
