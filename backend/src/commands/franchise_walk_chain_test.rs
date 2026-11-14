@@ -121,6 +121,27 @@ fn a_chain_does_not_go_on_into_a_version_of_its_title() {
     assert_eq!(drive("5", &c).chain, None);
 }
 
+/// A side story whose parent is outside the main story and chained to
+/// nothing, its only link being to its own version, is drawn on its
+/// parent alone: the parent is kept, on a chain of one with no seam.
+#[test]
+fn a_side_story_keeps_a_parent_chained_to_nothing() {
+    let mut c = Catalogue::default();
+    c.add("1", "movie", Some("2000-01-01"))
+        .add("2", "TV", Some("2006-01-01"))
+        .add("3", "TV", Some("2004-01-01"))
+        .rel("1", "alternative_version", "3")
+        .rel("2", "parent_story", "3")
+        .rel("3", "prequel", "1");
+    let f = drive("2", &c);
+    assert_eq!(ids(&f.entries), ["1"]);
+    assert_eq!(f.parents.get("2").cloned(), Some(vec!["3".to_string()]));
+    let chain = f.chain.expect("the parent alone");
+    assert_eq!(ids(&chain.entries), ["3"]);
+    assert!(chain.seams.is_empty());
+    assert!(chain.links.is_empty());
+}
+
 proptest::proptest! {
     #![proptest_config(proptest::prelude::ProptestConfig::with_cases(256))]
 
