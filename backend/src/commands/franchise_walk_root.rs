@@ -30,70 +30,15 @@
 //! side alone: a page that cannot see an entry cannot count it.
 //!
 //! Every listing read counts toward the walk's bound; an entry past it
-//! is not read, and the answer is incomplete.
+//! is not read, and the answer is incomplete
+//! (`franchise_walk_graph.rs`).
 
 use std::collections::BTreeSet;
 
 use super::alt::{components, linked};
+use super::graph::{graph, Graph};
 use super::walking::{walk_with, Run};
-use super::{order_key, Lookup, MAX_LISTINGS};
-
-/// The franchise around a run: its entries and every listing read.
-struct Graph {
-    entries: BTreeSet<String>,
-    consulted: BTreeSet<String>,
-    complete: bool,
-}
-
-/// What `at` is linked to by prequel or sequel, from either side.
-fn neighbours(at: &str, look: &Lookup<'_>, consulted: &BTreeSet<String>) -> BTreeSet<String> {
-    let mut out = linked(look, at, "prequel", consulted);
-    out.extend(linked(look, at, "sequel", consulted));
-    out
-}
-
-/// Every entry joined to `run`'s members by prequel and sequel links.
-///
-/// # Errors
-/// The listings to read before it can go on.
-fn graph(run: &Run, look: &Lookup<'_>) -> Result<Graph, Vec<String>> {
-    let mut g = Graph {
-        entries: run.members.keys().cloned().collect(),
-        consulted: run.consulted.clone(),
-        complete: true,
-    };
-    let mut frontier: Vec<String> = g.entries.iter().cloned().collect();
-    while !frontier.is_empty() {
-        let mut next = BTreeSet::new();
-        for at in &frontier {
-            for n in neighbours(at, look, &g.consulted) {
-                if !g.entries.contains(&n) {
-                    next.insert(n);
-                }
-            }
-        }
-        let mut need = Vec::new();
-        let mut added = Vec::new();
-        for n in next {
-            if !g.consulted.contains(&n) && g.consulted.len() >= MAX_LISTINGS {
-                g.complete = false;
-                continue;
-            }
-            if look.listing(&n).is_none() {
-                need.push(n);
-                continue;
-            }
-            g.consulted.insert(n.clone());
-            added.push(n);
-        }
-        if !need.is_empty() {
-            return Err(need);
-        }
-        g.entries.extend(added.iter().cloned());
-        frontier = added;
-    }
-    Ok(g)
-}
+use super::{order_key, Lookup};
 
 /// The prequels of `at` in the franchise to follow back, and those it
 /// passes over: of each group that are versions of one another, the one
