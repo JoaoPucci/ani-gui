@@ -110,6 +110,38 @@ it('answers a play with a session whose optional fields have the wrong type', as
 	await wait(20);
 });
 
+it('answers a play with a session that leaves out the fields always sent', async () => {
+	server.use(
+		http.post(`${API_BASE}/api/play`, () =>
+			malformedAnswer({
+				session_id: 's-1',
+				media_url: `${API_BASE}/s/s-1/file.mp4`,
+				media_kind: 'mp4'
+			})
+		)
+	);
+	await play({ episode: '1' });
+	await wait(20);
+});
+
+it('answers a play with a session whose flags have the wrong type', async () => {
+	server.use(
+		http.post(`${API_BASE}/api/play`, () =>
+			malformedAnswer({
+				...sessionAnswer({
+					session_id: 's-1',
+					media_url: `${API_BASE}/s/s-1/file.mp4`,
+					media_kind: 'mp4'
+				}),
+				episode_unverified: 'no',
+				own_listing: 1
+			})
+		)
+	);
+	await play({ episode: '1' });
+	await wait(20);
+});
+
 it('answers a play with a whole session', async () => {
 	server.use(
 		http.post(`${API_BASE}/api/play`, () =>
