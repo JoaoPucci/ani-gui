@@ -704,16 +704,21 @@ export interface LinkOutcome {
 	overtaken?: boolean;
 }
 
+/** Body of `/api/history/link`: the card the link is made from, the
+ *  rows to link, and the show the user named. */
+export interface LinkBody {
+	card: string;
+	rows: string[];
+	kitsu_id: string;
+}
+
 /** Link history rows to the show the user named for them, from the
  *  card whose row is `card`: only the rows of that card's listing among
  *  `rows` are written. The card is named even when no row is left to
  *  link. Rejects with Kitsu's 404/410 for an entry Kitsu deleted. */
 export function historyLink(card: string, rows: string[], kitsuId: string): Promise<LinkOutcome> {
-	return postJson<LinkOutcome>('/api/history/link', {
-		card,
-		rows,
-		kitsu_id: kitsuId
-	});
+	const body: LinkBody = { card, rows, kitsu_id: kitsuId };
+	return postJson<LinkOutcome>('/api/history/link', body);
 }
 
 /** A history row with Continue Watching's match for it: the show's
@@ -795,9 +800,16 @@ export interface CardLine {
 	correctable: boolean;
 }
 
+/** Body of `/api/history/card-lines`: the rows Continue Watching
+ *  shows, as it matches them. */
+export interface CardLinesBody {
+	rows: CardLineRow[];
+}
+
 /** The line each card stands for, by row id. */
 export function historyCardLines(rows: CardLineRow[]): Promise<Record<string, CardLine>> {
-	return postJson<Record<string, CardLine>>('/api/history/card-lines', { rows });
+	const body: CardLinesBody = { rows };
+	return postJson<Record<string, CardLine>>('/api/history/card-lines', body);
 }
 
 /** What a surface knows of a card's line, for its question. */
