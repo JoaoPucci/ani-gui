@@ -39,36 +39,11 @@
 
 use std::collections::BTreeSet;
 
-use super::alt::{components, linked};
+use super::alt::linked;
 use super::graph::{graph, Graph};
+use super::prequels::prequels;
 use super::walking::{walk_with, Run};
 use super::{order_key, Lookup};
-
-/// The prequels of `at` in the franchise to follow back, and those it
-/// passes over: of each group that are versions of one another, the one
-/// in `at`'s format, else the earliest, else the lowest id, is followed.
-fn prequels(at: &str, look: &Lookup<'_>, g: &Graph) -> (Vec<String>, Vec<String>) {
-    let ids: Vec<String> = linked(look, at, "prequel", &g.consulted)
-        .into_iter()
-        .filter(|p| g.entries.contains(p))
-        .collect();
-    let format = look.entry(at, &g.consulted).and_then(|e| e.subtype);
-    let key = |id: &String| {
-        let e = look.entry(id, &g.consulted);
-        let same = format.is_some() && e.as_ref().and_then(|e| e.subtype.clone()) == format;
-        let start = e.and_then(|e| e.start);
-        (!same, order_key(start.as_deref(), id))
-    };
-    let (mut chosen, mut passed) = (Vec::new(), Vec::new());
-    for group in components(look, &ids) {
-        let Some(winner) = group.iter().min_by_key(|id| key(id)).cloned() else {
-            continue;
-        };
-        passed.extend(group.into_iter().filter(|g| *g != winner));
-        chosen.push(winner);
-    }
-    (chosen, passed)
-}
 
 /// The franchise's root.
 fn root(look: &Lookup<'_>, g: &Graph) -> Option<String> {

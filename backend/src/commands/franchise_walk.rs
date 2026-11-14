@@ -185,6 +185,8 @@ mod name;
 mod parents;
 #[path = "franchise_walk_place.rs"]
 mod place;
+#[path = "franchise_walk_prequels.rs"]
+mod prequels;
 #[path = "franchise_walk_root.rs"]
 mod root;
 #[path = "franchise_walk_rules.rs"]
