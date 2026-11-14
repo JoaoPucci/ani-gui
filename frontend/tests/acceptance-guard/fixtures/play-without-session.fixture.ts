@@ -4,6 +4,8 @@ import { http, HttpResponse } from 'msw';
 import { API_BASE, server } from '../../acceptance/setup';
 import { wait } from './helpers';
 
+import type { CreateSessionResponse } from '../../../src/lib/api';
+import { malformedAnswer, sessionAnswer } from '../../answers';
 const play = (body: object) =>
 	fetch(`${API_BASE}/api/play`, { method: 'POST', body: JSON.stringify(body) }).catch(() => {});
 
@@ -14,9 +16,7 @@ it('answers a play with an empty 204', async () => {
 });
 
 it('answers a play with an older shape', async () => {
-	server.use(
-		http.post(`${API_BASE}/api/play`, () => HttpResponse.json({ id: 's-1', kind: 'mp4' }))
-	);
+	server.use(http.post(`${API_BASE}/api/play`, () => malformedAnswer({ id: 's-1', kind: 'mp4' })));
 	await play({ episode: '1' });
 	await wait(20);
 });
@@ -24,11 +24,13 @@ it('answers a play with an older shape', async () => {
 it('answers a play with a session', async () => {
 	server.use(
 		http.post(`${API_BASE}/api/play`, () =>
-			HttpResponse.json({
-				session_id: 's-1',
-				media_url: `${API_BASE}/s/s-1/file.mp4`,
-				media_kind: 'mp4'
-			})
+			HttpResponse.json<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 's-1',
+					media_url: `${API_BASE}/s/s-1/file.mp4`,
+					media_kind: 'mp4'
+				})
+			)
 		)
 	);
 	await play({ episode: '1' });
@@ -65,7 +67,7 @@ it('runs while the earlier play is answered', async () => {
 it('answers a play with a session whose media kind is not one there is', async () => {
 	server.use(
 		http.post(`${API_BASE}/api/play`, () =>
-			HttpResponse.json({
+			malformedAnswer({
 				session_id: 's-1',
 				media_url: `${API_BASE}/s/s-1/manifest.mpd`,
 				media_kind: 'dash'
@@ -79,7 +81,7 @@ it('answers a play with a session whose media kind is not one there is', async (
 it('answers a play with a session whose version is not one there is', async () => {
 	server.use(
 		http.post(`${API_BASE}/api/play`, () =>
-			HttpResponse.json({
+			malformedAnswer({
 				session_id: 's-1',
 				media_url: `${API_BASE}/s/s-1/file.mp4`,
 				media_kind: 'mp4',
@@ -94,7 +96,7 @@ it('answers a play with a session whose version is not one there is', async () =
 it('answers a play with a session whose optional fields have the wrong type', async () => {
 	server.use(
 		http.post(`${API_BASE}/api/play`, () =>
-			HttpResponse.json({
+			malformedAnswer({
 				session_id: 's-1',
 				media_url: `${API_BASE}/s/s-1/file.mp4`,
 				media_kind: 'mp4',
@@ -111,7 +113,7 @@ it('answers a play with a session whose optional fields have the wrong type', as
 it('answers a play with a whole session', async () => {
 	server.use(
 		http.post(`${API_BASE}/api/play`, () =>
-			HttpResponse.json({
+			HttpResponse.json<CreateSessionResponse>({
 				session_id: 's-1',
 				media_url: `${API_BASE}/s/s-1/master.m3u8`,
 				media_kind: 'hls',

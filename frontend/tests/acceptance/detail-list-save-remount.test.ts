@@ -41,6 +41,16 @@ import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { editorFlights } from '../../src/lib/account/editor-flights.svelte';
 import type { Flight } from '../../src/lib/account/editor-flight';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import type { EntryView, ListEntry } from '../../src/lib/account/types';
+import { errorAnswer, availabilityAnswer } from '../answers';
 const SHOW_A = '50497';
 const SHOW_B = '50498';
 /** Long enough to leave and come back while the save waits. */
@@ -109,67 +119,74 @@ interface Seen {
 
 function useShows(seen: Seen) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
-			HttpResponse.json({
+			HttpResponse.json<KitsuAnimeRef>({
 				...kitsuRef(String(params.id), `Show ${params.id}`, 12),
 				status: 'current'
 			})
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/:id`, () =>
-			HttpResponse.json({ aired: 3, next_episode: 4, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 3,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 3,
+				next_episode: 4,
+				next_airing_at: null,
+				upcoming: []
 			})
 		),
-		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 3,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
 		http.post(`${API_BASE}/api/play`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
 		http.get(`${API_BASE}/api/account/entry/anilist`, ({ request }) => {
 			const id = new URL(request.url).searchParams.get('kitsu_id') ?? '';
 			seen.reads[id] = (seen.reads[id] ?? 0) + 1;
 			// The tracker holds the save once it has gone: only a read after it
 			// landed can show Dropped.
-			if (id === SHOW_A && (seen.removals ?? 0) >= 2) return HttpResponse.json(null);
+			if (id === SHOW_A && (seen.removals ?? 0) >= 2)
+				return HttpResponse.json<EntryView | null>(null);
 			const landed = id === SHOW_A && seen.saves >= 2;
-			return HttpResponse.json({ status: landed ? 'dropped' : 'watching', progress: 3 });
+			return HttpResponse.json<EntryView | null>({
+				status: landed ? 'dropped' : 'watching',
+				progress: 3
+			});
 		}),
 		http.delete(`${API_BASE}/api/account/entry/anilist`, () => {
 			seen.removals = (seen.removals ?? 0) + 1;
 			if (seen.removals === 1) {
-				return HttpResponse.json(
-					{
-						kind: 'rate_limited',
-						key: 'error.network.rate_limited',
-						retry_after_secs: RETRY_AFTER_S,
-						refused_by: 'anilist'
-					},
-					{ status: 429 }
-				);
+				return errorAnswer(429, {
+					kind: 'rate_limited',
+					key: 'error.network.rate_limited',
+					retry_after_secs: RETRY_AFTER_S,
+					refused_by: 'anilist'
+				});
 			}
 			return new HttpResponse(null, { status: 204 });
 		}),
 		http.post(`${API_BASE}/api/account/set/anilist`, () => {
 			seen.saves += 1;
 			if (seen.saves === 1) {
-				return HttpResponse.json(
-					{
-						kind: 'rate_limited',
-						key: 'error.network.rate_limited',
-						retry_after_secs: RETRY_AFTER_S,
-						refused_by: 'anilist'
-					},
-					{ status: 429 }
-				);
+				return errorAnswer(429, {
+					kind: 'rate_limited',
+					key: 'error.network.rate_limited',
+					retry_after_secs: RETRY_AFTER_S,
+					refused_by: 'anilist'
+				});
 			}
-			return HttpResponse.json({
+			return HttpResponse.json<ListEntry | null>({
 				provider: 'anilist',
 				media_id: 7,
 				mal_id: 21,

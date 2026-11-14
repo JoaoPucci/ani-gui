@@ -32,6 +32,7 @@ import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { applyChoice } from '../../src/lib/versions/version-choice';
 
+import type { KitsuAnimeRef } from '../../src/lib/api';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -95,7 +96,9 @@ function useRecordedShow(watched: Record<string, unknown>[]) {
 		...homeHandlers(
 			{ history: [{ ep_no: '3', id: 'hianime:jojo-2', title: SHOW, kitsu_id: '2' }] },
 			[
-				http.get(`${API_BASE}/api/kitsu/anime/2`, () => HttpResponse.json(kitsuRef('2', SHOW, 26))),
+				http.get(`${API_BASE}/api/kitsu/anime/2`, () =>
+					HttpResponse.json<KitsuAnimeRef>(kitsuRef('2', SHOW, 26))
+				),
 				http.post(`${API_BASE}/api/play/mark-watched`, async ({ request }) => {
 					watched.push((await request.json()) as Record<string, unknown>);
 					return new HttpResponse(null, { status: 204 });

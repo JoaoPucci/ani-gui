@@ -40,6 +40,9 @@ import { accountStore } from '../../src/lib/account/store.svelte';
 import { toastStore, TOAST_MAX_STACK } from '../../src/lib/toasts/store.svelte';
 import type { PersistedAccount, Provider } from '../../src/lib/account/types';
 
+import type { ListEntry, Tokens } from '../../src/lib/account/types';
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 function account(over: Partial<PersistedAccount>): PersistedAccount {
 	return {
 		access_token: 'access',
@@ -78,8 +81,8 @@ function installKeychain(accounts: Partial<Record<Provider, PersistedAccount>>) 
 }
 
 const quietBackend = [
-	http.get(`${API_BASE}/api/update-check`, () => HttpResponse.json(null, { status: 503 })),
-	http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(null, { status: 503 }))
+	http.get(`${API_BASE}/api/update-check`, () => errorAnswer(503)),
+	http.get(`${API_BASE}/api/settings`, () => errorAnswer(503))
 ];
 
 function bootLayout() {
@@ -134,7 +137,7 @@ describe('the sign-in notice, where it already worked', () => {
 		server.use(
 			...quietBackend,
 			http.post(`${API_BASE}/api/account/refresh/mal`, () =>
-				HttpResponse.json({
+				HttpResponse.json<Tokens>({
 					access_token: 'renewed',
 					refresh_token: 'rt2',
 					expires_at_epoch_s: 4_000_000_000
@@ -189,16 +192,20 @@ describe('the sign-in notice, where it already worked', () => {
 			...quietBackend,
 			http.post(`${API_BASE}/api/account/refresh/:provider`, () => {
 				renewals += 1;
-				return HttpResponse.json(null, { status: 500 });
+				return errorAnswer(500);
 			}),
 			...homeHandlers({}, [
 				http.post(`${API_BASE}/api/account/list/:provider`, ({ params, request }) => {
 					listed.push(`${params.provider} ${request.headers.get('authorization')}`);
-					return HttpResponse.json([]);
+					return HttpResponse.json<ListEntry[]>([]);
 				}),
-				http.get(`${API_BASE}/api/account/list/:provider/cached`, () => HttpResponse.json([])),
-				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json([])),
-				http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} }))
+				http.get(`${API_BASE}/api/account/list/:provider/cached`, () =>
+					HttpResponse.json<ListEntry[]>([])
+				),
+				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+				http.post(`${API_BASE}/api/availability/batch`, () =>
+					HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+				)
 			])
 		);
 		bootLayout();

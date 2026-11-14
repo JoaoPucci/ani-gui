@@ -30,16 +30,19 @@ vi.mock('$app/navigation', () => ({
 import SettingsPage from '../../src/routes/settings/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
-const CONFIG = {
+import type { AppInfo, Config } from '../../src/lib/api';
+import { appInfoAnswer } from '../answers';
+const CONFIG: Config = {
 	locale: 'en',
 	mode: 'sub',
-	quality: 'best',
+	download_quality: 'best',
 	external_player: '',
 	external_player_kind: 'mpv',
 	external_player_custom_args: '',
 	syncplay_binary: '',
 	image_cache_cap_mb: 512,
 	auto_play_next: true,
+	cache_resolutions: false,
 	download_bottom_bar_enabled: true,
 	auto_skip_op: false,
 	auto_skip_ed: false,
@@ -48,12 +51,12 @@ const CONFIG = {
 	primary_account: ''
 };
 
-const APP_INFO = {
+const APP_INFO = appInfoAnswer({
 	version: '0.12.0',
 	history_path: '/home/u/.local/state/ani-gui/history',
 	proxy_base_url: 'http://127.0.0.1:31337',
 	removed_legacy_paths: []
-};
+});
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
@@ -61,8 +64,8 @@ let app: ReturnType<typeof mount> | null = null;
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(CONFIG)),
-		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO))
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(CONFIG)),
+		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json<AppInfo>(APP_INFO))
 	);
 	target = document.createElement('div');
 	document.body.appendChild(target);

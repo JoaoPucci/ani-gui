@@ -51,6 +51,7 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AvailabilityBatchResponse, HistoryNumber, KitsuAnimeRef } from '../../src/lib/api';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -100,7 +101,10 @@ beforeEach(() => {
 			http.post(`${API_BASE}/api/availability/batch`, async () => {
 				batchAsked = true;
 				if (batchHeld) await batchHeld;
-				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+				return HttpResponse.json<AvailabilityBatchResponse>({
+					cached: {},
+					playable_episode_counts: {}
+				});
 			}),
 			// A row read again waits while a scenario holds it: the click
 			// reads its row before it asks for a session.
@@ -109,9 +113,11 @@ beforeEach(() => {
 					numberAsked = true;
 					await numberHeld;
 				}
-				return HttpResponse.json({ ep_no: '3' });
+				return HttpResponse.json<HistoryNumber | null>({ ep_no: '3' });
 			}),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([kitsuRef('1', SHOW, 26)])),
+			http.post(`${API_BASE}/api/kitsu/search`, () =>
+				HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', SHOW, 26)])
+			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 }))
 		])
 	);

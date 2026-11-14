@@ -43,6 +43,9 @@ import { accountStore } from '../../src/lib/account/store.svelte';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import type { PersistedAccount, Provider } from '../../src/lib/account/types';
 
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
+import type { ListEntry, Tokens } from '../../src/lib/account/types';
+import { errorAnswer } from '../answers';
 /** A MAL sign-in whose access token ran out long ago and that carries a
  *  refresh token, as the keychain hands it back on a cold launch. */
 const DEAD_MAL: PersistedAccount = {
@@ -84,22 +87,16 @@ function installKeychain() {
 /** What the app has open besides the account flow, answered as a
  *  backend with nothing to say about it. */
 const quietBackend = [
-	http.get(`${API_BASE}/api/update-check`, () => HttpResponse.json(null, { status: 503 })),
-	http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(null, { status: 503 }))
+	http.get(`${API_BASE}/api/update-check`, () => errorAnswer(503)),
+	http.get(`${API_BASE}/api/settings`, () => errorAnswer(503))
 ];
 
 const refusedRefresh = http.post(`${API_BASE}/api/account/refresh/mal`, () =>
-	HttpResponse.json(
-		{ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' },
-		{ status: 401 }
-	)
+	errorAnswer(401, { kind: 'refresh_rejected', key: 'error.account.refresh_rejected' })
 );
 
 const unreachableRefresh = http.post(`${API_BASE}/api/account/refresh/mal`, () =>
-	HttpResponse.json(
-		{ kind: 'upstream', key: 'error.network.upstream', status: 503 },
-		{ status: 502 }
-	)
+	errorAnswer(502, { kind: 'upstream', key: 'error.network.upstream', status: 503 })
 );
 
 function bootLayout() {
@@ -149,10 +146,10 @@ describe('opening the app with a dead MAL sign-in', () => {
 			...quietBackend,
 			http.post(`${API_BASE}/api/account/refresh/mal`, async () => {
 				await held;
-				return HttpResponse.json(
-					{ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' },
-					{ status: 401 }
-				);
+				return errorAnswer(401, {
+					kind: 'refresh_rejected',
+					key: 'error.account.refresh_rejected'
+				});
 			})
 		);
 		bootLayout();
@@ -189,14 +186,15 @@ describe('opening the app with a dead MAL sign-in', () => {
 				http.post(`${API_BASE}/api/account/list/mal`, async () => {
 					listReads += 1;
 					await delay(5);
-					return HttpResponse.json(
-						{ kind: 'invalid_token', key: 'error.stream.invalid_token' },
-						{ status: 401 }
-					);
+					return errorAnswer(401, { kind: 'invalid_token', key: 'error.stream.invalid_token' });
 				}),
-				http.get(`${API_BASE}/api/account/list/mal/cached`, () => HttpResponse.json([])),
-				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json([])),
-				http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} }))
+				http.get(`${API_BASE}/api/account/list/mal/cached`, () =>
+					HttpResponse.json<ListEntry[]>([])
+				),
+				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+				http.post(`${API_BASE}/api/availability/batch`, () =>
+					HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+				)
 			])
 		);
 		bootLayout();
@@ -214,10 +212,7 @@ describe('opening the app with a dead MAL sign-in', () => {
 			...quietBackend,
 			http.post(`${API_BASE}/api/account/refresh/mal`, () => {
 				renewals += 1;
-				return HttpResponse.json(
-					{ kind: 'upstream', key: 'error.network.upstream', status: 503 },
-					{ status: 502 }
-				);
+				return errorAnswer(502, { kind: 'upstream', key: 'error.network.upstream', status: 503 });
 			})
 		);
 		bootLayout();
@@ -252,21 +247,22 @@ describe('opening the app with a dead MAL sign-in', () => {
 			...quietBackend,
 			http.post(`${API_BASE}/api/account/refresh/mal`, () => {
 				renewals += 1;
-				return HttpResponse.json(
-					{ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' },
-					{ status: 401 }
-				);
+				return errorAnswer(401, {
+					kind: 'refresh_rejected',
+					key: 'error.account.refresh_rejected'
+				});
 			}),
 			...homeHandlers({}, [
 				http.post(`${API_BASE}/api/account/list/mal`, () =>
-					HttpResponse.json(
-						{ kind: 'invalid_token', key: 'error.stream.invalid_token' },
-						{ status: 401 }
-					)
+					errorAnswer(401, { kind: 'invalid_token', key: 'error.stream.invalid_token' })
 				),
-				http.get(`${API_BASE}/api/account/list/mal/cached`, () => HttpResponse.json([])),
-				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json([])),
-				http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} }))
+				http.get(`${API_BASE}/api/account/list/mal/cached`, () =>
+					HttpResponse.json<ListEntry[]>([])
+				),
+				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+				http.post(`${API_BASE}/api/availability/batch`, () =>
+					HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+				)
 			])
 		);
 		bootLayout();
@@ -301,10 +297,14 @@ describe('opening the app with a dead MAL sign-in', () => {
 			...quietBackend,
 			refusedRefresh,
 			...homeHandlers({}, [
-				http.post(`${API_BASE}/api/account/list/mal`, () => HttpResponse.json([])),
-				http.get(`${API_BASE}/api/account/list/mal/cached`, () => HttpResponse.json([])),
-				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json([])),
-				http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} }))
+				http.post(`${API_BASE}/api/account/list/mal`, () => HttpResponse.json<ListEntry[]>([])),
+				http.get(`${API_BASE}/api/account/list/mal/cached`, () =>
+					HttpResponse.json<ListEntry[]>([])
+				),
+				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+				http.post(`${API_BASE}/api/availability/batch`, () =>
+					HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+				)
 			])
 		);
 		bootLayout();
@@ -328,11 +328,8 @@ describe('opening the app with a dead MAL sign-in', () => {
 				http.post(`${API_BASE}/api/account/refresh/mal`, () => {
 					renewals += 1;
 					return renewals === 1
-						? HttpResponse.json(
-								{ kind: 'upstream', key: 'error.network.upstream', status: 503 },
-								{ status: 502 }
-							)
-						: HttpResponse.json({
+						? errorAnswer(502, { kind: 'upstream', key: 'error.network.upstream', status: 503 })
+						: HttpResponse.json<Tokens>({
 								access_token: 'renewed',
 								refresh_token: 'rt2',
 								expires_at_epoch_s: 4_000_000_000

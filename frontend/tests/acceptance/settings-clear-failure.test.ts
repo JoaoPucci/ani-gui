@@ -30,13 +30,15 @@ import SettingsPage from '../../src/routes/settings/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
-const APP_INFO = {
+import type { AppInfo, Config } from '../../src/lib/api';
+import { appInfoAnswer, errorAnswer } from '../answers';
+const APP_INFO = appInfoAnswer({
 	version: '0.12.0',
 	history_path: '/home/u/.local/state/ani-gui/history',
 	proxy_base_url: 'http://127.0.0.1:31337',
 	removed_legacy_paths: []
-};
-const refused = () => HttpResponse.json({ key: 'error.io.generic', kind: 'io' }, { status: 500 });
+});
+const refused = () => errorAnswer(500, { key: 'error.io.generic', kind: 'io' });
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
@@ -44,8 +46,8 @@ let app: ReturnType<typeof mount> | null = null;
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
-		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO)),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
+		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json<AppInfo>(APP_INFO)),
 		http.delete(`${API_BASE}/api/history`, refused),
 		http.delete(`${API_BASE}/api/cache/images`, refused)
 	);

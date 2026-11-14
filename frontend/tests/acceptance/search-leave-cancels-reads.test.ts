@@ -35,6 +35,7 @@ vi.mock('$app/navigation', () => ({
 import SearchPage from '../../src/routes/search/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
+import type { Config } from '../../src/lib/api';
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 let pool: Connections | null = null;
@@ -83,7 +84,7 @@ const PER_VISIT = 3;
 describe('search route — leaving while its reads are out', () => {
 	it('cancels every read still out when the page goes, so the next visit comes through', async () => {
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/trending`, reads.hang),
 			http.get(`${API_BASE}/api/kitsu/top-rated`, reads.hang),
 			http.post(`${API_BASE}/api/kitsu/search/page`, reads.hang)

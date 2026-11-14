@@ -57,6 +57,16 @@ import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { m } from '../../src/lib/paraglide/messages';
 import { forgetNavigationListeners, startNavigation, startQueryNavigation } from './navigation';
 
+import type {
+	AiringStatus,
+	AvailabilityBatchResponse,
+	AvailabilityResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 
@@ -144,43 +154,52 @@ function recheckAnswered(): () => Promise<void> {
 		);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
 function useShowHandlers(evict: () => Promise<Response> | Response) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, evict),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl'))
 	);
 }
 
@@ -526,12 +545,14 @@ describe('play route — a recovery overtaken by a switch', () => {
 						releaseAsk = r;
 					});
 				}
-				return HttpResponse.json({
-					available: true,
-					episode_count: 4,
-					extra_episodes: [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 4,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				);
 			})
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
@@ -597,12 +618,14 @@ describe('play route — a recovery overtaken by a switch', () => {
 						releaseAsk = r;
 					});
 				}
-				return HttpResponse.json({
-					available: true,
-					episode_count: 4,
-					extra_episodes: [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 4,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				);
 			})
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
@@ -647,7 +670,7 @@ describe('play route — a failed switch away from a failed stream', () => {
 		useShowHandlers(() => new HttpResponse(null, { status: 204 }));
 		server.use(
 			http.post(`${API_BASE}/api/availability/batch`, () =>
-				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 			)
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
@@ -687,7 +710,7 @@ describe('play route — a failed switch away from a failed stream', () => {
 		useShowHandlers(() => new HttpResponse(null, { status: 204 }));
 		server.use(
 			http.post(`${API_BASE}/api/availability/batch`, () =>
-				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 			)
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
@@ -731,7 +754,7 @@ describe('play route — a failed switch away from a failed stream', () => {
 		});
 		server.use(
 			http.post(`${API_BASE}/api/availability/batch`, () =>
-				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 			)
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });

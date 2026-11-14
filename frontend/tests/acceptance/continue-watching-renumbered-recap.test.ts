@@ -34,6 +34,13 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 import { savePosition } from '../../src/lib/play/watch-position';
 
+import type {
+	AvailabilityResponse,
+	HistoryNumber,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -113,16 +120,22 @@ function mountRenumbered(titled = false) {
 	let repaired = false;
 	server.use(
 		...homeHandlers({ history: [{ ep_no: '24.5', id: ROW, title: SHOW }] }, [
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([kitsuRef('1', SHOW, 36)])),
+			http.post(`${API_BASE}/api/kitsu/search`, () =>
+				HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', SHOW, 36)])
+			),
 			http.post(`${API_BASE}/api/availability`, () => {
 				repaired = true;
-				return HttpResponse.json({ available: true, episode_count: 36, approximate: false });
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: true, episode_count: 36 })
+				);
 			}),
 			http.get(`${API_BASE}/api/history/:id/number`, () =>
-				HttpResponse.json(repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' })
+				HttpResponse.json<HistoryNumber | null>(
+					repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' }
+				)
 			),
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
-				HttpResponse.json(titled ? EPISODES : [])
+				HttpResponse.json<KitsuEpisode[]>(titled ? EPISODES : [])
 			)
 		])
 	);
@@ -159,20 +172,26 @@ describe('a Continue card over a renumbered recap', () => {
 		server.use(
 			...homeHandlers({ history: [{ ep_no: '24.5', id: ROW, title: SHOW }] }, [
 				http.post(`${API_BASE}/api/kitsu/search`, () =>
-					HttpResponse.json([kitsuRef('1', SHOW, 36)])
+					HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', SHOW, 36)])
 				),
 				http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 					const body = (await request.json()) as { background?: boolean };
 					if (body.background !== false) {
 						await probeHeld;
 						probeAnswered = true;
-						return HttpResponse.json({ available: true, episode_count: 36, approximate: false });
+						return HttpResponse.json<AvailabilityResponse>(
+							availabilityAnswer({ available: true, episode_count: 36 })
+						);
 					}
 					repaired = true;
-					return HttpResponse.json({ available: true, episode_count: 36, approximate: false });
+					return HttpResponse.json<AvailabilityResponse>(
+						availabilityAnswer({ available: true, episode_count: 36 })
+					);
 				}),
 				http.get(`${API_BASE}/api/history/:id/number`, () =>
-					HttpResponse.json(repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' })
+					HttpResponse.json<HistoryNumber | null>(
+						repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' }
+					)
 				)
 			])
 		);
@@ -207,11 +226,11 @@ describe('a Continue card over a renumbered recap', () => {
 		server.use(
 			...homeHandlers({ history: [{ ep_no: '12.5', id: ROW, title: SHOW }] }, [
 				http.post(`${API_BASE}/api/kitsu/search`, () =>
-					HttpResponse.json([kitsuRef('1', SHOW, 36)])
+					HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', SHOW, 36)])
 				),
 				http.post(`${API_BASE}/api/availability`, () => new HttpResponse(null, { status: 503 })),
 				http.get(`${API_BASE}/api/history/:id/number`, () =>
-					HttpResponse.json({ ep_no: '12.5', former_ep_no: '24.5' })
+					HttpResponse.json<HistoryNumber | null>({ ep_no: '12.5', former_ep_no: '24.5' })
 				)
 			])
 		);
@@ -226,18 +245,20 @@ describe('a Continue card over a renumbered recap', () => {
 		server.use(
 			...homeHandlers({ history: [{ ep_no: '24.5', id: ROW, title: SHOW }] }, [
 				http.post(`${API_BASE}/api/kitsu/search`, () =>
-					HttpResponse.json([kitsuRef('1', SHOW, 36)])
+					HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', SHOW, 36)])
 				),
 				http.post(`${API_BASE}/api/availability`, () => {
 					probes += 1;
-					return HttpResponse.json({
-						available: true,
-						episode_count: 36,
-						episode_count_approximate: probes === 1
-					});
+					return HttpResponse.json<AvailabilityResponse>(
+						availabilityAnswer({
+							available: true,
+							episode_count: 36,
+							episode_count_approximate: probes === 1
+						})
+					);
 				}),
 				http.get(`${API_BASE}/api/history/:id/number`, () =>
-					HttpResponse.json(
+					HttpResponse.json<HistoryNumber | null>(
 						probes > 1 ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' }
 					)
 				)

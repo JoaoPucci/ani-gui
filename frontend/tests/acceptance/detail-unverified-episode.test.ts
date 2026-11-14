@@ -37,6 +37,19 @@ import { savePosition } from '../../src/lib/play/watch-position';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import type { Provider } from '../../src/lib/account/types';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	HistoryEntry,
+	HistoryNumber,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import type { EntryView, ListEntry } from '../../src/lib/account/types';
+import { availabilityAnswer } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Noragami';
 const TRACKERS: Provider[] = ['mal', 'anilist'];
@@ -110,17 +123,17 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Kitsu title ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
@@ -129,41 +142,58 @@ function kitsuEpisodes(count: number) {
  *  row 13. */
 function useUnreadShow() {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: null,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
 		),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
-			HttpResponse.json({ id: 'hianime:noragami-916', ep_no: '13', title: TITLE })
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
 		),
-		http.get(`${API_BASE}/api/history/:id/number`, () => HttpResponse.json({ ep_no: '13' })),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: null,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>([])),
+		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({})),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
+		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>({
+				id: 'hianime:noragami-916',
+				ep_no: '13',
+				title: TITLE
+			})
+		),
+		http.get(`${API_BASE}/api/history/:id/number`, () =>
+			HttpResponse.json<HistoryNumber | null>({ ep_no: '13' })
+		),
 		http.post(`${API_BASE}/api/play/mark-watched`, async ({ request }) => {
 			const body = (await request.json()) as { episode?: string };
 			marked.push(String(body.episode));
 			return new HttpResponse(null, { status: 204 });
 		}),
 		// The list editor reads each connected tracker's row.
-		http.get(`${API_BASE}/api/account/entry/:provider`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/account/entry/:provider`, () =>
+			HttpResponse.json<EntryView | null>(null)
+		),
 		http.post(`${API_BASE}/api/account/update/:provider`, ({ params }) => {
 			writes.push(String(params.provider));
-			return HttpResponse.json(null);
+			return HttpResponse.json<ListEntry | null>(null);
 		})
 	);
 }
