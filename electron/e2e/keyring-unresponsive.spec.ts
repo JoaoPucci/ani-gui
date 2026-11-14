@@ -165,9 +165,13 @@ test("a secret service that never answers keeps neither the window nor the first
       contentType: "application/json",
       body: JSON.stringify(body),
     });
+    // The app's window, not the splash that opens before it, and before
+    // any route: a route reaches only the windows Playwright has
+    // finished attaching when it is set (refuseUnstubbed).
+    const page = await appWindow(app);
     // First, so it answers only what the stubs below leave; checked
     // empty at the end, for everything asked after the remount.
-    const unstubbed = await refuseUnstubbed(context);
+    const unstubbed = await refuseUnstubbed(page);
     let topRatedAsked: (() => void) | null = null;
     await routeContext(context, "**/api/app-info", (r) => r.fulfill(json(appInfo)));
     await routeContext(context, "**/api/history", (r) => r.fulfill(json(emptyHistory)));
@@ -194,8 +198,6 @@ test("a secret service that never answers keeps neither the window nor the first
     await routeContext(context, "**/api/settings", (r) => r.fulfill(json(defaultSettings)));
     await routeContext(context, "**/api/image*", (r) => r.fulfill({ status: 503 }));
 
-    // The app's window, not the splash that opens before it.
-    const page = await appWindow(app);
     // Its first mount asked before the stubs were in place, and the
     // backend, kept off the network, could not answer: mount it again,
     // and go on once the new mount has asked a stub.

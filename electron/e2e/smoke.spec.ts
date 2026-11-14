@@ -88,12 +88,15 @@ async function launchAppWithStubsOnce(
   onLaunch(app);
 
   const context = app.context();
+  // The app's window before any route: a route reaches only the windows
+  // Playwright has finished attaching when it is set (refuseUnstubbed).
+  const page = await appWindow(app);
   // First, so it answers only what the stubs below leave: anything the
   // pages here ask that no stub answers is refused and recorded, and
   // every test ends by checking nothing was (afterEach below). What
   // the first mount asked is forgotten at the remount (it may have
   // asked before its stub was set); everything after it counts.
-  const unstubbed = await refuseUnstubbed(context);
+  const unstubbed = await refuseUnstubbed(page);
   lastUnstubbed = unstubbed;
   let topRatedAsked: (() => void) | null = null;
   const json = (body: unknown) => ({
@@ -147,7 +150,6 @@ async function launchAppWithStubsOnce(
   await stub("**/api/kitsu/search", (r) => r.fulfill(json([])));
   await stub("**/api/play/stream*", (r) => r.fulfill({ status: 503 }));
 
-  const page = await appWindow(app);
   // The first mount asked before the stubs were in place, and the
   // backend, kept off the network, could not answer it: mount it
   // again, and go on once the new mount has asked a stub.
