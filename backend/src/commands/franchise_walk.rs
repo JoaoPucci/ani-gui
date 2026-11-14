@@ -54,6 +54,23 @@ pub struct Franchise {
     /// False when the walk stopped at its bound or a listing was cut
     /// short.
     pub complete: bool,
+    /// The page's own chain, when the main story leaves the page out
+    /// (`franchise_walk_chain.rs`); absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain: Option<Chain>,
+}
+
+/// A page's own chain, outside the main story.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Chain {
+    /// The chain's own titles and its seams, start order (unknown last),
+    /// then numeric id.
+    pub entries: Vec<FranchiseEntry>,
+    /// Prequel → sequel pairs between two of its entries.
+    pub links: Vec<(String, String)>,
+    /// The entries that are main-story titles, where the chain leaves
+    /// the main story or leads into it; the rest are its own.
+    pub seams: Vec<String>,
 }
 
 /// What the walk needs next, or what it decided.
@@ -150,6 +167,8 @@ pub(crate) fn id_key(id: &str) -> (u64, String) {
 mod alt;
 #[path = "franchise_walk_around.rs"]
 mod around;
+#[path = "franchise_walk_chain.rs"]
+mod chain;
 #[path = "franchise_walk_first.rs"]
 mod first;
 #[path = "franchise_walk_graph.rs"]

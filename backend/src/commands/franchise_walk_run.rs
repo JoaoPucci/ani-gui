@@ -4,6 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::chain::{chain, ChainIds};
 use super::first::first;
 use super::root::settle;
 use super::rules::Walk;
@@ -35,6 +36,9 @@ pub(crate) struct Run {
     /// other versions (a movie, the films), music videos aside. They are
     /// the franchise's, so every page of it lists the same ones.
     pub(crate) moved: BTreeSet<String>,
+    /// The anchor's own chain, when the main story leaves it out
+    /// (`franchise_walk_chain.rs`).
+    pub(crate) chain: Option<ChainIds>,
 }
 
 /// Walk from `root`, the listings in `consulted` already counted.
@@ -90,6 +94,7 @@ pub(crate) fn walk_with(
         parents: Vec::new(),
         beside: BTreeSet::new(),
         moved: BTreeSet::new(),
+        chain: None,
     })
 }
 
@@ -121,11 +126,13 @@ pub(crate) fn run(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>> {
         .filter(|p| side_anchor && settled.members.contains_key(*p))
         .cloned()
         .collect();
+    let chain = chain(anchor, &franchise, &settled, look);
     Ok(Run {
         side_anchor,
         parents,
         beside,
         moved,
+        chain,
         ..settled
     })
 }

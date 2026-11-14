@@ -18,11 +18,11 @@
 
 use std::collections::BTreeSet;
 
-use super::links::{links, parents};
+use super::links::{links, links_among, parents};
 use super::name::named;
 use super::rules::Run;
 use super::sections::{is_movie, Sections};
-use super::{order_key, Franchise, Lookup};
+use super::{order_key, Chain, Franchise, Lookup};
 use crate::meta::kitsu::FranchiseEntry;
 
 /// Roles that never place an entry around the run.
@@ -114,10 +114,22 @@ pub(super) fn assemble(anchor: &str, run: &Run, look: &Lookup<'_>) -> Franchise 
         recaps,
         links: links(run, look),
         parents: parents(anchor, run),
+        chain: chain(run, look),
         complete: run.complete
             && run
                 .consulted
                 .iter()
                 .all(|c| look.listing(c).is_some_and(|l| l.complete)),
     }
+}
+
+/// The anchor's own chain, as served.
+fn chain(run: &Run, look: &Lookup<'_>) -> Option<Chain> {
+    let ids = run.chain.as_ref()?;
+    let all: BTreeSet<String> = ids.own.union(&ids.seams).cloned().collect();
+    Some(Chain {
+        entries: entries(&all, run, look),
+        links: links_among(&all, look),
+        seams: ids.seams.iter().cloned().collect(),
+    })
 }
