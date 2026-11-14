@@ -14,6 +14,7 @@ import {
 } from './dropdown';
 
 import type * as Api from '$lib/api';
+import { configAnswer } from '$lib/testing/wire-answers';
 describe('cycleSelectedIdx', () => {
 	it('returns -1 for an empty result list (no selection possible)', () => {
 		expect(cycleSelectedIdx(-1, 1, 0)).toBe(-1);
@@ -169,10 +170,8 @@ describe('freshConfigOrLast', () => {
 		// detail page update their page-local config but the layout's
 		// copy never refreshes; freshConfigOrLast re-pulls so the next
 		// filter call sees the user's current pick.
-		const stale = { mode: 'sub' } as unknown as Parameters<typeof freshConfigOrLast>[0];
-		const fresh = { mode: 'dub' } as unknown as NonNullable<
-			Parameters<typeof freshConfigOrLast>[0]
-		>;
+		const stale = configAnswer({ mode: 'sub' });
+		const fresh = configAnswer({ mode: 'dub' });
 		apiMock.settingsGet.mockResolvedValueOnce(fresh);
 		const out = await freshConfigOrLast(stale);
 		expect(out).toBe(fresh);
@@ -182,7 +181,7 @@ describe('freshConfigOrLast', () => {
 		// IPC failure mustn't blank out config — the dropdown still
 		// renders, just with the older mode. The lazy click path
 		// surfaces real backend errors.
-		const last = { mode: 'sub' } as unknown as NonNullable<Parameters<typeof freshConfigOrLast>[0]>;
+		const last = configAnswer({ mode: 'sub' });
 		apiMock.settingsGet.mockRejectedValueOnce(new Error('ipc down'));
 		const out = await freshConfigOrLast(last);
 		expect(out).toBe(last);

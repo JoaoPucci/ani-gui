@@ -1834,9 +1834,8 @@ describe('checkAvailability / availabilityBatch / availabilityWarm', () => {
 
 	it('availabilityWarm POSTs the items list and resolves to undefined', async () => {
 		// The backend answers 202 with no body (the warm endpoint is
-		// fire-and-forget); the wrapper discards whatever comes, which
-		// this answer, read as no route's type, stands for.
-		const fetchMock = mockFetchUnread({ ignored: 'whatever' });
+		// fire-and-forget).
+		const fetchMock = mockFetchEmpty(202);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const items = [{ title: 'A', mode: 'sub' }];
 		const got = await availabilityWarm(items);

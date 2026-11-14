@@ -34,6 +34,7 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 
 import type {
 	AiringStatus,
+	AniErrorPayload,
 	AvailabilityBatchResponse,
 	AvailabilityResponse,
 	Config,
@@ -42,7 +43,7 @@ import type {
 	KitsuAnimeRef,
 	KitsuEpisode
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, wire } from '../answers';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -94,7 +95,7 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-const UPSTREAM_503 = JSON.stringify({
+const UPSTREAM_503 = wire<AniErrorPayload>({
 	kind: 'upstream',
 	status: 503,
 	key: 'error.network.upstream'
@@ -250,7 +251,7 @@ describe('detail — play failures render the shared copy with the override', ()
 		useDetailHandlers();
 		await mountAndFailEpisode(
 			5,
-			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
+			wire<AniErrorPayload>({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
 		);
 		await until(
 			() => (target.textContent ?? '').includes(m.play_play_failure_episode_unavailable()),
@@ -267,7 +268,7 @@ describe('detail — play failures render the shared copy with the override', ()
 		useDetailHandlers();
 		await mountAndFailEpisode(
 			6,
-			JSON.stringify({
+			wire<AniErrorPayload>({
 				kind: 'stream_server_failed',
 				key: 'error.play.stream_server_failed',
 				stage: 'embed',
@@ -289,7 +290,7 @@ describe('detail — play failures render the shared copy with the override', ()
 		useDetailHandlers();
 		await mountAndFailEpisode(
 			7,
-			JSON.stringify({
+			wire<AniErrorPayload>({
 				kind: 'parse_failed',
 				key: 'error.scraper.parse_failed',
 				detail: 'the page is not the search shape'
@@ -310,7 +311,7 @@ describe('detail — play failures render the shared copy with the override', ()
 		useDetailHandlers();
 		await mountAndFailEpisode(
 			4,
-			JSON.stringify({ kind: 'no_results', key: 'error.search.no_results' })
+			wire<AniErrorPayload>({ kind: 'no_results', key: 'error.search.no_results' })
 		);
 		await until(
 			() => (target.textContent ?? '').includes(m.detail_error_play_no_results()),

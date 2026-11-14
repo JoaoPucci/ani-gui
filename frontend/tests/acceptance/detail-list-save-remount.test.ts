@@ -45,12 +45,13 @@ import type {
 	AiringStatus,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	HistoryRowByKitsu,
 	KitsuAnimeRef,
 	KitsuEpisode
 } from '../../src/lib/api';
 import type { EntryView, ListEntry } from '../../src/lib/account/types';
-import { errorAnswer, availabilityAnswer } from '../answers';
+import { availabilityAnswer, errorAnswer, sessionAnswer } from '../answers';
 const SHOW_A = '50497';
 const SHOW_B = '50498';
 /** Long enough to leave and come back while the save waits. */
@@ -149,7 +150,17 @@ function useShows(seen: Seen) {
 		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () =>
 			HttpResponse.json<HistoryRowByKitsu | null>(null)
 		),
-		http.post(`${API_BASE}/api/play`, () => new HttpResponse(null, { status: 204 })),
+		// Prefetches warm the next episodes; each answers a session, as
+		// the backend does for every play.
+		http.post(`${API_BASE}/api/play`, () =>
+			HttpResponse.json<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'warm',
+					media_url: `${API_BASE}/s/warm/master.m3u8`,
+					media_kind: 'hls'
+				})
+			)
+		),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
 		http.get(`${API_BASE}/api/account/entry/anilist`, ({ request }) => {
 			const id = new URL(request.url).searchParams.get('kitsu_id') ?? '';

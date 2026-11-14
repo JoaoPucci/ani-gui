@@ -9,7 +9,7 @@ import { makeFetchAvailability } from './availability-from-match';
 import { resolveResumeSettings } from './resume-settings';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
-import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+import { availabilityAnswer, configAnswer, kitsuRefAnswer } from '$lib/testing/wire-answers';
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
 	return { id, ep_no: ep, title };
 }
@@ -114,9 +114,14 @@ describe('acceptance: click-time lookup rides the interactive lane with awaited 
 		// mid-click with DUB, the cap lookup goes out through the real
 		// makeFetchAvailability with the interactive flag, and the
 		// episode is picked against the answered cap.
-		const checkAvailability = vi.fn().mockResolvedValue({ available: true, episode_count: 12 });
+		const checkAvailability = vi
+			.fn<Parameters<typeof makeFetchAvailability>[0]>()
+			.mockResolvedValue(availabilityAnswer({ available: true, episode_count: 12 }));
 
-		const settings = await resolveResumeSettings(null, Promise.resolve({ mode: 'dub' } as never));
+		const settings = await resolveResumeSettings(
+			null,
+			Promise.resolve(configAnswer({ mode: 'dub' }))
+		);
 		const fetch = makeFetchAvailability(checkAvailability, { background: false });
 		const r = await resolveResumeEpisode(12, null, 24, () =>
 			fetch(makeMatch('k-a', 24), settings.mode).then((res) => ({

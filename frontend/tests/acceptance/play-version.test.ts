@@ -44,11 +44,12 @@ import type {
 	AiringStatus,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	KitsuAnimeRef,
 	KitsuEpisode,
 	SkipInterval
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 
@@ -174,11 +175,13 @@ async function mountPlaying() {
 	await until(() => FakeEventSource.instances.length > 0, 'the initial play stream');
 	FakeEventSource.instances[0].dispatch(
 		'done',
-		JSON.stringify({
-			session_id: 'session-1',
-			media_url: `${API_BASE}/s/session-1/file.mp4`,
-			media_kind: 'mp4'
-		})
+		wire<CreateSessionResponse>(
+			sessionAnswer({
+				session_id: 'session-1',
+				media_url: `${API_BASE}/s/session-1/file.mp4`,
+				media_kind: 'mp4'
+			})
+		)
 	);
 	// The page carries the session in the URL and gets there by
 	// `goto`, which this tier stubs out — so the stub is moved by

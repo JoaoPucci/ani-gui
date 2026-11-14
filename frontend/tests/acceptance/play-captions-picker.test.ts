@@ -26,12 +26,13 @@ import type {
 	AiringStatus,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	KitsuAnimeRef,
 	KitsuEpisode,
 	SessionSubtitle,
 	SkipInterval
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 vi.mock('$app/state', () => ({
 	get page() {
 		return page;
@@ -701,11 +702,13 @@ describe('the captions picked before a handoff, after the return', () => {
 			document.querySelector<HTMLButtonElement>('.player-error-reload')!.click();
 			await until(() => FakeEventSource.instances.length > before, 'the fresh resolve');
 			const done = new MessageEvent('done', {
-				data: JSON.stringify({
-					session_id: 'session-2',
-					media_url: `${API_BASE}/s/session-2/file.mp4`,
-					media_kind: 'mp4'
-				})
+				data: wire<CreateSessionResponse>(
+					sessionAnswer({
+						session_id: 'session-2',
+						media_url: `${API_BASE}/s/session-2/file.mp4`,
+						media_kind: 'mp4'
+					})
+				)
 			});
 			for (const h of FakeEventSource.instances.at(-1)!.listeners['done'] ?? []) h(done);
 			// The switch's navigation lands on the fresh session.

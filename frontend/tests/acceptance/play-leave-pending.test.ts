@@ -59,14 +59,16 @@ import { forgetNavigationListeners, startNavigation, startQueryNavigation } from
 
 import type {
 	AiringStatus,
+	AniErrorPayload,
 	AvailabilityBatchResponse,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	KitsuAnimeRef,
 	KitsuEpisode,
 	SkipInterval
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 
@@ -204,7 +206,9 @@ function useShowHandlers(evict: () => Promise<Response> | Response) {
 }
 
 const session = (id: string) =>
-	JSON.stringify({ session_id: id, media_url: `${API_BASE}/s/${id}/file.mp4`, media_kind: 'mp4' });
+	wire<CreateSessionResponse>(
+		sessionAnswer({ session_id: id, media_url: `${API_BASE}/s/${id}/file.mp4`, media_kind: 'mp4' })
+	);
 
 describe('play route — a page that has gone sends nobody back to it', () => {
 	it('a recovery still evicting when the page is left resolves nothing and goes nowhere', async () => {
@@ -697,7 +701,7 @@ describe('play route — a failed switch away from a failed stream', () => {
 		await until(() => switchStream() !== undefined, "the switch's session request");
 		switchStream()!.dispatch(
 			'error',
-			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
+			wire<AniErrorPayload>({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
 		);
 		await new Promise((r) => setTimeout(r, 200));
 
@@ -734,7 +738,7 @@ describe('play route — a failed switch away from a failed stream', () => {
 		await until(() => fresh() !== undefined, "the Reload's fresh resolve");
 		fresh()!.dispatch(
 			'error',
-			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
+			wire<AniErrorPayload>({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
 		);
 		await new Promise((r) => setTimeout(r, 200));
 
@@ -786,7 +790,7 @@ describe('play route — a failed switch away from a failed stream', () => {
 		releaseEvict();
 		switchStream()!.dispatch(
 			'error',
-			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
+			wire<AniErrorPayload>({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
 		);
 		// Both answers are in and acted on: the switch's failure puts the
 		// error back, and the Reload's eviction stands the recovery down

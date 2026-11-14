@@ -53,6 +53,7 @@ import type { Provider } from '../../src/lib/account/types';
 import type {
 	AiringStatus,
 	AvailabilityResponse,
+	CreateSessionResponse,
 	HistoryEntry,
 	HistoryNumber,
 	HistoryRowByKitsu,
@@ -60,7 +61,7 @@ import type {
 	SkipInterval
 } from '../../src/lib/api';
 import type { EntryView, ListEntry } from '../../src/lib/account/types';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -240,12 +241,14 @@ async function playTheCard(ownListing: boolean): Promise<{ stream: URL; session:
 	const stream = FakeEventSource.instances[0];
 	stream.dispatch(
 		'done',
-		JSON.stringify({
-			session_id: 's-1',
-			media_url: `${API_BASE}/s/s-1/file.mp4`,
-			media_kind: 'mp4',
-			...(ownListing ? { own_listing: true } : {})
-		})
+		wire<CreateSessionResponse>(
+			sessionAnswer({
+				session_id: 's-1',
+				media_url: `${API_BASE}/s/s-1/file.mp4`,
+				media_kind: 'mp4',
+				...(ownListing ? { own_listing: true } : {})
+			})
+		)
 	);
 	await until(() => vi.mocked(goto).mock.calls.length > 0, 'the play page to open');
 	await until(() => stamps.length > 0, 'the watch to be stamped');

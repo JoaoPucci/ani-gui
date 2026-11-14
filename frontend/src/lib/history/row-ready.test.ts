@@ -480,7 +480,7 @@ describe('a held-back thumbnail landing later', () => {
 		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
 
 		const filled = { ...makeKitsuEpisode(6), thumbnail: { original: 'https://x/6.jpg' } };
-		refill?.([filled as KitsuEpisode]);
+		refill?.([filled]);
 		// The still goes onto the card's episode; the episode itself is
 		// not replaced.
 		expect(filledStills).toEqual([['hist-r', 'ep-6', { original: 'https://x/6.jpg' }]]);

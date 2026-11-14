@@ -32,6 +32,7 @@ import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 
 import type {
 	AiringStatus,
+	AniErrorPayload,
 	AvailabilityResponse,
 	Config,
 	HistoryEntry,
@@ -39,7 +40,7 @@ import type {
 	KitsuAnimeRef,
 	KitsuEpisode
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Noragami';
 
@@ -174,7 +175,7 @@ async function requestedBy(n: number): Promise<string> {
 		.filter((i) => !i.url.includes('prefetch=1') && i.url.includes('/api/play/stream'))
 		.pop()!;
 	const ep = new URL(s.url).searchParams.get('episode') ?? '';
-	s.dispatch('error', JSON.stringify({ kind: 'timeout' }));
+	s.dispatch('error', wire<AniErrorPayload>({ kind: 'timeout', key: 'error.scraper.timeout' }));
 	await until(() => !tileButton(n)!.closest('li')!.matches('.busy'), 'the click to settle');
 	return ep;
 }

@@ -108,13 +108,14 @@ import { playerVideo, playerVideoInSlot } from './player-video';
 
 import type {
 	AiringStatus,
+	AniErrorPayload,
 	AvailabilityResponse,
 	Config,
 	KitsuAnimeRef,
 	KitsuEpisode,
 	SkipInterval
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, wire } from '../answers';
 type FakeHlsT = InstanceType<typeof Hls> & {
 	startLoadCalls: number;
 	stopLoadCalls: number;
@@ -464,7 +465,9 @@ describe('play route — an episode handed to another player stays stopped here'
 		await settle();
 		// The pick fails: its stream answers with an error.
 		const pick = FakeEventSource.instances.filter((e) => e.url.includes('episode=2')).at(-1)!;
-		const fail = new MessageEvent('error', { data: JSON.stringify({ kind: 'timeout' }) });
+		const fail = new MessageEvent('error', {
+			data: wire<AniErrorPayload>({ kind: 'timeout', key: 'error.scraper.timeout' })
+		});
 		for (const h of pick.listeners['error'] ?? []) h(fail);
 		await until(
 			() => target.querySelector('section.player-frame.player-busy') === null,

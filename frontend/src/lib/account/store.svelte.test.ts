@@ -514,14 +514,13 @@ describe('accountStore.refreshExpired', () => {
 		};
 		vi.stubGlobal(
 			'fetch',
-			vi.fn().mockResolvedValue({
-				ok: true,
-				json: async () => ({
+			vi.fn().mockResolvedValue(
+				renewed({
 					access_token: 'fresh-access',
 					refresh_token: 'fresh-rt',
 					expires_at_epoch_s: 4_000_000_000
 				})
-			})
+			)
 		);
 		accountStore.setExpired('mal', payload({ refresh_token: 'stale-rt' }));
 
@@ -559,10 +558,7 @@ describe('accountStore.refreshExpired', () => {
 			'fetch',
 			vi.fn().mockImplementation(async () => {
 				await gate;
-				return {
-					ok: true,
-					json: async () => ({ access_token: 'new', refresh_token: 'rt2', expires_at_epoch_s: 9 })
-				};
+				return renewed({ access_token: 'new', refresh_token: 'rt2', expires_at_epoch_s: 9 });
 			})
 		);
 		accountStore.setExpired('mal', payload({ refresh_token: 'rt' }));

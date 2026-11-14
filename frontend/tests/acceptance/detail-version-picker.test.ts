@@ -41,11 +41,12 @@ import type {
 	AiringStatus,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	HistoryRowByKitsu,
 	KitsuAnimeRef,
 	KitsuEpisode
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '7154';
 const TITLE = "JoJo's Bizarre Adventure";
 
@@ -247,11 +248,13 @@ describe('detail route — the versions of a show listed twice', () => {
 		// would look up another row than the one the play wrote.
 		click.dispatch(
 			'done',
-			JSON.stringify({
-				session_id: 's-1',
-				media_url: `${API_BASE}/s/s-1/file.mp4`,
-				media_kind: 'mp4'
-			})
+			wire<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 's-1',
+					media_url: `${API_BASE}/s/s-1/file.mp4`,
+					media_kind: 'mp4'
+				})
+			)
 		);
 		await until(() => watched.length > 0, 'the Continue Watching stamp');
 		expect(watched[0].version).toBe('standard');

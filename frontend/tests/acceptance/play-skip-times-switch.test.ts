@@ -44,14 +44,16 @@ import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 
 import type {
 	AiringStatus,
+	AniErrorPayload,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	HistoryEntry,
 	KitsuAnimeRef,
 	KitsuEpisode,
 	SkipInterval
 } from '../../src/lib/api';
-import { availabilityAnswer, errorAnswer } from '../answers';
+import { availabilityAnswer, errorAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Long Show';
 const EPISODES = 12;
@@ -294,12 +296,14 @@ async function landSwitch(video: HTMLVideoElement, episode: number | string) {
 			es.landed = true;
 			es.dispatch(
 				'done',
-				JSON.stringify({
-					session_id: session,
-					media_url: `${API_BASE}/s/${session}/video.mp4`,
-					media_kind: 'mp4',
-					episode: `${episode}`
-				})
+				wire<CreateSessionResponse>(
+					sessionAnswer({
+						session_id: session,
+						media_url: `${API_BASE}/s/${session}/video.mp4`,
+						media_kind: 'mp4',
+						episode: `${episode}`
+					})
+				)
 			);
 		}
 		const src = video.getAttribute('src') ?? '';
@@ -591,7 +595,7 @@ describe('play route — skip times across an episode switch', () => {
 				es.landed = true;
 				es.dispatch(
 					'error',
-					JSON.stringify({ kind: 'upstream', status: 503, key: 'error.network.upstream' })
+					wire<AniErrorPayload>({ kind: 'upstream', status: 503, key: 'error.network.upstream' })
 				);
 			}
 			return nextButton()?.disabled === false;

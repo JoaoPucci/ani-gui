@@ -68,9 +68,13 @@ function harness(overrides: Partial<SearchRunnerDeps> = {}) {
 	const reached: boolean[] = [];
 	const deps: SearchRunnerDeps = {
 		searchPage: kitsu(5),
-		getConfig: vi.fn().mockResolvedValue(configAnswer({ mode: 'sub' })),
+		getConfig: vi
+			.fn<NonNullable<SearchRunnerDeps['getConfig']>>()
+			.mockResolvedValue(configAnswer({ mode: 'sub' })),
 		pickMode: (c) => (c as unknown as { mode: 'sub' | 'dub' } | null)?.mode ?? 'sub',
-		filter: vi.fn().mockImplementation(async (items, _mode, emit) => emit(items)),
+		filter: vi
+			.fn<NonNullable<SearchRunnerDeps['filter']>>()
+			.mockImplementation(async (items, _mode, emit) => emit(items)),
 		onResults: (v) => results.push(v),
 		onError: () => {},
 		onBusy: () => {},

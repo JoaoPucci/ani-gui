@@ -64,83 +64,56 @@ it('runs while the earlier play is answered', async () => {
 	await wait(80);
 });
 
-it('answers a play with a session whose media kind is not one there is', async () => {
-	server.use(
-		http.post(`${API_BASE}/api/play`, () =>
-			malformedAnswer({
-				session_id: 's-1',
-				media_url: `${API_BASE}/s/s-1/manifest.mpd`,
-				media_kind: 'dash'
-			})
-		)
-	);
-	await play({ episode: '1' });
-	await wait(20);
-});
+/** A whole session with `wrong` over it: one field the guard must
+ *  refuse, so each scenario pins one check. */
+const sessionWith = (wrong: Record<string, unknown>) =>
+	malformedAnswer({
+		...sessionAnswer({
+			session_id: 's-1',
+			media_url: `${API_BASE}/s/s-1/file.mp4`,
+			media_kind: 'mp4'
+		}),
+		...wrong
+	});
 
-it('answers a play with a session whose version is not one there is', async () => {
-	server.use(
-		http.post(`${API_BASE}/api/play`, () =>
-			malformedAnswer({
-				session_id: 's-1',
-				media_url: `${API_BASE}/s/s-1/file.mp4`,
-				media_kind: 'mp4',
-				version: 'directors-cut'
-			})
-		)
-	);
-	await play({ episode: '1' });
-	await wait(20);
-});
+/** A whole session less `field`. */
+const sessionWithout = (field: 'cache_hit' | 'subtitles') => {
+	const whole: Record<string, unknown> = {
+		...sessionAnswer({
+			session_id: 's-1',
+			media_url: `${API_BASE}/s/s-1/file.mp4`,
+			media_kind: 'mp4'
+		})
+	};
+	delete whole[field];
+	return malformedAnswer(whole);
+};
 
-it('answers a play with a session whose optional fields have the wrong type', async () => {
-	server.use(
-		http.post(`${API_BASE}/api/play`, () =>
-			malformedAnswer({
-				session_id: 's-1',
-				media_url: `${API_BASE}/s/s-1/file.mp4`,
-				media_kind: 'mp4',
-				cache_hit: 'yes',
-				episode: 3,
-				subtitles: [{ lang: 'en', label: 'English', url: '/s/s-1/sub/0.vtt' }]
-			})
-		)
-	);
-	await play({ episode: '1' });
-	await wait(20);
-});
+const ONE_WRONG: [string, () => HttpResponse<never>][] = [
+	[
+		'whose media kind is not one there is',
+		() => sessionWith({ media_url: `${API_BASE}/s/s-1/manifest.mpd`, media_kind: 'dash' })
+	],
+	['whose version is not one there is', () => sessionWith({ version: 'directors-cut' })],
+	['whose episode is not text', () => sessionWith({ episode: 3 })],
+	[
+		'whose subtitle has no default flag',
+		() => sessionWith({ subtitles: [{ lang: 'en', label: 'English', url: '/s/s-1/sub/0.vtt' }] })
+	],
+	['whose cache_hit is not a flag', () => sessionWith({ cache_hit: 'yes' })],
+	['whose episode_unverified is not a flag', () => sessionWith({ episode_unverified: 'no' })],
+	['whose own_listing is not a flag', () => sessionWith({ own_listing: 1 })],
+	['that leaves out cache_hit', () => sessionWithout('cache_hit')],
+	['that leaves out subtitles', () => sessionWithout('subtitles')]
+];
 
-it('answers a play with a session that leaves out the fields always sent', async () => {
-	server.use(
-		http.post(`${API_BASE}/api/play`, () =>
-			malformedAnswer({
-				session_id: 's-1',
-				media_url: `${API_BASE}/s/s-1/file.mp4`,
-				media_kind: 'mp4'
-			})
-		)
-	);
-	await play({ episode: '1' });
-	await wait(20);
-});
-
-it('answers a play with a session whose flags have the wrong type', async () => {
-	server.use(
-		http.post(`${API_BASE}/api/play`, () =>
-			malformedAnswer({
-				...sessionAnswer({
-					session_id: 's-1',
-					media_url: `${API_BASE}/s/s-1/file.mp4`,
-					media_kind: 'mp4'
-				}),
-				episode_unverified: 'no',
-				own_listing: 1
-			})
-		)
-	);
-	await play({ episode: '1' });
-	await wait(20);
-});
+for (const [what, answer] of ONE_WRONG) {
+	it(`answers a play with a session ${what}`, async () => {
+		server.use(http.post(`${API_BASE}/api/play`, answer));
+		await play({ episode: '1' });
+		await wait(20);
+	});
+}
 
 it('answers a play with a whole session', async () => {
 	server.use(

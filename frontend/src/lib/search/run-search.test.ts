@@ -74,10 +74,14 @@ function makeHarness(overrides: Partial<SearchRunnerDeps> = {}): Harness {
 	const errors: unknown[] = [];
 	const busyLog: boolean[] = [];
 	const deps: SearchRunnerDeps = {
-		searchPage: vi.fn().mockResolvedValue(lastPage([])),
-		getConfig: vi.fn().mockResolvedValue(null),
+		searchPage: vi
+			.fn<NonNullable<SearchRunnerDeps['searchPage']>>()
+			.mockResolvedValue(lastPage([])),
+		getConfig: vi.fn<NonNullable<SearchRunnerDeps['getConfig']>>().mockResolvedValue(null),
 		pickMode: () => 'sub',
-		filter: vi.fn().mockImplementation(async (items, _mode, emit) => emit(items)),
+		filter: vi
+			.fn<NonNullable<SearchRunnerDeps['filter']>>()
+			.mockImplementation(async (items, _mode, emit) => emit(items)),
 		onResults: (v) => results.push(v),
 		onError: (e) => errors.push(e),
 		onBusy: (b) => busyLog.push(b),

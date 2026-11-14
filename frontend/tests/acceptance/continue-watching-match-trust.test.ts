@@ -34,8 +34,8 @@ import HomePage from '../../src/routes/+page.svelte';
 import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
-import type { KitsuAnimeRef } from '../../src/lib/api';
-import { errorAnswer } from '../answers';
+import type { CreateSessionResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer, sessionAnswer, wire } from '../answers';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -105,11 +105,13 @@ async function clickAndReadRecordedId(): Promise<string | null> {
 	// case's click is not folded into this one's pending request.
 	stream.dispatch(
 		'done',
-		JSON.stringify({
-			session_id: 's-1',
-			media_url: `${API_BASE}/s/s-1/file.mp4`,
-			media_kind: 'mp4'
-		})
+		wire<CreateSessionResponse>(
+			sessionAnswer({
+				session_id: 's-1',
+				media_url: `${API_BASE}/s/s-1/file.mp4`,
+				media_kind: 'mp4'
+			})
+		)
 	);
 	await until(() => vi.mocked(goto).mock.calls.length > 0, 'the navigation to the play page');
 	return recorded;

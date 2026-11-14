@@ -38,11 +38,12 @@ import type {
 	AiringStatus,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	KitsuAnimeRef,
 	KitsuEpisode,
 	SkipInterval
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 
@@ -156,7 +157,9 @@ const indicatorOn = () => target.querySelector('.player-spinner.player-spinner-o
 const errorPanel = () => target.querySelector('.player-error');
 
 const session = (id: string) =>
-	JSON.stringify({ session_id: id, media_url: `${API_BASE}/s/${id}/file.mp4`, media_kind: 'mp4' });
+	wire<CreateSessionResponse>(
+		sessionAnswer({ session_id: id, media_url: `${API_BASE}/s/${id}/file.mp4`, media_kind: 'mp4' })
+	);
 const busy = () =>
 	target.querySelector('section.player-frame')?.getAttribute('aria-busy') === 'true';
 

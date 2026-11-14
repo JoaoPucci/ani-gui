@@ -37,7 +37,8 @@ import HomePage from '../../src/routes/+page.svelte';
 import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
-import type { KitsuAnimeRef } from '../../src/lib/api';
+import type { CreateSessionResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { sessionAnswer, wire } from '../answers';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -191,11 +192,13 @@ async function play(title: string): Promise<{ recorded: string | null; guess: bo
 	const recorded = new URL(stream.url).searchParams.get('kitsu_id');
 	stream.dispatch(
 		'done',
-		JSON.stringify({
-			session_id: 's-1',
-			media_url: `${API_BASE}/s/s-1/file.mp4`,
-			media_kind: 'mp4'
-		})
+		wire<CreateSessionResponse>(
+			sessionAnswer({
+				session_id: 's-1',
+				media_url: `${API_BASE}/s/s-1/file.mp4`,
+				media_kind: 'mp4'
+			})
+		)
 	);
 	await until(() => vi.mocked(goto).mock.calls.length > 0, 'the navigation to the play page');
 	const url = String(vi.mocked(goto).mock.calls.at(-1)?.[0] ?? '');

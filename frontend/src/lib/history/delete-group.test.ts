@@ -12,7 +12,7 @@ function h(id: string, kitsu_id?: string): HistoryEntry {
 		title: 'Stub',
 		watched_at: 1,
 		kitsu_id: kitsu_id ?? ''
-	} as HistoryEntry;
+	};
 }
 function m(id: string): KitsuAnimeRef {
 	return kitsuRefAnswer({ id, canonical_title: 'Stub' });

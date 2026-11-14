@@ -45,6 +45,7 @@ import { RECENT_STORAGE_KEY } from '../../src/lib/topbar/recent-searches';
 
 import type {
 	AiringStatus,
+	AniErrorPayload,
 	AvailabilityBatchResponse,
 	AvailabilityResponse,
 	Config,
@@ -54,10 +55,10 @@ import type {
 	KitsuEpisode,
 	SkipInterval
 } from '../../src/lib/api';
-import { errorAnswer, availabilityAnswer } from '../answers';
+import { availabilityAnswer, errorAnswer, wire } from '../answers';
 const KITSU_ID = '40684';
 const TITLE = 'Ongoing Show';
-const VERDICT = JSON.stringify({
+const VERDICT = wire<AniErrorPayload>({
 	kind: 'episode_unavailable',
 	key: 'error.play.episode_unavailable'
 });

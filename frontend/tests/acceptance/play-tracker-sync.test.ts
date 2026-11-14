@@ -56,12 +56,13 @@ import type {
 	AiringStatus,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	KitsuAnimeRef,
 	KitsuEpisode,
 	SkipInterval
 } from '../../src/lib/api';
 import type { ListEntry } from '../../src/lib/account/types';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Finished Show';
 const TRACKERS: Provider[] = ['mal', 'anilist'];
@@ -235,13 +236,15 @@ function land(es: FakeEventSource, episode: number, unverified = false) {
 	es.landed = true;
 	es.dispatch(
 		'done',
-		JSON.stringify({
-			session_id: `session-${episode}-${FakeEventSource.instances.length}`,
-			media_url: `${API_BASE}/s/session-${episode}-${FakeEventSource.instances.length}/master.m3u8`,
-			media_kind: 'hls',
-			episode: `${episode}`,
-			...(unverified ? { episode_unverified: true } : {})
-		})
+		wire<CreateSessionResponse>(
+			sessionAnswer({
+				session_id: `session-${episode}-${FakeEventSource.instances.length}`,
+				media_url: `${API_BASE}/s/session-${episode}-${FakeEventSource.instances.length}/master.m3u8`,
+				media_kind: 'hls',
+				episode: `${episode}`,
+				...(unverified ? { episode_unverified: true } : {})
+			})
+		)
 	);
 }
 

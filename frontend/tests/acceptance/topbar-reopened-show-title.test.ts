@@ -74,12 +74,13 @@ import type {
 	AiringStatus,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	HistoryRowByKitsu,
 	KitsuAnimeRef,
 	KitsuEpisode,
 	SkipInterval
 } from '../../src/lib/api';
-import { errorAnswer, availabilityAnswer } from '../answers';
+import { availabilityAnswer, errorAnswer, sessionAnswer } from '../answers';
 const SHOW = '46474';
 const TITLE = 'Frieren';
 
@@ -131,7 +132,17 @@ function useBackend() {
 		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () =>
 			HttpResponse.json<HistoryRowByKitsu | null>(null)
 		),
-		http.post(`${API_BASE}/api/play`, () => new HttpResponse(null, { status: 204 })),
+		// Prefetches warm the next episodes; each answers a session, as
+		// the backend does for every play.
+		http.post(`${API_BASE}/api/play`, () =>
+			HttpResponse.json<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'warm',
+					media_url: `${API_BASE}/s/warm/master.m3u8`,
+					media_kind: 'hls'
+				})
+			)
+		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl'))

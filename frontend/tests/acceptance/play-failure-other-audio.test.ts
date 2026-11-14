@@ -58,6 +58,7 @@ import type {
 	AvailabilityBatchResponse,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	HistoryEntry,
 	HistoryNumber,
 	HistoryRowByKitsu,
@@ -65,7 +66,7 @@ import type {
 	KitsuEpisode,
 	SkipInterval
 } from '../../src/lib/api';
-import { availabilityAnswer, errorAnswer } from '../answers';
+import { availabilityAnswer, errorAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '40684';
 const TITLE = 'Ongoing Show';
 const VERDICT_ENVELOPE: AniErrorPayload = {
@@ -603,11 +604,13 @@ describe('a play for one show that answers after the page moved on', () => {
 	// navigation into the player — is about a visit the viewer left.
 	const OTHER_ID = '777';
 	const OTHER_TITLE = 'Another Show';
-	const SESSION = JSON.stringify({
-		session_id: 'session-late',
-		media_url: `${API_BASE}/s/session-late/file.mp4`,
-		media_kind: 'mp4'
-	});
+	const SESSION = wire<CreateSessionResponse>(
+		sessionAnswer({
+			session_id: 'session-late',
+			media_url: `${API_BASE}/s/session-late/file.mp4`,
+			media_kind: 'mp4'
+		})
+	);
 	const HAS_IT = { cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 12 } };
 
 	function useOtherShowAndRecord() {
@@ -912,7 +915,9 @@ describe('a play whose page is left before it answers', () => {
 		vi.mocked(goto).mockClear();
 		stream.dispatch(
 			'done',
-			JSON.stringify({ session_id: 's', media_url: `${API_BASE}/s/s/file.mp4`, media_kind: 'mp4' })
+			wire<CreateSessionResponse>(
+				sessionAnswer({ session_id: 's', media_url: `${API_BASE}/s/s/file.mp4`, media_kind: 'mp4' })
+			)
 		);
 		await playJudged();
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();

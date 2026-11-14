@@ -40,13 +40,15 @@ import { playerVideo, playerVideoInSlot } from './player-video';
 
 import type {
 	AiringStatus,
+	AniErrorPayload,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	KitsuAnimeRef,
 	KitsuEpisode,
 	SkipInterval
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 
@@ -182,11 +184,13 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		);
 		FakeEventSource.instances[FakeEventSource.instances.length - 1].dispatch(
 			'done',
-			JSON.stringify({
-				session_id: 'session-2',
-				media_url: `${API_BASE}/s/session-2/file.mp4`,
-				media_kind: 'mp4'
-			})
+			wire<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'session-2',
+					media_url: `${API_BASE}/s/session-2/file.mp4`,
+					media_kind: 'mp4'
+				})
+			)
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'mp4' });
 
@@ -340,7 +344,7 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 			.pop()!;
 		interactive.dispatch(
 			'error',
-			JSON.stringify({ kind: 'upstream', status: 503, key: 'error.network.upstream' })
+			wire<AniErrorPayload>({ kind: 'upstream', status: 503, key: 'error.network.upstream' })
 		);
 		await until(
 			() => (target.textContent ?? '').includes(m.play_play_failure_source_down()),
@@ -400,11 +404,13 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		);
 		FakeEventSource.instances[FakeEventSource.instances.length - 1].dispatch(
 			'done',
-			JSON.stringify({
-				session_id: 'session-2',
-				media_url: `${API_BASE}/s/session-2/file.mp4`,
-				media_kind: 'mp4'
-			})
+			wire<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'session-2',
+					media_url: `${API_BASE}/s/session-2/file.mp4`,
+					media_kind: 'mp4'
+				})
+			)
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'mp4' });
 		await until(() => video.src.includes('session-2'), 'the recovered session to attach');

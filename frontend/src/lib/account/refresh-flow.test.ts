@@ -12,6 +12,7 @@ import {
 import type { PersistedAccount, Provider, ProviderState } from './types';
 import { AccountApiError } from './api';
 
+import type { RefreshExpiredDeps } from './refresh-flow';
 function account(over: Partial<PersistedAccount> = {}): PersistedAccount {
 	return {
 		access_token: 'old-access',
@@ -38,12 +39,14 @@ describe('expiredRefreshable', () => {
 describe('refreshAccount', () => {
 	it('refreshes, merges the new tokens, and re-persists', async () => {
 		const deps: RefreshFlowDeps = {
-			refreshTokens: vi.fn().mockResolvedValue({
+			refreshTokens: vi.fn<NonNullable<RefreshFlowDeps['refreshTokens']>>().mockResolvedValue({
 				access_token: 'new-access',
 				refresh_token: 'new-rt',
 				expires_at_epoch_s: 999
 			}),
-			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			persistAccount: vi
+				.fn<NonNullable<RefreshFlowDeps['persistAccount']>>()
+				.mockResolvedValue({ ok: true }),
 			generation: () => 0
 		};
 		const out = await refreshAccount(deps, 'mal', account());
@@ -63,7 +66,9 @@ describe('refreshAccount', () => {
 			refreshTokens: vi
 				.fn()
 				.mockResolvedValue({ access_token: 'new', refresh_token: null, expires_at_epoch_s: 5 }),
-			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			persistAccount: vi
+				.fn<NonNullable<RefreshFlowDeps['persistAccount']>>()
+				.mockResolvedValue({ ok: true }),
 			generation: () => 0
 		};
 		const out = await refreshAccount(deps, 'mal', account({ refresh_token: 'keep-me' }));
@@ -73,8 +78,8 @@ describe('refreshAccount', () => {
 
 	it('is unrefreshable with no refresh token (no calls)', async () => {
 		const deps: RefreshFlowDeps = {
-			refreshTokens: vi.fn(),
-			persistAccount: vi.fn(),
+			refreshTokens: vi.fn<NonNullable<RefreshFlowDeps['refreshTokens']>>(),
+			persistAccount: vi.fn<NonNullable<RefreshFlowDeps['persistAccount']>>(),
 			generation: () => 0
 		};
 		const out = await refreshAccount(deps, 'mal', account({ refresh_token: null }));
@@ -84,8 +89,12 @@ describe('refreshAccount', () => {
 
 	it('fails (keeps expired) when the refresh call throws', async () => {
 		const deps: RefreshFlowDeps = {
-			refreshTokens: vi.fn().mockRejectedValue(new Error('401')),
-			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			refreshTokens: vi
+				.fn<NonNullable<RefreshFlowDeps['refreshTokens']>>()
+				.mockRejectedValue(new Error('401')),
+			persistAccount: vi
+				.fn<NonNullable<RefreshFlowDeps['persistAccount']>>()
+				.mockResolvedValue({ ok: true }),
 			generation: () => 0
 		};
 		const out = await refreshAccount(deps, 'mal', account());
@@ -98,7 +107,9 @@ describe('refreshAccount', () => {
 			refreshTokens: vi
 				.fn()
 				.mockResolvedValue({ access_token: 'n', refresh_token: 'r', expires_at_epoch_s: 1 }),
-			persistAccount: vi.fn().mockResolvedValue({ ok: false, kind: 'keychain_unavailable' }),
+			persistAccount: vi
+				.fn<NonNullable<RefreshFlowDeps['persistAccount']>>()
+				.mockResolvedValue({ ok: false, kind: 'keychain_unavailable' }),
 			generation: () => 0
 		};
 		const out = await refreshAccount(deps, 'mal', account());
@@ -114,7 +125,9 @@ describe('refreshAccount', () => {
 			refreshTokens: vi
 				.fn()
 				.mockResolvedValue({ access_token: 'n', refresh_token: 'r', expires_at_epoch_s: 1 }),
-			persistAccount: vi.fn().mockRejectedValue(new Error('io_error')),
+			persistAccount: vi
+				.fn<NonNullable<RefreshFlowDeps['persistAccount']>>()
+				.mockRejectedValue(new Error('io_error')),
 			generation: () => 0
 		};
 		const out = await refreshAccount(deps, 'mal', account());
@@ -130,10 +143,12 @@ describe('refreshAccount', () => {
 		let gen = 7;
 		const persistAccount = vi.fn().mockResolvedValue({ ok: true });
 		const deps: RefreshFlowDeps = {
-			refreshTokens: vi.fn().mockImplementation(async () => {
-				gen = 8; // a disconnect/re-auth raced the network call
-				return { access_token: 'new', refresh_token: 'new-rt', expires_at_epoch_s: 9 };
-			}),
+			refreshTokens: vi
+				.fn<NonNullable<RefreshFlowDeps['refreshTokens']>>()
+				.mockImplementation(async () => {
+					gen = 8; // a disconnect/re-auth raced the network call
+					return { access_token: 'new', refresh_token: 'new-rt', expires_at_epoch_s: 9 };
+				}),
 			persistAccount,
 			generation: () => gen
 		};
@@ -192,7 +207,9 @@ describe('refreshExpiredAccounts', () => {
 			refreshTokens: vi
 				.fn()
 				.mockResolvedValue({ access_token: 'new', refresh_token: 'rt2', expires_at_epoch_s: 9 }),
-			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			persistAccount: vi
+				.fn<NonNullable<RefreshExpiredDeps['persistAccount']>>()
+				.mockResolvedValue({ ok: true }),
 			generation: () => 0,
 			changing: () => false
 		});
@@ -218,7 +235,9 @@ describe('refreshExpiredAccounts', () => {
 				byProvider: () => byProvider,
 				onRefreshed,
 				refreshTokens,
-				persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+				persistAccount: vi
+					.fn<NonNullable<RefreshExpiredDeps['persistAccount']>>()
+					.mockResolvedValue({ ok: true }),
 				generation: () => 0,
 				changing: () => false
 			},
@@ -238,8 +257,12 @@ describe('refreshExpiredAccounts', () => {
 		await refreshExpiredAccounts({
 			byProvider: () => byProvider,
 			onRefreshed,
-			refreshTokens: vi.fn().mockRejectedValue(new Error('boom')),
-			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			refreshTokens: vi
+				.fn<NonNullable<RefreshExpiredDeps['refreshTokens']>>()
+				.mockRejectedValue(new Error('boom')),
+			persistAccount: vi
+				.fn<NonNullable<RefreshExpiredDeps['persistAccount']>>()
+				.mockResolvedValue({ ok: true }),
 			generation: () => 0,
 			changing: () => false
 		});
@@ -267,7 +290,9 @@ describe('refreshExpiredAccounts', () => {
 			byProvider: () => byProvider,
 			onRefreshed,
 			refreshTokens,
-			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			persistAccount: vi
+				.fn<NonNullable<RefreshExpiredDeps['persistAccount']>>()
+				.mockResolvedValue({ ok: true }),
 			generation: () => 0,
 			changing: (p) => p === 'mal'
 		});
@@ -314,14 +339,16 @@ describe('freshBearer', () => {
 
 	function freshDeps(over: Partial<FreshBearerDeps> = {}): FreshBearerDeps {
 		return {
-			refreshTokens: vi.fn().mockResolvedValue({
+			refreshTokens: vi.fn<NonNullable<FreshBearerDeps['refreshTokens']>>().mockResolvedValue({
 				access_token: 'fresh',
 				refresh_token: 'rt2',
 				expires_at_epoch_s: nowSec + 3600
 			}),
-			persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+			persistAccount: vi
+				.fn<NonNullable<FreshBearerDeps['persistAccount']>>()
+				.mockResolvedValue({ ok: true }),
 			generation: () => 0,
-			onRefreshed: vi.fn(),
+			onRefreshed: vi.fn<NonNullable<FreshBearerDeps['onRefreshed']>>(),
 			now: () => nowMs,
 			...over
 		};
@@ -349,7 +376,11 @@ describe('freshBearer', () => {
 	});
 
 	it('falls back to the existing bearer when the refresh fails', async () => {
-		const deps = freshDeps({ refreshTokens: vi.fn().mockRejectedValue(new Error('401')) });
+		const deps = freshDeps({
+			refreshTokens: vi
+				.fn<NonNullable<FreshBearerDeps['refreshTokens']>>()
+				.mockRejectedValue(new Error('401'))
+		});
 		const acct = account({ access_token: 'old', expires_at_epoch_s: nowSec + 30 });
 		const bearer = await freshBearer(deps, 'mal', acct);
 		expect(bearer).toBe('old');
@@ -369,10 +400,12 @@ describe('freshBearer', () => {
 	it('falls back to the existing bearer and does not commit when superseded mid-refresh', async () => {
 		let gen = 0;
 		const deps = freshDeps({
-			refreshTokens: vi.fn().mockImplementation(async () => {
-				gen = 1;
-				return { access_token: 'fresh', refresh_token: 'rt2', expires_at_epoch_s: nowSec + 3600 };
-			}),
+			refreshTokens: vi
+				.fn<NonNullable<FreshBearerDeps['refreshTokens']>>()
+				.mockImplementation(async () => {
+					gen = 1;
+					return { access_token: 'fresh', refresh_token: 'rt2', expires_at_epoch_s: nowSec + 3600 };
+				}),
 			generation: () => gen
 		});
 		const acct = account({ access_token: 'old', expires_at_epoch_s: nowSec + 30 });
@@ -391,8 +424,10 @@ describe('a failed renewal says why', () => {
 	it('carries what the tracker said on the failed outcome', async () => {
 		const out = await refreshAccount(
 			{
-				refreshTokens: vi.fn().mockRejectedValue(refusedToken),
-				persistAccount: vi.fn(),
+				refreshTokens: vi
+					.fn<NonNullable<RefreshFlowDeps['refreshTokens']>>()
+					.mockRejectedValue(refusedToken),
+				persistAccount: vi.fn<NonNullable<RefreshFlowDeps['persistAccount']>>(),
 				generation: () => 0
 			},
 			'mal',
@@ -410,10 +445,12 @@ describe('a failed renewal says why', () => {
 					mal: { kind: 'expired', account: account() },
 					inhouse: { kind: 'disconnected' }
 				}) as unknown as Record<Provider, ProviderState>,
-			onRefreshed: vi.fn(),
+			onRefreshed: vi.fn<NonNullable<RefreshExpiredDeps['onRefreshed']>>(),
 			onRenewalFailed,
-			refreshTokens: vi.fn().mockRejectedValue(refusedToken),
-			persistAccount: vi.fn(),
+			refreshTokens: vi
+				.fn<NonNullable<RefreshExpiredDeps['refreshTokens']>>()
+				.mockRejectedValue(refusedToken),
+			persistAccount: vi.fn<NonNullable<RefreshExpiredDeps['persistAccount']>>(),
 			generation: () => 0,
 			changing: () => false
 		});
@@ -424,10 +461,12 @@ describe('a failed renewal says why', () => {
 		const onRenewalFailed = vi.fn();
 		const bearer = await freshBearer(
 			{
-				refreshTokens: vi.fn().mockRejectedValue(refusedToken),
-				persistAccount: vi.fn(),
+				refreshTokens: vi
+					.fn<NonNullable<FreshBearerDeps['refreshTokens']>>()
+					.mockRejectedValue(refusedToken),
+				persistAccount: vi.fn<NonNullable<FreshBearerDeps['persistAccount']>>(),
 				generation: () => 0,
-				onRefreshed: vi.fn(),
+				onRefreshed: vi.fn<NonNullable<FreshBearerDeps['onRefreshed']>>(),
 				onRenewalFailed,
 				now: () => 1_000
 			},
@@ -444,11 +483,13 @@ describe('a failed renewal after the account changed', () => {
 		let gen = 0;
 		const out = await refreshAccount(
 			{
-				refreshTokens: vi.fn().mockImplementation(async () => {
-					gen = 1;
-					throw refusedToken;
-				}),
-				persistAccount: vi.fn(),
+				refreshTokens: vi
+					.fn<NonNullable<RefreshFlowDeps['refreshTokens']>>()
+					.mockImplementation(async () => {
+						gen = 1;
+						throw refusedToken;
+					}),
+				persistAccount: vi.fn<NonNullable<RefreshFlowDeps['persistAccount']>>(),
 				generation: () => gen
 			},
 			'mal',
@@ -467,10 +508,12 @@ describe('a failed renewal after the account changed', () => {
 				refreshTokens: vi
 					.fn()
 					.mockResolvedValue({ access_token: 'n', refresh_token: 'r', expires_at_epoch_s: 9 }),
-				persistAccount: vi.fn().mockImplementation(() => {
-					gen = 1;
-					return persist();
-				}),
+				persistAccount: vi
+					.fn<NonNullable<RefreshFlowDeps['persistAccount']>>()
+					.mockImplementation(() => {
+						gen = 1;
+						return persist();
+					}),
 				generation: () => gen
 			},
 			'mal',
@@ -489,10 +532,12 @@ describe('the save of a renewal', () => {
 				refreshTokens: vi
 					.fn()
 					.mockResolvedValue({ access_token: 'n', refresh_token: 'r', expires_at_epoch_s: 9 }),
-				persistAccount: vi.fn().mockImplementation(async (_p, _a, check?: () => boolean) => {
-					stillCurrent = check;
-					return { ok: true };
-				}),
+				persistAccount: vi
+					.fn<NonNullable<RefreshFlowDeps['persistAccount']>>()
+					.mockImplementation(async (_p, _a, check?: () => boolean) => {
+						stillCurrent = check;
+						return { ok: true };
+					}),
 				generation: () => gen
 			},
 			'mal',

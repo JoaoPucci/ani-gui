@@ -49,13 +49,14 @@ import type {
 	AiringStatus,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	HistoryEntry,
 	HistoryRowByKitsu,
 	KitsuAnimeRef,
 	KitsuEpisode,
 	SkipInterval
 } from '../../src/lib/api';
-import { errorAnswer, availabilityAnswer } from '../answers';
+import { availabilityAnswer, errorAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 const EPISODES = 24;
@@ -257,11 +258,13 @@ describe('the back affordance after switching episodes in the player', () => {
 			.at(-1)!
 			.dispatch(
 				'done',
-				JSON.stringify({
-					session_id: 'session-2',
-					media_url: `${API_BASE}/s/session-2/file.mp4`,
-					media_kind: 'mp4'
-				})
+				wire<CreateSessionResponse>(
+					sessionAnswer({
+						session_id: 'session-2',
+						media_url: `${API_BASE}/s/session-2/file.mp4`,
+						media_kind: 'mp4'
+					})
+				)
 			);
 		await new Promise((r) => setTimeout(r, 20));
 		expect(breadcrumb(), 'Home is behind the player').not.toBeNull();

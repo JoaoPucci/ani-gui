@@ -135,7 +135,7 @@ describe('getOrFire', () => {
 		const key = makeKey('show', 3, 'sub');
 		const prefetchFire = vi.fn(never);
 		void getOrFire(key, prefetchFire);
-		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const foregroundFire = vi.fn(async () => fakeResp('fg'));
 		const resolved = await getOrFire(key, foregroundFire, () => {});
 		expect(resolved.session_id).toBe('fg');
 		expect(foregroundFire).toHaveBeenCalledTimes(1);
@@ -158,7 +158,7 @@ describe('getOrFire', () => {
 		);
 		void getOrFire(key, prefetchFire).catch(() => {});
 		expect(prefetchFire).toHaveBeenCalledTimes(1);
-		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const foregroundFire = vi.fn(async () => fakeResp('fg'));
 		const clicked = getOrFire(key, foregroundFire, () => {});
 		rejectPrefetch(new Error('gate refused'));
 		await expect(clicked).resolves.toMatchObject({ session_id: 'fg' });
@@ -184,7 +184,7 @@ describe('getOrFire', () => {
 		);
 		void getOrFire(key, prefetchFire).catch(() => {});
 		expect(prefetchFire).toHaveBeenCalledTimes(1);
-		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const foregroundFire = vi.fn(async () => fakeResp('fg'));
 		const clicked = getOrFire(key, foregroundFire, () => {});
 		expect(foregroundFire).toHaveBeenCalledTimes(1);
 		expect(bgAborted).toBe(true);
@@ -198,7 +198,7 @@ describe('getOrFire', () => {
 		const key = makeKey('show', 6, 'sub');
 		const prefetchFire = vi.fn(plainFire(fakeResp('warmed')));
 		await getOrFire(key, prefetchFire);
-		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const foregroundFire = vi.fn(async () => fakeResp('fg'));
 		const clicked = await getOrFire(key, foregroundFire, () => {});
 		expect(clicked.session_id).toBe('warmed');
 		expect(foregroundFire).not.toHaveBeenCalled();

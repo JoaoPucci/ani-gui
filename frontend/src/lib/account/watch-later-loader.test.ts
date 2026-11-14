@@ -46,8 +46,8 @@ describe('loadWatchLater', () => {
 	it('returns [] when no provider is in credentials', async () => {
 		const deps: WatchLaterDeps = {
 			credentials: {},
-			fetchCachedList: vi.fn(),
-			kitsuByMalIds: vi.fn()
+			fetchCachedList: vi.fn<NonNullable<WatchLaterDeps['fetchCachedList']>>(),
+			kitsuByMalIds: vi.fn<NonNullable<WatchLaterDeps['kitsuByMalIds']>>()
 		};
 		const out = await loadWatchLater(deps);
 		expect(out).toEqual([]);
@@ -56,14 +56,14 @@ describe('loadWatchLater', () => {
 	});
 
 	it('passes bearer + userId fallback through to fetchCachedList per provider', async () => {
-		const fetchCachedList = vi.fn().mockResolvedValue([]);
+		const fetchCachedList = vi.fn<WatchLaterDeps['fetchCachedList']>().mockResolvedValue([]);
 		const deps: WatchLaterDeps = {
 			credentials: {
 				anilist: { bearer: 'al-tok', userId: 'al-7' },
 				mal: { bearer: 'mal-tok', userId: 'mal-42' }
 			},
 			fetchCachedList,
-			kitsuByMalIds: vi.fn().mockResolvedValue([])
+			kitsuByMalIds: vi.fn<NonNullable<WatchLaterDeps['kitsuByMalIds']>>().mockResolvedValue([])
 		};
 		await loadWatchLater(deps);
 		expect(fetchCachedList).toHaveBeenCalledWith('anilist', 'al-tok', 'al-7');
@@ -76,18 +76,22 @@ describe('loadWatchLater', () => {
 				anilist: { bearer: 'a', userId: 'u' },
 				mal: { bearer: 'm', userId: 'u' }
 			},
-			fetchCachedList: vi.fn().mockImplementation((p: Provider) => {
-				if (p === 'anilist')
+			fetchCachedList: vi
+				.fn<NonNullable<WatchLaterDeps['fetchCachedList']>>()
+				.mockImplementation((p: Provider) => {
+					if (p === 'anilist')
+						return Promise.resolve([
+							row({ provider: 'anilist', media_id: 1, mal_id: 11, status: 'planning' }),
+							row({ provider: 'anilist', media_id: 2, mal_id: 22, status: 'planning' })
+						]);
 					return Promise.resolve([
-						row({ provider: 'anilist', media_id: 1, mal_id: 11, status: 'planning' }),
-						row({ provider: 'anilist', media_id: 2, mal_id: 22, status: 'planning' })
+						row({ provider: 'mal', media_id: 22, mal_id: 22, status: 'planning' }), // dup
+						row({ provider: 'mal', media_id: 33, mal_id: 33, status: 'planning' })
 					]);
-				return Promise.resolve([
-					row({ provider: 'mal', media_id: 22, mal_id: 22, status: 'planning' }), // dup
-					row({ provider: 'mal', media_id: 33, mal_id: 33, status: 'planning' })
-				]);
-			}),
-			kitsuByMalIds: vi.fn().mockResolvedValue([kref('a'), kref('b'), kref('c')])
+				}),
+			kitsuByMalIds: vi
+				.fn<NonNullable<WatchLaterDeps['kitsuByMalIds']>>()
+				.mockResolvedValue([kref('a'), kref('b'), kref('c')])
 		};
 		const out = await loadWatchLater(deps);
 		expect(deps.kitsuByMalIds).toHaveBeenCalledWith([11, 22, 33]); // dedup, AniList first
@@ -100,12 +104,16 @@ describe('loadWatchLater', () => {
 				anilist: { bearer: 'a', userId: 'u' },
 				mal: { bearer: 'm', userId: 'u' }
 			},
-			fetchCachedList: vi.fn().mockImplementation((p: Provider) => {
-				if (p === 'anilist')
-					return Promise.resolve([row({ media_id: 1, mal_id: 11, status: 'planning' })]);
-				return Promise.reject(new Error('5xx'));
-			}),
-			kitsuByMalIds: vi.fn().mockResolvedValue([kref('a')])
+			fetchCachedList: vi
+				.fn<NonNullable<WatchLaterDeps['fetchCachedList']>>()
+				.mockImplementation((p: Provider) => {
+					if (p === 'anilist')
+						return Promise.resolve([row({ media_id: 1, mal_id: 11, status: 'planning' })]);
+					return Promise.reject(new Error('5xx'));
+				}),
+			kitsuByMalIds: vi
+				.fn<NonNullable<WatchLaterDeps['kitsuByMalIds']>>()
+				.mockResolvedValue([kref('a')])
 		};
 		const out = await loadWatchLater(deps);
 		expect(deps.kitsuByMalIds).toHaveBeenCalledWith([11]);
@@ -124,7 +132,9 @@ describe('loadWatchLater', () => {
 		const bridge = vi.fn().mockResolvedValue([]);
 		const deps: WatchLaterDeps = {
 			credentials: { anilist: { bearer: 'a', userId: 'u' } },
-			fetchCachedList: vi.fn().mockResolvedValue(rows),
+			fetchCachedList: vi
+				.fn<NonNullable<WatchLaterDeps['fetchCachedList']>>()
+				.mockResolvedValue(rows),
 			kitsuByMalIds: bridge
 		};
 		await loadWatchLater(deps);
@@ -148,8 +158,10 @@ describe('loadWatchLater', () => {
 				anilist: { bearer: 'a', userId: 'u' },
 				mal: { bearer: 'm', userId: 'u' }
 			},
-			fetchCachedList: vi.fn().mockRejectedValue(new Error('5xx')),
-			kitsuByMalIds: vi.fn().mockResolvedValue([])
+			fetchCachedList: vi
+				.fn<NonNullable<WatchLaterDeps['fetchCachedList']>>()
+				.mockRejectedValue(new Error('5xx')),
+			kitsuByMalIds: vi.fn<NonNullable<WatchLaterDeps['kitsuByMalIds']>>().mockResolvedValue([])
 		};
 		await expect(loadWatchLater(deps)).rejects.toThrow();
 		expect(deps.kitsuByMalIds).not.toHaveBeenCalled();
@@ -166,7 +178,7 @@ describe('loadWatchLater', () => {
 			fetchCachedList: vi
 				.fn()
 				.mockRejectedValue(new AccountApiError(500, JSON.stringify(envelope))),
-			kitsuByMalIds: vi.fn().mockResolvedValue([])
+			kitsuByMalIds: vi.fn<NonNullable<WatchLaterDeps['kitsuByMalIds']>>().mockResolvedValue([])
 		};
 		await expect(loadWatchLater(deps)).rejects.toMatchObject({ kind: 'cache' });
 	});
@@ -176,8 +188,8 @@ describe('loadWatchLater', () => {
 		// nothing, so there is no first failure to pass on.
 		const deps: WatchLaterDeps = {
 			credentials: { anilist: undefined },
-			fetchCachedList: vi.fn(),
-			kitsuByMalIds: vi.fn().mockResolvedValue([])
+			fetchCachedList: vi.fn<NonNullable<WatchLaterDeps['fetchCachedList']>>(),
+			kitsuByMalIds: vi.fn<NonNullable<WatchLaterDeps['kitsuByMalIds']>>().mockResolvedValue([])
 		};
 		await expect(loadWatchLater(deps)).rejects.toBeInstanceOf(Error);
 	});
@@ -185,8 +197,12 @@ describe('loadWatchLater', () => {
 	it('passes a bridge failure through with its kind', async () => {
 		const deps: WatchLaterDeps = {
 			credentials: { anilist: { bearer: 'a', userId: 'u' } },
-			fetchCachedList: vi.fn().mockResolvedValue([row({ mal_id: 1 })]),
-			kitsuByMalIds: vi.fn().mockRejectedValue({ kind: 'upstream', status: 503 })
+			fetchCachedList: vi
+				.fn<NonNullable<WatchLaterDeps['fetchCachedList']>>()
+				.mockResolvedValue([row({ mal_id: 1 })]),
+			kitsuByMalIds: vi
+				.fn<NonNullable<WatchLaterDeps['kitsuByMalIds']>>()
+				.mockRejectedValue({ kind: 'upstream', status: 503 })
 		};
 		await expect(loadWatchLater(deps)).rejects.toMatchObject({ kind: 'upstream', status: 503 });
 	});
@@ -197,8 +213,10 @@ describe('loadWatchLater', () => {
 	it('resolves [] when a provider succeeds with an empty list', async () => {
 		const deps: WatchLaterDeps = {
 			credentials: { anilist: { bearer: 'a', userId: 'u' } },
-			fetchCachedList: vi.fn().mockResolvedValue([]),
-			kitsuByMalIds: vi.fn().mockResolvedValue([])
+			fetchCachedList: vi
+				.fn<NonNullable<WatchLaterDeps['fetchCachedList']>>()
+				.mockResolvedValue([]),
+			kitsuByMalIds: vi.fn<NonNullable<WatchLaterDeps['kitsuByMalIds']>>().mockResolvedValue([])
 		};
 		await expect(loadWatchLater(deps)).resolves.toEqual([]);
 	});
@@ -209,7 +227,7 @@ describe('loadWatchLater', () => {
 			fetchCachedList: vi
 				.fn()
 				.mockResolvedValue([row({ media_id: 1, mal_id: null, status: 'planning' })]),
-			kitsuByMalIds: vi.fn().mockResolvedValue([])
+			kitsuByMalIds: vi.fn<NonNullable<WatchLaterDeps['kitsuByMalIds']>>().mockResolvedValue([])
 		};
 		const out = await loadWatchLater(deps);
 		expect(deps.kitsuByMalIds).not.toHaveBeenCalled();

@@ -260,12 +260,18 @@ describe('acceptance request guard', () => {
 		// The session is held to its whole contract: the fields it always
 		// carries are there, the kinds are the ones api.ts declares, and
 		// an optional field present has its declared type.
+		// Each scenario gets one field wrong on a whole session, so each
+		// check is held on its own.
 		for (const name of [
 			'answers a play with a session whose media kind is not one there is',
 			'answers a play with a session whose version is not one there is',
-			'answers a play with a session whose optional fields have the wrong type',
-			'answers a play with a session that leaves out the fields always sent',
-			'answers a play with a session whose flags have the wrong type'
+			'answers a play with a session whose episode is not text',
+			'answers a play with a session whose subtitle has no default flag',
+			'answers a play with a session whose cache_hit is not a flag',
+			'answers a play with a session whose episode_unverified is not a flag',
+			'answers a play with a session whose own_listing is not a flag',
+			'answers a play with a session that leaves out cache_hit',
+			'answers a play with a session that leaves out subtitles'
 		]) {
 			failedOn(f.scenarios[name], /POST \S+\/api\/play — a play answered with no session/);
 		}
@@ -288,6 +294,10 @@ describe('acceptance request guard', () => {
 			f.scenarios['leaves a request unanswered while a play answer is still being read'],
 			/GET \S+\/slow — still unanswered/
 		);
+		// The play it was reading was a session: only the request fails it.
+		expect(
+			f.scenarios['leaves a request unanswered while a play answer is still being read']?.failure
+		).not.toMatch(/no session/);
 		const past = f.scenarios['reads a play answer past the grace that turns out to be no session'];
 		failedOn(past, /still being read \d+ ms after teardown/);
 		passed(f.scenarios['runs after the late answers']);

@@ -35,11 +35,13 @@ import type {
 	AiringStatus,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	KitsuAnimeRef,
 	KitsuEpisode,
+	PlayProgress,
 	SkipInterval
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 
@@ -154,11 +156,13 @@ describe('play route — native progress through Paraglide', () => {
 		await until(() => FakeEventSource.instances.length > 0, 'the initial play stream');
 		FakeEventSource.instances[0].dispatch(
 			'done',
-			JSON.stringify({
-				session_id: 'session-1',
-				media_url: `${API_BASE}/s/session-1/master.m3u8`,
-				media_kind: 'hls'
-			})
+			wire<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'session-1',
+					media_url: `${API_BASE}/s/session-1/master.m3u8`,
+					media_kind: 'hls'
+				})
+			)
 		);
 		await until(() => card(5) !== null, 'the card for episode 5');
 
@@ -173,13 +177,13 @@ describe('play route — native progress through Paraglide', () => {
 		const es = FakeEventSource.instances.find((i) => i.url.includes('episode=5'))!;
 		expect(es).toBeTruthy();
 
-		es.dispatch('progress', JSON.stringify({ kind: 'searching', provider: 'hianime' }));
+		es.dispatch('progress', wire<PlayProgress>({ kind: 'searching', provider: 'hianime' }));
 		await until(
 			() => (target.textContent ?? '').includes(m.play_progress_searching({ provider: 'hianime' })),
 			'the localized searching caption'
 		);
 
-		es.dispatch('progress', JSON.stringify({ kind: 'matched', title: TITLE }));
+		es.dispatch('progress', wire<PlayProgress>({ kind: 'matched', title: TITLE }));
 		await until(
 			() => (target.textContent ?? '').includes(m.play_progress_matched({ title: TITLE })),
 			'the localized matched caption'
@@ -187,11 +191,13 @@ describe('play route — native progress through Paraglide', () => {
 
 		es.dispatch(
 			'done',
-			JSON.stringify({
-				session_id: 'session-2',
-				media_url: `${API_BASE}/s/session-2/master.m3u8`,
-				media_kind: 'hls'
-			})
+			wire<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'session-2',
+					media_url: `${API_BASE}/s/session-2/master.m3u8`,
+					media_kind: 'hls'
+				})
+			)
 		);
 	});
 });

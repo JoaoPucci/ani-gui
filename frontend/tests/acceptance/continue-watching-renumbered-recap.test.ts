@@ -36,11 +36,12 @@ import { savePosition } from '../../src/lib/play/watch-position';
 
 import type {
 	AvailabilityResponse,
+	CreateSessionResponse,
 	HistoryNumber,
 	KitsuAnimeRef,
 	KitsuEpisode
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -203,7 +204,9 @@ describe('a Continue card over a renumbered recap', () => {
 		expect(new URL(stream.url).searchParams.get('episode')).toBe('13');
 		stream.dispatch(
 			'done',
-			JSON.stringify({ session_id: 's-1', media_url: 'x', media_kind: 'hls', episode: '13' })
+			wire<CreateSessionResponse>(
+				sessionAnswer({ session_id: 's-1', media_url: 'x', media_kind: 'hls', episode: '13' })
+			)
 		);
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the navigation to the play page');
 		const url = String(vi.mocked(goto).mock.calls.at(-1)?.[0] ?? '');

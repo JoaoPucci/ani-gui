@@ -1,15 +1,23 @@
-// Wire answers as the unit tests fake them: the renderer's types for
-// what the backend sends, built whole so a fake names only the fields
-// its test is about. A field they fill is the value the backend sends
-// when it has nothing to say (`null`, empty, `false`); the settings
-// builder is the backend's own defaults. Test code only: nothing in
-// the app imports this module.
+// Wire answers as the tests fake them: the renderer's types for what
+// the backend sends, built whole so a fake names only the fields its
+// test is about. What a builder fills is a value the backend sends:
+// empty where the field can be (`null`, `[]`, `false`), the backend's
+// own defaults for the settings, and plain placeholders for the few
+// fields that cannot be empty (an id, a title, a version). Test code
+// only: nothing in the app imports this module.
 //
 // The MSW side (an error answer, an answer wrong on purpose, and the
 // answers only the acceptance tier builds) is `frontend/tests/answers.ts`,
 // which re-exports these.
 
-import type { AvailabilityResponse, Config, KitsuAnimeRef, KitsuEpisode } from '$lib/api';
+import type {
+	AppInfo,
+	AvailabilityResponse,
+	Config,
+	CreateSessionResponse,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '$lib/api';
 
 /** A value no backend sends, deliberately, typed as the one it stands
  *  in for: a unit test of what the code does with a stale or broken
@@ -98,4 +106,34 @@ export function configAnswer(fields: Partial<Config> = {}): Config {
 		primary_account: '',
 		...fields
 	};
+}
+
+/** A stream event's data as the backend sends it, typed as the event
+ *  carries it: `wire<PlayProgress>({ kind: 'matched', title })`. The
+ *  type is required: without one the payload types as nothing. */
+export function wire<T = never>(payload: NoInfer<T>): string {
+	return JSON.stringify(payload);
+}
+
+/** `/api/app-info` as the backend sends it on a launch whose sweeps
+ *  found nothing, with `fields` over it. */
+export function appInfoAnswer(fields: Partial<AppInfo> = {}): AppInfo {
+	return {
+		version: '0.0.0-test',
+		history_path: '/tmp/history',
+		proxy_base_url: 'http://127.0.0.1:0',
+		removed_legacy_paths: [],
+		retired_provider_sweep: { superseded: [], renumbered: [], numbering_rows: 0, cache_rows: 0 },
+		cache_reclaim: { undeclared_rows: 0, expired_rows: 0 },
+		...fields
+	};
+}
+
+/** A play's session as the backend sends it: a fresh resolve with no
+ *  sidecar subtitles, with `fields` over it. */
+export function sessionAnswer(
+	fields: Pick<CreateSessionResponse, 'session_id' | 'media_url' | 'media_kind'> &
+		Partial<CreateSessionResponse>
+): CreateSessionResponse {
+	return { cache_hit: false, subtitles: [], ...fields };
 }

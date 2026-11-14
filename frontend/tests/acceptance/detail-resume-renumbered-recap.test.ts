@@ -41,12 +41,13 @@ import type {
 	AiringStatus,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	HistoryNumber,
 	HistoryRowByKitsu,
 	KitsuAnimeRef,
 	KitsuEpisode
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Stitched Show';
 const ROW = 'hianime:stitched-show-4';
@@ -272,7 +273,9 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		for (const warm of FakeEventSource.instances.filter((i) => i.url.includes('prefetch=1'))) {
 			warm.dispatch(
 				'done',
-				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '25' })
+				wire<CreateSessionResponse>(
+					sessionAnswer({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '25' })
+				)
 			);
 		}
 		await until(
@@ -304,7 +307,9 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		for (const warm of FakeEventSource.instances.filter((i) => i.url.includes('episode=24.5'))) {
 			warm.dispatch(
 				'done',
-				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '12.5' })
+				wire<CreateSessionResponse>(
+					sessionAnswer({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '12.5' })
+				)
 			);
 		}
 		await until(
@@ -374,7 +379,9 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		for (const warm of FakeEventSource.instances.filter((i) => i.url.includes('prefetch=1'))) {
 			warm.dispatch(
 				'done',
-				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '13' })
+				wire<CreateSessionResponse>(
+					sessionAnswer({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '13' })
+				)
 			);
 		}
 		// Bounded means the reads stop: everything the page asked has
@@ -426,7 +433,9 @@ describe('detail route — a navigation started while Play waits for the row', (
 		for (const warm of FakeEventSource.instances.filter((i) => i.url.includes('episode=24.5'))) {
 			warm.dispatch(
 				'done',
-				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '12.5' })
+				wire<CreateSessionResponse>(
+					sessionAnswer({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '12.5' })
+				)
 			);
 		}
 		// The warm's answer has the row read again, and Play waits on

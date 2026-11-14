@@ -41,12 +41,13 @@ import type {
 	AiringStatus,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	KitsuAnimeRef,
 	KitsuEpisode,
 	SessionSubtitle,
 	SkipInterval
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 
@@ -344,11 +345,13 @@ describe('play route — a src stream handed to another player is unloaded, and 
 		await until(() => FakeEventSource.instances.length > before, 'the fresh resolve');
 		FakeEventSource.instances.at(-1)!.dispatch(
 			'done',
-			JSON.stringify({
-				session_id: 'session-3',
-				media_url: `${API_BASE}/s/session-3/file.mp4`,
-				media_kind: 'mp4'
-			})
+			wire<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'session-3',
+					media_url: `${API_BASE}/s/session-3/file.mp4`,
+					media_kind: 'mp4'
+				})
+			)
 		);
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-3', episode: '1', kind: 'mp4' });
@@ -415,11 +418,13 @@ describe('play route — a src stream handed to another player is unloaded, and 
 		await until(() => FakeEventSource.instances.length > before, 'the fresh resolve');
 		FakeEventSource.instances.at(-1)!.dispatch(
 			'done',
-			JSON.stringify({
-				session_id: 'session-5',
-				media_url: `${API_BASE}/s/session-5/file.mp4`,
-				media_kind: 'mp4'
-			})
+			wire<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'session-5',
+					media_url: `${API_BASE}/s/session-5/file.mp4`,
+					media_kind: 'mp4'
+				})
+			)
 		);
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-5', episode: '1', kind: 'mp4' });

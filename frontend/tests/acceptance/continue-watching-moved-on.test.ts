@@ -51,7 +51,14 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { m } from '../../src/lib/paraglide/messages';
 
-import type { AvailabilityBatchResponse, HistoryNumber, KitsuAnimeRef } from '../../src/lib/api';
+import type {
+	AniErrorPayload,
+	AvailabilityBatchResponse,
+	CreateSessionResponse,
+	HistoryNumber,
+	KitsuAnimeRef
+} from '../../src/lib/api';
+import { sessionAnswer, wire } from '../answers';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -167,13 +174,13 @@ async function clickAndHoldTheSession(): Promise<FakeEventSource> {
 	return FakeEventSource.instances[0];
 }
 
-const SESSION = JSON.stringify({
-	id: 's-1',
-	kind: 'mp4',
-	has_subtitles: false,
-	quality: '1080',
-	mode: 'sub'
-});
+const SESSION = wire<CreateSessionResponse>(
+	sessionAnswer({
+		session_id: 's-1',
+		media_url: `${API_BASE}/s/s-1/file.mp4`,
+		media_kind: 'mp4'
+	})
+);
 
 describe('a Continue click whose session lands after the viewer moved on', () => {
 	it('opens no player once the viewer has left home', async () => {
@@ -274,7 +281,7 @@ describe('a Continue click that fails while the viewer moves on', () => {
 		const stream = await clickAndHoldTheSession();
 		stream.dispatch(
 			'error',
-			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
+			wire<AniErrorPayload>({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
 		);
 		await until(() => batchAsked, 'the failure to be worded from the cache');
 
@@ -291,7 +298,7 @@ describe('a Continue click that fails while the viewer moves on', () => {
 		const stream = await clickAndHoldTheSession();
 		stream.dispatch(
 			'error',
-			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
+			wire<AniErrorPayload>({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
 		);
 		await until(
 			() => (target.textContent ?? '').includes(m.play_play_failure_episode_unavailable()),

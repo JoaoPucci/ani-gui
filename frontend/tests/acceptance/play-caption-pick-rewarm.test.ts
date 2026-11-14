@@ -42,12 +42,13 @@ import type {
 	AiringStatus,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	KitsuAnimeRef,
 	KitsuEpisode,
 	SessionSubtitle,
 	SkipInterval
 } from '../../src/lib/api';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 
 type EsHandler = (ev: MessageEvent) => void;
@@ -211,11 +212,13 @@ describe('play route — a captions pick and the warmed next episode', () => {
 
 		after.dispatch(
 			'done',
-			JSON.stringify({
-				session_id: 'session-4',
-				media_url: `${API_BASE}/s/session-4/file.mp4`,
-				media_kind: 'mp4'
-			})
+			wire<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'session-4',
+					media_url: `${API_BASE}/s/session-4/file.mp4`,
+					media_kind: 'mp4'
+				})
+			)
 		);
 		// Let the answer settle the warm before the click, as any real
 		// click comes after it.

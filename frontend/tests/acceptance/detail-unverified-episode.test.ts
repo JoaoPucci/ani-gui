@@ -41,6 +41,7 @@ import type {
 	AiringStatus,
 	AvailabilityResponse,
 	Config,
+	CreateSessionResponse,
 	HistoryEntry,
 	HistoryNumber,
 	HistoryRowByKitsu,
@@ -49,7 +50,7 @@ import type {
 	SkipInterval
 } from '../../src/lib/api';
 import type { EntryView, ListEntry } from '../../src/lib/account/types';
-import { availabilityAnswer } from '../answers';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Noragami';
 const TRACKERS: Provider[] = ['mal', 'anilist'];
@@ -237,13 +238,15 @@ describe('detail route — rows past the count no reading reached', () => {
 			.pop()!;
 		es.dispatch(
 			'done',
-			JSON.stringify({
-				session_id: 'session-13',
-				media_url: `${API_BASE}/s/session-13/master.m3u8`,
-				media_kind: 'hls',
-				episode: '13',
-				episode_unverified: true
-			})
+			wire<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'session-13',
+					media_url: `${API_BASE}/s/session-13/master.m3u8`,
+					media_kind: 'hls',
+					episode: '13',
+					episode_unverified: true
+				})
+			)
 		);
 		await until(() => marked.includes('13'), 'row 13 marked watched');
 		// The write-back fires beside the watch stamp; give it the turn
