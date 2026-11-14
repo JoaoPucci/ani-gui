@@ -54,6 +54,7 @@ function world(
 		choices: () => ({ version: 'uncensored', caption: 'en' }),
 		episode: () => 2,
 		row: () => 'hianime:jojos-bizarre-adventure-2000-5182',
+		claim: () => () => true,
 		run: async (req) => {
 			w.requests.push(req);
 			// The audio is carried while the switch runs.
@@ -141,6 +142,45 @@ describe('switchToPick', () => {
 		// And the next click switches again.
 		w.deps.run = async () => 'switched';
 		expect(await switchToPick(PICK, w.deps)).toBe('switched');
+	});
+
+	it('says nothing and resumes nothing for a switch that threw once the viewer left', async () => {
+		// A failure said on the page the viewer went to would be about a
+		// player they are no longer on.
+		let here = true;
+		const w = world({ claim: () => () => here }, async () => {
+			here = false;
+			throw new Error('storage refused');
+		});
+		expect(await switchToPick(PICK, w.deps)).toBe('abandoned');
+		expect(w.log).toEqual(['pause', 'run:dub:true']);
+		expect(w.carried).toBeNull();
+		expect(w.busy).toBe(false);
+	});
+
+	it('claims the player once, as the switch runs, and hands the switch that claim', async () => {
+		const claims: Array<() => boolean> = [];
+		const seen: Array<() => boolean> = [];
+		const w = world({
+			claim: () => {
+				const c = () => true;
+				claims.push(c);
+				return c;
+			},
+			run: async (_req, here) => {
+				seen.push(here);
+				return 'switched';
+			}
+		});
+		w.busy = true;
+		await switchToPick(PICK, w.deps);
+		// A click the lock turns away claims nothing: that would outdate
+		// the play holding it.
+		expect(claims).toEqual([]);
+		w.busy = false;
+		await switchToPick(PICK, w.deps);
+		expect(claims.length).toBe(1);
+		expect(seen).toEqual(claims);
 	});
 
 	it('takes one switch at a time', async () => {
