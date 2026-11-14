@@ -7,9 +7,11 @@ import {
 	allmangaKitsuMapGet,
 	allmangaKitsuMapPlayed,
 	kitsuAnimeDetail,
-	type KitsuAnimeRef
+	type KitsuAnimeRef,
+	type ReadOptions
 } from '$lib/api';
 import { cachedBindingVerdict, onlyTitleInDoubt, type ResumeTarget } from './resolve';
+import { readOpts } from './read-opts';
 
 /** The stored mapping for the row's show id when it can stand as the
  *  answer, and whether a real play stored it, else null and the row
@@ -22,22 +24,23 @@ import { cachedBindingVerdict, onlyTitleInDoubt, type ResumeTarget } from './res
  *  id means the mapping changed underneath, and the binding this load
  *  holds stays a guess. */
 export async function storedBinding(
-	preliminary: ResumeTarget
+	preliminary: ResumeTarget,
+	opts: ReadOptions = {}
 ): Promise<{ ref: KitsuAnimeRef; played: boolean } | null> {
 	if (!preliminary.allmangaShowId) return null;
 	let kitsuId: string | null;
 	let cached: KitsuAnimeRef;
 	try {
-		kitsuId = await allmangaKitsuMapGet(preliminary.allmangaShowId);
+		kitsuId = await allmangaKitsuMapGet(preliminary.allmangaShowId, ...readOpts(opts));
 		if (!kitsuId) return null;
-		cached = await kitsuAnimeDetail(kitsuId);
+		cached = await kitsuAnimeDetail(kitsuId, ...readOpts(opts));
 	} catch {
 		// The endpoint is down or the stored id is stale.
 		return null;
 	}
 	const verdict = cachedBindingVerdict(cached, preliminary, true);
 	const played = () =>
-		allmangaKitsuMapPlayed(preliminary.allmangaShowId).then(
+		allmangaKitsuMapPlayed(preliminary.allmangaShowId, ...readOpts(opts)).then(
 			(id) => id === kitsuId,
 			() => false
 		);

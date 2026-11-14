@@ -40,7 +40,6 @@ import {
 	kitsuTrendingAnilist,
 	markWatched,
 	metaCacheClear,
-	openExternalPlayer,
 	play,
 	playExternal,
 	playSyncplay,
@@ -257,26 +256,6 @@ describe('createSession', () => {
 	});
 });
 
-describe('openExternalPlayer', () => {
-	it('POSTs the LaunchArgs payload to /api/external-player', async () => {
-		const fetchMock = mockFetchOnce(null, 202);
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		await openExternalPlayer({
-			stream_url: 'https://cdn.example/master.m3u8',
-			referer: 'https://allmanga.to',
-			title: 'Some Anime EP 5',
-			player_command: 'mpv'
-		});
-		const { url, init } = lastCall(fetchMock);
-		expect(url).toBe(`${BASE}/api/external-player`);
-		expect(init?.method).toBe('POST');
-		expect(JSON.parse(init?.body as string)).toMatchObject({
-			stream_url: 'https://cdn.example/master.m3u8',
-			player_command: 'mpv'
-		});
-	});
-});
-
 describe('play', () => {
 	it('POSTs the PlayArgs payload to /api/play and returns the session response', async () => {
 		const sessionResponse = {
@@ -476,7 +455,9 @@ describe('playStream', () => {
 		return {
 			session_id: 'sid',
 			media_url: `${BASE}/s/sid/master.m3u8`,
-			media_kind: 'hls'
+			media_kind: 'hls',
+			cache_hit: false,
+			subtitles: []
 		};
 	}
 
@@ -864,7 +845,8 @@ describe('altTitlesFromKitsu', () => {
 	const baseRef = (overrides: Partial<KitsuAnimeRef>): KitsuAnimeRef => ({
 		id: '12',
 		canonical_title: 'Stub',
-		titles: undefined,
+		titles: {},
+		abbreviated_titles: [],
 		slug: null,
 		synopsis: null,
 		start_date: null,
@@ -880,7 +862,7 @@ describe('altTitlesFromKitsu', () => {
 		...overrides
 	});
 
-	it('returns empty list when titles is missing', () => {
+	it('returns empty list when titles is empty', () => {
 		expect(altTitlesFromKitsu(baseRef({}))).toEqual([]);
 	});
 
@@ -963,7 +945,7 @@ describe('altTitlesFromKitsu', () => {
 		]);
 	});
 
-	it('includes abbreviated_titles even when titles is missing', () => {
+	it('includes abbreviated_titles even when titles is empty', () => {
 		const ref = baseRef({ canonical_title: 'Canon', abbreviated_titles: ['alias'] });
 		expect(altTitlesFromKitsu(ref)).toEqual(['alias']);
 	});
@@ -2185,5 +2167,150 @@ describe('downloadStream', () => {
 		es.dispatch('done', 'not-json');
 		await expect(promise).rejects.toBeDefined();
 		expect(es.closed).toBe(true);
+	});
+});
+
+// A read a page starts holds one of the API lane's six connections
+// until it answers. Each read takes the signal of the visit that asked
+// for it and hands it to its request, so the page that goes can cancel
+// what nobody will read.
+describe('reads a page can cancel', () => {
+	const reads: Array<[string, (signal: AbortSignal) => Promise<unknown>]> = [
+		['appInfo', (signal) => appInfo({ signal })],
+		['historyList', (signal) => historyList({ signal })],
+		['historyByKitsu', (signal) => historyByKitsu('7', { signal })],
+		['historyNumber', (signal) => historyNumber('show-1', { signal })],
+		['watchedAtAll', (signal) => watchedAtAll({ signal })],
+		['settingsGet', (signal) => settingsGet({ signal })],
+		['downloadDefaultDir', (signal) => downloadDefaultDir({ signal })],
+		['kitsuSearch', (signal) => kitsuSearch('frieren', { signal })],
+		['kitsuSearchPage', (signal) => kitsuSearchPage('frieren', 0, 'relevance', { signal })],
+		['kitsuAnimeDetail', (signal) => kitsuAnimeDetail('7', { signal })],
+		['kitsuAnimeBySlug', (signal) => kitsuAnimeBySlug('frieren', { signal })],
+		['kitsuTrending', (signal) => kitsuTrending({ signal })],
+		['kitsuTrendingAnilist', (signal) => kitsuTrendingAnilist({ signal })],
+		['kitsuTopRated', (signal) => kitsuTopRated({ signal })],
+		['kitsuByMalIds', (signal) => kitsuByMalIds([1], { signal })],
+		['kitsuEpisodes', (signal) => kitsuEpisodes('7', 1, { signal })],
+		['airingGet', (signal) => airingGet('7', { signal })],
+		['aniskipGet', (signal) => aniskipGet('7', '1', 1420, { signal })],
+		['kitsuTitleMatchGet', (signal) => kitsuTitleMatchGet('Frieren', 1, null, null, { signal })],
+		['allmangaKitsuMapGet', (signal) => allmangaKitsuMapGet('show-1', { signal })],
+		['allmangaKitsuMapPlayed', (signal) => allmangaKitsuMapPlayed('show-1', { signal })],
+		[
+			'kitsuResolveAllmangaShowId',
+			(signal) => kitsuResolveAllmangaShowId('show-1', false, { signal })
+		],
+		[
+			'kitsuGuessRuledOut',
+			(signal) => kitsuGuessRuledOut('Frieren', 1, [], 'show-1', true, { signal })
+		],
+		['availabilityBatch', (signal) => availabilityBatch(['7'], 'sub', { signal })]
+	];
+
+	it.each(reads)('%s hands its signal to the request', async (_name, read) => {
+		const fetchMock = mockFetchOnce([]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const visit = new AbortController();
+		await read(visit.signal);
+		expect(lastCall(fetchMock).init?.signal).toBe(visit.signal);
+	});
+
+	it('a GET asked without a signal sends no request options, as before', async () => {
+		const fetchMock = mockFetchOnce([]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTopRated();
+		expect(lastCall(fetchMock).init).toBeUndefined();
+	});
+
+	it('a read whose signal is aborted rejects with the abort, not with a backend failure', async () => {
+		globalThis.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+			if (init?.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+			return new Response('[]');
+		}) as unknown as typeof fetch;
+		const visit = new AbortController();
+		visit.abort();
+		await expect(settingsGet({ signal: visit.signal })).rejects.toMatchObject({
+			name: 'AbortError'
+		});
+	});
+});
+
+describe('the launch secret reaches every request to the API', () => {
+	// The backend answers /api only to a request carrying the secret
+	// the preload bridge hands the renderer (`$lib/backend/secret`).
+	type Bridge = { apiBase: string; internalSecret: string };
+	type WinHolder = { window?: { aniGui?: Bridge } };
+	type EsHolder = { EventSource?: unknown };
+	const g = globalThis as unknown as WinHolder & EsHolder;
+	const SECRET = 'c0ffee';
+
+	class FakeEventSource {
+		static urls: string[] = [];
+		constructor(url: string) {
+			FakeEventSource.urls.push(url);
+		}
+		addEventListener() {}
+		close() {}
+	}
+
+	beforeEach(() => {
+		g.window = { aniGui: { apiBase: BASE, internalSecret: SECRET } };
+		FakeEventSource.urls.length = 0;
+	});
+
+	afterEach(() => {
+		delete g.window;
+		delete g.EventSource;
+	});
+
+	function headersOf(init: RequestInit | undefined): Record<string, string> {
+		return (init?.headers ?? {}) as Record<string, string>;
+	}
+
+	const calls: Array<[string, () => Promise<unknown>]> = [
+		['a GET', () => settingsGet()],
+		['a GET with a signal', () => kitsuTrending({ signal: new AbortController().signal })],
+		['a GET that waits on refills', () => kitsuAnimeDetail('7')],
+		['a POST', () => createSession({ upstream_url: 'https://e.example/m.m3u8', referer: '' })],
+		['a PUT', () => settingsPut({} as Config)],
+		['a DELETE', () => historyClear()],
+		['the MAL bridge', () => kitsuByMalIds([1])]
+	];
+
+	it.each(calls)('%s carries it as a header', async (_name, call) => {
+		const fetchMock = mockFetchOnce([]);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await call().catch(() => {});
+		expect(headersOf(lastCall(fetchMock).init)['x-ani-gui-internal-secret']).toBe(SECRET);
+	});
+
+	it('a POST keeps its content type beside it', async () => {
+		const fetchMock = mockFetchOnce({ session_id: 's' });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await createSession({ upstream_url: 'https://e.example/m.m3u8', referer: '' });
+		expect(headersOf(lastCall(fetchMock).init)['content-type']).toBe('application/json');
+	});
+
+	it('an <img> URL carries it in the query', () => {
+		expect(imageProxyUrl('https://media.kitsu.app/a.jpg')).toBe(
+			`${BASE}/api/image?url=${encodeURIComponent('https://media.kitsu.app/a.jpg')}&secret=${SECRET}`
+		);
+	});
+
+	it("a play's progress stream carries it in the query", async () => {
+		g.EventSource = FakeEventSource;
+		void playStream({ title: 'T', episode: '1', mode: 'sub' }, () => {}).catch(() => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(new URL(FakeEventSource.urls[0]).searchParams.get('secret')).toBe(SECRET);
+	});
+
+	it("a download's progress stream carries it in the query", async () => {
+		g.EventSource = FakeEventSource;
+		void downloadStream({ title: 'T', episode: '1', mode: 'sub' }, () => {}).catch(() => {});
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(new URL(FakeEventSource.urls[0]).searchParams.get('secret')).toBe(SECRET);
 	});
 });

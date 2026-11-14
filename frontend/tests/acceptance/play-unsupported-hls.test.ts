@@ -80,7 +80,7 @@ describe('a webview without HLS support', () => {
 				HttpResponse.json({ available: true, episode_count: 12, extra_episodes: [] })
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
 			http.get(`${API_BASE}/s/session-1/subtitles`, () => HttpResponse.json([]))
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });

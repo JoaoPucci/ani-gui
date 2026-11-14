@@ -39,7 +39,10 @@ export async function readErrorBody(res: Response): Promise<string> {
 
 export async function postJson<T>(path: string, body: unknown, bearer?: string): Promise<T> {
 	const base = await apiBase();
-	const headers: Record<string, string> = { 'content-type': 'application/json' };
+	const headers: Record<string, string> = {
+		'content-type': 'application/json',
+		...internalSecretHeader()
+	};
 	if (bearer) headers.authorization = `Bearer ${bearer}`; // i18n-ignore: HTTP auth scheme
 	const res = await fetch(base.replace(/\/+$/, '') + path, {
 		method: 'POST',
@@ -58,7 +61,7 @@ export async function deleteEndpoint(
 	extraHeaders?: Record<string, string>
 ): Promise<void> {
 	const base = await apiBase();
-	const headers: Record<string, string> = { ...(extraHeaders ?? {}) };
+	const headers: Record<string, string> = { ...(extraHeaders ?? {}), ...internalSecretHeader() };
 	if (bearer) headers.authorization = `Bearer ${bearer}`; // i18n-ignore: HTTP auth scheme
 	const res = await fetch(base.replace(/\/+$/, '') + path, { method: 'DELETE', headers });
 	if (!res.ok) {
@@ -106,7 +109,13 @@ export function exchangeCode(provider: Provider, req: ExchangeCodeRequest): Prom
  * forced back through OAuth. The caller re-persists the result.
  */
 export function refreshTokens(provider: Provider, refreshToken: string): Promise<Tokens> {
-	return postJson<Tokens>(`/api/account/refresh/${provider}`, { refresh_token: refreshToken });
+	const body: RefreshBody = { refresh_token: refreshToken };
+	return postJson<Tokens>(`/api/account/refresh/${provider}`, body);
+}
+
+/** Body of `/api/account/refresh/:provider`. */
+export interface RefreshBody {
+	refresh_token: string;
 }
 
 export function fetchMe(provider: Provider, bearer: string): Promise<UserProfile> {
@@ -122,25 +131,33 @@ export function fetchMe(provider: Provider, bearer: string): Promise<UserProfile
 export function updateProgress(
 	provider: Provider,
 	bearer: string,
-	body: { kitsu_id: string; progress: number; status?: string }
+	body: UpdateProgressBody
 ): Promise<ListEntry | null> {
 	return postJson<ListEntry | null>(`/api/account/update/${provider}`, body, bearer);
 }
 
+/** Body of `/api/account/update/:provider`. */
+export interface UpdateProgressBody {
+	kitsu_id: string;
+	progress: number;
+	status?: string;
+}
+
 export function fetchAndCacheList(provider: Provider, bearer: string): Promise<ListEntry[]> {
 	// No user_id in the body — the backend derives the cache owner
-	// from the bearer by calling me() internally. A renderer-supplied user_id
-	// could be used to poison another user's local cache under permissive CORS.
+	// from the bearer by calling me() internally. A caller-supplied user_id
+	// could be used to poison another user's local cache.
 	return postJson<ListEntry[]>(`/api/account/list/${provider}`, {}, bearer);
 }
 
 export async function fetchCachedList(
 	provider: Provider,
 	bearer: string,
-	fallbackUserId?: string
+	fallbackUserId?: string,
+	opts: { signal?: AbortSignal } = {}
 ): Promise<ListEntry[]> {
-	// Backend resolves identity from a live `me()` call (a renderer-supplied
-	// user_id alone is forgeable under permissive CORS). When that round-trip
+	// Backend resolves identity from a live `me()` call (a caller-supplied
+	// user_id alone is forgeable). When that round-trip
 	// fails (offline, 401, 5xx) the backend falls through to `fallbackUserId`
 	// gated by the renderer-only internal secret: the cached endpoint must keep
 	// serving local rows during upstream outages, which is exactly when the
@@ -154,7 +171,9 @@ export async function fetchCachedList(
 		authorization: `Bearer ${bearer}`, // i18n-ignore: HTTP auth scheme
 		...internalSecretHeader()
 	};
-	const res = await fetch(base.replace(/\/+$/, '') + path, { headers });
+	const init: RequestInit = { headers };
+	if (opts.signal) init.signal = opts.signal;
+	const res = await fetch(base.replace(/\/+$/, '') + path, init);
 	if (!res.ok) {
 		throw new AccountApiError(res.status, await readErrorBody(res));
 	}
@@ -192,11 +211,11 @@ export function dropListCache(
 	// persisted user_id as `?fallback_user_id=` so the backend can
 	// still clear the cache instead of leaving orphan rows behind.
 	//
-	// The fallback alone is exploitable under
-	// permissive CORS — a cross-origin tab can send `Bearer garbage`
-	// plus a guessed user_id and wipe another user's cache. Send the
-	// per-process renderer-only secret so the backend can require
-	// proof we're the Electron renderer before honouring the fallback.
+	// The fallback alone would let any caller send `Bearer garbage`
+	// plus a guessed user_id and wipe another user's cache. The
+	// per-process secret, which every API request carries
+	// ($lib/backend/secret), is the proof we're the Electron renderer
+	// the backend asks for before honouring it.
 	const path = fallbackUserId
 		? `/api/account/list/${provider}/cache?fallback_user_id=${encodeURIComponent(fallbackUserId)}`
 		: `/api/account/list/${provider}/cache`;

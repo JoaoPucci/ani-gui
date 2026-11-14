@@ -24,12 +24,12 @@ use futures_util::stream::Stream;
 use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tower_http::cors::CorsLayer;
 
 mod account;
 mod airing;
 mod flags;
 mod franchise;
+pub mod gate;
 mod refill;
 mod sse_abort;
 mod syncplay;
@@ -40,9 +40,9 @@ use sse_abort::abort_on_drop;
 use crate::app::AppState;
 use crate::commands::{
     account as account_inner, aniskip as aniskip_inner, app_info,
-    availability as availability_inner, download as download_inner, external_player,
-    history as h_inner, kitsu as kitsu_inner, play as play_inner, proxy_url,
-    session as session_inner, settings as settings_inner,
+    availability as availability_inner, download as download_inner, history as h_inner,
+    kitsu as kitsu_inner, play as play_inner, proxy_url, session as session_inner,
+    settings as settings_inner,
 };
 use crate::config::Config;
 use crate::error::AniError;
@@ -105,7 +105,6 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
             post(post_history_guess_ruled_out),
         )
         .route("/api/history/:id", delete(delete_history_entry))
-        .route("/api/external-player", post(post_external_player))
         .route("/api/sessions", post(post_session))
         .route("/api/kitsu/search", post(post_kitsu_search))
         .route("/api/kitsu/search/page", post(post_kitsu_search_page))
@@ -159,14 +158,41 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .merge(airing::router())
         .merge(franchise::router())
         .merge(refill::router())
-        .with_state(state)
-        // The Electron renderer in dev runs at `http://localhost:<vite>`
-        // while we bind 127.0.0.1:<random> — that's cross-origin, so
-        // every response (and every preflight) needs permissive CORS
-        // headers. Safe at the loopback boundary: the listener never
-        // accepts non-loopback connections, so `*` here only opens the
-        // door to other apps on the same machine, not the internet.
-        .layer(CorsLayer::permissive())
+        .with_state(state.clone())
+        // Every route answers only the app's own callers: a request
+        // without the launch's secret is refused before any handler
+        // runs (`gate`).
+        .layer(axum::middleware::from_fn_with_state(
+            state,
+            gate::require_secret,
+        ))
+        // Outermost, so a preflight is answered before the gate (a
+        // browser sends no custom header on one) and a refusal still
+        // tells the renderer what it was. Only the renderer's origins
+        // are allowed (`crate::renderer_origin`).
+        .layer(crate::renderer_origin::cors())
+}
+
+/// The API router for tests about anything but the gate: the
+/// production router behind a layer that adds the state's secret to a
+/// request naming none, as the renderer always does.
+#[cfg(test)]
+pub(crate) fn test_router(state: Arc<AppState>) -> Router {
+    let secret = state.internal_secret.as_hex().to_owned();
+    build_api_router(state).layer(axum::middleware::map_request(
+        move |mut req: axum::extract::Request| {
+            let secret = secret.clone();
+            async move {
+                let name = crate::account::INTERNAL_SECRET_HEADER;
+                if !req.headers().contains_key(&name) {
+                    if let Ok(v) = axum::http::HeaderValue::from_str(&secret) {
+                        req.headers_mut().insert(name, v);
+                    }
+                }
+                req
+            }
+        },
+    ))
 }
 
 // — Handlers ——————————————————————————————————————————————————————————
@@ -243,21 +269,14 @@ async fn get_history_number(
     )?))
 }
 
-async fn post_external_player(
-    Json(args): Json<external_player::LaunchArgs>,
-) -> Result<StatusCode, AniError> {
-    external_player::open_external_player(&args)?;
-    Ok(StatusCode::ACCEPTED)
-}
-
 async fn post_session(
     State(state): State<Arc<AppState>>,
     Json(args): Json<session_inner::CreateSessionArgs>,
 ) -> Result<Json<session_inner::CreateSessionResponse>, AniError> {
     // Sidecar tracks are attached by the resolver, never by the
-    // caller of this route: it is reachable from any page that finds
-    // the loopback port, and the proxy fetches a session's tracks on
-    // the caller's behalf.
+    // caller of this route: the proxy fetches a session's tracks on
+    // the caller's behalf, and what it fetches is the resolver's to
+    // name.
     if !args.subtitles.is_empty() {
         return Err(AniError::ParseFailed {
             detail: "subtitles: attached by the resolver, not accepted here".into(),
@@ -329,14 +348,12 @@ struct KitsuByMalIdsBody {
     mal_ids: Vec<u32>,
 }
 
-/// This route lives under the API router's
-/// permissive CORS layer, so any cross-origin page on the user's
-/// machine could otherwise POST a giant `mal_ids` array and burn N
-/// concurrent Kitsu requests per call. Two gates protect it:
+/// A giant `mal_ids` array would burn N concurrent Kitsu requests
+/// per call. Two gates protect it:
 ///
-///   1. The renderer-only internal secret — only Electron's preload
-///      knows the per-process random value, so cross-origin tabs
-///      can't reach the handler body at all.
+///   1. The launch's internal secret — the API's gate
+///      ([`gate`]) refuses a request without it before any handler
+///      runs, and this handler checks it again.
 ///   2. A hard upper bound on the batch size, applied both at the
 ///      route boundary (400 Bad Request when exceeded) and inside
 ///      the `kitsu_for_mal_ids` helper (truncates) so an internal
@@ -883,6 +900,14 @@ mod kitsu_search_page_test;
 mod flags_tests;
 
 #[cfg(test)]
+#[path = "wire_probe_test.rs"]
+mod wire_probe;
+
+#[cfg(test)]
+#[path = "wire_contract_test.rs"]
+mod wire_contract_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::meta::kitsu::KitsuClient;
@@ -890,7 +915,6 @@ mod tests {
     use axum::body::Body;
     use axum::http::Request;
     use http_body_util::BodyExt;
-    use std::path::PathBuf;
     use std::sync::Arc;
     use tempfile::TempDir;
     use tower::ServiceExt;
@@ -942,7 +966,7 @@ mod tests {
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu_base),
             config_path: td.path().join("config.toml"),
-            state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            state_dir: td.path().join("state"),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
@@ -981,7 +1005,7 @@ mod tests {
                 .gate(crate::scraper::provider::ProviderId::TestA)
                 .record_outcome(false, tokio::time::Instant::now());
         }
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1000,7 +1024,7 @@ mod tests {
     #[tokio::test]
     async fn get_app_info_returns_200_with_app_info_shape() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1023,7 +1047,7 @@ mod tests {
     #[tokio::test]
     async fn get_proxy_base_url_returns_a_loopback_url() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1044,7 +1068,7 @@ mod tests {
     #[tokio::test]
     async fn get_history_with_no_hsts_file_returns_empty_list() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1064,7 +1088,7 @@ mod tests {
     #[tokio::test]
     async fn delete_history_returns_204() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1086,7 +1110,7 @@ mod tests {
     #[tokio::test]
     async fn delete_history_entry_returns_204() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1104,7 +1128,7 @@ mod tests {
     #[tokio::test]
     async fn get_settings_returns_default_config_when_file_absent() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1125,7 +1149,7 @@ mod tests {
     #[tokio::test]
     async fn put_settings_persists_then_get_returns_the_new_value() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let put = router
             .clone()
             .oneshot(
@@ -1168,7 +1192,7 @@ mod tests {
     #[tokio::test]
     async fn delete_cache_returns_204() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1242,7 +1266,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         list_row(&state, "hianime:naruto-20", "Naruto");
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let unlisted = r#"{"title":"Stone Ocean Part 2","cour":2,"kitsu_id":"46010"}"#;
         assert_eq!(
@@ -1288,7 +1312,7 @@ mod tests {
             "stone-ocean-part-2-77",
             "Stone Ocean Part 2 (12 episodes)",
         );
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
         let put = router
             .clone()
             .oneshot(
@@ -1323,7 +1347,7 @@ mod tests {
     #[tokio::test]
     async fn unknown_route_returns_404() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1350,14 +1374,14 @@ mod tests {
 
     /// In Electron-dev the renderer lives on `http://localhost:<vite>`
     /// while the backend binds 127.0.0.1:<random>. Browsers treat that
-    /// as cross-origin, so every response must carry permissive CORS
-    /// headers — otherwise the renderer's `fetch()` calls fail with no
-    /// useful error. The packaged build (file:// origin) needs the same
-    /// headers for the same reason.
+    /// as cross-origin, so every response must allow the renderer's
+    /// origin — otherwise the renderer's `fetch()` calls fail with no
+    /// useful error. The packaged build (`app://localhost`) needs the
+    /// same for the same reason (`crate::renderer_origin`).
     #[tokio::test]
     async fn cors_get_response_carries_acao_for_external_origin() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1385,7 +1409,7 @@ mod tests {
     #[tokio::test]
     async fn cors_preflight_options_returns_2xx_with_allow_methods() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1441,7 +1465,7 @@ mod tests {
         )
         .expect("seed cache");
 
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
         // %3A %2F are `:` and `/`. URL is short and stable so hardcoding
         // the encoded form is clearer than pulling in a serde-urlencoded
         // helper just for the test.
@@ -1476,7 +1500,7 @@ mod tests {
     #[tokio::test]
     async fn image_route_rejects_non_https_url() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1494,7 +1518,7 @@ mod tests {
     #[tokio::test]
     async fn image_route_rejects_missing_url_param() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1526,7 +1550,7 @@ mod tests {
         // Pinning that here so a future swap to a more lenient
         // extractor doesn't silently accept malformed requests.
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1544,7 +1568,7 @@ mod tests {
     #[tokio::test]
     async fn play_route_returns_400_when_title_is_missing() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1574,7 +1598,7 @@ mod tests {
     #[tokio::test]
     async fn play_external_route_rejects_request_without_json_content_type() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -1608,7 +1632,7 @@ mod tests {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         let history_path = state.history_path.clone();
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let response = router
             .oneshot(
@@ -1661,7 +1685,7 @@ mod tests {
                 episode_unverified: false,
             },
         );
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let response = router
             .oneshot(
@@ -1712,7 +1736,7 @@ mod tests {
                 episode_unverified: false,
             },
         );
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let response = router
             .oneshot(
@@ -1785,7 +1809,7 @@ mod tests {
         );
         // A stamp for another row, which no longer matters to a new row.
         crate::commands::numbering_offset::put_display(&state, "the-show-77", 0, 7, "6");
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let response = router
             .oneshot(
@@ -1846,7 +1870,7 @@ mod tests {
         );
         // The stamp names display 4 as slot 5.
         crate::commands::numbering_offset::put_display(&state, "the-show-77", 0, 5, "4");
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let response = router
             .oneshot(
@@ -1909,7 +1933,7 @@ mod tests {
             },
         );
         let pool = state.cache_pool.clone();
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let response = router
             .oneshot(
@@ -1970,7 +1994,7 @@ mod tests {
             );
         }
         let history = state.history_path.clone();
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
         for body in [
             r#"{"title":"Seitokai ni mo Ana wa Aru!","episode":"1","mode":"sub","kitsu_id":"49877"}"#,
             r#"{"title":"Bad Id","episode":"1","mode":"sub","kitsu_id":"../49877"}"#,
@@ -2080,7 +2104,7 @@ mod tests {
         .expect("put");
 
         let pool = state.cache_pool.clone();
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let response = router
             .oneshot(
@@ -2177,7 +2201,7 @@ mod tests {
         .expect("put");
 
         let pool = state.cache_pool.clone();
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
         let response = router
             .oneshot(
                 Request::builder()
@@ -2268,7 +2292,7 @@ mod tests {
         .expect("put");
 
         let pool = state.cache_pool.clone();
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
         let response = router
             .oneshot(
                 Request::builder()
@@ -2342,7 +2366,7 @@ mod tests {
         );
 
         let pool = state.cache_pool.clone();
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let response = router
             .oneshot(
@@ -2376,7 +2400,7 @@ mod tests {
     #[tokio::test]
     async fn watched_at_endpoint_returns_empty_object_when_nothing_stamped() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -2399,7 +2423,7 @@ mod tests {
         let state = test_app_state(&td);
         crate::commands::kitsu::watched_at_put(&state, "show-a", 1_700_000_000_000).expect("put a");
         crate::commands::kitsu::watched_at_put(&state, "show-b", 1_800_000_000_000).expect("put b");
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let response = router
             .oneshot(
@@ -2454,7 +2478,7 @@ mod tests {
             },
         );
         let pool = state.cache_pool.clone();
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let response = router
             .oneshot(
@@ -2519,7 +2543,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .expect("clock")
             .as_millis() as i64;
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let response = router
             .oneshot(
@@ -2557,7 +2581,7 @@ mod tests {
     #[tokio::test]
     async fn allmanga_kitsu_map_get_returns_null_when_unmapped() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -2580,7 +2604,7 @@ mod tests {
         let state = test_app_state(&td);
         crate::commands::kitsu::allmanga_kitsu_put(&state, "vDTSJHSpYnrkZnAvG", "11061")
             .expect("put");
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let response = router
             .oneshot(
@@ -2605,7 +2629,7 @@ mod tests {
     #[tokio::test]
     async fn cache_evict_with_no_row_returns_204() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -2649,7 +2673,7 @@ mod tests {
             },
         );
         let pool = state.cache_pool.clone();
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
 
         let response = router
             .oneshot(
@@ -2734,7 +2758,7 @@ mod tests {
     #[tokio::test]
     async fn history_by_kitsu_returns_null_for_unknown_id() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -2749,20 +2773,31 @@ mod tests {
         assert_eq!(body_string(response).await, "null");
     }
 
-    /// `/api/external-player` is the only handler that fans out to
-    /// the OS (it spawns the user's mpv). Pin the contract on a
-    /// payload that intentionally points at a missing binary so we
-    /// exercise the body decode + error-into-response path without
-    /// actually launching anything.
+    /// No request names a program for the backend to run. The route
+    /// that once took a player command and its arguments from the
+    /// request body is gone: the external player and Syncplay start
+    /// from `/api/play/external` and `/api/play/syncplay`, which take
+    /// the show and episode and run the player the user configured in
+    /// Settings, with arguments the backend builds. A request naming a
+    /// program, even one carrying the launch's secret, runs nothing.
+    #[cfg(unix)]
     #[tokio::test]
-    async fn external_player_route_returns_5xx_when_binary_is_missing() {
+    async fn no_request_names_a_program_for_the_backend_to_run() {
+        use std::os::unix::fs::PermissionsExt as _;
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let ran = td.path().join("ran");
+        let program = td.path().join("program");
+        std::fs::write(&program, format!("#!/bin/sh\ntouch '{}'\n", ran.display()))
+            .expect("write program");
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        let router = test_router(Arc::new(test_app_state(&td)));
         let body = serde_json::json!({
-            "command": "/nonexistent/no-such-player-binary",
-            "url": "https://example.com/test.m3u8",
+            "stream_url": "https://example.com/test.m3u8",
             "referer": null,
-            "media_kind": "hls"
+            "title": null,
+            "player_command": program.display().to_string(),
+            "player_kind": "custom",
+            "custom_args_template": "{url}"
         });
         let response = router
             .oneshot(
@@ -2775,14 +2810,9 @@ mod tests {
             )
             .await
             .expect("oneshot");
-        // The route either rejects the body (422 / 400 — body shape
-        // depends on LaunchArgs's serde derives) or accepts it and
-        // surfaces a spawn failure as 500. We don't care which —
-        // only that the route is registered and the handler runs.
-        assert!(
-            response.status() != StatusCode::NOT_FOUND,
-            "/api/external-player returned 404 — route missing"
-        );
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(!ran.exists(), "a program named by a request must not run");
     }
 
     /// `/api/sessions` requires a valid CreateSessionArgs body. We
@@ -2792,7 +2822,7 @@ mod tests {
     #[tokio::test]
     async fn post_session_rejects_malformed_body() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -2820,7 +2850,7 @@ mod tests {
     #[tokio::test]
     async fn the_public_session_route_refuses_caller_supplied_tracks() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let body = r#"{"upstream_url":"https://cdn.example/master.m3u8","subtitles":[{"lang":"en","label":"English","default":true,"url":"http://127.0.0.1:1/admin/status"}]}"#;
         let response = router
             .oneshot(
@@ -2847,7 +2877,7 @@ mod tests {
     #[tokio::test]
     async fn kitsu_anime_detail_route_propagates_upstream_failure() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -2870,7 +2900,7 @@ mod tests {
     #[tokio::test]
     async fn kitsu_anime_by_slug_route_propagates_upstream_failure() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -2898,7 +2928,7 @@ mod tests {
     #[tokio::test]
     async fn kitsu_trending_routes_are_registered_and_propagate_failures() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         for path in ["/api/kitsu/trending", "/api/kitsu/trending-anilist"] {
             let response = router
                 .clone()
@@ -2918,10 +2948,10 @@ mod tests {
         }
     }
 
-    /// The renderer-only secret gate must
-    /// reject calls from anything that isn't Electron's preload.
-    /// Without the header, the handler bails before reaching the
-    /// Kitsu fan-out so a cross-origin tab can't trigger the DoS
+    /// The secret gate must
+    /// reject calls from anything that isn't Electron's renderer.
+    /// Without the header, the request is refused before reaching the
+    /// Kitsu fan-out, so another caller can't trigger the DoS
     /// even with a giant `mal_ids` body.
     #[tokio::test]
     async fn kitsu_by_mal_ids_rejects_without_internal_secret_header() {
@@ -2956,7 +2986,7 @@ mod tests {
                 .expect("secret"),
             ..test_app_state(&td)
         });
-        let router = build_api_router(state);
+        let router = test_router(state);
         // 501 mal_ids — one past the WATCH_LATER_BRIDGE_MAX_IDS cap.
         let huge_body = serde_json::json!({
             "mal_ids": (0..501u32).collect::<Vec<_>>()
@@ -2993,7 +3023,7 @@ mod tests {
                 .expect("secret"),
             ..test_app_state(&td)
         });
-        let router = build_api_router(state);
+        let router = test_router(state);
         let response = router
             .oneshot(
                 Request::builder()
@@ -3019,7 +3049,7 @@ mod tests {
     #[tokio::test]
     async fn kitsu_search_rejects_empty_body() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -3045,7 +3075,7 @@ mod tests {
     #[tokio::test]
     async fn kitsu_search_with_query_invokes_handler_body() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -3071,7 +3101,7 @@ mod tests {
     #[tokio::test]
     async fn every_route_handler_body_is_reached() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let routes = [
             ("GET", "/api/kitsu/top-rated", ""),
             ("GET", "/api/kitsu/episodes/49877?page=1", ""),
@@ -3101,7 +3131,7 @@ mod tests {
     #[tokio::test]
     async fn put_title_match_route_runs_handler_body() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
         let response = router
             .oneshot(
                 Request::builder()
@@ -3122,7 +3152,7 @@ mod tests {
     #[tokio::test]
     async fn availability_routes_run_handler_bodies() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let router = test_router(Arc::new(test_app_state(&td)));
 
         // batch — empty list, returns an empty `cached` map.
         let r = router
@@ -3216,7 +3246,7 @@ mod tests {
                 }])
                 .listing(7, rows),
         ));
-        let router = build_api_router(Arc::new(state));
+        let router = test_router(Arc::new(state));
         let r = router
             .oneshot(
                 Request::builder()

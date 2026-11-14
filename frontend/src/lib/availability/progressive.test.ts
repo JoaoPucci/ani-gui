@@ -21,6 +21,8 @@ function ref(id: string, overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef 
 	return {
 		id,
 		canonical_title: `Title ${id}`,
+		titles: {},
+		abbreviated_titles: [],
 		slug: null,
 		synopsis: null,
 		start_date: null,
@@ -189,6 +191,26 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 		await filterAvailableProgressive(items, 'sub', emit);
 		expect(emit).toHaveBeenCalledTimes(1);
 		expect(emit.mock.calls[0][0]).toEqual(items);
+	});
+
+	it("hands the run's signal to the batch, so a search replaced or left cancels it", async () => {
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true } });
+		const run = new AbortController();
+		await filterAvailableProgressive([ref('a')], 'sub', vi.fn(), 2000, 4, run.signal);
+		expect(apiMock.availabilityBatch).toHaveBeenLastCalledWith(['a'], 'sub', {
+			signal: run.signal
+		});
+	});
+
+	it('emits nothing for a batch cancelled with its run', async () => {
+		const run = new AbortController();
+		run.abort();
+		apiMock.availabilityBatch.mockRejectedValueOnce(
+			new DOMException('The operation was aborted.', 'AbortError')
+		);
+		const emit = vi.fn();
+		await filterAvailableProgressive([ref('a')], 'sub', emit, 2000, 4, run.signal);
+		expect(emit).not.toHaveBeenCalled();
 	});
 
 	it('emits an empty list without hitting the API', async () => {

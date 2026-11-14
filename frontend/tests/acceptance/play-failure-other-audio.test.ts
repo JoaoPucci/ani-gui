@@ -211,7 +211,7 @@ function useHandlers(cache: CacheAnswer | 'fails'): Asked {
 		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
 		// Both handoffs resolve the episode before they spawn anything;
 		// the resolve answers with the verdict.
 		...(['external', 'syncplay'] as Handoff[]).map((h) =>

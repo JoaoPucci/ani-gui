@@ -10,11 +10,8 @@ use crate::scraper::provider::EpisodeRef;
 
 const SHOW: &str = "hianime:the-show-1";
 
-fn state() -> AppState {
-    let dir = Box::leak(Box::new(tempfile::tempdir().expect("tmp")));
-    let mut state = crate::commands::play::tests::state_with_proxy_origin();
-    state.history_path = dir.path().join("history");
-    state
+fn state() -> crate::scratch::Scratch<AppState> {
+    crate::commands::play::tests::state_with_proxy_origin()
 }
 
 fn row(number: u32, tag: Option<&str>, former: Option<&str>) -> EpisodeRef {

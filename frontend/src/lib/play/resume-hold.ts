@@ -108,7 +108,9 @@ export function holdForResume(input: {
 		onHold(false);
 	};
 	const start = () => {
-		if (starting) return;
+		// An ended hold has handed the element back: nothing it was
+		// waiting to do may start it now.
+		if (starting || done) return;
 		starting = true;
 		video.removeEventListener('seeked', onSeeked);
 		video.addEventListener('playing', onPlaying);
@@ -136,5 +138,18 @@ export function holdForResume(input: {
 		},
 		release: reveal,
 		end: finish
+	};
+}
+
+/** The hold of a stream with nowhere to seek to: nothing is held back,
+ *  a seek just moves the playhead, and there is nothing to reveal or
+ *  end. Lets an attach treat every stream as having a hold. */
+export function noHold(video: HTMLVideoElement): ResumeHold {
+	return {
+		seekTo(seconds) {
+			video.currentTime = seconds;
+		},
+		release() {},
+		end() {}
 	};
 }
