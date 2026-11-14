@@ -11,7 +11,7 @@ import type { WatchOrderData } from './loader';
 import { placement, type WatchOrder } from './order';
 import { progressFromHistory } from './progress';
 import { runOf } from './strip-model';
-import type { FranchiseSummary } from './strip-view';
+import { franchiseSummary, type FranchiseSummary } from './strip-view';
 import type { Progress, WatchEntry, WatchRun } from './types';
 
 export type UpNext =
@@ -104,6 +104,17 @@ export function chainEndCard(
 	episode: number,
 	self: FinaleSelf | null
 ): ChainEndCard | null {
-	void [data, id, order, today, episode, self];
-	return null;
+	if (finaleCard(data, id, order, today, episode, self) !== null) return null;
+	if (data?.franchise == null || order === null || data.franchise.anchor !== id) return null;
+	if (!data.franchise.complete) return null;
+	const drawn = chainFranchise(data.franchise);
+	const run = drawn ? runOf(drawn) : null;
+	const entry = run?.entries.find((e) => e.id === id);
+	const main = runOf(data.franchise);
+	if (!entry || !main || !isFinale(self ?? entry, episode)) return null;
+	return {
+		name: data.franchise.name,
+		id,
+		summary: franchiseSummary(main, data.franchise.name_from)
+	};
 }

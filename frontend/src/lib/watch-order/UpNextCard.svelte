@@ -18,7 +18,13 @@
 	import { dismissKey, focusBack, focusEntered, focusLeft, keyboardClick } from './focus-return';
 	import { metaLine } from './meta';
 	import type { Progress, WatchEntry } from './types';
-	import type { UpNext } from './up-next';
+	import type { ChainEndCard } from './up-next';
+	import {
+		franchiseCardMeta,
+		upNextAnnouncement,
+		upNextKey,
+		type ShownUpNext
+	} from './up-next-view';
 
 	let {
 		progress,
@@ -26,26 +32,26 @@
 		today,
 		announce,
 		onannounce,
-		ondismiss
+		ondismiss,
+		franchise = null
 	}: {
 		progress: Progress;
-		upNext: Exclude<UpNext, { kind: 'none' }>;
+		/** Null for the franchise card, which `franchise` then draws. */
+		upNext: ShownUpNext | null;
 		today: string;
 		/** False once this viewing has announced the card. */
 		announce: boolean;
 		onannounce: () => void;
 		ondismiss: () => void;
+		/** At a chain's dead end: the whole franchise, in place of an entry. */
+		franchise?: ChainEndCard | null;
 	} = $props();
 
-	const entries = $derived(upNext.kind === 'choices' ? upNext.entries : [upNext.entry]);
-	const accent = $derived(accentFor(entries[0].id));
-	const key = $derived(
-		upNext.kind === 'choices'
-			? m.watchorder_upnext_choices()
-			: upNext.kind === 'unaired'
-				? m.watchorder_upnext_coming()
-				: m.watchorder_upnext_eyebrow()
+	const entries = $derived(
+		upNext === null ? [] : upNext.kind === 'choices' ? upNext.entries : [upNext.entry]
 	);
+	const accent = $derived(accentFor(entries[0]?.id ?? franchise?.id ?? ''));
+	const key = $derived(upNextKey(upNext));
 	const image = (e: WatchEntry) => imageProxyUrl(e.poster);
 
 	// Filled after mount: a live region that already holds its text
@@ -53,7 +59,7 @@
 	let said = $state('');
 	onMount(() => {
 		if (!announce) return;
-		said = m.watchorder_upnext_announce({ title: entries[0].title });
+		said = upNextAnnouncement(upNext, franchise);
 		onannounce();
 	});
 
@@ -122,7 +128,29 @@
 			/>
 		</svg>
 	</button>
-	{#if upNext.kind === 'choices'}
+	{#if upNext === null}
+		{#if franchise}
+			<a
+				class="row single"
+				href={resolve('/anime/[id]/franchise', { id: franchise.id })}
+				title={franchise.name}
+				aria-label="{key}: {franchise.name}"
+			>
+				<span class="fanned" aria-hidden="true">
+					{#each franchise.summary.posters as p, i (p.id)}
+						<span class="art fan-{i}" style:z-index={3 - i}
+							>{#if image(p)}<img src={image(p)} alt="" />{/if}</span
+						>
+					{/each}
+				</span>
+				<span class="text">
+					<span class="key">{key}</span>
+					<span class="title">{franchise.name}</span>
+					<span class="franchise-meta">{franchiseCardMeta(franchise.summary)}</span>
+				</span>
+			</a>
+		{/if}
+	{:else if upNext.kind === 'choices'}
 		<p class="key list-key">{key}</p>
 		<ul class="choices">
 			{#each entries as e (e.id)}
@@ -264,6 +292,29 @@
 	}
 	.dismiss:hover {
 		color: var(--bone-100);
+	}
+	/* The franchise card fans the strip link's stack, so it reads as a
+	   page rather than a title to play. */
+	.fanned {
+		position: relative;
+		display: block;
+		inline-size: 4.5rem;
+		aspect-ratio: var(--poster-aspect);
+	}
+	.fanned .art {
+		position: absolute;
+		inset: 0;
+		box-shadow: 0 2px 6px rgb(0 0 0 / 0.5);
+	}
+	.fanned .fan-1 {
+		transform: translateX(-30%) rotate(-9deg) scale(0.86);
+	}
+	.fanned .fan-2 {
+		transform: translateX(30%) rotate(9deg) scale(0.86);
+	}
+	.franchise-meta {
+		font-size: var(--type-meta);
+		color: color-mix(in oklab, var(--bone-100) 70%, transparent);
 	}
 	.sr-only {
 		position: absolute;
