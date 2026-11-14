@@ -1,7 +1,9 @@
 //! How the walk builds a run (rules 1–3 of the proposal's section 4):
 //!
 //! 1. Breadth-first from the root, one distance at a time, along the
-//!    prequel and sequel links each added entry lists (anime only). An
+//!    prequel and sequel links each added entry lists (anime only; the
+//!    main story's walk also counts a link a read listing names from
+//!    the other side, `franchise_walk_root.rs`). An
 //!    entry first met at a distance takes the path through the listing
 //!    entry that started earliest, then the lowest id, and is decided
 //!    once, on that path.

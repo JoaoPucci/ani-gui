@@ -24,10 +24,14 @@
 //! - **The main story** is the walk from the root, the franchise's links
 //!   counted from either side.
 //!
-//! Every page of a franchise reads the same franchise, so every page
-//! answers with the same main story, and so with the same name and
-//! front entry. A link Kitsu lists on one side only is seen from that
-//! side alone: a page that cannot see an entry cannot count it.
+//! Every page that reaches the same franchise answers with the same
+//! main story, and so with the same name and front entry, and lists the
+//! franchise's other entries around it the same way
+//! (`franchise_walk_run.rs`). Where every link is listed from both
+//! sides, that is every page of the franchise. A link Kitsu lists on one
+//! side only is seen from that side alone: a page that cannot reach the
+//! listing naming it cannot count it, so two pages of one franchise can
+//! then answer differently.
 //!
 //! Every listing read counts toward the walk's bound; an entry past it
 //! is not read, and the answer is incomplete

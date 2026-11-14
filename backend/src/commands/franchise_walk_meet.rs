@@ -1,6 +1,8 @@
 //! Rule 1's step: the entries one distance further from the root, each
-//! met through the earliest-starting entry that lists it, as many as the
-//! listing bound leaves room to read.
+//! met through the earliest-starting entry that lists it (or, in the
+//! main story's walk, that a read listing names from the other side,
+//! `franchise_walk_root.rs`), as many as the listing bound leaves room
+//! to read.
 
 use std::collections::BTreeMap;
 
@@ -14,8 +16,9 @@ pub(super) struct Met {
 }
 
 impl Walk<'_, '_> {
-    /// The entries `frontier` lists as prequel or sequel and nothing
-    /// has decided yet, each met through the earliest of them.
+    /// The entries `frontier` lists as prequel or sequel (or the walk's
+    /// `reverse` listings name from the other side) and nothing has
+    /// decided yet, each met through the earliest of them.
     pub(super) fn meet(&self, frontier: &[String]) -> BTreeMap<String, Met> {
         let mut by_start = frontier.to_vec();
         by_start.sort_by_key(|f| self.key(f));

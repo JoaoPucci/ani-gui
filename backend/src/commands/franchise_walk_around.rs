@@ -14,7 +14,12 @@
 //! section only: entries, then films (for a movie), versions, recaps,
 //! sides. A side-story anchor outside the run is a side, or a film when
 //! it is a movie, and so is an entry of the anchor's own run of
-//! one-offs that the run it moved to leaves out.
+//! one-offs that the run it moved to leaves out. An entry of the
+//! franchise that the main story leaves out stays where the members'
+//! listings placed it, else is a film when it is a movie, else a
+//! version. The anchor's own chain, outside the main story
+//! (`franchise_walk_chain.rs`), is served beside the sections, which it
+//! leaves as they are.
 
 use std::collections::BTreeSet;
 
