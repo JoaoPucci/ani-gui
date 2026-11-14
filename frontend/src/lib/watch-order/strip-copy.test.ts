@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { captionText, columnCountText, columnKeyText, emptyColumnText } from './strip-copy';
+import { m } from '$lib/paraglide/messages';
+import {
+	captionText,
+	columnCountText,
+	columnKeyText,
+	emptyColumnText,
+	seamKeyText
+} from './strip-copy';
 import type { ColumnWord } from './strip-wording';
 
 describe('the strip copy', () => {
@@ -52,5 +59,18 @@ describe('the strip copy', () => {
 		expect(captionText({ kind: 'cycle', count: 10 })).toBe('Linked with 9 others, order unclear');
 		expect(captionText({ kind: 'cycle', count: 2 })).toBe('Linked with 1 other, order unclear');
 		expect(captionText({ kind: 'branch' })).toBe('One of the ways to continue');
+	});
+});
+
+describe('seamKeyText', () => {
+	it('keys a seam by where the chain meets the main story', () => {
+		expect(seamKeyText('from')).toBe(m.watchorder_strip_seam_from());
+		expect(seamKeyText('into')).toBe(m.watchorder_strip_seam_into());
+	});
+});
+
+describe('captionText for a chain of one', () => {
+	it('says nothing where there is nothing to count', () => {
+		expect(captionText({ kind: 'alone' })).toBe('');
 	});
 });
