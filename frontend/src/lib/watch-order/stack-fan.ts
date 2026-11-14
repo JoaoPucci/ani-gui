@@ -77,7 +77,35 @@ export interface FanBox {
 	readonly foot: number;
 }
 
-/** The box every card of a fan stays inside, at rest and fanned out. */
+/** A card's corners at `pose`: its foot's middle there, the card turned about it. */
+function cornersAt(pose: FanPose): { x: number; y: number }[] {
+	const r = (pose.rotate * Math.PI) / 180;
+	const half = CARD_INLINE_REM / 2;
+	const corners: [number, number][] = [
+		[-half, 0],
+		[half, 0],
+		[-half, -CARD_BLOCK_REM],
+		[half, -CARD_BLOCK_REM]
+	];
+	return corners.map(([x, y]) => ({
+		x: pose.x + x * Math.cos(r) - y * Math.sin(r),
+		y: pose.y + x * Math.sin(r) + y * Math.cos(r)
+	}));
+}
+
+/**
+ * The box every card of a fan stays inside, at rest and fanned out,
+ * for one to three cards: as wide as the widest spread on both sides
+ * of the middle, as tall as the highest card above the lowest corner,
+ * the feet standing as far above the bottom edge as a turned card's
+ * corner drops below its foot.
+ */
 export function fanBox(): FanBox {
-	return { inline: 5.5, block: 3.4, foot: 0.1 };
+	const all = [1, 2, 3].flatMap((count) =>
+		(['rest', 'open'] as const).flatMap((state) => fanPoses(count, state).flatMap(cornersAt))
+	);
+	const reach = Math.max(...all.map((c) => Math.abs(c.x)));
+	const foot = Math.max(0, ...all.map((c) => c.y));
+	const top = Math.min(...all.map((c) => c.y));
+	return { inline: 2 * reach, block: foot - top, foot };
 }

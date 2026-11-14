@@ -1,8 +1,8 @@
 <!--
   The franchise's poster stack, fanned on one arc (./stack-fan): the
   strip's link to the franchise page and the player's franchise card
-  both draw it. It fits its own box whatever the cards' angles, so the
-  text beside it never sits under a card. The element that holds it
+  both draw it. Its box holds every card whole, at rest and fanned out
+  (./stack-fan's fanBox), so the text beside it never sits under a card. The element that holds it
   carries `data-fan-host`: hovering or focusing that element opens the
   fan outwards along the arc. With no poster the stack is three blank
   frames, the front one carrying `total` (none when it is null).
@@ -13,7 +13,7 @@
 	import { imageProxyUrl } from '$lib/api';
 	import { reducedMotion } from '$lib/motion/reduced-motion.svelte';
 	import { numeral } from './meta';
-	import { FAN_RADIUS_REM, fanPoses, type StackCard } from './stack-fan';
+	import { CARD_INLINE_REM, FAN_RADIUS_REM, fanBox, fanPoses, type StackCard } from './stack-fan';
 
 	let {
 		cards,
@@ -24,6 +24,7 @@
 		total: number | null;
 	} = $props();
 
+	const box = fanBox();
 	const open = $derived(fanPoses(cards.length, 'open'));
 	const rest = $derived(reducedMotion.current ? open : fanPoses(cards.length, 'rest'));
 	// A poster that fails to load is drawn as a blank frame, not an empty card.
@@ -32,7 +33,15 @@
 		c.kind === 'poster' && !broken[c.entry.id] && imageProxyUrl(c.entry.poster) !== null;
 </script>
 
-<span class="fan" style:--radius="{FAN_RADIUS_REM}rem" aria-hidden="true">
+<span
+	class="fan"
+	style:--radius="{FAN_RADIUS_REM}rem"
+	style:--card="{CARD_INLINE_REM}rem"
+	style:--box-inline="{box.inline}rem"
+	style:--box-block="{box.block}rem"
+	style:--foot="{box.foot}rem"
+	aria-hidden="true"
+>
 	{#each cards as card, i (i)}
 		<span
 			class="fan-card"
@@ -64,8 +73,8 @@
 		position: relative;
 		display: block;
 		flex: none;
-		inline-size: 5.5rem;
-		block-size: 3.4rem;
+		inline-size: var(--box-inline);
+		block-size: var(--box-block);
 	}
 	:global([dir='rtl']) .fan {
 		--flip: -1;
@@ -73,12 +82,13 @@
 	/* Every card stands at the middle of the box and is rotated about
 	   the arc's centre, FAN_RADIUS_REM below its foot, so the
 	   transition between the rest and open angles moves it along the
-	   arc. Fanned out, the outer cards' corners stay inside the box. */
+	   arc. The box is ./stack-fan's fanBox, which holds every card whole
+	   at rest and fanned out. */
 	.fan-card {
 		position: absolute;
-		inset-block-end: 0.1rem;
-		inset-inline-start: calc(50% - 1.15rem);
-		inline-size: 2.3rem;
+		inset-block-end: var(--foot);
+		inset-inline-start: calc(50% - var(--card) / 2);
+		inline-size: var(--card);
 		aspect-ratio: var(--poster-aspect);
 		overflow: hidden;
 		border-radius: 4px;

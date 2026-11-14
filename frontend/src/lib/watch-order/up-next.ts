@@ -115,12 +115,12 @@ export function chainEndCard(
 	const entry = run?.entries.find((e) => e.id === id);
 	const main = runOf(data.franchise);
 	if (!entry || !main || !isFinale(self ?? entry, episode)) return null;
-	return {
-		name: data.franchise.name,
-		id,
-		front: data.franchise.name_from,
-		summary: franchiseSummary(main, data.franchise.name_from)
-	};
+	const summary = franchiseSummary(main, data.franchise.name_from);
+	// The franchise page's art: the title the name comes from, else the
+	// main story's first, as franchiseSummary fronts the stack.
+	const nameFrom = data.franchise.name_from;
+	const front = main.entries.find((e) => e.id === nameFrom) ?? main.entries[0];
+	return { name: data.franchise.name, id, front: front.id, summary };
 }
 
 /** The one card the player shows at a finale: an entry card, or the franchise card. */
