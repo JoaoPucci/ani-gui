@@ -155,7 +155,14 @@ async fn franchise_route_serves_the_walk_from_the_cache() {
             "sides": [],
             "recaps": [],
             "parents": {},
-            "complete": true
+            "complete": true,
+            // The OVA's own chain: the two OVAs, and the series they
+            // follow by the 2000 OVA's own listing, a seam.
+            "chain": {
+                "entries": [old, ova, tv],
+                "links": [["7158", "7730"], ["7730", "610"]],
+                "seams": ["7158"]
+            }
         })
     );
 }

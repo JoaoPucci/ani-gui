@@ -101,5 +101,66 @@
     }
   ],
   "parents": {},
-  "complete": true
+  "complete": true,
+  "chain": {
+    "entries": [
+      {
+        "id": "6084",
+        "title": "Berserk: Ougon Jidai-hen I - Haou no Tamago",
+        "subtype": "movie",
+        "start": "2012-02-04",
+        "episodes": 1,
+        "status": "finished",
+        "poster": null,
+        "cover": null
+      },
+      {
+        "id": "6664",
+        "title": "Berserk: Ougon Jidai-hen II - Doldrey Kouryaku",
+        "subtype": "movie",
+        "start": "2012-06-23",
+        "episodes": 1,
+        "status": "finished",
+        "poster": null,
+        "cover": null
+      },
+      {
+        "id": "6665",
+        "title": "Berserk: Ougon Jidai-hen III - Kourin",
+        "subtype": "movie",
+        "start": "2013-02-01",
+        "episodes": 1,
+        "status": "finished",
+        "poster": null,
+        "cover": null
+      },
+      {
+        "id": "11655",
+        "title": "Berserk",
+        "subtype": "TV",
+        "start": "2016-07-01",
+        "episodes": 12,
+        "status": "finished",
+        "poster": null,
+        "cover": null
+      }
+    ],
+    "links": [
+      [
+        "6084",
+        "6664"
+      ],
+      [
+        "6664",
+        "6665"
+      ],
+      [
+        "6665",
+        "11655"
+      ]
+    ],
+    "seams": [
+      "11655"
+    ]
+  }
 }

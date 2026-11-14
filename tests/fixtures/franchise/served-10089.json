@@ -276,5 +276,38 @@
     }
   ],
   "parents": {},
-  "complete": true
+  "complete": true,
+  "chain": {
+    "entries": [
+      {
+        "id": "1555",
+        "title": "Naruto: Shippuuden",
+        "subtype": "TV",
+        "start": "2007-02-15",
+        "episodes": 500,
+        "status": "finished",
+        "poster": null,
+        "cover": null
+      },
+      {
+        "id": "10089",
+        "title": "Boruto: Naruto the Movie",
+        "subtype": "movie",
+        "start": "2015-08-07",
+        "episodes": 1,
+        "status": "finished",
+        "poster": null,
+        "cover": null
+      }
+    ],
+    "links": [
+      [
+        "1555",
+        "10089"
+      ]
+    ],
+    "seams": [
+      "1555"
+    ]
+  }
 }

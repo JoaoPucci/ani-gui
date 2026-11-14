@@ -14,8 +14,8 @@
   },
   "served-10089.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Boruto: Naruto the Movie (anime/10089) over listings.json, as GET /api/kitsu/franchise/10089 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 6267,
-   "sha256": "8a01a03de68d62727afa13821fa94963ef30a2d691f502d401137edf723b8249"
+   "size": 6890,
+   "sha256": "9fdbff91382e52a31bbbde15e1387f898e5e829d868eb588d9f8008ec8cb56f8"
   },
   "served-1046.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Sakura Taisen: Ouka Kenran (anime/1046) over listings.json, as GET /api/kitsu/franchise/1046 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -194,8 +194,8 @@
   },
   "served-6084.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Berserk: Ougon Jidai-hen I - Haou no Tamago (anime/6084) over listings.json, as GET /api/kitsu/franchise/6084 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 2088,
-   "sha256": "25d62d7af696a8f38e27f8b3e901a14e9f0a29ef34c32a2757e1d5361d32df62"
+   "size": 3334,
+   "sha256": "701c1d199f3cd292f49c2314a2fc8aa5d8dcc0856f11c80549b2bfa6fc020e7b"
   },
   "served-6928.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Fate/Zero: Onegai! Einzbern Soudanshitsu (anime/6928) over listings.json, as GET /api/kitsu/franchise/6928 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -239,8 +239,8 @@
   },
   "served-7730.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from JoJo no Kimyou na Bouken: Adventure (anime/7730) over listings.json, as GET /api/kitsu/franchise/7730 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 4101,
-   "sha256": "691650830b39f3a660197f29d416bda016ddba029799174b1de230329fda0c01"
+   "size": 5027,
+   "sha256": "bb23fffa06b2460250edd44e1f98c3a2fbe9925a9c55158f7a3923480a433cfc"
   },
   "served-818.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Gintama (anime/818) over listings.json, as GET /api/kitsu/franchise/818 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",

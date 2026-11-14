@@ -197,5 +197,52 @@
     }
   ],
   "parents": {},
-  "complete": true
+  "complete": true,
+  "chain": {
+    "entries": [
+      {
+        "id": "610",
+        "title": "JoJo no Kimyou na Bouken",
+        "subtype": "OVA",
+        "start": "1993-11-19",
+        "episodes": 6,
+        "status": "finished",
+        "poster": null,
+        "cover": null
+      },
+      {
+        "id": "7730",
+        "title": "JoJo no Kimyou na Bouken: Adventure",
+        "subtype": "OVA",
+        "start": "2000-05-25",
+        "episodes": 7,
+        "status": "finished",
+        "poster": null,
+        "cover": null
+      },
+      {
+        "id": "7158",
+        "title": "JoJo no Kimyou na Bouken (TV)",
+        "subtype": "TV",
+        "start": "2012-10-06",
+        "episodes": 26,
+        "status": "finished",
+        "poster": null,
+        "cover": null
+      }
+    ],
+    "links": [
+      [
+        "7158",
+        "7730"
+      ],
+      [
+        "7730",
+        "610"
+      ]
+    ],
+    "seams": [
+      "7158"
+    ]
+  }
 }
