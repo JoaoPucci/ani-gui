@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
-import { FAN_RADIUS_REM, fanPoses, stackCards, type FanPose } from './stack-fan';
+import {
+	CARD_BLOCK_REM,
+	CARD_INLINE_REM,
+	FAN_RADIUS_REM,
+	fanBox,
+	fanPoses,
+	stackCards,
+	type FanPose
+} from './stack-fan';
 import { franchiseSummary } from './strip-view';
 
 const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
@@ -107,5 +115,42 @@ describe('fanPoses', () => {
 				});
 			})
 		);
+	});
+});
+
+describe('fanBox', () => {
+	// A card's corners: its foot's middle at the pose's x and y, the
+	// card rotated about that point by the pose's angle (y grows
+	// downwards, the angle clockwise), the card standing above its foot.
+	const corners = (p: FanPose) => {
+		const r = (p.rotate * Math.PI) / 180;
+		const half = CARD_INLINE_REM / 2;
+		return [
+			[-half, 0],
+			[half, 0],
+			[-half, -CARD_BLOCK_REM],
+			[half, -CARD_BLOCK_REM]
+		].map(([x, y]) => ({
+			x: p.x + x * Math.cos(r) - y * Math.sin(r),
+			y: p.y + x * Math.sin(r) + y * Math.cos(r)
+		}));
+	};
+
+	it('holds every card whole, at rest and fanned out, for one to three cards', () => {
+		const box = fanBox();
+		for (const count of [1, 2, 3])
+			for (const state of ['rest', 'open'] as const)
+				for (const c of fanPoses(count, state).flatMap(corners)) {
+					expect(Math.abs(c.x)).toBeLessThanOrEqual(box.inline / 2 + 1e-9);
+					// The foot stands `box.foot` above the box's bottom edge.
+					expect(c.y).toBeLessThanOrEqual(box.foot + 1e-9);
+					expect(box.foot - c.y).toBeLessThanOrEqual(box.block + 1e-9);
+				}
+	});
+
+	it('is no bigger than the cards need', () => {
+		const box = fanBox();
+		expect(box.inline).toBeLessThan(6.5);
+		expect(box.block).toBeLessThan(4);
 	});
 });

@@ -333,6 +333,14 @@ describe('finaleCard on an entry outside the main story', () => {
 		expect(end.front).toBe('1');
 	});
 
+	it('fronts the franchise card as its page does when the name comes from no main-story title', () => {
+		const data = chainData('11', false);
+		const off = { ...data, franchise: { ...data.franchise!, name_from: '99' } };
+		const end = chainEndCard(off, '11', 'linked', TODAY, 1, null)!;
+		// The franchise page takes the main story's first title then.
+		expect(end.front).toBe('1');
+	});
+
 	it('shows one card: the next title where the finale names one, else the franchise', () => {
 		const next = playerUpNext(chainData('10', false), '10', 'linked', TODAY, 1, null);
 		expect(next?.kind).toBe('entry');

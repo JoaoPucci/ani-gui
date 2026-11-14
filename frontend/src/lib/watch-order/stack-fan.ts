@@ -64,3 +64,20 @@ export function fanPoses(count: number, state: FanState): FanPose[] {
 		};
 	});
 }
+
+/** A card's width, in rem. */
+export const CARD_INLINE_REM = 2.3;
+/** A card's height, in rem: the poster's 5:7. */
+export const CARD_BLOCK_REM = (CARD_INLINE_REM * 7) / 5;
+
+/** The fan's box, in rem, and how far above its bottom edge the cards' feet stand. */
+export interface FanBox {
+	readonly inline: number;
+	readonly block: number;
+	readonly foot: number;
+}
+
+/** The box every card of a fan stays inside, at rest and fanned out. */
+export function fanBox(): FanBox {
+	return { inline: 5.5, block: 3.4, foot: 0.1 };
+}
