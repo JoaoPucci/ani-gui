@@ -8,10 +8,11 @@
  * travels through Chromium's network stack as a request to the backend
  * does, and is answered behind the backend's gate and CORS rules: an
  * API request without the launch's secret gets the backend's empty 403,
- * not the stub. Answering in place inside Playwright loses the answer's
+ * not the stub. An answer made in place inside Playwright loses its
  * status and headers whenever the main process watches the window's
- * requests (tests/arch/e2e_stub_server.sh), so nothing here or in a
- * spec does.
+ * requests (tests/arch/e2e_stub_server.sh), so no spec answers a request
+ * in place. (Playwright still answers a CORS preflight itself, for any
+ * origin; the stub server's CORS rules apply to the answer.)
  */
 import type { Page, Route } from '@playwright/test';
 import { startStubServer } from '../lib/e2e-stub-server.cjs';

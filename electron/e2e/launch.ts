@@ -318,7 +318,9 @@ export async function routeContext(
 }
 
 /** Answers every backend API request that none of a spec's own stubs
- *  answers with a 501, and records it as `METHOD /path`. Registered
+ *  answers with a 501 (through the stub server, so behind the gate: a
+ *  request without the launch's secret gets its 403), and records it
+ *  as `METHOD /path`. Registered
  *  before the spec's stubs, since Playwright tries the most recently
  *  registered route first: this one sees only what they leave. A spec
  *  that claims its page runs on stubs asserts the record is empty; the

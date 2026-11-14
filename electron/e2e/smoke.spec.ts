@@ -118,7 +118,7 @@ async function launchAppWithStubsOnce(
   // Every card known playable, so nothing is handed to the warm queue.
   await stub("**/api/availability/batch", (r) => {
     const { kitsu_ids } = r.request().postDataJSON() as { kitsu_ids: string[] };
-    return answer(r, 
+    return answer(r,
       json({
         cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
         playable_episode_counts: {},

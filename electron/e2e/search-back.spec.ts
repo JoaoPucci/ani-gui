@@ -97,7 +97,7 @@ async function launchOnce(asked: string[], onLaunch: (app: ElectronApplication) 
 		if (p.includes('/api/image')) return answer(r, { status: 503 });
 		if (p.endsWith('/api/availability/batch')) {
 			const { kitsu_ids } = r.request().postDataJSON() as { kitsu_ids: string[] };
-			return answer(r, 
+			return answer(r,
 				json({
 					cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
 					playable_episode_counts: {}
@@ -114,7 +114,7 @@ async function launchOnce(asked: string[], onLaunch: (app: ElectronApplication) 
 			const body = r.request().postDataJSON() as { query: string; offset: number; sort?: string };
 			asked.push(`${body.query}@${body.offset}/${body.sort ?? 'relevance'}`);
 			const hits = Array.from({ length: 20 }, (_, i) => show(body.offset + i + 1));
-			return answer(r, 
+			return answer(r,
 				json({ hits, next_offset: body.offset + 20 < 100 ? body.offset + 20 : null })
 			);
 		}

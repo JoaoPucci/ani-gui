@@ -28,8 +28,17 @@ cd "$REPO_ROOT"
 
 # Text files git tracks or would track (untracked, not ignored): the
 # fetched bundled binaries and the build output are ignored, and a
-# binary can hold the word by chance.
-found=$(git grep -lIF --untracked 'fulfill' -- electron || true)
+# binary can hold the word by chance. Git is pointed at this checkout
+# whatever the environment names, and a git that cannot answer fails
+# the check: only its "no match" (exit 1) passes.
+status=0
+found=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY \
+    -u GIT_CEILING_DIRECTORIES -u GIT_DISCOVERY_ACROSS_FILESYSTEM \
+    git -C "$REPO_ROOT" grep -lIF --untracked 'fulfill' -- electron) || status=$?
+if [ "$status" -gt 1 ]; then
+    printf 'arch/e2e_stub_server FAIL: git could not search %s (exit %s)\n' "$REPO_ROOT" "$status" >&2
+    exit 1
+fi
 if [ -n "$found" ]; then
     printf 'arch/e2e_stub_server FAIL: Playwright'\''s in-place answer is named under electron/;\n' >&2
     printf 'answer a stubbed request through answer() in electron/e2e/stubs.ts:\n%s\n' "$found" >&2
