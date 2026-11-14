@@ -39,6 +39,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { launchRefusal } from '../lib/e2e-display.cjs';
 import { stopOwnGroup } from '../lib/own-group.cjs';
+import { answer } from './stubs';
 
 /** electron-builder's pre-AppImage output — the production code path:
  *  the `app://` protocol handler, the bundled SvelteKit assets and the
@@ -343,7 +344,7 @@ export async function refuseUnstubbed(window: Page): Promise<string[]> {
 	await routeContext(window.context(), /^http:\/\/127\.0\.0\.1:\d+\/api\//, (r) => {
 		const req = r.request();
 		unstubbed.push(`${req.method()} ${new URL(req.url()).pathname}`);
-		return r.fulfill({ status: 501, contentType: 'text/plain', body: 'unstubbed in this spec' });
+		return answer(r, { status: 501, contentType: 'text/plain', body: 'unstubbed in this spec' });
 	});
 	return unstubbed;
 }
