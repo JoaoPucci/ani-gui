@@ -10,8 +10,8 @@
   drops its key and keeps the line saying why it is empty, except in a
   franchise read in part, where it may only be missing its entries and
   stays blank, as does the centre's place. On a page outside the main
-  story, on its own chain, the heading says so, and a column holding
-  the main-story title the chain meets is keyed by it.
+  story, drawn on a chain, the heading says so, and a column holding
+  only the main-story title the chain meets is keyed by it.
 
   Everything sits on a faint band, one step of the page's own ink, so
   the columns read as one thing without becoming a card. Its footer,
