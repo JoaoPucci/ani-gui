@@ -3,7 +3,10 @@
 //! joined to the page by prequel and sequel links among themselves (its
 //! own titles), and the main-story titles one of them is linked to,
 //! where the chain leaves the main story or leads into it (its seams).
-//! A link counts from either side of the listings read.
+//! A link counts from either side of the listings read, except between
+//! two entries that list each other as alternative versions or settings
+//! (from either side): a version is never the next title of the chain it
+//! retells, as rule 3 keeps it out of a run.
 //!
 //! Every page that reaches the same franchise reads it the same way, so
 //! every title of a chain answers with the same chain where Kitsu lists
@@ -11,12 +14,13 @@
 //! only by a page that reaches that listing). A page in the main story,
 //! a page outside the franchise, and a page linked to nothing else have
 //! none, but a side story whose parents the main story leaves out is
-//! drawn on its earliest parent's chain (`franchise_walk_run.rs`).
+//! drawn on its earliest parent's chain, or on that parent alone where
+//! it is chained to nothing (`franchise_walk_run.rs`).
 //! Music videos are no titles of a chain, the page aside.
 
 use std::collections::BTreeSet;
 
-use super::rules::listed;
+use super::rules::{alt, listed};
 use super::walking::Run;
 use super::Lookup;
 
@@ -30,12 +34,12 @@ pub(crate) struct ChainIds {
     pub(crate) seams: BTreeSet<String>,
 }
 
-/// Whether `a` and `b` are linked by prequel or sequel, either listing
-/// naming the other.
-fn linked(look: &Lookup<'_>, a: &str, b: &str) -> bool {
+/// Whether `a` and `b` are linked on a chain: by prequel or sequel,
+/// either listing naming the other, and not versions or settings of each other.
+pub(crate) fn linked(look: &Lookup<'_>, a: &str, b: &str) -> bool {
     let names =
         |of: &str, other: &str| listed(look, of, &["prequel", "sequel"]).any(|r| r.id == other);
-    names(a, b) || names(b, a)
+    (names(a, b) || names(b, a)) && !alt(look, a, b)
 }
 
 /// The chain of `anchor` among the `franchise`'s entries outside `main`.
