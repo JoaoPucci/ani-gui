@@ -35,10 +35,8 @@
 //   backend requires, not by the kinds of their values, and a body
 //   nested in another (the guess's `hits`) is not held.
 // - Query strings and URL paths the renderer builds as text are not
-//   held, but for the proxy media URL below, and neither is which routes
-//   the renderer sends the secret to as a query parameter; nor is the
-//   search-page body, which the backend reads through structs local to
-//   its reader.
+//   held, but for the proxy media URL below; nor is the search-page
+//   body, which the backend reads through structs local to its reader.
 // - The Electron main process keeps its own copy of the secret header's
 //   name (`electron/lib/launch-flags.cjs`); only the renderer's is held.
 

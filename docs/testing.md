@@ -120,8 +120,7 @@ stub server (`electron/lib/e2e-stub-server.cjs`) and sends the request
 on to it, so the answer comes back over real HTTP through Chromium's
 network stack, as the backend's does. The stub server answers an API
 request as the backend would: the gate in front (the launch's secret as
-the header, or as the `secret` query parameter on the three routes an
-`<img>` or an `EventSource` loads; an empty 403 otherwise) and the
+the header, on every route; an empty 403 otherwise) and the
 backend's CORS rules on the answer. A preflight never reaches it:
 Playwright answers preflights itself, for any origin, so the CORS a
 spec meets is the answer's own. An answer to the request made in place
@@ -305,8 +304,8 @@ saying the same thing:
   requires, every value of each enum the renderer names (and the names the
   launch announces each connection lane under), the error envelope
   of every variant, and the values the renderer keeps a copy of (the Watch
-  Later bridge cap, the names of the secret and refill headers and of the
-  secret's query parameter, and the proxy's media URL shape; the Electron
+  Later bridge cap, the names of the secret and refill headers, and the
+  proxy's media URL shape; the Electron
   main process's own copy of the secret header's name is not held) — and
   `cargo test` fails until the file says the same. A field added to a
   published type, or a variant to a published enum, does not compile until

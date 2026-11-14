@@ -37,9 +37,8 @@
 //! What it does not hold: answers that are not a struct (the
 //! `/api/watched-at` map, a bare string or list of strings, and whether
 //! a route may answer `null`); which route answers which type; query
-//! strings (the renderer builds them as text, with no type to compare),
-//! among them which routes take the secret as a query parameter; the
-//! search-page body (read through structs local to
+//! strings (the renderer builds them as text, with no type to compare);
+//! the search-page body (read through structs local to
 //! `commands::kitsu_search`'s readers); a body nested in another (the
 //! guess's `hits`); the value types of a map (`titles`, `cached`); the
 //! launch flags, and the copy of the secret header's name the Electron
