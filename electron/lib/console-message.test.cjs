@@ -35,3 +35,17 @@ test("the relayed line names its level, the message and where it came from", () 
     "[renderer:verbose] [play] quality: start (http://localhost:5173/p.js:7)"
   );
 });
+
+test("the relayed line carries no secret, in the message or where it came from", () => {
+  const secret = "0123456789abcdef".repeat(4);
+  const url = `http://127.0.0.1:4/api/image?url=x&secret=${secret}`;
+  const line = rendererConsoleLine(
+    3,
+    `poster failed: ${url}`,
+    0,
+    `app://localhost/_app/x.js?ref=${encodeURIComponent(url)}`,
+    [secret],
+  );
+  assert.ok(!line.includes(secret), line);
+  assert.ok(line.includes("secret=<redacted>"), line);
+});

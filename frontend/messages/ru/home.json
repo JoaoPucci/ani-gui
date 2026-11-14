@@ -10,6 +10,8 @@
 	"hero_error_title": "Каталог недоступен.",
 	"hero_error_body": "Kitsu не отвечает. Локальный поиск работает — введите название.",
 	"hero_error_cta": "Открыть поиск",
+	"hero_empty_title": "Сейчас нечего показать.",
+	"hero_empty_body": "Список популярного пришёл пустым. Поиск работает, введите название.",
 	"hero_skeleton_eyebrow_key": "Загрузка",
 	"strip_continue_eyebrow": "Продолжить просмотр",
 	"strip_continue_caption": "продолжить из истории",

@@ -12,6 +12,7 @@ import { availabilityBatch } from '$lib/api';
 import { m } from '$lib/paraglide/messages';
 import type { OtherAudio } from '$lib/play/error-copy';
 import { lookupOtherAudioShow } from '$lib/play/other-audio';
+import { beginVisit } from '$lib/navigation/visit';
 
 type Batch = typeof availabilityBatch;
 
@@ -40,17 +41,18 @@ export function asksOtherAudio(state: {
 
 /** Ask the cache about the other audio of `q`'s title and hand the
  *  answer to `onAnswer`. Returns a cancel: an answer that lands after
- *  it is about a question the page no longer asks, and is dropped. */
+ *  it is about a question the page no longer asks, and is dropped, and
+ *  a lookup still out is cancelled. */
 export function watchOtherAudio(
 	q: { kitsuId: string | null | undefined; mode: string },
 	onAnswer: (answer: OtherAudio) => void,
 	batch: Batch = availabilityBatch
 ): () => void {
-	let live = true;
-	void lookupOtherAudioShow(q, batch).then((answer) => {
-		if (live) onAnswer(answer);
-	});
-	return () => {
-		live = false;
-	};
+	// Cancelling ends the lookup's visit: its request is cancelled too,
+	// and an answer it still gives is dropped.
+	const reads = beginVisit();
+	void reads
+		.keep(lookupOtherAudioShow(q, (ids, mode) => batch(ids, mode, { signal: reads.signal })))
+		.then(onAnswer);
+	return reads.end;
 }

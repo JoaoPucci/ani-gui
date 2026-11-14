@@ -65,7 +65,7 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
     XDG_CACHE_HOME: path.join(tmp, "cache"),
     XDG_DATA_HOME: path.join(tmp, "data"),
     ANI_GUI_UNATTENDED: "1",
-  });
+  }, { profile: tmp });
   const page = await appWindow(app);
   return { app, page };
 }
@@ -124,6 +124,9 @@ async function stubMetadata(page: Page, base: string) {
     if (p.startsWith("/api/kitsu/episodes/")) return j([continueKitsuEpisode6]);
     if (p === "/api/history") return j([]);
     if (p.startsWith("/api/image")) return r.fulfill({ status: 503 });
+    // The backend answers skip times with a list, empty when it
+    // knows none; the page reads it as one once the length is known.
+    if (p.startsWith("/api/aniskip/")) return j([]);
     return j(null);
   });
 }
@@ -133,7 +136,13 @@ async function session(page: Page, base: string, upstream: string) {
     async ({ base, upstream }) => {
       const res = await fetch(`${base}/api/sessions`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          // The API answers only a request carrying the launch's secret.
+          "x-ani-gui-internal-secret":
+            (window as { aniGui?: { internalSecret?: string } }).aniGui
+              ?.internalSecret ?? "",
+        },
         body: JSON.stringify({ upstream_url: upstream, referer: "" }),
       });
       if (!res.ok)

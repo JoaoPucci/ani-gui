@@ -49,6 +49,13 @@ describe('getEntry', () => {
 		mockFetchJson({}, 500);
 		await expect(getEntry('anilist', 'tok', 'k')).rejects.toBeInstanceOf(AccountApiError);
 	});
+
+	it("hands the visit's signal to the request, so the page that asked can cancel it", async () => {
+		const spy = mockFetchJson(null);
+		const visit = new AbortController();
+		await getEntry('anilist', 'tok', 'k', { signal: visit.signal });
+		expect((spy.mock.calls[0][1] as RequestInit).signal).toBe(visit.signal);
+	});
 });
 
 describe('setEntry', () => {
@@ -122,5 +129,29 @@ describe('forgetCachedEntry', () => {
 	it('throws AccountApiError on non-2xx', async () => {
 		vi.spyOn(global, 'fetch').mockResolvedValue(new Response('', { status: 403 }));
 		await expect(forgetCachedEntry('mal', 'k', 'u')).rejects.toBeInstanceOf(AccountApiError);
+	});
+});
+
+describe('the launch secret reaches every entry request', () => {
+	// The backend answers /api only to a request carrying the secret
+	// the preload bridge hands the renderer (`$lib/backend/secret`).
+	beforeEach(() => {
+		(globalThis as { window?: unknown }).window = {
+			aniGui: { apiBase: 'http://127.0.0.1:42337', internalSecret: 'c0ffee' }
+		};
+	});
+
+	const calls: Array<[string, () => Promise<unknown>]> = [
+		['a GET', () => getEntry('anilist', 'tok', 'k')],
+		['a POST', () => setEntry('anilist', 'tok', { kitsu_id: 'k', status: 'watching' })],
+		['a DELETE', () => removeEntry('anilist', 'tok', 'k')]
+	];
+
+	it.each(calls)('%s carries it as a header', async (_name, call) => {
+		const spy = mockFetchJson({});
+		await call().catch(() => {});
+		const [, init] = spy.mock.calls[0];
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers['x-ani-gui-internal-secret']).toBe('c0ffee');
 	});
 });

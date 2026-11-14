@@ -423,3 +423,11 @@ describe('recoveryAfterEviction, with the switch lock held', () => {
 		expect(recoveryAfterEviction({ ...quiet, left: true, switchBusyNow: true })).toBe('stand-down');
 	});
 });
+
+describe('canRecoverFromStaleStream — an episode handed to another player', () => {
+	it('recovers nothing: a recovery would resolve and start the embedded video again', () => {
+		const detail = {} as unknown;
+		expect(canRecoverFromStaleStream({ detail, switchBusy: false, handedOff: true })).toBe(false);
+		expect(canRecoverFromStaleStream({ detail, switchBusy: false, handedOff: false })).toBe(true);
+	});
+});
