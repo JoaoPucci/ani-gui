@@ -272,7 +272,7 @@ curl -sI http://127.0.0.1:42337/healthz
 |---|---|
 | `RUST_LOG` | tracing filter |
 | `ANI_GUI_UPSTREAM_BASE` | dev/test only; redirects `meta_http` to a wiremock instance |
-| `VITE_ANI_GUI_API_BASE` | browser-only dev: point the Vite renderer at a separately-running backend |
+| `VITE_ANI_GUI_API_BASE` | browser-only dev: point the Vite renderer at a separately-running backend. The backend refuses every API request from such a tab (see the question below) |
 | `ANI_GUI_UNATTENDED` | set to `1` by a harness with nobody at the screen (the e2e launch helper and the backend's integration tests always do): a packaged build whose startup fails then exits at once instead of showing its error dialog, and the backend never fetches the live remote flags file, taking its flags from `ANI_GUI_TEST_FLAGS_FILE` or the defaults ([Remote flags](#remote-flags)) |
 | `ANI_GUI_TEST_FLAGS_FILE` | only with `ANI_GUI_UNATTENDED=1`: a flags file, in the remote file's format, that the test run's flags come from. Ignored on any other launch |
 | `ANI_GUI_DEV` | forces the dev data profile (`ani-gui-dev` dirs) — see below. Auto-set by the Electron dev launcher; rarely needed by hand |
@@ -362,7 +362,10 @@ mistakes get past it and fail differently:
   default, off.
 
 So after pushing, wait out the five-minute CDN cache, launch the app,
-and confirm the values with `GET /api/flags` (below).
+and confirm the values with `GET /api/flags` (below), from the
+DevTools console of an Electron dev run (`pnpm dev` in `electron/`
+opens one), since the API answers only requests carrying the
+launch's secret.
 
 **Setting a flag back.** Set the flag back to its default (`false`), or
 remove its entry, and push. Removing
@@ -383,7 +386,17 @@ until it is restarted. An install that cannot reach GitHub at all keeps
 its cached copy for up to seven days, then uses the defaults.
 
 To see what a running backend decided, read
-`GET <api base>/api/flags`. It returns every declared flag's value and
+`GET <api base>/api/flags` from the DevTools console of an Electron
+dev run (`pnpm dev` in `electron/` opens one), which has the launch's
+secret the API asks for:
+
+```js
+fetch(`${aniGui.apiBase}/api/flags`, {
+  headers: { "x-ani-gui-internal-secret": aniGui.internalSecret },
+}).then((r) => r.json());
+```
+
+It returns every declared flag's value and
 where they came from (`origin`: `file`, `cache` or `defaults`, or
 `test` in a test run). The
 backend logs the decision at `info` as `remote flags settled`, with the
@@ -418,5 +431,5 @@ The GUI plays inside the window using hls.js + a local stream proxy. `mpv` is on
 **Where does the GUI keep watch history?**
 In its own state directory, as `history` — the CLI keeps its own file separately. The two used to share one, but the provider switch re-keyed both sides onto different show ids, so a shared file no longer carried anything either could read.
 
-**Why does the dev server work in a browser tab too?**
-By design — opening `http://localhost:5173` in any browser shows the same UI the Electron renderer loads. Useful for fast iteration. Production builds always run inside Electron because the streaming proxy + native window matter for the shipped product; standalone-browser dev only works against a separately-running backend (set `VITE_ANI_GUI_API_BASE` to its loopback URL).
+**Does the dev server work in a plain browser tab?**
+Opening `http://localhost:5173` in any browser loads the same UI the Electron renderer loads, but it no longer reaches the backend. The backend answers its API only to requests carrying the secret it prints at startup ([Who the backend answers](architecture.md#who-the-backend-answers)), which the Electron preload hands the renderer; a plain browser tab has no preload, so every API request it makes, even with `VITE_ANI_GUI_API_BASE` pointing at a running backend, is refused with `403`. Iterate under Electron (`pnpm dev` in `electron/`) instead.

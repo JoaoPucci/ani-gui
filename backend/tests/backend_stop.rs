@@ -268,8 +268,9 @@ fn start_a_download() -> Downloading {
     let downloads = root.join("downloads");
     write!(
         stream,
-        "GET /api/download/stream?title=test&episode=1&mode=sub&quality=best&episode_count=2&download_dir={} HTTP/1.1\r\nHost: {authority}\r\nAccept: text/event-stream\r\n\r\n",
-        query_value(&downloads)
+        "GET /api/download/stream?title=test&episode=1&mode=sub&quality=best&episode_count=2&download_dir={} HTTP/1.1\r\nHost: {authority}\r\nAccept: text/event-stream\r\nx-ani-gui-internal-secret: {}\r\n\r\n",
+        query_value(&downloads),
+        backend.secret
     )
     .expect("request");
 

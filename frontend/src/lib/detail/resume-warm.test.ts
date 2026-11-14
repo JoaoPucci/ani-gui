@@ -8,7 +8,9 @@ const args: PlayArgs = { title: 'Show', episode: '12.5', mode: 'sub' };
 const session: CreateSessionResponse = {
 	session_id: 's',
 	media_url: 'http://x/s/s/master.m3u8',
-	media_kind: 'hls'
+	media_kind: 'hls',
+	cache_hit: false,
+	subtitles: []
 };
 
 /** A stream that answers only when told to, recording each call. */

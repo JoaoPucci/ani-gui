@@ -551,15 +551,20 @@ starting it, and delete it when you find it done.
   are written into `electron/oauth-server.js`; the main process has a
   message table in every shipped locale for its dialogs
   (`electron/lib/main-messages.cjs`), and they belong in it.
-- **Adopt the `documentPictureInPicture` browser API** for the player's
-  pop-out window. Not a request to write documentation — "Document
-  Picture-in-Picture" is the W3C API's name.
+- **Picture-in-picture shows no subtitles; a mini-player window is to
+  replace it.** Chromium's picture-in-picture window draws the video's
+  picture and not its text tracks, so the subtitles stay behind in the
+  main window. The pop-out the player needs is an app-owned window
+  carrying the player itself, studied in
+  [`proposals/mini-player.md`](./proposals/mini-player.md).
 
-  Electron exposes the API but omits the window-creation glue, so it
-  cannot work today: electron/electron#39633, open since 2023. Do not
-  re-attempt until that lands. PiP as it exists now — the player's
-  video, while the player is open — ships and is described in
-  `README.md` and `docs/architecture.md`.
+  The `documentPictureInPicture` browser API ("Document
+  Picture-in-Picture" is the W3C API's name) would have been the other
+  way, but Electron exposes it without the window-creation glue, so it
+  cannot work: electron/electron#39633, open since 2023. The maintainer
+  chose not to wait for it. PiP as it exists now — the player's video,
+  while the player is open — ships and is described in `README.md` and
+  `docs/architecture.md`.
 - **An mp4 stream resumed at a point can still show its first frame
   in picture-in-picture.** The resume hold (`$lib/play/resume-hold`)
   hides the picture with the page's CSS until the resume seek lands,
@@ -821,6 +826,22 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
+- **The Home banner's message states have no artwork.** When there is
+  no show to feature (the trending list came back empty, every show in
+  it was filtered out as unavailable, or the fetch failed), the banner
+  shows a short message and an Open Search button as plain text on a
+  dark band, at the banner's full height. It works, but it looks
+  unfinished next to a banner with art. A placeholder image or
+  illustration for those states would let them look finished. It
+  waits on a design study, held to the guard rails in `AGENTS.md` §7.
+  [`proposals/luma-custom-assets.md`](proposals/luma-custom-assets.md)
+  plans original illustrations for empty, loading and error states
+  elsewhere in the app (the "Illustrated brand assets" entry above is
+  that same work); the banner would be one more surface for it,
+  though the proposal does not list it. The proposal also rules out
+  generated art standing in for a licensed show's banner, so the
+  artwork here would be the app's own, not a substitute for a show.
+
 ## A second provider, and what it would allow
 
 - **Add a second provider when one is worth having.** One provider
@@ -829,7 +850,7 @@ starting it, and delete it when you find it done.
   label are all written for several, so a second is mostly a client
   behind the `Provider` trait; the recipe in
   `backend/src/provider_set.rs` lists every place it has to be named.
-  The survey in [`proposals/additional-providers.md`](./proposals/additional-providers.md)
+  The survey in [`architecture.md`](./architecture.md#adding-a-provider)
   is the starting list; it rots quickly, so re-verify every row.
 
   anidb.app, which shipped first, left in October 2026 after its
@@ -1019,6 +1040,75 @@ starting it, and delete it when you find it done.
   acceptable is the decision, which is why it is a version call and
   not a cleanup.
 
+## Retiring the Continue-card title guess — the v1.0 marker
+
+- **Remove everything that exists only for history rows that record
+  no Kitsu id.** That is the title guess — the rules that rule hits
+  out (`backend/src/commands/continue_guess*.rs`) and the route the
+  renderer asks them through, `/api/history/guess/ruled-out`; the
+  regression corpus under `tests/fixtures/continue-guess/`; the stored
+  title matches and their version; and `/api/kitsu/resolve-allmanga/`,
+  whose one caller is the guess and whose mappings, stored without a
+  play, come back as the guess's first answer — and, once the
+  guessed-card linking work lands, the player's "Is this the show you
+  meant?" and its slip, the rows' `guessed_from` notes, the failure
+  overlay's "Pick the right show", and the "Which show is it?" picker
+  with "Not this show?" and the marks on rows named through it. A row
+  a normal play wrote records the show it was played from, so the
+  card cannot name the wrong show and needs no correcting. The entry
+  "Some guessed Continue cards still open the wrong show" goes with
+  it. The maintainer has tied this removal to v1.0, with the two
+  above.
+
+  What stays: the rematch of a row whose recorded Kitsu entry Kitsu
+  has since deleted, still needed because Kitsu deletes and merges
+  entries. It is not separate code today. Home matches such a row
+  exactly as a row with no id (`resolveKitsuMatchWithTrust` in
+  `frontend/src/lib/history/match.ts`), and the detail page's resume
+  lookup finds it by the title match Home stored
+  (`backend/src/commands/history_claim.rs`). So the title matches,
+  and the mappings `/api/kitsu/resolve-allmanga/` stores, serve this
+  rematch as well, and it needs a route of its own before they go. The launch sweep of a retired
+  source's rows also reads a row's title matches to judge which show
+  it stands for.
+
+  Decided for v1.0: a row with no id still present stays on Continue
+  Watching with its title, the one the streaming site listed it
+  under, and its episode. A click on it opens the search page with
+  that title filled in; the site's title can differ from the
+  catalogue's ("My Star" for [Oshi no Ko]), so the viewer may have to
+  edit it. Nothing is deleted on the viewer's behalf. Rows are keyed
+  by the listing, so a play of the same listing writes the Kitsu id
+  onto the old row, while a play that lands on another listing (the
+  show now listed elsewhere, or a retired source's row) writes a new
+  row and leaves the old one; only a retired source's row can go on
+  its own, through the launch sweep, once the new row resumes over
+  it. So a small bridge goes with it: the search opened from such a
+  card remembers the row it came from, and the first play started
+  from that search replaces that row, leaving one line, on the right
+  show. What the app tracks today is the page behind a page, not the
+  row a search came from, so that part is new.
+
+  Decided for v2.0: the bridge goes too. A row with no id still
+  present then only opens the search with its title, and if the play
+  lands on another listing the viewer removes the old card by hand.
+
+  Why it waits: the guess is how such rows are shown today, and the
+  removal is a version call. The guess's own writer of rows with no
+  id — a guessed card's play that lands on a listing other than the
+  card's — goes with it. A play from a show's page records the show's
+  Kitsu id, except when the cour check refuses the pairing, or when
+  the id waits for the watch and the window closes first; both write
+  a row without one and go on doing so after v1.0, and such a row is
+  answered by the same search. The marks on named rows are what keep
+  a refused watch from clearing an id the viewer chose, so once they
+  go, a refused watch of such a show joins those rows too. A change of
+  streaming source creates no such rows of itself, since the id names
+  the show, not the listing, though a source that names its seasons
+  its own way can add cour refusals. Moving off Kitsu as the catalogue
+  would be its own migration, through the cross-catalogue id mappings
+  first, and is no reason to keep the guess.
+
 ## Recovering a download's abandoned claim automatically
 
 - **Take back the empty file an interrupted download left at an
@@ -1115,6 +1205,27 @@ starting it, and delete it when you find it done.
   cached resolutions, with a row still live, could play through
   that path, and the diagnostic route's pasted URL exercises neither
   the proxy nor the event stream.
+
+## Which program the app runs is the page's choice
+
+- **The external player's and Syncplay's program paths are stored
+  from Settings unchecked, so the app's own page chooses what runs.**
+  The page writes them, with the rest of Settings, through
+  `PUT /api/settings` (`external_player`, `syncplay_binary`), and the
+  backend starts whatever path it was handed when the user next opens
+  an episode in the external player or watches together. No request
+  names a program any more, but a script running in the app's page,
+  which holds the launch's secret, can still pick the program by
+  rewriting Settings first. The Browse buttons open a
+  main-process file picker, but its answer comes back to the page and
+  is saved through the same `PUT`, like a typed path.
+
+  The direction chosen is that a path is set only through the
+  main-process file picker. It waited for a small Settings UI study:
+  dropping the free-text path changes how both fields look and
+  behave. What a picker cannot cover is the custom-arguments template
+  (`external_player_custom_args`): no dialog picks arguments, so it
+  needs an answer of its own.
 
 ## Metadata the app does not use yet
 
@@ -1333,6 +1444,12 @@ is a convenience on top of that. The notifier covers installs that keep
 notifier asks only for full releases, and since every release so far is
 a pre-release, it announces none.
 
+Updating from inside the app is studied in
+[`proposals/in-app-updater.md`](proposals/in-app-updater.md), which
+recommends the app replace its own AppImage without this mechanism;
+what this entry covers is for AppImageUpdate and other third-party
+tools.
+
 Three things are worth knowing before starting:
 
 - `electron/scripts/repack-appimage.mjs` builds the final AppImage
@@ -1343,13 +1460,64 @@ Three things are worth knowing before starting:
 - Every release is published as a pre-release, and the `latest` tag of
   the usual `gh-releases-zsync|JoaoPucci|ani-gui|latest|…` string goes
   through GitHub's latest-release lookup, which skips pre-releases.
-  Whatever string is embedded has to be confirmed to find a
-  pre-release.
+  The format also defines `latest-pre` and `latest-all`, and upstream
+  AppImageUpdate reads them from the releases list, but it takes the
+  newest release and fails when that one has no matching AppImage, so
+  a release without an AppImage would stall updates until the next
+  one that has one.
 - The `.zsync` file comes from `zsyncmake`, which the release build
   does not provision: nothing in the packaging scripts fetches it, the
   way the repack fetches the runtime. Requiring it to be installed on
   the machine that builds is a system change (`AGENTS.md` §11), so the
   alternative is for the build to fetch a copy into the repository too.
+
+## What the in-app updater leaves out
+
+[`proposals/in-app-updater.md`](proposals/in-app-updater.md) plans a
+first version that downloads updates in the app and installs them for
+the AppImage and the Windows installer. It leaves out, on purpose:
+
+- **A silent Windows install.** The first version starts the
+  installer with its own window, which explains itself, asks for UAC
+  when the install is per-machine, and reports its own failures. A
+  silent install trades all three away, so it waits until the window
+  has been used across a few releases.
+- **An apt repository for the `.deb`.** The way `.deb` users expect
+  updates, but a project of its own: a signing key, hosting that can
+  serve packages over 100 MiB (GitHub Pages cannot), and a one-time
+  root setup on the user's side. The app only offers to download the
+  `.deb` meanwhile.
+- **Authenticode signing of the Windows installer.** The updater's own
+  signature check does not need it; browser downloads would benefit.
+  The cheap services want either an individual developer in the
+  United States or Canada (Azure Artifact Signing) or binaries built
+  "from source code in a verifiable way" (SignPath Foundation), which
+  in practice means CI, so it waits for release CI or a change in
+  those terms.
+
+## Studying a frontend written in Rust
+
+The maintainer wants a study of rewriting the frontend as a native
+Rust interface: drawn by a Rust toolkit, with no web engine, not the
+same web interface moved into another shell. Today the interface is
+SvelteKit in an Electron shell, and `AGENTS.md` §14 keeps rendering
+in the renderer's own stack, and says the Rust default never moves
+rendering into Rust, "whether behind a request to the backend or
+compiled to WebAssembly". That rule holds until the study is decided;
+revisiting it is the study's job.
+
+It waited because it rewrites the whole interface, far beyond any one
+change, and because a Rust interface is new to the stack, which is the
+maintainer's decision after an investigation.
+
+It is more than a change of language. With no web engine there is no
+Electron and no hls.js, so playback needs a native player embedded in
+the window on both platforms, likely the largest unknown. The
+Paraglide translations (§6), packaging on both platforms (§15) and the
+frontend layers of the test pyramid all change with it. A shell around
+the system webview is not the alternative it looks like: the app ran
+on Tauri until it moved to Electron, because the Linux webview could
+not keep up drawing the interface.
 
 ## Housekeeping
 

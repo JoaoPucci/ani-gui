@@ -34,13 +34,21 @@
 # failure, or a signal to this tool (Ctrl-C included) — the command is
 # stopped, then the compositor, then the bus, and the runtime directory
 # is removed. The command runs in a process group of its own, which is
-# signalled whole, including what it leaves behind there. Anything else
-# still running whose environment names the runtime directory is
-# stopped as well. That sweep cannot see a process that rewrote its
-# environment block, as Chromium's child processes do; those are
-# reached through the command's process group, unless they left it.
-# The command has no terminal and reads nothing. A SIGKILL to this tool
-# leaves the whole session running; it has to be stopped by hand.
+# signalled whole, including what it leaves behind there. Everything
+# the session started runs in a transient systemd user scope of its own
+# (systemd-run --user --scope), a cgroup nothing started inside it can
+# leave: whatever is still running there at the end — a service that
+# daemonized, a process that made a session of its own — is stopped by
+# stopping that one scope. Nothing is picked out of the process table:
+# processes are stopped by the pid this tool recorded or that the
+# session's own shell reported, or by a group this tool created, each
+# only once /proc/<pid>/stat shows the pid is still that process (its
+# start time) or a member of the session this tool made; or by the
+# scope. It needs systemd 254 or later and a user
+# service manager. The command has no terminal and reads nothing. A
+# SIGKILL to this tool leaves the whole session running; it has to be
+# stopped by hand (`systemctl --user stop` on the scope it names as the
+# session starts).
 #
 # What the session still shares with the desktop is the system bus.
 # gnome-shell needs it: without one its startup throws and it aborts on
@@ -51,7 +59,7 @@
 # idle delay), so it never locks and takes no sleep inhibitor. Core
 # dumps are switched off for the session.
 
-# ours and await_exit are predicates, called in conditions on purpose;
+# in_session, same and await_exit are predicates, called in conditions on purpose;
 # the functions the traps call are invoked indirectly.
 # shellcheck disable=SC2310,SC2329
 set -eu
@@ -74,22 +82,44 @@ show_log() {
     fi
 }
 
-# Whether process $1 is still running in this session: its environment
-# names the runtime directory $2. A pid read from a file may have been
-# reused by then.
-ours() {
-    { tr '\0' '\n' <"/proc/$1/environ"; } 2>/dev/null | grep -qxF "XDG_RUNTIME_DIR=$2"
+# Field $2 of process $1's /proc/<pid>/stat line, numbered as proc(5)
+# numbers them (6 the session, 22 the start time), counted from after
+# the command name, which may hold spaces. Fails with no such process.
+stat_field() {
+    { stat=$(cat "/proc/$1/stat"); } 2>/dev/null || return 1
+    # shellcheck disable=SC2086 # the fields, split
+    set -- "$2" ${stat##*) }
+    # $2 is now field 3, the state, so field k is ${k-1}.
+    eval "printf '%s\\n' \"\${$(($1 - 1))-}\""
 }
 
-# Wait until process $1 is gone, $2 tenths of a second at most
-# ($STOP_TIMEOUT_TENTHS by default); fail if it is still there.
+# Whether process $1 belongs to session $2. A session is not joined from
+# outside, so a live member of a session this tool made, which holds the
+# session's id, is one this tool started.
+in_session() {
+    [ -n "$2" ] && [ "$(stat_field "$1" 6 || true)" = "$2" ]
+}
+
+# Whether pid $1 is still the process that started at $2, the start time
+# read when the pid was recorded: a pid and its start time name one
+# process. A recorded pid is checked this way before every signal. The
+# shell reaps a background child as soon as it exits, even while it
+# waits on something else, and from then on the pid, and a group or
+# session id it led, may be anyone's.
+same() {
+    [ -n "$2" ] && [ "$(stat_field "$1" 22 || true)" = "$2" ]
+}
+
+# Wait until pid $1 is no longer the process that started at $2, $3
+# tenths of a second at most ($STOP_TIMEOUT_TENTHS by default); fail if
+# it still is.
 await_exit() {
     n=0
-    while kill -0 "$1" 2>/dev/null && [ "$n" -lt "${2:-$STOP_TIMEOUT_TENTHS}" ]; do
+    while same "$1" "$2" && [ "$n" -lt "${3:-$STOP_TIMEOUT_TENTHS}" ]; do
         sleep 0.1
         n=$((n + 1))
     done
-    ! kill -0 "$1" 2>/dev/null
+    ! same "$1" "$2"
 }
 
 # --- inside the private D-Bus session ---------------------------------
@@ -97,6 +127,8 @@ await_exit() {
 if [ "${1-}" = '__inner' ]; then
     rt=$2
     shift 2
+    # The outer shell signals this one by this pid, not by its name.
+    echo "$$" >"$rt/inner.pid"
     log="$rt/gnome-shell.log"
     socket="$rt/$SOCKET_NAME"
     # dash and bash both take -c; POSIX leaves it undefined.
@@ -131,25 +163,27 @@ EOF
         --wayland-display="$SOCKET_NAME" \
         --virtual-monitor 1920x1080 >"$log" 2>&1 &
     shell=$!
+    shell_start=$(stat_field "$shell" 22 || true)
     group=''
+    group_start=''
     logged=''
 
     teardown() {
-        # The command's whole process group, whether its leader is still
-        # there or left something behind.
-        if [ -n "$group" ] && kill -s TERM -- "-$group" 2>/dev/null; then
-            n=0
-            while kill -s 0 -- "-$group" 2>/dev/null && [ "$n" -lt "$STOP_TIMEOUT_TENTHS" ]; do
-                sleep 0.1
-                n=$((n + 1))
-            done
-            if kill -s 0 -- "-$group" 2>/dev/null; then kill -s KILL -- "-$group" 2>/dev/null || true; fi
+        # The command's whole process group, while its leader is there to
+        # show the group id is still the command's. What the command
+        # leaves in its group after the leader has gone is stopped with
+        # the session's scope.
+        if [ -n "$group" ] && same "$group" "$group_start" &&
+            kill -s TERM -- "-$group" 2>/dev/null; then
+            await_exit "$group" "$group_start" || {
+                ! same "$group" "$group_start" || kill -s KILL -- "-$group" 2>/dev/null || true
+            }
         fi
-        if kill -0 "$shell" 2>/dev/null; then
+        if same "$shell" "$shell_start"; then
             kill -TERM "$shell" 2>/dev/null || true
-            if ! await_exit "$shell"; then
+            if ! await_exit "$shell" "$shell_start"; then
                 say "the compositor did not stop on TERM; killing it"
-                kill -KILL "$shell" 2>/dev/null || true
+                ! same "$shell" "$shell_start" || kill -KILL "$shell" 2>/dev/null || true
             fi
         fi
         code=0
@@ -166,7 +200,7 @@ EOF
 
     n=0
     until [ -S "$socket" ] && grep -q 'GNOME Shell started' "$log"; do
-        if ! kill -0 "$shell" 2>/dev/null; then
+        if ! same "$shell" "$shell_start"; then
             say "the compositor exited before it was ready"
             show_log "$log"
             logged=1
@@ -192,10 +226,11 @@ EOF
     # reads nothing: an interactive command does not work here.
     setsid "$@" &
     group=$!
+    group_start=$(stat_field "$group" 22 || true)
     status=0
     wait "$group" || status=$?
 
-    if ! kill -0 "$shell" 2>/dev/null; then
+    if ! same "$shell" "$shell_start"; then
         say "the compositor exited while the command ran"
         show_log "$log"
         logged=1
@@ -210,12 +245,17 @@ if [ "$#" -eq 0 ]; then
     say "usage: tools/headless-wayland.sh <command> [args...]"
     exit 64
 fi
-for tool in "$GNOME_SHELL" dbus-run-session dbus-update-activation-environment setsid pgrep; do
+for tool in "$GNOME_SHELL" dbus-run-session dbus-update-activation-environment setsid systemd-run systemctl; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         say "$tool is not installed"
         exit 69
     fi
 done
+# The session's scope is made by the user's service manager.
+if ! systemctl --user show-environment >/dev/null 2>&1; then
+    say "no systemd user service manager answers; the session's scope needs one"
+    exit 69
+fi
 
 dir=$(dirname "$0")
 dir=$(cd "$dir" && pwd)
@@ -227,34 +267,34 @@ self="$dir/${0##*/}"
 rt=$(mktemp -d /tmp/ani-gui-wl.XXXXXX)
 chmod 700 "$rt"
 session=''
+session_start=''
+# The scope's name carries the runtime directory's unique suffix.
+unit="ani-gui-wl-${rt##*.}.scope"
 
-# Stop what is still running in this session. The inner shell first: it
-# stops the command, then the compositor while its bus is still there;
-# then anything else whose environment names the runtime directory.
+# Stop what is still running in this session. The inner shell first, by
+# the pid it reported, once it is shown to be in this session: it stops
+# the command, then the compositor while its bus is still there. Then
+# everything left in the session's scope. The session leader is
+# signalled only while its pid is still the process this tool started.
 reap() {
-    if [ -n "$session" ] && kill -0 "$session" 2>/dev/null; then
-        for pid in $(pgrep -s "$session" 2>/dev/null); do
-            case "$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null)" in
-                "sh $self __inner "*) kill -TERM "$pid" 2>/dev/null || true ;;
-                *) ;;
-            esac
-        done
+    if [ -n "$session" ] && same "$session" "$session_start"; then
+        inner=$(cat "$rt/inner.pid" 2>/dev/null || true)
+        if [ -n "$inner" ] && in_session "$inner" "$session"; then
+            kill -TERM "$inner" 2>/dev/null || true
+        fi
         # The inner shell may take a stop timeout for the command and
         # another for the compositor.
-        await_exit "$session" $((STOP_TIMEOUT_TENTHS * 2 + 50)) ||
-            kill -s KILL -- "-$session" 2>/dev/null || true
+        await_exit "$session" "$session_start" $((STOP_TIMEOUT_TENTHS * 2 + 50)) || {
+            ! same "$session" "$session_start" || kill -s KILL -- "-$session" 2>/dev/null || true
+        }
     fi
-    for round in TERM KILL; do
-        for env in /proc/[0-9]*/environ; do
-            pid=${env#/proc/}
-            pid=${pid%/environ}
-            [ "$pid" != "$$" ] || continue
-            if ours "$pid" "$rt"; then
-                kill "-$round" "$pid" 2>/dev/null || true
-            fi
-        done
-        [ "$round" = KILL ] || sleep 1
-    done
+    # TERM to everything left in the scope, KILL to what is still there
+    # after its stop timeout. A scope that has emptied is gone already.
+    # Only a scope this run made: the inner shell, which wrote its pid,
+    # ran inside it, so systemd-run had created it under this name.
+    if [ -e "$rt/inner.pid" ]; then
+        systemctl --user stop "$unit" 2>/dev/null || true
+    fi
 }
 
 cleanup() {
@@ -274,15 +314,25 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 mkdir -p "$rt/home" "$rt/config" "$rt/data" "$rt/cache" "$rt/state"
+say "session scope: $unit"
 
 # A session of its own, so a Ctrl-C at the terminal reaches this shell
-# alone, and the teardown above stops the rest in order.
-env -u DISPLAY -u WAYLAND_DISPLAY -u WAYLAND_SOCKET -u XDG_SESSION_ID \
+# alone, and the teardown above stops the rest in order; inside a scope
+# of its own, so whatever leaves that session is still stopped with it.
+# systemd-run reaches the user's service manager through the caller's
+# environment, so the session's own environment is set after it. It
+# would expand `$NAME` in the command's arguments itself; it is told not
+# to, so the command reaches its shell as written.
+setsid systemd-run --user --scope --quiet --collect --unit="$unit" \
+    --expand-environment=no \
+    -p TimeoutStopSec="$((STOP_TIMEOUT_TENTHS / 10))s" \
+    env -u DISPLAY -u WAYLAND_DISPLAY -u WAYLAND_SOCKET -u XDG_SESSION_ID \
     -u DBUS_SESSION_BUS_ADDRESS -u GSETTINGS_BACKEND -u XAUTHORITY \
     XDG_RUNTIME_DIR="$rt" \
     XDG_SESSION_TYPE=wayland \
-    setsid dbus-run-session -- sh "$self" __inner "$rt" "$@" &
+    dbus-run-session -- sh "$self" __inner "$rt" "$@" &
 session=$!
+session_start=$(stat_field "$session" 22 || true)
 status=0
 wait "$session" || status=$?
 exit "$status"

@@ -724,10 +724,14 @@ describe('the Up next card at a finale', () => {
 	});
 
 	it('stays when the frame is fullscreen and its controls hide', async () => {
+		// Still playing at the very end (a playhead a moment short of the
+		// length counts as the end): the only time controls hide while
+		// the card shows, since the player reads an ended video as paused.
 		const { video } = await openEpisode();
 		Object.defineProperty(video, 'paused', { configurable: true, get: () => false });
 		video.dispatchEvent(new Event('play'));
-		await playToEnd(video);
+		video.dispatchEvent(new Event('playing'));
+		await playTo(video, LENGTH);
 		await until(() => card() !== null, 'the card');
 		const frame = target.querySelector('section.player-frame')!;
 		try {

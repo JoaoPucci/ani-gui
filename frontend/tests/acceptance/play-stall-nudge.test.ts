@@ -174,7 +174,7 @@ function useShowHandlers() {
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
 	);
 }
 
@@ -340,6 +340,19 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 			fragLoadPolicy: {
 				default: { maxLoadTimeMs: 15000, maxTimeToFirstByteMs: 10000 }
 			}
+		});
+	});
+
+	it('the engine is constructed with a bounded back buffer', async () => {
+		// Left at the engine default, everything already played stays
+		// in memory until Chromium's own cap: five minutes of 1080p held
+		// four and a half minutes of video in the page process. The
+		// page hands the engine the bound at construction, beside the
+		// load policy, which it keeps.
+		const hls = await mountPlayingHls();
+		expect(hls.config).toMatchObject({
+			backBufferLength: 30,
+			fragLoadPolicy: { default: { maxLoadTimeMs: 15000 } }
 		});
 	});
 

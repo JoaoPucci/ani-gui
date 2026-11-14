@@ -4,9 +4,13 @@ import { m } from '$lib/paraglide/messages';
 import { asksOtherAudio, unavailableMessage, watchOtherAudio } from './unavailable-copy';
 
 function batchAnswering(res: AvailabilityBatchResponse) {
-	return vi.fn<(ids: string[], mode: string) => Promise<AvailabilityBatchResponse>>(
-		async () => res
-	);
+	return vi.fn<
+		(
+			ids: string[],
+			mode: string,
+			opts?: { signal?: AbortSignal }
+		) => Promise<AvailabilityBatchResponse>
+	>(async () => res);
 }
 
 describe('unavailableMessage — the notice that replaces Play', () => {
@@ -64,7 +68,7 @@ describe('watchOtherAudio — the notice asks the cache, never the provider', ()
 		const onAnswer = vi.fn();
 		watchOtherAudio({ kitsuId: '40684', mode: 'dub' }, onAnswer, batch);
 		await vi.waitFor(() => expect(onAnswer).toHaveBeenCalledWith(true));
-		expect(batch).toHaveBeenCalledWith(['40684'], 'sub');
+		expect(batch).toHaveBeenCalledWith(['40684'], 'sub', { signal: expect.any(AbortSignal) });
 	});
 
 	it('takes a count-less positive row as the show being there', async () => {
@@ -124,6 +128,39 @@ describe('watchOtherAudio — the notice asks the cache, never the provider', ()
 		await vi.waitFor(() => expect(batch).toHaveBeenCalled());
 		cancel();
 		release({ cached: { '7': true }, playable_episode_counts: {} });
+		await new Promise((r) => setTimeout(r, 0));
+		expect(onAnswer).not.toHaveBeenCalled();
+	});
+
+	it('cancels the lookup still out when it is cancelled', async () => {
+		const batch = vi.fn<
+			(
+				ids: string[],
+				mode: string,
+				opts?: { signal?: AbortSignal }
+			) => Promise<AvailabilityBatchResponse>
+		>(() => new Promise<AvailabilityBatchResponse>(() => {}));
+		const cancel = watchOtherAudio({ kitsuId: '7', mode: 'dub' }, vi.fn(), batch);
+		await vi.waitFor(() => expect(batch).toHaveBeenCalled());
+		const signal = batch.mock.calls[0][2]?.signal;
+		expect(signal?.aborted).toBe(false);
+		cancel();
+		expect(signal?.aborted).toBe(true);
+	});
+
+	it('says nothing, not "unknown", for a lookup it cancelled', async () => {
+		const batch = vi.fn(
+			(_ids: string[], _mode: string, opts?: { signal?: AbortSignal }) =>
+				new Promise<AvailabilityBatchResponse>((_, reject) =>
+					opts?.signal?.addEventListener('abort', () =>
+						reject(new DOMException('The operation was aborted.', 'AbortError'))
+					)
+				)
+		);
+		const onAnswer = vi.fn();
+		const cancel = watchOtherAudio({ kitsuId: '7', mode: 'dub' }, onAnswer, batch);
+		await vi.waitFor(() => expect(batch).toHaveBeenCalled());
+		cancel();
 		await new Promise((r) => setTimeout(r, 0));
 		expect(onAnswer).not.toHaveBeenCalled();
 	});

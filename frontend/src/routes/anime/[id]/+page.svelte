@@ -112,6 +112,7 @@
 	} from '$lib/play/play-cache';
 	import { createShowReleases } from '$lib/play/show-release';
 	import { createNavigationClaims } from '$lib/navigation/claims';
+	import { beginVisit, visitSeries, type Visit } from '$lib/navigation/visit';
 	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import {
@@ -568,20 +569,21 @@
 			airingResolved = true;
 			return;
 		}
-		let cancelled = false;
-		void airingGet(currentId)
+		// Asked again for another show or status: the read before is
+		// cancelled, and nothing of it is applied ($lib/navigation/visit).
+		const reads = beginVisit();
+		void reads
+			.keep(airingGet(currentId, { signal: reads.signal }))
 			.then((a) => {
-				if (!cancelled) airingSchedule = a;
+				airingSchedule = a;
 			})
 			.catch(() => {
 				/* unknown airing data → tiles stay ungated */
 			})
 			.finally(() => {
-				if (!cancelled) airingResolved = true;
+				airingResolved = true;
 			});
-		return () => {
-			cancelled = true;
-		};
+		return reads.end;
 	});
 
 	// In-flight beat between mount and the airing answer: tiles and
@@ -700,16 +702,23 @@
 		return out;
 	}
 
-	// What says the show this page shows has gone: a refill landing
-	// after it is not fetched ($lib/refill/refill).
-	let refillSignal: AbortSignal | undefined;
+	// The reads the page makes once, whichever show it shows, ended
+	// when the page goes; and the reads of the show it shows, ended when
+	// the viewer moves to another show or leaves. Each read holds an API
+	// connection until it answers, so a read nobody will look at is
+	// cancelled, and its answer, or its failure, never reaches the page
+	// ($lib/navigation/visit). A refill landing after the show's visit
+	// is not fetched either ($lib/refill/refill).
+	const pageReads = beginVisit();
+	onDestroy(pageReads.end);
+	let showReads: Visit = beginVisit();
 
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
 		const eps = await kitsuEpisodes(id, p, {
-			signal: refillSignal,
+			signal: showReads.signal,
 			// Thumbnails AniList's pacing held back, filled in once
 			// they land.
 			onRefill: (filled) => {
@@ -723,11 +732,15 @@
 	async function fetchEpisodesPage(p: number, opts: { initial?: boolean } = {}) {
 		if (!id) return;
 		const wantPage = Math.max(1, p);
+		// A show left meanwhile answers nothing here, not even a failure.
+		const reads = showReads;
 		episodesLoading = true;
 		try {
 			const start = (wantPage - 1) * UI_PAGE_SIZE + 1;
 			const end = wantPage * UI_PAGE_SIZE;
-			const merged = (await Promise.all(kitsuPagesForUiPage(wantPage).map(getKitsuPage))).flat();
+			const merged = (
+				await reads.keep(Promise.all(kitsuPagesForUiPage(wantPage).map(getKitsuPage)))
+			).flat();
 			rawWindowed = merged.filter((ep) => {
 				const n = ep.number ?? ep.relative_number ?? -1;
 				return n >= start && n <= end;
@@ -917,6 +930,7 @@
 		const showId = id;
 		if (!showId) return;
 		const atVisit = visit;
+		const reads = showReads;
 		// No measured cap means no listing stood behind the lookup. The
 		// warm comes after the row is read, so only for a page still on
 		// this visit: a viewer who left meanwhile has had the show's
@@ -925,12 +939,14 @@
 			playableEpisodeCount === null && detail
 				? (ep: number) => (!gone && visit === atVisit ? warmResume(ep, showId) : Promise.resolve())
 				: undefined;
-		const next = await refreshedResume(
-			entry,
-			showId,
-			historyNumber,
-			(k, f, t) => movePosition(k, f, t),
-			warm
+		const next = await reads.keep(
+			refreshedResume(
+				entry,
+				showId,
+				(rowId) => historyNumber(rowId, { signal: reads.signal }),
+				(k, f, t) => movePosition(k, f, t),
+				warm
+			)
 		);
 		// The row the refresh read, still the page's: compared by value,
 		// since the page keeps its own copy of the row.
@@ -1021,6 +1037,10 @@
 	// reconcile) supersedes any in-flight one — including one waiting
 	// out a retry, which checks the sequence again when its wait ends.
 	let listEntryReadSeq = 0;
+	// Each read's requests, cancelled once a newer read supersedes it or
+	// the page goes ($lib/navigation/visit).
+	const listEntryReads = visitSeries();
+	onDestroy(listEntryReads.end);
 
 	// Read every connected tracker and fold to the seed entry, retrying a
 	// transient failure on the plan in `read-retry` so a passing failure
@@ -1036,6 +1056,7 @@
 		// quiet reconcile that comes meanwhile takes over loud.
 		if (quiet && listEntryLoading) quiet = false;
 		const seq = ++listEntryReadSeq;
+		const reads = listEntryReads.next();
 		const kitsuId = id;
 		const connected = accountStore.connected;
 		if (!quiet) {
@@ -1060,7 +1081,7 @@
 					providers.map(async (p) => {
 						const bearer = await freshBearerFor(p);
 						if (!bearer) throw new Error(`no bearer for ${p}`);
-						return getEntry(p, bearer, kitsuId);
+						return getEntry(p, bearer, kitsuId, { signal: reads.signal });
 					})
 				),
 			isCurrent: () => seq === listEntryReadSeq,
@@ -1094,6 +1115,7 @@
 		readListEntry(false);
 		return () => {
 			listEntryReadSeq += 1; // cancel any in-flight read on teardown
+			listEntryReads.end();
 		};
 	});
 
@@ -1160,10 +1182,10 @@
 		watchOrderData = null;
 		resumeRefresh.reset();
 		resetEpisodePageCache(kitsuPageCache);
-		const refills = new AbortController();
-		refillSignal = refills.signal;
+		const reads = beginVisit();
+		showReads = reads;
 		const detailServed = kitsuAnimeDetail(currentId, {
-			signal: refills.signal,
+			signal: reads.signal,
 			// A banner AniList's pacing held back, put on the hero once
 			// it lands.
 			onRefill: (fresh) => {
@@ -1171,7 +1193,10 @@
 				if (images && detail && id === currentId) Object.assign(detail, images);
 			}
 		});
-		void lookupResume(currentId, historyByKitsu, detailServed)
+		void reads
+			.keep(
+				lookupResume(currentId, (k) => historyByKitsu(k, { signal: reads.signal }), detailServed)
+			)
 			.then((h) => {
 				if (id !== currentId) return;
 				resumeEntry = h;
@@ -1188,12 +1213,13 @@
 		void loadWatchOrder(currentId, watchOrderSources, watchOrderVisit.signal).then((w) => {
 			if (id === currentId && !watchOrderVisit.signal.aborted) watchOrderData = w;
 		});
-		void detailServed
+		void reads
+			.keep(detailServed)
 			.then((d) => {
 				// Navigation raced ahead: another show, or another page
 				// altogether (the player keeps the same id), whose trail
 				// this show must not name.
-				if (id !== currentId || refills.signal.aborted) return;
+				if (id !== currentId) return;
 				detail = d;
 				if (isMusicSubtype(d.subtype)) {
 					// Music videos (a YOASOBI MV, say) never exist on the provider —
@@ -1219,17 +1245,18 @@
 					// warms uncached entries for the next visit. Without this
 					// the strip happily renders dead shows whose detail pages
 					// only dead-end on the Watch click.
-					void kitsuSearch(seed)
-						.then((hits) => {
-							if (id !== currentId) return null;
-							const trimmed = hits.filter((h) => h.id !== d.id).slice(0, 12);
-							// A list of other shows: the Settings default, not
-							// this show's own audio.
-							const mode: 'sub' | 'dub' = playMode(config);
-							return filterAvailable(trimmed, mode);
-						})
+					void reads
+						.keep(
+							kitsuSearch(seed, { signal: reads.signal }).then((hits) => {
+								const trimmed = hits.filter((h) => h.id !== d.id).slice(0, 12);
+								// A list of other shows: the Settings default, not
+								// this show's own audio.
+								const mode: 'sub' | 'dub' = playMode(config);
+								return filterAvailable(trimmed, mode, { signal: reads.signal });
+							})
+						)
 						.then((filtered) => {
-							if (id !== currentId || filtered === null) return;
+							if (id !== currentId) return;
 							similar = filtered;
 						})
 						.catch(() => {
@@ -1248,14 +1275,15 @@
 		// click's own play runs on and records its show's watch. Only
 		// when the id moved: this effect also re-runs on the same show.
 		return () => {
-			refills.abort();
+			reads.end();
 			watchOrderVisit.abort();
 			if (id !== currentId) clearBackgroundForShow(currentId);
 		};
 	});
 
 	onMount(() => {
-		void settingsGet()
+		void pageReads
+			.keep(settingsGet({ signal: pageReads.signal }))
 			.then((c) => (config = c))
 			.catch((e) => (configError = describeSettingsFailure(e)));
 	});
@@ -1700,7 +1728,8 @@
 	let downloadModalOpen = $state(false);
 	let downloadArgs = $state<DownloadArgs | null>(null);
 	let downloadDefaultDir = $state('');
-	void downloadDefaultDirApi()
+	void pageReads
+		.keep(downloadDefaultDirApi({ signal: pageReads.signal }))
 		.then((d) => {
 			if (d) downloadDefaultDir = d;
 		})
@@ -2434,7 +2463,7 @@
 	{/if}
 </main>
 
-<LoadingOverlay visible={actionBusy || resumeWaiting} progress={actionProgress} />
+<LoadingOverlay modal visible={actionBusy || resumeWaiting} progress={actionProgress} />
 
 {#if playFailure}
 	<ErrorOverlay

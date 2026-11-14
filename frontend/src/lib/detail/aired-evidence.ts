@@ -69,14 +69,11 @@ export function datedAired(pages: Iterable<readonly DatedEpisode[]>, nowMs: numb
 export function withAiredFloor(airing: AiringStatus | null, floor: number): AiringStatus | null {
 	if (airing === null || airing.aired === null || floor <= airing.aired) return airing;
 	const nextPassed = airing.next_episode !== null && airing.next_episode <= floor;
-	const raised: AiringStatus = {
+	return {
 		...airing,
 		aired: floor,
 		next_episode: nextPassed ? null : airing.next_episode,
-		next_airing_at: nextPassed ? null : airing.next_airing_at
+		next_airing_at: nextPassed ? null : airing.next_airing_at,
+		upcoming: airing.upcoming.filter((u) => u.episode > floor)
 	};
-	if (airing.upcoming !== undefined) {
-		raised.upcoming = airing.upcoming.filter((u) => u.episode > floor);
-	}
-	return raised;
 }

@@ -8,11 +8,15 @@
 // It closes as the app's window shows, in that window's reveal
 // (main.js), with bootApp's close in lib/startup.cjs as the fallback.
 // A splash the user closes first cancels the launch (onDismissed).
+// A first page that is late leaves it stuck, offering Restart and Quit
+// (lib/splash-stuck.cjs); it stands in for the window meanwhile, so the
+// window is never revealed before its page has rendered.
 
 const path = require("node:path");
 
 const { APP_BACKGROUND } = require("./app-window.cjs");
 const { STALL_MS, STEPS } = require("./splash-progress.cjs");
+const { NOT_A_CRASH, SPLASH_RELOADS, stuckWatch } = require("./splash-stuck.cjs");
 
 /** Set on the splash's BrowserWindow, so a harness can tell it from
  *  the app's window (electron/e2e/launch.ts). */
@@ -30,12 +34,15 @@ const SPLASH_MARK = "aniGuiSplash";
  * page's own reduced-motion media query. A hidden or covered splash
  * may never answer; the wait on it is bounded (SPLASH_SHOW_WAIT_MS).
  */
-function shownSignal(reduced) {
-  const start = reduced
+function shownStart(reduced) {
+  return reduced
     ? "document.body.classList.add('reduced');"
     : "if (!document.body.classList.contains('reduced')) document.body.classList.add('shown');";
+}
+
+function shownSignal(reduced) {
   return (
-    start +
+    shownStart(reduced) +
     " new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() =>" +
     " r(document.body.classList.contains('reduced') ||" +
     " matchMedia('(prefers-reduced-motion: reduce)').matches))))"
@@ -44,6 +51,21 @@ function shownSignal(reduced) {
 
 /** The page the splash loads. */
 const SPLASH_PAGE = path.join(__dirname, "..", "splash", "index.html");
+
+/** Whether `url` is the splash's own page: a file URL whose path ends
+ *  in splash/index.html. Only that ending is compared, so whatever the
+ *  install path holds (spaces, non-ASCII letters, a bare %, a drive
+ *  letter in either case, encoded or not) cannot make the page look like
+ *  somewhere else. The path is not decoded: the ending is plain ASCII,
+ *  and decoding a bare % throws. */
+function isSplashPage(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === "file:" && /\/splash\/index\.html$/i.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
 
 /** The splash window's options. */
 function splashWindowOptions() {
@@ -87,6 +109,17 @@ function splashWindowOptions() {
  *   closed, and a paint that arrives later does not show it again —
  *   it would come back always on top, over the dialog that says why
  *   the boot failed.
+ * - `standsIn` says whether it is up and the boot not past it: the
+ *   window's wait for its page then has no bound (lib/app-window.cjs),
+ *   because the stuck state is the way out of a page that is late.
+ *
+ * The stuck state's choices (lib/splash-stuck.cjs) end the launch the
+ * way closing the splash does — it closes, `onDismissed` runs, and
+ * nothing is revealed — Restart having first had `onRestart` arrange
+ * the relaunch. A restart that cannot be arranged is logged, and the
+ * choices are offered again. A choice that reaches this process before
+ * the boot is past the splash wins, even over a page that rendered
+ * meanwhile; one after it is ignored.
  */
 function splashController({
   createWindow,
@@ -103,6 +136,12 @@ function splashController({
   // The line's generic words, which take over at once from a step's own
   // when that step lands, read when the splash opens.
   stallGeneric = () => "",
+  // The page's language, name and stuck-state words
+  // (lib/splash-progress.cjs splashWords), read when the splash opens.
+  pageWords = () => ({}),
+  // Restart was chosen: arrange the relaunch (lib/relaunch.cjs), before
+  // this launch ends. Throws when it cannot.
+  onRestart = () => {},
 }) {
   const state = fresh();
   state.version = version;
@@ -152,13 +191,74 @@ function splashController({
   let preference = null;
   let signalled = false;
   let win = null;
+  let backstop = null;
+  // Reloads of a crashed splash page so far.
+  let reloads = 0;
+  // Rejects once the splash has lost its page while it stands in for
+  // the window (`lost`, lose() below). Handled here too, so a launch
+  // that never asks leaves no unhandled rejection.
+  let markLost = () => {};
+  const lostSignal = new Promise((_resolve, reject) => (markLost = reject));
+  lostSignal.catch(() => {});
+  // Why the splash lost its page, once it has: every way it can end up
+  // without one reports here, and only the first is reported.
+  let lostReason = null;
   let suppressed = false;
   // Set when the splash closes by any hand but the boot's: the user,
   // or a quit already under way.
   let dismissedByUser = false;
   // Set once the boot is past the splash: shown its window, or failed.
   let over = false;
+  // The stuck state's choice, once one has been carried out.
+  let chosen = null;
   const alive = () => win && !win.isDestroyed();
+  // The splash can no longer offer a way out: no page, one that keeps
+  // crashing, or one with nothing to offer. While the boot still relies on it, the app page
+  // gets its bounded wait back (main.js, abortWhenLost). Once only; not
+  // when the boot is past the splash or a choice was made.
+  const lose = (reason) => {
+    if (lostReason !== null || over || chosen) return;
+    lostReason = reason;
+    log(`[main] splash lost: its page ${reason} (${since()})`);
+    markLost(new Error(`the launch splash's page ${reason}`));
+  };
+  const stuck = stuckWatch({
+    window: () => win,
+    pending: () => (over || chosen || !alive() || steps >= STEPS.length ? null : STEPS[steps]),
+    onChoice: (choice) => choose(choice),
+    onStuck: () => (state.stuck = true),
+    onNothing: () => lose("has no way out to offer"),
+    log,
+    logError,
+    clock,
+    since: () => since(),
+  });
+  const choose = (choice) => {
+    if (over || chosen || !alive()) {
+      const label = choice === "restart" ? "Restart" : "Quit";
+      const why = dismissedByUser || chosen ? "the splash had closed" : "the boot was past the splash";
+      log(`[main] splash: ${label} came after ${why}, and changes nothing (${since()})`);
+      return;
+    }
+    if (choice === "restart") {
+      log(`[main] splash: Restart chosen (${since()})`);
+      try {
+        onRestart();
+      } catch (err) {
+        logError("[main] could not arrange the restart:", err);
+        stuck.offerAgain();
+        return;
+      }
+    } else {
+      log(`[main] splash: Quit chosen (${since()})`);
+    }
+    chosen = choice;
+    state.choice = choice;
+    // As if the person had closed the splash: the launch is cancelled
+    // (the closed handler below), the app quits, and a Restart's
+    // relaunch runs once this process has exited.
+    win.close();
+  };
   const signal = () => {
     if (signalled || !windowShown || preference === null || !alive()) return;
     signalled = true;
@@ -168,12 +268,16 @@ function splashController({
         state.shown = true;
         paintedAt = clock();
         log(`[main] splash painted (${since()})`);
+        stuck.arm();
         restingAtPaint = resting === true;
         markPainted(resting === true);
       })
       .catch((err) => {
         logError("[main] could not tell the splash it is shown:", err);
         markUp();
+        // Still up, it may still be on screen: the stuck state counts
+        // from here.
+        stuck.arm();
       });
   };
   const holdForCompletion = async (landedAt) => {
@@ -215,7 +319,13 @@ function splashController({
       } catch (err) {
         logError("[main] the splash's generic stall line could not be read:", err);
       }
-      const query = splashPageQuery({ version, stallTexts: texts, generic });
+      let words = {};
+      try {
+        words = pageWords() || {};
+      } catch (err) {
+        logError("[main] the splash's words could not be read:", err);
+      }
+      const query = splashPageQuery({ version, stallTexts: texts, generic, words });
       let splash;
       try {
         splash = createWindow(splashWindowOptions());
@@ -248,7 +358,14 @@ function splashController({
         // out never answers it (the call neither resolves nor rejects),
         // so this is what releases a wait on a closed splash.
         markUp();
+        if (win === splash) {
+          clearTimeout(backstop);
+          stuck.stop();
+        }
         const byUser = win === splash && !over;
+        // The page goes with the window: a loss too, unless the boot was
+        // past the splash or a choice closed it (lose() checks both).
+        if (byUser) lose("closed with its window");
         if (win === splash) win = null;
         if (byUser) {
           log(
@@ -261,15 +378,68 @@ function splashController({
       });
       win = splash;
       state.opened = true;
+      // A paint that never answers still starts the stuck state's count,
+      // at the paint's own bound (SPLASH_SHOW_WAIT_MS, as whenShown).
+      backstop = setTimeout(() => stuck.arm(), SPLASH_SHOW_WAIT_MS);
       splash.webContents.on("did-finish-load", () => {
         if (steps > 0) sendSteps();
+        // A page reloaded after a crash starts with neither motion
+        // class: it is told again to move or to rest, as the first was
+        // (the start alone: the first page's paint was counted, or given
+        // up on, already), and a stuck splash offers its choices again.
+        if (reloads > 0 && signalled && alive()) {
+          Promise.resolve(win.webContents.executeJavaScript(shownStart(preference))).catch(() => {});
+        }
+        stuck.offerAgain();
       });
-      Promise.resolve(splash.loadFile(SPLASH_PAGE, { query })).catch((err) =>
-        logError("[main] the splash failed to load:", err),
-      );
+      // A splash page whose renderer crashes comes back, a bounded
+      // number of times: while it stands in for the window, it is the
+      // only way out of a late page.
+      splash.webContents.on("render-process-gone", (_event, details) => {
+        const reason = details && details.reason;
+        log(`[main] splash's page went (${reason}) (${since()})`);
+        if (over || chosen || win !== splash || splash.isDestroyed()) return;
+        // Not a crash, so not reloaded; but the page is gone all the same.
+        if (NOT_A_CRASH.has(reason)) {
+          lose(`exited (${reason})`);
+          return;
+        }
+        if (reloads >= SPLASH_RELOADS) {
+          log(`[main] splash's page crashed ${reloads + 1} times: not reloaded again (${since()})`);
+          lose(`crashed ${reloads + 1} times`);
+          return;
+        }
+        reloads += 1;
+        splash.webContents.reload();
+      });
+      // The splash is one page and stays on it: a file dropped on it, or
+      // anything else that would navigate it, is refused, and it opens
+      // no windows. A navigation that commits elsewhere anyway takes
+      // Restart and Quit with it: a loss. Its own page reloaded is not.
+      splash.webContents.on("will-navigate", (event) => event.preventDefault());
+      if (typeof splash.webContents.setWindowOpenHandler === "function") {
+        splash.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      }
+      splash.webContents.on("did-navigate", (_event, url) => {
+        if (!isSplashPage(url)) lose("left its page");
+      });
+      // A page that fails to load, on the first load or a reload, is a
+      // splash with no way out. A load superseded by another (a reload
+      // after a crash, which reports its own outcome) is not.
+      splash.webContents.on("did-fail-load", (_event, code, description, _url, isMainFrame) => {
+        if (isMainFrame && code !== ERR_ABORTED) lose(`could not load (${code} ${description})`);
+      });
+      Promise.resolve(splash.loadFile(SPLASH_PAGE, { query })).catch((err) => {
+        logError("[main] the splash failed to load:", err);
+        if (reloads === 0 && !(err && err.code === "ERR_ABORTED")) {
+          lose(`could not load (${(err && err.code) || err})`);
+        }
+      });
     },
     close() {
       over = true;
+      clearTimeout(backstop);
+      stuck.stop();
       if (alive()) {
         state.closed = true;
         const onScreen = paintedAt === null ? "never painted" : `on screen ${clock() - paintedAt} ms after painting`;
@@ -326,7 +496,19 @@ function splashController({
     // did: the launch is cancelled, and the app's window must not be
     // revealed.
     dismissed() {
-      return dismissedByUser;
+      return dismissedByUser || chosen !== null;
+    },
+    standsIn() {
+      return state.opened && !over && alive() === true;
+    },
+    // Rejects when the splash can no longer offer a way out before the
+    // boot was past it or a choice was made: its page failed to load,
+    // left, exited, crashed past its reloads, has nothing to offer, or
+    // went with its window (lose()). It then cannot stand in for the
+    // window (lib/app-window.cjs abortWhenLost decides what that means
+    // for the page). Never settles otherwise.
+    lost() {
+      return lostSignal;
     },
     // The app's window is about to be revealed: its first page has
     // rendered, or the wait for that gave up (`rendered` false). Either
@@ -359,6 +541,7 @@ function splashController({
       state.steps = n;
       const landedAt = clock();
       log(`[main] splash step ${n}, ${step} (${since()})`);
+      if (n === STEPS.length) stuck.landed();
       const answered = sendSteps();
       if (n < STEPS.length) return answered;
       return answered.then(() => holdForCompletion(landedAt));
@@ -366,6 +549,8 @@ function splashController({
     suppress() {
       over = true;
       suppressed = true;
+      clearTimeout(backstop);
+      stuck.stop();
       state.suppressed = true;
       // Put away: it can no longer be on screen, so nothing waits on it.
       markUp();
@@ -379,23 +564,45 @@ function splashController({
 
 /** What the most recently made controller's splash went through:
  *  opened, shown on screen, closed after the boot's window showed, or
- *  suppressed by a failed boot. Read by the end-to-end suite, which
+ *  suppressed by a failed boot; its version, the steps it was told and
+ *  lit; and whether it went stuck, with the choice made there. Read by the end-to-end suite, which
  *  cannot catch the splash on screen in a test run's fast start. */
 let current = fresh();
 
 function fresh() {
-  return { opened: false, shown: false, closed: false, suppressed: false, version: "", steps: 0, railLit: 0 };
+  return {
+    opened: false,
+    shown: false,
+    closed: false,
+    suppressed: false,
+    version: "",
+    steps: 0,
+    railLit: 0,
+    // Whether the splash went stuck (lib/splash-stuck.cjs), and the
+    // choice made there: "restart", "quit" or null.
+    stuck: false,
+    choice: null,
+  };
 }
 
 /** The query the splash page is opened with: the version above its
  *  title, how long a step may be pending before the stall line shows,
- *  that line for each step, and its generic words. */
-function splashPageQuery({ version, stallTexts = [], generic = "" }) {
+ *  that line for each step, and its generic words; and, from `words`
+ *  (splashWords), the page's language (`l`), its name (`al`), and the
+ *  stuck state's line and actions (`sl`, `sr`, `sq`). */
+function splashPageQuery({ version, stallTexts = [], generic = "", words = {} }) {
   const query = { v: version, st: String(STALL_MS) };
   stallTexts.forEach((text, i) => (query[`t${i + 1}`] = text));
   if (generic) query.tg = generic;
+  const keys = { lang: "l", label: "al", stuck: "sl", restart: "sr", quit: "sq" };
+  for (const [name, key] of Object.entries(keys)) {
+    if (typeof words[name] === "string" && words[name]) query[key] = words[name];
+  }
   return query;
 }
+
+/** Chromium's error code for a load superseded by another. */
+const ERR_ABORTED = -3;
 
 /** The longest a step waits for the splash page to answer it. */
 const STEP_ANSWER_WAIT_MS = 150;

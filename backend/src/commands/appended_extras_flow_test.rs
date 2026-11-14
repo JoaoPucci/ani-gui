@@ -479,6 +479,37 @@ async fn a_row_older_than_the_recorded_id_reads_back_as_12_1_through_its_mapping
     assert_eq!(found.ep_no, "12.1");
 }
 
+/// A row whose recorded entry Kitsu has deleted is claimed by its
+/// mapping, and reads back in the numbering of the entry it was
+/// claimed for, not of the gone one: the OAD is `12.1` there too.
+#[tokio::test]
+async fn a_row_whose_recorded_entry_is_gone_reads_back_in_the_claimed_entry_s_numbering() {
+    let td = tempfile::tempdir().expect("td");
+    let provider = hianime();
+    let state = state_over(&td, &provider);
+    let row = crate::history::HistoryEntry {
+        ep_no: "13".into(),
+        id: "hianime:noragami-916".into(),
+        title: "Noragami".into(),
+        watched_at: None,
+        kitsu_id: Some("999".into()),
+        own_number: false,
+    };
+    crate::history::write_atomic(&state.history_path, std::slice::from_ref(&row)).expect("history");
+    let begun = crate::history::guard::epoch(&state.history_path);
+    let gone = crate::error::AniError::Upstream { status: 404 };
+    crate::commands::kitsu_gone::note_failure(&state, begun, "999", &gone);
+    crate::commands::kitsu::allmanga_kitsu_put(&state, &row.id, KITSU).expect("mapping");
+    seed_kitsu(&state, "finished");
+    check_availability(&state, &availability_args())
+        .await
+        .expect("answered");
+    let found = crate::commands::history::history_by_kitsu(&state, KITSU)
+        .expect("history")
+        .expect("the row");
+    assert_eq!(found.ep_no, "12.1");
+}
+
 /// Kitsu recounting the show — the OADs counted as episodes 13 and 14
 /// — leaves no listing past the count, and the next resolve of the
 /// same listing forgets the reading: row 13 is then episode 13.
