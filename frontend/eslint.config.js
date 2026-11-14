@@ -10,6 +10,13 @@ const local = {
 	rules: { 'no-hardcoded-strings': noHardcodedStrings }
 };
 
+// The tests' fake backend answers (`src/lib/testing/`) are test code:
+// nothing in the app may import them.
+const TESTING_ONLY = {
+	group: ['$lib/testing', '$lib/testing/*', '**/lib/testing/*', '**/testing/wire-answers'],
+	message: '$lib/testing holds test fakes; app code does not import it.'
+};
+
 export default ts.config(
 	js.configs.recommended,
 	...ts.configs.recommended,
@@ -69,7 +76,8 @@ export default ts.config(
 							message:
 								'Motion goes through $lib/motion, which stands it still under reduced motion.'
 						})
-					)
+					),
+					patterns: [TESTING_ONLY]
 				}
 			],
 			'no-restricted-syntax': [
@@ -101,6 +109,16 @@ export default ts.config(
 						'Read the motion preference from reducedMotion in $lib/motion/reduced-motion.svelte.'
 				}
 			]
+		}
+	},
+	{
+		// `$lib/testing` holds the tests' fake backend answers; the app
+		// never imports it. (Every other app file gets the same pattern
+		// from the reduced-motion block above, beside its own list.)
+		files: ['src/lib/motion/**/*.{ts,js,svelte}'],
+		ignores: ['src/**/*.test.ts', 'src/**/*.spec.ts'],
+		rules: {
+			'no-restricted-imports': ['error', { patterns: [TESTING_ONLY] }]
 		}
 	},
 	{
@@ -143,7 +161,7 @@ export default ts.config(
 				},
 				{
 					selector:
-						"CallExpression[callee.object.name='HttpResponse'][callee.property.name='json'] > TSTypeParameterInstantiation > :matches(TSUnknownKeyword, TSAnyKeyword, TSTypeReference[typeName.name='JsonBodyType'])",
+						"CallExpression[callee.object.name='HttpResponse'][callee.property.name='json'] > TSTypeParameterInstantiation > :matches(TSUnknownKeyword, TSAnyKeyword, TSObjectKeyword, TSNeverKeyword, TSTypeReference[typeName.name=/^(JsonBodyType|Object)$/])",
 					message:
 						"That type holds the body to nothing: name the route's type, or mark a wrong answer with malformedAnswer from tests/answers."
 				}
