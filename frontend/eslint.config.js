@@ -13,9 +13,30 @@ const local = {
 // The tests' fake backend answers (`src/lib/testing/`) are test code:
 // nothing in the app may import them.
 const TESTING_ONLY = {
-	group: ['$lib/testing', '$lib/testing/*', '**/lib/testing/*', '**/testing/wire-answers'],
+	group: [
+		'$lib/testing',
+		'$lib/testing/**',
+		'**/lib/testing',
+		'**/lib/testing/**',
+		'**/testing/wire-answers*'
+	],
 	message: '$lib/testing holds test fakes; app code does not import it.'
 };
+
+// The same, for the imports `no-restricted-imports` does not read: a
+// dynamic `import()` of a string, and an `import.meta.glob`.
+const TESTING_ONLY_SYNTAX = [
+	{
+		selector:
+			'ImportExpression > :matches(Literal[value=/(lib\\/)?testing(\\/|$)|testing\\/wire-answers/], TemplateLiteral[quasis.0.value.raw=/(lib\\/)?testing(\\/|$)|testing\\/wire-answers/])',
+		message: TESTING_ONLY.message
+	},
+	{
+		selector:
+			"CallExpression[callee.object.meta.name='import'][callee.property.name=/^glob/] Literal[value=/(lib\\/)?testing(\\/|$)|testing\\/wire-answers/]",
+		message: TESTING_ONLY.message
+	}
+];
 
 export default ts.config(
 	js.configs.recommended,
@@ -82,6 +103,7 @@ export default ts.config(
 			],
 			'no-restricted-syntax': [
 				'error',
+				...TESTING_ONLY_SYNTAX,
 				{
 					selector: "ImportExpression[source.value='lottie-web']",
 					message:
@@ -118,7 +140,8 @@ export default ts.config(
 		files: ['src/lib/motion/**/*.{ts,js,svelte}'],
 		ignores: ['src/**/*.test.ts', 'src/**/*.spec.ts'],
 		rules: {
-			'no-restricted-imports': ['error', { patterns: [TESTING_ONLY] }]
+			'no-restricted-imports': ['error', { patterns: [TESTING_ONLY] }],
+			'no-restricted-syntax': ['error', ...TESTING_ONLY_SYNTAX]
 		}
 	},
 	{
@@ -161,7 +184,13 @@ export default ts.config(
 				},
 				{
 					selector:
-						"CallExpression[callee.object.name='HttpResponse'][callee.property.name='json'] > TSTypeParameterInstantiation > :matches(TSUnknownKeyword, TSAnyKeyword, TSObjectKeyword, TSNeverKeyword, TSTypeReference[typeName.name=/^(JsonBodyType|Object)$/])",
+						"CallExpression[callee.object.name='HttpResponse'][callee.property.name='json'] > TSTypeParameterInstantiation :matches(TSUnknownKeyword, TSAnyKeyword, TSObjectKeyword, TSTypeLiteral:not([members.0]))",
+					message:
+						"That type holds the body to nothing: name the route's type, or mark a wrong answer with malformedAnswer from tests/answers."
+				},
+				{
+					selector:
+						"CallExpression[callee.object.name='HttpResponse'][callee.property.name='json'] > TSTypeParameterInstantiation > :matches(TSNeverKeyword, TSTypeReference[typeName.name=/^(JsonBodyType|Object)$/])",
 					message:
 						"That type holds the body to nothing: name the route's type, or mark a wrong answer with malformedAnswer from tests/answers."
 				}

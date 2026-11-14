@@ -318,7 +318,8 @@ sends (`kitsuRefAnswer`, `sessionAnswer`, `configAnswer` and the rest), with
 where the unit tests can reach them (they import nothing from outside
 `src/`; `tests/arch/dep_direction.sh` holds that), and `tests/answers.ts`
 re-exports them. ESLint refuses an `HttpResponse.json` with no type, or one
-that types nothing, and an import of `$lib/testing` from app code;
+that types nothing, and an import of `$lib/testing` from app code (but for
+one whose path is built at run time);
 `tests/lint/typed-answers.test.ts` lists what it does not see, such as a
 `vi.fn()` left untyped, which only review catches. When a renderer type
 changes, the type check names every typed fake that no longer matches it.

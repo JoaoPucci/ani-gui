@@ -4,7 +4,8 @@
 // empty where the field can be (`null`, `[]`, `false`), the backend's
 // own defaults for the settings, and plain placeholders for the few
 // fields that cannot be empty (an id, a title, a version). Test code
-// only: ESLint refuses an import of `$lib/testing` from app code.
+// only: ESLint refuses an import of `$lib/testing` from app code (all
+// but one whose path is built at run time).
 //
 // The MSW side (an error answer, an answer wrong on purpose, and the
 // answers only the acceptance tier builds) is `frontend/tests/answers.ts`,
