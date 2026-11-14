@@ -83,3 +83,27 @@ fn an_entry_passed_over_is_never_the_root() {
         .rel("1", "sequel", "4");
     assert_eq!(root(&look(&c), &whole(&c)).as_deref(), Some("2"));
 }
+
+/// The franchise's graph reads no more listings than the walk's bound,
+/// however many unread entries one step of it meets: an OVA the run
+/// leaves out that lists ninety-eight sequels reads up to the bound,
+/// and the answer is incomplete.
+#[test]
+fn the_graph_reads_no_more_listings_than_the_bound() {
+    let mut c = Catalogue::default();
+    c.add("1", "TV", Some("2000-01-01"))
+        .add("2", "OVA", Some("2001-01-01"))
+        .rel("1", "sequel", "2")
+        .rel("1", "alternative_version", "2");
+    for i in 0..98 {
+        let id = format!("{}", 100 + i);
+        c.add(&id, "TV", Some("2002-01-01")).rel("2", "sequel", &id);
+    }
+    let (f, (known, _)) = super::super::prop_tests::drive_with("1", &c, &[]);
+    assert!(
+        known.len() <= super::super::MAX_LISTINGS,
+        "read {} listings",
+        known.len()
+    );
+    assert!(!f.complete);
+}
