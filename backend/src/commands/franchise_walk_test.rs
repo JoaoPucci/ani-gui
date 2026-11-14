@@ -78,7 +78,7 @@ pub(super) fn drive(anchor: &str, cat: &Catalogue) -> Franchise {
     let mut details = BTreeMap::new();
     for _ in 0..500 {
         match plan(anchor, &known, &details) {
-            Plan::Done(f) => return f,
+            Plan::Done(f) => return *f,
             Plan::Need {
                 listings,
                 details: d,

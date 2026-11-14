@@ -81,7 +81,7 @@ pub(super) fn drive_with(
     let mut details = BTreeMap::new();
     for _ in 0..500 {
         match plan(anchor, &known, &details) {
-            Plan::Done(f) => return (f, (known, details)),
+            Plan::Done(f) => return (*f, (known, details)),
             Plan::Need {
                 listings,
                 details: d,
@@ -164,9 +164,9 @@ proptest! {
         for e in &f.recaps {
             prop_assert!(e.subtype.as_deref() != Some("TV"), "the series {} is a recap", e.id);
         }
-        prop_assert_eq!(plan(&anchor, &known, &details), Plan::Done(f.clone()));
+        prop_assert_eq!(plan(&anchor, &known, &details), Plan::Done(Box::new(f.clone())));
         let everything = cat.listings.clone();
-        prop_assert_eq!(plan(&anchor, &everything, &details), Plan::Done(f));
+        prop_assert_eq!(plan(&anchor, &everything, &details), Plan::Done(Box::new(f)));
     }
 
     /// A member's listing never names, in one role, two members that

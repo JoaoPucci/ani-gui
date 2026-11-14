@@ -10,8 +10,11 @@ use std::collections::BTreeMap;
 use super::corpus_page_tests::answers;
 use super::*;
 
-/// A page's chain as served: its own titles and its seams, by id.
-fn chain_of(f: &Franchise) -> Option<(Vec<String>, Vec<String>)> {
+/// A chain by id: its own titles and its seams.
+type Ids = (Vec<String>, Vec<String>);
+
+/// A page's chain as served, by id.
+fn chain_of(f: &Franchise) -> Option<Ids> {
     let served = serde_json::to_value(f).expect("json");
     let chain = served.get("chain").filter(|c| !c.is_null())?;
     let ids = |key: &str| -> Vec<String> {
@@ -45,7 +48,7 @@ fn a_page_outside_the_main_story_walks_its_own_chain() {
     let heavens_feel = (list(&["8675", "12007", "12008"]), list(&["7658"]));
     let golden_age = (list(&["6084", "6664", "6665"]), list(&["11655"]));
     let jojo_ovas = (list(&["610", "7730"]), list(&["7158"]));
-    let want: BTreeMap<&str, Option<(Vec<String>, Vec<String>)>> = BTreeMap::from([
+    let want: BTreeMap<&str, Option<Ids>> = BTreeMap::from([
         // Heaven's Feel branches off after Fate/Zero 2nd Season.
         ("8675", Some(heavens_feel.clone())),
         ("12007", Some(heavens_feel.clone())),

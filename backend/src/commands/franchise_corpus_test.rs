@@ -83,7 +83,7 @@ pub(super) fn corpus() -> Corpus {
 /// The walk over the corpus from `anchor`.
 pub(super) fn walk(c: &Corpus, anchor: &str) -> Franchise {
     match plan(anchor, &c.listings, &c.details) {
-        Plan::Done(f) => f,
+        Plan::Done(f) => *f,
         Plan::Need { listings, details } => {
             panic!("{anchor}: the corpus lacks listings {listings:?} / details {details:?}")
         }

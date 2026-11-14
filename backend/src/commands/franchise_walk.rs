@@ -83,8 +83,8 @@ pub enum Plan {
         /// Ids whose own details are needed.
         details: Vec<String>,
     },
-    /// The franchise.
-    Done(Franchise),
+    /// The franchise, boxed: it is many times the size of a need.
+    Done(Box<Franchise>),
 }
 
 /// The walk from `anchor` over the `known` listings and `details`.
@@ -117,7 +117,7 @@ pub fn plan(
             listings,
             details: Vec::new(),
         },
-        Ok(run) => Plan::Done(around::assemble(anchor, &run, &lookup)),
+        Ok(run) => Plan::Done(Box::new(around::assemble(anchor, &run, &lookup))),
     }
 }
 

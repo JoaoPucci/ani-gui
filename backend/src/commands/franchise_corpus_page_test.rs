@@ -42,7 +42,7 @@ pub(super) fn answers() -> Vec<(String, Franchise)> {
     }
     ids.into_iter()
         .filter_map(|id| match plan(&id, &c.listings, &c.details) {
-            Plan::Done(f) => Some((id, f)),
+            Plan::Done(f) => Some((id, *f)),
             Plan::Need { .. } => None,
         })
         .collect()
