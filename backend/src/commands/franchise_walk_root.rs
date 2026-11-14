@@ -160,23 +160,30 @@ fn root(look: &Lookup<'_>, g: &Graph) -> Option<String> {
 }
 
 /// The main story `first` settles to: the walk from the franchise's
-/// root, every listing read on the way counted.
+/// root, every listing read on the way counted, and the franchise's
+/// entries (every entry joined to it by prequel and sequel links), so
+/// those it leaves out are listed around it whichever page asked.
 ///
 /// # Errors
 /// The listings to read before it can go on.
-pub(super) fn settle(first: Run, look: &Lookup<'_>) -> Result<Run, Vec<String>> {
+pub(super) fn settle(
+    first: Run,
+    look: &Lookup<'_>,
+) -> Result<(Run, BTreeSet<String>), Vec<String>> {
     let g = graph(&first, look)?;
     let complete = first.complete && g.complete;
     let Some(root) = root(look, &g) else {
-        return Ok(Run {
+        let run = Run {
             consulted: g.consulted,
             complete,
             ..first
-        });
+        };
+        return Ok((run, g.entries));
     };
     let main = walk_with(&root, look, g.consulted.clone(), g.consulted)?;
-    Ok(Run {
+    let run = Run {
         complete: complete && main.complete,
         ..main
-    })
+    };
+    Ok((run, g.entries))
 }

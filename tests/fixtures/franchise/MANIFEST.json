@@ -3,19 +3,19 @@
  "fixtures": {
   "cases.json": {
    "source": "Hand-written: one case per anchor, what the walk must answer for it (the title of the run's first entry by start, which section holds the anchor, a side story's parent stories, ids a section must hold), pinned by backend/src/commands/franchise_corpus_test.rs.",
-   "size": 11372,
-   "sha256": "d9763902f15dcc3fe3b26307252f1de745406f2fb24b5e0cf829ad1af778b1f2"
+   "size": 12247,
+   "sha256": "ef68468c388d7c44d9eb8f462d992b6b3a76b8fec7b9216ec43cf8de8b8868ca"
   },
   "listings.json": {
    "source": "Recorded by backend/src/commands/franchise_corpus_record_test.rs: the franchise walk run from every anchor in cases.json, each listing it asked for read with the app's query (KitsuClient::franchise_relations) and each detail with KitsuClient::anime_detail, artwork dropped (the walk never reads it).",
-   "captured_at": "2026-11-11; My Hero Academia's seasons and its second and fourth films 2026-11-12",
-   "size": 239190,
-   "sha256": "0cc3c271e1b9d73e4b5edca3cf9a692127012f77d21188ff71179d54717e672f"
+   "captured_at": "2026-11-11; My Hero Academia's seasons and its second and fourth films, Heaven's Feel II and III, Dragon Ball Super: Beerus and Dragon Ball Kai: Mirai ni Heiwa wo! 2026-11-12",
+   "size": 241594,
+   "sha256": "aff65bb0e2c7c8bf8e77d67c47f2982ba29986bd7cb24f82ae13649823ea6b2f"
   },
   "served-10089.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Boruto: Naruto the Movie (anime/10089) over listings.json, as GET /api/kitsu/franchise/10089 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 6003,
-   "sha256": "182be597de996bc869a00a7edc0a511e839a147735ed1715638e9cd65447df1c"
+   "size": 6267,
+   "sha256": "8a01a03de68d62727afa13821fa94963ef30a2d691f502d401137edf723b8249"
   },
   "served-1046.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Sakura Taisen: Ouka Kenran (anime/1046) over listings.json, as GET /api/kitsu/franchise/1046 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -24,8 +24,8 @@
   },
   "served-10879.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Dragon Ball Super (anime/10879) over listings.json, as GET /api/kitsu/franchise/10879 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 11263,
-   "sha256": "1dd5ff7a0145a0872e0deef09f5993e37093b4ec926b210593c7333ac1d0acc2"
+   "size": 11526,
+   "sha256": "8bed736c56c2d6b84eafd9b2123d97e0d725bc91ecac238726ff48c524fd73e9"
   },
   "served-11.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Naruto (anime/11) over listings.json, as GET /api/kitsu/franchise/11 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -104,8 +104,8 @@
   },
   "served-199.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Dragon Ball (anime/199) over listings.json, as GET /api/kitsu/franchise/199 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 11261,
-   "sha256": "d3df082e44ee1e7667322b2d81cb4828d5cf673b6caa79699d472ef4e1bf82a2"
+   "size": 11524,
+   "sha256": "69328dfa5c74727c7ef1f0f9b1882e1eeb88a27694a0297c9c48127841f49140"
   },
   "served-202.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from FLCL (anime/202) over listings.json, as GET /api/kitsu/franchise/202 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -129,8 +129,8 @@
   },
   "served-323.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Fate/stay night (anime/323) over listings.json, as GET /api/kitsu/franchise/323 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 3271,
-   "sha256": "379e2509d02580fa93f2e2b3754f1aaf09c0dfb94b1607078e3b27e8487a6edf"
+   "size": 4356,
+   "sha256": "83246388a2aabb50092bbb6ba5621f9ed63c5d495650fea82ab1be243d966746"
   },
   "served-3919.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Bakemonogatari (anime/3919) over listings.json, as GET /api/kitsu/franchise/3919 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -154,8 +154,8 @@
   },
   "served-44544.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Dragon Ball Super: Super Hero (anime/44544) over listings.json, as GET /api/kitsu/franchise/44544 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 11263,
-   "sha256": "37a92d61fba4e7e241c9dd3b3bfc83b8ccb8bd020906f97d29921ceeebc91cb5"
+   "size": 11526,
+   "sha256": "7ce79065e8ed56475fc31f96b4c2eaf295cf70f6111f11d4a02f2f8f17eeceac"
   },
   "served-45513.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from One Piece Film: Red (anime/45513) over listings.json, as GET /api/kitsu/franchise/45513 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -189,18 +189,18 @@
   },
   "served-6028.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Fate/Zero (anime/6028) over listings.json, as GET /api/kitsu/franchise/6028 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 3861,
-   "sha256": "62986a806cb8afcafe9b328244115eddb19adb53f72360a1cb897fe98c75d63b"
+   "size": 4357,
+   "sha256": "1afa75b2d1f80d61f747a61925f4224ffc759ad7ff2cdedb5c7106d161f0ee9c"
   },
   "served-6084.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Berserk: Ougon Jidai-hen I - Haou no Tamago (anime/6084) over listings.json, as GET /api/kitsu/franchise/6084 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 2400,
-   "sha256": "537626685cf6c24864a94cc3267de7082e6eed9586c50c85575c1c7ac2ca6c6f"
+   "size": 2088,
+   "sha256": "25d62d7af696a8f38e27f8b3e901a14e9f0a29ef34c32a2757e1d5361d32df62"
   },
   "served-6928.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Fate/Zero: Onegai! Einzbern Soudanshitsu (anime/6928) over listings.json, as GET /api/kitsu/franchise/6928 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 3911,
-   "sha256": "e77b2b5ab5693b26577050d22a92e5598c861437cfc2311df6abd489de671e0a"
+   "size": 4407,
+   "sha256": "66673a91b2836ab18f65874f0f61e776784cbb837f906632de70f55237e03ed6"
   },
   "served-696.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Detective Conan Movie 01: The Timed Skyscraper (anime/696) over listings.json, as GET /api/kitsu/franchise/696 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -219,8 +219,8 @@
   },
   "served-720.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Dragon Ball Z (anime/720) over listings.json, as GET /api/kitsu/franchise/720 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 11261,
-   "sha256": "4de7d66142861a6fdc19a3ecfb85336dd7dbb8668d28e93bc32fff14f5692540"
+   "size": 11524,
+   "sha256": "ce498fe4872dc2e8d04b85e9ff67f8e0ccdec925f32eb61042edbaccf75983d4"
   },
   "served-7241.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Gintama Movie 2: Kanketsu-hen - Yorozuya yo Eien Nare (anime/7241) over listings.json, as GET /api/kitsu/franchise/7241 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
@@ -239,8 +239,8 @@
   },
   "served-7730.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from JoJo no Kimyou na Bouken: Adventure (anime/7730) over listings.json, as GET /api/kitsu/franchise/7730 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",
-   "size": 1943,
-   "sha256": "1227f3848276c2daec0864b2b1938f3059e824474f1faa04c9a4b68535a571fc"
+   "size": 4101,
+   "sha256": "691650830b39f3a660197f29d416bda016ddba029799174b1de230329fda0c01"
   },
   "served-818.json": {
    "source": "Written by backend/src/commands/franchise_corpus_record_test.rs (write_the_served_payloads): the walk's answer from Gintama (anime/818) over listings.json, as GET /api/kitsu/franchise/818 serves it, artwork absent; kept equal to the walk by franchise_corpus_test.rs. The frontend's strip and franchise page tests read it.",

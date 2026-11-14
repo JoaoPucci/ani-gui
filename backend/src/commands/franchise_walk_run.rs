@@ -32,11 +32,12 @@ pub(crate) struct Run {
     /// walk moved to their parent's run and that run left them out:
     /// listed around it like the anchor, music videos aside.
     pub(crate) beside: BTreeSet<String>,
-    /// The entries of the run first walked to that the main story
-    /// (`franchise_walk_root.rs`) leaves out, the anchor among them when
-    /// it was a member: listed around it, where its members' listings
-    /// place them, else among the other versions (a movie, the films),
-    /// music videos aside.
+    /// The franchise's entries (every entry joined to the main story by
+    /// prequel and sequel links, `franchise_walk_root.rs`) that the main
+    /// story leaves out, the anchor among them when it is one: listed
+    /// around it, where its members' listings place them, else among the
+    /// other versions (a movie, the films), music videos aside. They are
+    /// the franchise's, so every page of it lists the same ones.
     pub(crate) moved: BTreeSet<String>,
 }
 
@@ -112,15 +113,14 @@ fn holds_series(run: &Run, look: &Lookup<'_>) -> bool {
 /// The listings to read before the walk can go on.
 pub(crate) fn run(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>> {
     let first = first(anchor, look)?;
-    let settled = settle(first.clone(), look)?;
+    let (settled, franchise) = settle(first.clone(), look)?;
     let is_music = |m: &String| {
         look.entry(m, &settled.consulted)
             .is_some_and(|e| e.subtype.as_deref() == Some("music"))
     };
     let outside = |m: &&String| !settled.members.contains_key(*m);
-    let moved = first
-        .members
-        .keys()
+    let moved = franchise
+        .iter()
         .filter(outside)
         .filter(|m| m.as_str() == anchor || !is_music(m))
         .cloned()
