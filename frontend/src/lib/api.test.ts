@@ -39,7 +39,6 @@ import {
 	kitsuTrendingAnilist,
 	markWatched,
 	metaCacheClear,
-	openExternalPlayer,
 	play,
 	playExternal,
 	playSyncplay,
@@ -254,26 +253,6 @@ describe('historyDelete', () => {
 		await historyDelete('weird/id with spaces');
 		const { url } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/history/weird%2Fid%20with%20spaces`);
-	});
-});
-
-describe('openExternalPlayer', () => {
-	it('POSTs the LaunchArgs payload to /api/external-player', async () => {
-		const fetchMock = mockFetchEmpty(202);
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		await openExternalPlayer({
-			stream_url: 'https://cdn.example/master.m3u8',
-			referer: 'https://allmanga.to',
-			title: 'Some Anime EP 5',
-			player_command: 'mpv'
-		});
-		const { url, init } = lastCall(fetchMock);
-		expect(url).toBe(`${BASE}/api/external-player`);
-		expect(init?.method).toBe('POST');
-		expect(JSON.parse(init?.body as string)).toMatchObject({
-			stream_url: 'https://cdn.example/master.m3u8',
-			player_command: 'mpv'
-		});
 	});
 });
 

@@ -74,7 +74,7 @@ use crate::commands::availability::{
 };
 use crate::commands::continue_guess::RuledOutRequest;
 use crate::commands::download::{DownloadArgs, DownloadProgress, DownloadResponse};
-use crate::commands::external_player::{ExternalPlayerKind, LaunchArgs};
+use crate::commands::external_player::ExternalPlayerKind;
 use crate::commands::history_number::HistoryNumber;
 use crate::commands::play::PlayArgs;
 use crate::commands::play_native_versions::{VersionInfo, VersionKind};
@@ -639,9 +639,6 @@ fn requests() -> Value {
             "kitsu_ids": ["46474"], "mode": "sub"
         })),
         "AvailabilityWarmArgs": request::<AvailabilityWarmArgs>(&json!({ "items": [] })),
-        "LaunchArgs": request::<LaunchArgs>(&json!({
-            "stream_url": "https://cdn.example/master.m3u8", "player_command": "mpv"
-        })),
         "Config": request::<Config>(&json!({})),
         "RuledOutRequest": request::<RuledOutRequest>(&json!({
             "title": "Frieren", "episode": 8, "hits": []

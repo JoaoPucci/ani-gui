@@ -774,3 +774,74 @@ async fn a_mark_watched_of_one_recap_after_another_reads_back_as_the_one_watched
         .ep_no;
     assert_eq!(listed, "12.5");
 }
+
+#[tokio::test]
+async fn the_player_a_request_names_is_ignored_and_the_configured_one_runs() {
+    // `/api/play/external` takes the show and the episode. A request
+    // that also names a program, or the arguments to give it, names
+    // nothing the backend reads: the player is the one configured in
+    // Settings, and its arguments are built from the resolved stream.
+    use axum::body::Body;
+    use axum::http::Request;
+    use std::os::unix::fs::PermissionsExt as _;
+    use tower::ServiceExt as _;
+    let mock = MockServer::start().await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let named_ran = dir.path().join("named-ran");
+    let named = dir.path().join("named");
+    std::fs::write(
+        &named,
+        format!("#!/bin/sh\ntouch '{}'\n", named_ran.display()),
+    )
+    .expect("write named");
+    std::fs::set_permissions(&named, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let state = state_for(dir.path(), &provider);
+    std::fs::write(
+        &state.config_path,
+        format!(
+            "external_player = {}\n",
+            crate::stub_file::toml_quote(&player)
+        ),
+    )
+    .expect("write config");
+    let body = serde_json::json!({
+        "title": "the show",
+        "episode": "2",
+        "mode": "sub",
+        "episode_count": 2,
+        "player_command": named.display().to_string(),
+        "binary": named.display().to_string(),
+        "player_kind": "custom",
+        "custom_args_template": "--evil {url}",
+        "stream_url": "--script=/tmp/x.lua",
+    });
+    let response = crate::api::test_router(Arc::new(state))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/play/external")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .expect("req"),
+        )
+        .await
+        .expect("oneshot");
+    assert!(response.status().is_success(), "{}", response.status());
+
+    let argv = wait_for(&argv_file).await;
+    assert!(
+        argv.contains(&format!("{}/x/master.m3u8", mock.uri())),
+        "the configured player gets the resolved stream; got: {argv}"
+    );
+    assert!(
+        !argv.contains("--evil") && !argv.contains("--script"),
+        "{argv}"
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(
+        !named_ran.exists(),
+        "the program the request named must not run"
+    );
+}

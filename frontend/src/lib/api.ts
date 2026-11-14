@@ -194,8 +194,8 @@ async function expect2xx<T>(resp: Response): Promise<T> {
 		}
 		throw detail;
 	}
-	// Tolerate any 2xx with an empty body (the external-player
-	// endpoint returns 202 Accepted with no JSON to parse). `.json()`
+	// Tolerate any 2xx with an empty body (a 202 Accepted with no
+	// JSON to parse, say). `.json()`
 	// throws "Unexpected end of JSON input" on an empty body, which
 	// surfaced as a confusing toast even though the action succeeded.
 	if (resp.status === 204) return undefined as T;
@@ -457,16 +457,6 @@ export interface VersionInfo {
  *  emits on the backend. Snake_case to match the Rust serde tag. */
 export type ExternalPlayerKind = 'mpv' | 'vlc' | 'iina' | 'custom';
 
-/** Input to `cmd_open_external_player`. */
-export interface LaunchExternalPlayerArgs {
-	stream_url: string;
-	referer?: string | null;
-	title?: string | null;
-	player_command: string;
-	player_kind?: ExternalPlayerKind;
-	custom_args_template?: string | null;
-}
-
 /**
  * The backend's error envelope, as every error the app raises carries
  * it — an HTTP error body or an SSE error event — and so what api.ts
@@ -704,10 +694,6 @@ export interface HistoryNumber {
  *  the page read it. `null` when no row is the show's. */
 export function historyNumber(id: string, opts: ReadOptions = {}): Promise<HistoryNumber | null> {
 	return getJson<HistoryNumber | null>(`/api/history/${encodeURIComponent(id)}/number`, opts);
-}
-
-export function openExternalPlayer(args: LaunchExternalPlayerArgs): Promise<void> {
-	return postJson<void>('/api/external-player', args);
 }
 
 /** Body for the play endpoints — same shape on both `/api/play` and

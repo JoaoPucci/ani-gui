@@ -34,20 +34,28 @@ const localeFlag = '--ani-gui-locale=';
 const localeArg = process.argv.find((a) => a.startsWith(localeFlag));
 const configLocale = localeArg ? localeArg.slice(localeFlag.length) : null;
 
-// Per-process random secret printed by the backend at startup and
-// passed through additionalArguments. The backend answers its API only
-// to requests carrying it: the renderer sends it as the
-// `x-ani-gui-internal-secret` header, or as the `secret` query
-// parameter where an element cannot set a header
+// Per-process random secret printed by the backend at startup. The
+// backend answers its API only to requests carrying it: the renderer
+// sends it as the `x-ani-gui-internal-secret` header, or as the
+// `secret` query parameter where an element cannot set a header
 // (frontend/src/lib/backend/secret.ts). A page in a browser cannot
-// guess 32 bytes of entropy. It does travel on this process's command
-// line, which other local programs can read (docs/architecture.md,
-// "Who the backend answers").
-const internalSecretFlag = '--ani-gui-internal-secret=';
-const internalSecretArg = process.argv.find((a) => a.startsWith(internalSecretFlag));
-const internalSecret = internalSecretArg
-	? internalSecretArg.slice(internalSecretFlag.length)
-	: null;
+// guess 32 bytes of entropy.
+//
+// It is asked of the main process here, once, synchronously, so the
+// page has it before its first request. It never travels on the
+// command line, which other local programs can read. Main answers only
+// the app's own page in the app's window (lib/secret-handoff.cjs, whose
+// channel this names); any other page gets null, as does a call that
+// fails.
+function askSecret() {
+	try {
+		const answer = ipcRenderer.sendSync('ani-gui:internal-secret');
+		return typeof answer === 'string' && answer.length > 0 ? answer : null;
+	} catch {
+		return null;
+	}
+}
+const internalSecret = askSecret();
 
 // The backend's other loopback origins, one per class of traffic —
 // `--ani-gui-lane-<name>=<origin>`, one flag per lane (see

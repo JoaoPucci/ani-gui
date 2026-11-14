@@ -307,22 +307,6 @@
         "mal_ids"
       ]
     },
-    "LaunchArgs": {
-      "accepts": [
-        "custom_args_template",
-        "player_command",
-        "player_kind",
-        "referer",
-        "stream_url",
-        "subtitle_urls",
-        "subtitles_off",
-        "title"
-      ],
-      "requires": [
-        "player_command",
-        "stream_url"
-      ]
-    },
     "PkceWire": {
       "accepts": [
         "challenge",
