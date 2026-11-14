@@ -1,8 +1,9 @@
 //! The franchise around a run (`franchise_walk_root.rs`): every entry
 //! joined to its members by prequel and sequel links, a link counted
 //! from either side, and every listing read on the way. Every listing
-//! read counts toward the walk's bound; an entry past it is not read,
-//! and the franchise is incomplete.
+//! read counts toward the walk's bound. The entries a step meets are
+//! read in the order of their ids as text; an entry past the bound is
+//! not read, and the franchise is incomplete.
 
 use std::collections::BTreeSet;
 
@@ -51,7 +52,9 @@ pub(super) fn graph(run: &Run, look: &Lookup<'_>) -> Result<Graph, Vec<String>> 
         let mut need = Vec::new();
         let mut added = Vec::new();
         for n in next {
-            if !g.consulted.contains(&n) && g.consulted.len() >= MAX_LISTINGS {
+            // A listing still to read counts toward the bound as one
+            // read: the IO loop reads every listing asked for at once.
+            if !g.consulted.contains(&n) && g.consulted.len() + need.len() >= MAX_LISTINGS {
                 g.complete = false;
                 continue;
             }

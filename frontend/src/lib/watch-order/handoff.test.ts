@@ -171,6 +171,32 @@ describe('handoffFrom', () => {
 		expect(handoffFrom(chained, second.id, 'linked', TODAY, none)?.next.id).toBe(third.id);
 	});
 
+	it('moves on into the main-story title a chain leads into, and nowhere at its dead end', () => {
+		const r = run('bleach');
+		const [first, second, third] = r.entries;
+		const into: FranchiseData = {
+			...payload('bleach', second.id),
+			entries: [third],
+			links: [],
+			chain: {
+				entries: [first, second, third],
+				links: [
+					[first.id, second.id],
+					[second.id, third.id]
+				],
+				seams: [third.id]
+			}
+		};
+		expect(handoffFrom(into, second.id, 'linked', TODAY, none)?.next.id).toBe(third.id);
+		// A seam the viewer already played keeps the ordinary card.
+		expect(handoffFrom(into, second.id, 'linked', TODAY, new Set([third.id]))).toBeNull();
+		const deadEnd: FranchiseData = {
+			...into,
+			chain: { entries: [first, second], links: [[first.id, second.id]], seams: [] }
+		};
+		expect(handoffFrom(deadEnd, second.id, 'linked', TODAY, none)).toBeNull();
+	});
+
 	it('keeps the ordinary card for an entry outside the series it was read with', () => {
 		const lone = { ...payload('bleach', '999'), entries: run('bleach').entries };
 		expect(handoffFrom(lone, '999', 'linked', TODAY, none)).toBeNull();

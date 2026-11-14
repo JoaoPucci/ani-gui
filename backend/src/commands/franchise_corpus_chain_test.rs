@@ -8,6 +8,8 @@
 use std::collections::BTreeMap;
 
 use super::corpus_page_tests::answers;
+use super::corpus_tests::corpus;
+use super::rules::alt;
 use super::*;
 
 /// A chain by id: its own titles and its seams.
@@ -82,6 +84,31 @@ fn a_page_outside_the_main_story_walks_its_own_chain() {
         let got = chain_of(f);
         if &got != chain {
             failures.push(format!("{anchor}: {got:?}, want {chain:?}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// No chain the corpus serves joins two entries that list each other as
+/// versions, by a link between them or a seam: a version is never the
+/// next title of the chain it retells. The corpus holds no listing that
+/// names one entry both ways, so this pins every chain it serves as
+/// clear of the case the worked cases in `franchise_walk_chain_test.rs`
+/// build.
+#[test]
+fn no_chain_joins_two_versions_of_one_another() {
+    let c = corpus();
+    let look = Lookup {
+        known: &c.listings,
+        details: &c.details,
+    };
+    let mut failures = Vec::new();
+    for (anchor, f) in answers() {
+        let Some(chain) = &f.chain else { continue };
+        for (a, b) in &chain.links {
+            if alt(&look, a, b) {
+                failures.push(format!("{anchor}: {a} -> {b}"));
+            }
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
