@@ -106,12 +106,12 @@ proxy settings at a local proxy that refuses every connection and
 records it (`outboundAttempts`). Loopback is exempt, so a spec's own
 local servers still answer. `smoke.spec.ts` checks that a request only
 GitHub could answer ends up at that proxy instead. A spec whose page
-should run on stubs alone does three things: it sets `refuseUnstubbed`
-before its stubs, mounts the page again with `remountFirstPage`, and
-asserts that no request was left unanswered. `smoke.spec.ts` and
-`keyring-unresponsive.spec.ts` do. It sets no route before it has the
-app's window from `appWindow`, which is why `refuseUnstubbed` takes
-that window: when every route is set while the window is still being
+should run on stubs alone does four things: it finds the app's window
+with `appWindow` before setting any route, sets `refuseUnstubbed`
+(which takes that window) before its stubs, mounts the page again with
+`remountFirstPage`, and asserts that no request was left unanswered.
+`smoke.spec.ts` and `keyring-unresponsive.spec.ts` do. The window comes
+first because when every route is set while the window is still being
 attached, none of them reaches it.
 
 Each launch runs on a scratch profile the spec makes under the

@@ -330,13 +330,14 @@ export async function routeContext(
  *  route can be set before that window has been found. Setting a
  *  context route switches interception on for the pages Playwright has
  *  finished attaching. A window still attaching is left out: it looks
- *  for routes once, as it starts attaching, and is not told of the ones
- *  set while it attaches. A window that starts attaching before the
- *  first route and finishes after the last is never intercepted: every
- *  request it makes goes to the backend as if no route existed, and
- *  the remount's witness never arrives (remountFirstPage). Playwright
- *  lists a window only once it has finished attaching, so every route
- *  set after appWindow has returned it reaches it. */
+ *  for routes once, as it starts attaching, and is not told when a
+ *  route set while it attaches switches interception on. A window
+ *  that starts attaching before the first route and finishes after the
+ *  last is never intercepted: every request it makes goes to the
+ *  backend as if no route existed, and the remount's witness never
+ *  arrives (remountFirstPage). Playwright lists a window only once it
+ *  has finished attaching, so every route set after appWindow has
+ *  returned it reaches it. */
 export async function refuseUnstubbed(window: Page): Promise<string[]> {
 	const unstubbed: string[] = [];
 	await routeContext(window.context(), /^http:\/\/127\.0\.0\.1:\d+\/api\//, (r) => {
@@ -370,5 +371,29 @@ export async function remountFirstPage(
 	forget?.splice(0);
 	const live = witness();
 	await page.goto(first, { waitUntil: 'domcontentloaded' });
-	await live;
+	// The new mount asks within a fraction of a second. Bounded, so a
+	// mount whose requests miss the stubs fails here saying so, rather
+	// than as a bare test timeout with nothing pending — on a launch of
+	// usual length; a launch slow enough can still reach the test's own
+	// timeout first.
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<never>((_, reject) => {
+		timer = setTimeout(
+			() =>
+				reject(
+					new Error(
+						`remountFirstPage: no request of the remounted page reached its witness stub within ${REMOUNT_WITNESS_MS} ms`
+					)
+				),
+			REMOUNT_WITNESS_MS
+		);
+	});
+	try {
+		await Promise.race([live, late]);
+	} finally {
+		clearTimeout(timer);
+	}
 }
+
+/** How long remountFirstPage waits for the new mount's witness. */
+const REMOUNT_WITNESS_MS = 10_000;
