@@ -102,7 +102,9 @@ pub(crate) fn walk_with(
 /// A side-story anchor's parents and the chain it is drawn on: those of
 /// its parents in the main story and no chain; else, where the main
 /// story leaves them all out, those in the franchise, on the chain of
-/// the earliest. Any other anchor has no parents, and its own chain.
+/// the earliest, or on that parent alone where it is chained to nothing
+/// (its only link being to a version of it). Any other anchor has no
+/// parents, and its own chain.
 fn side_chain(
     anchor: &str,
     side_anchor: bool,
@@ -122,9 +124,12 @@ fn side_chain(
         return (in_main, None);
     }
     let in_franchise = among(&|p| franchise.contains(p));
-    let drawn = in_franchise
-        .first()
-        .and_then(|p| chain(p, franchise, main, look));
+    let drawn = in_franchise.first().map(|p| {
+        chain(p, franchise, main, look).unwrap_or_else(|| ChainIds {
+            own: BTreeSet::from([p.clone()]),
+            seams: BTreeSet::new(),
+        })
+    });
     (in_franchise, drawn)
 }
 

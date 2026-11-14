@@ -14,7 +14,8 @@
 //! only by a page that reaches that listing). A page in the main story,
 //! a page outside the franchise, and a page linked to nothing else have
 //! none, but a side story whose parents the main story leaves out is
-//! drawn on its earliest parent's chain (`franchise_walk_run.rs`).
+//! drawn on its earliest parent's chain, or on that parent alone where
+//! it is chained to nothing (`franchise_walk_run.rs`).
 //! Music videos are no titles of a chain, the page aside.
 
 use std::collections::BTreeSet;

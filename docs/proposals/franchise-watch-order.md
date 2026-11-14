@@ -642,9 +642,10 @@ without a run of its own. Its chain is the franchise's entries outside
 the main story joined to it by prequel and sequel links, a link counted
 from either side, with the main-story titles one of them is linked to:
 its seams, where the chain leaves the main story or leads into it. Two
-entries that list each other as other versions are never linked on a
-chain, as rule 3 never puts both in a run: a page listing one entry as
-both its prequel and its other version gets no seam into it.
+entries are never linked on a chain where either lists the other as
+another version or setting, as rule 3 never puts both in a run: a page
+listing one entry as both its prequel and its other version gets no
+seam into it.
 [data] *Heaven's Feel* I to III, with *Fate/Zero 2nd Season*; the three
 *Berserk* Golden Age films, with the 2016 series they lead into; the two
 *JoJo* OVAs, with the 2012 series the 2000 OVA names as its prequel; the
@@ -654,7 +655,8 @@ franchise, so every title of it answers with the same chain, where
 Kitsu lists its links from both sides. A main-story page has none, and
 neither has a page linked to nothing else; a side story whose parents
 the main story leaves out keeps them, and is drawn on the earliest
-one's chain. Music videos are no titles of a chain. The franchise page is
+one's chain, or on that parent alone where it is chained to nothing
+(its only link being to a version of it). Music videos are no titles of a chain. The franchise page is
 unchanged by it: the chain's titles stay where the sections list them.
 
 With these tie-breaks every entry has one path and one decision, so
