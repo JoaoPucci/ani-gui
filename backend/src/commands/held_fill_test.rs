@@ -413,3 +413,78 @@ async fn a_released_ticket_a_page_takes_a_copy_of_is_on_screen_until_it_waits() 
     assert_eq!(tickets, vec![ticket]);
     assert!(on_screen, "served to the page on screen");
 }
+
+/// Kitsu as [`kitsu`] for one show, its mappings answered after
+/// `delay`, so two thumbnail lookups of the show overlap.
+async fn kitsu_slow_mappings(kitsu_id: &str, anilist_id: u32, delay: Duration) -> MockServer {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(format!("/anime/{kitsu_id}")))
+        .and(query_param("include", "mappings"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "data": { "id": kitsu_id, "type": "anime", "attributes": { "canonicalTitle": "t" } },
+                    "included": [{
+                        "id": "1",
+                        "type": "mappings",
+                        "attributes": { "externalSite": "anilist/anime", "externalId": anilist_id.to_string() }
+                    }],
+                }))
+                .set_delay(delay),
+        )
+        .mount(&server)
+        .await;
+    server
+}
+
+/// A page filling a show's thumbnails while another lookup of the show
+/// is already running shares that lookup, and a listing held back on it
+/// is the page's to wait on as well: the lookup that ran may be one no
+/// page asked for, which queues no retry of its own.
+#[tokio::test]
+async fn a_page_sharing_a_held_back_lookup_no_page_asked_for_gets_its_retry() {
+    let kitsu = kitsu_slow_mappings("31", 50, Duration::from_millis(300)).await;
+    let anilist = anilist(Some(1), 1, LISTING).await;
+    let _gate = share_for_tests(&anilist.uri(), ANILIST);
+    let state = state(&kitsu.uri());
+    let uri = anilist.uri();
+    let lookup = || {
+        crate::commands::anilist_eps_thumbs::thumbs_for_show_with_anilist_base(
+            &state,
+            "31",
+            Some(&uri),
+        )
+    };
+
+    let page = async {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        collect(lookup()).await
+    };
+    let (unasked, (_, tickets)) = tokio::join!(lookup(), page);
+    assert!(unasked.entries.is_empty());
+    assert_eq!(requests(&anilist).await, 1, "one AniList request for both");
+    assert_eq!(tickets.len(), 1, "the page waits on the retry");
+
+    assert_eq!(wait_any(&tickets, WAIT).await, vec![(tickets[0], true)]);
+    assert!(row(&state, "anilist:eps-thumbs:v2:k31").is_some());
+    assert_eq!(requests(&anilist).await, 2, "the refusal, then one retry");
+}
+
+/// Two pages filling one show's thumbnails at once wait on the one
+/// retry of the listing held back on the lookup they shared.
+#[tokio::test]
+async fn two_pages_sharing_a_held_back_lookup_both_get_its_ticket() {
+    let kitsu = kitsu_slow_mappings("32", 51, Duration::from_millis(300)).await;
+    let anilist = anilist(Some(1), 1, LISTING).await;
+    let _gate = share_for_tests(&anilist.uri(), ANILIST);
+    let state = state(&kitsu.uri());
+
+    let (first, second) = tokio::join!(
+        thumbs(&state, "32", &anilist),
+        thumbs(&state, "32", &anilist)
+    );
+    assert_eq!(first.len(), 1);
+    assert_eq!(first, second, "one retry, one ticket, both pages");
+    assert_eq!(wait_any(&first, WAIT).await, vec![(first[0], true)]);
+}
