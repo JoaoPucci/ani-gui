@@ -24,6 +24,7 @@ import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers } from './home-handlers';
 import { afterRead, watchPageFetches } from './page-fetches';
+import { animationsInFlight } from './stubs/element-animate';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -204,7 +205,13 @@ describe('opening the app with a dead MAL sign-in', () => {
 		await until(() => signInToasts().length > 0, 'the notice to show');
 		expect(signInToasts()).toEqual([REFUSED]);
 		for (let i = 0; i < 4; i++) toastStore.push({ kind: 'info', message: `passing ${i}` });
-		await settle(4);
+		// The burst is on screen and every enter and leave it started has
+		// run: a notice it pushed off has left the DOM by now.
+		await until(
+			() =>
+				layoutTarget.querySelectorAll('.toast .message').length > 1 && animationsInFlight() === 0,
+			'the burst to show and stand still'
+		);
 		expect(signInToasts()).toEqual([REFUSED]);
 	});
 

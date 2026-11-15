@@ -196,7 +196,7 @@ describe('the sign-in notice, where it already worked', () => {
 		installKeychain({ anilist: account({ expires_at_epoch_s: 1_000 }) });
 		server.use(...quietBackend);
 		bootLayout();
-		await settle();
+		await until(() => toastTexts().length > 0, 'the notice to show');
 		expect(toastTexts(), 'the notice is up before the disconnect').toEqual([EXPIRED_ANILIST]);
 		accountStore.setDisconnected('anilist');
 		await settle(10);
