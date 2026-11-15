@@ -25,17 +25,23 @@
  *   selects none, so it reads the shown track as agreeing with it;
  * - Off: the engine selects none — or, while one of its fragments is
  *   on the way, keeps that rendition selected with its display off, so
- *   the track stays hidden rather than disabled;
+ *   the track stays hidden rather than disabled. Kept selected, the
+ *   engine goes on fetching that rendition's next fragments, one as
+ *   each lands, until its subtitle buffer is full; only then does it
+ *   select none;
  * - a rendition whose fragment is on the way, and that the pick does
  *   not show, is left hidden, not disabled, until the fragment is in;
  *   a hidden track takes its cues and draws nothing.
  *
  * The engine's own switches — its default rendition picked once its
- * playlist is in, picked again after the manifest is loaded again or
- * the subtitle group changes with the quality — are brought back to
- * the app's pick within the same event, before any `change` event can
- * report them: nothing reads the switch as the viewer's pick
- * ({@link import('./caption-watch')}).
+ * playlist is in, picked again after the manifest is loaded again —
+ * are brought back to the app's pick within the same event, before any
+ * `change` event can report them: nothing reads the switch as the
+ * viewer's pick ({@link import('./caption-watch')}). A quality switch
+ * to a level of another subtitle group is the exception: the engine
+ * picks the new group's rendition in the language of its pick, and
+ * where the rendition picked belongs to the group left, that one is
+ * the pick from then on.
  *
  * hls.js tells its tracks apart by label and language. A sidecar track
  * labelled as a rendition would be taken for it — adopted as its text
@@ -99,7 +105,10 @@ export interface EnginePlan {
  * Off with a fragment on the way keeps that rendition selected with
  * its display off: a rendition left hidden while the engine selects
  * none, with nothing showing, is read by the engine as its pick, and
- * it would show it.
+ * it would show it. The engine starts the next fragment of what it
+ * selects as each lands, so Off stays on the rendition, fetching
+ * ahead, until its subtitle buffer is full and no fragment is on the
+ * way; a hidden track keeps each fragment's cues meanwhile.
  */
 export function enginePlan(want: EngineWant, inFlight: number | null): EnginePlan {
 	if (want === 'off') {

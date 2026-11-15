@@ -7,6 +7,7 @@ import type Hls from 'hls.js';
 import { enginePlan } from './caption-engine';
 import { applyCaptionPick } from './caption-pick';
 import {
+	followGroup,
 	indexIn,
 	renditionIndex,
 	wantOf,
@@ -60,9 +61,14 @@ export function createCaptionSync(
 	};
 
 	// The engine's own switch is brought back to the app's pick inside
-	// the event, so no `change` event ever reports it.
+	// the event, so no `change` event ever reports it — unless the pick
+	// was a rendition of a subtitle group the engine has left (a quality
+	// switch to a level of another group): the engine's pick in the new
+	// group, made in the same language, is the pick from then on.
 	engine.on(events.SUBTITLE_TRACK_SWITCH, () => {
-		if (!applying) apply();
+		if (applying) return;
+		desired = followGroup(video, desired, engine.subtitleTracks, engine.subtitleTrack);
+		apply();
 	});
 
 	return {

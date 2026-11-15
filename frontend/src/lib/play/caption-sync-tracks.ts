@@ -1,8 +1,6 @@
 /**
  * The video's tracks as the captions sync ({@link import('./caption-sync')})
- * reads them: which track is whose, what a pick asks of the engine, and
- * the sync without an engine, for a stream played from the element's
- * own source.
+ * reads them: which track is whose, and what a pick asks of the engine.
  */
 
 import type Hls from 'hls.js';
@@ -13,7 +11,7 @@ import {
 	type EngineWant,
 	type NamedTrack
 } from './caption-engine';
-import { applyCaptionPick, type CaptionMode, type CaptionTarget } from './caption-pick';
+import type { CaptionMode, CaptionTarget } from './caption-pick';
 
 /** A text track as the sync reads and sets it. */
 export interface SyncTrack extends NamedTrack {
@@ -74,6 +72,25 @@ export function wantOf(
 	return sidecars.has(desired) ? -1 : engineIdOf(desired, renditions);
 }
 
+/**
+ * What the app shows once the engine has switched to rendition `picked`
+ * of its current group (-1 for none): `desired` — unless it is a
+ * rendition of a group the engine has left, which no rendition of the
+ * current group names, when it is the engine's pick in the new group.
+ */
+export function followGroup(
+	video: CaptionVideo,
+	desired: Desired | null,
+	renditions: readonly EngineTrack[],
+	picked: number
+): Desired | null {
+	if (desired === null || typeof desired === 'string' || picked < 0) return desired;
+	const sidecars = new Set(Array.from(video.querySelectorAll('track'), (el) => el.track));
+	if (sidecars.has(desired) || engineIdOf(desired, renditions) !== -1) return desired;
+	const at = renditionIndex(video.textTracks, renditions[picked], sidecars);
+	return at === -1 ? desired : video.textTracks[at];
+}
+
 /** The engine events the sync listens to, as the page's engine names
  *  them. */
 export type CaptionSyncEvents = Pick<
@@ -105,31 +122,4 @@ export interface CaptionSync {
 	renditions(): readonly EngineTrack[];
 	/** The engine retired. */
 	dispose(): void;
-}
-
-/** The captions without an engine: picks set the tracks alone, tracks
- *  of the app's own join with every track off, and nothing waits. */
-export function plainCaptions(video: CaptionVideo): CaptionSync {
-	return {
-		pick: (target) => applyCaptionPick(video.textTracks, target),
-		pickTrack: () => {},
-		beforeOwnTracks: () => applyCaptionPick(video.textTracks, 'off'),
-		release: () => {},
-		whenReady: (fn) => {
-			fn();
-			return () => {};
-		},
-		renditions: () => [],
-		dispose: () => {}
-	};
-}
-
-/** Show the track at `target`, or none, through the engine where the
- *  stream has one. */
-export function pickCaptions(
-	video: CaptionVideo,
-	target: CaptionTarget,
-	sync: CaptionSync | null
-): void {
-	(sync ?? plainCaptions(video)).pick(target);
 }

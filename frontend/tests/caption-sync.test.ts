@@ -4,11 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import type Hls from 'hls.js';
 import { createCaptionSync } from '../src/lib/play/caption-sync';
-import {
-	pickCaptions,
-	plainCaptions,
-	type CaptionSyncEvents
-} from '../src/lib/play/caption-sync-tracks';
+import { pickCaptions, plainCaptions } from '../src/lib/play/caption-plain';
+import type { CaptionSyncEvents } from '../src/lib/play/caption-sync-tracks';
 import {
 	HlsSubtitleModel,
 	MODEL_EVENTS,

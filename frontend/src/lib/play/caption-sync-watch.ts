@@ -57,13 +57,15 @@ export interface FragmentWatch {
  * time, and starts the next as it finishes one, before this hears that
  * the one before is in; so a fragment is matched by its rendition and
  * its number. `landed` runs when the one on its way is in or failed.
+ * A seek aborts the one on its way with no event, which its loader's
+ * stats record: an aborted fragment is on its way no longer.
  */
 export function watchFragments(
 	engine: Hls,
 	events: CaptionSyncEvents,
 	landed: () => void
 ): FragmentWatch {
-	let inFlight: { level: number; sn: unknown } | null = null;
+	let inFlight: { level: number; sn: unknown; stats?: { aborted?: boolean } } | null = null;
 	const isSubtitle = (frag: { type: unknown }) => `${frag.type}` === 'subtitle';
 	const done = (frag: { level: number; sn: unknown }): void => {
 		if (!inFlight || frag.level !== inFlight.level || frag.sn !== inFlight.sn) return;
@@ -74,13 +76,13 @@ export function watchFragments(
 		inFlight = null;
 	});
 	engine.on(events.FRAG_LOADING, (_event, data) => {
-		if (isSubtitle(data.frag)) inFlight = { level: data.frag.level, sn: data.frag.sn };
+		if (isSubtitle(data.frag)) inFlight = data.frag;
 	});
 	engine.on(events.SUBTITLE_FRAG_PROCESSED, (_event, data) => done(data.frag));
 	engine.on(events.ERROR, (_event, data) => {
 		if (data.frag && isSubtitle(data.frag)) done(data.frag);
 	});
 	return {
-		level: () => inFlight?.level ?? null
+		level: () => (inFlight && !inFlight.stats?.aborted ? inFlight.level : null)
 	};
 }

@@ -15,7 +15,8 @@
  */
 
 import { distinctLabel } from './caption-engine';
-import { plainCaptions, type CaptionSync } from './caption-sync-tracks';
+import { plainCaptions } from './caption-plain';
+import type { CaptionSync } from './caption-sync-tracks';
 import { startingTrack } from './caption-start';
 import { expectCaptions, expectedCaptions, extraBeside, showingCaption } from './caption-watch';
 import type { SessionSubtitle } from '$lib/api';

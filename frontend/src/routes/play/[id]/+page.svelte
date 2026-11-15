@@ -89,7 +89,8 @@
 	import { buildMediaUrl } from '$lib/play/media-url';
 	import type { CaptionTarget } from '$lib/play/caption-pick';
 	import { createCaptionSync } from '$lib/play/caption-sync';
-	import { pickCaptions, type CaptionSync } from '$lib/play/caption-sync-tracks';
+	import { pickCaptions } from '$lib/play/caption-plain';
+	import type { CaptionSync } from '$lib/play/caption-sync-tracks';
 	import { captionEntries } from '$lib/play/caption-label';
 	import { captionOrder } from '$lib/play/caption-order';
 	import { menuHeight, menuKeyStep, revealScroll } from '$lib/play/caption-menu-fit';
