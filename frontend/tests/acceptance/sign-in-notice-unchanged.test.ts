@@ -20,6 +20,7 @@ import { mount, unmount, createRawSnippet } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers } from './home-handlers';
+import { afterRead, watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -62,6 +63,7 @@ let homeTarget: HTMLElement | null = null;
 let layout: ReturnType<typeof mount> | null = null;
 let home: ReturnType<typeof mount> | null = null;
 let saved: { provider: Provider; payload: PersistedAccount }[] = [];
+let fetches: ReturnType<typeof watchPageFetches>;
 
 function installKeychain(accounts: Partial<Record<Provider, PersistedAccount>>) {
 	(window as unknown as { aniGui: unknown }).aniGui = {
@@ -99,9 +101,28 @@ async function settle(steps = 40) {
 	for (let i = 0; i < steps; i++) await new Promise((r) => setTimeout(r, 5));
 }
 
+/**
+ * Wait until the page has nothing out: every request it asked is
+ * answered and read, and what those answers set off has run. A notice
+ * or a renewal any of them would start is on record by then.
+ */
+async function quiet() {
+	await fetches.settled('the page to settle');
+	await afterRead();
+}
+
+async function until(predicate: () => boolean, what: string, timeoutMs = 4000) {
+	const deadline = Date.now() + timeoutMs;
+	while (!predicate()) {
+		if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+		await new Promise((r) => setTimeout(r, 5));
+	}
+}
+
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	saved = [];
+	fetches = watchPageFetches();
 	window.localStorage.clear();
 	layoutTarget = document.createElement('div');
 	document.body.appendChild(layoutTarget);
@@ -212,7 +233,15 @@ describe('the sign-in notice, where it already worked', () => {
 		homeTarget = document.createElement('div');
 		document.body.appendChild(homeTarget);
 		home = mount(HomePage, { target: homeTarget });
-		await settle(80);
+		// Both lists are in and read, and nothing the page asked is
+		// still out: a renewal or a notice they started is on record.
+		const listRead = (p: string) => fetches.read.some((f) => f.path === `/api/account/list/${p}`);
+		await until(() => listRead('anilist') && listRead('mal'), 'both lists to be read');
+		await quiet();
+		expect(
+			fetches.sent.filter((f) => f.path.startsWith('/api/account/refresh/')),
+			'no renewal asked'
+		).toEqual([]);
 		expect(listed.sort()).toEqual(['anilist Bearer al-bearer', 'mal Bearer mal-bearer']);
 		expect(renewals).toBe(0);
 		expect(toastTexts()).toEqual([]);

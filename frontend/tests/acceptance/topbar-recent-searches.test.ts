@@ -13,6 +13,8 @@ import { mount, unmount, createRawSnippet } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { setUrl } from './page-state.svelte';
+import { afterRead, watchPageFetches } from './page-fetches';
+import { armedBy } from './scheduled-timers';
 import { page } from './page-state.svelte';
 
 vi.mock('$app/state', () => ({
@@ -104,9 +106,11 @@ describe('topbar recent searches', () => {
 			})
 		);
 		localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(['one piece', 'jojo']));
+		const fetches = watchPageFetches();
 		await mountLayout();
 		input().value = 'One  Piece';
-		input().dispatchEvent(new Event('input', { bubbles: true }));
+		const pause = armedBy(() => input().dispatchEvent(new Event('input', { bubbles: true })));
+		expect(pause.pending, 'typing armed the pause before the search').toBeGreaterThan(0);
 		(input().closest('form') as HTMLFormElement).requestSubmit();
 		await vi.waitFor(() =>
 			expect(JSON.parse(localStorage.getItem(RECENT_STORAGE_KEY) ?? '[]')).toEqual([
@@ -114,8 +118,12 @@ describe('topbar recent searches', () => {
 				'jojo'
 			])
 		);
-		// Past the live search's pause, when it would have gone out.
-		await new Promise((r) => setTimeout(r, 500));
+		// Once the live search's pause has come due or been called off,
+		// a search it started has been asked, and is recorded where the
+		// page asks it.
+		await pause.done('the pause before the live search to end');
+		await afterRead();
+		expect(fetches.sent.filter((f) => f.path === '/api/kitsu/search')).toEqual([]);
 		expect(liveSearched).toBe(false);
 	});
 });

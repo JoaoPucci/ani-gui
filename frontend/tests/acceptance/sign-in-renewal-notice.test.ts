@@ -23,6 +23,7 @@ import { mount, unmount, createRawSnippet } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers } from './home-handlers';
+import { afterRead, watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -73,6 +74,7 @@ let home: ReturnType<typeof mount> | null = null;
 /** Answers a held renewal, so a scenario that fails before answering
  *  it does not also leave the request open. */
 let release: () => void = () => {};
+let fetches: ReturnType<typeof watchPageFetches>;
 
 function installKeychain() {
 	(window as unknown as { aniGui: unknown }).aniGui = {
@@ -114,9 +116,32 @@ async function settle(steps = 40) {
 	for (let i = 0; i < steps; i++) await new Promise((r) => setTimeout(r, 5));
 }
 
+/** The renewals the page has asked for, counted as it asks. */
+const renewalsAsked = () =>
+	fetches.sent.filter((f) => f.path === '/api/account/refresh/mal').length;
+
+/**
+ * Wait until the page has nothing out: every request it asked is
+ * answered and read, and what those answers set off has run. A notice
+ * any of them would show is on screen by then.
+ */
+async function quiet() {
+	await fetches.settled('the page to settle');
+	await afterRead();
+}
+
+async function until(predicate: () => boolean, what: string, timeoutMs = 4000) {
+	const deadline = Date.now() + timeoutMs;
+	while (!predicate()) {
+		if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+		await new Promise((r) => setTimeout(r, 5));
+	}
+}
+
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	installKeychain();
+	fetches = watchPageFetches();
 	layoutTarget = document.createElement('div');
 	document.body.appendChild(layoutTarget);
 });
@@ -153,7 +178,10 @@ describe('opening the app with a dead MAL sign-in', () => {
 			})
 		);
 		bootLayout();
-		await settle();
+		// The renewal is out, held: whatever the boot says before MAL
+		// answers, it has said by now.
+		await until(() => renewalsAsked() === 1, 'the renewal to be asked');
+		await afterRead();
 		expect(signInToasts(), 'nothing is known before MAL answers').toEqual([]);
 
 		release();
@@ -201,7 +229,13 @@ describe('opening the app with a dead MAL sign-in', () => {
 		homeTarget = document.createElement('div');
 		document.body.appendChild(homeTarget);
 		home = mount(HomePage, { target: homeTarget });
-		await settle(80);
+		await until(
+			() => fetches.sent.some((f) => f.path === '/api/account/list/mal'),
+			'the home rail to ask MAL for the list'
+		);
+		// The list's 401 is in and read, and so is every renewal it set
+		// off: a second notice would be on screen by now.
+		await quiet();
 		expect(listReads, 'the home rail asked MAL for the list').toBeGreaterThan(0);
 		expect(signInToasts()).toEqual([REFUSED]);
 	});
@@ -223,7 +257,10 @@ describe('opening the app with a dead MAL sign-in', () => {
 			layoutTarget.querySelectorAll<HTMLButtonElement>('.toast .action')
 		).find((b) => b.textContent?.trim() === 'Try now');
 		tryNow?.click();
-		await settle();
+		await until(() => renewalsAsked() === 2, 'the click to renew again');
+		// The second answer is in and read: the notice now on screen is
+		// the one it left.
+		await quiet();
 		expect(renewals, 'the click renewed again').toBe(2);
 		// The user acted and the renewal failed again: saying nothing now
 		// would read as success.
@@ -266,12 +303,17 @@ describe('opening the app with a dead MAL sign-in', () => {
 			])
 		);
 		bootLayout();
-		await settle(10);
+		// The boot has read the sign-in and found it valid, and has
+		// nothing out: a renewal it started would have been answered.
+		await until(() => accountStore.byProvider.mal.kind === 'connected', 'the sign-in to load');
+		await quiet();
+		expect(renewalsAsked(), 'the boot renewed nothing').toBe(0);
 		expect(signInToasts(), 'a sign-in valid by its date says nothing on its own').toEqual([]);
 		homeTarget = document.createElement('div');
 		document.body.appendChild(homeTarget);
 		home = mount(HomePage, { target: homeTarget });
-		await settle(80);
+		await until(() => renewalsAsked() === 1, 'the read to start a renewal');
+		await quiet();
 		expect(renewals).toBe(1);
 		expect(accountStore.byProvider.mal.kind).toBe('expired');
 		expect(signInToasts()).toEqual([REFUSED]);
