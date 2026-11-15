@@ -158,8 +158,9 @@ async fn set_entry_via(
 /// Remove a show from the user's tracker list (the editor's "Remove from
 /// list"). Deletes the provider entry, then drops the local cache row so
 /// the rail/editor reflect the removal immediately. Returns `Ok(false)`
-/// when the show isn't mapped to the provider, or the tracker no longer
-/// has the entry it maps to (nothing to remove).
+/// when the show isn't mapped to the provider (nothing to remove); a
+/// show whose entry is already off the list — or that the tracker no
+/// longer has at all — is removed already, `Ok(true)`.
 pub async fn remove_entry(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -196,8 +197,8 @@ async fn remove_entry_via(
     // read: if the show is no longer on the list the delete's goal is
     // already met (idempotent success, still drop the cache row); a
     // still-present show means the failure is real and propagates. A
-    // read the tracker answers with the entry itself absent removed
-    // nothing: it answers as for a show no tracker id maps.
+    // read the tracker answers with the entry itself absent is the same
+    // idempotent case: the show is off the list.
     // The bearer's user (remembered once the tracker has named it): the
     // delete and the cache row's drop both go by it.
     let owner = super::account_owner::before_write(state, kind, provider, tokens).await?;
@@ -207,8 +208,7 @@ async fn remove_entry_via(
     };
     if let Err(e) = deleted {
         match AniError::unless_absent(provider.current_entry(tokens, native).await) {
-            Ok(Some(None)) => {}
-            Ok(None) => return Ok(false),
+            Ok(Some(None) | None) => {}
             _ => return Err(e),
         }
     }

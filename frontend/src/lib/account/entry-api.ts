@@ -69,8 +69,8 @@ export function setEntry(
 /**
  * Remove a show from the user's tracker list (editor "Remove"). The
  * backend is idempotent — an already-removed title still resolves
- * successfully. A show no tracker entry serves (unmapped, or mapped to an
- * entry the tracker no longer has) rejects with a 404: nothing was
+ * successfully, as does a show mapped to an entry the tracker no longer
+ * has. A show the provider does not map rejects with a 404: nothing was
  * removed.
  */
 export function removeEntry(provider: Provider, bearer: string, kitsuId: string): Promise<void> {

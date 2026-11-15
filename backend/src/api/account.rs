@@ -225,9 +225,9 @@ async fn get_entry(
 }
 
 /// Map `remove_entry`'s result to a status: 204 when a tracker entry was
-/// actually removed (or was already gone — idempotent), 404 when no
-/// connected provider maps this show — or the tracker no longer has the
-/// entry it maps to — so nothing could be removed. The 404
+/// actually removed (or was already gone — idempotent, which includes an
+/// entry the tracker no longer has at all), 404 when no connected
+/// provider maps this show so nothing could be removed. The 404
 /// matters for the renderer's multi-tracker fan-out: it counts any
 /// resolved DELETE as a successful removal, so an unmappable provider must
 /// reject rather than mask a real provider's failed delete (mirrors the
@@ -243,9 +243,9 @@ fn remove_entry_status(removed: bool) -> StatusCode {
 }
 
 /// Remove a show from the user's tracker list (editor "Remove").
-/// Idempotent: 204 whether or not a row existed, as long as the show maps
-/// to an entry the tracker has; 404 when it doesn't (see
-/// [`remove_entry_status`]).
+/// Idempotent: 204 whether or not a row existed — or the tracker still
+/// has the entry at all — as long as the show maps to the provider; 404
+/// when it doesn't (see [`remove_entry_status`]).
 async fn delete_entry(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
