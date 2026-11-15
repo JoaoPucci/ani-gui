@@ -87,7 +87,8 @@ fn flcl_is_named_after_its_ova() {
 }
 
 /// One-offs before the first series are skipped: a film, a special of
-/// any count, a one-episode OVA or ONA, a music video.
+/// any count, a one-episode OVA or ONA. (A music video is no part of a
+/// franchise at all: `a_music_video_prequel_is_never_the_root`.)
 #[test]
 fn one_offs_before_the_first_series_are_skipped() {
     let one_offs = [
@@ -95,7 +96,6 @@ fn one_offs_before_the_first_series_are_skipped() {
         ("special", Some(12)),
         ("OVA", Some(1)),
         ("ONA", Some(1)),
-        ("music", Some(3)),
     ];
     for (subtype, episodes) in one_offs {
         let mut c = Catalogue::default();

@@ -224,4 +224,52 @@ proptest! {
             }
         }
     }
+
+    /// No music video is part of a show's franchise answer: not its
+    /// main story, its name, a section, a parent or a page's chain. A
+    /// music video's own page answers with the music video alone.
+    #[test]
+    fn no_music_video_is_in_a_franchise_answer((cat, anchor) in catalogue()) {
+        let f = drive_with(&anchor, &cat, &[]).0;
+        let music = |id: &str| cat.entries[id].subtype.as_deref() == Some("music");
+        if music(&anchor) {
+            prop_assert_eq!(id_set(&f.entries), BTreeSet::from([anchor.clone()]));
+            prop_assert!(f.links.is_empty());
+            let around = [&f.versions, &f.films, &f.sides, &f.recaps];
+            prop_assert!(around.iter().all(|s| s.is_empty()));
+            prop_assert!(f.parents.is_empty());
+            prop_assert!(f.chain.is_none());
+            prop_assert_eq!(&f.name_from, &anchor);
+        } else {
+            for id in answer_ids(&f) {
+                prop_assert!(!music(&id), "the music video {} is in the answer", id);
+            }
+        }
+    }
+}
+
+/// Every id a franchise answer names: its main story and links, every
+/// section, the parents, the chain and the entry the name comes from.
+pub(super) fn answer_ids(f: &Franchise) -> BTreeSet<String> {
+    let mut out = BTreeSet::from([f.name_from.clone()]);
+    for s in [&f.entries, &f.versions, &f.films, &f.sides, &f.recaps] {
+        out.extend(s.iter().map(|e| e.id.clone()));
+    }
+    for (a, b) in &f.links {
+        out.insert(a.clone());
+        out.insert(b.clone());
+    }
+    for (side, parents) in &f.parents {
+        out.insert(side.clone());
+        out.extend(parents.iter().cloned());
+    }
+    if let Some(c) = &f.chain {
+        out.extend(c.entries.iter().map(|e| e.id.clone()));
+        for (a, b) in &c.links {
+            out.insert(a.clone());
+            out.insert(b.clone());
+        }
+        out.extend(c.seams.iter().cloned());
+    }
+    out
 }

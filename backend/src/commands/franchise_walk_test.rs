@@ -592,3 +592,71 @@ fn a_parent_that_started_first_is_the_parent_whatever_it_names() {
     assert_eq!(ids(&f.entries), ["2"]);
     assert_eq!(f.parents.get("1").cloned(), Some(vec!["2".to_string()]));
 }
+
+/// A music video is never where a franchise starts: one the first
+/// season names as its prequel is left out, and the seasons are the
+/// main story, named from the first season.
+#[test]
+fn a_music_video_prequel_is_never_the_root() {
+    let mut c = Catalogue::default();
+    c.add("95001", "music", Some("2000-01-01"))
+        .add("95002", "TV", Some("2001-01-01"))
+        .add("95003", "TV", Some("2002-01-01"));
+    c.rel("95001", "sequel", "95002")
+        .rel("95002", "prequel", "95001")
+        .rel("95002", "sequel", "95003")
+        .rel("95003", "prequel", "95002");
+    for anchor in ["95002", "95003"] {
+        let f = drive(anchor, &c);
+        assert_eq!(ids(&f.entries), ["95002", "95003"], "{anchor}");
+        assert_eq!(f.name_from, "95002", "{anchor}");
+        assert!(
+            !super::prop_tests::answer_ids(&f).contains("95001"),
+            "{anchor}: the music video is in the answer"
+        );
+    }
+}
+
+/// A music video joins nothing: two seasons linked only through one
+/// (the first names it as its sequel, it names the second) are not one
+/// run. A story link between two seasons is one Kitsu lists between
+/// them; a song's links say what it was made for, not what follows.
+#[test]
+fn a_music_video_between_two_seasons_does_not_join_them() {
+    let mut c = Catalogue::default();
+    c.add("95101", "TV", Some("2000-01-01"))
+        .add("95102", "music", Some("2001-01-01"))
+        .add("95103", "TV", Some("2002-01-01"));
+    c.rel("95101", "sequel", "95102")
+        .rel("95102", "prequel", "95101")
+        .rel("95102", "sequel", "95103")
+        .rel("95103", "prequel", "95102");
+    assert_eq!(ids(&drive("95101", &c).entries), ["95101"]);
+    assert_eq!(ids(&drive("95103", &c).entries), ["95103"]);
+    for anchor in ["95101", "95103"] {
+        let named = super::prop_tests::answer_ids(&drive(anchor, &c));
+        assert!(!named.contains("95102"), "{anchor}: {named:?}");
+    }
+}
+
+/// A music video's own page answers with the music video alone: it is
+/// no part of the franchise of the show it was made for.
+#[test]
+fn a_music_video_answers_alone() {
+    let mut c = Catalogue::default();
+    c.add("95201", "TV", Some("2000-01-01"))
+        .add("95202", "TV", Some("2001-01-01"))
+        .add("95203", "music", Some("2001-06-01"));
+    c.rel("95201", "sequel", "95202")
+        .rel("95202", "prequel", "95201")
+        .rel("95203", "side_story", "95202")
+        .rel("95203", "parent_story", "95202")
+        .rel("95203", "prequel", "95201");
+    let f = drive("95203", &c);
+    assert_eq!(ids(&f.entries), ["95203"]);
+    assert_eq!(f.name_from, "95203");
+    assert!(f.links.is_empty() && f.parents.is_empty() && f.chain.is_none());
+    for s in [&f.versions, &f.films, &f.sides, &f.recaps] {
+        assert!(s.is_empty(), "{:?}", ids(s));
+    }
+}
