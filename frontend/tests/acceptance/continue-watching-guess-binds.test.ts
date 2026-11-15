@@ -28,6 +28,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
+import { watchPageFetches } from './page-fetches';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -103,6 +104,7 @@ let rows: Row[];
 let mappings: Record<string, string>;
 let stamps: Record<string, unknown>[];
 let trackerWrites: string[];
+let fetches: ReturnType<typeof watchPageFetches>;
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
@@ -117,6 +119,7 @@ beforeEach(() => {
 	stamps = [];
 	mappings = {};
 	trackerWrites = [];
+	fetches = watchPageFetches();
 	for (const provider of TRACKERS) {
 		accountStore.setConnected(provider, {
 			access_token: `${provider}-bearer`,
@@ -148,10 +151,12 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-/** Long enough for a tracker write the stamp set off to arrive: the
- *  write goes out after a few awaited steps, which the positive cases
- *  here see land well inside this. */
-const noTrackerWriteWindow = () => new Promise((r) => setTimeout(r, 300));
+/** The tracker writes the page has sent, counted as it sends them: a
+ *  handler sees a request only once MSW has carried it there. */
+const trackerWritesSent = () =>
+	fetches.sent
+		.filter((f) => f.method === 'POST' && f.path.startsWith('/api/account/update/'))
+		.map((f) => f.path.slice('/api/account/update/'.length));
 
 /** The backend the routes talk to, over `rows`. A watch stamp records
  *  the watch on the listing played, under the Kitsu id it carries —
@@ -317,8 +322,11 @@ describe('a guessed Continue card whose play lands on another listing', () => {
 		expect(stream.searchParams.get('guess_row')).toBe(LISTING);
 		expect(stream.searchParams.has('kitsu_id')).toBe(false);
 		expect(stamps[0]).not.toHaveProperty('kitsu_id');
-		await noTrackerWriteWindow();
-		expect(trackerWrites).toEqual([]);
+		// The stamp is in. A tracker write would start beside it and
+		// wait only on the sign-in's bearer before it is sent, so once
+		// nothing the page asked is still out, it has been sent.
+		await fetches.settled('the play to settle after its watch stamp');
+		expect(trackerWritesSent()).toEqual([]);
 
 		expect(await playTheCardAgain()).toEqual({ guess: true, recorded: null });
 		expect(await showPageResumes()).toBe(false);
