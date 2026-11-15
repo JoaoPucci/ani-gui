@@ -1299,7 +1299,7 @@ for when AniList's listing is the show's.
 - **Relations.** AniList `relations` names prequels, sequels, side
   stories, adaptations and looser links by `relationType`, and includes
   manga and novel entries, so grouping anime filters on the related
-  node's `type`. The franchise walk compared it with Kitsu's relations
+  node's `type`. The franchise walk's design compared it with Kitsu's relations
   and chose Kitsu's
   ([`title-resolution.md`](./title-resolution.md#what-the-links-say-and-what-they-do-not)),
   so this stays unused.

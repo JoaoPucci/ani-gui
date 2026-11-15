@@ -62,10 +62,31 @@ admit ambiguity rather than guess), is the opening of
 
 ## 2. What data the app has
 
-Built. What Kitsu's relations say and do not say, why the walk reads
-Kitsu's links and neither Kitsu's franchise model nor AniList's
-relations, and the listing it reads are documented in
-[`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise).
+The franchise read is built. What Kitsu's relations say and do not
+say, why the walk reads Kitsu's links and neither Kitsu's franchise
+model nor AniList's relations, and the listing it reads are documented
+in [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise).
+What the streaming provider adds matters to the surfaces still to
+come:
+
+### What the streaming provider adds
+
+[data] The provider lists versions as separate shows: the author's
+development-build history holds both "JoJo's Bizarre Adventure Part 2:
+Stardust Crusaders" and its "(Uncensored)" listing, both recorded
+against Kitsu 8063, and the provider names that entry "Part 2" where
+Kitsu and the franchise call it Part 3. hianime also renames
+*Gintama*'s entries "Season 2", "Season 4", "Season 5"; in the same
+history those rows carry no Kitsu id, where other rows written the
+same day do. [inference] Somewhere between the play and the history
+write, the app did not settle which Kitsu entry those listings are;
+the exact cause was not traced.
+
+[inference] Every surface below works on Kitsu entries, so provider
+versions collapse into the one Kitsu entry and the existing play path
+picks the listing. Rows that never resolved to a Kitsu id cannot join
+a franchise grouping — they stay outside it, as they stay outside
+other Kitsu-keyed features.
 
 ## 3. What the author's library says
 
@@ -731,7 +752,7 @@ design gate in section 5 (mockups in the real app reviewed before
 implementation, designer and critic, a draft pull request with a
 manual test section, a consistency check) before it merges:
 
-1. **Watch order strip** (option a), with the `chain` walk and the
+1. **Watch order strip** (option a), on the franchise read, with the
    "You're watching …" line, both of which need the whole run, not just the
    neighbours. Read-only, no provider requests, no change to Continue
    or trackers. On its own it answers "what comes before and after"
