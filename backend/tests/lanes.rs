@@ -146,9 +146,12 @@ fn metadata_db(home: &Path) -> std::path::PathBuf {
 /// The backend answers the play from its resolution cache — the test
 /// turns replays on through the settings route and writes the row the
 /// play reads, naming a stream it serves — since a resolve would walk
-/// a provider. Not on Windows: there the backend's cache is the dev
+/// a provider. Not on Windows: there the backend finds its profile
+/// through the known-folder API, so its cache and settings are the dev
 /// profile's, outside the test's home, and turning replays on would
-/// change that profile's settings.
+/// change that profile's settings. `play_stream_origin.rs` holds the
+/// session and playlist to the proxy's origin in-process on every
+/// platform, and the test above holds that origin to the stream lane.
 #[cfg(not(target_os = "windows"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_plays_session_and_its_playlist_name_the_stream_lane() {
