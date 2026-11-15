@@ -363,10 +363,10 @@ fn the_first_hop_reads_the_detail_only_where_its_answer_turns_on_it() {
         Step::Done(FirstHop::Strip)
     );
     // A show whose listing names only what the franchise page lists
-    // beside it: the link, unless the show is a music video, which only
-    // its detail says.
+    // beside it, and nothing the parent check weighs: the link, unless
+    // the show is a music video, which only its detail says.
     let mut c = with(&[("1", "TV"), ("2", "movie")]);
-    c.rel("1", "side_story", "2");
+    c.rel("1", "other", "2");
     let known = BTreeMap::from([("1".to_string(), c.listings["1"].clone())]);
     assert_eq!(
         first_hop("1", &known, &no_details),

@@ -7,7 +7,9 @@
  * (or the franchise link on its own) used to land above the synopsis
  * after the page was drawn, pushing everything under it down. The
  * show's own relation listing, which the walk reads in its first
- * round, already says what is coming (`kitsuFranchiseFirstHop`), so:
+ * round (with, where needed, the show's detail and what the walk's
+ * parent check reads), already says what is coming
+ * (`kitsuFranchiseFirstHop`), so:
  *
  * - The page waits for that first hop together with the show's
  *   details, but never more than `FIRST_HOP_CAP_MS` past the details,
