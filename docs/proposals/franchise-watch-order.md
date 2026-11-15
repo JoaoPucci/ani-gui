@@ -28,8 +28,8 @@ the app does too.
 Before the watch-order surfaces, the app knew nothing about how those
 entries connect. Three things followed from that; the strip
 ([`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip)) answers the second, the player's Up next card
-([`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card)) the first in the player, and the surfaces still to build
-the rest of the first and the third:
+([`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card)) and Continue Watching's hand-off ([`architecture.md`, "Continue Watching's hand-off"](../architecture.md#continue-watchings-hand-off)) the first; the
+franchise page, still to build, answers the third:
 
 1. **A finale is a dead end.** When you finish the last episode of a
    season, the player stops (auto-play halts at the last known
@@ -618,9 +618,8 @@ manual test section, a consistency check) before it merges:
 1. **Watch order strip** (option a): built, with the "You're watching"
    card and the order setting
    ([`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip)).
-2. **Up next at a finale** (option b): the player end card is built
-   ([`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card)); Continue moving to the sequel and the finished entry's
-   card giving way is not yet.
+2. **Up next at a finale** (option b): built, the player's card and
+   Continue Watching's hand-off ([`architecture.md`, "Continue Watching's hand-off"](../architecture.md#continue-watchings-hand-off)).
 3. **Franchise page** (option c), in 0.19.0, reusing the franchise read
    and adding the side stories, films, recaps and other versions
    around it; the strip gains its trailing link to the page here.

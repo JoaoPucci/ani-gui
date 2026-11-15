@@ -499,7 +499,8 @@ starting it, and delete it when you find it done.
   catalogue, and choosing a source the list can trust.
 - **Localised content fetch** — synopsis and episode titles.
 - **Franchise and season grouping** across surfaces. The franchise
-  read, the show page's strip and the order setting ship
+  read, the show page's strip, the order setting, the player's Up next
+  card and Continue Watching's hand-off ship
   ([`architecture.md`, "Watch order"](./architecture.md#watch-order));
   the rest of the design is proposed in
   [`proposals/franchise-watch-order.md`](./proposals/franchise-watch-order.md).
