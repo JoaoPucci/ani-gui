@@ -18,8 +18,8 @@
  * lists two sidecar tracks: English, which the UI's language starts on
  * and which hls.js would take for its rendition of the same name and
  * language, and Français. A spec can hold the master playlist back, so
- * the sidecar listing arrives first, and hold each English fragment
- * back, so one is on its way while the viewer moves off it.
+ * the sidecar listing arrives first, and hold an English fragment
+ * back, so it is on its way while the viewer moves off it.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from './policy-guard';
@@ -77,7 +77,11 @@ function renditionFragment(lang: string, n: number): string {
 interface Holds {
 	/** Milliseconds the master playlist is held back. */
 	master?: number;
-	/** English rendition fragments held back until this resolves. */
+	/** The English rendition's second fragment (4–8 s) held back until
+	 *  this resolves. hls.js loads the fragment before the one it wants
+	 *  first where that one is not loaded yet, so holding every English
+	 *  fragment would hold back the first and the second would never be
+	 *  asked for. */
 	englishFragment?: Promise<void>;
 }
 
@@ -110,7 +114,7 @@ async function mediaServer(
 		if (fragment) {
 			const [, lang, n] = fragment;
 			const body = Buffer.from(renditionFragment(lang, Number(n)));
-			const held = lang === 'en' ? holds.englishFragment : undefined;
+			const held = lang === 'en' && n === '1' ? holds.englishFragment : undefined;
 			if (held) return void held.then(() => send(res, types['.vtt'], body));
 			return send(res, types['.vtt'], body);
 		}
