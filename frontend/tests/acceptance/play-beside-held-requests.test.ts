@@ -33,6 +33,14 @@ import {
 import { playerVideo, playerVideoInSlot } from './player-video';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 
+import type {
+	AiringStatus,
+	Config,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SessionSubtitle,
+	SkipInterval
+} from '../../src/lib/api';
 vi.mock('$app/state', () => ({
 	get page() {
 		return page;
@@ -111,22 +119,26 @@ describe('a play beside held requests', () => {
 		let mostProbesInFlight = 0;
 		const never = () => new Promise<never>(() => {});
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json(kitsuRef(KITSU_ID, 'The Show', 12))
+				HttpResponse.json<KitsuAnimeRef>(kitsuRef(KITSU_ID, 'The Show', 12))
 			),
-			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () => HttpResponse.json(null)),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json<AiringStatus>(null)
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
 			// A provider that never answers: every probe holds.
 			http.post(`${LANES.probe}/api/availability`, async () => {
 				probesInFlight += 1;
 				mostProbesInFlight = Math.max(mostProbesInFlight, probesInFlight);
 				return never();
 			}),
-			http.get(`${LANES.stream}/s/session-1/subtitles`, () => HttpResponse.json([]))
+			http.get(`${LANES.stream}/s/session-1/subtitles`, () =>
+				HttpResponse.json<SessionSubtitle[]>([])
+			)
 		);
 
 		// What the surfaces the user just left — or the ones beside the

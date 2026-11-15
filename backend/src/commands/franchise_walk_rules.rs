@@ -1,7 +1,9 @@
 //! How the walk builds a run (rules 1–3 of the proposal's section 4):
 //!
 //! 1. Breadth-first from the root, one distance at a time, along the
-//!    prequel and sequel links each added entry lists (anime only). An
+//!    prequel and sequel links each added entry lists (anime only; the
+//!    main story's walk also counts a link a read listing names from
+//!    the other side, `franchise_walk_root.rs`). An
 //!    entry first met at a distance takes the path through the listing
 //!    entry that started earliest, then the lowest id, and is decided
 //!    once, on that path.
@@ -19,11 +21,13 @@
 //!
 //! A side-story anchor whose run is itself alone, or holds no series
 //! (`franchise_walk_series.rs`), walks instead from the earliest parent
-//! story it or its run's members name (`franchise_walk_run.rs`).
+//! story it or its run's members name (`franchise_walk_run.rs`). The
+//! run walked to then settles to the franchise's main story, the walk
+//! from the franchise's root (`franchise_walk_root.rs`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::alt::components;
+use super::alt::{components, linked};
 use super::joined::Joined;
 use super::meet::Met;
 use super::{order_key, Lookup, MAX_MEMBERS};
@@ -38,6 +42,9 @@ pub(super) struct Walk<'l, 'a> {
     pub(super) left_out: BTreeSet<String>,
     pub(super) consulted: BTreeSet<String>,
     pub(super) complete: bool,
+    /// The listings whose links also count from the other side
+    /// (`franchise_walk_root.rs`); none for a walk from the anchor.
+    pub(super) reverse: BTreeSet<String>,
 }
 
 impl Walk<'_, '_> {
@@ -69,8 +76,8 @@ impl Walk<'_, '_> {
         let mut joined = Joined::default();
         for f in frontier {
             for role in ["prequel", "sequel"] {
-                let side_by_side: BTreeSet<String> = listed(self.look, f, &[role])
-                    .map(|r| r.id.clone())
+                let side_by_side: BTreeSet<String> = linked(self.look, f, role, &self.reverse)
+                    .into_iter()
                     .filter(|id| in_play(id))
                     .collect();
                 let side_by_side: Vec<String> = side_by_side.into_iter().collect();

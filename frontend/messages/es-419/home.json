@@ -10,6 +10,8 @@
 	"hero_error_title": "El catálogo no está disponible.",
 	"hero_error_body": "Kitsu no respondió. La búsqueda local sigue funcionando — escribe un título.",
 	"hero_error_cta": "Abrir búsqueda",
+	"hero_empty_title": "Nada para destacar por ahora.",
+	"hero_empty_body": "La lista de tendencias llegó vacía. La búsqueda sigue funcionando, escribe un título.",
 	"hero_skeleton_eyebrow_key": "Cargando",
 	"strip_continue_eyebrow": "Seguir viendo",
 	"strip_continue_caption": "retomar desde el historial",

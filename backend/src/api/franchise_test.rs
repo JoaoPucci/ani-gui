@@ -122,7 +122,7 @@ async fn franchise_route_serves_the_walk_from_the_cache() {
     )
     .expect("seed detail");
 
-    let router = crate::api::build_api_router(state);
+    let router = crate::api::test_router(state);
     let r = router
         .oneshot(
             Request::builder()
@@ -142,17 +142,27 @@ async fn franchise_route_serves_the_walk_from_the_cache() {
         got,
         json!({
             "anchor": "7730",
-            // The run's first series by start: the 1993 OVA.
-            "name": "JoJo no Kimyou na Bouken",
-            "name_from": "610",
-            "entries": [old, ova, tv],
-            "links": [["7158", "7730"], ["7730", "610"]],
-            "versions": [sc],
+            // The franchise's main story is the series: where the OVA
+            // meets it, Stardust Crusaders, in the series' format, is
+            // kept over the OVA. Its suffix stays, as the 1993 OVA
+            // would read the same without it.
+            "name": "JoJo no Kimyou na Bouken (TV)",
+            "name_from": "7158",
+            "entries": [tv, sc],
+            "links": [["7158", "8063"]],
+            "versions": [old, ova],
             "films": [],
             "sides": [],
             "recaps": [],
             "parents": {},
-            "complete": true
+            "complete": true,
+            // The OVA's own chain: the two OVAs, and the series they
+            // follow by the 2000 OVA's own listing, a seam.
+            "chain": {
+                "entries": [old, ova, tv],
+                "links": [["7158", "7730"], ["7730", "610"]],
+                "seams": ["7158"]
+            }
         })
     );
 }
@@ -184,7 +194,7 @@ async fn first_hop_route_answers_from_the_shows_own_listing() {
         3600,
     )
     .expect("seed detail");
-    let router = crate::api::build_api_router(state);
+    let router = crate::api::test_router(state);
     for (id, signal) in [("1", "strip"), ("2", "link"), ("3", "none")] {
         let r = router
             .clone()

@@ -519,8 +519,8 @@ prequel and the 1993 OVA as its sequel, and *Dragon Ball* names *Dragon
 Ball Kai*, a re-edit of *Z*, as a sequel. A walk that followed every
 link would fold the OVAs into JoJo's TV run and *Kai* into Dragon
 Ball's, contradicting the franchise page's "Other versions". The walk
-is defined from the entry being viewed — the anchor — by these rules
-[proposal]:
+is defined from where it starts — the entry being viewed, the anchor,
+until the main story is settled (below) — by these rules [proposal]:
 
 1. **Walk the links, both ways.** Starting at the anchor, the walk
    reads each entry it adds and follows the prequel and sequel links
@@ -570,9 +570,11 @@ seasons only as parent story or other, so from any film the seasons
 are the run and the films sit under Films. The walk starts from the
 earliest parent story any of the films names, so every film's page
 shows the same main story, and a film the seasons do not list sits
-under Films as well. A film that names no parent of its own in the
-seasons' run is placed under the parents the other films of its chain
-name. Kitsu sometimes lists a pair the wrong way
+under Films as well. A film is placed under the parents it names in
+the main story, else under those it names that the main story leaves
+out, on the earliest one's chain; one that names no parent of its own
+in the franchise is placed under the parents the other films of its
+chain name, the same way. Kitsu sometimes lists a pair the wrong way
 round, from both sides: [data] on 2026-11-11 *One Piece* (12) named
 *LEGO ONE PIECE* (50656), a two-episode ONA from 2026, as its parent
 story, and *LEGO ONE PIECE* named *One Piece* as its side story. So
@@ -582,9 +584,82 @@ stories, spin-offs and recaps than the anchor's; and an entry the
 anchor names as its side story or spin-off is taken as its parent
 story when it started before the anchor, names the anchor back as its
 parent story, and names more of them. A listing read for this counts
-toward the bound on what the walk reads after it, and one cut short
-makes the answer incomplete. *One Piece* names sixty-three;
+toward the bound on what the walk reads after it; the candidates are
+read only as far as the bound leaves room, and one left unread, or cut
+short, makes the answer incomplete. *One Piece* names sixty-three;
 *LEGO ONE PIECE* names one.
+
+**One main story per franchise.** Rule 3 never leaves out the entry
+a walk starts from, so the anchor's own run can be a line the rest of
+the franchise treats as another version of it. [data] From the first
+2012 *Berserk* film, the three films and the 2016 series made the run;
+from the 2016 series, the 1997 series and the 2016 one. From the 2000
+*JoJo* OVA, the two OVAs and the 2012 series; from any TV part, the
+nine entries from the 2012 series to *Steel Ball Run*. The name and the front of the strip's poster stack
+followed the run, so one franchise read under two names depending on
+the page. The run the rules above walk to (the anchor's, or its parent
+story's) is therefore only where the walk starts:
+
+- The franchise is every entry joined to that run by prequel and
+  sequel links, a link counted from either side (an entry that names
+  another as its prequel follows it, though the other's listing does
+  not say so).
+- Going back from its ends (the entries nothing in it follows), of
+  prequels that are versions of one another one is followed, chosen as
+  rule 2 chooses; the others are passed over.
+- The franchise's root is the earliest entry reached that has no
+  prequel and was not passed over, so the choice made where two lines
+  meet decides. Where no entry reached is one (every way back leads
+  into a loop, or every first entry reached was passed over somewhere),
+  the earliest entry reached that was not passed over stands for it.
+- The main story is the walk from the root, links counted from either
+  side.
+
+*Berserk*'s 2016 series keeps the 1997 series, in its own format, over
+the third film among its prequels: every *Berserk* page starts the
+main story at the 1997 series and lists the films under Films.
+*JoJo*'s 2012 series is followed both by *Stardust Crusaders* and, by
+the OVA's own listing, by the 2000 OVA, versions of each other:
+*Stardust Crusaders*, in the series' format, is kept, so the OVA's
+franchise page lists the TV run, with both OVAs as other versions. An
+entry of the franchise that the main story leaves out is listed around
+it, where the main story's listings place it, else a movie under Films
+and anything else under other versions, so every page lists the same
+ones: [data] from every *Fate* page, Films holds *Heaven's Feel* II and
+III beside I, though only a walk through *Heaven's Feel I* reaches them. A
+side story keeps those of its parents that are in the main story.
+Every page that reaches the same franchise reads it the same way, and
+so answers with the same main story, name, front poster and franchise
+page; where every link is listed from both sides, that is every page
+of it. A link Kitsu lists on one side only is seen from that side
+alone: a page that cannot reach the listing naming it cannot count it,
+so two pages of one franchise can then answer differently. [data] On
+the corpus, every page of each franchise reads one franchise page, and
+reading the franchise costs at most seven more listings than the
+anchor's run (from the 2000 *JoJo* OVA), and none for 38 of the 48
+anchors.
+
+**A page's own chain.** A page the main story leaves out is not left
+without a run of its own. Its chain is the franchise's entries outside
+the main story joined to it by prequel and sequel links, a link counted
+from either side, with the main-story titles one of them is linked to:
+its seams, where the chain leaves the main story or leads into it. Two
+entries are never linked on a chain where either lists the other as
+another version or setting, as rule 3 never puts both in a run: a page
+listing one entry as both its prequel and its other version gets no
+seam into it.
+[data] *Heaven's Feel* I to III, with *Fate/Zero 2nd Season*; the three
+*Berserk* Golden Age films, with the 2016 series they lead into; the two
+*JoJo* OVAs, with the 2012 series the 2000 OVA names as its prequel; the
+*Unlimited Blade Works* film and *Boruto: Naruto the Movie*, each alone
+with the title it branches off after. The chain is cut from the
+franchise, so every title of it answers with the same chain, where
+Kitsu lists its links from both sides. A main-story page has none, and
+neither has a page linked to nothing else; a side story whose parents
+the main story leaves out keeps those on the earliest one's chain,
+and is drawn on it, or on that parent alone where it is chained to
+nothing. Music videos are no titles of a chain. The franchise page is
+unchanged by it: the chain's titles stay where the sections list them.
 
 With these tie-breaks every entry has one path and one decision, so
 the result does not depend on the order the walk happens to read
@@ -630,9 +705,9 @@ them.
 
 [inference: the [proposal] rules applied to the [data] links read for
 section 2] One anchor per franchise, two for JoJo and Fate. The
-computation used the links from both entries' listings; following only
-each entry's own listing, as rule 1 says, gives the same members and
-other versions for every anchor below. "Differ" counts the run members
+computation used the links from both entries' listings, as the main
+story's walk counts them; following only each entry's own listing
+gives the same members and other versions for every anchor below. "Differ" counts the run members
 whose previous or next entry is not the same in the two orders.
 
 | Franchise (anchor) | Run members | Differ | Forks and joins in link order |
@@ -641,8 +716,8 @@ whose previous or next entry is not the same in the two orders.
 | Bleach (2004 series) | 5 | 0 | none |
 | Naruto (2002 series) | 4 | 0 | none |
 | JoJo (2012 series) | 9 | 0 | none |
-| JoJo (the 2000 OVA) | 3 | 3 | none |
-| Fate (*Unlimited Blade Works*) | 5 | 0 | none |
+| JoJo (the 2000 OVA) | 9 | 0 | none |
+| Fate (*Unlimited Blade Works*) | 6 | 3 | fork after *Fate/Zero 2nd Season* |
 | Digimon (*Adventure*) | 14 | 0 | none (one shortcut ignored) |
 | Fate (*Fate/Zero*) | 6 | 3 | fork after *Fate/Zero 2nd Season* |
 | Dragon Ball (1986 series) | 8 | 3 | fork after *Z* |
@@ -652,15 +727,15 @@ whose previous or next entry is not the same in the two orders.
 
 Where they differ, entry by entry:
 
-- **JoJo, from the 2000 OVA.** Link order: *JoJo* (TV, 2012) → 2000 OVA
-  → 1993 OVA. Release order: 1993 OVA → 2000 OVA → 2012 series. All
-  three entries' neighbours change. Other versions: both *Stardust
-  Crusaders* seasons and the 2012 re-edit special; the 2007 *Phantom
-  Blood* film is listed with the films. From any TV part, the run is
-  the nine entries from the 2012 series to *Steel Ball Run* (an ONA),
-  the same in both orders. No entry in it lists either OVA as a prequel or sequel, so
-  the walk never meets them; both are other versions by rule 4, since
-  run members list them as `alternative_version`.
+- **JoJo, from the 2000 OVA.** The run is the franchise's main story,
+  as from any TV part: the nine entries from the 2012 series to *Steel
+  Ball Run* (an ONA), the same in both orders. Walked from the OVA
+  itself, it would be *JoJo* (TV, 2012) → 2000 OVA → 1993 OVA, but the
+  OVA's prequel, the 2012 series, is followed by *Stardust Crusaders*
+  as well, a version of the OVA in the series' format, which rule 2
+  keeps (*One main story per franchise*, above). Both OVAs are other
+  versions, since run members list them as `alternative_version`; the
+  2007 *Phantom Blood* film is listed with the films.
 - **Fate, from *Fate/Zero*.** Link order: *Fate/Zero* → *2nd Season* →
   either *Fate/stay night* (2006) or the UBW prologue → UBW → UBW 2nd
   season. Release order: *Fate/stay night* (2006) → *Fate/Zero* → *2nd
@@ -668,13 +743,14 @@ Where they differ, entry by entry:
   night* (2006), *Fate/Zero* and its 2nd season. The 2010 UBW film and
   the first *Heaven's Feel* film are left out: with *Fate/stay night*
   (2006) they list one another as versions, and the TV series wins
-  (rule 2). Being movies, they are listed with the films. Rule 4 adds
+  (rule 2). Being movies, they are listed with the films, with the
+  second and third *Heaven's Feel* films that follow the first. Rule 4 adds
   *Fate/Prototype* and a UBW 2nd-season special, which run members
   list as versions; the same-world series
   (*Apocrypha* and the rest) are not listed. From the UBW series' own
-  page, the run is *Fate/Zero* → *2nd Season* → prologue → UBW → UBW
-  2nd season in both orders; *Fate/stay night* (2006) is then an other
-  version (rule 3: UBW lists it).
+  page the run is the same: walked from UBW itself, *Fate/stay night*
+  (2006) would be left out (rule 3: UBW lists it as a version), but the
+  main story is the walk from *Fate/Zero*, the franchise's root.
 - **Dragon Ball.** Link order: *Dragon Ball* → *Z* → either *GT* (→ its
   1997 special) or *Super* → *Broly* → *Super Hero* → *Ginga Patrol*.
   Release order puts *GT*'s special before *Super*, so *Z*, the special
@@ -744,6 +820,31 @@ page the viewer lands.
 by default, release order if chosen. The strip has no toggle of its
 own and marks nothing as "out of order"; each card already shows its
 year.
+
+**A page outside the main story** [decided] draws its own chain
+(section 4) rather than the main story. Its own titles are numbered
+among themselves: *Heaven's Feel II* reads "02 of 03", in the strip's
+centre and the masthead eyebrow alike. The main-story title the chain
+meets stands beside them, uncounted, in the column it falls in by the
+order setting, keyed "From the main story" or "Into the main story"
+instead of the column's usual key: *Fate/Zero 2nd Season* before *Heaven's
+Feel I*, the 2016 *Berserk* series after the third Golden Age film.
+In release order the 2000 *JoJo* OVA is "02 of 02", after the 1993
+OVA, with the 2012 series after it, into the main story. The heading
+reads "Watch order", a rule, then "Outside the main story", also in a
+franchise read in part, which numbers nothing as anywhere else. A
+chain of one film (the *Unlimited Blade Works* film, *Boruto: Naruto
+the Movie*) reads "Film", not "01 of 01"; one of anything else shows
+no number. A side story whose parents are all outside the main story
+is drawn under the earliest on its chain, as a side story, with the
+same note. A seam keys its
+column only when it stands there alone: where a fork or a join puts it
+beside one of the chain's own titles, the column keeps its usual key
+and count, the seam counted among the ways on. In release order a
+seam takes its place by date like any title, so one that started
+between two of the chain's own titles stands between them, keyed as
+the main story each of them meets, while their places are still
+counted over the chain's own titles.
 
 **Edge cases.**
 
@@ -817,7 +918,9 @@ card shows:
 - exactly one that has not aired: that entry with its date
   ("Coming January 2027"), as information only;
 - several: all of them, as the choices;
-- none: no card.
+- none: no card, except at the last title of a chain outside the main
+  story that leads nowhere, where the card offers the whole franchise
+  (below).
 
 Continue moves to the next entry in the first case only, and only to
 an entry the viewer has not played yet; in every other case it keeps
@@ -825,6 +928,22 @@ today's behaviour. The second condition matters in a cycle: in link
 order *Kizumonogatari III*'s finale names *Nisemonogatari*, and
 without it Continue could lead round the ten-entry *Monogatari* loop
 to entries already watched. The card still names the entry.
+
+**Outside the main story** [decided], the Up next card follows the
+entry's own chain (section 4), as its strip draws it: *Heaven's Feel
+I*'s finale names *Heaven's Feel II*, and the third Golden Age film's
+names the 2016 *Berserk* series, the main-story title the chain leads
+into. At the last title of a chain that leads nowhere the card offers
+the franchise page (part 5): keyed "The whole franchise", named after
+the franchise, fanning the strip link's poster stack (three blank
+frames, the front one counting the page's titles, when no title has a
+poster) beside the first two counts the link names, in the accent of
+the entry the franchise's name comes from, as on its page. Only one
+card shows at a finale: the next title where there is one, else this
+one.
+Continue Watching's hand-off follows the same chain, by its own rules:
+at a chain's dead end nothing comes next, and the row keeps its
+ordinary card.
 
 **Edge cases.** The 2000 *JoJo* OVA's finale names the 1993 OVA in
 link order and the 2012 TV series in release order — whichever the
@@ -878,10 +997,9 @@ design section. Below it, sections:
    setting chooses, numbered as section 4 describes, with branches
    unnumbered beside the numbered path, each entry's progress and a
    "you are here" marker.
-2. **Other versions** — section 4's rule 4: from the JoJo TV run, both
-   OVAs; from the UBW run, the 2006 *Fate/stay night*. Movies are not
-   listed here but under Films: the 2010 UBW film and the first
-   *Heaven's Feel* film, *Gintama*'s retelling films.
+2. **Other versions** — section 4's rule 4: from every JoJo page, both
+   OVAs. Movies are not listed here but under Films: the 2010 UBW film
+   and the three *Heaven's Feel* films, *Gintama*'s retelling films.
 3. From `around`: **Films** (every movie around the run, whatever its
    role: a version, a recap or a side story), **Side stories &
    specials** (everything else: side stories, parent stories,
@@ -1180,7 +1298,8 @@ them introduces a new widget style.
     keeps today's card.
   - An unaired sequel: the player card shows it with its date and no
     action. Continue keeps today's card.
-  - No sequel: no card.
+  - No sequel: no card, except at the end of a chain outside the main
+    story, where the card offers the whole franchise.
 
 ### The franchise page
 
@@ -1412,12 +1531,13 @@ The rules below hold on every surface:
 - **States.** One aired next entry: a link to its page. Several (a
   fork): "Ways to continue" over one row per branch. One not yet
   aired: "Next, when it airs", its date or "Date not announced", and
-  no link. None: no card. A franchise read only in part (the walk
-  reached its bound, or a listing came back cut short) also gets no
-  card, since the entry that really comes next may be missing from
-  it. The mockup showed the card from the start of a last episode, so
-  a screenshot could catch it; the player shows it once the video
-  ends.
+  no link. None: no card, except at the end of a chain outside the
+  main story, where it offers the whole franchise. A franchise read
+  only in part (the walk reached its bound, or a listing came back cut
+  short) also gets no card, since the entry that really comes next may
+  be missing from it. The mockup showed the card from the start of a
+  last episode, so a screenshot could catch it; the player shows it
+  once the video ends.
 - **Keyboard and screen readers.** The card never takes focus; Esc
   dismisses it while it has focus; the dismiss button is its own tab
   stop. The announcement is written into a polite live region after

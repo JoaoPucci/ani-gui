@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // stubbed only because fresh-bearer imports them; the coalescing +
 // refresh branches are unit-tested in fresh-bearer.test.ts.)
 const { updateProgress, byProvider } = vi.hoisted(() => ({
-	updateProgress: vi.fn(async () => null),
+	updateProgress: vi.fn<typeof AccountApi.updateProgress>(async () => null),
 	byProvider: {} as Record<
 		string,
 		{
@@ -27,8 +27,8 @@ const { updateProgress, byProvider } = vi.hoisted(() => ({
 }));
 vi.mock('./api', () => ({
 	updateProgress,
-	refreshTokens: vi.fn(),
-	persistAccount: vi.fn(async () => ({ ok: true }))
+	refreshTokens: vi.fn<typeof AccountApi.refreshTokens>(),
+	persistAccount: vi.fn<typeof AccountApi.persistAccount>(async () => ({ ok: true }))
 }));
 vi.mock('./store.svelte', () => ({
 	accountStore: {
@@ -52,12 +52,19 @@ import { accountStore } from './store.svelte';
 import { m } from '$lib/paraglide/messages';
 import { listChanges, type ListChange } from './list-changes';
 
+import type * as AccountApi from './api';
+import { wire } from '$lib/testing/wire-answers';
+import type { AniErrorPayload } from '../api';
 /** AniList holding a write back: 429 with the wait and the tracker
  *  that refused, by shape (the api module is mocked here). */
 const refused = (secs: number) =>
 	Object.assign(new Error('rate limited'), {
 		status: 429,
-		detail: JSON.stringify({ kind: 'rate_limited', retry_after_secs: secs, refused_by: 'anilist' })
+		detail: wire<AniErrorPayload>({
+			kind: 'rate_limited',
+			retry_after_secs: secs,
+			refused_by: 'anilist'
+		})
 	});
 
 beforeEach(() => {

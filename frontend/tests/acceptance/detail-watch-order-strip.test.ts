@@ -18,6 +18,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { availabilityAnswer } from '../answers';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -33,11 +34,23 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
-import { __resetApiBaseForTests } from '../../src/lib/api';
+import {
+	__resetApiBaseForTests,
+	type AiringStatus,
+	type AvailabilityBatchResponse,
+	type AvailabilityResponse,
+	type Config,
+	type Franchise,
+	type HistoryEntry,
+	type HistoryRowByKitsu,
+	type KitsuAnimeRef,
+	type KitsuEpisode,
+	type FranchiseEntry
+} from '../../src/lib/api';
 
 const KITSU_ID = '42';
 
-const entry = (id: string, title: string, subtype: string, start: string) => ({
+const entry = (id: string, title: string, subtype: string, start: string): FranchiseEntry => ({
 	id,
 	title,
 	subtype,
@@ -56,7 +69,7 @@ const SAGA = entry('10', 'Saga', 'TV', '2010-01-01');
 const SECOND = entry('42', 'Saga: Second Arc', 'TV', '2012-01-01');
 const FINAL = entry('50', 'Saga: Final Arc', 'TV', '2014-01-01');
 
-const FRANCHISE = {
+const FRANCHISE: Franchise = {
 	anchor: KITSU_ID,
 	name: 'Saga',
 	name_from: '10',
@@ -102,7 +115,7 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 type HistoryRowFixture = { ep_no: string; id: string; title: string; kitsu_id?: string };
 
 interface ShowOptions {
-	order?: string;
+	order?: Config['watch_order'];
 	settings?: () => Response;
 	franchise?: () => Response;
 	/** Null: the history read fails. */
@@ -124,46 +137,61 @@ function useShow(opts: ShowOptions = {}) {
 		http.get(`${API_BASE}/api/settings`, () =>
 			opts.settings
 				? opts.settings()
-				: HttpResponse.json({ ...appConfig(), watch_order: opts.order ?? 'linked' })
+				: HttpResponse.json<Config>({ ...appConfig(), watch_order: opts.order ?? 'linked' })
 		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, 'Saga: Second Arc', 12), subtype: 'TV' })
+			HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(KITSU_ID, 'Saga: Second Arc', 12),
+				subtype: 'TV'
+			})
 		),
 		http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, () => {
 			calls.franchise++;
-			return opts.franchise ? opts.franchise() : HttpResponse.json(FRANCHISE);
+			return opts.franchise ? opts.franchise() : HttpResponse.json<Franchise>(FRANCHISE);
 		}),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json(similar)),
-		http.post(`${API_BASE}/api/availability/batch`, () =>
-			HttpResponse.json({ cached: Object.fromEntries(similar.map((s) => [s.id, true])) })
-		),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
 		),
-		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>(similar)),
+		http.post(`${API_BASE}/api/availability/batch`, () =>
+			HttpResponse.json<AvailabilityBatchResponse>({
+				cached: Object.fromEntries(similar.map((s) => [s.id, true])),
+				playable_episode_counts: {}
+			})
+		),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
 		// The rows the franchise's entries resume from, as the resume
 		// lookup names them.
 		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
 			if (opts.history === null) return new HttpResponse(null, { status: 503 });
 			const { ids } = (await request.json()) as { ids: string[] };
 			const rows = opts.history ?? [];
-			return HttpResponse.json(
+			return HttpResponse.json<Record<string, HistoryEntry | null>>(
 				Object.fromEntries(
 					ids.map((id) => [id, opts.named?.[id] ?? rows.find((r) => r.kitsu_id === id) ?? null])
 				)
 			);
 		}),
-		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
+		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({}))
 	);
 	return calls;
 }
@@ -279,7 +307,7 @@ describe('detail route — the watch-order strip', () => {
 		const FILM = entry('60', 'Saga: The Movie', 'movie', '2015-01-01');
 		useShow({
 			similar: ['10', '50', '5', '60', '77'],
-			franchise: () => HttpResponse.json({ ...FRANCHISE, films: [FILM] })
+			franchise: () => HttpResponse.json<Franchise>({ ...FRANCHISE, films: [FILM] })
 		});
 		app = mount(DetailPage, { target });
 		await until(() => strip() !== null && similarCard('77') !== null, 'the strip and Similar');
@@ -318,12 +346,12 @@ describe('detail route — the watch-order strip', () => {
 		const held = new Promise<void>((r) => (release = r));
 		useShow({
 			similar: ['50', '77'],
-			franchise: () => HttpResponse.json(FRANCHISE)
+			franchise: () => HttpResponse.json<Franchise>(FRANCHISE)
 		});
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, async () => {
 				await held;
-				return HttpResponse.json(FRANCHISE);
+				return HttpResponse.json<Franchise>(FRANCHISE);
 			})
 		);
 		app = mount(DetailPage, { target });
@@ -360,7 +388,7 @@ describe('detail route — the watch-order strip', () => {
 		// reached, which says nothing about whether another follows.
 		useShow({
 			franchise: () =>
-				HttpResponse.json({
+				HttpResponse.json<Franchise>({
 					...FRANCHISE,
 					entries: [SAGA, SECOND],
 					links: [['10', '42']],
@@ -386,7 +414,7 @@ describe('detail route — the watch-order strip', () => {
 	it("names a side story's parent stories, and nothing after it", async () => {
 		useShow({
 			franchise: () =>
-				HttpResponse.json({
+				HttpResponse.json<Franchise>({
 					...FRANCHISE,
 					entries: [SAGA, FINAL],
 					links: [['10', '50']],
@@ -409,15 +437,22 @@ describe('detail route — the watch-order strip', () => {
 		const OTHER = '99';
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/anime/${OTHER}`, () =>
-				HttpResponse.json({ ...kitsuRef(OTHER, 'Lone Film', 1), subtype: 'movie' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(OTHER, 'Lone Film', 1), subtype: 'movie' })
 			),
 			http.get(`${API_BASE}/api/kitsu/franchise/${OTHER}`, () =>
-				HttpResponse.json({ ...FRANCHISE, anchor: OTHER, entries: [], links: [] })
+				HttpResponse.json<Franchise>({ ...FRANCHISE, anchor: OTHER, entries: [], links: [] })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${OTHER}`, () =>
-				HttpResponse.json({ aired: 1, next_episode: null, next_airing_at: null, upcoming: [] })
+				HttpResponse.json<AiringStatus>({
+					aired: 1,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
+				})
 			),
-			http.get(`${API_BASE}/api/history/by-kitsu/${OTHER}`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/history/by-kitsu/${OTHER}`, () =>
+				HttpResponse.json<HistoryRowByKitsu | null>(null)
+			)
 		);
 		app = mount(DetailPage, { target });
 		await until(() => strip() !== null, "the first show's strip");
@@ -441,19 +476,29 @@ describe('detail route — the watch-order strip', () => {
 			http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, async () => {
 				await held;
 				answered = true;
-				return HttpResponse.json(FRANCHISE);
+				return HttpResponse.json<Franchise>(FRANCHISE);
 			}),
 			http.get(`${API_BASE}/api/kitsu/anime/${OTHER}`, () =>
-				HttpResponse.json({ ...kitsuRef(OTHER, 'Saga: Final Arc', 12), subtype: 'TV' })
+				HttpResponse.json<KitsuAnimeRef>({
+					...kitsuRef(OTHER, 'Saga: Final Arc', 12),
+					subtype: 'TV'
+				})
 			),
 			http.get(
 				`${API_BASE}/api/kitsu/franchise/${OTHER}`,
 				() => new HttpResponse(null, { status: 503 })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${OTHER}`, () =>
-				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+				HttpResponse.json<AiringStatus>({
+					aired: 12,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
+				})
 			),
-			http.get(`${API_BASE}/api/history/by-kitsu/${OTHER}`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/history/by-kitsu/${OTHER}`, () =>
+				HttpResponse.json<HistoryRowByKitsu | null>(null)
+			)
 		);
 		app = mount(DetailPage, { target });
 		await until(() => title() === 'Saga: Second Arc', 'the first show');
@@ -484,7 +529,10 @@ describe('detail route — the franchise link without a strip', () => {
 	const link = () => target.querySelector(`a[href="/anime/${KITSU_ID}/franchise"]`);
 
 	it('links to the franchise page from a show that is its main story alone', async () => {
-		useShow({ similar: ['60', '61', '77'], franchise: () => HttpResponse.json(ONE_MAIN) });
+		useShow({
+			similar: ['60', '61', '77'],
+			franchise: () => HttpResponse.json<Franchise>(ONE_MAIN)
+		});
 		app = mount(DetailPage, { target });
 		await until(() => link() !== null && similarCard('77') !== null, 'the link and Similar');
 		expect(strip()).toBeNull();
@@ -500,7 +548,7 @@ describe('detail route — the franchise link without a strip', () => {
 	});
 
 	it('links there without counts from a franchise read in part', async () => {
-		useShow({ franchise: () => HttpResponse.json({ ...ONE_MAIN, complete: false }) });
+		useShow({ franchise: () => HttpResponse.json<Franchise>({ ...ONE_MAIN, complete: false }) });
 		app = mount(DetailPage, { target });
 		await until(() => link() !== null, 'the link');
 		expect(strip()).toBeNull();
@@ -514,7 +562,7 @@ describe('detail route — the franchise link without a strip', () => {
 		it(`gives no link for a show that is the franchise alone (read ${complete ? 'whole' : 'in part'})`, async () => {
 			const calls = useShow({
 				similar: ['77'],
-				franchise: () => HttpResponse.json({ ...ALONE, complete })
+				franchise: () => HttpResponse.json<Franchise>({ ...ALONE, complete })
 			});
 			app = mount(DetailPage, { target });
 			await until(

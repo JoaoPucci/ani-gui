@@ -4,6 +4,7 @@ import { needsRenewalRetry, RenewalRetry, retryDelayMs } from './renewal-retry';
 import { NO_RENEWAL_FAILURES, type RenewalFailure } from './renewal-failure';
 import type { PersistedAccount, Provider, ProviderState } from './types';
 
+import type { RenewalRetryDeps } from './renewal-retry';
 function acc(refresh_token: string | null): PersistedAccount {
 	return {
 		access_token: 'a',
@@ -64,7 +65,7 @@ describe('retryDelayMs', () => {
 function harness(needs: () => boolean) {
 	const timers: { fn: () => void; ms: number; cleared: boolean }[] = [];
 	let settle: () => void = () => {};
-	const retry = vi.fn(
+	const retry = vi.fn<NonNullable<RenewalRetryDeps['retry']>>(
 		() =>
 			new Promise<void>((resolve) => {
 				settle = resolve;

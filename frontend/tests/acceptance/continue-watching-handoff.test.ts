@@ -4,7 +4,8 @@
 // show's page; it does not start playback. It moves on only to one
 // aired show, in the order the Watch order setting chooses, that has
 // no history row of its own; otherwise the row keeps its ordinary
-// card. Only a row at such a finale asks for its series.
+// card. Only a row at such a finale asks for its series. A show outside
+// the main story moves on along its own chain.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -14,6 +15,7 @@ import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { appConfig, homeHandlers, kitsuRef } from './home-handlers';
 import { watchPageFetches } from './page-fetches';
+import { availabilityAnswer, errorAnswer } from '../answers';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -28,7 +30,15 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import HomePage from '../../src/routes/+page.svelte';
-import { __resetApiBaseForTests } from '../../src/lib/api';
+import {
+	__resetApiBaseForTests,
+	type AvailabilityResponse,
+	type Config,
+	type Franchise,
+	type FranchiseEntry,
+	type HistoryEntry,
+	type KitsuAnimeRef
+} from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 import { savePosition } from '../../src/lib/play/watch-position';
 
@@ -41,7 +51,7 @@ const BRANCH = 'Arc of the Moon: Other Night';
 const CONTROL = 'Tide Bell: Spring';
 const CONTROL_NEXT = 'Tide Bell: Summer';
 
-const entry = (id: string, title: string, start: string, episodes: number) => ({
+const entry = (id: string, title: string, start: string, episodes: number): FranchiseEntry => ({
 	id,
 	title,
 	subtype: 'TV',
@@ -56,7 +66,7 @@ const FIRST_E = entry('10', FIRST, '2020-01-01', 13);
 const SECOND_E = entry('20', SECOND, '2021-01-01', 13);
 const BRANCH_E = entry('25', BRANCH, '2022-01-01', 12);
 
-const lineFrom10 = {
+const lineFrom10: Franchise = {
 	anchor: '10',
 	name: FIRST,
 	name_from: '10',
@@ -71,7 +81,7 @@ const lineFrom10 = {
 };
 // As linked, the first show leads two ways; as released, to the
 // earlier one.
-const forkFrom10 = {
+const forkFrom10: Franchise = {
 	...lineFrom10,
 	entries: [FIRST_E, SECOND_E, BRANCH_E],
 	links: [
@@ -80,7 +90,7 @@ const forkFrom10 = {
 	]
 };
 
-const lineFrom30 = {
+const lineFrom30: Franchise = {
 	...lineFrom10,
 	anchor: '30',
 	name: CONTROL,
@@ -126,7 +136,7 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 interface Scenario {
 	history: ReturnType<typeof row>[];
 	franchise?: () => Response | Promise<Response>;
-	order?: string;
+	order?: Config['watch_order'];
 	/** The settings read's answer; the Watch order `order` by default. */
 	settings?: () => Response;
 	/** What the source's availability probe counts for every show. */
@@ -151,40 +161,40 @@ function mountHome(s: Scenario) {
 			http.get(`${API_BASE}/api/settings`, () =>
 				s.settings
 					? s.settings()
-					: HttpResponse.json({ ...appConfig(), watch_order: s.order ?? 'linked' })
+					: HttpResponse.json<Config>({ ...appConfig(), watch_order: s.order ?? 'linked' })
 			),
 			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: s.probedCap ?? 13,
-					approximate: false
-				})
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: s.probedCap ?? 13
+					})
+				)
 			),
 			http.get(`${API_BASE}/api/kitsu/anime/30`, () =>
-				HttpResponse.json(kitsuRef('30', CONTROL, 13))
+				HttpResponse.json<KitsuAnimeRef>(kitsuRef('30', CONTROL, 13))
 			),
 			// A row that recorded no Kitsu id is matched by its title.
 			http.post(`${API_BASE}/api/kitsu/search`, async ({ request }) => {
 				const body = JSON.stringify(await request.json());
-				return HttpResponse.json(body.includes('Second') ? [kitsuRef('20', SECOND, 13)] : []);
+				return HttpResponse.json<KitsuAnimeRef[]>(
+					body.includes('Second') ? [kitsuRef('20', SECOND, 13)] : []
+				);
 			}),
 			http.get(`${API_BASE}/api/kitsu/anime/10`, () =>
-				HttpResponse.json(kitsuRef('10', FIRST, 13))
+				HttpResponse.json<KitsuAnimeRef>(kitsuRef('10', FIRST, 13))
 			),
 			http.get(`${API_BASE}/api/kitsu/anime/20`, () =>
-				HttpResponse.json(kitsuRef('20', SECOND, 13))
+				HttpResponse.json<KitsuAnimeRef>(kitsuRef('20', SECOND, 13))
 			),
 			// An entry Kitsu has deleted: a row that recorded it is
 			// matched again by its title.
 			http.get(`${API_BASE}/api/kitsu/anime/99`, () =>
-				HttpResponse.json(
-					{ kind: 'upstream', status: 404, key: 'error.network.upstream' },
-					{ status: 502 }
-				)
+				errorAnswer(502, { kind: 'upstream', status: 404, key: 'error.network.upstream' })
 			),
 			// A row the scenario's own show stands for, matched by its id.
 			http.get(`${API_BASE}/api/kitsu/anime/77`, () =>
-				HttpResponse.json(kitsuRef('77', OTHER, 13))
+				HttpResponse.json<KitsuAnimeRef>(kitsuRef('77', OTHER, 13))
 			),
 			// Removing a row: the backend's history no longer holds it.
 			http.delete(`${API_BASE}/api/history/:id`, ({ params }) => {
@@ -199,7 +209,7 @@ function mountHome(s: Scenario) {
 				const { ids } = (await request.json()) as { ids: string[] };
 				const kept = (r: ReturnType<typeof row> | undefined) =>
 					r && !removed.has(r.id) ? r : null;
-				return HttpResponse.json(
+				return HttpResponse.json<Record<string, HistoryEntry | null>>(
 					Object.fromEntries(
 						ids.map((k) => [
 							k,
@@ -210,9 +220,9 @@ function mountHome(s: Scenario) {
 			}),
 			http.get(`${API_BASE}/api/kitsu/franchise/:id`, ({ params }) => {
 				asked.push(String(params.id));
-				if (params.id === '30') return HttpResponse.json(lineFrom30);
+				if (params.id === '30') return HttpResponse.json<Franchise>(lineFrom30);
 				if (params.id !== '10') return HttpResponse.error();
-				return s.franchise ? s.franchise() : HttpResponse.json(lineFrom10);
+				return s.franchise ? s.franchise() : HttpResponse.json<Franchise>(lineFrom10);
 			})
 		])
 	);
@@ -296,6 +306,31 @@ describe('Continue Watching after a finale', () => {
 		expect(asked).toEqual(['10']);
 	});
 
+	it('moves a show outside the main story on along its own chain', async () => {
+		const main = entry('5', 'Arc of the Moon', '2019-01-01', 13);
+		mountHome({
+			history: [row('13')],
+			franchise: () =>
+				HttpResponse.json<Franchise>({
+					...lineFrom10,
+					entries: [main],
+					links: [],
+					chain: {
+						entries: [main, FIRST_E, SECOND_E],
+						links: [
+							['5', '10'],
+							['10', '20']
+						],
+						seams: ['5']
+					}
+				})
+		});
+		await until(() => handoffTo('20') !== null, 'the card to move on along the chain');
+		expect(handoffTo('20')!.getAttribute('aria-label')).toBe(
+			m.watchorder_handoff_aria({ title: SECOND, finished: FIRST })
+		);
+	});
+
 	it('keeps both ordinary cards once the next show has a row of its own', async () => {
 		const asked = mountHome({
 			history: [row('3', 'p-second', '20', SECOND), row('13'), controlRow()]
@@ -338,7 +373,7 @@ describe('Continue Watching after a finale', () => {
 	it('keeps the ordinary card where the show leads two ways as linked', async () => {
 		const asked = mountHome({
 			history: [row('13'), controlRow()],
-			franchise: () => HttpResponse.json(forkFrom10)
+			franchise: () => HttpResponse.json<Franchise>(forkFrom10)
 		});
 		const movedOn = everHeld(() => handoffTo('20') !== null || handoffTo('25') !== null);
 		await settled(asked);
@@ -349,7 +384,7 @@ describe('Continue Watching after a finale', () => {
 	it('moves on to the next show by release date when the setting says so', async () => {
 		mountHome({
 			history: [row('13')],
-			franchise: () => HttpResponse.json(forkFrom10),
+			franchise: () => HttpResponse.json<Franchise>(forkFrom10),
 			order: 'released'
 		});
 		await until(() => handoffTo('20') !== null, 'the card to move on as released');
@@ -430,7 +465,7 @@ describe('Continue Watching after a finale', () => {
 	it('keeps the ordinary card when the series was read only in part', async () => {
 		const asked = mountHome({
 			history: [row('13'), controlRow()],
-			franchise: () => HttpResponse.json({ ...lineFrom10, complete: false })
+			franchise: () => HttpResponse.json<Franchise>({ ...lineFrom10, complete: false })
 		});
 		const movedOn = everHeld(() => handoffTo('20') !== null);
 		await settled(asked);

@@ -22,7 +22,10 @@ use crate::meta::kitsu::{FranchiseEntry, FranchiseListing};
 /// would list anything but the anchor (`franchiseLinkOnly`); else
 /// nothing.
 fn drawn(f: &Franchise) -> FirstHop {
-    let members: BTreeSet<&str> = f.entries.iter().map(|e| e.id.as_str()).collect();
+    // A page with a chain is drawn on it, as the strip draws it
+    // (`frontend/src/lib/watch-order/chain-view.ts`).
+    let run = f.chain.as_ref().map_or(&f.entries, |c| &c.entries);
+    let members: BTreeSet<&str> = run.iter().map(|e| e.id.as_str()).collect();
     let anchor = f.anchor.as_str();
     let side_with_parent = !members.contains(anchor)
         && f.parents
@@ -121,6 +124,17 @@ fn a_parent_story_foretells_the_strip() {
 
 /// The franchise page lists a film, a side story, a recap or another
 /// version beside a show with no run: the link comes alone.
+/// A side story the parent check reads, whose own listing names the
+/// show as its prequel (the show's listing does not name it back): the
+/// franchise counts that link from either side, so the walk draws the
+/// strip, and the first hop foretells it.
+#[test]
+fn a_link_named_only_by_a_listing_the_parent_check_reads_foretells_the_strip() {
+    let mut c = with(&[("2", "TV"), ("1", "TV")]);
+    c.rel("1", "side_story", "2").rel("2", "prequel", "1");
+    assert_eq!(both(&c, "1"), (FirstHop::Strip, FirstHop::Strip));
+}
+
 #[test]
 fn a_relation_around_the_show_foretells_the_link() {
     for role in ["side_story", "summary", "alternative_version", "spinoff"] {
@@ -138,6 +152,30 @@ fn a_sequel_that_is_another_version_foretells_the_link() {
     c.rel("1", "sequel", "2")
         .rel("1", "alternative_version", "2");
     assert_eq!(both(&c, "1"), (FirstHop::Link, FirstHop::Link));
+}
+
+/// A music video the show names as both its prequel and its other
+/// version is where the franchise starts (its root, the show left out
+/// as a version of it): the franchise page lists it, so the link.
+#[test]
+fn a_music_video_prequel_that_is_another_version_foretells_the_link() {
+    let mut c = with(&[("1", "music"), ("2", "TV")]);
+    c.rel("2", "prequel", "1")
+        .rel("2", "alternative_version", "1");
+    assert_eq!(both(&c, "2"), (FirstHop::Link, FirstHop::Link));
+}
+
+/// A parent story the show also names as its sequel and its other
+/// version is no parent the walk walks from: the show is where the
+/// franchise starts, its sequel left out as a version of it, so the
+/// link, not a strip.
+#[test]
+fn a_parent_story_that_is_a_sequel_and_another_version_foretells_the_link() {
+    let mut c = with(&[("1", "TV"), ("2", "TV")]);
+    c.rel("2", "sequel", "1")
+        .rel("2", "alternative_version", "1")
+        .rel("2", "parent_story", "1");
+    assert_eq!(both(&c, "2"), (FirstHop::Link, FirstHop::Link));
 }
 
 /// Relations the franchise page never lists: a character crossover,

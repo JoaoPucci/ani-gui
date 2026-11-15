@@ -33,6 +33,8 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { RECENT_STORAGE_KEY } from '../../src/lib/topbar/recent-searches';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 let target: HTMLElement;
 let layout: ReturnType<typeof mount> | null = null;
 
@@ -47,8 +49,8 @@ beforeEach(() => {
 		account: { getToken: async () => ({ ok: false, kind: 'not_found' }) }
 	};
 	server.use(
-		http.get(`${API_BASE}/api/update-check`, () => HttpResponse.json(null, { status: 503 })),
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(null, { status: 503 }))
+		http.get(`${API_BASE}/api/update-check`, () => errorAnswer(503)),
+		http.get(`${API_BASE}/api/settings`, () => errorAnswer(503))
 	);
 	setUrl('/');
 	localStorage.clear();
@@ -91,13 +93,14 @@ describe('topbar recent searches', () => {
 	});
 
 	it('replaces the entry for a search made again in other case or spacing', async () => {
-		// Typing arms the topbar's live search; it is answered here, and
-		// the scenario waits for it, so no request outlives the test.
+		// Typing arms the topbar's live search, and submitting stops it
+		// before it goes out: the search page runs the search. Answered
+		// here in case it were sent; the scenario checks it is not.
 		let liveSearched = false;
 		server.use(
 			http.post(`${API_BASE}/api/kitsu/search`, () => {
 				liveSearched = true;
-				return HttpResponse.json([]);
+				return HttpResponse.json<KitsuAnimeRef[]>([]);
 			})
 		);
 		localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(['one piece', 'jojo']));
@@ -111,7 +114,8 @@ describe('topbar recent searches', () => {
 				'jojo'
 			])
 		);
-		await vi.waitFor(() => expect(liveSearched).toBe(true));
-		await settle();
+		// Past the live search's pause, when it would have gone out.
+		await new Promise((r) => setTimeout(r, 500));
+		expect(liveSearched).toBe(false);
 	});
 });

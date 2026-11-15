@@ -79,19 +79,54 @@ pub fn first_hop(
     }
     // No run beside the show: the walk's parent check decides whether
     // it walks from a parent story, from the show's start and the
-    // candidates' own listings.
+    // candidates' own listings, as far as the walk's bound leaves room
+    // beside the show's own listing.
     if !details.contains_key(anchor) {
         return read(Vec::new(), vec![anchor.to_string()]);
     }
-    match parent_stories(anchor, &Lookup { known, details }, &BTreeSet::new()) {
+    let counted = BTreeSet::from([anchor.to_string()]);
+    match parent_stories(
+        anchor,
+        &Lookup { known, details },
+        &BTreeSet::new(),
+        &counted,
+    ) {
         Err(listings) => read(listings, Vec::new()),
         Ok(found) if !found.parents.is_empty() => Step::Done(FirstHop::Strip),
+        Ok(_) if named_from_the_other_side(anchor, listing, known) => Step::Done(FirstHop::Strip),
         Ok(_) => Step::Done(hop),
     }
 }
 
 fn read(listings: Vec<String>, details: Vec<String>) -> Step {
     Step::Read { listings, details }
+}
+
+/// Whether a listing read for the parent check names `anchor` as its
+/// prequel or sequel, though `anchor`'s own listing does not name it
+/// as another version or setting: the franchise counts a link from
+/// either side, so the walk joins the two.
+fn named_from_the_other_side(
+    anchor: &str,
+    listing: &FranchiseListing,
+    known: &BTreeMap<String, FranchiseListing>,
+) -> bool {
+    let versions: BTreeSet<&str> = listing
+        .relations
+        .iter()
+        .filter(|r| ALTERNATIVES.contains(&r.role.as_str()))
+        .map(|r| r.id.as_str())
+        .collect();
+    known
+        .iter()
+        .filter(|(id, _)| id.as_str() != anchor && !versions.contains(id.as_str()))
+        .any(|(_, l)| {
+            l.relations.iter().any(|r| {
+                r.kind == "anime"
+                    && r.id == anchor
+                    && matches!(r.role.as_str(), "prequel" | "sequel")
+            })
+        })
 }
 
 /// Whether `anchor`'s listing names an entry the walk's parent check

@@ -13,6 +13,8 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 const stubKitsu = (id = '13'): KitsuAnimeRef => ({
 	id,
 	canonical_title: 'Stub',
+	titles: {},
+	abbreviated_titles: [],
 	slug: null,
 	synopsis: null,
 	start_date: null,
@@ -130,6 +132,28 @@ describe('resolveHistoryEntry — direct episode mapping', () => {
 		expect(r.cour).toBe(2);
 		expect(r.courSize).toBe(12);
 		expect(r.kitsuEpisode).toBe(4);
+	});
+
+	it('reads a cour number written right after its keyword ("Season2"), as the backend does', () => {
+		// The backend's resume lookup reads the title match under the cour
+		// its own parser reads (`cour_from_title`), which takes "Season2"
+		// as cour 2; the key Home stores must be that one.
+		expect(resolveHistoryEntry(entry('Foo Season2', '1'), null).cour).toBe(2);
+		expect(resolveHistoryEntry(entry('Foo: Part3 (12 episodes)', '1'), null).cour).toBe(3);
+		expect(resolveHistoryEntry(entry('Foo Cour 4', '1'), null).cour).toBe(4);
+		expect(resolveHistoryEntry(entry('Seasonal Foo', '1'), null).cour).toBe(1);
+	});
+
+	it('reads a cour past what the backend can hold as none, as the backend does', () => {
+		// The backend parses a cour as a u32 and reads one past it as no
+		// cour (the first), so the key it reads is c1.
+		expect(resolveHistoryEntry(entry('Foo Season 4294967295', '1'), null).cour).toBe(4294967295);
+		expect(resolveHistoryEntry(entry('Foo Season 4294967296', '1'), null).cour).toBe(1);
+		expect(resolveHistoryEntry(entry('Foo 99999999999th Season', '1'), null).cour).toBe(1);
+		expect(resolveHistoryEntry(entry('Foo Season 002', '1'), null).cour).toBe(2);
+		expect(resolveHistoryEntry(entry('Foo Season 0004294967295', '1'), null).cour).toBe(4294967295);
+		expect(resolveHistoryEntry(entry('Foo Season 00004294967296', '1'), null).cour).toBe(1);
+		expect(resolveHistoryEntry(entry('Foo 0004294967296th Season', '1'), null).cour).toBe(1);
 	});
 
 	it('parses ordinal-season suffixes ("2nd Season", "Fourth Season") as the cour', () => {
@@ -619,7 +643,7 @@ describe('titlesPlausiblySameShow', () => {
 	const ref = (canonical_title: string, titles?: Record<string, string>): KitsuAnimeRef => ({
 		...stubKitsu('x'),
 		canonical_title,
-		titles
+		titles: titles ?? {}
 	});
 
 	it('rejects a gross mismatch sharing only a generic word (the Idol bug)', () => {
@@ -1074,6 +1098,7 @@ describe('a search hit by the words its titles share with the row', () => {
 			en_jp:
 				'Magical★Explorer: Eroge no Yuujin Chara ni Tensei Shitakedo, Game Chishiki Tsukatte Jiyuu ni Ikiru'
 		},
+		abbreviated_titles: [],
 		slug: 'magical-explorer-eroge-no-yuujin-chara-ni-tensei-shitakedo-game-chishiki-tsukatte-jiyuu-ni-ikiru',
 		synopsis: null,
 		start_date: null,

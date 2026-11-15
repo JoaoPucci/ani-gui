@@ -14,10 +14,16 @@
 //! section only: entries, then films (for a movie), versions, recaps,
 //! sides. A side-story anchor outside the run is a side, or a film when
 //! it is a movie, and so is an entry of the anchor's own run of
-//! one-offs that the run it moved to leaves out.
+//! one-offs that the run it moved to leaves out. An entry of the
+//! franchise that the main story leaves out stays where the members'
+//! listings placed it, else is a film when it is a movie, else a
+//! version. The anchor's own chain, outside the main story
+//! (`franchise_walk_chain.rs`), is served beside the sections, which it
+//! leaves as they are (`franchise_walk_chain_served.rs`).
 
 use std::collections::BTreeSet;
 
+use super::chain_served::served;
 use super::links::{links, parents};
 use super::name::named;
 use super::rules::Run;
@@ -77,7 +83,7 @@ fn sections(run: &Run, look: &Lookup<'_>) -> Sections {
 /// The entries of `ids` in start order. Every id the walk names was
 /// met through a relation of a listing it read, or is the anchor, whose
 /// details it read first, so each has an entry.
-fn entries(ids: &BTreeSet<String>, run: &Run, look: &Lookup<'_>) -> Vec<FranchiseEntry> {
+pub(super) fn entries(ids: &BTreeSet<String>, run: &Run, look: &Lookup<'_>) -> Vec<FranchiseEntry> {
     let mut found: Vec<FranchiseEntry> = ids
         .iter()
         .filter_map(|id| look.entry(id, &run.consulted))
@@ -95,6 +101,9 @@ pub(super) fn assemble(anchor: &str, run: &Run, look: &Lookup<'_>) -> Franchise 
     for id in &run.beside {
         s.place_beside(id, is_movie(id, run, look));
     }
+    for id in &run.moved {
+        s.place_moved(id, is_movie(id, run, look));
+    }
     let members: BTreeSet<String> = run.members.keys().cloned().collect();
     let main = entries(&members, run, look);
     let [versions, films, sides, recaps] =
@@ -111,6 +120,7 @@ pub(super) fn assemble(anchor: &str, run: &Run, look: &Lookup<'_>) -> Franchise 
         recaps,
         links: links(run, look),
         parents: parents(anchor, run),
+        chain: served(run, look),
         complete: run.complete
             && run
                 .consulted

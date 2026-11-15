@@ -26,12 +26,14 @@ vi.mock('$app/navigation', () => ({
 import SettingsPage from '../../src/routes/settings/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
-const APP_INFO = {
+import type { AppInfo, Config } from '../../src/lib/api';
+import { appInfoAnswer } from '../answers';
+const APP_INFO = appInfoAnswer({
 	version: '0.12.1',
 	history_path: '/home/u/.local/state/ani-gui/history',
 	proxy_base_url: 'http://127.0.0.1:31337',
 	removed_legacy_paths: []
-};
+});
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
@@ -66,15 +68,12 @@ describe('settings — the resolution-caching opt-in', () => {
 	it('renders off by default and persists the opt-in', async () => {
 		let putBody: Record<string, unknown> | null = null;
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.put(`${API_BASE}/api/settings`, async ({ request }) => {
 				putBody = (await request.json()) as Record<string, unknown>;
 				return new HttpResponse(null, { status: 204 });
 			}),
-			http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO)),
-			http.get(`${API_BASE}/api/account/status`, () =>
-				HttpResponse.json({ anilist: null, mal: null })
-			)
+			http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json<AppInfo>(APP_INFO))
 		);
 
 		app = mount(SettingsPage, { target });

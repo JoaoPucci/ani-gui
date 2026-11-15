@@ -89,6 +89,9 @@
 	"strip_last": "Todavía no hay nada después",
 	"strip_leads_into": "Lleva a {title}",
 	"strip_of_total": "de {total}",
+	"strip_outside": "Fuera de la historia principal",
+	"strip_seam_from": "Viene de la historia principal",
+	"strip_seam_into": "Sigue en la historia principal",
 	"strip_position": "{position} de {total}",
 	"strip_position_open": "Posición {position}",
 	"strip_side_story": "Historia paralela",
@@ -127,5 +130,8 @@
 	"upnext_choices": "Formas de continuar",
 	"upnext_coming": "A continuación, cuando se estrene",
 	"upnext_dismiss": "Descartar",
+	"upnext_franchise_key": "La franquicia completa",
+	"upnext_franchise_announce": "A continuación: la franquicia completa, {name}",
+	"upnext_franchise_label": "La franquicia completa: {name}",
 	"upnext_eyebrow": "A continuación"
 }

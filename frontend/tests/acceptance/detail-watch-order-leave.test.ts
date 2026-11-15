@@ -20,6 +20,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { availabilityAnswer } from '../answers';
 import { cancelledUnder, sixConnections, type Connections } from './connections';
 
 vi.mock('$app/state', () => ({
@@ -35,7 +36,15 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
-import { __resetApiBaseForTests } from '../../src/lib/api';
+import {
+	__resetApiBaseForTests,
+	type AiringStatus,
+	type AvailabilityResponse,
+	type Config,
+	type HistoryRowByKitsu,
+	type KitsuAnimeRef,
+	type KitsuEpisode
+} from '../../src/lib/api';
 
 const FRANCHISE = '/api/kitsu/franchise/';
 
@@ -61,9 +70,9 @@ const holding: Array<() => void> = [];
 /** Every show answers at once, except its franchise: Kitsu is slow. */
 function slowKitsu() {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
-			HttpResponse.json({
+			HttpResponse.json<KitsuAnimeRef>({
 				...kitsuRef(String(params.id), `Show ${String(params.id)}`, 12),
 				subtype: 'TV'
 			})
@@ -83,21 +92,30 @@ function slowKitsu() {
 				)
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/:id`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
 		),
-		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
-		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
+		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({}))
 	);
 }
 

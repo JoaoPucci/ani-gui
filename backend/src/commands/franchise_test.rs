@@ -97,7 +97,9 @@ async fn serve(server: &MockServer, id: &str, offset: &str, body: Value) {
 
 /// From the 2000 OVA, the walk reads the OVA's, both neighbours' and
 /// Stardust Crusaders' listings once each — the 2012 series' over two
-/// pages — and a second ask is answered from the cache.
+/// pages — and a second ask is answered from the cache. The main story
+/// is the franchise's, the series, and the OVA, an other version of
+/// Stardust Crusaders, keeps the fields of its own detail.
 #[tokio::test]
 async fn the_walk_reads_each_listing_once_and_pages() {
     let server = MockServer::start().await;
@@ -139,16 +141,16 @@ async fn the_walk_reads_each_listing_once_and_pages() {
 
     let first = franchise(&state, "7730").await.expect("franchise");
     let ids: Vec<&str> = first.entries.iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(ids, ["610", "7730", "7158"]);
+    assert_eq!(ids, ["7158", "8063"]);
     let versions: Vec<&str> = first.versions.iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(versions, ["8063"]);
+    assert_eq!(versions, ["610", "7730"]);
     let films: Vec<&str> = first.films.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(films, ["3136"]);
     assert_eq!(
-        first.entries[1].title,
+        first.versions[1].title,
         "JoJo no Kimyou na Bouken: Adventure"
     );
-    assert_eq!(first.entries[1].poster.as_deref(), Some("m.jpg"));
+    assert_eq!(first.versions[1].poster.as_deref(), Some("m.jpg"));
     assert!(first.complete);
 
     let again = franchise(&state, "7730").await.expect("franchise");
@@ -195,7 +197,7 @@ async fn the_first_hop_reads_the_listing_the_walk_then_reuses() {
     let state = state_with_kitsu(&server.uri());
     seed_ova_detail(&state);
 
-    let router = crate::api::build_api_router(state.clone());
+    let router = crate::api::test_router(state.clone());
     let r = tower::ServiceExt::oneshot(
         router,
         axum::http::Request::builder()
@@ -212,8 +214,11 @@ async fn the_first_hop_reads_the_listing_the_walk_then_reuses() {
     let got: Value = serde_json::from_slice(&body).expect("json");
     assert_eq!(got, json!({ "signal": "strip" }));
 
+    // The OVA's main story is the series and Stardust Crusaders; the
+    // strip the first hop foretold is drawn on the OVA's own chain.
     let walked = franchise(&state, "7730").await.expect("franchise");
-    assert_eq!(walked.entries.len(), 3);
+    assert_eq!(walked.entries.len(), 2);
+    assert!(walked.chain.is_some());
     server.verify().await;
 }
 
@@ -222,7 +227,7 @@ async fn the_first_hop_reads_the_listing_the_walk_then_reuses() {
 #[tokio::test]
 async fn a_first_hop_kitsu_cannot_answer_is_an_error() {
     let state = state_with_kitsu("http://127.0.0.1:1");
-    let router = crate::api::build_api_router(state.clone());
+    let router = crate::api::test_router(state.clone());
     let r = tower::ServiceExt::oneshot(
         router,
         axum::http::Request::builder()

@@ -19,6 +19,7 @@ import { installElementAnimateStub } from './stubs/element-animate';
 import { isSession } from './session-contract';
 import { forgetAnswers } from '../../src/lib/watch-order/session-memo';
 
+import type { SessionSubtitle } from '../../src/lib/api';
 // Before any component mounts. See the stub for why happy-dom needs
 // it and why only post-mount DOM changes trip over its absence.
 installElementAnimateStub();
@@ -102,7 +103,7 @@ const undescribedAnswer = http.all('*', ({ request, requestId }) => {
 // tracks; by default there are none. A test that wants tracks
 // overrides this per session.
 export const server = setupServer(
-	http.get(`${API_BASE}/s/:session/subtitles`, () => HttpResponse.json([])),
+	http.get(`${API_BASE}/s/:session/subtitles`, () => HttpResponse.json<SessionSubtitle[]>([])),
 	...incidental,
 	undescribedAnswer
 );

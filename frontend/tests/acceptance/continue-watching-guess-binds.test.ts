@@ -50,6 +50,18 @@ import { __resetPlayCacheForTests, getOrFire, makeKey } from '../../src/lib/play
 import { accountStore } from '../../src/lib/account/store.svelte';
 import type { Provider } from '../../src/lib/account/types';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	CreateSessionResponse,
+	HistoryEntry,
+	HistoryNumber,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	SkipInterval
+} from '../../src/lib/api';
+import type { EntryView, ListEntry } from '../../src/lib/account/types';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -148,31 +160,40 @@ function serveBackend() {
 	const show = () => ({ ...kitsuRef(KITSU_ID, SHOW, 26), status: 'finished' });
 	server.use(
 		...homeHandlers({}, [
-			http.get(`${API_BASE}/api/history`, () => HttpResponse.json(rows)),
+			http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>(rows)),
 			http.get(`${API_BASE}/api/history/:id/number`, ({ params }) => {
 				const row = rows.find((r) => r.id === params.id);
-				return HttpResponse.json(row ? { ep_no: row.ep_no } : null);
+				return HttpResponse.json<HistoryNumber | null>(row ? { ep_no: row.ep_no } : null);
 			}),
 			// A row by its recorded id, else a row with none by its mapping.
 			http.get(`${API_BASE}/api/history/by-kitsu/:id`, ({ params }) =>
-				HttpResponse.json(
+				HttpResponse.json<HistoryRowByKitsu | null>(
 					rows.find((r) => r.kitsu_id === params.id) ??
 						rows.find((r) => !r.kitsu_id && mappings[r.id] === params.id) ??
 						null
 				)
 			),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([show()])),
-			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () => HttpResponse.json(show())),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([show()])),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json<KitsuAnimeRef>(show())
+			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({ aired: 26, next_episode: null, next_airing_at: null, upcoming: [] })
+				HttpResponse.json<AiringStatus>({
+					aired: 26,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
+				})
 			),
 			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: 26,
-					extra_episodes: [],
-					episode_count_approximate: false
-				})
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 26,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				)
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, async ({ request }) => {
 				const body = (await request.json()) as Record<string, unknown>;
@@ -192,13 +213,17 @@ function serveBackend() {
 			}),
 			http.post(`${API_BASE}/api/account/update/:provider`, ({ params }) => {
 				trackerWrites.push(String(params.provider));
-				return HttpResponse.json(null);
+				return HttpResponse.json<ListEntry | null>(null);
 			}),
 			// The show page's list editor reads each tracker's entry and list.
-			http.get(`${API_BASE}/api/account/entry/:provider`, () => HttpResponse.json(null)),
-			http.get(`${API_BASE}/api/account/list/:provider/cached`, () => HttpResponse.json([])),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
-			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/account/entry/:provider`, () =>
+				HttpResponse.json<EntryView | null>(null)
+			),
+			http.get(`${API_BASE}/api/account/list/:provider/cached`, () =>
+				HttpResponse.json<ListEntry[]>([])
+			),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
+			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>(null))
 		])
 	);
 }
@@ -216,12 +241,14 @@ async function playTheCard(ownListing: boolean): Promise<{ stream: URL; session:
 	const stream = FakeEventSource.instances[0];
 	stream.dispatch(
 		'done',
-		JSON.stringify({
-			session_id: 's-1',
-			media_url: `${API_BASE}/s/s-1/file.mp4`,
-			media_kind: 'mp4',
-			...(ownListing ? { own_listing: true } : {})
-		})
+		wire<CreateSessionResponse>(
+			sessionAnswer({
+				session_id: 's-1',
+				media_url: `${API_BASE}/s/s-1/file.mp4`,
+				media_kind: 'mp4',
+				...(ownListing ? { own_listing: true } : {})
+			})
+		)
 	);
 	await until(() => vi.mocked(goto).mock.calls.length > 0, 'the play page to open');
 	await until(() => stamps.length > 0, 'the watch to be stamped');
@@ -310,7 +337,9 @@ describe('a guessed Continue card beside a session the show page warmed', () => 
 		await getOrFire(makeKey(KITSU_ID, 4, 'sub'), async () => ({
 			session_id: 'warm',
 			media_url: `${API_BASE}/s/warm/file.mp4`,
-			media_kind: 'mp4' as const
+			media_kind: 'mp4' as const,
+			cache_hit: false,
+			subtitles: []
 		}));
 
 		const { stream } = await playTheCard(true);

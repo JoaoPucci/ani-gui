@@ -37,12 +37,26 @@ vi.mock('$app/navigation', () => ({
 	afterNavigate: vi.fn()
 }));
 
+import { availabilityAnswer } from '../answers';
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
-import { __resetApiBaseForTests } from '../../src/lib/api';
+import {
+	__resetApiBaseForTests,
+	type AiringStatus,
+	type AvailabilityBatchResponse,
+	type AvailabilityResponse,
+	type Config,
+	type FirstHopAnswer,
+	type Franchise,
+	type FranchiseEntry,
+	type HistoryEntry,
+	type HistoryRowByKitsu,
+	type KitsuAnimeRef,
+	type KitsuEpisode
+} from '../../src/lib/api';
 
 const KITSU_ID = '42';
 
-const entry = (id: string, title: string, subtype: string, start: string) => ({
+const entry = (id: string, title: string, subtype: string, start: string): FranchiseEntry => ({
 	id,
 	title,
 	subtype,
@@ -58,9 +72,16 @@ const SECOND = entry('42', 'Saga: Second Arc', 'TV', '2012-01-01');
 const FINAL = entry('50', 'Saga: Final Arc', 'TV', '2014-01-01');
 const FILM = entry('60', 'Saga: The Movie', 'movie', '2015-01-01');
 
-const none = { versions: [], films: [], sides: [], recaps: [], parents: {}, complete: true };
+const none: Pick<Franchise, 'versions' | 'films' | 'sides' | 'recaps' | 'parents' | 'complete'> = {
+	versions: [],
+	films: [],
+	sides: [],
+	recaps: [],
+	parents: {},
+	complete: true
+};
 /** A run of three: the strip. */
-const RUN = {
+const RUN: Franchise = {
 	...none,
 	anchor: KITSU_ID,
 	name: 'Saga',
@@ -72,7 +93,7 @@ const RUN = {
 	]
 };
 /** The show alone with a film beside it: the franchise link alone. */
-const LINK_ONLY = {
+const LINK_ONLY: Franchise = {
 	...none,
 	anchor: KITSU_ID,
 	name: 'Saga: Second Arc',
@@ -82,7 +103,7 @@ const LINK_ONLY = {
 	films: [FILM]
 };
 /** The show alone: nothing. */
-const ALONE = {
+const ALONE: Franchise = {
 	...none,
 	anchor: KITSU_ID,
 	name: 'Saga: Second Arc',
@@ -146,44 +167,60 @@ function useShow(opts: ShowOptions = {}) {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, async () => {
 			await opts.settingsGate;
-			return HttpResponse.json({ ...appConfig(), watch_order: 'linked' });
+			return HttpResponse.json<Config>({ ...appConfig(), watch_order: 'linked' });
 		}),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, async () => {
 			await opts.detailsGate;
-			return HttpResponse.json({ ...kitsuRef(KITSU_ID, 'Saga: Second Arc', 12), subtype: 'TV' });
+			return HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(KITSU_ID, 'Saga: Second Arc', 12),
+				subtype: 'TV'
+			});
 		}),
 		http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}/first-hop`, async () => {
 			calls.hop++;
 			await opts.hopGate;
-			return opts.hop ? opts.hop() : HttpResponse.json({ signal: 'strip' });
+			return opts.hop ? opts.hop() : HttpResponse.json<FirstHopAnswer>({ signal: 'strip' });
 		}),
 		http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, async () => {
 			calls.franchise++;
 			await opts.walkGate;
 			calls.walked++;
-			return opts.franchise ? opts.franchise() : HttpResponse.json(RUN);
+			return opts.franchise ? opts.franchise() : HttpResponse.json<Franchise>(RUN);
 		}),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} })),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
 		),
-		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability/batch`, () =>
+			HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+		),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
 		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
 			const { ids } = (await request.json()) as { ids: string[] };
-			return HttpResponse.json(Object.fromEntries(ids.map((id) => [id, null])));
+			return HttpResponse.json<Record<string, HistoryEntry | null>>(
+				Object.fromEntries(ids.map((id) => [id, null]))
+			);
 		}),
-		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
+		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({}))
 	);
 	return calls;
 }
@@ -224,8 +261,8 @@ describe('detail route — the watch-order strip arriving', () => {
 	it('holds the link’s room for a show whose franchise link comes alone', async () => {
 		const walk = gate();
 		useShow({
-			hop: () => HttpResponse.json({ signal: 'link' }),
-			franchise: () => HttpResponse.json(LINK_ONLY),
+			hop: () => HttpResponse.json<FirstHopAnswer>({ signal: 'link' }),
+			franchise: () => HttpResponse.json<Franchise>(LINK_ONLY),
 			walkGate: walk.opened
 		});
 		app = mount(DetailPage, { target });
@@ -242,8 +279,8 @@ describe('detail route — the watch-order strip arriving', () => {
 	it('holds nothing when the show’s listing foretells nothing', async () => {
 		const walk = gate();
 		const calls = useShow({
-			hop: () => HttpResponse.json({ signal: 'none' }),
-			franchise: () => HttpResponse.json(ALONE),
+			hop: () => HttpResponse.json<FirstHopAnswer>({ signal: 'none' }),
+			franchise: () => HttpResponse.json<Franchise>(ALONE),
 			walkGate: walk.opened
 		});
 		app = mount(DetailPage, { target });

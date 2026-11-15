@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
+import { m } from '$lib/paraglide/messages';
 import { FIXTURE_RUNS } from './fixtures/runs';
 import {
 	captionText,
 	columnCountText,
 	columnKeyText,
 	emptyColumnText,
+	seamKeyText,
 	stackPartsText,
 	stackTotal
 } from './strip-copy';
@@ -120,5 +122,18 @@ describe('stackPartsText', () => {
 				}
 			)
 		);
+	});
+});
+
+describe('seamKeyText', () => {
+	it('keys a seam by where the chain meets the main story', () => {
+		expect(seamKeyText('from')).toBe(m.watchorder_strip_seam_from());
+		expect(seamKeyText('into')).toBe(m.watchorder_strip_seam_into());
+	});
+});
+
+describe('captionText for a chain of one', () => {
+	it('says nothing where there is nothing to count', () => {
+		expect(captionText({ kind: 'alone' })).toBe('');
 	});
 });

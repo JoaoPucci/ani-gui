@@ -35,12 +35,17 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import FranchisePage from '../../src/routes/anime/[id]/franchise/+page.svelte';
-import { __resetApiBaseForTests } from '../../src/lib/api';
+import {
+	__resetApiBaseForTests,
+	type Config,
+	type Franchise,
+	type HistoryEntry
+} from '../../src/lib/api';
 
 /** The walk's answer for `id`, as the endpoint serves it. */
-function served(id: string): Record<string, unknown> {
+function served(id: string): Franchise {
 	const path = resolvePath(__dirname, `../../../tests/fixtures/franchise/served-${id}.json`);
-	return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+	return JSON.parse(readFileSync(path, 'utf8')) as Franchise;
 }
 
 let target: HTMLElement;
@@ -72,12 +77,16 @@ function openFranchise(id: string) {
 	setParams({ id });
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({ ...appConfig(), watch_order: 'linked' })
+			HttpResponse.json<Config>({ ...appConfig(), watch_order: 'linked' })
 		),
-		http.get(`${API_BASE}/api/kitsu/franchise/${id}`, () => HttpResponse.json(served(id))),
+		http.get(`${API_BASE}/api/kitsu/franchise/${id}`, () =>
+			HttpResponse.json<Franchise>(served(id))
+		),
 		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
 			const { ids } = (await request.json()) as { ids: string[] };
-			return HttpResponse.json(Object.fromEntries(ids.map((k) => [k, null])));
+			return HttpResponse.json<Record<string, HistoryEntry | null>>(
+				Object.fromEntries(ids.map((k) => [k, null]))
+			);
 		})
 	);
 	app = mount(FranchisePage, { target });
@@ -135,14 +144,14 @@ const HEADINGS: readonly (readonly [string, string, string])[] = [
 	['6928', 'Fate/stay night', 'a Fate/Zero special'],
 	['3919', 'Bakemonogatari', 'Bakemonogatari'],
 	['7158', 'JoJo no Kimyou na Bouken (TV)', 'the 2012 series'],
-	['7730', 'JoJo no Kimyou na Bouken', 'the 2000 OVA'],
+	['7730', 'JoJo no Kimyou na Bouken (TV)', 'the 2000 OVA, an other version of the TV run'],
 	['7442', 'Attack on Titan', 'Attack on Titan'],
 	['46874', 'SPY×FAMILY', 'SPY×FAMILY CODE: White'],
 	['184', 'R.O.D OVA', 'the 2001 OVA'],
 	['185', 'R.O.D OVA', 'the 2003 series'],
 	['202', 'FLCL', 'the 2000 OVA'],
 	['11961', 'FLCL', 'FLCL Progressive'],
-	['6084', 'Berserk', 'the first Golden Age film'],
+	['6084', 'Kenpuu Denki Berserk', 'the first Golden Age film, under Films'],
 	['11655', 'Kenpuu Denki Berserk', 'the 2016 series, after the 1997 one'],
 	['115', 'Hunter x Hunter', 'the 1999 series'],
 	['1046', 'Sakura Taisen: Ouka Kenran', 'the 1997 OVA; the TV series is a version'],

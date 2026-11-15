@@ -8,12 +8,14 @@
  * The page and the strip component only hand these on.
  */
 import type { WatchOrder } from './by-start';
+import { chainFranchise, ownFranchise, seamOf, type Seam } from './chain-view';
 import type { WatchOrderData } from './loader';
 import { loopSize } from './order';
 import { progressFromHistory } from './progress';
-import { hasStrip, runOf, stripFor } from './strip-model';
+import { restOfFranchise } from './franchise-link';
+import { runOf, stripFor } from './strip-model';
 import { watchingFor, type StripView } from './strip-view';
-import type { Progress, WatchEntry, WatchRun } from './types';
+import type { FranchiseData, Progress, WatchEntry, WatchRun } from './types';
 
 /** What the strip's centre says about this entry's place. */
 export type StripCaption =
@@ -22,14 +24,21 @@ export type StripCaption =
 	/** A run member's place in a franchise read in part: nothing about it is sure. */
 	| { readonly kind: 'partial' }
 	| { readonly kind: 'side' }
-	/** A side story that is a film: the payload lists it under films. */
+	/** A side story the payload lists under films, or the one own title
+	 *  of a chain when it is a movie. */
 	| { readonly kind: 'film' }
 	| { readonly kind: 'cycle'; readonly count: number }
-	| { readonly kind: 'branch' };
+	| { readonly kind: 'branch' }
+	/** The one own title of a chain that is not a film: nothing to count. */
+	| { readonly kind: 'alone' };
 
 export interface WatchOrderPage {
 	readonly order: WatchOrder;
 	readonly run: WatchRun;
+	/** The franchise's main story as a run: what the strip's franchise
+	 *  link stacks. `run` itself on a page in the main story; the main
+	 *  story, not the chain, on a page drawn on a chain. */
+	readonly mainRun: WatchRun;
 	/** The main-story entry the strip's poster stack is fronted by. */
 	readonly front: string;
 	readonly view: StripView;
@@ -43,25 +52,16 @@ export interface WatchOrderPage {
 	readonly watching: { readonly entry: WatchEntry; readonly episode: number } | null;
 	/** Ids "Similar titles" leaves out: the rest of the franchise. */
 	readonly similarHidden: ReadonlySet<string>;
+	/** Whether the page is outside the main story, drawn on a chain: its
+	 *  own, or, for a side story, its parent's. */
+	readonly outside: boolean;
+	/** Where a column holds a main-story title the chain meets, alone. */
+	readonly seams: { readonly before: Seam | null; readonly after: Seam | null };
 }
 
-/** The order setting as stored: anything but `released` reads as linked. */
-export function orderOf(value: string | null | undefined): WatchOrder {
-	return value === 'released' ? 'released' : 'linked';
-}
+export type { Seam };
 
-/**
- * The order to draw in once the settings read has settled (`loaded`
- * or `failed`), else null: the strip waits for it rather than
- * re-ordering under the viewer.
- */
-export function settledOrder(
-	config: { readonly watch_order: string } | null,
-	failed: boolean
-): WatchOrder | null {
-	if (config) return orderOf(config.watch_order);
-	return failed ? 'linked' : null;
-}
+export { orderOf, settledOrder } from './order-setting';
 
 /**
  * The caption for a view; `loop` is the size of the cycle `view` sits
@@ -86,12 +86,19 @@ export function captionOf(
 }
 
 /**
- * Every title the franchise page lists for `run` but `id` itself: the
- * run, its other versions, films, side stories and recaps.
+ * The caption of a run member on a chain: its place among the chain's
+ * own titles, seams uncounted. A chain of one own title reads as a film
+ * when it is one, and with no number otherwise.
  */
-function restOfFranchise(run: WatchRun, id: string): ReadonlySet<string> {
-	const all = [...run.entries, ...run.versions, ...run.films, ...run.sides, ...run.recaps];
-	return new Set(all.map((e) => e.id).filter((x) => x !== id));
+function chainCaption(franchise: FranchiseData, id: string, order: WatchOrder): StripCaption {
+	if (!franchise.complete) return { kind: 'partial' };
+	const own = ownFranchise(franchise);
+	const strip = own ? stripFor(own, id, order) : null;
+	if (!strip) {
+		const self = franchise.chain?.entries.find((e) => e.id === id);
+		return self?.subtype === 'movie' ? { kind: 'film' } : { kind: 'alone' };
+	}
+	return captionOf(strip.view, loopSize(strip.run, id, order), true);
 }
 
 /** The page's reading of `data` for `id`, or null where the page shows no strip. */
@@ -100,16 +107,23 @@ export function watchOrderPage(
 	id: string,
 	order: WatchOrder
 ): WatchOrderPage | null {
-	const strip = stripFor(data.franchise, id, order);
+	const drawn = data.franchise ? chainFranchise(data.franchise) : null;
+	const strip = stripFor(drawn ?? data.franchise, id, order);
 	if (!strip) return null;
 	const { run, front, view, complete } = strip;
 	const progress = progressFromHistory(data.rows, run.entries);
 	const watching = watchingFor(run, progress, id, view, order);
 	const film = run.films.some((e) => e.id === id);
-	const caption = captionOf(view, loopSize(run, id, order), complete, film);
+	const onChain = drawn !== null && view.kind === 'run' && data.franchise !== null;
+	const caption = onChain
+		? chainCaption(data.franchise!, id, order)
+		: captionOf(view, loopSize(run, id, order), complete, film);
+	const seams = onChain ? data.franchise!.chain!.seams : [];
+	const mainRun = (drawn && data.franchise && runOf(data.franchise)) || run;
 	return {
 		order,
 		run,
+		mainRun,
 		front,
 		view,
 		complete,
@@ -118,44 +132,13 @@ export function watchOrderPage(
 			caption.kind === 'position' ? { position: caption.position, total: caption.total } : null,
 		progress,
 		watching,
-		similarHidden: restOfFranchise(run, id)
+		similarHidden: restOfFranchise(mainRun, id),
+		outside: drawn !== null,
+		seams: {
+			before: seamOf(view.before, seams, 'before'),
+			after: seamOf(view.after, seams, 'after')
+		}
 	};
 }
 
-/**
- * The way to the franchise page where the show has no strip to carry
- * it: the run the link's stack draws from, whether it was read whole,
- * and what "Similar titles" leaves out because that page lists it.
- */
-export interface FranchiseLink {
-	readonly run: WatchRun;
-	/** The main-story entry the link's poster stack is fronted by. */
-	readonly front: string;
-	/** Whether the franchise was read whole: see `StripModel.complete`. */
-	readonly complete: boolean;
-	/** Ids "Similar titles" leaves out: the rest of the franchise. */
-	readonly similarHidden: ReadonlySet<string>;
-}
-
-/**
- * The franchise link the page shows on its own: where `id` has no
- * strip (it is its run alone, or a film, version, recap or side story
- * outside the run with no parent story in it) but the franchise page
- * would list other titles, such as films, other versions, side
- * stories, recaps or the run itself. Null where the strip shows, which
- * carries the link itself, and where the franchise page would list the
- * show alone, read whole or in part.
- */
-export function franchiseLinkOnly(data: WatchOrderData, id: string): FranchiseLink | null {
-	if (data.franchise === null || data.franchise.anchor !== id) return null;
-	const run = runOf(data.franchise);
-	if (run === null || hasStrip(run, id)) return null;
-	const rest = restOfFranchise(run, id);
-	if (rest.size === 0) return null;
-	return {
-		run,
-		front: data.franchise.name_from,
-		complete: data.franchise.complete,
-		similarHidden: rest
-	};
-}
+export { franchiseLinkOnly, type FranchiseLink } from './franchise-link';

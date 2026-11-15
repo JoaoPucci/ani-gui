@@ -21,7 +21,7 @@
  * match. Live `kitsuSearch` is stubbed for the orphan case only.
  */
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
+import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -37,7 +37,8 @@ import {
 	topRated,
 	trending
 } from './fixtures/kitsu';
-import { appWindow, launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
+import { answer } from './stubs';
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -83,7 +84,7 @@ interface StubOptions {
 	 *  that request pending forever (only the renderer's own abort
 	 *  releases it) — the takeover test uses this to pin a background
 	 *  prefetch in its in-flight state. Anything else falls through
-	 *  to the normal instant `done` fulfillment.
+	 *  to the normal instant `done` answer.
 	 *
 	 *  Must be wired through here rather than a per-test
 	 *  `page.route()`: registering ANY additional route after this
@@ -116,7 +117,7 @@ async function launchAppWithContinueStubsOnce(
 		ANI_GUI_UNATTENDED: '1'
 	};
 
-	const app = await launchPackagedApp(cleanEnv);
+	const app = await launchPackagedApp(cleanEnv, { profile: tmp });
 	onLaunch(app);
 	const context = app.context();
 	const page = await appWindow(app);
@@ -138,7 +139,7 @@ async function launchAppWithContinueStubsOnce(
 		const u = new URL(r.request().url());
 		const p = u.pathname;
 		const j = (body: unknown) =>
-			r.fulfill({
+			answer(r, {
 				status: 200,
 				contentType: 'application/json',
 				body: JSON.stringify(body)
@@ -148,7 +149,7 @@ async function launchAppWithContinueStubsOnce(
 		if (p === '/api/settings') return j(defaultSettings);
 		if (p === '/api/kitsu/trending-anilist') return j(trending);
 		if (p === '/api/kitsu/top-rated') return j(topRated);
-		if (p.startsWith('/api/image')) return r.fulfill({ status: 503 });
+		if (p.startsWith('/api/image')) return answer(r, { status: 503 });
 		if (p === '/api/history') return j(opts.history);
 		if (p === '/api/watched-at') return j(watchedAt);
 
@@ -159,7 +160,7 @@ async function launchAppWithContinueStubsOnce(
 			return j(null);
 		}
 		if (p.startsWith('/api/kitsu/anime/')) {
-			// Never fulfilled: the request stays pending for the life of
+			// Never answered: the request stays pending for the life of
 			// the app, so the row never leaves its loading state.
 			if (opts.matchHang) return;
 			return j(
@@ -201,7 +202,7 @@ async function launchAppWithContinueStubsOnce(
 				// Same envelope ani_error_payload serializes for
 				// AniError::RateLimited — the renderer's SSE error
 				// listener rejects with this parsed object.
-				return r.fulfill({
+				return answer(r, {
 					status: 200,
 					contentType: 'text/event-stream',
 					body: `event: error\ndata: ${JSON.stringify({
@@ -211,7 +212,7 @@ async function launchAppWithContinueStubsOnce(
 					})}\n\n`
 				});
 			}
-			return r.fulfill({
+			return answer(r, {
 				status: 200,
 				contentType: 'text/event-stream',
 				body: `event: done\ndata: ${JSON.stringify({
@@ -236,6 +237,10 @@ async function launchAppWithContinueStubsOnce(
 				media_kind: 'Hls'
 			});
 		}
+
+		// The backend answers skip times with a list, empty when it knows
+		// none; the page reads it as one once the length is known.
+		if (p.startsWith('/api/aniskip/')) return j([]);
 
 		// Default: empty 200 so unknown probes don't blow up under Xvfb
 		// (the test cares about the home-strip surfaces; everything else
@@ -286,11 +291,10 @@ async function launchAppWithContinueStubs(opts: StubOptions) {
 			cleanup: async () => {
 				const dead = pending;
 				pending = null;
-				// A dead app's close() hangs while its backend lives; kill
-				// the whole tree first (lib/cold-launch.cjs).
+				// Stop what is left of the dead app: its own process group,
+				// nothing else (lib/own-group.cjs).
 				if (dead) {
-					killTree(dead.process().pid);
-					await dead.close();
+					await stopDeadApp(dead);
 				}
 			}
 		}

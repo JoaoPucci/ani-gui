@@ -17,12 +17,13 @@
  * which the last scenario reads.
  */
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
+import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { appInfo, emptyHistory, topRated, trending } from './fixtures/kitsu';
-import { appWindow, launchPackagedApp, packagedBinary } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
+import { answer } from './stubs';
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -66,7 +67,7 @@ async function launchOnce(asked: string[], onLaunch: (app: ElectronApplication) 
 		XDG_CACHE_HOME: path.join(tmp, 'cache'),
 		XDG_DATA_HOME: path.join(tmp, 'data'),
 		ANI_GUI_UNATTENDED: '1'
-	});
+	}, { profile: tmp });
 	onLaunch(app);
 	const page = await appWindow(app);
 
@@ -80,23 +81,23 @@ async function launchOnce(asked: string[], onLaunch: (app: ElectronApplication) 
 	let live: Promise<void> = Promise.resolve();
 	await page.route('**/api/**', async (r) => {
 		const p = new URL(r.request().url()).pathname;
-		if (p.endsWith('/api/app-info')) return r.fulfill(json(appInfo));
-		if (p.endsWith('/api/history')) return r.fulfill(json(emptyHistory));
+		if (p.endsWith('/api/app-info')) return answer(r, json(appInfo));
+		if (p.endsWith('/api/history')) return answer(r, json(emptyHistory));
 		// Home asks for trending-anilist; the search page's empty state
 		// still asks for trending.
 		if (p.endsWith('/api/kitsu/trending-anilist') || p.endsWith('/api/kitsu/trending')) {
-			return r.fulfill(json(trending));
+			return answer(r, json(trending));
 		}
 		if (p.endsWith('/api/kitsu/top-rated')) {
 			routed();
-			return r.fulfill(json(topRated));
+			return answer(r, json(topRated));
 		}
 		// The topbar's live results: show 1, whatever was typed.
-		if (p.endsWith('/api/kitsu/search')) return r.fulfill(json([show(1)]));
-		if (p.includes('/api/image')) return r.fulfill({ status: 503 });
+		if (p.endsWith('/api/kitsu/search')) return answer(r, json([show(1)]));
+		if (p.includes('/api/image')) return answer(r, { status: 503 });
 		if (p.endsWith('/api/availability/batch')) {
 			const { kitsu_ids } = r.request().postDataJSON() as { kitsu_ids: string[] };
-			return r.fulfill(
+			return answer(r,
 				json({
 					cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
 					playable_episode_counts: {}
@@ -107,13 +108,13 @@ async function launchOnce(asked: string[], onLaunch: (app: ElectronApplication) 
 		// lands; answered here so it has a title to name without the
 		// network.
 		const detail = p.match(/\/api\/kitsu\/anime\/(\d+)$/);
-		if (detail) return r.fulfill(json(show(Number(detail[1]))));
+		if (detail) return answer(r, json(show(Number(detail[1]))));
 		if (p.endsWith('/api/kitsu/search/page')) {
 			// Twenty shows a page, five pages, for any query.
 			const body = r.request().postDataJSON() as { query: string; offset: number; sort?: string };
 			asked.push(`${body.query}@${body.offset}/${body.sort ?? 'relevance'}`);
 			const hits = Array.from({ length: 20 }, (_, i) => show(body.offset + i + 1));
-			return r.fulfill(
+			return answer(r,
 				json({ hits, next_offset: body.offset + 20 < 100 ? body.offset + 20 : null })
 			);
 		}
@@ -148,8 +149,7 @@ async function launch(asked: string[]) {
 			cleanup: async () => {
 				const dead = pending as ElectronApplication | null;
 				pending = null;
-				const pid = dead?.process().pid;
-				if (pid) killTree(pid);
+				if (dead) await stopDeadApp(dead);
 			}
 		}
 	);
