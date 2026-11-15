@@ -173,9 +173,11 @@ fn metadata_db(home: &Path) -> std::path::PathBuf {
 /// a provider. Not on Windows: there the backend finds its config and
 /// cache through the known-folder API, which no variable a test sets
 /// redirects, so they are the dev profile's, outside the test's home,
-/// and turning replays on would change that profile's settings. `play_stream_origin.rs` holds the
-/// session and playlist to the proxy's origin in-process on every
-/// platform, and the test above holds that origin to the stream lane.
+/// and turning replays on would change that profile's settings.
+/// `play_stream_origin.rs` holds the session and playlist to the
+/// proxy's origin in-process on every platform, and
+/// `the_stream_proxy_base_is_the_stream_lane` holds that origin to the
+/// stream lane, which it finds serving the proxy's routes.
 #[cfg(not(target_os = "windows"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_plays_session_and_its_playlist_name_the_stream_lane() {

@@ -7,7 +7,7 @@ This page covers the dev environment, the build pipeline, and debugging tips. Fo
 | Tool | Version | Purpose |
 |---|---|---|
 | Rust | pinned in `rust-toolchain.toml` | Rust sidecar backend |
-| Node | 20+ | renderer + Electron shell |
+| Node | 22.13+ (20+ for the frontend alone) | renderer + Electron shell; the Electron helper tests and e2e suite need 22.13 |
 | pnpm | 9+ | package manager |
 | `bats-core`, `bats-mock`, `bats-assert`, `bats-file` | pinned in `tests/bash/helpers/install-bats.sh` | bash tests |
 | `shellcheck`, `shfmt` | latest stable | bash linters |
