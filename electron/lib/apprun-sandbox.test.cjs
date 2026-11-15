@@ -106,7 +106,63 @@ function outcome(img, run, elapsedMs, group) {
     probeCoreLimit: readOr("probe-core-limit", null),
     cores: fs.readdirSync(img.root).filter((f) => f.startsWith("core")),
     tmpLeft: fs.readdirSync(img.tmp),
+    unreaped: readOr("unreaped", null),
   };
+}
+
+// A host whose PID 1 does not reap orphans (a container's bare init,
+// for one) keeps every child the launch ends without waiting for as a
+// zombie, for good. Where an ordinary init reaps them, nothing shows,
+// so each run starts under a subreaper that stands in for such a PID 1:
+// it adopts whatever the run orphans, and once the run has ended it
+// counts the orphans that end in its hands into `unreaped` and does not
+// keep them. With `forward`, a signal it receives is passed on to the
+// run, which is otherwise what the signal was meant for; a signal sent
+// to the whole group reaches the run directly. The run starts with the
+// signal dispositions it would have without the subreaper, and the
+// subreaper ends as the run did, by the same signal or with the same
+// status.
+const SUBREAPER = `
+import ctypes, os, signal, sys, time
+if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
+    sys.exit("subreaper: prctl failed: " + os.strerror(ctypes.get_errno()))
+report, forward, argv = sys.argv[1], sys.argv[2] == "1", sys.argv[3:]
+child = os.fork()
+if child == 0:
+    # Python starts with these two ignored, and an ignored signal stays
+    # ignored across exec: the run gets the dispositions a launch has.
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    signal.signal(signal.SIGXFSZ, signal.SIG_DFL)
+    os.execvp(argv[0], argv)
+def on_signal(sig, _frame):
+    if forward:
+        os.kill(child, sig)
+for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+    signal.signal(sig, on_signal)
+_, status = os.waitpid(child, 0)
+unreaped, until = 0, time.monotonic() + 2
+while True:
+    try:
+        pid, _ = os.waitpid(-1, os.WNOHANG)
+    except ChildProcessError:
+        break
+    if pid:
+        unreaped += 1
+    elif time.monotonic() > until:
+        break
+    else:
+        time.sleep(0.02)
+with open(report, "w") as f:
+    f.write(str(unreaped))
+if os.WIFSIGNALED(status):
+    signal.signal(os.WTERMSIG(status), signal.SIG_DFL)
+    os.kill(os.getpid(), os.WTERMSIG(status))
+sys.exit(os.waitstatus_to_exitcode(status))
+`;
+
+/** python3's arguments to run `argv` under the subreaper above. */
+function underSubreaper(img, forward, argv) {
+  return ["-I", "-c", SUBREAPER, path.join(img.app, "unreaped"), forward ? "1" : "0", ...argv];
 }
 
 /**
@@ -125,7 +181,7 @@ function launch(template, probe, args, extraEnv = {}, shell = null) {
   const groupFile = path.join(img.root, "group");
   const recordGroup = 'echo "$$" > "$1"; shift; exec "$@"';
   const started = Date.now();
-  const run = spawnSync("setsid", ["--wait", "bash", "-c", recordGroup, "bash", groupFile, ...inner], {
+  const run = spawnSync("python3", underSubreaper(img, false, ["setsid", "--wait", "bash", "-c", recordGroup, "bash", groupFile, ...inner]), {
     cwd: img.root,
     encoding: "utf8",
     env: img.env(extraEnv),
@@ -139,7 +195,7 @@ async function launchAndSignal(template, probe, args, { afterMs, signal, group }
   const { spawn } = require("node:child_process");
   const img = image(template, probe);
   const started = Date.now();
-  const child = spawn("bash", [path.join(img.app, "AppRun"), ...args], {
+  const child = spawn("python3", underSubreaper(img, !group, ["bash", path.join(img.app, "AppRun"), ...args]), {
     cwd: img.root,
     env: img.env({}),
     detached: true,
@@ -152,7 +208,8 @@ async function launchAndSignal(template, probe, args, { afterMs, signal, group }
   const timer = setTimeout(() => (group ? process.kill(-child.pid, signal) : child.kill(signal)), afterMs);
   const [status, killedBy] = await new Promise((resolve) => child.on("close", (code, sig) => resolve([code, sig])));
   clearTimeout(timer);
-  // Detached: the child leads a session, and so a group, of its own.
+  // Detached: the child leads a session, and so a group, of its own,
+  // and AppRun, its child, starts in that group.
   return { ...outcome(img, { status, signal: killedBy, stderr }, Date.now() - started, child.pid) };
 }
 
@@ -177,6 +234,7 @@ function assertNothingLeft(r) {
   const until = Date.now() + 2000;
   while (groupAlive(r.group) && Date.now() < until) spawnSync("sleep", ["0.05"]);
   assert.equal(groupAlive(r.group), false, `the launch left processes behind in its group ${r.group}`);
+  assert.equal(r.unreaped, "0", "the launch ended children without waiting for them, which a host that does not reap orphans keeps as zombies");
 }
 
 function cleanup(r) {
@@ -332,8 +390,10 @@ nodeTest("the probe runs with core dumps off", { skip: process.platform !== "lin
 
 // Interrupting the launcher while it waits on the probe stops the
 // launch: Ctrl-C (SIGINT to the whole process group), a SIGTERM to
-// AppRun alone, or a SIGHUP (the terminal closing) ends it promptly,
-// starts nothing, and leaves no probe, watchdog or answer file behind.
+// AppRun alone or to its whole group (a service manager stopping it),
+// or a SIGHUP to AppRun or to its whole group (the terminal closing
+// hangs up its foreground group) ends it promptly, starts nothing, and
+// leaves no probe, watchdog or answer file behind, reaped or not.
 // AppRun then dies by that same signal, as a shell expects of a
 // command it interrupted, so a calling loop stops too.
 for (const [name, template] of Object.entries(TEMPLATES)) {
@@ -341,8 +401,11 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
     ["SIGINT", true],
     ["SIGTERM", false],
     ["SIGHUP", false],
+    ["SIGTERM", true],
+    ["SIGHUP", true],
   ]) {
-    test(`${name}: ${signal} while the probe runs stops the launch and leaves nothing behind`, async () => {
+    const to = group && signal !== "SIGINT" ? " to the whole group" : "";
+    test(`${name}: ${signal}${to} while the probe runs stops the launch and leaves nothing behind`, async () => {
       const r = await launchAndSignal(template, "hangs", USER_ARGS, { afterMs: 700, signal, group });
       try {
         assert.equal(r.launched, null, "nothing launched");
