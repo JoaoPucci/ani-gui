@@ -49,6 +49,29 @@ describe('RecoveryResume', () => {
 	});
 });
 
+describe('RecoveryResume — a switch to the picked show', () => {
+	it('carries the point it was asked for, zero included', () => {
+		// "Switch to it now" at 0:00 says it picks up there: zero is a
+		// point, not the absence of one, so the pick's own saved position
+		// does not take its place.
+		const r = new RecoveryResume();
+		r.carry('4013', 2, 0);
+		expect(r.consume('4013', 2)).toBe(0);
+		r.carry('4013', 2, 0.4);
+		expect(r.consume('4013', 2)).toBe(0.4);
+		r.carry('4013', 2, 74);
+		expect(r.consume('4013', 2)).toBe(74);
+	});
+
+	it('carries nothing for a point that is no number of seconds', () => {
+		const r = new RecoveryResume();
+		r.carry('4013', 2, Number.NaN);
+		expect(r.consume('4013', 2)).toBeNull();
+		r.carry('4013', 2, -1);
+		expect(r.consume('4013', 2)).toBeNull();
+	});
+});
+
 describe('RecoveryResume — forgetting with the history', () => {
 	it("forgets a capture for the show whose positions are forgotten, and only that show's", () => {
 		const r = new RecoveryResume();

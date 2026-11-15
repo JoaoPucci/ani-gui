@@ -52,6 +52,7 @@ import { __resetSwitchAudioForTests } from '../../src/lib/play/switch-audio';
 const AUDIO_KEY = 'ani-gui.audio-choices';
 import { __resetHiddenRowsForTests } from '../../src/lib/history/in-place-link.svelte';
 import { recoveryResume } from '../../src/lib/play/resume-after-recovery';
+import { savePosition } from '../../src/lib/play/watch-position';
 import type {
 	AiringStatus,
 	AvailabilityResponse,
@@ -762,6 +763,18 @@ describe('switching to the pick', () => {
 		await until(() => pickPlay() !== undefined, 'the play of the pick');
 		const asked = Number(new URL(pickPlay()!.url, 'http://x').searchParams.get('episode'));
 		expect(asked).toBeGreaterThanOrEqual(6);
+	});
+
+	it('starts the pick at 0:00 when the switch was made there, over a point the pick kept', async () => {
+		// The pick's episode 2 was left at ten minutes on an earlier visit.
+		savePosition(RIGHT, 2, 600, 1420);
+		await openPlayer();
+		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+		videoAt(0);
+		await openPicker();
+		await pickAndLink(RIGHT_TITLE, m.play_link_switch_now());
+		await answerSwitch();
+		expect(recoveryResume.consume(RIGHT, 2)).toBe(0);
 	});
 
 	it('from the slip after keeping watching does the same', async () => {
