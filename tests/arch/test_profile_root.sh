@@ -37,14 +37,20 @@ set -eu
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-# A grep that cannot run finds nothing, which would read as a pass.
-git rev-parse --is-inside-work-tree >/dev/null
+# A grep that cannot run finds nothing, which would read as a pass, so
+# only its two answers are accepted: 0, found, and 1, found nothing.
+status=0
+named=$(git -c core.quotePath=false grep -l -F \
+    -e ANI_GUI_TEST_PROFILE_ROOT -e TEST_PROFILE_ROOT_ENV -- .) || status=$?
+if [ "$status" -gt 1 ]; then
+    printf 'arch/test_profile_root FAIL: git grep could not run (status %s)\n' "$status" >&2
+    exit 1
+fi
 
 # Allowed: the reader, the backend's tests, the docs that describe it
 # as test-only, and this file, which has to name what it guards.
 offending=$(
-    git -c core.quotePath=false grep -l -F \
-        -e ANI_GUI_TEST_PROFILE_ROOT -e TEST_PROFILE_ROOT_ENV -- . |
+    printf '%s\n' "$named" |
         while IFS= read -r file; do
             case "$file" in
                 backend/src/config/paths.rs) ;;
@@ -53,6 +59,7 @@ offending=$(
                 docs/development.md) ;;
                 docs/testing.md) ;;
                 tests/arch/test_profile_root.sh) ;;
+                '') ;;
                 *) printf '%s\n' "$file" ;;
             esac
         done

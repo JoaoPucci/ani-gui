@@ -15,10 +15,13 @@ use super::*;
 
 const ROOT_ENV: &str = TEST_PROFILE_ROOT_ENV;
 
+type Resolver = fn() -> Option<PathBuf>;
+
 /// Every resolver `paths` exposes, by name. A resolver added to the
-/// module belongs here too; the spawned-binary check in
-/// `tests/profile_root.rs` catches one that is not.
-const RESOLVERS: [(&str, fn() -> Option<PathBuf>); 9] = [
+/// module belongs here too: nothing fails if it is left out, beyond
+/// what `tests/profile_root.rs` happens to exercise on Linux and macOS
+/// (the boot, the settings and the history).
+const RESOLVERS: [(&str, Resolver); 9] = [
     ("config_file", config_file),
     ("cache_dir", cache_dir),
     ("image_cache_dir", image_cache_dir),
@@ -44,27 +47,35 @@ const OTHER_VARS: [&str; 8] = [
     "ANI_GUI_DEV",
 ];
 
-/// Set `vars` for the length of `f`, then put back what was there.
-fn with_env<T>(vars: &[(&str, Option<OsString>)], f: impl FnOnce() -> T) -> T {
-    let _guard = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let saved: Vec<(&str, Option<OsString>)> = vars
-        .iter()
-        .map(|(k, _)| (*k, std::env::var_os(k)))
-        .collect();
+fn set(vars: &[(&str, Option<OsString>)]) {
     for (k, v) in vars {
         match v {
             Some(v) => std::env::set_var(k, v),
             None => std::env::remove_var(k),
         }
     }
-    let out = f();
-    for (k, v) in saved {
-        match v {
-            Some(v) => std::env::set_var(k, v),
-            None => std::env::remove_var(k),
-        }
+}
+
+/// Puts back what was there when dropped, so a panic inside
+/// [`with_env`] leaves no root set for the tests after it.
+struct Restore<'a>(Vec<(&'a str, Option<OsString>)>);
+
+impl Drop for Restore<'_> {
+    fn drop(&mut self) {
+        set(&self.0);
     }
-    out
+}
+
+/// Set `vars` for the length of `f`, then put back what was there.
+fn with_env<T>(vars: &[(&str, Option<OsString>)], f: impl FnOnce() -> T) -> T {
+    let _guard = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _restore = Restore(
+        vars.iter()
+            .map(|(k, _)| (*k, std::env::var_os(k)))
+            .collect(),
+    );
+    set(vars);
+    f()
 }
 
 /// The environment of a run with the root set and everything else
