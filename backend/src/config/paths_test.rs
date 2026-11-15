@@ -172,3 +172,19 @@ fn an_empty_root_is_no_root() {
     });
     assert_eq!(empty, unset);
 }
+
+/// Without a root, `XDG_STATE_HOME` places the state folder, under the
+/// profile's app name — the branch no spawned test reaches any more,
+/// since every one of them sets the root.
+#[test]
+fn without_a_root_the_state_folder_follows_xdg_state_home() {
+    let xdg = std::env::temp_dir().join("profile-root-xdg-state");
+    let (state, app) = with_env(
+        &[
+            (ROOT_ENV, None),
+            ("XDG_STATE_HOME", Some(xdg.clone().into_os_string())),
+        ],
+        || (state_dir(), app_name()),
+    );
+    assert_eq!(state, Some(xdg.join(app)));
+}
