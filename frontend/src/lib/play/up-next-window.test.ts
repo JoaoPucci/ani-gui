@@ -71,6 +71,7 @@ describe('upNextShown', () => {
 	const due: UpNextState = {
 		card: true,
 		hasNext: false,
+		countsStale: false,
 		resumeHolding: false,
 		dismissed: false,
 		videoFullscreen: false,
@@ -91,6 +92,7 @@ describe('upNextShown', () => {
 				fc.record({
 					card: fc.boolean(),
 					hasNext: fc.boolean(),
+					countsStale: fc.constant(false),
 					resumeHolding: fc.boolean(),
 					dismissed: fc.boolean(),
 					videoFullscreen: fc.boolean(),
