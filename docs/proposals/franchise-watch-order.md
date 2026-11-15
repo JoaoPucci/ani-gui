@@ -1917,13 +1917,16 @@ was accepted.
 4. **The strip's room is held while the walk runs**, from the walk's
    first hop: the show's own relation listing, read through the
    walk's own cache (and, for a show with no run beside it, what the
-   walk's parent check reads). A prequel or sequel the show does not
-   list as another version or setting, or a parent story the walk's
-   parent check accepts, means the strip; any other relation the
-   franchise page lists means the link alone; none means nothing is
-   held. Only a foretold strip can be wrong (a prequel or sequel whose
-   own listing names the show as its other version or setting), and
-   the walk's answer then replaces the outline. On the study's 120
+   walk's parent check reads). It says the link or nothing only where
+   it is certain the walk will, and the strip everywhere else: any
+   prequel or sequel the show lists (even one it also lists as another
+   version or setting, which the walk still walks through), or a
+   parent story the walk's parent check accepts, means the strip; any
+   other relation the franchise page lists means the link alone; none
+   means nothing is held. Only a foretold strip can be wrong (a
+   prequel or sequel left out of the run as another version or
+   setting, or a parent story the walk does not walk from), and the
+   walk's answer then replaces the outline. On the study's 120
    shows, and on the walk's own regression corpus, it matched the walk
    every time.
 5. **The page waits for the first hop with the show's details**, at
