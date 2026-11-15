@@ -350,39 +350,46 @@ test("each kind picked from the captions menu shows alone with its cues, through
 // hls.js parsed it with the rendition's track off, dropped its cues and
 // never fetched it again, so the rendition, picked back, showed
 // nothing there.
-test("a rendition's fragment that lands after the viewer moved off it is there when it is picked again", async () => {
-	test.setTimeout(120_000);
-	let release: () => void = () => {};
-	const held = new Promise<void>((resolve) => {
-		release = resolve;
+// Moving off to the other rendition leaves the sidecar tracks out of
+// it, so on the old code only the dropped cues fail it.
+for (const [to, showsThen] of [
+	['Spanish', 'playlist Español'],
+	['French', 'sidecar Français']
+] as const) {
+	test(`a rendition's fragment that lands after the viewer moved off it to ${to} is there when it is picked again`, async () => {
+		test.setTimeout(120_000);
+		let release: () => void = () => {};
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const media = await mediaServer({ englishFragment: held });
+		const { app, page, profile } = await launch();
+		try {
+			await playing(page, profile, media.origin);
+			await page.evaluate(() => document.querySelector('video')?.pause());
+			// Inside the second fragment (4–8 s), clear of its cue boundaries.
+			await seek(page, 7);
+			await expect.poll(async () => (await shown(page))?.time ?? 0).toBeCloseTo(7, 0);
+			const english = await playlistEnglish(page);
+			await pick(page, english);
+			// Off it while the fragment at 7 s is on its way.
+			await expect.poll(() => media.asked.includes('/en_1.vtt'), { timeout: 10_000 }).toBe(true);
+			await pick(page, to);
+			await expect
+				.poll(async () => (await shown(page))?.showing ?? [], { timeout: 10_000 })
+				.toEqual([showsThen]);
+			// The fragment held back lands now, with the viewer off it.
+			release();
+			await page.waitForTimeout(2_000);
+			await pick(page, english);
+			await expect
+				.poll(async () => (await shown(page))?.cues ?? [], { timeout: 5_000 })
+				.toEqual(['Playlist English at 6']);
+			await expect.poll(() => painted(page), { timeout: 5_000 }).toEqual(['Playlist English at 6']);
+		} finally {
+			release();
+			await app.close();
+			media.close();
+		}
 	});
-	const media = await mediaServer({ englishFragment: held });
-	const { app, page, profile } = await launch();
-	try {
-		await playing(page, profile, media.origin);
-		await page.evaluate(() => document.querySelector('video')?.pause());
-		// Inside the second fragment (4–8 s), clear of its cue boundaries.
-		await seek(page, 7);
-		await expect.poll(async () => (await shown(page))?.time ?? 0).toBeCloseTo(7, 0);
-		const english = await playlistEnglish(page);
-		await pick(page, english);
-		// Off it while the fragment at 7 s is on its way.
-		await expect.poll(() => media.asked.includes('/en_1.vtt'), { timeout: 10_000 }).toBe(true);
-		await pick(page, 'French');
-		await expect
-			.poll(async () => (await shown(page))?.showing ?? [], { timeout: 10_000 })
-			.toEqual(['sidecar Français']);
-		// The fragment held back lands now, with the viewer off it.
-		release();
-		await page.waitForTimeout(2_000);
-		await pick(page, english);
-		await expect
-			.poll(async () => (await shown(page))?.cues ?? [], { timeout: 5_000 })
-			.toEqual(['Playlist English at 6']);
-		await expect.poll(() => painted(page), { timeout: 5_000 }).toEqual(['Playlist English at 6']);
-	} finally {
-		release();
-		await app.close();
-		media.close();
-	}
-});
+}
