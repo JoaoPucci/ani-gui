@@ -22,7 +22,8 @@ use crate::error::{AniError, Result};
 ///
 /// # Errors
 /// The write's error, unless the tracker answered that the entry is
-/// absent.
+/// absent — or the confirming read's, when the tracker rate-limited it
+/// or refused the bearer.
 pub(crate) async fn update_unless_absent(
     provider: &dyn UserListProvider,
     tokens: &Tokens,
