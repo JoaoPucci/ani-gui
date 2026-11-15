@@ -35,6 +35,8 @@ struct Tracker {
     gone: Mutex<Vec<u32>>,
     /// A write to the first entry removes the second from the tracker.
     removes: Option<(u32, u32)>,
+    /// The status a write to a gone entry is refused with, when not 404.
+    refuses_gone_writes: Option<u16>,
 }
 
 impl Tracker {
@@ -74,6 +76,11 @@ impl Tracker {
 
     fn without(self, gone: &[u32]) -> Self {
         *self.gone.lock().expect("gone") = gone.to_vec();
+        self
+    }
+
+    fn refusing_gone_writes_with(mut self, status: u16) -> Self {
+        self.refuses_gone_writes = Some(status);
         self
     }
 
@@ -122,6 +129,9 @@ impl UserListProvider for Tracker {
         id: ProviderMediaId,
         update: EntryUpdate,
     ) -> crate::error::Result<ListEntry> {
+        if let (Some(status), Err(_)) = (self.refuses_gone_writes, self.answers(id)) {
+            return Err(AniError::Upstream { status });
+        }
         self.answers(id)?;
         self.writes
             .lock()
@@ -757,6 +767,25 @@ async fn a_status_for_a_gone_entry_is_not_written() {
     assert!(push(&state, &tracker, "1", Some(21), update)
         .await
         .is_none());
+    assert!(tracker.writes().is_empty());
+}
+
+#[tokio::test]
+async fn a_status_refused_as_invalid_for_a_gone_entry_is_not_written() {
+    // A status alone is written without a read first, so the tracker
+    // refusing it as invalid is confirmed by reading the entry.
+    let state = state();
+    let tracker = Tracker::with(&[], &[])
+        .without(&[21])
+        .refusing_gone_writes_with(400);
+    let update = EntryUpdate {
+        status: Some(ListStatus::Paused),
+        ..Default::default()
+    };
+    assert!(push(&state, &tracker, "1", Some(21), update)
+        .await
+        .is_none());
+    assert!(tracker.writes().is_empty());
 }
 
 #[tokio::test]

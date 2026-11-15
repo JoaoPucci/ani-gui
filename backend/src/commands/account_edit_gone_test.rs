@@ -280,3 +280,114 @@ async fn anilist_removing_a_media_anilist_no_longer_has_answers_nothing_removed(
     .expect("AniList answered: the media is not there");
     assert!(!removed, "nothing was removed: the route answers 404");
 }
+
+// ─── A write refused without saying why ──────────────────────────────
+// A write about an entry the tracker no longer has need not come back
+// as a 404: a mutation can be refused as invalid (AniList validates
+// `mediaId`). A write refused that way is confirmed with one live read
+// of the entry, and answers as absent only when that read does.
+
+/// AniList refusing the save as invalid (HTTP 400, its validation
+/// envelope), and answering `read` for every other query.
+async fn anilist_refusing_the_save(read: ResponseTemplate) -> MockServer {
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("Viewer"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Viewer":{"id":4242,"name":"shiro","avatar":{"large":null},"statistics":{"anime":{"count":1,"meanScore":0}}}}}"#,
+        ))
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("mutation Save"))
+        .respond_with(ResponseTemplate::new(400).set_body_string(
+            r#"{"errors":[{"message":"validation","status":400,"validation":{"mediaId":["The selected media id is invalid."]}}],"data":{"SaveMediaListEntry":null}}"#,
+        ))
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(read)
+        .mount(&anilist)
+        .await;
+    anilist
+}
+
+#[tokio::test]
+async fn anilist_a_save_refused_as_invalid_for_a_media_anilist_does_not_have_writes_nothing() {
+    let kitsu = kitsu(KITSU_ANILIST).await;
+    let server = anilist_refusing_the_save(
+        ResponseTemplate::new(404)
+            .set_body_string(crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY),
+    )
+    .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let got = set_entry_via(
+        &state,
+        ProviderKind::AniList,
+        &anilist(&server),
+        &tokens(),
+        "13023",
+        watched(3),
+    )
+    .await
+    .expect("AniList answered: the media is not there");
+    assert!(
+        got.is_none(),
+        "a save refused for an absent media is not written"
+    );
+}
+
+#[tokio::test]
+async fn anilist_a_save_refused_as_invalid_for_a_media_anilist_has_still_fails() {
+    let kitsu = kitsu(KITSU_ANILIST).await;
+    let server = anilist_refusing_the_save(
+        ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":{"mediaListEntry":null}}}"#),
+    )
+    .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let err = set_entry_via(
+        &state,
+        ProviderKind::AniList,
+        &anilist(&server),
+        &tokens(),
+        "13023",
+        watched(3),
+    )
+    .await
+    .expect_err("the media is there: the refusal is the answer");
+    assert!(matches!(
+        err,
+        crate::error::AniError::Upstream { status: 400 }
+    ));
+}
+
+#[tokio::test]
+async fn mal_a_save_refused_as_invalid_for_an_anime_mal_does_not_have_writes_nothing() {
+    let kitsu = kitsu(KITSU_MAL).await;
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/users/@me"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"id":4242,"name":"shiro"}"#))
+        .mount(&server)
+        .await;
+    Mock::given(path("/anime/33778/my_list_status"))
+        .respond_with(ResponseTemplate::new(400))
+        .mount(&server)
+        .await;
+    Mock::given(path("/anime/33778"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let got = set_entry_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        &mal(&server),
+        &tokens(),
+        "13023",
+        watched(3),
+    )
+    .await
+    .expect("MAL answered: the anime is not there");
+    assert!(got.is_none());
+}
