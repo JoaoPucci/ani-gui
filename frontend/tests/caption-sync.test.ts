@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type Hls from 'hls.js';
 import { createCaptionSync } from '../src/lib/play/caption-sync';
+import { expectCaptions, noteCaptionChange, showingCaption } from '../src/lib/play/caption-watch';
 import { pickCaptions, plainCaptions } from '../src/lib/play/caption-plain';
 import type { CaptionSyncEvents } from '../src/lib/play/caption-sync-tracks';
 import {
@@ -372,5 +373,60 @@ describe('a quality switch to another subtitle group', () => {
 		await settle();
 		expect(showing(video)).toEqual(['Français/fr']);
 		expect(engine.subtitleTrack).toBe(-1);
+	});
+});
+
+// A track none of the playlist's renditions ever named — the engine's
+// closed captions, a track left from an earlier manifest — is no
+// rendition of a group the engine left: the engine's default, picked
+// again as the manifest loads again, is brought back to it.
+describe('a track that is no rendition, picked', () => {
+	it('stays picked through a manifest loaded again', async () => {
+		const { video, engine, sync } = setup();
+		playlistIn(engine);
+		const cc = video.addTextTrack('captions', 'English CC', 'en');
+		sync.pick(indexOf(video, cc));
+		await settle();
+		engine.manifestLoading();
+		engine.manifestParsed(RENDITIONS);
+		engine.groupArrives();
+		await settle();
+		expect(showing(video)).toEqual(['English CC/en']);
+		expect(engine.subtitleTrack).toBe(-1);
+	});
+});
+
+// With the browser's own controls the page reads a caption change the
+// app did not set as the viewer's pick: the new group's rendition the
+// sync moves to is the app's own setting.
+describe('following a subtitle group change', () => {
+	it('is what the app expects, not a pick of the viewer’s', async () => {
+		const { video, engine, sync } = setup();
+		playlistIn(engine);
+		sync.pick(indexOf(video, engine.textTracks[1]));
+		expectCaptions(video, showingCaption(video.textTracks));
+		await settle();
+		engine.groupChanges([
+			{ name: 'English (CC)', lang: 'en' },
+			{ name: 'Español (CC)', lang: 'es' }
+		]);
+		await settle();
+		expect(showing(video)).toEqual(['Español (CC)/es']);
+		expect(noteCaptionChange(video, video.textTracks)).toBeNull();
+	});
+
+	// The fragment on its way belonged to the group left; its index
+	// names another rendition in the new one.
+	it('lets go of a fragment of the group left', async () => {
+		const { video, engine, sync } = setup();
+		playlistIn(engine);
+		const fr = video.addElement('Français', 'fr');
+		engine.fragmentLoading(0);
+		sync.pick(indexOf(video, fr));
+		engine.groupChanges([{ name: 'English (CC)', lang: 'en' }]);
+		sync.pick('off');
+		await settle();
+		expect(engine.subtitleTrack).toBe(-1);
+		expect(showing(video)).toEqual([]);
 	});
 });
