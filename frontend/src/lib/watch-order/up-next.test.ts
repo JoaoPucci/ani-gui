@@ -149,7 +149,7 @@ describe('finaleCard', () => {
 		expect(finaleCard(jojo, '46598', 'linked', TODAY, 14, null)).not.toBeNull();
 		expect(finaleCard(jojo, '46598', 'linked', TODAY, 12, null)).toBeNull();
 		// The player's reading wins where the two differ.
-		const fresh = { status: 'finished', episodes: 12 };
+		const fresh = { id: '46598', status: 'finished', episodes: 12 };
 		expect(finaleCard(jojo, '46598', 'linked', TODAY, 12, fresh)).not.toBeNull();
 		const airing = { id: '46598', status: 'current', episodes: 14 };
 		expect(finaleCard(jojo, '46598', 'linked', TODAY, 14, airing)).toBeNull();
@@ -224,7 +224,7 @@ describe('finaleCard', () => {
 					const id = franchise.anchor;
 					const r = runOf(franchise);
 					if (r === null || !r.entries.some((e) => e.id === id)) return;
-					const self = { status: 'finished', episodes: 3 };
+					const self = { id, status: 'finished', episodes: 3 };
 					const card = finaleCard({ franchise, rows: [] }, id, order, TODAY, 3, self);
 					const rule = upNextFor(r, id, order, TODAY);
 					expect(card === null).toBe(rule.kind === 'none' || !franchise.complete);
