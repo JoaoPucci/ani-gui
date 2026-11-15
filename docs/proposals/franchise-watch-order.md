@@ -28,8 +28,9 @@ the app does too.
 
 Before the watch-order surfaces, the app knew nothing about how those
 entries connect. Three things followed from that; the strip
-([`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip)) answers the second, and the surfaces still to build answer
-the first and the third:
+([`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip)) answers the second, the player's Up next card
+([`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card)) the first in the player, and the surfaces still to build
+the rest of the first and the third:
 
 1. **A finale is a dead end.** When you finish the last episode of a
    season, the player stops (auto-play halts at the last known
@@ -672,10 +673,9 @@ manual test section, a consistency check) before it merges:
 1. **Watch order strip** (option a): built, with the "You're watching"
    card and the order setting
    ([`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip)).
-2. **Up next at a finale** (option b): the player end card first, then
-   Continue moving to the sequel and the finished entry's card giving
-   way. The card waits for a click, and no provider is asked about the
-   sequel.
+2. **Up next at a finale** (option b): the player end card is built
+   ([`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card)); Continue moving to the sequel and the finished entry's
+   card giving way is not yet.
 3. **Franchise page** (option c), in 0.19.0, reusing the franchise read
    and adding the side stories, films, recaps and other versions
    around it; the strip gains its trailing link to the page here.
@@ -685,12 +685,9 @@ manual test section, a consistency check) before it merges:
 
 **Decided by the maintainer.**
 
-- **No provider check at a finale.** "Up next" names the next entry
-  the relations give, carried or not; the sequel's own show page
-  reports when the provider lacks it, and its strip shows what
-  follows.
-- **No auto-play across entries.** The finale shows the "Up next"
-  card and waits; auto-play stays within one entry.
+- **No provider check at a finale** and **no auto-play across
+  entries**: built, with their reasons, in [`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card). Continue
+  Watching's hand-off asks the provider nothing either.
 - **The franchise page (phase 3) is part of 0.19.0.**
 - **Link order is the default**, with "As released" as an app-wide
   preference in Settings: built, with its reasons, in
