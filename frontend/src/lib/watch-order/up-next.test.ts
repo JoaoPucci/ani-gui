@@ -257,6 +257,32 @@ describe('playerUpNext', () => {
 			)
 		);
 	});
+
+	it("reads another show's reading as no reading at all", () => {
+		fc.assert(
+			fc.property(
+				franchiseArb(),
+				fc.constantFrom('linked' as const, 'released' as const),
+				fc.integer({ min: 1, max: 40 }),
+				fc.constantFrom('finished', 'current', null),
+				fc.option(fc.integer({ min: 1, max: 40 }), { nil: null }),
+				(franchise: FranchiseData, order, episode, status, episodes) => {
+					const data: WatchOrderData = { franchise, rows: [] };
+					const id = franchise.anchor;
+					const other = { id: `${id}-other`, status, episodes };
+					expect(finaleCard(data, id, order, TODAY, episode, other)).toEqual(
+						finaleCard(data, id, order, TODAY, episode, null)
+					);
+					expect(chainEndCard(data, id, order, TODAY, episode, other)).toEqual(
+						chainEndCard(data, id, order, TODAY, episode, null)
+					);
+					expect(playerUpNext(data, id, order, TODAY, episode, other)).toEqual(
+						playerUpNext(data, id, order, TODAY, episode, null)
+					);
+				}
+			)
+		);
+	});
 });
 
 describe('finaleCard on an entry outside the main story', () => {
