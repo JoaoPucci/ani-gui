@@ -34,7 +34,16 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { savePosition } from '../../src/lib/play/watch-position';
 import { rememberAudio } from '../../src/lib/play/audio-choice';
 
-function ref(id: string, title: string, episodeCount: number) {
+import type {
+	AvailabilityResponse,
+	Config,
+	HistoryEntry,
+	HistoryNumber,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
+function ref(id: string, title: string, episodeCount: number): KitsuAnimeRef {
 	return {
 		id,
 		canonical_title: title,
@@ -47,11 +56,15 @@ function ref(id: string, title: string, episodeCount: number) {
 		episode_count: episodeCount,
 		status: 'finished',
 		start_date: '2019-01-01',
-		average_rating: null
+		average_rating: null,
+		end_date: null,
+		subtype: null,
+		age_rating: null,
+		popularity_rank: null
 	};
 }
 
-function config(mode: 'sub' | 'dub') {
+function config(mode: 'sub' | 'dub'): Config {
 	return {
 		locale: 'en',
 		mode,
@@ -66,9 +79,9 @@ function config(mode: 'sub' | 'dub') {
 		auto_skip_op: false,
 		auto_skip_ed: false,
 		use_custom_player_controls: true,
-		auto_update_anicli: false,
 		update_include_prereleases: false,
 		primary_account: '',
+		cache_resolutions: false,
 		watch_order: 'linked'
 	};
 }
@@ -119,39 +132,45 @@ describe('home Continue Watching', () => {
 			// known before any row arrived and prove nothing.
 			http.get(`${API_BASE}/api/settings`, async () => {
 				await settingsHeld;
-				return HttpResponse.json(config('dub'));
+				return HttpResponse.json<Config>(config('dub'));
 			}),
 			http.get(`${API_BASE}/api/history`, () =>
-				HttpResponse.json([{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' }])
+				HttpResponse.json<HistoryEntry[]>([{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' }])
 			),
 			// The row read again before it resumes reads as it did.
 			http.get(`${API_BASE}/api/history/allanime-1/number`, () =>
-				HttpResponse.json({ ep_no: '3' })
+				HttpResponse.json<HistoryNumber | null>({ ep_no: '3' })
 			),
 			http.post(`${API_BASE}/api/kitsu/search`, () =>
-				HttpResponse.json([ref('1', 'Cowboy Bebop', 26)])
+				HttpResponse.json<KitsuAnimeRef[]>([ref('1', 'Cowboy Bebop', 26)])
 			),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { mode?: string };
 				probedModes.push(body.mode ?? '(none)');
-				return HttpResponse.json({ available: true, episode_count: 26, approximate: false });
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: true, episode_count: 26 })
+				);
 			}),
-			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
-			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+				HttpResponse.json<KitsuAnimeRef[]>([])
+			),
+			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 
 			// The rest of what a mounted home route reaches for. Every
 			// one is stubbed so `onUnhandledRequest: 'error'` keeps its
 			// meaning: without them the route still reaches availability,
 			// but by way of its failure fallbacks rather than the
 			// cold-cache resolution this scenario describes.
-			http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
+			http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({})),
 			// Cold caches: no stored the provider→Kitsu mapping and no
 			// remembered title match, so resolution goes through the
 			// Kitsu search above and writes its result back.
-			http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(null)),
-			http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json(null)),
+			http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () =>
+				HttpResponse.json<string | null>(null)
+			),
+			http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json<string | null>(null)),
 			http.put(`${API_BASE}/api/title-match`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([]))
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([]))
 		);
 
 		app = mount(HomePage, { target });
@@ -179,26 +198,34 @@ describe('home Continue Watching', () => {
 	describe('an episode left part-way', () => {
 		function useHomeHandlers() {
 			server.use(
-				http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(config('sub'))),
+				http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(config('sub'))),
 				http.get(`${API_BASE}/api/history`, () =>
-					HttpResponse.json([{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' }])
+					HttpResponse.json<HistoryEntry[]>([
+						{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' }
+					])
 				),
 				http.get(`${API_BASE}/api/history/allanime-1/number`, () =>
-					HttpResponse.json({ ep_no: '3' })
+					HttpResponse.json<HistoryNumber | null>({ ep_no: '3' })
 				),
 				http.post(`${API_BASE}/api/kitsu/search`, () =>
-					HttpResponse.json([ref('1', 'Cowboy Bebop', 26)])
+					HttpResponse.json<KitsuAnimeRef[]>([ref('1', 'Cowboy Bebop', 26)])
 				),
 				http.post(`${API_BASE}/api/availability`, () =>
-					HttpResponse.json({ available: true, episode_count: 26, approximate: false })
+					HttpResponse.json<AvailabilityResponse>(
+						availabilityAnswer({ available: true, episode_count: 26 })
+					)
 				),
-				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
-				http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
-				http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
-				http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(null)),
-				http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json(null)),
+				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+					HttpResponse.json<KitsuAnimeRef[]>([])
+				),
+				http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+				http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({})),
+				http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () =>
+					HttpResponse.json<string | null>(null)
+				),
+				http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json<string | null>(null)),
 				http.put(`${API_BASE}/api/title-match`, () => new HttpResponse(null, { status: 204 })),
-				http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([]))
+				http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([]))
 			);
 		}
 		const cardEpisode = () =>
@@ -253,33 +280,41 @@ describe('home Continue Watching', () => {
 			const probedModes: string[] = [];
 			const playedModes: string[] = [];
 			server.use(
-				http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(config('sub'))),
+				http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(config('sub'))),
 				http.get(`${API_BASE}/api/history`, () =>
-					HttpResponse.json([{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' }])
+					HttpResponse.json<HistoryEntry[]>([
+						{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' }
+					])
 				),
 				http.get(`${API_BASE}/api/history/allanime-1/number`, () =>
-					HttpResponse.json({ ep_no: '3' })
+					HttpResponse.json<HistoryNumber | null>({ ep_no: '3' })
 				),
 				http.post(`${API_BASE}/api/kitsu/search`, () =>
-					HttpResponse.json([ref('1', 'Cowboy Bebop', 26)])
+					HttpResponse.json<KitsuAnimeRef[]>([ref('1', 'Cowboy Bebop', 26)])
 				),
 				http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 					const body = (await request.json()) as { mode?: string };
 					probedModes.push(body.mode ?? '(none)');
-					return HttpResponse.json({ available: true, episode_count: 26, approximate: false });
+					return HttpResponse.json<AvailabilityResponse>(
+						availabilityAnswer({ available: true, episode_count: 26 })
+					);
 				}),
 				http.post(`${API_BASE}/api/play`, async ({ request }) => {
 					const body = (await request.json()) as { mode?: string };
 					playedModes.push(body.mode ?? '(none)');
 					return new HttpResponse(null, { status: 500 });
 				}),
-				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
-				http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
-				http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
-				http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(null)),
-				http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json(null)),
+				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+					HttpResponse.json<KitsuAnimeRef[]>([])
+				),
+				http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+				http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({})),
+				http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () =>
+					HttpResponse.json<string | null>(null)
+				),
+				http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json<string | null>(null)),
 				http.put(`${API_BASE}/api/title-match`, () => new HttpResponse(null, { status: 204 })),
-				http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([]))
+				http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([]))
 			);
 			app = mount(HomePage, { target });
 			await until(() => probedModes.length > 0, 'the row to be probed');

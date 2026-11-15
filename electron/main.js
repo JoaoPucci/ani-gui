@@ -55,6 +55,7 @@ const { backendRelay, redactSecrets } = require("./lib/log-redact.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
 const { appDocumentFrom } = require("./lib/app-document.cjs");
 const { SECRET_CHANNEL, secretKeeper } = require("./lib/secret-handoff.cjs");
+const { backendOrigins, headerlessFilter, withLaunchSecret } = require("./lib/secret-header.cjs");
 const { revealMaximized, splashController, splashVersionLabel } = require("./lib/splash.cjs");
 const { abortWhenLost, appReadyBound, appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
 const {
@@ -502,6 +503,27 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     }),
   );
   secrets.hold(win.webContents, backend.internalSecret);
+  // An <img> or an EventSource cannot set the secret header, and a URL
+  // is no place for the secret (Chromium's disk cache, log lines): the
+  // header is added to those requests here, for the app's own page
+  // alone (lib/secret-header.cjs). One listener per session, so a later
+  // window's registration replaces this one with the same.
+  const origins = backendOrigins(backend);
+  win.webContents.session.webRequest.onBeforeSendHeaders(
+    headerlessFilter(backend),
+    (details, callback) => {
+      let requestHeaders = details.requestHeaders;
+      try {
+        requestHeaders = withLaunchSecret(details, {
+          origins,
+          secretFor: (request) => secrets.forRequest(request),
+        });
+      } catch {
+        // Whatever went wrong, the request goes out as it came.
+      }
+      callback({ requestHeaders });
+    },
+  );
   // Started now, so the renderer's word is not missed however early it
   // comes; the reveal waits for it (bounded) as well as for the splash.
   // While the boot's splash stands in for the window the wait has no

@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-	SECRET_HEADER,
-	SECRET_QUERY,
-	secretHeaders,
-	withSecretHeader,
-	withSecretQuery
-} from './secret';
+import * as secretModule from './secret';
+import { SECRET_HEADER, secretHeaders, withSecretHeader } from './secret';
 
 type WinHolder = { window?: { aniGui?: { internalSecret?: string | null } } };
 const g = globalThis as unknown as WinHolder;
@@ -21,7 +16,6 @@ afterEach(() => {
 describe('the launch secret', () => {
 	it('is sent as the header the backend reads', () => {
 		expect(SECRET_HEADER).toBe('x-ani-gui-internal-secret');
-		expect(SECRET_QUERY).toBe('secret');
 	});
 
 	it('becomes a header when the bridge carries it', () => {
@@ -60,17 +54,14 @@ describe('the launch secret', () => {
 		expect(withSecretHeader()).toBeUndefined();
 	});
 
-	it('joins a URL as its last query parameter', () => {
-		bridge('ca fe');
-		expect(withSecretQuery('http://h/api/image?url=x')).toBe(
-			'http://h/api/image?url=x&secret=ca%20fe'
-		);
-		expect(withSecretQuery('http://h/api/play/stream')).toBe(
-			'http://h/api/play/stream?secret=ca%20fe'
-		);
-	});
-
-	it('leaves a URL as it was without a secret', () => {
-		expect(withSecretQuery('http://h/api/image?url=x')).toBe('http://h/api/image?url=x');
+	// A URL is kept where a header is not (Chromium's disk cache, log
+	// lines): the routes an <img> or EventSource loads get the header
+	// from the main process instead (electron/lib/secret-header.cjs).
+	it('offers no way to put the secret in a URL', () => {
+		expect(Object.keys(secretModule).sort()).toEqual([
+			'SECRET_HEADER',
+			'secretHeaders',
+			'withSecretHeader'
+		]);
 	});
 });

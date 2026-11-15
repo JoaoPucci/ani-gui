@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readPosition, savePosition } from './play/watch-position';
 import { getLocale } from '$lib/paraglide/runtime';
+import type { RefillEnded } from './refill/refill-waiter';
 import {
 	__resetApiBaseForTests,
 	allmangaKitsuMapDelete,
@@ -13,7 +14,6 @@ import {
 	availabilityBatch,
 	availabilityWarm,
 	checkAvailability,
-	createSession,
 	downloadDefaultDir,
 	downloadStream,
 	evictPlayCache,
@@ -50,6 +50,18 @@ import {
 	settingsPut,
 	watchedAtAll,
 	yearFromKitsuRef,
+	type AiringStatus,
+	type AniErrorPayload,
+	type AppInfo,
+	type AvailabilityBatchResponse,
+	type AvailabilityResponse,
+	type HistoryEntry,
+	type HistoryNumber,
+	type HistoryRowByKitsu,
+	type KitsuEpisode,
+	type KitsuSearchPage,
+	type SkipInterval,
+	type Franchise,
 	type Config,
 	type CreateSessionResponse,
 	type DownloadProgress,
@@ -58,22 +70,43 @@ import {
 	type PlayProgress
 } from './api';
 
+import { configAnswer, kitsuRefAnswer } from '$lib/testing/wire-answers';
 const BASE = 'http://127.0.0.1:1234';
 
 /**
- * Build a mock `fetch` that returns one canned JSON response. Status
- * defaults to 200; pass a 4xx/5xx to exercise the error path. The
- * api wrappers call `expect2xx` internally which throws the parsed
- * body when `ok` is false, so the same helper covers both paths.
+ * Build a mock `fetch` that returns one canned JSON response, typed as
+ * the route answers: `mockFetchOnce<KitsuAnimeRef[]>([...])`. Status
+ * defaults to 200; pass a 4xx/5xx with an `AniErrorPayload` to exercise
+ * the error path. The api wrappers call `expect2xx` internally which
+ * throws the parsed body when `ok` is false, so the same helper covers
+ * both paths.
  */
-function mockFetchOnce(payload: unknown, status = 200): ReturnType<typeof vi.fn> {
-	// `text()` mirrors the real Response API — expect2xx now reads
-	// `text()` first to tolerate empty 2xx bodies, so the mock has
-	// to expose both. JSON-stringifying the payload here lets
-	// `text()` -> JSON.parse round-trip the way real fetch does.
-	// `undefined` payload means "no body" (the empty-body case);
-	// literal `null` is a JSON value the backend can return ("null").
-	const text = payload === undefined ? '' : JSON.stringify(payload);
+function mockFetchOnce<T = never>(payload: NoInfer<T>, status = 200): ReturnType<typeof vi.fn> {
+	return mockFetchText(JSON.stringify(payload), status, payload);
+}
+
+/** A mock `fetch` answering `status` with no body, as the routes that
+ *  answer nothing do (204, 202). */
+function mockFetchEmpty(status = 204): ReturnType<typeof vi.fn> {
+	return mockFetchText('', status, undefined);
+}
+
+/** A mock `fetch` for a test about the request, not the answer: its
+ *  body is never read as any route's type, so it is not typed as one. */
+function mockFetchUnread(payload: unknown): ReturnType<typeof vi.fn> {
+	return mockFetchText(JSON.stringify(payload), 200, payload);
+}
+
+/** A stream event's data, typed as the event carries it:
+ *  `wire<PlayProgress>({ kind: 'matched', ... })`. */
+function wire<T = never>(payload: NoInfer<T>): string {
+	return JSON.stringify(payload);
+}
+
+function mockFetchText(text: string, status: number, payload: unknown): ReturnType<typeof vi.fn> {
+	// `text()` mirrors the real Response API — expect2xx reads `text()`
+	// first to tolerate empty 2xx bodies, so the mock has to expose
+	// both; `json()` answers the payload the text was made from.
 	const response = {
 		ok: status >= 200 && status < 300,
 		status,
@@ -102,10 +135,13 @@ function lastCall(mock: ReturnType<typeof vi.fn>): { url: string; init: RequestI
 
 describe('appInfo', () => {
 	it('GETs /api/app-info and returns the parsed body', async () => {
-		const fetchMock = mockFetchOnce({
+		const fetchMock = mockFetchOnce<AppInfo>({
 			version: '0.1.0',
 			history_path: '/home/u/.local/state/ani-gui/history',
-			proxy_base_url: 'http://127.0.0.1:42337'
+			proxy_base_url: 'http://127.0.0.1:42337',
+			removed_legacy_paths: [],
+			retired_provider_sweep: { superseded: [], renumbered: [], numbering_rows: 0, cache_rows: 0 },
+			cache_reclaim: { undeclared_rows: 0, expired_rows: 0 }
 		});
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 
@@ -121,7 +157,7 @@ describe('appInfo', () => {
 
 describe('proxyBaseUrl', () => {
 	it('returns the string the backend hands back', async () => {
-		const fetchMock = mockFetchOnce('http://127.0.0.1:42337');
+		const fetchMock = mockFetchOnce<string>('http://127.0.0.1:42337');
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const url = await proxyBaseUrl();
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/proxy-base-url`);
@@ -131,7 +167,7 @@ describe('proxyBaseUrl', () => {
 
 describe('historyList', () => {
 	it('GETs /api/history and returns the parsed entries', async () => {
-		const fetchMock = mockFetchOnce([
+		const fetchMock = mockFetchOnce<HistoryEntry[]>([
 			{ ep_no: '1', id: 'aaa', title: 'One Piece (1100 episodes)' },
 			{ ep_no: '5', id: 'bbb', title: 'Demon Slayer (26 episodes)' }
 		]);
@@ -146,14 +182,14 @@ describe('historyList', () => {
 	});
 
 	it('returns an empty array when the backend does', async () => {
-		globalThis.fetch = mockFetchOnce([]) as unknown as typeof fetch;
+		globalThis.fetch = mockFetchOnce<HistoryEntry[]>([]) as unknown as typeof fetch;
 		expect(await historyList()).toEqual([]);
 	});
 });
 
 describe('historyClear', () => {
 	it('DELETEs /api/history with no body', async () => {
-		const fetchMock = mockFetchOnce(null, 204);
+		const fetchMock = mockFetchEmpty(204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await historyClear();
 		const { url, init } = lastCall(fetchMock);
@@ -184,14 +220,17 @@ describe('historyClear — kept positions', () => {
 
 	it('forgets every kept position once the history is cleared', async () => {
 		savePosition('42', 3, 612.4, 1420);
-		globalThis.fetch = mockFetchOnce(null, 204) as unknown as typeof fetch;
+		globalThis.fetch = mockFetchEmpty(204) as unknown as typeof fetch;
 		await historyClear();
 		expect(readPosition('42', 3)).toBeNull();
 	});
 
 	it('keeps them when the clear fails', async () => {
 		savePosition('42', 3, 612.4, 1420);
-		globalThis.fetch = mockFetchOnce({ error: 'down' }, 500) as unknown as typeof fetch;
+		globalThis.fetch = mockFetchOnce<AniErrorPayload>(
+			{ kind: 'io', key: 'error.io.generic' },
+			500
+		) as unknown as typeof fetch;
 		await expect(historyClear()).rejects.toBeTruthy();
 		expect(readPosition('42', 3)).toBe(612.4);
 	});
@@ -199,7 +238,7 @@ describe('historyClear — kept positions', () => {
 
 describe('historyDelete', () => {
 	it('DELETEs /api/history/:id with the encoded show id', async () => {
-		const fetchMock = mockFetchOnce(null, 204);
+		const fetchMock = mockFetchEmpty(204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await historyDelete('vDTSJHSpYnrkZnAvG');
 		const { url, init } = lastCall(fetchMock);
@@ -211,7 +250,7 @@ describe('historyDelete', () => {
 		// The provider show_ids in the wild are alphanumeric, but pin the
 		// contract so a future id shape with `/` or `?` doesn't escape
 		// the /api/history/:id path.
-		const fetchMock = mockFetchOnce(null, 204);
+		const fetchMock = mockFetchEmpty(204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await historyDelete('weird/id with spaces');
 		const { url } = lastCall(fetchMock);
@@ -219,51 +258,16 @@ describe('historyDelete', () => {
 	});
 });
 
-describe('createSession', () => {
-	it('POSTs JSON to /api/sessions', async () => {
-		const fetchMock = mockFetchOnce({
-			session_id: '11111111-1111-1111-1111-111111111111',
-			media_url: 'http://127.0.0.1:42337/s/11111111-.../master.m3u8',
-			media_kind: 'hls'
-		});
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-
-		const resp = await createSession({
-			upstream_url: 'https://cdn.example/master.m3u8',
-			referer: 'https://allmanga.to'
-		});
-
-		const { url, init } = lastCall(fetchMock);
-		expect(url).toBe(`${BASE}/api/sessions`);
-		expect(init?.method).toBe('POST');
-		expect(JSON.parse(init?.body as string)).toMatchObject({
-			upstream_url: 'https://cdn.example/master.m3u8',
-			referer: 'https://allmanga.to'
-		});
-		expect(resp.session_id).toBe('11111111-1111-1111-1111-111111111111');
-	});
-
-	it('propagates rejection so callers can render the error', async () => {
-		const fetchMock = mockFetchOnce({ kind: 'parse_failed', detail: 'upstream_url: invalid' }, 400);
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-
-		await expect(
-			createSession({
-				upstream_url: 'not a url',
-				referer: ''
-			})
-		).rejects.toMatchObject({ kind: 'parse_failed' });
-	});
-});
-
 describe('play', () => {
 	it('POSTs the PlayArgs payload to /api/play and returns the session response', async () => {
-		const sessionResponse = {
+		const sessionResponse: CreateSessionResponse = {
 			session_id: 'abc-123',
 			media_url: 'http://127.0.0.1:42337/s/abc-123/master.m3u8',
-			media_kind: 'hls' as const
+			media_kind: 'hls',
+			cache_hit: false,
+			subtitles: []
 		};
-		const fetchMock = mockFetchOnce(sessionResponse);
+		const fetchMock = mockFetchOnce<CreateSessionResponse>(sessionResponse);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const resp = await play({
 			title: 'Cowboy Bebop',
@@ -307,7 +311,7 @@ describe('playExternal', () => {
 	});
 
 	it('POSTs the PlayArgs payload to /api/play/external', async () => {
-		const fetchMock = mockFetchOnce(null, 202);
+		const fetchMock = mockFetchEmpty(202);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await playExternal({
 			title: 'Cowboy Bebop',
@@ -330,7 +334,7 @@ describe('playSyncplay', () => {
 		// Mirror of playExternal: the backend resolves the stream the
 		// same way, then hands the URL to Syncplay instead of mpv.
 		// 202 Accepted on success because the child detaches.
-		const fetchMock = mockFetchOnce(null, 202);
+		const fetchMock = mockFetchEmpty(202);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await playSyncplay({
 			title: 'Cowboy Bebop',
@@ -370,7 +374,7 @@ describe('markWatched', () => {
 	it('POSTs the PlayArgs payload to /api/play/mark-watched', async () => {
 		// Backend writes Continue Watching by looking up the cache row
 		// for this key. 204 No Content on success, idempotent.
-		const fetchMock = mockFetchOnce(null, 204);
+		const fetchMock = mockFetchEmpty(204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await markWatched({
 			title: 'Naruto: Shippuuden',
@@ -393,7 +397,7 @@ describe('evictPlayCache', () => {
 		// 204 No Content is the documented success status for the
 		// eviction endpoint — there's no body to parse, just confirm
 		// the request shape.
-		const fetchMock = mockFetchOnce(null, 204);
+		const fetchMock = mockFetchEmpty(204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await evictPlayCache({
 			title: 'Stone Ocean',
@@ -476,7 +480,7 @@ describe('playStream', () => {
 		expect(es.url).toBe(
 			`${BASE}/api/play/stream?title=One+Piece&episode=1&mode=sub&episode_count=1100&locale=${getLocale()}`
 		);
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await promise;
 	});
 
@@ -506,7 +510,7 @@ describe('playStream', () => {
 				'Jojo no Kimyou na Bouken Part 6: Stone Ocean\nジョジョの奇妙な冒険 ストーンオーシャン'
 		}).toString();
 		expect(es.url).toContain(expectedEncoded);
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await promise;
 	});
 
@@ -519,7 +523,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
 		expect(es.url).toContain('prefetch=1');
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await promise;
 	});
 
@@ -536,7 +540,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
 		expect(new URL(es.url).searchParams.get('version')).toBe('standard');
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await named;
 
 		const unnamed = playStream({ title: 'X', episode: '5', mode: 'sub' }, () => {});
@@ -544,7 +548,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		const plain = FakeEventSource.instances[1];
 		expect(new URL(plain.url).searchParams.has('version')).toBe(false);
-		plain.dispatch('done', JSON.stringify(donePayload()));
+		plain.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await unnamed;
 	});
 
@@ -559,7 +563,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
 		expect(new URL(es.url).searchParams.get('caption')).toBe('es-419');
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await named;
 
 		const unnamed = playStream({ title: 'X', episode: '5', mode: 'sub' }, () => {});
@@ -567,7 +571,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		const plain = FakeEventSource.instances[1];
 		expect(new URL(plain.url).searchParams.has('caption')).toBe(false);
-		plain.dispatch('done', JSON.stringify(donePayload()));
+		plain.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await unnamed;
 	});
 
@@ -579,7 +583,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
 		expect(es.url).not.toContain('prefetch');
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await promise;
 	});
 
@@ -589,7 +593,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
 		expect(es.url).not.toContain('alt_titles');
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await promise;
 	});
 
@@ -599,7 +603,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
 		expect(es.url).toBe(`${BASE}/api/play/stream?title=X&episode=2&mode=dub&locale=${getLocale()}`);
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await promise;
 	});
 
@@ -617,7 +621,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
 		expect(es.url).toContain('subtype=movie');
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await promise;
 	});
 
@@ -635,7 +639,7 @@ describe('playStream', () => {
 		// The guess rides beside it, apart from the page's id.
 		expect(new URL(es.url).searchParams.get('guess_id')).toBe('42');
 		expect(new URL(es.url).searchParams.has('kitsu_id')).toBe(false);
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await promise;
 		const plain = playStream({ title: 'X', episode: '1', mode: 'sub' }, () => {});
 		await Promise.resolve();
@@ -643,7 +647,7 @@ describe('playStream', () => {
 		const es2 = FakeEventSource.instances[1];
 		expect(new URL(es2.url).searchParams.has('guess_row')).toBe(false);
 		expect(new URL(es2.url).searchParams.has('guess_id')).toBe(false);
-		es2.dispatch('done', JSON.stringify(donePayload()));
+		es2.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await plain;
 	});
 
@@ -658,7 +662,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
 		expect(es.url).toContain('kitsu_id=42');
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await promise;
 	});
 
@@ -670,7 +674,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
 		expect(es.url).not.toContain('subtype');
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await promise;
 	});
 
@@ -680,9 +684,9 @@ describe('playStream', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
-		es.dispatch('progress', JSON.stringify({ kind: 'searching', provider: 'hianime' }));
-		es.dispatch('progress', JSON.stringify({ kind: 'matched', title: 'The Show' }));
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('progress', wire<PlayProgress>({ kind: 'searching', provider: 'hianime' }));
+		es.dispatch('progress', wire<PlayProgress>({ kind: 'matched', title: 'The Show' }));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await promise;
 		expect(seen).toEqual([
 			{ kind: 'searching', provider: 'hianime' },
@@ -698,7 +702,7 @@ describe('playStream', () => {
 		const es = FakeEventSource.instances[0];
 		es.dispatch('progress', '{ not json');
 		expect(onProgress).not.toHaveBeenCalled();
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await expect(promise).resolves.toMatchObject({ session_id: 'sid' });
 	});
 
@@ -707,7 +711,7 @@ describe('playStream', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		const resp = await promise;
 		expect(resp.session_id).toBe('sid');
 		expect(es.closed).toBe(true);
@@ -728,8 +732,16 @@ describe('playStream', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
-		es.dispatch('error', JSON.stringify({ kind: 'upstream_403', detail: 'blocked' }));
-		await expect(promise).rejects.toMatchObject({ kind: 'upstream_403' });
+		es.dispatch(
+			'error',
+			wire<AniErrorPayload>({
+				kind: 'upstream',
+				key: 'error.network.upstream',
+				status: 403,
+				detail: 'blocked'
+			})
+		);
+		await expect(promise).rejects.toMatchObject({ kind: 'upstream', status: 403 });
 		expect(es.closed).toBe(true);
 	});
 
@@ -764,11 +776,11 @@ describe('playStream', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		await promise;
 		// Late events should be no-ops once settled. The `settled` guard
 		// in playStream is what stops a second resolve/close cycle.
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<CreateSessionResponse>(donePayload()));
 		es.dispatch('error');
 		// Progress still fires its handler (no settle guard there) — that's
 		// fine: subscribers receive whatever the producer sends. We only
@@ -829,7 +841,7 @@ describe('playStream', () => {
 
 	it('falls back to play() POST when EventSource is unavailable', async () => {
 		delete g.EventSource;
-		const fetchMock = mockFetchOnce(donePayload());
+		const fetchMock = mockFetchOnce<CreateSessionResponse>(donePayload());
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const onProgress = vi.fn();
 		const resp = await playStream({ title: 't', episode: '1', mode: 'sub' }, onProgress);
@@ -984,10 +996,13 @@ describe('apiBase configuration', () => {
 	it('uses window.aniGui.apiBase when present (Electron preload path)', async () => {
 		__resetApiBaseForTests(null);
 		g.window = { aniGui: { apiBase: 'http://127.0.0.1:9999' } };
-		const fetchMock = mockFetchOnce({
+		const fetchMock = mockFetchOnce<AppInfo>({
 			version: '0.0.0',
 			history_path: '/y',
-			proxy_base_url: 'http://127.0.0.1:1'
+			proxy_base_url: 'http://127.0.0.1:1',
+			removed_legacy_paths: [],
+			retired_provider_sweep: { superseded: [], renumbered: [], numbering_rows: 0, cache_rows: 0 },
+			cache_reclaim: { undeclared_rows: 0, expired_rows: 0 }
 		});
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await appInfo();
@@ -1011,10 +1026,12 @@ describe('expect2xx error fallback', () => {
 
 describe('kitsuSearch', () => {
 	it('POSTs the query under the `query` key the backend expects', async () => {
-		const fetchMock = mockFetchOnce([
+		const fetchMock = mockFetchOnce<KitsuAnimeRef[]>([
 			{
 				id: '12',
 				canonical_title: 'One Piece',
+				titles: {},
+				abbreviated_titles: [],
 				slug: 'one-piece',
 				synopsis: 'Long ago…',
 				start_date: '1999-10-20',
@@ -1042,12 +1059,12 @@ describe('kitsuSearch', () => {
 
 describe('kitsuGuessRuledOut', () => {
 	it('POSTs the row and its hits and returns the ids the row rules out', async () => {
-		const fetchMock = mockFetchOnce(['43886']);
+		const fetchMock = mockFetchOnce<string[]>(['43886']);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		const hit = {
+		const hit = kitsuRefAnswer({
 			id: '43886',
 			canonical_title: "Jujutsu Kaisen New Year's Special"
-		} as KitsuAnimeRef;
+		});
 		const ids = await kitsuGuessRuledOut(
 			'Jujutsu Kaisen (TV)',
 			24,
@@ -1071,7 +1088,7 @@ describe('kitsuGuessRuledOut', () => {
 
 describe('kitsuSearchPage', () => {
 	it('POSTs the query and offset to the paged route and returns the page', async () => {
-		const fetchMock = mockFetchOnce({ hits: [], next_offset: 40 });
+		const fetchMock = mockFetchOnce<KitsuSearchPage>({ hits: [], next_offset: 40 });
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const page = await kitsuSearchPage('dragon ball', 20);
 		const { url, init } = lastCall(fetchMock);
@@ -1082,7 +1099,7 @@ describe('kitsuSearchPage', () => {
 	});
 	it('sends the order a sorted search asks Kitsu for', async () => {
 		for (const order of ['year', 'rating'] as const) {
-			const fetchMock = mockFetchOnce({ hits: [], next_offset: null });
+			const fetchMock = mockFetchOnce<KitsuSearchPage>({ hits: [], next_offset: null });
 			globalThis.fetch = fetchMock as unknown as typeof fetch;
 			await kitsuSearchPage('dragon ball', 0, order);
 			const { init } = lastCall(fetchMock);
@@ -1097,9 +1114,11 @@ describe('kitsuSearchPage', () => {
 
 describe('kitsuAnimeDetail', () => {
 	it('GETs /api/kitsu/anime/:id with the id encoded into the path', async () => {
-		const fetchMock = mockFetchOnce({
+		const fetchMock = mockFetchOnce<KitsuAnimeRef>({
 			id: '12',
 			canonical_title: 'One Piece',
+			titles: {},
+			abbreviated_titles: [],
 			slug: null,
 			synopsis: null,
 			start_date: null,
@@ -1122,7 +1141,7 @@ describe('kitsuAnimeDetail', () => {
 
 describe('kitsuAnimeBySlug', () => {
 	it('GETs /api/kitsu/anime-by-slug/:slug', async () => {
-		globalThis.fetch = mockFetchOnce(null) as unknown as typeof fetch;
+		globalThis.fetch = mockFetchOnce<KitsuAnimeRef | null>(null) as unknown as typeof fetch;
 		await kitsuAnimeBySlug('jojo-stone-ocean-part-2');
 		// no further assertion needed — the URL alone proves shape
 	});
@@ -1130,7 +1149,7 @@ describe('kitsuAnimeBySlug', () => {
 
 describe('kitsuTrending', () => {
 	it('GETs /api/kitsu/trending', async () => {
-		const fetchMock = mockFetchOnce([]);
+		const fetchMock = mockFetchOnce<KitsuAnimeRef[]>([]);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await kitsuTrending();
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/trending`);
@@ -1139,7 +1158,7 @@ describe('kitsuTrending', () => {
 
 describe('kitsuTopRated', () => {
 	it('GETs /api/kitsu/top-rated', async () => {
-		const fetchMock = mockFetchOnce([]);
+		const fetchMock = mockFetchOnce<KitsuAnimeRef[]>([]);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await kitsuTopRated();
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/top-rated`);
@@ -1148,7 +1167,7 @@ describe('kitsuTopRated', () => {
 
 describe('kitsuTitleMatchGet', () => {
 	it('GETs /api/title-match with title + cour as query params', async () => {
-		const fetchMock = mockFetchOnce('kitsu-id-42');
+		const fetchMock = mockFetchOnce<string | null>('kitsu-id-42');
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await kitsuTitleMatchGet('Stone Ocean Part 2', 2, 'hianime');
 		const { url } = lastCall(fetchMock);
@@ -1158,14 +1177,14 @@ describe('kitsuTitleMatchGet', () => {
 	});
 
 	it('asks without a provider for a row whose key names none', async () => {
-		const fetchMock = mockFetchOnce(null);
+		const fetchMock = mockFetchOnce<string | null>(null);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await kitsuTitleMatchGet('Stone Ocean Part 2', 2, null);
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/title-match?title=Stone+Ocean+Part+2&cour=2`);
 	});
 
 	it('returns null on cache miss', async () => {
-		globalThis.fetch = mockFetchOnce(null) as unknown as typeof fetch;
+		globalThis.fetch = mockFetchOnce<string | null>(null) as unknown as typeof fetch;
 		const got = await kitsuTitleMatchGet('Whatever', 1, 'hianime');
 		expect(got).toBeNull();
 	});
@@ -1173,7 +1192,7 @@ describe('kitsuTitleMatchGet', () => {
 
 describe('the title match of a row that names a year', () => {
 	it('asks for the guess its year keyed', async () => {
-		const fetchMock = mockFetchOnce('7730');
+		const fetchMock = mockFetchOnce<string | null>('7730');
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await kitsuTitleMatchGet("JoJo's Bizarre Adventure", 1, 'hianime', 2000);
 		const url = new URL(lastCall(fetchMock).url);
@@ -1181,7 +1200,7 @@ describe('the title match of a row that names a year', () => {
 	});
 
 	it('stores the guess under its year', async () => {
-		const fetchMock = mockFetchOnce(null, 204);
+		const fetchMock = mockFetchEmpty(204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await kitsuTitleMatchPut("JoJo's Bizarre Adventure", 1, '7730', 'hianime', 2000);
 		expect(JSON.parse(lastCall(fetchMock).init?.body as string)).toEqual({
@@ -1194,7 +1213,7 @@ describe('the title match of a row that names a year', () => {
 	});
 
 	it('names no year for a row that names none', async () => {
-		const fetchMock = mockFetchOnce(null);
+		const fetchMock = mockFetchOnce<string | null>(null);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await kitsuTitleMatchGet('Demon Slayer', 1, 'hianime', null);
 		expect(new URL(lastCall(fetchMock).url).searchParams.has('year')).toBe(false);
@@ -1203,7 +1222,7 @@ describe('the title match of a row that names a year', () => {
 
 describe('kitsuTitleMatchPut', () => {
 	it('PUTs the JSON body the backend expects (kitsu_id snake_case)', async () => {
-		const fetchMock = mockFetchOnce(null, 204);
+		const fetchMock = mockFetchEmpty(204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await kitsuTitleMatchPut('Demon Slayer', 1, 'kitsu-x', 'hianime');
 		const { url, init } = lastCall(fetchMock);
@@ -1221,7 +1240,7 @@ describe('kitsuTitleMatchPut', () => {
 
 describe('watchedAtAll', () => {
 	it('GETs /api/watched-at and returns the parsed map', async () => {
-		const fetchMock = mockFetchOnce({ 'show-a': 1_800_000_000_000 });
+		const fetchMock = mockFetchOnce<Record<string, number>>({ 'show-a': 1_800_000_000_000 });
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await watchedAtAll();
 		const { url } = lastCall(fetchMock);
@@ -1230,7 +1249,7 @@ describe('watchedAtAll', () => {
 	});
 
 	it('returns an empty object when nothing is stamped', async () => {
-		globalThis.fetch = mockFetchOnce({}) as unknown as typeof fetch;
+		globalThis.fetch = mockFetchOnce<Record<string, number>>({}) as unknown as typeof fetch;
 		const got = await watchedAtAll();
 		expect(got).toEqual({});
 	});
@@ -1238,7 +1257,7 @@ describe('watchedAtAll', () => {
 
 describe('allmangaKitsuMapGet', () => {
 	it('GETs /api/allmanga-kitsu-map/:show_id with the id URL-encoded', async () => {
-		const fetchMock = mockFetchOnce('11061');
+		const fetchMock = mockFetchOnce<string | null>('11061');
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await allmangaKitsuMapGet('vDTSJHSpYnrkZnAvG');
 		const { url } = lastCall(fetchMock);
@@ -1247,7 +1266,7 @@ describe('allmangaKitsuMapGet', () => {
 	});
 
 	it('returns null when the backend has no mapping for the show_id', async () => {
-		globalThis.fetch = mockFetchOnce(null) as unknown as typeof fetch;
+		globalThis.fetch = mockFetchOnce<string | null>(null) as unknown as typeof fetch;
 		const got = await allmangaKitsuMapGet('never-played');
 		expect(got).toBeNull();
 	});
@@ -1256,7 +1275,7 @@ describe('allmangaKitsuMapGet', () => {
 		// Defensive — the provider's ids are alphanum today, but the
 		// endpoint shape commits to encodeURIComponent so future
 		// id-format changes don't crash with double-slash splits.
-		const fetchMock = mockFetchOnce(null);
+		const fetchMock = mockFetchOnce<string | null>(null);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await allmangaKitsuMapGet('weird/id with spaces');
 		const { url } = lastCall(fetchMock);
@@ -1266,7 +1285,7 @@ describe('allmangaKitsuMapGet', () => {
 
 describe('allmangaKitsuMapPlayed', () => {
 	it('GETs /api/allmanga-kitsu-map/:show_id/played with the id URL-encoded', async () => {
-		const fetchMock = mockFetchOnce('49877');
+		const fetchMock = mockFetchOnce<string | null>('49877');
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await allmangaKitsuMapPlayed('hianime:seitokai/10497');
 		const { url } = lastCall(fetchMock);
@@ -1278,7 +1297,7 @@ describe('allmangaKitsuMapPlayed', () => {
 
 describe('allmangaKitsuMapDelete', () => {
 	it('DELETEs /api/allmanga-kitsu-map/:show_id with the id URL-encoded', async () => {
-		const fetchMock = mockFetchOnce(null);
+		const fetchMock = mockFetchEmpty(204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await allmangaKitsuMapDelete('D5ksnsKtYAzzFXeSp');
 		const { url, init } = lastCall(fetchMock);
@@ -1287,7 +1306,7 @@ describe('allmangaKitsuMapDelete', () => {
 	});
 
 	it('names the judged id as kitsu_id when one is given', async () => {
-		const fetchMock = mockFetchOnce(null);
+		const fetchMock = mockFetchEmpty(204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await allmangaKitsuMapDelete('hianime:x-1', '47328');
 		const { url, init } = lastCall(fetchMock);
@@ -1298,20 +1317,32 @@ describe('allmangaKitsuMapDelete', () => {
 
 describe('kitsuEpisodes', () => {
 	it('GETs /api/kitsu/episodes/:anime_id with page=1 by default', async () => {
-		const fetchMock = mockFetchOnce([]);
+		const fetchMock = mockFetchOnce<KitsuEpisode[]>([]);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await kitsuEpisodes('12');
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/episodes/12?page=1`);
 	});
 	it('passes the explicit page through', async () => {
-		const fetchMock = mockFetchOnce([]);
+		const fetchMock = mockFetchOnce<KitsuEpisode[]>([]);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await kitsuEpisodes('12', 3);
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/episodes/12?page=3`);
 	});
 	it('fetches the page once more when its held-back thumbnails land', async () => {
-		const filled = [{ id: 'e1', number: 1, thumbnail: { original: 'https://x/1.jpg' } }];
-		const fetchMock = refillingFetch([], filled, true);
+		const filled: KitsuEpisode[] = [
+			{
+				id: 'e1',
+				canonical_title: null,
+				season_number: null,
+				number: 1,
+				relative_number: null,
+				length: null,
+				synopsis: null,
+				airdate: null,
+				thumbnail: { original: 'https://x/1.jpg' }
+			}
+		];
+		const fetchMock = refillingFetch<KitsuEpisode[]>([], filled, true);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const onRefill = vi.fn();
 		const eps = await kitsuEpisodes('12', 2, { refresh: true, onRefill });
@@ -1327,7 +1358,7 @@ describe('kitsuEpisodes', () => {
 		expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({ tickets: [7] });
 	});
 	it('does not fetch again when the refill did not land', async () => {
-		const fetchMock = refillingFetch([], [], false);
+		const fetchMock = refillingFetch<KitsuEpisode[]>([], [], false);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const onRefill = vi.fn();
 		await kitsuEpisodes('12', 1, { onRefill });
@@ -1339,13 +1370,15 @@ describe('kitsuEpisodes', () => {
 });
 
 /** A backend whose first read carries refill ticket 7, whose wait
- *  answers it `landed`, and whose next read answers `then`. */
-function refillingFetch(first: unknown, then: unknown, landed: boolean) {
+ *  answers it `landed`, and whose next read answers `then`; both reads
+ *  answer as the route's type `T`. */
+function refillingFetch<T = never>(first: NoInfer<T>, then: NoInfer<T>, landed: boolean) {
 	let reads = 0;
 	return vi.fn(async (url: string, init?: RequestInit) => {
 		void init;
 		const isWait = url.endsWith('/api/refills/wait');
-		const payload = isWait ? [{ ticket: 7, landed }] : reads++ === 0 ? first : then;
+		const ended: RefillEnded[] = [{ ticket: 7, landed }];
+		const payload = isWait ? ended : reads++ === 0 ? first : then;
 		const header = !isWait && reads === 1 ? '7' : null;
 		return {
 			ok: true,
@@ -1377,7 +1410,9 @@ function ticketedFetch(tickets: number[]) {
 		}
 		const isWait = url.endsWith('/api/refills/wait');
 		const header = isWait ? null : (tickets[reads++]?.toString() ?? null);
-		const payload = isWait ? [{ ticket: tickets[0], landed: true }] : [];
+		const ended: RefillEnded[] = [{ ticket: tickets[0], landed: true }];
+		const read: KitsuEpisode[] = [];
+		const payload = isWait ? ended : read;
 		return {
 			ok: true,
 			status: 200,
@@ -1436,12 +1471,29 @@ describe('refillsRelease', () => {
 
 describe('kitsuAnimeDetail refill', () => {
 	it('hands the detail fetched once more after a held-back banner lands', async () => {
-		const fresh = { id: '12', cover_image: { original: 'https://al/b.jpg' } };
-		globalThis.fetch = refillingFetch(
-			{ id: '12', cover_image: null },
-			fresh,
-			true
-		) as unknown as typeof fetch;
+		const held: KitsuAnimeRef = {
+			id: '12',
+			canonical_title: 'One Piece',
+			titles: {},
+			abbreviated_titles: [],
+			slug: null,
+			synopsis: null,
+			start_date: null,
+			end_date: null,
+			episode_count: null,
+			average_rating: null,
+			subtype: null,
+			status: null,
+			age_rating: null,
+			popularity_rank: null,
+			poster_image: null,
+			cover_image: null
+		};
+		const fresh: KitsuAnimeRef = {
+			...held,
+			cover_image: { tiny: null, small: null, large: null, original: 'https://al/b.jpg' }
+		};
+		globalThis.fetch = refillingFetch<KitsuAnimeRef>(held, fresh, true) as unknown as typeof fetch;
 		const onRefill = vi.fn();
 		await kitsuAnimeDetail('12', { onRefill });
 		await vi.waitFor(() => expect(onRefill).toHaveBeenCalledWith(fresh));
@@ -1469,7 +1521,7 @@ describe('settingsGet', () => {
 			primary_account: '',
 			watch_order: 'linked'
 		};
-		const fetchMock = mockFetchOnce(cfg);
+		const fetchMock = mockFetchOnce<Config>(cfg);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await settingsGet();
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/settings`);
@@ -1498,7 +1550,7 @@ describe('settingsPut', () => {
 			primary_account: 'mal',
 			watch_order: 'linked'
 		};
-		const fetchMock = mockFetchOnce(null, 204);
+		const fetchMock = mockFetchEmpty(204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await settingsPut(cfg);
 		const { url, init } = lastCall(fetchMock);
@@ -1510,7 +1562,7 @@ describe('settingsPut', () => {
 
 describe('metaCacheClear', () => {
 	it('DELETEs /api/cache', async () => {
-		const fetchMock = mockFetchOnce(null, 204);
+		const fetchMock = mockFetchEmpty(204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await metaCacheClear();
 		const { url, init } = lastCall(fetchMock);
@@ -1521,7 +1573,7 @@ describe('metaCacheClear', () => {
 
 describe('imageCacheClear', () => {
 	it('DELETEs /api/cache/images', async () => {
-		const fetchMock = mockFetchOnce(null, 204);
+		const fetchMock = mockFetchEmpty(204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await imageCacheClear();
 		const { url, init } = lastCall(fetchMock);
@@ -1582,7 +1634,7 @@ describe('apiBase resolution', () => {
 	it('uses window.aniGui.apiBase when available (Electron preload path)', async () => {
 		__resetApiBaseForTests(null as unknown as string);
 		g.window = { aniGui: { apiBase: 'http://127.0.0.1:99999' } };
-		const fetchMock = mockFetchOnce({ ok: true });
+		const fetchMock = mockFetchOnce<string>('http://127.0.0.1:43210');
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await proxyBaseUrl();
 		expect(lastCall(fetchMock).url).toBe('http://127.0.0.1:99999/api/proxy-base-url');
@@ -1597,7 +1649,7 @@ describe('apiBase resolution', () => {
 		delete g.window;
 		vi.stubEnv('VITE_ANI_GUI_API_BASE', 'http://127.0.0.1:55555');
 		try {
-			const fetchMock = mockFetchOnce({ ok: true });
+			const fetchMock = mockFetchOnce<string>('http://127.0.0.1:43210');
 			globalThis.fetch = fetchMock as unknown as typeof fetch;
 			await proxyBaseUrl();
 			expect(lastCall(fetchMock).url).toBe('http://127.0.0.1:55555/api/proxy-base-url');
@@ -1632,7 +1684,7 @@ describe('apiBase resolution', () => {
 
 describe('historyNumber', () => {
 	it('GETs /api/history/<id>/number and returns what the row reads as', async () => {
-		const fetchMock = mockFetchOnce({ ep_no: '12.5', former_ep_no: '24.5' });
+		const fetchMock = mockFetchOnce<HistoryNumber | null>({ ep_no: '12.5', former_ep_no: '24.5' });
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await historyNumber('hianime:show-4');
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/history/hianime%3Ashow-4/number`);
@@ -1642,13 +1694,14 @@ describe('historyNumber', () => {
 
 describe('historyByKitsu', () => {
 	it('GETs /api/history/by-kitsu/<id> and returns the parsed entry', async () => {
-		const entry = {
-			showId: 'allmanga-1',
+		const entry: HistoryRowByKitsu = {
+			ep_no: '1100',
+			id: 'allmanga-1',
 			title: 'One Piece',
-			lastEpisode: 1100,
-			lastWatchedAt: 12345
+			watched_at: 12345,
+			kitsu_id: 'kid-7442'
 		};
-		const fetchMock = mockFetchOnce(entry);
+		const fetchMock = mockFetchOnce<HistoryRowByKitsu | null>(entry);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await historyByKitsu('kid-7442');
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/history/by-kitsu/kid-7442`);
@@ -1656,7 +1709,7 @@ describe('historyByKitsu', () => {
 	});
 
 	it('returns null when the backend has no row for the id', async () => {
-		const fetchMock = mockFetchOnce(null);
+		const fetchMock = mockFetchOnce<HistoryRowByKitsu | null>(null);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		expect(await historyByKitsu('kid-unknown')).toBeNull();
 	});
@@ -1668,7 +1721,13 @@ describe('checkAvailability / availabilityBatch / availabilityWarm', () => {
 		// and download use, but only if the caller sends the subtype:
 		// a probe without it lets a Movie/Special/OVA collision cache
 		// the wrong candidate's availability and cap.
-		const fetchMock = mockFetchOnce({ available: true, episode_count: 1, extra_episodes: [] });
+		const fetchMock = mockFetchOnce<AvailabilityResponse>({
+			available: true,
+			episode_count: 1,
+			extra_episodes: [],
+			episode_count_approximate: false,
+			provider: 'hianime'
+		});
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await checkAvailability({
 			title: 'X',
@@ -1685,23 +1744,36 @@ describe('checkAvailability / availabilityBatch / availabilityWarm', () => {
 		// Two providers means "available" needs an owner: the backend
 		// names it in the identifier the renderer uses, and the
 		// wrapper hands it through untouched.
-		const fetchMock = mockFetchOnce({
+		const fetchMock = mockFetchOnce<AvailabilityResponse>({
 			available: true,
 			episode_count: 12,
 			extra_episodes: [],
+			episode_count_approximate: false,
 			provider: 'hianime'
 		});
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await checkAvailability({ title: 'X', mode: 'sub', kitsu_id: 'kid-1' });
 		expect(got.provider).toBe('hianime');
-		const legacy = mockFetchOnce({ available: true, episode_count: 12, extra_episodes: [] });
+		const legacy = mockFetchOnce<AvailabilityResponse>({
+			available: true,
+			episode_count: 12,
+			extra_episodes: [],
+			episode_count_approximate: false,
+			provider: null
+		});
 		globalThis.fetch = legacy as unknown as typeof fetch;
 		const before = await checkAvailability({ title: 'X', mode: 'sub', kitsu_id: 'kid-1' });
-		expect(before.provider).toBeUndefined();
+		expect(before.provider).toBeNull();
 	});
 
 	it('checkAvailability POSTs the args to /api/availability', async () => {
-		const fetchMock = mockFetchOnce({ available: true, episode_count: 12, extra_episodes: [] });
+		const fetchMock = mockFetchOnce<AvailabilityResponse>({
+			available: true,
+			episode_count: 12,
+			extra_episodes: [],
+			episode_count_approximate: false,
+			provider: 'hianime'
+		});
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await checkAvailability({
 			title: 'Demon Slayer',
@@ -1727,7 +1799,10 @@ describe('checkAvailability / availabilityBatch / availabilityWarm', () => {
 	});
 
 	it('availabilityBatch POSTs ids + mode to /api/availability/batch', async () => {
-		const fetchMock = mockFetchOnce({ cached: { 'kid-1': true, 'kid-2': false } });
+		const fetchMock = mockFetchOnce<AvailabilityBatchResponse>({
+			cached: { 'kid-1': true, 'kid-2': false },
+			playable_episode_counts: {}
+		});
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await availabilityBatch(['kid-1', 'kid-2'], 'dub');
 		const { url, init } = lastCall(fetchMock);
@@ -1741,9 +1816,9 @@ describe('checkAvailability / availabilityBatch / availabilityWarm', () => {
 	});
 
 	it('availabilityWarm POSTs the items list and resolves to undefined', async () => {
-		// The backend can return any body it likes (the warm endpoint
-		// is fire-and-forget); the wrapper discards it.
-		const fetchMock = mockFetchOnce({ ignored: 'whatever' });
+		// The backend answers 202 with no body (the warm endpoint is
+		// fire-and-forget).
+		const fetchMock = mockFetchEmpty(202);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const items = [{ title: 'A', mode: 'sub' }];
 		const got = await availabilityWarm(items);
@@ -1758,7 +1833,7 @@ describe('checkAvailability / availabilityBatch / availabilityWarm', () => {
 describe('kitsuTrendingAnilist', () => {
 	it('GETs /api/kitsu/trending-anilist and returns the parsed list', async () => {
 		const list: KitsuAnimeRef[] = [];
-		const fetchMock = mockFetchOnce(list);
+		const fetchMock = mockFetchOnce<KitsuAnimeRef[]>(list);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await kitsuTrendingAnilist();
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/trending-anilist`);
@@ -1772,7 +1847,7 @@ describe('kitsuByMalIds', () => {
 			aniGui: { apiBase: BASE, internalSecret: 'cafebabe' }
 		};
 		const list: KitsuAnimeRef[] = [];
-		const fetchMock = mockFetchOnce(list);
+		const fetchMock = mockFetchOnce<KitsuAnimeRef[]>(list);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await kitsuByMalIds([11061, 21]);
 		const call = lastCall(fetchMock);
@@ -1791,7 +1866,7 @@ describe('kitsuByMalIds', () => {
 		// rather than silent success.
 		(globalThis as { window?: unknown }).window = { aniGui: { apiBase: BASE } };
 		const list: KitsuAnimeRef[] = [];
-		const fetchMock = mockFetchOnce(list);
+		const fetchMock = mockFetchOnce<KitsuAnimeRef[]>(list);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await kitsuByMalIds([11061]);
 		const headers = lastCall(fetchMock).init!.headers as Record<string, string>;
@@ -1802,7 +1877,7 @@ describe('kitsuByMalIds', () => {
 		// Watch Later rail can call this with an empty merged list
 		// (both providers connected but no Plan-to-Watch entries) —
 		// we must not POST an empty batch the backend would just echo.
-		const fetchMock = mockFetchOnce([] as KitsuAnimeRef[]);
+		const fetchMock = mockFetchOnce<KitsuAnimeRef[]>([] as KitsuAnimeRef[]);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await kitsuByMalIds([]);
 		expect(fetchMock).not.toHaveBeenCalled();
@@ -1816,7 +1891,7 @@ describe('aniskipGet', () => {
 		// half-episode tags ("1061.5") contain a dot that path
 		// matchers would otherwise treat as a separator.
 		const intervals = [{ skip_type: 'op', start_time: 0, end_time: 88 }];
-		const fetchMock = mockFetchOnce(intervals);
+		const fetchMock = mockFetchOnce<SkipInterval[]>(intervals);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await aniskipGet('kid 7442', '1061.5', 1417.7);
 		const { url } = lastCall(fetchMock);
@@ -1827,7 +1902,7 @@ describe('aniskipGet', () => {
 	it('returns an empty list when aniskip has no skip times', async () => {
 		// Backend collapses 404 / found:false / unmapped MAL into
 		// `[]` — the wrapper just trusts the body shape.
-		const fetchMock = mockFetchOnce([]);
+		const fetchMock = mockFetchOnce<SkipInterval[]>([]);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		expect(await aniskipGet('kid-1', '1', 1200)).toEqual([]);
 	});
@@ -1835,8 +1910,13 @@ describe('aniskipGet', () => {
 
 describe('airingGet', () => {
 	it('GETs /api/kitsu/airing/<kitsuId> and returns the status', async () => {
-		const status = { aired: 2, next_episode: 3, next_airing_at: 1784215800 };
-		const fetchMock = mockFetchOnce(status);
+		const status: AiringStatus = {
+			aired: 2,
+			next_episode: 3,
+			next_airing_at: 1784215800,
+			upcoming: []
+		};
+		const fetchMock = mockFetchOnce<AiringStatus>(status);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await airingGet('kid 50551');
 		const { url } = lastCall(fetchMock);
@@ -1847,7 +1927,7 @@ describe('airingGet', () => {
 
 describe('kitsuFranchise', () => {
 	it('GETs /api/kitsu/franchise/<kitsuId> and returns the franchise', async () => {
-		const franchise = {
+		const franchise: Franchise = {
 			anchor: '7730',
 			name: 'JoJo no Kimyou na Bouken',
 			name_from: '610',
@@ -1860,7 +1940,7 @@ describe('kitsuFranchise', () => {
 			parents: {},
 			complete: true
 		};
-		const fetchMock = mockFetchOnce(franchise);
+		const fetchMock = mockFetchOnce<Franchise>(franchise);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await kitsuFranchise('kid 7730');
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/franchise/kid%207730`);
@@ -1870,8 +1950,8 @@ describe('kitsuFranchise', () => {
 
 describe('kitsuResolveAllmangaShowId', () => {
 	it('GETs /api/kitsu/resolve-allmanga/<showId> and returns the Kitsu ref', async () => {
-		const ref = { id: 'kid-1', canonical_title: 'One Piece' } as unknown as KitsuAnimeRef;
-		const fetchMock = mockFetchOnce(ref);
+		const ref = kitsuRefAnswer({ id: 'kid-1', canonical_title: 'One Piece' });
+		const fetchMock = mockFetchOnce<KitsuAnimeRef | null>(ref);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await kitsuResolveAllmangaShowId('1P');
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/resolve-allmanga/1P`);
@@ -1882,15 +1962,15 @@ describe('kitsuResolveAllmangaShowId', () => {
 		// The backend deserializes bypass_cache into a Rust bool; axum's query
 		// parser accepts "true"/"false" but rejects "1", which would 400 and
 		// silently null out the stub fallback (1P after cache clear).
-		const ref = { id: 'kid-1', canonical_title: 'One Piece' } as unknown as KitsuAnimeRef;
-		const fetchMock = mockFetchOnce(ref);
+		const ref = kitsuRefAnswer({ id: 'kid-1', canonical_title: 'One Piece' });
+		const fetchMock = mockFetchOnce<KitsuAnimeRef | null>(ref);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await kitsuResolveAllmangaShowId('1P', true);
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/resolve-allmanga/1P?bypass_cache=true`);
 	});
 
 	it('returns null when no Kitsu match exists', async () => {
-		const fetchMock = mockFetchOnce(null);
+		const fetchMock = mockFetchOnce<KitsuAnimeRef | null>(null);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		expect(await kitsuResolveAllmangaShowId('garbage')).toBeNull();
 	});
@@ -1898,7 +1978,7 @@ describe('kitsuResolveAllmangaShowId', () => {
 
 describe('downloadDefaultDir', () => {
 	it('GETs /api/download/default-dir and returns the path string', async () => {
-		const fetchMock = mockFetchOnce('/home/user/Videos/Anime');
+		const fetchMock = mockFetchOnce<string | null>('/home/user/Videos/Anime');
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await downloadDefaultDir();
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/download/default-dir`);
@@ -1908,7 +1988,7 @@ describe('downloadDefaultDir', () => {
 	it('returns null when neither $XDG_DOWNLOAD_DIR nor $HOME is available', async () => {
 		// Backend emits literal `null` JSON; the modal then prompts
 		// the user to pick a path explicitly.
-		const fetchMock = mockFetchOnce(null);
+		const fetchMock = mockFetchOnce<string | null>(null);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		expect(await downloadDefaultDir()).toBeNull();
 	});
@@ -1977,7 +2057,7 @@ describe('downloadStream', () => {
 		expect(es.url).toContain('quality=1080');
 		expect(es.url).toContain('kitsu_id=kid-9');
 		expect(es.url).toContain('download_dir=%2Ftmp%2Fdl');
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<DownloadResponse>(donePayload()));
 		await promise;
 	});
 
@@ -1990,7 +2070,7 @@ describe('downloadStream', () => {
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
 		expect(new URL(es.url).searchParams.get('version')).toBe('uncensored');
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<DownloadResponse>(donePayload()));
 		await named;
 
 		const unnamed = downloadStream({ title: 'X', episode: '1', mode: 'sub' }, () => {});
@@ -1998,7 +2078,7 @@ describe('downloadStream', () => {
 		await Promise.resolve();
 		const plain = FakeEventSource.instances[1];
 		expect(new URL(plain.url).searchParams.has('version')).toBe(false);
-		plain.dispatch('done', JSON.stringify(donePayload()));
+		plain.dispatch('done', wire<DownloadResponse>(donePayload()));
 		await unnamed;
 	});
 
@@ -2014,7 +2094,7 @@ describe('downloadStream', () => {
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
 		expect(es.url).toContain('subtype=movie');
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<DownloadResponse>(donePayload()));
 		await promise;
 	});
 
@@ -2024,9 +2104,9 @@ describe('downloadStream', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
-		es.dispatch('progress', JSON.stringify({ line: '[download] 50%' }));
-		es.dispatch('progress', JSON.stringify({ line: '[download] 100%' }));
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('progress', wire<DownloadProgress>({ line: '[download] 50%' }));
+		es.dispatch('progress', wire<DownloadProgress>({ line: '[download] 100%' }));
+		es.dispatch('done', wire<DownloadResponse>(donePayload()));
 		await promise;
 		expect(onProgress).toHaveBeenCalledTimes(2);
 		expect(onProgress.mock.calls[0][0]).toEqual({ line: '[download] 50%' });
@@ -2041,7 +2121,7 @@ describe('downloadStream', () => {
 		// Garbage payload — the stream stays open, the call still
 		// resolves on the eventual `done`.
 		es.dispatch('progress', 'not-json');
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<DownloadResponse>(donePayload()));
 		await promise;
 		expect(onProgress).not.toHaveBeenCalled();
 	});
@@ -2051,8 +2131,13 @@ describe('downloadStream', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
-		es.dispatch('error', JSON.stringify({ kind: 'scraper', detail: 'no_results' }));
-		await expect(promise).rejects.toEqual({ kind: 'scraper', detail: 'no_results' });
+		const failure: AniErrorPayload = {
+			kind: 'scraper',
+			key: 'error.download.tool_failed',
+			detail: 'no_results'
+		};
+		es.dispatch('error', wire<AniErrorPayload>(failure));
+		await expect(promise).rejects.toEqual(failure);
 		expect(es.closed).toBe(true);
 	});
 
@@ -2119,7 +2204,7 @@ describe('downloadStream', () => {
 		await expect(promise).rejects.toThrow(/aborted/);
 		// Late `done` event — must not crash, must not flip the
 		// already-rejected promise's state.
-		expect(() => es.dispatch('done', JSON.stringify(donePayload()))).not.toThrow();
+		expect(() => es.dispatch('done', wire<DownloadResponse>(donePayload()))).not.toThrow();
 	});
 
 	it('rejects synchronously when EventSource is unavailable', async () => {
@@ -2151,7 +2236,7 @@ describe('downloadStream', () => {
 			alt_titles: 'Jojo Part 6\nストーンオーシャン'
 		}).toString();
 		expect(es.url).toContain(expectedAlt);
-		es.dispatch('done', JSON.stringify(donePayload()));
+		es.dispatch('done', wire<DownloadResponse>(donePayload()));
 		await promise;
 	});
 
@@ -2209,7 +2294,7 @@ describe('reads a page can cancel', () => {
 	];
 
 	it.each(reads)('%s hands its signal to the request', async (_name, read) => {
-		const fetchMock = mockFetchOnce([]);
+		const fetchMock = mockFetchUnread([]);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const visit = new AbortController();
 		await read(visit.signal);
@@ -2217,7 +2302,7 @@ describe('reads a page can cancel', () => {
 	});
 
 	it('a GET asked without a signal sends no request options, as before', async () => {
-		const fetchMock = mockFetchOnce([]);
+		const fetchMock = mockFetchOnce<KitsuAnimeRef[]>([]);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await kitsuTopRated();
 		expect(lastCall(fetchMock).init).toBeUndefined();
@@ -2272,45 +2357,55 @@ describe('the launch secret reaches every request to the API', () => {
 		['a GET', () => settingsGet()],
 		['a GET with a signal', () => kitsuTrending({ signal: new AbortController().signal })],
 		['a GET that waits on refills', () => kitsuAnimeDetail('7')],
-		['a POST', () => createSession({ upstream_url: 'https://e.example/m.m3u8', referer: '' })],
-		['a PUT', () => settingsPut({} as Config)],
+		['a POST', () => kitsuSearch('Frieren')],
+		['a PUT', () => settingsPut(configAnswer({}))],
 		['a DELETE', () => historyClear()],
 		['the MAL bridge', () => kitsuByMalIds([1])]
 	];
 
 	it.each(calls)('%s carries it as a header', async (_name, call) => {
-		const fetchMock = mockFetchOnce([]);
+		const fetchMock = mockFetchUnread([]);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await call().catch(() => {});
 		expect(headersOf(lastCall(fetchMock).init)['x-ani-gui-internal-secret']).toBe(SECRET);
 	});
 
 	it('a POST keeps its content type beside it', async () => {
-		const fetchMock = mockFetchOnce({ session_id: 's' });
+		const fetchMock = mockFetchOnce<KitsuAnimeRef[]>([]);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		await createSession({ upstream_url: 'https://e.example/m.m3u8', referer: '' });
+		await kitsuSearch('Frieren');
 		expect(headersOf(lastCall(fetchMock).init)['content-type']).toBe('application/json');
 	});
 
-	it('an <img> URL carries it in the query', () => {
-		expect(imageProxyUrl('https://media.kitsu.app/a.jpg')).toBe(
-			`${BASE}/api/image?url=${encodeURIComponent('https://media.kitsu.app/a.jpg')}&secret=${SECRET}`
+	// An <img> or an EventSource cannot set a header; the main process
+	// adds it to their requests (electron/lib/secret-header.cjs), so the
+	// URL, which Chromium's disk cache and any log line keep, carries
+	// nothing of the secret.
+	it('an <img> URL carries no secret', () => {
+		const url = imageProxyUrl('https://media.kitsu.app/a.jpg');
+		expect(url).toBe(
+			`${BASE}/api/image?url=${encodeURIComponent('https://media.kitsu.app/a.jpg')}`
 		);
+		expect(url).not.toContain(SECRET);
 	});
 
-	it("a play's progress stream carries it in the query", async () => {
+	it("a play's progress stream URL carries no secret", async () => {
 		g.EventSource = FakeEventSource;
 		void playStream({ title: 'T', episode: '1', mode: 'sub' }, () => {}).catch(() => {});
 		await Promise.resolve();
 		await Promise.resolve();
-		expect(new URL(FakeEventSource.urls[0]).searchParams.get('secret')).toBe(SECRET);
+		expect(FakeEventSource.urls).toHaveLength(1);
+		expect(new URL(FakeEventSource.urls[0]).searchParams.has('secret')).toBe(false);
+		expect(FakeEventSource.urls[0]).not.toContain(SECRET);
 	});
 
-	it("a download's progress stream carries it in the query", async () => {
+	it("a download's progress stream URL carries no secret", async () => {
 		g.EventSource = FakeEventSource;
 		void downloadStream({ title: 'T', episode: '1', mode: 'sub' }, () => {}).catch(() => {});
 		await Promise.resolve();
 		await Promise.resolve();
-		expect(new URL(FakeEventSource.urls[0]).searchParams.get('secret')).toBe(SECRET);
+		expect(FakeEventSource.urls).toHaveLength(1);
+		expect(new URL(FakeEventSource.urls[0]).searchParams.has('secret')).toBe(false);
+		expect(FakeEventSource.urls[0]).not.toContain(SECRET);
 	});
 });
