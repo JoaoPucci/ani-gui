@@ -228,14 +228,18 @@ for (const locale of ['en', 'pt-BR', 'es-419', 'ru']) {
 
 			for (const view of views) {
 				await sizeViewport(page, view.width, view.height);
+				// A constructed sheet, not a <style> element: the window's
+				// content security policy refuses inline style elements, and
+				// the policy guard fails the test on the refusal.
 				await page.evaluate((wider) => {
-					const id = 'pill-fit-wider';
-					document.getElementById(id)?.remove();
-					if (!wider) return;
-					const style = document.createElement('style');
-					style.id = id;
-					style.textContent = '.resume-link { letter-spacing: 0.12em; }';
-					document.head.append(style);
+					const doc = document as Document & { pillFitWider?: CSSStyleSheet };
+					const sheets = document.adoptedStyleSheets.filter((s) => s !== doc.pillFitWider);
+					if (wider) {
+						doc.pillFitWider ??= new CSSStyleSheet();
+						doc.pillFitWider.replaceSync('.resume-link { letter-spacing: 0.12em; }');
+						sheets.push(doc.pillFitWider);
+					}
+					document.adoptedStyleSheets = sheets;
 				}, view.wider);
 				await expect(cell).toBeVisible({ timeout: 15_000 });
 				await expect(pill).toHaveCount(1);

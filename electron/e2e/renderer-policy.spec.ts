@@ -395,7 +395,7 @@ test('a play through the stream proxy plays, with its subtitles, under the polic
 		// shown, its cue is there.
 		await expect
 			.poll(async () => (await videoState(page))?.tracks ?? [], { timeout: 10_000 })
-			.toEqual([expect.stringMatching(new RegExp(`^${escaped(`${lanes.stream}/s/${sid}/`)}`))]);
+			.toEqual([`${lanes.stream}/s/${sid}/sub/0.vtt`]);
 		// A disabled track exposes no cues, and hls.js disables every
 		// labelled subtitle track but the one it selected whenever it
 		// switches its own (SubtitleTrackController.toggleTrackModes) —
@@ -446,18 +446,13 @@ test('an MP4 play goes straight from the stream lane, under the policy', async (
 			.poll(async () => (await videoState(page))?.time ?? 0, { timeout: 30_000 })
 			.toBeGreaterThan(0.5);
 		const file = await videoState(page);
-		expect(file?.src.startsWith(`${lanes.stream}/s/${sid}/`)).toBe(true);
+		expect(file?.src).toBe(`${lanes.stream}/s/${sid}/file.mp4`);
 		expect(file?.error).toBeNull();
 	} finally {
 		await app.close();
 		media.close();
 	}
 });
-
-/** `text`, matched literally in a RegExp. */
-function escaped(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
-}
 
 test('the loader animates under the policy', async () => {
 	test.setTimeout(90_000);
