@@ -221,7 +221,7 @@ fn responses() -> Value {
     put("AiringStatus", response(&airing(true), &airing(false)));
     put("UpcomingEpisode", response(&upcoming(), &upcoming()));
     put("Franchise", response(&franchise(true), &franchise(false)));
-    put("FranchiseChain", response(&chain(), &chain()));
+    put("FranchiseChain", response(&chain(true), &chain(false)));
     put(
         "FranchiseEntry",
         response(&franchise_entry(true), &franchise_entry(false)),
@@ -473,11 +473,19 @@ fn franchise_entry(full: bool) -> FranchiseEntry {
     }
 }
 
-fn chain() -> Chain {
+fn chain(full: bool) -> Chain {
     Chain {
-        entries: vec![franchise_entry(true)],
-        links: vec![("7158".into(), "7730".into())],
-        seams: vec!["7158".into()],
+        entries: vec![franchise_entry(full)],
+        links: if full {
+            vec![("7158".into(), "7730".into())]
+        } else {
+            Vec::new()
+        },
+        seams: if full {
+            vec!["7158".into()]
+        } else {
+            Vec::new()
+        },
     }
 }
 
@@ -503,7 +511,7 @@ fn franchise(full: bool) -> Franchise {
             std::collections::BTreeMap::new()
         },
         complete: full,
-        chain: some(full, chain()),
+        chain: some(full, chain(true)),
     }
 }
 

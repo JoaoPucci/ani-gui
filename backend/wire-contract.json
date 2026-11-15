@@ -801,25 +801,18 @@
       "min": {
         "entries": [
           {
-            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
-            "episodes": 26,
+            "cover": null,
+            "episodes": null,
             "id": "7158",
-            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
-            "start": "2012-10-06",
-            "status": "finished",
-            "subtype": "TV",
+            "poster": null,
+            "start": null,
+            "status": null,
+            "subtype": null,
             "title": "JoJo no Kimyou na Bouken (TV)"
           }
         ],
-        "links": [
-          [
-            "7158",
-            "7730"
-          ]
-        ],
-        "seams": [
-          "7158"
-        ]
+        "links": [],
+        "seams": []
       }
     },
     "FranchiseEntry": {
