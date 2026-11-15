@@ -69,11 +69,6 @@ const ROUTES: &[(&str, &str, &str)] = &[
     ("DELETE", "/api/history/some-show", ""),
     ("GET", "/api/settings", ""),
     ("PUT", "/api/settings", "{}"),
-    (
-        "POST",
-        "/api/sessions",
-        r#"{"upstream_url":"https://e.example/m.m3u8","referer":""}"#,
-    ),
     ("POST", "/api/kitsu/search", r#"{"query":"x"}"#),
     ("GET", "/api/kitsu/trending", ""),
     ("GET", "/api/image?url=https%3A%2F%2Fe.example%2Fa.jpg", ""),
@@ -243,11 +238,11 @@ fn admits_reads_the_header_on_any_route_and_the_query_on_three() {
     assert!(admits(
         &s,
         &Method::POST,
-        "/api/sessions",
+        "/api/play",
         None,
         &with_header(SECRET)
     ));
-    assert!(!admits(&s, &Method::POST, "/api/sessions", None, &none));
+    assert!(!admits(&s, &Method::POST, "/api/play", None, &none));
     assert!(!admits(&s, &Method::GET, "/api/history", Some(&q), &none));
     for path in QUERY_SECRET_PATHS {
         assert!(admits(&s, &Method::GET, path, Some(&q), &none), "{path}");

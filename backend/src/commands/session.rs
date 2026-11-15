@@ -7,11 +7,11 @@
 //! was written against a paste field — and is unchanged by it, which is
 //! the point of taking a URL rather than a show.
 //!
-//! The renderer reaches it only through a play. `POST /api/sessions`
-//! takes a URL directly; the Electron end-to-end tests use it to open a
-//! session on a stream they serve themselves.
+//! It is reached only through a play — a fresh resolve, or the replay
+//! of a cached one. No route takes a URL from a caller and opens a
+//! session on it.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use url::Url;
 
 use crate::app::AppState;
@@ -19,19 +19,16 @@ use crate::error::{AniError, Result};
 use crate::proxy::{MediaKind, SessionSubtitle, StreamSession};
 use crate::scraper::provider::SubtitleTrack;
 
-/// Body of `POST /api/sessions`, and what the play path builds for a
-/// resolved stream. All URLs are strings on the wire.
-#[derive(Debug, Clone, Deserialize)]
+/// What the play path builds for a resolved stream, fresh or replayed.
+#[derive(Debug, Clone)]
 pub struct CreateSessionArgs {
     /// Upstream master playlist (or single media playlist) URL.
     pub upstream_url: String,
     /// `Referer:` header the upstream CDN expects (empty string if none).
     pub referer: String,
-    /// Sidecar subtitle tracks the resolve listed beside the stream.
-    /// Attached by the resolver alone: the public session route
-    /// refuses a caller-supplied list, since the proxy fetches a
-    /// session's tracks on the caller's behalf.
-    #[serde(default)]
+    /// Sidecar subtitle tracks the resolve listed beside the stream —
+    /// the resolver's to name, since the proxy fetches a session's
+    /// tracks on the caller's behalf.
     pub subtitles: Vec<SubtitleTrack>,
 }
 

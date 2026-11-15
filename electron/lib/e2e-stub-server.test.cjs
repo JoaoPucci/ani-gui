@@ -34,7 +34,7 @@ test("the gate's names are the backend's", () => {
 test("the gate admits the secret as the header on any API route", () => {
   for (const [method, path] of [
     ["GET", "/api/settings"],
-    ["POST", "/api/sessions"],
+    ["POST", "/api/play"],
     ["GET", "/api/image"],
   ]) {
     assert.equal(
@@ -94,7 +94,7 @@ const nearMiss = fc.oneof(
 
 test("only the secret itself is admitted, in the carrier its route allows", () => {
   const method = fc.constantFrom("GET", "POST", "PUT", "DELETE");
-  const route = fc.constantFrom(...QUERY_SECRET_PATHS, "/api/history", "/api/sessions");
+  const route = fc.constantFrom(...QUERY_SECRET_PATHS, "/api/history", "/api/play");
   fc.assert(
     fc.property(nearMiss, method, route, (guess, m, p) => {
       fc.pre(guess !== SECRET);

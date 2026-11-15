@@ -104,7 +104,6 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
             post(post_history_guess_ruled_out),
         )
         .route("/api/history/:id", delete(delete_history_entry))
-        .route("/api/sessions", post(post_session))
         .route("/api/kitsu/search", post(post_kitsu_search))
         .route("/api/kitsu/search/page", post(post_kitsu_search_page))
         .route(
@@ -265,22 +264,6 @@ async fn get_history_number(
     Ok(Json(crate::commands::history_number::history_number(
         &state, &id,
     )?))
-}
-
-async fn post_session(
-    State(state): State<Arc<AppState>>,
-    Json(args): Json<session_inner::CreateSessionArgs>,
-) -> Result<Json<session_inner::CreateSessionResponse>, AniError> {
-    // Sidecar tracks are attached by the resolver, never by the
-    // caller of this route: the proxy fetches a session's tracks on
-    // the caller's behalf, and what it fetches is the resolver's to
-    // name.
-    if !args.subtitles.is_empty() {
-        return Err(AniError::ParseFailed {
-            detail: "subtitles: attached by the resolver, not accepted here".into(),
-        });
-    }
-    Ok(Json(session_inner::create_session(&state, &args)?))
 }
 
 #[derive(Deserialize)]
@@ -2837,61 +2820,6 @@ mod tests {
             .expect("oneshot");
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert!(state.sessions.is_empty(), "no session was opened");
-    }
-
-    /// `/api/sessions` requires a valid CreateSessionArgs body. We
-    /// don't have the provider to satisfy a fully-shaped session, so
-    /// drive a malformed one and assert the route rejects it without
-    /// panicking. Covers the post_session decode branch.
-    #[tokio::test]
-    async fn post_session_rejects_malformed_body() {
-        let td = TempDir::new().expect("tempdir");
-        let router = test_router(Arc::new(test_app_state(&td)));
-        let response = router
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/sessions")
-                    .header("content-type", "application/json")
-                    .body(Body::from(r#"{"missing":"required-fields"}"#))
-                    .expect("req"),
-            )
-            .await
-            .expect("oneshot");
-        // axum's Json extractor returns 422 / 400 on malformed
-        // bodies; either is fine.
-        assert!(
-            response.status().is_client_error(),
-            "expected 4xx for malformed body, got {}",
-            response.status()
-        );
-    }
-
-    /// Sidecar tracks are attached by the resolver, never by the
-    /// caller of the public route: the endpoint is reachable from any
-    /// page that finds the loopback port, and a track it accepted
-    /// would be fetched by the proxy on the caller's behalf.
-    #[tokio::test]
-    async fn the_public_session_route_refuses_caller_supplied_tracks() {
-        let td = TempDir::new().expect("tempdir");
-        let router = test_router(Arc::new(test_app_state(&td)));
-        let body = r#"{"upstream_url":"https://cdn.example/master.m3u8","subtitles":[{"lang":"en","label":"English","default":true,"url":"http://127.0.0.1:1/admin/status"}]}"#;
-        let response = router
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/sessions")
-                    .header("content-type", "application/json")
-                    .body(Body::from(body))
-                    .expect("req"),
-            )
-            .await
-            .expect("oneshot");
-        assert!(
-            response.status().is_client_error(),
-            "a caller-supplied track list is refused; got {}",
-            response.status()
-        );
     }
 
     /// `/api/kitsu/anime/:id` — the wiremock for kitsu_inner won't

@@ -9,9 +9,10 @@
 //! stored string will not parse as one. The raw-segment branch built
 //! its own request and substituted a literal instead, so a session
 //! whose referer cannot become a header value made the proxy announce
-//! a provider the app no longer talks to. That path is reachable:
-//! `POST /api/sessions` validates `upstream_url` and stores `referer`
-//! verbatim.
+//! a provider the app no longer talks to. That path is reachable: a
+//! session stores the referer its play carried verbatim, whether the
+//! resolve read it off a provider's page or a replayed cache row
+//! held it.
 
 use super::*;
 use tower::ServiceExt as _;
