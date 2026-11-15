@@ -342,6 +342,31 @@ describe('back to the search page', () => {
 		expect(window.scrollY).toBe(10 * ROW + 100);
 	});
 
+	it('offers no music filter, since search never answers a music video', async () => {
+		setQuery('frieren');
+		mountSearch();
+		navigated('link');
+		await until(() => cards().includes('Show 1'), 'the first page');
+
+		expect(buttonNamed(subtypeLabel('TV'))).not.toBeNull();
+		expect(buttonNamed(subtypeLabel('music'))).toBeNull();
+	});
+
+	it('brings back a search an earlier version kept filtered to music videos unfiltered', async () => {
+		const before = await browse();
+		const kept = leave() as { subtypes: string[] };
+		kept.subtypes = ['music'];
+
+		comeBack(kept);
+		await until(() => cards().length > 0, 'the results');
+		await settle();
+
+		expect(typeOn(subtypeLabel('TV'))).toBe(false);
+		expect(buttonNamed(m.search_chips_clear_button_aria_label())).toBeNull();
+		expect(cards()).toEqual(expect.arrayContaining(before));
+		expect(cards(), 'a film is back too: no filter is on').toContain('Show 2');
+	});
+
 	it('follows the address when the entry kept nothing', async () => {
 		setQuery('himmel');
 		mountSearch();

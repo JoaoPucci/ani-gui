@@ -255,12 +255,17 @@ where
     }
 }
 
-/// The provider never indexes music videos, so a Kitsu `subtype ==
-/// "music"` entry (a YOASOBI MV, an OP/ED single, etc.) can never resolve
-/// to playback. Drop these from every list surface so they never appear
-/// as a pickable card. Detail-by-id (`parse_anime_response`) is
-/// intentionally NOT filtered; a directly-opened music entry still loads
-/// and is shown as unavailable.
+/// Whether a Kitsu entry is a music video (`subtype == "music"`: a
+/// YOASOBI MV, an OP/ED single, etc.). Every list surface drops these.
+/// The provider does carry some: hianime listed 81 music videos on
+/// 2026-11-16, of which about 20 played and the rest answered "not
+/// found". Kitsu lists far more than that, so offering them would fill
+/// search with cards the availability filter then takes away as not
+/// carried. The ratio is what keeps them out, and the filter is to be
+/// revisited with the deferred-work entry on search results the
+/// provider turns out not to carry. Detail-by-id
+/// (`parse_anime_response`) is intentionally NOT filtered; a
+/// directly-opened music entry still loads and is shown as unavailable.
 fn is_music_subtype(subtype: Option<&str>) -> bool {
     subtype.is_some_and(|s| s.eq_ignore_ascii_case("music"))
 }
@@ -982,10 +987,11 @@ mod tests {
 
     #[test]
     fn parse_search_drops_music_subtype_entries() {
-        // The provider never indexes music videos (the YOASOBI
-        // "Idol" MV etc.), so a `subtype == "music"` Kitsu hit can never
-        // resolve to playback. It must not appear in ANY list surface —
-        // search, trending, and top-rated all route through here.
+        // Search never offers a music video (the YOASOBI "Idol" MV
+        // etc.): Kitsu lists far more than the provider serves (see
+        // `is_music_subtype`). A `subtype == "music"` hit must not appear
+        // in ANY list surface — search, trending, and top-rated all route
+        // through here.
         let body = br#"{"data":[
             {"id":"1","type":"anime","attributes":{"canonicalTitle":"Real Show","subtype":"TV"}},
             {"id":"2","type":"anime","attributes":{"canonicalTitle":"Idol","subtype":"music"}}
@@ -1301,8 +1307,9 @@ mod tests {
         // The MAL→Kitsu bridge (lookup_by_mal_id) feeds both the AniList
         // trending feed and the Watch Later rail. A Plan-to-Watch MAL entry
         // mapping to a Kitsu `subtype: music` item must not surface there —
-        // music can never resolve on the provider — so the mappings parser
-        // returns None for it (the single chokepoint for every bridge).
+        // no list surface offers a music video (see `is_music_subtype`) —
+        // so the mappings parser returns None for it (the single
+        // chokepoint for every bridge).
         let body = br#"{"data":[{"type":"mappings","relationships":{"item":{"data":{"id":"42","type":"anime"}}}}],
             "included":[{"id":"42","type":"anime","attributes":{"canonicalTitle":"Idol","subtype":"music"}}]}"#;
         assert!(parse_mappings_response(body).expect("parses").is_none());
