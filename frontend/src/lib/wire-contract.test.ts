@@ -74,6 +74,9 @@ import {
 	type KitsuPosterImage,
 	type KitsuSearchBody,
 	type KitsuSearchPage,
+	type Franchise,
+	type FranchiseChain,
+	type FranchiseEntry,
 	type PlayArgs,
 	type PlayProgress,
 	type RefillsBody,
@@ -421,6 +424,35 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		episode: 'number',
 		airing_at: 'number'
 	} satisfies Spec<UpcomingEpisode>,
+	Franchise: {
+		anchor: 'string',
+		name: 'string',
+		name_from: 'string',
+		entries: 'object[]',
+		links: 'array[]',
+		versions: 'object[]',
+		films: 'object[]',
+		sides: 'object[]',
+		recaps: 'object[]',
+		parents: 'object',
+		complete: 'boolean',
+		chain: '?object'
+	} satisfies Spec<Franchise>,
+	FranchiseChain: {
+		entries: 'object[]',
+		links: 'array[]',
+		seams: 'string[]'
+	} satisfies Spec<FranchiseChain>,
+	FranchiseEntry: {
+		id: 'string',
+		title: 'string',
+		subtype: 'string|null',
+		start: 'string|null',
+		episodes: 'number|null',
+		status: 'string|null',
+		poster: 'string|null',
+		cover: 'string|null'
+	} satisfies Spec<FranchiseEntry>,
 	Config: {
 		locale: 'string',
 		mode: 'string',
