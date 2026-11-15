@@ -106,10 +106,29 @@ proxy settings at a local proxy that refuses every connection and
 records it (`outboundAttempts`). Loopback is exempt, so a spec's own
 local servers still answer. `smoke.spec.ts` checks that a request only
 GitHub could answer ends up at that proxy instead. A spec whose page
-should run on stubs alone does three things: it sets `refuseUnstubbed`
-before its stubs, mounts the page again with `remountFirstPage`, and
-asserts that no request was left unanswered. `smoke.spec.ts` and
-`keyring-unresponsive.spec.ts` do.
+should run on stubs alone does four things: it finds the app's window
+with `appWindow` before setting any route, sets `refuseUnstubbed`
+(which takes that window) before its stubs, mounts the page again with
+`remountFirstPage`, and asserts that no request was left unanswered.
+`smoke.spec.ts` and `keyring-unresponsive.spec.ts` do. The window comes
+first because when every route is set while the window is still being
+attached, none of them reaches it.
+
+A stub answers through `answer` in `electron/e2e/stubs.ts`, never in
+place inside Playwright. `answer` holds what the stub says at a local
+stub server (`electron/lib/e2e-stub-server.cjs`) and sends the request
+on to it, so the answer comes back over real HTTP through Chromium's
+network stack, as the backend's does. The stub server answers an API
+request as the backend would: the gate in front (the launch's secret as
+the header, or as the `secret` query parameter on the three routes an
+`<img>` or an `EventSource` loads; an empty 403 otherwise) and the
+backend's CORS rules on the answer. A preflight never reaches it:
+Playwright answers preflights itself, for any origin, so the CORS a
+spec meets is the answer's own. An answer to the request made in place
+loses its status and headers whenever the main process has a
+webRequest listener on the window's session: every stubbed page then
+reads its data as unreachable. `tests/arch/e2e_stub_server.sh` keeps
+Playwright's in-place answer out of `electron/`.
 
 Each launch runs on a scratch profile the spec makes under the
 system's temporary directory. The spec passes that directory to

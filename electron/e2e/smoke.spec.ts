@@ -40,6 +40,7 @@ import {
   stopDeadApp,
 } from "./launch";
 import { expectedPlatform } from "../lib/e2e-display.cjs";
+import { answer } from "./stubs";
 
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
@@ -88,12 +89,15 @@ async function launchAppWithStubsOnce(
   onLaunch(app);
 
   const context = app.context();
+  // The app's window before any route: a route reaches only the windows
+  // Playwright has finished attaching when it is set (refuseUnstubbed).
+  const page = await appWindow(app);
   // First, so it answers only what the stubs below leave: anything the
   // pages here ask that no stub answers is refused and recorded, and
   // every test ends by checking nothing was (afterEach below). What
   // the first mount asked is forgotten at the remount (it may have
   // asked before its stub was set); everything after it counts.
-  const unstubbed = await refuseUnstubbed(context);
+  const unstubbed = await refuseUnstubbed(page);
   lastUnstubbed = unstubbed;
   let topRatedAsked: (() => void) | null = null;
   const json = (body: unknown) => ({
@@ -104,50 +108,49 @@ async function launchAppWithStubsOnce(
   const stub = (url: string, answer: Parameters<typeof routeContext>[2]) =>
     routeContext(context, url, answer);
   // Home.
-  await stub("**/api/app-info", (r) => r.fulfill(json(appInfo)));
-  await stub("**/api/history", (r) => r.fulfill(json(emptyHistory)));
-  await stub("**/api/kitsu/trending-anilist", (r) => r.fulfill(json(trending)));
+  await stub("**/api/app-info", (r) => answer(r, json(appInfo)));
+  await stub("**/api/history", (r) => answer(r, json(emptyHistory)));
+  await stub("**/api/kitsu/trending-anilist", (r) => answer(r, json(trending)));
   await stub("**/api/kitsu/top-rated", (r) => {
     topRatedAsked?.();
-    return r.fulfill(json(topRated));
+    return answer(r, json(topRated));
   });
   // Every card known playable, so nothing is handed to the warm queue.
   await stub("**/api/availability/batch", (r) => {
     const { kitsu_ids } = r.request().postDataJSON() as { kitsu_ids: string[] };
-    return r.fulfill(
+    return answer(r,
       json({
         cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
         playable_episode_counts: {},
       }),
     );
   });
-  await stub("**/api/availability/warm", (r) => r.fulfill({ status: 202 }));
-  await stub("**/api/watched-at", (r) => r.fulfill(json({})));
+  await stub("**/api/availability/warm", (r) => answer(r, { status: 202 }));
+  await stub("**/api/watched-at", (r) => answer(r, json({})));
   // No newer release: the backend's answer when there is none.
-  await stub("**/api/update-check*", (r) => r.fulfill({ status: 204 }));
+  await stub("**/api/update-check*", (r) => answer(r, { status: 204 }));
   await stub("**/api/settings", (r) =>
     r.request().method() === "PUT"
-      ? r.fulfill({ status: 204 })
-      : r.fulfill(json(defaultSettings)),
+      ? answer(r, { status: 204 })
+      : answer(r, json(defaultSettings)),
   );
   // Block image fetches; the renderer's placeholder takes over.
-  await stub("**/api/image*", (r) => r.fulfill({ status: 503 }));
+  await stub("**/api/image*", (r) => answer(r, { status: 503 }));
   // A show's page, which a card click opens: the top-rated fixture's
   // show, with no episodes, no history and no skip times.
-  await stub("**/api/kitsu/anime/*", (r) => r.fulfill(json(topRated[0])));
-  await stub("**/api/kitsu/episodes/*", (r) => r.fulfill(json([])));
-  await stub("**/api/kitsu/airing/*", (r) => r.fulfill(json(null)));
-  await stub("**/api/history/by-kitsu/*", (r) => r.fulfill(json(null)));
-  await stub("**/api/download/default-dir", (r) => r.fulfill(json(null)));
+  await stub("**/api/kitsu/anime/*", (r) => answer(r, json(topRated[0])));
+  await stub("**/api/kitsu/episodes/*", (r) => answer(r, json([])));
+  await stub("**/api/kitsu/airing/*", (r) => answer(r, json(null)));
+  await stub("**/api/history/by-kitsu/*", (r) => answer(r, json(null)));
+  await stub("**/api/download/default-dir", (r) => answer(r, json(null)));
   await stub("**/api/availability", (r) =>
-    r.fulfill(json({ available: true, episode_count: 12, extra_episodes: [] })),
+    answer(r, json({ available: true, episode_count: 12, extra_episodes: [] })),
   );
   // The page looks the show up by title and starts resolving its first
   // episode ahead of a click; neither is what the click test checks.
-  await stub("**/api/kitsu/search", (r) => r.fulfill(json([])));
-  await stub("**/api/play/stream*", (r) => r.fulfill({ status: 503 }));
+  await stub("**/api/kitsu/search", (r) => answer(r, json([])));
+  await stub("**/api/play/stream*", (r) => answer(r, { status: 503 }));
 
-  const page = await appWindow(app);
   // The first mount asked before the stubs were in place, and the
   // backend, kept off the network, could not answer it: mount it
   // again, and go on once the new mount has asked a stub.
