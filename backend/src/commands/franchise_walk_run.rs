@@ -149,7 +149,13 @@ fn side_chain(
                 own: BTreeSet::from([p.clone()]),
                 seams: BTreeSet::new(),
             });
-            return (in_franchise, Some(drawn));
+            // Only the parents on the chain it is drawn on: another of
+            // them may sit on a chain of its own.
+            let on_chain = in_franchise
+                .into_iter()
+                .filter(|q| drawn.own.contains(q) || drawn.seams.contains(q))
+                .collect();
+            return (on_chain, Some(drawn));
         }
     }
     (Vec::new(), None)
