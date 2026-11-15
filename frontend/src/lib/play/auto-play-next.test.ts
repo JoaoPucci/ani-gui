@@ -122,3 +122,16 @@ describe('decideAutoPlayNext — an episode handed to another player', () => {
 		).toEqual({ advance: true, target: 2 });
 	});
 });
+
+describe('decideAutoPlayNext — a step the player has closed', () => {
+	it('does not advance where the next-episode step is closed, whatever the counts allow', () => {
+		// A page reused for a 12-episode show, still counting the 24 of
+		// the show it opened on, at the finale this show's franchise found.
+		expect(
+			decideAutoPlayNext({ enabled: true, episodeNum: 12, totalEpisodes: 24, stepOpen: false })
+		).toEqual({ advance: false });
+		expect(
+			decideAutoPlayNext({ enabled: true, episodeNum: 12, totalEpisodes: 24, stepOpen: true })
+		).toEqual({ advance: true, target: 13 });
+	});
+});

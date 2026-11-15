@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { END_SLACK_S, atVideoEnd, upNextShown, type UpNextState } from './up-next-window';
+import { END_SLACK_S, atVideoEnd, stepOpen, upNextShown, type UpNextState } from './up-next-window';
 
 const LENGTH = 1420;
 
@@ -125,5 +125,23 @@ describe('upNextShown', () => {
 
 	it('is not drawn where only the video is fullscreen', () => {
 		expect(upNextShown({ ...due, videoFullscreen: true })).toBe(false);
+	});
+});
+
+describe('stepOpen', () => {
+	it("closes a step counted for another show at this show's finale", () => {
+		// The page reused for a 12-episode show still counts the
+		// 24-episode show it opened on: at the finale this show's
+		// franchise found, the step to "episode 13" is not this show's.
+		expect(stepOpen(true, true, true)).toBe(false);
+	});
+
+	it('leaves the step as the counts say everywhere else', () => {
+		fc.assert(
+			fc.property(fc.boolean(), fc.boolean(), fc.boolean(), (hasNext, stale, finale) => {
+				if (!(stale && finale)) expect(stepOpen(hasNext, stale, finale)).toBe(hasNext);
+				else expect(stepOpen(hasNext, stale, finale)).toBe(false);
+			})
+		);
 	});
 });
