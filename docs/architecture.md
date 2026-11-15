@@ -104,7 +104,7 @@ Two rules follow for the frontend:
 
 In a packaged build the `app://` protocol handler adds the header to every response it serves: the index, the SPA fallback, every asset and every error, a path that does not decode included. It serves only files inside the bundle directory (`electron/lib/bundle-path.cjs`). It keeps each response's content type; a module script served without its JavaScript type would not run. Until the window opens against the handshake, the header names no loopback origin at all.
 
-In development the shell appends the header to the Vite dev server's main-frame responses, beside SvelteKit's own policy, and allows what Vite needs on top: inline `<style>` elements and its hot-reload WebSocket. The browser-only dev flow (`VITE_ANI_GUI_API_BASE`, no Electron) gets only SvelteKit's half.
+In development the shell appends the header to the Vite dev server's main-frame responses, beside SvelteKit's own policy, and allows what Vite needs on top: inline `<style>` elements and its hot-reload WebSocket. A plain browser tab on the dev server, which no longer reaches the backend, would run under SvelteKit's half alone.
 
 Every Electron e2e test fails on a violation it did not declare (`electron/e2e/policy-guard.ts`), including ones on the first load, which the guard reads from the shell's relayed console.
 
