@@ -20,7 +20,9 @@
  * And whatever was still on its way about the former show — the first
  * load's probe, an earlier rematch — lands without putting it back. A
  * read whose list a remove or clear overtook reads again, and a match
- * that lands for a row one took away is dropped.
+ * that lands for a row one took away is dropped. Reads wait for Home's
+ * first load to publish (`hold`): a link landing while it is out reads
+ * the cards against that load's history, never under it.
  *
  * The component holds the state; this decides what happens to it.
  */
@@ -62,6 +64,9 @@ export interface CardRelink {
 	stillGuessed: (row: string, matchId: string) => Promise<boolean | 'unread'>;
 	/** Reads the cards again where they stand. */
 	reread: () => Promise<void>;
+	/** Holds every read until `until` settles: Home's first load, whose
+	 *  older list would otherwise land over a read that published first. */
+	hold: (until: Promise<unknown>) => void;
 	/** A view of the rows as they are matched now: it answers, for a
 	 *  row, whether the row has not been matched again since — and no for
 	 *  a row whose rematch was still on its way when the view was taken. An answer
@@ -155,6 +160,9 @@ export function createCardRelink(deps: CardRelinkDeps): CardRelink {
 			return false;
 		},
 		reread,
+		hold: (until) => {
+			reads = reads.then(() => until).catch(() => {});
+		},
 		since: view
 	};
 }

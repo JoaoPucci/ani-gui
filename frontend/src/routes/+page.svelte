@@ -624,7 +624,9 @@
 		void settingsPromise.then((c) => {
 			if (c) config = c;
 		});
-		void pageReads
+		// A link landing meanwhile reads the cards once this load has
+		// published, never under it ($lib/history/card-relink.ts `hold`).
+		const firstLoad = pageReads
 			.keep(
 				Promise.all([
 					historyList({ signal }),
@@ -741,6 +743,7 @@
 			.catch(() => {
 				history = [];
 			});
+		relink.hold(firstLoad);
 
 		// The retry loop above sits out breaker cooldowns between
 		// probes, so it comfortably outlives a user who lands on home
