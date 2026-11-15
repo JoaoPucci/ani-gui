@@ -148,11 +148,11 @@ describe('CardLines', () => {
 		expect(lines.clickLineOf(PLAYED)).toBeNull();
 	});
 
-	it('acts on the line the answer for the rows as they are names', async () => {
+	it('acts on the line the answer for the rows as they are names, and on none before it', async () => {
 		const { ask, asks } = gated();
 		const lines = new CardLines(ask);
 		lines.update(rows('7158'));
-		expect(lines.clickLineOf(PLAYED)).toBe(PLAYED);
+		expect(lines.clickLineOf(PLAYED)).toBeNull();
 		asks[0].answer(true);
 		await lines.settled();
 		expect(lines.clickLineOf(PLAYED)).toBe(CARD);
