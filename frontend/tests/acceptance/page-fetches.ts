@@ -76,7 +76,10 @@ export function watchPageFetches(): {
 	/** Requests not yet answered, plus bodies being read: one entry
 	 *  each, so a held request can be told from the rest. */
 	const out: PageFetch[] = [];
-	const done = (f: PageFetch) => out.splice(out.indexOf(f), 1);
+	const done = (f: PageFetch) => {
+		const at = out.indexOf(f);
+		if (at >= 0) out.splice(at, 1);
+	};
 	const realFetch = globalThis.fetch;
 	vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
 		const asked = described(input, init);

@@ -983,10 +983,10 @@ describe("the cap retry for a card's former show", () => {
 		await pickAndLink(JOJO_RIGHT_TITLE);
 		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the card as the OVA');
 		const asked = probesSent(JOJO_GUESS);
-		// The retry starts, and asks about the rows in the order their
-		// first probes answered, each after its first step (half a
-		// second): JoJo's, then Gintama's. Once Gintama's is sent,
-		// JoJo's turn has passed.
+		// The retry starts, and takes the rows one at a time in the order
+		// their first probes answered: JoJo's turn comes first, and
+		// Gintama's probe goes out after its first step (half a second).
+		// Once Gintama's is sent, JoJo's turn has passed.
 		releaseBc();
 		await until(() => probesSent(KNOWN_ID) === 2, "Gintama's retry");
 		expect(probesSent(JOJO_GUESS)).toBe(asked);
@@ -1211,6 +1211,7 @@ describe('the picker while Clear history runs', () => {
 		expect(dialog()?.open).not.toBe(true);
 		releaseClear();
 		await until(() => cell(BC_CARD) === null, 'the cards cleared');
+		await settle();
 		expect(dialog()?.open).not.toBe(true);
 	});
 });
