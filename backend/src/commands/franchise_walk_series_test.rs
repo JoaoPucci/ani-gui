@@ -327,6 +327,35 @@ fn a_one_off_keeps_its_own_parent_in_the_main_story() {
     assert_eq!(f.parents.get("1").cloned(), Some(vec!["4".to_string()]));
 }
 
+/// A special's own parent story keeps it though the main story leaves
+/// that parent out as another version: the special is drawn on its own
+/// parent's chain, not placed under the parent its run-mate names, which
+/// it never names itself.
+#[test]
+fn a_one_off_keeps_its_own_parent_outside_the_main_story() {
+    let mut c = Catalogue::default();
+    c.add("1", "special", Some("2010-01-01"))
+        .add("2", "special", Some("2011-01-01"))
+        .add("10", "TV", Some("2000-01-01"))
+        .add("11", "TV", Some("2002-01-01"))
+        .add("12", "TV", Some("2003-01-01"))
+        .rel("1", "sequel", "2")
+        .rel("2", "prequel", "1")
+        .rel("2", "parent_story", "10")
+        .rel("1", "parent_story", "12")
+        .rel("10", "sequel", "11")
+        .rel("10", "sequel", "12")
+        .rel("11", "prequel", "10")
+        .rel("11", "alternative_version", "12")
+        .rel("12", "prequel", "10")
+        .rel("12", "alternative_version", "11");
+    let f = drive("1", &c);
+    assert_eq!(ids(&f.entries), ["10", "11"]);
+    assert_eq!(f.parents.get("1").cloned(), Some(vec!["12".to_string()]));
+    let chain = f.chain.expect("its parent's chain");
+    assert!(chain.entries.iter().any(|e| e.id == "12"));
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(128))]
 
