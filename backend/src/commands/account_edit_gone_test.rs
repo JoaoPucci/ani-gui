@@ -389,5 +389,88 @@ async fn mal_a_save_refused_as_invalid_for_an_anime_mal_does_not_have_writes_not
     )
     .await
     .expect("MAL answered: the anime is not there");
-    assert!(got.is_none());
+    assert!(
+        got.is_none(),
+        "a save refused for an absent anime is not written"
+    );
+}
+
+#[tokio::test]
+async fn anilist_a_save_answered_with_no_entry_for_a_media_anilist_does_not_have_writes_nothing() {
+    // AniList can answer a mutation it refused with HTTP 200, its
+    // `errors` and no entry; that is no write either.
+    let kitsu = kitsu(KITSU_ANILIST).await;
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("Viewer"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Viewer":{"id":4242,"name":"shiro","avatar":{"large":null},"statistics":{"anime":{"count":1,"meanScore":0}}}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("mutation Save"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"errors":[{"message":"validation","status":400}],"data":{"SaveMediaListEntry":null}}"#,
+        ))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(404)
+                .set_body_string(crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY),
+        )
+        .mount(&server)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let got = set_entry_via(
+        &state,
+        ProviderKind::AniList,
+        &anilist(&server),
+        &tokens(),
+        "13023",
+        watched(3),
+    )
+    .await
+    .expect("AniList answered: the media is not there");
+    assert!(
+        got.is_none(),
+        "a save answered with no entry is not written"
+    );
+}
+
+#[tokio::test]
+async fn a_rate_limit_on_the_confirming_read_is_what_the_save_reports() {
+    // The refusal alone does not say what to do next; the tracker's rate
+    // limit on the read that would have settled it does.
+    let kitsu = kitsu(KITSU_MAL).await;
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/users/@me"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"id":4242,"name":"shiro"}"#))
+        .mount(&server)
+        .await;
+    Mock::given(path("/anime/33778/my_list_status"))
+        .respond_with(ResponseTemplate::new(400))
+        .mount(&server)
+        .await;
+    Mock::given(path("/anime/33778"))
+        .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "30"))
+        .mount(&server)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let err = set_entry_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        &mal(&server),
+        &tokens(),
+        "13023",
+        watched(3),
+    )
+    .await
+    .expect_err("nothing settled the refusal");
+    assert!(
+        matches!(err, crate::error::AniError::RateLimited { .. }),
+        "{err:?}"
+    );
 }
