@@ -384,8 +384,10 @@ nodeTest("the probe runs with core dumps off", { skip: process.platform !== "lin
 
 // Interrupting the launcher while it waits on the probe stops the
 // launch: Ctrl-C (SIGINT to the whole process group), a SIGTERM to
-// AppRun alone, or a SIGHUP (the terminal closing) ends it promptly,
-// starts nothing, and leaves no probe, watchdog or answer file behind.
+// AppRun alone or to its whole group (a service manager stopping it),
+// or a SIGHUP to AppRun or to its whole group (the terminal closing
+// hangs up its foreground group) ends it promptly, starts nothing, and
+// leaves no probe, watchdog or answer file behind, reaped or not.
 // AppRun then dies by that same signal, as a shell expects of a
 // command it interrupted, so a calling loop stops too.
 for (const [name, template] of Object.entries(TEMPLATES)) {
@@ -393,8 +395,11 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
     ["SIGINT", true],
     ["SIGTERM", false],
     ["SIGHUP", false],
+    ["SIGTERM", true],
+    ["SIGHUP", true],
   ]) {
-    test(`${name}: ${signal} while the probe runs stops the launch and leaves nothing behind`, async () => {
+    const to = group && signal !== "SIGINT" ? " to the whole group" : "";
+    test(`${name}: ${signal}${to} while the probe runs stops the launch and leaves nothing behind`, async () => {
       const r = await launchAndSignal(template, "hangs", USER_ARGS, { afterMs: 700, signal, group });
       try {
         assert.equal(r.launched, null, "nothing launched");
