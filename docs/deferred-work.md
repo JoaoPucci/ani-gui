@@ -535,6 +535,9 @@ starting it, and delete it when you find it done.
   lists far more of them than the provider serves, so showing them
   would put many results in search that then get filtered out as not
   carried; they would belong in search only if that ratio were good.
+  The revisit covers the detail page too, which holds every music
+  video unavailable, the ones the provider does play included, and
+  the search page's type filters, which offer none for music.
 - **Search has no title order.** Kitsu cannot sort a text search by
   title: `sort=canonicalTitle` and `sort=slug` answer 500, and
   `titles.en` is refused as a sort criterion. Sorting only the pages
