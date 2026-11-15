@@ -118,7 +118,9 @@ function stream(origin: string): ReplayStream {
 	};
 }
 
-const settings = { use_custom_player_controls: true };
+/** The app's own player controls, or (`false`) Chromium's, whose
+ *  captions menu the app reads picks from. */
+const settings = (custom = true) => ({ use_custom_player_controls: custom });
 
 /** The sidecar tracks: each one's label, mode, whether its file is in,
  *  and how many cues it holds (null while it is disabled); the cue
@@ -191,8 +193,10 @@ async function pick(page: Page, name: string) {
 
 /** Hands the episode to the external player, which the stub answers
  *  will not start, and closes the app's notice of that; then plays the
- *  embedded video again, which asks for the playlist again. */
-async function handOffAndComeBack(page: Page, media: { masters: () => number }) {
+ *  embedded video again, which asks for the playlist again: from the
+ *  app's play button, or, with Chromium's controls, as their play
+ *  button does. */
+async function handOffAndComeBack(page: Page, media: { masters: () => number }, custom = true) {
 	const before = media.masters();
 	await page.locator('button[aria-label="More actions"]').click();
 	await page.getByRole('menuitem', { name: /Open in external/ }).click();
@@ -200,15 +204,23 @@ async function handOffAndComeBack(page: Page, media: { masters: () => number }) 
 	await dialog.waitFor({ timeout: 15_000 });
 	await page.keyboard.press('Escape');
 	await expect(dialog).toHaveCount(0);
-	await page.locator('.player-frame').hover();
-	await page.locator('.pc-buttons-row .pc-btn').first().click();
+	if (custom) {
+		await page.locator('.player-frame').hover();
+		await page.locator('.pc-buttons-row .pc-btn').first().click();
+	} else {
+		await page.evaluate(() => void document.querySelector('video')?.play());
+	}
 	await expect.poll(() => media.masters(), { timeout: 10_000 }).toBe(before + 1);
 }
 
 /** Plays the card's episode, its master playlist held back, until the
  *  start's sidecar file is in. */
-async function heldAtStart(page: Page, profile: string, media: { origin: string }) {
-	const play = await routeRealPlay(page, { profile, settings, stream: stream(media.origin) });
+async function heldAtStart(page: Page, profile: string, media: { origin: string }, custom = true) {
+	const play = await routeRealPlay(page, {
+		profile,
+		settings: settings(custom),
+		stream: stream(media.origin)
+	});
 	await playFromContinue(page, play);
 	await expect
 		.poll(async () => (await sidecars(page))?.tracks ?? [], { timeout: 30_000 })
@@ -290,6 +302,55 @@ test('sidecar tracks turned off before two handoffs in a row show their cues whe
 		await expect
 			.poll(() => painted(page), { timeout: 10_000 })
 			.toEqual([expect.stringMatching(/^Français at /)]);
+	} finally {
+		media.release();
+		await app.close();
+		media.close();
+	}
+});
+
+// With Chromium's own controls the app takes a change to the video's
+// tracks for a pick from their captions menu, and remembers it for the
+// show. Keeping the cues switches each loaded track that is off to
+// hidden and back, as hls.js's clear does: no such change may be
+// remembered as a pick.
+test("with Chromium's controls, the cues are kept and no pick is remembered that the viewer did not make", async () => {
+	test.setTimeout(120_000);
+	const media = await mediaServer();
+	const { app, page, profile } = await launch();
+	try {
+		await heldAtStart(page, profile, media, false);
+		// The viewer picks French from Chromium's menu, then Off, as its
+		// menu sets the modes: both tracks loaded, both off.
+		const choose = (which: number | null) =>
+			page.evaluate((i) => {
+				const v = document.querySelector('video');
+				if (!v) return;
+				for (const [j, t] of [...v.textTracks].entries())
+					t.mode = j === i ? 'showing' : 'disabled';
+			}, which);
+		await choose(1);
+		await expect
+			.poll(async () => (await sidecars(page))?.tracks[1] ?? null, { timeout: 10_000 })
+			.toEqual({ label: 'Français', mode: 'showing', loaded: true, cues: 12 });
+		await choose(null);
+		const remembered = () => page.evaluate(() => localStorage.getItem('ani-gui.caption-choices'));
+		await expect.poll(remembered).toContain('off');
+		const before = await remembered();
+
+		await handOffAndComeBack(page, media, false);
+		media.release();
+		await expect
+			.poll(async () => (await sidecars(page))?.time ?? 0, { timeout: 30_000 })
+			.toBeGreaterThan(1);
+		await page.waitForTimeout(1_000);
+		expect(await remembered()).toBe(before);
+		expect((await sidecars(page))?.tracks.map((t) => t.mode)).toEqual(['disabled', 'disabled']);
+
+		await choose(0);
+		await expect
+			.poll(async () => (await sidecars(page))?.cues ?? [], { timeout: 10_000 })
+			.toEqual([expect.stringMatching(/^English at /)]);
 	} finally {
 		media.release();
 		await app.close();
