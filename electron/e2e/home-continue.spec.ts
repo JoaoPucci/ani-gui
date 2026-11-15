@@ -37,7 +37,13 @@ import {
 	topRated,
 	trending
 } from './fixtures/kitsu';
-import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
+import {
+	appWindow,
+	cardLinesAnswer,
+	launchPackagedApp,
+	packagedBinary,
+	stopDeadApp
+} from './launch';
 import { answer } from './stubs';
 
 test.beforeAll(() => {
@@ -151,6 +157,7 @@ async function launchAppWithContinueStubsOnce(
 		if (p === '/api/kitsu/top-rated') return j(topRated);
 		if (p.startsWith('/api/image')) return answer(r, { status: 503 });
 		if (p === '/api/history') return j(opts.history);
+		if (p === '/api/history/card-lines') return j(cardLinesAnswer(r.request().postDataJSON()));
 		if (p === '/api/watched-at') return j(watchedAt);
 
 		if (p.startsWith('/api/allmanga-kitsu-map/')) {

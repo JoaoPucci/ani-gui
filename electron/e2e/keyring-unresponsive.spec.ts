@@ -27,6 +27,7 @@ import { groupEmpty, statFields } from "../lib/own-group.cjs";
 import { appInfo, defaultSettings, emptyHistory, topRated, trending } from "./fixtures/kitsu";
 import {
   appWindow,
+  cardLinesAnswer,
   launchPackagedApp,
   packagedBinary,
   refuseUnstubbed,
@@ -176,6 +177,9 @@ test("a secret service that never answers keeps neither the window nor the first
     let topRatedAsked: (() => void) | null = null;
     await routeContext(context, "**/api/app-info", (r) => answer(r, json(appInfo)));
     await routeContext(context, "**/api/history", (r) => answer(r, json(emptyHistory)));
+    await routeContext(context, "**/api/history/card-lines", (r) =>
+      answer(r, json(cardLinesAnswer(r.request().postDataJSON()))),
+    );
     await routeContext(context, "**/api/kitsu/trending-anilist", (r) =>
       answer(r, json(trending)),
     );
