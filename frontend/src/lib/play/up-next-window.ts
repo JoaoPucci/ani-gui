@@ -47,7 +47,9 @@ export interface UpNextState {
 export function upNextShown(state: UpNextState): boolean {
 	return (
 		state.card &&
-		!state.hasNext &&
+		// A step counted for another show says nothing about this one:
+		// the card, decided from this show's franchise, does not wait on it.
+		!(state.hasNext && !state.countsStale) &&
 		!state.resumeHolding &&
 		!state.dismissed &&
 		!state.videoFullscreen &&
