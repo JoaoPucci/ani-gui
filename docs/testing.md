@@ -130,6 +130,31 @@ listener on the window's session, as it has to add the secret header
 data as unreachable. `tests/arch/e2e_stub_server.sh` keeps
 Playwright's in-place answer out of `electron/`.
 
+A spec that plays a stream starts it as a viewer does, by clicking the
+home page's Continue card (`electron/e2e/real-play.ts`), and the play
+runs through the backend: its play route, its session and its stream
+proxy. The one step it cannot take is the provider walk, since the
+backend is kept off the network. Instead the spec's profile turns on
+replaying resolved plays (`cache_resolutions`), and when the renderer's
+play request arrives, the spec writes the row that play reads into the
+backend's resolution cache, naming a stream the spec serves, before
+letting the request through (`electron/lib/e2e-replay.cjs`).
+`lanes.spec.ts`, whose subject is the connections each lane holds,
+writes the row itself and asks the play route directly, before it
+holds the resolve lane that route travels on. The row
+is written with Node's built-in `node:sqlite` module, so the suite and
+the Electron helper tests (`electron/lib/*.test.cjs`) need Node 22.13 or
+later (CI runs them on Node 22). The row's key prefix,
+insert statement, lifetime and fields are kept in
+`electron/e2e/fixtures/replay-row.json`, and the backend's tests check
+that file against what the cache reads
+(`play_resolution_cache_e2e_row_test.rs`), so a change to the cache's
+schema fails there, by name, and not as a play that times out. A
+hand-off to an external player or Syncplay is never passed to the
+backend, because with replays on it would launch the configured
+program. The stub answers as the backend does when that program will
+not start.
+
 Each launch runs on a scratch profile the spec makes under the
 system's temporary directory. The spec passes that directory to
 `launchPackagedApp` as `profile`. The helper removes that path, and

@@ -69,11 +69,6 @@ const ROUTES: &[(&str, &str, &str)] = &[
     ("DELETE", "/api/history/some-show", ""),
     ("GET", "/api/settings", ""),
     ("PUT", "/api/settings", "{}"),
-    (
-        "POST",
-        "/api/sessions",
-        r#"{"upstream_url":"https://e.example/m.m3u8","referer":""}"#,
-    ),
     ("POST", "/api/kitsu/search", r#"{"query":"x"}"#),
     ("GET", "/api/kitsu/trending", ""),
     ("GET", "/api/image?url=https%3A%2F%2Fe.example%2Fa.jpg", ""),
@@ -364,8 +359,9 @@ async fn the_renderer_reads_its_answers() {
 async fn the_proxy_serves_its_sessions_without_the_secret() {
     let td = TempDir::new().expect("tempdir");
     let state = state(&td);
-    let session = crate::proxy::StreamSession::new(
+    let session = crate::proxy::StreamSession::new_with_kind(
         url::Url::parse("https://e.example/master.m3u8").expect("url"),
+        crate::proxy::MediaKind::Hls,
         "",
     );
     let id = state.sessions.insert(session);
@@ -418,10 +414,13 @@ async fn the_proxy_serves_its_sessions_without_the_secret() {
 async fn the_proxy_allows_only_the_renderers_origin() {
     let td = TempDir::new().expect("tempdir");
     let state = state(&td);
-    let id = state.sessions.insert(crate::proxy::StreamSession::new(
-        url::Url::parse("https://e.example/master.m3u8").expect("url"),
-        "",
-    ));
+    let id = state
+        .sessions
+        .insert(crate::proxy::StreamSession::new_with_kind(
+            url::Url::parse("https://e.example/master.m3u8").expect("url"),
+            crate::proxy::MediaKind::Hls,
+            "",
+        ));
     let router = crate::proxy::build_router(state.proxy_state());
     for (origin, allowed) in [
         ("app://localhost", true),
