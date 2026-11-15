@@ -69,7 +69,7 @@ pub fn command(exe: &Path, home: &Path) -> Command {
         .env("XDG_DATA_HOME", home.join("data"))
         // The one that holds on every platform: the backend roots its
         // whole profile here, the variables above notwithstanding.
-        .env("ANI_GUI_TEST_PROFILE_ROOT", home)
+        .env(ani_gui::config::paths::TEST_PROFILE_ROOT_ENV, home)
         // Pinned, not inherited: tests that close the backend's output
         // rely on it logging at its default level — quieter and they
         // prove nothing, louder and an unread pipe can fill.

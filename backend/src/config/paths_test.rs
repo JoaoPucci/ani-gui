@@ -1,4 +1,4 @@
-//! The test-only profile root: with `ANI_GUI_TEST_PROFILE_ROOT` set,
+//! The test-only profile root: with [`TEST_PROFILE_ROOT_ENV`] set,
 //! every directory and file the backend resolves for its profile lies
 //! under that one folder, on every platform — whatever the XDG
 //! variables, `HOME` or the platform's own folder APIs would say.
@@ -13,7 +13,7 @@ use proptest::prelude::*;
 
 use super::*;
 
-const ROOT_ENV: &str = "ANI_GUI_TEST_PROFILE_ROOT";
+const ROOT_ENV: &str = TEST_PROFILE_ROOT_ENV;
 
 /// Every resolver `paths` exposes, by name. A resolver added to the
 /// module belongs here too; the spawned-binary check in
