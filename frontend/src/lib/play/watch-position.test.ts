@@ -7,6 +7,7 @@ import {
 	clearPosition,
 	clearRowPositions,
 	clearShowPositions,
+	keptEpisodes,
 	markStarted,
 	movePosition,
 	readPosition,
@@ -390,5 +391,20 @@ describe('movePosition (what it answers)', () => {
 		savePosition('42', 24.5, 300, 1420, s);
 		expect(movePosition('42', 24.5, 12.5, s)).toBe(false);
 		expect(readPosition('42', 12.5, s)).toBe(612);
+	});
+});
+
+describe('the episodes of a show with a kept position', () => {
+	it("lists each of the show's episodes Continue would take as left part-way", () => {
+		const s = memory();
+		savePosition('8063', 6, 600, 1420, s);
+		markStarted('8063', 7, s);
+		savePosition('8063', 7.5, 300, 1420, s);
+		savePosition('80630', 2, 600, 1420, s);
+		savePosition('7158', 6, 600, 1420, s);
+		expect(keptEpisodes('8063', s).sort((a, b) => a - b)).toEqual([6, 7, 7.5]);
+		for (const ep of keptEpisodes('8063', s)) expect(readPosition('8063', ep, s)).not.toBeNull();
+		expect(keptEpisodes('none', s)).toEqual([]);
+		expect(keptEpisodes('8063', null)).toEqual([]);
 	});
 });

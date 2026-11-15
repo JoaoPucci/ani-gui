@@ -22,7 +22,13 @@ import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { appInfo, emptyHistory, topRated, trending } from './fixtures/kitsu';
-import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
+import {
+	appWindow,
+	cardLinesAnswer,
+	launchPackagedApp,
+	packagedBinary,
+	stopDeadApp
+} from './launch';
 import { answer } from './stubs';
 
 test.beforeAll(() => {
@@ -83,6 +89,9 @@ async function launchOnce(asked: string[], onLaunch: (app: ElectronApplication) 
 		const p = new URL(r.request().url()).pathname;
 		if (p.endsWith('/api/app-info')) return answer(r, json(appInfo));
 		if (p.endsWith('/api/history')) return answer(r, json(emptyHistory));
+		if (p.endsWith('/api/history/card-lines')) {
+			return answer(r, json(cardLinesAnswer(r.request().postDataJSON())));
+		}
 		// Home asks for trending-anilist; the search page's empty state
 		// still asks for trending.
 		if (p.endsWith('/api/kitsu/trending-anilist') || p.endsWith('/api/kitsu/trending')) {
