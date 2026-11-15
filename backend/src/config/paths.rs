@@ -180,6 +180,10 @@ pub fn download_dir() -> Option<PathBuf> {
 pub(crate) static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
+#[path = "paths_test.rs"]
+mod profile_root_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

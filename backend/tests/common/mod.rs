@@ -1,10 +1,12 @@
 //! Shared by the integration tests that run the real backend binary.
 //!
-//! On Linux and macOS the backend's data lands under the `home` each
-//! test passes. On Windows the platform directories come from the
-//! known-folder API rather than the environment, so a run there uses
-//! the dev profile's directories (`ani-gui-dev`, as a debug build
-//! always does) — the same ones `pnpm dev` uses.
+//! The backend's whole profile — config, cache, state, logs and the
+//! default download folder — lands under the `home` each test passes,
+//! on every platform: [`command`] sets `ANI_GUI_TEST_PROFILE_ROOT` to
+//! it, which the backend honours ahead of the XDG variables, `HOME` and
+//! the platform's folder APIs (the known-folder API on Windows, which no
+//! other variable redirects). Under that root the layout is fixed; see
+//! [`profile`].
 
 // Each test crate uses its own subset.
 #![allow(dead_code)]
@@ -33,6 +35,22 @@ pub struct Backend {
     pub secret: String,
 }
 
+/// Where, under a test's `home`, the backend keeps each part of its
+/// profile when [`command`] started it.
+pub mod profile {
+    use std::path::{Path, PathBuf};
+
+    /// `<home>/cache/metadata.sqlite`.
+    pub fn metadata_db(home: &Path) -> PathBuf {
+        home.join("cache").join("metadata.sqlite")
+    }
+
+    /// `<home>/config/config.toml`.
+    pub fn config_file(home: &Path) -> PathBuf {
+        home.join("config").join("config.toml")
+    }
+}
+
 /// A command for the backend at `exe`, its data under `home`, stdin a
 /// pipe the test holds the way Electron does, logging at the level it
 /// ships with, as a test run (`ANI_GUI_UNATTENDED=1`). Whether the backend watches that pipe is the caller's
@@ -49,6 +67,9 @@ pub fn command(exe: &Path, home: &Path) -> Command {
         .env("XDG_CONFIG_HOME", home.join("config"))
         .env("XDG_STATE_HOME", home.join("state"))
         .env("XDG_DATA_HOME", home.join("data"))
+        // The one that holds on every platform: the backend roots its
+        // whole profile here, the variables above notwithstanding.
+        .env("ANI_GUI_TEST_PROFILE_ROOT", home)
         // Pinned, not inherited: tests that close the backend's output
         // rely on it logging at its default level — quieter and they
         // prove nothing, louder and an unread pipe can fill.
