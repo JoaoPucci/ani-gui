@@ -501,7 +501,7 @@ starting it, and delete it when you find it done.
   page (`/anime/<id>/franchise`) is reached from a show page (the
   watch-order strip's link, or that link alone where the show has no
   strip), so a viewer has to find one show of the franchise first.
-  The proposal also named search results as a way in; the maintainer
+  The watch-order plan also named search results as a way in; the maintainer
   dropped it in favour of a study of how to make franchises
   findable gracefully, such as a franchise search or a similar
   mechanic.
@@ -1308,10 +1308,10 @@ for when AniList's listing is the show's.
 - **Relations.** AniList `relations` names prequels, sequels, side
   stories, adaptations and looser links by `relationType`, and includes
   manga and novel entries, so grouping anime filters on the related
-  node's `type`. The franchise proposal
-  ([`proposals/franchise-watch-order.md`](./proposals/franchise-watch-order.md))
-  compared it with Kitsu's relations and chose Kitsu's, so this stays
-  unused.
+  node's `type`. The franchise walk's design compared it with Kitsu's relations
+  and chose Kitsu's
+  ([`title-resolution.md`](./title-resolution.md#what-the-links-say-and-what-they-do-not)),
+  so this stays unused.
 - **Spoiler-safe tags.** AniList `tags` carry a relevance rank and two
   spoiler flags: `isMediaSpoiler` (spoils this show) and
   `isGeneralSpoiler` (spoils any show it is on). Showing tags without

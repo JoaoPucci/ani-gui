@@ -1,6 +1,7 @@
 /**
- * Order within a run, as the proposal's section 4 defines it. Link order follows the prequel/sequel links with shortcut
- * links ignored and cycles taken as one block; release order sorts by
+ * Order within a run, as docs/architecture.md ("Order and position
+ * numbers") describes it. Link order follows the prequel/sequel links
+ * with shortcut links ignored and cycles taken as one block; release order sorts by
  * start date with unknown dates last.
  */
 export { byStart, type WatchOrder } from './by-start';

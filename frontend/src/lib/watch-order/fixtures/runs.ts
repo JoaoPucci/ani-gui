@@ -6,7 +6,8 @@
  * are the prequel/sequel pairs between run members, from either side's
  * listing; which members form a run (and which entries are other
  * versions, films, side stories or recaps) was decided by hand from
- * the proposal's rules. `parents` names, for three side stories
+ * the plan's rules of the time; the walk's own answers
+ * (`tests/fixtures/franchise/`) differ. `parents` names, for three side stories
  * (*Fate/Zero: Onegai! Einzbern Soudanshitsu*, *Gintama°: Aizome
  * Kaori-hen*, *Kishibe Rohan wa Ugokanai*), the entries Kitsu lists as
  * their `parent_story`, read the same day. `progress` is made up so

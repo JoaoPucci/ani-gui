@@ -10,10 +10,22 @@
 // element after `scrollWindowTo()`.
 //
 // A Svelte transition with no duration and no delay starts no
-// animation at all. One with either starts a zero-length placeholder
-// for the delay and then the real one, so "moved" here is an
+// animation at all. One with either starts a placeholder that lasts
+// its delay and then the real one, so "moved" here is an
 // `animate()` call with any time in it.
+//
+// Neither kind of motion is there the moment the DOM changes. Under
+// the `element.animate()` stub (./stubs/element-animate.ts) a
+// transition starts its timed animation a task after
+// the update that inserted or removed the element, and a scroll can wait a
+// frame for layout. So a scenario never reads `animations` or `glides`
+// right after its DOM witness, nor after a fixed sleep: it waits for
+// `settled()`, or for the scroll in `scrolls`, and reads them then.
+// Under load a sleep is shorter than it looks, and an assertion that
+// nothing moved passes just as well before the motion would have
+// started as after.
 
+import { animationsInFlight } from './stubs/element-animate';
 import { lottieLog } from './stubs/lottie-web';
 
 export interface Motion {
@@ -21,6 +33,16 @@ export interface Motion {
 	readonly animations: string[];
 	/** Scrolls asked to glide, as `<method> <element>`. */
 	readonly glides: string[];
+	/** Every scroll asked of an element, gliding or not, as
+	 *  `<method> <element>`: the witness that a scroll was asked at
+	 *  all. A scroll of the window is not recorded. */
+	readonly scrolls: string[];
+	/** True when no animation is running: every transition the DOM's
+	 *  changes so far started has started its timed part, and that
+	 *  part has finished. Read it once the scenario has seen the DOM
+	 *  change: before that update ran nothing has started, and it is
+	 *  trivially true. */
+	settled(): boolean;
 	/** Everything the Lottie stub was asked since recording began. */
 	lottie(): string[];
 	/** Puts the patched methods back. */
@@ -42,6 +64,7 @@ type Timing = number | { duration?: number; delay?: number } | undefined;
 export function recordMotion(): Motion {
 	const animations: string[] = [];
 	const glides: string[] = [];
+	const scrolls: string[] = [];
 	const lottieFrom = lottieLog.length;
 	const proto = Element.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
 	const saved = {
@@ -62,6 +85,7 @@ export function recordMotion(): Motion {
 	for (const method of ['scrollBy', 'scrollTo', 'scrollIntoView'] as const) {
 		proto[method] = function (this: Element, ...args: unknown[]) {
 			const options = args[0] as { behavior?: string } | undefined;
+			scrolls.push(`${method} ${describeElement(this)}`);
 			if (typeof options === 'object' && options?.behavior === 'smooth') {
 				glides.push(`${method} ${describeElement(this)}`);
 			}
@@ -72,6 +96,8 @@ export function recordMotion(): Motion {
 	return {
 		animations,
 		glides,
+		scrolls,
+		settled: () => animationsInFlight() === 0,
 		lottie: () => lottieLog.slice(lottieFrom),
 		stop() {
 			Object.assign(proto, saved);

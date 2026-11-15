@@ -11,8 +11,7 @@
  * stored mapping, else, for a row whose recorded entry Kitsu deleted,
  * by the title match Home stored for it. So the strip counts a row
  * where the entry's own page would resume from it, toward the entry
- * that named it. One row can be named for several entries: a row whose
- * recorded entry is gone, by a title match stored for each cour.
+ * that named it.
  *
  * Both reads belong to one visit of one page, and `signal` ends them
  * when it ends. The franchise read holds its response open while the
