@@ -15,7 +15,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 
 import { API_BASE, server } from './setup';
@@ -47,7 +47,8 @@ import {
 	type HistoryEntry,
 	type HistoryRowByKitsu,
 	type KitsuAnimeRef,
-	type KitsuEpisode
+	type KitsuEpisode,
+	type FranchiseEntry
 } from '../../src/lib/api';
 
 /** The walk's answer for `id`, as the endpoint serves it (the
@@ -87,9 +88,13 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-/** Open `id`'s show page with the walk's answer for it. */
-function openShow(id: string, order: 'linked' | 'released' = 'linked') {
-	const f = served(id);
+/** Open `id`'s show page with the walk's answer for it, `edit` applied, in `order`. */
+function openShow(
+	id: string,
+	edit: (f: Franchise) => Franchise = (f) => f,
+	order: 'linked' | 'released' = 'linked'
+) {
+	const f = edit(served(id));
 	setParams({ id });
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
@@ -166,6 +171,15 @@ describe('detail route — the watch-order strip on real franchises', () => {
 		);
 		expect(target.textContent).not.toContain(m.watchorder_strip_side_story());
 		expect(target.querySelector('a[href="/anime/50656"]')).toBeNull();
+	});
+
+	it("leads from One Piece's page to One Piece's franchise", async () => {
+		openShow('12');
+		await until(
+			() => target.querySelector('a[href="/anime/12/franchise"]') !== null,
+			'the franchise link'
+		);
+		expect(target.textContent).not.toContain(m.watchorder_strip_side_story());
 	});
 
 	it('shows LEGO ONE PIECE as a side story of One Piece', async () => {
@@ -258,7 +272,7 @@ describe('detail route — the watch-order strip on real franchises', () => {
 	});
 
 	it('in release order, shows the JoJo series after the 2000 OVA, keyed as the main story it leads into', async () => {
-		openShow('7730', 'released');
+		openShow('7730', (f) => f, 'released');
 		await until(() => strip() !== null, 'the strip');
 		expect(heading()).toContain(m.watchorder_strip_position({ position: '02', total: '02' }));
 		expect(columnKey('after')).toBe(m.watchorder_strip_seam_into());
@@ -279,4 +293,51 @@ describe('detail route — the watch-order strip on real franchises', () => {
 		expect(heading()).not.toContain(m.watchorder_strip_outside());
 		expect(columnKey('before')).not.toBe(m.watchorder_strip_seam_from());
 	});
+});
+
+/** Every anchor the corpus keeps an answer for. */
+const SERVED_ANCHORS = readdirSync(resolvePath(__dirname, '../../../tests/fixtures/franchise'))
+	.map((n) => /^served-(\d+)\.json$/.exec(n)?.[1])
+	.filter((id): id is string => id !== undefined);
+
+/** `f` with a poster on every entry, its URL naming the entry's id. */
+function withPosters(f: Franchise): Franchise {
+	const poster = (e: FranchiseEntry): FranchiseEntry => ({
+		...e,
+		poster: `https://media.kitsu.app/anime/poster_images/${e.id}/medium.jpg`
+	});
+	return {
+		...f,
+		entries: f.entries.map(poster),
+		versions: f.versions.map(poster),
+		films: f.films.map(poster),
+		sides: f.sides.map(poster),
+		recaps: f.recaps.map(poster)
+	};
+}
+
+/** The ids whose posters the franchise link's stack shows, in its order. */
+const stackIds = (id: string) =>
+	[...target.querySelectorAll(`a[href="/anime/${id}/franchise"] .fan-card img`)].map(
+		(img) => /poster_images\/(\d+)\//.exec(decodeURIComponent(img.getAttribute('src') ?? ''))?.[1]
+	);
+
+describe('detail route — the franchise poster stack on real franchises', () => {
+	it("leads Lupin III's stack with its 1971 series, not the 1969 pilot film", async () => {
+		openShow('1265', withPosters);
+		await until(() => stackIds('1265').length > 0, 'the poster stack');
+		expect(stackIds('1265')[0]).toBe('1265');
+		expect(stackIds('1265')).not.toContain('3997');
+	});
+
+	// Every corpus anchor: the stack leads with the entry the franchise
+	// is named after.
+	for (const id of SERVED_ANCHORS) {
+		it(`leads ${id}'s stack with the entry its franchise is named after`, async () => {
+			const f = served(id);
+			openShow(id, withPosters);
+			await until(() => stackIds(id).length > 0, 'the poster stack');
+			expect(stackIds(id)[0]).toBe(f.name_from);
+		});
+	}
 });

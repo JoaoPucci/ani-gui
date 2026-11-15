@@ -17,20 +17,18 @@ export type Seam = 'from' | 'into';
  * no chain.
  */
 export function chainFranchise(f: FranchiseData): FranchiseData | null {
-	const chain = f.chain;
+	const { chain, ...rest } = f;
 	if (!chain) return null;
 	const inChain = new Set(chain.entries.map((e) => e.id));
 	const out = (list: readonly WatchEntry[]) => list.filter((e) => !inChain.has(e.id));
 	return {
-		anchor: f.anchor,
+		...rest,
 		entries: chain.entries,
 		links: chain.links,
 		versions: out(f.versions),
 		films: out(f.films),
 		sides: out(f.sides),
-		recaps: out(f.recaps),
-		parents: f.parents,
-		complete: f.complete
+		recaps: out(f.recaps)
 	};
 }
 

@@ -58,12 +58,18 @@ export interface FranchiseSummary {
 	readonly films: number;
 	readonly sides: number;
 	readonly recaps: number;
-	/** Up to three entries with a poster to fan out, from different parts of the franchise. */
+	/**
+	 * Up to three entries with a poster to fan out, from different parts
+	 * of the franchise, the front entry first.
+	 */
 	readonly posters: readonly WatchEntry[];
 }
 
-export function franchiseSummary(run: WatchRun): FranchiseSummary {
-	const first = run.entries.find((e) => e.id === run.nameId);
+/** The counts of `run`, its poster stack fronted by the main-story entry `front`. */
+export function franchiseSummary(run: WatchRun, front: string): FranchiseSummary {
+	// A payload naming no entry of the run fronts its first, as the
+	// franchise page takes the first entry's artwork then.
+	const first = run.entries.find((e) => e.id === front) ?? run.entries[0];
 	const candidates = [
 		first,
 		run.films[0] ?? run.versions[0],
@@ -116,15 +122,4 @@ export function watchingFor(
 	if (!now || now.entry.id === id) return null;
 	const shown = [...view.before, ...view.after].some((e) => e.id === now.entry.id);
 	return shown ? null : now;
-}
-
-/**
- * The entries the strip itself shows: its tiles, and the entry the
- * "You're watching" card names. "Similar titles" leaves these out, so
- * no poster appears twice on the page.
- */
-export function shownOnStrip(view: StripView, watching: WatchEntry | null): ReadonlySet<string> {
-	const shown = [...view.before, ...view.after];
-	if (watching) shown.push(watching);
-	return new Set(shown.map((e) => e.id));
 }
