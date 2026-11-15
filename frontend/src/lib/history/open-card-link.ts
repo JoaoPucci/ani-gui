@@ -4,7 +4,9 @@
  *
  * A remove or Clear history holds its dialog while it is out, with
  * nothing over it ($lib/history/confirm-run.ts), so nothing opens then.
- * Otherwise the failure overlay, if any, goes, and the card is checked
+ * Otherwise the failure overlay, if any, goes. A card whose line could
+ * not be read ($lib/history/card-lines.svelte.ts) says it could not be
+ * checked, as a failed check does. Otherwise the card is checked
  * again ($lib/history/card-relink.ts): the picker opens only on a card
  * still guessed, and only if no remove or clear began while the check
  * was out. A check that could not be read says so, and leaves the pill
@@ -42,7 +44,13 @@ export async function openCardLink(
 ): Promise<CardLinkOpening> {
 	if (deps.busy()) return 'held';
 	deps.dismissFailure();
-	const guessed = await deps.stillGuessed(row ?? '', matchId);
+	// The card's line could not be read: it is not known which line the
+	// pill stands for, and the card's own row may not be it.
+	if (row === null) {
+		deps.checkFailed();
+		return 'unread';
+	}
+	const guessed = await deps.stillGuessed(row, matchId);
 	if (guessed === 'unread') {
 		deps.checkFailed();
 		return 'unread';
@@ -72,14 +80,16 @@ export interface FailedResumeDeps {
 
 /** The pick a failed resume offers: for a guess still standing, and
  *  for one whose check could not be read, since the pick checks again;
- *  none for a play no guess opened, or a card settled since the cards
- *  were read or matched again since the check began. `null` when the viewer moved on meanwhile, so nothing is
+ *  none for a play no guess opened, one whose card line could not be
+ *  read (`unread`: the row it played may not be the line), or a card
+ *  settled since the cards were read or matched again since the check
+ *  began. `null` when the viewer moved on meanwhile, so nothing is
  *  shown at all. */
 export async function failedResumeGuess(
 	args: { guess?: boolean; row?: string; matchId: string; episode: number; unread?: boolean },
 	deps: FailedResumeDeps
 ): Promise<FailedGuess | undefined | null> {
-	const line = args.guess ? deps.line(args.row ?? '') : undefined;
+	const line = args.guess && !args.unread ? deps.line(args.row ?? '') : undefined;
 	const standing = line ? await deps.stillGuessed(line.id, args.matchId) : false;
 	if (!deps.isCurrent()) return null;
 	return line && standing

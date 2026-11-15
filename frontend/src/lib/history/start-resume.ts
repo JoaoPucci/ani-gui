@@ -63,6 +63,8 @@ export interface StartResumeDeps {
 		/** Whether the click's navigation claim still holds — asked once
 		 *  the failure is worded, which can outlast the viewer staying. */
 		isCurrent?: () => boolean,
+		/** Whether the card's line could not be read, so the play is of
+		 *  the card's own row, which may not be the line. */
 		lineUnread?: boolean
 	) => void | Promise<void>;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
@@ -167,7 +169,7 @@ export function makeStartResume(deps: StartResumeDeps): (
 	/** The line the card stands for, when it is another row than the
 	 *  one it shows ($lib/history/card-lines.svelte.ts): the play is a guess of
 	 *  that line, from the shown row's progress. Home hands it while it may
-	 *  still be asking. */
+	 *  still be asking; `null` when it could not be read. */
 	cardRow?: string | null | Promise<string | null>
 ) => Promise<void> {
 	return async (entry, match, seriesTotal, seriesFinished, cardRow) => {
@@ -180,7 +182,11 @@ export function makeStartResume(deps: StartResumeDeps): (
 		deps.onProgress(null);
 		// Home may still be asking which line the card stands for: the
 		// click's claim and busy state come first, the line once known.
-		const line = (await cardRow) ?? entry.id;
+		// One that could not be read (`null`) plays the card's own row: a
+		// play is not held on it, but its failure offers no correction.
+		const asked = await cardRow;
+		const lineUnread = asked === null;
+		const line = asked ?? entry.id;
 
 		const settings = await deps.getSettings();
 		const mode = deps.modeFor ? deps.modeFor(match.id, settings.mode) : settings.mode;
@@ -299,7 +305,7 @@ export function makeStartResume(deps: StartResumeDeps): (
 			// after a cache lookup, and a card left idle meanwhile would
 			// take a second click whose play the late message then covers.
 			try {
-				await deps.onFailure(title, e, args, stillHere);
+				await deps.onFailure(title, e, args, stillHere, lineUnread);
 			} finally {
 				deps.onBusy(null);
 			}

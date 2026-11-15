@@ -16,11 +16,13 @@
  * an answer for changed rows is out they keep the last one, so a pill
  * does not blink out from under a pointer or keyboard focus whenever
  * another card's match lands. A click waits for the answer for the rows
- * as they are (`settled`) and acts on it (`clickLineOf`); when that
- * answer failed, it acts on each row itself, as before the cards had
- * one. One question is out at a time; rows that change meanwhile are
- * asked once it answers. A failed answer leaves the last one drawn,
- * until the rows change again.
+ * as they are (`settled`), asking for it again when the last one failed,
+ * and acts on it (`clickLineOf`). With none, a click has no line: the
+ * card may be drawn from an answer for other rows, standing for another
+ * line than its own row, so acting on the row would correct a line the
+ * card does not show. One question is out at a time; rows that change
+ * meanwhile are asked once it answers. A failed answer leaves the last
+ * one drawn.
  */
 
 import type { CardLine, CardLineRow } from '$lib/api';
@@ -31,6 +33,7 @@ export class CardLines {
 	#wanted = $state('');
 	#rows: CardLineRow[] = [];
 	#out: Promise<void> | null = null;
+	#failed = false;
 	#waiters: (() => void)[] = [];
 
 	constructor(ask: (rows: CardLineRow[]) => Promise<Record<string, CardLine>>) {
@@ -50,6 +53,7 @@ export class CardLines {
 		while (this.#answer?.key !== this.#wanted) {
 			const key = this.#wanted;
 			const lines = await this.#ask(this.#rows).catch(() => null);
+			this.#failed = lines === null;
 			if (lines === null) break;
 			this.#answer = { key, lines };
 		}
@@ -67,10 +71,11 @@ export class CardLines {
 	}
 
 	/** The line a click on the card showing the row `id` acts on: the
-	 *  answer's for the rows as they are, else the row itself. Read once
-	 *  `settled`. */
+	 *  answer's for the rows as they are, or `null` without one. Read
+	 *  once `settled`. */
 	clickLineOf(id: string): string | null {
-		return (this.#answer?.key === this.#wanted ? this.#answer.lines[id]?.line : undefined) ?? id;
+		if (this.#answer?.key !== this.#wanted) return null;
+		return this.#answer.lines[id]?.line ?? id;
 	}
 
 	/** Whether the card showing the row `id` can correct its line. */
@@ -78,9 +83,11 @@ export class CardLines {
 		return this.#current(id)?.correctable === true;
 	}
 
-	/** Settles once no question is out: `clickLineOf` then answers for
-	 *  the rows as they are, or, after a failed answer, with each row. */
+	/** Settles once no question is out, asking once more when the last
+	 *  answer failed: `clickLineOf` then answers for the rows as they
+	 *  are, or, when that failed too, with no line. */
 	settled(): Promise<void> {
+		if (!this.#out && this.#failed) this.#out = this.#send();
 		if (!this.#out) return Promise.resolve();
 		return new Promise((resolve) => this.#waiters.push(resolve));
 	}

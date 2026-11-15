@@ -1098,7 +1098,7 @@
 		// The shared mapper, default phrasing; the other audio's answer
 		// comes from the availability cache for the show and episode
 		// the resume asked for.
-		onFailure: async (title, e, args, isCurrent) => {
+		onFailure: async (title, e, args, isCurrent, lineUnread) => {
 			const message = await describePlayFailureFromCache(e, {
 				kitsuId: args.match.id,
 				mode: args.mode,
@@ -1109,7 +1109,13 @@
 			if (isCurrent?.() === false) return;
 			// The pick it offers, for a guess ($lib/history/open-card-link).
 			const guess = await failedResumeGuess(
-				{ guess: args.guess, row: args.row, matchId: args.match.id, episode: args.episode },
+				{
+					guess: args.guess,
+					row: args.row,
+					matchId: args.match.id,
+					episode: args.episode,
+					unread: lineUnread
+				},
 				{
 					line: (row) => historyById.get(row),
 					stillGuessed: (row, id) => relink.stillGuessed(row, id),
@@ -1581,7 +1587,8 @@
 								match,
 								match?.episode_count ?? null,
 								match?.status === 'finished',
-								// The line the card stands for as the rows are now.
+								// The line the card stands for as the rows are now;
+								// null when it could not be read.
 								cardLines.settled().then(() => cardLines.clickLineOf(entry.id))
 							)}
 					>
