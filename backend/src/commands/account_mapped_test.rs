@@ -32,7 +32,9 @@ struct Tracker {
     reads: Mutex<Vec<u32>>,
     /// Entries the tracker no longer has: every request about one
     /// answers 404.
-    gone: Vec<u32>,
+    gone: Mutex<Vec<u32>>,
+    /// A write to the first entry removes the second from the tracker.
+    removes: Option<(u32, u32)>,
 }
 
 impl Tracker {
@@ -70,13 +72,18 @@ impl Tracker {
         self.reads.lock().expect("reads").clone()
     }
 
-    fn without(mut self, gone: &[u32]) -> Self {
-        self.gone = gone.to_vec();
+    fn without(self, gone: &[u32]) -> Self {
+        *self.gone.lock().expect("gone") = gone.to_vec();
+        self
+    }
+
+    fn removing_on_write(mut self, written: u32, removed: u32) -> Self {
+        self.removes = Some((written, removed));
         self
     }
 
     fn answers(&self, id: ProviderMediaId) -> crate::error::Result<()> {
-        if self.gone.contains(&id.0) {
+        if self.gone.lock().expect("gone").contains(&id.0) {
             return Err(AniError::Upstream { status: 404 });
         }
         Ok(())
@@ -120,6 +127,11 @@ impl UserListProvider for Tracker {
             .lock()
             .expect("writes")
             .push((id.0, update.clone()));
+        if let Some((written, removed)) = self.removes {
+            if written == id.0 {
+                self.gone.lock().expect("gone").push(removed);
+            }
+        }
         let mut rows = self.rows.lock().expect("rows");
         let row = rows.entry(id.0).or_insert(CurrentEntry {
             status: ListStatus::Planning,
@@ -770,4 +782,31 @@ async fn a_gone_earlier_entry_is_passed_over_for_the_episode_s_own() {
     let tracker = Tracker::with(&[(149_939, 143)], &[]).without(&[210]);
     push(&state, &tracker, "18600", None, watched(19)).await;
     assert_eq!(tracker.writes(), [(149_939, Some(Watching), Some(1))]);
+}
+
+#[tokio::test]
+async fn an_entry_removed_while_the_earlier_ones_are_brought_up_is_not_written() {
+    // Nettou-hen is read, then removed from the tracker while 210 is
+    // brought to its total: its read again finds it gone, and nothing
+    // is sent to it.
+    let state = state();
+    seed(&state, "18600", &ranma_map());
+    let tracker = Tracker::with(&[(210, 18), (149_939, 143)], &[(210, Watching, 15)])
+        .removing_on_write(210, 149_939);
+    assert!(push(&state, &tracker, "18600", None, watched(19))
+        .await
+        .is_none());
+    assert_eq!(tracker.writes(), [(210, Some(Completed), Some(18))]);
+}
+
+#[tokio::test]
+async fn a_status_for_a_show_that_resolves_to_nothing_is_not_written() {
+    let state = state();
+    let tracker = Tracker::with(&[], &[]);
+    let update = EntryUpdate {
+        status: Some(ListStatus::Paused),
+        ..Default::default()
+    };
+    assert!(push(&state, &tracker, "5", None, update).await.is_none());
+    assert!(tracker.writes().is_empty());
 }
