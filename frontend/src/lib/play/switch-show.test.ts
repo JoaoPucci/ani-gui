@@ -263,7 +263,7 @@ describe('switching to the picked show', () => {
 		);
 	});
 
-	it("opens the pick where the viewer left it when the backend says it is further along, from that episode's own start", async () => {
+	it('opens the pick where the viewer left it when the backend says it is further along, carrying no point', async () => {
 		// The pick's own row is at episode 6, watched through: Continue
 		// goes on to 7, past the card's episode 2.
 		const { d, calls } = deps({ plan: vi.fn(async () => 7) });

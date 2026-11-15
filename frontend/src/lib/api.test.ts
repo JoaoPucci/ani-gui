@@ -26,6 +26,7 @@ import {
 	historyLinkCandidates,
 	historyLinkGroup,
 	historyLinkVerdict,
+	historySwitchEpisode,
 	historyList,
 	historyNumber,
 	imageCacheClear,
@@ -75,6 +76,7 @@ import {
 	type LinkCandidate,
 	type LinkOutcome,
 	type LinkVerdict,
+	type SwitchEpisode,
 	type PlayProgress
 } from './api';
 
@@ -2384,6 +2386,23 @@ describe('historyLink', () => {
 		expect(url).toBe(`${BASE}/api/history/link-candidates`);
 		expect(init?.method).toBe('POST');
 		expect(init?.signal).toBe(signal);
+		expect(JSON.parse(String(init?.body))).toEqual(request);
+	});
+
+	it('asks where a switch opens the show picked for a card', async () => {
+		const fetchMock = mockFetchOnce<SwitchEpisode>({ episode: 7 });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const request = {
+			pick: '8063',
+			card: 'hianime:jojo-diu-1388',
+			episode: 2,
+			episode_count: 48,
+			part_way: [6]
+		};
+		expect(await historySwitchEpisode(request)).toEqual({ episode: 7 });
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/history/switch-episode`);
+		expect(init?.method).toBe('POST');
 		expect(JSON.parse(String(init?.body))).toEqual(request);
 	});
 

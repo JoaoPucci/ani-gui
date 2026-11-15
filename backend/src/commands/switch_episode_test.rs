@@ -47,6 +47,32 @@ fn a_row_episode_reads_as_the_history_reads_it() {
     assert_eq!(row_episode(""), None);
     assert_eq!(row_episode("0"), None);
     assert_eq!(row_episode("x"), None);
+    // As the renderer's `parseHistoryEpisode` reads them.
+    assert_eq!(row_episode(".5"), None);
+    assert_eq!(row_episode("7.5.3"), Some(7.5));
+    assert_eq!(row_episode("  12 extra"), Some(12.0));
+    assert_eq!(row_episode("6."), Some(6.0));
+}
+
+/// The renderer's `parseHistoryEpisode`, `/^\s*(\d+(?:\.\d+)?)/`, by
+/// hand: the leading digits, then a dot and digits when both follow.
+fn parse_history_episode(raw: &str) -> Option<f64> {
+    let t = raw.trim_start();
+    let whole: String = t.chars().take_while(char::is_ascii_digit).collect();
+    if whole.is_empty() {
+        return None;
+    }
+    let rest = &t[whole.len()..];
+    let frac: String = rest
+        .strip_prefix('.')
+        .map(|r| r.chars().take_while(char::is_ascii_digit).collect())
+        .unwrap_or_default();
+    let text = if frac.is_empty() {
+        whole
+    } else {
+        format!("{whole}.{frac}")
+    };
+    text.parse::<f64>().ok().filter(|n| *n > 0.0)
 }
 
 #[test]
@@ -68,6 +94,34 @@ fn the_answer_and_request_speak_the_renderers_wire() {
 }
 
 proptest! {
+    /// A row's episode reads exactly as the renderer reads it.
+    #[test]
+    fn a_row_episode_reads_as_the_renderer_reads_it(
+        raw in "[ ]{0,2}[0-9]{0,3}(\\.[0-9]{0,2}){0,2}[-a-z ]{0,3}",
+    ) {
+        prop_assert_eq!(row_episode(&raw), parse_history_episode(&raw));
+    }
+
+    /// The rule over fractions and any cap: never behind the card's
+    /// episode, never behind the pick's own, and exactly Continue's.
+    #[test]
+    fn a_switch_opens_continues_episode_exactly_when_it_is_past_the_cards(
+        card in 1u32..120,
+        own in proptest::option::of(1u32..120),
+        cap in proptest::option::of(0u32..60),
+        part in any::<bool>(),
+    ) {
+        let card = f64::from(card) / 2.0;
+        let own = own.map(|o| f64::from(o) / 2.0);
+        let part_way: Vec<f64> = own.filter(|_| part).into_iter().collect();
+        let continues = own.map(|o| {
+            let next = if o.fract() == 0.0 { o + 1.0 } else { o.ceil() };
+            if part || cap.is_some_and(|c| next > f64::from(c)) { o } else { next }
+        });
+        let opened = switch_episode(card, own, cap, &part_way);
+        prop_assert_eq!(opened, continues.filter(|c| *c > card));
+    }
+
     /// A switch never opens the pick behind the episode playing, nor
     /// behind where Continue would take the pick; it opens the pick's
     /// own episode exactly when that is past the card's.

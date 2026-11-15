@@ -32,10 +32,16 @@ describe('SwitchPreview', () => {
 		await vi.waitFor(() => expect(p.ownFor('4013')).toBeNull());
 	});
 
-	it("keeps the card's line when the read fails: the switch itself asks again", async () => {
-		const p = new SwitchPreview(async () => Promise.reject(new Error('down')));
+	it('claims nothing when the read fails: the switch itself asks again', async () => {
+		// "It picks up episode 2 at 1:14" would be a claim the switch may
+		// not keep: it reads again and may open the pick's own episode.
+		const fail = vi.fn(async () => Promise.reject(new Error('down')));
+		const p = new SwitchPreview(fail);
 		p.ask('4013');
-		await vi.waitFor(() => expect(p.ownFor('4013')).toBeNull());
+		await vi.waitFor(() => expect(fail).toHaveBeenCalled());
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(p.ownFor('4013')).toBe('pending');
 	});
 
 	it('answers only for the pick it was asked about, the latest one', async () => {

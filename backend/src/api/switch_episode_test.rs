@@ -92,3 +92,47 @@ async fn a_pick_behind_or_without_progress_takes_the_cards_episode() {
         serde_json::json!({ "episode": null })
     );
 }
+
+#[tokio::test]
+async fn a_bare_cards_walked_row_is_the_cards_listing_not_the_picks_progress() {
+    // A retired provider's bare card and the walked row with its words
+    // are one listing: neither is the pick's own progress.
+    let bare = "jojos-bizarre-adventure-diamond-is-unbreakable-77";
+    let rows = [
+        row(
+            "9",
+            "hianime:jojos-bizarre-adventure-diamond-is-unbreakable-1388",
+            3_000,
+            Some("8063"),
+        ),
+        row("2", bare, 2_000, Some("8063")),
+        row("6", OWN, 1_000, Some("8063")),
+    ];
+    let body =
+        serde_json::json!({ "pick": "8063", "card": bare, "episode": 2, "episode_count": 48 });
+    assert_eq!(
+        ask(&rows, body).await,
+        serde_json::json!({ "episode": 7.0 })
+    );
+}
+
+#[tokio::test]
+async fn a_pick_that_is_no_kitsu_id_is_refused() {
+    let td = TempDir::new().expect("tempdir");
+    let state = test_app_state(&td);
+    let response = test_router(Arc::new(state))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/history/switch-episode")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "pick": "not an id", "card": CARD, "episode": 2 })
+                        .to_string(),
+                ))
+                .expect("req"),
+        )
+        .await
+        .expect("oneshot");
+    assert!(response.status().is_client_error());
+}
