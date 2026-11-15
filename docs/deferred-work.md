@@ -501,7 +501,7 @@ starting it, and delete it when you find it done.
   page (`/anime/<id>/franchise`) is reached from a show page (the
   watch-order strip's link, or that link alone where the show has no
   strip), so a viewer has to find one show of the franchise first.
-  The proposal also named search results as a way in; the maintainer
+  The watch-order plan also named search results as a way in; the maintainer
   dropped it in favour of a study of how to make franchises
   findable gracefully, such as a franchise search or a similar
   mechanic.
