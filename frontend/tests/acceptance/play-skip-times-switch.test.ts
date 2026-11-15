@@ -20,6 +20,7 @@ import { appConfig, kitsuRef } from './home-handlers';
 import { playerVideo, playerVideoInSlot } from './player-video';
 import { m } from '../../src/lib/paraglide/messages';
 import { savePosition } from '../../src/lib/play/watch-position';
+import { afterRead, watchPageFetches, type PageFetch } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -92,8 +93,30 @@ const g = globalThis as unknown as GlobalLike;
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
-/** Every skip-times request, as the backend received it. */
-let asks: { episode: string; length: string | null }[];
+/** What the page asks of the network, recorded as it asks. */
+let fetches: ReturnType<typeof watchPageFetches>;
+/** Every skip-times request the page has sent, as it sent it: a
+ *  request is counted as the page asks, not once the network has
+ *  carried it to a handler, so a count read after the page's own work
+ *  is done says what it asked. */
+const skipRequests = (): PageFetch[] =>
+	fetches.sent.filter((f) => f.path.startsWith(`/api/aniskip/${KITSU_ID}/`));
+const asks = () =>
+	skipRequests().map((f) => ({
+		episode: decodeURIComponent(f.path.split('/').at(-1) ?? ''),
+		length: f.query.get('episode_length')
+	}));
+/** Episode `episode`'s `n`th skip-times request (from zero) has
+ *  answered the page, or failed, and what its answer sets off has run. */
+async function skipAnswered(episode: string, n = 0) {
+	const request = () =>
+		skipRequests().filter((f) => f.path.endsWith(`/${encodeURIComponent(episode)}`))[n];
+	await until(() => {
+		const f = request();
+		return f !== undefined && (fetches.read.includes(f) || fetches.failed.includes(f));
+	}, `episode ${episode}'s skip times answered`);
+	await afterRead();
+}
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
@@ -101,7 +124,6 @@ beforeEach(() => {
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	window.localStorage.clear();
-	asks = [];
 	setParams({ id: KITSU_ID });
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -151,6 +173,7 @@ interface Options {
 }
 
 function serve(options: Options) {
+	fetches = watchPageFetches();
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
 			HttpResponse.json<Config>({
@@ -192,12 +215,8 @@ function serve(options: Options) {
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, ({ request, params }) => {
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, ({ params }) => {
 			const episode = String(params.episode);
-			asks.push({
-				episode,
-				length: new URL(request.url).searchParams.get('episode_length')
-			});
 			const answer = options.skips[episode];
 			if (typeof answer === 'function') return answer();
 			return HttpResponse.json<SkipInterval[]>(answer ?? []);
@@ -266,10 +285,13 @@ async function openEpisode(options: Options) {
 	});
 	learnLength(video, lengthOf(options.episode));
 	await until(
-		() => asks.some((a) => a.episode === String(options.episode)),
+		() => asks().some((a) => a.episode === String(options.episode)),
 		`episode ${options.episode}'s skip times asked for`
 	);
-	await settle();
+	// Its times are in before anything else happens, unless the case
+	// answers them itself, late.
+	if (typeof options.skips[options.episode] === 'function') await settle();
+	else await skipAnswered(String(options.episode));
 	return video;
 }
 
@@ -349,14 +371,14 @@ describe('play route — skip times across an episode switch', () => {
 					autoPlayNext: way === 'auto-play',
 					skips: { [from]: [op(0, 90)], [to]: [op(30, 120)] }
 				});
-				expect(asks).toEqual([{ episode: String(from), length: String(lengthOf(from)) }]);
+				expect(asks()).toEqual([{ episode: String(from), length: String(lengthOf(from)) }]);
 				await switchBy(way, video, to);
 				// Not before the new stream knows its length.
-				expect(asks.filter((a) => a.episode === String(to))).toEqual([]);
+				expect(asks().filter((a) => a.episode === String(to))).toEqual([]);
 				learnLength(video, lengthOf(to));
-				await until(() => asks.some((a) => a.episode === String(to)), 'the new times asked');
+				await until(() => asks().some((a) => a.episode === String(to)), 'the new times asked');
 				await settle();
-				expect(asks.filter((a) => a.episode === String(to))).toEqual([
+				expect(asks().filter((a) => a.episode === String(to))).toEqual([
 					{ episode: String(to), length: String(lengthOf(to)) }
 				]);
 			});
@@ -387,8 +409,7 @@ describe('play route — skip times across an episode switch', () => {
 					await playTo(video, 600);
 					await switchBy(way, video, to);
 					learnLength(video, lengthOf(to));
-					await until(() => asks.some((a) => a.episode === String(to)), 'the new times asked');
-					await settle();
+					await skipAnswered(String(to));
 					// Inside the last episode's opening only: nothing.
 					await playTo(video, 10);
 					expect(video.currentTime).toBe(10);
@@ -422,12 +443,12 @@ describe('play route — skip times across an episode switch', () => {
 		});
 		await switchBy('next', video, 12);
 		learnLength(video, lengthOf(12));
-		await until(() => asks.some((a) => a.episode === '12'), 'the new times asked');
+		await until(() => asks().some((a) => a.episode === '12'), 'the new times asked');
 		await playTo(video, 5);
 		expect(video.currentTime).toBe(5);
 		expect(skipPill()).toBeNull();
 		release();
-		await settle();
+		await skipAnswered('12');
 		await playTo(video, 31);
 		expect(video.currentTime).toBeCloseTo(120.05);
 	});
@@ -450,7 +471,7 @@ describe('play route — skip times across an episode switch', () => {
 		});
 		await switchBy('next', video, 12);
 		learnLength(video, lengthOf(12));
-		await until(() => asks.some((a) => a.episode === '12'), 'the new times asked');
+		await until(() => asks().some((a) => a.episode === '12'), 'the new times asked');
 		await playTo(video, 5);
 		expect(video.currentTime).toBe(5);
 		expect(skipPill()).toBeNull();
@@ -469,8 +490,7 @@ describe('play route — skip times across an episode switch', () => {
 		});
 		await switchBy('next', video, 12);
 		learnLength(video, lengthOf(12));
-		await until(() => asks.some((a) => a.episode === '12'), 'the new times asked');
-		await settle();
+		await skipAnswered('12');
 		await playTo(video, 5);
 		expect(video.currentTime).toBe(5);
 		expect(skipPill()).toBeNull();
@@ -486,7 +506,7 @@ describe('play route — skip times across an episode switch', () => {
 		await switchBy('strip', video, 12.5);
 		learnLength(video, 600);
 		await settle();
-		expect(asks.map((a) => a.episode)).toEqual(['12']);
+		expect(asks().map((a) => a.episode)).toEqual(['12']);
 		await playTo(video, 5);
 		expect(video.currentTime).toBe(5);
 		expect(skipPill()).toBeNull();
@@ -518,15 +538,15 @@ describe('play route — skip times across an episode switch', () => {
 		});
 		await switchBy('next', video, 12);
 		learnLength(video, lengthOf(12));
-		await until(() => asks.some((a) => a.episode === '12'), "episode 12's times asked");
+		await until(() => asks().some((a) => a.episode === '12'), "episode 12's times asked");
 		await switchBy('prev', video, 11);
 		// Episode 12's times are gone with its stream.
 		await playTo(video, 31);
 		expect(skipPill()).toBeNull();
 		learnLength(video, 1395);
-		await until(() => asks.filter((a) => a.episode === '11').length === 2, "11's asked again");
-		expect(asks.at(-1)).toEqual({ episode: '11', length: '1395' });
-		await settle();
+		await until(() => asks().filter((a) => a.episode === '11').length === 2, "11's asked again");
+		expect(asks().at(-1)).toEqual({ episode: '11', length: '1395' });
+		await skipAnswered('11', 1);
 		await playTo(video, 1);
 		expect(skipPill()).not.toBeNull();
 	});
@@ -554,13 +574,15 @@ describe('play route — skip times across an episode switch', () => {
 		});
 		await switchBy('next', video, 12);
 		learnLength(video, lengthOf(12));
-		await until(() => asks.some((a) => a.episode === '12'), "episode 12's times asked");
+		await until(() => asks().some((a) => a.episode === '12'), "episode 12's times asked");
 		await switchBy('prev', video, 11);
 		learnLength(video, 1395);
 		await until(() => elevens === 2, "11's asked again");
-		await settle();
+		await skipAnswered('11', 1);
 		releaseFirst();
-		await settle();
+		// The first request's answer, late, has reached the page, or the
+		// request was given up on.
+		await skipAnswered('11', 0);
 		await playTo(video, 310);
 		expect(video.currentTime).toBe(310);
 		await playTo(video, 31);
@@ -575,7 +597,7 @@ describe('play route — skip times across an episode switch', () => {
 		startStream(video);
 		learnLength(video, lengthOf(11));
 		await settle();
-		expect(asks).toHaveLength(1);
+		expect(asks()).toHaveLength(1);
 		await playTo(video, 31);
 		expect(skipPill()).not.toBeNull();
 	});
@@ -604,7 +626,7 @@ describe('play route — skip times across an episode switch', () => {
 		// The play failure is on screen; the old stream plays under it.
 		expect(video.getAttribute('src')).toContain('/session-1/');
 		expect(page.url.searchParams.get('session')).toBe('session-1');
-		expect(asks.map((a) => a.episode)).toEqual(['11']);
+		expect(asks().map((a) => a.episode)).toEqual(['11']);
 		await playTo(video, 31);
 		expect(skipPill()).not.toBeNull();
 	});

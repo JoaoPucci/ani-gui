@@ -240,6 +240,9 @@ async function seekable(video: HTMLVideoElement) {
 	video.currentTime = 100;
 }
 
+const menuButtonShown = () =>
+	target.querySelector(`button[aria-label="${m.play_controls_menu_aria_label()}"]`) !== null;
+
 function menuButton(): HTMLButtonElement {
 	const button = target.querySelector<HTMLButtonElement>(
 		`button[aria-label="${m.play_controls_menu_aria_label()}"]`
@@ -492,9 +495,12 @@ describe('play route — the player starts on Auto, and its menu picks a level f
 		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
 		await until(() => hls.starts === 1, 'the engine to start without the settings', 1000);
 		expect(hls.loads).toEqual([2]);
+		expect(menuButtonShown()).toBe(false);
 		release();
 		await until(() => answered, 'the held settings to be answered');
-		await tick();
+		// The settings have reached the page: the player's own controls,
+		// which they turn on, are up.
+		await until(() => menuButtonShown(), 'the settings applied');
 		expect(hls.loads).toEqual([2]);
 	});
 
