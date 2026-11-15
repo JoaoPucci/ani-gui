@@ -954,6 +954,35 @@ async fn a_guessed_cards_cached_external_play_of_another_listing_notes_the_card(
     );
 }
 
+/// A card no guess opened — a line the user named, played from Home —
+/// notes the card beside the row its handoff wrote on another listing,
+/// as a guessed card's does: Home's card then stands for the named line,
+/// and keeps the way to change its show again.
+#[tokio::test]
+async fn a_named_cards_external_play_of_another_listing_notes_the_card() {
+    let mock = MockServer::start().await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), &provider);
+    configure_player(&state, &player, false);
+    let args = PlayArgs {
+        card_row: Some(guessed_card()),
+        kitsu_id: Some("42".into()),
+        ..play_args()
+    };
+
+    play_external(&state, &args).await.expect("plays");
+    wait_for(&argv_file).await;
+
+    assert_eq!(
+        crate::commands::guessed_from::all(&state)
+            .expect("notes")
+            .get(&walked_key("the-show-77")),
+        Some(&guessed_card()),
+    );
+}
+
 /// A guessed card's handoff that landed on the card's own listing
 /// records the card's guess on its row, as the same play in the player
 /// does: the listing is the one the row was written by.

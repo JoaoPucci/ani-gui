@@ -163,6 +163,28 @@ describe('switching to the picked show', () => {
 		expect(calls).toEqual([]);
 	});
 
+	it("names the card's row on the play and its watch, as the session's later episodes do", async () => {
+		// The switch is the card's session going on as the pick: its watch
+		// lands on the pick's own listing, and the backend notes beside
+		// that row the card it came from, so Home's card for the pick
+		// stands for the line the user named, and keeps its pill.
+		const { d } = deps();
+		await switchShow(d, request());
+		const resolved = vi.mocked(d.resolve).mock.calls[0][0] as PlayArgs;
+		const recorded = vi.mocked(d.record).mock.calls[0][0] as PlayArgs;
+		expect(resolved.card_row).toBe(CARD);
+		expect(recorded.card_row).toBe(CARD);
+		// Still no guess: the show is the user's pick.
+		expect(recorded.guess_row).toBeUndefined();
+	});
+
+	it('names no card on the play of a switch made from no card', async () => {
+		const { d } = deps();
+		await switchShow(d, request({ row: null }));
+		const resolved = vi.mocked(d.resolve).mock.calls[0][0] as PlayArgs;
+		expect(resolved.card_row).toBeUndefined();
+	});
+
 	it('tells no session about a switch made from no card', async () => {
 		const { d } = deps();
 		await switchShow(d, request({ row: null }));

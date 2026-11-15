@@ -200,6 +200,23 @@ fn a_correction_covers_the_card_and_every_row_guessed_as_the_same_show() {
 }
 
 #[test]
+fn a_correction_covers_a_trusted_row_of_the_cards_own_listing() {
+    // A retired provider's bare line, guessed as Young Ladies Don't Play
+    // Fighting Games. Its guessed play landed on the walked listing with
+    // the same words and recorded the guess on that new row, which is
+    // trusted since. It is the card's own listing: the user's answer is
+    // about it too, so Yes names it and a pick moves it.
+    const BARE: &str = "young-ladies-dont-play-fighting-games-6393";
+    const WALKED: &str = "hianime:young-ladies-dont-play-fighting-games-200";
+    let rows = [
+        matched(WALKED, Some("44021"), true),
+        // Another listing, trusted: out.
+        matched("hianime:young-ladies-recap-9", Some("44021"), true),
+    ];
+    assert_eq!(group_members(BARE, "44021", None, &rows), [BARE, WALKED]);
+}
+
+#[test]
 fn a_row_whose_match_could_not_be_read_stays_out() {
     let rows = [
         matched("black-clover-77", None, false),
@@ -299,7 +316,7 @@ proptest! {
     fn a_correction_covers_the_card_once_first_and_only_rows_matching_its_show(
         rows in proptest::collection::vec(
             (
-                proptest::sample::select(&["c", "a", "b", "d"][..]),
+                proptest::sample::select(&["c-1", "a-1", "hianime:c-7", "hianime:b-2"][..]),
                 proptest::option::of(proptest::sample::select(&["1", "2"][..])),
                 any::<bool>(),
             ),
@@ -314,23 +331,26 @@ proptest! {
             .filter(|(id, ..)| seen.insert(*id))
             .map(|(id, show, trusted)| matched(id, show, trusted))
             .collect();
-        let out = group_members("c", "1", saved, &rows);
-        prop_assert_eq!(out[0].as_str(), "c");
-        prop_assert_eq!(out.iter().filter(|r| r.as_str() == "c").count(), 1);
-        // Every row the correction covers is in it.
-        for r in rows.iter().filter(|r| r.id != "c") {
-            let covered = match saved {
-                None => r.show.as_deref() == Some("1") && !r.trusted,
-                Some(s) => r.show.as_deref() == Some(s),
-            };
-            prop_assert_eq!(out.contains(&r.id), covered);
+        let card = "c-1";
+        let out = group_members(card, "1", saved, &rows);
+        prop_assert_eq!(out[0].as_str(), card);
+        prop_assert_eq!(out.iter().filter(|r| r.as_str() == card).count(), 1);
+        // A guess covers the rows guessed as its show, and every row of
+        // the card's own listing shown as it, trusted or not; a named
+        // line, the rows recorded as its show.
+        let covers = |r: &RowMatch| match saved {
+            None => {
+                r.show.as_deref() == Some("1")
+                    && (!r.trusted || crate::commands::history_link::card_listing(card, &r.id))
+            }
+            Some(s) => r.show.as_deref() == Some(s),
+        };
+        for r in rows.iter().filter(|r| r.id != card) {
+            prop_assert_eq!(out.contains(&r.id), covers(r));
         }
         for member in &out[1..] {
             let r = rows.iter().find(|r| &r.id == member).expect("asked");
-            match saved {
-                None => prop_assert!(r.show.as_deref() == Some("1") && !r.trusted),
-                Some(s) => prop_assert_eq!(r.show.as_deref(), Some(s)),
-            }
+            prop_assert!(covers(r));
         }
     }
 }

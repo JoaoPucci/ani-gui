@@ -76,6 +76,52 @@ fn a_shown_row_that_records_its_own_show_stands_for_itself() {
 }
 
 #[test]
+fn the_card_of_a_line_the_user_named_stands_for_it_after_its_play_landed_elsewhere() {
+    // The user named the 2012 series for the 2000 line (Yes, or a pick
+    // and "Switch to it now"). The line's next play is the 2012 series'
+    // own stream, on its listing: the 2012 row records its show and is
+    // newer, so Home's one card shows it. The line the card's play came
+    // from is the one the user named: the card stands for it, and its
+    // pill stays to change the show again.
+    let named = CardRow {
+        named: true,
+        ..row(CARD, None, Some(SERIES_2012), false)
+    };
+    let rows = [row(PLAYED, Some(CARD), Some(SERIES_2012), false), named];
+    assert_eq!(
+        card_lines(&rows)[PLAYED],
+        CardLine {
+            line: CARD.into(),
+            correctable: true
+        }
+    );
+}
+
+#[test]
+fn a_named_row_shown_stands_for_itself() {
+    let named = |id: &str, from: Option<&str>| CardRow {
+        named: true,
+        ..row(id, from, Some(SERIES_2012), false)
+    };
+    let rows = [named(PLAYED, Some(CARD)), named(CARD, None)];
+    assert_eq!(line_of(&rows, PLAYED), PLAYED);
+}
+
+#[test]
+fn a_named_line_of_another_show_leaves_the_row_its_own() {
+    // The 2000 line was named for the OVA since: the 2012 row is the
+    // 2012 series' own card.
+    let rows = [
+        row(PLAYED, Some(CARD), Some(SERIES_2012), false),
+        CardRow {
+            named: true,
+            ..row(CARD, None, Some(OVA_2000), false)
+        },
+    ];
+    assert_eq!(line_of(&rows, PLAYED), PLAYED);
+}
+
+#[test]
 fn a_row_no_guessed_play_wrote_stands_for_itself() {
     let rows = [row(CARD, None, Some(SERIES_2012), true)];
     assert_eq!(line_of(&rows, CARD), CARD);
@@ -177,10 +223,16 @@ proptest! {
         let shown = &rows[at];
         let line = card_lines(&rows)[&shown.id].line.clone();
         let from = shown.guessed_from.as_deref();
-        let same = shown.guess
-            && from.is_some_and(|f| f != shown.id)
+        // A guessed row stands for the line its play came from; so does
+        // one that records its show, when that line is one the user
+        // named, unless the row shown was named itself.
+        let same = from.is_some_and(|f| f != shown.id)
             && shown.show.is_some()
-            && rows.iter().any(|r| Some(r.id.as_str()) == from && r.show == shown.show);
+            && rows.iter().any(|r| {
+                Some(r.id.as_str()) == from
+                    && r.show == shown.show
+                    && (shown.guess || (r.named && !shown.named))
+            });
         if same {
             prop_assert_eq!(Some(line.as_str()), from);
         } else {

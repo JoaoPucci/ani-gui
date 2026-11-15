@@ -979,6 +979,43 @@ describe('the picker while Clear history runs', () => {
 	});
 });
 
+describe("a named line whose card's play landed on another listing", () => {
+	// The user answered Yes for JoJo's 2000 line, so it records the 2012
+	// series. Its next play — from Home, or "Switch to it now" after a
+	// pick — is the 2012 series' own stream, which lands on the 2012
+	// listing and writes that row later than the line's own. Home shows
+	// the two as one card, the newer row's; the backend notes beside it
+	// the card its play came from (`guessed_from`). The card stands for
+	// the line the user named, and keeps its pill to change it again.
+	beforeEach(() => {
+		backend.rows = backend.rows.map((r) =>
+			r.id === JOJO_CARD
+				? { ...r, kitsu_id: JOJO_GUESS, named: true }
+				: r.id === JOJO_PLAYED
+					? { ...r, kitsu_id: JOJO_GUESS, guessed_from: JOJO_CARD }
+					: r
+		);
+		server.use(
+			http.get(`${API_BASE}/api/watched-at`, () =>
+				HttpResponse.json({ [JOJO_CARD]: 1_000, [JOJO_PLAYED]: 2_000 })
+			)
+		);
+	});
+
+	it('keeps the pill on the merged card, and it changes the named line', async () => {
+		app = mount(HomePage, { target });
+		await until(() => showLine(JOJO_PLAYED).includes(JOJO_GUESS_TITLE), 'the merged JoJo card');
+		await settle();
+		expect(cell(JOJO_CARD)).toBeNull();
+		expect(cell(JOJO_PLAYED)?.dataset.cardRow).toBe(JOJO_CARD);
+		pill(JOJO_PLAYED)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(JOJO_RIGHT_TITLE);
+		expect(backend.linkCalls[0].card).toBe(JOJO_CARD);
+		expect(backend.linkCalls[0].rows).toEqual([JOJO_CARD]);
+	});
+});
+
 describe('a card the user named a show for, after the app restarted', () => {
 	it('keeps its pill, which opens the picker on the show it was named', async () => {
 		backend.rows = backend.rows.map((r) =>
