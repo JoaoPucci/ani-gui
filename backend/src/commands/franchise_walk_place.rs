@@ -31,6 +31,12 @@ pub(super) struct Placed {
 }
 
 impl Placed {
+    /// The parent stories the anchor names outside its run, then those
+    /// any member names, each earliest first.
+    pub(super) fn choices(&self) -> Vec<Vec<String>> {
+        vec![self.mine.clone(), self.all.clone()]
+    }
+
     /// The anchor's parents among the `members` of the run the walk
     /// moved to: its own there, else its run's there, which hold the
     /// root, so the list is never empty.
