@@ -154,6 +154,30 @@ fn a_sequel_that_is_another_version_foretells_the_link() {
     assert_eq!(both(&c, "1"), (FirstHop::Link, FirstHop::Link));
 }
 
+/// A music video the show names as both its prequel and its other
+/// version is where the franchise starts (its root, the show left out
+/// as a version of it): the franchise page lists it, so the link.
+#[test]
+fn a_music_video_prequel_that_is_another_version_foretells_the_link() {
+    let mut c = with(&[("1", "music"), ("2", "TV")]);
+    c.rel("2", "prequel", "1")
+        .rel("2", "alternative_version", "1");
+    assert_eq!(both(&c, "2"), (FirstHop::Link, FirstHop::Link));
+}
+
+/// A parent story the show also names as its sequel and its other
+/// version is no parent the walk walks from: the show is where the
+/// franchise starts, its sequel left out as a version of it, so the
+/// link, not a strip.
+#[test]
+fn a_parent_story_that_is_a_sequel_and_another_version_foretells_the_link() {
+    let mut c = with(&[("1", "TV"), ("2", "TV")]);
+    c.rel("2", "sequel", "1")
+        .rel("2", "alternative_version", "1")
+        .rel("2", "parent_story", "1");
+    assert_eq!(both(&c, "2"), (FirstHop::Link, FirstHop::Link));
+}
+
 /// Relations the franchise page never lists: a character crossover,
 /// an adaptation, an alternative setting, a music video, a manga, and
 /// the show itself.
