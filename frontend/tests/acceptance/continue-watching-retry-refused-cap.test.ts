@@ -37,6 +37,8 @@ import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AvailabilityResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 const SHOW = 'Cowboy Bebop';
 const WATCHED = 12;
 /** What the refused probe reports: one high, the half-episode error. */
@@ -93,13 +95,23 @@ function mountRefusedRow() {
 	fetches = watchPageFetches();
 	server.use(
 		...homeHandlers({ history: [{ ep_no: String(WATCHED), id: 'allanime-1', title: SHOW }] }, [
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([kitsuRef('1', SHOW, 26)])),
+			http.post(`${API_BASE}/api/kitsu/search`, () =>
+				HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', SHOW, 26)])
+			),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				probes.push((await request.json()) as { mode?: string });
-				return HttpResponse.json(
+				return HttpResponse.json<AvailabilityResponse>(
 					probes.length === 1
-						? { available: true, episode_count: REFUSED_CAP, episode_count_approximate: true }
-						: { available: true, episode_count: TRUE_CAP, episode_count_approximate: false }
+						? availabilityAnswer({
+								available: true,
+								episode_count: REFUSED_CAP,
+								episode_count_approximate: true
+							})
+						: availabilityAnswer({
+								available: true,
+								episode_count: TRUE_CAP,
+								episode_count_approximate: false
+							})
 				);
 			})
 		])
@@ -183,24 +195,28 @@ describe('Continue Watching card after a gate-refused probe', () => {
 		server.use(
 			...homeHandlers({ history: [{ ep_no: String(WATCHED), id: 'allanime-1', title: SHOW }] }, [
 				http.post(`${API_BASE}/api/kitsu/search`, () =>
-					HttpResponse.json([kitsuRef('1', SHOW, 26)])
+					HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', SHOW, 26)])
 				),
 				http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 					probes.push((await request.json()) as { mode?: string });
 					if (refusalsLeft > 0) {
 						refusalsLeft--;
-						return HttpResponse.json({
-							available: true,
-							episode_count: REFUSED_CAP,
-							episode_count_approximate: true,
-							gate_refused: true
-						});
+						return HttpResponse.json<AvailabilityResponse>(
+							availabilityAnswer({
+								available: true,
+								episode_count: REFUSED_CAP,
+								episode_count_approximate: true,
+								gate_refused: true
+							})
+						);
 					}
-					return HttpResponse.json({
-						available: true,
-						episode_count: TRUE_CAP,
-						episode_count_approximate: false
-					});
+					return HttpResponse.json<AvailabilityResponse>(
+						availabilityAnswer({
+							available: true,
+							episode_count: TRUE_CAP,
+							episode_count_approximate: false
+						})
+					);
 				})
 			])
 		);

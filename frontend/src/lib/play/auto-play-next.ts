@@ -8,7 +8,7 @@
  * The chain stops naturally at the last known episode. When
  * `totalEpisodes` is null (Kitsu lacks an episode count for some
  * sequels/specials), advance anyway and let the upstream
- * cmd_create_session failure surface a play-failure overlay — same
+ * play's failure surface a play-failure overlay — same
  * "best effort" stance as the existing prev/next buttons' hasNext
  * derivation.
  */

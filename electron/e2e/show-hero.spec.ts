@@ -45,6 +45,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { appInfo, defaultSettings } from './fixtures/kitsu';
 import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
+import { answer } from './stubs';
 
 /** The app's minimum window; a width where the topbar is short of
  *  room, so the order in which pill and trail give way shows (the spec
@@ -144,7 +145,7 @@ async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 	await page.route('**/api/**', async (r) => {
 		const p = new URL(r.request().url()).pathname;
 		const j = (body: unknown) =>
-			r.fulfill({
+			answer(r, {
 				status: 200,
 				contentType: 'application/json',
 				body: JSON.stringify(body)
@@ -152,7 +153,7 @@ async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 		if (p === '/api/app-info') return j(appInfo);
 		if (p === '/api/settings') return j(defaultSettings);
 		if (p.startsWith('/api/image')) {
-			return r.fulfill({ status: 200, contentType: 'image/png', body: png });
+			return answer(r, { status: 200, contentType: 'image/png', body: png });
 		}
 		if (p.startsWith('/api/kitsu/anime/')) return j(showAt(p.split('/').pop() ?? ''));
 		if (p === '/api/kitsu/search') return j([]);

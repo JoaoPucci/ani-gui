@@ -44,11 +44,19 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
+import type { ListEntry } from '../../src/lib/account/types';
 const TRENDING = [
 	// A poster, so the hero has an image to drift.
 	{
 		...kitsuRef('1', 'First Feature', 12),
-		poster_image: { large: 'https://media.kitsu.app/anime/1/poster_image/large.jpg' }
+		poster_image: {
+			tiny: null,
+			small: null,
+			medium: null,
+			large: 'https://media.kitsu.app/anime/1/poster_image/large.jpg',
+			original: null
+		}
 	},
 	kitsuRef('2', 'Second Feature', 12),
 	kitsuRef('3', 'Third Feature', 12)
@@ -150,19 +158,25 @@ const continueCards = () => target.querySelectorAll('.resume-cell');
 function mountHome(deleted: string[] = []) {
 	server.use(
 		...homeHandlers({ history: HISTORY }, [
-			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json(TRENDING)),
-			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json(TOP_RATED)),
+			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+				HttpResponse.json<KitsuAnimeRef[]>(TRENDING)
+			),
+			http.get(`${API_BASE}/api/kitsu/top-rated`, () =>
+				HttpResponse.json<KitsuAnimeRef[]>(TOP_RATED)
+			),
 			http.post(`${API_BASE}/api/kitsu/search`, async ({ request }) => {
 				const { query } = (await request.json()) as { query: string };
 				const row = HISTORY.find((h) => h.title === query);
-				return HttpResponse.json(row ? [kitsuRef(row.id.slice(-1) + '00', row.title, 26)] : []);
+				return HttpResponse.json<KitsuAnimeRef[]>(
+					row ? [kitsuRef(row.id.slice(-1) + '00', row.title, 26)] : []
+				);
 			}),
 			http.delete(`${API_BASE}/api/history/:id`, ({ params }) => {
 				deleted.push(String(params.id));
 				return new HttpResponse(null, { status: 204 });
 			}),
 			http.get(`${API_BASE}/api/account/list/anilist/cached`, () =>
-				HttpResponse.json([
+				HttpResponse.json<ListEntry[]>([
 					{
 						provider: 'anilist',
 						media_id: PLANNED.malId,
@@ -176,9 +190,11 @@ function mountHome(deleted: string[] = []) {
 				])
 			),
 			http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () =>
-				HttpResponse.json([kitsuRef(String(PLANNED.malId), PLANNED.title, 12)])
+				HttpResponse.json<KitsuAnimeRef[]>([kitsuRef(String(PLANNED.malId), PLANNED.title, 12)])
 			),
-			http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} }))
+			http.post(`${API_BASE}/api/availability/batch`, () =>
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+			)
 		])
 	);
 	app = mount(HomePage, { target });

@@ -406,7 +406,7 @@ describe('pickSeedEntry — a rewatch beside a Completed row', () => {
 				{ status: 'rewatching', progress: 3 },
 				{ status: 'completed', progress: 26 }
 			]
-		] as EntryView[][]) {
+		] satisfies EntryView[][]) {
 			expect(pickSeedEntry(entries)).toEqual({ status: 'completed', progress: 26 });
 		}
 	});

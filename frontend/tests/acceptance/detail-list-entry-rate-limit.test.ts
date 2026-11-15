@@ -42,6 +42,15 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { accountStore } from '../../src/lib/account/store.svelte';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import { errorAnswer, availabilityAnswer } from '../answers';
 const KITSU_ID = '50497';
 const TITLE = 'Fresh Seasonal Show';
 /** What the tracker asks the app to wait. Short, so the scenario sees
@@ -99,39 +108,45 @@ const listNotice = () =>
 
 function useShowHandlers(entryReads: { count: number }) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 3, next_episode: 4, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 3,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 3,
+				next_episode: 4,
+				next_airing_at: null,
+				upcoming: []
 			})
 		),
-		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 3,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
 		// The page warms the first episode's stream and reads the download
 		// folder on mount; neither is what this scenario is about.
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
 		// The tracker is over its limit for the whole scenario: every read
 		// is refused with the wait the backend relays from `Retry-After`.
 		http.get(`${API_BASE}/api/account/entry/anilist`, () => {
 			entryReads.count += 1;
-			return HttpResponse.json(
-				{
-					kind: 'rate_limited',
-					retry_after_secs: RETRY_AFTER_S,
-					key: 'error.network.rate_limited'
-				},
-				{ status: 429 }
-			);
+			return errorAnswer(429, {
+				kind: 'rate_limited',
+				retry_after_secs: RETRY_AFTER_S,
+				key: 'error.network.rate_limited'
+			});
 		})
 	);
 }

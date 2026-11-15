@@ -29,6 +29,8 @@ import { HERO_PREFS_STORAGE_KEY } from '../../src/lib/hero/prefs';
 import { ROW_PREFS_STORAGE_KEY } from '../../src/lib/rows/prefs';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AppInfo, HistoryEntry } from '../../src/lib/api';
+import { appInfoAnswer } from '../answers';
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
@@ -40,14 +42,16 @@ beforeEach(() => {
 	localStorage.clear();
 	server.use(
 		http.get(`${API_BASE}/api/app-info`, () =>
-			HttpResponse.json({
-				version: '0.15.1',
-				history_path: '/home/u/.local/state/ani-gui/history',
-				proxy_base_url: API_BASE,
-				removed_legacy_paths: []
-			})
+			HttpResponse.json<AppInfo>(
+				appInfoAnswer({
+					version: '0.15.1',
+					history_path: '/home/u/.local/state/ani-gui/history',
+					proxy_base_url: API_BASE,
+					removed_legacy_paths: []
+				})
+			)
 		),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([]))
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>([]))
 	);
 	target = document.createElement('div');
 	document.body.appendChild(target);

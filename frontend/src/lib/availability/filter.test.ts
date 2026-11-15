@@ -2,14 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { KitsuAnimeRef } from '$lib/api';
 
 const apiMock = vi.hoisted(() => ({
-	availabilityBatch: vi.fn(),
-	availabilityWarm: vi.fn(),
-	checkAvailability: vi.fn(),
-	altTitlesFromKitsu: vi.fn((ref: { id: string } | null | undefined) =>
-		ref ? [`alt-${ref.id}`] : []
+	availabilityBatch: vi.fn<typeof Api.availabilityBatch>(),
+	availabilityWarm: vi.fn<typeof Api.availabilityWarm>(),
+	checkAvailability: vi.fn<typeof Api.checkAvailability>(),
+	altTitlesFromKitsu: vi.fn<typeof Api.altTitlesFromKitsu>(
+		(ref: { id: string } | null | undefined) => (ref ? [`alt-${ref.id}`] : [])
 	),
-	yearFromKitsuRef: vi.fn((ref: { start_date: string | null } | null | undefined) =>
-		ref?.start_date ? Number(ref.start_date.slice(0, 4)) : null
+	yearFromKitsuRef: vi.fn<typeof Api.yearFromKitsuRef>(
+		(ref: { start_date: string | null } | null | undefined) =>
+			ref?.start_date ? Number(ref.start_date.slice(0, 4)) : null
 	)
 }));
 vi.mock('$lib/api', () => apiMock);
@@ -17,6 +18,7 @@ vi.mock('$lib/api', () => apiMock);
 import { filterAvailable, filterAvailableCacheOnly } from './filter';
 import { WARM_RETRY_MS } from './warm-ledger';
 
+import type * as Api from '$lib/api';
 function ref(id: string, overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {
 		id,
@@ -56,7 +58,8 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 	it('drops cards the cache marks unavailable, keeps cached-true and uncached', async () => {
 		const items = [ref('a'), ref('b', { status: 'finished' }), ref('c')];
 		apiMock.availabilityBatch.mockResolvedValueOnce({
-			cached: { a: true, b: false /* c uncached */ }
+			cached: { a: true, b: false /* c uncached */ },
+			playable_episode_counts: {}
 		});
 		apiMock.availabilityWarm.mockResolvedValueOnce(undefined);
 		const out = await filterAvailable(items, 'sub');
@@ -77,7 +80,8 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 			ref('gone', { status: 'finished' })
 		];
 		apiMock.availabilityBatch.mockResolvedValueOnce({
-			cached: { up: false, air: false, tba: false, gone: false }
+			cached: { up: false, air: false, tba: false, gone: false },
+			playable_episode_counts: {}
 		});
 		apiMock.availabilityWarm.mockResolvedValueOnce(undefined);
 		const out = await filterAvailable(items, 'sub');
@@ -86,7 +90,10 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 
 	it('warms only the uncached items and forwards mode + alt titles', async () => {
 		const items = [ref('a', { episode_count: 12, status: 'finished' }), ref('b')];
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true } });
+		apiMock.availabilityBatch.mockResolvedValueOnce({
+			cached: { a: true },
+			playable_episode_counts: {}
+		});
 		apiMock.availabilityWarm.mockResolvedValueOnce(undefined);
 		await filterAvailable(items, 'dub');
 		expect(apiMock.availabilityWarm).toHaveBeenCalledTimes(1);
@@ -107,7 +114,7 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 		// payload. Pin that the warm call forwards year so list-view
 		// availability matches what the detail page would resolve.
 		const items = [ref('wing', { start_date: '1995-04-07', episode_count: 49 })];
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
 		apiMock.availabilityWarm.mockResolvedValueOnce(undefined);
 		await filterAvailable(items, 'sub');
 		expect(apiMock.availabilityWarm.mock.calls[0][0][0]).toMatchObject({
@@ -117,7 +124,10 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 	});
 
 	it('skips the warm call when nothing is uncached', async () => {
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true, b: false } });
+		apiMock.availabilityBatch.mockResolvedValueOnce({
+			cached: { a: true, b: false },
+			playable_episode_counts: {}
+		});
 		await filterAvailable([ref('a'), ref('b')], 'sub');
 		expect(apiMock.availabilityWarm).not.toHaveBeenCalled();
 	});
@@ -134,7 +144,10 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 	});
 
 	it("hands the visit's signal to the batch, so the page that asked can cancel it", async () => {
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true } });
+		apiMock.availabilityBatch.mockResolvedValueOnce({
+			cached: { a: true },
+			playable_episode_counts: {}
+		});
 		const visit = new AbortController();
 		await filterAvailable([ref('a')], 'sub', { signal: visit.signal });
 		expect(apiMock.availabilityBatch).toHaveBeenLastCalledWith(['a'], 'sub', {
@@ -152,7 +165,7 @@ describe('filterAvailable (lazy / fire-and-forget warm)', () => {
 	});
 
 	it('ignores warm-call rejections (fire-and-forget contract)', async () => {
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
 		apiMock.availabilityWarm.mockRejectedValueOnce(new Error('warm failed'));
 		// The function awaits the batch call, then kicks off warm
 		// without await. The rejection must not propagate.
@@ -173,7 +186,7 @@ describe('filterAvailable across mounts (one warm per id per session)', () => {
 	const flush = () => vi.advanceTimersByTimeAsync(0);
 
 	it('a second mount does not warm an id the first already handed in', async () => {
-		apiMock.availabilityBatch.mockResolvedValue({ cached: {} });
+		apiMock.availabilityBatch.mockResolvedValue({ cached: {}, playable_episode_counts: {} });
 		apiMock.availabilityWarm.mockResolvedValue(undefined);
 		await filterAvailable([ref('mount-1')], 'sub');
 		await filterAvailable([ref('mount-1')], 'sub');
@@ -181,20 +194,18 @@ describe('filterAvailable across mounts (one warm per id per session)', () => {
 	});
 
 	it('warms only the ids of a mount not already handed in', async () => {
-		apiMock.availabilityBatch.mockResolvedValue({ cached: {} });
+		apiMock.availabilityBatch.mockResolvedValue({ cached: {}, playable_episode_counts: {} });
 		apiMock.availabilityWarm.mockResolvedValue(undefined);
 		await filterAvailable([ref('mount-2a')], 'sub');
 		await filterAvailable([ref('mount-2a'), ref('mount-2b')], 'sub');
 		expect(apiMock.availabilityWarm).toHaveBeenCalledTimes(2);
-		expect(
-			apiMock.availabilityWarm.mock.calls[1][0].map((a: { kitsu_id: string }) => a.kitsu_id)
-		).toEqual(['mount-2b']);
+		expect(apiMock.availabilityWarm.mock.calls[1][0].map((a) => a.kitsu_id)).toEqual(['mount-2b']);
 	});
 
 	it('an id still uncached once its retry is due is warmed again', async () => {
 		// Still uncached means the walk ended without a verdict — or
 		// never got to it — so it is asked again, once a retry is due.
-		apiMock.availabilityBatch.mockResolvedValue({ cached: {} });
+		apiMock.availabilityBatch.mockResolvedValue({ cached: {}, playable_episode_counts: {} });
 		apiMock.availabilityWarm.mockResolvedValue(undefined);
 		await filterAvailable([ref('mount-3')], 'sub');
 		vi.setSystemTime(1_000_000 + WARM_RETRY_MS - 1);
@@ -206,7 +217,7 @@ describe('filterAvailable across mounts (one warm per id per session)', () => {
 	});
 
 	it('a warm that never reached the backend is handed in on the next mount', async () => {
-		apiMock.availabilityBatch.mockResolvedValue({ cached: {} });
+		apiMock.availabilityBatch.mockResolvedValue({ cached: {}, playable_episode_counts: {} });
 		apiMock.availabilityWarm.mockRejectedValueOnce(new Error('offline'));
 		await filterAvailable([ref('mount-4')], 'sub');
 		await flush();
@@ -216,7 +227,7 @@ describe('filterAvailable across mounts (one warm per id per session)', () => {
 	});
 
 	it('the other mode of an id is its own warm', async () => {
-		apiMock.availabilityBatch.mockResolvedValue({ cached: {} });
+		apiMock.availabilityBatch.mockResolvedValue({ cached: {}, playable_episode_counts: {} });
 		apiMock.availabilityWarm.mockResolvedValue(undefined);
 		await filterAvailable([ref('mount-5')], 'sub');
 		await filterAvailable([ref('mount-5')], 'dub');
@@ -233,7 +244,10 @@ describe('filterAvailableCacheOnly (high-frequency surfaces)', () => {
 
 	it("hands the search's signal to the batch, and answers a cancelled one with the abort", async () => {
 		const search = new AbortController();
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true } });
+		apiMock.availabilityBatch.mockResolvedValueOnce({
+			cached: { a: true },
+			playable_episode_counts: {}
+		});
 		await filterAvailableCacheOnly([ref('a')], 'sub', { signal: search.signal });
 		expect(apiMock.availabilityBatch).toHaveBeenLastCalledWith(['a'], 'sub', {
 			signal: search.signal
@@ -256,7 +270,8 @@ describe('filterAvailableCacheOnly (high-frequency surfaces)', () => {
 	it('drops cards the cache marks unavailable, keeps cached-true and uncached', async () => {
 		const items = [ref('a'), ref('b', { status: 'finished' }), ref('c')];
 		apiMock.availabilityBatch.mockResolvedValueOnce({
-			cached: { a: true, b: false /* c uncached */ }
+			cached: { a: true, b: false /* c uncached */ },
+			playable_episode_counts: {}
 		});
 		const out = await filterAvailableCacheOnly(items, 'sub');
 		expect(out.map((r) => r.id)).toEqual(['a', 'c']);
@@ -264,7 +279,8 @@ describe('filterAvailableCacheOnly (high-frequency surfaces)', () => {
 
 	it('keeps unaired and airing shows visible even when unavailable', async () => {
 		apiMock.availabilityBatch.mockResolvedValueOnce({
-			cached: { up: false, gone: false }
+			cached: { up: false, gone: false },
+			playable_episode_counts: {}
 		});
 		const out = await filterAvailableCacheOnly(
 			[ref('up', { status: 'unreleased' }), ref('gone', { status: 'finished' })],
@@ -278,7 +294,10 @@ describe('filterAvailableCacheOnly (high-frequency surfaces)', () => {
 		// once per settled keystroke; warming uncached items on each
 		// query enqueues redundant upstream probes for overlapping
 		// hits. The cache-only variant reads the cache and stops.
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true } });
+		apiMock.availabilityBatch.mockResolvedValueOnce({
+			cached: { a: true },
+			playable_episode_counts: {}
+		});
 		await filterAvailableCacheOnly([ref('a'), ref('b')], 'sub');
 		expect(apiMock.availabilityWarm).not.toHaveBeenCalled();
 	});

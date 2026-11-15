@@ -26,7 +26,14 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 import { subtypeLabel } from '../../src/lib/search/subtype-label';
 
-function ref(id: string, title: string) {
+import type {
+	AvailabilityBatchResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuSearchPage
+} from '../../src/lib/api';
+import { errorAnswer } from '../answers';
+function ref(id: string, title: string): KitsuAnimeRef {
 	return {
 		id,
 		canonical_title: title,
@@ -39,11 +46,15 @@ function ref(id: string, title: string) {
 		episode_count: 12,
 		status: 'finished',
 		start_date: '2019-01-01',
-		average_rating: null
+		average_rating: null,
+		end_date: null,
+		subtype: null,
+		age_rating: null,
+		popularity_rank: null
 	};
 }
 
-const CONFIG = {
+const CONFIG: Config = {
 	locale: 'en',
 	mode: 'sub',
 	download_quality: 'best',
@@ -53,11 +64,11 @@ const CONFIG = {
 	syncplay_binary: '',
 	image_cache_cap_mb: 100,
 	auto_play_next: false,
+	cache_resolutions: false,
 	download_bottom_bar_enabled: true,
 	auto_skip_op: false,
 	auto_skip_ed: false,
 	use_custom_player_controls: true,
-	auto_update_anicli: false,
 	update_include_prereleases: false,
 	primary_account: '',
 	watch_order: 'linked'
@@ -66,12 +77,12 @@ const CONFIG = {
 /** Every id already known playable, so no probe runs. */
 function baseHandlers() {
 	return [
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(CONFIG)),
-		http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(CONFIG)),
+		http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 			const { kitsu_ids } = (await request.json()) as { kitsu_ids: string[] };
-			return HttpResponse.json({
+			return HttpResponse.json<AvailabilityBatchResponse>({
 				cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
 				playable_episode_counts: {}
 			});
@@ -219,10 +230,13 @@ describe('/search infinite scroll', () => {
 				const { offset } = (await request.json()) as { offset: number };
 				offsets.push(offset);
 				if (offset === 0) {
-					return HttpResponse.json({ hits: [ref('1', 'Dragon Ball Z')], next_offset: 20 });
+					return HttpResponse.json<KitsuSearchPage>({
+						hits: [ref('1', 'Dragon Ball Z')],
+						next_offset: 20
+					});
 				}
 				await secondHeld;
-				return HttpResponse.json({
+				return HttpResponse.json<KitsuSearchPage>({
 					hits: [ref('68', 'Dragon Ball Super: Beerus')],
 					next_offset: 40
 				});
@@ -257,9 +271,15 @@ describe('/search infinite scroll', () => {
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
 				const { offset } = (await request.json()) as { offset: number };
 				if (offset === 0) {
-					return HttpResponse.json({ hits: [ref('1', 'Trigun')], next_offset: 20 });
+					return HttpResponse.json<KitsuSearchPage>({
+						hits: [ref('1', 'Trigun')],
+						next_offset: 20
+					});
 				}
-				return HttpResponse.json({ hits: [ref('2', 'Trigun Stampede')], next_offset: null });
+				return HttpResponse.json<KitsuSearchPage>({
+					hits: [ref('2', 'Trigun Stampede')],
+					next_offset: null
+				});
 			})
 		);
 
@@ -284,10 +304,13 @@ describe('/search infinite scroll', () => {
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
 				const { offset } = (await request.json()) as { offset: number };
 				if (offset === 0) {
-					return HttpResponse.json({ hits: [ref('1', 'Cowboy Bebop')], next_offset: 20 });
+					return HttpResponse.json<KitsuSearchPage>({
+						hits: [ref('1', 'Cowboy Bebop')],
+						next_offset: 20
+					});
 				}
-				if (failing) return HttpResponse.json(FAILURE, { status: 502 });
-				return HttpResponse.json({
+				if (failing) return errorAnswer(502, FAILURE);
+				return HttpResponse.json<KitsuSearchPage>({
 					hits: [ref('2', 'Cowboy Bebop: The Movie')],
 					next_offset: null
 				});
@@ -326,7 +349,7 @@ describe('/search infinite scroll', () => {
 				const { offset } = (await request.json()) as { offset: number };
 				offsets.push(offset);
 				if (offset === 0) {
-					return HttpResponse.json({
+					return HttpResponse.json<KitsuSearchPage>({
 						hits: [
 							{ ...ref('1', 'Dragon Ball Z'), subtype: 'TV' },
 							{ ...ref('2', 'Dragon Ball: Path to Power'), subtype: 'movie' }
@@ -334,7 +357,7 @@ describe('/search infinite scroll', () => {
 						next_offset: 20
 					});
 				}
-				return HttpResponse.json({
+				return HttpResponse.json<KitsuSearchPage>({
 					hits: [{ ...ref('3', 'Dragon Ball Super: Broly'), subtype: 'movie' }],
 					next_offset: 40
 				});
@@ -378,12 +401,18 @@ describe('/search infinite scroll', () => {
 				const { query, offset } = (await request.json()) as { query: string; offset: number };
 				asked.push(`${query}@${offset}`);
 				if (query === 'trigun') {
-					return HttpResponse.json({ hits: [ref('1', 'Trigun')], next_offset: null });
+					return HttpResponse.json<KitsuSearchPage>({
+						hits: [ref('1', 'Trigun')],
+						next_offset: null
+					});
 				}
 				if (offset === 0) {
-					return HttpResponse.json({ hits: [ref('2', 'Monster')], next_offset: 20 });
+					return HttpResponse.json<KitsuSearchPage>({
+						hits: [ref('2', 'Monster')],
+						next_offset: 20
+					});
 				}
-				return HttpResponse.json({ hits: [ref('3', 'Pluto')], next_offset: null });
+				return HttpResponse.json<KitsuSearchPage>({ hits: [ref('3', 'Pluto')], next_offset: null });
 			})
 		);
 
@@ -405,7 +434,7 @@ describe('/search infinite scroll', () => {
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
 				const { offset } = (await request.json()) as { offset: number };
 				if (offset === 0) {
-					return HttpResponse.json({
+					return HttpResponse.json<KitsuSearchPage>({
 						hits: [
 							{ ...ref('1', 'Dragon Ball Z'), subtype: 'TV' },
 							{ ...ref('2', 'Dragon Ball: Path to Power'), subtype: 'movie' }
@@ -413,7 +442,7 @@ describe('/search infinite scroll', () => {
 						next_offset: 20
 					});
 				}
-				return HttpResponse.json({
+				return HttpResponse.json<KitsuSearchPage>({
 					hits: [{ ...ref('3', 'Dragon Ball Super: Broly'), subtype: 'movie' }],
 					next_offset: null
 				});
@@ -447,7 +476,10 @@ describe('/search infinite scroll', () => {
 			...baseHandlers(),
 			http.post(`${API_BASE}/api/kitsu/search/page`, async () => {
 				await held;
-				return HttpResponse.json({ hits: [ref('1', 'Trigun')], next_offset: null });
+				return HttpResponse.json<KitsuSearchPage>({
+					hits: [ref('1', 'Trigun')],
+					next_offset: null
+				});
 			})
 		);
 
@@ -481,7 +513,7 @@ describe('/search infinite scroll', () => {
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
 				const { query } = (await request.json()) as { query: string };
 				if (query === 'dragon ball') {
-					return HttpResponse.json({
+					return HttpResponse.json<KitsuSearchPage>({
 						hits: [
 							{ ...ref('1', 'Dragon Ball Z'), subtype: 'TV' },
 							{ ...ref('2', 'Dragon Ball: Path to Power'), subtype: 'movie' }
@@ -489,7 +521,10 @@ describe('/search infinite scroll', () => {
 						next_offset: 20
 					});
 				}
-				return HttpResponse.json({ hits: [ref('9', 'Monster')], next_offset: null });
+				return HttpResponse.json<KitsuSearchPage>({
+					hits: [ref('9', 'Monster')],
+					next_offset: null
+				});
 			})
 		);
 
@@ -522,10 +557,16 @@ describe('/search infinite scroll', () => {
 				const { query, offset } = (await request.json()) as { query: string; offset: number };
 				asked.push(`${query}@${offset}`);
 				if (query === 'short') {
-					return HttpResponse.json({ hits: [ref('1', 'Short result')], next_offset: null });
+					return HttpResponse.json<KitsuSearchPage>({
+						hits: [ref('1', 'Short result')],
+						next_offset: null
+					});
 				}
 				await tallHeld;
-				return HttpResponse.json({ hits: [ref('2', 'Tall result')], next_offset: 20 });
+				return HttpResponse.json<KitsuSearchPage>({
+					hits: [ref('2', 'Tall result')],
+					next_offset: 20
+				});
 			})
 		);
 
@@ -561,7 +602,7 @@ describe('/search infinite scroll', () => {
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
 				const { offset } = (await request.json()) as { offset: number };
 				offsets.push(offset);
-				return HttpResponse.json({
+				return HttpResponse.json<KitsuSearchPage>({
 					hits: [ref(String(offset + 1), `Show ${offset + 1}`)],
 					next_offset: offset < 100 ? offset + 20 : null
 				});
@@ -589,7 +630,7 @@ describe('/search infinite scroll', () => {
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
 				const { offset } = (await request.json()) as { offset: number };
 				offsets.push(offset);
-				return HttpResponse.json({
+				return HttpResponse.json<KitsuSearchPage>({
 					hits: [ref(String(offset + 1), `Show ${offset + 1}`)],
 					next_offset: offset < 100 ? offset + 20 : null
 				});
@@ -615,7 +656,7 @@ describe('/search infinite scroll', () => {
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
 				const { offset } = (await request.json()) as { offset: number };
 				offsets.push(offset);
-				return HttpResponse.json({
+				return HttpResponse.json<KitsuSearchPage>({
 					hits: [
 						{ ...ref(String(offset + 1), `Show ${offset + 1}`), subtype: 'TV' },
 						{ ...ref(String(offset + 2), `Film ${offset + 2}`), subtype: 'movie' }
@@ -658,7 +699,7 @@ describe('/search infinite scroll', () => {
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
 				const { offset } = (await request.json()) as { offset: number };
 				offsets.push(offset);
-				return HttpResponse.json({
+				return HttpResponse.json<KitsuSearchPage>({
 					hits: [
 						{ ...ref(String(offset + 1), `Show ${offset + 1}`), subtype: 'TV' },
 						{ ...ref(String(offset + 2), `Film ${offset + 2}`), subtype: 'movie' }
@@ -712,12 +753,12 @@ describe('/search infinite scroll', () => {
 				asked.push({ offset, sort });
 				if (sort === 'year') {
 					return offset === 0
-						? HttpResponse.json({ hits: [NEWEST, NEW], next_offset: 20 })
-						: HttpResponse.json({ hits: [MID, OLD], next_offset: null });
+						? HttpResponse.json<KitsuSearchPage>({ hits: [NEWEST, NEW], next_offset: 20 })
+						: HttpResponse.json<KitsuSearchPage>({ hits: [MID, OLD], next_offset: null });
 				}
 				return offset === 0
-					? HttpResponse.json({ hits: [MID, OLD], next_offset: 20 })
-					: HttpResponse.json({ hits: [NEWEST, NEW], next_offset: null });
+					? HttpResponse.json<KitsuSearchPage>({ hits: [MID, OLD], next_offset: 20 })
+					: HttpResponse.json<KitsuSearchPage>({ hits: [NEWEST, NEW], next_offset: null });
 			})
 		);
 		const cards = () =>
@@ -751,7 +792,7 @@ describe('/search infinite scroll', () => {
 		server.use(
 			...baseHandlers(),
 			http.post(`${API_BASE}/api/kitsu/search/page`, () =>
-				HttpResponse.json({ hits: [ref('1', 'Trigun')], next_offset: null })
+				HttpResponse.json<KitsuSearchPage>({ hits: [ref('1', 'Trigun')], next_offset: null })
 			)
 		);
 		setQuery('trigun');
@@ -778,7 +819,7 @@ describe('/search infinite scroll', () => {
 		server.use(
 			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 				const { kitsu_ids } = (await request.json()) as { kitsu_ids: string[] };
-				return HttpResponse.json({
+				return HttpResponse.json<AvailabilityBatchResponse>({
 					cached: Object.fromEntries(kitsu_ids.map((id) => [id, !id.startsWith('gone')])),
 					playable_episode_counts: {}
 				});
@@ -788,10 +829,13 @@ describe('/search infinite scroll', () => {
 				const { offset, sort } = (await request.json()) as { offset: number; sort?: string };
 				if (sort === 'year') {
 					return offset === 0
-						? HttpResponse.json({ hits: [ref('gone-1', 'Not Out Yet')], next_offset: 20 })
-						: HttpResponse.json({ hits: [ref('2', 'Beta')], next_offset: null });
+						? HttpResponse.json<KitsuSearchPage>({
+								hits: [ref('gone-1', 'Not Out Yet')],
+								next_offset: 20
+							})
+						: HttpResponse.json<KitsuSearchPage>({ hits: [ref('2', 'Beta')], next_offset: null });
 				}
-				return HttpResponse.json({ hits: [ref('1', 'Alpha')], next_offset: null });
+				return HttpResponse.json<KitsuSearchPage>({ hits: [ref('1', 'Alpha')], next_offset: null });
 			})
 		);
 
@@ -816,7 +860,7 @@ describe('/search infinite scroll', () => {
 		server.use(
 			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 				const { kitsu_ids } = (await request.json()) as { kitsu_ids: string[] };
-				return HttpResponse.json({
+				return HttpResponse.json<AvailabilityBatchResponse>({
 					cached: Object.fromEntries(kitsu_ids.map((id) => [id, false])),
 					playable_episode_counts: {}
 				});
@@ -825,10 +869,16 @@ describe('/search infinite scroll', () => {
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
 				const { offset } = (await request.json()) as { offset: number };
 				if (offset === 0) {
-					return HttpResponse.json({ hits: [ref('gone-1', 'Gone One')], next_offset: 20 });
+					return HttpResponse.json<KitsuSearchPage>({
+						hits: [ref('gone-1', 'Gone One')],
+						next_offset: 20
+					});
 				}
 				await secondHeld;
-				return HttpResponse.json({ hits: [ref('gone-2', 'Gone Two')], next_offset: null });
+				return HttpResponse.json<KitsuSearchPage>({
+					hits: [ref('gone-2', 'Gone Two')],
+					next_offset: null
+				});
 			})
 		);
 
@@ -861,8 +911,8 @@ describe('/search infinite scroll', () => {
 			...baseHandlers(),
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
 				const { sort } = (await request.json()) as { sort?: string };
-				if (sort === 'year') return HttpResponse.json(FAILURE, { status: 502 });
-				return HttpResponse.json({ hits: [ref('1', 'Alpha')], next_offset: null });
+				if (sort === 'year') return errorAnswer(502, FAILURE);
+				return HttpResponse.json<KitsuSearchPage>({ hits: [ref('1', 'Alpha')], next_offset: null });
 			})
 		);
 

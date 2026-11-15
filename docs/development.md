@@ -7,7 +7,7 @@ This page covers the dev environment, the build pipeline, and debugging tips. Fo
 | Tool | Version | Purpose |
 |---|---|---|
 | Rust | pinned in `rust-toolchain.toml` | Rust sidecar backend |
-| Node | 20+ | renderer + Electron shell |
+| Node | 22.13+ (20+ for the frontend alone) | renderer + Electron shell; the Electron helper tests and e2e suite need 22.13 |
 | pnpm | 9+ | package manager |
 | `bats-core`, `bats-mock`, `bats-assert`, `bats-file` | pinned in `tests/bash/helpers/install-bats.sh` | bash tests |
 | `shellcheck`, `shfmt` | latest stable | bash linters |
@@ -38,7 +38,7 @@ sudo apt install -y build-essential libssl-dev pkg-config
 # Renderer + Electron shell (Node + pnpm via nvm)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 # (open a new shell, or `source ~/.bashrc`)
-nvm install 20
+nvm install 22
 # pnpm needs no separate install or version choice: package.json's
 # packageManager field pins it, and corepack fetches that version.
 corepack enable

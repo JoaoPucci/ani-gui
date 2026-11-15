@@ -37,6 +37,8 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 
+import type { AvailabilityResponse, KitsuAnimeRef, KitsuEpisode } from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 const KITSU_ID = '42';
 
 /** A stream that never resolves: the scenario is about the reads
@@ -82,15 +84,20 @@ afterEach(() => {
 function slowReads(held: HangingReads) {
 	server.use(
 		http.get(`${API_BASE}/api/kitsu/anime/:id`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, 'Ongoing Show', 12), status: 'current' })
+			HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(KITSU_ID, 'Ongoing Show', 12),
+				status: 'current'
+			})
 		),
 		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
-			})
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.get(`${API_BASE}/api/settings`, held.hang),
 		http.get(`${API_BASE}/api/download/default-dir`, held.hang),
@@ -147,7 +154,7 @@ describe('play route — leaving while its reads are out', () => {
 		slowReads(reads);
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/episodes/43`, () =>
-				HttpResponse.json([
+				HttpResponse.json<KitsuEpisode[]>([
 					{
 						id: 'ep-43-1',
 						number: 1,

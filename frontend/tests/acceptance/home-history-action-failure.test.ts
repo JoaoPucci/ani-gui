@@ -33,6 +33,8 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 const TITLE = 'Cowboy Bebop';
 const HISTORY = [{ ep_no: '3', id: 'allanime-1', title: TITLE }];
 
@@ -43,8 +45,7 @@ const onUnhandled = (reason: unknown) => unhandled.push(reason);
 
 /** What a request to the history endpoints is answered with. */
 type Answer = () => Promise<Response> | Response;
-const refused = () =>
-	HttpResponse.json({ key: 'error.io.generic', kind: 'io' }, { status: 500 }) as Response;
+const refused = () => errorAnswer(500, { key: 'error.io.generic', kind: 'io' }) as Response;
 const unreachable = () => HttpResponse.error() as Response;
 const done = () => new HttpResponse(null, { status: 204 }) as Response;
 
@@ -55,7 +56,7 @@ function serve(answers: { clear?: Answer; remove?: Answer }) {
 	server.use(
 		...homeHandlers({ history: HISTORY }, [
 			http.post(`${API_BASE}/api/kitsu/search`, () =>
-				HttpResponse.json([kitsuRef('1', TITLE, 26)])
+				HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', TITLE, 26)])
 			),
 			http.delete(`${API_BASE}/api/history`, () => {
 				clears += 1;
@@ -318,7 +319,7 @@ describe('Home’s history dialogs while a request is out', () => {
 				[
 					http.post(`${API_BASE}/api/kitsu/search`, async ({ request }) => {
 						const { query } = (await request.json()) as { query: string };
-						return HttpResponse.json(
+						return HttpResponse.json<KitsuAnimeRef[]>(
 							query === OTHER ? [kitsuRef('2', OTHER, 26)] : [kitsuRef('1', TITLE, 26)]
 						);
 					}),
