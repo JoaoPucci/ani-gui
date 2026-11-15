@@ -101,10 +101,34 @@ async fn the_stream_proxy_base_is_the_stream_lane() {
     let api = backend.api_base.clone();
     let stream = backend.lanes.get("stream").cloned();
     let info = app_info(&api, &backend.secret).await;
+    // The stream lane serves the proxy's routes, without the secret the
+    // API wants: a session that does not exist gets the proxy's own
+    // answer, not the API gate's.
+    let unknown = match &stream {
+        Some(base) => match reqwest::Client::new()
+            .get(format!(
+                "{base}/s/00000000-0000-4000-8000-000000000000/master.m3u8"
+            ))
+            .send()
+            .await
+        {
+            Ok(r) => (r.status().as_u16(), r.text().await.unwrap_or_default()),
+            Err(e) => (0, format!("{e:?}")),
+        },
+        None => (0, String::new()),
+    };
     stop(backend);
 
     let stream = stream.expect("a stream lane is announced");
     assert_eq!(info["proxy_base_url"], serde_json::json!(stream));
+    assert_eq!(
+        unknown.0, 404,
+        "the stream lane answers a proxy route: {unknown:?}"
+    );
+    assert!(
+        unknown.1.contains("session not found"),
+        "the proxy, not the API, answered: {unknown:?}"
+    );
 }
 
 async fn app_info(api: &str, secret: &str) -> serde_json::Value {
@@ -146,10 +170,10 @@ fn metadata_db(home: &Path) -> std::path::PathBuf {
 /// The backend answers the play from its resolution cache — the test
 /// turns replays on through the settings route and writes the row the
 /// play reads, naming a stream it serves — since a resolve would walk
-/// a provider. Not on Windows: there the backend finds its profile
-/// through the known-folder API, so its cache and settings are the dev
-/// profile's, outside the test's home, and turning replays on would
-/// change that profile's settings. `play_stream_origin.rs` holds the
+/// a provider. Not on Windows: there the backend finds its config and
+/// cache through the known-folder API, which no variable a test sets
+/// redirects, so they are the dev profile's, outside the test's home,
+/// and turning replays on would change that profile's settings. `play_stream_origin.rs` holds the
 /// session and playlist to the proxy's origin in-process on every
 /// platform, and the test above holds that origin to the stream lane.
 #[cfg(not(target_os = "windows"))]
