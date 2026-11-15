@@ -3,9 +3,11 @@
 //! removed: MyAnimeList then answers 404 for `/anime/{id}` itself, and
 //! AniList answers `Media(id:)` with its 404 `Not Found.` envelope. That
 //! is an answer about the show, not the tracker failing: the read
-//! answers as for a show no tracker id maps (`None`), and the writes
-//! answer as the unmappable paths do — a save `None`, a removal `false`
-//! — so nothing reports a write that did not happen.
+//! answers as for a show no tracker id maps (`None`), and a save
+//! answers as the unmappable path does (`None`), so nothing reports a
+//! write that did not happen. A removal is the idempotent case: the show
+//! is already off the list, so it answers removed and drops any cached
+//! row, as a removal of a row already gone does.
 
 use std::sync::Arc;
 
@@ -142,6 +144,32 @@ fn anilist(server: &MockServer) -> AniListProvider {
     )
 }
 
+/// A cached row for the gone anime under the bearer's user, 4242.
+fn cache_the_gone_row(state: &AppState, kind: ProviderKind) {
+    crate::account::cache_upsert::upsert_entry(
+        &state.cache_pool,
+        kind,
+        "4242",
+        &crate::account::provider::ListEntry {
+            provider: kind,
+            media_id: crate::account::provider::ProviderMediaId(33778),
+            mal_id: Some(33778),
+            status: crate::account::status::ListStatus::Watching,
+            progress_episodes: 1,
+            score_0_to_100: None,
+            updated_at_epoch_s: 1,
+            title: "Delete".into(),
+        },
+    )
+    .expect("seed the cached row");
+}
+
+fn cached_rows(state: &AppState, kind: ProviderKind) -> usize {
+    crate::account::cache::list_entries(&state.cache_pool, kind, "4242")
+        .expect("cache read")
+        .len()
+}
+
 fn watched(ep: u32) -> EntryUpdate {
     EntryUpdate {
         progress_episodes: Some(ep),
@@ -185,10 +213,11 @@ async fn mal_saving_to_an_anime_mal_no_longer_has_writes_nothing() {
 }
 
 #[tokio::test]
-async fn mal_removing_an_anime_mal_no_longer_has_answers_nothing_removed() {
+async fn mal_removing_an_anime_mal_no_longer_has_is_already_removed() {
     let kitsu = kitsu(KITSU_MAL).await;
     let server = mal_without_the_anime().await;
     let state = state_with_kitsu(&kitsu.uri());
+    cache_the_gone_row(&state, ProviderKind::MyAnimeList);
     let removed = remove_entry_via(
         &state,
         ProviderKind::MyAnimeList,
@@ -198,7 +227,12 @@ async fn mal_removing_an_anime_mal_no_longer_has_answers_nothing_removed() {
     )
     .await
     .expect("MAL answered: the anime is not there");
-    assert!(!removed, "nothing was removed: the route answers 404");
+    assert!(removed, "the show is off the list: the route answers 204");
+    assert_eq!(
+        cached_rows(&state, ProviderKind::MyAnimeList),
+        0,
+        "the stale row is dropped"
+    );
 }
 
 #[tokio::test]
@@ -265,10 +299,11 @@ async fn anilist_saving_to_a_media_anilist_no_longer_has_writes_nothing() {
 }
 
 #[tokio::test]
-async fn anilist_removing_a_media_anilist_no_longer_has_answers_nothing_removed() {
+async fn anilist_removing_a_media_anilist_no_longer_has_is_already_removed() {
     let kitsu = kitsu(KITSU_ANILIST).await;
     let server = anilist_without_the_media().await;
     let state = state_with_kitsu(&kitsu.uri());
+    cache_the_gone_row(&state, ProviderKind::AniList);
     let removed = remove_entry_via(
         &state,
         ProviderKind::AniList,
@@ -278,7 +313,12 @@ async fn anilist_removing_a_media_anilist_no_longer_has_answers_nothing_removed(
     )
     .await
     .expect("AniList answered: the media is not there");
-    assert!(!removed, "nothing was removed: the route answers 404");
+    assert!(removed, "the show is off the list: the route answers 204");
+    assert_eq!(
+        cached_rows(&state, ProviderKind::AniList),
+        0,
+        "the stale row is dropped"
+    );
 }
 
 // ─── A write refused without saying why ──────────────────────────────
