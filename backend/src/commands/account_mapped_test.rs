@@ -30,6 +30,9 @@ struct Tracker {
     rows: Mutex<HashMap<u32, CurrentEntry>>,
     writes: Mutex<Vec<(u32, EntryUpdate)>>,
     reads: Mutex<Vec<u32>>,
+    /// Entries the tracker no longer has: every request about one
+    /// answers 404.
+    gone: Vec<u32>,
 }
 
 impl Tracker {
@@ -66,6 +69,18 @@ impl Tracker {
     fn reads(&self) -> Vec<u32> {
         self.reads.lock().expect("reads").clone()
     }
+
+    fn without(mut self, gone: &[u32]) -> Self {
+        self.gone = gone.to_vec();
+        self
+    }
+
+    fn answers(&self, id: ProviderMediaId) -> crate::error::Result<()> {
+        if self.gone.contains(&id.0) {
+            return Err(AniError::Upstream { status: 404 });
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -100,6 +115,7 @@ impl UserListProvider for Tracker {
         id: ProviderMediaId,
         update: EntryUpdate,
     ) -> crate::error::Result<ListEntry> {
+        self.answers(id)?;
         self.writes
             .lock()
             .expect("writes")
@@ -139,6 +155,7 @@ impl UserListProvider for Tracker {
         _tokens: &Tokens,
         id: ProviderMediaId,
     ) -> crate::error::Result<Option<CurrentEntry>> {
+        self.answers(id)?;
         Ok(self.rows.lock().expect("rows").get(&id.0).copied())
     }
     async fn tracked_media(
@@ -147,6 +164,7 @@ impl UserListProvider for Tracker {
         id: ProviderMediaId,
     ) -> crate::error::Result<TrackedMedia> {
         self.reads.lock().expect("reads").push(id.0);
+        self.answers(id)?;
         Ok(TrackedMedia {
             entry: self.rows.lock().expect("rows").get(&id.0).copied(),
             episodes: self.totals.get(&id.0).copied(),
@@ -677,4 +695,79 @@ fn an_entry_s_lock_is_one_per_tracker_entry_and_apart_from_the_show_locks() {
         &a,
         &locks.for_show(ProviderKind::AniList, "7")
     ));
+}
+
+// ─── An entry the tracker no longer has ──────────────────────────────
+// Kitsu can map a show to an id the tracker has since removed, and a
+// cached map can name one. The tracker answering 404 for the entry is
+// an answer about the entry, not a failure: the write goes where it
+// would for a show no tracker id maps, and nothing is sent to an entry
+// that is not there.
+
+#[tokio::test]
+async fn a_show_whose_resolved_entry_is_gone_writes_as_one_that_resolves_to_nothing() {
+    let state = state();
+    seed(&state, "5", &EpisodeMap::identity(Identity::Unexplained));
+    let tracker = Tracker::with(&[], &[]).without(&[999]);
+    assert!(push(&state, &tracker, "5", Some(999), watched(1))
+        .await
+        .is_none());
+    assert!(tracker.writes().is_empty());
+}
+
+#[tokio::test]
+async fn a_show_whose_resolved_entry_is_gone_is_filed_where_its_prequel_files_it() {
+    // Koubou-sen's map, for a show Kitsu resolves to an entry the
+    // tracker no longer has: filed under season 2's 153406, as a show
+    // that resolves to nothing is.
+    let state = state();
+    seed(
+        &state,
+        "49244",
+        &EpisodeMap {
+            shape: Shape::SplitParts,
+            segments: vec![segment(153_406, 26, 1, 13, 13, &[])],
+        },
+    );
+    let tracker = Tracker::with(&[(153_406, 26)], &[(153_406, Watching, 13)]).without(&[999]);
+    push(&state, &tracker, "49244", Some(999), watched(1)).await;
+    assert_eq!(tracker.writes(), [(153_406, None, Some(14))]);
+}
+
+#[tokio::test]
+async fn a_status_for_a_gone_entry_is_not_written() {
+    let state = state();
+    let tracker = Tracker::with(&[], &[]).without(&[21]);
+    let update = EntryUpdate {
+        status: Some(ListStatus::Paused),
+        ..Default::default()
+    };
+    assert!(push(&state, &tracker, "1", Some(21), update)
+        .await
+        .is_none());
+}
+
+#[tokio::test]
+async fn a_mapped_episode_on_a_gone_entry_is_not_written() {
+    // Ranma's map names Nettou-hen, which the tracker no longer has.
+    let state = state();
+    seed(&state, "186", &ranma_map());
+    let tracker =
+        Tracker::with(&[(210, 18), (149_939, 143)], &[(210, Completed, 18)]).without(&[149_939]);
+    assert!(push(&state, &tracker, "186", Some(210), watched(19))
+        .await
+        .is_none());
+    assert!(tracker.writes().is_empty());
+}
+
+#[tokio::test]
+async fn a_gone_earlier_entry_is_passed_over_for_the_episode_s_own() {
+    // Ranma's map under a Kitsu id that resolves to nothing, with 210
+    // gone: nothing to bring to its total, and Nettou-hen's first
+    // episode is still written.
+    let state = state();
+    seed(&state, "18600", &ranma_map());
+    let tracker = Tracker::with(&[(149_939, 143)], &[]).without(&[210]);
+    push(&state, &tracker, "18600", None, watched(19)).await;
+    assert_eq!(tracker.writes(), [(149_939, Some(Watching), Some(1))]);
 }

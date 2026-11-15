@@ -257,3 +257,7 @@ mod tests;
 #[cfg(test)]
 #[path = "account_edit_rate_limit_test.rs"]
 mod rate_limit_tests;
+
+#[cfg(test)]
+#[path = "account_edit_gone_test.rs"]
+mod gone_tests;
