@@ -178,11 +178,11 @@ async fn first_hop_route_answers_from_the_shows_own_listing() {
     seed(&state, "1", vec![rel("sequel", &next)]);
     seed(&state, "2", vec![rel("side_story", &film)]);
     seed(&state, "3", vec![rel("character", &film)]);
-    // Each show's detail, which the first hop reads with its listing, as
-    // the walk does: it says whether the show is a music video (whose
-    // page relates to nothing). The show with a side story also needs
-    // it to know whether the side story started before it (the walk's
-    // parent check); it started first, so no other listing is read.
+    // Each show's detail, so the first hop finds any it asks for: it
+    // reads one where its answer would be the link or turns on the
+    // parent check. The show with a side story needs it to know whether
+    // the side story started before it (the walk's parent check); it
+    // started first, so no other listing is read.
     for id in ["1", "2", "3"] {
         let detail = json!({
             "id": id, "canonical_title": "A show", "titles": {}, "abbreviated_titles": [],

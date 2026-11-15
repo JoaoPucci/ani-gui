@@ -1,6 +1,9 @@
 //! The walk's first hop: what the show page can tell from the anchor's
-//! own relation listing, the first listing the walk reads, before the
-//! walk has read anything else.
+//! own relation listing, which the walk reads in its first round,
+//! before the walk has read anything else. It reads the anchor's detail
+//! too only where its answer turns on it: for the link (a music video's
+//! page foretells nothing, and only its detail says it is one) and for
+//! the parent check.
 //!
 //! The show page reserves room for its watch-order strip (or its lone
 //! franchise link) while the walk runs, so the strip does not push the

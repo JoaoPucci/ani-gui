@@ -6,8 +6,8 @@
  * The walk can take a second or two on a first visit, and the strip
  * (or the franchise link on its own) used to land above the synopsis
  * after the page was drawn, pushing everything under it down. The
- * walk's first read, the show's own relation listing, already says
- * what is coming (`kitsuFranchiseFirstHop`), so:
+ * show's own relation listing, which the walk reads in its first
+ * round, already says what is coming (`kitsuFranchiseFirstHop`), so:
  *
  * - The page waits for that first hop together with the show's
  *   details, but never more than `FIRST_HOP_CAP_MS` past the details,

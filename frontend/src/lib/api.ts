@@ -1535,8 +1535,8 @@ export function kitsuFranchise(kitsuId: string, opts: ReadOptions = {}): Promise
 }
 
 /** What the show page will draw once the franchise walk answers, as
- *  the show's own relation listing (and, where needed, the walk's
- *  parent check) foretells it (backend
+ *  the show's own relation listing (and, where needed, the show's
+ *  detail and the walk's parent check) foretells it (backend
  *  `commands::franchise_walk::first_hop`): the watch-order strip, the
  *  franchise link alone, or nothing. Only `strip` can turn out wrong. */
 export type FirstHop = 'strip' | 'link' | 'none';
