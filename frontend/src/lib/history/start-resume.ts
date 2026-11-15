@@ -62,7 +62,8 @@ export interface StartResumeDeps {
 		args: ResumePlayArgs,
 		/** Whether the click's navigation claim still holds — asked once
 		 *  the failure is worded, which can outlast the viewer staying. */
-		isCurrent?: () => boolean
+		isCurrent?: () => boolean,
+		lineUnread?: boolean
 	) => void | Promise<void>;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
 	getSettings: () => Promise<{ mode: 'sub' | 'dub' }>;
@@ -167,7 +168,7 @@ export function makeStartResume(deps: StartResumeDeps): (
 	 *  one it shows ($lib/history/card-lines.svelte.ts): the play is a guess of
 	 *  that line, from the shown row's progress. Home hands it while it may
 	 *  still be asking. */
-	cardRow?: string | Promise<string>
+	cardRow?: string | null | Promise<string | null>
 ) => Promise<void> {
 	return async (entry, match, seriesTotal, seriesFinished, cardRow) => {
 		if (deps.isBusy()) return;

@@ -529,7 +529,7 @@
 		cardLink.leave();
 	});
 	// Its lifecycle is $lib/history/open-card-link.ts.
-	function openCardLink(row: string, matchId: string, episode: number) {
+	function openCardLink(row: string | null, matchId: string, episode: number) {
 		return runOpenCardLink(row, matchId, episode, {
 			busy: () => deleteRun.busy || clearRun.busy,
 			dismissFailure: () => {

@@ -35,14 +35,14 @@ export interface OpenCardLinkDeps {
 export type CardLinkOpening = 'held' | 'unread' | 'settled' | 'overtaken' | 'opened';
 
 export async function openCardLink(
-	row: string,
+	row: string | null,
 	matchId: string,
 	episode: number,
 	deps: OpenCardLinkDeps
 ): Promise<CardLinkOpening> {
 	if (deps.busy()) return 'held';
 	deps.dismissFailure();
-	const guessed = await deps.stillGuessed(row, matchId);
+	const guessed = await deps.stillGuessed(row ?? '', matchId);
 	if (guessed === 'unread') {
 		deps.checkFailed();
 		return 'unread';
@@ -76,7 +76,7 @@ export interface FailedResumeDeps {
  *  were read or matched again since the check began. `null` when the viewer moved on meanwhile, so nothing is
  *  shown at all. */
 export async function failedResumeGuess(
-	args: { guess?: boolean; row?: string; matchId: string; episode: number },
+	args: { guess?: boolean; row?: string; matchId: string; episode: number; unread?: boolean },
 	deps: FailedResumeDeps
 ): Promise<FailedGuess | undefined | null> {
 	const line = args.guess ? deps.line(args.row ?? '') : undefined;

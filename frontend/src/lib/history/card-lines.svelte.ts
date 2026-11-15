@@ -69,7 +69,7 @@ export class CardLines {
 	/** The line a click on the card showing the row `id` acts on: the
 	 *  answer's for the rows as they are, else the row itself. Read once
 	 *  `settled`. */
-	clickLineOf(id: string): string {
+	clickLineOf(id: string): string | null {
 		return (this.#answer?.key === this.#wanted ? this.#answer.lines[id]?.line : undefined) ?? id;
 	}
 
