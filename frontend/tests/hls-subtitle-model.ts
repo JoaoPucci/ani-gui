@@ -17,11 +17,25 @@
 //   default selection back on; when the level's subtitle group arrives
 //   (switchLevel) it lists the group (SUBTITLE_TRACKS_UPDATED) and, with
 //   the default selection on, picks the rendition marked DEFAULT.
+// - On a quality switch to a level of another subtitle group,
+//   switchLevel drops its pick, lists the new group, and picks again
+//   the new group's rendition in its pick's language
+//   (findTrackId's LANGUAGE match).
+// - A seek aborts the fragment on its way with no event: its loader's
+//   stats read `aborted`.
 // - TimelineController makes one text track per rendition on
 //   SUBTITLE_TRACKS_UPDATED, created disabled — or takes over a track
 //   already on the video with the same kind, label and language — and
 //   drops the cues of a fragment it parses while that track is
 //   disabled; the fragment is not fetched again.
+//
+// Where the model is simpler than hls.js, and no test here relies on
+// the difference: setSubtitleTrack always triggers SUBTITLE_TRACK_SWITCH
+// (hls.js skips it for the track already picked and loaded, after
+// still setting the modes); the read of the captions runs once per
+// `change` (hls.js coalesces reads into one timer); and a track taken
+// over is not taken off the list of tracks in use, so two renditions
+// named alike would share one.
 
 export interface ModelTrack {
 	readonly kind: string;
@@ -197,11 +211,45 @@ export class HlsSubtitleModel {
 		}
 	}
 
+	/** The fragments started, by number, as the engine holds them. */
+	frags: { type: string; level: number; sn: number; stats: { aborted: boolean } }[] = [];
+
 	/** A fragment of rendition `level` starts loading; its number. */
 	fragmentLoading(level: number): number {
 		const sn = this.sn++;
-		this.emit(MODEL_EVENTS.FRAG_LOADING, { frag: { type: 'subtitle', level, sn } });
+		const frag = { type: 'subtitle', level, sn, stats: { aborted: false } };
+		this.frags[sn] = frag;
+		this.emit(MODEL_EVENTS.FRAG_LOADING, { frag });
 		return sn;
+	}
+
+	/** A seek aborts the fragment on its way: no event, its stats say so. */
+	fragmentAborted(sn: number) {
+		this.frags[sn].stats.aborted = true;
+	}
+
+	/** A quality switch to a level of another subtitle group: the pick
+	 *  dropped, the group listed, the pick's language picked again. */
+	groupChanges(renditions: Rendition[]) {
+		const lang = this.subtitleTracks[this.trackId]?.lang;
+		this.trackId = -1;
+		this.allSubtitleTracks = [...this.allSubtitleTracks, ...renditions];
+		this.subtitleTracks = renditions;
+		const inUse = this.labelled();
+		this.textTracks = renditions.map((r) => {
+			const reused = inUse.find((t) => t.kind === 'subtitles' && names(r, t));
+			if (reused) return reused;
+			const made = this.makeTrack('subtitles', r.name, r.lang);
+			made.mode = 'disabled';
+			return made;
+		});
+		this.cues = renditions.map(() => []);
+		this.emit(MODEL_EVENTS.SUBTITLE_TRACKS_UPDATED, { subtitleTracks: renditions });
+		const at = lang === undefined ? -1 : renditions.findIndex((r) => r.lang === lang);
+		if (at !== -1) {
+			this.ownSwitches.push(at);
+			this.setSubtitleTrack(at);
+		}
 	}
 
 	/** The fragment is in and parsed: its cues go into the rendition's

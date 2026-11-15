@@ -328,3 +328,52 @@ describe('plainCaptions, without an engine', () => {
 		expect(ran).toEqual(['now']);
 	});
 });
+
+// A seek aborts the fragment on its way without an event: the rendition
+// it was for is not kept selected for Off on its account.
+describe('a fragment the engine gives up on silently', () => {
+	it('no longer holds its rendition', async () => {
+		const { video, engine, sync } = setup();
+		playlistIn(engine);
+		const fr = video.addElement('Français', 'fr');
+		const sn = engine.fragmentLoading(0);
+		sync.pick(indexOf(video, fr));
+		expect(engine.textTracks[0].mode).toBe('hidden');
+		engine.fragmentAborted(sn);
+		sync.pick('off');
+		await settle();
+		expect(engine.subtitleTrack).toBe(-1);
+		expect(engine.textTracks[0].mode).toBe('disabled');
+		expect(showing(video)).toEqual([]);
+	});
+});
+
+// A level of another subtitle group lists its own renditions; hls.js
+// picks again the one in its pick's language, and that one is now the
+// rendition picked.
+describe('a quality switch to another subtitle group', () => {
+	it("keeps the picked rendition's language showing, from the new group", async () => {
+		const { video, engine, sync } = setup();
+		playlistIn(engine);
+		sync.pick(indexOf(video, engine.textTracks[1]));
+		await settle();
+		engine.groupChanges([
+			{ name: 'English (CC)', lang: 'en' },
+			{ name: 'Español (CC)', lang: 'es' }
+		]);
+		await settle();
+		expect(showing(video)).toEqual(['Español (CC)/es']);
+		expect(engine.subtitleTrack).toBe(1);
+	});
+
+	it('leaves a sidecar track picked alone', async () => {
+		const { video, engine, sync } = setup();
+		playlistIn(engine);
+		const fr = video.addElement('Français', 'fr');
+		sync.pick(indexOf(video, fr));
+		engine.groupChanges([{ name: 'English (CC)', lang: 'en' }]);
+		await settle();
+		expect(showing(video)).toEqual(['Français/fr']);
+		expect(engine.subtitleTrack).toBe(-1);
+	});
+});
