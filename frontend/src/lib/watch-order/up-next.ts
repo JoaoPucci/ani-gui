@@ -35,6 +35,12 @@ export interface FinaleSelf {
 	readonly episodes: number | null;
 }
 
+/** The player's own reading of a show: what its detail says, and whose. */
+export interface PlayerReading extends FinaleSelf {
+	/** The Kitsu id of the show the detail was read for. */
+	readonly id: string;
+}
+
 /** Whether `episode` is the last of an entry that has finished airing. */
 export function isFinale(self: FinaleSelf, episode: number): boolean {
 	return self.status === 'finished' && self.episodes !== null && episode >= self.episodes;
@@ -51,8 +57,9 @@ export interface FinaleCard {
  * franchise not read (or read for another id, or only in part, where
  * the entry that really comes next may be missing), the settings not
  * settled (`order` null), `id` outside the run, or nothing after it.
- * `self` is the player's own reading of the entry; without one the
- * run's entry decides the finale. An entry outside the main story is
+ * `self` is the player's own reading of the entry; without one, or
+ * with one read for another show (the page reused for a new show
+ * before its detail is read again), the run's entry decides the finale. An entry outside the main story is
  * read on its own chain, as its strip draws it, so the card names the
  * chain's next title, or the main-story title the chain leads into.
  */
@@ -62,13 +69,14 @@ export function finaleCard(
 	order: WatchOrder | null,
 	today: string,
 	episode: number,
-	self: FinaleSelf | null
+	self: PlayerReading | null
 ): FinaleCard | null {
 	if (data?.franchise == null || order === null || data.franchise.anchor !== id) return null;
 	if (!data.franchise.complete) return null;
 	const run = runOf(chainFranchise(data.franchise) ?? data.franchise);
 	const entry = run?.entries.find((e) => e.id === id);
-	if (!run || !entry || !isFinale(self ?? entry, episode)) return null;
+	const own = self?.id === id ? self : null;
+	if (!run || !entry || !isFinale(own ?? entry, episode)) return null;
 	const upNext = upNextFor(run, id, order, today);
 	if (upNext.kind === 'none') return null;
 	const shown = upNext.kind === 'choices' ? upNext.entries : [upNext.entry];
