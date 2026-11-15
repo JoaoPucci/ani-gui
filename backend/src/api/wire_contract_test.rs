@@ -75,6 +75,8 @@ use crate::commands::availability::{
 use crate::commands::continue_guess::RuledOutRequest;
 use crate::commands::download::{DownloadArgs, DownloadProgress, DownloadResponse};
 use crate::commands::external_player::ExternalPlayerKind;
+use crate::commands::franchise_walk::{Chain, Franchise};
+use crate::commands::history::ByKitsuEachArgs;
 use crate::commands::history_number::HistoryNumber;
 use crate::commands::play::PlayArgs;
 use crate::commands::play_native_versions::{VersionInfo, VersionKind};
@@ -87,6 +89,7 @@ use crate::lanes::Lane;
 use crate::meta::anilist_airing::{AiringStatus, UpcomingEpisode};
 use crate::meta::aniskip::SkipInterval;
 use crate::meta::github::ReleaseInfo;
+use crate::meta::kitsu::FranchiseEntry;
 use crate::meta::kitsu::{
     KitsuAnimeRef, KitsuCoverImage, KitsuEpisode, KitsuEpisodeThumbnail, KitsuPosterImage,
 };
@@ -218,6 +221,12 @@ fn responses() -> Value {
     put("SkipInterval", response(&skip(), &skip()));
     put("AiringStatus", response(&airing(true), &airing(false)));
     put("UpcomingEpisode", response(&upcoming(), &upcoming()));
+    put("Franchise", response(&franchise(true), &franchise(false)));
+    put("FranchiseChain", response(&chain(), &chain()));
+    put(
+        "FranchiseEntry",
+        response(&franchise_entry(true), &franchise_entry(false)),
+    );
     // No field of the config can be left out, so its one sample is both.
     // Not `Config::default()`: its Syncplay path differs per platform.
     put("Config", response(&config(), &config()));
@@ -452,6 +461,53 @@ fn upcoming() -> UpcomingEpisode {
     }
 }
 
+fn franchise_entry(full: bool) -> FranchiseEntry {
+    FranchiseEntry {
+        id: "7158".into(),
+        title: "JoJo no Kimyou na Bouken (TV)".into(),
+        subtype: some(full, "TV".into()),
+        start: some(full, "2012-10-06".into()),
+        episodes: some(full, 26),
+        status: some(full, "finished".into()),
+        poster: some(full, "https://media.kitsu.app/anime/7158/poster.jpg".into()),
+        cover: some(full, "https://media.kitsu.app/anime/7158/cover.jpg".into()),
+    }
+}
+
+fn chain() -> Chain {
+    Chain {
+        entries: vec![franchise_entry(true)],
+        links: vec![("7158".into(), "7730".into())],
+        seams: vec!["7158".into()],
+    }
+}
+
+fn franchise(full: bool) -> Franchise {
+    let list = |v: FranchiseEntry| if full { vec![v] } else { Vec::new() };
+    Franchise {
+        anchor: "7730".into(),
+        name: "JoJo no Kimyou na Bouken".into(),
+        name_from: "7158".into(),
+        entries: vec![franchise_entry(full)],
+        links: if full {
+            vec![("7158".into(), "8271".into())]
+        } else {
+            Vec::new()
+        },
+        versions: list(franchise_entry(full)),
+        films: list(franchise_entry(full)),
+        sides: list(franchise_entry(full)),
+        recaps: list(franchise_entry(full)),
+        parents: if full {
+            [("7730".to_string(), vec!["7158".to_string()])].into()
+        } else {
+            std::collections::BTreeMap::new()
+        },
+        complete: full,
+        chain: some(full, chain()),
+    }
+}
+
 fn config() -> Config {
     Config {
         locale: "pt-BR".into(),
@@ -652,6 +708,7 @@ fn requests() -> Value {
         })),
         "SearchBody": request::<SearchBody>(&json!({ "query": "frieren" })),
         "KitsuByMalIdsBody": request::<KitsuByMalIdsBody>(&json!({ "mal_ids": [52991] })),
+        "HistoryByKitsuBody": request::<ByKitsuEachArgs>(&json!({ "ids": ["7158"] })),
         "WaitBody": request::<WaitBody>(&json!({ "tickets": [7] })),
         "AuthUrlRequest": request::<AuthUrlRequest>(&json!({ "state": "s", "pkce": pkce })),
         "ExchangeCodeRequest": request::<ExchangeCodeRequest>(&json!({
