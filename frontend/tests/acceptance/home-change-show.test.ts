@@ -19,6 +19,7 @@ import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
 import { linkBackend, linkBackendHandlers, type LinkBackend } from './link-backend';
+import { watchPageFetches, type PageFetch } from './page-fetches';
 import { cardLines } from '../../src/test/link-rules-fake';
 import { appLinkDeps } from '../../src/lib/history/link-deps';
 import type { CardLineRow } from '../../src/lib/api';
@@ -99,6 +100,7 @@ const KNOWN = 'hianime:gintama-1237';
 const KNOWN_ID = '818';
 
 let backend: LinkBackend;
+let fetches: ReturnType<typeof watchPageFetches>;
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
@@ -169,6 +171,7 @@ beforeEach(() => {
 	g.EventSource = FakeEventSource;
 	window.localStorage.clear();
 	for (const t of toastStore.items) toastStore.dismiss(t.id);
+	fetches = watchPageFetches();
 	backend = linkBackend([
 		{ ep_no: '1', id: BC_CARD, title: BC_TITLE },
 		{ ep_no: '1', id: BC_HIDDEN, title: BC_TITLE },
@@ -197,7 +200,23 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-const settle = () => new Promise((r) => setTimeout(r, 300));
+/** Once nothing the page asked is out, or being read, across a whole
+ *  turn: every answer has landed, and what it set off has asked what
+ *  it asks (page-fetches.ts). A wait that ends on time instead lets a
+ *  "nothing happened" pass on a slow run before the page has acted. A
+ *  request the case holds on purpose is named in `except`. */
+const settle = (except?: (f: PageFetch) => boolean) =>
+	fetches.settled('the page to settle', { except });
+/** The availability probes the page has sent for `kitsuId`, counted as
+ *  it sends them. */
+const probesSent = (kitsuId: string) =>
+	fetches.sent.filter(
+		(f) => f.method === 'POST' && f.path === '/api/availability' && f.body.kitsu_id === kitsuId
+	).length;
+const probeFor =
+	(...ids: string[]) =>
+	(f: PageFetch) =>
+		f.method === 'POST' && f.path === '/api/availability' && ids.includes(String(f.body.kitsu_id));
 const cell = (row: string) =>
 	target.querySelector<HTMLElement>(`.resume-cell[data-entry-id="${CSS.escape(row)}"]`);
 const pill = (row: string) => cell(row)?.querySelector<HTMLButtonElement>('.resume-link') ?? null;
@@ -209,7 +228,8 @@ const button = (label: string, within: ParentNode = target) =>
 	) ?? null;
 const toastWith = (message: string) => toastStore.items.find((t) => t.message === message);
 
-async function openHome() {
+/** `holding`: the first load's requests the case holds on purpose. */
+async function openHome(holding?: (f: PageFetch) => boolean) {
 	app = mount(HomePage, { target });
 	await until(
 		() =>
@@ -218,7 +238,7 @@ async function openHome() {
 			showLine(KNOWN).includes('Gintama'),
 		'the Continue cards'
 	);
-	await settle();
+	await settle(holding);
 }
 
 async function pickAndLink(title: string) {
@@ -886,7 +906,7 @@ describe("a probe still on its way for the card's former show", () => {
 	});
 
 	it('lands without putting the guess back on the linked card', async () => {
-		await openHome();
+		await openHome(probeFor(JOJO_GUESS));
 		pill(JOJO_CARD)!.click();
 		await until(() => dialog()?.open === true, 'the picker');
 		await pickAndLink(JOJO_RIGHT_TITLE);
@@ -907,11 +927,16 @@ describe("the cap retry for a card's former show", () => {
 	// into the cap retry, which starts once every first probe answered.
 	// Black Clover's first probe is held until the card is linked, so the
 	// retry starts after the link. Asked again, the guess would confirm a
-	// cap of 1 — the series' would hold the OVA at episode 1.
+	// cap of 1 — the series' would hold the OVA at episode 1. Gintama's
+	// first probe is held with Black Clover's and answers unconfirmed
+	// too, so the retry asks about it after JoJo's turn: the witness
+	// that JoJo's turn has passed.
 	let releaseBc: () => void = () => {};
 	let guessProbes = 0;
+	let knownProbes = 0;
 	beforeEach(() => {
 		guessProbes = 0;
+		knownProbes = 0;
 		// The 2012 row probes the same guess, legitimately: leave it out.
 		backend.rows = backend.rows.filter((r) => r.id !== JOJO_PLAYED);
 		const bcHeld = new Promise<void>((resolve) => {
@@ -921,6 +946,17 @@ describe("the cap retry for a card's former show", () => {
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const { kitsu_id } = (await request.json()) as { kitsu_id?: string };
 				if (kitsu_id === BC_GUESS) await bcHeld;
+				if (kitsu_id === KNOWN_ID) {
+					await bcHeld;
+					knownProbes++;
+					return HttpResponse.json<AvailabilityResponse>(
+						availabilityAnswer({
+							available: true,
+							episode_count: 201,
+							episode_count_approximate: knownProbes === 1
+						})
+					);
+				}
 				if (kitsu_id === JOJO_GUESS) {
 					guessProbes++;
 					return HttpResponse.json<AvailabilityResponse>(
@@ -940,17 +976,20 @@ describe("the cap retry for a card's former show", () => {
 	});
 
 	it('asks nothing more about the guess once the card is linked, and keeps the linked cap', async () => {
-		await openHome();
-		expect(guessProbes).toBe(1);
+		await openHome(probeFor(BC_GUESS, KNOWN_ID));
+		expect(probesSent(JOJO_GUESS)).toBe(1);
 		pill(JOJO_CARD)!.click();
 		await until(() => dialog()?.open === true, 'the picker');
 		await pickAndLink(JOJO_RIGHT_TITLE);
 		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the card as the OVA');
-		const asked = guessProbes;
-		// The retry starts, and its first step (half a second) passes.
+		const asked = probesSent(JOJO_GUESS);
+		// The retry starts, and takes the rows one at a time in the order
+		// their first probes answered: JoJo's turn comes first, and
+		// Gintama's probe goes out after its first step (half a second).
+		// Once Gintama's is sent, JoJo's turn has passed.
 		releaseBc();
-		await new Promise((r) => setTimeout(r, 1500));
-		expect(guessProbes).toBe(asked);
+		await until(() => probesSent(KNOWN_ID) === 2, "Gintama's retry");
+		expect(probesSent(JOJO_GUESS)).toBe(asked);
 		// The card still has the OVA's cap: Continue goes on to episode 2.
 		cell(JOJO_CARD)!.querySelector<HTMLButtonElement>('.resume-card')!.click();
 		await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
@@ -982,9 +1021,7 @@ describe('a card linked while its first probe waits in the queue', () => {
 	// hold them; JoJo's card, matched by a slower title search, waits in
 	// the queue behind them, and is linked there.
 	let releaseSlots: () => void = () => {};
-	let guessProbes = 0;
 	beforeEach(() => {
-		guessProbes = 0;
 		backend.rows = [
 			{ ep_no: '1', id: JOJO_CARD, title: JOJO_TITLE },
 			...['1', '2', '3', '4'].map((i) => ({
@@ -1007,7 +1044,6 @@ describe('a card linked while its first probe waits in the queue', () => {
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const { kitsu_id } = (await request.json()) as { kitsu_id?: string };
 				if (kitsu_id === KNOWN_ID) await slots;
-				if (kitsu_id === JOJO_GUESS) guessProbes++;
 				return HttpResponse.json<AvailabilityResponse>(
 					availabilityAnswer({ available: true, episode_count: 26 })
 				);
@@ -1022,10 +1058,12 @@ describe('a card linked while its first probe waits in the queue', () => {
 		await until(() => dialog()?.open === true, 'the picker');
 		await pickAndLink(JOJO_RIGHT_TITLE);
 		await until(() => showLine(JOJO_CARD).includes(JOJO_RIGHT_TITLE), 'the card as the OVA');
-		const asked = guessProbes;
+		const asked = probesSent(JOJO_GUESS);
+		// The slots free as the held probes answer, and a probe still
+		// queued is sent from the answer that frees its slot.
 		releaseSlots();
-		await new Promise((r) => setTimeout(r, 800));
-		expect(guessProbes).toBe(asked);
+		await settle();
+		expect(probesSent(JOJO_GUESS)).toBe(asked);
 		expect(showLine(JOJO_CARD)).toContain(JOJO_RIGHT_TITLE);
 	});
 });
@@ -1058,7 +1096,7 @@ describe('a link that answers after the user left Home', () => {
 		// Home is left while the link is out, and opened again.
 		unmount(app!);
 		app = null;
-		await openHome();
+		await openHome((f) => f.path === '/api/history/link');
 		release();
 		await until(() => backend.linkCalls.length === 1, 'the link');
 		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'the card as the series');
@@ -1091,9 +1129,11 @@ describe('two pills clicked close together', () => {
 		await until(() => held.length === 1, "JoJo's check");
 		pill(BC_CARD)!.click();
 		await until(() => held.length === 2, "Black Clover's check");
+		const bcCheck = fetches.sent.filter((f) => f.path === '/api/history').at(-1);
 		hold = false;
 		held[0]();
-		await settle();
+		// JoJo's check runs out; Black Clover's is still held.
+		await settle((f) => f === bcCheck);
 		// JoJo's card is no less a guess for being overtaken.
 		expect(pill(JOJO_CARD)).not.toBeNull();
 		held[1]();
@@ -1109,6 +1149,7 @@ describe('two pills clicked close together', () => {
 describe('the picker while Clear history runs', () => {
 	// Clear history holds its dialog open while the clear is out, and
 	// opens no other dialog over it: a guessed card's pill neither.
+	const clearing = (f: PageFetch) => f.method === 'DELETE' && f.path === '/api/history';
 	let releaseClear: () => void = () => {};
 	let clearAsked = false;
 	beforeEach(() => {
@@ -1147,7 +1188,7 @@ describe('the picker while Clear history runs', () => {
 		button(m.home_clear_confirm_button())!.click();
 		await until(() => clearAsked, 'the clear');
 		releaseRead();
-		await settle();
+		await settle(clearing);
 		expect(dialog()?.open).not.toBe(true);
 		releaseClear();
 		await until(() => cell(BC_CARD) === null, 'the cards cleared');
@@ -1166,10 +1207,11 @@ describe('the picker while Clear history runs', () => {
 		expect(p.disabled).toBe(true);
 		p.disabled = false;
 		p.click();
-		await settle();
+		await settle(clearing);
 		expect(dialog()?.open).not.toBe(true);
 		releaseClear();
 		await until(() => cell(BC_CARD) === null, 'the cards cleared');
+		await settle();
 		expect(dialog()?.open).not.toBe(true);
 	});
 });
@@ -1386,7 +1428,7 @@ describe("a named card's pill clicked while its new show is still being matched"
 		// The pill is there at once, the card still showing the special.
 		await until(() => pill(BC_CARD) !== null, 'the pill');
 		pill(BC_CARD)!.click();
-		await settle();
+		await settle((f) => f.path === `/api/kitsu/anime/${BC_RIGHT}`);
 		releaseDetail();
 		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'the card as the series');
 		await settle();

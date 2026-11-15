@@ -18,6 +18,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
+import { watchPageFetches, type PageFetch } from './page-fetches';
 import { groupMembers } from '../../src/test/link-rules-fake';
 import type { LinkGroupRequest } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
@@ -102,6 +103,7 @@ interface Row {
 
 let rows: Row[];
 let linkCalls: { card: string; rows: string[]; kitsu_id: string }[];
+let fetches: ReturnType<typeof watchPageFetches>;
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
@@ -113,6 +115,7 @@ beforeEach(() => {
 	g.EventSource = FakeEventSource;
 	window.localStorage.clear();
 	for (const t of toastStore.items) toastStore.dismiss(t.id);
+	fetches = watchPageFetches();
 	rows = [
 		{ ep_no: '5', id: CARD, title: TITLE },
 		{ ep_no: '3', id: HIDDEN, title: TITLE }
@@ -139,7 +142,13 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-const settle = () => new Promise((r) => setTimeout(r, 300));
+/** Once nothing the page asked is out, or being read, across a whole
+ *  turn: every answer has landed, and what it set off has asked what
+ *  it asks (page-fetches.ts). A wait that ends on time instead lets a
+ *  "nothing happened" pass on a slow run before the page has acted. A
+ *  request the case holds on purpose is named in `except`. */
+const settle = (except?: (f: PageFetch) => boolean) =>
+	fetches.settled('the page to settle', { except });
 
 function show(id: string) {
 	return id === RIGHT
@@ -600,7 +609,8 @@ describe('a show page on screen when a link answers elsewhere', () => {
 		// The link's own lookup has answered, an empty answer asked twice
 		// ($lib/detail/resume-lookup), before the first one does.
 		await until(() => asks === 3, "the link's lookup");
-		await settle();
+		const first = fetches.sent.find((f) => f.path === `/api/history/by-kitsu/${RIGHT}`);
+		await settle((f) => f === first);
 		releaseFirst();
 		await settle();
 		expect(target.textContent).not.toContain(m.detail_play_button_continue());
