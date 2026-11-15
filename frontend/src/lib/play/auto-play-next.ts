@@ -33,9 +33,10 @@ export function decideAutoPlayNext({
 	episodeNum,
 	totalEpisodes,
 	extras = [],
-	handedOff = false
+	handedOff = false,
+	stepOpen = true
 }: AutoPlayInput): AutoPlayDecision {
-	if (!enabled || handedOff) return { advance: false };
+	if (!enabled || handedOff || !stepOpen) return { advance: false };
 	const target = nextEpisode(episodeNum, extras);
 	if (!stepAllowed(target, totalEpisodes, extras)) return { advance: false };
 	return { advance: true, target };

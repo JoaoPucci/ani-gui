@@ -65,7 +65,7 @@ export function upNextShown(state: UpNextState): boolean {
  * the episode its finale (`finaleCard` named something).
  */
 export function stepOpen(hasNext: boolean, countsStale: boolean, finale: boolean): boolean {
-	void countsStale;
-	void finale;
-	return hasNext;
+	// A step counted for another show is not this show's at the finale
+	// its own franchise found: the card names what follows instead.
+	return hasNext && !(countsStale && finale);
 }
