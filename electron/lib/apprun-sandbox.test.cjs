@@ -118,29 +118,38 @@ function outcome(img, run, elapsedMs, group) {
 // counts the orphans that end in its hands into `unreaped` and does not
 // keep them. With `forward`, a signal it receives is passed on to the
 // run, which is otherwise what the signal was meant for; a signal sent
-// to the whole group reaches the run directly. The run starts with the
-// signal dispositions it would have without the subreaper, and the
-// subreaper ends as the run did, by the same signal or with the same
-// status.
+// to the whole group reaches the run directly. Those signals are held
+// from before the run starts until its handlers are in place, so none
+// that arrives early ends the subreaper instead. The run starts with
+// the signal dispositions it would have without the subreaper. Once the
+// run has ended the subreaper marks it in `<report>.ended`, and goes on
+// reaping for up to `linger` seconds while orphans remain; it then ends
+// as the run did, by the same signal or with the same status.
 const SUBREAPER = `
 import ctypes, os, signal, sys, time
 if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
     sys.exit("subreaper: prctl failed: " + os.strerror(ctypes.get_errno()))
-report, forward, argv = sys.argv[1], sys.argv[2] == "1", sys.argv[3:]
+report, forward, linger, argv = sys.argv[1], sys.argv[2] == "1", float(sys.argv[3]), sys.argv[4:]
+held = {signal.SIGINT, signal.SIGTERM, signal.SIGHUP}
+signal.pthread_sigmask(signal.SIG_BLOCK, held)
 child = os.fork()
 if child == 0:
     # Python starts with these two ignored, and an ignored signal stays
-    # ignored across exec: the run gets the dispositions a launch has.
+    # ignored across exec, as a blocked one stays blocked: the run gets
+    # the dispositions and mask a launch has.
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     signal.signal(signal.SIGXFSZ, signal.SIG_DFL)
+    signal.pthread_sigmask(signal.SIG_UNBLOCK, held)
     os.execvp(argv[0], argv)
 def on_signal(sig, _frame):
     if forward:
         os.kill(child, sig)
-for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+for sig in held:
     signal.signal(sig, on_signal)
+signal.pthread_sigmask(signal.SIG_UNBLOCK, held)
 _, status = os.waitpid(child, 0)
-unreaped, until = 0, time.monotonic() + 2
+open(report + ".ended", "w").close()
+unreaped, until = 0, time.monotonic() + linger
 while True:
     try:
         pid, _ = os.waitpid(-1, os.WNOHANG)
@@ -161,8 +170,20 @@ sys.exit(os.waitstatus_to_exitcode(status))
 `;
 
 /** python3's arguments to run `argv` under the subreaper above. */
-function underSubreaper(img, forward, argv) {
-  return ["-I", "-c", SUBREAPER, path.join(img.app, "unreaped"), forward ? "1" : "0", ...argv];
+function underSubreaper(img, forward, argv, linger = 2) {
+  return ["-I", "-c", SUBREAPER, path.join(img.app, "unreaped"), forward ? "1" : "0", String(linger), ...argv];
+}
+
+const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Waits up to `boundMs` for `done()`; returns whether it came. */
+async function until(done, boundMs) {
+  const end = Date.now() + boundMs;
+  while (!done()) {
+    if (Date.now() > end) return false;
+    await sleepMs(20);
+  }
+  return true;
 }
 
 /**
@@ -190,11 +211,17 @@ function launch(template, probe, args, extraEnv = {}, shell = null) {
   return outcome(img, run, elapsedMs, Number(fs.readFileSync(groupFile, "utf8").trim()));
 }
 
-/** Starts AppRun in a process group of its own, signals it after `afterMs`. */
-async function launchAndSignal(template, probe, args, { afterMs, signal, group }) {
+/**
+ * Starts AppRun in a process group of its own and signals it once the
+ * probe is running (the probe records its pid) and `settleMs` more have
+ * passed, so the signal lands on AppRun waiting on the probe however
+ * long the interpreter and shell took to start. `elapsedMs` runs from
+ * the signal. A probe that never starts is a failed test, not a signal
+ * sent anyway.
+ */
+async function launchAndSignal(template, probe, args, { settleMs, signal, group }) {
   const { spawn } = require("node:child_process");
   const img = image(template, probe);
-  const started = Date.now();
   const child = spawn("python3", underSubreaper(img, !group, ["bash", path.join(img.app, "AppRun"), ...args]), {
     cwd: img.root,
     env: img.env({}),
@@ -205,12 +232,25 @@ async function launchAndSignal(template, probe, args, { afterMs, signal, group }
   child.stderr.on("data", (d) => {
     stderr += d;
   });
-  const timer = setTimeout(() => (group ? process.kill(-child.pid, signal) : child.kill(signal)), afterMs);
-  const [status, killedBy] = await new Promise((resolve) => child.on("close", (code, sig) => resolve([code, sig])));
-  clearTimeout(timer);
+  const closed = new Promise((resolve) => child.on("close", (code, sig) => resolve([code, sig])));
+  let signalledAt = null;
+  if (await until(() => fs.existsSync(path.join(img.app, "probe-pid")), 15000)) {
+    await sleepMs(settleMs);
+    signalledAt = Date.now();
+    if (group) process.kill(-child.pid, signal);
+    else child.kill(signal);
+  } else {
+    process.kill(-child.pid, "SIGKILL");
+  }
+  const [status, killedBy] = await closed;
   // Detached: the child leads a session, and so a group, of its own,
   // and AppRun, its child, starts in that group.
-  return { ...outcome(img, { status, signal: killedBy, stderr }, Date.now() - started, child.pid) };
+  const r = outcome(img, { status, signal: killedBy, stderr }, Date.now() - (signalledAt ?? 0), child.pid);
+  if (signalledAt === null) {
+    cleanup(r);
+    assert.fail("the probe never started, so nothing was signalled");
+  }
+  return r;
 }
 
 /** Whether any process is still in `group`, the run's own group:
@@ -406,7 +446,7 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
   ]) {
     const to = group && signal !== "SIGINT" ? " to the whole group" : "";
     test(`${name}: ${signal}${to} while the probe runs stops the launch and leaves nothing behind`, async () => {
-      const r = await launchAndSignal(template, "hangs", USER_ARGS, { afterMs: 700, signal, group });
+      const r = await launchAndSignal(template, "hangs", USER_ARGS, { settleMs: 200, signal, group });
       try {
         assert.equal(r.launched, null, "nothing launched");
         assert.equal(r.run.signal, signal, `AppRun ended with status ${r.run.status}, not by ${signal}`);
@@ -421,6 +461,48 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
   }
 }
 
+/**
+ * Runs `script` under bash, under the subreaper, for the stop-handler
+ * cases: the script records a background job of its own, the bystander,
+ * in `$APPDIR/bystander` and then ends itself by a signal, which leaves
+ * the bystander to whatever adopts it. Once the script has ended, the
+ * bystander is checked, killed if it is alive, and reaped by the
+ * subreaper, so no case leaves it as a zombie on a host whose PID 1
+ * does not reap. Returns how the script ended and whether the
+ * bystander had survived it.
+ */
+async function runWithBystander(img, script) {
+  const { spawn } = require("node:child_process");
+  const child = spawn("python3", underSubreaper(img, false, ["bash", "-c", script], 15), {
+    env: img.env({}),
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.on("data", (d) => {
+    stderr += d;
+  });
+  const closed = new Promise((resolve) => child.on("close", (code, sig) => resolve([code, sig])));
+  if (!(await until(() => fs.existsSync(path.join(img.app, "unreaped.ended")), 15000))) {
+    child.kill("SIGKILL");
+    await closed;
+    assert.fail("the script did not end");
+  }
+  let alive = false;
+  const bystanderFile = path.join(img.app, "bystander");
+  if (fs.existsSync(bystanderFile)) {
+    const bystander = Number(fs.readFileSync(bystanderFile, "utf8"));
+    try {
+      process.kill(bystander, 0);
+      alive = true;
+      process.kill(bystander, "SIGKILL");
+    } catch (err) {
+      if (err.code !== "ESRCH") throw err;
+    }
+  }
+  const [status, signal] = await closed;
+  return { run: { status, signal, stderr }, alive };
+}
+
 // The stop handler signals the probe job, and once that job has ended
 // there is nothing of the probe's left to signal: a signal arriving
 // between the probe's end and the moment the traps are cleared must
@@ -429,7 +511,7 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
 // probe's own functions, cut from the rendered AppRun at the lines
 // the repack writes, with an answering stub, then a background
 // process standing in for the next one `$!` would name.
-test("a stop after the probe has ended signals nothing but AppRun itself", () => {
+test("a stop after the probe has ended signals nothing but AppRun itself", async () => {
   const img = image(EB25, "answers");
   try {
     const appRun = fs.readFileSync(path.join(img.app, "AppRun"), "utf8");
@@ -445,16 +527,8 @@ test("a stop after the probe has ended signals nothing but AppRun itself", () =>
       'echo "$bystander" > "$APPDIR/bystander"',
       "ani_gui_probe_stop TERM",
     ].join("\n");
-    const run = spawnSync("bash", ["-c", script], { encoding: "utf8", env: img.env({}) });
+    const { run, alive } = await runWithBystander(img, script);
     assert.equal(run.signal, "SIGTERM", `status ${run.status}: ${run.stderr}`);
-    const bystander = Number(fs.readFileSync(path.join(img.app, "bystander"), "utf8"));
-    let alive = true;
-    try {
-      process.kill(bystander, 0);
-    } catch {
-      alive = false;
-    }
-    if (alive) process.kill(bystander, "SIGKILL");
     assert.ok(alive, "the stop handler killed a process that was not the probe");
   } finally {
     fs.rmSync(img.root, { recursive: true, force: true });
@@ -466,7 +540,7 @@ test("a stop after the probe has ended signals nothing but AppRun itself", () =>
 // AppRun's previous background job, if it has one, and that is not
 // the probe's to signal. The state is set as the start sequence sets
 // it at that moment, with a bystander as the previous job.
-test("a stop before the probe job exists signals no earlier background job", () => {
+test("a stop before the probe job exists signals no earlier background job", async () => {
   const img = image(EB25, "answers");
   try {
     const appRun = fs.readFileSync(path.join(img.app, "AppRun"), "utf8");
@@ -480,16 +554,8 @@ test("a stop before the probe job exists signals no earlier background job", () 
       "ani_gui_probe_starting=1",
       "ani_gui_probe_stop TERM",
     ].join("\n");
-    const run = spawnSync("bash", ["-c", script], { encoding: "utf8", env: img.env({}) });
+    const { run, alive } = await runWithBystander(img, script);
     assert.equal(run.signal, "SIGTERM", `status ${run.status}: ${run.stderr}`);
-    const bystander = Number(fs.readFileSync(path.join(img.app, "bystander"), "utf8"));
-    let alive = true;
-    try {
-      process.kill(bystander, 0);
-    } catch {
-      alive = false;
-    }
-    if (alive) process.kill(bystander, "SIGKILL");
     assert.ok(alive, "the stop handler killed AppRun's earlier background job");
   } finally {
     fs.rmSync(img.root, { recursive: true, force: true });
