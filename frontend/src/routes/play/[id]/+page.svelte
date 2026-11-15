@@ -2796,7 +2796,7 @@
 					},
 					{ markWatched, syncTrackers: syncWatchedToTrackers }
 				),
-			carry: (showId, episode, seconds) => recoveryResume.capture(showId, episode, seconds),
+			carry: (showId, episode, seconds) => recoveryResume.carry(showId, episode, seconds),
 			noteSwitch,
 			played: (showId, session, requested) => followPlayed(showId, session, requested),
 			carryRate,

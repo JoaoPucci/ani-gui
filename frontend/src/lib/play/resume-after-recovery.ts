@@ -31,6 +31,16 @@ export class RecoveryResume {
 				: null;
 	}
 
+	/** Carry `at` seconds to the next attach of `episode` of `showId`
+	 *  exactly as asked: a switch to a picked show says where it picks
+	 *  up, and 0:00 is a point there, not the want of one, so the pick's
+	 *  own saved position does not take its place. A value that is no
+	 *  number of seconds carries nothing. */
+	carry(showId: string, episode: number, at: number): void {
+		this.pending =
+			Number.isFinite(at) && at >= 0 ? { showId, episode, at, written: nextWrite() } : null;
+	}
+
 	/** The position the media attach for `episode` of `showId` should
 	 *  seek to, or null. Consuming clears the capture either way: a
 	 *  match hands the position over once, a mismatch discards stale
