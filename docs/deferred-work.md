@@ -529,7 +529,12 @@ starting it, and delete it when you find it done.
   a design pass has to settle: what the mark says and where it sits,
   whether a marked card still opens its page, whether the grid's
   order or count changes, and whether the surfaces that hide such
-  cards before rendering should show them marked too.
+  cards before rendering should show them marked too. Once that is
+  decided, search's music-video filter is to be revisited
+  (maintainer, 2026-11-16): music videos are kept out because Kitsu
+  lists far more of them than the provider serves, so showing them
+  would put many results in search that then get filtered out as not
+  carried; they would belong in search only if that ratio were good.
 - **Search has no title order.** Kitsu cannot sort a text search by
   title: `sort=canonicalTitle` and `sort=slug` answer 500, and
   `titles.en` is refused as a sort criterion. Sorting only the pages

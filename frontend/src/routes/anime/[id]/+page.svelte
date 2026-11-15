@@ -1217,10 +1217,11 @@
 				if (id !== currentId) return;
 				detail = d;
 				if (isMusicSubtype(d.subtype)) {
-					// Music videos (a YOASOBI MV, say) never exist on the provider —
-					// it indexes anime episodes, not song clips. Mark the show
-					// unavailable up front instead of letting the probe fuzzy-match
-					// an unrelated anime and play the wrong show. The lookup
+					// Music videos (a YOASOBI MV, say): the provider serves
+					// few of the many music videos Kitsu lists, so the app
+					// offers none (see isMusicSubtype). Mark the show
+					// unavailable up front instead of letting the probe
+					// fuzzy-match an unrelated anime and play the wrong show. The lookup
 					// effect below stands down for these.
 					availabilityResolved = true;
 				}
@@ -1292,8 +1293,9 @@
 	$effect(() => {
 		const title = detail?.canonical_title;
 		if (!id || !title || !config) return;
-		// Music videos are not in the provider's catalogue; prefetching one resolves
-		// with the music title and fuzzy-matches an unrelated show, warming the
+		// Music videos are held unavailable (see isMusicSubtype); most are
+		// not in the provider's catalogue, and prefetching one resolves with
+		// the music title and can fuzzy-match an unrelated show, warming the
 		// play cache with the wrong candidate. The Play/Download UI is already
 		// gated off for these (availability=false), so skip the warm too.
 		if (isMusicSubtype(detail?.subtype ?? null)) return;

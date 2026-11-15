@@ -1751,9 +1751,11 @@ export function allmangaKitsuMapPlayed(
  * Evict a single `provider show_id → kitsu_id` reverse-mapping row.
  *
  * Fired by `resolveKitsuMatch` step 0 when the mapping is bound to a
- * music entry, which no provider show is. Dropping it lets subsequent
- * lookups re-resolve and the next successful play rewrite the mapping
- * correctly. A binding step 0 merely doubts is passed over and kept.
+ * music entry, which no play or resolve stores now (search never offers
+ * a music video), so such a mapping is never a show the app played.
+ * Dropping it lets subsequent lookups re-resolve and the next
+ * successful play rewrite the mapping correctly. A binding step 0
+ * merely doubts is passed over and kept.
  *
  * `kitsuId` names the id the caller judged: the row goes only while it
  * is still that one, so a mapping a play stored after the caller read
