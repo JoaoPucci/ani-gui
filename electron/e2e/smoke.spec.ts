@@ -138,6 +138,12 @@ async function launchAppWithStubsOnce(
   await stub("**/api/kitsu/episodes/*", (r) => r.fulfill(json([])));
   await stub("**/api/kitsu/airing/*", (r) => r.fulfill(json(null)));
   await stub("**/api/history/by-kitsu/*", (r) => r.fulfill(json(null)));
+  // The rows the franchise's entries resume from: none, as the
+  // backend answers with no history.
+  await stub("**/api/history/by-kitsu", (r) => {
+    const { ids } = r.request().postDataJSON() as { ids: string[] };
+    return r.fulfill(json(Object.fromEntries(ids.map((i) => [i, null]))));
+  });
   // The show's franchise, as the backend answers for a show alone:
   // itself, no strip and no franchise link.
   await stub("**/api/kitsu/franchise/*", (r) => {
