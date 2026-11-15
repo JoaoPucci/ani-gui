@@ -1,6 +1,6 @@
 /**
- * Continue Watching's hand-off (docs/proposals/franchise-watch-order.md,
- * option b): once an entry's finale has been played through, its card
+ * Continue Watching's hand-off (docs/architecture.md, "Continue
+ * Watching's hand-off"): once an entry's finale has been played through, its card
  * moves on to the entry that comes next, the way the player's Up next
  * card names it, and opens that entry's show page.
  *
