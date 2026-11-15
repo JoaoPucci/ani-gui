@@ -67,7 +67,13 @@ export function createCaptionSync(
 	// group, made in the same language, is the pick from then on.
 	engine.on(events.SUBTITLE_TRACK_SWITCH, () => {
 		if (applying) return;
-		desired = followGroup(video, desired, engine.subtitleTracks, engine.subtitleTrack);
+		desired = followGroup(
+			video,
+			desired,
+			engine.subtitleTracks,
+			engine.allSubtitleTracks,
+			engine.subtitleTrack
+		);
 		apply();
 	});
 

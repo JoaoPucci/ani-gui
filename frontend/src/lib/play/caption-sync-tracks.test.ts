@@ -66,20 +66,20 @@ describe('followGroup', () => {
 	const renditions = [{ name: 'English (CC)', lang: 'en' }];
 
 	it("takes the engine's pick in the new group for a rendition of the group left", () => {
-		expect(followGroup(video([], [oldEn, newEn]), oldEn, renditions, 0)).toBe(newEn);
+		expect(followGroup(video([], [oldEn, newEn]), oldEn, renditions, renditions, 0)).toBe(newEn);
 	});
 
 	it('keeps the pick when it is Off, a sidecar track, a rendition still listed, or the engine picked none', () => {
 		const side = track('Français', 'fr');
 		const v = video([side], [oldEn, newEn]);
-		expect(followGroup(v, 'off', renditions, 0)).toBe('off');
-		expect(followGroup(v, null, renditions, 0)).toBeNull();
-		expect(followGroup(v, side, renditions, 0)).toBe(side);
-		expect(followGroup(v, newEn, renditions, 0)).toBe(newEn);
-		expect(followGroup(v, oldEn, renditions, -1)).toBe(oldEn);
+		expect(followGroup(v, 'off', renditions, renditions, 0)).toBe('off');
+		expect(followGroup(v, null, renditions, renditions, 0)).toBeNull();
+		expect(followGroup(v, side, renditions, renditions, 0)).toBe(side);
+		expect(followGroup(v, newEn, renditions, renditions, 0)).toBe(newEn);
+		expect(followGroup(v, oldEn, renditions, renditions, -1)).toBe(oldEn);
 	});
 
 	it("keeps the pick when the engine's new track is not on the video", () => {
-		expect(followGroup(video([], [oldEn]), oldEn, renditions, 0)).toBe(oldEn);
+		expect(followGroup(video([], [oldEn]), oldEn, renditions, renditions, 0)).toBe(oldEn);
 	});
 });

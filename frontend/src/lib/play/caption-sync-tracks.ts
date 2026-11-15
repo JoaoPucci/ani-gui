@@ -82,8 +82,10 @@ export function followGroup(
 	video: CaptionVideo,
 	desired: Desired | null,
 	renditions: readonly EngineTrack[],
+	allRenditions: readonly EngineTrack[],
 	picked: number
 ): Desired | null {
+	void allRenditions;
 	if (desired === null || typeof desired === 'string' || picked < 0) return desired;
 	const sidecars = new Set(Array.from(video.querySelectorAll('track'), (el) => el.track));
 	if (sidecars.has(desired) || engineIdOf(desired, renditions) !== -1) return desired;
