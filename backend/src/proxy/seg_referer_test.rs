@@ -10,7 +10,7 @@
 //! its own request and substituted a literal instead, so a session
 //! whose referer cannot become a header value made the proxy announce
 //! a provider the app no longer talks to. A fresh resolve's referer is
-//! an origin and always parses; the guard is for what a session takes
+//! an origin, or absent, and always parses; the guard is for what a session takes
 //! verbatim from elsewhere — a replay reads the referer its cache row
 //! holds, whatever wrote that row.
 

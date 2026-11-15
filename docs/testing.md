@@ -144,7 +144,7 @@ writes the row itself and asks the play route directly, before it
 holds the resolve lane that route travels on. The row
 is written with Node's built-in `node:sqlite` module, so the suite and
 the Electron helper tests (`electron/lib/*.test.cjs`) need Node 22.13 or
-later (CI runs them on Node 22). Its key prefix,
+later (CI runs them on Node 22). The row's key prefix,
 insert statement, lifetime and fields are kept in
 `electron/e2e/fixtures/replay-row.json`, and the backend's tests check
 that file against what the cache reads
