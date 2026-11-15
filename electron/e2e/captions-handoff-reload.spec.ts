@@ -317,7 +317,7 @@ test('sidecar tracks turned off before two handoffs in a row show their cues whe
 // unit tier checks that no mode it writes is showing. Here the
 // remembered choice and both tracks' modes are what they were after
 // the return, and the cues are there once a track is picked.
-test("with Chromium's controls, the cues are kept and no pick is remembered that the viewer did not make", async () => {
+test("with Chromium's controls, the cues are kept and the remembered choice and modes are unchanged", async () => {
 	test.setTimeout(120_000);
 	const media = await mediaServer();
 	const { app, page, profile } = await launch();

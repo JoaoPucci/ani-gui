@@ -111,7 +111,7 @@ vi.mock('hls.js', () => {
 			// the <track> elements' included. (Chromium lists those in
 			// `textTracks`; happy-dom lists only addTextTrack's. A disabled
 			// track, which hls.js sets hidden to clear, is not modelled:
-			// happy-dom hides its cues and ignores a hidden mode.)
+			// happy-dom's cues getter ignores a hidden mode.)
 			const media = this.media;
 			const tracks = new Set([
 				...Array.from(media?.textTracks ?? []),
