@@ -29,6 +29,16 @@ import { m } from '../../src/lib/paraglide/messages';
 import { tick } from 'svelte';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SessionSubtitle,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 vi.mock('$app/state', () => ({
 	get page() {
 		return page;
@@ -43,13 +53,17 @@ vi.mock('$app/navigation', () => ({
 
 const KITSU_ID = '42';
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
 		thumbnail: null,
-		synopsis: null
+		synopsis: null,
+		season_number: null,
+		relative_number: i + 1,
+		length: null,
+		airdate: null
 	}));
 }
 
@@ -117,21 +131,31 @@ const LISTING = (session: string) =>
 function handlers(customControls = true) {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({ ...appConfig(), use_custom_player_controls: customControls })
+			HttpResponse.json<Config>({ ...appConfig(), use_custom_player_controls: customControls })
 		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json(kitsuRef(KITSU_ID, 'The Show', 12))
+			HttpResponse.json<KitsuAnimeRef>(kitsuRef(KITSU_ID, 'The Show', 12))
 		),
-		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+			HttpResponse.json<AiringStatus>(null)
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({ available: true, episode_count: 12, extra_episodes: [] })
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: []
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
 		http.get(`${API_BASE}/s/:session/subtitles`, ({ params }) =>
-			HttpResponse.json(LISTING(String(params.session)))
+			HttpResponse.json<SessionSubtitle[]>(LISTING(String(params.session)))
 		)
 	);
 }

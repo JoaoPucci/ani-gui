@@ -266,17 +266,6 @@
       ],
       "requires": []
     },
-    "CreateSessionArgs": {
-      "accepts": [
-        "referer",
-        "subtitles",
-        "upstream_url"
-      ],
-      "requires": [
-        "referer",
-        "upstream_url"
-      ]
-    },
     "DownloadArgs": {
       "accepts": [
         "alt_titles",

@@ -19,7 +19,7 @@ import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
-import { homeHandlers, kitsuRef, type KitsuRefFixture } from './home-handlers';
+import { homeHandlers, kitsuRef } from './home-handlers';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -38,6 +38,7 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import type { ListEntry } from '../../src/lib/account/types';
 
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
 /** Planned titles, and when the user planned them. Declared oldest to
  *  newest so the expected rail order is this list reversed — writing it
  *  the other way round would make the fixture agree with the assertion
@@ -111,7 +112,7 @@ describe('Watch Later rail order', () => {
 					// the rail should render nor a reversal of it — the
 					// tracker's own order must not be able to pass for the
 					// rail's.
-					HttpResponse.json(PLANNED.map((p) => listEntry(p.malId, p.title, p.updated)))
+					HttpResponse.json<ListEntry[]>(PLANNED.map((p) => listEntry(p.malId, p.title, p.updated)))
 				),
 				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, async ({ request }) => {
 					const { mal_ids } = (await request.json()) as { mal_ids: number[] };
@@ -119,16 +120,18 @@ describe('Watch Later rail order', () => {
 					// Slot-for-slot, the way the backend bridge answers —
 					// it fills one slot per requested id precisely so the
 					// caller's order survives the round trip.
-					return HttpResponse.json(
+					return HttpResponse.json<KitsuAnimeRef[]>(
 						mal_ids
 							.map((id) => PLANNED.find((p) => p.malId === id))
 							.filter((p): p is (typeof PLANNED)[number] => p !== undefined)
-							.map((p) => kitsuRef(String(p.malId), p.title, 12) as KitsuRefFixture)
+							.map((p) => kitsuRef(String(p.malId), p.title, 12))
 					);
 				}),
 				// Nothing is pruned, so what renders is purely a question
 				// of order.
-				http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} }))
+				http.post(`${API_BASE}/api/availability/batch`, () =>
+					HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+				)
 			])
 		);
 

@@ -28,8 +28,16 @@ vi.mock('$app/state', () => ({
 import SearchPage from '../../src/routes/search/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
+import type {
+	AvailabilityBatchResponse,
+	AvailabilityResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuSearchPage
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 /** A Kitsu ref with only the fields the search surface reads. */
-function ref(id: string, title: string) {
+function ref(id: string, title: string): KitsuAnimeRef {
 	return {
 		id,
 		canonical_title: title,
@@ -42,7 +50,11 @@ function ref(id: string, title: string) {
 		episode_count: 12,
 		status: 'finished',
 		start_date: '2019-01-01',
-		average_rating: null
+		average_rating: null,
+		end_date: null,
+		subtype: null,
+		age_rating: null,
+		popularity_rank: null
 	};
 }
 
@@ -85,21 +97,21 @@ describe('/search render-then-prune', () => {
 
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () =>
-				HttpResponse.json({
+				HttpResponse.json<Config>({
 					locale: 'en',
 					mode: 'sub',
-					quality: 'best',
+					download_quality: 'best',
 					external_player: '',
 					external_player_kind: 'mpv',
 					external_player_custom_args: '',
 					syncplay_binary: '',
 					image_cache_cap_mb: 100,
 					auto_play_next: false,
+					cache_resolutions: false,
 					download_bottom_bar_enabled: true,
 					auto_skip_op: false,
 					auto_skip_ed: false,
 					use_custom_player_controls: true,
-					auto_update_anicli: false,
 					update_include_prereleases: false,
 					primary_account: ''
 				})
@@ -107,15 +119,15 @@ describe('/search render-then-prune', () => {
 			// The rails are not what this scenario is about, but the
 			// route fetches them on mount and the setup errors on any
 			// request it did not describe.
-			http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json([])),
-			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 
 			http.post(`${API_BASE}/api/kitsu/search/page`, () =>
-				HttpResponse.json({ hits: [AVAILABLE, MISSING], next_offset: null })
+				HttpResponse.json<KitsuSearchPage>({ hits: [AVAILABLE, MISSING], next_offset: null })
 			),
 			// Nothing cached, so both rows go to the inline probe pool.
 			http.post(`${API_BASE}/api/availability/batch`, () =>
-				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 			),
 			// Held open until the assertion on the grace render has
 			// run. This is the hostage case the filter was written for:
@@ -123,11 +135,9 @@ describe('/search render-then-prune', () => {
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { kitsu_id?: string };
 				await probesHeld;
-				return HttpResponse.json({
-					available: body.kitsu_id === AVAILABLE.id,
-					episode_count: 12,
-					approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: body.kitsu_id === AVAILABLE.id, episode_count: 12 })
+				);
 			})
 		);
 

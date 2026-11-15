@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { KitsuAnimeRef } from '$lib/api';
 import { staggerSlots } from './stagger';
 
-const list = (...ids: string[]) => ids.map((id) => ({ id }) as KitsuAnimeRef);
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+const list = (...ids: string[]) => ids.map((id) => kitsuRefAnswer({ id }));
 
 describe('staggerSlots', () => {
 	it('numbers a first batch from zero', () => {

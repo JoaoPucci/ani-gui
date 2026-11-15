@@ -36,10 +36,12 @@ import { sessionLooks } from '../../src/lib/history/look-book';
 import { m } from '../../src/lib/paraglide/messages';
 import { savePosition } from '../../src/lib/play/watch-position';
 
+import type { HistoryNumber, KitsuAnimeRef, KitsuEpisode } from '../../src/lib/api';
+import type { RefillEnded } from '../../src/lib/refill/refill-waiter';
 const POSTER = 'https://media.kitsu.app/anime/1/poster/medium.jpg';
 const THUMB = 'https://media.kitsu.app/episodes/4/thumb.jpg';
 
-function show(id: string, title: string, poster: string | null = POSTER) {
+function show(id: string, title: string, poster: string | null = POSTER): KitsuAnimeRef {
 	return {
 		id,
 		canonical_title: title,
@@ -47,17 +49,22 @@ function show(id: string, title: string, poster: string | null = POSTER) {
 		abbreviated_titles: [],
 		slug: title.toLowerCase().replace(/\s+/g, '-'),
 		synopsis: null,
-		poster_image: poster ? { medium: poster, large: null, small: null, original: null } : null,
+		poster_image: poster
+			? { tiny: null, small: null, medium: poster, large: null, original: null }
+			: null,
 		cover_image: null,
 		episode_count: 26,
 		status: 'finished',
 		subtype: 'TV',
 		start_date: '2019-01-01',
-		average_rating: null
+		average_rating: null,
+		end_date: null,
+		age_rating: null,
+		popularity_rank: null
 	};
 }
 
-function episode(number: number, thumb: string | null) {
+function episode(number: number, thumb: string | null): KitsuEpisode {
 	return {
 		id: `ep-${number}`,
 		canonical_title: `Episode title ${number}`,
@@ -151,8 +158,8 @@ function watchLooks(id = ROW.id) {
 function rowHandlers(
 	opts: {
 		rows?: (typeof ROW)[];
-		search?: () => Promise<unknown> | unknown;
-		episodes?: () => Promise<unknown> | unknown;
+		search?: () => Promise<KitsuAnimeRef[] | null> | KitsuAnimeRef[] | null;
+		episodes?: () => Promise<KitsuEpisode[]> | KitsuEpisode[];
 		/** The row's number as read again after its match. */
 		number?: () => Promise<{ ep_no: string }>;
 	} = {}
@@ -162,18 +169,18 @@ function rowHandlers(
 		http.post(`${API_BASE}/api/kitsu/search`, async ({ request }) => {
 			const body = (await request.json()) as { query?: string };
 			const hit = await (opts.search?.() ?? null);
-			if (hit) return HttpResponse.json(hit);
-			return HttpResponse.json(
+			if (hit) return HttpResponse.json<KitsuAnimeRef[]>(hit);
+			return HttpResponse.json<KitsuAnimeRef[]>(
 				body.query?.includes('Trigun') ? [show('2', 'Trigun')] : [show('1', 'Cowboy Bebop')]
 			);
 		}),
 		http.get(`${API_BASE}/api/kitsu/episodes/:id`, async () =>
-			HttpResponse.json(await (opts.episodes?.() ?? [episode(4, THUMB)]))
+			HttpResponse.json<KitsuEpisode[]>(await (opts.episodes?.() ?? [episode(4, THUMB)]))
 		),
 		...(number
 			? [
 					http.get(`${API_BASE}/api/history/:id/number`, async () =>
-						HttpResponse.json(await number())
+						HttpResponse.json<HistoryNumber | null>(await number())
 					)
 				]
 			: [])
@@ -182,7 +189,7 @@ function rowHandlers(
 
 describe('Continue Watching card artwork', () => {
 	it('is a skeleton, and not clickable, while the row is being matched', async () => {
-		const search = held<unknown>();
+		const search = held<KitsuAnimeRef[] | null>();
 		server.use(...rowHandlers({ search: () => search.answer }));
 		app = mount(HomePage, { target });
 		await until(() => cell() !== null, 'the card');
@@ -197,7 +204,7 @@ describe('Continue Watching card artwork', () => {
 	});
 
 	it('is clickable once matched while it waits for the episode, then lands on the thumbnail once', async () => {
-		const episodes = held<unknown>();
+		const episodes = held<KitsuEpisode[]>();
 		server.use(...rowHandlers({ episodes: () => episodes.answer }));
 		app = mount(HomePage, { target });
 		await until(() => resumeButton() !== null, 'the matched card');
@@ -222,7 +229,7 @@ describe('Continue Watching card artwork', () => {
 	});
 
 	it('settles on the poster when the episode details are slow, and keeps it when they land', async () => {
-		const episodes = held<unknown>();
+		const episodes = held<KitsuEpisode[]>();
 		server.use(...rowHandlers({ episodes: () => episodes.answer }));
 		app = mount(HomePage, { target });
 		await until(() => resumeButton() !== null, 'the matched card');
@@ -288,14 +295,14 @@ describe('Continue Watching card artwork', () => {
 		void landed.then(() => (hasLanded = true));
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
-				HttpResponse.json(
+				HttpResponse.json<KitsuEpisode[]>(
 					[episode(4, hasLanded ? THUMB : null)],
 					hasLanded ? undefined : { headers: { 'x-ani-gui-refill': String(TICKET) } }
 				)
 			),
 			http.post(`${API_BASE}/api/refills/wait`, async () => {
 				await landed;
-				return HttpResponse.json([{ ticket: TICKET, landed: true }]);
+				return HttpResponse.json<RefillEnded[]>([{ ticket: TICKET, landed: true }]);
 			}),
 			http.post(`${API_BASE}/api/refills/release`, () => new HttpResponse(null, { status: 204 })),
 			...rowHandlers()
@@ -328,14 +335,14 @@ describe('Continue Watching card artwork', () => {
 		void landed.then(() => (hasLanded = true));
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
-				HttpResponse.json(
+				HttpResponse.json<KitsuEpisode[]>(
 					[episode(4, hasLanded ? THUMB : null)],
 					hasLanded ? undefined : { headers: { 'x-ani-gui-refill': String(TICKET) } }
 				)
 			),
 			http.post(`${API_BASE}/api/refills/wait`, async () => {
 				await landed;
-				return HttpResponse.json([{ ticket: TICKET, landed: true }]);
+				return HttpResponse.json<RefillEnded[]>([{ ticket: TICKET, landed: true }]);
 			}),
 			http.post(`${API_BASE}/api/refills/release`, () => new HttpResponse(null, { status: 204 })),
 			...rowHandlers({ search: () => [show('1', 'Cowboy Bebop', null)] })
@@ -362,14 +369,14 @@ describe('Continue Watching card artwork', () => {
 		void landed.then(() => (hasLanded = true));
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
-				HttpResponse.json(
+				HttpResponse.json<KitsuEpisode[]>(
 					[episode(4, hasLanded ? THUMB : null)],
 					hasLanded ? undefined : { headers: { 'x-ani-gui-refill': String(TICKET) } }
 				)
 			),
 			http.post(`${API_BASE}/api/refills/wait`, async () => {
 				await landed;
-				return HttpResponse.json([{ ticket: TICKET, landed: true }]);
+				return HttpResponse.json<RefillEnded[]>([{ ticket: TICKET, landed: true }]);
 			}),
 			http.post(`${API_BASE}/api/refills/release`, () => new HttpResponse(null, { status: 204 })),
 			...rowHandlers()
@@ -404,8 +411,8 @@ describe('Continue Watching card artwork', () => {
 		// The second visit's match is held, and then its episode page:
 		// whatever the card draws before they land came from the first
 		// visit, and nothing changes as they do.
-		const search = held<unknown>();
-		const episodes = held<unknown>();
+		const search = held<KitsuAnimeRef[] | null>();
+		const episodes = held<KitsuEpisode[]>();
 		server.use(...rowHandlers({ search: () => search.answer, episodes: () => episodes.answer }));
 		const looks = watchLooks();
 		app = mount(HomePage, { target });
@@ -480,7 +487,7 @@ describe('Continue Watching card artwork', () => {
 		const row = { ep_no: '3', id: 'allanime-9', title: 'Kauboi Bibappu', kitsu_id: '1' };
 		const detail = (answer?: Promise<ReturnType<typeof show>>) =>
 			http.get(`${API_BASE}/api/kitsu/anime/1`, async () =>
-				HttpResponse.json(await (answer ?? show('1', 'Cowboy Bebop')))
+				HttpResponse.json<KitsuAnimeRef>(await (answer ?? show('1', 'Cowboy Bebop')))
 			);
 		// The row's episode page answers as in the scenarios above.
 		const [, episodes] = rowHandlers();
@@ -502,7 +509,7 @@ describe('Continue Watching card artwork', () => {
 	});
 
 	it('leaves the other cards loading normally when one is deleted mid-load', async () => {
-		const episodes = held<unknown>();
+		const episodes = held<KitsuEpisode[]>();
 		const deleted: string[] = [];
 		server.use(
 			http.delete(`${API_BASE}/api/history/:id`, ({ params }) => {

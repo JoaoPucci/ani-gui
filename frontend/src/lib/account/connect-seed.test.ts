@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { fetchAndCacheList } = vi.hoisted(() => ({
-	fetchAndCacheList: vi.fn(async (): Promise<unknown[]> => [])
+	fetchAndCacheList: vi.fn<typeof AccountApi.fetchAndCacheList>(async () => [])
 }));
 vi.mock('./api', () => ({ fetchAndCacheList }));
 
 import { seedConnectedList } from './connect-seed';
 import { invalidateWatchLater, readLastRefreshed } from './watch-later-refresh';
 
+import type * as AccountApi from './api';
 function fakeStorage() {
 	const m = new Map<string, string>();
 	return {

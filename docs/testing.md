@@ -324,6 +324,28 @@ renderer's types must change. Both test files' headers list what they do
 not hold, among them answers that are not a struct, map values, request
 value kinds, and URLs built as text.
 
+The tests' fake backend is held to the same types, so a fake does not keep a
+test green on an answer no backend sends. An MSW handler names the route's
+type at the answer (`HttpResponse.json<KitsuAnimeRef[]>([...])`), which the
+type check reads; stream event data goes through `wire<T>`; the unit
+tests' `fetch` stubs (`mockFetchOnce<T>`) and the stand-ins for API
+functions and injected dependencies (`vi.fn<typeof f>()`) take the type of
+what they replace. `frontend/tests/answers.ts` carries the MSW side:
+`errorAnswer` for an error and its envelope, and `malformedAnswer` for an
+answer that is wrong on purpose, so it reads as deliberate. The builders
+that fill the fields a test does not care about with values the backend
+sends (`kitsuRefAnswer`, `sessionAnswer`, `configAnswer` and the rest), with
+`wire` and `malformedAs`, live in `frontend/src/lib/testing/wire-answers.ts`,
+where the unit tests can reach them (they import nothing from outside
+`src/`; `tests/arch/dep_direction.sh` holds that), and `tests/answers.ts`
+re-exports them. ESLint refuses an `HttpResponse.json` with no type, or one
+that types nothing, and app code importing through a path segment named
+`testing` (but not a path built at run time, or a glob that reaches it
+through a wildcard);
+`tests/lint/typed-answers.test.ts` lists what it does not see, such as a
+`vi.fn()` left untyped, which only review catches. When a renderer type
+changes, the type check names every typed fake that no longer matches it.
+
 ## Fixture management
 
 `tests/fixtures/` is the single source of truth for golden data, shared across all test layers.

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { kitsuGroupSiblingIds } from './delete-group';
 
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 // Stub builder so the test stays focused on the id-grouping logic
 // without dragging every HistoryEntry field through each case.
 function h(id: string, kitsu_id?: string): HistoryEntry {
@@ -11,10 +12,10 @@ function h(id: string, kitsu_id?: string): HistoryEntry {
 		title: 'Stub',
 		watched_at: 1,
 		kitsu_id: kitsu_id ?? ''
-	} as HistoryEntry;
+	};
 }
 function m(id: string): KitsuAnimeRef {
-	return { id, canonical_title: 'Stub' } as KitsuAnimeRef;
+	return kitsuRefAnswer({ id, canonical_title: 'Stub' });
 }
 
 describe('kitsuGroupSiblingIds', () => {

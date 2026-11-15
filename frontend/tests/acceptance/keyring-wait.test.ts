@@ -41,6 +41,9 @@ import { KEYRING_WAIT_MS } from '../../src/lib/account/keyring-wait';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import type { PersistedAccount, Provider } from '../../src/lib/account/types';
 
+import type { ListEntry } from '../../src/lib/account/types';
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 const WAITING =
 	'Waiting for your system keyring. Your accounts will load as soon as it answers. Unlock it if asked.';
 
@@ -110,15 +113,19 @@ describe('a keyring that has not answered', () => {
 		installSlowKeychain();
 		const listed: string[] = [];
 		server.use(
-			http.get(`${API_BASE}/api/update-check`, () => HttpResponse.json(null, { status: 503 })),
+			http.get(`${API_BASE}/api/update-check`, () => errorAnswer(503)),
 			...homeHandlers({}, [
 				http.post(`${API_BASE}/api/account/list/:provider`, ({ params, request }) => {
 					listed.push(`${params.provider} ${request.headers.get('authorization')}`);
-					return HttpResponse.json([]);
+					return HttpResponse.json<ListEntry[]>([]);
 				}),
-				http.get(`${API_BASE}/api/account/list/:provider/cached`, () => HttpResponse.json([])),
-				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json([])),
-				http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} }))
+				http.get(`${API_BASE}/api/account/list/:provider/cached`, () =>
+					HttpResponse.json<ListEntry[]>([])
+				),
+				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+				http.post(`${API_BASE}/api/availability/batch`, () =>
+					HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+				)
 			])
 		);
 
