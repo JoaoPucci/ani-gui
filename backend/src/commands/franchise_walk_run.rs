@@ -25,11 +25,12 @@ pub(crate) struct Run {
     pub(crate) side_anchor: bool,
     /// A side-story anchor's parent stories in the run, in start order.
     pub(crate) parents: Vec<String>,
-    /// For a side story placed by its run's parents
+    /// For an anchor placed by its run's parents
     /// (`franchise_walk_place.rs`): the parent stories it names outside
     /// its run, then those any member of its run names, each earliest
-    /// first; the main story's parents are taken from the first of them
-    /// that holds one.
+    /// first. A side story's parents are the first list's in the main
+    /// story, else the first list's the main story leaves out (on the
+    /// earliest one's chain), else the second list's, the same way.
     pub(crate) parent_choices: Vec<Vec<String>>,
     /// The other entries of the anchor's own run of one-offs, when the
     /// walk moved to their parent's run and that run left them out:
@@ -106,12 +107,13 @@ pub(crate) fn walk_with(
     })
 }
 
-/// A side-story anchor's parents and the chain it is drawn on: those of
-/// its parents in the main story and no chain; else, where the main
-/// story leaves them all out, those in the franchise, on the chain of
-/// the earliest, or on that parent alone where it is chained to nothing
-/// (its only links being to versions or settings of it, or to music
-/// videos). Any other anchor has no parents, and its own chain.
+/// A side-story anchor's parents and the chain it is drawn on, from its
+/// own parent stories before its run's (`Run::parent_choices`): those
+/// in the main story and no chain; else, where the main story leaves
+/// them all out, those in the franchise, on the chain of the earliest,
+/// or on that parent alone where it is chained to nothing (its only
+/// links being to versions or settings of it, or to music videos). Any
+/// other anchor has no parents, and its own chain.
 fn side_chain(
     anchor: &str,
     side_anchor: bool,
@@ -123,28 +125,33 @@ fn side_chain(
     if !side_anchor {
         return (Vec::new(), chain(anchor, franchise, main, look));
     }
-    // The anchor's own parents where it names one there, else its
-    // run's; the main story may hold one the first run did not.
-    let among = |set: &dyn Fn(&String) -> bool| -> Vec<String> {
-        first
-            .parent_choices
+    // The anchor's own parents before its run's: those in the main
+    // story, else those the main story leaves out, drawn on the
+    // earliest one's chain (or on it alone, chained to nothing); the
+    // main story may hold one the first run did not.
+    for choice in &first.parent_choices {
+        let in_main: Vec<String> = choice
             .iter()
-            .map(|c| c.iter().filter(|p| set(p)).cloned().collect::<Vec<_>>())
-            .find(|c| !c.is_empty())
-            .unwrap_or_default()
-    };
-    let in_main = among(&|p| main.members.contains_key(p));
-    if !in_main.is_empty() {
-        return (in_main, None);
+            .filter(|p| main.members.contains_key(*p))
+            .cloned()
+            .collect();
+        if !in_main.is_empty() {
+            return (in_main, None);
+        }
+        let in_franchise: Vec<String> = choice
+            .iter()
+            .filter(|p| franchise.contains(*p))
+            .cloned()
+            .collect();
+        if let Some(p) = in_franchise.first() {
+            let drawn = chain(p, franchise, main, look).unwrap_or_else(|| ChainIds {
+                own: BTreeSet::from([p.clone()]),
+                seams: BTreeSet::new(),
+            });
+            return (in_franchise, Some(drawn));
+        }
     }
-    let in_franchise = among(&|p| franchise.contains(p));
-    let drawn = in_franchise.first().map(|p| {
-        chain(p, franchise, main, look).unwrap_or_else(|| ChainIds {
-            own: BTreeSet::from([p.clone()]),
-            seams: BTreeSet::new(),
-        })
-    });
-    (in_franchise, drawn)
+    (Vec::new(), None)
 }
 
 /// The franchise's main story (`franchise_walk_root.rs`), settled from
