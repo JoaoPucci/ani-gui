@@ -2813,6 +2813,32 @@ mod tests {
         assert!(!ran.exists(), "a program named by a request must not run");
     }
 
+    /// No route opens a session on a URL its caller names: a session is
+    /// opened by a play, on the stream the resolve (or a replayed row)
+    /// found. A well-formed body, carrying the launch's secret, finds
+    /// nothing at the path that once took one.
+    #[tokio::test]
+    async fn no_route_opens_a_session_on_a_callers_url() {
+        let td = TempDir::new().expect("tempdir");
+        let state = Arc::new(test_app_state(&td));
+        let router = test_router(state.clone());
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/sessions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"upstream_url":"https://cdn.example/master.m3u8","referer":""}"#,
+                    ))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert!(state.sessions.is_empty(), "no session was opened");
+    }
+
     /// `/api/sessions` requires a valid CreateSessionArgs body. We
     /// don't have the provider to satisfy a fully-shaped session, so
     /// drive a malformed one and assert the route rejects it without
