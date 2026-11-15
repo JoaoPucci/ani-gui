@@ -21,7 +21,8 @@
  * the sidecar listing arrives first, and hold each English fragment
  * back, so one is on its way while the viewer moves off it.
  */
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
+import { expect, test } from './policy-guard';
 import fs, { existsSync } from 'node:fs';
 import http from 'node:http';
 import type net from 'node:net';
