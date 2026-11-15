@@ -395,10 +395,8 @@ async fn anilist_a_save_refused_as_invalid_for_a_media_anilist_has_still_fails()
     )
     .await
     .expect_err("the media is there: the refusal is the answer");
-    assert!(matches!(
-        err,
-        crate::error::AniError::Upstream { status: 400 }
-    ));
+    assert_eq!(err.key(), "error.account.tracker_rejected", "{err:?}");
+    assert_eq!(serde_json::to_value(&err).expect("envelope")["status"], 400);
 }
 
 #[tokio::test]
