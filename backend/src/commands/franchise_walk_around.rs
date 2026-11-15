@@ -1,7 +1,7 @@
 //! What sits around a run, from its members' listings, and the
 //! response assembled from it:
 //!
-//! - **versions** (rule 4): the entries rules 2 and 3 left out, music
+//! - **versions**: the entries rules 2 and 3 left out, music
 //!   aside, and the anime members list as `alternative_version`;
 //! - **recaps**: what members list as `summary`, a TV series aside: a
 //!   series that retells another is one of its versions;
