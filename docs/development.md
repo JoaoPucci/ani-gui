@@ -7,7 +7,7 @@ This page covers the dev environment, the build pipeline, and debugging tips. Fo
 | Tool | Version | Purpose |
 |---|---|---|
 | Rust | pinned in `rust-toolchain.toml` | Rust sidecar backend |
-| Node | 20+ | renderer + Electron shell |
+| Node | 22.13+ (20+ for the frontend alone) | renderer + Electron shell; the Electron helper tests and e2e suite need 22.13 |
 | pnpm | 9+ | package manager |
 | `bats-core`, `bats-mock`, `bats-assert`, `bats-file` | pinned in `tests/bash/helpers/install-bats.sh` | bash tests |
 | `shellcheck`, `shfmt` | latest stable | bash linters |
@@ -38,7 +38,7 @@ sudo apt install -y build-essential libssl-dev pkg-config
 # Renderer + Electron shell (Node + pnpm via nvm)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 # (open a new shell, or `source ~/.bashrc`)
-nvm install 20
+nvm install 22
 # pnpm needs no separate install or version choice: package.json's
 # packageManager field pins it, and corepack fetches that version.
 corepack enable
@@ -240,6 +240,8 @@ pnpm --dir electron dev
 
 There is no log file: the backend writes to its own stderr/stdout, and the Electron shell relays both to the terminal it was launched from (prefixed `[backend]`, alongside `[renderer:*]` console lines, tagged with the level Electron reports for each: `verbose` for `console.debug`, `info` for `console.log` and `console.info`, then `warning` and `error`). A packaged build launched from the desktop has no terminal, so to capture its logs start the executable from a shell with output redirected to a file.
 
+The renderer runs under a content security policy ([architecture](./architecture.md#the-renderers-content-security-policy)). A refusal shows up on the terminal as a `[renderer:error] Refused to …` line, usually naming the directive. A dev window that stays blank, or a poster, stream or animation that quietly never loads, is worth checking against those lines first.
+
 A packaged build whose startup fails — the backend does not start, or the window never gets its first page — says so in an error dialog before it exits with code 1: in the app's language, with the failure's own message as the detail (the same text the `[main] startup failed:` log line carries). The dialog closes by itself after a minute. A dev launch shows no dialog; the reason is on its terminal.
 
 The player logs which level of an HLS stream it loads and plays with `console.debug`, which the shell relays as `[renderer:verbose]` lines:
@@ -272,10 +274,11 @@ curl -sI http://127.0.0.1:42337/healthz
 |---|---|
 | `RUST_LOG` | tracing filter |
 | `ANI_GUI_UPSTREAM_BASE` | dev/test only; redirects `meta_http` to a wiremock instance |
-| `VITE_ANI_GUI_API_BASE` | browser-only dev: point the Vite renderer at a separately-running backend |
+| `VITE_ANI_GUI_API_BASE` | browser-only dev: point the Vite renderer at a separately-running backend. The backend refuses every API request from such a tab (see the question below) |
 | `ANI_GUI_UNATTENDED` | set to `1` by a harness with nobody at the screen (the e2e launch helper and the backend's integration tests always do): a packaged build whose startup fails then exits at once instead of showing its error dialog, and the backend never fetches the live remote flags file, taking its flags from `ANI_GUI_TEST_FLAGS_FILE` or the defaults ([Remote flags](#remote-flags)) |
 | `ANI_GUI_TEST_FLAGS_FILE` | only with `ANI_GUI_UNATTENDED=1`: a flags file, in the remote file's format, that the test run's flags come from. Ignored on any other launch |
 | `ANI_GUI_DEV` | forces the dev data profile (`ani-gui-dev` dirs) — see below. Auto-set by the Electron dev launcher; rarely needed by hand |
+| `ANI_GUI_TEST_PROFILE_ROOT` | the backend's test harness only, never set by the app or by hand: roots the backend's whole profile (config, cache, state, logs, default downloads) under one folder on every platform, ahead of everything else here. The backend's integration tests set it ([Testing](testing.md#running-tests-locally)) |
 
 **Dev data isolation.** Any source-built backend (`cargo run`, the
 standalone browser-dev flow above, the Electron dev launcher) is a debug
@@ -362,7 +365,10 @@ mistakes get past it and fail differently:
   default, off.
 
 So after pushing, wait out the five-minute CDN cache, launch the app,
-and confirm the values with `GET /api/flags` (below).
+and confirm the values with `GET /api/flags` (below), from the
+DevTools console of an Electron dev run (`pnpm dev` in `electron/`
+opens one), since the API answers only requests carrying the
+launch's secret.
 
 **Setting a flag back.** Set the flag back to its default (`false`), or
 remove its entry, and push. Removing
@@ -383,7 +389,17 @@ until it is restarted. An install that cannot reach GitHub at all keeps
 its cached copy for up to seven days, then uses the defaults.
 
 To see what a running backend decided, read
-`GET <api base>/api/flags`. It returns every declared flag's value and
+`GET <api base>/api/flags` from the DevTools console of an Electron
+dev run (`pnpm dev` in `electron/` opens one), which has the launch's
+secret the API asks for:
+
+```js
+fetch(`${aniGui.apiBase}/api/flags`, {
+  headers: { "x-ani-gui-internal-secret": aniGui.internalSecret },
+}).then((r) => r.json());
+```
+
+It returns every declared flag's value and
 where they came from (`origin`: `file`, `cache` or `defaults`, or
 `test` in a test run). The
 backend logs the decision at `info` as `remote flags settled`, with the
@@ -418,5 +434,5 @@ The GUI plays inside the window using hls.js + a local stream proxy. `mpv` is on
 **Where does the GUI keep watch history?**
 In its own state directory, as `history` — the CLI keeps its own file separately. The two used to share one, but the provider switch re-keyed both sides onto different show ids, so a shared file no longer carried anything either could read.
 
-**Why does the dev server work in a browser tab too?**
-By design — opening `http://localhost:5173` in any browser shows the same UI the Electron renderer loads. Useful for fast iteration. Production builds always run inside Electron because the streaming proxy + native window matter for the shipped product; standalone-browser dev only works against a separately-running backend (set `VITE_ANI_GUI_API_BASE` to its loopback URL).
+**Does the dev server work in a plain browser tab?**
+Opening `http://localhost:5173` in any browser loads the same UI the Electron renderer loads, but it no longer reaches the backend. The backend answers its API only to requests carrying the secret it prints at startup ([Who the backend answers](architecture.md#who-the-backend-answers)), which the Electron preload hands the renderer; a plain browser tab has no preload, so every API request it makes, even with `VITE_ANI_GUI_API_BASE` pointing at a running backend, is refused with `403`. Iterate under Electron (`pnpm dev` in `electron/`) instead. It would also run under only the half of the content security policy the bundle carries; the half that names the backend's lanes comes from the Electron shell.

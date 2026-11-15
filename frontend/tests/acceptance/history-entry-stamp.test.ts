@@ -20,7 +20,7 @@
 // entry's state back on `page.state`, as SvelteKit restores it.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { http, HttpResponse } from 'msw';
+import { http } from 'msw';
 import { mount, unmount, createRawSnippet, tick } from 'svelte';
 
 import { API_BASE, server } from './setup';
@@ -45,9 +45,10 @@ import Layout from '../../src/routes/+layout.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
+import { errorAnswer } from '../answers';
 const quietBackend = [
-	http.get(`${API_BASE}/api/update-check`, () => HttpResponse.json(null, { status: 503 })),
-	http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(null, { status: 503 }))
+	http.get(`${API_BASE}/api/update-check`, () => errorAnswer(503)),
+	http.get(`${API_BASE}/api/settings`, () => errorAnswer(503))
 ];
 
 let target: HTMLElement;

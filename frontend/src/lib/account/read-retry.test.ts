@@ -3,6 +3,8 @@ import * as fc from 'fast-check';
 import { AccountApiError } from './api';
 import { classifyReadFailure, planReadRetry, type ReadFailure } from './read-retry';
 
+import { wire } from '$lib/testing/wire-answers';
+import type { AniErrorPayload } from '../api';
 /** A failed attempt that was not a rate limit. */
 const plain: ReadFailure = { rateLimited: false, retryAfterSecs: null, envelope: null };
 
@@ -28,7 +30,7 @@ describe('classifyReadFailure', () => {
 	it('reads a 429 with the wait its envelope carries', () => {
 		const e = new AccountApiError(
 			429,
-			JSON.stringify({
+			wire<AniErrorPayload>({
 				kind: 'rate_limited',
 				retry_after_secs: 60,
 				key: 'error.network.rate_limited'
@@ -44,7 +46,7 @@ describe('classifyReadFailure', () => {
 	it('reads a 429 whose envelope names no wait', () => {
 		const e = new AccountApiError(
 			429,
-			JSON.stringify({
+			wire<AniErrorPayload>({
 				kind: 'rate_limited',
 				retry_after_secs: null,
 				key: 'error.network.rate_limited'

@@ -20,6 +20,7 @@ import { mount, unmount, createRawSnippet } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers } from './home-handlers';
+import { afterRead, watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -40,6 +41,9 @@ import { accountStore } from '../../src/lib/account/store.svelte';
 import { toastStore, TOAST_MAX_STACK } from '../../src/lib/toasts/store.svelte';
 import type { PersistedAccount, Provider } from '../../src/lib/account/types';
 
+import type { ListEntry, Tokens } from '../../src/lib/account/types';
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 function account(over: Partial<PersistedAccount>): PersistedAccount {
 	return {
 		access_token: 'access',
@@ -59,6 +63,7 @@ let homeTarget: HTMLElement | null = null;
 let layout: ReturnType<typeof mount> | null = null;
 let home: ReturnType<typeof mount> | null = null;
 let saved: { provider: Provider; payload: PersistedAccount }[] = [];
+let fetches: ReturnType<typeof watchPageFetches>;
 
 function installKeychain(accounts: Partial<Record<Provider, PersistedAccount>>) {
 	(window as unknown as { aniGui: unknown }).aniGui = {
@@ -78,8 +83,8 @@ function installKeychain(accounts: Partial<Record<Provider, PersistedAccount>>) 
 }
 
 const quietBackend = [
-	http.get(`${API_BASE}/api/update-check`, () => HttpResponse.json(null, { status: 503 })),
-	http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(null, { status: 503 }))
+	http.get(`${API_BASE}/api/update-check`, () => errorAnswer(503)),
+	http.get(`${API_BASE}/api/settings`, () => errorAnswer(503))
 ];
 
 function bootLayout() {
@@ -96,9 +101,28 @@ async function settle(steps = 40) {
 	for (let i = 0; i < steps; i++) await new Promise((r) => setTimeout(r, 5));
 }
 
+/**
+ * Wait until the page has nothing out: every request it asked is
+ * answered and read, and what those answers set off has run. A notice
+ * or a renewal any of them would start is on record by then.
+ */
+async function quiet() {
+	await fetches.settled('the page to settle');
+	await afterRead();
+}
+
+async function until(predicate: () => boolean, what: string, timeoutMs = 4000) {
+	const deadline = Date.now() + timeoutMs;
+	while (!predicate()) {
+		if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+		await new Promise((r) => setTimeout(r, 5));
+	}
+}
+
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	saved = [];
+	fetches = watchPageFetches();
 	window.localStorage.clear();
 	layoutTarget = document.createElement('div');
 	document.body.appendChild(layoutTarget);
@@ -134,7 +158,7 @@ describe('the sign-in notice, where it already worked', () => {
 		server.use(
 			...quietBackend,
 			http.post(`${API_BASE}/api/account/refresh/mal`, () =>
-				HttpResponse.json({
+				HttpResponse.json<Tokens>({
 					access_token: 'renewed',
 					refresh_token: 'rt2',
 					expires_at_epoch_s: 4_000_000_000
@@ -172,7 +196,8 @@ describe('the sign-in notice, where it already worked', () => {
 		installKeychain({ anilist: account({ expires_at_epoch_s: 1_000 }) });
 		server.use(...quietBackend);
 		bootLayout();
-		await settle();
+		await until(() => toastTexts().length > 0, 'the notice to show');
+		expect(toastTexts(), 'the notice is up before the disconnect').toEqual([EXPIRED_ANILIST]);
 		accountStore.setDisconnected('anilist');
 		await settle(10);
 		expect(toastTexts()).toEqual([]);
@@ -189,23 +214,35 @@ describe('the sign-in notice, where it already worked', () => {
 			...quietBackend,
 			http.post(`${API_BASE}/api/account/refresh/:provider`, () => {
 				renewals += 1;
-				return HttpResponse.json(null, { status: 500 });
+				return errorAnswer(500);
 			}),
 			...homeHandlers({}, [
 				http.post(`${API_BASE}/api/account/list/:provider`, ({ params, request }) => {
 					listed.push(`${params.provider} ${request.headers.get('authorization')}`);
-					return HttpResponse.json([]);
+					return HttpResponse.json<ListEntry[]>([]);
 				}),
-				http.get(`${API_BASE}/api/account/list/:provider/cached`, () => HttpResponse.json([])),
-				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json([])),
-				http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} }))
+				http.get(`${API_BASE}/api/account/list/:provider/cached`, () =>
+					HttpResponse.json<ListEntry[]>([])
+				),
+				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+				http.post(`${API_BASE}/api/availability/batch`, () =>
+					HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+				)
 			])
 		);
 		bootLayout();
 		homeTarget = document.createElement('div');
 		document.body.appendChild(homeTarget);
 		home = mount(HomePage, { target: homeTarget });
-		await settle(80);
+		// Both lists are in and read, and nothing the page asked is
+		// still out: a renewal or a notice they started is on record.
+		const listRead = (p: string) => fetches.read.some((f) => f.path === `/api/account/list/${p}`);
+		await until(() => listRead('anilist') && listRead('mal'), 'both lists to be read');
+		await quiet();
+		expect(
+			fetches.sent.filter((f) => f.path.startsWith('/api/account/refresh/')),
+			'no renewal asked'
+		).toEqual([]);
 		expect(listed.sort()).toEqual(['anilist Bearer al-bearer', 'mal Bearer mal-bearer']);
 		expect(renewals).toBe(0);
 		expect(toastTexts()).toEqual([]);

@@ -5,7 +5,7 @@
 //!
 //!   POST /api/play  →  native walk against the provider
 //!                  →  episode → server list → embed → master URL
-//!                  →  create_session wraps the upstream URL
+//!                  →  create_session_with_kind wraps the upstream URL
 //!                  →  return CreateSessionResponse
 //!
 //! works end-to-end. The unit tests in `api/mod.rs` cover the route's
@@ -23,7 +23,6 @@
 
 use std::sync::Arc;
 
-use ani_gui::api::build_api_router;
 use ani_gui::app::AppState;
 use ani_gui::cache;
 use ani_gui::meta::kitsu::KitsuClient;
@@ -35,6 +34,24 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use tempfile::TempDir;
 use tower::ServiceExt;
+
+/// The API router as the renderer reaches it: every request carries
+/// the launch's secret, which the router refuses a request without.
+fn build_api_router(state: Arc<AppState>) -> axum::Router {
+    let secret = state.internal_secret.as_hex().to_owned();
+    ani_gui::api::build_api_router(state).layer(axum::middleware::map_request(
+        move |mut req: axum::extract::Request| {
+            let secret = secret.clone();
+            async move {
+                if let Ok(v) = axum::http::HeaderValue::from_str(&secret) {
+                    req.headers_mut()
+                        .insert(ani_gui::account::INTERNAL_SECRET_HEADER, v);
+                }
+                req
+            }
+        },
+    ))
+}
 
 /// Build an `AppState` that walks hianime alone, pointed at a local
 /// stub. There is no script path to neutralise any more — the field

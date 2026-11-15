@@ -13,6 +13,8 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 const stubKitsu = (id = '13'): KitsuAnimeRef => ({
 	id,
 	canonical_title: 'Stub',
+	titles: {},
+	abbreviated_titles: [],
 	slug: null,
 	synopsis: null,
 	start_date: null,
@@ -625,7 +627,7 @@ describe('pickKitsuMatch', () => {
 });
 
 describe('isMusicSubtype', () => {
-	it('is true for "music" (case-insensitive) — never playable through the provider', () => {
+	it('is true for "music" (case-insensitive) — a subtype search never offers', () => {
 		expect(isMusicSubtype('music')).toBe(true);
 		expect(isMusicSubtype('Music')).toBe(true);
 	});
@@ -641,7 +643,7 @@ describe('titlesPlausiblySameShow', () => {
 	const ref = (canonical_title: string, titles?: Record<string, string>): KitsuAnimeRef => ({
 		...stubKitsu('x'),
 		canonical_title,
-		titles
+		titles: titles ?? {}
 	});
 
 	it('rejects a gross mismatch sharing only a generic word (the Idol bug)', () => {
@@ -945,7 +947,7 @@ describe('cachedBindingVerdict', () => {
 	});
 });
 
-describe('pickKitsuMatch — music subtype is never playable', () => {
+describe('pickKitsuMatch — a music hit is never picked for the row', () => {
 	const hit = (
 		id: string,
 		canonical_title: string,
@@ -958,7 +960,7 @@ describe('pickKitsuMatch — music subtype is never playable', () => {
 		expect(pickKitsuMatch([hit('mv', 'Idol', 'music', 1)], r)).toBeNull();
 	});
 
-	it('skips a count-compatible music hit and picks the streamable one', () => {
+	it('skips a count-compatible music hit and picks the other one', () => {
 		// Without the filter the music MV (subtype music, 1 ep) is
 		// candidates[0] and wins; it must be dropped so the real entry is
 		// chosen.
@@ -1096,6 +1098,7 @@ describe('a search hit by the words its titles share with the row', () => {
 			en_jp:
 				'Magical★Explorer: Eroge no Yuujin Chara ni Tensei Shitakedo, Game Chishiki Tsukatte Jiyuu ni Ikiru'
 		},
+		abbreviated_titles: [],
 		slug: 'magical-explorer-eroge-no-yuujin-chara-ni-tensei-shitakedo-game-chishiki-tsukatte-jiyuu-ni-ikiru',
 		synopsis: null,
 		start_date: null,

@@ -108,6 +108,15 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { playerVideo, playerVideoInSlot } from './player-video';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 type FakeHlsT = InstanceType<typeof Hls> & {
 	config: Record<string, unknown>;
 	starts: number;
@@ -158,29 +167,36 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 function useShowHandlers(customControls = true) {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({ ...appConfig(), use_custom_player_controls: customControls })
+			HttpResponse.json<Config>({ ...appConfig(), use_custom_player_controls: customControls })
 		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
 		// The backend answers with a list, empty when aniskip has none.
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl'))
 	);
 }
 
@@ -223,6 +239,9 @@ async function seekable(video: HTMLVideoElement) {
 	await until(() => video.currentTime !== 100, 'the seek key to move the video');
 	video.currentTime = 100;
 }
+
+const menuButtonShown = () =>
+	target.querySelector(`button[aria-label="${m.play_controls_menu_aria_label()}"]`) !== null;
 
 function menuButton(): HTMLButtonElement {
 	const button = target.querySelector<HTMLButtonElement>(
@@ -452,9 +471,9 @@ describe('play route — the player starts on Auto, and its menu picks a level f
 
 	it('starts on Auto at the highest level as the levels arrive, whatever the settings hold, before they answer', async () => {
 		// The player always starts on Auto with the whole master. Nothing
-		// in the settings caps it — not the download quality, and not
-		// the quality an older version wrote — and the engine does not
-		// wait for them.
+		// in the settings caps it — not the download quality — and the
+		// engine does not wait for them. (The quality an older version
+		// wrote never reaches the renderer: the backend does not read it.)
 		let release: () => void = () => {};
 		const gate = new Promise<void>((r) => (release = r));
 		let answered = false;
@@ -463,7 +482,10 @@ describe('play route — the player starts on Auto, and its menu picks a level f
 			http.get(`${API_BASE}/api/settings`, async () => {
 				await gate;
 				answered = true;
-				return HttpResponse.json({ ...appConfig(), quality: 'worst', download_quality: '480' });
+				return HttpResponse.json<Config>({
+					...appConfig(),
+					download_quality: '480'
+				});
 			})
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });
@@ -473,9 +495,12 @@ describe('play route — the player starts on Auto, and its menu picks a level f
 		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
 		await until(() => hls.starts === 1, 'the engine to start without the settings', 1000);
 		expect(hls.loads).toEqual([2]);
+		expect(menuButtonShown()).toBe(false);
 		release();
 		await until(() => answered, 'the held settings to be answered');
-		await tick();
+		// The settings have reached the page: the player's own controls,
+		// which they turn on, are up.
+		await until(() => menuButtonShown(), 'the settings applied');
 		expect(hls.loads).toEqual([2]);
 	});
 
@@ -528,10 +553,18 @@ describe('play route — the player starts on Auto, and its menu picks a level f
 		const OTHER = '43';
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/anime/${OTHER}`, () =>
-				HttpResponse.json({ ...kitsuRef(OTHER, 'Other Show', 12), status: 'finished' })
+				HttpResponse.json<KitsuAnimeRef>({
+					...kitsuRef(OTHER, 'Other Show', 12),
+					status: 'finished'
+				})
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${OTHER}`, () =>
-				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+				HttpResponse.json<AiringStatus>({
+					aired: 12,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
+				})
 			)
 		);
 		const engines = hlsInstances().length;

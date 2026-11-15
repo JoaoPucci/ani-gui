@@ -99,11 +99,11 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    . "$HOME/.cargo/env"   # (or re-open the shell) so `cargo` is on PATH
    ```
    Windows: download and run `rustup-init.exe` from [rustup.rs](https://rustup.rs) — it sets up the MSVC toolchain and offers to install the Visual Studio build tools it needs.
-2. **Install Node 20–24 and enable corepack.** The repository pins its pnpm version in `package.json`, so `corepack enable` is the whole pnpm setup — corepack fetches the pinned version on first use. Node 25+ no longer bundles corepack; on those, install it first (`npm install -g corepack`) and the rest is unchanged. Linux / macOS (via nvm — skip the curl step if you already have nvm or installed Node another way):
+2. **Install Node 22.13–24 and enable corepack.** The repository pins its pnpm version in `package.json`, so `corepack enable` is the whole pnpm setup — corepack fetches the pinned version on first use. Node 25+ no longer bundles corepack; on those, install it first (`npm install -g corepack`) and the rest is unchanged. The Electron end-to-end suite and its helper tests need 22.13 at least ([docs/testing.md](docs/testing.md)); the frontend alone still runs on Node 20. Linux / macOS (via nvm — skip the curl step if you already have nvm or installed Node another way):
    ```sh
    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
    # re-open the shell (or `source ~/.bashrc`) so nvm is on PATH
-   nvm install 20
+   nvm install 22
    corepack enable
    ```
    Windows: install Node from [nodejs.org](https://nodejs.org) (or `winget install OpenJS.NodeJS.LTS`), then run `corepack enable` once in an **elevated** terminal opened after the install — the command writes its pnpm shims beside Node in `C:\Program Files\nodejs`, which a regular terminal cannot write to (the failure is `EPERM`). A user-scoped Node install (nvm-windows, or Node placed under your profile) needs no elevation.

@@ -5,9 +5,10 @@
  * Chromium, whose media stack is what would go on buffering a paused
  * stream for nobody.
  *
- * The stream is `fixtures/mp4/clip.mp4`, played through the backend's
- * own stream proxy from a server that counts what it is asked for and
- * answers byte ranges as a host does. It is 150 s of ffmpeg's testsrc,
+ * The stream is `fixtures/mp4/clip.mp4`, played from the Continue card
+ * through the backend's play route and stream proxy (real-play.ts),
+ * from a server that counts what it is asked for and answers byte
+ * ranges as a host does. It is 150 s of ffmpeg's testsrc,
  * long enough for a point past the first 15 s and before the last 90
  * (nearer either end, a position is kept as the start, or forgotten as
  * finished):
@@ -16,33 +17,32 @@
  *     -preset veryslow -crf 45 -pix_fmt yuv420p -movflags +faststart \
  *     -g 12 clip.mp4
  *
- * The external player's route is answered by the metadata stub, so
- * nothing is launched, and the app reports that the player did not
- * start, as it does when one fails to.
+ * The external player's route is answered by a stub (real-play.ts),
+ * with the backend's answer for a player that will not start, so
+ * nothing is launched and the app reports that the player did not
+ * start.
  */
 import {
-  expect,
-  test,
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
+import { expect, test } from "./policy-guard";
 import fs, { existsSync } from "node:fs";
 import http from "node:http";
 import type net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import {
-  appInfo,
-  continueKitsuEpisode6,
-  continueKitsuMatch,
-  defaultSettings,
-} from "./fixtures/kitsu";
 import { appWindow, launchPackagedApp, packagedBinary } from "./launch";
+import {
+  CONTINUE_EPISODE,
+  playFromContinue,
+  routeRealPlay,
+  writeReplayConfig,
+} from "./real-play";
 
 const clip = path.join(__dirname, "fixtures", "mp4", "clip.mp4");
 
 const settings = {
-  ...defaultSettings,
   locale: "en",
   use_custom_player_controls: true,
 };
@@ -55,8 +55,13 @@ test.beforeAll(() => {
   }
 });
 
-async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
+async function launch(): Promise<{
+  app: ElectronApplication;
+  page: Page;
+  profile: string;
+}> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ani-gui-unload-"));
+  writeReplayConfig(tmp);
   const app = await launchPackagedApp({
     ...process.env,
     XDG_STATE_HOME: path.join(tmp, "state"),
@@ -66,12 +71,14 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
     ANI_GUI_UNATTENDED: "1",
   }, { profile: tmp });
   const page = await appWindow(app);
-  return { app, page };
+  return { app, page, profile: tmp };
 }
 
 /** A host for the clip: answers byte ranges, slowly (about 20 KB/s,
  *  so the download is still under way when the episode is handed off),
- *  and counts the bytes it sends. */
+ *  and counts the bytes it sends. A HEAD — the backend's check that the
+ *  stream answers before it replays the play — is answered at once and
+ *  sends none. */
 async function clipServer(): Promise<{
   origin: string;
   sent: () => number;
@@ -95,6 +102,16 @@ async function clipServer(): Promise<{
     step();
   };
   const server = http.createServer((req, res) => {
+    if (req.method === "HEAD") {
+      res
+        .writeHead(200, {
+          "content-type": "video/mp4",
+          "content-length": body.length,
+          "accept-ranges": "bytes",
+        })
+        .end();
+      return;
+    }
     const range = /bytes=(\d+)-(\d*)/.exec(req.headers.range ?? "");
     if (!range) {
       res.writeHead(200, {
@@ -124,59 +141,6 @@ async function clipServer(): Promise<{
   };
 }
 
-async function apiBase(page: Page): Promise<string> {
-  await page.waitForFunction(
-    () => Boolean((window as { aniGui?: unknown }).aniGui),
-    null,
-    { timeout: 30_000 },
-  );
-  return page.evaluate(
-    () => (window as unknown as { aniGui: { apiBase: string } }).aniGui.apiBase,
-  );
-}
-
-/** Metadata the play page asks the API for, answered without the
- *  network; the session route goes to the real backend. */
-async function stubMetadata(page: Page, base: string) {
-  await page.route(`${base}/api/**`, async (r) => {
-    const p = new URL(r.request().url()).pathname;
-    if (p === "/api/sessions") return r.continue();
-    const j = (body: unknown) =>
-      r.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(body),
-      });
-    if (p === "/api/app-info") return j(appInfo);
-    if (p === "/api/settings") return j(settings);
-    if (p.startsWith("/api/kitsu/anime/")) return j(continueKitsuMatch);
-    if (p.startsWith("/api/kitsu/episodes/")) return j([continueKitsuEpisode6]);
-    if (p === "/api/history") return j([]);
-    if (p.startsWith("/api/image")) return r.fulfill({ status: 503 });
-    // The backend answers skip times with a list, empty when it
-    // knows none; the page reads it as one once the length is known.
-    if (p.startsWith("/api/aniskip/")) return j([]);
-    return j(null);
-  });
-}
-
-async function session(page: Page, base: string, upstream: string) {
-  const created = await page.evaluate(
-    async ({ base, upstream }) => {
-      const res = await fetch(`${base}/api/sessions`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ upstream_url: upstream, referer: "" }),
-      });
-      if (!res.ok)
-        throw new Error(`session: ${res.status} ${await res.text()}`);
-      return (await res.json()) as { session_id: string };
-    },
-    { base, upstream },
-  );
-  return created.session_id;
-}
-
 const video = (page: Page) =>
   page.evaluate(() => {
     const v = document.querySelector(
@@ -194,15 +158,14 @@ const video = (page: Page) =>
 test("an mp4 handed to the external player is let go of, and comes back where it was", async () => {
   test.setTimeout(120_000);
   const host = await clipServer();
-  const { app, page } = await launch();
+  const { app, page, profile } = await launch();
   try {
-    const base = await apiBase(page);
-    await stubMetadata(page, base);
-    const sid = await session(page, base, `${host.origin}/clip.mp4`);
-    const url = new URL(page.url());
-    url.pathname = `/play/${continueKitsuMatch.id}`;
-    url.search = `?session=${sid}&episode=6&kind=mp4`;
-    await page.goto(url.toString());
+    const play = await routeRealPlay(page, {
+      profile,
+      settings,
+      stream: { upstreamUrl: `${host.origin}/clip.mp4`, mediaKind: "mp4" },
+    });
+    await playFromContinue(page, play);
     await expect
       .poll(async () => (await video(page))?.time ?? 0, { timeout: 30_000 })
       .toBeGreaterThan(1);
@@ -221,13 +184,13 @@ test("an mp4 handed to the external player is let go of, and comes back where it
     await page.locator(`button[aria-label="More actions"]`).click();
     await page.getByRole("menuitem", { name: /Open in external/ }).click();
     await expect.poll(async () => (await video(page))?.src).toBeNull();
-    const left = await page.evaluate(() => {
+    const left = await page.evaluate((episode) => {
       const raw = localStorage.getItem("ani-gui.watch-positions") ?? "[]";
       const kept = (JSON.parse(raw) as [string, number][]).find(([k]) =>
-        k.endsWith(":6"),
+        k.endsWith(`:${episode}`),
       );
       return kept?.[1] ?? null;
-    });
+    }, CONTINUE_EPISODE);
     expect(left).toBeGreaterThan(20);
 
     // Nobody watches it here: the host sends nothing more, though the
@@ -238,9 +201,8 @@ test("an mp4 handed to the external player is let go of, and comes back where it
     await page.waitForTimeout(3000);
     expect(host.sent()).toBe(sentAt);
 
-    // The stub's answer is no launch the app knows, so it says the
-    // external player did not start, as it does when a player fails to:
-    // the viewer closes that and plays it here again.
+    // The stub answers that the external player did not start, so the
+    // app says so: the viewer closes that and plays it here again.
     const dialog = page.getByRole("alertdialog");
     await dialog.waitFor({ timeout: 15_000 });
     await page.keyboard.press("Escape");
