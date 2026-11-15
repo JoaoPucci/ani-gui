@@ -174,16 +174,26 @@ fn a_prequel_that_is_another_version_can_still_lead_to_a_run() {
 }
 
 /// A music video the show names as both its prequel and its other
-/// version: a prequel, so the strip is reserved, as for any prequel
-/// that is another version. The walk draws the link (it starts the
-/// franchise at the music video and lists the show as its version),
-/// and the strip's room gives way to it.
+/// version is no part of its franchise (`franchise_walk_music.rs`): the
+/// walk reads the listing without it, and so does the first hop, so
+/// nothing is foretold and nothing is drawn.
 #[test]
-fn a_music_video_prequel_that_is_another_version_is_an_allowed_miss() {
+fn a_music_video_the_show_names_as_its_prequel_foretells_nothing() {
     let mut c = with(&[("1", "music"), ("2", "TV")]);
     c.rel("2", "prequel", "1")
         .rel("2", "alternative_version", "1");
-    assert_eq!(both(&c, "2"), (FirstHop::Strip, FirstHop::Link));
+    assert_eq!(both(&c, "2"), (FirstHop::None, FirstHop::None));
+}
+
+/// A music video's own page answers with the music video alone,
+/// whatever its listing names, and the first hop foretells nothing.
+#[test]
+fn a_music_videos_own_page_foretells_nothing() {
+    let mut c = with(&[("1", "TV"), ("2", "music"), ("3", "TV")]);
+    c.rel("2", "side_story", "1")
+        .rel("2", "parent_story", "1")
+        .rel("2", "sequel", "3");
+    assert_eq!(both(&c, "2"), (FirstHop::None, FirstHop::None));
 }
 
 /// A parent story the show also names as its sequel and its other
