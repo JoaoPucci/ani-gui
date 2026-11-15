@@ -8,7 +8,7 @@ import type { WatchOrderData } from './loader';
 import type { WatchOrder } from './order';
 import { runOf } from './strip-model';
 import { franchiseSummary, type FranchiseSummary } from './strip-view';
-import { finaleCard, isFinale, type FinaleCard, type FinaleSelf } from './up-next';
+import { finaleCard, isFinale, type FinaleCard, type PlayerReading } from './up-next';
 
 /**
  * The card at the last title of a chain outside the main story that
@@ -39,7 +39,7 @@ export function chainEndCard(
 	order: WatchOrder | null,
 	today: string,
 	episode: number,
-	self: FinaleSelf | null
+	self: PlayerReading | null
 ): ChainEndCard | null {
 	if (finaleCard(data, id, order, today, episode, self) !== null) return null;
 	if (data?.franchise == null || order === null || data.franchise.anchor !== id) return null;
@@ -73,7 +73,7 @@ export function playerUpNext(
 	order: WatchOrder | null,
 	today: string,
 	episode: number,
-	self: FinaleSelf | null
+	self: PlayerReading | null
 ): PlayerUpNext | null {
 	const finale = finaleCard(data, id, order, today, episode, self);
 	if (finale) return { kind: 'entry', card: finale };
