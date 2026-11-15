@@ -8,7 +8,7 @@ import type { WatchOrderData } from './loader';
 import type { WatchOrder } from './order';
 import { runOf } from './strip-model';
 import { franchiseSummary, type FranchiseSummary } from './strip-view';
-import { finaleCard, isFinale, type FinaleCard, type FinaleSelf } from './up-next';
+import { finaleCard, isFinale, type FinaleCard, type PlayerReading } from './up-next';
 
 /**
  * The card at the last title of a chain outside the main story that
@@ -39,7 +39,7 @@ export function chainEndCard(
 	order: WatchOrder | null,
 	today: string,
 	episode: number,
-	self: FinaleSelf | null
+	self: PlayerReading | null
 ): ChainEndCard | null {
 	if (finaleCard(data, id, order, today, episode, self) !== null) return null;
 	if (data?.franchise == null || order === null || data.franchise.anchor !== id) return null;
@@ -48,7 +48,10 @@ export function chainEndCard(
 	const run = drawn ? runOf(drawn) : null;
 	const entry = run?.entries.find((e) => e.id === id);
 	const main = runOf(data.franchise);
-	if (!entry || !main || !isFinale(self ?? entry, episode)) return null;
+	// A reading of another show (the page reused for a new one) says
+	// nothing about this entry, as for the Up next card.
+	const own = self?.id === id ? self : null;
+	if (!entry || !main || !isFinale(own ?? entry, episode)) return null;
 	const summary = franchiseSummary(main, data.franchise.name_from);
 	// The franchise page's art: the title the name comes from, else the
 	// main story's first, as franchiseSummary fronts the stack.
@@ -73,7 +76,7 @@ export function playerUpNext(
 	order: WatchOrder | null,
 	today: string,
 	episode: number,
-	self: FinaleSelf | null
+	self: PlayerReading | null
 ): PlayerUpNext | null {
 	const finale = finaleCard(data, id, order, today, episode, self);
 	if (finale) return { kind: 'entry', card: finale };

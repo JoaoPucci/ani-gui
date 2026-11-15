@@ -324,7 +324,7 @@ describe('finaleCard on an entry outside the main story', () => {
 	it('offers no franchise card where the card names a next title, or short of the finale', () => {
 		expect(chainEndCard(chainData('10', false), '10', 'linked', TODAY, 1, null)).toBeNull();
 		expect(chainEndCard(chainData('11', true), '11', 'linked', TODAY, 1, null)).toBeNull();
-		const unfinished = { status: 'current', episodes: 1 };
+		const unfinished = { id: '11', status: 'current', episodes: 1 };
 		expect(chainEndCard(chainData('11', false), '11', 'linked', TODAY, 1, unfinished)).toBeNull();
 	});
 
@@ -339,6 +339,16 @@ describe('finaleCard on an entry outside the main story', () => {
 		expect(chainEndCard(main, '2', 'linked', TODAY, 1, null)).toBeNull();
 		expect(chainEndCard(partial, '11', null, TODAY, 1, null)).toBeNull();
 		expect(chainEndCard(null, '11', 'linked', TODAY, 1, null)).toBeNull();
+	});
+
+	it("ignores the player's reading of another show", () => {
+		// The page reused for another show still holds the first one's
+		// detail: an airing reading of it does not hide this finale's card.
+		const other = { id: '10', status: 'current', episodes: 1 };
+		expect(chainEndCard(chainData('11', false), '11', 'linked', TODAY, 1, other)).not.toBeNull();
+		expect(playerUpNext(chainData('11', false), '11', 'linked', TODAY, 1, other)?.kind).toBe(
+			'franchise'
+		);
 	});
 
 	it('fronts the franchise card with the entry the name comes from', () => {
@@ -360,7 +370,7 @@ describe('finaleCard on an entry outside the main story', () => {
 		const end = playerUpNext(chainData('11', false), '11', 'linked', TODAY, 1, null);
 		expect(end?.kind).toBe('franchise');
 		expect(end?.kind === 'franchise' && end.card.name).toBe('The franchise');
-		const unfinished = { status: 'current', episodes: 1 };
+		const unfinished = { id: '11', status: 'current', episodes: 1 };
 		expect(playerUpNext(chainData('11', false), '11', 'linked', TODAY, 1, unfinished)).toBeNull();
 	});
 });
