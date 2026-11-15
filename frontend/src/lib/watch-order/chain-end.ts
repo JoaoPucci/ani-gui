@@ -31,7 +31,9 @@ export interface ChainEndCard {
 /**
  * The chain-end card `id`'s `episode` shows, or null: anywhere the
  * Up next card names something, or on anything but the finale of a
- * chain's last title that leads nowhere, read whole.
+ * chain's last title that leads nowhere, read whole. `self`, the
+ * player's own reading, decides the finale only when it was read for
+ * `id`'s show, as for `finaleCard`.
  */
 export function chainEndCard(
 	data: WatchOrderData | null,
