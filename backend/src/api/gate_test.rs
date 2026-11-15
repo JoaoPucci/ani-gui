@@ -67,6 +67,7 @@ const ROUTES: &[(&str, &str, &str)] = &[
     ("GET", "/api/history", ""),
     ("DELETE", "/api/history", ""),
     ("DELETE", "/api/history/some-show", ""),
+    ("POST", "/api/history/by-kitsu", r#"{"ids":[]}"#),
     ("GET", "/api/settings", ""),
     ("PUT", "/api/settings", "{}"),
     (
