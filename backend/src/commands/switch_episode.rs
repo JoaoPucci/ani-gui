@@ -10,7 +10,11 @@
 //! part-way or when it is the last one available — Kitsu's count capped
 //! at the episodes aired, as the renderer sends it — and an extra going
 //! on to the whole episode above it: `frontend/src/lib/play/next-episode.ts`),
-//! is opened when it is past the card's episode. Less, the same or no
+//! is opened when it is past the card's episode. The streaming source's
+//! own count, which Home's Continue also caps at, is not read: it takes
+//! a request to the provider. A pick whose next episode is aired but
+//! not on the source yet fails the switch rather than open an earlier
+//! episode. Less, the same or no
 //! progress of its own keeps the card's episode, as before.
 //!
 //! The pick's own row is the one its Kitsu id finds in the history, by

@@ -5,7 +5,11 @@
  * (what Continue takes as left part-way, which only the renderer
  * keeps), and its last episode available — Kitsu's count capped at the
  * episodes aired, as the detail page's Continue caps it (`airedCap`),
- * Kitsu's count alone when the airing cannot be read. The answer is the
+ * Kitsu's count alone when the airing cannot be read. Home's Continue
+ * also caps at the streaming source's own count; that takes a request
+ * to the provider, which a switch does not make, so a pick whose next
+ * episode is aired but not on the source yet fails the switch rather
+ * than open an earlier episode. The answer is the
  * pick's own episode, further along than the one playing, or null for
  * the card's episode. A session no card opened asks nothing.
  */
