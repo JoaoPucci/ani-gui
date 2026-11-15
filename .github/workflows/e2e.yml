@@ -2,8 +2,24 @@ name: 'e2e (Playwright + Electron)'
 # Runs the Electron e2e harness in `electron/e2e/`. Self-contained:
 # rebuilds the Rust backend, the SvelteKit bundle, and the unpacked
 # Electron app, then drives the packaged binary via `_electron.launch()`
-# under Xvfb. The test suite is deliberately small (~3 hermetic
-# scenarios); add more cases here when feature work crosses the UI.
+# under Xvfb.
+#
+# Two packages, one per job, built in parallel:
+#
+#   - `e2e` drives the e2e package (`pnpm run package:e2e`): the
+#     release's Linux package except that its backend is built with the
+#     `test-run-key` feature, so a test run's flags file signed by the
+#     fixture test-run key can turn a flag on, and every flag runs in
+#     each state (electron/e2e/flags/). It is an unpacked tree in
+#     dist-e2e/ whose backend comes from backend/target-e2e/, which no
+#     release configuration reads (electron/lib/e2e-package.cjs).
+#   - `release-package` builds the package the release scripts build
+#     (`pnpm run dist`) and checks the backend it carries: statically
+#     linked, and holding no test-run key.
+#   - `release-backend-windows` builds the Windows backend with the
+#     script a Windows release runs (`pnpm run build:backend`) and
+#     checks it holds no test-run key. The Windows installer is not
+#     built in CI.
 #
 # Always fires; the `filter` job decides whether downstream steps run
 # the real pipeline or no-op. See rust.yml for the design rationale.
@@ -68,8 +84,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/master' }}
-          workspaces: backend
-          shared-key: e2e
+          workspaces: backend -> target-e2e
+          shared-key: e2e-test-run
 
       - if: needs.filter.outputs.relevant == 'true'
         uses: pnpm/action-setup@v4
@@ -116,17 +132,87 @@ jobs:
         run: pnpm test
 
       - if: needs.filter.outputs.relevant == 'true'
-        name: Build Rust backend (release, static for Linux)
+        name: Package the e2e app (test-run backend, produces dist-e2e/linux-unpacked/)
         working-directory: electron
-        run: pnpm run build:backend:linux
+        run: pnpm run package:e2e
 
       - if: needs.filter.outputs.relevant == 'true'
-        name: Build SvelteKit static bundle
+        name: The e2e package's backend trusts the test-run key
+        # The flags specs turn a flag on with a file signed by the
+        # fixture test-run key, which only a backend built with the
+        # `test-run-key` feature trusts. Found here, it also shows the
+        # release-shaped job's search for the same key can find it.
         working-directory: electron
-        run: pnpm run build:frontend
+        run: |
+          set -euo pipefail
+          backend=dist-e2e/linux-unpacked/resources/ani-gui-backend
+          test -f "$backend"
+          key=$(head -n 1 ../backend/tests/fixtures/flags-signature/test-run-key.pub)
+          test -n "$key"
+          grep -qaF -- "$key" "$backend"
 
       - if: needs.filter.outputs.relevant == 'true'
-        name: Package the Electron app (produces dist/linux-unpacked/)
+        name: Run Playwright tests under Xvfb
+        working-directory: electron
+        run: xvfb-run --auto-servernum pnpm run e2e:fast
+
+      - if: failure() && needs.filter.outputs.relevant == 'true'
+        name: Upload Playwright report on failure
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: electron/playwright-report/
+          retention-days: 14
+
+  release-package:
+    needs: filter
+    name: release-shaped package
+    runs-on: ubuntu-latest
+    steps:
+      - if: needs.filter.outputs.relevant != 'true'
+        run: 'echo "Not required: no backend / frontend / electron changes in this PR"'
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: actions/checkout@v4
+
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: needs.filter.outputs.relevant == 'true'
+        name: Rust musl target for the pinned toolchain
+        # See the e2e job: the target goes on the toolchain
+        # rust-toolchain.toml pins.
+        run: rustup target add x86_64-unknown-linux-musl
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+          workspaces: backend
+          shared-key: e2e
+
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: pnpm/action-setup@v4
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - if: needs.filter.outputs.relevant == 'true'
+        name: Linux deps for the static backend
+        uses: ./.github/actions/apt-install
+        with:
+          packages: musl-tools
+
+      - if: needs.filter.outputs.relevant == 'true'
+        name: pnpm install (workspace)
+        uses: ./.github/actions/pnpm-install
+        with:
+          working-directory: .
+          args: --frozen-lockfile
+
+      - if: needs.filter.outputs.relevant == 'true'
+        name: Package the Electron app as a release does (produces dist/linux-unpacked/)
+        # `dist` builds the backend with the release's own script
+        # (`build:backend:linux`), then the AppImage, as
+        # `dist:release` does with the .deb besides.
         working-directory: electron
         run: pnpm run dist
 
@@ -158,14 +244,95 @@ jobs:
           fi
 
       - if: needs.filter.outputs.relevant == 'true'
-        name: Run Playwright tests under Xvfb
+        name: The release-shaped backend trusts no test-run key
+        # A backend built with its `test-run-key` feature trusts a test
+        # run's flags file under a fixture key whose secret anyone can
+        # derive (backend/tests/fixtures/flags-signature/), and declares
+        # the probe flag the e2e suite drives. The package here is built
+        # by the scripts a release uses, so neither may be in it. The e2e
+        # job finds the same key in its own package, so this search is
+        # one that can find it. tests/arch/test_run_key.sh holds the
+        # scripts to that on both platforms; this checks the binary they
+        # made on Linux, and release-backend-windows the one on Windows.
         working-directory: electron
-        run: xvfb-run --auto-servernum pnpm run e2e:fast
+        run: |
+          set -euo pipefail
+          backend=dist/linux-unpacked/resources/ani-gui-backend
+          test -f "$backend"
+          key=$(head -n 1 ../backend/tests/fixtures/flags-signature/test-run-key.pub)
+          test -n "$key"
+          if grep -qaF -- "$key" "$backend"; then
+            echo "the packaged backend carries the test-run key" >&2
+            exit 1
+          fi
+          if grep -qaF -- test_run_probe "$backend"; then
+            echo "the packaged backend declares the test-run probe" >&2
+            exit 1
+          fi
 
-      - if: failure() && needs.filter.outputs.relevant == 'true'
-        name: Upload Playwright report on failure
-        uses: actions/upload-artifact@v4
+  release-backend-windows:
+    needs: filter
+    name: release-shaped backend (Windows)
+    runs-on: windows-latest
+    steps:
+      - if: needs.filter.outputs.relevant != 'true'
+        run: 'echo "Not required: no backend / frontend / electron changes in this PR"'
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: actions/checkout@v4
+
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: Swatinem/rust-cache@v2
         with:
-          name: playwright-report
-          path: electron/playwright-report/
-          retention-days: 14
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+          workspaces: backend
+          shared-key: e2e-windows-release
+
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: pnpm/action-setup@v4
+      - if: needs.filter.outputs.relevant == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - if: needs.filter.outputs.relevant == 'true'
+        name: Build the backend as a Windows release does
+        # `build:backend` is the script `package:win` runs before the
+        # installer is made: a release build, no features, with the
+        # static C runtime backend/.cargo/config.toml sets for MSVC.
+        # The installer itself is not built here.
+        working-directory: electron
+        run: pnpm run build:backend
+
+      - if: needs.filter.outputs.relevant == 'true'
+        name: The Windows release backend trusts no test-run key, and needs no VC++ runtime
+        # The same key and probe search the release-shaped job makes on
+        # the Linux backend: no fixture test-run key and no probe flag,
+        # which only a build with the `test-run-key` feature has. The
+        # key is embedded as the same bytes on either platform, and the
+        # e2e job finds it in its own (Linux) backend, so the search is
+        # one that can find it. And, as the Linux job checks its backend
+        # needs no system C library, the exe must name no vcruntime140
+        # DLL: the static C runtime backend/.cargo/config.toml sets for
+        # MSVC is what lets it start where no VC++ redistributable is.
+        working-directory: electron
+        shell: bash
+        run: |
+          set -euo pipefail
+          backend=../backend/target/release/ani-gui-backend.exe
+          test -f "$backend"
+          key=$(head -n 1 ../backend/tests/fixtures/flags-signature/test-run-key.pub | tr -d '\r')
+          test -n "$key"
+          if grep -qaF -- "$key" "$backend"; then
+            echo "the Windows release backend carries the test-run key" >&2
+            exit 1
+          fi
+          if grep -qaF -- test_run_probe "$backend"; then
+            echo "the Windows release backend declares the test-run probe" >&2
+            exit 1
+          fi
+          if grep -qaiF -- vcruntime140 "$backend"; then
+            echo "the Windows release backend links the C runtime dynamically" >&2
+            exit 1
+          fi

@@ -37,7 +37,7 @@
  * order: it can fail on a machine that slow, never pass because of it.
  * The waits that remain are guards against a hang.
  *
- * Pre-condition: `pnpm run package` has produced `dist/linux-unpacked/`.
+ * Pre-condition: `pnpm run package:e2e` has produced `dist-e2e/linux-unpacked/`.
  */
 import { expect, test, type ElectronApplication } from '@playwright/test';
 import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
@@ -58,7 +58,7 @@ const CHROMIUM_PER_ORIGIN = 6;
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
-		throw new Error(`prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package`);
+		throw new Error(`prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package:e2e`);
 	}
 });
 

@@ -24,8 +24,22 @@ pub(crate) struct FlagCase {
     pub(crate) check: fn(&Resolved),
 }
 
-/// Every consumer's cases. Empty until the first flag is declared.
-pub(crate) const CASES: &[FlagCase] = &[];
+/// Every consumer's cases. None for a real flag until the first is
+/// declared; a test-run build's probe has its two.
+pub(crate) const CASES: &[FlagCase] = &[
+    #[cfg(feature = "test-run-key")]
+    FlagCase {
+        flag: super::test_run::PROBE,
+        value: FlagValue::Bool(false),
+        check: super::test_run::check_off,
+    },
+    #[cfg(feature = "test-run-key")]
+    FlagCase {
+        flag: super::test_run::PROBE,
+        value: FlagValue::Bool(true),
+        check: super::test_run::check_on,
+    },
+];
 
 /// What a set of cases leaves untested.
 #[derive(Debug, Default, PartialEq, Eq)]
