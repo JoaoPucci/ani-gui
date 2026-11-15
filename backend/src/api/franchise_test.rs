@@ -178,22 +178,26 @@ async fn first_hop_route_answers_from_the_shows_own_listing() {
     seed(&state, "1", vec![rel("sequel", &next)]);
     seed(&state, "2", vec![rel("side_story", &film)]);
     seed(&state, "3", vec![rel("character", &film)]);
-    // A show with a side story: the first hop reads its detail to know
-    // whether the side story started before it (the walk's parent check).
-    // It started first, so no other listing is read.
-    let detail = json!({
-        "id": "2", "canonical_title": "A show", "titles": {}, "abbreviated_titles": [],
-        "slug": null, "synopsis": null, "start_date": "2001-01-01", "end_date": null,
-        "episode_count": 12, "average_rating": null, "subtype": "TV", "status": "finished",
-        "age_rating": null, "popularity_rank": null, "poster_image": null, "cover_image": null
-    });
-    meta_cache_put(
-        &state.cache_pool,
-        &crate::commands::kitsu::anime_detail_key("2"),
-        &detail.to_string(),
-        3600,
-    )
-    .expect("seed detail");
+    // Each show's detail, which the first hop reads with its listing, as
+    // the walk does: it says whether the show is a music video (whose
+    // page relates to nothing). The show with a side story also needs
+    // it to know whether the side story started before it (the walk's
+    // parent check); it started first, so no other listing is read.
+    for id in ["1", "2", "3"] {
+        let detail = json!({
+            "id": id, "canonical_title": "A show", "titles": {}, "abbreviated_titles": [],
+            "slug": null, "synopsis": null, "start_date": "2001-01-01", "end_date": null,
+            "episode_count": 12, "average_rating": null, "subtype": "TV", "status": "finished",
+            "age_rating": null, "popularity_rank": null, "poster_image": null, "cover_image": null
+        });
+        meta_cache_put(
+            &state.cache_pool,
+            &crate::commands::kitsu::anime_detail_key(id),
+            &detail.to_string(),
+            3600,
+        )
+        .expect("seed detail");
+    }
     let router = crate::api::test_router(state);
     for (id, signal) in [("1", "strip"), ("2", "link"), ("3", "none")] {
         let r = router

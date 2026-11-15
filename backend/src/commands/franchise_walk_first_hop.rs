@@ -17,8 +17,8 @@
 //!   show's detail and the listings of the candidates the walk's parent
 //!   check reads, within the walk's bound, as the walk does;
 //! - **link**: else, any anime relation the franchise page lists beside
-//!   the show: anything but a music video, a character crossover, an
-//!   adaptation or an alternative setting;
+//!   the show: anything but a character crossover, an adaptation or an
+//!   alternative setting (music videos it reads none of);
 //! - **none**: else.
 //!
 //! Only the strip can be wrong. Where a prequel or sequel turns out to
@@ -32,6 +32,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use super::music::read_for;
 use super::parents::parent_stories;
 use super::Lookup;
 use crate::meta::kitsu::{FranchiseEntry, FranchiseListing, FranchiseRelation};
@@ -71,9 +72,14 @@ pub fn first_hop(
     known: &BTreeMap<String, FranchiseListing>,
     details: &BTreeMap<String, FranchiseEntry>,
 ) -> Step {
-    let Some(listing) = known.get(anchor) else {
-        return read(vec![anchor.to_string()], Vec::new());
+    // The show's detail, then its listing, as the walk reads them, each
+    // listing without its music videos (`franchise_walk_music.rs`): a
+    // music video's page relates to nothing, and foretells nothing.
+    let known = &match read_for(anchor, known, details) {
+        Ok(read) => read,
+        Err((listings, details)) => return read(listings, details),
     };
+    let listing = &known[anchor];
     let hop = from_own_listing(anchor, listing);
     if hop == FirstHop::Strip || !names_a_possible_parent(anchor, listing) {
         return Step::Done(hop);
@@ -82,9 +88,6 @@ pub fn first_hop(
     // it walks from a parent story, from the show's start and the
     // candidates' own listings, as far as the walk's bound leaves room
     // beside the show's own listing.
-    if !details.contains_key(anchor) {
-        return read(Vec::new(), vec![anchor.to_string()]);
-    }
     let counted = BTreeSet::from([anchor.to_string()]);
     match parent_stories(
         anchor,
@@ -150,9 +153,7 @@ fn from_own_listing(anchor: &str, listing: &FranchiseListing) -> FirstHop {
     {
         return FirstHop::Strip;
     }
-    let listed_beside = |r: &&&FranchiseRelation| {
-        r.subtype.as_deref() != Some("music") && !NEVER_LISTED.contains(&r.role.as_str())
-    };
+    let listed_beside = |r: &&&FranchiseRelation| !NEVER_LISTED.contains(&r.role.as_str());
     if anime.iter().any(|r| listed_beside(&r)) {
         FirstHop::Link
     } else {

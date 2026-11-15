@@ -95,25 +95,12 @@ pub fn plan(
     known: &BTreeMap<String, FranchiseListing>,
     details: &BTreeMap<String, FranchiseEntry>,
 ) -> Plan {
-    let missing = |has: bool| {
-        if has {
-            Vec::new()
-        } else {
-            vec![anchor.to_string()]
-        }
+    // The anchor's detail, then its listing, each listing read without
+    // its music videos (`franchise_walk_music.rs`).
+    let read = match music::read_for(anchor, known, details) {
+        Ok(read) => read,
+        Err((listings, details)) => return Plan::Need { listings, details },
     };
-    let (listings, needed) = (
-        missing(known.contains_key(anchor)),
-        missing(details.contains_key(anchor)),
-    );
-    if !listings.is_empty() || !needed.is_empty() {
-        return Plan::Need {
-            listings,
-            details: needed,
-        };
-    }
-    // Music videos are no part of a franchise (`franchise_walk_music.rs`).
-    let read = music::without_music(anchor, known, details);
     let lookup = Lookup {
         known: &read,
         details,
