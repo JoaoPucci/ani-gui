@@ -110,7 +110,7 @@ describe('topbar recent searches', () => {
 		await mountLayout();
 		input().value = 'One  Piece';
 		const pause = armedBy(() => input().dispatchEvent(new Event('input', { bubbles: true })));
-		expect(pause.pending, 'typing armed the pause before the search').toBeGreaterThan(0);
+		expect(pause.pending, 'typing armed the pause before the search').toBe(1);
 		(input().closest('form') as HTMLFormElement).requestSubmit();
 		await vi.waitFor(() =>
 			expect(JSON.parse(localStorage.getItem(RECENT_STORAGE_KEY) ?? '[]')).toEqual([

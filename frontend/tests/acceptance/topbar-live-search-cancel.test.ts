@@ -188,7 +188,7 @@ describe('topbar live search — the query moves on', () => {
 		input().focus();
 		input().dispatchEvent(new FocusEvent('focus'));
 		const pause = armedBy(() => type('frieren'));
-		expect(pause.pending, 'typing armed the pause before the search').toBeGreaterThan(0);
+		expect(pause.pending, 'typing armed the pause before the search').toBe(1);
 		(input().closest('form') as HTMLFormElement).requestSubmit();
 		// Once the pause has come due or been called off, a search it
 		// started has been asked, and is recorded where the page asks it.

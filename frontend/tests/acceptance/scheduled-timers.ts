@@ -11,7 +11,10 @@
 // sends is recorded as it is asked (`watchPageFetches`).
 //
 // Only timers armed during the call handed to `armedBy` are followed,
-// and only through the `setTimeout` and `clearTimeout` globals.
+// and only through the `setTimeout` and `clearTimeout` globals. A timer
+// is matched by the handle `setTimeout` returned: one cleared by any
+// other value stays armed here, and `done` times out rather than
+// passing.
 
 import { onTestFinished, vi } from 'vitest';
 

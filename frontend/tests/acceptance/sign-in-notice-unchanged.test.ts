@@ -197,6 +197,7 @@ describe('the sign-in notice, where it already worked', () => {
 		server.use(...quietBackend);
 		bootLayout();
 		await settle();
+		expect(toastTexts(), 'the notice is up before the disconnect').toEqual([EXPIRED_ANILIST]);
 		accountStore.setDisconnected('anilist');
 		await settle(10);
 		expect(toastTexts()).toEqual([]);

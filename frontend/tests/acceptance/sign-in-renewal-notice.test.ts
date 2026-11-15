@@ -199,7 +199,10 @@ describe('opening the app with a dead MAL sign-in', () => {
 	it('keeps the notice on screen through a burst of later toasts', async () => {
 		server.use(...quietBackend, refusedRefresh);
 		bootLayout();
-		await settle();
+		// The notice is up before the burst, or the burst could not push
+		// it off.
+		await until(() => signInToasts().length > 0, 'the notice to show');
+		expect(signInToasts()).toEqual([REFUSED]);
 		for (let i = 0; i < 4; i++) toastStore.push({ kind: 'info', message: `passing ${i}` });
 		await settle(4);
 		expect(signInToasts()).toEqual([REFUSED]);
@@ -353,7 +356,10 @@ describe('opening the app with a dead MAL sign-in', () => {
 		homeTarget = document.createElement('div');
 		document.body.appendChild(homeTarget);
 		home = mount(HomePage, { target: homeTarget });
-		await settle(80);
+		await until(() => signInToasts().length > 0, 'the notice to show');
+		// The renewal and the read after it have answered: the sign-in
+		// stays connected once nothing is left out.
+		await quiet();
 		expect(accountStore.byProvider.mal.kind).toBe('connected');
 		expect(signInToasts()).toEqual([REFUSED]);
 	});
