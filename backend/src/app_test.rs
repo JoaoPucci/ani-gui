@@ -104,10 +104,13 @@ fn proxy_state_view_shares_session_table_with_app_state() {
     let app = fake_state();
     let proxy = app.proxy_state();
     // Inserting via one view is visible from the other (same Arc<DashMap>).
-    let id = proxy.sessions.insert(crate::proxy::StreamSession::new(
-        url::Url::parse("https://example.com/m.m3u8").unwrap(),
-        "https://allmanga.to",
-    ));
+    let id = proxy
+        .sessions
+        .insert(crate::proxy::StreamSession::new_with_kind(
+            url::Url::parse("https://example.com/m.m3u8").unwrap(),
+            crate::proxy::MediaKind::Hls,
+            "https://allmanga.to",
+        ));
     assert!(app.sessions.get(&id).is_some());
 }
 

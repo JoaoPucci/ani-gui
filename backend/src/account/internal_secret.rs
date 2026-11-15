@@ -6,8 +6,8 @@
 //! renderer learns this secret (via the stdout handshake at backend
 //! startup and the preload bridge into the page), and the API's gate
 //! (`crate::api::gate`) answers no request without it, as the
-//! `x-ani-gui-internal-secret` header or, on the routes loaded by
-//! elements that cannot set a header, the `secret` query parameter.
+//! `x-ani-gui-internal-secret` header; the Electron main process adds
+//! the header to the requests of elements that cannot set one.
 //! A few account handlers check it again themselves, the
 //! `delete_list_cache` fallback that accepts a renderer-supplied
 //! `fallback_user_id` among them.

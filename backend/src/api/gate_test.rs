@@ -69,11 +69,6 @@ const ROUTES: &[(&str, &str, &str)] = &[
     ("DELETE", "/api/history/some-show", ""),
     ("GET", "/api/settings", ""),
     ("PUT", "/api/settings", "{}"),
-    (
-        "POST",
-        "/api/sessions",
-        r#"{"upstream_url":"https://e.example/m.m3u8","referer":""}"#,
-    ),
     ("POST", "/api/kitsu/search", r#"{"query":"x"}"#),
     ("GET", "/api/kitsu/trending", ""),
     ("GET", "/api/image?url=https%3A%2F%2Fe.example%2Fa.jpg", ""),
@@ -178,40 +173,56 @@ async fn the_secret_header_admits_a_request() {
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
-/// `/api/image` is loaded by an `<img>`, which cannot send a header:
-/// the secret in its query admits it. The handler answers a non-https
-/// url with 400, which shows the request got past the gate.
+/// No route reads the secret from the query, the three an `<img>` or an
+/// `EventSource` loads included: the main process adds the header to
+/// those (electron/lib/secret-header.cjs), and a URL is kept where a
+/// header is not — Chromium's disk cache, a log line.
 #[tokio::test]
-async fn the_image_route_takes_the_secret_in_its_query() {
+async fn no_route_takes_the_secret_in_its_query() {
     let td = TempDir::new().expect("tempdir");
+    let state = state(&td);
+    for uri in [
+        format!("/api/image?url=http%3A%2F%2Fe.example%2Fa.jpg&secret={SECRET}"),
+        format!("/api/play/stream?title=a&episode=1&mode=sub&prefetch=1&secret={SECRET}"),
+        format!("/api/download/stream?title=a&episode=1&mode=sub&secret={SECRET}"),
+        format!("/api/settings?secret={SECRET}"),
+    ] {
+        let resp = send(
+            build_api_router(state.clone()),
+            Request::builder()
+                .uri(&uri)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{uri}");
+    }
+}
+
+/// The header admits the routes an `<img>` or an `EventSource` loads,
+/// as it does every other. The image handler answers a non-https url
+/// with 400, which shows the request got past the gate.
+#[tokio::test]
+async fn the_header_admits_the_header_less_routes() {
+    let td = TempDir::new().expect("tempdir");
+    let state = state(&td);
     let resp = send(
-        build_api_router(state(&td)),
+        build_api_router(state.clone()),
         Request::builder()
-            .uri(format!(
-                "/api/image?url=http%3A%2F%2Fe.example%2Fa.jpg&secret={SECRET}"
-            ))
+            .uri("/api/image?url=http%3A%2F%2Fe.example%2Fa.jpg")
+            .header(INTERNAL_SECRET_HEADER, SECRET)
             .body(Body::empty())
             .expect("request"),
     )
     .await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    // The handler's own refusal, not a query the extractor could not read.
     assert_eq!(body_bytes(resp).await, b"url must be https://");
-}
-
-/// The progress streams are opened by an `EventSource`, which cannot
-/// send a header either.
-#[tokio::test]
-async fn the_progress_streams_take_the_secret_in_their_query() {
-    let td = TempDir::new().expect("tempdir");
-    let state = state(&td);
     for path in ["/api/play/stream", "/api/download/stream"] {
         let resp = send(
             build_api_router(state.clone()),
             Request::builder()
-                .uri(format!(
-                    "{path}?title=a&episode=1&mode=sub&prefetch=1&secret={SECRET}"
-                ))
+                .uri(format!("{path}?title=a&episode=1&mode=sub&prefetch=1"))
+                .header(INTERNAL_SECRET_HEADER, SECRET)
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -220,52 +231,16 @@ async fn the_progress_streams_take_the_secret_in_their_query() {
     }
 }
 
-/// Every other route reads the secret from the header only.
-#[tokio::test]
-async fn other_routes_ignore_a_secret_in_the_query() {
-    let td = TempDir::new().expect("tempdir");
-    let resp = send(
-        build_api_router(state(&td)),
-        Request::builder()
-            .uri(format!("/api/settings?secret={SECRET}"))
-            .body(Body::empty())
-            .expect("request"),
-    )
-    .await;
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-}
-
 #[test]
-fn admits_reads_the_header_on_any_route_and_the_query_on_three() {
+fn admits_reads_the_header_and_nothing_else() {
     let s = secret();
-    let none = HeaderMap::new();
-    let q = format!("secret={SECRET}");
-    assert!(admits(
-        &s,
-        &Method::POST,
-        "/api/sessions",
-        None,
-        &with_header(SECRET)
-    ));
-    assert!(!admits(&s, &Method::POST, "/api/sessions", None, &none));
-    assert!(!admits(&s, &Method::GET, "/api/history", Some(&q), &none));
-    for path in QUERY_SECRET_PATHS {
-        assert!(admits(&s, &Method::GET, path, Some(&q), &none), "{path}");
-        assert!(!admits(&s, &Method::POST, path, Some(&q), &none), "{path}");
-        assert!(
-            !admits(&s, &Method::GET, path, Some("secret=00"), &none),
-            "{path}"
-        );
-        assert!(!admits(&s, &Method::GET, path, None, &none), "{path}");
-        assert!(
-            !admits(&s, &Method::GET, &format!("{path}/x"), Some(&q), &none),
-            "{path}/x"
-        );
-    }
+    assert!(admits(&s, &with_header(SECRET)));
+    assert!(!admits(&s, &HeaderMap::new()));
+    assert!(!admits(&s, &with_header("00")));
 }
 
 proptest! {
-    /// Nothing but the secret itself is admitted, as header or query.
+    /// Nothing but the secret itself is admitted.
     #[test]
     fn only_the_secret_is_admitted(guess in "[ -~]{0,80}") {
         prop_assume!(guess != SECRET);
@@ -274,10 +249,7 @@ proptest! {
         if let Ok(v) = HeaderValue::from_str(&guess) {
             h.insert(INTERNAL_SECRET_HEADER, v);
         }
-        let q: String = url::form_urlencoded::Serializer::new(String::new())
-            .append_pair(SECRET_QUERY, &guess)
-            .finish();
-        prop_assert!(!admits(&s, &Method::GET, "/api/image", Some(&q), &h));
+        prop_assert!(!admits(&s, &h));
     }
 }
 
@@ -387,8 +359,9 @@ async fn the_renderer_reads_its_answers() {
 async fn the_proxy_serves_its_sessions_without_the_secret() {
     let td = TempDir::new().expect("tempdir");
     let state = state(&td);
-    let session = crate::proxy::StreamSession::new(
+    let session = crate::proxy::StreamSession::new_with_kind(
         url::Url::parse("https://e.example/master.m3u8").expect("url"),
+        crate::proxy::MediaKind::Hls,
         "",
     );
     let id = state.sessions.insert(session);
@@ -441,10 +414,13 @@ async fn the_proxy_serves_its_sessions_without_the_secret() {
 async fn the_proxy_allows_only_the_renderers_origin() {
     let td = TempDir::new().expect("tempdir");
     let state = state(&td);
-    let id = state.sessions.insert(crate::proxy::StreamSession::new(
-        url::Url::parse("https://e.example/master.m3u8").expect("url"),
-        "",
-    ));
+    let id = state
+        .sessions
+        .insert(crate::proxy::StreamSession::new_with_kind(
+            url::Url::parse("https://e.example/master.m3u8").expect("url"),
+            crate::proxy::MediaKind::Hls,
+            "",
+        ));
     let router = crate::proxy::build_router(state.proxy_state());
     for (origin, allowed) in [
         ("app://localhost", true),

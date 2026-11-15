@@ -37,15 +37,15 @@
 //! What it does not hold: answers that are not a struct (the
 //! `/api/watched-at` map, a bare string or list of strings, and whether
 //! a route may answer `null`); which route answers which type; query
-//! strings (the renderer builds them as text, with no type to compare),
-//! among them which routes take the secret as a query parameter; the
-//! search-page body (read through structs local to
+//! strings (the renderer builds them as text, with no type to compare);
+//! the search-page body (read through structs local to
 //! `commands::kitsu_search`'s readers); a body nested in another (the
 //! guess's `hits`); the value types of a map (`titles`, `cached`); the
 //! launch flags, and the copy of the secret header's name the Electron
-//! main process sends with its read of them (both the main process's,
-//! not the renderer's); and the value types of request fields — a
-//! request's fields are held by name and by whether they are required.
+//! main process keeps (`electron/lib/secret-handoff.cjs`, held to this
+//! source by its own test; both the main process's, not the
+//! renderer's); and the value types of request fields — a request's
+//! fields are held by name and by whether they are required.
 //! Only the `full` samples are probed: a `min` sample is taken as
 //! written, so a field set in one would publish as always sent.
 
@@ -57,7 +57,6 @@ use super::account::account_wire::{
     AuthUrlRequest, AuthUrlResponse, EntryView, ExchangeCodeRequest, PkceWire, RefreshRequest,
     SetEntryRequest, TokensResponse, UpdateProgressRequest,
 };
-use super::gate::SECRET_QUERY;
 use super::refill::{Ended, WaitBody, REFILL_HEADER};
 use super::wire_probe::{accepted_fields, skipped_fields};
 use super::{ani_error_payload, HistoryRow, KitsuByMalIdsBody, SearchBody, TitleMatchBody};
@@ -79,7 +78,7 @@ use crate::commands::history_number::HistoryNumber;
 use crate::commands::play::PlayArgs;
 use crate::commands::play_native_versions::{VersionInfo, VersionKind};
 use crate::commands::progress::ProgressLine;
-use crate::commands::session::{media_url, CreateSessionArgs, CreateSessionResponse};
+use crate::commands::session::{media_url, CreateSessionResponse};
 use crate::config::Config;
 use crate::error::AniError;
 use crate::history::HistoryEntry;
@@ -154,7 +153,6 @@ fn contract() -> Value {
         "constants": { "WATCH_LATER_BRIDGE_MAX_IDS": WATCH_LATER_BRIDGE_MAX_IDS },
         "names": {
             "INTERNAL_SECRET_HEADER": INTERNAL_SECRET_HEADER.as_str(),
-            "SECRET_QUERY": SECRET_QUERY,
             "REFILL_HEADER": REFILL_HEADER,
         },
         "media_urls": media_urls(),
@@ -639,9 +637,6 @@ fn requests() -> Value {
             "kitsu_ids": ["46474"], "mode": "sub"
         })),
         "AvailabilityWarmArgs": request::<AvailabilityWarmArgs>(&json!({ "items": [] })),
-        "CreateSessionArgs": request::<CreateSessionArgs>(&json!({
-            "upstream_url": "https://cdn.example/master.m3u8", "referer": "https://example/"
-        })),
         "Config": request::<Config>(&json!({})),
         "RuledOutRequest": request::<RuledOutRequest>(&json!({
             "title": "Frieren", "episode": 8, "hits": []

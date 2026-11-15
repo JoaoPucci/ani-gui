@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forgetCachedEntry, getEntry, removeEntry, setEntry } from './entry-api';
 import { AccountApiError } from './api';
 
+import type { AniErrorPayload } from '../api';
+import type { EntryView, ListEntry } from './types';
 beforeEach(() => {
 	(globalThis as { window?: unknown }).window = {
 		aniGui: { apiBase: 'http://127.0.0.1:42337' }
@@ -18,9 +20,31 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-function mockFetchJson<T>(body: T, status = 200) {
+/** A `fetch` answering `body`, typed as the route answers:
+ *  `mockFetchJson<ListEntry[]>([...])`. */
+function mockFetchJson<T = never>(body: NoInfer<T>, status = 200) {
+	return mockFetchRaw(JSON.stringify(body), status);
+}
+
+/** A refusal: `status`, with an error envelope the backend sends. */
+function mockFetchFailure(status: number) {
+	return mockFetchJson<AniErrorPayload>({ kind: 'io', key: 'error.io.generic' }, status);
+}
+
+/** A route that answers nothing (204). */
+function mockFetchEmpty() {
+	return vi.spyOn(global, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+}
+
+/** For a test about the request, not the answer: a body read as no
+ *  route's type. */
+function mockFetchUnread(body: unknown) {
+	return mockFetchRaw(JSON.stringify(body), 200);
+}
+
+function mockFetchRaw(text: string, status: number) {
 	return vi.spyOn(global, 'fetch').mockResolvedValue(
-		new Response(JSON.stringify(body), {
+		new Response(text, {
 			status,
 			headers: { 'content-type': 'application/json' }
 		})
@@ -29,8 +53,8 @@ function mockFetchJson<T>(body: T, status = 200) {
 
 describe('getEntry', () => {
 	it('GETs /api/account/entry/:provider?kitsu_id= with bearer and returns the view', async () => {
-		const view = { status: 'watching', progress: 5 };
-		const spy = mockFetchJson(view);
+		const view: EntryView = { status: 'watching', progress: 5 };
+		const spy = mockFetchJson<EntryView | null>(view);
 		const r = await getEntry('anilist', 'tok', 'kitsu-12');
 		expect(r).toEqual(view);
 		const [url, init] = spy.mock.calls[0];
@@ -41,17 +65,17 @@ describe('getEntry', () => {
 	});
 
 	it('returns null when the show is not on the list', async () => {
-		mockFetchJson(null);
+		mockFetchJson<EntryView | null>(null);
 		expect(await getEntry('mal', 'tok', 'kitsu-999')).toBeNull();
 	});
 
 	it('throws AccountApiError on non-2xx', async () => {
-		mockFetchJson({}, 500);
+		mockFetchFailure(500);
 		await expect(getEntry('anilist', 'tok', 'k')).rejects.toBeInstanceOf(AccountApiError);
 	});
 
 	it("hands the visit's signal to the request, so the page that asked can cancel it", async () => {
-		const spy = mockFetchJson(null);
+		const spy = mockFetchJson<EntryView | null>(null);
 		const visit = new AbortController();
 		await getEntry('anilist', 'tok', 'k', { signal: visit.signal });
 		expect((spy.mock.calls[0][1] as RequestInit).signal).toBe(visit.signal);
@@ -60,7 +84,7 @@ describe('getEntry', () => {
 
 describe('setEntry', () => {
 	it('POSTs kitsu_id + status + progress to /api/account/set/:provider', async () => {
-		const entry = {
+		const entry: ListEntry = {
 			provider: 'mal',
 			media_id: 21,
 			mal_id: 21,
@@ -70,7 +94,7 @@ describe('setEntry', () => {
 			updated_at_epoch_s: 1,
 			title: 'One Piece'
 		};
-		const spy = mockFetchJson(entry);
+		const spy = mockFetchJson<ListEntry | null>(entry);
 		const r = await setEntry('mal', 'tok', {
 			kitsu_id: 'kitsu-12',
 			status: 'watching',
@@ -87,14 +111,14 @@ describe('setEntry', () => {
 	});
 
 	it('returns null when the show is unmappable', async () => {
-		mockFetchJson(null);
+		mockFetchJson<ListEntry | null>(null);
 		expect(await setEntry('anilist', 'tok', { kitsu_id: 'k', status: 'planning' })).toBeNull();
 	});
 });
 
 describe('removeEntry', () => {
 	it('DELETEs /api/account/entry/:provider?kitsu_id= with bearer', async () => {
-		const spy = mockFetchJson({}, 200);
+		const spy = mockFetchEmpty();
 		await removeEntry('anilist', 'tok', 'kitsu-12');
 		const [url, init] = spy.mock.calls[0];
 		expect(String(url)).toContain('/api/account/entry/anilist?kitsu_id=kitsu-12');
@@ -104,7 +128,7 @@ describe('removeEntry', () => {
 	});
 
 	it('throws AccountApiError on non-2xx', async () => {
-		mockFetchJson({}, 500);
+		mockFetchFailure(500);
 		await expect(removeEntry('mal', 'tok', 'k')).rejects.toBeInstanceOf(AccountApiError);
 	});
 });
@@ -148,7 +172,7 @@ describe('the launch secret reaches every entry request', () => {
 	];
 
 	it.each(calls)('%s carries it as a header', async (_name, call) => {
-		const spy = mockFetchJson({});
+		const spy = mockFetchUnread({});
 		await call().catch(() => {});
 		const [, init] = spy.mock.calls[0];
 		const headers = (init as RequestInit).headers as Record<string, string>;

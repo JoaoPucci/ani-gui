@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import type { KitsuAnimeRef } from '$lib/api';
 import { entryNames, namesTheEntry } from './same-name';
 
+import { malformedAs } from '$lib/testing/wire-answers';
 interface Vector {
 	case: string;
 	title: string;
@@ -35,11 +36,11 @@ describe('namesTheEntry shared vectors', () => {
 
 describe('entryNames', () => {
 	it('skips a canonical title a stale cached shape lacks', () => {
-		const ref = {
+		const ref = malformedAs<KitsuAnimeRef>({
 			canonical_title: null,
 			titles: { en: 'Gintama Season 2' },
 			abbreviated_titles: undefined
-		} as unknown as KitsuAnimeRef;
+		});
 		expect(entryNames(ref)).toEqual(['Gintama Season 2']);
 		expect(namesTheEntry('Gintama Season 2', entryNames(ref))).toBe(true);
 	});

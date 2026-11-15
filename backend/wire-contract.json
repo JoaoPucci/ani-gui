@@ -196,8 +196,7 @@
   },
   "names": {
     "INTERNAL_SECRET_HEADER": "x-ani-gui-internal-secret",
-    "REFILL_HEADER": "x-ani-gui-refill",
-    "SECRET_QUERY": "secret"
+    "REFILL_HEADER": "x-ani-gui-refill"
   },
   "requests": {
     "AuthUrlRequest": {
@@ -266,17 +265,6 @@
         "use_custom_player_controls"
       ],
       "requires": []
-    },
-    "CreateSessionArgs": {
-      "accepts": [
-        "referer",
-        "subtitles",
-        "upstream_url"
-      ],
-      "requires": [
-        "referer",
-        "upstream_url"
-      ]
     },
     "DownloadArgs": {
       "accepts": [
