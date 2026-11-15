@@ -159,7 +159,10 @@ describe.each([
 			'the more button'
 		);
 		target.querySelector<HTMLButtonElement>('[aria-controls="np-more-menu"]')!.click();
-		await until(() => target.querySelector('#np-more-menu') !== null, 'the menu');
+		await until(
+			() => target.querySelector('#np-more-menu') !== null && motion.settled(),
+			"the menu, and its opening's motion"
+		);
 
 		if (reduced) expect(motion.animations).toEqual([]);
 		else expect(motion.animations.some((a) => a.includes('more-menu'))).toBe(true);
@@ -170,7 +173,10 @@ describe.each([
 		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
 		await until(() => tile(3) !== null, 'the episode strip');
 		tile(3)!.click();
-		await until(() => motion.lottie().length > 0, 'the loader animation to load');
+		await until(
+			() => motion.lottie().length > 0 && motion.settled(),
+			'the loader animation to load'
+		);
 
 		const played = motion.lottie().includes('play') || motion.lottie().includes('load:autoplay');
 		expect(played).toBe(!reduced);
@@ -190,7 +196,11 @@ describe.each([
 			() => target.querySelector('li.ep-highlight[data-ep-num="4"]') !== null,
 			'the episode to be picked out'
 		);
-		await new Promise((r) => setTimeout(r, 100));
+		// The scroll waits a frame for the tile to be laid out.
+		await until(
+			() => motion.scrolls.some((s) => s.startsWith('scrollIntoView')),
+			'the strip to scroll to the episode'
+		);
 
 		expect(motion.glides).toEqual(reduced ? [] : [expect.stringContaining('scrollIntoView')]);
 	});
