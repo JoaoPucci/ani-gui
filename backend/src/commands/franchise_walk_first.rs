@@ -47,10 +47,6 @@ pub(super) fn first(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>>
         .members
         .keys()
         .filter(|m| m.as_str() != anchor && !theirs.members.contains_key(*m))
-        .filter(|m| {
-            look.entry(m, &theirs.consulted)
-                .is_none_or(|e| e.subtype.as_deref() != Some("music"))
-        })
         .cloned()
         .collect();
     Ok(Run {

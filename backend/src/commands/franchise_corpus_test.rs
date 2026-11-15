@@ -165,6 +165,40 @@ fn every_corpus_anchor_reads_as_pinned() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+/// The corpus relates its franchises to some forty music videos (the
+/// One Piece films' songs, Pokémon's), and no answer from a case's
+/// anchor names one.
+#[test]
+fn no_corpus_answer_names_a_music_video() {
+    let c = corpus();
+    let music: std::collections::BTreeSet<String> = c
+        .listings
+        .values()
+        .flat_map(|l| &l.relations)
+        .filter(|r| r.subtype.as_deref() == Some("music"))
+        .map(|r| r.id.clone())
+        .chain(
+            c.details
+                .values()
+                .filter(|e| e.subtype.as_deref() == Some("music"))
+                .map(|e| e.id.clone()),
+        )
+        .collect();
+    assert!(music.len() > 30, "{} music videos", music.len());
+    let cases: Vec<Case> = serde_json::from_slice(&fixture("cases.json")).expect("cases.json");
+    let anchors: Vec<String> = cases.into_iter().map(|case| case.anchor).collect();
+    let named: Vec<String> = anchors
+        .iter()
+        .flat_map(|a| {
+            super::prop_tests::answer_ids(&walk(&c, a))
+                .into_iter()
+                .filter(|id| music.contains(id))
+                .map(move |id| format!("{a}: {id}"))
+        })
+        .collect();
+    assert!(named.is_empty(), "{named:?}");
+}
+
 /// What every page of a franchise must show the same: the name, the
 /// entry it comes from (the front of the poster stack) and the main
 /// story.
