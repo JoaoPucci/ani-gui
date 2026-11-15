@@ -873,8 +873,7 @@ starting it, and delete it when you find it done.
   It waited because no stream seen so far has been burned in, so
   there is nothing to detect yet. Subtitles carried as tracks inside
   the stream's own playlist are a different case: they can be turned
-  off, but the player's engine and the app's own subtitle files can
-  switch each other off.
+  off.
 
 ## Following a provider's legitimate domain move
 
