@@ -83,6 +83,8 @@ import {
 	type LinkGroupRequest,
 	type LinkOutcome,
 	type LinkVerdict,
+	type SwitchEpisode,
+	type SwitchEpisodeRequest,
 	type LinkWarning,
 	type LinkedRow,
 	type PlayArgs,
@@ -548,7 +550,10 @@ const RESPONSES: Record<string, Record<string, string>> = {
 	Verdict: {
 		offer: 'string|null',
 		kept: 'boolean'
-	} satisfies Spec<LinkVerdict>
+	} satisfies Spec<LinkVerdict>,
+	SwitchEpisode: {
+		episode: 'number|null'
+	} satisfies Spec<SwitchEpisode>
 };
 
 /** Each body the backend reads, by its backend name: the spec of the
@@ -737,6 +742,15 @@ const REQUESTS: Record<string, { spec: Record<string, string>; unsent?: string[]
 			picked: 'required',
 			in_player: 'required'
 		} satisfies BodySpec<VerdictRequest>
+	},
+	SwitchArgs: {
+		spec: {
+			pick: 'required',
+			card: 'required',
+			episode: 'required',
+			episode_count: 'required',
+			part_way: 'required'
+		} satisfies BodySpec<SwitchEpisodeRequest>
 	}
 };
 

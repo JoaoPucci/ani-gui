@@ -161,5 +161,6 @@
 	"link_switched_note": "Now playing {title}.",
 	"link_switch_failed": "Couldn’t switch to {title}. Try again.",
 	"link_dialog_body_single": "Saved in your history as “{title}”. It’s playing now.",
-	"link_switch_hint_single": "It picks up at {time}."
+	"link_switch_hint_single": "It picks up at {time}.",
+	"link_switch_hint_own": "It picks up episode {episode}, where you left it."
 }

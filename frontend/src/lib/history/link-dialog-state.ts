@@ -107,8 +107,18 @@ export function listBody(o: {
 }
 
 /** Where a switch to `to` picks up: the episode and the time, or the
- *  time alone for a single-video work. */
-export function switchHint(o: { episode: string; time: string; to: KitsuAnimeRef }): string {
+ *  time alone for a single-video work. A pick the viewer is further
+ *  along in (`own`, as the backend answers it) picks up its own
+ *  episode, where they left it; while that is being read (`pending`)
+ *  the line says nothing. */
+export function switchHint(o: {
+	episode: string;
+	time: string;
+	to: KitsuAnimeRef;
+	own?: { episode: string } | null | 'pending';
+}): string {
+	if (o.own === 'pending') return '';
+	if (o.own) return m.play_link_switch_hint_own({ episode: o.own.episode });
 	return single(o.to)
 		? m.play_link_switch_hint_single({ time: o.time })
 		: m.play_link_switch_hint({ episode: o.episode, time: o.time });

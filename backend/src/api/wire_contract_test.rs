@@ -86,6 +86,7 @@ use crate::commands::play::PlayArgs;
 use crate::commands::play_native_versions::{VersionInfo, VersionKind};
 use crate::commands::progress::ProgressLine;
 use crate::commands::session::{media_url, CreateSessionResponse};
+use crate::commands::switch_episode::{SwitchArgs, SwitchEpisode};
 use crate::config::Config;
 use crate::error::AniError;
 use crate::history::HistoryEntry;
@@ -268,6 +269,13 @@ fn responses() -> Value {
     );
     put("CardLine", response(&card_line(), &card_line()));
     put("Verdict", response(&verdict(true), &verdict(false)));
+    put(
+        "SwitchEpisode",
+        response(
+            &SwitchEpisode { episode: Some(7.0) },
+            &SwitchEpisode { episode: None },
+        ),
+    );
     Value::Object(out)
 }
 
@@ -732,6 +740,9 @@ fn requests() -> Value {
         "CardLinesArgs": request::<CardLinesArgs>(&json!({ "rows": [] })),
         "CardRow": request::<CardRow>(&json!({ "id": "hianime:frieren-18542" })),
         "VerdictArgs": request::<VerdictArgs>(&json!({ "page": "46474" })),
+        "SwitchArgs": request::<SwitchArgs>(&json!({
+            "pick": "8063", "card": "hianime:frieren-18542", "episode": 2
+        })),
     })
 }
 

@@ -833,6 +833,29 @@ export function historyLinkVerdict(
 	return postJson<LinkVerdict>('/api/history/link-verdict', request, { signal: opts.signal });
 }
 
+/** What "Switch to it now" asks of the show picked for a card: the
+ *  card's row, the episode playing, the pick's count, and its episodes
+ *  with a kept position (left part-way). */
+export interface SwitchEpisodeRequest {
+	pick: string;
+	card: string;
+	episode: number;
+	episode_count: number | null;
+	part_way: number[];
+}
+
+/** Where the switch opens the pick: its own episode, further than the
+ *  card's, or null for the card's episode and point. */
+export interface SwitchEpisode {
+	episode: number | null;
+}
+
+/** Where a switch opens the show picked for a card, as the backend
+ *  decides it (`commands/switch_episode.rs`). */
+export function historySwitchEpisode(request: SwitchEpisodeRequest): Promise<SwitchEpisode> {
+	return postJson<SwitchEpisode>('/api/history/switch-episode', request);
+}
+
 /** Find the most-recent history entry whose show id maps to this Kitsu
  *  id, via the (show id → kitsu_id) reverse cache the play path stamps
  *  on each successful resolve. Used by the detail page to swap "Play

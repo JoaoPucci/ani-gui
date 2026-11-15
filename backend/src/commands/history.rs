@@ -133,7 +133,36 @@ fn history_by_kitsu_held(
     state: &crate::app::AppState,
     kitsu_id: &str,
 ) -> Result<Option<HistoryEntry>> {
-    let entries = read_all(&state.history_path)?;
+    history_by_kitsu_held_except(state, kitsu_id, |_| false)
+}
+
+/// [`history_by_kitsu`] among the rows `except` does not name: the
+/// pick's own progress, less the card's listing, for a switch
+/// ([`super::switch_episode`]).
+///
+/// # Errors
+/// As [`history_by_kitsu`].
+pub fn history_by_kitsu_except(
+    state: &crate::app::AppState,
+    kitsu_id: &str,
+    except: impl Fn(&str) -> bool,
+) -> Result<Option<HistoryEntry>> {
+    if kitsu_id.is_empty() {
+        return Ok(None);
+    }
+    crate::history::guard::hold(&state.history_path, |_| {
+        history_by_kitsu_held_except(state, kitsu_id, &except)
+    })
+}
+
+fn history_by_kitsu_held_except(
+    state: &crate::app::AppState,
+    kitsu_id: &str,
+    except: impl Fn(&str) -> bool,
+) -> Result<Option<HistoryEntry>> {
+    let entries = read_all(&state.history_path)?
+        .into_iter()
+        .filter(|e| !except(&e.id));
     // Two providers can leave two rows for one show, one under each
     // provider's id. The one the user watched last is the one to
     // resume from, by the rule the Continue Watching strip applies to

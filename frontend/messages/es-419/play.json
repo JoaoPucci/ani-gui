@@ -161,5 +161,6 @@
 	"link_switched_note": "Ahora se reproduce {title}.",
 	"link_switch_failed": "No se pudo cambiar a {title}. Inténtalo de nuevo.",
 	"link_dialog_body_single": "Guardado como «{title}» en tu historial. Se está reproduciendo ahora.",
-	"link_switch_hint_single": "Sigue en {time}."
+	"link_switch_hint_single": "Sigue en {time}.",
+	"link_switch_hint_own": "Sigue en el episodio {episode}, donde lo dejaste."
 }

@@ -108,6 +108,10 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/history/card-lines", post(link_rules::post_card_lines))
         .route(
+            "/api/history/switch-episode",
+            post(link_rules::post_switch_episode),
+        )
+        .route(
             "/api/history/link-verdict",
             post(link_rules::post_link_verdict),
         )

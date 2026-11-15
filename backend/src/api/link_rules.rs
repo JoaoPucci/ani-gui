@@ -15,6 +15,7 @@ use crate::commands::card_line::{card_lines, CardLine, CardRow};
 use crate::commands::link_candidates::{link_candidates, CandidatesArgs};
 use crate::commands::link_rules::LinkCandidate;
 use crate::commands::link_verdict::{verdict, Verdict, VerdictArgs};
+use crate::commands::switch_episode::{SwitchArgs, SwitchEpisode};
 use crate::error::AniError;
 
 /// The candidates for a guessed row
@@ -48,3 +49,12 @@ pub(super) async fn post_link_verdict(Json(args): Json<VerdictArgs>) -> Json<Ver
 #[cfg(test)]
 #[path = "link_rules_test.rs"]
 mod tests;
+
+/// Where "Switch to it now" opens the show picked for a card
+/// ([`crate::commands::switch_episode`]).
+pub(super) async fn post_switch_episode(
+    State(state): State<Arc<AppState>>,
+    Json(args): Json<SwitchArgs>,
+) -> Result<Json<SwitchEpisode>, AniError> {
+    Ok(Json(crate::commands::switch_episode::plan(&state, &args)?))
+}

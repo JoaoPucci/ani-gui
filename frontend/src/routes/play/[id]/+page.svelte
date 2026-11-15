@@ -61,7 +61,8 @@
 		type KitsuAnimeRef,
 		type KitsuEpisode,
 		type MediaKind,
-		type SkipInterval
+		type SkipInterval,
+		historySwitchEpisode
 	} from '$lib/api';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { datedAired, withAiredFloor } from '$lib/detail/aired-evidence';
@@ -112,7 +113,8 @@
 	import { beginVisit, visitSeries, type Visit } from '$lib/navigation/visit';
 	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
 	import { createSourceScope } from '$lib/play/source-scope';
-	import { markStarted } from '$lib/play/watch-position';
+	import { keptEpisodes, markStarted } from '$lib/play/watch-position';
+	import { SwitchPreview } from '$lib/play/switch-preview.svelte';
 	import { armSidecarTracks } from '$lib/play/sidecar-tracks';
 	import { StripPager } from '$lib/play/strip-pager';
 	import { playPageWarmTargets } from '$lib/play/warm-plan';
@@ -241,6 +243,30 @@
 	// card's history row, so removing the card forgets them whatever
 	// show it names by then; every URL this page builds carries it on.
 	const fromRow = $derived(openedFromRow(page.url.searchParams));
+	/** Where "Switch to it now" opens `to` from the card's row, as the
+	 *  backend decides it from the history and the pick's kept positions
+	 *  ($lib/play/switch-show). */
+	const switchEpisodeOf = (to: KitsuAnimeRef, episode: number): Promise<number | null> =>
+		fromRow
+			? historySwitchEpisode({
+					pick: to.id,
+					card: fromRow,
+					episode,
+					episode_count: to.episode_count ?? null,
+					part_way: keptEpisodes(to.id)
+				}).then((a) => a.episode)
+			: Promise.resolve(null);
+	// What the switch step says of the pick chosen, for the episode
+	// playing ($lib/play/switch-preview).
+	const switchKey = (to: KitsuAnimeRef) => `${to.id}@${episodeNum}`;
+	const switchPreview = new SwitchPreview((key) => {
+		const to = playLink.chosen?.ref;
+		return to && switchKey(to) === key ? switchEpisodeOf(to, episodeNum) : Promise.resolve(null);
+	});
+	$effect(() => {
+		const chosen = playLink.chosen;
+		if (chosen && !chosen.current) switchPreview.ask(switchKey(chosen.ref));
+	});
 	// The show page a guessed card's session goes up to says which
 	// history title the card was matched from ($lib/history/guessed-context).
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
@@ -2815,6 +2841,7 @@
 					() => false
 				),
 			/* eslint-enable svelte/no-navigation-without-resolve */
+			plan: switchEpisodeOf,
 			isCurrent: () => !gone && here()
 		};
 	}
@@ -4844,6 +4871,7 @@
 			onConfirm={() => void playLink.confirm()}
 			onCancel={() => playLink.cancel()}
 			switchAt={formatTime(currentTime)}
+			switchOwn={playLink.chosen ? switchPreview.ownFor(switchKey(playLink.chosen.ref)) : null}
 			shown={detail}
 			onSwitch={async () => {
 				// Only a pick that was saved: a failed one leaves its error in

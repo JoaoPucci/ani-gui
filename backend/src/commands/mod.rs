@@ -40,6 +40,7 @@ pub(crate) mod external_ids;
 pub(crate) mod held_fill;
 pub mod listing_tags;
 pub mod numbering_offset;
+pub(crate) mod switch_episode;
 
 #[cfg(test)]
 #[path = "appended_extras_flow_test.rs"]

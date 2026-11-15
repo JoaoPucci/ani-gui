@@ -460,6 +460,20 @@
         "kitsu_id"
       ]
     },
+    "SwitchArgs": {
+      "accepts": [
+        "card",
+        "episode",
+        "episode_count",
+        "part_way",
+        "pick"
+      ],
+      "requires": [
+        "card",
+        "episode",
+        "pick"
+      ]
+    },
     "TitleMatchBody": {
       "accepts": [
         "cour",
@@ -1158,6 +1172,14 @@
         "end_time": 180.5,
         "skip_type": "op",
         "start_time": 90.5
+      }
+    },
+    "SwitchEpisode": {
+      "full": {
+        "episode": 7.0
+      },
+      "min": {
+        "episode": null
       }
     },
     "TokensResponse": {

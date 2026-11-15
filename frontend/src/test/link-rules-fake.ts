@@ -8,6 +8,7 @@
 // - `groupMembers`: commands/link_verdict.rs `group_members`, and
 //   `cardListing`: commands/history_link_plan.rs `card_listing`
 // - `cardLines`: commands/card_line.rs `card_lines`
+// - `switchEpisode`: commands/switch_episode.rs `switch_episode`
 // - `candidates`: commands/link_candidates.rs and link_rules.rs. A
 //   title's season is read here with the renderer's own reader, which
 //   the backend's mirrors on titles; a slug's as the backend reads it.
@@ -25,7 +26,26 @@ import type {
 	RowMatch,
 	VerdictRequest
 } from '../lib/api';
+import { parseHistoryEpisode } from '../lib/play/episode-number';
 import { parseCour } from '../lib/history/resolve';
+
+/** The episode a switch opens the pick at, for its own row at `own`
+ *  (commands/switch_episode.rs `switch_episode`): Continue's episode
+ *  for the row, when past the card's `episode`; null keeps the card's. */
+export function switchEpisode(
+	episode: number,
+	own: number | null,
+	cap: number | null,
+	partWay: readonly number[]
+): number | null {
+	if (own === null) return null;
+	const next = Number.isInteger(own) ? own + 1 : Math.ceil(own);
+	const opened = partWay.includes(own) ? own : cap !== null && next > cap ? own : next;
+	return opened > episode ? opened : null;
+}
+
+/** A row's episode as the history reads it (`row_episode`). */
+export const rowEpisode = (epNo: string): number | null => parseHistoryEpisode(epNo);
 
 export function verdict(r: VerdictRequest): LinkVerdict {
 	const showsPage = r.show === r.page;

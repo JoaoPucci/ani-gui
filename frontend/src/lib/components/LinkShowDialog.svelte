@@ -33,6 +33,7 @@
 		listStatus,
 		switchHint
 	} from '$lib/history/link-dialog-state';
+	import type { SwitchOwn } from '$lib/play/switch-preview.svelte';
 
 	interface Props {
 		open: boolean;
@@ -73,6 +74,9 @@
 		switchAt?: string | null;
 		/** "Switch to it now": save the pick and switch to it. */
 		onSwitch?: () => void;
+		/** On the player: where the switch opens the pick, as the backend
+		 *  answers it for the pick chosen ($lib/play/switch-preview). */
+		switchOwn?: SwitchOwn;
 		/** On the player: the show playing, known before the candidates
 		 *  are. */
 		shown?: KitsuAnimeRef | null;
@@ -97,6 +101,7 @@
 		onCancel,
 		switchAt = null,
 		onSwitch,
+		switchOwn = null,
 		shown = null
 	}: Props = $props();
 
@@ -172,7 +177,7 @@
 						{m.play_link_switch_heading({ title: chosen.ref.canonical_title })}
 					</h2>
 					<p class="ls-body">
-						{switchHint({ episode, time: switchAt ?? '', to: chosen.ref })}
+						{switchHint({ episode, time: switchAt ?? '', to: chosen.ref, own: switchOwn })}
 					</p>
 				{:else if chosen}
 					<h2 id="ls-title" class="ls-title">

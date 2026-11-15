@@ -14,8 +14,13 @@
 
 import { http, HttpResponse, type HttpHandler } from 'msw';
 import { API_BASE } from './setup';
-import { cardListing, groupMembers } from '../../src/test/link-rules-fake';
-import type { LinkGroupRequest } from '../../src/lib/api';
+import {
+	cardListing,
+	groupMembers,
+	rowEpisode,
+	switchEpisode
+} from '../../src/test/link-rules-fake';
+import type { LinkGroupRequest, SwitchEpisode, SwitchEpisodeRequest } from '../../src/lib/api';
 import type { HistoryEntry, HistoryNumber, LinkOutcome } from '../../src/lib/api';
 
 export interface Row {
@@ -50,6 +55,19 @@ export function linkBackendHandlers(b: LinkBackend): HttpHandler[] {
 		http.get(`${API_BASE}/api/history/:id/number`, ({ params }) => {
 			const row = b.rows.find((r) => r.id === params.id);
 			return HttpResponse.json<HistoryNumber | null>(row ? { ep_no: row.ep_no } : null);
+		}),
+		http.post(`${API_BASE}/api/history/switch-episode`, async ({ request }) => {
+			// The pick's own row: the first recording it off the card's
+			// listing (the backend takes the one watched last).
+			const body = (await request.json()) as SwitchEpisodeRequest;
+			const own = b.rows.find((r) => r.kitsu_id === body.pick && !cardListing(body.card, r.id));
+			const episode = switchEpisode(
+				body.episode,
+				own ? rowEpisode(own.ep_no) : null,
+				body.episode_count,
+				body.part_way
+			);
+			return HttpResponse.json<SwitchEpisode>({ episode });
 		}),
 		http.post(`${API_BASE}/api/history/link-group`, async ({ request }) => {
 			const body = (await request.json()) as LinkGroupRequest;

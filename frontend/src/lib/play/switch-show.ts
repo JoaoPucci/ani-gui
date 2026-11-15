@@ -1,7 +1,10 @@
 /**
  * "Switch to it now": the player moves to the show the viewer picked
- * for its card, at the same episode and from the
- * same point, on that show's own stream.
+ * for its card, at the same episode and from the same point, on that
+ * show's own stream — or, when the viewer is further along in the pick
+ * on its own, at the episode the backend opens for it (where they left
+ * it, by the Continue rule), with no point carried: progress never
+ * moves back.
  *
  * The pick is the user's, so the play asks for the picked show by its
  * own title and Kitsu id, with no guess beside it, as a play from its
@@ -65,6 +68,10 @@ export interface SwitchShowDeps {
 	/** Forget what a switch to `showId` from the card row `row` left for
 	 *  the next page: the point, the speed and the note. */
 	forget: (showId: string, row: string | null) => void;
+	/** The pick's own episode, when the viewer is further along in it
+	 *  than `episode`, as the backend decides it; null keeps `episode`.
+	 *  Rejects when that cannot be read. */
+	plan: (to: KitsuAnimeRef, episode: number) => Promise<number | null>;
 	/** Whether the viewer is still on the player the switch began on. */
 	isCurrent: () => boolean;
 }
@@ -91,9 +98,19 @@ export type SwitchOutcome = 'switched' | 'failed' | 'abandoned';
 export async function switchShow(deps: SwitchShowDeps, req: SwitchRequest): Promise<SwitchOutcome> {
 	const title = req.to.canonical_title;
 	if (!title) return 'failed';
+	// Where the pick stands: a pick watched further on its own opens
+	// where the viewer left it, never back at the card's episode. One
+	// that cannot be read is no switch, rather than a guess.
+	let own: number | null;
+	try {
+		own = await deps.plan(req.to, req.episode);
+	} catch {
+		return deps.isCurrent() ? 'failed' : 'abandoned';
+	}
+	const asked = own ?? req.episode;
 	const args = playArgsFor({
 		title,
-		episode: req.episode,
+		episode: asked,
 		mode: req.mode,
 		show: req.to,
 		kitsuId: req.to.id,
@@ -116,9 +133,10 @@ export async function switchShow(deps: SwitchShowDeps, req: SwitchRequest): Prom
 	}
 	if (!deps.isCurrent()) return 'abandoned';
 	// The session may name the episode by the number it has now.
-	const episode = deps.played(req.to.id, session, req.episode);
-	// What the next page takes as it mounts goes first.
-	deps.carry(req.to.id, episode, req.at);
+	const episode = deps.played(req.to.id, session, asked);
+	// What the next page takes as it mounts goes first. The point is the
+	// card's episode's: the pick's own episode starts as Continue would.
+	if (own === null) deps.carry(req.to.id, episode, req.at);
 	if (req.rate !== undefined) deps.carryRate(req.to.id, req.rate);
 	if (req.row) deps.noteSwitch(req.row, title);
 	// A player that could not be opened, one whose opening threw among
