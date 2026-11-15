@@ -8,6 +8,7 @@ import {
 } from './approximate-retry';
 import type { KitsuAnimeRef } from '$lib/api';
 
+import type { ApproximateRetryDeps } from './approximate-retry';
 function ref(id: string): KitsuAnimeRef {
 	return {
 		id,
@@ -48,15 +49,17 @@ function answers(...seq: ({ count: number | null; approximate: boolean } | 'reje
 	const probes: string[] = [];
 	const modes: string[] = [];
 	const per = new Map<string, number>();
-	const fetchAvailability = vi.fn(async (match: KitsuAnimeRef, mode: 'sub' | 'dub') => {
-		probes.push(match.id);
-		modes.push(mode);
-		const n = per.get(match.id) ?? 0;
-		per.set(match.id, n + 1);
-		const a = seq[Math.min(n, seq.length - 1)];
-		if (a === 'reject') throw new Error('probe failed');
-		return { episode_count: a.count, episode_count_approximate: a.approximate };
-	});
+	const fetchAvailability = vi.fn<NonNullable<ApproximateRetryDeps['fetchAvailability']>>(
+		async (match: KitsuAnimeRef, mode: 'sub' | 'dub') => {
+			probes.push(match.id);
+			modes.push(mode);
+			const n = per.get(match.id) ?? 0;
+			per.set(match.id, n + 1);
+			const a = seq[Math.min(n, seq.length - 1)];
+			if (a === 'reject') throw new Error('probe failed');
+			return { episode_count: a.count, episode_count_approximate: a.approximate };
+		}
+	);
 	return { probes, modes, fetchAvailability };
 }
 
@@ -165,7 +168,7 @@ describe('retryApproximateCaps', () => {
 	it('publishes a cap only once the retry comes back exact', async () => {
 		const clock = fakeClock();
 		const { fetchAvailability } = answers(exact(12));
-		const onRefined = vi.fn();
+		const onRefined = vi.fn<NonNullable<ApproximateRetryDeps['onRefined']>>();
 
 		await retryApproximateCaps([row('a')], {
 			fetchAvailability,
@@ -181,7 +184,7 @@ describe('retryApproximateCaps', () => {
 	it('does not republish a cap that came back approximate again', async () => {
 		const clock = fakeClock();
 		const { fetchAvailability } = answers(stillApproximate(13));
-		const onRefined = vi.fn();
+		const onRefined = vi.fn<NonNullable<ApproximateRetryDeps['onRefined']>>();
 
 		await retryApproximateCaps([row('a')], {
 			fetchAvailability,
@@ -201,13 +204,15 @@ describe('retryApproximateCaps', () => {
 		const clock = fakeClock();
 		let inFlight = 0;
 		let peak = 0;
-		const fetchAvailability = vi.fn(async () => {
-			inFlight++;
-			peak = Math.max(peak, inFlight);
-			await Promise.resolve();
-			inFlight--;
-			return { episode_count: 12, episode_count_approximate: false };
-		});
+		const fetchAvailability = vi.fn<NonNullable<ApproximateRetryDeps['fetchAvailability']>>(
+			async () => {
+				inFlight++;
+				peak = Math.max(peak, inFlight);
+				await Promise.resolve();
+				inFlight--;
+				return { episode_count: 12, episode_count_approximate: false };
+			}
+		);
 
 		await retryApproximateCaps([row('a'), row('b'), row('c')], {
 			fetchAvailability,
@@ -242,7 +247,7 @@ describe('retryApproximateCaps', () => {
 
 	it('keeps retrying after a probe rejects, and publishes nothing', async () => {
 		const clock = fakeClock();
-		const onRefined = vi.fn();
+		const onRefined = vi.fn<NonNullable<ApproximateRetryDeps['onRefined']>>();
 		const { fetchAvailability, probes } = answers('reject', exact(12));
 
 		await retryApproximateCaps([row('a')], {
@@ -282,7 +287,7 @@ describe('retryApproximateCaps', () => {
 	it('does not publish an answer that landed after teardown', async () => {
 		const clock = fakeClock();
 		let cancelled = false;
-		const onRefined = vi.fn();
+		const onRefined = vi.fn<NonNullable<ApproximateRetryDeps['onRefined']>>();
 
 		await retryApproximateCaps([row('a')], {
 			// The route tears down while this probe is in flight — the
@@ -347,7 +352,7 @@ describe('retryApproximateCaps', () => {
 
 	it('does not publish for a row removed while the probe was in flight', async () => {
 		const { fetchAvailability } = answers(exact(12));
-		const onRefined = vi.fn();
+		const onRefined = vi.fn<NonNullable<ApproximateRetryDeps['onRefined']>>();
 		let present = true;
 
 		await retryApproximateCaps([row('a')], {
@@ -390,7 +395,7 @@ describe('retryApproximateCaps', () => {
 
 	it('does nothing at all when no row came back approximate', async () => {
 		const clock = fakeClock();
-		const fetchAvailability = vi.fn();
+		const fetchAvailability = vi.fn<NonNullable<ApproximateRetryDeps['fetchAvailability']>>();
 
 		await retryApproximateCaps([], {
 			fetchAvailability,
@@ -405,7 +410,7 @@ describe('retryApproximateCaps', () => {
 
 	it('treats a countless answer as no answer', async () => {
 		const clock = fakeClock();
-		const onRefined = vi.fn();
+		const onRefined = vi.fn<NonNullable<ApproximateRetryDeps['onRefined']>>();
 		const { fetchAvailability, probes } = answers({ count: null, approximate: false });
 
 		await retryApproximateCaps([row('a')], {

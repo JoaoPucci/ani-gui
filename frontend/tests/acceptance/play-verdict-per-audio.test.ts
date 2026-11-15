@@ -40,6 +40,17 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { playerVideo, playerVideoInSlot } from './player-video';
 
+import type {
+	AiringStatus,
+	AvailabilityBatchResponse,
+	AvailabilityResponse,
+	Config,
+	CreateSessionResponse,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer, sessionAnswer } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Two Audio Show';
 const NOTHING_CACHED = { cached: {}, playable_episode_counts: {} };
@@ -88,31 +99,39 @@ function useHandlers(sub: { available: boolean; episode_count: number | null }, 
 	server.use(
 		http.get(`${API_BASE}/api/settings`, async () => {
 			await settingsHeld;
-			return HttpResponse.json(appConfig('dub'));
+			return HttpResponse.json<Config>(appConfig('dub'));
 		}),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
-		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+			HttpResponse.json<AiringStatus>(null)
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 			const body = (await request.json()) as { mode: string };
 			if (body.mode === 'sub') {
 				// Settings land once the sub answer has been read.
 				setTimeout(releaseSettings, 50);
-				return HttpResponse.json({ ...sub, extra_episodes: [] });
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ ...sub, extra_episodes: [] })
+				);
 			}
 			if (dub === 'pending') return new Promise<never>(() => {});
 			if (dub === 'failed') return new HttpResponse(null, { status: 500 });
-			return HttpResponse.json({
-				available: false,
-				episode_count: null,
-				extra_episodes: [],
-				unsettled: 'unanswered'
-			});
+			return HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: false,
+					episode_count: null,
+					extra_episodes: [],
+					unsettled: 'unanswered'
+				})
+			);
 		}),
-		http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json(NOTHING_CACHED)),
+		http.post(`${API_BASE}/api/availability/batch`, () =>
+			HttpResponse.json<AvailabilityBatchResponse>(NOTHING_CACHED)
+		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		// Every case's Reload goes through: its fresh resolve, and the
 		// warms the fresh session starts, are answered with a session,
@@ -120,18 +139,20 @@ function useHandlers(sub: { available: boolean; episode_count: number | null }, 
 		http.post(`${API_BASE}/api/play`, async ({ request }) => {
 			const body = (await request.json()) as { prefetch?: boolean };
 			if (!body.prefetch) seen.resolves += 1;
-			return HttpResponse.json({
-				session_id: 'session-2',
-				media_url: `${API_BASE}/s/session-2/file.mp4`,
-				media_kind: 'mp4'
-			});
+			return HttpResponse.json<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'session-2',
+					media_url: `${API_BASE}/s/session-2/file.mp4`,
+					media_kind: 'mp4'
+				})
+			);
 		}),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => {
 			seen.evictions += 1;
 			return new HttpResponse(null, { status: 204 });
 		}),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl'))
 	);
 	return seen;
 }

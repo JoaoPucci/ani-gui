@@ -28,6 +28,7 @@ vi.mock('$app/navigation', () => ({
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
+import type { KitsuAnimeRef } from '../../src/lib/api';
 const ROW = {
 	ep_no: '1',
 	id: 'hianime:there-is-also-a-hole-in-the-student-organization-10497',
@@ -66,15 +67,15 @@ describe('a Continue row that records the show played', () => {
 		server.use(
 			...homeHandlers({ history: [ROW] }, [
 				http.get(`${API_BASE}/api/kitsu/anime/49877`, () =>
-					HttpResponse.json(kitsuRef('49877', 'Seitokai ni mo Ana wa Aru!', 12))
+					HttpResponse.json<KitsuAnimeRef>(kitsuRef('49877', 'Seitokai ni mo Ana wa Aru!', 12))
 				),
 				http.post(`${API_BASE}/api/kitsu/search`, async ({ request }) => {
 					searches.push(JSON.stringify(await request.json()));
-					return HttpResponse.json([kitsuRef('1623', 'Here is Greenwood', 6)]);
+					return HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1623', 'Here is Greenwood', 6)]);
 				}),
 				http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, ({ params }) => {
 					mappings.push(String(params.showId));
-					return HttpResponse.json('1623');
+					return HttpResponse.json<string | null>('1623');
 				})
 			])
 		);

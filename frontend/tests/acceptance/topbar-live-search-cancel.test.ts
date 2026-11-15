@@ -35,6 +35,8 @@ import Layout from '../../src/routes/+layout.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 let target: HTMLElement;
 let layout: ReturnType<typeof mount> | null = null;
 let pool: Connections | null = null;
@@ -48,8 +50,8 @@ beforeEach(() => {
 	};
 	reads = hangingReads();
 	server.use(
-		http.get(`${API_BASE}/api/update-check`, () => HttpResponse.json(null, { status: 503 })),
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(null, { status: 503 }))
+		http.get(`${API_BASE}/api/update-check`, () => errorAnswer(503)),
+		http.get(`${API_BASE}/api/settings`, () => errorAnswer(503))
 	);
 	setUrl('/');
 	localStorage.clear();
@@ -93,10 +95,10 @@ describe('topbar live search — the query moves on', () => {
 				const { query } = (await info.request.clone().json()) as { query: string };
 				asked.push(query);
 				if (query === 'fri') return reads.hang(info);
-				return HttpResponse.json([kitsuRef('7', 'Frieren', 28)]);
+				return HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('7', 'Frieren', 28)]);
 			}),
 			http.post(`${API_BASE}/api/availability/batch`, () =>
-				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 			)
 		);
 		pool = sixConnections();
@@ -135,11 +137,12 @@ describe('topbar live search — the query moves on', () => {
 		server.use(
 			http.post(`${API_BASE}/api/kitsu/search`, async (info) => {
 				const { query } = (await info.request.clone().json()) as { query: string };
-				if (query === 'fri') return HttpResponse.json([kitsuRef('8', 'Fried Rice Show', 12)]);
+				if (query === 'fri')
+					return HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('8', 'Fried Rice Show', 12)]);
 				return reads.hang(info);
 			}),
 			http.post(`${API_BASE}/api/availability/batch`, () =>
-				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 			)
 		);
 		pool = sixConnections();
@@ -166,7 +169,7 @@ describe('topbar live search — the query moves on', () => {
 		server.use(
 			http.post(`${API_BASE}/api/kitsu/search`, () => {
 				asked += 1;
-				return HttpResponse.json([]);
+				return HttpResponse.json<KitsuAnimeRef[]>([]);
 			})
 		);
 		const children = createRawSnippet(() => ({ render: () => '<div></div>' }));

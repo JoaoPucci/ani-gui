@@ -23,6 +23,8 @@ import { downloadStore } from '../../src/lib/download/store.svelte';
 import { m } from '../../src/lib/paraglide/messages';
 import DownloadDock from '../../src/lib/components/DownloadDock.svelte';
 
+import { wire } from '../answers';
+import type { AniErrorPayload } from '../../src/lib/api';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -106,7 +108,7 @@ describe('the download dock words a provider failure as the play page does', () 
 		// episode is not: the typed verdict with its key, no message.
 		stream.dispatch(
 			'error',
-			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
+			wire<AniErrorPayload>({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
 		);
 		await until(
 			() => downloadStore.items.find((i) => i.id === id)?.status === 'error',
@@ -142,7 +144,7 @@ describe('the download dock words a provider failure as the play page does', () 
 		const stream = FakeEventSource.instances.find((i) => i.url.includes('/api/download/stream?'))!;
 		stream.dispatch(
 			'error',
-			JSON.stringify({
+			wire<AniErrorPayload>({
 				kind: 'stream_server_failed',
 				key: 'error.play.stream_server_failed',
 				stage: 'embed',
@@ -180,7 +182,7 @@ describe('the download dock words a provider failure as the play page does', () 
 		const stream = FakeEventSource.instances.find((i) => i.url.includes('/api/download/stream?'))!;
 		stream.dispatch(
 			'error',
-			JSON.stringify({
+			wire<AniErrorPayload>({
 				kind: 'parse_failed',
 				key: 'error.scraper.parse_failed',
 				detail: 'the page is not the search shape'

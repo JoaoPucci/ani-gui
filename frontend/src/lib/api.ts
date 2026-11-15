@@ -379,12 +379,6 @@ export interface HistoryEntry {
  *  alone, without the year `/api/history` reads from its show key. */
 export type HistoryRowByKitsu = Omit<HistoryEntry, 'key_year'>;
 
-/** Input to `cmd_create_session`. */
-export interface CreateSessionArgs {
-	upstream_url: string;
-	referer: string;
-}
-
 /** What kind of media the resolved upstream serves. The renderer uses
  *  this to pick hls.js vs. a plain `<video src>` for direct MP4 streams
  *  (wixmp / sharepoint / fast4speed) that don't have an HLS manifest. */
@@ -400,7 +394,7 @@ export interface SessionSubtitle {
 	url: string;
 }
 
-/** Output of `cmd_create_session` — proxy URLs the player should fetch. */
+/** A play's session — proxy URLs the player should fetch. */
 export interface CreateSessionResponse {
 	session_id: string;
 	/** Full proxy URL the player should fetch. For HLS sessions this
@@ -700,10 +694,6 @@ export interface HistoryNumber {
  *  the page read it. `null` when no row is the show's. */
 export function historyNumber(id: string, opts: ReadOptions = {}): Promise<HistoryNumber | null> {
 	return getJson<HistoryNumber | null>(`/api/history/${encodeURIComponent(id)}/number`, opts);
-}
-
-export function createSession(args: CreateSessionArgs): Promise<CreateSessionResponse> {
-	return postJson<CreateSessionResponse>('/api/sessions', args);
 }
 
 /** Body for the play endpoints — same shape on both `/api/play` and

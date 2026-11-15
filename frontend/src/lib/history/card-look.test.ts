@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { KitsuAnimeRef, KitsuEpisode } from '$lib/api';
+import type { KitsuPosterImage, KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 import {
 	cardText,
 	decideLook,
@@ -9,14 +9,17 @@ import {
 	type LookInputs
 } from './card-look';
 
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 const proxy = (u: string | null) => (u ? `proxy:${u}` : null);
 
 function ref(id: string, poster: string | null = `https://img/${id}.jpg`): KitsuAnimeRef {
-	return {
+	return kitsuRefAnswer({
 		id,
 		canonical_title: `Show ${id}`,
-		poster_image: poster ? { medium: poster, large: null, small: null, original: null } : null
-	} as unknown as KitsuAnimeRef;
+		poster_image: poster
+			? { tiny: null, small: null, medium: poster, large: null, original: null }
+			: null
+	});
 }
 
 function ep(thumb: string | null, title: string | null = 'An Episode'): KitsuEpisode {
@@ -150,11 +153,11 @@ describe('offeredEpisode', () => {
 
 describe('posterSource', () => {
 	it('prefers the medium poster and falls through the sizes', () => {
-		const sized = (p: Record<string, string | null>) =>
-			({
+		const sized = (p: Partial<KitsuPosterImage>) =>
+			kitsuRefAnswer({
 				id: '1',
-				poster_image: { medium: null, large: null, small: null, original: null, ...p }
-			}) as unknown as KitsuAnimeRef;
+				poster_image: { tiny: null, small: null, medium: null, large: null, original: null, ...p }
+			});
 		expect(posterSource(sized({ medium: 'm', large: 'l' }))).toBe('m');
 		expect(posterSource(sized({ large: 'l', small: 's' }))).toBe('l');
 		expect(posterSource(sized({ small: 's', original: 'o' }))).toBe('s');

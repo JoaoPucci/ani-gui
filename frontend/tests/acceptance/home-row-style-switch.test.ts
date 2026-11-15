@@ -29,6 +29,7 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { ROW_PREFS_STORAGE_KEY } from '../../src/lib/rows/prefs';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
@@ -38,9 +39,11 @@ beforeEach(() => {
 	server.use(
 		...homeHandlers({}, [
 			http.get(`${API_BASE}/api/kitsu/top-rated`, () =>
-				HttpResponse.json([kitsuRef('7', 'Top Show', 12)])
+				HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('7', 'Top Show', 12)])
 			),
-			http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} }))
+			http.post(`${API_BASE}/api/availability/batch`, () =>
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+			)
 		])
 	);
 	target = document.createElement('div');
