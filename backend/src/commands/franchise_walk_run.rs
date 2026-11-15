@@ -111,7 +111,7 @@ pub(crate) fn walk_with(
 /// A side-story anchor's parents and the chain it is drawn on, from its
 /// own parent stories before its run's (`Run::parent_choices`): those
 /// in the main story and no chain; else, where the main story leaves
-/// them all out, those in the franchise, on the chain of the earliest,
+/// them all out, those on the chain of the earliest, drawn on it,
 /// or on that parent alone where it is chained to nothing (its only
 /// links being to versions or settings of it, or to music videos). Any
 /// other anchor has no parents, and its own chain.
@@ -128,8 +128,7 @@ fn side_chain(
     }
     // The anchor's own parents before its run's: those in the main
     // story, else those the main story leaves out, drawn on the
-    // earliest one's chain (or on it alone, chained to nothing); the
-    // main story may hold one the first run did not.
+    // earliest one's chain (or on it alone, chained to nothing).
     for choice in &first.parent_choices {
         let in_main: Vec<String> = choice
             .iter()
@@ -149,7 +148,13 @@ fn side_chain(
                 own: BTreeSet::from([p.clone()]),
                 seams: BTreeSet::new(),
             });
-            return (in_franchise, Some(drawn));
+            // Only the parents on the chain it is drawn on: another of
+            // them may sit on a chain of its own.
+            let on_chain = in_franchise
+                .into_iter()
+                .filter(|q| drawn.own.contains(q) || drawn.seams.contains(q))
+                .collect();
+            return (on_chain, Some(drawn));
         }
     }
     (Vec::new(), None)
