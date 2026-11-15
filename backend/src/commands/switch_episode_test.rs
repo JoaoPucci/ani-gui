@@ -56,6 +56,9 @@ fn a_row_episode_reads_as_the_history_reads_it() {
 
 /// The renderer's `parseHistoryEpisode`, `/^\s*(\d+(?:\.\d+)?)/`, by
 /// hand: the leading digits, then a dot and digits when both follow.
+/// Written apart from `row_episode`, it is no independent oracle: what
+/// holds both to the renderer is the fixed cases above, which
+/// `episode-number.test.ts` runs through `parseHistoryEpisode` too.
 fn parse_history_episode(raw: &str) -> Option<f64> {
     let t = raw.trim_start();
     let whole: String = t.chars().take_while(char::is_ascii_digit).collect();
