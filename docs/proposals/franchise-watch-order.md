@@ -570,9 +570,11 @@ seasons only as parent story or other, so from any film the seasons
 are the run and the films sit under Films. The walk starts from the
 earliest parent story any of the films names, so every film's page
 shows the same main story, and a film the seasons do not list sits
-under Films as well. A film that names no parent of its own in the
-seasons' run is placed under the parents the other films of its chain
-name. Kitsu sometimes lists a pair the wrong way
+under Films as well. A film is placed under the parents it names in
+the main story, else under those it names that the main story leaves
+out, on the earliest one's chain; one that names no parent of its own
+in the franchise is placed under the parents the other films of its
+chain name, the same way. Kitsu sometimes lists a pair the wrong way
 round, from both sides: [data] on 2026-11-11 *One Piece* (12) named
 *LEGO ONE PIECE* (50656), a two-episode ONA from 2026, as its parent
 story, and *LEGO ONE PIECE* named *One Piece* as its side story. So
