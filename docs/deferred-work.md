@@ -530,7 +530,7 @@ starting it, and delete it when you find it done.
   whether a marked card still opens its page, whether the grid's
   order or count changes, and whether the surfaces that hide such
   cards before rendering should show them marked too. Once that is
-  decided, search's music-video filter is to be revisited
+  decided, search's exclusion of music videos is to be revisited
   (maintainer, 2026-11-16): music videos are kept out because Kitsu
   lists far more of them than the provider serves, so showing them
   would put many results in search that then get filtered out as not
