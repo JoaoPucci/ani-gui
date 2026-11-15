@@ -81,6 +81,9 @@ const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own bina
 //   log the abort (kernel trap line, AppArmor audit, apport's own log).
 // - A watchdog kills a probe that has not returned by the bound, with
 //   bash's own `wait`, not coreutils `timeout`.
+// - Every child the block signals, it then waits for, the watchdog's
+//   sleeper included: a child left unreaped goes to PID 1, and a
+//   container's PID 1 that does not reap keeps it as a zombie.
 // - The probe runs as a background job the launcher waits on, so an
 //   interrupt (Ctrl-C, SIGTERM, or SIGHUP when the terminal closes) is
 //   handled at once. It stops the probe and its watchdog, removes the
@@ -133,10 +136,13 @@ ani_gui_sandbox_starts()
     prev_bg=$!
     probe=
     watchdog=
+    # Each child signalled here is also waited for: one still unreaped
+    # when this subshell exits goes to PID 1, and in a container whose
+    # PID 1 does not reap, it stays there as a zombie.
     stop_children()
     {
-      if [ -n "$probe" ] ; then kill -9 "$probe" ; elif [ -z "$watchdog" ] && [ "$!" != "$prev_bg" ] ; then kill -9 "$!" ; fi
-      if [ -n "$watchdog" ] ; then kill "$watchdog" ; wait "$watchdog" ; elif [ -n "$probe" ] && [ "$!" != "$probe" ] ; then kill "$!" ; fi
+      if [ -n "$probe" ] ; then kill -9 "$probe" || true ; wait "$probe" || true ; elif [ -z "$watchdog" ] && [ "$!" != "$prev_bg" ] ; then kill -9 "$!" || true ; wait "$!" || true ; fi
+      if [ -n "$watchdog" ] ; then kill "$watchdog" || true ; wait "$watchdog" || true ; elif [ -n "$probe" ] && [ "$!" != "$probe" ] ; then kill "$!" || true ; wait "$!" || true ; fi
       exit 143
     }
     trap stop_children TERM
@@ -145,7 +151,7 @@ ani_gui_sandbox_starts()
     probe=$!
     (
       sleeper=
-      trap 'if [ -n "$sleeper" ] ; then kill "$sleeper" ; elif [ "$!" != "$probe" ] ; then kill "$!" ; fi ; exit 0' TERM
+      trap 'if [ -n "$sleeper" ] ; then kill "$sleeper" || true ; wait "$sleeper" || true ; elif [ "$!" != "$probe" ] ; then kill "$!" || true ; wait "$!" || true ; fi ; exit 0' TERM
       sleep ${PROBE_BOUND_SECONDS} &
       sleeper=$!
       wait "$sleeper"
