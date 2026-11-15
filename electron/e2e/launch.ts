@@ -39,6 +39,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { launchRefusal } from '../lib/e2e-display.cjs';
 import { stopOwnGroup } from '../lib/own-group.cjs';
+import { guardPolicy } from './policy-guard';
 import { answer } from './stubs';
 
 /** electron-builder's pre-AppImage output — the production code path:
@@ -151,7 +152,9 @@ function removeAfterExit(dir: string): void {
  *  (its HOME or XDG directories): it is removed, that path alone, once
  *  the app has exited, and again once its backend has had time to stop,
  *  or at once if the launch never starts. A worker killed before its
- *  app exits leaves the profile behind. */
+ *  app exits leaves the profile behind. Every launch is guarded: a
+ *  content security policy violation the test did not declare fails it
+ *  (./policy-guard.ts). */
 export async function launchPackagedApp(
 	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env'],
 	{ binary = packagedBinary, profile }: { binary?: string; profile?: string } = {}
@@ -187,6 +190,7 @@ export async function launchPackagedApp(
 	});
 	launched.set(app, { child: app.process(), exe });
 	refused.set(app, proxy.seen);
+	guardPolicy(app);
 	return app;
 }
 

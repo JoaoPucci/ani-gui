@@ -18,7 +18,7 @@
  * the main process must answer, the keyring notice must go up, and the
  * saved sign-in must be left as it was.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./policy-guard";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";

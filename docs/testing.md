@@ -153,6 +153,13 @@ listener on the window's session, as it has to add the secret header
 data as unreachable. `tests/arch/e2e_stub_server.sh` keeps
 Playwright's in-place answer out of `electron/`.
 
+Every spec takes `test` and `expect` from `electron/e2e/policy-guard.ts`,
+not from `@playwright/test`, and `tests/arch/e2e_policy_guard.sh`
+checks that each spec imports from it. The launch helper guards every
+app it starts: it reads the app's output for content security policy
+violations, the first page's included. The guard's `test` then fails
+a test on any violation it did not declare with `expectViolation`.
+
 A spec that plays a stream starts it as a viewer does, by clicking the
 home page's Continue card (`electron/e2e/real-play.ts`), and the play
 runs through the backend: its play route, its session and its stream
