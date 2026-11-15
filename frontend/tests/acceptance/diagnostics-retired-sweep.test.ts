@@ -35,6 +35,8 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 import { locales, setLocale } from '../../src/lib/paraglide/runtime';
 
+import type { AppInfo, HistoryEntry } from '../../src/lib/api';
+import { appInfoAnswer } from '../answers';
 interface Report {
 	superseded: string[];
 	renumbered: string[];
@@ -50,15 +52,17 @@ let app: ReturnType<typeof mount> | null = null;
 function serve(report: Report) {
 	server.use(
 		http.get(`${API_BASE}/api/app-info`, () =>
-			HttpResponse.json({
-				version: '0.18.0',
-				history_path: '/home/u/.local/state/ani-gui/history',
-				proxy_base_url: API_BASE,
-				removed_legacy_paths: [],
-				retired_provider_sweep: report
-			})
+			HttpResponse.json<AppInfo>(
+				appInfoAnswer({
+					version: '0.18.0',
+					history_path: '/home/u/.local/state/ani-gui/history',
+					proxy_base_url: API_BASE,
+					removed_legacy_paths: [],
+					retired_provider_sweep: report
+				})
+			)
 		),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([]))
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>([]))
 	);
 }
 

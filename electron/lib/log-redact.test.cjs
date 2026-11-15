@@ -1,9 +1,8 @@
 // What the main process writes to its log — the renderer's console
 // lines, failed page loads, the backend's output — never carries the
-// launch's secret. The renderer's <img> and EventSource URLs carry it
-// as `secret=` (frontend/src/lib/backend/secret.ts), a console line can
-// name one of them, and the main process's stdout lands in the journal
-// or a terminal another user may read.
+// launch's secret, by value or in the shapes it travels in (the header,
+// a `secret=` parameter), and the main process's stdout lands in the
+// journal or a terminal another user may read.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");

@@ -105,6 +105,13 @@ outputs() { printf 'relevant=%s\npicker=%s\ntracker_map=%s' "$1" "$2" "$3"; }
     [ "$output" = "$(outputs true true false)" ]
 }
 
+@test "the e2e replay row selects the Rust pipeline only: the cache test reads it" {
+    head=$(change electron/e2e/fixtures/replay-row.json)
+    run filter pull_request "$base" "$head"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(outputs true false false)" ]
+}
+
 @test "the toolchain pin selects the Rust pipeline only" {
     head=$(change rust-toolchain.toml)
     run filter pull_request "$base" "$head"

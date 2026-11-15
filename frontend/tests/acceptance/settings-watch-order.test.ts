@@ -9,6 +9,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { appConfig } from './home-handlers';
+import { appInfoAnswer, malformedAnswer } from '../answers';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -24,14 +25,14 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import SettingsPage from '../../src/routes/settings/+page.svelte';
-import { __resetApiBaseForTests } from '../../src/lib/api';
+import { __resetApiBaseForTests, type AppInfo, type Config } from '../../src/lib/api';
 
-const APP_INFO = {
+const APP_INFO: AppInfo = appInfoAnswer({
 	version: '0.12.1',
 	history_path: '/home/u/.local/state/ani-gui/history',
 	proxy_base_url: 'http://127.0.0.1:31337',
 	removed_legacy_paths: []
-};
+});
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
@@ -57,20 +58,22 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function useSettings(watchOrder: string) {
+/** The settings answer with `watchOrder` stored: an order the backend
+ *  reads back (it reads any other as As linked), or one it never sends,
+ *  for what the page does with it. */
+function useSettings(watchOrder: Config['watch_order'] | 'story') {
 	const puts: Record<string, unknown>[] = [];
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({ ...appConfig(), watch_order: watchOrder })
+			watchOrder === 'story'
+				? malformedAnswer({ ...appConfig(), watch_order: watchOrder })
+				: HttpResponse.json<Config>({ ...appConfig(), watch_order: watchOrder })
 		),
 		http.put(`${API_BASE}/api/settings`, async ({ request }) => {
 			puts.push((await request.json()) as Record<string, unknown>);
 			return new HttpResponse(null, { status: 204 });
 		}),
-		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO)),
-		http.get(`${API_BASE}/api/account/status`, () =>
-			HttpResponse.json({ anilist: null, mal: null })
-		)
+		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json<AppInfo>(APP_INFO))
 	);
 	return puts;
 }

@@ -28,6 +28,8 @@ import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
@@ -73,11 +75,19 @@ describe('home hero, when there is no show to feature', () => {
 		const shows = [kitsuRef('1', 'Gone', 12), kitsuRef('2', 'Also gone', 12)];
 		server.use(
 			...homeHandlers({}, [
-				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json(shows)),
-				http.post(`${API_BASE}/api/availability/batch`, () =>
-					HttpResponse.json({ cached: { '1': false, '2': false }, playable_episode_counts: {} })
+				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+					HttpResponse.json<KitsuAnimeRef[]>(shows)
 				),
-				http.post(`${API_BASE}/api/availability/warm`, () => HttpResponse.json(null))
+				http.post(`${API_BASE}/api/availability/batch`, () =>
+					HttpResponse.json<AvailabilityBatchResponse>({
+						cached: { '1': false, '2': false },
+						playable_episode_counts: {}
+					})
+				),
+				http.post(
+					`${API_BASE}/api/availability/warm`,
+					() => new HttpResponse(null, { status: 202 })
+				)
 			])
 		);
 		app = mount(HomePage, { target });
@@ -90,9 +100,7 @@ describe('home hero, when there is no show to feature', () => {
 	it('says the catalogue is unreachable when the trending fetch fails', async () => {
 		server.use(
 			...homeHandlers({}, [
-				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
-					HttpResponse.json(null, { status: 500 })
-				)
+				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => errorAnswer(500))
 			])
 		);
 		app = mount(HomePage, { target });
@@ -110,7 +118,12 @@ describe('home hero, when there is no show to feature', () => {
 	// a message state's text has to sit in one too.
 	const showWithArt = {
 		...kitsuRef('1', 'Featured', 12),
-		cover_image: { large: 'https://media.kitsu.app/anime/1/cover_image/large.jpg' }
+		cover_image: {
+			tiny: null,
+			small: null,
+			large: 'https://media.kitsu.app/anime/1/cover_image/large.jpg',
+			original: null
+		}
 	};
 	const layerOf = (selector: string) => {
 		const el = hero()?.querySelector(selector);
@@ -119,12 +132,8 @@ describe('home hero, when there is no show to feature', () => {
 	};
 
 	it.each([
-		['empty list', () => HttpResponse.json([]), () => m.home_hero_empty_title()],
-		[
-			'failed fetch',
-			() => HttpResponse.json(null, { status: 500 }),
-			() => m.home_hero_error_title()
-		]
+		['empty list', () => HttpResponse.json<KitsuAnimeRef[]>([]), () => m.home_hero_empty_title()],
+		['failed fetch', () => errorAnswer(500), () => m.home_hero_error_title()]
 	])(
 		'places the %s message low in the banner, where the featured text sits',
 		async (_, answer, title) => {
@@ -138,7 +147,9 @@ describe('home hero, when there is no show to feature', () => {
 	it('keeps the featured text in that same layer', async () => {
 		server.use(
 			...homeHandlers({}, [
-				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([showWithArt]))
+				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+					HttpResponse.json<KitsuAnimeRef[]>([showWithArt])
+				)
 			])
 		);
 		app = mount(HomePage, { target });
@@ -153,7 +164,7 @@ describe('home hero, when there is no show to feature', () => {
 			...homeHandlers({}, [
 				http.get(`${API_BASE}/api/kitsu/trending-anilist`, async () => {
 					await held;
-					return HttpResponse.json([]);
+					return HttpResponse.json<KitsuAnimeRef[]>([]);
 				})
 			])
 		);

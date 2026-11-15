@@ -41,6 +41,8 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { accountStore } from '../../src/lib/account/store.svelte';
 
+import type { AvailabilityResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 let pool: Connections | null = null;
@@ -80,19 +82,21 @@ afterEach(() => {
 function slowShowReads(held: HangingReads) {
 	server.use(
 		http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
-			HttpResponse.json({
+			HttpResponse.json<KitsuAnimeRef>({
 				...kitsuRef(String(params.id), `Show ${String(params.id)}`, 12),
 				status: 'current',
 				subtype: 'TV'
 			})
 		),
 		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
-			})
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.get(`${API_BASE}/api/settings`, held.hang),
 		http.get(`${API_BASE}/api/download/default-dir`, held.hang),

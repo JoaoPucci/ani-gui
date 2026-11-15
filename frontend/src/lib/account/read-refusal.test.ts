@@ -4,6 +4,8 @@ import fc from 'fast-check';
 import { handleRefusedBearer, refusalApplies, type RefusedBearerDeps } from './read-refusal';
 import type { PersistedAccount, Provider, ProviderState } from './types';
 
+import { wire } from '$lib/testing/wire-answers';
+import type { AniErrorPayload } from '../api';
 function acc(refresh_token: string | null): PersistedAccount {
 	return {
 		access_token: 'old',
@@ -19,15 +21,17 @@ function deps(state: ProviderState, over: Partial<RefusedBearerDeps> = {}): Refu
 	return {
 		state: () => state,
 		changing: () => false,
-		setConnected: vi.fn(),
-		setExpired: vi.fn(),
-		noteRenewalFailed: vi.fn(),
-		refreshTokens: vi.fn().mockResolvedValue({
+		setConnected: vi.fn<NonNullable<RefusedBearerDeps['setConnected']>>(),
+		setExpired: vi.fn<NonNullable<RefusedBearerDeps['setExpired']>>(),
+		noteRenewalFailed: vi.fn<NonNullable<RefusedBearerDeps['noteRenewalFailed']>>(),
+		refreshTokens: vi.fn<NonNullable<RefusedBearerDeps['refreshTokens']>>().mockResolvedValue({
 			access_token: 'new',
 			refresh_token: 'rt2',
 			expires_at_epoch_s: 4_000_000_100
 		}),
-		persistAccount: vi.fn().mockResolvedValue({ ok: true }),
+		persistAccount: vi
+			.fn<NonNullable<RefusedBearerDeps['persistAccount']>>()
+			.mockResolvedValue({ ok: true }),
 		generation: () => 0,
 		...over
 	};
@@ -35,11 +39,11 @@ function deps(state: ProviderState, over: Partial<RefusedBearerDeps> = {}): Refu
 
 const refused = new AccountApiError(
 	401,
-	JSON.stringify({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' })
+	wire<AniErrorPayload>({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' })
 );
 const down = new AccountApiError(
 	502,
-	JSON.stringify({ kind: 'upstream', key: 'error.network.upstream', status: 503 })
+	wire<AniErrorPayload>({ kind: 'upstream', key: 'error.network.upstream', status: 503 })
 );
 
 describe('handleRefusedBearer', () => {
@@ -63,7 +67,11 @@ describe('handleRefusedBearer', () => {
 			const account = acc('rt');
 			const d = deps(
 				{ kind: 'connected', account, lastSyncedAt: 0 },
-				{ refreshTokens: vi.fn().mockRejectedValue(error) }
+				{
+					refreshTokens: vi
+						.fn<NonNullable<RefusedBearerDeps['refreshTokens']>>()
+						.mockRejectedValue(error)
+				}
 			);
 			await handleRefusedBearer(d, 'mal', 'old');
 			expect(d.setExpired).toHaveBeenCalledWith('mal', account);
@@ -96,10 +104,12 @@ describe('handleRefusedBearer', () => {
 			{ kind: 'connected', account: acc('rt'), lastSyncedAt: 0 },
 			{
 				generation: () => gen,
-				refreshTokens: vi.fn().mockImplementation(async () => {
-					gen = 1;
-					throw refused;
-				})
+				refreshTokens: vi
+					.fn<NonNullable<RefusedBearerDeps['refreshTokens']>>()
+					.mockImplementation(async () => {
+						gen = 1;
+						throw refused;
+					})
 			}
 		);
 		await handleRefusedBearer(d, 'mal', 'old');

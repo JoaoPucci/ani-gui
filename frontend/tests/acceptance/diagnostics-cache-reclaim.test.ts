@@ -30,21 +30,25 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 import { locales, setLocale } from '../../src/lib/paraglide/runtime';
 
+import type { AppInfo, HistoryEntry } from '../../src/lib/api';
+import { appInfoAnswer } from '../answers';
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
 function serve(undeclared_rows: number, expired_rows: number) {
 	server.use(
 		http.get(`${API_BASE}/api/app-info`, () =>
-			HttpResponse.json({
-				version: '0.18.0',
-				history_path: '/home/u/.local/state/ani-gui/history',
-				proxy_base_url: API_BASE,
-				removed_legacy_paths: [],
-				cache_reclaim: { undeclared_rows, expired_rows }
-			})
+			HttpResponse.json<AppInfo>(
+				appInfoAnswer({
+					version: '0.18.0',
+					history_path: '/home/u/.local/state/ani-gui/history',
+					proxy_base_url: API_BASE,
+					removed_legacy_paths: [],
+					cache_reclaim: { undeclared_rows, expired_rows }
+				})
+			)
 		),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([]))
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>([]))
 	);
 }
 

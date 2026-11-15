@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { KitsuAnimeRef } from '$lib/api';
 import { createLiveSearch, type LiveSearchDeps, type LiveSearchView } from './live-search';
 
-const hit = (id: string) => ({ id, canonical_title: `Show ${id}` }) as unknown as KitsuAnimeRef;
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+const hit = (id: string) => kitsuRefAnswer({ id, canonical_title: `Show ${id}` });
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 /** A search held until the case answers it, with the signal it went out with. */
@@ -203,7 +204,9 @@ describe('createLiveSearch', () => {
 	it('runs on the real timer when none is given', async () => {
 		vi.useFakeTimers();
 		try {
-			const search = vi.fn(async () => [] as KitsuAnimeRef[]);
+			const search = vi.fn<NonNullable<LiveSearchDeps['search']>>(
+				async () => [] as KitsuAnimeRef[]
+			);
 			const live = createLiveSearch({
 				search,
 				filter: async (hits) => hits,

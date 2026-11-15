@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createRowTrust } from './row-trust';
-import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
+import type { HistoryEntry } from '$lib/api';
 
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 const row = (id: string): HistoryEntry => ({ id, ep_no: '1', title: 'Show' });
-const ref = (id: string) => ({ id }) as unknown as KitsuAnimeRef;
+const ref = (id: string) => kitsuRefAnswer({ id });
 
 describe('which Continue rows are matched by a guess', () => {
 	it('notes a guessed match per row, and not a trusted one', async () => {

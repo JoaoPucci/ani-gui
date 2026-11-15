@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const { forgetCachedEntry } = vi.hoisted(() => ({
-	forgetCachedEntry: vi.fn(async () => undefined)
+	forgetCachedEntry: vi.fn<typeof EntryApi.forgetCachedEntry>(async () => undefined)
 }));
 vi.mock('./entry-api', () => ({ forgetCachedEntry }));
 
 import { forgetCachedUnder } from './forget-cached';
 
+import type * as EntryApi from './entry-api';
 afterEach(() => forgetCachedEntry.mockClear());
 
 describe('forgetCachedUnder', () => {
