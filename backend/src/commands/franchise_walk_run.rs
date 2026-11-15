@@ -35,13 +35,13 @@ pub(crate) struct Run {
     pub(crate) parent_choices: Vec<Vec<String>>,
     /// The other entries of the anchor's own run of one-offs, when the
     /// walk moved to their parent's run and that run left them out:
-    /// listed around it like the anchor, music videos aside.
+    /// listed around it like the anchor.
     pub(crate) beside: BTreeSet<String>,
     /// The franchise's entries (every entry joined to the main story by
     /// prequel and sequel links, `franchise_walk_root.rs`) that the main
     /// story leaves out, the anchor among them when it is one: listed
     /// around it, where its members' listings place them, else among the
-    /// other versions (a movie, the films), music videos aside. They are
+    /// other versions (a movie, the films). They are
     /// the franchise's, so every page of it lists the same ones.
     pub(crate) moved: BTreeSet<String>,
     /// The anchor's own chain, when the main story leaves it out
@@ -113,7 +113,7 @@ pub(crate) fn walk_with(
 /// in the main story and no chain; else, where the main story leaves
 /// them all out, those on the chain of the earliest, drawn on it,
 /// or on that parent alone where it is chained to nothing (its only
-/// links being to versions or settings of it, or to music videos). Any
+/// links being to versions or settings of it). Any
 /// other anchor has no parents, and its own chain.
 fn side_chain(
     anchor: &str,
@@ -169,17 +169,8 @@ fn side_chain(
 pub(crate) fn run(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>> {
     let first = first(anchor, look)?;
     let (settled, franchise) = settle(first.clone(), look)?;
-    let is_music = |m: &String| {
-        look.entry(m, &settled.consulted)
-            .is_some_and(|e| e.subtype.as_deref() == Some("music"))
-    };
     let outside = |m: &&String| !settled.members.contains_key(*m);
-    let moved = franchise
-        .iter()
-        .filter(outside)
-        .filter(|m| m.as_str() == anchor || !is_music(m))
-        .cloned()
-        .collect();
+    let moved = franchise.iter().filter(outside).cloned().collect();
     let beside = first.beside.iter().filter(outside).cloned().collect();
     let side_anchor = first.side_anchor && !settled.members.contains_key(anchor);
     let (parents, chain) = side_chain(anchor, side_anchor, &first, &settled, &franchise, look);

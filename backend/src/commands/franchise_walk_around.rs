@@ -1,13 +1,16 @@
 //! What sits around a run, from its members' listings, and the
 //! response assembled from it:
 //!
-//! - **versions**: the entries rules 2 and 3 left out, music
-//!   aside, and the anime members list as `alternative_version`;
+//! - **versions**: the entries rules 2 and 3 left out, and the anime
+//!   members list as `alternative_version`;
 //! - **recaps**: what members list as `summary`, a TV series aside: a
 //!   series that retells another is one of its versions;
 //! - **films** and **sides**: the rest, prequel and sequel aside (run or
 //!   versions), `character`, `adaptation` and the alternatives aside,
-//!   manga and music aside; a `movie` is a film, anything else a side.
+//!   manga aside; a `movie` is a film, anything else a side.
+//!
+//! No music video is among them: the walk reads every listing without
+//! them (`franchise_walk_music.rs`).
 //!
 //! A movie is a film whatever the role that placed it: a version or a
 //! recap that is a movie is listed under films. An id lands in one
@@ -42,24 +45,14 @@ const NOT_AROUND: [&str; 6] = [
 ];
 
 fn sections(run: &Run, look: &Lookup<'_>) -> Sections {
-    let music = |id: &String| {
-        look.entry(id, &run.consulted)
-            .is_some_and(|e| e.subtype.as_deref() == Some("music"))
-    };
     let mut s = Sections {
-        versions: run
-            .left_out
-            .iter()
-            .filter(|id| !music(id))
-            .cloned()
-            .collect(),
+        versions: run.left_out.clone(),
         ..Sections::default()
     };
     let listings = run.members.keys().filter_map(|m| look.listing(m));
     for listing in listings {
         for r in &listing.relations {
-            let music = r.subtype.as_deref() == Some("music");
-            if r.kind != "anime" || music || run.members.contains_key(&r.id) {
+            if r.kind != "anime" || run.members.contains_key(&r.id) {
                 continue;
             }
             let to = match r.role.as_str() {
