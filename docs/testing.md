@@ -438,7 +438,11 @@ and assert the negative then. Where the action would begin before a
 call returns, such as a click whose handler would send its request
 straight away, count it where the request is made rather than where a
 handler answers it, and the negative can be read as soon as the call
-returns.
+returns. Where the subject waits on a timer of its own before it
+acts, as the topbar's live search waits for the typing to pause, the
+witness is that timer's end: `frontend/tests/acceptance/scheduled-timers.ts`
+follows the timers an action arms until each has fired or been
+cleared, and what the subject asks on them is recorded as it asks.
 
 A 0 ms timer is a sleep of the same kind wherever the page's requests
 pass through MSW: one turn of the event loop is not known to carry
