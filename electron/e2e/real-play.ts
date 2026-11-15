@@ -14,8 +14,8 @@
  * is let through to the backend only once the row it reads has been
  * written, naming the spec's stream (lib/e2e-replay.cjs).
  *
- * Everything else the pages ask the API is answered by stubs
- * (stubs.ts): the show, its episode, a history with the show on it so
+ * Everything else the pages ask the API is answered by the stubs
+ * below, through stubs.ts's `answer`: the show, its episode, a history with the show on it so
  * the Continue card is there to click, and the settings the spec names.
  * The backend reads its own settings from the profile's config.
  */

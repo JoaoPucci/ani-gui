@@ -22,9 +22,6 @@ mod common;
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use wiremock::matchers::{method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
-
 /// The lanes beside the API that the handshake must announce.
 const LANES: [&str; 5] = ["stream", "image", "probe", "resolve", "download"];
 
@@ -124,6 +121,7 @@ async fn app_info(api: &str, secret: &str) -> serde_json::Value {
 
 /// The file the backend keeps its metadata cache in, found under the
 /// test's home, where it lands on Linux and macOS.
+#[cfg(not(target_os = "windows"))]
 fn metadata_db(home: &Path) -> std::path::PathBuf {
     fn find(dir: &Path) -> Option<std::path::PathBuf> {
         for entry in std::fs::read_dir(dir).ok()?.flatten() {
@@ -155,6 +153,8 @@ fn metadata_db(home: &Path) -> std::path::PathBuf {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_plays_session_and_its_playlist_name_the_stream_lane() {
     use ani_gui::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     let upstream = MockServer::start().await;
     for verb in ["GET", "HEAD"] {
