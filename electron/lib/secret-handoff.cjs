@@ -17,12 +17,18 @@
 // same preload and is answered null — a page the window was navigated
 // to, a subframe, the splash, a frame already gone.
 //
+// The same keeper says which requests the main process adds the
+// secret header to (`forRequest`, secret-header.cjs).
+//
 // Pure apart from what it is handed: no Electron here.
 
 const { isAppDocument } = require("./app-document.cjs");
 
 /** The IPC channel the preload asks on. */
 const SECRET_CHANNEL = "ani-gui:internal-secret";
+
+/** The header the backend reads the secret from (gate.rs). */
+const SECRET_HEADER = "x-ani-gui-internal-secret";
 
 function senderFrameOf(event) {
   try {
@@ -88,7 +94,20 @@ function secretKeeper({ app, logError }) {
       }
       return secret;
     },
+    /** The secret for a request the main process adds the header to
+     *  (secret-header.cjs), judged as `answer` judges a caller: the
+     *  app's main frame, in a window it was handed to. `request` is
+     *  `{ webContents, frame }`; anything else is answered null, and
+     *  is not logged, since a page's every image would be. */
+    forRequest(request) {
+      if (!isAppMainFrame(request?.frame, app)) return null;
+      try {
+        return (request.webContents && held.get(request.webContents)) || null;
+      } catch {
+        return null;
+      }
+    },
   };
 }
 
-module.exports = { SECRET_CHANNEL, secretKeeper };
+module.exports = { SECRET_CHANNEL, SECRET_HEADER, secretKeeper };

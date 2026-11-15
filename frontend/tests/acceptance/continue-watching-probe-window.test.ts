@@ -35,6 +35,7 @@ vi.mock('$app/navigation', () => ({
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
+import type { KitsuAnimeRef } from '../../src/lib/api';
 const SHOW = 'Cowboy Bebop';
 const HISTORY = [{ ep_no: '3', id: 'allanime-1', title: SHOW }];
 
@@ -87,7 +88,7 @@ describe('Continue Watching row during the probe window', () => {
 				// the worker happens to take.
 				http.post(`${API_BASE}/api/kitsu/search`, async () => {
 					await matchHeld;
-					return HttpResponse.json([kitsuRef('1', SHOW, 26)]);
+					return HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', SHOW, 26)]);
 				})
 			])
 		);
@@ -138,7 +139,7 @@ describe('Continue Watching row during the probe window', () => {
 			...homeHandlers({ history: HISTORY }, [
 				http.post(`${API_BASE}/api/kitsu/search`, async () => {
 					await matchHeld;
-					return HttpResponse.json([kitsuRef('1', SHOW, 26)]);
+					return HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', SHOW, 26)]);
 				})
 			])
 		);

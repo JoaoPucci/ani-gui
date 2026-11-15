@@ -12,7 +12,7 @@
 // origin, the rest queued until one answers, fails or is cancelled.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { http, type HttpHandler } from 'msw';
+import { http, HttpResponse, type HttpHandler } from 'msw';
 import { mount, unmount, type Component } from 'svelte';
 
 import { API_BASE, server } from './setup';
@@ -37,6 +37,8 @@ import AccountPage from '../../src/routes/account/+page.svelte';
 import DiagnosticsPage from '../../src/routes/diagnostics/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
+import type { AppInfo } from '../../src/lib/api';
+import { appInfoAnswer } from '../answers';
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 let pool: Connections | null = null;
@@ -120,12 +122,14 @@ describe('leaving a page while its reads are out cancels them', () => {
 		// details answer and the history is held.
 		holding((hang) => [
 			http.get(`${API_BASE}/api/app-info`, () =>
-				Response.json({
-					version: '0.0.0',
-					history_path: '/h',
-					proxy_base_url: API_BASE,
-					removed_legacy_paths: []
-				})
+				HttpResponse.json<AppInfo>(
+					appInfoAnswer({
+						version: '0.0.0',
+						history_path: '/h',
+						proxy_base_url: API_BASE,
+						removed_legacy_paths: []
+					})
+				)
 			),
 			http.get(`${API_BASE}/api/history`, hang)
 		]);

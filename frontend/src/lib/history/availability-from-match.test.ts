@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { makeFetchAvailability } from './availability-from-match';
 import type { AvailabilityArgs, AvailabilityResponse, KitsuAnimeRef } from '$lib/api';
 
+import { availabilityAnswer, kitsuRefAnswer } from '$lib/testing/wire-answers';
 function makeMatch(overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
-	return {
+	return kitsuRefAnswer({
 		id: 'kitsu-id',
 		slug: 'slug',
 		canonical_title: 'Canonical Title',
@@ -14,12 +15,12 @@ function makeMatch(overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 		poster_image: null,
 		start_date: '2024-01-12',
 		...overrides
-	} as unknown as KitsuAnimeRef;
+	});
 }
 
 describe('makeFetchAvailability', () => {
 	it('maps a match into AvailabilityArgs and forwards to the IPC fn', async () => {
-		const ipc = vi.fn().mockResolvedValue({
+		const ipc = vi.fn<Parameters<typeof makeFetchAvailability>[0]>().mockResolvedValue({
 			available: true,
 			episode_count: 13,
 			extra_episodes: [],
@@ -46,7 +47,7 @@ describe('makeFetchAvailability', () => {
 		// for it, and the walk is the first caller's: a Continue
 		// Watching lookup without the subtype would hand a detail
 		// page's lookup a pick made without the format check.
-		const ipc = vi.fn().mockResolvedValue({
+		const ipc = vi.fn<Parameters<typeof makeFetchAvailability>[0]>().mockResolvedValue({
 			available: true,
 			episode_count: 1,
 			extra_episodes: [],
@@ -66,7 +67,7 @@ describe('makeFetchAvailability', () => {
 		// disambiguation differentiates "no signal" from "explicit
 		// zero/empty," and a `null` would round-trip as the wrong
 		// signal.
-		const ipc = vi.fn().mockResolvedValue({
+		const ipc = vi.fn<Parameters<typeof makeFetchAvailability>[0]>().mockResolvedValue({
 			available: false,
 			episode_count: null,
 			extra_episodes: [],
@@ -94,7 +95,7 @@ describe('makeFetchAvailability', () => {
 		// background probes and skips them while its breaker is open,
 		// which is what stops a cold-cache launch from rate-limiting
 		// the IP out from under the user's first play click.
-		const ipc = vi.fn().mockResolvedValue({
+		const ipc = vi.fn<Parameters<typeof makeFetchAvailability>[0]>().mockResolvedValue({
 			available: true,
 			episode_count: 12,
 			extra_episodes: [],
@@ -116,21 +117,27 @@ describe('interactive click-time lookups (render-then-refine)', () => {
 		// then reproduced the exact lagging-dub phantom episode the
 		// click-time resolution exists to prevent. A user actively
 		// waiting rides the interactive lane.
-		const spy = vi.fn().mockResolvedValue({ available: true, episode_count: 12 });
+		const spy = vi
+			.fn<Parameters<typeof makeFetchAvailability>[0]>()
+			.mockResolvedValue(availabilityAnswer({ available: true, episode_count: 12 }));
 		const fetch = makeFetchAvailability(spy, { background: false });
 		await fetch(makeMatch({ id: 'k-a', episode_count: 24 }), 'dub');
 		expect(spy).toHaveBeenCalledWith(expect.objectContaining({ background: false, mode: 'dub' }));
 	});
 
 	it('defaults to background for the rail-fill callers', async () => {
-		const spy = vi.fn().mockResolvedValue({ available: true, episode_count: 12 });
+		const spy = vi
+			.fn<Parameters<typeof makeFetchAvailability>[0]>()
+			.mockResolvedValue(availabilityAnswer({ available: true, episode_count: 12 }));
 		const fetch = makeFetchAvailability(spy);
 		await fetch(makeMatch({ id: 'k-a', episode_count: 24 }), 'sub');
 		expect(spy).toHaveBeenCalledWith(expect.objectContaining({ background: true }));
 	});
 
 	it("carries the caller's signal into the probe", async () => {
-		const ipc = vi.fn().mockResolvedValue({ available: true, extra_episodes: [] });
+		const ipc = vi
+			.fn<Parameters<typeof makeFetchAvailability>[0]>()
+			.mockResolvedValue(availabilityAnswer({ available: true, extra_episodes: [] }));
 		const fetcher = makeFetchAvailability(ipc) as (...args: unknown[]) => Promise<unknown>;
 		const ctrl = new AbortController();
 		await fetcher(makeMatch(), 'sub', ctrl.signal);

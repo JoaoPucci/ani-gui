@@ -45,6 +45,17 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { forgetNavigationListeners, startNavigation } from './navigation';
 
+import type {
+	AiringStatus,
+	AvailabilityBatchResponse,
+	AvailabilityResponse,
+	Config,
+	CreateSessionResponse,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import { availabilityAnswer, sessionAnswer } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 /** The anime database says 5 have aired. */
@@ -106,33 +117,35 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		const probes: { bypass_cache?: boolean }[] = [];
 
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 			),
 			// The database's view: five episodes are out.
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: AIRED,
 					next_episode: AIRED + 1,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean };
 				probes.push(body);
-				return HttpResponse.json({
-					available: true,
-					// Every answer is the stale one. If the click reaches
-					// the provider the request itself proves it; the count
-					// staying short keeps this scenario about the request
-					// rather than about playback starting.
-					episode_count: CACHED_COUNT,
-					extra_episodes: [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						// Every answer is the stale one. If the click reaches
+						// the provider the request itself proves it; the count
+						// staying short keeps this scenario about the request
+						// rather than about playback starting.
+						episode_count: CACHED_COUNT,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				);
 			})
 		);
 
@@ -167,19 +180,19 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		});
 
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: AIRED,
 					next_episode: AIRED + 1,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			// The page-load lookup answers at once; the one the click
 			// sends is held open. Racing a poll against a lookup that
 			// resolves in under a millisecond would only ever catch the
@@ -188,12 +201,14 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean };
 				if (body.bypass_cache) await held;
-				return HttpResponse.json({
-					available: true,
-					episode_count: CACHED_COUNT,
-					extra_episodes: [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: CACHED_COUNT,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				);
 			})
 		);
 
@@ -235,40 +250,44 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			// is the test's rather than the scheduler's.
 			http.get(`${API_BASE}/api/settings`, async () => {
 				await settingsHeld;
-				return HttpResponse.json({ ...appConfig(), mode: 'dub' });
+				return HttpResponse.json<Config>({ ...appConfig(), mode: 'dub' });
 			}),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: AIRED,
 					next_episode: AIRED + 1,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean; mode?: string };
 				probes.push(body);
 				if (body.bypass_cache) await recheckHeld;
-				return HttpResponse.json({
-					available: true,
-					// Reaches episode 5 — but it is the SUB count, because
-					// that is what the click asked with.
-					episode_count: body.bypass_cache ? AIRED + 2 : CACHED_COUNT,
-					extra_episodes: [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						// Reaches episode 5 — but it is the SUB count, because
+						// that is what the click asked with.
+						episode_count: body.bypass_cache ? AIRED + 2 : CACHED_COUNT,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				);
 			}),
 			http.post(`${API_BASE}/api/play`, async ({ request }) => {
 				played.push((await request.json()) as { episode?: string; prefetch?: boolean });
-				return HttpResponse.json({
-					session_id: 'session-1',
-					media_url: `${API_BASE}/s/session-1/master.m3u8`,
-					media_kind: 'hls'
-				});
+				return HttpResponse.json<CreateSessionResponse>(
+					sessionAnswer({
+						session_id: 'session-1',
+						media_url: `${API_BASE}/s/session-1/master.m3u8`,
+						media_kind: 'hls'
+					})
+				);
 			})
 		);
 
@@ -314,30 +333,32 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		const ordinary: string[] = [];
 
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.put(`${API_BASE}/api/settings`, () => new HttpResponse(null, { status: 204 })),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: AIRED,
 					next_episode: AIRED + 1,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean; mode: string };
 				if (body.bypass_cache) {
 					// The re-ask. Authoritative and newest.
-					return HttpResponse.json({
-						available: true,
-						episode_count: CACHED_COUNT,
-						extra_episodes: ['4.5'],
-						episode_count_approximate: false
-					});
+					return HttpResponse.json<AvailabilityResponse>(
+						availabilityAnswer({
+							available: true,
+							episode_count: CACHED_COUNT,
+							extra_episodes: ['4.5'],
+							episode_count_approximate: false
+						})
+					);
 				}
 				ordinary.push(body.mode);
 				// The dub answer never lands: the viewer is back on sub first.
@@ -347,19 +368,23 @@ describe('detail route — clicking a dimmed aired episode', () => {
 					// landed — and unconfirmed, so its empty specials list
 					// is "could not look" rather than "there are none".
 					await subAgainHeld;
-					return HttpResponse.json({
-						available: true,
-						episode_count: 2,
-						extra_episodes: [],
-						episode_count_approximate: true
-					});
+					return HttpResponse.json<AvailabilityResponse>(
+						availabilityAnswer({
+							available: true,
+							episode_count: 2,
+							extra_episodes: [],
+							episode_count_approximate: true
+						})
+					);
 				}
-				return HttpResponse.json({
-					available: true,
-					episode_count: CACHED_COUNT,
-					extra_episodes: [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: CACHED_COUNT,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				);
 			})
 		);
 
@@ -406,29 +431,31 @@ describe('detail route — clicking a dimmed aired episode', () => {
 
 	it('splices in a special the recheck found, even when the episode stays gated', async () => {
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: AIRED,
 					next_episode: AIRED + 1,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean };
-				return HttpResponse.json({
-					available: true,
-					episode_count: CACHED_COUNT,
-					// The page loaded knowing of no specials. Asking
-					// the provider directly turns up one catalogued since.
-					extra_episodes: body.bypass_cache ? ['4.5'] : [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: CACHED_COUNT,
+						// The page loaded knowing of no specials. Asking
+						// the provider directly turns up one catalogued since.
+						extra_episodes: body.bypass_cache ? ['4.5'] : [],
+						episode_count_approximate: false
+					})
+				);
 			})
 		);
 
@@ -454,29 +481,31 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		let delisted = false;
 
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: AIRED,
 					next_episode: AIRED + 1,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean };
 				probes.push(body);
 				if (body.bypass_cache) delisted = true;
-				return HttpResponse.json({
-					available: !delisted,
-					episode_count: delisted ? null : CACHED_COUNT,
-					extra_episodes: [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: !delisted,
+						episode_count: delisted ? null : CACHED_COUNT,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				);
 			})
 		);
 
@@ -523,40 +552,44 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		const played: { episode?: string; prefetch?: boolean }[] = [];
 
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: AIRED,
 					next_episode: AIRED + 1,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean };
 				if (body.bypass_cache) await held;
-				return HttpResponse.json({
-					available: true,
-					// The remembered count gates the tile; the held re-ask
-					// comes back reaching it, so the answer would clear
-					// the gate and start playback if anything still acted
-					// on it.
-					episode_count: body.bypass_cache ? AIRED + 1 : CACHED_COUNT,
-					extra_episodes: [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						// The remembered count gates the tile; the held re-ask
+						// comes back reaching it, so the answer would clear
+						// the gate and start playback if anything still acted
+						// on it.
+						episode_count: body.bypass_cache ? AIRED + 1 : CACHED_COUNT,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				);
 			}),
 			http.post(`${API_BASE}/api/play`, async ({ request }) => {
 				played.push((await request.json()) as { episode?: string; prefetch?: boolean });
-				return HttpResponse.json({
-					session_id: 'session-1',
-					media_url: `${API_BASE}/s/session-1/master.m3u8`,
-					media_kind: 'hls'
-				});
+				return HttpResponse.json<CreateSessionResponse>(
+					sessionAnswer({
+						session_id: 'session-1',
+						media_url: `${API_BASE}/s/session-1/master.m3u8`,
+						media_kind: 'hls'
+					})
+				);
 			})
 		);
 
@@ -597,42 +630,44 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		const played: { episode?: string; prefetch?: boolean }[] = [];
 
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: AIRED,
 					next_episode: AIRED + 1,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean };
 				if (body.bypass_cache) await held;
-				return HttpResponse.json({
-					available: true,
-					// The remembered count gates the tile; the held re-ask
-					// comes back reaching it, so the answer would clear
-					// the gate and start playback if anything still acted
-					// on it.
-					episode_count: body.bypass_cache ? AIRED + 1 : CACHED_COUNT,
-					extra_episodes: [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						// The remembered count gates the tile; the held re-ask
+						// comes back reaching it, so the answer would clear
+						// the gate and start playback if anything still acted
+						// on it.
+						episode_count: body.bypass_cache ? AIRED + 1 : CACHED_COUNT,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				);
 			}),
 			http.post(`${API_BASE}/api/play`, async ({ request }) => {
 				played.push((await request.json()) as { episode?: string; prefetch?: boolean });
-				return HttpResponse.json({
-					id: 'session-1',
-					kind: 'hls',
-					has_subtitles: false,
-					quality: '1080',
-					mode: 'sub'
-				});
+				return HttpResponse.json<CreateSessionResponse>(
+					sessionAnswer({
+						session_id: 'session-1',
+						media_url: `${API_BASE}/s/session-1/master.m3u8`,
+						media_kind: 'hls'
+					})
+				);
 			})
 		);
 
@@ -664,26 +699,28 @@ describe('detail route — clicking a dimmed aired episode', () => {
 
 	it('presents the dimmed tile as something to click, not as refused', async () => {
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: AIRED,
 					next_episode: AIRED + 1,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: CACHED_COUNT,
-					extra_episodes: [],
-					episode_count_approximate: false
-				})
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: CACHED_COUNT,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				)
 			)
 		);
 
@@ -717,47 +754,55 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		const OTHER_TITLE = 'Another Show';
 
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
-				HttpResponse.json({
+				HttpResponse.json<KitsuAnimeRef>({
 					...kitsuRef(String(params.id), String(params.id) === OTHER_ID ? OTHER_TITLE : TITLE, 12),
 					status: 'current'
 				})
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/:id`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: AIRED,
 					next_episode: AIRED + 1,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			// Two shows are visited, so the per-show reads have to answer
 			// for either id rather than for the one the other scenarios
 			// name explicitly. Neither has a history row: the route answers
 			// `null` for that, not a list.
-			http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json(null)),
-			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json({ dir: '/tmp' })),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-			http.post(`${API_BASE}/api/play/mark-watched`, () => HttpResponse.json({ ok: true })),
+			http.get(`${API_BASE}/api/history/by-kitsu/:id`, () =>
+				HttpResponse.json<HistoryRowByKitsu | null>(null)
+			),
+			http.get(`${API_BASE}/api/download/default-dir`, () =>
+				HttpResponse.json<string | null>('/tmp')
+			),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean };
 				if (body.bypass_cache) await held;
-				return HttpResponse.json({
-					available: true,
-					episode_count: body.bypass_cache ? AIRED + 1 : CACHED_COUNT,
-					extra_episodes: [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: body.bypass_cache ? AIRED + 1 : CACHED_COUNT,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				);
 			}),
 			http.post(`${API_BASE}/api/play`, async ({ request }) => {
 				played.push((await request.json()) as { episode?: string; prefetch?: boolean });
-				return HttpResponse.json({
-					session_id: 'session-1',
-					media_url: `${API_BASE}/s/session-1/master.m3u8`,
-					media_kind: 'hls'
-				});
+				return HttpResponse.json<CreateSessionResponse>(
+					sessionAnswer({
+						session_id: 'session-1',
+						media_url: `${API_BASE}/s/session-1/master.m3u8`,
+						media_kind: 'hls'
+					})
+				);
 			})
 		);
 
@@ -809,34 +854,36 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, async () => {
 				await settingsHeld;
-				return HttpResponse.json({ ...appConfig(), mode: 'dub' });
+				return HttpResponse.json<Config>({ ...appConfig(), mode: 'dub' });
 			}),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: AIRED,
 					next_episode: AIRED + 1,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean; mode?: string };
 				probes.push(body);
 				// The fallback lookup is still out when the real mode
 				// arrives, which is the whole ordering being tested.
 				if (body.mode === 'sub') await subHeld;
-				return HttpResponse.json({
-					available: true,
-					// Dub lags, as it does upstream: the sub catalogue has
-					// everything that aired, the dub catalogue does not.
-					episode_count: body.mode === 'dub' ? CACHED_COUNT : AIRED,
-					extra_episodes: [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						// Dub lags, as it does upstream: the sub catalogue has
+						// everything that aired, the dub catalogue does not.
+						episode_count: body.mode === 'dub' ? CACHED_COUNT : AIRED,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				);
 			})
 		);
 
@@ -876,29 +923,31 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, async () => {
 				await settingsHeld;
-				return HttpResponse.json({ ...appConfig(), mode: 'sub' });
+				return HttpResponse.json<Config>({ ...appConfig(), mode: 'sub' });
 			}),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: AIRED,
 					next_episode: AIRED + 1,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean; mode?: string };
 				probes.push(body);
-				return HttpResponse.json({
-					available: true,
-					episode_count: CACHED_COUNT,
-					extra_episodes: [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: CACHED_COUNT,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				);
 			})
 		);
 
@@ -933,36 +982,41 @@ describe('detail route — clicking a dimmed aired episode', () => {
 		// holds the title dubbed — is never asked about it.
 		const batches: string[] = [];
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: AIRED,
 					next_episode: AIRED + 1,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { bypass_cache?: boolean };
-				return HttpResponse.json(
+				return HttpResponse.json<AvailabilityResponse>(
 					body.bypass_cache
-						? { available: false, episode_count: null, extra_episodes: [], unsettled: 'refused' }
-						: {
+						? availabilityAnswer({
+								available: false,
+								episode_count: null,
+								extra_episodes: [],
+								unsettled: 'refused'
+							})
+						: availabilityAnswer({
 								available: true,
 								episode_count: CACHED_COUNT,
 								extra_episodes: [],
 								episode_count_approximate: false
-							}
+							})
 				);
 			}),
 			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 				const body = (await request.json()) as { mode: string };
 				batches.push(body.mode);
-				return HttpResponse.json(
+				return HttpResponse.json<AvailabilityBatchResponse>(
 					body.mode === 'dub'
 						? { cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 4 } }
 						: { cached: {}, playable_episode_counts: {} }

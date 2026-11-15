@@ -29,17 +29,19 @@ import { failedHeroImages } from '../../src/lib/hero/framing';
 import { HERO_PREFS_STORAGE_KEY } from '../../src/lib/hero/prefs';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { KitsuAnimeRef } from '../../src/lib/api';
 const COVER = 'https://media.kitsu.app/anime/1/cover_image/large.jpg';
 const COVER_WHOLE = 'https://media.kitsu.app/anime/1/cover_image/original.jpg';
 const POSTER = 'https://media.kitsu.app/anime/1/poster_image/large.jpg';
 const BANNER = 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/1.jpg';
 
-function featured(banner: string | null = BANNER) {
+/** The featured show; `null` for one AniList has no banner for. */
+function featured(banner: string | null = BANNER): KitsuAnimeRef {
 	return {
 		...kitsuRef('1', 'Cowboy Bebop', 26),
-		poster_image: { large: POSTER },
+		poster_image: { tiny: null, small: null, medium: null, large: POSTER, original: null },
 		cover_image: { tiny: null, small: null, large: COVER, original: COVER_WHOLE },
-		anilist_banner: banner
+		...(banner === null ? {} : { anilist_banner: banner })
 	};
 }
 
@@ -63,10 +65,12 @@ afterEach(() => {
 	vi.unstubAllEnvs();
 });
 
-function serve(show: ReturnType<typeof featured> | Record<string, unknown>) {
+function serve(show: KitsuAnimeRef) {
 	server.use(
 		...homeHandlers({}, [
-			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([show]))
+			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+				HttpResponse.json<KitsuAnimeRef[]>([show])
+			)
 		])
 	);
 }
@@ -163,7 +167,13 @@ describe('home hero framing', () => {
 	it('leaves a show with no cover on the blurred poster under every framing', async () => {
 		serve({
 			...kitsuRef('2', 'Trigun', 26),
-			poster_image: { large: 'https://media.kitsu.app/anime/2/poster/large.jpg' },
+			poster_image: {
+				tiny: null,
+				small: null,
+				medium: null,
+				large: 'https://media.kitsu.app/anime/2/poster/large.jpg',
+				original: null
+			},
 			cover_image: null
 		});
 		app = mount(HomePage, { target });

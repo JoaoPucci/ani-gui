@@ -37,6 +37,17 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { rememberAudio } from '../../src/lib/play/audio-choice';
 import { downloadStore } from '../../src/lib/download/store.svelte';
 
+import type {
+	AiringStatus,
+	AvailabilityBatchResponse,
+	AvailabilityResponse,
+	Config,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 const KITSU_ID = '7154';
 const TITLE = "JoJo's Bizarre Adventure";
 const EPISODES = 26;
@@ -100,17 +111,17 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${document.body.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
@@ -121,35 +132,49 @@ function useShowHandlers(settings: Record<string, unknown> = {}) {
 	probedModes.length = 0;
 	settingsWrites = 0;
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json({ ...appConfig(), ...settings })),
+		http.get(`${API_BASE}/api/settings`, () =>
+			HttpResponse.json<Config>({ ...appConfig(), ...settings })
+		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, EPISODES), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(KITSU_ID, TITLE, EPISODES),
+				status: 'finished'
+			})
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: EPISODES, next_episode: null, next_airing_at: null, upcoming: [] })
+			HttpResponse.json<AiringStatus>({
+				aired: EPISODES,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
 		),
 		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
-			HttpResponse.json(kitsuEpisodes(EPISODES))
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(EPISODES))
 		),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
 		http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 			probes += 1;
 			probedModes.push(((await request.json()) as { mode: string }).mode);
-			return HttpResponse.json({
-				available: true,
-				episode_count: EPISODES,
-				extra_episodes: [],
-				episode_count_approximate: false
-			});
+			return HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: EPISODES,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			);
 		}),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.put(`${API_BASE}/api/settings`, () => {
 			settingsWrites += 1;
 			return new HttpResponse(null, { status: 204 });
 		}),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl'))
 	);
 	return { probes: () => probes };
 }
@@ -249,17 +274,22 @@ describe('detail route — Sub or Dub per show', () => {
 		const h = useShowHandlers({ mode: 'sub' });
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/anime/${OTHER}`, () =>
-				HttpResponse.json({ ...kitsuRef(OTHER, 'Other Show', EPISODES), status: 'finished' })
+				HttpResponse.json<KitsuAnimeRef>({
+					...kitsuRef(OTHER, 'Other Show', EPISODES),
+					status: 'finished'
+				})
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${OTHER}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: EPISODES,
 					next_episode: null,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/history/by-kitsu/${OTHER}`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/history/by-kitsu/${OTHER}`, () =>
+				HttpResponse.json<HistoryRowByKitsu | null>(null)
+			)
 		);
 		app = mount(DetailPage, { target });
 		await until(() => h.probes() > 0, 'the page-load availability lookup');
@@ -297,11 +327,14 @@ describe('detail route — lists of other shows keep the default', () => {
 		const h = useShowHandlers({ mode: 'dub' });
 		server.use(
 			http.post(`${API_BASE}/api/kitsu/search`, () =>
-				HttpResponse.json([kitsuRef('777', 'Similar Show', 12)])
+				HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('777', 'Similar Show', 12)])
 			),
 			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 				batchModes.push(((await request.json()) as { mode: string }).mode);
-				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+				return HttpResponse.json<AvailabilityBatchResponse>({
+					cached: {},
+					playable_episode_counts: {}
+				});
 			}),
 			http.post(`${API_BASE}/api/availability/warm`, () => new HttpResponse(null, { status: 202 }))
 		);

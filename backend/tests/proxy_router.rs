@@ -69,7 +69,11 @@ async fn start_harness() -> Harness {
 
 fn make_session(h: &Harness, master_path: &str) -> SessionId {
     let upstream_url = Url::parse(&format!("{}{}", h.mock.uri(), master_path)).unwrap();
-    let sess = StreamSession::new(upstream_url, "https://allmanga.to");
+    let sess = StreamSession::new_with_kind(
+        upstream_url,
+        ani_gui::proxy::MediaKind::Hls,
+        "https://allmanga.to",
+    );
     let id = sess.id;
     h.sessions.insert(sess);
     id

@@ -36,6 +36,8 @@ vi.mock('$app/navigation', () => ({
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
+import type { AvailabilityResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 /** As it reads in the watch history, episode tail and all. */
 const HISTORY_TITLE = 'Meitantei Conan (1150 episodes)';
 /** Kitsu files the same show under its English canonical title. */
@@ -93,10 +95,12 @@ describe('Continue Watching row for a show with no announced episode total', () 
 					// The row can only resolve if the count filter drops it
 					// AND keeps the countless main series.
 					http.post(`${API_BASE}/api/kitsu/search`, () =>
-						HttpResponse.json([movie(), longRunner()])
+						HttpResponse.json<KitsuAnimeRef[]>([movie(), longRunner()])
 					),
 					http.post(`${API_BASE}/api/availability`, () =>
-						HttpResponse.json({ available: true, episode_count: 1150, approximate: false })
+						HttpResponse.json<AvailabilityResponse>(
+							availabilityAnswer({ available: true, episode_count: 1150 })
+						)
 					)
 				]
 			)
@@ -117,7 +121,7 @@ describe('Continue Watching row for a show with no announced episode total', () 
 					// but an unrelated show. Accepting on airing status alone
 					// would cache this id for a row the user then clicks.
 					http.post(`${API_BASE}/api/kitsu/search`, () =>
-						HttpResponse.json([
+						HttpResponse.json<KitsuAnimeRef[]>([
 							{ ...kitsuRef('12', 'One Piece', 0), episode_count: null, status: 'current' }
 						])
 					)

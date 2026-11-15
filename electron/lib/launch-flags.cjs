@@ -1,5 +1,7 @@
 "use strict";
 
+const { SECRET_HEADER } = require("./secret-handoff.cjs");
+
 // The launch's remote flags, read once from the backend before the
 // app's window opens (see backend/src/flags). The backend decides them
 // within two seconds of starting its refresh and never changes them in
@@ -35,7 +37,7 @@ async function waitForLaunchFlags(apiBase, { fetch, secret, timeoutMs = FLAGS_WA
   const asked = (async () => {
     try {
       const res = await fetch(`${apiBase}/api/flags`, {
-        headers: { "x-ani-gui-internal-secret": secret ?? "" },
+        headers: { [SECRET_HEADER]: secret ?? "" },
         signal: controller.signal,
       });
       if (!res.ok) return null;

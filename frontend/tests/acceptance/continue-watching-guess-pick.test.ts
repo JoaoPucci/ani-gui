@@ -34,6 +34,7 @@ import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 
+import type { HistoryEntry, KitsuAnimeRef } from '../../src/lib/api';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -64,7 +65,7 @@ function hit(
 	start_date: string,
 	episode_count: number,
 	titles: Record<string, string>
-) {
+): KitsuAnimeRef {
 	return {
 		id,
 		canonical_title,
@@ -78,7 +79,10 @@ function hit(
 		subtype,
 		status: 'finished',
 		start_date,
-		average_rating: null
+		average_rating: null,
+		end_date: null,
+		age_rating: null,
+		popularity_rank: null
 	};
 }
 
@@ -121,8 +125,8 @@ async function playTheCard(
 ): Promise<URLSearchParams> {
 	server.use(
 		...homeHandlers({}, [
-			http.get(`${API_BASE}/api/history`, () => HttpResponse.json([row])),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json(hits)),
+			http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>([row])),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>(hits)),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 			...more
 		])
@@ -257,14 +261,14 @@ describe('two guessed Continue cards titled alike, from different years', () => 
 		];
 		server.use(
 			...homeHandlers({}, [
-				http.get(`${API_BASE}/api/history`, () => HttpResponse.json(rows)),
-				http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json(hits)),
+				http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>(rows)),
+				http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>(hits)),
 				http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
-					HttpResponse.json(hits.find((h) => h.id === params.id) ?? null)
+					HttpResponse.json<KitsuAnimeRef>(hits.find((h) => h.id === params.id) ?? null)
 				),
 				http.get(`${API_BASE}/api/title-match`, ({ request }) => {
 					const q = new URL(request.url).searchParams;
-					return HttpResponse.json(
+					return HttpResponse.json<string | null>(
 						stored.get(keyOf(q.get('title'), q.get('provider'), q.get('year'))) ?? null
 					);
 				}),
@@ -322,10 +326,12 @@ describe('a guessed Continue card for hianime\'s "Jujutsu Kaisen (TV)"', () => {
 			[
 				http.post(`${API_BASE}/api/history/guess/ruled-out`, async ({ request }) => {
 					asked = (await request.json()) as typeof asked;
-					return HttpResponse.json(['43886']);
+					return HttpResponse.json<string[]>(['43886']);
 				}),
 				http.get(`${API_BASE}/api/kitsu/resolve-allmanga/:showId`, ({ params }) =>
-					HttpResponse.json(params.showId === 'hianime:jujutsu-kaisen-237' ? series : null)
+					HttpResponse.json<KitsuAnimeRef | null>(
+						params.showId === 'hianime:jujutsu-kaisen-237' ? series : null
+					)
 				)
 			]
 		);

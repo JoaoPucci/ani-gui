@@ -420,3 +420,7 @@ mod subtitle_tests;
 #[cfg(test)]
 #[path = "play_resolution_cache_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "play_resolution_cache_e2e_row_test.rs"]
+mod e2e_row_tests;

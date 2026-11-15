@@ -138,9 +138,7 @@ pub use app_info::app_info;
 pub use external_player::{open_external_player, LaunchArgs};
 pub use history::{history_clear, history_list};
 pub use proxy_url::proxy_base_url;
-pub use session::{
-    create_session, create_session_with_kind, CreateSessionArgs, CreateSessionResponse,
-};
+pub use session::{create_session_with_kind, CreateSessionArgs, CreateSessionResponse};
 
 #[cfg(test)]
 #[path = "kitsu_id_compare_test.rs"]
