@@ -337,3 +337,84 @@ async fn a_cards_play_over_a_line_naming_another_show_says_it_kept_the_line() {
         .expect("plays");
     assert!(!resp.line_kept);
 }
+
+/// The play of a card no guess opened (a named line's), asked from the
+/// card's row `card`.
+fn card_args(card: &str) -> PlayArgs {
+    PlayArgs {
+        card_row: Some(card.into()),
+        kitsu_id: Some("42".into()),
+        ..args(None)
+    }
+}
+
+fn noted(state: &AppState, row: &str) -> Option<String> {
+    crate::commands::guessed_from::all(state)
+        .expect("notes")
+        .remove(row)
+}
+
+#[tokio::test]
+async fn a_named_cards_fresh_play_of_another_listing_notes_the_card() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let card = "test-a:another-show-4";
+    play_with_progress(&state, &card_args(card), |_| {})
+        .await
+        .expect("plays");
+    assert_eq!(noted(&state, &played_key()).as_deref(), Some(card));
+}
+
+#[tokio::test]
+async fn a_named_cards_replayed_play_of_another_listing_notes_the_card() {
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&upstream)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    std::fs::write(&state.config_path, "cache_resolutions = true\n").expect("config");
+    let card = "test-a:another-show-4";
+    let asked = card_args(card);
+    play_resolution_cache::put(
+        &state.cache_pool,
+        &asked.resolution_key(),
+        &CachedResolution {
+            upstream_url: format!("{}/x/master.m3u8", upstream.uri()),
+            referer: String::new(),
+            media_kind: MediaKind::Hls,
+            show_id: played_key(),
+            show_title: STITCHED.into(),
+            resolved_slot: Some(5),
+            subtitles: Vec::new(),
+            kitsu_id: None,
+            played: Some("5".into()),
+            former_episode: None,
+            versions: Vec::new(),
+            version: None,
+            episode_unverified: false,
+        },
+    );
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("replays");
+    assert!(resp.cache_hit);
+    assert_eq!(noted(&state, &played_key()).as_deref(), Some(card));
+}
+
+proptest! {
+    /// The card a play was asked from: the guessed card's row first,
+    /// else the row of the card no guess opened, else none.
+    #[test]
+    fn a_play_names_its_guessed_card_else_its_card_row(
+        guess in proptest::option::of("[a-z]{1,4}"),
+        card in proptest::option::of("[a-z]{1,4}"),
+    ) {
+        let asked = PlayArgs {
+            card_row: card.clone(),
+            ..args(guess.as_deref())
+        };
+        prop_assert_eq!(asked.card(), guess.as_deref().or(card.as_deref()));
+    }
+}

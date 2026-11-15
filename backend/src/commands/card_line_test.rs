@@ -98,6 +98,35 @@ fn the_card_of_a_line_the_user_named_stands_for_it_after_its_play_landed_elsewhe
 }
 
 #[test]
+fn the_card_of_a_named_bare_line_stands_for_it_once_its_play_wrote_the_walked_row() {
+    // A retired provider's bare line, named Young Ladies Don't Play
+    // Fighting Games. Its next play landed on the walked listing with
+    // the same words, which records the show and is newer: the card
+    // shows it, and stands for the line the user named.
+    const BARE: &str = "young-ladies-dont-play-fighting-games-6393";
+    const WALKED: &str = "hianime:young-ladies-dont-play-fighting-games-200";
+    let rows = [
+        row(WALKED, None, Some("44021"), false),
+        CardRow {
+            named: true,
+            ..row(BARE, None, Some("44021"), false)
+        },
+        // Another listing, named for the same show: not the card's line.
+        CardRow {
+            named: true,
+            ..row("hianime:young-ladies-recap-9", None, Some("44021"), false)
+        },
+    ];
+    assert_eq!(
+        card_lines(&rows)[WALKED],
+        CardLine {
+            line: BARE.into(),
+            correctable: true
+        }
+    );
+}
+
+#[test]
 fn a_named_row_shown_stands_for_itself() {
     let named = |id: &str, from: Option<&str>| CardRow {
         named: true,
@@ -185,7 +214,7 @@ fn the_rows_arrive_as_the_renderer_sends_them() {
 }
 
 fn world() -> impl Strategy<Value = (Vec<CardRow>, usize)> {
-    let id = || proptest::sample::select(&["a", "b", "c", "d"][..]);
+    let id = || proptest::sample::select(&["a-1", "b-1", "hianime:a-2", "hianime:b-3"][..]);
     proptest::collection::vec(
         (
             id(),
@@ -235,8 +264,12 @@ proptest! {
             });
         if same {
             prop_assert_eq!(Some(line.as_str()), from);
-        } else {
-            prop_assert_eq!(&line, &shown.id);
+        } else if line != shown.id {
+            // Else only a named line of the shown row's own listing,
+            // shown as the same show, for a row neither guessed nor named.
+            let r = rows.iter().find(|r| r.id == line).expect("a held row");
+            prop_assert!(!shown.guess && !shown.named && r.named && r.show == shown.show);
+            prop_assert!(crate::commands::history_link::card_listing(&r.id, &shown.id));
         }
     }
 
