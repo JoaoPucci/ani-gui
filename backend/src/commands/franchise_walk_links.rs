@@ -1,4 +1,4 @@
-//! The run's own links, and a side-story anchor's parents in it.
+//! The run's own links, and a side-story anchor's parents.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -31,8 +31,8 @@ pub(super) fn links_among(ids: &BTreeSet<String>, look: &Lookup<'_>) -> Vec<(Str
     out
 }
 
-/// The side-story anchor's parents in the run, in start order; none
-/// when the main story holds none of them.
+/// The side-story anchor's parents, in start order: in the main story,
+/// or, where it leaves them all out, on the chain it is drawn on.
 pub(super) fn parents(anchor: &str, run: &Run) -> BTreeMap<String, Vec<String>> {
     if !run.side_anchor || run.parents.is_empty() {
         return BTreeMap::new();
