@@ -6,6 +6,7 @@
  */
 
 import type Hls from 'hls.js';
+import { sameListing, type EngineTrack } from './caption-engine';
 import type { CaptionSyncEvents } from './caption-sync-tracks';
 
 export interface Readiness {
@@ -73,12 +74,18 @@ export function watchFragments(
 		landed();
 	};
 	// A new subtitle group renumbers the renditions: a fragment of the
-	// group left names none of the new one.
-	const forget = () => {
+	// group left names none of the new one. hls.js lists the same
+	// renditions again on every quality switch where the level names no
+	// group, and goes on loading the fragment under the same index.
+	let listed: readonly EngineTrack[] = [];
+	engine.on(events.MANIFEST_LOADING, () => {
 		inFlight = null;
-	};
-	engine.on(events.MANIFEST_LOADING, forget);
-	engine.on(events.SUBTITLE_TRACKS_UPDATED, forget);
+		listed = [];
+	});
+	engine.on(events.SUBTITLE_TRACKS_UPDATED, (_event, data) => {
+		if (!sameListing(listed, data.subtitleTracks)) inFlight = null;
+		listed = data.subtitleTracks;
+	});
 	engine.on(events.FRAG_LOADING, (_event, data) => {
 		if (isSubtitle(data.frag)) inFlight = data.frag;
 	});

@@ -78,8 +78,7 @@ export function wantOf(
  * rendition of a group the engine has left, one a rendition of the
  * playlist (`allRenditions`) names and none of the current group does,
  * when it is the engine's pick in the new group. A track no rendition
- * ever named — the engine's closed captions, one left from an earlier
- * manifest — stays the pick.
+ * ever named — one left from an earlier manifest — stays the pick.
  */
 export function followGroup(
 	video: CaptionVideo,

@@ -376,10 +376,10 @@ describe('a quality switch to another subtitle group', () => {
 	});
 });
 
-// A track none of the playlist's renditions ever named — the engine's
-// closed captions, a track left from an earlier manifest — is no
-// rendition of a group the engine left: the engine's default, picked
-// again as the manifest loads again, is brought back to it.
+// A track none of the playlist's renditions ever named — one left from
+// an earlier manifest — is no rendition of a group the engine left: the
+// engine's default, picked again as the manifest loads again, is
+// brought back to it.
 describe('a track that is no rendition, picked', () => {
 	it('stays picked through a manifest loaded again', async () => {
 		const { video, engine, sync } = setup();
