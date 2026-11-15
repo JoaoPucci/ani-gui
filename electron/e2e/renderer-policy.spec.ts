@@ -364,17 +364,36 @@ function videoState(page: Page) {
 	});
 }
 
-test('a play through the stream proxy plays, with its subtitles, under the policy', async () => {
+/** The rendition requests a play made, as the stream lane answered them. */
+function renditionResponses(page: Page): { url: string; status: number }[] {
+	const seen: { url: string; status: number }[] = [];
+	page.on('response', (r) => {
+		if (/[?&]s=subs|[?&]r=subs/.test(r.url())) seen.push({ url: r.url(), status: r.status() });
+	});
+	return seen;
+}
+
+// The two kinds of subtitles are played apart. On a stream carrying
+// both, the app turns off whatever shows as its sidecar tracks attach,
+// and hls.js drops the cues of a fragment it finishes parsing while
+// its track is off and does not fetch that fragment again — so which
+// of the two kept its cues would depend on whether the listing or the
+// rendition's fragment arrived first (docs/deferred-work.md, "Sidecar
+// subtitles on a stream that also carries its own"). What the policy
+// has to allow is each one's path, and each is proved on a stream of
+// its own.
+
+test('a play through the stream proxy plays, with its sidecar subtitles, under the policy', async () => {
 	test.setTimeout(90_000);
 	const media = await mediaServer();
 	const { app, page, profile } = await launch();
 	try {
 		const { lanes } = await bridge(page);
 		// The Continue card's play, through the backend's play route: it
-		// opens a session on the fixture playlist, with a sidecar track the
-		// backend fetches and serves from the stream lane.
+		// opens a session on the fixture's media playlist, with a sidecar
+		// track the backend fetches and serves from the stream lane.
 		const stream: ReplayStream = {
-			upstreamUrl: `${media.origin}/master.m3u8`,
+			upstreamUrl: `${media.origin}/video.m3u8`,
 			mediaKind: 'hls',
 			subtitles: [{ lang: 'en', label: 'Sidecar', default: false, url: `${media.origin}/sidecar.vtt` }]
 		};
@@ -391,36 +410,66 @@ test('a play through the stream proxy plays, with its subtitles, under the polic
 		expect(hls?.src.startsWith('blob:')).toBe(true);
 		expect(hls?.error).toBeNull();
 
-		// The sidecar <track> loads from the stream lane (media-src): once
-		// shown, its cue is there.
+		// The sidecar <track> loads from the stream lane (media-src). It
+		// is the session's start for the English UI, so it shows, and its
+		// cue is there; the track element's readyState (2 loaded,
+		// 3 failed) shows the load itself.
 		await expect
 			.poll(async () => (await videoState(page))?.tracks ?? [], { timeout: 10_000 })
 			.toEqual([`${lanes.stream}/s/${sid}/sub/0.vtt`]);
-		// A disabled track exposes no cues, and hls.js disables every
-		// labelled subtitle track but the one it selected whenever it
-		// switches its own (SubtitleTrackController.toggleTrackModes) —
-		// the sidecar included, at a moment that depends on when the
-		// rendition's playlist arrives. So each read first sets any
-		// disabled track back to hidden. The track element's readyState
-		// (2 loaded, 3 failed) shows the load itself.
-		const shownCues = () =>
-			page.evaluate(() => {
-				const v = document.querySelector('video');
-				if (!v) return { cues: [] as string[], trackStates: [] as number[] };
-				for (const t of v.textTracks) if (t.mode === 'disabled') t.mode = 'hidden';
-				return {
-					cues: [...v.textTracks].flatMap((t) => [...(t.cues ?? [])].map((c) => (c as VTTCue).text)),
-					trackStates: [...v.querySelectorAll('track')].map((t) => t.readyState)
-				};
-			});
 		await expect
-			.poll(shownCues, { timeout: 15_000 })
-			.toEqual({ cues: expect.arrayContaining(['A cue from the sidecar track']), trackStates: [2] });
-		// The playlist's own subtitle rendition reaches the player through
-		// the proxy too.
+			.poll(
+				() =>
+					page.evaluate(() => {
+						const v = document.querySelector('video')!;
+						return {
+							cues: [...v.textTracks].flatMap((t) => [...(t.cues ?? [])].map((c) => (c as VTTCue).text)),
+							trackStates: [...v.querySelectorAll('track')].map((t) => t.readyState)
+						};
+					}),
+				{ timeout: 15_000 }
+			)
+			.toEqual({ cues: ['A cue from the sidecar track'], trackStates: [2] });
+	} finally {
+		await app.close();
+		media.close();
+	}
+});
+
+test('a play through the stream proxy plays, with its playlist subtitles, under the policy', async () => {
+	test.setTimeout(90_000);
+	const media = await mediaServer();
+	const { app, page, profile } = await launch();
+	try {
+		const { lanes } = await bridge(page);
+		const renditions = renditionResponses(page);
+		// A master playlist with a default subtitle rendition and no
+		// sidecar track: nothing but hls.js touches the text tracks.
+		const stream: ReplayStream = { upstreamUrl: `${media.origin}/master.m3u8`, mediaKind: 'hls' };
+		const play = await routeRealPlay(page, { profile, settings: {}, stream });
+		await playFromContinue(page, play);
+		const sid = sessionOf(page);
 		await expect
-			.poll(async () => (await shownCues()).cues, { timeout: 15_000 })
-			.toEqual(expect.arrayContaining(['A cue from the playlist']));
+			.poll(async () => (await videoState(page))?.time ?? 0, { timeout: 30_000 })
+			.toBeGreaterThan(0.5);
+		// The rendition's cue reaches the player, in the track hls.js
+		// made for it...
+		await expect
+			.poll(
+				() =>
+					page.evaluate(() =>
+						[...document.querySelector('video')!.textTracks].map((t) => ({
+							label: t.label,
+							cues: [...(t.cues ?? [])].map((c) => (c as VTTCue).text)
+						}))
+					),
+				{ timeout: 15_000 }
+			)
+			.toEqual([{ label: 'English', cues: ['A cue from the playlist'] }]);
+		// ...and its playlist and fragment came from the stream lane
+		// (connect-src), answered.
+		const lane = `${lanes.stream}/s/${sid}/`;
+		expect(renditions.map((r) => r.url.startsWith(lane) && r.status === 200)).toEqual([true, true]);
 	} finally {
 		await app.close();
 		media.close();
