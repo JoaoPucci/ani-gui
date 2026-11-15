@@ -20,6 +20,9 @@ const LABEL_BY_SUBTYPE: Readonly<Record<string, () => string>> = {
 	music: m.app_subtype_music
 };
 
+/** The subtypes with a label of their own, lower-cased. */
+export const LABELLED_SUBTYPES: readonly string[] = Object.keys(LABEL_BY_SUBTYPE);
+
 export function subtypeLabel(subtype: string | null | undefined): string {
 	const raw = subtype ?? 'TV';
 	const key = raw.toLowerCase();
