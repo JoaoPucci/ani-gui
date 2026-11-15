@@ -306,6 +306,27 @@ fn sorted(entries: &[FranchiseEntry]) -> Vec<&str> {
     out
 }
 
+/// A special whose own parent story is in the main story is placed
+/// under it, though the run it first moves to (from the earliest parent
+/// any of its run names, the TV series its prequel special names) does
+/// not yet hold it: the TV series' sequel lists it from the other side,
+/// which only the main story's walk counts.
+#[test]
+fn a_one_off_keeps_its_own_parent_in_the_main_story() {
+    let mut c = Catalogue::default();
+    c.add("1", "special", None)
+        .add("2", "TV", Some("1990-01-01"))
+        .add("3", "special", Some("1991-01-01"))
+        .add("4", "TV", None)
+        .rel("1", "parent_story", "4")
+        .rel("1", "prequel", "3")
+        .rel("3", "parent_story", "2")
+        .rel("4", "prequel", "2");
+    let f = drive("1", &c);
+    assert_eq!(ids(&f.entries), ["2", "4"]);
+    assert_eq!(f.parents.get("1").cloned(), Some(vec!["4".to_string()]));
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(128))]
 
