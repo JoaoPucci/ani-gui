@@ -87,7 +87,8 @@
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { downloadQuality } from '$lib/download/download-quality';
 	import { buildMediaUrl } from '$lib/play/media-url';
-	import { applyCaptionPick, type CaptionTarget } from '$lib/play/caption-pick';
+	import type { CaptionTarget } from '$lib/play/caption-pick';
+	import { createCaptionSync, pickCaptions, type CaptionSync } from '$lib/play/caption-engine';
 	import { captionEntries } from '$lib/play/caption-label';
 	import { captionOrder } from '$lib/play/caption-order';
 	import { menuHeight, menuKeyStep, revealScroll } from '$lib/play/caption-menu-fit';
@@ -388,6 +389,9 @@
 	let videoEl: HTMLVideoElement | undefined = $state();
 	let frameTargetEl = $state<HTMLDivElement | undefined>();
 	let hls: Hls | null = null;
+	// The engine's subtitle selection, kept in step with the captions
+	// shown ($lib/play/caption-engine); null without an engine.
+	let captionSync: CaptionSync | null = null;
 	// What the attached stream owns — its engine, listeners and
 	// tracks — retired when the next stream attaches or the page
 	// leaves.
@@ -824,6 +828,9 @@
 		if (USE_CUSTOM_PLAYER_CONTROLS) return;
 		const pick = noteCaptionChange(video, video.textTracks);
 		if (pick === null) return;
+		// The engine follows the viewer's pick before it reads the
+		// change itself.
+		captionSync?.pick(pick);
 		const choice = captionChoiceOf(video.textTracks, pick);
 		if (choice !== undefined) rememberPick(choice);
 	}
@@ -859,7 +866,7 @@
 	function pickCcTrack(target: CaptionTarget) {
 		ccMenuOpen = false;
 		if (!videoEl) return;
-		applyCaptionPick(videoEl.textTracks, target);
+		pickCaptions(videoEl, target, captionSync);
 		expectCaptions(videoEl, showingCaption(videoEl.textTracks));
 		const choice = captionChoiceOf(videoEl.textTracks, target);
 		if (choice !== undefined) rememberPick(choice);
@@ -2226,8 +2233,16 @@
 				...HLS_BUFFER_POLICY
 			});
 			// The engine retires with its source: the next attach's
-			// flush, or the page leaving.
+			// flush, or the page leaving. Its captions stop being steered
+			// first, so the engine switching its tracks off as it goes is
+			// not brought back.
 			const engine = hls;
+			const captions = createCaptionSync(videoEl, engine, Hls.Events);
+			captionSync = captions;
+			sourceScope.add(() => {
+				captions.dispose();
+				if (captionSync === captions) captionSync = null;
+			});
 			sourceScope.add(() => {
 				engine.destroy();
 			});
@@ -2377,7 +2392,14 @@
 		// with the source like the engine is.
 		if (sourceAttached) {
 			sourceScope.add(
-				armSidecarTracks(videoEl, mediaUrl, sessionId, uiLocale(), storedCaption(id))
+				armSidecarTracks(
+					videoEl,
+					mediaUrl,
+					sessionId,
+					uiLocale(),
+					storedCaption(id),
+					captionSync ?? undefined
+				)
 			);
 		}
 	});

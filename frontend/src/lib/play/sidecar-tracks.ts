@@ -14,6 +14,7 @@
  * exercised by the acceptance test on the mounted page.
  */
 
+import type { CaptionSync } from './caption-engine';
 import { applyCaptionPick } from './caption-pick';
 import { startingTrack } from './caption-start';
 import { expectCaptions, expectedCaptions, extraBeside, showingCaption } from './caption-watch';
@@ -113,8 +114,10 @@ export function attachSidecarTracks(
 	video: HTMLVideoElement,
 	tracks: SidecarTrack[],
 	locale = '',
-	remembered?: string
+	remembered?: string,
+	sync?: CaptionSync
 ): () => void {
+	void sync;
 	const start = startingTrack(tracks, locale, remembered);
 	applyCaptionPick(video.textTracks, 'off');
 	const elements = tracks.map((track, i) => {
@@ -191,13 +194,14 @@ export function armSidecarTracks(
 	mediaUrl: string,
 	sessionId: string,
 	locale = '',
-	remembered?: string
+	remembered?: string,
+	sync?: CaptionSync
 ): () => void {
 	const controller = new AbortController();
 	let detach: (() => void) | null = null;
 	void fetchSidecarTracks(mediaUrl, sessionId, controller.signal).then((tracks) => {
 		if (controller.signal.aborted || tracks.length === 0) return;
-		detach = attachSidecarTracks(video, tracks, locale, remembered);
+		detach = attachSidecarTracks(video, tracks, locale, remembered, sync);
 	});
 	return () => {
 		controller.abort();

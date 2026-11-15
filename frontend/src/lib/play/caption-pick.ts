@@ -38,8 +38,10 @@ function isCaptionTrack(track: PickableTrack): boolean {
  */
 export function captionModes(
 	tracks: readonly PickableTrack[],
-	target: CaptionTarget
+	target: CaptionTarget,
+	hidden?: number
 ): (CaptionMode | null)[] {
+	void hidden;
 	return tracks.map((track, i) => {
 		if (!isCaptionTrack(track)) return null;
 		const mode: CaptionMode = target === i ? 'showing' : 'disabled';
@@ -54,10 +56,14 @@ export interface PickableTrackList {
 }
 
 /** Apply {@link captionModes} to a live TextTrackList. */
-export function applyCaptionPick(list: PickableTrackList, target: CaptionTarget): void {
+export function applyCaptionPick(
+	list: PickableTrackList,
+	target: CaptionTarget,
+	hidden?: number
+): void {
 	const tracks: PickableTrack[] = [];
 	for (let i = 0; i < list.length; i++) tracks.push(list[i]);
-	captionModes(tracks, target).forEach((mode, i) => {
+	captionModes(tracks, target, hidden).forEach((mode, i) => {
 		if (mode !== null) list[i].mode = mode;
 	});
 }
