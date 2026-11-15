@@ -422,6 +422,17 @@ them to a handler. Where every stand-in lives in memory, as in the
 unit tests and in acceptance cases built on a fake EventSource alone,
 one turn drains every microtask and settles the question.
 
+Motion in the acceptance tier has the same shape in both directions.
+Under the tier's `element.animate()` stub a Svelte transition starts
+its timed animation a task after the update that changed the DOM, an
+element an outro holds stays in the DOM until that animation ends, and
+a scripted scroll can wait a frame for layout. So the DOM change is no
+witness for the motion it causes: read too early, "it moved" fails and
+"nothing moved" passes without having looked. A motion scenario waits
+for the recorder in `frontend/tests/acceptance/motion.ts` to report
+`settled()` (no animation still running), or for the scroll to appear
+in `scrolls`, and asserts then.
+
 ## Test-discipline expectations for AI agents
 
 Every PR shows the red→green pair in `git log`:

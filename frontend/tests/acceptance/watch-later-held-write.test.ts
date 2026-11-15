@@ -70,6 +70,7 @@ import { syncRemoveEntry, syncSetEntry } from '../../src/lib/account/set-entry';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { m } from '../../src/lib/paraglide/messages';
 import { recordMotion, setReducedMotion } from './motion';
+import { animationsInFlight } from './stubs/element-animate';
 
 import type { EntryView, ListEntry } from '../../src/lib/account/types';
 import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
@@ -189,8 +190,12 @@ afterEach(() => {
 	invalidateWatchLater('anilist');
 });
 
+/** Lets the page's requests and updates run, then waits out any
+ *  motion they started: a card the strip lets go of stays in the DOM
+ *  until its outro has finished. */
 async function settle(steps = 40) {
 	for (let i = 0; i < steps; i++) await new Promise((r) => setTimeout(r, 5));
+	await until(() => animationsInFlight() === 0, 'the strip to stop moving');
 }
 
 async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {

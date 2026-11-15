@@ -42,10 +42,11 @@ let inFlight = 0;
 /**
  * How many animations are running anywhere right now. A Svelte
  * transition starts a placeholder for its delay inside the update that
- * changed the DOM, and the animation that carries its time only when
- * that placeholder finishes, a task later. So a scenario that sees the
- * DOM change has not yet seen the motion it caused: it has, once this
- * reads zero. ../motion.ts reads it as `settled()`.
+ * changed the DOM, and the animation for its duration only when that
+ * placeholder finishes, which here is a task later. So a scenario that
+ * sees the DOM change may not yet have seen the motion it caused, nor
+ * an element an outro holds in the DOM leave: it has, once this reads
+ * zero. ../motion.ts reads it as `settled()`.
  */
 export function animationsInFlight(): number {
 	return inFlight;

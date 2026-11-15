@@ -14,9 +14,10 @@
 // for the delay and then the real one, so "moved" here is an
 // `animate()` call with any time in it.
 //
-// Neither kind of motion is there the moment the DOM changes. The
-// animation with time in it starts a task after the update that
-// inserted or removed the element, and a scripted scroll can wait a
+// Neither kind of motion is there the moment the DOM changes. Under
+// the `element.animate()` stub (./stubs/element-animate.ts) a
+// transition without a delay starts its timed animation a task after
+// the update that inserted or removed the element, and a scroll can wait a
 // frame for layout. So a scenario never reads `animations` or `glides`
 // right after its DOM witness, nor after a fixed sleep: it waits for
 // `settled()`, or for the scroll in `scrolls`, and reads them then.
@@ -32,8 +33,9 @@ export interface Motion {
 	readonly animations: string[];
 	/** Scrolls asked to glide, as `<method> <element>`. */
 	readonly glides: string[];
-	/** Every scripted scroll, gliding or not, as `<method> <element>`:
-	 *  the witness that a scroll was asked at all. */
+	/** Every scroll asked of an element, gliding or not, as
+	 *  `<method> <element>`: the witness that a scroll was asked at
+	 *  all. A scroll of the window is not recorded. */
 	readonly scrolls: string[];
 	/** True when no animation is running: every transition the DOM's
 	 *  changes so far started has started its timed part, and that
