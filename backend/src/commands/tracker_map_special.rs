@@ -39,13 +39,14 @@ pub(super) async fn special_evidence(
         let Some(native) = resolves(ask, &relation.id).await? else {
             continue;
         };
-        let entry = match ask.provider.media_evidence(ask.tokens, native).await {
-            Ok(entry) => entry.show,
-            // The tracker answering that the entry is gone is an answer:
-            // it holds nothing.
-            Err(err) if err.is_not_found_shaped() => continue,
-            Err(err) => return Err(err),
+        // The tracker answering that the entry is gone is an answer: it
+        // holds nothing.
+        let Some(entry) =
+            AniError::unless_absent(ask.provider.media_evidence(ask.tokens, native).await)?
+        else {
+            continue;
         };
+        let entry = entry.show;
         let map = episode_map_for(ask, &relation.id, native, entry.episodes).await?;
         let contested = reads_extras(&map) && contested(ask, &relation.id, ours, count).await?;
         let holds_slot = reads_extras(&map) && !contested;
