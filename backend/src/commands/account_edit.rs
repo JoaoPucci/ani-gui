@@ -27,8 +27,9 @@ use crate::commands::account::{provider_for_kind, resolve_native_media_id};
 use crate::error::{AniError, Result};
 
 /// Read the user's current list entry for a show (status + watched
-/// count), or `Ok(None)` when the show isn't mapped to the provider or
-/// isn't on the user's list. Drives the detail-page editor so it opens
+/// count), or `Ok(None)` when the show isn't mapped to the provider,
+/// the tracker no longer has the entry it maps to, or the show isn't on
+/// the user's list. Drives the detail-page editor so it opens
 /// showing the *live* tracker state — the user never edits from a stale
 /// local snapshot.
 pub async fn get_entry(
@@ -79,7 +80,9 @@ pub(crate) async fn read_entry_at(
     // Noted, so a removal's local clear acts only on what this read found.
     let revisions = &state.account_write_locks.cache_revisions;
     let read = revisions.start_read(kind);
-    let entry = provider.current_entry(tokens, native).await?;
+    // A tracker that no longer has the entry has no row on it either:
+    // the show reads as one no tracker id maps.
+    let entry = AniError::unless_absent(provider.current_entry(tokens, native).await)?.flatten();
     revisions.note_read(kind, native.0, read, entry.is_none());
     Ok(entry)
 }
@@ -90,7 +93,8 @@ pub(crate) async fn read_entry_at(
 /// the user's deliberate value is written verbatim, so they can correct
 /// an over-count downward or move status anywhere.
 ///
-/// `Ok(None)` when the show can't be mapped to the provider, or when the
+/// `Ok(None)` when the show can't be mapped to the provider, when the
+/// tracker answers that it no longer has the entry, or when the
 /// edit carries nothing ([`EntryUpdate::is_empty`]) — a non-error
 /// "nothing to write".
 pub async fn set_entry(
@@ -133,7 +137,12 @@ async fn set_entry_via(
     // Resolve the cache owner before the mutation: the write may spend
     // the last allowance, so a profile request afterwards can be refused.
     let owner = super::account_owner::before_write(state, kind, provider, tokens).await?;
-    let entry = provider.update_entry(tokens, native, update).await?;
+    // A tracker that no longer has the entry wrote nothing: the save
+    // answers as for a show no tracker id maps.
+    let Some(entry) = AniError::unless_absent(provider.update_entry(tokens, native, update).await)?
+    else {
+        return Ok(None);
+    };
     let owner = super::account_owner::after_write(state, kind, provider, tokens, owner).await;
     // Force the explicit value into the local cache (overwrites a higher
     // progress, unlike the monotonic mark-watched write-through) so the
@@ -148,7 +157,8 @@ async fn set_entry_via(
 /// Remove a show from the user's tracker list (the editor's "Remove from
 /// list"). Deletes the provider entry, then drops the local cache row so
 /// the rail/editor reflect the removal immediately. Returns `Ok(false)`
-/// when the show isn't mapped to the provider (nothing to remove).
+/// when the show isn't mapped to the provider, or the tracker no longer
+/// has the entry it maps to (nothing to remove).
 pub async fn remove_entry(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -184,7 +194,9 @@ async fn remove_entry_via(
     // on a status. Instead, on ANY delete error, confirm with a live
     // read: if the show is no longer on the list the delete's goal is
     // already met (idempotent success, still drop the cache row); a
-    // still-present show means the failure is real and propagates.
+    // still-present show means the failure is real and propagates. A
+    // read the tracker answers with the entry itself absent removed
+    // nothing: it answers as for a show no tracker id maps.
     // The bearer's user (remembered once the tracker has named it): the
     // delete and the cache row's drop both go by it.
     let owner = super::account_owner::before_write(state, kind, provider, tokens).await?;
@@ -193,8 +205,9 @@ async fn remove_entry_via(
         None => provider.delete_entry(tokens, native).await,
     };
     if let Err(e) = deleted {
-        match provider.current_entry(tokens, native).await {
-            Ok(None) => {}
+        match AniError::unless_absent(provider.current_entry(tokens, native).await) {
+            Ok(Some(None)) => {}
+            Ok(None) => return Ok(false),
             _ => return Err(e),
         }
     }

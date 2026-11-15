@@ -201,7 +201,9 @@ async fn post_set(
 
 /// Read the user's live current entry for a show so the detail-page
 /// editor opens on the real tracker state. `null` when the show isn't on
-/// the list or isn't mapped to the provider.
+/// the list or isn't mapped to the provider — which includes a show
+/// mapped to an entry the tracker answers it no longer has (404/410), so
+/// that answer is not a 502 the renderer would retry.
 async fn get_entry(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
@@ -222,7 +224,8 @@ async fn get_entry(
 
 /// Map `remove_entry`'s result to a status: 204 when a tracker entry was
 /// actually removed (or was already gone — idempotent), 404 when no
-/// connected provider maps this show so nothing could be removed. The 404
+/// connected provider maps this show — or the tracker no longer has the
+/// entry it maps to — so nothing could be removed. The 404
 /// matters for the renderer's multi-tracker fan-out: it counts any
 /// resolved DELETE as a successful removal, so an unmappable provider must
 /// reject rather than mask a real provider's failed delete (mirrors the

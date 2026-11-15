@@ -349,6 +349,22 @@ impl AniError {
         matches!(self, Self::Upstream { status } if *status == 404 || *status == 410)
     }
 
+    /// `result` with the upstream's answer that the thing asked for is
+    /// absent ([`Self::is_not_found_shaped`]) read as `Ok(None)`; any
+    /// other answer as `Ok(Some(_))`, and any other error as it came.
+    /// For a request about one tracker entry, where the tracker no
+    /// longer having it is an answer about the entry, not a failure.
+    ///
+    /// # Errors
+    /// Every error of `result` that is not absence.
+    pub fn unless_absent<T>(result: Result<T>) -> Result<Option<T>> {
+        match result {
+            Ok(value) => Ok(Some(value)),
+            Err(err) if err.is_not_found_shaped() => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
     /// HTTP status code the route layer surfaces for this variant.
     /// Lives here (next to the variant declarations) instead of on the
     /// `IntoResponse` impl in `api/mod.rs` because that file is already
