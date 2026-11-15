@@ -3,11 +3,17 @@
  * clears the cues of every text track on the video.
  */
 
+/** The part of a `TextTrackCue` this reads: the track it is on, null
+ *  once it is removed. */
+export interface KeptCue {
+	readonly track: unknown;
+}
+
 /** The part of a `TextTrack` this reads and writes. */
 export interface CueTrack {
 	mode: TextTrackMode;
-	readonly cues: ArrayLike<TextTrackCue> | null;
-	addCue(cue: TextTrackCue): void;
+	readonly cues: ArrayLike<KeptCue> | null;
+	addCue(cue: KeptCue): void;
 }
 
 /** The part of an `HTMLTrackElement` this reads. */
