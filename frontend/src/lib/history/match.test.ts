@@ -766,8 +766,9 @@ describe('resolveKitsuMatch', () => {
 
 	it('evicts a music-subtype reverse-map binding and re-resolves (the Idol bug)', async () => {
 		// The Love Live movie's provider show_id was poisoned to point at the
-		// YOASOBI "Idol" music video (Kitsu subtype `music`, 1 ep). Music never
-		// exists on the provider, so step 0 must drop the row and re-resolve — the
+		// YOASOBI "Idol" music video (Kitsu subtype `music`, 1 ep). No play
+		// starts from a music entry (search never offers one), so the mapping
+		// is a poisoned guess: step 0 must drop the row and re-resolve — the
 		// card stops showing "Idol" for a Love Live entry.
 		const preliminary = resolveHistoryEntry(
 			{
