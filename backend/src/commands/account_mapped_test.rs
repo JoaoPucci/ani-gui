@@ -839,3 +839,21 @@ async fn a_status_for_a_show_that_resolves_to_nothing_is_not_written() {
     assert!(push(&state, &tracker, "5", None, update).await.is_none());
     assert!(tracker.writes().is_empty());
 }
+
+#[tokio::test]
+async fn the_monotonic_write_back_sends_nothing_to_a_gone_entry() {
+    let state = state();
+    let tracker = Tracker::with(&[], &[]).without(&[21]);
+    let got = crate::commands::account::push_progress_via(
+        &state,
+        ProviderKind::AniList,
+        &tracker,
+        &tokens(),
+        ProviderMediaId(21),
+        watched(4),
+    )
+    .await
+    .expect("the tracker answered: the entry is not there");
+    assert!(got.is_none());
+    assert!(tracker.writes().is_empty());
+}
