@@ -47,6 +47,8 @@ pub(crate) async fn update_unless_absent(
 /// variants, not as a status.
 fn needs_confirming(err: &AniError) -> bool {
     match err {
+        // The trackers' transports answer a 4xx as `TrackerRejected`;
+        // an `Upstream` 4xx is read the same way, defensively.
         AniError::Upstream { status } => (400..500).contains(status),
         AniError::TrackerRejected { .. } | AniError::ParseFailed { .. } => true,
         _ => false,

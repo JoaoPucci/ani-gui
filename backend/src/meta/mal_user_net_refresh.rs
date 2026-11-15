@@ -56,6 +56,8 @@ impl MalProvider {
 /// error.
 pub(in crate::meta) fn refresh_refusal(e: AniError) -> AniError {
     match e {
+        // `post_token_form` answers a 4xx as `TrackerRejected`; an
+        // `Upstream` 400/401 is read the same way, defensively.
         AniError::Upstream { status: 400 | 401 }
         | AniError::TrackerRejected { status: 400 | 401 } => AniError::RefreshRejected,
         other => other,
