@@ -36,15 +36,14 @@
 	import { spotlightEpisode } from '$lib/detail/episode-spotlight';
 	import { settle } from '$lib/motion/settle';
 	import { fade } from '$lib/motion/transitions';
-	import { browserStorage as mockStorage } from '$lib/hero/prefs';
-	import MockSwitch from '$lib/watch-order/mock/MockSwitch.svelte';
-	import UpNextCard from '$lib/watch-order/mock/UpNextCard.svelte';
-	import {
-		loadMockPrefs,
-		saveMockPrefs,
-		type WatchOrderMockPrefs
-	} from '$lib/watch-order/mock/prefs';
-	import { runFor as mockRunFor, upNextFor as mockUpNextFor } from '$lib/watch-order/mock/view';
+	import UpNextCard from '$lib/watch-order/UpNextCard.svelte';
+	import { localDay } from '$lib/watch-order/entry';
+	import { latestRead } from '$lib/watch-order/latest-read';
+	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
+	import { watchOrderSources } from '$lib/watch-order/sources';
+	import { settledOrder } from '$lib/watch-order/page-model';
+	import { finaleCard } from '$lib/watch-order/up-next';
+	import { atVideoEnd, stepOpen, upNextShown as upNextShownFor } from '$lib/play/up-next-window';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
@@ -229,20 +228,6 @@
 
 	const id = $derived(page.params.id ?? '');
 
-	// Watch-order mockups (0.19.0 design review): the finale's "Up next"
-	// card, shown at once on a run member's last episode while
-	// Diagnostics turns the mockups on — see $lib/watch-order/mock.
-	let mockPrefs = $state(loadMockPrefs(mockStorage()));
-	function chooseMockPrefs(next: WatchOrderMockPrefs) {
-		mockPrefs = next;
-		saveMockPrefs(mockStorage(), next);
-	}
-	let mockDismissed = $state(false);
-	const mockRun = $derived(mockPrefs.enabled ? mockRunFor(id) : null);
-	const mockToday = new Date().toISOString().slice(0, 10);
-	const mockUpNext = $derived(
-		mockRun ? mockUpNextFor(mockRun, id, mockPrefs.order, mockToday) : null
-	);
 	// A session opened from a guessed Continue match records the guess —
 	// on the history row, on tracker accounts — only for a play that
 	// landed on the card's own listing ($lib/play/play-origin.ts). The
@@ -257,12 +242,6 @@
 	// A fractional extra (a 7.5 recap) stays itself: see
 	// $lib/play/episode-number.
 	const episodeNum = $derived(parseEpisodeNumber(page.url.searchParams.get('episode')) ?? 1);
-	// The mockup's card waits for an entry's last episode, as the
-	// feature's will.
-	const mockAtFinale = $derived.by(() => {
-		const count = mockRun?.entries.find((e) => e.id === id)?.episodes ?? null;
-		return count === null || episodeNum >= count;
-	});
 	// kind defaults to hls — the legacy URL shape didn't carry one. The
 	// detail page now always appends &kind=<hls|mp4>, so this default
 	// only kicks in when a refresh on a stale URL drops the param.
@@ -448,6 +427,10 @@
 	const streamLoading = $derived(startPhase === 'starting' || startPhase === 'stalled');
 	let currentTime = $state(0);
 	let duration = $state(0);
+	// The element is in its ended state, as its `ended` event, every
+	// `timeupdate` and the start of every seek report it: the Up next
+	// card reads it ($lib/play/up-next-window).
+	let videoEnded = $state(false);
 	let videoVolume = $state(1);
 	let isMuted = $state(false);
 	// Captions selector for the custom controls. Reads the live
@@ -564,6 +547,9 @@
 	// new one attaches and reports its own: aniskip is asked with the
 	// length of the stream on screen ($lib/play/aniskip-fetch-trigger).
 	const aniskipDurationReady = $derived(lengthReady(lengthFor, sessionId, duration));
+	// The Up next card counts the playhead and length only for the
+	// stream on screen.
+	const playheadOnScreen = $derived(lengthFor === sessionId);
 	const aniskipTrigger = createAniskipFetchTrigger();
 	// Each ask for skip times, cancelled by the next ask, a clear, or
 	// the page going ($lib/navigation/visit).
@@ -1167,11 +1153,11 @@
 		if (t instanceof HTMLElement) t.blur();
 		// Defer clearing dragPreviewFraction until the video reports
 		// the seek complete (`seeked`). Also sync `currentTime` from
-		// the video in the same step — `timeupdate` lags `seeked`
-		// (especially on backward seeks) so without this the bound
-		// fallback briefly shows the pre-drag time before catching
-		// up. The 500 ms safety timer keeps the preview from
-		// sticking forever if `seeked` never fires.
+		// the video in the same step: `seeking` has already moved it
+		// to the release point, but a newer drag's live seek may have
+		// moved it since, and the element's own value is the one the
+		// bar settles on. The 500 ms safety timer keeps the preview
+		// from sticking forever if `seeked` never fires.
 		if (videoEl) {
 			const v = videoEl;
 			// Capture the current drag's generation so the callbacks
@@ -1715,6 +1701,69 @@
 	const hasPrev = $derived(prevEpisodeNum >= 1);
 	const hasNext = $derived(stepAllowed(nextEpisodeNum, totalEpisodes, extraNums));
 
+	// The "Up next" card at a finale: on the last episode of an entry
+	// that has finished airing, with no further episode of the entry to
+	// step to, once the video has ended, it names the entry the order
+	// setting puts next and waits for a click
+	// ($lib/watch-order/up-next, $lib/play/up-next-window). Nothing
+	// asks the provider about that entry, and the card plays nothing:
+	// auto-play only ever steps within the entry. Dismissed, it stays
+	// away for the rest of that viewing, and it is announced once per
+	// viewing.
+	let upNextData = $state<WatchOrderData | null>(null);
+	let configFailed = $state(false);
+	const upNextToday = localDay(new Date());
+	const upNextCard = $derived(
+		finaleCard(
+			upNextData,
+			id,
+			settledOrder(config, configFailed),
+			upNextToday,
+			episodeNum,
+			detail ? { id: detail.id, status: detail.status, episodes: detail.episode_count } : null
+		)
+	);
+	// The counts behind `hasNext` belong to another show: the page,
+	// reused for a new one, still holds the detail it read at mount.
+	const countsStale = $derived(detail !== null && detail.id !== id);
+	const nextOpen = $derived(stepOpen(hasNext, countsStale, upNextCard !== null));
+	let upNextDismissed = $state(false);
+	let upNextAnnounced = $state(false);
+	$effect(() => {
+		// A new viewing: another show or episode. A recovery or a
+		// quality switch re-opens the same episode, and is not one.
+		void [id, episodeNum];
+		upNextDismissed = false;
+		upNextAnnounced = false;
+	});
+	const upNextShown = $derived(
+		upNextShownFor({
+			card: upNextCard !== null,
+			hasNext: nextOpen,
+			resumeHolding,
+			dismissed: upNextDismissed,
+			videoFullscreen,
+			// The playhead counts only once it belongs to the stream on
+			// screen: across a switch it still holds the last episode's
+			// until that one is replaced.
+			atEnd: playheadOnScreen && atVideoEnd(currentTime, duration, videoEnded)
+		})
+	);
+	// One read per show; only the latest one's answer counts, and a
+	// read superseded, or still out when the page goes, is cancelled
+	// ($lib/watch-order/latest-read). Neither read rejects; a franchise
+	// that cannot be read means no card ($lib/watch-order/loader).
+	const upNextReads = latestRead<WatchOrderData>((w) => (upNextData = w));
+	$effect(() => {
+		const showId = id;
+		if (!showId) {
+			upNextReads.stop();
+			return;
+		}
+		upNextReads.start((signal) => loadWatchOrder(showId, watchOrderSources, signal));
+	});
+	onDestroy(() => upNextReads.stop());
+
 	// Auto-play next: persisted in Config.auto_play_next; mirrored as a
 	// local boolean so the inline toggle on the player can flip the
 	// state instantly while the persist call goes out async.
@@ -1910,10 +1959,13 @@
 		// fresh one.
 		hls = null;
 		attachedUrl = null;
-		// The last stream's length is not the next one's, and the
-		// element does not report the change: unloading it fires no
-		// `durationchange`.
+		// The last source's playhead, length and end are not this one's:
+		// the element does not report the change (unloading it fires no
+		// `durationchange`), and the Up next card judges a finale's end by
+		// them.
+		currentTime = 0;
 		duration = 0;
+		videoEnded = false;
 		if (videoEl) {
 			videoEl.removeAttribute('src');
 			videoEl.load();
@@ -1933,12 +1985,21 @@
 		// (after an error overlay) with the stream already playing.
 		currentTime = v.currentTime;
 		duration = isFinite(v.duration) ? v.duration : 0;
+		videoEnded = v.ended;
 		videoVolume = v.volume;
 		isMuted = v.muted;
 		playbackRate = v.playbackRate;
 
 		const onTime = () => {
 			currentTime = v.currentTime;
+			// A seek back, or playing again, leaves the ended state.
+			videoEnded = v.ended;
+		};
+		// A seek reports its new point at once; its `timeupdate` waits
+		// for the media there. The Up next card goes as the seek starts.
+		const onSeeking = () => {
+			currentTime = v.currentTime;
+			videoEnded = v.ended;
 		};
 		const onDuration = () => {
 			duration = isFinite(v.duration) ? v.duration : 0;
@@ -1957,6 +2018,7 @@
 			duration = isFinite(v.duration) ? v.duration : 0;
 		};
 		const onEnded = () => {
+			videoEnded = true;
 			onVideoEnded();
 		};
 		// Single-click → play/pause; double-click → toggle fullscreen.
@@ -1992,6 +2054,7 @@
 		v.textTracks.addEventListener('change', onTextTracksMutate);
 
 		v.addEventListener('timeupdate', onTime);
+		v.addEventListener('seeking', onSeeking);
 		v.addEventListener('timeupdate', onProg);
 		v.addEventListener('progress', onProg);
 		v.addEventListener('durationchange', onDuration);
@@ -2004,6 +2067,7 @@
 
 		return () => {
 			v.removeEventListener('timeupdate', onTime);
+			v.removeEventListener('seeking', onSeeking);
 			v.removeEventListener('timeupdate', onProg);
 			v.removeEventListener('progress', onProg);
 			v.removeEventListener('durationchange', onDuration);
@@ -2424,6 +2488,7 @@
 			})
 			.catch(() => {
 				config = null;
+				configFailed = true;
 			});
 	});
 
@@ -2818,7 +2883,7 @@
 		void switchToEpisode(prevEpisodeNum);
 	}
 	function onNext() {
-		if (!hasNext) return;
+		if (!nextOpen) return;
 		comeBackWith();
 		void switchToEpisode(nextEpisodeNum);
 	}
@@ -2857,7 +2922,8 @@
 			handedOff: handoff.handedOff,
 			episodeNum,
 			totalEpisodes,
-			extras: extraNums
+			extras: extraNums,
+			stepOpen: nextOpen
 		});
 		if (decision.advance) {
 			void switchToEpisode(decision.target);
@@ -3366,7 +3432,17 @@
 			     seeks just past `end_time`. Positioned bottom-right
 			     above native + custom controls so it never overlaps
 			     the timeline. -->
-			{#if !resumeHolding && activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
+			{#if upNextShown && upNextCard}
+				<!-- Takes the Skip Ending pill's place and corner. -->
+				<UpNextCard
+					progress={upNextCard.progress}
+					upNext={upNextCard.upNext}
+					today={upNextToday}
+					announce={!upNextAnnounced}
+					onannounce={() => (upNextAnnounced = true)}
+					ondismiss={() => (upNextDismissed = true)}
+				/>
+			{:else if !resumeHolding && activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
 				<button
 					type="button"
 					class="player-skip-btn"
@@ -3962,21 +4038,9 @@
 				<span class="player-spinner-track"><span class="player-spinner-sweep"></span></span>
 			</span>
 		{/if}
-		{#if mockRun && mockUpNext && mockUpNext.kind !== 'none' && mockAtFinale && !mockDismissed}
-			<UpNextCard
-				run={mockRun}
-				upNext={mockUpNext}
-				variant={mockPrefs.upNext}
-				today={mockToday}
-				ondismiss={() => (mockDismissed = true)}
-			/>
-		{/if}
 	</section>
 
 	<div class="watch-column">
-		{#if mockRun}
-			<MockSwitch prefs={mockPrefs} keys={['order', 'upNext']} onchoose={chooseMockPrefs} />
-		{/if}
 		<!-- Now-playing row: compact breadcrumb under the player so the
 		     page hierarchy reads "video → context → more episodes →
 		     similar". Show title links back to the detail page; episode
@@ -4078,7 +4142,7 @@
 							type="button"
 							class="ep-btn"
 							onclick={onNext}
-							disabled={!hasNext || switchBusy || airingIsPending}
+							disabled={!nextOpen || switchBusy || airingIsPending}
 							aria-label={m.play_episode_nav_next_aria_label()}
 						>
 							<span>{m.play_episode_nav_next_label({ episode: String(nextEpisodeNum) })}</span>

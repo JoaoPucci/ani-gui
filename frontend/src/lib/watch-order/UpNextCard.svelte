@@ -1,9 +1,7 @@
 <!--
-  The player's "Up next" card at a finale (mockup). It takes the skip
+  The player's "Up next" card at a finale. It takes the skip
   pill's corner, surface and accent border, and grows into a card:
-
-  - `poster`: the next entry's poster beside its title and meta;
-  - `still`: the next entry's banner above its title, wider.
+  the next entry's poster beside its title and meta.
 
   It waits for a click, which opens the next entry's show page; it
   never takes focus by itself, Esc dismisses it while it has focus,
@@ -16,22 +14,26 @@
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
 	import { settle } from '$lib/motion/settle';
-	import MetaLine from '../MetaLine.svelte';
-	import { metaLine } from '../meta';
-	import type { MockEntry, MockRun } from './types';
-	import type { UpNext } from './view';
+	import MetaLine from './MetaLine.svelte';
+	import { dismissKey, focusBack, focusEntered, focusLeft, keyboardClick } from './focus-return';
+	import { metaLine } from './meta';
+	import type { Progress, WatchEntry } from './types';
+	import type { UpNext } from './up-next';
 
 	let {
-		run,
+		progress,
 		upNext,
-		variant,
 		today,
+		announce,
+		onannounce,
 		ondismiss
 	}: {
-		run: MockRun;
+		progress: Progress;
 		upNext: Exclude<UpNext, { kind: 'none' }>;
-		variant: 'poster' | 'still';
 		today: string;
+		/** False once this viewing has announced the card. */
+		announce: boolean;
+		onannounce: () => void;
 		ondismiss: () => void;
 	} = $props();
 
@@ -44,49 +46,72 @@
 				? m.watchorder_upnext_coming()
 				: m.watchorder_upnext_eyebrow()
 	);
-	const image = (e: MockEntry) =>
-		imageProxyUrl(variant === 'still' ? (e.cover ?? e.poster) : e.poster);
+	const image = (e: WatchEntry) => imageProxyUrl(e.poster);
 
 	// Filled after mount: a live region that already holds its text
 	// when it appears is not announced by every screen reader.
-	let announce = $state('');
+	let said = $state('');
 	onMount(() => {
-		announce = m.watchorder_upnext_announce({ title: entries[0].title });
+		if (!announce) return;
+		said = m.watchorder_upnext_announce({ title: entries[0].title });
+		onannounce();
 	});
 
+	// Focus given back on a dismissal: $lib/watch-order/focus-return
+	// has the rules; this keeps its state and focuses its answer.
+	let cameFrom: HTMLElement | null = null;
+	let card = $state<HTMLElement | null>(null);
+	const inCard = (el: Node) => card?.contains(el) ?? false;
+	function onfocusin(e: FocusEvent) {
+		const from = e.relatedTarget instanceof HTMLElement ? e.relatedTarget : null;
+		cameFrom = focusEntered(cameFrom, from, inCard);
+	}
+	function onfocusout(e: FocusEvent) {
+		const to = e.relatedTarget instanceof Node ? e.relatedTarget : null;
+		cameFrom = focusLeft(cameFrom, to, inCard);
+	}
+	function dismiss(byKeyboard: boolean) {
+		const active = document.activeElement;
+		const back = focusBack(cameFrom, byKeyboard, active !== null && inCard(active));
+		ondismiss();
+		if (back?.isConnected) back.focus();
+	}
+
 	function onkeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
+		if (dismissKey(e.key)) {
 			e.stopPropagation();
-			ondismiss();
+			dismiss(true);
 		}
 	}
 </script>
 
-{#snippet inner(e: MockEntry, compact: boolean)}
+{#snippet inner(e: WatchEntry, compact: boolean)}
 	<span class="art" class:compact>
 		{#if image(e)}<img src={image(e)} alt="" />{/if}
 	</span>
 	<span class="text">
 		{#if !compact}<span class="key">{key}</span>{/if}
 		<span class="title">{e.title}</span>
-		<MetaLine segments={metaLine(e, run.progress[e.id], today)} />
+		<MetaLine segments={metaLine(e, progress[e.id], today)} />
 	</span>
 {/snippet}
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="up-next"
-	class:still={variant === 'still'}
 	style:--accent={accent}
+	bind:this={card}
 	{onkeydown}
+	{onfocusin}
+	{onfocusout}
 	transition:settle={{ duration: 200 }}
 >
-	<span class="sr-only" role="status">{announce}</span>
+	<span class="sr-only" role="status">{said}</span>
 	<button
 		type="button"
 		class="dismiss"
 		aria-label={m.watchorder_upnext_dismiss()}
-		onclick={ondismiss}
+		onclick={(e) => dismiss(keyboardClick(e.detail))}
 	>
 		<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
 			<path
@@ -102,7 +127,12 @@
 		<ul class="choices">
 			{#each entries as e (e.id)}
 				<li>
-					<a class="row" href={resolve('/anime/[id]', { id: e.id })} title={e.title}>
+					<a
+						class="row"
+						href={resolve('/anime/[id]', { id: e.id })}
+						title={e.title}
+						aria-label={e.title}
+					>
 						{@render inner(e, true)}
 					</a>
 				</li>
@@ -115,6 +145,7 @@
 			class="row single"
 			href={resolve('/anime/[id]', { id: upNext.entry.id })}
 			title={upNext.entry.title}
+			aria-label={upNext.entry.title}
 		>
 			{@render inner(upNext.entry, false)}
 		</a>
@@ -138,9 +169,6 @@
 			0 8px 24px rgb(0 0 0 / 0.45),
 			0 2px 8px rgb(0 0 0 / 0.3);
 	}
-	.up-next.still {
-		inline-size: min(20rem, calc(100% - 3rem));
-	}
 	.row {
 		display: grid;
 		grid-template-columns: 4.5rem minmax(0, 1fr);
@@ -160,9 +188,6 @@
 		outline-offset: 2px;
 		box-shadow: none;
 	}
-	.still .row.single {
-		grid-template-columns: minmax(0, 1fr);
-	}
 	.art {
 		position: relative;
 		display: block;
@@ -173,12 +198,6 @@
 	}
 	.art.compact {
 		inline-size: 2.75rem;
-	}
-	.still .art {
-		aspect-ratio: 16 / 9;
-	}
-	.still .art.compact {
-		inline-size: 4.5rem;
 	}
 	.art img {
 		position: absolute;
@@ -192,9 +211,6 @@
 		gap: var(--space-1);
 		min-inline-size: 0;
 		padding-inline-end: var(--space-5);
-	}
-	.still .single .text {
-		padding-inline-end: 0;
 	}
 	.key {
 		font-size: var(--type-micro);
