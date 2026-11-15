@@ -276,6 +276,7 @@ curl -sI http://127.0.0.1:42337/healthz
 | `ANI_GUI_UNATTENDED` | set to `1` by a harness with nobody at the screen (the e2e launch helper and the backend's integration tests always do): a packaged build whose startup fails then exits at once instead of showing its error dialog, and the backend never fetches the live remote flags file, taking its flags from `ANI_GUI_TEST_FLAGS_FILE` or the defaults ([Remote flags](#remote-flags)) |
 | `ANI_GUI_TEST_FLAGS_FILE` | only with `ANI_GUI_UNATTENDED=1`: a flags file, in the remote file's format, that the test run's flags come from. Ignored on any other launch |
 | `ANI_GUI_DEV` | forces the dev data profile (`ani-gui-dev` dirs) — see below. Auto-set by the Electron dev launcher; rarely needed by hand |
+| `ANI_GUI_TEST_PROFILE_ROOT` | test harnesses only, never set by the app or by hand: roots the backend's whole profile (config, cache, state, logs, default downloads) under one folder on every platform, ahead of everything else here. The backend's integration tests set it ([Testing](testing.md#running-tests-locally)) |
 
 **Dev data isolation.** Any source-built backend (`cargo run`, the
 standalone browser-dev flow above, the Electron dev launcher) is a debug

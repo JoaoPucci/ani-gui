@@ -92,6 +92,21 @@ bash tests/arch/run-all.sh
 python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
 ```
 
+The integration tests under `backend/tests/` that start the real
+backend binary keep it off your own profile on every platform:
+`backend/tests/common` sets `ANI_GUI_TEST_PROFILE_ROOT` to each test's
+temporary folder, and the backend then keeps its config, cache
+(`metadata.sqlite`, images, the flags cache), state (history, offsets),
+logs and default download folder under that one folder, ahead of the
+XDG variables, `HOME` and the platform's folder APIs. Without it,
+Windows and macOS would hand the binary the machine's own profile
+(`ani-gui-dev` for a debug build, `ani-gui` for `--release`), which no
+other variable redirects there. The variable is for test harnesses
+only: nothing in the app sets it, and `tests/arch/test_profile_root.sh`
+keeps its name to the backend's tests and the module that reads it.
+`backend/tests/profile_root.rs` checks that a backend started with it
+writes nothing anywhere else.
+
 ## End-to-end (Playwright + Electron)
 
 The suite under `electron/e2e/` drives the packaged app
@@ -394,6 +409,7 @@ Cheap grep / AST tests under `tests/arch/`. They fail loudly when boundaries ero
 |---|---|
 | No hardcoded English in `.svelte` files or `.ts` modules under `frontend/src/` (must go through `m.<key>()`) | custom ESLint rule `no-hardcoded-strings`, `i18n-ignore` escape |
 | Crate dependency direction (`cache` doesn't depend on `reqwest`, etc.) | `tests/arch/dep_direction.sh` (grep) |
+| Only the backend's test harness names the test-only profile root (`ANI_GUI_TEST_PROFILE_ROOT`) | `tests/arch/test_profile_root.sh` (grep) |
 
 ## Mutation testing (deferred)
 
