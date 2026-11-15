@@ -14,7 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { mount, unmount } from 'svelte';
+import { mount, tick, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
@@ -215,7 +215,9 @@ describe.each([
 
 			// One rotation period and a little more.
 			vi.advanceTimersByTime(6_500);
-			await new Promise((r) => setTimeout(r, 50));
+			// The update a rotation makes, then the motion it started.
+			await tick();
+			await until(() => motion.settled(), "the hero's motion to settle");
 
 			if (reduced) {
 				expect(heroText()).toContain('First Feature');
@@ -255,8 +257,7 @@ describe.each([
 		byText(m.home_delete_confirm_button())!.click();
 		await until(() => deleted.includes('allanime-1'), 'the delete to reach the backend');
 		await until(() => continueCards().length === HISTORY.length - 1, 'the card to go');
-		// Past the window the delete's motion runs in.
-		await new Promise((r) => setTimeout(r, 400));
+		await until(() => motion.settled(), "the delete's motion to settle");
 
 		if (reduced) expect(motion.animations).toEqual([]);
 		else expect(motion.animations.some((a) => a.includes('resume-cell'))).toBe(true);
@@ -271,6 +272,8 @@ describe.each([
 
 		next()!.click();
 
+		// The arrow scrolls the rail straight away, gliding or not.
+		expect(motion.scrolls).toEqual([expect.stringContaining('scrollBy')]);
 		expect(motion.glides).toEqual(reduced ? [] : [expect.stringContaining('scrollBy')]);
 	});
 });
