@@ -3,13 +3,14 @@
  * its failed resume's "Pick the right show".
  *
  * A remove or Clear history holds its dialog while it is out, with
- * nothing over it ($lib/history/confirm-run.ts), so nothing opens then.
+ * nothing over it ($lib/history/confirm-run.ts), and a resume its
+ * loading overlay, so nothing opens then.
  * Otherwise the failure overlay, if any, goes. A card whose line could
  * not be read ($lib/history/card-lines.svelte.ts) says it could not be
  * checked, as a failed check does. Otherwise the card is checked
  * again ($lib/history/card-relink.ts): the picker opens only on a card
- * still guessed, and only if no remove or clear began while the check
- * was out. A check that could not be read says so, and leaves the pill
+ * still guessed, and only if no remove, clear or resume began while the
+ * check was out. A check that could not be read says so, and leaves the pill
  * to try again; a card settled since the cards were read, or matched
  * again since its check began, opens nothing.
  *
@@ -21,7 +22,7 @@
 export type CardCheck = boolean | 'unread';
 
 export interface OpenCardLinkDeps {
-	/** Whether a remove or Clear history is out. */
+	/** Whether a remove, a Clear history or a resume is out. */
 	busy: () => boolean;
 	/** Take down the failure overlay. */
 	dismissFailure: () => void;

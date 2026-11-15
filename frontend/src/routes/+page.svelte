@@ -531,7 +531,9 @@
 	// Its lifecycle is $lib/history/open-card-link.ts.
 	function openCardLink(row: string | null, matchId: string, episode: number) {
 		return runOpenCardLink(row, matchId, episode, {
-			busy: () => deleteRun.busy || clearRun.busy,
+			// A resume's loading overlay is a modal too: a pill whose
+			// lines answer once one started opens nothing over it.
+			busy: () => deleteRun.busy || clearRun.busy || resumeBusy !== null,
 			dismissFailure: () => {
 				resumeFailure = null;
 			},

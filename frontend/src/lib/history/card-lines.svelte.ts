@@ -21,9 +21,9 @@
  * card may be drawn from an answer for other rows, standing for another
  * line than its own row, so acting on the row would correct a line the
  * card does not show. A pill's click names the line the card was drawn
- * with, and has no line when the answer it waited for names another. One question is out at a time; rows that change
- * meanwhile are asked once it answers. A failed answer leaves the last
- * one drawn.
+ * with, and has no line when the answer it waited for names another.
+ * One question is out at a time; rows that change meanwhile are asked
+ * once it answers. A failed answer leaves the last one drawn.
  */
 
 import type { CardLine, CardLineRow } from '$lib/api';
