@@ -38,12 +38,14 @@ pub const TEST_PROFILE_ROOT_ENV: &str = "ANI_GUI_TEST_PROFILE_ROOT";
 /// The folder [`TEST_PROFILE_ROOT_ENV`] names, when it names one.
 ///
 /// It exists because the integration tests that spawn the real binary
-/// could not otherwise keep it off the machine's own profile. On Linux
-/// the XDG variables and `HOME` redirect every folder, but on macOS the
-/// platform folders come from the home's `Library` and on Windows from
+/// could not otherwise keep it off the machine's own profile on
+/// Windows. On Linux the XDG variables and `HOME` redirect every
+/// folder, and on macOS `HOME` does, but Windows resolves them through
 /// the known-folder API, which no variable redirects — so a test run
 /// there read, migrated and swept the developer's dev profile, and a
-/// release-mode run would have done it to the installed app's.
+/// release-mode run would have done it to the installed app's. It
+/// also gives the tests one layout to find files by on every platform,
+/// where macOS otherwise keeps them under the home's `Library`.
 ///
 /// Under the root the layout is fixed and carries no app name, the
 /// root being the test's own: `config/config.toml`, `cache/` (with

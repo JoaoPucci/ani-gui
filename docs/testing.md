@@ -99,13 +99,21 @@ temporary folder, and the backend then keeps its config, cache
 (`metadata.sqlite`, images, the flags cache), state (history, offsets),
 logs and default download folder under that one folder, ahead of the
 XDG variables, `HOME` and the platform's folder APIs. Without it,
-Windows and macOS would hand the binary the machine's own profile
-(`ani-gui-dev` for a debug build, `ani-gui` for `--release`), which no
-other variable redirects there. The variable is for test harnesses
-only: nothing in the app sets it, and `tests/arch/test_profile_root.sh`
-keeps its name to the backend's tests and the module that reads it.
-`backend/tests/profile_root.rs` checks that a backend started with it
-writes nothing anywhere else.
+Windows would hand the binary the machine's own profile (`ani-gui-dev`
+for a debug build, `ani-gui` for `--release`): it resolves those
+folders through the known-folder API, which no other variable
+redirects. On Linux and macOS `HOME` and the XDG variables would
+redirect them, but under a layout that differs between the two; under
+the root it is one layout everywhere. The variable is for the
+backend's test harness only: nothing in the app sets it, and
+`tests/arch/test_profile_root.sh` keeps its name to the module that
+reads it, the backend's tests and these docs.
+`backend/tests/profile_root.rs` starts a backend with it and with every
+home and folder variable pointed at a sentinel folder, has it boot,
+write its settings and its history, and checks that everything it
+reports and writes is under the root and that the sentinel stays
+empty. The sentinel proves something on Linux and macOS only, where
+those variables are where a stray path would come from.
 
 ## End-to-end (Playwright + Electron)
 
