@@ -16,7 +16,7 @@
 //
 // Neither kind of motion is there the moment the DOM changes. Under
 // the `element.animate()` stub (./stubs/element-animate.ts) a
-// transition without a delay starts its timed animation a task after
+// transition starts its timed animation a task after
 // the update that inserted or removed the element, and a scroll can wait a
 // frame for layout. So a scenario never reads `animations` or `glides`
 // right after its DOM witness, nor after a fixed sleep: it waits for

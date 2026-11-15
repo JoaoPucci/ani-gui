@@ -272,6 +272,8 @@ describe.each([
 
 		next()!.click();
 
+		// The arrow scrolls the rail straight away, gliding or not.
+		expect(motion.scrolls).toEqual([expect.stringContaining('scrollBy')]);
 		expect(motion.glides).toEqual(reduced ? [] : [expect.stringContaining('scrollBy')]);
 	});
 });
