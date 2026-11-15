@@ -98,6 +98,8 @@ const THIRD_TITLE = 'JoJo no Kimyou na Bouken (2007)';
 /** The card's own row, and the row its guessed play wrote. */
 const CARD = 'hianime:jojos-bizarre-adventure-2000-5182';
 const PLAYED = 'hianime:jojos-bizarre-adventure-2012-708';
+/** The pick's own row, from plays of the OVA on its own listing. */
+const PICK_OWN = 'hianime:jojos-bizarre-adventure-ova-77';
 
 let backend: LinkBackend;
 let target: HTMLElement;
@@ -740,6 +742,26 @@ describe('switching to the pick', () => {
 		expect(url.searchParams.get('guess')).toBeNull();
 		expect(recoveryResume.consume(RIGHT, 2)).toBe(74);
 		expect(toastStore.items).toEqual([]);
+	});
+
+	it('does not take a pick the viewer is further along in back to the episode playing', async () => {
+		// The viewer watched the pick on its own listing up to episode 6;
+		// the card's line, a wrong guess, is at episode 2. "Switch to it
+		// now" asks the pick's stream for episode 2 and records it on the
+		// pick's own row, which goes back from 6 to 2: Continue Watching
+		// then offers episode 2 of a show the viewer was at 6 in.
+		backend.rows = [
+			...backend.rows,
+			{ ep_no: '6', id: PICK_OWN, title: RIGHT_TITLE, kitsu_id: RIGHT }
+		];
+		await openPlayer();
+		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+		videoAt(74);
+		await openPicker();
+		await pickAndLink(RIGHT_TITLE, m.play_link_switch_now());
+		await until(() => pickPlay() !== undefined, 'the play of the pick');
+		const asked = Number(new URL(pickPlay()!.url, 'http://x').searchParams.get('episode'));
+		expect(asked).toBeGreaterThanOrEqual(6);
 	});
 
 	it('from the slip after keeping watching does the same', async () => {
