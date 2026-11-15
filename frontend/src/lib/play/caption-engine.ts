@@ -143,8 +143,12 @@ export function distinctLabel(
 /** Whether two listings of the engine's renditions read the same: the
  *  same names and languages, in order. hls.js keeps a fragment on its
  *  way, under the same index, across a listing it finds identical
- *  (`subtitleOptionsIdentical`, which reads the renditions'
- *  attributes); a listing that is not renumbers them. */
+ *  (`subtitleOptionsIdentical`); a listing that is not renumbers them.
+ *  This approximates hls.js's check, which reads more of each
+ *  rendition's attributes: a listing that differs only in those keeps
+ *  the same names at the same indices, and so the same text tracks;
+ *  one that keeps a rendition's stable id under another name or
+ *  language, which hls.js reads as identical, is read here as new. */
 export function sameListing(a: readonly EngineTrack[], b: readonly EngineTrack[]): boolean {
 	return a.length === b.length && a.every((r, i) => r.name === b[i].name && r.lang === b[i].lang);
 }
