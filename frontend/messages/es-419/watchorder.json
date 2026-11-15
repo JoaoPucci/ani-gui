@@ -1,5 +1,5 @@
 {
-	"diag_description": "Maquetas de diseño de la función de orden para ver, hechas con datos de ejemplo fijos: tarjetas A continuación al inicio de Seguir viendo y una página de franquicia.",
+	"diag_description": "Maquetas de diseño de la función de orden para ver, hechas con datos de ejemplo fijos: una página de franquicia.",
 	"diag_section": "Maquetas de orden para ver",
 	"diag_switcher": "Mostrar el selector de opciones de las maquetas",
 	"diag_toggle": "Mostrar las maquetas de orden para ver",
@@ -53,9 +53,6 @@
 	"mock_franchise_list": "Lista",
 	"mock_franchise_shelf": "Estante",
 	"mock_group_aria": "Opciones de la maqueta de orden para ver",
-	"mock_handoff": "Continuar",
-	"mock_handoff_episode": "EP 1",
-	"mock_handoff_next": "Sigue",
 	"mock_order": "Orden",
 	"setting_aria": "Orden para ver",
 	"setting_hint": "Cómo se ordenan las temporadas, películas y especiales de una serie: como los enlazan las bases de datos de anime, o por fecha de estreno. Los enlaces suelen seguir la historia, pero los mantiene la comunidad de cada base y pueden estar mal.",

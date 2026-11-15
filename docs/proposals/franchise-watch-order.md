@@ -7,14 +7,13 @@ documentation describes it: the backend's franchise read, `GET
 /api/kitsu/franchise/:kitsu_id`, in
 [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise);
 the watch-order strip on the show page, the order the surfaces show a
-run in, the "Watch order" setting and the player's Up next card at a
-finale, in
+run in, the "Watch order" setting, the player's Up next card at a
+finale and Continue Watching's hand-off, in
 [`architecture.md`, "Watch order"](../architecture.md#watch-order). The sections that described them here (the research of
-sections 1 and 2, the order rules of section 4, option (a), the
-player's half of option (b) and their parts of section 5) now point
-there. Not built yet: Continue Watching's hand-off and the franchise
-page, which exist only as design mockups drawn from fixture data,
-behind a Diagnostics switch.
+sections 1 and 2, the order rules of section 4, options (a) and (b)
+and their parts of section 5) now point there. Not built yet: the
+franchise page, which exists only as a design mockup drawn from
+fixture data, behind a Diagnostics switch.
 
 ## The problem in plain terms
 
@@ -29,8 +28,8 @@ the app does too.
 Before the watch-order surfaces, the app knew nothing about how those
 entries connect. Three things followed from that; the strip
 ([`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip)) answers the second, the player's Up next card
-([`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card)) the first in the player, and the surfaces still to build
-the rest of the first and the third:
+([`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card)) and Continue Watching's hand-off ([`architecture.md`, "Continue Watching's hand-off"](../architecture.md#continue-watchings-hand-off)) the first; the
+franchise page, still to build, answers the third:
 
 1. **A finale is a dead end.** When you finish the last episode of a
    season, the player stops (auto-play halts at the last known
@@ -126,37 +125,7 @@ The strip's way to the franchise page arrives with option (c).
 
 ### (b) "Up next: season 2" at a finale, and Continue moving on
 
-The player's half is built: [`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card) (which titles a finale offers,
-when the card shows, what a click does, and why the provider is not
-asked). Continue Watching's half is not built yet:
-
-**How it looks.** Once the finale has been played through, the
-Continue Watching card stops offering the finale again and shows the
-next title — its art, its title, "Up next". A click opens that
-title's show page, where Play starts episode 1, as the player's card
-does. When the next title has its own history row (you started it),
-the finished entry's card gives way to its ordinary Continue card, so
-the Continue Watching rail does not show both.
-
-**Rules** [proposal]. Continue moves to the next entry only where the
-player's card offers exactly one that has aired, and only to an entry
-the viewer has not played yet; in every other case it keeps today's
-behaviour. The second condition matters in a cycle: in link order
-*Kizumonogatari III*'s finale names *Nisemonogatari*, and without it
-Continue could lead round the ten-entry *Monogatari* loop to entries
-already watched. In link order, Continue never moves on a fork
-(*Fate/Zero 2nd Season*). Outside the main story it follows the
-entry's own chain, as the player's card does.
-
-**Trackers.** No new writes. Where Kitsu and the tracker split
-entries differently (one Kitsu entry against two MyAnimeList ones, or
-the reverse), the existing episode map already decides which tracker
-entry each Kitsu episode belongs to; nothing here bypasses it.
-
-**Cost.** Medium. The Continue Watching card is the most intricate
-surface in the app (row matching, repair, resume positions, removal);
-moving a card to another Kitsu entry touches its matching and removal
-rules, and wants its own acceptance tests.
+Built: [`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card) and [`architecture.md`, "Continue Watching's hand-off"](../architecture.md#continue-watchings-hand-off).
 
 ### (c) A franchise page
 
@@ -340,19 +309,7 @@ Built: [`architecture.md`, "The show page's strip"](../architecture.md#the-show-
 
 ### The "Up next" card (player and Continue Watching)
 
-The player's card is built: [`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card). On Continue Watching:
-
-- **On Continue Watching.** The card keeps its 16:9 shape, so the rail
-  stays even. Its frame shows the sequel's art: its first episode's
-  still where Kitsu has one, otherwise its banner or cover. The
-  oversized tag reads "NEXT" in place of "EP N". The small line reads
-  "After *<finished entry>*", which says why the card changed, with
-  the finished entry named by the words that set it apart; the large
-  line is the sequel's whole title, two lines deep. Anime titles put
-  what tells a franchise's entries apart at the end, so the Continue
-  card's one-line show row would cut exactly that.
-- **When data is missing.** A fork, an unaired next title or no next
-  title: Continue keeps today's card.
+Built: [`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card) and [`architecture.md`, "Continue Watching's hand-off"](../architecture.md#continue-watchings-hand-off).
 
 ### The franchise page
 
@@ -394,10 +351,8 @@ The player's card is built: [`architecture.md`, "The player's Up next card"](../
 ### The watch-order setting
 
 Built: [`architecture.md`, "The order setting"](../architecture.md#the-order-setting).
-For the surfaces still to come, the setting's effect: Continue
-Watching offers the next entry in the chosen order (in "As released"
-there is always at most one), and the franchise page lists the run in
-the chosen order and numbers it the same way.
+For the surface still to come, the setting's effect: the franchise
+page lists the run in the chosen order and numbers it the same way.
 
 ### How each phase is designed
 
@@ -457,15 +412,7 @@ Built: [`architecture.md`, "The player's Up next card"](../architecture.md#the-p
 
 #### Continue Watching's hand-off
 
-- **Options.** The tag reads *NEXT*, or *EP 1* like any other card.
-  **Recommended: NEXT.** "EP 1" reads as progress on a show not yet
-  started, and the tag is the only thing that says the card changed
-  before the text is read.
-- **Placement.** The hand-off takes the finished entry's place in the
-  rail; that entry's own card is not shown beside it. Once the next
-  entry has a history row of its own, the hand-off gives way to it.
-- **Truncation.** See "On Continue Watching" above: the sequel's
-  whole title gets the two-line row.
+Built: [`architecture.md`, "Continue Watching's hand-off"](../architecture.md#continue-watchings-hand-off).
 
 #### The franchise page
 
@@ -506,15 +453,11 @@ Built: [`architecture.md`, "The order setting"](../architecture.md#the-order-set
 
 The maintainer answered the eight questions the first mockups asked.
 The answers on the strip, short titles, the player's next-episode
-button and the setting (1, 2, 3 and 7) are built and documented in [`architecture.md`, "Watch order"](../architecture.md#watch-order);
+button, the Up next card and Continue's hand-off, and the setting (1,
+2, 3, 5 and 7) are built and documented in [`architecture.md`, "Watch order"](../architecture.md#watch-order);
 the rest:
 
 4. **Accents.** Each entry keeps its own accent.
-5. **Continue's hand-off** carries the **NEXT** tag (the player's Up
-   next card, with the poster, is built). The hand-off card opens the next entry's show page,
-   not its first episode, as the mockup already does: the viewer
-   arrives where the strip, the synopsis and the episode list say what
-   they are about to start.
 6. **Franchise page** as a list.
 8. **The franchise's name** drops Kitsu's format suffix, guarded
    against clashes: the suffix stays when another entry of the same
@@ -673,9 +616,8 @@ manual test section, a consistency check) before it merges:
 1. **Watch order strip** (option a): built, with the "You're watching"
    card and the order setting
    ([`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip)).
-2. **Up next at a finale** (option b): the player end card is built
-   ([`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card)); Continue moving to the sequel and the finished entry's
-   card giving way is not yet.
+2. **Up next at a finale** (option b): built, the player's card and
+   Continue Watching's hand-off ([`architecture.md`, "Continue Watching's hand-off"](../architecture.md#continue-watchings-hand-off)).
 3. **Franchise page** (option c), in 0.19.0, reusing the franchise read
    and adding the side stories, films, recaps and other versions
    around it; the strip gains its trailing link to the page here.
