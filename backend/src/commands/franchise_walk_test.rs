@@ -73,6 +73,50 @@ impl Catalogue {
     }
 }
 
+/// Whether `subtype` is a music video's.
+fn music(subtype: Option<&str>) -> bool {
+    subtype.is_some_and(|s| s.eq_ignore_ascii_case("music"))
+}
+
+/// The `known` listings as the walk reads them from `anchor`: no music
+/// video related in any, and, where `anchor` is a music video itself
+/// (by `cat`), nothing related in its own. Properties that check the
+/// walk against their own reading of the listings read them this way.
+pub(super) fn read_without_music(
+    cat: &Catalogue,
+    anchor: &str,
+    known: &BTreeMap<String, FranchiseListing>,
+) -> BTreeMap<String, FranchiseListing> {
+    let alone = music(cat.entries[anchor].subtype.as_deref());
+    known
+        .iter()
+        .map(|(id, l)| {
+            let relations = l
+                .relations
+                .iter()
+                .filter(|r| !(alone && id == anchor) && !music(r.subtype.as_deref()))
+                .cloned()
+                .collect();
+            let listing = FranchiseListing {
+                relations,
+                complete: l.complete,
+            };
+            (id.clone(), listing)
+        })
+        .collect()
+}
+
+impl Catalogue {
+    /// The catalogue as the walk reads it from `anchor`
+    /// (`read_without_music`).
+    pub(super) fn read_from(&self, anchor: &str) -> Catalogue {
+        Catalogue {
+            entries: self.entries.clone(),
+            listings: read_without_music(self, anchor, &self.listings),
+        }
+    }
+}
+
 /// Run the walk the way the IO layer does, reading from `cat`.
 pub(super) fn drive(anchor: &str, cat: &Catalogue) -> Franchise {
     let mut known = BTreeMap::new();

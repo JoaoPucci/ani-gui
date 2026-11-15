@@ -85,6 +85,7 @@ proptest! {
     #[test]
     fn an_anchor_is_never_placed_under_a_later_smaller_entry((cat, anchor) in catalogue()) {
         let (f, _) = drive_with(&anchor, &cat, &[]);
+        let cat = cat.read_from(&anchor);
         let start = |id: &str| cat.entries[id].start.clone();
         let by = placers(&cat, &anchor, &f);
         for p in f.parents.get(&anchor).into_iter().flatten() {
@@ -112,6 +113,7 @@ proptest! {
     #[test]
     fn an_anchor_with_no_candidate_parent_is_not_placed((cat, anchor) in catalogue()) {
         let (f, _) = drive_with(&anchor, &cat, &[]);
+        let cat = cat.read_from(&anchor);
         let details = BTreeMap::new();
         let look = Lookup { known: &cat.listings, details: &details };
         let start = |id: &str| cat.entries[id].start.clone();
@@ -131,6 +133,7 @@ proptest! {
     #[test]
     fn a_reversed_parent_names_the_anchor_back((cat, anchor) in catalogue()) {
         let (f, _) = drive_with(&anchor, &cat, &[]);
+        let cat = cat.read_from(&anchor);
         let details = BTreeMap::new();
         let look = Lookup { known: &cat.listings, details: &details };
         let by = placers(&cat, &anchor, &f);
@@ -149,6 +152,7 @@ proptest! {
     #[test]
     fn a_candidate_read_in_part_leaves_the_answer_incomplete((cat, anchor) in catalogue()) {
         let (f, (known, _)) = drive_with(&anchor, &cat, &[]);
+        let cat = cat.read_from(&anchor);
         let details = BTreeMap::new();
         let look = Lookup { known: &cat.listings, details: &details };
         let alone = f.entries.len() == 1 && f.entries[0].id == anchor;

@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use proptest::prelude::*;
 
 use super::rules::{alt, listed, run};
-use super::tests::Catalogue;
+use super::tests::{read_without_music, Catalogue};
 use super::*;
 
 const ROLES: [&str; 11] = [
@@ -178,6 +178,7 @@ proptest! {
     #[test]
     fn a_listing_keeps_one_of_each_group_it_lists((cat, anchor) in catalogue()) {
         let (_, (known, details)) = drive_with(&anchor, &cat, &[]);
+        let known = read_without_music(&cat, &anchor, &known);
         let look = Lookup { known: &known, details: &details };
         let walked = run(&anchor, &look).expect("decided");
         let depth = |m: &str| {
@@ -214,6 +215,7 @@ proptest! {
     #[test]
     fn no_member_is_an_alternative_of_its_path((cat, anchor) in catalogue()) {
         let (_, (known, details)) = drive_with(&anchor, &cat, &[]);
+        let known = read_without_music(&cat, &anchor, &known);
         let look = Lookup { known: &known, details: &details };
         let walked = run(&anchor, &look).expect("decided");
         for (m, via) in &walked.members {
