@@ -341,6 +341,16 @@ describe('finaleCard on an entry outside the main story', () => {
 		expect(chainEndCard(null, '11', 'linked', TODAY, 1, null)).toBeNull();
 	});
 
+	it("ignores the player's reading of another show", () => {
+		// The page reused for another show still holds the first one's
+		// detail: an airing reading of it does not hide this finale's card.
+		const other = { id: '10', status: 'current', episodes: 1 };
+		expect(chainEndCard(chainData('11', false), '11', 'linked', TODAY, 1, other)).not.toBeNull();
+		expect(playerUpNext(chainData('11', false), '11', 'linked', TODAY, 1, other)?.kind).toBe(
+			'franchise'
+		);
+	});
+
 	it('fronts the franchise card with the entry the name comes from', () => {
 		const end = chainEndCard(chainData('11', false), '11', 'linked', TODAY, 1, null)!;
 		expect(end.front).toBe('1');
