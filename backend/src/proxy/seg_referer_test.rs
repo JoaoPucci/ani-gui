@@ -24,8 +24,9 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 async fn proxy_for(referer: &str, segment_url: &str) -> (Router, String) {
     let secret = AppSecret::from_bytes([7u8; 32]);
     let sessions = SessionTable::new();
-    let session = StreamSession::new(
+    let session = StreamSession::new_with_kind(
         url::Url::parse("https://cdn.example/master.m3u8").expect("master url"),
+        crate::proxy::MediaKind::Hls,
         referer.to_string(),
     );
     let id = session.id;
