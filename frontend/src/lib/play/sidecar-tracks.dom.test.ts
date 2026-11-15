@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CaptionSync, EngineTrack } from './caption-engine';
 import { expectCaptions, noteCaptionChange } from './caption-watch';
 import {
 	armSidecarTracks,
@@ -381,5 +382,94 @@ describe('the listing is asked from the origin of the media URL', () => {
 		);
 		expect(asked).toEqual(['http://127.0.0.1:4567/s/session-1/subtitles']);
 		cleanup();
+	});
+});
+
+/** A sync that records what the tracks asked of it; its playlist
+ *  parses when `parse` is called. */
+function recordingSync(renditions: EngineTrack[] = []) {
+	const calls: string[] = [];
+	let waiting: (() => void) | null = null;
+	const sync: CaptionSync = {
+		pick: (target) => void calls.push(`pick ${target}`),
+		pickTrack: (track) =>
+			void calls.push(`pickTrack ${track === 'off' ? 'off' : (track as TextTrack).label}`),
+		beforeOwnTracks: (start) => void calls.push(`before ${start}`),
+		release: () => void calls.push('release'),
+		whenReady: (fn) => {
+			calls.push('whenReady');
+			waiting = fn;
+			return () => {
+				calls.push('unwait');
+				waiting = null;
+			};
+		},
+		renditions: () => renditions,
+		dispose: () => void calls.push('dispose')
+	};
+	return { sync, calls, parse: () => waiting?.() };
+}
+
+// On a stream played through hls.js the start goes through the
+// engine's own selection ($lib/play/caption-engine): set aside before
+// the tracks join, then told the start once they have.
+describe('with an engine', () => {
+	it('sets the engine aside for the start before the tracks join, and tells it the start after', () => {
+		const v = video();
+		const { sync, calls } = recordingSync();
+		const remove = attachSidecarTracks(v, [en, es], 'es', undefined, sync);
+		expect(calls).toEqual(['before own', 'pickTrack Español']);
+		remove();
+		expect(calls).toEqual(['before own', 'pickTrack Español', 'release']);
+	});
+
+	it('sets it aside for none when the session starts on none', () => {
+		const v = video();
+		const { sync, calls } = recordingSync();
+		attachSidecarTracks(v, [en, es], 'en', 'off', sync);
+		expect(calls).toEqual(['before off', 'pickTrack off']);
+	});
+
+	// hls.js takes a text track labelled as one of its renditions, in
+	// the same language, for that rendition's own.
+	it("keeps a track's label apart from a rendition's name", () => {
+		const v = video();
+		const { sync } = recordingSync([{ name: 'English', lang: 'en' }]);
+		attachSidecarTracks(v, [en, es], 'en', undefined, sync);
+		const labels = Array.from(v.querySelectorAll('track'), (t) => t.getAttribute('label'));
+		expect(labels[0]).not.toBe('English');
+		expect(labels[0]?.startsWith('English')).toBe(true);
+		expect(labels[1]).toBe('Español');
+	});
+});
+
+describe('armSidecarTracks with an engine', () => {
+	const originalFetch = globalThis.fetch;
+	beforeEach(() => {
+		globalThis.fetch = vi.fn(async () => listing([en])) as typeof fetch;
+	});
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+	});
+
+	it("attaches once the engine's playlist names its renditions", async () => {
+		const v = video();
+		const { sync, parse } = recordingSync();
+		armSidecarTracks(v, 'http://127.0.0.1:31337', 'session-1', '', undefined, sync);
+		await settle();
+		expect(v.querySelectorAll('track').length).toBe(0);
+		parse();
+		expect(v.querySelectorAll('track').length).toBe(1);
+	});
+
+	it('attaches nothing when cancelled while waiting for the playlist', async () => {
+		const v = video();
+		const { sync, calls, parse } = recordingSync();
+		const cleanup = armSidecarTracks(v, 'http://127.0.0.1:31337', 'session-1', '', undefined, sync);
+		await settle();
+		cleanup();
+		parse();
+		expect(calls).toContain('unwait');
+		expect(v.querySelectorAll('track').length).toBe(0);
 	});
 });

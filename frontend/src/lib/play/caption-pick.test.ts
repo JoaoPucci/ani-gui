@@ -91,6 +91,31 @@ describe('captionModes', () => {
 	});
 });
 
+// A playlist rendition whose fragment is on its way keeps its cues
+// only while its track is not disabled ($lib/play/caption-engine).
+describe('the track left hidden', () => {
+	it('is hidden, not disabled, when it is not the one shown', () => {
+		expect(captionModes([sub('showing'), sub(), sub()], 2, 0)).toEqual(['hidden', null, 'showing']);
+	});
+
+	it('shows when it is the one shown', () => {
+		expect(captionModes([sub(), sub()], 0, 0)).toEqual(['showing', null]);
+	});
+
+	it('is hidden with captions off', () => {
+		expect(captionModes([sub('showing'), sub('showing')], 'off', 1)).toEqual([
+			'disabled',
+			'hidden'
+		]);
+	});
+
+	it('is applied to the live list', () => {
+		const list = [sub('showing'), sub()];
+		applyCaptionPick(list, 'off', 0);
+		expect(list.map((t) => t.mode)).toEqual(['hidden', 'disabled']);
+	});
+});
+
 describe('applyCaptionPick', () => {
 	it('writes the modes onto the live list', () => {
 		const list = [sub('showing'), sub()];
