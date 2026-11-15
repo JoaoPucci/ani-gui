@@ -15,7 +15,9 @@
 // until nothing the page asked is still out or being read across a
 // whole turn of the event loop. A request still out keeps the page
 // unsettled however long it takes: the difference from a fixed sleep,
-// which ends on time whether or not the answer has landed.
+// which ends on time whether or not the answer has landed. A case that
+// holds a request on purpose names it in `except`, and the wait covers
+// everything else the page asked.
 //
 // The tier's teardown (`setup.ts`) already fails a case whose request
 // is still out when its page unmounts. What it cannot see is an answer
@@ -61,19 +63,25 @@ export function watchPageFetches(): {
 	failed: PageFetch[];
 	/** Resolves once nothing the page asked is out or being read across
 	 *  a whole turn: every answer is in and read, and what it set off
-	 *  has asked whatever it asks. */
-	settled(what: string, timeoutMs?: number): Promise<void>;
+	 *  has asked whatever it asks. A request `except` names (one the
+	 *  case holds on purpose) is not waited for. */
+	settled(
+		what: string,
+		opts?: { timeoutMs?: number; except?: (f: PageFetch) => boolean }
+	): Promise<void>;
 } {
 	const sent: PageFetch[] = [];
 	const read: PageFetch[] = [];
 	const failed: PageFetch[] = [];
-	/** Requests not yet answered, plus bodies being read. */
-	let out = 0;
+	/** Requests not yet answered, plus bodies being read: one entry
+	 *  each, so a held request can be told from the rest. */
+	const out: PageFetch[] = [];
+	const done = (f: PageFetch) => out.splice(out.indexOf(f), 1);
 	const realFetch = globalThis.fetch;
 	vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
 		const asked = described(input, init);
 		sent.push(asked);
-		out += 1;
+		out.push(asked);
 		let resp: Response;
 		try {
 			resp = await realFetch(input, init);
@@ -81,14 +89,14 @@ export function watchPageFetches(): {
 			failed.push(asked);
 			throw e;
 		} finally {
-			out -= 1;
+			done(asked);
 		}
 		for (const how of ['text', 'json', 'arrayBuffer', 'blob'] as const) {
 			const original = resp[how].bind(resp) as () => Promise<unknown>;
 			Object.defineProperty(resp, how, {
 				configurable: true,
 				value: async () => {
-					out += 1;
+					out.push(asked);
 					try {
 						const value = await original();
 						read.push(asked);
@@ -99,7 +107,7 @@ export function watchPageFetches(): {
 						failed.push(asked);
 						throw e;
 					} finally {
-						out -= 1;
+						done(asked);
 					}
 				}
 			});
@@ -109,12 +117,16 @@ export function watchPageFetches(): {
 	onTestFinished(() => {
 		vi.unstubAllGlobals();
 	});
-	async function settled(what: string, timeoutMs = 8000) {
+	async function settled(
+		what: string,
+		{ timeoutMs = 8000, except }: { timeoutMs?: number; except?: (f: PageFetch) => boolean } = {}
+	) {
 		const deadline = Date.now() + timeoutMs;
+		const quiet = () => out.every((f) => except?.(f) === true);
 		for (;;) {
-			if (out === 0) {
+			if (quiet()) {
 				await new Promise((r) => setTimeout(r, 0));
-				if (out === 0) return;
+				if (quiet()) return;
 			} else {
 				await new Promise((r) => setTimeout(r, 10));
 			}

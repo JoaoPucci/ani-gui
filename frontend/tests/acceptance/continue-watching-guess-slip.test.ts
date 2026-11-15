@@ -23,6 +23,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
+import { watchPageFetches } from './page-fetches';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -95,6 +96,7 @@ interface Row {
 }
 
 let rows: Row[];
+let fetches: ReturnType<typeof watchPageFetches>;
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
@@ -106,6 +108,7 @@ beforeEach(() => {
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	window.localStorage.clear();
+	fetches = watchPageFetches();
 	rows = [{ ep_no: '1', id: CARD, title: TITLE }];
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -299,7 +302,9 @@ describe('a guessed URL visited again', () => {
 		setUrl(href.pathname, Object.fromEntries(href.searchParams));
 		app = mount(PlayPage, { target });
 		await until(() => target.querySelector('a.np-link') !== null, 'the now-playing link');
-		await new Promise((r) => setTimeout(r, 300));
+		// The slip asks once the player's reads of the row and the show
+		// have answered: wait for every answer, not for a fixed time.
+		await fetches.settled('the player to settle');
 		expect(asks()).toBe(false);
 	});
 });
