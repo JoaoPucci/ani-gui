@@ -174,3 +174,23 @@ describe("the picker's words for a single-video work", () => {
 		);
 	});
 });
+
+describe("the switch step's line", () => {
+	const series = candidate({ subtype: 'TV', episode_count: 26 }).ref;
+
+	it('says the pick picks up where the viewer left it, on the episode the backend opens', () => {
+		expect(switchHint({ episode: '2', time: '1:14', to: series, own: { episode: '7' } })).toBe(
+			m.play_link_switch_hint_own({ episode: '7' })
+		);
+	});
+
+	it("names the card's episode and point when the pick is not further along", () => {
+		expect(switchHint({ episode: '2', time: '1:14', to: series, own: null })).toBe(
+			m.play_link_switch_hint({ episode: '2', time: '1:14' })
+		);
+	});
+
+	it('says nothing while where the pick stands is being read', () => {
+		expect(switchHint({ episode: '2', time: '1:14', to: series, own: 'pending' })).toBe('');
+	});
+});

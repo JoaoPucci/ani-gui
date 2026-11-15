@@ -780,6 +780,49 @@ describe('switching to the pick', () => {
 		expect(recoveryResume.consume(RIGHT, 2)).toBe(0);
 	});
 
+	it('opens a pick the viewer is further along in where they left it, and says so', async () => {
+		// The pick's own row is at episode 6, watched through: Continue
+		// goes on to 7.
+		backend.rows = [
+			...backend.rows,
+			{ ep_no: '6', id: PICK_OWN, title: RIGHT_TITLE, kitsu_id: RIGHT }
+		];
+		await openPlayer();
+		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+		videoAt(74);
+		await openPicker();
+		const row = () =>
+			Array.from(dialog()?.querySelectorAll<HTMLButtonElement>('li button') ?? []).find((b) =>
+				(b.textContent ?? '').includes(RIGHT_TITLE)
+			);
+		await until(() => row() !== undefined, 'the pick among the candidates');
+		row()!.click();
+		await until(
+			() => (dialog()?.textContent ?? '').includes(m.play_link_switch_hint_own({ episode: '7' })),
+			'the step saying where the pick picks up'
+		);
+		button(m.play_link_switch_now(), dialog()!)!.click();
+		await until(() => pickPlay() !== undefined, 'the play of the pick');
+		expect(new URL(pickPlay()!.url, 'http://x').searchParams.get('episode')).toBe('7');
+		// The card's point is not the pick's: none is carried.
+		expect(recoveryResume.consume(RIGHT, 7)).toBeNull();
+	});
+
+	it("keeps the card's episode for a pick the viewer is not further along in", async () => {
+		backend.rows = [
+			...backend.rows,
+			{ ep_no: '1', id: PICK_OWN, title: RIGHT_TITLE, kitsu_id: RIGHT }
+		];
+		await openPlayer();
+		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');
+		videoAt(74);
+		await openPicker();
+		await pickAndLink(RIGHT_TITLE, m.play_link_switch_now());
+		const href = await answerSwitch();
+		expect(new URL(href, 'http://x').searchParams.get('episode')).toBe('2');
+		expect(recoveryResume.consume(RIGHT, 2)).toBe(74);
+	});
+
 	it('from the slip after keeping watching does the same', async () => {
 		await openPlayer();
 		await until(() => target.querySelector('.player-video-slot video') !== null, 'the video');

@@ -56,6 +56,7 @@ function deps(over: Partial<SwitchShowDeps> = {}) {
 		),
 		carryRate: vi.fn(),
 		forget: vi.fn(() => void calls.push('forget')),
+		plan: vi.fn(async () => null),
 		isCurrent: () => true,
 		...over
 	};
@@ -260,5 +261,43 @@ describe('switching to the picked show', () => {
 				}
 			)
 		);
+	});
+
+	it("opens the pick where the viewer left it when the backend says it is further along, from that episode's own start", async () => {
+		// The pick's own row is at episode 6, watched through: Continue
+		// goes on to 7, past the card's episode 2.
+		const { d, calls } = deps({ plan: vi.fn(async () => 7) });
+		expect(await switchShow(d, request())).toBe('switched');
+		expect(d.plan).toHaveBeenCalledWith(RIGHT, 2);
+		const resolved = vi.mocked(d.resolve).mock.calls[0][0] as PlayArgs;
+		expect(resolved.episode).toBe('7');
+		expect(d.open).toHaveBeenCalledWith(RIGHT.id, SESSION, 7, CARD);
+		expect(d.record).toHaveBeenCalledWith(expect.objectContaining({ episode: '7' }), SESSION, 7);
+		// The point playback stood at is the card's episode's: none is
+		// carried, and the pick's player starts as Continue would.
+		expect(d.carry).not.toHaveBeenCalled();
+		expect(calls).toEqual(['resolve', 'note', 'open', 'record']);
+	});
+
+	it("keeps the card's episode and point when the pick is not further along", async () => {
+		const { d } = deps({ plan: vi.fn(async () => null) });
+		await switchShow(d, request());
+		expect((vi.mocked(d.resolve).mock.calls[0][0] as PlayArgs).episode).toBe('2');
+		expect(d.carry).toHaveBeenCalledWith(RIGHT.id, 2, 14.5);
+	});
+
+	it('fails, asking for no stream, when where the pick stands cannot be read', async () => {
+		// A switch that cannot tell must not take the pick back.
+		const { d, calls } = deps({ plan: vi.fn(async () => Promise.reject(new Error('down'))) });
+		expect(await switchShow(d, request())).toBe('failed');
+		expect(calls).toEqual([]);
+	});
+
+	it('abandons when where the pick stands cannot be read once the viewer left', async () => {
+		const { d } = deps({
+			plan: vi.fn(async () => Promise.reject(new Error('down'))),
+			isCurrent: () => false
+		});
+		expect(await switchShow(d, request())).toBe('abandoned');
 	});
 });

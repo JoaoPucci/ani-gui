@@ -951,6 +951,9 @@ mod mark_watched_guess_tests;
 #[cfg(test)]
 #[path = "history_guessed_from_test.rs"]
 mod history_guessed_from_tests;
+#[cfg(test)]
+#[path = "switch_episode_test.rs"]
+mod switch_episode_tests;
 
 #[cfg(test)]
 #[path = "kitsu_id_boundary_test.rs"]
