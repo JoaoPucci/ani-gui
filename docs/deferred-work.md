@@ -1347,11 +1347,10 @@ the shape against the app as it is then.
   to allow for. WebM plays natively in the renderer, so no HLS
   machinery is involved, and the proxy already has a progressive
   pass-through route beside its HLS one — but that route is chosen
-  by a media kind the session infers from the URL's extension, and
-  the kinds it knows are `m3u8` and `mp4`; anything else, `webm`
-  included, falls to HLS and is handed to the manifest parser, so
-  a session for a theme is not only wiring but a media kind the
-  classifier learns or the caller sets outright (the manual
+  by the media kind whoever opens the session names, and the kinds
+  there are HLS and MP4; WebM is neither, so a session for a theme
+  is not only wiring but a kind its opener names for the
+  pass-through route to serve (the manual
   diagnostic route does not go through the proxy at all: it hands
   its pasted URL straight to the player).
   The alternative — cutting openings

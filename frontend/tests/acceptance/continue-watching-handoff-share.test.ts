@@ -20,6 +20,7 @@ import { page } from './page-state.svelte';
 import { appConfig, homeHandlers, kitsuRef } from './home-handlers';
 import { sixConnections, type Connections } from './connections';
 import { watchPageFetches } from './page-fetches';
+import { availabilityAnswer } from '../answers';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -34,7 +35,13 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import HomePage from '../../src/routes/+page.svelte';
-import { __resetApiBaseForTests } from '../../src/lib/api';
+import {
+	__resetApiBaseForTests,
+	type AvailabilityResponse,
+	type Config,
+	type HistoryEntry,
+	type KitsuAnimeRef
+} from '../../src/lib/api';
 
 const MIDDLE = 'Middle Show';
 
@@ -92,14 +99,16 @@ describe('Continue Watching hand-off — the API lane', () => {
 		const plays: string[] = [];
 		server.use(
 			...homeHandlers({ history: HISTORY }, [
-				http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+				http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 				http.post(`${API_BASE}/api/availability`, () =>
-					HttpResponse.json({ available: true, episode_count: 13, approximate: false })
+					HttpResponse.json<AvailabilityResponse>(
+						availabilityAnswer({ available: true, episode_count: 13 })
+					)
 				),
 				http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) => {
 					const id = String(params.id);
 					const row = HISTORY.find((h) => h.kitsu_id === id);
-					return HttpResponse.json(kitsuRef(id, row?.title ?? id, 13));
+					return HttpResponse.json<KitsuAnimeRef>(kitsuRef(id, row?.title ?? id, 13));
 				}),
 				// Kitsu is slow: every series walk stays open.
 				http.get(
@@ -111,7 +120,9 @@ describe('Continue Watching hand-off — the API lane', () => {
 				),
 				http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
 					const { ids } = (await request.json()) as { ids: string[] };
-					return HttpResponse.json(Object.fromEntries(ids.map((k) => [k, null])));
+					return HttpResponse.json<Record<string, HistoryEntry | null>>(
+						Object.fromEntries(ids.map((k) => [k, null]))
+					);
 				}),
 				http.post(`${API_BASE}/api/play`, async ({ request }) => {
 					const body = (await request.json()) as { title?: string };

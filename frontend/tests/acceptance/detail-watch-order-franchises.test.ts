@@ -21,6 +21,7 @@ import { resolve as resolvePath } from 'node:path';
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { availabilityAnswer } from '../answers';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -36,24 +37,30 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
-import { __resetApiBaseForTests } from '../../src/lib/api';
+import {
+	__resetApiBaseForTests,
+	type AiringStatus,
+	type AvailabilityBatchResponse,
+	type AvailabilityResponse,
+	type Config,
+	type Franchise,
+	type HistoryEntry,
+	type HistoryRowByKitsu,
+	type KitsuAnimeRef,
+	type KitsuEpisode,
+	type FranchiseEntry
+} from '../../src/lib/api';
 
-interface Served {
-	anchor: string;
-	entries: { id: string; title: string }[];
-	sides: { id: string; title: string }[];
-	films: { id: string; title: string }[];
-	versions: { id: string; title: string }[];
-}
-
-/** The walk's answer for `id`, as the endpoint serves it. */
-function served(id: string): Served {
+/** The walk's answer for `id`, as the endpoint serves it (the
+ *  backend records these files from its own answers, and its corpus
+ *  test checks each against the walk). */
+function served(id: string): Franchise {
 	const path = resolvePath(__dirname, `../../../tests/fixtures/franchise/served-${id}.json`);
-	return JSON.parse(readFileSync(path, 'utf8')) as Served;
+	return JSON.parse(readFileSync(path, 'utf8')) as Franchise;
 }
 
 /** The title the walk knows for `id`, from its own payload. */
-function titleOf(f: Served, id: string): string {
+function titleOf(f: Franchise, id: string): string {
 	return [...f.entries, ...f.sides, ...f.films, ...f.versions].find((e) => e.id === id)!.title;
 }
 
@@ -84,46 +91,60 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 /** Open `id`'s show page with the walk's answer for it, `edit` applied, in `order`. */
 function openShow(
 	id: string,
-	edit: (f: Served) => Served = (f) => f,
+	edit: (f: Franchise) => Franchise = (f) => f,
 	order: 'linked' | 'released' = 'linked'
 ) {
 	const f = edit(served(id));
 	setParams({ id });
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({ ...appConfig(), watch_order: order })
+			HttpResponse.json<Config>({ ...appConfig(), watch_order: order })
 		),
 		http.get(`${API_BASE}/api/kitsu/anime/${id}`, () =>
-			HttpResponse.json({ ...kitsuRef(id, titleOf(f, id), 12), subtype: 'TV' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(id, titleOf(f, id), 12), subtype: 'TV' })
 		),
-		http.get(`${API_BASE}/api/kitsu/franchise/${id}`, () => HttpResponse.json(f)),
+		http.get(`${API_BASE}/api/kitsu/franchise/${id}`, () => HttpResponse.json<Franchise>(f)),
 		http.get(`${API_BASE}/api/kitsu/airing/${id}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
 		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 		// One similar title, which the page shows only once the strip
 		// (or its absence) is decided.
 		http.post(`${API_BASE}/api/kitsu/search`, () =>
-			HttpResponse.json([kitsuRef('77', 'Similar 77', 12)])
+			HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('77', 'Similar 77', 12)])
 		),
 		http.post(`${API_BASE}/api/availability/batch`, () =>
-			HttpResponse.json({ cached: { '77': true } })
-		),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AvailabilityBatchResponse>({
+				cached: { '77': true },
+				playable_episode_counts: {}
 			})
 		),
-		http.get(`${API_BASE}/api/history/by-kitsu/${id}`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.get(`${API_BASE}/api/history/by-kitsu/${id}`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
 		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
 			const { ids } = (await request.json()) as { ids: string[] };
-			return HttpResponse.json(Object.fromEntries(ids.map((i) => [i, null])));
+			return HttpResponse.json<Record<string, HistoryEntry | null>>(
+				Object.fromEntries(ids.map((i) => [i, null]))
+			);
 		}),
-		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
+		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({}))
 	);
 	app = mount(DetailPage, { target });
 }
@@ -280,17 +301,19 @@ const SERVED_ANCHORS = readdirSync(resolvePath(__dirname, '../../../tests/fixtur
 	.filter((id): id is string => id !== undefined);
 
 /** `f` with a poster on every entry, its URL naming the entry's id. */
-function withPosters(f: Served): Served {
-	const poster = (e: { id: string }) => ({
+function withPosters(f: Franchise): Franchise {
+	const poster = (e: FranchiseEntry): FranchiseEntry => ({
 		...e,
 		poster: `https://media.kitsu.app/anime/poster_images/${e.id}/medium.jpg`
 	});
-	const all = f as unknown as Record<string, unknown>;
-	const out: Record<string, unknown> = { ...all };
-	for (const k of ['entries', 'versions', 'films', 'sides', 'recaps']) {
-		out[k] = (all[k] as { id: string }[]).map(poster);
-	}
-	return out as unknown as Served;
+	return {
+		...f,
+		entries: f.entries.map(poster),
+		versions: f.versions.map(poster),
+		films: f.films.map(poster),
+		sides: f.sides.map(poster),
+		recaps: f.recaps.map(poster)
+	};
 }
 
 /** The ids whose posters the franchise link's stack shows, in its order. */
@@ -311,7 +334,7 @@ describe('detail route — the franchise poster stack on real franchises', () =>
 	// is named after.
 	for (const id of SERVED_ANCHORS) {
 		it(`leads ${id}'s stack with the entry its franchise is named after`, async () => {
-			const f = served(id) as Served & { name_from: string };
+			const f = served(id);
 			openShow(id, withPosters);
 			await until(() => stackIds(id).length > 0, 'the poster stack');
 			expect(stackIds(id)[0]).toBe(f.name_from);

@@ -42,6 +42,8 @@ import { listChanges } from '../../src/lib/account/list-changes';
 import { ROW_PREFS_STORAGE_KEY, type RowStyle } from '../../src/lib/rows/prefs';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 
@@ -82,16 +84,18 @@ function serve(pull: (provider: Provider) => Promise<Response> | Response) {
 	server.use(
 		...homeHandlers({ history: HISTORY }, [
 			http.get(`${API_BASE}/api/account/list/:provider/cached`, ({ params }) =>
-				HttpResponse.json([planned(params.provider as Provider)])
+				HttpResponse.json<ListEntry[]>([planned(params.provider as Provider)])
 			),
 			http.post(`${API_BASE}/api/account/list/:provider`, ({ params }) => {
 				pulls.push(params.provider as Provider);
 				return pull(params.provider as Provider);
 			}),
 			http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () =>
-				HttpResponse.json([kitsuRef(String(PLANNED.malId), PLANNED.title, 12)])
+				HttpResponse.json<KitsuAnimeRef[]>([kitsuRef(String(PLANNED.malId), PLANNED.title, 12)])
 			),
-			http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} })),
+			http.post(`${API_BASE}/api/availability/batch`, () =>
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+			),
 			http.delete(`${API_BASE}/api/history`, () => {
 				historyCleared += 1;
 				return new HttpResponse(null, { status: 204 });
@@ -100,7 +104,7 @@ function serve(pull: (provider: Provider) => Promise<Response> | Response) {
 	);
 }
 
-const ok = (provider: Provider) => HttpResponse.json([planned(provider)]);
+const ok = (provider: Provider) => HttpResponse.json<ListEntry[]>([planned(provider)]);
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
@@ -364,7 +368,7 @@ for (const style of ['inline', 'band'] as const) {
 			serve(ok);
 			server.use(
 				http.get(`${API_BASE}/api/account/list/:provider/cached`, () =>
-					HttpResponse.json({ key: 'error.network.upstream', kind: 'upstream' }, { status: 502 })
+					errorAnswer(502, { key: 'error.network.upstream', kind: 'upstream' })
 				)
 			);
 			localStorage.setItem(ROW_PREFS_STORAGE_KEY, JSON.stringify({ style, controls: false }));
@@ -385,11 +389,8 @@ for (const style of ['inline', 'band'] as const) {
 			server.use(
 				http.get(`${API_BASE}/api/account/list/:provider/cached`, ({ params }) =>
 					failing
-						? HttpResponse.json(
-								{ key: 'error.network.upstream', kind: 'upstream' },
-								{ status: 502 }
-							)
-						: HttpResponse.json([planned(params.provider as Provider)])
+						? errorAnswer(502, { key: 'error.network.upstream', kind: 'upstream' })
+						: HttpResponse.json<ListEntry[]>([planned(params.provider as Provider)])
 				)
 			);
 			localStorage.setItem(ROW_PREFS_STORAGE_KEY, JSON.stringify({ style, controls: false }));
@@ -418,7 +419,7 @@ for (const style of ['inline', 'band'] as const) {
 			serve(ok);
 			server.use(
 				http.get(`${API_BASE}/api/account/list/:provider/cached`, () =>
-					HttpResponse.json({ key: 'error.network.upstream', kind: 'upstream' }, { status: 502 })
+					errorAnswer(502, { key: 'error.network.upstream', kind: 'upstream' })
 				)
 			);
 			localStorage.setItem(ROW_PREFS_STORAGE_KEY, JSON.stringify({ style, controls: false }));
@@ -445,11 +446,10 @@ for (const style of ['inline', 'band'] as const) {
 			server.use(
 				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () =>
 					failing
-						? HttpResponse.json(
-								{ key: 'error.network.upstream', kind: 'upstream' },
-								{ status: 502 }
-							)
-						: HttpResponse.json([kitsuRef(String(PLANNED.malId), PLANNED.title, 12)])
+						? errorAnswer(502, { key: 'error.network.upstream', kind: 'upstream' })
+						: HttpResponse.json<KitsuAnimeRef[]>([
+								kitsuRef(String(PLANNED.malId), PLANNED.title, 12)
+							])
 				)
 			);
 			await mountHome(style);
@@ -495,12 +495,9 @@ for (const style of ['inline', 'band'] as const) {
 						await refreshRead;
 					} else if (phase === 'reread') {
 						await rereadRead;
-						return HttpResponse.json(
-							{ key: 'error.network.upstream', kind: 'upstream' },
-							{ status: 502 }
-						);
+						return errorAnswer(502, { key: 'error.network.upstream', kind: 'upstream' });
 					}
-					return HttpResponse.json([planned(params.provider as Provider)]);
+					return HttpResponse.json<ListEntry[]>([planned(params.provider as Provider)]);
 				})
 			);
 			await mountHome(style);

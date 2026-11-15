@@ -18,6 +18,7 @@ import { cancelConnect, connectProvider, type ConnectActionDeps } from './connec
 import type { ConnectFlowDeps } from './connect-flow';
 import type { PersistedAccount, Provider } from './types';
 
+import { AccountApiError } from './api';
 // Resolve the locale once while no window is stubbed. Paraglide's first
 // lookup records the locale it resolved, in localStorage when a window
 // exists; the fake windows below carry none.
@@ -294,10 +295,12 @@ describe('cancelConnect', () => {
 
 	it('an abandoned sign-in that completes in the browser anyway is not saved', async () => {
 		const oauth = deferred<{ ok: true; code: string; state: string }>();
-		const persist = vi.fn(async (p: Provider, payload: PersistedAccount) => {
-			disk[p] = payload;
-			return { ok: true as const };
-		});
+		const persist = vi.fn<NonNullable<ConnectFlowDeps['persistAccount']>>(
+			async (p: Provider, payload: PersistedAccount) => {
+				disk[p] = payload;
+				return { ok: true as const };
+			}
+		);
 		const running = connectProvider(
 			'anilist',
 			deps(flow({ openOAuth: () => oauth.promise, persistAccount: persist }))
@@ -429,10 +432,12 @@ describe('cancelConnect', () => {
 		await firstRun;
 		await settle();
 		const second = deferred<{ ok: true; code: string; state: string }>();
-		const persist = vi.fn(async (p: Provider, payload: PersistedAccount) => {
-			disk[p] = payload;
-			return { ok: true as const };
-		});
+		const persist = vi.fn<NonNullable<ConnectFlowDeps['persistAccount']>>(
+			async (p: Provider, payload: PersistedAccount) => {
+				disk[p] = payload;
+				return { ok: true as const };
+			}
+		);
 		const secondRun = connectProvider(
 			'anilist',
 			deps(flow({ openOAuth: () => second.promise, persistAccount: persist }))
@@ -551,7 +556,7 @@ describe('connectProvider: outcomes that answer', () => {
 	it('an API failure carries its status', async () => {
 		await connectProvider(
 			'anilist',
-			deps(flow({ exchangeCode: () => Promise.reject({ status: 502 }) }))
+			deps(flow({ exchangeCode: () => Promise.reject(new AccountApiError(502, '')) }))
 		);
 		expect(messages()).toEqual([`${m.account_connect_error_unknown()} (502)`]);
 	});

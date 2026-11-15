@@ -35,12 +35,17 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import FranchisePage from '../../src/routes/anime/[id]/franchise/+page.svelte';
-import { __resetApiBaseForTests } from '../../src/lib/api';
+import {
+	__resetApiBaseForTests,
+	type Config,
+	type Franchise,
+	type HistoryEntry
+} from '../../src/lib/api';
 
 /** The walk's answer for `id`, as the endpoint serves it. */
-function served(id: string): Record<string, unknown> {
+function served(id: string): Franchise {
 	const path = resolvePath(__dirname, `../../../tests/fixtures/franchise/served-${id}.json`);
-	return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+	return JSON.parse(readFileSync(path, 'utf8')) as Franchise;
 }
 
 let target: HTMLElement;
@@ -72,12 +77,16 @@ function openFranchise(id: string) {
 	setParams({ id });
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({ ...appConfig(), watch_order: 'linked' })
+			HttpResponse.json<Config>({ ...appConfig(), watch_order: 'linked' })
 		),
-		http.get(`${API_BASE}/api/kitsu/franchise/${id}`, () => HttpResponse.json(served(id))),
+		http.get(`${API_BASE}/api/kitsu/franchise/${id}`, () =>
+			HttpResponse.json<Franchise>(served(id))
+		),
 		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
 			const { ids } = (await request.json()) as { ids: string[] };
-			return HttpResponse.json(Object.fromEntries(ids.map((k) => [k, null])));
+			return HttpResponse.json<Record<string, HistoryEntry | null>>(
+				Object.fromEntries(ids.map((k) => [k, null]))
+			);
 		})
 	);
 	app = mount(FranchisePage, { target });

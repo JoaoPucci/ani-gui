@@ -40,6 +40,7 @@ import {
   stopDeadApp,
 } from "./launch";
 import { expectedPlatform } from "../lib/e2e-display.cjs";
+import { answer } from "./stubs";
 
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
@@ -88,12 +89,15 @@ async function launchAppWithStubsOnce(
   onLaunch(app);
 
   const context = app.context();
+  // The app's window before any route: a route reaches only the windows
+  // Playwright has finished attaching when it is set (refuseUnstubbed).
+  const page = await appWindow(app);
   // First, so it answers only what the stubs below leave: anything the
   // pages here ask that no stub answers is refused and recorded, and
   // every test ends by checking nothing was (afterEach below). What
   // the first mount asked is forgotten at the remount (it may have
   // asked before its stub was set); everything after it counts.
-  const unstubbed = await refuseUnstubbed(context);
+  const unstubbed = await refuseUnstubbed(page);
   lastUnstubbed = unstubbed;
   let topRatedAsked: (() => void) | null = null;
   const json = (body: unknown) => ({
@@ -104,45 +108,45 @@ async function launchAppWithStubsOnce(
   const stub = (url: string, answer: Parameters<typeof routeContext>[2]) =>
     routeContext(context, url, answer);
   // Home.
-  await stub("**/api/app-info", (r) => r.fulfill(json(appInfo)));
-  await stub("**/api/history", (r) => r.fulfill(json(emptyHistory)));
-  await stub("**/api/kitsu/trending-anilist", (r) => r.fulfill(json(trending)));
+  await stub("**/api/app-info", (r) => answer(r, json(appInfo)));
+  await stub("**/api/history", (r) => answer(r, json(emptyHistory)));
+  await stub("**/api/kitsu/trending-anilist", (r) => answer(r, json(trending)));
   await stub("**/api/kitsu/top-rated", (r) => {
     topRatedAsked?.();
-    return r.fulfill(json(topRated));
+    return answer(r, json(topRated));
   });
   // Every card known playable, so nothing is handed to the warm queue.
   await stub("**/api/availability/batch", (r) => {
     const { kitsu_ids } = r.request().postDataJSON() as { kitsu_ids: string[] };
-    return r.fulfill(
+    return answer(r,
       json({
         cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
         playable_episode_counts: {},
       }),
     );
   });
-  await stub("**/api/availability/warm", (r) => r.fulfill({ status: 202 }));
-  await stub("**/api/watched-at", (r) => r.fulfill(json({})));
+  await stub("**/api/availability/warm", (r) => answer(r, { status: 202 }));
+  await stub("**/api/watched-at", (r) => answer(r, json({})));
   // No newer release: the backend's answer when there is none.
-  await stub("**/api/update-check*", (r) => r.fulfill({ status: 204 }));
+  await stub("**/api/update-check*", (r) => answer(r, { status: 204 }));
   await stub("**/api/settings", (r) =>
     r.request().method() === "PUT"
-      ? r.fulfill({ status: 204 })
-      : r.fulfill(json(defaultSettings)),
+      ? answer(r, { status: 204 })
+      : answer(r, json(defaultSettings)),
   );
   // Block image fetches; the renderer's placeholder takes over.
-  await stub("**/api/image*", (r) => r.fulfill({ status: 503 }));
+  await stub("**/api/image*", (r) => answer(r, { status: 503 }));
   // A show's page, which a card click opens: the top-rated fixture's
   // show, with no episodes, no history and no skip times.
-  await stub("**/api/kitsu/anime/*", (r) => r.fulfill(json(topRated[0])));
-  await stub("**/api/kitsu/episodes/*", (r) => r.fulfill(json([])));
-  await stub("**/api/kitsu/airing/*", (r) => r.fulfill(json(null)));
-  await stub("**/api/history/by-kitsu/*", (r) => r.fulfill(json(null)));
+  await stub("**/api/kitsu/anime/*", (r) => answer(r, json(topRated[0])));
+  await stub("**/api/kitsu/episodes/*", (r) => answer(r, json([])));
+  await stub("**/api/kitsu/airing/*", (r) => answer(r, json(null)));
+  await stub("**/api/history/by-kitsu/*", (r) => answer(r, json(null)));
   // The rows the franchise's entries resume from: none, as the
   // backend answers with no history.
   await stub("**/api/history/by-kitsu", (r) => {
     const { ids } = r.request().postDataJSON() as { ids: string[] };
-    return r.fulfill(json(Object.fromEntries(ids.map((i) => [i, null]))));
+    return answer(r, json(Object.fromEntries(ids.map((i) => [i, null]))));
   });
   // The show's franchise, as the backend answers for a show alone:
   // itself, no strip and no franchise link.
@@ -159,7 +163,8 @@ async function launchAppWithStubsOnce(
       poster: null,
       cover: null,
     };
-    return r.fulfill(
+    return answer(
+      r,
       json({
         anchor: id,
         name: "Show",
@@ -175,16 +180,15 @@ async function launchAppWithStubsOnce(
       }),
     );
   });
-  await stub("**/api/download/default-dir", (r) => r.fulfill(json(null)));
+  await stub("**/api/download/default-dir", (r) => answer(r, json(null)));
   await stub("**/api/availability", (r) =>
-    r.fulfill(json({ available: true, episode_count: 12, extra_episodes: [] })),
+    answer(r, json({ available: true, episode_count: 12, extra_episodes: [] })),
   );
   // The page looks the show up by title and starts resolving its first
   // episode ahead of a click; neither is what the click test checks.
-  await stub("**/api/kitsu/search", (r) => r.fulfill(json([])));
-  await stub("**/api/play/stream*", (r) => r.fulfill({ status: 503 }));
+  await stub("**/api/kitsu/search", (r) => answer(r, json([])));
+  await stub("**/api/play/stream*", (r) => answer(r, { status: 503 }));
 
-  const page = await appWindow(app);
   // The first mount asked before the stubs were in place, and the
   // backend, kept off the network, could not answer it: mount it
   // again, and go on once the new mount has asked a stub.
@@ -384,13 +388,13 @@ test("the launch's secret is on no process's command line, and only the app's pa
   }
 });
 
-test("a renderer line naming a secret-bearing URL is logged without the launch's secret", async () => {
-  // The routes an <img> or an EventSource loads carry the secret as
-  // `secret=` in their URL, and the main process relays the renderer's
-  // console to its own stdout (the journal, a terminal), redacted.
-  // Chromium's own "Failed to load resource" lines are not part of that
-  // relay: Electron's console-message event never receives network
-  // messages, so the line is one the page itself logs.
+test("a renderer line naming the launch's secret is logged without it", async () => {
+  // The main process relays the renderer's console to its own stdout
+  // (the journal, a terminal), redacted: by the secret's value and by
+  // the shapes a secret travels in. Chromium's own "Failed to load
+  // resource" lines are not part of that relay (Electron's
+  // console-message event never receives network messages), so the
+  // lines here are ones the page itself logs.
   const { app, page } = await launchAppWithStubs();
   try {
     const secret = await page.evaluate(() => window.aniGui?.internalSecret);
@@ -400,16 +404,70 @@ test("a renderer line naming a secret-bearing URL is logged without the launch's
       out += chunk.toString("utf-8");
     });
     await page.evaluate(() => {
+      const secret = window.aniGui!.internalSecret;
+      console.error(`handed: ${secret}`);
+      console.warn(`x-ani-gui-internal-secret: ${secret}`);
+      console.log(`relayed: ${encodeURIComponent(`http://h/api/image?secret=${secret}`)}`);
+    });
+    for (const line of ["handed:", "x-ani-gui-internal-secret:", "relayed:"]) {
+      await expect.poll(() => out, { timeout: 15_000 }).toContain(line);
+    }
+    expect(out).toContain("<redacted>");
+    expect(out).not.toContain(secret as string);
+  } finally {
+    await app.close();
+  }
+});
+
+test("an image the app's page loads reaches the backend with no secret in its URL, and a frame's does not get in", async () => {
+  // An <img> cannot set a header, and a URL is kept where a header is
+  // not (Chromium's disk cache, a log line). The main process adds the
+  // secret header to the app's own page's image and progress-stream
+  // requests (lib/secret-header.cjs); a subframe's get nothing. These
+  // two go to the real backend rather than the stubs: the app's is let
+  // in, and the backend tries the upstream (at the helper's refusing
+  // proxy); the frame's is refused at the gate (403) and the backend
+  // never tries. The app's answer is the backend's 503 error body,
+  // which Chromium withholds from an <img> (ORB) and reports as a
+  // failed request rather than a response.
+  const { app, page, context } = await launchAppWithStubs();
+  try {
+    await routeContext(context, /gate-(app|frame)\.example/, (r) => r.continue());
+    const statuses = new Map<string, number | string>();
+    const urls: string[] = [];
+    const which = (url: string) => /gate-(app|frame)\.example/.exec(decodeURIComponent(url))?.[1];
+    context.on("response", (res) => {
+      const m = which(res.url());
+      if (m) {
+        statuses.set(m, res.status());
+        urls.push(res.url());
+      }
+    });
+    context.on("requestfailed", (req) => {
+      const m = which(req.url());
+      if (m) {
+        statuses.set(m, "failed");
+        urls.push(req.url());
+      }
+    });
+    await page.evaluate(() => {
       const bridge = window.aniGui!;
       const base = bridge.lanes?.image ?? bridge.apiBase;
-      const url = `${base}/api/image?url=${encodeURIComponent("https://e.example/a.jpg")}&secret=${bridge.internalSecret}`;
-      console.error(`poster failed: ${url}`);
-      console.log(`relayed: ${encodeURIComponent(url)}`);
+      const src = (host: string) =>
+        `${base}/api/image?url=${encodeURIComponent(`https://${host}/a.jpg`)}`;
+      const img = new Image();
+      img.src = src("gate-app.example");
+      document.body.append(img);
+      const frame = document.createElement("iframe");
+      frame.srcdoc = `<img src="${src("gate-frame.example")}">`;
+      document.body.append(frame);
     });
-    await expect.poll(() => out, { timeout: 15_000 }).toContain("poster failed:");
-    await expect.poll(() => out, { timeout: 15_000 }).toContain("relayed:");
-    expect(out).toContain("secret=<redacted>");
-    expect(out).not.toContain(secret as string);
+    await expect.poll(() => statuses.size, { timeout: 15_000 }).toBe(2);
+    expect(statuses.get("frame")).toBe(403);
+    expect(outboundAttempts(app)).toContain("CONNECT gate-app.example:443");
+    expect(outboundAttempts(app)).not.toContain("CONNECT gate-frame.example:443");
+    const secret = await page.evaluate(() => window.aniGui?.internalSecret);
+    for (const url of urls) expect(url).not.toContain(secret as string);
   } finally {
     await app.close();
   }

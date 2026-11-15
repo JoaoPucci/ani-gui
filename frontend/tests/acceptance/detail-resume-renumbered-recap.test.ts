@@ -37,6 +37,17 @@ import { savePosition } from '../../src/lib/play/watch-position';
 import { goto } from '$app/navigation';
 import { forgetNavigationListeners, startNavigation } from './navigation';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	CreateSessionResponse,
+	HistoryNumber,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Stitched Show';
 const ROW = 'hianime:stitched-show-4';
@@ -100,33 +111,42 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 function useShowHandlers(rowDelayMs = 0) {
 	let repaired = false;
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 36), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 36), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 36, next_episode: null, next_airing_at: null, upcoming: [] })
+			HttpResponse.json<AiringStatus>({
+				aired: 36,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
 		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability`, () => {
 			repaired = true;
-			return HttpResponse.json({
-				available: true,
-				episode_count: 36,
-				extra_episodes: ['12.5'],
-				episode_count_approximate: false
-			});
+			return HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 36,
+					extra_episodes: ['12.5'],
+					episode_count_approximate: false
+				})
+			);
 		}),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
 		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, async () => {
 			// Read before the lookup put the row right, answered after it.
 			const row = { id: ROW, ep_no: '24.5', title: TITLE };
 			if (rowDelayMs > 0) await new Promise((r) => setTimeout(r, rowDelayMs));
-			return HttpResponse.json(row);
+			return HttpResponse.json<HistoryRowByKitsu | null>(row);
 		}),
 		http.get(`${API_BASE}/api/history/:id/number`, () =>
-			HttpResponse.json(repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' })
+			HttpResponse.json<HistoryNumber | null>(
+				repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' }
+			)
 		)
 	);
 }
@@ -139,20 +159,22 @@ function useTwoLookups(reads: string[]) {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, async () => {
 			await new Promise((r) => setTimeout(r, 300));
-			return HttpResponse.json(appConfig('dub'));
+			return HttpResponse.json<Config>(appConfig('dub'));
 		}),
 		http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 			const body = (await request.json()) as { mode?: string };
 			answered = body.mode === 'dub' ? 2 : Math.max(answered, 1);
-			return HttpResponse.json({
-				available: true,
-				episode_count: 36,
-				extra_episodes: ['12.5'],
-				episode_count_approximate: false
-			});
+			return HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 36,
+					extra_episodes: ['12.5'],
+					episode_count_approximate: false
+				})
+			);
 		}),
 		http.get(`${API_BASE}/api/history/:id/number`, () =>
-			HttpResponse.json({ ep_no: reads[answered] ?? reads.at(-1) })
+			HttpResponse.json<HistoryNumber | null>({ ep_no: reads[answered] ?? reads.at(-1) })
 		)
 	);
 }
@@ -223,15 +245,19 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		useShowHandlers();
 		server.use(
 			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: 36,
-					extra_episodes: ['12.5'],
-					episode_count_approximate: true
-				})
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 36,
+						extra_episodes: ['12.5'],
+						episode_count_approximate: true
+					})
+				)
 			),
 			http.get(`${API_BASE}/api/history/:id/number`, () =>
-				HttpResponse.json(repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' })
+				HttpResponse.json<HistoryNumber | null>(
+					repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' }
+				)
 			)
 		);
 		app = mount(DetailPage, { target });
@@ -247,7 +273,9 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		for (const warm of FakeEventSource.instances.filter((i) => i.url.includes('prefetch=1'))) {
 			warm.dispatch(
 				'done',
-				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '25' })
+				wire<CreateSessionResponse>(
+					sessionAnswer({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '25' })
+				)
 			);
 		}
 		await until(
@@ -264,7 +292,9 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		server.use(
 			http.post(`${API_BASE}/api/availability`, () => new HttpResponse(null, { status: 503 })),
 			http.get(`${API_BASE}/api/history/:id/number`, () =>
-				HttpResponse.json(repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' })
+				HttpResponse.json<HistoryNumber | null>(
+					repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' }
+				)
 			)
 		);
 		app = mount(DetailPage, { target });
@@ -277,7 +307,9 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		for (const warm of FakeEventSource.instances.filter((i) => i.url.includes('episode=24.5'))) {
 			warm.dispatch(
 				'done',
-				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '12.5' })
+				wire<CreateSessionResponse>(
+					sessionAnswer({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '12.5' })
+				)
 			);
 		}
 		await until(
@@ -324,7 +356,7 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		server.use(
 			http.get(`${API_BASE}/api/history/:id/number`, () => {
 				reads += 1;
-				return HttpResponse.json({ ep_no: '12.5', former_ep_no: '24.5' });
+				return HttpResponse.json<HistoryNumber | null>({ ep_no: '12.5', former_ep_no: '24.5' });
 			})
 		);
 		const { sent, settled: answered } = watchPageFetches();
@@ -347,7 +379,9 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		for (const warm of FakeEventSource.instances.filter((i) => i.url.includes('prefetch=1'))) {
 			warm.dispatch(
 				'done',
-				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '13' })
+				wire<CreateSessionResponse>(
+					sessionAnswer({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '13' })
+				)
 			);
 		}
 		// Bounded means the reads stop: everything the page asked has
@@ -380,7 +414,9 @@ describe('detail route — a navigation started while Play waits for the row', (
 		server.use(
 			http.post(`${API_BASE}/api/availability`, () => new HttpResponse(null, { status: 503 })),
 			http.get(`${API_BASE}/api/history/:id/number`, () =>
-				HttpResponse.json(repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' })
+				HttpResponse.json<HistoryNumber | null>(
+					repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' }
+				)
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 }))
 		);
@@ -397,7 +433,9 @@ describe('detail route — a navigation started while Play waits for the row', (
 		for (const warm of FakeEventSource.instances.filter((i) => i.url.includes('episode=24.5'))) {
 			warm.dispatch(
 				'done',
-				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '12.5' })
+				wire<CreateSessionResponse>(
+					sessionAnswer({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '12.5' })
+				)
 			);
 		}
 		// The warm's answer has the row read again, and Play waits on
@@ -432,7 +470,7 @@ describe('detail route — the row read again after the viewer left', () => {
 			http.get(`${API_BASE}/api/history/:id/number`, async () => {
 				asked = true;
 				await held;
-				return HttpResponse.json({ ep_no: '24.5' });
+				return HttpResponse.json<HistoryNumber | null>({ ep_no: '24.5' });
 			})
 		);
 		const fetches = watchPageFetches();
@@ -464,13 +502,20 @@ describe('detail route — the row read again after the viewer left', () => {
 			http.get(`${API_BASE}/api/history/:id/number`, async () => {
 				asked = true;
 				await held;
-				return HttpResponse.json({ ep_no: '24.5' });
+				return HttpResponse.json<HistoryNumber | null>({ ep_no: '24.5' });
 			}),
 			http.get(`${API_BASE}/api/kitsu/anime/${OTHER_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(OTHER_ID, 'Other Show', 12), status: 'finished' })
+				HttpResponse.json<KitsuAnimeRef>({
+					...kitsuRef(OTHER_ID, 'Other Show', 12),
+					status: 'finished'
+				})
 			),
-			http.get(`${API_BASE}/api/kitsu/airing/${OTHER_ID}`, () => HttpResponse.json(null)),
-			http.get(`${API_BASE}/api/history/by-kitsu/${OTHER_ID}`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/kitsu/airing/${OTHER_ID}`, () =>
+				HttpResponse.json<AiringStatus>(null)
+			),
+			http.get(`${API_BASE}/api/history/by-kitsu/${OTHER_ID}`, () =>
+				HttpResponse.json<HistoryRowByKitsu | null>(null)
+			)
 		);
 		const fetches = watchPageFetches();
 		app = mount(DetailPage, { target });
