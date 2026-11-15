@@ -22,6 +22,8 @@ export interface AutoPlayInput {
 	extras?: readonly number[];
 	/** The episode was handed to another player. */
 	handedOff?: boolean;
+	/** The player's next-episode step is open (`stepOpen`); open unless said. */
+	stepOpen?: boolean;
 }
 
 export type AutoPlayDecision = { advance: true; target: number } | { advance: false };

@@ -56,3 +56,16 @@ export function upNextShown(state: UpNextState): boolean {
 		state.atEnd
 	);
 }
+
+/**
+ * Whether the player's next-episode step is open: the next arrow, and
+ * auto-play at the video's end. `hasNext` is the step the episode
+ * counts allow; `countsStale` says they were read for another show (the
+ * page reused for a new one); `finale` says this show's franchise found
+ * the episode its finale (`finaleCard` named something).
+ */
+export function stepOpen(hasNext: boolean, countsStale: boolean, finale: boolean): boolean {
+	void countsStale;
+	void finale;
+	return hasNext;
+}
