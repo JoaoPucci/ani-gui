@@ -9,7 +9,9 @@ card, Continue Watching's hand-off and the franchise page in
 [`architecture.md`, "Watch order"](../architecture.md#watch-order).
 What follows is the one option that was considered and not built, to
 be revisited if hunting for the part of a franchise one was watching
-is still a complaint.
+is still a complaint. The watch-order work began with that request: a
+viewer asked for *JoJo* to be a single entry, so as not to have to
+hunt for the part they were on.
 
 ## The option
 
@@ -37,7 +39,7 @@ changes what Continue means.
 Most of what it promises is already delivered: Continue Watching's
 hand-off moves a finished entry's card on to the next title, the
 finished entry giving way once the next one is started, and the
-strip's "You're watching" card and the franchise page's Resume name
-the title being watched from any page of the franchise. What one card
+franchise page's Resume, and on a show page with a strip its "You're
+watching" card, name the title being watched. What one card
 per franchise would add beyond that is hiding parallel watches, which
 is the part most likely to surprise.
