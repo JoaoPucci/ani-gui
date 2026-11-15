@@ -692,16 +692,16 @@ export function historyByKitsu(
 	);
 }
 
-/** `historyByKitsu` for each of `ids` at once, from one read of the
- *  history: each id with the row it resumes from, or null. A value
- *  that is not a Kitsu id is left out of the answer. `signal` cancels
- *  it once the page that asked has gone. */
 /** `POST /api/history/by-kitsu`'s body (backend
- *  `commands::history_by_kitsu::ByKitsuEachArgs`). */
+ *  `commands::history::ByKitsuEachArgs`). */
 export interface HistoryByKitsuBody {
 	ids: readonly string[];
 }
 
+/** `historyByKitsu` for each of `ids` at once, from one read of the
+ *  history: each id with the row it resumes from, or null. A value
+ *  that is not a Kitsu id is left out of the answer. `signal` cancels
+ *  it once the page that asked has gone. */
 export function historyByKitsuEach(
 	ids: readonly string[],
 	opts: ReadOptions = {}
