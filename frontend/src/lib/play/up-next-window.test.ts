@@ -92,7 +92,7 @@ describe('upNextShown', () => {
 				fc.record({
 					card: fc.boolean(),
 					hasNext: fc.boolean(),
-					countsStale: fc.constant(false),
+					countsStale: fc.boolean(),
 					resumeHolding: fc.boolean(),
 					dismissed: fc.boolean(),
 					videoFullscreen: fc.boolean(),
@@ -101,7 +101,7 @@ describe('upNextShown', () => {
 				(state) => {
 					const want =
 						state.card &&
-						!state.hasNext &&
+						!(state.hasNext && !state.countsStale) &&
 						!state.resumeHolding &&
 						!state.dismissed &&
 						!state.videoFullscreen &&
@@ -114,6 +114,13 @@ describe('upNextShown', () => {
 
 	it('waits while the player still has an episode of the entry to step to', () => {
 		expect(upNextShown({ ...due, hasNext: true })).toBe(false);
+	});
+
+	it('does not wait on a next episode counted for another show', () => {
+		// The page reused for a 12-episode show still holds the counts of
+		// the 24-episode show it opened on: episode 13 "fits", but says
+		// nothing about this show, whose card the franchise decided.
+		expect(upNextShown({ ...due, hasNext: true, countsStale: true })).toBe(true);
 	});
 
 	it('is not drawn where only the video is fullscreen', () => {
