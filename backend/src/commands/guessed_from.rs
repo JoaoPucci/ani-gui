@@ -1,5 +1,5 @@
 //! Which Continue card a history row's latest play came from, when a
-//! guessed card's play landed on another listing.
+//! card's play landed on another listing.
 //!
 //! A Continue card whose row records no Kitsu id plays the show a guess
 //! matched it to. That play can land on another listing than the card's
@@ -9,8 +9,14 @@
 //! the newer row's. The user clicked the 2000 line, though, and that is
 //! the line a correction from the card is about. So the play notes,
 //! beside the row it wrote, the card it came from; the history route
-//! names it (`guessed_from`), and the renderer stands the card for that
-//! line while the two show as the same show.
+//! names it (`guessed_from`), and the card stands for that line while
+//! the two show as the same show ([`super::card_line`]).
+//!
+//! A card no guess opened notes it the same way: a line the user named
+//! a show for plays that show's own stream, from Home or from "Switch to
+//! it now", which lands on the show's listing. The card stands for the
+//! named line while it records that show, and keeps the way to change
+//! it again.
 //!
 //! The note is a cache row (`guessed-from:v1:<row>` → the card's row),
 //! not a column of the history file: the file's format is shared with
@@ -21,8 +27,8 @@
 //! newer row again, as it did before the note existed.
 //!
 //! Every play that records a row — in the player, an external player or
-//! Syncplay — settles the note for it: a guessed card's play of another
-//! listing sets it, any other play takes it away,
+//! Syncplay — settles the note for it: a card's play of another listing
+//! sets it, any other play takes it away,
 //! since the row's latest play is then its own. It is settled in the
 //! history guard's step, with the row's write, and only when the guard
 //! accepts it: a play begun before a newer watch of the listing writes
@@ -51,11 +57,11 @@ pub enum Note<'a> {
     Clear,
 }
 
-/// What a play that a guessed card `guess_row` asked for (or no card,
+/// What a play that the Continue card `card` asked for (or no card,
 /// `None`), and that wrote the row `played`, says of that row.
 #[must_use]
-pub fn note<'a>(guess_row: Option<&'a str>, played: &str) -> Note<'a> {
-    match guess_row {
+pub fn note<'a>(card: Option<&'a str>, played: &str) -> Note<'a> {
+    match card {
         Some(card)
             if !card.is_empty()
                 && card != played
@@ -73,14 +79,14 @@ pub(crate) fn key(row: &str) -> String {
 }
 
 /// Settle the note for the row `played` a play recorded, asked by the
-/// guessed card `guess_row` or by none. A cache that cannot store it is
-/// logged: the watch is recorded, and the card stands for the newer row
-/// as it would without a note.
-pub(crate) fn record(state: &AppState, guess_row: Option<&str>, played: &str) {
+/// Continue card `card` ([`crate::commands::play::PlayArgs::card`]) or by
+/// none. A cache that cannot store it is logged: the watch is recorded,
+/// and the card stands for the newer row as it would without a note.
+pub(crate) fn record(state: &AppState, card: Option<&str>, played: &str) {
     if played.is_empty() {
         return;
     }
-    let stored = match note(guess_row, played) {
+    let stored = match note(card, played) {
         Note::From(card) => meta_cache_put(&state.cache_pool, &key(played), card, TTL.as_secs()),
         Note::Clear => meta_cache_delete(&state.cache_pool, &key(played)),
     };

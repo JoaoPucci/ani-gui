@@ -169,6 +169,14 @@ impl PlayArgs {
         !self.prefetch && !self.record_later
     }
 
+    /// The Continue card this play was asked from: a guessed card's row
+    /// ([`Self::guess_row`]), else the row of a card no guess opened
+    /// ([`Self::card_row`]). `None` for a play no card asked for.
+    #[must_use]
+    pub fn card(&self) -> Option<&str> {
+        self.guess_row.as_deref().or(self.card_row.as_deref())
+    }
+
     /// Whether this play, asked from a guessed Continue card, landed
     /// on the card's own listing — the show key `played`
     /// ([`crate::scraper::provider::same_listing`]). False for a play
@@ -334,7 +342,7 @@ fn write_history_on_cache_hit(
         held.played_from(&cached.show_id, asked.page);
         // Which card the row's play came from, settled with the row: a
         // write the guard turns away settles none.
-        crate::commands::guessed_from::record(state, args.guess_row.as_deref(), &cached.show_id);
+        crate::commands::guessed_from::record(state, args.card(), &cached.show_id);
         Ok::<_, AniError>(())
     });
     if let Err(e) = wrote {
@@ -579,7 +587,7 @@ where
                 &native.slug,
                 args.resolve_kitsu_id(&native.slug),
             ),
-            args.guess_row.as_deref(),
+            args.card(),
         );
     }
     // A successful resolve is a positive availability fact, same

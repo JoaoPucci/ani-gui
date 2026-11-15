@@ -5,7 +5,10 @@
  *
  * The pick is the user's, so the play asks for the picked show by its
  * own title and Kitsu id, with no guess beside it, as a play from its
- * page would; its watch is recorded and mirrored as one. Once the
+ * page would; its watch is recorded and mirrored as one. It names the
+ * card's row (`card_row`), as the session's later episodes do: the
+ * backend notes the card beside the row the play lands on, and Home's
+ * card for that row stands for the line the user named. Once the
  * stream is had, the point playback stood at is carried over to it
  * (the recovery's carry-over, `$lib/play/resume-after-recovery`), the
  * session it opens is told once that it plays the pick now
@@ -95,7 +98,11 @@ export async function switchShow(deps: SwitchShowDeps, req: SwitchRequest): Prom
 		show: req.to,
 		kitsuId: req.to.id,
 		version: req.version,
-		caption: req.caption
+		caption: req.caption,
+		// The card's session goes on as the pick: its play names the card's
+		// row, as the session's later episodes do, so the backend notes the
+		// card beside the row it lands on.
+		cardRow: req.row ?? undefined
 	});
 	let session: CreateSessionResponse;
 	try {

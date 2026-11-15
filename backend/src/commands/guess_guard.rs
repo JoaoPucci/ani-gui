@@ -97,7 +97,7 @@ pub(crate) fn guarded<'a>(
     };
     // A recorded show Kitsu answered gone is no link: the line is a guess
     // again, and a play of the guess on its own listing repairs it.
-    let card = args.guess_row.as_deref().or(args.card_row.as_deref());
+    let card = args.card();
     let recorded = line_record(&rows, played, card, |id| {
         crate::commands::kitsu_gone::is_gone(state, id).unwrap_or(false)
     });

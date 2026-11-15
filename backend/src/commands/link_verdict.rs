@@ -18,8 +18,12 @@
 //! card's own listing: the rows Continue Watching guesses as the same
 //! show, less any another listing wrote ([`super::history_link`]). A
 //! row it trusts — one whose recorded entry Kitsu still serves, or one
-//! a play's mapping names — stays out. For a line the user named, the
-//! rows are those recorded as that show: the naming moved them all.
+//! a play's mapping names — stays out, unless it is of the card's own
+//! listing: a retired provider's bare line whose guessed play landed
+//! on the walked listing with the same words recorded the guess on that
+//! row, which is the card's line as much as the bare one is. For a line
+//! the user named, the rows are those recorded as that show: the naming
+//! moved them all.
 //!
 //! Continue Watching's match for each row, and whether it is a guess,
 //! is the renderer's matching: the rows arrive with it. Which of them
@@ -113,9 +117,11 @@ pub struct RowMatch {
 }
 
 /// The rows a correction of the card whose row is `card`, shown as
-/// `current`, covers among `rows`, the card's first: for a line the
-/// user named as `saved`, the rows recorded as it. Which of them share
-/// the card's listing is [`super::history_link::of_card`]'s to say.
+/// `current`, covers among `rows`, the card's first: the rows guessed
+/// as `current`, and those of the card's own listing shown as it,
+/// trusted or not; for a line the user named as `saved`, the rows
+/// recorded as it. Which of them share the card's listing is
+/// [`super::history_link::of_card`]'s to say.
 #[must_use]
 pub fn group_members(
     card: &str,
@@ -124,7 +130,10 @@ pub fn group_members(
     rows: &[RowMatch],
 ) -> Vec<String> {
     let covered = |r: &RowMatch| match saved {
-        None => r.show.as_deref() == Some(current) && !r.trusted,
+        None => {
+            r.show.as_deref() == Some(current)
+                && (!r.trusted || super::history_link::card_listing(card, &r.id))
+        }
         Some(named) => r.show.as_deref() == Some(named),
     };
     std::iter::once(card.to_string())

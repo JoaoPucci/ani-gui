@@ -10,9 +10,17 @@
 //! history and shows as the same show, the card stands for it: the
 //! pill, the failed resume and the player correct the line the user
 //! clicked, not the 2012 series' own history. Once the line is linked
-//! to another show, each row is a card of its own. A shown row that
-//! records its own show — played from that show's page — is the
-//! user's, and the card stands for it.
+//! to another show, each row is a card of its own.
+//!
+//! The same holds once the user named the line's show: its next play —
+//! from Home, or "Switch to it now" after a pick — is that show's own
+//! stream, and lands on its listing, so the shown row records its show
+//! and is newer than the line. While the line it came from records the
+//! same show as one the user named, the card stands for that line and
+//! keeps the way to change it again. A shown row that records its own
+//! show from any other play — from that show's page — is the user's,
+//! and the card stands for it; so does a shown row the user named
+//! itself.
 //!
 //! A card's line can be corrected while it is a guess, or once the user
 //! named a show for it, which can be changed again.
@@ -30,7 +38,8 @@ use serde::{Deserialize, Serialize};
 pub struct CardRow {
     /// The row's id: its provider show key.
     pub id: String,
-    /// The card whose guessed play wrote this row on another listing.
+    /// The card whose play wrote this row on another listing: a guessed
+    /// card's, or a named line's ([`super::guessed_from`]).
     #[serde(default)]
     pub guessed_from: Option<String>,
     /// The Kitsu id of the show the row shows, `None` while it is not
@@ -55,18 +64,21 @@ pub struct CardLine {
 }
 
 /// The line the card showing `shown` stands for, among `rows`: the
-/// row its guessed play came from while that row is held and shows as
-/// the same show, else `shown` itself.
+/// row its card's play came from while that row is held and shows as
+/// the same show — for a guessed `shown`, or for a line the user named
+/// when `shown` was not named itself — else `shown` itself.
 #[must_use]
 pub fn card_line<'a>(shown: &'a CardRow, rows: &'a [CardRow]) -> &'a CardRow {
     let Some(from) = shown.guessed_from.as_deref() else {
         return shown;
     };
-    if from == shown.id || !shown.guess || shown.show.is_none() {
+    if from == shown.id || shown.show.is_none() {
         return shown;
     }
     rows.iter()
-        .find(|r| r.id == from && r.show == shown.show)
+        .find(|r| {
+            r.id == from && r.show == shown.show && (shown.guess || (r.named && !shown.named))
+        })
         .unwrap_or(shown)
 }
 

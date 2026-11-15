@@ -162,7 +162,7 @@ pub(crate) async fn record_handoff_watch(
         watch,
         kitsu_id,
         begun,
-        args.guess_row.as_deref(),
+        args.card(),
     )
     .await;
 }

@@ -14,7 +14,7 @@
 
 import { http, HttpResponse, type HttpHandler } from 'msw';
 import { API_BASE } from './setup';
-import { groupMembers } from '../../src/test/link-rules-fake';
+import { cardListing, groupMembers } from '../../src/test/link-rules-fake';
 import type { LinkGroupRequest } from '../../src/lib/api';
 
 export interface Row {
@@ -35,21 +35,6 @@ export interface LinkBackend {
 
 export function linkBackend(rows: Row[]): LinkBackend {
 	return { rows, linkCalls: [] };
-}
-
-const walked = (id: string) => id.startsWith('hianime:');
-const words = (id: string) =>
-	id
-		.replace(/^hianime:/, '')
-		.match(/^(.+)-\d+$/)?.[1]
-		?.toLowerCase() ?? null;
-
-/** Whether `row` shares the listing of the card whose row is `card`. */
-export function cardListing(card: string, row: string): boolean {
-	if (card === row) return true;
-	if (walked(card) === walked(row)) return false;
-	const a = words(card);
-	return a !== null && a === words(row);
 }
 
 function held(b: LinkBackend, card: string, rows: string[]): string[] {

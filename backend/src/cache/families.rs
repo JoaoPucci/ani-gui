@@ -124,8 +124,8 @@ pub(crate) const KITSU_EXTERNAL_IDS: &str = "kitsu:external-ids:v2:k";
 pub(crate) const KITSU_MAL_MAP: &str = "kitsu:mal-map:v1:";
 /// A show's watched-at stamp.
 pub(crate) const WATCHED_AT: &str = "watched-at:v1:";
-/// The Continue card a row's guessed play came from
-/// (`commands::guessed_from`).
+/// The Continue card a row's play came from, when it landed on another
+/// listing (`commands::guessed_from`).
 pub(crate) const GUESSED_FROM: &str = "guessed-from:v1:";
 /// The Kitsu id the user linked a row to (`commands::linked_note`).
 pub(crate) const LINKED: &str = "history-linked:v1:";

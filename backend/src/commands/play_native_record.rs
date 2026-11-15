@@ -63,20 +63,21 @@ fn put_numbering(state: &AppState, native: &NativeResolved) {
 /// `kitsu_id` is the Kitsu id the play's resolve may record
 /// ([`crate::commands::play::PlayArgs::resolve_kitsu_id`]): the row
 /// carries it from this write when the cache alone accepts it
-/// ([`resolved_id`]).
+/// ([`resolved_id`]). `card` is the Continue card the play was asked
+/// from ([`crate::commands::play::PlayArgs::card`]), or none.
 pub(crate) fn record_fresh_watch(
     state: &AppState,
     native: &NativeResolved,
     requested: &str,
     asked: Asked<'_>,
     kitsu_id: Option<&str>,
-    guess_row: Option<&str>,
+    card: Option<&str>,
 ) {
     stamp_numbering(state, native, asked);
     // The card note goes with the row, in the guard's step: a write the
     // guard turns away settles none.
     write_history_then(state, native, requested, asked, kitsu_id, || {
-        crate::commands::guessed_from::record(state, guess_row, &native.slug);
+        crate::commands::guessed_from::record(state, card, &native.slug);
     });
 }
 
@@ -179,15 +180,16 @@ impl Watch {
 /// show's latest watch is on the row — so it returns quietly, like
 /// every other outcome of a recording.
 ///
-/// `guess_row` is the guessed card whose play this is, or none: the
-/// note of which card the row came from ([`crate::commands::guessed_from`])
-/// is settled with the watch.
+/// `card` is the Continue card whose play this is
+/// ([`crate::commands::play::PlayArgs::card`]), or none: the note of
+/// which card the row came from ([`crate::commands::guessed_from`]) is
+/// settled with the watch.
 pub(crate) async fn record_watch_requested_at(
     state: &AppState,
     watch: &Watch,
     kitsu_id: Option<&str>,
     requested: Epoch,
-    guess_row: Option<&str>,
+    card: Option<&str>,
 ) {
     if watch.show_id.is_empty() {
         return;
@@ -233,7 +235,7 @@ pub(crate) async fn record_watch_requested_at(
         stamp_watched_at(state, &watch.show_id, now);
         // The card note goes with the row it is about: a watch the
         // guard turned away settles none.
-        crate::commands::guessed_from::record(state, guess_row, &watch.show_id);
+        crate::commands::guessed_from::record(state, card, &watch.show_id);
         Ok::<_, crate::error::AniError>(Some((held.epoch(), previous)))
     });
     let (begun, previous) = match recorded {

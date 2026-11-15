@@ -230,9 +230,10 @@ struct HistoryRow {
     entry: HistoryEntry,
     #[serde(skip_serializing_if = "Option::is_none")]
     key_year: Option<u32>,
-    /// The Continue card whose guessed play wrote this row on another
-    /// listing ([`crate::commands::guessed_from`]): the renderer stands
-    /// the card for that line while both show as the same show.
+    /// The Continue card whose play wrote this row on another listing —
+    /// a guessed card's, or a named line's
+    /// ([`crate::commands::guessed_from`]): the card stands for that line
+    /// while both show as the same show ([`crate::commands::card_line`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     guessed_from: Option<String>,
     /// The row records a show the user named for it: its link's note
@@ -827,9 +828,9 @@ async fn post_play_mark_watched(
                     args.recordable_kitsu_id(&cached.show_id),
                 ),
                 begun,
-                // Which card the row's play came from, when a guessed
-                // card's play landed on another listing; none otherwise.
-                args.guess_row.as_deref(),
+                // Which card the row's play came from, when a card's play
+                // landed on another listing; none otherwise.
+                args.card(),
             )
             .await;
         }

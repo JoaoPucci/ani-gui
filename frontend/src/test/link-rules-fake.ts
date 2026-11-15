@@ -5,7 +5,8 @@
 //
 // Each answers as its Rust counterpart, whose own tests hold the rule:
 // - `verdict`: commands/link_verdict.rs `verdict`
-// - `groupMembers`: commands/link_verdict.rs `group_members`
+// - `groupMembers`: commands/link_verdict.rs `group_members`, and
+//   `cardListing`: commands/history_link_plan.rs `card_listing`
 // - `cardLines`: commands/card_line.rs `card_lines`
 // - `candidates`: commands/link_candidates.rs and link_rules.rs. A
 //   title's season is read here with the renderer's own reader, which
@@ -35,6 +36,25 @@ export function verdict(r: VerdictRequest): LinkVerdict {
 	return { offer: guess ? 'guess' : again ? 'again' : null, kept };
 }
 
+const walked = (id: string) => id.startsWith('hianime:');
+const words = (id: string) =>
+	id
+		.replace(/^hianime:/, '')
+		.match(/^(.+)-\d+$/)?.[1]
+		?.toLowerCase() ?? null;
+
+/** Whether `row` shares the listing of the card whose row is `card`
+ *  (history_link_plan.rs `card_listing`): the card's own row, or a
+ *  retired provider's bare row and a walked row whose slugs carry the
+ *  same words. Two walked rows under different ids are two listings,
+ *  and so are two bare rows. */
+export function cardListing(card: string, row: string): boolean {
+	if (card === row) return true;
+	if (walked(card) === walked(row)) return false;
+	const a = words(card);
+	return a !== null && a === words(row);
+}
+
 export function groupMembers(
 	card: string,
 	show: string,
@@ -42,15 +62,19 @@ export function groupMembers(
 	rows: RowMatch[]
 ): string[] {
 	const covered = (r: RowMatch) =>
-		saved === null ? r.show === show && !r.trusted : r.show === saved;
+		saved === null ? r.show === show && (!r.trusted || cardListing(card, r.id)) : r.show === saved;
 	return [card, ...rows.filter((r) => r.id !== card && covered(r)).map((r) => r.id)];
 }
 
 export function cardLines(rows: CardLineRow[]): Record<string, CardLine> {
 	const lineOf = (shown: CardLineRow): CardLineRow => {
 		const from = shown.guessed_from;
-		if (!from || from === shown.id || !shown.guess || shown.show === null) return shown;
-		return rows.find((r) => r.id === from && r.show === shown.show) ?? shown;
+		if (!from || from === shown.id || shown.show === null) return shown;
+		return (
+			rows.find(
+				(r) => r.id === from && r.show === shown.show && (shown.guess || (r.named && !shown.named))
+			) ?? shown
+		);
 	};
 	return Object.fromEntries(
 		rows.map((shown) => {
