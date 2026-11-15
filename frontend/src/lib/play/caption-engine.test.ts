@@ -6,6 +6,7 @@ import {
 	engineIdOf,
 	enginePlan,
 	namesTrack,
+	sameListing,
 	type EngineTrack
 } from './caption-engine';
 import { cleanLabel } from './caption-label';
@@ -131,6 +132,35 @@ describe('distinctLabel', () => {
 				for (const r of rs) expect(namesTrack(r, { label: out, language })).toBe(false);
 				if (!rs.some((r) => namesTrack(r, { label, language }))) expect(out).toBe(label);
 				expect(cleanLabel(out)).toBe(cleanLabel(label));
+			})
+		);
+	});
+});
+
+describe('sameListing', () => {
+	it('reads two listings as the same when every rendition reads the same, in order', () => {
+		expect(sameListing([en, es], [{ ...en }, { ...es }])).toBe(true);
+		expect(sameListing([en, es], [es, en])).toBe(false);
+		expect(sameListing([en], [en, es])).toBe(false);
+		expect(sameListing([en], [{ name: 'English', lang: 'en-GB' }])).toBe(false);
+	});
+
+	it('for any listings, agrees with a rendition-by-rendition comparison', () => {
+		const r = fc.record({
+			name: fc.constantFrom('English', 'Español', 'Deutsch'),
+			lang: fc.constantFrom('en', 'es', 'de')
+		});
+		fc.assert(
+			fc.property(fc.array(r, { maxLength: 4 }), fc.array(r, { maxLength: 4 }), (a, b) => {
+				const same =
+					a.length === b.length && a.every((x, i) => x.name === b[i].name && x.lang === b[i].lang);
+				expect(sameListing(a, b)).toBe(same);
+				expect(
+					sameListing(
+						a,
+						a.map((x) => ({ ...x }))
+					)
+				).toBe(true);
 			})
 		);
 	});

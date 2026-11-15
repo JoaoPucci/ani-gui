@@ -1,6 +1,6 @@
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { engineIdOf } from './caption-engine';
+import { engineIdOf, namesTrack } from './caption-engine';
 import {
 	followGroup,
 	indexIn,
@@ -76,6 +76,42 @@ describe('followGroup', () => {
 	it('keeps a track no rendition ever named', () => {
 		const cc = track('English CC', 'en', 'captions');
 		expect(followGroup(video([], [cc, newEn]), cc, renditions, all, 0)).toBe(cc);
+	});
+
+	it('for any pick off a rendition of a group left, moves to the first track the engine’s pick names', () => {
+		const names = ['English', 'English (CC)', 'Español'];
+		const t = fc.record({
+			kind: fc.constantFrom('subtitles', 'captions'),
+			label: fc.constantFrom(...names),
+			language: fc.constantFrom('en', 'es'),
+			mode: fc.constant<'disabled'>('disabled')
+		});
+		const r = fc.record({ name: fc.constantFrom(...names), lang: fc.constantFrom('en', 'es') });
+		fc.assert(
+			fc.property(
+				fc.array(t, { maxLength: 3 }),
+				fc.array(t, { minLength: 1, maxLength: 4 }),
+				fc.array(r, { minLength: 1, maxLength: 3 }),
+				fc.array(r, { maxLength: 3 }),
+				fc.nat(3),
+				fc.nat(3),
+				(elements, made, current, left, p, d) => {
+					const picked = p % current.length;
+					const desired = made[d % made.length];
+					const everyone = [...left, ...current];
+					const leftBehind =
+						everyone.some((c) => namesTrack(c, desired)) &&
+						!current.some((c) => namesTrack(c, desired));
+					const target = made.find(
+						(m) =>
+							(m.kind === 'subtitles' || m.kind === 'captions') && namesTrack(current[picked], m)
+					);
+					fc.pre(leftBehind && target !== undefined);
+					const out = followGroup(video(elements, made), desired, current, everyone, picked);
+					expect(out).toBe(target);
+				}
+			)
+		);
 	});
 
 	it('for any pick, moves only off a rendition of a group left, and only to the track the engine picked', () => {
