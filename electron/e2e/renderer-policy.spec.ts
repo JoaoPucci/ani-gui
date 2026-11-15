@@ -7,8 +7,8 @@
  * response (electron/lib/renderer-csp.cjs: every fetch directive,
  * naming the backend's lanes). These tests prove that both reach the
  * document on every load, that together they refuse what the app never
- * does, and that what the app does — a play through the stream proxy
- * with its subtitles, an MP4 session, the loader — still works under
+ * does, and that what the app does — plays through the stream proxy
+ * with each kind of subtitle, an MP4 session, the loader — still works under
  * them. The suite-wide guard (./policy-guard.ts) fails each test on any
  * violation it did not declare.
  *
@@ -53,8 +53,10 @@ async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 	const tmp = path.join(os.tmpdir(), `ani-gui-e2e-policy-${process.pid}-${Date.now()}`);
 	fs.mkdirSync(tmp, { recursive: true });
 	// Replays on, so a play spec's Continue card plays its own stream
-	// through the real play path (real-play.ts).
-	writeReplayConfig(tmp);
+	// through the real play path (real-play.ts), in English whatever the
+	// host's language: the session's starting subtitle track follows the
+	// UI locale, and the sidecar play's English track has to be it.
+	writeReplayConfig(tmp, 'locale = "en"\n');
 	const app = await launchPackagedApp(
 		{
 			...process.env,
@@ -376,9 +378,9 @@ function renditionResponses(page: Page): { url: string; status: number }[] {
 // The two kinds of subtitles are played apart. On a stream carrying
 // both, the app turns off whatever shows as its sidecar tracks attach,
 // and hls.js drops the cues of a fragment it finishes parsing while
-// its track is off and does not fetch that fragment again — so which
-// of the two kept its cues would depend on whether the listing or the
-// rendition's fragment arrived first (docs/deferred-work.md, "Sidecar
+// its track is off and does not fetch that fragment again — so whether
+// the rendition kept its cues would depend on whether the listing or
+// the rendition's fragment arrived first (docs/deferred-work.md, "Sidecar
 // subtitles on a stream that also carries its own"). What the policy
 // has to allow is each one's path, and each is proved on a stream of
 // its own.
@@ -401,7 +403,7 @@ test('a play through the stream proxy plays, with its sidecar subtitles, under t
 		await playFromContinue(page, play);
 		const sid = sessionOf(page);
 		// hls.js feeds the element through a MediaSource blob (media-src
-		// blob:), its playlists and segments come from the stream lane
+		// blob:), its playlist and segments come from the stream lane
 		// (connect-src), and playback advances.
 		await expect
 			.poll(async () => (await videoState(page))?.time ?? 0, { timeout: 30_000 })
