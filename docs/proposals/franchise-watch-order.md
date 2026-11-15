@@ -7,13 +7,14 @@ documentation describes it: the backend's franchise read, `GET
 /api/kitsu/franchise/:kitsu_id`, in
 [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise);
 the watch-order strip on the show page, the order the surfaces show a
-run in, and the "Watch order" setting, in
+run in, the "Watch order" setting and the player's Up next card at a
+finale, in
 [`architecture.md`, "Watch order"](../architecture.md#watch-order). The sections that described them here (the research of
-sections 1 and 2, the order rules of section 4, option (a) and their
-parts of section 5) now point there. Not built yet: the Up next card,
-Continue Watching's hand-off and the franchise page, which exist only
-as design mockups drawn from fixture data, behind a Diagnostics
-switch.
+sections 1 and 2, the order rules of section 4, option (a), the
+player's half of option (b) and their parts of section 5) now point
+there. Not built yet: Continue Watching's hand-off and the franchise
+page, which exist only as design mockups drawn from fixture data,
+behind a Diagnostics switch.
 
 ## The problem in plain terms
 
@@ -122,79 +123,29 @@ The strip's way to the franchise page arrives with option (c).
 
 ### (b) "Up next: season 2" at a finale, and Continue moving on
 
-**How it looks.**
+The player's half is built: [`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card) (which titles a finale offers,
+when the card shows, what a click does, and why the provider is not
+asked). Continue Watching's half is not built yet:
 
-- *In the player*: when the last episode of an entry ends (the video's
-  ended state; "Decisions recorded: the Up next card's timing"), the
-  "Skip Ending" corner holds an end card — the sequel's poster, its
-  title, its year and format, under "Up next". The card waits for a
-  click. It does not count down or play the sequel by itself, whatever
-  the auto-play setting: auto-play stays within one entry, as it does
-  today.
-- *On Continue Watching*: once the finale has been played through,
-  the card stops offering the finale again and shows the sequel —
-  its art, its title, "Up next".
-- *What a click does*, on either card: it opens the sequel's show
-  page, where Play starts episode 1. It does not start playback
-  directly, because nothing has asked the provider about the sequel
-  (below), and the show page is where the app already answers that
-  question. When the sequel has its own history row (you started
-  it), the finished entry's card gives way to the sequel's ordinary
-  Continue card, so the Continue Watching rail does not show both.
+**How it looks.** Once the finale has been played through, the
+Continue Watching card stops offering the finale again and shows the
+next title — its art, its title, "Up next". A click opens that
+title's show page, where Play starts episode 1, as the player's card
+does. When the next title has its own history row (you started it),
+the finished entry's card gives way to its ordinary Continue card, so
+the Continue Watching rail does not show both.
 
-**Rules** [proposal]. The end card appears only on the last episode of
-an entry that has finished airing. Its candidates are the entry's next
-entries in the run, in the order the setting chooses
-([`architecture.md`, "Order and position numbers"](../architecture.md#order-and-position-numbers)):
-every run member it links to as a sequel in link order, shortcuts
-ignored, or the one that started next in release order. Recaps and
-other versions are never candidates; no other filter applies. What the
-card shows:
+**Rules** [proposal]. Continue moves to the next entry only where the
+player's card offers exactly one that has aired, and only to an entry
+the viewer has not played yet; in every other case it keeps today's
+behaviour. The second condition matters in a cycle: in link order
+*Kizumonogatari III*'s finale names *Nisemonogatari*, and without it
+Continue could lead round the ten-entry *Monogatari* loop to entries
+already watched. In link order, Continue never moves on a fork
+(*Fate/Zero 2nd Season*). Outside the main story it follows the
+entry's own chain, as the player's card does.
 
-- exactly one that has aired: that entry, as "Up next";
-- exactly one that has not aired: that entry with its date
-  ("Coming January 2027"), as information only;
-- several: all of them, as the choices;
-- none: no card.
-
-Continue moves to the next entry in the first case only, and only to
-an entry the viewer has not played yet; in every other case it keeps
-today's behaviour. The second condition matters in a cycle: in link
-order *Kizumonogatari III*'s finale names *Nisemonogatari*, and
-without it Continue could lead round the ten-entry *Monogatari* loop
-to entries already watched. The card still names the entry.
-
-**Outside the main story** [decided], the Up next card follows the
-entry's own chain (section 4), as its strip draws it: *Heaven's Feel
-I*'s finale names *Heaven's Feel II*, and the third Golden Age film's
-names the 2016 *Berserk* series, the main-story title the chain leads
-into.
-
-**Edge cases.** The 2000 *JoJo* OVA's finale names the 1993 OVA in
-link order and the 2012 TV series in release order — whichever the
-setting chooses, as one entry. The 2012 *JoJo* series' finale names
-*Stardust Crusaders* in both orders: the series does not list the OVA
-at all. In link order, Continue never moves on a fork: *Fate/Zero 2nd
-Season*'s finale card shows *Fate/stay night* (2006) and the UBW
-prologue as the choices; in release order its next entry is the
-prologue alone. A film inside a run is offered when the databases
-link it as a sequel, and not otherwise.
-
-**A sequel the provider does not carry** [decided]. The card names the
-next entry the relations give, whether or not the provider carries it,
-and nothing asks the provider about it at a finale — no new request,
-and no cached verdict either, so the card never differs by what
-happens to be cached. Offering "the next one that is available"
-instead would raise a question the viewer should not have to answer —
-whether the app is skipping something — and hide the real order. A
-click opens the sequel's own show page, which runs the existing
-availability check and says when the show is unavailable (in the
-chosen audio, or at all); its watch-order strip then shows what comes
-after it, so the viewer can carry on from there.
-
-**Trackers.** No new writes. The finale's play writes the finished
-entry's progress as now; the sequel's first play writes the sequel's
-entry, through its own episode map. Where Kitsu and the tracker split
+**Trackers.** No new writes. Where Kitsu and the tracker split
 entries differently (one Kitsu entry against two MyAnimeList ones, or
 the reverse), the existing episode map already decides which tracker
 entry each Kitsu episode belongs to; nothing here bypasses it.
@@ -202,8 +153,7 @@ entry each Kitsu episode belongs to; nothing here bypasses it.
 **Cost.** Medium. The Continue Watching card is the most intricate
 surface in the app (row matching, repair, resume positions, removal);
 moving a card to another Kitsu entry touches its matching and removal
-rules, and wants its own acceptance tests. The player end card is
-smaller.
+rules, and wants its own acceptance tests.
 
 ### (c) A franchise page
 
@@ -385,37 +335,8 @@ Built: [`architecture.md`, "The show page's strip"](../architecture.md#the-show-
 
 ### The "Up next" card (player and Continue Watching)
 
-- **Placement in the player.** On a finale, the card takes the place
-  of the "Skip Ending" pill, in the same bottom-end corner, with the
-  same dark translucent surface and accent border. It grows from a
-  pill into a small card: the sequel's poster, an "Up next" eyebrow,
-  the title clamped to three lines (the card is narrow, and the words
-  that tell entries apart come last), and a format and year line. The
-  reason for this spot: it is where the eye already goes at the end
-  of an episode, and it does not cover the picture's centre. It
-  appears once the video ends, so the credits and anything after
-  them (a closing scene, the next episode's preview) play uncovered
-  but for their last second at most, with the "Skip Ending" pill
-  behaving as on any episode. A playhead within a second of the
-  length counts as the end. Unlike the pill, which shows for five
-  seconds, the card stays until it is used or dismissed; a seek back
-  puts it away and the end brings it back. It waits for the player's
-  own last step: where the source lists an episode past Kitsu's
-  count, the card shows on that one. Showing
-  the sequel in the now-playing header's "next" button (below the
-  player) on a finale was decided: no, the button stays within the
-  entry ("Decisions recorded", 3).
-- **On hover or focus.** On hover the card fills with the accent, as
-  the skip pill does; on focus it shows the focus ring. The full title
-  shows on hover and is the card's accessible name.
-- **Keyboard.** The card is focusable, Enter opens the sequel's page,
-  and Esc dismisses it. It never takes focus by itself, so Space and
-  the arrow keys keep controlling playback. It is announced politely
-  to screen readers once, when it appears. Like the skip pill, it is
-  not part of the controls that hide in fullscreen, because it is a
-  choice and not chrome.
-- **Motion.** It enters with the settle transition the skip pill
-  uses. Under reduced motion it simply appears.
+The player's card is built: [`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card). On Continue Watching:
+
 - **On Continue Watching.** The card keeps its 16:9 shape, so the rail
   stays even. Its frame shows the sequel's art: its first episode's
   still where Kitsu has one, otherwise its banner or cover. The
@@ -425,12 +346,8 @@ Built: [`architecture.md`, "The show page's strip"](../architecture.md#the-show-
   line is the sequel's whole title, two lines deep. Anime titles put
   what tells a franchise's entries apart at the end, so the Continue
   card's one-line show row would cut exactly that.
-- **When data is missing.**
-  - A fork: the player card lists the branches, a row each. Continue
-    keeps today's card.
-  - An unaired sequel: the player card shows it with its date and no
-    action. Continue keeps today's card.
-  - No sequel: no card.
+- **When data is missing.** A fork, an unaired next title or no next
+  title: Continue keeps today's card.
 
 ### The franchise page
 
@@ -531,26 +448,7 @@ Built: [`architecture.md`, "The show page's strip"](../architecture.md#the-show-
 
 #### The "Up next" card (player)
 
-- **Poster, decided** ("Decisions recorded", 5): the next entry's 5:7
-  poster beside its title and meta, in the skip pill's surface and
-  corner. The other option, *Still*, put the entry's banner above its
-  title, wider; it covered more of the end credits (at 1280 px more
-  than half of the picture's height), and banners crop unpredictably
-  at that size.
-- **States.** One aired next entry: a link to its page. Several (a
-  fork): "Ways to continue" over one row per branch. One not yet
-  aired: "Next, when it airs", its date or "Date not announced", and
-  no link. None: no card. A franchise read only in part (the walk
-  reached its bound, or a listing came back cut short) also gets no
-  card, since the entry that really comes next may be missing from
-  it. The mockup showed the card from the start of a last episode, so
-  a screenshot could catch it; the player shows it once the video
-  ends.
-- **Keyboard and screen readers.** The card never takes focus; Esc
-  dismisses it while it has focus; the dismiss button is its own tab
-  stop. The announcement is written into a polite live region after
-  the card mounts, since a region that already holds its text when it
-  appears is not read by every screen reader.
+Built: [`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card).
 
 #### Continue Watching's hand-off
 
@@ -601,15 +499,13 @@ Built: [`architecture.md`, "The order setting"](../architecture.md#the-order-set
 ### Decisions recorded (first review round)
 
 The maintainer answered the eight questions the first mockups asked.
-The answers on the strip, short titles and the setting (1, 2 and 7)
-are built and documented in [`architecture.md`, "Watch order"](../architecture.md#watch-order);
+The answers on the strip, short titles, the player's next-episode
+button and the setting (1, 2, 3 and 7) are built and documented in [`architecture.md`, "Watch order"](../architecture.md#watch-order);
 the rest:
 
-3. **The player's "next episode" button** stays within the entry; only
-   the Up next card crosses to another entry.
 4. **Accents.** Each entry keeps its own accent.
-5. **Up next** shows the poster; Continue's hand-off carries the
-   **NEXT** tag. The hand-off card opens the next entry's show page,
+5. **Continue's hand-off** carries the **NEXT** tag (the player's Up
+   next card, with the poster, is built). The hand-off card opens the next entry's show page,
    not its first episode, as the mockup already does: the viewer
    arrives where the strip, the synopsis and the episode list say what
    they are about to start.
@@ -729,22 +625,6 @@ The third round revises the strip's footer only.
   short. Without the card (on *Stone Ocean Part 3*, where *Steel Ball
   Run* is already a tile) the stack sits alone in the middle, at its
   own width.
-
-### Decisions recorded: the Up next card's timing
-
-The card first appeared from the start of the ending credits that the
-skip data knows, or in the last minute and a half without skip data.
-The maintainer found that too early: it covered the credits and any
-closing scene or next-episode preview after them. The card now
-appears once the video ends, and stays until it is used or
-dismissed. A seek back puts it away and the end brings it back,
-unless it was dismissed. Through the credits the "Skip Ending" pill
-behaves as on any episode. A playhead within a second of the length
-counts as the end, as well as the video's own ended state. That is a
-precaution: where a stream played through hls.js has less media than
-the length it declared, the playhead can stop just short of it and the
-video never reports its end, so the card would never come. On a stream
-that ends normally it shows the card up to a second early.
 
 ### Open design questions
 
