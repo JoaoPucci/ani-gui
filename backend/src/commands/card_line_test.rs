@@ -264,12 +264,24 @@ proptest! {
             });
         if same {
             prop_assert_eq!(Some(line.as_str()), from);
-        } else if line != shown.id {
-            // Else only a named line of the shown row's own listing,
-            // shown as the same show, for a row neither guessed nor named.
-            let r = rows.iter().find(|r| r.id == line).expect("a held row");
-            prop_assert!(!shown.guess && !shown.named && r.named && r.show == shown.show);
-            prop_assert!(crate::commands::history_link::card_listing(&r.id, &shown.id));
+        } else {
+            // Else a named line of the shown row's own listing, shown as
+            // the same show, for a row neither guessed nor named, when
+            // there is one; else the row itself.
+            let listed = |r: &CardRow| {
+                r.id != shown.id
+                    && r.named
+                    && r.show.is_some()
+                    && r.show == shown.show
+                    && crate::commands::history_link::card_listing(&r.id, &shown.id)
+            };
+            let has = !shown.guess && !shown.named && rows.iter().any(listed);
+            if has {
+                let r = rows.iter().find(|r| r.id == line).expect("a held row");
+                prop_assert!(listed(r));
+            } else {
+                prop_assert_eq!(&line, &shown.id);
+            }
         }
     }
 

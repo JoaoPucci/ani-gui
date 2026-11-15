@@ -1047,6 +1047,38 @@ describe("a named line whose card's play landed on another listing", () => {
 	});
 });
 
+describe('a named bare line whose play wrote its walked row', () => {
+	// The user named Black Clover for a retired provider's bare line. Its
+	// next play landed on the walked listing with the same words, which
+	// records the show and is newer, and notes no card: the play stayed
+	// on the line's own listing. The card shows the walked row and stands
+	// for the line the user named, with its pill.
+	it('keeps the pill on the walked row, and it changes the named line', async () => {
+		backend.rows = backend.rows.map((r) =>
+			r.id === BC_HIDDEN
+				? { ...r, kitsu_id: BC_RIGHT, named: true }
+				: r.id === BC_CARD
+					? { ...r, kitsu_id: BC_RIGHT }
+					: r
+		);
+		server.use(
+			http.get(`${API_BASE}/api/watched-at`, () =>
+				HttpResponse.json<Record<string, number>>({ [BC_HIDDEN]: 1_000, [BC_CARD]: 2_000 })
+			)
+		);
+		app = mount(HomePage, { target });
+		await until(() => showLine(BC_CARD).includes(BC_RIGHT_TITLE), 'the walked row as Black Clover');
+		await settle();
+		expect(cell(BC_HIDDEN)).toBeNull();
+		expect(cell(BC_CARD)?.dataset.cardRow).toBe(BC_HIDDEN);
+		pill(BC_CARD)!.click();
+		await until(() => dialog()?.open === true, 'the picker');
+		await pickAndLink(BC_GUESS_TITLE);
+		expect(backend.linkCalls[0].card).toBe(BC_HIDDEN);
+		expect(backend.linkCalls[0].rows).toContain(BC_HIDDEN);
+	});
+});
+
 describe('a card the user named a show for, after the app restarted', () => {
 	it('keeps its pill, which opens the picker on the show it was named', async () => {
 		backend.rows = backend.rows.map((r) =>
