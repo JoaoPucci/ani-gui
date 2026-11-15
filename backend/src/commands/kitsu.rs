@@ -1153,6 +1153,40 @@ async fn anime_detail_read(
         return Ok(detail);
     }
     past_cache(state);
+    // Keyed by the state as well as the id, as the franchise listings
+    // are: one app has one state, and two states (two tests) never
+    // share an answer. The AniList endpoint is a test seam; reads
+    // aimed at different ones are not the same read.
+    let running = format!(
+        "{:p}:{id}:{}",
+        std::ptr::from_ref(state),
+        anilist_base.unwrap_or_default()
+    );
+    DETAILS_IN_FLIGHT
+        .run(running, || {
+            anime_detail_fetch(state, id, &key, begun, anilist_base)
+        })
+        .await
+}
+
+/// The detail reads in flight: the show page and the franchise walk
+/// asking for one anime's detail at the same time, before either answer
+/// is cached, share one request (and its banner backfill).
+static DETAILS_IN_FLIGHT: std::sync::LazyLock<
+    crate::meta::inflight::Inflight<Result<KitsuAnimeRef>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// The part of [`anime_detail_read`] past a cache miss: Kitsu's answer,
+/// its banner backfill, and the row cached from them. A read sharing
+/// another's takes this one's answer, gone verdict included: the one
+/// request is judged from the moment the first read began.
+async fn anime_detail_fetch(
+    state: &AppState,
+    id: &str,
+    key: &str,
+    begun: crate::history::guard::Epoch,
+    anilist_base: Option<&str>,
+) -> Result<KitsuAnimeRef> {
     let mut detail = state
         .kitsu
         .anime_detail(id)
@@ -1216,7 +1250,7 @@ async fn anime_detail_read(
     super::kitsu_gone::publish_served(state, id, fetched, || {
         if let Some(body) = body.as_ref().filter(|_| answered) {
             let ttl = anime_detail_ttl(detail.status.as_deref());
-            let _ = meta_cache_put(&state.cache_pool, &key, body, ttl);
+            let _ = meta_cache_put(&state.cache_pool, key, body, ttl);
         }
     })?;
     if let Some(body) = &body {
@@ -1268,6 +1302,10 @@ mod anilist_banner_tests;
 #[cfg(test)]
 #[path = "kitsu_banner_test.rs"]
 mod banner_tests;
+
+#[cfg(test)]
+#[path = "kitsu_detail_shared_test.rs"]
+mod detail_shared_tests;
 
 #[cfg(test)]
 mod tests {

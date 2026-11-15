@@ -7,7 +7,8 @@
 //! relates an anime that has not finished ([`listing_ttl`]). Two reads
 //! of one listing at the same time share one request. The entry asked
 //! about takes its fields from the cached detail read
-//! ([`crate::commands::kitsu::kitsu_anime_detail`]); every other entry,
+//! ([`crate::commands::kitsu::kitsu_anime_detail`]), which the show page
+//! reading the same detail at the same time shares; every other entry,
 //! from the listing that relates it.
 
 use std::collections::BTreeMap;
