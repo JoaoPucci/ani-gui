@@ -91,7 +91,7 @@ impl Tracker {
 
     fn answers(&self, id: ProviderMediaId) -> crate::error::Result<()> {
         if self.gone.lock().expect("gone").contains(&id.0) {
-            return Err(AniError::Upstream { status: 404 });
+            return Err(AniError::from_tracker_status(404));
         }
         Ok(())
     }
@@ -130,7 +130,7 @@ impl UserListProvider for Tracker {
         update: EntryUpdate,
     ) -> crate::error::Result<ListEntry> {
         if let (Some(status), Err(_)) = (self.refuses_gone_writes, self.answers(id)) {
-            return Err(AniError::Upstream { status });
+            return Err(AniError::from_tracker_status(status));
         }
         self.answers(id)?;
         self.writes
