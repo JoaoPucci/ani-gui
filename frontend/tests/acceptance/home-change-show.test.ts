@@ -724,6 +724,47 @@ describe('a card whose guessed play wrote a row on another listing stands for th
 			expect(backend.linkCalls.at(-1)!.rows).toEqual([JOJO_CARD]);
 		});
 
+		it('its pill corrects nothing when the answer that lands after the click names another line', async () => {
+			// §16 review: a click waits for the answer out for changed rows,
+			// and acted on whatever line it named, not the one clicked.
+			let hold: Promise<void> | null = null;
+			let release!: () => void;
+			let apart = false;
+			let asked = 0;
+			server.use(
+				http.post(`${API_BASE}/api/history/card-lines`, async ({ request }) => {
+					asked++;
+					const { rows } = (await request.json()) as { rows: CardLineRow[] };
+					if (hold) await hold;
+					const lines = cardLines(rows);
+					// The answer now: the 2012 row stands for itself, still correctable.
+					if (apart) lines[JOJO_PLAYED] = { line: JOJO_PLAYED, correctable: true };
+					return HttpResponse.json<Record<string, CardLine>>(lines);
+				})
+			);
+			await openMerged();
+			await until(() => pill(JOJO_PLAYED) !== null, 'the merged card pill');
+			expect(cell(JOJO_PLAYED)!.dataset.cardRow).toBe(JOJO_CARD);
+			hold = new Promise((r) => (release = r));
+			apart = true;
+			const before = asked;
+			try {
+				await appLinkDeps().link(BC_CARD, [BC_CARD], BC_RIGHT);
+				await until(() => asked > before, 'the lines asked again');
+				const links = backend.linkCalls.length;
+				pill(JOJO_PLAYED)!.click();
+				release();
+				hold = null;
+				await until(() => toastWith(m.home_link_check_failed()) !== undefined, 'the notice');
+				await settle();
+				expect(dialog()?.open ?? false).toBe(false);
+				expect(backend.linkCalls.length).toBe(links);
+			} finally {
+				release();
+				await settle();
+			}
+		});
+
 		it('its resume still plays, and its failure offers no pick it could not tie to the line', async () => {
 			await openWithLinesDown();
 			cell(JOJO_PLAYED)!.querySelector<HTMLButtonElement>('.resume-card')!.click();

@@ -1,7 +1,8 @@
 // Home's cards' lines, as the backend answers them: the cards draw the
 // latest answer, and a click acts only on the answer for the rows as
-// they are now, asking again for it after a failed one. Which line a card stands for is the backend's rule
-// (commands/card_line.rs, its own tests).
+// they are now, asking again for it after a failed one, and on none
+// other than the line the card was drawn with. Which line a card stands
+// for is the backend's rule (commands/card_line.rs, its own tests).
 
 import { describe, expect, it, vi } from 'vitest';
 import type { CardLine, CardLineRow } from '$lib/api';
@@ -133,6 +134,42 @@ describe('CardLines', () => {
 		// Answered: a later wait asks nothing.
 		await lines.settled();
 		expect(ask).toHaveBeenCalledTimes(2);
+	});
+
+	it('settles, and asks again later, when the rows go back to the answered ones after a failed answer', async () => {
+		// §16 review: a send started with nothing to ask finished before it
+		// was stored, and the stored promise was never cleared: every later
+		// wait hung and no row change was asked again.
+		const { ask, asks } = gated();
+		const lines = new CardLines(ask);
+		lines.update(rows('7158'));
+		asks[0].answer(true);
+		await lines.settled();
+		lines.update(rows('4013'));
+		asks[1].answer(false);
+		await lines.settled();
+		lines.update(rows('7158'));
+		const settles = () =>
+			Promise.race([lines.settled().then(() => true), tick().then(() => false)]);
+		expect(await settles()).toBe(true);
+		expect(lines.clickLineOf(PLAYED)).toBe(CARD);
+		lines.update(rows('4013'));
+		expect(ask).toHaveBeenCalledTimes(3);
+		asks[2].answer(true);
+		expect(await settles()).toBe(true);
+		expect(lines.clickLineOf(PLAYED)).toBe(PLAYED);
+	});
+
+	it('acts on no line when the answer names another line than the one the card was drawn with', async () => {
+		// §16 review: a click while an answer for changed rows was out
+		// acted on whatever that answer named, not on the line clicked.
+		const { ask, asks } = gated();
+		const lines = new CardLines(ask);
+		lines.update(rows('7158'));
+		asks[0].answer(true);
+		await lines.settled();
+		expect(lines.clickLineOf(PLAYED, CARD)).toBe(CARD);
+		expect(lines.clickLineOf(PLAYED, PLAYED)).toBeNull();
 	});
 
 	it('asks again once per wait while the answers keep failing', async () => {
