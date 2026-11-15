@@ -74,6 +74,7 @@ fn pairs() -> Vec<Pair> {
         AniError::InvalidRequestBody => AniError::InvalidRequestBody,
         AniError::InvalidToken => AniError::InvalidToken,
         AniError::RefreshRejected => AniError::RefreshRejected,
+        AniError::TrackerRejected { .. } => AniError::TrackerRejected { status: 403 },
     }
 }
 

@@ -42,13 +42,13 @@ pub(crate) async fn update_unless_absent(
 }
 
 /// Whether a write's `err` leaves open that the entry is gone: the
-/// tracker refusing it as a bad request (a 4xx other than absence), or
+/// tracker rejecting it (a 4xx other than absence), or
 /// answering with no entry. A 401 and a 429 reach here as their own
 /// variants, not as a status.
 fn needs_confirming(err: &AniError) -> bool {
     match err {
         AniError::Upstream { status } => (400..500).contains(status),
-        AniError::ParseFailed { .. } => true,
+        AniError::TrackerRejected { .. } | AniError::ParseFailed { .. } => true,
         _ => false,
     }
 }

@@ -25,6 +25,8 @@ pub mod keys {
     // --- error.account.* ---
     /// A tracker refused to renew a sign-in (`AniError::RefreshRejected`).
     pub const ACCOUNT_REFRESH_REJECTED: &str = "error.account.refresh_rejected";
+    /// A tracker rejected a request with a 4xx (`AniError::TrackerRejected`).
+    pub const ACCOUNT_TRACKER_REJECTED: &str = "error.account.tracker_rejected";
 
     // --- error.cache.* ---
     /// Generic SQLite failure.

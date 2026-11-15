@@ -237,9 +237,7 @@ impl AniListProvider {
             return Err(super::rate_limit::rate_limited("anilist", &resp));
         }
         if !status.is_success() {
-            return Err(AniError::Upstream {
-                status: status.as_u16(),
-            });
+            return Err(AniError::from_tracker_status(status.as_u16()));
         }
         resp.bytes().await.map_err(|_| AniError::Network)
     }
@@ -349,9 +347,7 @@ impl UserListProvider for AniListProvider {
             return Err(super::rate_limit::rate_limited("anilist", &resp));
         }
         if !status.is_success() {
-            return Err(AniError::Upstream {
-                status: status.as_u16(),
-            });
+            return Err(AniError::from_tracker_status(status.as_u16()));
         }
         let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
         parse_token_response(&bytes)

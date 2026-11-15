@@ -56,7 +56,8 @@ impl MalProvider {
 /// error.
 pub(in crate::meta) fn refresh_refusal(e: AniError) -> AniError {
     match e {
-        AniError::Upstream { status: 400 | 401 } => AniError::RefreshRejected,
+        AniError::Upstream { status: 400 | 401 }
+        | AniError::TrackerRejected { status: 400 | 401 } => AniError::RefreshRejected,
         other => other,
     }
 }

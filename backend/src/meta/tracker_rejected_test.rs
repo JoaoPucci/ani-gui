@@ -11,7 +11,7 @@ use crate::account::provider::{EntryUpdate, ProviderMediaId, Tokens, UserListPro
 use crate::error::AniError;
 use crate::meta::anilist_user::AniListProvider;
 use crate::meta::mal_user::{MalProvider, MalRefreshState};
-use wiremock::matchers::{any, method};
+use wiremock::matchers::any;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn tokens() -> Tokens {

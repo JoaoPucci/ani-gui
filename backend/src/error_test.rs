@@ -68,6 +68,29 @@ proptest::proptest! {
     }
 }
 
+proptest::proptest! {
+    /// A tracker's non-success status reads as its rejection exactly for
+    /// a 4xx, answered 422 and never retried; any other status is the
+    /// upstream failing, 502. A rejected 404/410 is still absence.
+    #[test]
+    fn a_tracker_status_is_a_rejection_exactly_for_a_4xx(status in 100u16..600) {
+        let err = AniError::from_tracker_status(status);
+        if (400..500).contains(&status) {
+            proptest::prop_assert!(
+                matches!(err, AniError::TrackerRejected { status: s } if s == status),
+                "{err:?}"
+            );
+            proptest::prop_assert_eq!(err.http_status_code(), 422);
+        } else {
+            proptest::prop_assert!(
+                matches!(err, AniError::Upstream { status: s } if s == status),
+                "{err:?}"
+            );
+        }
+        proptest::prop_assert_eq!(err.is_not_found_shaped(), status == 404 || status == 410);
+    }
+}
+
 #[test]
 fn rate_limits_block_and_verdicts_do_not() {
     assert!(AniError::RateLimited {

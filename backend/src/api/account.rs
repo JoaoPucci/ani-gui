@@ -82,8 +82,9 @@ use account_wire::{
 /// decide whether to fall
 /// through to the renderer-supplied identity (still gated by the
 /// internal secret). The path is open for `InvalidToken`, and for
-/// `Network` and
-/// `Upstream` so an offline disconnect can still clear the local cache
+/// `Network`,
+/// `Upstream` and the tracker's own rejection (`TrackerRejected`) so an
+/// offline disconnect can still clear the local cache
 /// rows the docs/PRIVACY.md promise to drop. A tracker's rate limit
 /// (`RateLimited`, its HTTP 429) is an answer of the same kind as a
 /// 5xx — about the tracker's willingness, not the identity — and opens
@@ -96,6 +97,7 @@ fn me_failure_allows_renderer_fallback(e: &AniError) -> bool {
         AniError::InvalidToken
             | AniError::Network
             | AniError::Upstream { .. }
+            | AniError::TrackerRejected { .. }
             | AniError::RateLimited { .. }
     )
 }

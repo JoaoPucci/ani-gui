@@ -73,7 +73,8 @@ impl MalProvider {
     /// contract: 401 → [`AniError::InvalidToken`] (revoked / expired —
     /// route layer surfaces "Sign in again"), 429 →
     /// [`AniError::RateLimited`] with the advertised wait, any other
-    /// non-2xx → [`AniError::Upstream`]. Shared by the bearer-authed
+    /// non-2xx → [`AniError::from_tracker_status`] (a 4xx the tracker's
+    /// rejection, a 5xx the upstream failing). Shared by the bearer-authed
     /// request helpers so the branches live in one place. NOT used for
     /// the OAuth token endpoint, where a 401 means "bad code / refresh
     /// token", not a bad bearer: it surfaces as `Upstream`, and the
@@ -88,9 +89,7 @@ impl MalProvider {
             return Err(super::rate_limit::rate_limited("mal", resp));
         }
         if !status.is_success() {
-            return Err(AniError::Upstream {
-                status: status.as_u16(),
-            });
+            return Err(AniError::from_tracker_status(status.as_u16()));
         }
         Ok(())
     }
@@ -108,7 +107,7 @@ impl MalProvider {
     /// Shared form-encoded POST to MAL's OAuth token endpoint. Both
     /// `exchange_code` and `refresh` use it — only the form body
     /// differs. Returns parsed `Tokens` on 2xx, `AniError::RateLimited`
-    /// on 429, `AniError::Upstream` for any other non-2xx,
+    /// on 429, [`AniError::from_tracker_status`] for any other non-2xx,
     /// `AniError::Network` for transport failures.
     pub(super) async fn post_token_form(&self, form: &[(&str, &str)]) -> Result<Tokens> {
         let resp = self
@@ -124,9 +123,7 @@ impl MalProvider {
             return Err(super::rate_limit::rate_limited("mal", &resp));
         }
         if !status.is_success() {
-            return Err(AniError::Upstream {
-                status: status.as_u16(),
-            });
+            return Err(AniError::from_tracker_status(status.as_u16()));
         }
         let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
         parse_token_response(&bytes)
