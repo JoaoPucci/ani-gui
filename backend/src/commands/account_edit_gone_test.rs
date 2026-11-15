@@ -474,3 +474,37 @@ async fn a_rate_limit_on_the_confirming_read_is_what_the_save_reports() {
         "{err:?}"
     );
 }
+
+#[tokio::test]
+async fn a_bearer_refused_on_the_confirming_read_is_what_the_save_reports() {
+    let kitsu = kitsu(KITSU_MAL).await;
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/users/@me"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"id":4242,"name":"shiro"}"#))
+        .mount(&server)
+        .await;
+    Mock::given(path("/anime/33778/my_list_status"))
+        .respond_with(ResponseTemplate::new(400))
+        .mount(&server)
+        .await;
+    Mock::given(path("/anime/33778"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let err = set_entry_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        &mal(&server),
+        &tokens(),
+        "13023",
+        watched(3),
+    )
+    .await
+    .expect_err("nothing settled the refusal");
+    assert!(
+        matches!(err, crate::error::AniError::InvalidToken),
+        "{err:?}"
+    );
+}
