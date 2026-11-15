@@ -204,18 +204,23 @@ describe('a banner held back by AniList’s pacing', () => {
 		const seen = useHeldBanner(new Promise<void>((r) => (land = r)));
 		app = mount(DetailPage, { target });
 		await vi.waitFor(() => expect(seen.detailReads).toBe(1));
+		// The page has read the detail, so it waits on the refill before
+		// it is closed.
+		await vi.waitFor(() =>
+			expect(fetches.read.some((f) => f.path === `/api/kitsu/anime/${KITSU_ID}`)).toBe(true)
+		);
 		unmount(app);
 		app = null;
 		await vi.waitFor(() => expect(seen.released).toEqual([[TICKET]]));
 
 		land();
-		// Every wait the page opened has ended on the page's side: read,
-		// or failed as the closed page let it go. (A page closed before
-		// its read came back opens none.) The release above comes once
-		// the page has opened its wait or decided not to, so none opens
-		// after it. Whatever an answer set off has asked what it asks.
+		// The wait the page opened has ended on the page's side: read, or
+		// failed as the closed page let it go. The release above is sent
+		// once the wait is open, and none opens after it. Whatever an
+		// answer set off has asked what it asks.
 		const waits = () => fetches.sent.filter((f) => f.path === '/api/refills/wait');
 		await vi.waitFor(() => {
+			expect(waits().length).toBeGreaterThan(0);
 			for (const w of waits())
 				expect(fetches.read.includes(w) || fetches.failed.includes(w)).toBe(true);
 		});

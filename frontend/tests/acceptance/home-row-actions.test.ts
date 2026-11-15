@@ -682,6 +682,7 @@ for (const style of ['inline', 'band'] as const) {
 			confirm.click();
 			await until(() => row(CW()) === null, 'the Continue Watching row to go');
 			expect(historyCleared).toBe(1);
+			expect(clearsSent()).toBe(1);
 		});
 	});
 }
