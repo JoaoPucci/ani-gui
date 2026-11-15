@@ -272,8 +272,10 @@ async fn a_cached_watch_overtaken_by_another_leaves_that_watchs_row() {
     crate::commands::play_native_record::record_watch(&state, &later, None).await;
     let cached = first_recap_row("http://x");
     let watch = crate::commands::play_cache::cached_watch(&cached, "12.5");
-    crate::commands::play_native_record::record_watch_requested_at(&state, &watch, None, begun)
-        .await;
+    crate::commands::play_native_record::record_watch_requested_at(
+        &state, &watch, None, begun, None,
+    )
+    .await;
     assert_eq!(listed_as(&state), "12.75");
 }
 
@@ -626,6 +628,7 @@ async fn a_fresh_play_overtaken_by_a_later_watch_leaves_that_watchs_stamp() {
         &recap,
         "0.5",
         begun_before,
+        None,
         None,
     );
     assert_eq!(cumulative_listed(&state), "1");

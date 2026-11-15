@@ -139,7 +139,7 @@ const ORDINAL_TO_NUMBER: Record<string, number> = {
 
 /** Detect the cour index from a (tail-stripped) title. Recognizes "Season 2",
  *  "2nd Season", and "Second Season" (plus Part/Cour); 1 when none match. */
-function parseCour(stripped: string): number {
+export function parseCour(stripped: string): number {
 	// A number past what the backend holds is no cour there: the first.
 	const numeric = stripped.match(COUR_SUFFIX_RE);
 	if (numeric) return courNumber(numeric[1]) ?? 1;
