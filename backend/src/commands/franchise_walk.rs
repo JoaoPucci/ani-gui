@@ -168,6 +168,8 @@ mod chain;
 mod chain_served;
 #[path = "franchise_walk_first.rs"]
 mod first;
+#[path = "franchise_walk_first_hop.rs"]
+pub mod first_hop;
 #[path = "franchise_walk_graph.rs"]
 mod graph;
 #[path = "franchise_walk_joined.rs"]

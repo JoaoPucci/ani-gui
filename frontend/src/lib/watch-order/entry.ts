@@ -16,7 +16,7 @@ export function progressOf(entry: WatchEntry, progress: EntryProgress | undefine
 	return { kind: 'partway', episode: progress, total: entry.episodes };
 }
 
-/** Share of the entry watched, 0–1, for a progress bar. */
+/** Share of the entry watched, 0–1, for a progress line. */
 export function progressShare(view: ProgressView): number {
 	if (view.kind === 'watched') return 1;
 	if (view.kind === 'partway' && view.total) return Math.min(1, view.episode / view.total);

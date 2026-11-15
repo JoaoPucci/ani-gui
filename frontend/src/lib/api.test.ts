@@ -29,6 +29,7 @@ import {
 	kitsuAnimeDetail,
 	kitsuEpisodes,
 	kitsuFranchise,
+	kitsuFranchiseFirstHop,
 	kitsuGuessRuledOut,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
@@ -63,6 +64,7 @@ import {
 	type KitsuSearchPage,
 	type SkipInterval,
 	type Franchise,
+	type FirstHopAnswer,
 	type Config,
 	type CreateSessionResponse,
 	type DownloadProgress,
@@ -1978,6 +1980,24 @@ describe('kitsuFranchise', () => {
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const visit = new AbortController();
 		await kitsuFranchise('7730', { signal: visit.signal });
+		expect(lastCall(fetchMock).init?.signal).toBe(visit.signal);
+	});
+});
+
+describe('kitsuFranchiseFirstHop', () => {
+	it('GETs /api/kitsu/franchise/<kitsuId>/first-hop and returns its signal', async () => {
+		const fetchMock = mockFetchOnce<FirstHopAnswer>({ signal: 'link' });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const got = await kitsuFranchiseFirstHop('kid 7730');
+		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/franchise/kid%207730/first-hop`);
+		expect(got).toBe('link');
+	});
+
+	it('hands its signal to the request: the first hop can take several Kitsu reads', async () => {
+		const fetchMock = mockFetchOnce<FirstHopAnswer>({ signal: 'strip' });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const visit = new AbortController();
+		await kitsuFranchiseFirstHop('7730', { signal: visit.signal });
 		expect(lastCall(fetchMock).init?.signal).toBe(visit.signal);
 	});
 });
