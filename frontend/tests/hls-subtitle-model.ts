@@ -230,6 +230,17 @@ export class HlsSubtitleModel {
 		this.frags[sn].stats.aborted = true;
 	}
 
+	/** A quality switch where the level names no subtitle group (no
+	 *  SUBTITLES= on its variant): switchLevel lists the same renditions
+	 *  again and picks its pick again; the stream controller, finding
+	 *  the listing identical, keeps the fragment on its way. */
+	relisted() {
+		const id = this.trackId;
+		this.trackId = -1;
+		this.emit(MODEL_EVENTS.SUBTITLE_TRACKS_UPDATED, { subtitleTracks: this.subtitleTracks });
+		if (id !== -1) this.setSubtitleTrack(id);
+	}
+
 	/** A quality switch to a level of another subtitle group: the pick
 	 *  dropped, the group listed, the pick's language picked again. */
 	groupChanges(renditions: Rendition[]) {

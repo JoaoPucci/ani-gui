@@ -430,3 +430,20 @@ describe('following a subtitle group change', () => {
 		expect(showing(video)).toEqual([]);
 	});
 });
+
+// A level that names no subtitle group has hls.js list the same
+// renditions again on every quality switch; the fragment on its way
+// goes on loading under the same index.
+describe('the same renditions listed again', () => {
+	it('keeps the fragment on its way, and its cues', () => {
+		const { engine, sync } = setup();
+		playlistIn(engine);
+		const sn = engine.fragmentLoading(0);
+		sync.pick('off');
+		engine.relisted();
+		expect(engine.subtitleTrack).toBe(0);
+		expect(engine.textTracks[0].mode).toBe('hidden');
+		engine.fragmentLands(0, sn, 'cue');
+		expect(engine.cues[0]).toEqual(['cue']);
+	});
+});
