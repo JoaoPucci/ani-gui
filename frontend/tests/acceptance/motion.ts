@@ -10,8 +10,8 @@
 // element after `scrollWindowTo()`.
 //
 // A Svelte transition with no duration and no delay starts no
-// animation at all. One with either starts a zero-length placeholder
-// for the delay and then the real one, so "moved" here is an
+// animation at all. One with either starts a placeholder that lasts
+// its delay and then the real one, so "moved" here is an
 // `animate()` call with any time in it.
 //
 // Neither kind of motion is there the moment the DOM changes. Under

@@ -430,8 +430,9 @@ a scripted scroll can wait a frame for layout. So the DOM change is no
 witness for the motion it causes: read too early, "it moved" fails and
 "nothing moved" passes without having looked. A motion scenario waits
 for the recorder in `frontend/tests/acceptance/motion.ts` to report
-`settled()` (no animation still running), or for the scroll to appear
-in `scrolls`, and asserts then.
+`settled()` (no animation still running; the stub's
+`animationsInFlight()` is the same count), or for the scroll to
+appear in `scrolls`, and asserts then.
 
 ## Test-discipline expectations for AI agents
 
