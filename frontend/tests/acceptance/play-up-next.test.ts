@@ -109,10 +109,20 @@ function franchise(over: Partial<Franchise> = {}): Franchise {
 	};
 }
 
+/** An event stream that never answers, keeping the URL each was opened
+ *  with: a play resolves over one (`playStream`), not over `fetch`. */
 class SilentEventSource {
+	static opened: string[] = [];
+	constructor(url: string) {
+		SilentEventSource.opened.push(url);
+	}
 	addEventListener() {}
 	close() {}
 }
+
+/** The play streams opened since `from` (an index into `opened`). */
+const playsSince = (from: number) =>
+	SilentEventSource.opened.slice(from).filter((u) => u.includes('/api/play/stream'));
 type GlobalLike = { EventSource?: unknown };
 const g = globalThis as unknown as GlobalLike;
 
@@ -126,6 +136,7 @@ beforeEach(() => {
 	__resetPlayCacheForTests();
 	window.localStorage.clear();
 	vi.mocked(goto).mockClear();
+	SilentEventSource.opened.length = 0;
 	g.EventSource = SilentEventSource;
 	setParams({ id: KITSU_ID });
 	target = document.createElement('div');
@@ -488,10 +499,12 @@ describe('the Up next card at a finale', () => {
 		const { video, fetches } = await openEpisode({ autoPlayNext: true });
 		await playTo(video, 1395);
 		const before = fetches.sent.length;
+		const streamsBefore = SilentEventSource.opened.length;
 		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		await fetches.settled('anything the end set off');
 		expect(fetches.sent.slice(before).filter((f) => f.path.startsWith('/api/play'))).toEqual([]);
+		expect(playsSince(streamsBefore)).toEqual([]);
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
 		expect(card()).not.toBeNull();
 	});
@@ -1091,10 +1104,12 @@ describe('the Up next card on a player reused for another show', () => {
 		const { video, fetches } = await openReused({ autoPlayNext: true });
 		await playTo(video, 1395);
 		const before = fetches.sent.length;
+		const streamsBefore = SilentEventSource.opened.length;
 		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		await fetches.settled('anything the end set off');
 		expect(fetches.sent.slice(before).filter((f) => f.path.startsWith('/api/play'))).toEqual([]);
+		expect(playsSince(streamsBefore)).toEqual([]);
 		expect(card()).not.toBeNull();
 	});
 
