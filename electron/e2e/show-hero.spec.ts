@@ -37,7 +37,8 @@
  *
  * Pre-condition: `pnpm run package` has produced `dist/linux-unpacked/`.
  */
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test } from './policy-guard';
 import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
