@@ -80,21 +80,29 @@ fn music(subtype: Option<&str>) -> bool {
 
 /// The `known` listings as the walk reads them from `anchor`: no music
 /// video related in any, and, where `anchor` is a music video itself
-/// (by `cat`), nothing related in its own. Properties that check the
-/// walk against their own reading of the listings read them this way.
+/// (by `cat`), its own listing alone, relating nothing (the walk never
+/// reads a music video's listing). Properties that check the walk
+/// against their own reading of the listings read them this way.
 pub(super) fn read_without_music(
     cat: &Catalogue,
     anchor: &str,
     known: &BTreeMap<String, FranchiseListing>,
 ) -> BTreeMap<String, FranchiseListing> {
     let alone = music(cat.entries[anchor].subtype.as_deref());
+    if alone {
+        let nothing = FranchiseListing {
+            relations: Vec::new(),
+            complete: true,
+        };
+        return BTreeMap::from([(anchor.to_string(), nothing)]);
+    }
     known
         .iter()
         .map(|(id, l)| {
             let relations = l
                 .relations
                 .iter()
-                .filter(|r| !(music(r.subtype.as_deref()) || (alone && id == anchor)))
+                .filter(|r| !music(r.subtype.as_deref()))
                 .cloned()
                 .collect();
             let listing = FranchiseListing {
