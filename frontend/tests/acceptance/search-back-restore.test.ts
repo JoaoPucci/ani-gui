@@ -352,6 +352,7 @@ describe('back to the search page', () => {
 		expect(typeOn(subtypeLabel('TV'))).toBe(false);
 		expect(buttonNamed(m.search_chips_clear_button_aria_label())).toBeNull();
 		expect(cards()).toEqual(expect.arrayContaining(before));
+		expect(cards(), 'a film is back too: no filter is on').toContain('Show 2');
 	});
 
 	it('follows the address when the entry kept nothing', async () => {
