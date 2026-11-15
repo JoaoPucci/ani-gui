@@ -462,6 +462,34 @@ fn me_failure_allows_fallback_for_network_outage() {
     assert!(me_failure_allows_renderer_fallback(&AniError::Network));
 }
 
+#[tokio::test]
+async fn me_failure_allows_fallback_for_a_tracker_rejection() {
+    // A tracker rejecting the profile request (a 403, say) is no more
+    // the backend's own fault than a 5xx: the disconnect's cache clear
+    // still falls back to the renderer's identity.
+    use crate::account::provider::UserListProvider;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::any())
+        .respond_with(wiremock::ResponseTemplate::new(403))
+        .mount(&server)
+        .await;
+    let provider = crate::meta::mal_user::MalProvider::with_bases(
+        reqwest::Client::new(),
+        server.uri(),
+        server.uri(),
+        crate::meta::mal_user::MalRefreshState::new(),
+    );
+    let err = provider
+        .me(&crate::account::provider::Tokens {
+            access_token: "t".into(),
+            refresh_token: None,
+            expires_at_epoch_s: i64::MAX,
+        })
+        .await
+        .expect_err("rejected");
+    assert!(me_failure_allows_renderer_fallback(&err), "{err:?}");
+}
+
 #[test]
 fn me_failure_allows_fallback_for_upstream_5xx() {
     // A transient AniList 5xx during disconnect
