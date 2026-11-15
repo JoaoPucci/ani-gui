@@ -15,7 +15,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { mount, unmount } from 'svelte';
+import { flushSync, mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
@@ -33,10 +33,36 @@ vi.mock('$app/navigation', () => ({
 	afterNavigate: vi.fn()
 }));
 // The strip motion, spied on: which cards the row moves, and how, is
-// what the gate decided at fire time.
-const { scaled } = vi.hoisted(() => ({
-	scaled: [] as { id: string; duration: number; easing?: (t: number) => number }[]
+// what the gate decided at fire time. And the row's reads, counted
+// where Home starts and finishes them: a check that the row did not
+// change reads after the last of them, not after a sleep.
+const { scaled, rails } = vi.hoisted(() => ({
+	scaled: [] as { id: string; duration: number; easing?: (t: number) => number }[],
+	rails: [] as { started: number; finished: Set<number> }[]
 }));
+vi.mock('../../src/lib/account/watch-later-loads', async (importOriginal) => {
+	const real = await importOriginal<typeof import('../../src/lib/account/watch-later-loads')>();
+	return {
+		...real,
+		createRailLoads: () => {
+			const loads = real.createRailLoads();
+			const seen = { started: 0, finished: new Set<number>() };
+			rails.push(seen);
+			return {
+				...loads,
+				start(checksFreshness: boolean) {
+					const ticket = loads.start(checksFreshness);
+					seen.started = ticket.seq;
+					return ticket;
+				},
+				finish(ticket: { readonly seq: number }) {
+					seen.finished.add(ticket.seq);
+					loads.finish(ticket);
+				}
+			};
+		}
+	};
+});
 vi.mock('../../src/lib/motion/card-motion', async (importOriginal) => {
 	const real = await importOriginal<typeof import('../../src/lib/motion/card-motion')>();
 	return {
@@ -70,6 +96,7 @@ import { syncRemoveEntry, syncSetEntry } from '../../src/lib/account/set-entry';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { m } from '../../src/lib/paraglide/messages';
 import { recordMotion, setReducedMotion } from './motion';
+import { watchPageFetches } from './page-fetches';
 
 import type { EntryView, ListEntry } from '../../src/lib/account/types';
 import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
@@ -78,6 +105,7 @@ const ALREADY = { malId: 11, title: 'Already Planned', updated: 1_700_000_000 };
 const NEW = { malId: 12, title: 'Just Planned', updated: 1_700_000_500 };
 
 let target: HTMLElement;
+let fetches: ReturnType<typeof watchPageFetches>;
 let app: ReturnType<typeof mount> | null = null;
 /** What the backend's cached Plan-to-Watch holds right now. */
 let planned: (typeof ALREADY)[] = [];
@@ -171,10 +199,12 @@ function backend() {
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	fetches = watchPageFetches();
 	accountStore.setConnected('anilist', as('user-1'));
 	target = document.createElement('div');
 	document.body.appendChild(target);
 	scaled.length = 0;
+	rails.length = 0;
 	writes = 0;
 	forgotten = [];
 	for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
@@ -189,8 +219,13 @@ afterEach(() => {
 	invalidateWatchLater('anilist');
 });
 
-async function settle(steps = 40) {
-	for (let i = 0; i < steps; i++) await new Promise((r) => setTimeout(r, 5));
+async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (predicate()) return;
+		await new Promise((r) => setTimeout(r, 10));
+	}
+	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
 /** The Watch Later row's Refresh action, found by the name it shows. */
@@ -203,6 +238,47 @@ const railTitles = () =>
 	Array.from(
 		target.querySelectorAll(`[aria-label="${m.account_watch_later_title()}"] .card-title`)
 	).map((el) => el.textContent?.trim() ?? '');
+
+/**
+ * Waits until the Watch Later row has nothing left to do: every read
+ * the Home mounted last has started is finished, no refresh is out, and
+ * nothing on the page is animating. Those reads, and a refresh's pull,
+ * are the only work that changes the row, so this is the witness a
+ * check that nothing changed reads after (docs/testing.md, "Asserting
+ * that something did not happen"). Home's settings are waited for
+ * too: their answer sets the mode the row filters by, and the row reads
+ * its list again for it, so a read may start after the first ones have
+ * finished until that answer has landed. A read sets the row before it
+ * reports itself finished, and flushing that to the DOM starts the
+ * transitions it causes. A refresh shows itself busy from the moment it
+ * starts, and a read that lands and runs the freshness check starts its
+ * refresh before it finishes. A write announces the change it made
+ * before its promise settles, and the row starts its read as it hears
+ * it, so once the test has awaited the write its read is counted here.
+ *
+ * The motion is waited out too. Under the tier's `element.animate()`
+ * stub a transition first runs a placeholder for its delay and starts
+ * its timed animation a task later, and a card the row lets go of
+ * stays in the DOM until that animation has ended. So "it moved" and
+ * "it left" are only readable once no element has an animation running.
+ */
+async function untilRowIdle() {
+	await until(() => {
+		// What the page has set, on screen, with the transitions it starts:
+		// a refresh a click has just started shows busy only once the DOM
+		// has caught up.
+		flushSync();
+		// Home's settings, once they land, set the mode the row filters
+		// by, and the row reads its list again for it: one answer for
+		// each Home mounted.
+		const settings = fetches.read.concat(fetches.failed).filter((f) => f.path === '/api/settings');
+		if (settings.length < rails.length) return false;
+		const rail = rails.at(-1);
+		if (!rail || rail.started === 0 || rail.finished.size < rail.started) return false;
+		if (refreshAction()?.getAttribute('aria-disabled') === 'true') return false;
+		return Array.from(target.querySelectorAll('*')).every((el) => el.getAnimations().length === 0);
+	}, 'the Watch Later row to finish its reads and stand still');
+}
 
 const save = () =>
 	syncSetEntry(String(NEW.malId), { status: 'planning', statusChanged: true, progress: 0 });
@@ -221,17 +297,20 @@ describe('Watch Later on Home, while a held write waits', () => {
 			http.post(`${API_BASE}/api/account/set/anilist`, () => errorAnswer(500, { kind: 'network' }))
 		);
 		app = mount(HomePage, { target });
-		await settle();
+		await untilRowIdle();
 		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
 		const progress = syncWatchedToTrackers('99', 19);
-		await settle();
-		expect(attempts).toBe(1);
+		// AniList refused the progress write: it waits, with its notice up.
+		await until(
+			() => attempts === 1 && toastStore.items.some((t) => t.kind === 'info'),
+			'the progress write to be held'
+		);
 		expect(
 			await syncSetEntry('99', { status: 'paused', statusChanged: true, progress: 0 })
 		).toEqual({ written: 0, failed: 1 });
 		await progress;
-		await settle();
 		expect(attempts).toBe(1);
+		await untilRowIdle();
 		expect(railTitles()).toEqual([ALREADY.title]);
 		expect(toastStore.items.filter((t) => t.kind === 'error')).toEqual([]);
 	});
@@ -252,15 +331,18 @@ describe('Watch Later on Home, while a held write waits', () => {
 				})
 			);
 			app = mount(HomePage, { target });
-			await settle();
+			await untilRowIdle();
 			expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
 			await syncWatchedToTrackers('99', 1);
-			await settle();
 			expect(attempts).toBe(1);
 			expect(toastStore.items.map((t) => t.message)).toContain(
 				m.account_progress_save_failed({ provider: 'AniList' })
 			);
-			expect(railTitles()).toEqual(earlierChanged ? [ALREADY.title] : [NEW.title, ALREADY.title]);
+			// The row reads its list again either way: the write may have
+			// changed it before it failed.
+			await untilRowIdle();
+			if (earlierChanged) expect(railTitles()).toEqual([ALREADY.title]);
+			else expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
 			expect(scaled).toEqual(
 				earlierChanged
 					? [{ id: String(NEW.malId), duration: CARD_SCALE.duration, easing: CARD_SCALE.easing }]
@@ -294,15 +376,17 @@ describe('Watch Later on Home, while a held write waits', () => {
 			})
 		);
 		app = mount(HomePage, { target });
-		await settle();
-		expect(held.length).toBeGreaterThan(0);
+		await until(() => held.length > 0, 'the opening load to wait on the bridge');
 		// A held write settles; the row reads its list again, and that read
 		// lands before the opening load does.
 		holding = false;
 		await save();
-		await settle();
+		const reread = rails.at(-1)!.started;
+		await until(() => rails.at(-1)!.finished.has(reread), 'the reread to land');
 		for (const release of held) release();
-		await settle();
+		// Every read has landed, the opening ones last, and the refresh the
+		// check started has finished: no read is left to check again.
+		await untilRowIdle();
 		expect(pulls).toBe(1);
 	});
 
@@ -324,15 +408,15 @@ describe('Watch Later on Home, while a held write waits', () => {
 			})
 		);
 		app = mount(HomePage, { target });
-		await settle();
+		await untilRowIdle();
 		refreshAction()!.click();
-		await settle();
-		expect(answer).not.toBeNull();
+		await until(() => answer !== null, "the refresh's list read to go out");
 		// The write asks for the list to be read again: the refresh already
 		// out started before it, so it cannot count as that read.
 		await save();
 		answer!();
-		await settle();
+		// The refresh has finished: it has decided whether it was the read.
+		await untilRowIdle();
 		expect(readLastRefreshed('anilist')).toBeNull();
 	});
 
@@ -360,18 +444,20 @@ describe('Watch Later on Home, while a held write waits', () => {
 				})
 			);
 			app = mount(HomePage, { target });
-			await settle();
+			// The opening read has run the freshness check: a refresh it
+			// started would be out now.
+			await untilRowIdle();
 			expect(pulls).toBe(0);
 			const refresh = refreshAction();
 			expect(refresh).not.toBeNull();
 			refresh!.click();
-			await settle();
+			await untilRowIdle();
 			expect(pulls).toBe(1);
 			expect(readLastRefreshed('anilist')).toBe(refreshedBefore);
 			expect(railTitles()).toEqual([ALREADY.title]);
 			refuse = false;
 			refresh!.click();
-			await settle();
+			await untilRowIdle();
 			expect(pulls).toBe(2);
 			expect(readLastRefreshed('anilist')).toBeGreaterThan(refreshedBefore);
 			expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
@@ -405,14 +491,14 @@ describe('Watch Later on Home, while a held write waits', () => {
 			);
 			const pending = syncRemoveEntry(String(NEW.malId));
 			app = mount(HomePage, { target });
-			await settle();
+			await untilRowIdle();
 			expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
 			expect(await pending).toEqual({ removed: malMaps ? 2 : 1, failed: 0 });
-			await settle();
+			await untilRowIdle();
 			expect(railTitles()).toEqual([ALREADY.title]);
 			await unmount(app);
 			app = mount(HomePage, { target });
-			await settle();
+			await untilRowIdle();
 			expect(railTitles()).toEqual([ALREADY.title]);
 		}
 	);
@@ -423,12 +509,12 @@ describe('Watch Later on Home, while a held write waits', () => {
 		const pending = save();
 		// The user goes Home while the add waits out AniList's pause.
 		app = mount(HomePage, { target });
-		await settle();
+		await untilRowIdle();
 		expect(railTitles()).toEqual([ALREADY.title]);
 
 		await pending;
-		await settle();
 		expect(writes).toBe(2);
+		await untilRowIdle();
 		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
 		// The new card grew in with the strip's motion; nothing else did.
 		expect(scaled).toEqual([
@@ -441,12 +527,12 @@ describe('Watch Later on Home, while a held write waits', () => {
 		backend();
 		const pending = syncRemoveEntry(String(NEW.malId));
 		app = mount(HomePage, { target });
-		await settle();
+		await untilRowIdle();
 		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
 
 		await pending;
-		await settle();
 		expect(writes).toBe(2);
+		await untilRowIdle();
 		expect(railTitles()).toEqual([ALREADY.title]);
 		expect(scaled).toEqual([
 			{ id: String(NEW.malId), duration: CARD_SCALE.duration, easing: CARD_SCALE.easing }
@@ -458,12 +544,12 @@ describe('Watch Later on Home, while a held write waits', () => {
 		backend();
 		const pending = save();
 		app = mount(HomePage, { target });
-		await settle();
+		await untilRowIdle();
 		expect(railTitles()).toEqual([]);
 		expect(target.textContent).toContain(m.account_watch_later_empty());
 
 		await pending;
-		await settle();
+		await untilRowIdle();
 		expect(railTitles()).toEqual([NEW.title]);
 		expect(scaled).toEqual([
 			{ id: String(NEW.malId), duration: CARD_SCALE.duration, easing: CARD_SCALE.easing }
@@ -475,11 +561,11 @@ describe('Watch Later on Home, while a held write waits', () => {
 		backend();
 		const pending = syncRemoveEntry(String(NEW.malId));
 		app = mount(HomePage, { target });
-		await settle();
+		await untilRowIdle();
 		expect(railTitles()).toEqual([NEW.title]);
 
 		await pending;
-		await settle();
+		await untilRowIdle();
 		expect(railTitles()).toEqual([]);
 		expect(target.textContent).toContain(m.account_watch_later_empty());
 		expect(scaled).toEqual([
@@ -492,11 +578,15 @@ describe('Watch Later on Home, while a held write waits', () => {
 		backend();
 		const pending = save();
 		app = mount(HomePage, { target });
-		await settle();
+		await untilRowIdle();
+		const readsBefore = rails.at(-1)!.started;
 		accountStore.setConnected('anilist', as('user-2'));
 		await pending;
-		await settle();
 		expect(writes).toBe(1);
+		// The row reads the other account's list: that read, landed, is
+		// the last thing that could have changed it.
+		await until(() => rails.at(-1)!.started > readsBefore, "the row to read user-2's list");
+		await untilRowIdle();
 		expect(railTitles()).toEqual([ALREADY.title]);
 		expect(scaled).toEqual([]);
 	});
@@ -510,13 +600,13 @@ describe('Watch Later on Home, while a held write waits', () => {
 			)
 		);
 		app = mount(HomePage, { target });
-		await settle();
+		await untilRowIdle();
 		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
 		expect(await syncRemoveEntry(String(NEW.malId))).toEqual({ removed: 0, failed: 0 });
-		await settle();
 		// No delete went to the tracker for a row it does not have.
 		expect(writes).toBe(0);
 		expect(forgotten).toEqual([`anilist:${NEW.malId}:user-1`]);
+		await untilRowIdle();
 		expect(railTitles()).toEqual([ALREADY.title]);
 	});
 
@@ -555,7 +645,7 @@ describe('Watch Later on Home, while a held write waits', () => {
 		backend();
 		await save();
 		app = mount(HomePage, { target });
-		await settle();
+		await untilRowIdle();
 		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
 		expect(scaled).toEqual([]);
 	});
@@ -573,9 +663,11 @@ describe.each([
 			backend();
 			const pending = save();
 			app = mount(HomePage, { target });
-			await settle();
+			await untilRowIdle();
 			await pending;
-			await settle();
+			// The read the add asked for has landed: the motion it causes
+			// has started, or never will.
+			await untilRowIdle();
 			expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
 
 			if (reduced) expect(motion.animations).toEqual([]);
