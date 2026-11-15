@@ -26,6 +26,9 @@ import type {
 	VerdictRequest
 } from '../../src/lib/api';
 
+import type { SessionSubtitle } from '../../src/lib/api';
+import type { CardLine, LinkCandidate, LinkVerdict } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 // Before any component mounts. See the stub for why happy-dom needs
 // it and why only post-mount DOM changes trip over its absence.
 installElementAnimateStub();
@@ -103,10 +106,10 @@ const incidental = [
 const linkRules = [
 	http.post(`${API_BASE}/api/history/card-lines`, async ({ request }) => {
 		const body = (await request.json()) as { rows: CardLineRow[] };
-		return HttpResponse.json(cardLines(body.rows));
+		return HttpResponse.json<Record<string, CardLine>>(cardLines(body.rows));
 	}),
 	http.post(`${API_BASE}/api/history/link-verdict`, async ({ request }) =>
-		HttpResponse.json(verdict((await request.json()) as VerdictRequest))
+		HttpResponse.json<LinkVerdict>(verdict((await request.json()) as VerdictRequest))
 	),
 	http.post(`${API_BASE}/api/history/link-candidates`, async ({ request }) => {
 		const search = async (query: string): Promise<KitsuAnimeRef[]> => {
@@ -120,11 +123,11 @@ const linkRules = [
 			return (await res.json()) as KitsuAnimeRef[];
 		};
 		try {
-			return HttpResponse.json(
+			return HttpResponse.json<LinkCandidate[]>(
 				await candidates((await request.json()) as CandidatesRequest, search)
 			);
 		} catch {
-			return HttpResponse.json({ kind: 'upstream', key: 'error.upstream' }, { status: 502 });
+			return errorAnswer(502, { kind: 'upstream', key: 'error.upstream' });
 		}
 	})
 ];
@@ -146,7 +149,7 @@ const undescribedAnswer = http.all('*', ({ request, requestId }) => {
 // tracks; by default there are none. A test that wants tracks
 // overrides this per session.
 export const server = setupServer(
-	http.get(`${API_BASE}/s/:session/subtitles`, () => HttpResponse.json([])),
+	http.get(`${API_BASE}/s/:session/subtitles`, () => HttpResponse.json<SessionSubtitle[]>([])),
 	...incidental,
 	...linkRules,
 	undescribedAnswer

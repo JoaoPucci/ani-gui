@@ -106,10 +106,29 @@ proxy settings at a local proxy that refuses every connection and
 records it (`outboundAttempts`). Loopback is exempt, so a spec's own
 local servers still answer. `smoke.spec.ts` checks that a request only
 GitHub could answer ends up at that proxy instead. A spec whose page
-should run on stubs alone does three things: it sets `refuseUnstubbed`
-before its stubs, mounts the page again with `remountFirstPage`, and
-asserts that no request was left unanswered. `smoke.spec.ts` and
-`keyring-unresponsive.spec.ts` do.
+should run on stubs alone does four things: it finds the app's window
+with `appWindow` before setting any route, sets `refuseUnstubbed`
+(which takes that window) before its stubs, mounts the page again with
+`remountFirstPage`, and asserts that no request was left unanswered.
+`smoke.spec.ts` and `keyring-unresponsive.spec.ts` do. The window comes
+first because when every route is set while the window is still being
+attached, none of them reaches it.
+
+A stub answers through `answer` in `electron/e2e/stubs.ts`, never in
+place inside Playwright. `answer` holds what the stub says at a local
+stub server (`electron/lib/e2e-stub-server.cjs`) and sends the request
+on to it, so the answer comes back over real HTTP through Chromium's
+network stack, as the backend's does. The stub server answers an API
+request as the backend would: the gate in front (the launch's secret as
+the header, on every route; an empty 403 otherwise) and the
+backend's CORS rules on the answer. A preflight never reaches it:
+Playwright answers preflights itself, for any origin, so the CORS a
+spec meets is the answer's own. An answer to the request made in place
+loses its status and headers once the main process has a webRequest
+listener on the window's session, as it has to add the secret header
+(`electron/lib/secret-header.cjs`): every stubbed page then reads its
+data as unreachable. `tests/arch/e2e_stub_server.sh` keeps
+Playwright's in-place answer out of `electron/`.
 
 Each launch runs on a scratch profile the spec makes under the
 system's temporary directory. The spec passes that directory to
@@ -286,9 +305,11 @@ saying the same thing:
   requires, every value of each enum the renderer names (and the names the
   launch announces each connection lane under), the error envelope
   of every variant, and the values the renderer keeps a copy of (the Watch
-  Later bridge cap, the names of the secret and refill headers and of the
-  secret's query parameter, and the proxy's media URL shape; the Electron
-  main process's own copy of the secret header's name is not held) — and
+  Later bridge cap, the names of the secret and refill headers, and the
+  proxy's media URL shape; the Electron main process's own copy of the
+  secret header's name is not in the contract, and
+  `electron/lib/secret-header.test.cjs` holds it to the backend's source
+  instead) — and
   `cargo test` fails until the file says the same. A field added to a
   published type, or a variant to a published enum, does not compile until
   the samples carry it.
@@ -302,6 +323,28 @@ the contents its message prints, and the second then names what the
 renderer's types must change. Both test files' headers list what they do
 not hold, among them answers that are not a struct, map values, request
 value kinds, and URLs built as text.
+
+The tests' fake backend is held to the same types, so a fake does not keep a
+test green on an answer no backend sends. An MSW handler names the route's
+type at the answer (`HttpResponse.json<KitsuAnimeRef[]>([...])`), which the
+type check reads; stream event data goes through `wire<T>`; the unit
+tests' `fetch` stubs (`mockFetchOnce<T>`) and the stand-ins for API
+functions and injected dependencies (`vi.fn<typeof f>()`) take the type of
+what they replace. `frontend/tests/answers.ts` carries the MSW side:
+`errorAnswer` for an error and its envelope, and `malformedAnswer` for an
+answer that is wrong on purpose, so it reads as deliberate. The builders
+that fill the fields a test does not care about with values the backend
+sends (`kitsuRefAnswer`, `sessionAnswer`, `configAnswer` and the rest), with
+`wire` and `malformedAs`, live in `frontend/src/lib/testing/wire-answers.ts`,
+where the unit tests can reach them (they import nothing from outside
+`src/`; `tests/arch/dep_direction.sh` holds that), and `tests/answers.ts`
+re-exports them. ESLint refuses an `HttpResponse.json` with no type, or one
+that types nothing, and app code importing through a path segment named
+`testing` (but not a path built at run time, or a glob that reaches it
+through a wildcard);
+`tests/lint/typed-answers.test.ts` lists what it does not see, such as a
+`vi.fn()` left untyped, which only review catches. When a renderer type
+changes, the type check names every typed fake that no longer matches it.
 
 ## Fixture management
 

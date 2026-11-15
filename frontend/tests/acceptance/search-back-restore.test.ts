@@ -39,10 +39,16 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 import { subtypeLabel } from '../../src/lib/search/subtype-label';
 
+import type {
+	AvailabilityBatchResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuSearchPage
+} from '../../src/lib/api';
 const ROW = 300;
 
 /** Show `n` of a search: odd ids are TV series, even ones films. */
-function ref(n: number) {
+function ref(n: number): KitsuAnimeRef {
 	return {
 		id: String(n),
 		canonical_title: `Show ${n}`,
@@ -56,12 +62,15 @@ function ref(n: number) {
 		status: 'finished',
 		start_date: '2019-01-01',
 		average_rating: null,
-		subtype: n % 2 === 1 ? 'TV' : 'movie'
+		subtype: n % 2 === 1 ? 'TV' : 'movie',
+		end_date: null,
+		age_rating: null,
+		popularity_rank: null
 	};
 }
 
 let mode = 'sub';
-const config = () => ({
+const config = (): Config => ({
 	locale: 'en',
 	mode,
 	download_quality: 'best',
@@ -71,11 +80,11 @@ const config = () => ({
 	syncplay_binary: '',
 	image_cache_cap_mb: 100,
 	auto_play_next: false,
+	cache_resolutions: false,
 	download_bottom_bar_enabled: true,
 	auto_skip_op: false,
 	auto_skip_ed: false,
 	use_custom_player_controls: true,
-	auto_update_anicli: false,
 	update_include_prereleases: false,
 	primary_account: ''
 });
@@ -85,12 +94,12 @@ const asked: string[] = [];
 
 function handlers() {
 	return [
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(config())),
-		http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(config())),
+		http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 			const { kitsu_ids } = (await request.json()) as { kitsu_ids: string[] };
-			return HttpResponse.json({
+			return HttpResponse.json<AvailabilityBatchResponse>({
 				cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
 				playable_episode_counts: {}
 			});
@@ -100,7 +109,7 @@ function handlers() {
 			const body = (await request.json()) as { query: string; offset: number; sort?: string };
 			asked.push(`${body.query}@${body.offset}/${body.sort ?? 'relevance'}`);
 			const hits = Array.from({ length: 20 }, (_, i) => ref(body.offset + i + 1));
-			return HttpResponse.json({
+			return HttpResponse.json<KitsuSearchPage>({
 				hits,
 				next_offset: body.offset + 20 < 100 ? body.offset + 20 : null
 			});

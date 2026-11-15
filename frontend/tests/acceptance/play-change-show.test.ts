@@ -52,6 +52,17 @@ import { __resetSwitchAudioForTests } from '../../src/lib/play/switch-audio';
 const AUDIO_KEY = 'ani-gui.audio-choices';
 import { __resetHiddenRowsForTests } from '../../src/lib/history/in-place-link.svelte';
 import { recoveryResume } from '../../src/lib/play/resume-after-recovery';
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	HistoryEntry,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	LinkOutcome,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
@@ -115,35 +126,44 @@ function show(id: string) {
 function serve() {
 	server.use(
 		...linkBackendHandlers(backend),
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig('sub'))),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig('sub'))),
 		http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
-			HttpResponse.json(show(String(params.id)))
+			HttpResponse.json<KitsuAnimeRef>(show(String(params.id)))
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/:id`, () =>
-			HttpResponse.json({ aired: 26, next_episode: null, next_airing_at: null, upcoming: [] })
+			HttpResponse.json<AiringStatus>({
+				aired: 26,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
 		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () =>
+			HttpResponse.json<string | null>(null)
+		),
 		// Continue Watching remembers the title's guess, for both rows.
 		http.get(`${API_BASE}/api/title-match`, ({ request }) =>
-			HttpResponse.json(
+			HttpResponse.json<string | null>(
 				(new URL(request.url).searchParams.get('title') ?? '').startsWith(TITLE) ? GUESS : null
 			)
 		),
 		http.post(`${API_BASE}/api/kitsu/search`, () =>
-			HttpResponse.json([show(GUESS), show(RIGHT), show(THIRD)])
+			HttpResponse.json<KitsuAnimeRef[]>([show(GUESS), show(RIGHT), show(THIRD)])
 		),
 		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 26,
-				extra_episodes: [],
-				episode_count_approximate: false
-			})
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 26,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json(null))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>(null)),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>(null))
 	);
 }
 
@@ -271,7 +291,7 @@ describe('the slip of a guessed session', () => {
 		server.use(
 			http.get(`${API_BASE}/api/history`, async () => {
 				await asked;
-				return HttpResponse.json(backend.rows);
+				return HttpResponse.json<HistoryEntry[]>(backend.rows);
 			})
 		);
 		await openPlayer();
@@ -293,7 +313,7 @@ describe('the slip of a guessed session', () => {
 	it('shows the same whichever controls the player uses', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () =>
-				HttpResponse.json({ ...appConfig('sub'), use_custom_player_controls: true })
+				HttpResponse.json<Config>({ ...appConfig('sub'), use_custom_player_controls: true })
 			)
 		);
 		await openPlayer();
@@ -555,12 +575,16 @@ describe('a pick on the player that a correction made elsewhere overtook', () =>
 				if (calls === 1) {
 					// The player's: asked first, its read slow.
 					await held;
-					return HttpResponse.json({ kitsu_id: body.kitsu_id, linked: [], overtaken: true });
+					return HttpResponse.json<LinkOutcome>({
+						kitsu_id: body.kitsu_id,
+						linked: [],
+						overtaken: true
+					});
 				}
 				backend.rows = backend.rows.map((r) =>
 					r.id === CARD ? { ...r, kitsu_id: body.kitsu_id, named: true } : r
 				);
-				return HttpResponse.json({
+				return HttpResponse.json<LinkOutcome>({
 					kitsu_id: body.kitsu_id,
 					linked: [{ row: CARD, previous: null, ep_no: '1', watched_at: null }]
 				});
@@ -640,7 +664,7 @@ describe('a player opened again on a line picked for another show', () => {
 		server.use(
 			http.get(`${API_BASE}/api/history`, async () => {
 				await read;
-				return HttpResponse.json(backend.rows);
+				return HttpResponse.json<HistoryEntry[]>(backend.rows);
 			})
 		);
 		try {
@@ -744,12 +768,14 @@ describe('switching to the pick', () => {
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { kitsu_id?: string; mode?: string };
 				if (body.kitsu_id === RIGHT) modes.push(String(body.mode));
-				return HttpResponse.json({
-					available: true,
-					episode_count: 26,
-					extra_episodes: [],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 26,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				);
 			})
 		);
 		try {
@@ -1018,7 +1044,7 @@ describe('switching to the pick', () => {
 	it('names no episode of a single-video work on the player, from its first line', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
-				HttpResponse.json(
+				HttpResponse.json<KitsuAnimeRef>(
 					String(params.id) === GUESS
 						? { ...show(GUESS), subtype: 'movie', episode_count: 1 }
 						: show(String(params.id))

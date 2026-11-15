@@ -44,6 +44,7 @@ import {
 	packagedBinary,
 	stopDeadApp
 } from './launch';
+import { answer } from './stubs';
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -89,7 +90,7 @@ interface StubOptions {
 	 *  that request pending forever (only the renderer's own abort
 	 *  releases it) — the takeover test uses this to pin a background
 	 *  prefetch in its in-flight state. Anything else falls through
-	 *  to the normal instant `done` fulfillment.
+	 *  to the normal instant `done` answer.
 	 *
 	 *  Must be wired through here rather than a per-test
 	 *  `page.route()`: registering ANY additional route after this
@@ -144,7 +145,7 @@ async function launchAppWithContinueStubsOnce(
 		const u = new URL(r.request().url());
 		const p = u.pathname;
 		const j = (body: unknown) =>
-			r.fulfill({
+			answer(r, {
 				status: 200,
 				contentType: 'application/json',
 				body: JSON.stringify(body)
@@ -154,7 +155,7 @@ async function launchAppWithContinueStubsOnce(
 		if (p === '/api/settings') return j(defaultSettings);
 		if (p === '/api/kitsu/trending-anilist') return j(trending);
 		if (p === '/api/kitsu/top-rated') return j(topRated);
-		if (p.startsWith('/api/image')) return r.fulfill({ status: 503 });
+		if (p.startsWith('/api/image')) return answer(r, { status: 503 });
 		if (p === '/api/history') return j(opts.history);
 		if (p === '/api/history/card-lines') return j(cardLinesAnswer(r.request().postDataJSON()));
 		if (p === '/api/watched-at') return j(watchedAt);
@@ -166,7 +167,7 @@ async function launchAppWithContinueStubsOnce(
 			return j(null);
 		}
 		if (p.startsWith('/api/kitsu/anime/')) {
-			// Never fulfilled: the request stays pending for the life of
+			// Never answered: the request stays pending for the life of
 			// the app, so the row never leaves its loading state.
 			if (opts.matchHang) return;
 			return j(
@@ -208,7 +209,7 @@ async function launchAppWithContinueStubsOnce(
 				// Same envelope ani_error_payload serializes for
 				// AniError::RateLimited — the renderer's SSE error
 				// listener rejects with this parsed object.
-				return r.fulfill({
+				return answer(r, {
 					status: 200,
 					contentType: 'text/event-stream',
 					body: `event: error\ndata: ${JSON.stringify({
@@ -218,7 +219,7 @@ async function launchAppWithContinueStubsOnce(
 					})}\n\n`
 				});
 			}
-			return r.fulfill({
+			return answer(r, {
 				status: 200,
 				contentType: 'text/event-stream',
 				body: `event: done\ndata: ${JSON.stringify({

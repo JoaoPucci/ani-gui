@@ -44,6 +44,17 @@ import { goto } from '$app/navigation';
 import { __resetApiBaseForTests, markWatched } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { __resetHiddenRowsForTests } from '../../src/lib/history/in-place-link.svelte';
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	HistoryEntry,
+	HistoryNumber,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	SkipInterval
+} from '../../src/lib/api';
+import type { EntryView, ListEntry } from '../../src/lib/account/types';
+import { availabilityAnswer } from '../answers';
 
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
@@ -126,40 +137,57 @@ const show = () => ({
 function serve() {
 	server.use(
 		...homeHandlers({}, [
-			http.get(`${API_BASE}/api/history`, () => HttpResponse.json(rows)),
+			http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>(rows)),
 			http.get(`${API_BASE}/api/history/:id/number`, ({ params }) => {
 				const row = rows.find((r) => r.id === params.id);
-				return HttpResponse.json(row ? { ep_no: row.ep_no } : null);
+				return HttpResponse.json<HistoryNumber | null>(row ? { ep_no: row.ep_no } : null);
 			}),
 			http.get(`${API_BASE}/api/history/by-kitsu/:id`, ({ params }) =>
-				HttpResponse.json(rows.find((r) => r.kitsu_id === params.id) ?? null)
+				HttpResponse.json<HistoryRowByKitsu | null>(
+					rows.find((r) => r.kitsu_id === params.id) ?? null
+				)
 			),
 			// Continue Watching remembers the title's guess.
 			http.get(`${API_BASE}/api/title-match`, ({ request }) =>
-				HttpResponse.json(new URL(request.url).searchParams.get('title') === TITLE ? GUESS : null)
+				HttpResponse.json<string | null>(
+					new URL(request.url).searchParams.get('title') === TITLE ? GUESS : null
+				)
 			),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([show()])),
-			http.get(`${API_BASE}/api/kitsu/anime/:id`, () => HttpResponse.json(show())),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([show()])),
+			http.get(`${API_BASE}/api/kitsu/anime/:id`, () => HttpResponse.json<KitsuAnimeRef>(show())),
 			http.get(`${API_BASE}/api/kitsu/airing/:id`, () =>
-				HttpResponse.json({ aired: 51, next_episode: null, next_airing_at: null, upcoming: [] })
+				HttpResponse.json<AiringStatus>({
+					aired: 51,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
+				})
 			),
 			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: 51,
-					extra_episodes: [],
-					episode_count_approximate: false
-				})
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 51,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				)
 			),
 			http.post(`${API_BASE}/api/history/link-group`, async ({ request }) => {
 				const body = (await request.json()) as { card: string };
-				return HttpResponse.json([body.card]);
+				return HttpResponse.json<string[]>([body.card]);
 			}),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/account/entry/:provider`, () => HttpResponse.json(null)),
-			http.get(`${API_BASE}/api/account/list/:provider/cached`, () => HttpResponse.json([])),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
-			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/account/entry/:provider`, () =>
+				HttpResponse.json<EntryView | null>(null)
+			),
+			http.get(`${API_BASE}/api/account/list/:provider/cached`, () =>
+				HttpResponse.json<ListEntry[]>([])
+			),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () =>
+				HttpResponse.json<SkipInterval[]>(null)
+			),
+			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>(null))
 		])
 	);
 }

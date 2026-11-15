@@ -22,6 +22,8 @@ import DownloadBar from '../../src/lib/components/DownloadBar.svelte';
 import { formatSpeed } from '../../src/lib/download/speed';
 import { API_BASE } from './setup';
 
+import { wire } from '../answers';
+import type { DownloadResponse } from '../../src/lib/api';
 type Handler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static open: FakeEventSource[] = [];
@@ -41,7 +43,7 @@ class FakeEventSource {
 	}
 	finish() {
 		for (const h of this.listeners.done ?? [])
-			h({ data: JSON.stringify({ dest_dir: '/dl' }) } as MessageEvent);
+			h({ data: wire<DownloadResponse>({ dest_dir: '/dl' }) } as MessageEvent);
 	}
 }
 

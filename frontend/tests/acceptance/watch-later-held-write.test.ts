@@ -19,7 +19,7 @@ import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
-import { homeHandlers, kitsuRef, type KitsuRefFixture } from './home-handlers';
+import { homeHandlers, kitsuRef } from './home-handlers';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -68,10 +68,12 @@ import { accountStore } from '../../src/lib/account/store.svelte';
 import { syncWatchedToTrackers } from '../../src/lib/account/push-watched';
 import { syncRemoveEntry, syncSetEntry } from '../../src/lib/account/set-entry';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
-import type { ListEntry } from '../../src/lib/account/types';
 import { m } from '../../src/lib/paraglide/messages';
 import { recordMotion, setReducedMotion } from './motion';
 
+import type { EntryView, ListEntry } from '../../src/lib/account/types';
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 const ALREADY = { malId: 11, title: 'Already Planned', updated: 1_700_000_000 };
 const NEW = { malId: 12, title: 'Just Planned', updated: 1_700_000_500 };
 
@@ -106,15 +108,12 @@ function listEntry(p: typeof ALREADY): ListEntry {
 }
 
 const refusal = () =>
-	HttpResponse.json(
-		{
-			kind: 'rate_limited',
-			key: 'error.network.rate_limited',
-			retry_after_secs: 1,
-			refused_by: 'anilist'
-		},
-		{ status: 429 }
-	);
+	errorAnswer(429, {
+		kind: 'rate_limited',
+		key: 'error.network.rate_limited',
+		retry_after_secs: 1,
+		refused_by: 'anilist'
+	});
 
 /** The home route's requests, a cached list that is `planned`, and a
  *  tracker that holds the first write back for a second and takes the
@@ -123,22 +122,24 @@ function backend() {
 	server.use(
 		...homeHandlers({}, [
 			http.get(`${API_BASE}/api/account/list/anilist/cached`, () =>
-				HttpResponse.json(planned.map(listEntry))
+				HttpResponse.json<ListEntry[]>(planned.map(listEntry))
 			),
 			http.post(`${API_BASE}/api/kitsu/by-mal-ids`, async ({ request }) => {
 				const { mal_ids } = (await request.json()) as { mal_ids: number[] };
 				const all = [ALREADY, NEW];
-				return HttpResponse.json(
+				return HttpResponse.json<KitsuAnimeRef[]>(
 					mal_ids
 						.map((id) => all.find((p) => p.malId === id))
 						.filter((p): p is typeof ALREADY => p !== undefined)
-						.map((p) => kitsuRef(String(p.malId), p.title, 12) as KitsuRefFixture)
+						.map((p) => kitsuRef(String(p.malId), p.title, 12))
 				);
 			}),
-			http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} })),
+			http.post(`${API_BASE}/api/availability/batch`, () =>
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+			),
 			http.get(`${API_BASE}/api/account/entry/anilist`, ({ request }) => {
 				const id = Number(new URL(request.url).searchParams.get('kitsu_id'));
-				return HttpResponse.json(
+				return HttpResponse.json<EntryView | null>(
 					planned.some((p) => p.malId === id) ? { status: 'planning', progress: 0 } : null
 				);
 			}),
@@ -146,7 +147,7 @@ function backend() {
 				writes += 1;
 				if (writes === 1) return refusal();
 				planned = [...planned.filter((p) => p.malId !== NEW.malId), NEW];
-				return HttpResponse.json(listEntry(NEW));
+				return HttpResponse.json<ListEntry | null>(listEntry(NEW));
 			}),
 			// The cached row of a show the tracker no longer has, cleared
 			// locally: the cached list loses it, the tracker hears nothing.
@@ -217,9 +218,7 @@ describe('Watch Later on Home, while a held write waits', () => {
 				planned = planned.filter((p) => p.malId !== NEW.malId);
 				return refusal();
 			}),
-			http.post(`${API_BASE}/api/account/set/anilist`, () =>
-				HttpResponse.json({ kind: 'network' }, { status: 500 })
-			)
+			http.post(`${API_BASE}/api/account/set/anilist`, () => errorAnswer(500, { kind: 'network' }))
 		);
 		app = mount(HomePage, { target });
 		await settle();
@@ -249,7 +248,7 @@ describe('Watch Later on Home, while a held write waits', () => {
 					// The backend completed an earlier mapped entry (NEW), then
 					// failed on the target entry of a different Kitsu show (99).
 					if (earlierChanged) planned = planned.filter((p) => p.malId !== NEW.malId);
-					return HttpResponse.json({ kind: 'network' }, { status: 500 });
+					return errorAnswer(500, { kind: 'network' });
 				})
 			);
 			app = mount(HomePage, { target });
@@ -283,15 +282,15 @@ describe('Watch Later on Home, while a held write waits', () => {
 			http.post(`${API_BASE}/api/kitsu/by-mal-ids`, async ({ request }) => {
 				if (holding) await new Promise<void>((resolve) => held.push(resolve));
 				const { mal_ids } = (await request.json()) as { mal_ids: number[] };
-				return HttpResponse.json(
+				return HttpResponse.json<KitsuAnimeRef[]>(
 					[ALREADY, NEW]
 						.filter((p) => mal_ids.includes(p.malId))
-						.map((p) => kitsuRef(String(p.malId), p.title, 12) as KitsuRefFixture)
+						.map((p) => kitsuRef(String(p.malId), p.title, 12))
 				);
 			}),
 			http.post(`${API_BASE}/api/account/list/anilist`, () => {
 				pulls += 1;
-				return HttpResponse.json(planned.map(listEntry));
+				return HttpResponse.json<ListEntry[]>(planned.map(listEntry));
 			})
 		);
 		app = mount(HomePage, { target });
@@ -317,11 +316,11 @@ describe('Watch Later on Home, while a held write waits', () => {
 			http.post(`${API_BASE}/api/account/list/anilist`, async () => {
 				// The refresh's list read is out until the write has settled.
 				await new Promise<void>((resolve) => (answer = resolve));
-				return HttpResponse.json(planned.map(listEntry));
+				return HttpResponse.json<ListEntry[]>(planned.map(listEntry));
 			}),
 			http.post(`${API_BASE}/api/account/set/anilist`, () => {
 				planned = [...planned, NEW];
-				return HttpResponse.json(listEntry(NEW));
+				return HttpResponse.json<ListEntry | null>(listEntry(NEW));
 			})
 		);
 		app = mount(HomePage, { target });
@@ -350,14 +349,14 @@ describe('Watch Later on Home, while a held write waits', () => {
 				http.post(`${API_BASE}/api/account/list/anilist`, () => {
 					pulls += 1;
 					if (refuse)
-						return HttpResponse.json(
+						return errorAnswer(
+							status,
 							status === 429
 								? { kind: 'rate_limited', retry_after_secs: 1, refused_by: 'anilist' }
-								: { kind: 'cache', key: 'error.cache' },
-							{ status }
+								: { kind: 'cache', key: 'error.cache' }
 						);
 					planned = [ALREADY, NEW];
-					return HttpResponse.json(planned.map(listEntry));
+					return HttpResponse.json<ListEntry[]>(planned.map(listEntry));
 				})
 			);
 			app = mount(HomePage, { target });
@@ -388,10 +387,12 @@ describe('Watch Later on Home, while a held write waits', () => {
 			accountStore.setConnected('mal', as('mal-user'));
 			server.use(
 				http.get(`${API_BASE}/api/account/list/mal/cached`, () =>
-					HttpResponse.json(malHasRow ? [{ ...listEntry(NEW), provider: 'mal' }] : [])
+					HttpResponse.json<ListEntry[]>(malHasRow ? [{ ...listEntry(NEW), provider: 'mal' }] : [])
 				),
 				http.get(`${API_BASE}/api/account/entry/mal`, () =>
-					HttpResponse.json(malHasRow ? { status: 'planning', progress: 0 } : null)
+					HttpResponse.json<EntryView | null>(
+						malHasRow ? { status: 'planning', progress: 0 } : null
+					)
 				),
 				http.delete(`${API_BASE}/api/account/entry/mal`, () => {
 					malHasRow = false;
@@ -503,7 +504,11 @@ describe('Watch Later on Home, while a held write waits', () => {
 	it('clears a stale cached row locally when the tracker already removed the show', async () => {
 		planned = [ALREADY, NEW];
 		backend();
-		server.use(http.get(`${API_BASE}/api/account/entry/anilist`, () => HttpResponse.json(null)));
+		server.use(
+			http.get(`${API_BASE}/api/account/entry/anilist`, () =>
+				HttpResponse.json<EntryView | null>(null)
+			)
+		);
 		app = mount(HomePage, { target });
 		await settle();
 		expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
@@ -521,12 +526,14 @@ describe('Watch Later on Home, while a held write waits', () => {
 		accountStore.setConnected('mal', as('mal-user'));
 		let malHasRow = true;
 		server.use(
-			http.get(`${API_BASE}/api/account/entry/anilist`, () => HttpResponse.json(null)),
+			http.get(`${API_BASE}/api/account/entry/anilist`, () =>
+				HttpResponse.json<EntryView | null>(null)
+			),
 			http.get(`${API_BASE}/api/account/list/mal/cached`, () =>
-				HttpResponse.json(malHasRow ? [{ ...listEntry(NEW), provider: 'mal' }] : [])
+				HttpResponse.json<ListEntry[]>(malHasRow ? [{ ...listEntry(NEW), provider: 'mal' }] : [])
 			),
 			http.get(`${API_BASE}/api/account/entry/mal`, () =>
-				HttpResponse.json(malHasRow ? { status: 'planning', progress: 0 } : null)
+				HttpResponse.json<EntryView | null>(malHasRow ? { status: 'planning', progress: 0 } : null)
 			),
 			http.delete(`${API_BASE}/api/account/entry/mal`, () => {
 				malHasRow = false;

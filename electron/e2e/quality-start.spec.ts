@@ -29,6 +29,7 @@ import {
   defaultSettings,
 } from "./fixtures/kitsu";
 import { appWindow, launchPackagedApp, packagedBinary } from "./launch";
+import { answer } from "./stubs";
 
 const mediaDir = path.join(__dirname, "fixtures", "captions");
 
@@ -113,7 +114,7 @@ async function stubMetadata(page: Page, base: string) {
     const p = new URL(r.request().url()).pathname;
     if (p === "/api/sessions") return r.continue();
     const j = (body: unknown) =>
-      r.fulfill({
+      answer(r, {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(body),
@@ -123,7 +124,7 @@ async function stubMetadata(page: Page, base: string) {
     if (p.startsWith("/api/kitsu/anime/")) return j(continueKitsuMatch);
     if (p.startsWith("/api/kitsu/episodes/")) return j([continueKitsuEpisode6]);
     if (p === "/api/history") return j([]);
-    if (p.startsWith("/api/image")) return r.fulfill({ status: 503 });
+    if (p.startsWith("/api/image")) return answer(r, { status: 503 });
     // The backend answers skip times with a list, empty when it
     // knows none; the page reads it as one once the length is known.
     if (p.startsWith("/api/aniskip/")) return j([]);

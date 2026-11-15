@@ -43,6 +43,16 @@ import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { isModalOpen } from '../../src/lib/components/modal-layer';
 import { rememberAudio, storedAudio } from '../../src/lib/play/audio-choice';
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	CardLine,
+	KitsuAnimeRef,
+	LinkCandidate,
+	LinkOutcome,
+	LinkVerdict
+} from '../../src/lib/api';
+import { errorAnswer, availabilityAnswer } from '../answers';
 
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
@@ -93,7 +103,7 @@ let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
 function show(id: string) {
-	const shows: Record<string, ReturnType<typeof kitsuRef> & { subtype?: string }> = {
+	const shows: Record<string, ReturnType<typeof kitsuRef>> = {
 		[BC_GUESS]: { ...kitsuRef(BC_GUESS, BC_GUESS_TITLE, 1), subtype: 'special' },
 		[BC_RIGHT]: { ...kitsuRef(BC_RIGHT, BC_RIGHT_TITLE, 170), titles: { en: BC_TITLE } },
 		[JOJO_GUESS]: { ...kitsuRef(JOJO_GUESS, JOJO_GUESS_TITLE, 26), titles: { en: JOJO_TITLE } },
@@ -116,28 +126,35 @@ function serve() {
 			// row was written by the card's own guessed play, and watched
 			// later, is below ("the line clicked").
 			http.get(`${API_BASE}/api/watched-at`, () =>
-				HttpResponse.json({ [JOJO_CARD]: 2_000, [JOJO_PLAYED]: 1_000 })
+				HttpResponse.json<Record<string, number>>({ [JOJO_CARD]: 2_000, [JOJO_PLAYED]: 1_000 })
 			),
 			http.get(`${API_BASE}/api/title-match`, ({ request }) => {
 				const title = new URL(request.url).searchParams.get('title') ?? '';
-				if (title.startsWith(BC_TITLE)) return HttpResponse.json(BC_GUESS);
-				if (title.startsWith(JOJO_TITLE)) return HttpResponse.json(JOJO_GUESS);
-				return HttpResponse.json(null);
+				if (title.startsWith(BC_TITLE)) return HttpResponse.json<string | null>(BC_GUESS);
+				if (title.startsWith(JOJO_TITLE)) return HttpResponse.json<string | null>(JOJO_GUESS);
+				return HttpResponse.json<string | null>(null);
 			}),
 			http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
-				HttpResponse.json(show(String(params.id)))
+				HttpResponse.json<KitsuAnimeRef>(show(String(params.id)))
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/:id`, () =>
-				HttpResponse.json({ aired: 26, next_episode: null, next_airing_at: null, upcoming: [] })
+				HttpResponse.json<AiringStatus>({
+					aired: 26,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
+				})
 			),
 			http.post(`${API_BASE}/api/kitsu/search`, async ({ request }) => {
 				const { query } = (await request.json()) as { query: string };
 				if (query.toLowerCase().startsWith('black clover')) {
-					return HttpResponse.json([show(BC_GUESS), show(BC_RIGHT)]);
+					return HttpResponse.json<KitsuAnimeRef[]>([show(BC_GUESS), show(BC_RIGHT)]);
 				}
-				if (query.includes('2000')) return HttpResponse.json([show(JOJO_RIGHT), show(JOJO_GUESS)]);
-				if (query.toLowerCase().startsWith('jojo')) return HttpResponse.json([show(JOJO_GUESS)]);
-				return HttpResponse.json([]);
+				if (query.includes('2000'))
+					return HttpResponse.json<KitsuAnimeRef[]>([show(JOJO_RIGHT), show(JOJO_GUESS)]);
+				if (query.toLowerCase().startsWith('jojo'))
+					return HttpResponse.json<KitsuAnimeRef[]>([show(JOJO_GUESS)]);
+				return HttpResponse.json<KitsuAnimeRef[]>([]);
 			}),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 }))
 		])
@@ -298,7 +315,11 @@ describe("a guessed Continue card's pill", () => {
 			http.post(`${API_BASE}/api/history/link`, async ({ request }) => {
 				const body = (await request.json()) as { kitsu_id: string };
 				backend.linkCalls.push(body as never);
-				return HttpResponse.json({ kitsu_id: body.kitsu_id, linked: [], overtaken: true });
+				return HttpResponse.json<LinkOutcome>({
+					kitsu_id: body.kitsu_id,
+					linked: [],
+					overtaken: true
+				});
 			})
 		);
 		await openHome();
@@ -573,7 +594,7 @@ describe('a card whose guessed play wrote a row on another listing stands for th
 		);
 		server.use(
 			http.get(`${API_BASE}/api/watched-at`, () =>
-				HttpResponse.json({ [JOJO_CARD]: 1_000, [JOJO_PLAYED]: 2_000 })
+				HttpResponse.json<Record<string, number>>({ [JOJO_CARD]: 1_000, [JOJO_PLAYED]: 2_000 })
 			)
 		);
 	});
@@ -641,7 +662,9 @@ describe("a link forgets what Home kept for the card's former show", () => {
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const { kitsu_id } = (await request.json()) as { kitsu_id?: string };
 				const count = kitsu_id === BC_GUESS ? 1 : kitsu_id === BC_RIGHT ? 170 : 26;
-				return HttpResponse.json({ available: true, episode_count: count });
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: true, episode_count: count })
+				);
 			})
 		);
 	});
@@ -691,7 +714,9 @@ describe("a probe still on its way for the card's former show", () => {
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const { kitsu_id } = (await request.json()) as { kitsu_id?: string };
 				if (kitsu_id === JOJO_GUESS) await answered;
-				return HttpResponse.json({ available: true, episode_count: 26 });
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: true, episode_count: 26 })
+				);
 			})
 		);
 	});
@@ -734,14 +759,18 @@ describe("the cap retry for a card's former show", () => {
 				if (kitsu_id === BC_GUESS) await bcHeld;
 				if (kitsu_id === JOJO_GUESS) {
 					guessProbes++;
-					return HttpResponse.json({
-						available: true,
-						episode_count: 1,
-						episode_count_approximate: guessProbes === 1
-					});
+					return HttpResponse.json<AvailabilityResponse>(
+						availabilityAnswer({
+							available: true,
+							episode_count: 1,
+							episode_count_approximate: guessProbes === 1
+						})
+					);
 				}
 				const count = kitsu_id === JOJO_RIGHT ? 13 : 26;
-				return HttpResponse.json({ available: true, episode_count: count });
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: true, episode_count: count })
+				);
 			})
 		);
 	});
@@ -807,15 +836,17 @@ describe('a card linked while its first probe waits in the queue', () => {
 		server.use(
 			http.get(`${API_BASE}/api/title-match`, async ({ request }) => {
 				const title = new URL(request.url).searchParams.get('title') ?? '';
-				if (!title.startsWith(JOJO_TITLE)) return HttpResponse.json(null);
+				if (!title.startsWith(JOJO_TITLE)) return HttpResponse.json<string | null>(null);
 				await new Promise((r) => setTimeout(r, 200));
-				return HttpResponse.json(JOJO_GUESS);
+				return HttpResponse.json<string | null>(JOJO_GUESS);
 			}),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const { kitsu_id } = (await request.json()) as { kitsu_id?: string };
 				if (kitsu_id === KNOWN_ID) await slots;
 				if (kitsu_id === JOJO_GUESS) guessProbes++;
-				return HttpResponse.json({ available: true, episode_count: 26 });
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: true, episode_count: 26 })
+				);
 			})
 		);
 	});
@@ -997,7 +1028,7 @@ describe("a named line whose card's play landed on another listing", () => {
 		);
 		server.use(
 			http.get(`${API_BASE}/api/watched-at`, () =>
-				HttpResponse.json({ [JOJO_CARD]: 1_000, [JOJO_PLAYED]: 2_000 })
+				HttpResponse.json<Record<string, number>>({ [JOJO_CARD]: 1_000, [JOJO_PLAYED]: 2_000 })
 			)
 		);
 	});
@@ -1063,7 +1094,7 @@ describe('a resume clicked while a later answer is still matching the card', () 
 					detailAsks++;
 					await detail;
 				}
-				return HttpResponse.json(show(String(params.id)));
+				return HttpResponse.json<KitsuAnimeRef>(show(String(params.id)));
 			}),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const { kitsu_id, background } = (await request.json()) as {
@@ -1073,9 +1104,13 @@ describe('a resume clicked while a later answer is still matching the card', () 
 				if (kitsu_id === JOJO_RIGHT && background === false) {
 					lookupAsked = true;
 					await lookup;
-					return HttpResponse.json({ available: true, episode_count: 1 });
+					return HttpResponse.json<AvailabilityResponse>(
+						availabilityAnswer({ available: true, episode_count: 1 })
+					);
 				}
-				return HttpResponse.json({ available: true, episode_count: 26 });
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: true, episode_count: 26 })
+				);
 			})
 		);
 	});
@@ -1143,7 +1178,7 @@ describe("a named card's pill clicked while its new show is still being matched"
 					asked = true;
 					await detail;
 				}
-				return HttpResponse.json(show(String(params.id)));
+				return HttpResponse.json<KitsuAnimeRef>(show(String(params.id)));
 			})
 		);
 		await openHome();
@@ -1238,7 +1273,7 @@ describe("Home draws the backend's answers", () => {
 		server.use(
 			http.post(`${API_BASE}/api/history/card-lines`, async ({ request }) => {
 				const { rows } = (await request.json()) as { rows: { id: string }[] };
-				return HttpResponse.json(
+				return HttpResponse.json<Record<string, CardLine>>(
 					Object.fromEntries(rows.map((r) => [r.id, { line: r.id, correctable: r.id === KNOWN }]))
 				);
 			})
@@ -1253,7 +1288,7 @@ describe("Home draws the backend's answers", () => {
 		server.use(
 			http.post(`${API_BASE}/api/history/card-lines`, async ({ request }) => {
 				const { rows } = (await request.json()) as { rows: { id: string }[] };
-				return HttpResponse.json(
+				return HttpResponse.json<Record<string, CardLine>>(
 					Object.fromEntries(
 						rows.map((r) => [
 							r.id,
@@ -1280,7 +1315,7 @@ describe("Home draws the backend's answers", () => {
 					query: string | null;
 				};
 				asked.push({ title: body.title, episode: body.episode, query: body.query });
-				return HttpResponse.json([
+				return HttpResponse.json<LinkCandidate[]>([
 					{ ref: show(BC_RIGHT), current: false, warnings: ['season', 'episode'] }
 				]);
 			})
@@ -1312,7 +1347,7 @@ describe("Home draws the backend's answers", () => {
 				const { rows } = (await request.json()) as { rows: CardLineRow[] };
 				linesAsked++;
 				if (hold) await hold;
-				return HttpResponse.json(cardLines(rows));
+				return HttpResponse.json<Record<string, CardLine>>(cardLines(rows));
 			})
 		);
 		await openHome();
@@ -1338,7 +1373,7 @@ describe("Home draws the backend's answers", () => {
 	it("lists the card's own show, and says the list could not be loaded, when the backend cannot answer", async () => {
 		server.use(
 			http.post(`${API_BASE}/api/history/link-candidates`, () =>
-				HttpResponse.json({ kind: 'internal', key: 'error.internal' }, { status: 500 })
+				errorAnswer(500, { kind: 'internal', key: 'error.internal' })
 			)
 		);
 		await openHome();
@@ -1354,7 +1389,7 @@ describe("Home draws the backend's answers", () => {
 	it('opens no picker on a card the backend says is not asked about', async () => {
 		server.use(
 			http.post(`${API_BASE}/api/history/link-verdict`, () =>
-				HttpResponse.json({ offer: null, kept: false })
+				HttpResponse.json<LinkVerdict>({ offer: null, kept: false })
 			)
 		);
 		await openHome();

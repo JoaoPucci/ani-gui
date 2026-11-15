@@ -17,7 +17,7 @@ import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
 import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
 import { laneBase, type Lane } from '$lib/backend/lanes';
-import { withSecretHeader, withSecretQuery } from '$lib/backend/secret';
+import { withSecretHeader } from '$lib/backend/secret';
 import { getLocale } from '$lib/paraglide/runtime';
 import { probeLimiter } from '$lib/availability/probe-limiter';
 import { probeScope } from '$lib/availability/probe-scope';
@@ -390,12 +390,6 @@ export interface HistoryEntry {
  *  the user named its show). */
 export type HistoryRowByKitsu = Omit<HistoryEntry, 'key_year' | 'guessed_from' | 'named'>;
 
-/** Input to `cmd_create_session`. */
-export interface CreateSessionArgs {
-	upstream_url: string;
-	referer: string;
-}
-
 /** What kind of media the resolved upstream serves. The renderer uses
  *  this to pick hls.js vs. a plain `<video src>` for direct MP4 streams
  *  (wixmp / sharepoint / fast4speed) that don't have an HLS manifest. */
@@ -411,7 +405,7 @@ export interface SessionSubtitle {
 	url: string;
 }
 
-/** Output of `cmd_create_session` — proxy URLs the player should fetch. */
+/** A play's session — proxy URLs the player should fetch. */
 export interface CreateSessionResponse {
 	session_id: string;
 	/** Full proxy URL the player should fetch. For HLS sessions this
@@ -870,10 +864,6 @@ export function historyNumber(id: string, opts: ReadOptions = {}): Promise<Histo
 	return getJson<HistoryNumber | null>(`/api/history/${encodeURIComponent(id)}/number`, opts);
 }
 
-export function createSession(args: CreateSessionArgs): Promise<CreateSessionResponse> {
-	return postJson<CreateSessionResponse>('/api/sessions', args);
-}
-
 /** Body for the play endpoints — same shape on both `/api/play` and
  *  `/api/play/external`. The backend takes the canonical title (from
  *  Kitsu metadata), resolves it through the provider, and either wraps the
@@ -1099,9 +1089,9 @@ export function playStream(
 					reject(new Error('playStream: aborted'));
 					return;
 				}
-				// An EventSource cannot set a header: the launch's secret
-				// rides the query ($lib/backend/secret).
-				const es = new EventSource(withSecretQuery(url));
+				// An EventSource cannot set a header: the main process adds
+				// the launch's secret to its request ($lib/backend/secret).
+				const es = new EventSource(url);
 				let settled = false;
 				const finish = (fn: () => void) => {
 					if (settled) return;
@@ -1235,9 +1225,9 @@ export function downloadStream(
 	return url(`/api/download/stream?${params.toString()}`, 'download').then(
 		(url) =>
 			new Promise<DownloadResponse>((resolve, reject) => {
-				// An EventSource cannot set a header: the launch's secret
-				// rides the query ($lib/backend/secret).
-				const es = new EventSource(withSecretQuery(url));
+				// An EventSource cannot set a header: the main process adds
+				// the launch's secret to its request ($lib/backend/secret).
+				const es = new EventSource(url);
 				let settled = false;
 				const finish = (fn: () => void) => {
 					if (settled) return;
@@ -1874,5 +1864,7 @@ export function imageProxyUrl(httpsUrl: string | null | undefined): string | nul
 	if (!httpsUrl || !httpsUrl.startsWith('https://')) return null;
 	const base = windowLaneBase('image');
 	if (base === null) return null;
-	return withSecretQuery(`${base}/api/image?url=${encodeURIComponent(httpsUrl)}`);
+	// An <img> cannot set a header: the main process adds the launch's
+	// secret to its request ($lib/backend/secret).
+	return `${base}/api/image?url=${encodeURIComponent(httpsUrl)}`;
 }

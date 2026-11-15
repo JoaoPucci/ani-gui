@@ -41,6 +41,16 @@ import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { appLinkDeps } from '../../src/lib/history/link-deps';
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	LinkOutcome,
+	SkipInterval
+} from '../../src/lib/api';
+import { errorAnswer, availabilityAnswer } from '../answers';
 
 const KITSU_ID = '42';
 const CARD = 'hianime:the-show-2000-5';
@@ -94,27 +104,39 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 4000) {
 function showReads() {
 	server.use(
 		http.get(`${API_BASE}/api/kitsu/anime/:id`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, 'The Show', 12), status: 'finished' })
-		),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(KITSU_ID, 'The Show', 12),
+				status: 'finished'
 			})
 		),
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(null, { status: 503 })),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json(null)),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/kitsu/airing/:id`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/settings`, () => errorAnswer(503)),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>(null)),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.get(`${API_BASE}/api/kitsu/airing/:id`, () =>
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>(null)),
 		http.post(`${API_BASE}/api/history/link`, () =>
-			HttpResponse.json({ kitsu_id: KITSU_ID, linked: [] })
+			HttpResponse.json<LinkOutcome>({ kitsu_id: KITSU_ID, linked: [] })
 		)
 	);
 }
@@ -176,7 +198,7 @@ describe('the reads a link answered starts', () => {
 		server.use(
 			...homeHandlers({ history: [{ id: CARD, ep_no: '2', title: 'The Show' }] }),
 			http.post(`${API_BASE}/api/history/link`, () =>
-				HttpResponse.json({ kitsu_id: KITSU_ID, linked: [] })
+				HttpResponse.json<LinkOutcome>({ kitsu_id: KITSU_ID, linked: [] })
 			)
 		);
 		pool = sixConnections();

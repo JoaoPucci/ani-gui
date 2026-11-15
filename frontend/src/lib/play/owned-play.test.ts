@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { altTitlesFromKitsu, type KitsuAnimeRef } from '$lib/api';
+import { altTitlesFromKitsu } from '$lib/api';
 import {
 	claimPlay,
 	playArgsFor,
@@ -9,6 +9,7 @@ import {
 	runOwnedPlay
 } from './owned-play';
 
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 /** A route's visit counter, as the pages keep it: it advances on every
  *  change of the show id, including a round trip back. */
 function routeVisits() {
@@ -197,7 +198,7 @@ describe('a play whose page was destroyed', () => {
 });
 
 describe('playArgsFor', () => {
-	const show = {
+	const show = kitsuRefAnswer({
 		id: '42',
 		canonical_title: 'Show',
 		episode_count: 12,
@@ -205,7 +206,7 @@ describe('playArgsFor', () => {
 		start_date: '2019-04-01',
 		titles: { en: 'Show EN' },
 		abbreviated_titles: []
-	} as unknown as KitsuAnimeRef;
+	});
 
 	it('builds the play request from the show as it was at the click', () => {
 		const args = playArgsFor({
@@ -384,7 +385,7 @@ describe('playMode', () => {
 });
 
 describe('recordPlayed', () => {
-	const show = { episode_count: 12, status: 'finished' } as unknown as KitsuAnimeRef;
+	const show = kitsuRefAnswer({ episode_count: 12, status: 'finished' });
 	const args = { title: 'Show', episode: '5', mode: 'sub' } as const;
 
 	it('stamps the watch and mirrors it to the trackers for the clicked show', async () => {

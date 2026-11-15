@@ -16,22 +16,25 @@ import {
 	type KitsuAnimeRef
 } from '$lib/api';
 
+import type * as Api from '$lib/api';
+import { errorEnvelope } from '$lib/testing/wire-answers';
+import type { AniErrorPayload } from '$lib/api';
 // Mock the api module wholesale — `match.ts` is decoupled from the
 // transport (HTTP fetch to the backend), and the assertions
 // here are about which api functions get called with what args.
 // Mocking the module itself lets these tests survive any future
 // transport switch without churn.
 vi.mock('$lib/api', () => ({
-	allmangaKitsuMapDelete: vi.fn(),
-	allmangaKitsuMapGet: vi.fn(),
-	allmangaKitsuMapPlayed: vi.fn(),
-	kitsuAnimeBySlug: vi.fn(),
-	kitsuAnimeDetail: vi.fn(),
-	kitsuGuessRuledOut: vi.fn(),
-	kitsuResolveAllmangaShowId: vi.fn(),
-	kitsuSearch: vi.fn(),
-	kitsuTitleMatchGet: vi.fn(),
-	kitsuTitleMatchPut: vi.fn()
+	allmangaKitsuMapDelete: vi.fn<typeof Api.allmangaKitsuMapDelete>(),
+	allmangaKitsuMapGet: vi.fn<typeof Api.allmangaKitsuMapGet>(),
+	allmangaKitsuMapPlayed: vi.fn<typeof Api.allmangaKitsuMapPlayed>(),
+	kitsuAnimeBySlug: vi.fn<typeof Api.kitsuAnimeBySlug>(),
+	kitsuAnimeDetail: vi.fn<typeof Api.kitsuAnimeDetail>(),
+	kitsuGuessRuledOut: vi.fn<typeof Api.kitsuGuessRuledOut>(),
+	kitsuResolveAllmangaShowId: vi.fn<typeof Api.kitsuResolveAllmangaShowId>(),
+	kitsuSearch: vi.fn<typeof Api.kitsuSearch>(),
+	kitsuTitleMatchGet: vi.fn<typeof Api.kitsuTitleMatchGet>(),
+	kitsuTitleMatchPut: vi.fn<typeof Api.kitsuTitleMatchPut>()
 }));
 
 const mockedAllmangaDelete = vi.mocked(allmangaKitsuMapDelete);
@@ -905,7 +908,8 @@ describe('a recorded id Kitsu cannot read', () => {
 
 	it.each([404, 410])('matches the row anew when Kitsu answers %i for it', async (status) => {
 		mockedDetail.mockImplementation(async (id) => {
-			if (id === '999') throw { kind: 'upstream', status, key: 'error.network.upstream' };
+			if (id === '999')
+				throw errorEnvelope({ kind: 'upstream', status, key: 'error.network.upstream' });
 			return stubKitsu(id, 'Cowboy Bebop', 26);
 		});
 		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
@@ -916,7 +920,8 @@ describe('a recorded id Kitsu cannot read', () => {
 		expect(mockedSearch).toHaveBeenCalled();
 	});
 
-	it.each([
+	// `http` is the envelope `$lib/api` builds for an error with no body.
+	it.each<[string, AniErrorPayload]>([
 		['a provider 503', { kind: 'upstream', status: 503, key: 'error.network.upstream' }],
 		['a rate limit', { kind: 'upstream', status: 429, key: 'error.network.upstream' }],
 		['an unreachable network', { kind: 'network', key: 'error.network.unreachable' }],
@@ -1022,7 +1027,8 @@ describe('which Continue matches a play may record', () => {
 
 	it('does not record the match a row whose recorded id is gone falls back to', async () => {
 		mockedDetail.mockImplementation(async (id) => {
-			if (id === '999') throw { kind: 'upstream', status: 404, key: 'error.network.upstream' };
+			if (id === '999')
+				throw errorEnvelope({ kind: 'upstream', status: 404, key: 'error.network.upstream' });
 			return stubKitsu(id, 'Cowboy Bebop', 26);
 		});
 		mockedGetMatch.mockResolvedValue(null);

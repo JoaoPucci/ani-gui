@@ -37,6 +37,8 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AniErrorPayload, AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { wire } from '../answers';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -72,9 +74,11 @@ beforeEach(() => {
 	server.use(
 		...homeHandlers({ history: [{ ep_no: '3', id: 'hianime:cowboy-bebop-1', title: SHOW }] }, [
 			http.post(`${API_BASE}/api/availability/batch`, () =>
-				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 			),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([kitsuRef('1', SHOW, 26)])),
+			http.post(`${API_BASE}/api/kitsu/search`, () =>
+				HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', SHOW, 26)])
+			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 }))
 		])
 	);
@@ -142,7 +146,10 @@ async function startResume(): Promise<{ opener: HTMLButtonElement; stream: FakeE
 
 async function failResume() {
 	const started = await startResume();
-	started.stream.dispatch('error', JSON.stringify({ kind: 'timeout' }));
+	started.stream.dispatch(
+		'error',
+		wire<AniErrorPayload>({ kind: 'timeout', key: 'error.scraper.timeout' })
+	);
 	await until(() => failure() !== null, 'the resume failure');
 	await until(() => loading() === null, 'the loading overlay to leave');
 	await settle();
@@ -231,7 +238,10 @@ describe('while a Continue resume runs', () => {
 		await settle();
 		expect(confirm()).toBeNull();
 
-		stream.dispatch('error', JSON.stringify({ kind: 'timeout' }));
+		stream.dispatch(
+			'error',
+			wire<AniErrorPayload>({ kind: 'timeout', key: 'error.scraper.timeout' })
+		);
 		await until(() => failure() !== null, 'the resume failure');
 		expect(confirm()).toBeNull();
 	});

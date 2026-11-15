@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import type { Config } from '$lib/api';
 import { pickAvailabilityMode } from './mode';
 
+import { configAnswer } from '$lib/testing/wire-answers';
 /** Tiny fixture builder — the helper only reads `mode`, so the
  *  other fields are irrelevant for this test. The cast keeps the
  *  type contract honest without forcing the test to spell out
  *  every Config field. */
 function cfg(mode: string): Config {
-	return { mode } as unknown as Config;
+	return configAnswer({ mode });
 }
 
 describe('pickAvailabilityMode', () => {

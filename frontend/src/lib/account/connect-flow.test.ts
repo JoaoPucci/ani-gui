@@ -32,15 +32,23 @@ function happyDeps(): ConnectFlowDeps {
 	return {
 		generateState: () => 'state-abc',
 		generatePkce: () => ({ verifier: 'v', challenge: 'c', method: 'S256' }),
-		buildAuthUrl: vi.fn().mockResolvedValue({ url: 'https://anilist.co/x' }),
-		openOAuth: vi.fn().mockResolvedValue({ ok: true, code: 'code-xyz', state: 'state-abc' }),
-		exchangeCode: vi.fn().mockResolvedValue({
+		buildAuthUrl: vi
+			.fn<NonNullable<ConnectFlowDeps['buildAuthUrl']>>()
+			.mockResolvedValue({ url: 'https://anilist.co/x' }),
+		openOAuth: vi
+			.fn<NonNullable<ConnectFlowDeps['openOAuth']>>()
+			.mockResolvedValue({ ok: true, code: 'code-xyz', state: 'state-abc' }),
+		exchangeCode: vi.fn<NonNullable<ConnectFlowDeps['exchangeCode']>>().mockResolvedValue({
 			access_token: 'tok',
 			refresh_token: null,
 			expires_at_epoch_s: 999
 		}),
-		fetchMe: vi.fn().mockResolvedValue({ user_id: 'u7', username: 'pucci', avatar_url: null }),
-		persistAccount: vi.fn().mockResolvedValue({ ok: true })
+		fetchMe: vi
+			.fn<NonNullable<ConnectFlowDeps['fetchMe']>>()
+			.mockResolvedValue({ user_id: 'u7', username: 'pucci', avatar_url: null }),
+		persistAccount: vi
+			.fn<NonNullable<ConnectFlowDeps['persistAccount']>>()
+			.mockResolvedValue({ ok: true })
 	};
 }
 
@@ -56,7 +64,9 @@ describe('connectAccount', () => {
 
 	it('surfaces openOAuth.kind as oauth_error result', async () => {
 		const deps = happyDeps();
-		deps.openOAuth = vi.fn().mockResolvedValue({ ok: false, kind: 'port_busy' });
+		deps.openOAuth = vi
+			.fn<NonNullable<ConnectFlowDeps['openOAuth']>>()
+			.mockResolvedValue({ ok: false, kind: 'port_busy' });
 		const r = await connectAccount('anilist', deps);
 		expect(r.kind).toBe('oauth_error');
 		if (r.kind === 'oauth_error') expect(r.reason).toBe('port_busy');
@@ -64,14 +74,18 @@ describe('connectAccount', () => {
 
 	it('detects state mismatch when the callback returns a different state', async () => {
 		const deps = happyDeps();
-		deps.openOAuth = vi.fn().mockResolvedValue({ ok: true, code: 'code', state: 'evil-state' });
+		deps.openOAuth = vi
+			.fn<NonNullable<ConnectFlowDeps['openOAuth']>>()
+			.mockResolvedValue({ ok: true, code: 'code', state: 'evil-state' });
 		const r = await connectAccount('anilist', deps);
 		expect(r.kind).toBe('state_mismatch');
 	});
 
 	it('returns persist_failed when safeStorage rejects the write', async () => {
 		const deps = happyDeps();
-		deps.persistAccount = vi.fn().mockResolvedValue({ ok: false, kind: 'io_error' });
+		deps.persistAccount = vi
+			.fn<NonNullable<ConnectFlowDeps['persistAccount']>>()
+			.mockResolvedValue({ ok: false, kind: 'io_error' });
 		const r = await connectAccount('anilist', deps);
 		expect(r.kind).toBe('persist_failed');
 	});
@@ -84,7 +98,9 @@ describe('connectAccount', () => {
 	// generic sign-in error users have no way to act on.
 	it('threads the underlying kind into persist_failed.reason', async () => {
 		const deps = happyDeps();
-		deps.persistAccount = vi.fn().mockResolvedValue({ ok: false, kind: 'encryption_unavailable' });
+		deps.persistAccount = vi
+			.fn<NonNullable<ConnectFlowDeps['persistAccount']>>()
+			.mockResolvedValue({ ok: false, kind: 'encryption_unavailable' });
 		const r = await connectAccount('anilist', deps);
 		expect(r.kind).toBe('persist_failed');
 		if (r.kind === 'persist_failed') expect(r.reason).toBe('encryption_unavailable');
@@ -92,7 +108,9 @@ describe('connectAccount', () => {
 
 	it('surfaces buildAuthUrl errors as api_error', async () => {
 		const deps = happyDeps();
-		deps.buildAuthUrl = vi.fn().mockRejectedValue(Object.assign(new Error('x'), { status: 502 }));
+		deps.buildAuthUrl = vi
+			.fn<NonNullable<ConnectFlowDeps['buildAuthUrl']>>()
+			.mockRejectedValue(Object.assign(new Error('x'), { status: 502 }));
 		const r = await connectAccount('anilist', deps);
 		expect(r.kind).toBe('api_error');
 		if (r.kind === 'api_error') expect(r.status).toBe(502);
@@ -100,7 +118,9 @@ describe('connectAccount', () => {
 
 	it('surfaces exchangeCode errors as api_error', async () => {
 		const deps = happyDeps();
-		deps.exchangeCode = vi.fn().mockRejectedValue(new Error('boom'));
+		deps.exchangeCode = vi
+			.fn<NonNullable<ConnectFlowDeps['exchangeCode']>>()
+			.mockRejectedValue(new Error('boom'));
 		const r = await connectAccount('anilist', deps);
 		expect(r.kind).toBe('api_error');
 		if (r.kind === 'api_error') expect(r.status).toBeUndefined();
@@ -108,7 +128,9 @@ describe('connectAccount', () => {
 
 	it('surfaces fetchMe errors as api_error', async () => {
 		const deps = happyDeps();
-		deps.fetchMe = vi.fn().mockRejectedValue(Object.assign(new Error('x'), { status: 401 }));
+		deps.fetchMe = vi
+			.fn<NonNullable<ConnectFlowDeps['fetchMe']>>()
+			.mockRejectedValue(Object.assign(new Error('x'), { status: 401 }));
 		const r = await connectAccount('anilist', deps);
 		expect(r.kind).toBe('api_error');
 		if (r.kind === 'api_error') expect(r.status).toBe(401);
@@ -175,10 +197,16 @@ describe('userIdFor', () => {
 describe('disconnectAccount', () => {
 	function disconnectDeps(): DisconnectFlowDeps {
 		return {
-			beginAccountChange: vi.fn(),
-			clearPersistedAccount: vi.fn().mockResolvedValue(true),
-			dropListCache: vi.fn().mockResolvedValue(undefined),
-			dropProviderCache: vi.fn().mockResolvedValue(undefined)
+			beginAccountChange: vi.fn<NonNullable<DisconnectFlowDeps['beginAccountChange']>>(),
+			clearPersistedAccount: vi
+				.fn<NonNullable<DisconnectFlowDeps['clearPersistedAccount']>>()
+				.mockResolvedValue(true),
+			dropListCache: vi
+				.fn<NonNullable<DisconnectFlowDeps['dropListCache']>>()
+				.mockResolvedValue(undefined),
+			dropProviderCache: vi
+				.fn<NonNullable<DisconnectFlowDeps['dropProviderCache']>>()
+				.mockResolvedValue(undefined)
 		};
 	}
 
@@ -237,7 +265,9 @@ describe('disconnectAccount', () => {
 
 	it('swallows dropListCache failures — eviction is best-effort', async () => {
 		const deps = disconnectDeps();
-		deps.dropListCache = vi.fn().mockRejectedValue(new Error('cache 502'));
+		deps.dropListCache = vi
+			.fn<NonNullable<DisconnectFlowDeps['dropListCache']>>()
+			.mockRejectedValue(new Error('cache 502'));
 		const s: ProviderState = { kind: 'connected', account: payload(), lastSyncedAt: 0 };
 		const r = await disconnectAccount('anilist', s, deps);
 		expect(r.kind).toBe('ok');
@@ -248,7 +278,9 @@ describe('disconnectAccount', () => {
 		// hydrate retries by leaving the cache rows in place; the
 		// renderer doesn't surface this to the user.
 		const deps = disconnectDeps();
-		deps.dropProviderCache = vi.fn().mockRejectedValue(new Error('cache 502'));
+		deps.dropProviderCache = vi
+			.fn<NonNullable<DisconnectFlowDeps['dropProviderCache']>>()
+			.mockRejectedValue(new Error('cache 502'));
 		const r = await disconnectAccount('anilist', { kind: 'disconnected' }, deps);
 		expect(r.kind).toBe('ok');
 	});
@@ -258,7 +290,9 @@ describe('disconnectAccount', () => {
 		// disk and hydrate() will restore the account next launch.
 		// Telling the user they're disconnected in that state is a lie.
 		const deps = disconnectDeps();
-		deps.clearPersistedAccount = vi.fn().mockResolvedValue(false);
+		deps.clearPersistedAccount = vi
+			.fn<NonNullable<DisconnectFlowDeps['clearPersistedAccount']>>()
+			.mockResolvedValue(false);
 		const s: ProviderState = { kind: 'connected', account: payload(), lastSyncedAt: 0 };
 		const r = await disconnectAccount('anilist', s, deps);
 		expect(r.kind).toBe('token_clear_failed');

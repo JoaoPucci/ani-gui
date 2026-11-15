@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { altTitlesFromKitsu, yearFromKitsuRef, type KitsuAnimeRef } from '$lib/api';
 import { buildPlayArgs } from './play-args';
 
-const show: KitsuAnimeRef = {
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+const show: KitsuAnimeRef = kitsuRefAnswer({
 	id: '42',
 	canonical_title: 'The Show',
 	titles: { en: 'The Show', en_jp: 'Za Shou' },
@@ -13,7 +14,7 @@ const show: KitsuAnimeRef = {
 	subtype: 'TV',
 	start_date: '2019-04-07',
 	status: 'finished'
-} as unknown as KitsuAnimeRef;
+});
 
 describe('buildPlayArgs', () => {
 	it("describes the episode by the show's Kitsu record and names the Kitsu id", () => {

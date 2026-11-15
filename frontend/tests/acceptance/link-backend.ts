@@ -16,6 +16,7 @@ import { http, HttpResponse, type HttpHandler } from 'msw';
 import { API_BASE } from './setup';
 import { cardListing, groupMembers } from '../../src/test/link-rules-fake';
 import type { LinkGroupRequest } from '../../src/lib/api';
+import type { HistoryEntry, HistoryNumber, LinkOutcome } from '../../src/lib/api';
 
 export interface Row {
 	ep_no: string;
@@ -45,15 +46,15 @@ function held(b: LinkBackend, card: string, rows: string[]): string[] {
 
 export function linkBackendHandlers(b: LinkBackend): HttpHandler[] {
 	return [
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json(b.rows)),
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>(b.rows)),
 		http.get(`${API_BASE}/api/history/:id/number`, ({ params }) => {
 			const row = b.rows.find((r) => r.id === params.id);
-			return HttpResponse.json(row ? { ep_no: row.ep_no } : null);
+			return HttpResponse.json<HistoryNumber | null>(row ? { ep_no: row.ep_no } : null);
 		}),
 		http.post(`${API_BASE}/api/history/link-group`, async ({ request }) => {
 			const body = (await request.json()) as LinkGroupRequest;
 			const members = groupMembers(body.card, body.show, body.saved, body.rows);
-			return HttpResponse.json(held(b, body.card, members));
+			return HttpResponse.json<string[]>(held(b, body.card, members));
 		}),
 		http.post(`${API_BASE}/api/history/link`, async ({ request }) => {
 			const body = (await request.json()) as { card: string; rows: string[]; kitsu_id: string };
@@ -70,7 +71,7 @@ export function linkBackendHandlers(b: LinkBackend): HttpHandler[] {
 			b.rows = b.rows.map((r) =>
 				ids.includes(r.id) ? { ...r, kitsu_id: body.kitsu_id, named: true } : r
 			);
-			return HttpResponse.json({ kitsu_id: body.kitsu_id, linked });
+			return HttpResponse.json<LinkOutcome>({ kitsu_id: body.kitsu_id, linked });
 		})
 	];
 }

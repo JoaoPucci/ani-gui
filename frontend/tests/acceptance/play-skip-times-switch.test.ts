@@ -42,6 +42,18 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 
+import type {
+	AiringStatus,
+	AniErrorPayload,
+	AvailabilityResponse,
+	Config,
+	CreateSessionResponse,
+	HistoryEntry,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer, errorAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Long Show';
 const EPISODES = 12;
@@ -114,17 +126,17 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 /** Lets every effect a dispatched event set off run. */
 const settle = () => new Promise((r) => setTimeout(r, 30));
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
@@ -141,7 +153,7 @@ interface Options {
 function serve(options: Options) {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({
+			HttpResponse.json<Config>({
 				...appConfig(),
 				auto_skip_op: options.autoSkipOp === true,
 				auto_play_next: options.autoPlayNext === true,
@@ -149,27 +161,37 @@ function serve(options: Options) {
 			})
 		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, EPISODES), status: 'finished' })
-		),
-		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: EPISODES, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
-			HttpResponse.json(kitsuEpisodes(EPISODES))
-		),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: EPISODES,
-				extra_episodes: options.extras ?? [],
-				episode_count_approximate: false
+			HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(KITSU_ID, TITLE, EPISODES),
+				status: 'finished'
 			})
 		),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+			HttpResponse.json<AiringStatus>({
+				aired: EPISODES,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(EPISODES))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: EPISODES,
+					extra_episodes: options.extras ?? [],
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>([])),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
 		http.get(`${API_BASE}/api/aniskip/:id/:episode`, ({ request, params }) => {
 			const episode = String(params.episode);
 			asks.push({
@@ -178,7 +200,7 @@ function serve(options: Options) {
 			});
 			const answer = options.skips[episode];
 			if (typeof answer === 'function') return answer();
-			return HttpResponse.json(answer ?? []);
+			return HttpResponse.json<SkipInterval[]>(answer ?? []);
 		})
 	);
 }
@@ -274,12 +296,14 @@ async function landSwitch(video: HTMLVideoElement, episode: number | string) {
 			es.landed = true;
 			es.dispatch(
 				'done',
-				JSON.stringify({
-					session_id: session,
-					media_url: `${API_BASE}/s/${session}/video.mp4`,
-					media_kind: 'mp4',
-					episode: `${episode}`
-				})
+				wire<CreateSessionResponse>(
+					sessionAnswer({
+						session_id: session,
+						media_url: `${API_BASE}/s/${session}/video.mp4`,
+						media_kind: 'mp4',
+						episode: `${episode}`
+					})
+				)
 			);
 		}
 		const src = video.getAttribute('src') ?? '';
@@ -392,7 +416,7 @@ describe('play route — skip times across an episode switch', () => {
 				11: [op(0, 90)],
 				12: async () => {
 					await late;
-					return HttpResponse.json([op(30, 120)]);
+					return HttpResponse.json<SkipInterval[]>([op(30, 120)]);
 				}
 			}
 		});
@@ -420,7 +444,7 @@ describe('play route — skip times across an episode switch', () => {
 				11: [op(0, 90)],
 				12: async () => {
 					await never;
-					return HttpResponse.json([]);
+					return HttpResponse.json<SkipInterval[]>([]);
 				}
 			}
 		});
@@ -440,7 +464,7 @@ describe('play route — skip times across an episode switch', () => {
 			autoSkipOp: true,
 			skips: {
 				11: [op(0, 90)],
-				12: () => HttpResponse.json({ error: 'error.aniskip.unreachable' }, { status: 502 })
+				12: () => errorAnswer(502, { kind: 'network', key: 'error.network.unreachable' })
 			}
 		});
 		await switchBy('next', video, 12);
@@ -521,9 +545,9 @@ describe('play route — skip times across an episode switch', () => {
 					elevens += 1;
 					if (elevens === 1) {
 						await first;
-						return HttpResponse.json([op(300, 400)]);
+						return HttpResponse.json<SkipInterval[]>([op(300, 400)]);
 					}
-					return HttpResponse.json([op(30, 120)]);
+					return HttpResponse.json<SkipInterval[]>([op(30, 120)]);
 				},
 				12: []
 			}
@@ -571,7 +595,7 @@ describe('play route — skip times across an episode switch', () => {
 				es.landed = true;
 				es.dispatch(
 					'error',
-					JSON.stringify({ kind: 'upstream', status: 503, key: 'error.network.upstream' })
+					wire<AniErrorPayload>({ kind: 'upstream', status: 503, key: 'error.network.upstream' })
 				);
 			}
 			return nextButton()?.disabled === false;

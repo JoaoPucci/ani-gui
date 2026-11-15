@@ -1,11 +1,15 @@
-//! `create_session` command — the frontend hands the backend a resolved
-//! upstream HLS URL (with referer) and gets back the
-//! proxy URL hls.js / `<video>` should fetch.
+//! `create_session` command — hands the backend a resolved upstream
+//! HLS URL (with referer) and gets back the proxy URL hls.js /
+//! `<video>` should fetch.
 //!
 //! The URL comes from the resolver: the play path walks the provider
 //! and hands the master playlist here. The contract predates that — it
 //! was written against a paste field — and is unchanged by it, which is
 //! the point of taking a URL rather than a show.
+//!
+//! The renderer reaches it only through a play. `POST /api/sessions`
+//! takes a URL directly; the Electron end-to-end tests use it to open a
+//! session on a stream they serve themselves.
 
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -15,7 +19,8 @@ use crate::error::{AniError, Result};
 use crate::proxy::{MediaKind, SessionSubtitle, StreamSession};
 use crate::scraper::provider::SubtitleTrack;
 
-/// Frontend → backend payload. All URLs are strings on the wire.
+/// Body of `POST /api/sessions`, and what the play path builds for a
+/// resolved stream. All URLs are strings on the wire.
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateSessionArgs {
     /// Upstream master playlist (or single media playlist) URL.

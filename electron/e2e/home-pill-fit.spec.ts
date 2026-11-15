@@ -38,6 +38,7 @@ import {
 	stopApp,
 	stopDeadApp
 } from './launch';
+import { answer } from './stubs';
 
 /** One row, which Continue Watching guesses: it records no show. */
 const history = [{ id: 'allmanga-test-show', ep_no: '5', title: 'Continue Test Show' }];
@@ -90,13 +91,13 @@ async function launchOnce(locale: string, onLaunch: (app: ElectronApplication) =
 	await page.route('**/api/**', async (r) => {
 		const p = new URL(r.request().url()).pathname;
 		const j = (body: unknown) =>
-			r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+			answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 		if (p === '/api/app-info') return j(appInfo);
 		if (p === '/api/settings') return j({ ...defaultSettings, locale });
 		if (p === '/api/kitsu/trending-anilist') return j(trending);
 		if (p === '/api/kitsu/top-rated') return j(topRated);
 		if (p.startsWith('/api/image')) {
-			return r.fulfill({ status: 200, contentType: 'image/png', body: PIXEL });
+			return answer(r, { status: 200, contentType: 'image/png', body: PIXEL });
 		}
 		if (p === '/api/history') return j(history);
 		if (p === '/api/history/card-lines') return j(cardLinesAnswer(r.request().postDataJSON()));

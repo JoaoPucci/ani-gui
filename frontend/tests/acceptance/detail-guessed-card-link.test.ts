@@ -48,6 +48,17 @@ import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { appLinkDeps } from '../../src/lib/history/link-deps';
 import { rememberAudio, storedAudio } from '../../src/lib/play/audio-choice';
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	HistoryEntry,
+	HistoryNumber,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	LinkOutcome,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
@@ -139,37 +150,48 @@ function show(id: string) {
 function serveBackend() {
 	server.use(
 		...homeHandlers({}, [
-			http.get(`${API_BASE}/api/history`, () => HttpResponse.json(rows)),
+			http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>(rows)),
 			http.get(`${API_BASE}/api/history/:id/number`, ({ params }) => {
 				const row = rows.find((r) => r.id === params.id);
-				return HttpResponse.json(row ? { ep_no: row.ep_no } : null);
+				return HttpResponse.json<HistoryNumber | null>(row ? { ep_no: row.ep_no } : null);
 			}),
 			http.get(`${API_BASE}/api/history/by-kitsu/:id`, ({ params }) =>
-				HttpResponse.json(rows.find((r) => r.kitsu_id === params.id) ?? null)
+				HttpResponse.json<HistoryRowByKitsu | null>(
+					rows.find((r) => r.kitsu_id === params.id) ?? null
+				)
 			),
 			// Continue Watching remembers the title's guess.
 			http.get(`${API_BASE}/api/title-match`, ({ request }) =>
-				HttpResponse.json(new URL(request.url).searchParams.get('title') === TITLE ? GUESS : null)
+				HttpResponse.json<string | null>(
+					new URL(request.url).searchParams.get('title') === TITLE ? GUESS : null
+				)
 			),
 			http.post(`${API_BASE}/api/kitsu/search`, async ({ request }) => {
 				const { query } = (await request.json()) as { query: string };
-				if (query === TITLE) return HttpResponse.json([show(GUESS), show(RIGHT)]);
-				if (query === 'black clover') return HttpResponse.json([show(RIGHT)]);
-				return HttpResponse.json([]);
+				if (query === TITLE) return HttpResponse.json<KitsuAnimeRef[]>([show(GUESS), show(RIGHT)]);
+				if (query === 'black clover') return HttpResponse.json<KitsuAnimeRef[]>([show(RIGHT)]);
+				return HttpResponse.json<KitsuAnimeRef[]>([]);
 			}),
 			http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
-				HttpResponse.json(show(String(params.id)))
+				HttpResponse.json<KitsuAnimeRef>(show(String(params.id)))
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/:id`, () =>
-				HttpResponse.json({ aired: 26, next_episode: null, next_airing_at: null, upcoming: [] })
+				HttpResponse.json<AiringStatus>({
+					aired: 26,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
+				})
 			),
 			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: 26,
-					extra_episodes: [],
-					episode_count_approximate: false
-				})
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 26,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				)
 			),
 			http.post(`${API_BASE}/api/history/link`, async ({ request }) => {
 				const body = (await request.json()) as { card: string; rows: string[]; kitsu_id: string };
@@ -185,18 +207,20 @@ function serveBackend() {
 				rows = rows.map((r) =>
 					body.rows.includes(r.id) ? { ...r, kitsu_id: body.kitsu_id, named: true } : r
 				);
-				return HttpResponse.json({ kitsu_id: body.kitsu_id, linked });
+				return HttpResponse.json<LinkOutcome>({ kitsu_id: body.kitsu_id, linked });
 			}),
 			// Both rows are Black Clover's one listing: the card's own and
 			// a retired provider's bare row with the same words.
 			http.post(`${API_BASE}/api/history/link-group`, async ({ request }) => {
 				const body = (await request.json()) as LinkGroupRequest;
 				const members = groupMembers(body.card, body.show, body.saved, body.rows);
-				return HttpResponse.json(members.filter((r) => rows.some((h) => h.id === r)));
+				return HttpResponse.json<string[]>(members.filter((r) => rows.some((h) => h.id === r)));
 			}),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
-			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () =>
+				HttpResponse.json<SkipInterval[]>(null)
+			),
+			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>(null))
 		])
 	);
 }
@@ -387,7 +411,7 @@ describe('changing the show', () => {
 				const body = (await request.json()) as { card: string; rows: string[]; kitsu_id: string };
 				linkCalls.push(body);
 				await held;
-				return HttpResponse.json({ kitsu_id: body.kitsu_id, linked: [] });
+				return HttpResponse.json<LinkOutcome>({ kitsu_id: body.kitsu_id, linked: [] });
 			})
 		);
 		await linkToTheRightShow();
@@ -463,7 +487,7 @@ describe('the picker, by keyboard and while it links', () => {
 				const body = (await request.json()) as { card: string; rows: string[]; kitsu_id: string };
 				linkCalls.push(body);
 				await held;
-				return HttpResponse.json({ kitsu_id: body.kitsu_id, linked: [] });
+				return HttpResponse.json<LinkOutcome>({ kitsu_id: body.kitsu_id, linked: [] });
 			})
 		);
 		await linkToTheRightShow();
@@ -566,7 +590,7 @@ describe('a show page on screen when a link answers elsewhere', () => {
 			http.get(`${API_BASE}/api/history/by-kitsu/:id`, async ({ params }) => {
 				const found = rows.find((r) => r.kitsu_id === params.id) ?? null;
 				if (++asks === 1) await held;
-				return HttpResponse.json(found);
+				return HttpResponse.json<HistoryRowByKitsu | null>(found);
 			})
 		);
 		await openShowPage(RIGHT);

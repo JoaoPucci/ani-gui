@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { altTitlesFromKitsu, yearFromKitsuRef, type KitsuAnimeRef } from '$lib/api';
 import { handoffArgs } from './handoff-args';
 
-const detail: KitsuAnimeRef = {
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+const detail: KitsuAnimeRef = kitsuRefAnswer({
 	id: '42',
 	canonical_title: 'The Show',
 	titles: { en: 'The Show', en_jp: 'Za Shou' },
@@ -13,7 +14,7 @@ const detail: KitsuAnimeRef = {
 	subtype: 'TV',
 	start_date: '2019-04-07',
 	status: 'finished'
-} as unknown as KitsuAnimeRef;
+});
 
 describe('handoffArgs', () => {
 	it('sends the same request the embedded play sends, the Kitsu id included', () => {
