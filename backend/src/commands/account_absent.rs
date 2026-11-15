@@ -9,13 +9,16 @@ use crate::error::{AniError, Result};
 /// when the tracker no longer has the entry, so nothing was written.
 ///
 /// The tracker answering the write itself with absence (404/410) is
-/// that answer. A write it refuses as a bad request (any other 4xx) can
-/// mean the same thing in other words — AniList validates a mutation's
-/// `mediaId` — so it is confirmed with one live read of the entry: the
-/// write answers `None` only when that read answers absent, and keeps
-/// its own error otherwise. Every other failure (a rate limit, a revoked
-/// bearer, a 5xx, the network) says nothing about the entry, is not
-/// confirmed, and comes back as it came.
+/// that answer. A write it refuses as a bad request (any other 4xx), or
+/// answers with no entry it can be read as (AniList can send a refused
+/// mutation's `errors` with HTTP 200), can mean the same thing in other
+/// words — AniList validates a mutation's `mediaId` — so it is confirmed
+/// with one live read of the entry: the write answers `None` only when
+/// that read answers absent. A read the tracker rate-limits, or refuses
+/// the bearer for, reports that, since it says what to do next; any
+/// other read keeps the write's own error. Every other failure of the
+/// write (a rate limit, a revoked bearer, a 5xx, the network) says
+/// nothing about the entry, is not confirmed, and comes back as it came.
 ///
 /// # Errors
 /// The write's error, unless the tracker answered that the entry is
@@ -27,20 +30,26 @@ pub(crate) async fn update_unless_absent(
     update: EntryUpdate,
 ) -> Result<Option<ListEntry>> {
     let err = match AniError::unless_absent(provider.update_entry(tokens, native, update).await) {
-        Err(err) if refused_as_bad_request(&err) => err,
+        Err(err) if needs_confirming(&err) => err,
         written => return written,
     };
     match provider.current_entry(tokens, native).await {
         Err(read) if read.is_not_found_shaped() => Ok(None),
+        Err(read @ (AniError::RateLimited { .. } | AniError::InvalidToken)) => Err(read),
         _ => Err(err),
     }
 }
 
-/// Whether `err` is the tracker refusing the request as a bad one: a
-/// 4xx other than absence. A 401 and a 429 reach here as their own
+/// Whether a write's `err` leaves open that the entry is gone: the
+/// tracker refusing it as a bad request (a 4xx other than absence), or
+/// answering with no entry. A 401 and a 429 reach here as their own
 /// variants, not as a status.
-fn refused_as_bad_request(err: &AniError) -> bool {
-    matches!(err, AniError::Upstream { status } if (400..500).contains(status))
+fn needs_confirming(err: &AniError) -> bool {
+    match err {
+        AniError::Upstream { status } => (400..500).contains(status),
+        AniError::ParseFailed { .. } => true,
+        _ => false,
+    }
 }
 
 #[cfg(test)]
