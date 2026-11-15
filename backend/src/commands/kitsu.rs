@@ -19,7 +19,7 @@ use crate::cache::ttl::{
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::anilist_eps_thumbs;
 use crate::commands::kitsu_warm::warm_signed_image_urls;
-use crate::error::Result;
+use crate::error::{AniError, Result};
 use crate::meta::kitsu::{drop_music, KitsuAnimeRef, KitsuCoverImage, KitsuEpisode};
 
 pub use super::kitsu_search::kitsu_search;
@@ -1154,39 +1154,55 @@ async fn anime_detail_read(
     }
     past_cache(state);
     // Keyed by the state as well as the id, as the franchise listings
-    // are: one app has one state, and two states (two tests) never
-    // share an answer. The AniList endpoint is a test seam; reads
-    // aimed at different ones are not the same read.
+    // are: the routes share the app's one state, so the show page and
+    // the walk share a read, while two states (two tests, or a held-fill
+    // retry's clone of the state) never do. The AniList endpoint is a
+    // test seam; reads aimed at different ones are not the same read.
     let running = format!(
         "{:p}:{id}:{}",
         std::ptr::from_ref(state),
         anilist_base.unwrap_or_default()
     );
-    DETAILS_IN_FLIGHT
+    let (detail, held) = DETAILS_IN_FLIGHT
         .run(running, || {
             anime_detail_fetch(state, id, &key, begun, anilist_base)
         })
-        .await
+        .await?;
+    if let Some(e) = &held {
+        // Each read sharing the request acts on a banner held back on
+        // it in its own task: whichever ran the request, a page that
+        // asked is queued a retry, or joins it, and notes its ticket
+        // (`held_fill`); a read no page asked for queues nothing.
+        super::held_fill::on_unanswered(state, super::held_fill::Fill::Detail, id, anilist_base, e);
+    }
+    Ok(detail)
 }
 
 /// The detail reads in flight: the show page and the franchise walk
 /// asking for one anime's detail at the same time, before either answer
 /// is cached, share one request (and its banner backfill).
-static DETAILS_IN_FLIGHT: std::sync::LazyLock<
-    crate::meta::inflight::Inflight<Result<KitsuAnimeRef>>,
-> = std::sync::LazyLock::new(Default::default);
+static DETAILS_IN_FLIGHT: std::sync::LazyLock<crate::meta::inflight::Inflight<Fetched>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// What [`anime_detail_fetch`] answers: the detail, and the failure that
+/// left its banner unanswered, if one did.
+type Fetched = Result<(KitsuAnimeRef, Option<AniError>)>;
 
 /// The part of [`anime_detail_read`] past a cache miss: Kitsu's answer,
-/// its banner backfill, and the row cached from them. A read sharing
-/// another's takes this one's answer, gone verdict included: the one
-/// request is judged from the moment the first read began.
+/// its banner backfill, and the row cached from them, with the failure
+/// that left the banner unanswered, if one did (the row is then not
+/// cached). A read sharing another's
+/// takes this one's answer, gone verdict included: the one request is
+/// judged from the moment the read that ran it began, so a read begun
+/// later, after a history removal, takes the verdict of a request that
+/// may have left before it.
 async fn anime_detail_fetch(
     state: &AppState,
     id: &str,
     key: &str,
     begun: crate::history::guard::Epoch,
     anilist_base: Option<&str>,
-) -> Result<KitsuAnimeRef> {
+) -> Fetched {
     let mut detail = state
         .kitsu
         .anime_detail(id)
@@ -1209,7 +1225,7 @@ async fn anime_detail_fetch(
     // lifetime — when there is one. A lookup that got no answer (a
     // rate limit, a failed request) is not "no banner": the detail is
     // served without one but not kept, so the next read asks again.
-    let mut answered = true;
+    let mut held = None;
     if detail.cover_image.is_none() {
         // A show the trending row listed already brought its banner
         // with that one request; only an unlisted show asks AniList.
@@ -1218,16 +1234,11 @@ async fn anime_detail_fetch(
             None => anilist_banner_for(state, id, anilist_base)
                 .await
                 .unwrap_or_else(|e| {
-                    answered = false;
-                    // Held back by the gate: retried once the pause
-                    // ends, and the page told so (`held_fill`).
-                    super::held_fill::on_unanswered(
-                        state,
-                        super::held_fill::Fill::Detail,
-                        id,
-                        anilist_base,
-                        &e,
-                    );
+                    // No answer: the row is not kept, and a fill the
+                    // gate held back is retried once the pause ends,
+                    // the page told so, by each read sharing this one
+                    // (`anime_detail_read`).
+                    held = Some(e);
                     None
                 }),
         }
@@ -1248,7 +1259,7 @@ async fn anime_detail_fetch(
 
     let body = serde_json::to_string(&detail).ok();
     super::kitsu_gone::publish_served(state, id, fetched, || {
-        if let Some(body) = body.as_ref().filter(|_| answered) {
+        if let Some(body) = body.as_ref().filter(|_| held.is_none()) {
             let ttl = anime_detail_ttl(detail.status.as_deref());
             let _ = meta_cache_put(&state.cache_pool, key, body, ttl);
         }
@@ -1256,7 +1267,7 @@ async fn anime_detail_fetch(
     if let Some(body) = &body {
         warm_signed_image_urls(state, body);
     }
-    Ok(detail)
+    Ok((detail, held))
 }
 
 /// AniList's `bannerImage` for a Kitsu anime, reached through the

@@ -51,6 +51,11 @@ fn state(kitsu_uri: &str) -> crate::scratch::Scratch<AppState> {
 
 /// Kitsu mapping each show to an AniList id, its detail with no cover.
 async fn kitsu(shows: &[(&str, u32)]) -> MockServer {
+    kitsu_after(shows, Duration::ZERO).await
+}
+
+/// [`kitsu`], answering each detail after `delay`, so reads overlap.
+async fn kitsu_after(shows: &[(&str, u32)], delay: Duration) -> MockServer {
     let server = MockServer::start().await;
     for (kitsu_id, anilist_id) in shows {
         Mock::given(method("GET"))
@@ -76,7 +81,8 @@ async fn kitsu(shows: &[(&str, u32)]) -> MockServer {
             .respond_with(
                 ResponseTemplate::new(200)
                     .insert_header("content-type", "application/vnd.api+json")
-                    .set_body_json(detail),
+                    .set_body_json(detail)
+                    .set_delay(delay),
             )
             .mount(&server)
             .await;
@@ -308,6 +314,76 @@ async fn a_held_back_banner_lands_with_its_detail_row() {
     assert_eq!(wait_any(&tickets, WAIT).await, vec![(tickets[0], true)]);
     let body = row(&state, &key).expect("the retry kept the row");
     assert!(body.contains("https://al/b.jpg"), "{body}");
+}
+
+/// A page reading a detail another read is already fetching shares
+/// that read's request, and a banner held back on it is the page's to
+/// wait on as well: the read that ran the request may be one no page
+/// asked for (the franchise walk), which queues no retry of its own.
+#[tokio::test]
+async fn a_page_sharing_a_held_back_read_no_page_asked_for_gets_its_retry() {
+    let kitsu = kitsu_after(&[("21", 39)], Duration::from_millis(300)).await;
+    let anilist = anilist(Some(1), 1, BANNER).await;
+    let _gate = share_for_tests(&anilist.uri(), ANILIST);
+    let state = state(&kitsu.uri());
+    let uri = anilist.uri();
+    let read =
+        || crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(&state, "21", Some(&uri));
+
+    let page = async {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        collect(read()).await
+    };
+    let (walk, (page, tickets)) = tokio::join!(read(), page);
+    assert!(walk.expect("walk").cover_image.is_none());
+    assert!(page.expect("page").cover_image.is_none());
+    assert_eq!(requests(&anilist).await, 1, "one banner lookup for both");
+    assert_eq!(tickets.len(), 1, "the page waits on the retry");
+
+    assert_eq!(wait_any(&tickets, WAIT).await, vec![(tickets[0], true)]);
+    let key = crate::commands::kitsu::anime_detail_key("21");
+    let body = row(&state, &key).expect("the retry kept the row");
+    assert!(body.contains("https://al/b.jpg"), "{body}");
+}
+
+/// Two pages reading one detail at once both wait on the retry of the
+/// banner held back on the request they shared.
+#[tokio::test]
+async fn two_pages_sharing_a_held_back_read_both_get_its_ticket() {
+    let kitsu = kitsu_after(&[("22", 40)], Duration::from_millis(300)).await;
+    let anilist = anilist(Some(1), 1, BANNER).await;
+    let _gate = share_for_tests(&anilist.uri(), ANILIST);
+    let state = state(&kitsu.uri());
+    let uri = anilist.uri();
+    let read =
+        || crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(&state, "22", Some(&uri));
+
+    let ((_, first), (_, second)) = tokio::join!(collect(read()), collect(read()));
+    assert_eq!(first.len(), 1);
+    assert_eq!(first, second, "one retry, one ticket, both pages");
+    assert_eq!(wait_any(&first, WAIT).await, vec![(first[0], true)]);
+}
+
+/// Two reads at once that find a banner share the one lookup and both
+/// carry it.
+#[tokio::test]
+async fn two_reads_at_once_share_one_banner_lookup() {
+    let kitsu = kitsu_after(&[("23", 41)], Duration::from_millis(300)).await;
+    let anilist = anilist(Some(0), 1, BANNER).await;
+    let _gate = share_for_tests(&anilist.uri(), ANILIST);
+    let state = state(&kitsu.uri());
+    let uri = anilist.uri();
+    let read =
+        || crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(&state, "23", Some(&uri));
+
+    let (a, b) = tokio::join!(read(), read());
+    for detail in [a, b] {
+        assert_eq!(
+            detail.expect("detail").anilist_banner.as_deref(),
+            Some("https://al/b.jpg")
+        );
+    }
+    assert_eq!(requests(&anilist).await, 1);
 }
 
 #[tokio::test]
