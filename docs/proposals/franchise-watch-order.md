@@ -131,7 +131,8 @@ Built: [`architecture.md`, "The player's Up next card"](../architecture.md#the-p
 
 **How it looks.** `/anime/<id>/franchise`, reached from the strip's
 trailing link and from search results that belong to a franchise. A
-header named after the run's first entry, with your position: "05 ·
+header named as the franchise read names it (`name`, in
+`title-resolution.md`), with your position: "05 ·
 *Golden Wind* · EP 12" (with a total only for a run with no fork, join
 or cycle) and a Resume button; its hero and accent are set in the
 design section. Below it, sections:
@@ -429,7 +430,8 @@ Built: [`architecture.md`, "Continue Watching's hand-off"](../architecture.md#co
   linked titles, order unclear" with one sentence on why it has no
   clear order; its entries are listed along their links. In release
   order every one of these is a single numbered line.
-- **Masthead.** The franchise is named after the run's first entry,
+- **Masthead.** The franchise is named as the franchise read names it
+  (`name`, in `title-resolution.md`),
   without Kitsu's format suffix ("(TV)", "(Movie)", …) unless another
   entry of the franchise would then read the same, ignoring case; the
   suffix then stays, since it is what tells the two apart. *JoJo no
@@ -590,11 +592,9 @@ border at rest; what is open is the franchise link beside it.
    width; the centre-line version ties the pair to the strip's
    columns but only fits side by side from about a 1210 px window,
    and below that stacks them, centred. The design critic agreed.
-3. **The watching card's border.** In the centred footers the card
-   loses its resting border so it pairs with the stack (both bare at
-   rest, the same plate on hover and focus). Recommended: keep that;
-   the alternative is a border on both, which makes the stack read as
-   a second card. This one came from the design critic's review.
+3. **The watching card's border.** Built as recommended: the card has
+   no border at rest, so it will pair with the stack (both bare at
+   rest, the same plate on hover and focus).
 
 ## 6. Recommendation and plan for 0.19.0
 
