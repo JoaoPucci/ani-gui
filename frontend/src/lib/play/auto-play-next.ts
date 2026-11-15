@@ -22,6 +22,8 @@ export interface AutoPlayInput {
 	extras?: readonly number[];
 	/** The episode was handed to another player. */
 	handedOff?: boolean;
+	/** The player's next-episode step is open (`stepOpen`); open unless said. */
+	stepOpen?: boolean;
 }
 
 export type AutoPlayDecision = { advance: true; target: number } | { advance: false };
@@ -31,9 +33,10 @@ export function decideAutoPlayNext({
 	episodeNum,
 	totalEpisodes,
 	extras = [],
-	handedOff = false
+	handedOff = false,
+	stepOpen = true
 }: AutoPlayInput): AutoPlayDecision {
-	if (!enabled || handedOff) return { advance: false };
+	if (!enabled || handedOff || !stepOpen) return { advance: false };
 	const target = nextEpisode(episodeNum, extras);
 	if (!stepAllowed(target, totalEpisodes, extras)) return { advance: false };
 	return { advance: true, target };
