@@ -1720,7 +1720,7 @@
 			settledOrder(config, configFailed),
 			upNextToday,
 			episodeNum,
-			detail ? { status: detail.status, episodes: detail.episode_count } : null
+			detail ? { id: detail.id, status: detail.status, episodes: detail.episode_count } : null
 		)
 	);
 	let upNextDismissed = $state(false);
