@@ -640,4 +640,29 @@ describe('franchise page — leaving it while Kitsu is slow', () => {
 			(release as (() => void) | null)?.();
 		}
 	});
+
+	it('cancels the settings read still out, as every page does when it goes', async () => {
+		const fetches = watchPageFetches();
+		let release: (() => void) | null = null;
+		useFranchise();
+		server.use(
+			http.get(
+				`${API_BASE}/api/settings`,
+				() =>
+					new Promise<Response>((resolve) => {
+						release = () => resolve(HttpResponse.json(appConfig()));
+					})
+			)
+		);
+		app = mount(FranchisePage, { target });
+		const settingsRead = (f: { path: string }) => f.path === '/api/settings';
+		await until(() => fetches.sent.some(settingsRead), 'the settings read');
+		unmount(app);
+		app = null;
+		try {
+			await until(() => fetches.failed.some(settingsRead), 'the settings read cancelled', 2000);
+		} finally {
+			(release as (() => void) | null)?.();
+		}
+	});
 });
