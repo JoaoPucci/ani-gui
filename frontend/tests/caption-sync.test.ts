@@ -3,13 +3,18 @@
 // elements' tracks first, as Chromium does.
 import { describe, expect, it } from 'vitest';
 import type Hls from 'hls.js';
-import { createCaptionSync, pickCaptions, type CaptionSyncEvents } from './caption-engine';
+import { createCaptionSync } from '../src/lib/play/caption-sync';
+import {
+	pickCaptions,
+	plainCaptions,
+	type CaptionSyncEvents
+} from '../src/lib/play/caption-sync-tracks';
 import {
 	HlsSubtitleModel,
 	MODEL_EVENTS,
 	ModelTrackVideo,
 	type ModelTrack
-} from '../../../tests/hls-subtitle-model';
+} from './hls-subtitle-model';
 
 const RENDITIONS = [
 	{ name: 'English', lang: 'en', default: true },
@@ -250,7 +255,7 @@ describe('a sidecar track labelled as a rendition', () => {
 		const { video, engine, sync } = setup();
 		playlistIn(engine);
 		sync.beforeOwnTracks('own');
-		const label = (await import('./caption-engine')).distinctLabel(
+		const label = (await import('../src/lib/play/caption-engine')).distinctLabel(
 			'English',
 			'en',
 			sync.renditions()
@@ -276,7 +281,10 @@ describe('whenReady', () => {
 		expect(ran).toEqual([]);
 		engine.manifestParsed(RENDITIONS);
 		expect(ran).toEqual(['early']);
-		sync.whenReady(() => ran.push('late'));
+		const done = sync.whenReady(() => ran.push('late'));
+		expect(ran).toEqual(['early', 'late']);
+		// Nothing is left to cancel.
+		done();
 		expect(ran).toEqual(['early', 'late']);
 		expect(sync.renditions()).toBe(RENDITIONS);
 	});
@@ -297,5 +305,26 @@ describe('pickCaptions', () => {
 		const fr = video.addElement('Français', 'fr');
 		pickCaptions(video, indexOf(video, fr), null);
 		expect(fr.mode).toBe('showing');
+	});
+});
+
+describe('plainCaptions, without an engine', () => {
+	it('sets the tracks alone, turns them off for tracks about to join, and waits for nothing', () => {
+		const video = new ModelTrackVideo();
+		const fr = video.addElement('Français', 'fr');
+		const de = video.addElement('Deutsch', 'de', 'showing');
+		const plain = plainCaptions(video);
+		plain.beforeOwnTracks('own');
+		expect(de.mode).toBe('disabled');
+		plain.pick(indexOf(video, fr));
+		expect(fr.mode).toBe('showing');
+		plain.pickTrack(de);
+		plain.release();
+		plain.dispose();
+		expect(fr.mode).toBe('showing');
+		expect(plain.renditions()).toEqual([]);
+		const ran: string[] = [];
+		plain.whenReady(() => ran.push('now'))();
+		expect(ran).toEqual(['now']);
 	});
 });

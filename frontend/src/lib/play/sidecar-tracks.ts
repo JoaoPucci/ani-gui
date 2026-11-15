@@ -14,8 +14,8 @@
  * exercised by the acceptance test on the mounted page.
  */
 
-import { distinctLabel, type CaptionSync } from './caption-engine';
-import { applyCaptionPick } from './caption-pick';
+import { distinctLabel } from './caption-engine';
+import { plainCaptions, type CaptionSync } from './caption-sync-tracks';
 import { startingTrack } from './caption-start';
 import { expectCaptions, expectedCaptions, extraBeside, showingCaption } from './caption-watch';
 import type { SessionSubtitle } from '$lib/api';
@@ -89,7 +89,7 @@ export async function fetchSidecarTracks(
  * - whatever shows is turned off first — a track the stream's playlist
  *   carries may be — so nothing shows when the new tracks join. On a
  *   stream played through hls.js, that and every later pick go through
- *   the engine's own selection (`sync`, {@link import('./caption-engine')}),
+ *   the engine's own selection (`sync`, {@link import('./caption-sync')}),
  *   which would otherwise switch its tracks against the start, and each
  *   track's label is kept apart from the playlist's renditions;
  * - the start's track is switched on before it joins, which the
@@ -119,9 +119,9 @@ export function attachSidecarTracks(
 	sync?: CaptionSync
 ): () => void {
 	const start = startingTrack(tracks, locale, remembered);
-	if (sync) sync.beforeOwnTracks(start === null ? 'off' : 'own');
-	else applyCaptionPick(video.textTracks, 'off');
-	const renditions = sync?.renditions() ?? [];
+	const captions = sync ?? plainCaptions(video);
+	captions.beforeOwnTracks(start === null ? 'off' : 'own');
+	const renditions = captions.renditions();
 	const elements = tracks.map((track, i) => {
 		const attrs = { ...trackAttributes(track), default: i === start };
 		const el = document.createElement('track');
@@ -137,7 +137,7 @@ export function attachSidecarTracks(
 		return el;
 	});
 	if (start !== null) redrawOnLoad(video, elements[start]);
-	sync?.pickTrack(start === null ? 'off' : elements[start].track);
+	captions.pickTrack(start === null ? 'off' : elements[start].track);
 	const stopKeeping = keepAlone(video);
 	// What the app set, so the browser's own captions menu can be told
 	// from it ($lib/play/caption-watch).
@@ -145,7 +145,7 @@ export function attachSidecarTracks(
 	return () => {
 		// The tracks going are no pick of the viewer's.
 		expectCaptions(video, null);
-		sync?.release();
+		captions.release();
 		stopKeeping();
 		for (const el of elements) {
 			if (el.track.mode !== 'disabled') el.track.mode = 'disabled';
@@ -207,11 +207,9 @@ export function armSidecarTracks(
 	let unwait: (() => void) | null = null;
 	void fetchSidecarTracks(mediaUrl, sessionId, controller.signal).then((tracks) => {
 		if (controller.signal.aborted || tracks.length === 0) return;
-		const attach = () => {
+		unwait = (sync ?? plainCaptions(video)).whenReady(() => {
 			detach = attachSidecarTracks(video, tracks, locale, remembered, sync);
-		};
-		if (sync) unwait = sync.whenReady(attach);
-		else attach();
+		});
 	});
 	return () => {
 		controller.abort();

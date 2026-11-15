@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CaptionSync, EngineTrack } from './caption-engine';
+import type { EngineTrack } from './caption-engine';
+import type { CaptionSync } from './caption-sync-tracks';
 import { expectCaptions, noteCaptionChange } from './caption-watch';
 import {
 	armSidecarTracks,
