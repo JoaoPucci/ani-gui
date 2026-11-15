@@ -1,7 +1,7 @@
 /**
  * The watch-order feature's data, in the shape the backend's
- * `GET /api/kitsu/franchise/:id` serves it (docs/proposals/
- * franchise-watch-order.md, section 4): a run of entries joined by
+ * `GET /api/kitsu/franchise/:id` serves it (docs/title-resolution.md,
+ * "Kitsu's relations, walked into a franchise"): a run of entries joined by
  * prequel/sequel links, and the entries around it. Ordering, numbering
  * and every layout decision are made from these in the pure modules
  * beside this one.

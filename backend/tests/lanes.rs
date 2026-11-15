@@ -150,26 +150,6 @@ async fn app_info(api: &str, secret: &str) -> serde_json::Value {
         .expect("app-info json")
 }
 
-/// The file the backend keeps its metadata cache in, found under the
-/// test's home, where it lands on Linux and macOS.
-#[cfg(not(target_os = "windows"))]
-fn metadata_db(home: &Path) -> std::path::PathBuf {
-    fn find(dir: &Path) -> Option<std::path::PathBuf> {
-        for entry in std::fs::read_dir(dir).ok()?.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                if let Some(found) = find(&path) {
-                    return Some(found);
-                }
-            } else if path.file_name().is_some_and(|n| n == "metadata.sqlite") {
-                return Some(path);
-            }
-        }
-        None
-    }
-    find(home).unwrap_or_else(|| panic!("no metadata.sqlite under {}", home.display()))
-}
-
 /// A play's session, opened through the play route as the renderer
 /// opens one, and the playlist the proxy serves for it, both name the
 /// stream lane.
@@ -177,15 +157,9 @@ fn metadata_db(home: &Path) -> std::path::PathBuf {
 /// The backend answers the play from its resolution cache — the test
 /// turns replays on through the settings route and writes the row the
 /// play reads, naming a stream it serves — since a resolve would walk
-/// a provider. Not on Windows: there the backend finds its config and
-/// cache through the known-folder API, which no variable a test sets
-/// redirects, so they are the dev profile's, outside the test's home,
-/// and turning replays on would change that profile's settings.
-/// `play_stream_origin.rs` holds the session and playlist to the
-/// proxy's origin in-process on every platform, and
-/// `the_stream_proxy_base_is_the_stream_lane` holds that origin to the
-/// stream lane, which it finds serving the proxy's routes.
-#[cfg(not(target_os = "windows"))]
+/// a provider. The settings and the cache it writes are the test's
+/// own on every platform, under the profile root `common::command`
+/// sets.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_plays_session_and_its_playlist_name_the_stream_lane() {
     use ani_gui::commands::play_resolution_cache::{cache_key, put, CachedResolution};
@@ -228,7 +202,8 @@ async fn a_plays_session_and_its_playlist_name_the_stream_lane() {
         .expect("put settings");
     assert!(put_settings.status().is_success(), "{put_settings:?}");
 
-    let pool = ani_gui::cache::open_pool(&metadata_db(home.path())).expect("the backend's cache");
+    let pool = ani_gui::cache::open_pool(&common::profile::metadata_db(home.path()))
+        .expect("the backend's cache");
     put(
         &pool,
         &cache_key("Lanes Test Show", "sub", "1", None, None, None),

@@ -26,8 +26,12 @@ fn is_series(e: &FranchiseEntry) -> bool {
 /// The entries whose parent check placed `anchor` in the answer `f`, as
 /// the walk picks them: the anchor, unless its own run is a run of
 /// one-offs and none of the parent stories it names outside that run
-/// that the check takes is in the answer's run, in which case the run's
-/// members.
+/// that the check takes is in the answer's main story or on its chain
+/// (the walk takes the anchor's own parents first, from the main story,
+/// else from the entries the walk joined to it, drawn on the earliest
+/// one's chain), in which case the run's members. The answer's other
+/// lists (sides, films, versions, recaps) reach entries the walk never
+/// takes a parent from, so they do not count.
 fn placers(cat: &super::tests::Catalogue, anchor: &str, f: &Franchise) -> Vec<String> {
     let look = Lookup {
         known: &cat.listings,
@@ -40,7 +44,12 @@ fn placers(cat: &super::tests::Catalogue, anchor: &str, f: &Franchise) -> Vec<St
     }
     let mine = parent_stories(anchor, &look, &BTreeSet::new(), &BTreeSet::new())
         .expect("every listing is known");
-    let in_answer = |p: &String| f.entries.iter().any(|e| &e.id == p);
+    let in_answer = |p: &String| {
+        f.entries
+            .iter()
+            .chain(f.chain.iter().flat_map(|c| c.entries.iter()))
+            .any(|e| &e.id == p)
+    };
     if mine
         .parents
         .iter()
