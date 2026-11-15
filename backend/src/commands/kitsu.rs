@@ -1270,6 +1270,10 @@ mod anilist_banner_tests;
 mod banner_tests;
 
 #[cfg(test)]
+#[path = "kitsu_detail_shared_test.rs"]
+mod detail_shared_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::app::AppState;
