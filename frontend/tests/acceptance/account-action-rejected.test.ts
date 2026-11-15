@@ -42,6 +42,10 @@ import { accountStore } from '../../src/lib/account/store.svelte';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import type { PersistedAccount, Provider } from '../../src/lib/account/types';
 
+import type { AuthUrlResponse } from '../../src/lib/account/api';
+import type { ListEntry } from '../../src/lib/account/types';
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 const SIGN_IN_FAILED = 'Sign-in failed. Try again.';
 const SIGN_IN_CANCELLED = 'Sign-in was cancelled.';
 const CLEAR_FAILED = "Couldn't remove your sign-in from this computer. Try again.";
@@ -116,18 +120,23 @@ async function settle(steps = 40) {
 
 async function open() {
 	server.use(
-		http.get(`${API_BASE}/api/update-check`, () => HttpResponse.json(null, { status: 503 })),
+		http.get(`${API_BASE}/api/update-check`, () => errorAnswer(503)),
 		...homeHandlers({}, [
 			http.post(`${API_BASE}/api/account/auth-url/:provider`, () =>
-				HttpResponse.json({ url: 'https://anilist.co/api/v2/oauth/authorize?x=1' })
+				HttpResponse.json<AuthUrlResponse>({ url: 'https://anilist.co/api/v2/oauth/authorize?x=1' })
 			),
-			http.post(`${API_BASE}/api/account/list/:provider`, () => HttpResponse.json([])),
-			http.get(`${API_BASE}/api/account/list/:provider/cached`, () => HttpResponse.json([])),
-			http.delete(`${API_BASE}/api/account/list/:provider/cache`, () =>
-				HttpResponse.json(null, { status: 204 })
+			http.post(`${API_BASE}/api/account/list/:provider`, () => HttpResponse.json<ListEntry[]>([])),
+			http.get(`${API_BASE}/api/account/list/:provider/cached`, () =>
+				HttpResponse.json<ListEntry[]>([])
 			),
-			http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json([])),
-			http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} }))
+			http.delete(
+				`${API_BASE}/api/account/list/:provider/cache`,
+				() => new HttpResponse(null, { status: 204 })
+			),
+			http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+			http.post(`${API_BASE}/api/availability/batch`, () =>
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+			)
 		])
 	);
 	const children = createRawSnippet(() => ({ render: () => '<div></div>' }));

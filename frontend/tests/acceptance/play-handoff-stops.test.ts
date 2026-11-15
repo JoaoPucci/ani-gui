@@ -14,7 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { mount, unmount } from 'svelte';
+import { flushSync, mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
@@ -39,6 +39,38 @@ vi.mock('$app/navigation', () => ({
 vi.mock('../../src/lib/play/held-retry', async (importOriginal) =>
 	(await import('./held-retries')).trackHeldRetries(await importOriginal())
 );
+
+// What a case that says nothing started here reads, rather than
+// waiting a fixed time. A recovery asks its eviction as it starts, in
+// the failure's own handler, so a count taken where it is asked can be
+// read as soon as the failure is dispatched. The end of an episode is
+// judged in the `ended` handler, and the judgement recorded with
+// whether auto-play was on for it.
+const seen = vi.hoisted(() => ({
+	evictions: 0,
+	endings: [] as { enabled: boolean; handedOff: boolean; advance: boolean }[]
+}));
+vi.mock('$lib/api', async (importOriginal) => {
+	const real = await importOriginal<typeof import('$lib/api')>();
+	const evictPlayCache: typeof real.evictPlayCache = (args) => {
+		seen.evictions += 1;
+		return real.evictPlayCache(args);
+	};
+	return { ...real, evictPlayCache };
+});
+vi.mock('$lib/play/auto-play-next', async (importOriginal) => {
+	const real = await importOriginal<typeof import('$lib/play/auto-play-next')>();
+	const decideAutoPlayNext: typeof real.decideAutoPlayNext = (input) => {
+		const decision = real.decideAutoPlayNext(input);
+		seen.endings.push({
+			enabled: input.enabled,
+			handedOff: input.handedOff === true,
+			advance: decision.advance
+		});
+		return decision;
+	};
+	return { ...real, decideAutoPlayNext };
+});
 
 vi.mock('hls.js', () => {
 	type Handler = (event: string, data: unknown) => void;
@@ -106,6 +138,16 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { playerVideo, playerVideoInSlot } from './player-video';
 
+import type {
+	AiringStatus,
+	AniErrorPayload,
+	AvailabilityResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer, wire } from '../answers';
 type FakeHlsT = InstanceType<typeof Hls> & {
 	startLoadCalls: number;
 	stopLoadCalls: number;
@@ -147,6 +189,8 @@ beforeEach(() => {
 	FakeEventSource.instances.length = 0;
 	hlsInstances().length = 0;
 	heldRetries.length = 0;
+	seen.evictions = 0;
+	seen.endings.length = 0;
 	g.EventSource = FakeEventSource;
 	setParams({ id: KITSU_ID });
 	target = document.createElement('div');
@@ -169,43 +213,52 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
 function useShowHandlers() {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
 		// The mount's next-episode prefetch.
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
 		http.post(`${API_BASE}/api/play/external`, () => new HttpResponse(null, { status: 202 })),
 		http.post(`${API_BASE}/api/play/syncplay`, () => new HttpResponse(null, { status: 202 }))
 	);
@@ -229,6 +282,13 @@ async function mountPlayingHls(overrides: () => void = () => {}): Promise<FakeHl
 	await until(() => playerVideoInSlot(), 'the video in its slot');
 	const video = playerVideo();
 	await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+	// The handoff waits for the settings: the player's own controls,
+	// which they turn on, show they are in.
+	await until(
+		() =>
+			target.querySelector(`button[aria-label="${m.play_controls_menu_aria_label()}"]`) !== null,
+		'the settings in'
+	);
 	await until(() => hlsInstances().length > 0, 'the hls engine to attach');
 	video.dispatchEvent(new Event('playing'));
 	return hlsInstances()[hlsInstances().length - 1];
@@ -241,8 +301,21 @@ const LEVELS = { levels: [{ height: 720, width: 1280, bitrate: 2_000_000 }] };
 const settle = () => new Promise((r) => setTimeout(r, 30));
 const resolves = () =>
 	FakeEventSource.instances.filter((i) => i.url.includes('/api/play/stream')).length;
+const reloadOffered = () => target.querySelector('.player-error-reload') !== null;
 
+/** Waits until the page has settled what a recovery's eviction answer
+ *  comes to: it offers the failed stream's Reload again, which it does
+ *  in place of resolving again, or a resolve has opened (`before` is
+ *  the count of resolves before it). The Reload is off screen while
+ *  the eviction is out, so it is the answer's own. */
+const reloadOrResolve = (before: number) =>
+	until(() => reloadOffered() || resolves() > before, 'the Reload, or a resolve');
+
+/** Hands the episode off from the player's menu, and waits for the
+ *  handoff to have stopped the engine loading. */
 async function handTo(label: string) {
+	const engine = hlsInstances()[hlsInstances().length - 1];
+	const stopsBefore = engine.stopLoadCalls;
 	(
 		target.querySelector(`button[aria-label="${m.play_more_aria_label()}"]`) as HTMLButtonElement
 	).click();
@@ -252,7 +325,7 @@ async function handTo(label: string) {
 		) as HTMLButtonElement | undefined;
 	await until(() => item() !== undefined, `the ${label} menu item`);
 	item()!.click();
-	await settle();
+	await until(() => engine.stopLoadCalls > stopsBefore, `the handoff to ${label}`);
 }
 const handToExternal = () => handTo(m.play_external_label());
 
@@ -274,6 +347,8 @@ describe('play route — an episode handed to another player stays stopped here'
 		await handToExternal();
 		bufferedTo(playerVideo(), 300, 10);
 		hls.emit(ERROR, NETWORK_FATAL);
+		// The failure armed a retry: the wait below is for it.
+		expect(heldRetries).toHaveLength(1);
 		await until(
 			heldRetriesSettled,
 			'the held retry to fire or be cancelled',
@@ -288,7 +363,9 @@ describe('play route — an episode handed to another player stays stopped here'
 		bufferedTo(playerVideo(), 10.5, 10);
 		const toastsBefore = toastStore.items.length;
 		hls.emit(ERROR, HOST_SLOW_FATAL);
-		await settle();
+		// The nudge is decided in the failure's handler, and it arms no
+		// retry that could load later.
+		expect(heldRetries).toHaveLength(0);
 		expect(hls.startLoadCalls).toBe(0);
 		expect(toastStore.items.length).toBe(toastsBefore);
 	});
@@ -301,7 +378,8 @@ describe('play route — an episode handed to another player stays stopped here'
 		hls.emit(ERROR, NETWORK_FATAL);
 		hls.emit(ERROR, NETWORK_FATAL);
 		hls.emit(ERROR, NETWORK_FATAL);
-		await new Promise((r) => setTimeout(r, 300));
+		expect(seen.evictions, 'no recovery started').toBe(0);
+		await until(reloadOffered, 'the failure offered with its Reload');
 		expect(resolves()).toBe(before);
 	});
 
@@ -312,7 +390,8 @@ describe('play route — an episode handed to another player stays stopped here'
 		const video = playerVideo();
 		Object.defineProperty(video, 'error', { value: { code: 2 }, configurable: true });
 		video.dispatchEvent(new Event('error'));
-		await new Promise((r) => setTimeout(r, 300));
+		expect(seen.evictions, 'no recovery started').toBe(0);
+		await until(reloadOffered, 'the failure offered with its Reload');
 		expect(resolves()).toBe(before);
 	});
 
@@ -351,14 +430,25 @@ describe('play route — an episode handed to another player stays stopped here'
 		await mountPlayingHls(() =>
 			server.use(
 				http.get(`${API_BASE}/api/settings`, () =>
-					HttpResponse.json({ ...appConfig(), auto_play_next: true })
+					HttpResponse.json<Config>({ ...appConfig(), auto_play_next: true })
 				)
 			)
 		);
+		// Auto-play is on before the episode ends: the settings are in.
+		await until(
+			() =>
+				target
+					.querySelector(`button[aria-label="${m.play_auto_play_aria_label()}"]`)
+					?.getAttribute('aria-pressed') === 'true',
+			'auto-play on'
+		);
 		await handToExternal();
 		playerVideo().dispatchEvent(new Event('ended'));
-		await settle();
-		// A switch would be on its way: the frame busy with it.
+		// The end is judged in the `ended` handler, with auto-play on.
+		expect(seen.endings).toEqual([{ enabled: true, handedOff: true, advance: false }]);
+		// A switch would be on its way from that handler: the frame busy
+		// with it.
+		flushSync();
 		expect(target.querySelector('section.player-frame.player-busy')).toBeNull();
 	});
 
@@ -424,12 +514,13 @@ describe('play route — an episode handed to another player stays stopped here'
 		hls.emit(ERROR, NETWORK_FATAL);
 		await settle();
 		await handToExternal();
+		expect(reloadOffered()).toBe(false);
 		release();
-		await new Promise((r) => setTimeout(r, 300));
+		await reloadOrResolve(before);
 		expect(resolves()).toBe(before);
 		// The failed stream's error stands, with its Reload, for when the
 		// viewer comes back.
-		await until(() => target.querySelector('.player-error-reload') !== null, 'the Reload');
+		expect(reloadOffered()).toBe(true);
 	});
 
 	it('a pick that never landed does not carry into the next handoff', async () => {
@@ -446,7 +537,9 @@ describe('play route — an episode handed to another player stays stopped here'
 		await settle();
 		// The pick fails: its stream answers with an error.
 		const pick = FakeEventSource.instances.filter((e) => e.url.includes('episode=2')).at(-1)!;
-		const fail = new MessageEvent('error', { data: JSON.stringify({ kind: 'timeout' }) });
+		const fail = new MessageEvent('error', {
+			data: wire<AniErrorPayload>({ kind: 'timeout', key: 'error.scraper.timeout' })
+		});
 		for (const h of pick.listeners['error'] ?? []) h(fail);
 		await until(
 			() => target.querySelector('section.player-frame.player-busy') === null,
@@ -494,8 +587,10 @@ describe('play route — an episode handed to another player stays stopped here'
 		(target.querySelector('.player-error-reload') as HTMLButtonElement).click();
 		await settle();
 		await handToExternal();
+		// The Reload went off screen as the recovery began.
+		expect(reloadOffered()).toBe(false);
 		release();
-		await new Promise((r) => setTimeout(r, 300));
+		await reloadOrResolve(before);
 		expect(resolves()).toBe(before);
 	});
 });

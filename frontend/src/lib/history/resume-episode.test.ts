@@ -7,14 +7,16 @@ import { loadContinueWatchingState } from './continue-watching-loader';
 // path is reached; nothing here mocks them, so nothing needs the delay.
 import { makeFetchAvailability } from './availability-from-match';
 import { resolveResumeSettings } from './resume-settings';
-import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
+import type { AvailabilityResponse, HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
+import { availabilityAnswer, configAnswer, kitsuRefAnswer } from '$lib/testing/wire-answers';
+import type { ContinueWatchingLoaderDeps } from './continue-watching-loader';
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
 	return { id, ep_no: ep, title };
 }
 
 function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
-	return {
+	return kitsuRefAnswer({
 		id,
 		slug: `slug-${id}`,
 		canonical_title: `Title ${id}`,
@@ -24,7 +26,7 @@ function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
 		status: 'current',
 		poster_image: null,
 		start_date: null
-	} as unknown as KitsuAnimeRef;
+	});
 }
 
 describe('resolveResumeEpisode', () => {
@@ -73,9 +75,13 @@ describe('acceptance: early click on a just-released card (loader + resolver)', 
 		// phantom episode 13.
 		const entry = makeEntry('hist-a', '12', 'Show A');
 		const match = makeMatch('k-a', 24);
-		const resolveMatch = vi.fn().mockResolvedValue(match);
-		const backgroundProbe = new Promise<{ episode_count: number }>(() => {});
-		const fetchAvailability = vi.fn().mockReturnValue(backgroundProbe);
+		const resolveMatch = vi
+			.fn<NonNullable<ContinueWatchingLoaderDeps['resolveMatch']>>()
+			.mockResolvedValue(match);
+		const backgroundProbe = new Promise<AvailabilityResponse>(() => {});
+		const fetchAvailability = vi
+			.fn<NonNullable<ContinueWatchingLoaderDeps['fetchAvailability']>>()
+			.mockReturnValue(backgroundProbe);
 
 		let releasedMatch: KitsuAnimeRef | null = null;
 		let releasedCount: number | null = null;
@@ -113,9 +119,14 @@ describe('acceptance: click-time lookup rides the interactive lane with awaited 
 		// mid-click with DUB, the cap lookup goes out through the real
 		// makeFetchAvailability with the interactive flag, and the
 		// episode is picked against the answered cap.
-		const checkAvailability = vi.fn().mockResolvedValue({ available: true, episode_count: 12 });
+		const checkAvailability = vi
+			.fn<Parameters<typeof makeFetchAvailability>[0]>()
+			.mockResolvedValue(availabilityAnswer({ available: true, episode_count: 12 }));
 
-		const settings = await resolveResumeSettings(null, Promise.resolve({ mode: 'dub' } as never));
+		const settings = await resolveResumeSettings(
+			null,
+			Promise.resolve(configAnswer({ mode: 'dub' }))
+		);
 		const fetch = makeFetchAvailability(checkAvailability, { background: false });
 		const r = await resolveResumeEpisode(12, null, 24, () =>
 			fetch(makeMatch('k-a', 24), settings.mode).then((res) => ({

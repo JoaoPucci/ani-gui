@@ -4,19 +4,22 @@
 //! per-file bar.
 
 use crate::app::AppState;
+use crate::error::AniError;
 use crate::meta::anilist_media::MediaRef;
 use crate::meta::anilist_streaming_eps::{streaming_listing_for_ids, StreamingListing};
 
 /// Why a lookup came back without a listing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub(super) enum Miss {
     /// Kitsu answered that the show maps to neither AniList nor MAL:
     /// an answer, negative-cached.
     NoIds,
     /// A step got no answer — Kitsu's mappings or AniList failing,
     /// refusing this client, or answering what cannot be read. Unknown,
-    /// and never cached as an absence.
-    Unanswered,
+    /// and never cached as an absence. Carries AniList's failure, when
+    /// that was the step: each caller sharing the lookup decides from it
+    /// whether a retry is queued for it (`held_fill`).
+    Unanswered(Option<AniError>),
 }
 
 /// One-shot lookup: `kitsu_id` → Kitsu's external-id mappings →
@@ -33,7 +36,7 @@ pub(super) async fn fetch_anilist_eps_thumbs(
         .await
         .map_err(|e| {
             tracing::warn!(kitsu_id, error = ?e, "anilist thumbs: mappings lookup failed");
-            Miss::Unanswered
+            Miss::Unanswered(None)
         })?;
     // Neither id: nothing to ask AniList, and that is Kitsu's answer.
     MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(Miss::NoIds)?;
@@ -54,13 +57,6 @@ pub(super) async fn fetch_anilist_eps_thumbs(
             error = ?e,
             "anilist thumbs: streamingEpisodes fetch got no answer; nothing cached",
         );
-        crate::commands::held_fill::on_unanswered(
-            state,
-            crate::commands::held_fill::Fill::Thumbs,
-            kitsu_id,
-            anilist_base,
-            &e,
-        );
-        Miss::Unanswered
+        Miss::Unanswered(Some(e))
     })
 }

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import type { KitsuAnimeRef } from '$lib/api';
 import {
 	MAX_EMPTY_PAGES,
 	afterPage,
@@ -14,7 +13,8 @@ import {
 	type Reach
 } from './paging';
 
-const ref = (id: string) => ({ id, canonical_title: `Title ${id}` }) as KitsuAnimeRef;
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+const ref = (id: string) => kitsuRefAnswer({ id, canonical_title: `Title ${id}` });
 
 const PHASES: PagingPhase[] = [
 	{ kind: 'loading' },

@@ -2,12 +2,14 @@ import { describe, expect, test, vi } from 'vitest';
 import type { Config } from '$lib/api';
 import { applyLocale } from './apply-locale';
 
+import { configAnswer } from '$lib/testing/wire-answers';
+import type { ApplyLocaleDeps } from './apply-locale';
 function cfg(): Config {
-	return {
+	return configAnswer({
 		locale: 'en',
 		mode: 'sub',
 		download_quality: 'best'
-	} as Config;
+	});
 }
 
 describe('applyLocale', () => {
@@ -17,14 +19,16 @@ describe('applyLocale', () => {
 		const persistPromise = new Promise<void>((res) => {
 			releasePersist = res;
 		});
-		const persist = vi.fn(async (next: Config) => {
+		const persist = vi.fn<NonNullable<ApplyLocaleDeps['persist']>>(async (next: Config) => {
 			calls.push(`persist:start:${next.locale}`);
 			await persistPromise;
 			calls.push(`persist:end:${next.locale}`);
 		});
-		const setRuntimeLocale = vi.fn((l: string) => {
-			calls.push(`runtime:${l}`);
-		});
+		const setRuntimeLocale = vi.fn<NonNullable<ApplyLocaleDeps['setRuntimeLocale']>>(
+			(l: string) => {
+				calls.push(`runtime:${l}`);
+			}
+		);
 
 		const run = applyLocale('pt-BR', cfg(), { persist, setRuntimeLocale });
 		// Runtime call must NOT have fired yet — persist hasn't resolved.
@@ -42,16 +46,18 @@ describe('applyLocale', () => {
 	});
 
 	test('passes the new locale through to persist alongside the rest of the config', async () => {
-		const persist = vi.fn(async () => {});
-		const setRuntimeLocale = vi.fn();
+		const persist = vi.fn<NonNullable<ApplyLocaleDeps['persist']>>(async () => {});
+		const setRuntimeLocale = vi.fn<NonNullable<ApplyLocaleDeps['setRuntimeLocale']>>();
 		const base = { ...cfg(), mode: 'dub' as const, download_quality: '720' };
 		await applyLocale('ru', base, { persist, setRuntimeLocale });
 		expect(persist).toHaveBeenCalledWith({ ...base, locale: 'ru' });
 	});
 
 	test('does NOT swallow a persist rejection (runtime flip stays unfired)', async () => {
-		const persist = vi.fn().mockRejectedValue(new Error('disk full'));
-		const setRuntimeLocale = vi.fn();
+		const persist = vi
+			.fn<NonNullable<ApplyLocaleDeps['persist']>>()
+			.mockRejectedValue(new Error('disk full'));
+		const setRuntimeLocale = vi.fn<NonNullable<ApplyLocaleDeps['setRuntimeLocale']>>();
 		await expect(applyLocale('es-419', cfg(), { persist, setRuntimeLocale })).rejects.toThrow(
 			'disk full'
 		);

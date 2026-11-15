@@ -36,6 +36,15 @@ vi.mock('$app/navigation', () => ({
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	UnsettledReason
+} from '../../src/lib/api';
+import { availabilityAnswer, malformedAnswer } from '../answers';
 const KITSU_ID = '45637';
 const TITLE = 'Mo Du Zhe';
 
@@ -69,35 +78,49 @@ const unavailableNotice = () => target.querySelector('p.unavailable[role="status
 /** The Play action, rendered only once the page has a show to play. */
 const playAction = () => target.querySelector('.actions button.btn');
 
-function routes(unsettled: unknown, onProbe: () => void) {
+/** An unsettled answer, or (`true`) one as a backend from before the
+ *  reasons sent it: no current backend sends that, so it goes out as a
+ *  deliberately malformed answer. */
+function unsettledAnswer(unsettled: UnsettledReason | true) {
+	const unsettledBody = {
+		available: false,
+		episode_count: null,
+		extra_episodes: []
+	};
+	return unsettled === true
+		? malformedAnswer({ ...availabilityAnswer(unsettledBody), unsettled })
+		: HttpResponse.json<AvailabilityResponse>(availabilityAnswer({ ...unsettledBody, unsettled }));
+}
+
+function routes(unsettled: UnsettledReason | true, onProbe: () => void) {
 	return [
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		// Counted, undated: the entry the count-alone rule is for.
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({
+			HttpResponse.json<KitsuAnimeRef>({
 				...kitsuRef(KITSU_ID, TITLE, 12),
 				status: 'current',
 				start_date: null
 			})
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 5, next_episode: 6, next_airing_at: null, upcoming: [] })
+			HttpResponse.json<AiringStatus>({
+				aired: 5,
+				next_episode: 6,
+				next_airing_at: null,
+				upcoming: []
+			})
 		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 		http.post(`${API_BASE}/api/availability`, () => {
 			onProbe();
-			return HttpResponse.json({
-				available: false,
-				episode_count: null,
-				extra_episodes: [],
-				unsettled
-			});
+			return unsettledAnswer(unsettled);
 		})
 	];
 }
 
 describe('detail route — an availability answer that settled nothing', () => {
-	for (const unsettled of [true, 'unanswered', 'past_affinity', 'superseded']) {
+	for (const unsettled of [true, 'unanswered', 'past_affinity', 'superseded'] as const) {
 		it(`keeps the play action and shows no not-in-catalogue notice (${String(unsettled)})`, async () => {
 			let probes = 0;
 			server.use(...routes(unsettled, () => (probes += 1)));
@@ -131,27 +154,27 @@ describe('detail route — the answer as a backend before reasons sent it', () =
 		let probes = 0;
 
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			// Counted, undated: the entry the rule is for.
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<KitsuAnimeRef>({
 					...kitsuRef(KITSU_ID, TITLE, 12),
 					status: 'current',
 					start_date: null
 				})
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({ aired: 5, next_episode: 6, next_airing_at: null, upcoming: [] })
+				HttpResponse.json<AiringStatus>({
+					aired: 5,
+					next_episode: 6,
+					next_airing_at: null,
+					upcoming: []
+				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
 			http.post(`${API_BASE}/api/availability`, () => {
 				probes += 1;
-				return HttpResponse.json({
-					available: false,
-					episode_count: null,
-					extra_episodes: [],
-					unsettled: true
-				});
+				return unsettledAnswer(true);
 			})
 		);
 

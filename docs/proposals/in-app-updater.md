@@ -1,9 +1,9 @@
 # Proposal: an in-app updater
 
 **Status**: research for the 0.20.0 release, alongside the
-[notification center](notification-center.md) proposal, which is
-reviewed separately; links to it resolve once it is merged. Nothing
-below is built.
+notification center proposal, which is reviewed separately in
+[pull request #351](https://github.com/JoaoPucci/ani-gui/pull/351).
+Nothing below is built.
 The library and platform facts were checked on 2026-11-02 against the
 pages and source files cited next to them, and will drift; the
 library versions named are the ones current on that day.
@@ -624,10 +624,11 @@ hash of the file, a public key of one line, a signature file with a
 asset's file name and version, and the app checks them, so an old
 signed release cannot be passed off as a new one. [proposal] The
 notification-center proposal leans towards minisign for its remote
-notices as well [source: `notification-center.md`, section 3], so one
-verifier (the `minisign-verify` crate) would serve both. They should
-not share a *key*: notices would be signed often, and every signing
-would handle the key that can replace the app. Two keys, the release
+notices as well [source: the notification center proposal in
+[#351](https://github.com/JoaoPucci/ani-gui/pull/351), section 3], so
+one verifier (the `minisign-verify` crate) would serve both. They
+should not share a *key*: notices would be signed often, and every
+signing would handle the key that can replace the app. Two keys, the release
 key used once per release, keep a slip with the frequent one from
 reaching the installer. [proposal]
 The private key lives on the maintainer's machine, never on GitHub;
@@ -746,7 +747,8 @@ The badge and its dialog stay the entry point until the notification
 center lands; then "Update available" becomes a notice there whose
 detail is this dialog, and the badge folds into the bell or stays,
 which is the notification center's open question, not this one's.
-[proposal; see [notification-center.md](notification-center.md),
+[proposal; see the notification center proposal in
+[#351](https://github.com/JoaoPucci/ani-gui/pull/351), section 2,
 "Surface design options"]
 
 Progress does not join the download dock. The dock lists episodes,
@@ -1084,9 +1086,10 @@ proposal's findings, and "What the in-app updater leaves out").
 
 ## Related work
 
-- [A notification center](notification-center.md), proposed for the
-  same release: "Update available" is one of its notices, and its
-  signed remote notices would share this proposal's verifier, under a
+- A notification center
+  ([#351](https://github.com/JoaoPucci/ani-gui/pull/351)), proposed
+  for the same release: "Update available" is one of its notices, and
+  its signed remote notices would share this proposal's verifier, under a
   key of their own.
 - The 0.18.0 notifier change, which offers only releases that carry a
   package for the running platform. Phase 2 builds on it.

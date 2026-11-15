@@ -1,14 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
+import fc from 'fast-check';
 import { loadContinueWatchingState } from './continue-watching-loader';
 import { probeScope } from '$lib/availability/probe-scope';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+import type { ContinueWatchingLoaderDeps } from './continue-watching-loader';
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
 	return { id, ep_no: ep, title };
 }
 
 function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
-	return {
+	return kitsuRefAnswer({
 		id,
 		slug: `slug-${id}`,
 		canonical_title: `Title ${id}`,
@@ -18,7 +21,7 @@ function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
 		status: 'current',
 		poster_image: null,
 		start_date: null
-	} as unknown as KitsuAnimeRef;
+	});
 }
 
 // Defer helper — returns a promise and its resolver so the test
@@ -54,19 +57,25 @@ describe('loadContinueWatchingState', () => {
 		const mSlow = makeMatch('k-slow', 24);
 
 		const slowMatch = defer<KitsuAnimeRef | null>();
-		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
-			if (entry.id === 'hist-fast') return Promise.resolve(mFast);
-			return slowMatch.promise;
-		});
-		const fetchAvailability = vi.fn().mockImplementation((match: KitsuAnimeRef) => {
-			if (match.id === 'k-fast') return Promise.resolve({ episode_count: 12 });
-			return Promise.resolve({ episode_count: 25 });
-		});
+		const resolveMatch = vi
+			.fn<ContinueWatchingLoaderDeps['resolveMatch']>()
+			.mockImplementation((entry: HistoryEntry) => {
+				if (entry.id === 'hist-fast') return Promise.resolve(mFast);
+				return slowMatch.promise;
+			});
+		const fetchAvailability = vi
+			.fn<ContinueWatchingLoaderDeps['fetchAvailability']>()
+			.mockImplementation((match: KitsuAnimeRef) => {
+				if (match.id === 'k-fast') return Promise.resolve({ episode_count: 12 });
+				return Promise.resolve({ episode_count: 25 });
+			});
 
 		const ready: { id: string; count: number | null }[] = [];
-		const onRowReady = vi.fn().mockImplementation((id: string, _m, count: number | null) => {
-			ready.push({ id, count });
-		});
+		const onRowReady = vi
+			.fn<NonNullable<ContinueWatchingLoaderDeps['onRowReady']>>()
+			.mockImplementation((id: string, _m, count: number | null) => {
+				ready.push({ id, count });
+			});
 
 		const loaderPromise = loadContinueWatchingState([fast, slow], {
 			resolveMatch,
@@ -100,11 +109,15 @@ describe('loadContinueWatchingState', () => {
 		const mOther = makeMatch('k-other', 12);
 		const otherMatch = defer<KitsuAnimeRef | null>();
 
-		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
-			if (entry.id === 'hist-orphan') return Promise.resolve(null);
-			return otherMatch.promise;
-		});
-		const fetchAvailability = vi.fn().mockResolvedValue({ episode_count: 12 });
+		const resolveMatch = vi
+			.fn<ContinueWatchingLoaderDeps['resolveMatch']>()
+			.mockImplementation((entry: HistoryEntry) => {
+				if (entry.id === 'hist-orphan') return Promise.resolve(null);
+				return otherMatch.promise;
+			});
+		const fetchAvailability = vi
+			.fn<ContinueWatchingLoaderDeps['fetchAvailability']>()
+			.mockResolvedValue({ episode_count: 12 });
 
 		const ready: { id: string; match: KitsuAnimeRef | null; count: number | null }[] = [];
 		const onRowReady = (id: string, match: KitsuAnimeRef | null, count: number | null) => {
@@ -140,22 +153,26 @@ describe('loadContinueWatchingState', () => {
 		const entries = Array.from({ length: 8 }, (_, i) => makeEntry(`h${i}`, '1', `Show ${i}`));
 		const matches = entries.map((e, i) => makeMatch(`k${i}`, 12));
 
-		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
-			const i = entries.findIndex((e) => e.id === entry.id);
-			return Promise.resolve(matches[i]);
-		});
+		const resolveMatch = vi
+			.fn<ContinueWatchingLoaderDeps['resolveMatch']>()
+			.mockImplementation((entry: HistoryEntry) => {
+				const i = entries.findIndex((e) => e.id === entry.id);
+				return Promise.resolve(matches[i]);
+			});
 
 		let inFlight = 0;
 		let maxInFlight = 0;
 		const probeDeferreds = matches.map(() => defer<{ episode_count: number }>());
-		const fetchAvailability = vi.fn().mockImplementation((match: KitsuAnimeRef) => {
-			inFlight++;
-			maxInFlight = Math.max(maxInFlight, inFlight);
-			const i = matches.findIndex((m) => m.id === match.id);
-			return probeDeferreds[i].promise.finally(() => {
-				inFlight--;
+		const fetchAvailability = vi
+			.fn<ContinueWatchingLoaderDeps['fetchAvailability']>()
+			.mockImplementation((match: KitsuAnimeRef) => {
+				inFlight++;
+				maxInFlight = Math.max(maxInFlight, inFlight);
+				const i = matches.findIndex((m) => m.id === match.id);
+				return probeDeferreds[i].promise.finally(() => {
+					inFlight--;
+				});
 			});
-		});
 
 		const loaderPromise = loadContinueWatchingState(entries, {
 			resolveMatch,
@@ -192,16 +209,20 @@ describe('loadContinueWatchingState', () => {
 		const matches = entries.map((_, i) => makeMatch(`k${i}`, 12));
 
 		const matchDeferreds = matches.map(() => defer<KitsuAnimeRef | null>());
-		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
-			const i = entries.findIndex((e) => e.id === entry.id);
-			return matchDeferreds[i].promise;
-		});
+		const resolveMatch = vi
+			.fn<ContinueWatchingLoaderDeps['resolveMatch']>()
+			.mockImplementation((entry: HistoryEntry) => {
+				const i = entries.findIndex((e) => e.id === entry.id);
+				return matchDeferreds[i].promise;
+			});
 
 		const probeDeferreds = matches.map(() => defer<{ episode_count: number }>());
-		const fetchAvailability = vi.fn().mockImplementation((match: KitsuAnimeRef) => {
-			const i = matches.findIndex((m) => m.id === match.id);
-			return probeDeferreds[i].promise;
-		});
+		const fetchAvailability = vi
+			.fn<ContinueWatchingLoaderDeps['fetchAvailability']>()
+			.mockImplementation((match: KitsuAnimeRef) => {
+				const i = matches.findIndex((m) => m.id === match.id);
+				return probeDeferreds[i].promise;
+			});
 
 		const loader = loadContinueWatchingState(entries, {
 			resolveMatch,
@@ -256,8 +277,10 @@ describe('loadContinueWatchingState', () => {
 		const e1 = makeEntry('hist-a', '5', 'Show A');
 		const m1 = makeMatch('k-a', 12);
 
-		const resolveMatch = vi.fn().mockResolvedValue(m1);
-		const fetchAvailability = vi.fn().mockResolvedValue({ episode_count: 12 });
+		const resolveMatch = vi.fn<ContinueWatchingLoaderDeps['resolveMatch']>().mockResolvedValue(m1);
+		const fetchAvailability = vi
+			.fn<ContinueWatchingLoaderDeps['fetchAvailability']>()
+			.mockResolvedValue({ episode_count: 12 });
 
 		const result = await loadContinueWatchingState([e1], {
 			resolveMatch,
@@ -275,11 +298,15 @@ describe('loadContinueWatchingState', () => {
 		const e2 = makeEntry('hist-b', '2', 'Show B');
 		const m2 = makeMatch('k-b', 24);
 
-		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
-			if (entry.id === 'hist-a') return Promise.reject(new Error('boom'));
-			return Promise.resolve(m2);
-		});
-		const fetchAvailability = vi.fn().mockResolvedValue({ episode_count: 24 });
+		const resolveMatch = vi
+			.fn<ContinueWatchingLoaderDeps['resolveMatch']>()
+			.mockImplementation((entry: HistoryEntry) => {
+				if (entry.id === 'hist-a') return Promise.reject(new Error('boom'));
+				return Promise.resolve(m2);
+			});
+		const fetchAvailability = vi
+			.fn<ContinueWatchingLoaderDeps['fetchAvailability']>()
+			.mockResolvedValue({ episode_count: 24 });
 
 		const result = await loadContinueWatchingState([e1, e2], {
 			resolveMatch,
@@ -301,14 +328,18 @@ describe('loadContinueWatchingState', () => {
 		const m1 = makeMatch('k-rej', 12);
 		const m2 = makeMatch('k-null', 12);
 
-		const resolveMatch = vi.fn().mockImplementation((entry: HistoryEntry) => {
-			if (entry.id === 'hist-rejects') return Promise.resolve(m1);
-			return Promise.resolve(m2);
-		});
-		const fetchAvailability = vi.fn().mockImplementation((match: KitsuAnimeRef) => {
-			if (match.id === 'k-rej') return Promise.reject(new Error('network'));
-			return Promise.resolve(null);
-		});
+		const resolveMatch = vi
+			.fn<ContinueWatchingLoaderDeps['resolveMatch']>()
+			.mockImplementation((entry: HistoryEntry) => {
+				if (entry.id === 'hist-rejects') return Promise.resolve(m1);
+				return Promise.resolve(m2);
+			});
+		const fetchAvailability = vi
+			.fn<ContinueWatchingLoaderDeps['fetchAvailability']>()
+			.mockImplementation((match: KitsuAnimeRef) => {
+				if (match.id === 'k-rej') return Promise.reject(new Error('network'));
+				return Promise.resolve(null);
+			});
 
 		const result = await loadContinueWatchingState([e1, e2], {
 			resolveMatch,
@@ -329,9 +360,13 @@ describe('first paint releases before availability (render-then-refine)', () => 
 		// NEVER resolves and the row still releases.
 		const entry = makeEntry('hist-a', '5', 'Show A');
 		const match = makeMatch('k-a', 12);
-		const resolveMatch = vi.fn().mockResolvedValue(match);
+		const resolveMatch = vi
+			.fn<ContinueWatchingLoaderDeps['resolveMatch']>()
+			.mockResolvedValue(match);
 		const neverProbe = defer<{ episode_count: number }>();
-		const fetchAvailability = vi.fn().mockReturnValue(neverProbe.promise);
+		const fetchAvailability = vi
+			.fn<ContinueWatchingLoaderDeps['fetchAvailability']>()
+			.mockReturnValue(neverProbe.promise);
 
 		const ready: { id: string; match: KitsuAnimeRef | null; count: number | null }[] = [];
 		void loadContinueWatchingState([entry], {
@@ -348,9 +383,13 @@ describe('first paint releases before availability (render-then-refine)', () => 
 	it('fires a second onRowReady when the probe refines the playable cap', async () => {
 		const entry = makeEntry('hist-a', '5', 'Show A');
 		const match = makeMatch('k-a', 24);
-		const resolveMatch = vi.fn().mockResolvedValue(match);
+		const resolveMatch = vi
+			.fn<ContinueWatchingLoaderDeps['resolveMatch']>()
+			.mockResolvedValue(match);
 		const probe = defer<{ episode_count: number }>();
-		const fetchAvailability = vi.fn().mockReturnValue(probe.promise);
+		const fetchAvailability = vi
+			.fn<ContinueWatchingLoaderDeps['fetchAvailability']>()
+			.mockReturnValue(probe.promise);
 
 		const ready: { id: string; count: number | null }[] = [];
 		const loaderPromise = loadContinueWatchingState([entry], {
@@ -378,10 +417,14 @@ describe('first paint releases before availability (render-then-refine)', () => 
 		// release). Re-firing would only re-trigger the episode fetch.
 		const entry = makeEntry('hist-a', '5', 'Show A');
 		const match = makeMatch('k-a', 12);
-		const resolveMatch = vi.fn().mockResolvedValue(match);
-		const fetchAvailability = vi.fn().mockRejectedValue(new Error('breaker open'));
+		const resolveMatch = vi
+			.fn<ContinueWatchingLoaderDeps['resolveMatch']>()
+			.mockResolvedValue(match);
+		const fetchAvailability = vi
+			.fn<ContinueWatchingLoaderDeps['fetchAvailability']>()
+			.mockRejectedValue(new Error('breaker open'));
 
-		const onRowReady = vi.fn();
+		const onRowReady = vi.fn<NonNullable<ContinueWatchingLoaderDeps['onRowReady']>>();
 		const result = await loadContinueWatchingState([entry], {
 			resolveMatch,
 			fetchAvailability,
@@ -404,9 +447,11 @@ it('forwards approximate provenance from the background probe', async () => {
 	// still advance to a phantom episode.
 	const entry = makeEntry('hist-a', '5', 'Show A');
 	const match = makeMatch('k-a', 24);
-	const onRowReady = vi.fn();
+	const onRowReady = vi.fn<NonNullable<ContinueWatchingLoaderDeps['onRowReady']>>();
 	await loadContinueWatchingState([entry], {
-		resolveMatch: vi.fn().mockResolvedValue(match),
+		resolveMatch: vi
+			.fn<NonNullable<ContinueWatchingLoaderDeps['resolveMatch']>>()
+			.mockResolvedValue(match),
 		fetchAvailability: vi
 			.fn()
 			.mockResolvedValue({ episode_count: 13, episode_count_approximate: true }),
@@ -419,10 +464,14 @@ it('forwards approximate provenance from the background probe', async () => {
 it('reports an exact background count as exact', async () => {
 	const entry = makeEntry('hist-b', '5', 'Show B');
 	const match = makeMatch('k-b', 24);
-	const onRowReady = vi.fn();
+	const onRowReady = vi.fn<NonNullable<ContinueWatchingLoaderDeps['onRowReady']>>();
 	await loadContinueWatchingState([entry], {
-		resolveMatch: vi.fn().mockResolvedValue(match),
-		fetchAvailability: vi.fn().mockResolvedValue({ episode_count: 12 }),
+		resolveMatch: vi
+			.fn<NonNullable<ContinueWatchingLoaderDeps['resolveMatch']>>()
+			.mockResolvedValue(match),
+		fetchAvailability: vi
+			.fn<NonNullable<ContinueWatchingLoaderDeps['fetchAvailability']>>()
+			.mockResolvedValue({ episode_count: 12 }),
 		getMode: subMode,
 		onRowReady
 	});
@@ -491,7 +540,9 @@ describe('reporting the rows whose cap is still unconfirmed', () => {
 		try {
 			const history = ['1', '2', '3', '4', '5'].map((i) => makeEntry(`h${i}`, '1', `T${i}`));
 			const first = defer<{ episode_count: number }>();
-			const fetchAvailability = vi.fn().mockImplementation(() => first.promise);
+			const fetchAvailability = vi
+				.fn<ContinueWatchingLoaderDeps['fetchAvailability']>()
+				.mockImplementation(() => first.promise);
 			const done = loadContinueWatchingState(history, {
 				resolveMatch: (e: HistoryEntry) => Promise.resolve(makeMatch(`k-${e.id}`, 12)),
 				fetchAvailability,
@@ -532,5 +583,53 @@ describe('reporting the rows whose cap is still unconfirmed', () => {
 			['k-dub', 'dub'],
 			['k-plain', 'sub']
 		]);
+	});
+});
+
+describe('a row queued for its first probe', () => {
+	it('is not probed once it should not be: it was matched again meanwhile', async () => {
+		const history = ['1', '2'].map((i) => makeEntry(`h${i}`, '1', `T${i}`));
+		const first = defer<{ episode_count: number }>();
+		const fetchAvailability = vi.fn().mockImplementation(() => first.promise);
+		const relinked = new Set<string>();
+		const onRowReady = vi.fn();
+		const done = loadContinueWatchingState(history, {
+			resolveMatch: (e: HistoryEntry) => Promise.resolve(makeMatch(`k-${e.id}`, 12)),
+			fetchAvailability,
+			getMode: subMode,
+			probeConcurrency: 1,
+			onRowReady,
+			shouldProbe: (id) => !relinked.has(id)
+		});
+		await vi.waitFor(() => expect(fetchAvailability).toHaveBeenCalledTimes(1));
+		// h2 waits behind h1's probe, and is linked meanwhile.
+		relinked.add('h2');
+		first.resolve({ episode_count: 12 });
+		const state = await done;
+		expect(fetchAvailability).toHaveBeenCalledTimes(1);
+		expect((fetchAvailability.mock.calls[0][0] as KitsuAnimeRef).id).toBe('k-h1');
+		// Released on its match, and nothing after.
+		expect(onRowReady.mock.calls.filter(([id]) => id === 'h2')).toHaveLength(1);
+		expect(state.approximateRows).toEqual([]);
+	});
+
+	it('probes exactly the rows it should, whichever those are', async () => {
+		await fc.assert(
+			fc.asyncProperty(fc.array(fc.boolean(), { minLength: 1, maxLength: 6 }), async (skips) => {
+				const history = skips.map((_, i) => makeEntry(`h${i}`, '1', `T${i}`));
+				const fetchAvailability = vi.fn().mockResolvedValue({ episode_count: 12 });
+				await loadContinueWatchingState(history, {
+					resolveMatch: (e: HistoryEntry) => Promise.resolve(makeMatch(`k-${e.id}`, 12)),
+					fetchAvailability,
+					getMode: subMode,
+					probeConcurrency: 2,
+					shouldProbe: (id) => !skips[Number(id.slice(1))]
+				});
+				const probed = fetchAvailability.mock.calls.map(([m]) => (m as KitsuAnimeRef).id).sort();
+				const expected = history.filter((_, i) => !skips[i]).map((h) => `k-${h.id}`);
+				expect(probed).toEqual(expected.sort());
+			}),
+			{ numRuns: 50 }
+		);
 	});
 });

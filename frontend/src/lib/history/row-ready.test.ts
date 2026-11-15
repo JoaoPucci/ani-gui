@@ -2,12 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { makeContinueRowReadyHandler } from './row-ready';
 import type { HistoryEntry, KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 
+import { episodeAnswer, kitsuRefAnswer } from '$lib/testing/wire-answers';
+import type { ContinueRowReadyDeps } from './row-ready';
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
 	return { id, ep_no: ep, title };
 }
 
 function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
-	return {
+	return kitsuRefAnswer({
 		id,
 		slug: `slug-${id}`,
 		canonical_title: `Title ${id}`,
@@ -17,17 +19,17 @@ function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
 		status: 'current',
 		poster_image: null,
 		start_date: null
-	} as unknown as KitsuAnimeRef;
+	});
 }
 
 function makeKitsuEpisode(number: number, relative = number): KitsuEpisode {
-	return {
+	return episodeAnswer({
 		id: `ep-${number}`,
 		number,
 		relative_number: relative,
 		canonical_title: `Episode ${number}`,
 		thumbnail: null
-	} as unknown as KitsuEpisode;
+	});
 }
 
 interface Spy {
@@ -50,7 +52,9 @@ function makeSpy(
 	leftPartWay?: (kitsuId: string, episode: number) => boolean
 ): Spy {
 	const historyById = new Map(history.map((h) => [h.id, h]));
-	const fetchKitsuEpisodes = vi.fn(fetchImpl ?? (() => Promise.resolve([])));
+	const fetchKitsuEpisodes = vi.fn<NonNullable<ContinueRowReadyDeps['fetchKitsuEpisodes']>>(
+		fetchImpl ?? (() => Promise.resolve([]))
+	);
 	const calls = {
 		setMatch: [] as [string, KitsuAnimeRef | null][],
 		setPlayableCount: [] as [string, number][],
@@ -154,13 +158,13 @@ describe('makeContinueRowReadyHandler', () => {
 		const match = makeMatch('k-a', 12);
 		const spy = makeSpy([entry], () =>
 			Promise.resolve([
-				{
+				episodeAnswer({
 					id: 'wrong-1',
 					number: 26,
 					relative_number: 6,
 					canonical_title: 'rel-6',
 					thumbnail: null
-				} as unknown as KitsuEpisode
+				})
 			])
 		);
 		const handle = makeContinueRowReadyHandler(spy.deps);
@@ -275,7 +279,7 @@ describe('refinement re-fire (render-then-refine)', () => {
 		const first = defer<KitsuEpisode[]>();
 		const second = defer<KitsuEpisode[]>();
 		const fetchKitsuEpisodes = vi
-			.fn()
+			.fn<ContinueRowReadyDeps['fetchKitsuEpisodes']>()
 			.mockReturnValueOnce(first.promise)
 			.mockReturnValueOnce(second.promise);
 		const episodes: [string, KitsuEpisode | null][] = [];
@@ -318,7 +322,7 @@ describe('refinement re-fire (render-then-refine)', () => {
 		// mockImplementationOnce, not mockReturnValueOnce: the rejected
 		// promise must only exist if the handler actually calls it.
 		const fetchKitsuEpisodes = vi
-			.fn()
+			.fn<ContinueRowReadyDeps['fetchKitsuEpisodes']>()
 			.mockReturnValueOnce(first.promise)
 			.mockImplementationOnce(() => Promise.reject(new Error('refinement request failed')));
 		const episodes: [string, KitsuEpisode | null][] = [];
@@ -353,7 +357,7 @@ describe('refinement re-fire (render-then-refine)', () => {
 		const first = defer<KitsuEpisode[]>();
 		const second = defer<KitsuEpisode[]>();
 		const fetchKitsuEpisodes = vi
-			.fn()
+			.fn<ContinueRowReadyDeps['fetchKitsuEpisodes']>()
 			.mockReturnValueOnce(first.promise)
 			.mockReturnValueOnce(second.promise);
 		const episodes: [string, KitsuEpisode | null][] = [];
@@ -386,7 +390,9 @@ describe('refinement re-fire (render-then-refine)', () => {
 		// re-fire for the same target has to issue a fresh request.
 		const entry = makeEntry('h1', '5', 'Show');
 		const match = makeMatch('k1', 24);
-		const fetchKitsuEpisodes = vi.fn(() => Promise.resolve([makeKitsuEpisode(6)]));
+		const fetchKitsuEpisodes = vi.fn<NonNullable<ContinueRowReadyDeps['fetchKitsuEpisodes']>>(() =>
+			Promise.resolve([makeKitsuEpisode(6)])
+		);
 		const handler = makeContinueRowReadyHandler({
 			historyById: new Map([[entry.id, entry]]),
 			fetchKitsuEpisodes,
@@ -479,7 +485,7 @@ describe('a held-back thumbnail landing later', () => {
 		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
 
 		const filled = { ...makeKitsuEpisode(6), thumbnail: { original: 'https://x/6.jpg' } };
-		refill?.([filled as KitsuEpisode]);
+		refill?.([filled]);
 		// The still goes onto the card's episode; the episode itself is
 		// not replaced.
 		expect(filledStills).toEqual([['hist-r', 'ep-6', { original: 'https://x/6.jpg' }]]);
@@ -493,7 +499,7 @@ describe('a held-back thumbnail landing later', () => {
 			refill = opts?.onRefill;
 			return Promise.resolve([makeKitsuEpisode(6)]);
 		});
-		const fillThumbnail = vi.fn();
+		const fillThumbnail = vi.fn<NonNullable<ContinueRowReadyDeps['fillThumbnail']>>();
 		makeContinueRowReadyHandler({ ...spy.deps, fillThumbnail })('hist-u', makeMatch('k-u', 12), 12);
 		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
 		refill?.([makeKitsuEpisode(6)]);
@@ -507,7 +513,7 @@ describe('a held-back thumbnail landing later', () => {
 			if (opts?.onRefill) refills.push(opts.onRefill);
 			return Promise.resolve([makeKitsuEpisode(6), makeKitsuEpisode(7)]);
 		});
-		const fillThumbnail = vi.fn();
+		const fillThumbnail = vi.fn<NonNullable<ContinueRowReadyDeps['fillThumbnail']>>();
 		const handle = makeContinueRowReadyHandler({ ...spy.deps, fillThumbnail });
 		handle('hist-s', makeMatch('k-s', 12), 12);
 		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
@@ -518,7 +524,7 @@ describe('a held-back thumbnail landing later', () => {
 		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(2));
 
 		refills[0]([
-			{ ...makeKitsuEpisode(6), thumbnail: { original: 'https://x/6.jpg' } } as KitsuEpisode
+			episodeAnswer({ ...makeKitsuEpisode(6), thumbnail: { original: 'https://x/6.jpg' } })
 		]);
 		expect(spy.calls.setEpisode).toHaveLength(2);
 		expect(fillThumbnail).not.toHaveBeenCalled();

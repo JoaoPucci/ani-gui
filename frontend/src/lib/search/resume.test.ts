@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import type { KitsuAnimeRef } from '$lib/api';
 import type { PagingPhase } from './paging';
 import {
 	anchorShown,
@@ -12,7 +11,8 @@ import {
 } from './resume';
 import { captureSearch, FRESH_FOR_MS } from './snapshot';
 
-const ref = (id: string) => ({ id, canonical_title: id }) as KitsuAnimeRef;
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+const ref = (id: string) => kitsuRefAnswer({ id, canonical_title: id });
 
 const phaseArb = fc.constantFrom<PagingPhase['kind']>('idle', 'loading-more', 'end', 'held');
 
