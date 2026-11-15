@@ -5,7 +5,7 @@
 //!
 //!   POST /api/play  →  native walk against the provider
 //!                  →  episode → server list → embed → master URL
-//!                  →  create_session wraps the upstream URL
+//!                  →  create_session_with_kind wraps the upstream URL
 //!                  →  return CreateSessionResponse
 //!
 //! works end-to-end. The unit tests in `api/mod.rs` cover the route's

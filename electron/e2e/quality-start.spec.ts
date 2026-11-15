@@ -6,8 +6,9 @@
  * The backend resolves the master for every play, and the only quality
  * the settings keep is the download's; neither it nor the quality an
  * older version wrote may cap the player. The stream is the local
- * two-level HLS fixture (36p and 72p) played through the backend's own
- * stream proxy, and the app runs in Brazilian Portuguese, whose word for
+ * two-level HLS fixture (36p and 72p), played from the Continue card
+ * through the backend's play route and stream proxy (real-play.ts), and
+ * the app runs in Brazilian Portuguese, whose word for
  * Auto ("Automática") once pushed the More menu's "Auto · 72p" value
  * onto a second line.
  */
@@ -22,21 +23,14 @@ import http from "node:http";
 import type net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import {
-  appInfo,
-  continueKitsuEpisode6,
-  continueKitsuMatch,
-  defaultSettings,
-} from "./fixtures/kitsu";
 import { appWindow, launchPackagedApp, packagedBinary } from "./launch";
-import { answer } from "./stubs";
+import { playFromContinue, routeRealPlay, writeReplayConfig } from "./real-play";
 
 const mediaDir = path.join(__dirname, "fixtures", "captions");
 
 /** Settings that would have capped the player before: a download
  *  quality below the stream's top, and the quality key 0.17.0 wrote. */
 const settings = {
-  ...defaultSettings,
   locale: "pt-BR",
   download_quality: "480",
   quality: "worst",
@@ -51,12 +45,14 @@ test.beforeAll(() => {
   }
 });
 
-async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
+async function launch(): Promise<{
+  app: ElectronApplication;
+  page: Page;
+  profile: string;
+}> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ani-gui-quality-"));
-  const config = path.join(tmp, "config", "ani-gui");
-  fs.mkdirSync(config, { recursive: true });
-  fs.writeFileSync(
-    path.join(config, "config.toml"),
+  writeReplayConfig(
+    tmp,
     'locale = "pt-BR"\ndownload_quality = "480"\nquality = "worst"\n',
   );
   const app = await launchPackagedApp({
@@ -68,7 +64,7 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
     ANI_GUI_UNATTENDED: "1",
   }, { profile: tmp });
   const page = await appWindow(app);
-  return { app, page };
+  return { app, page, profile: tmp };
 }
 
 /** A server for the media fixture, standing in for a provider's CDN. */
@@ -96,77 +92,17 @@ async function mediaServer(): Promise<{ origin: string; close: () => void }> {
   return { origin: `http://127.0.0.1:${port}`, close: () => server.close() };
 }
 
-async function apiBase(page: Page): Promise<string> {
-  await page.waitForFunction(
-    () => Boolean((window as { aniGui?: unknown }).aniGui),
-    null,
-    { timeout: 30_000 },
-  );
-  return page.evaluate(
-    () => (window as unknown as { aniGui: { apiBase: string } }).aniGui.apiBase,
-  );
-}
-
-/** Metadata the play page asks the API for, answered without the
- *  network; the session route goes to the real backend. */
-async function stubMetadata(page: Page, base: string) {
-  await page.route(`${base}/api/**`, async (r) => {
-    const p = new URL(r.request().url()).pathname;
-    if (p === "/api/sessions") return r.continue();
-    const j = (body: unknown) =>
-      answer(r, {
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(body),
-      });
-    if (p === "/api/app-info") return j(appInfo);
-    if (p === "/api/settings") return j(settings);
-    if (p.startsWith("/api/kitsu/anime/")) return j(continueKitsuMatch);
-    if (p.startsWith("/api/kitsu/episodes/")) return j([continueKitsuEpisode6]);
-    if (p === "/api/history") return j([]);
-    if (p.startsWith("/api/image")) return answer(r, { status: 503 });
-    // The backend answers skip times with a list, empty when it
-    // knows none; the page reads it as one once the length is known.
-    if (p.startsWith("/api/aniskip/")) return j([]);
-    return j(null);
-  });
-}
-
-async function session(page: Page, base: string, upstream: string) {
-  const created = await page.evaluate(
-    async ({ base, upstream }) => {
-      const res = await fetch(`${base}/api/sessions`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          // The API answers only a request carrying the launch's secret.
-          "x-ani-gui-internal-secret":
-            (window as { aniGui?: { internalSecret?: string } }).aniGui
-              ?.internalSecret ?? "",
-        },
-        body: JSON.stringify({ upstream_url: upstream, referer: "" }),
-      });
-      if (!res.ok)
-        throw new Error(`session: ${res.status} ${await res.text()}`);
-      return (await res.json()) as { session_id: string };
-    },
-    { base, upstream },
-  );
-  return created.session_id;
-}
-
 test("the player starts on Auto at the top level whatever the settings hold, and the More menu says so on one line", async () => {
   test.setTimeout(120_000);
   const media = await mediaServer();
-  const { app, page } = await launch();
+  const { app, page, profile } = await launch();
   try {
-    const base = await apiBase(page);
-    await stubMetadata(page, base);
-    const sid = await session(page, base, `${media.origin}/master.m3u8`);
-    const url = new URL(page.url());
-    url.pathname = `/play/${continueKitsuMatch.id}`;
-    url.search = `?session=${sid}&episode=1&kind=hls`;
-    await page.goto(url.toString());
+    const play = await routeRealPlay(page, {
+      profile,
+      settings,
+      stream: { upstreamUrl: `${media.origin}/master.m3u8`, mediaKind: "hls" },
+    });
+    await playFromContinue(page, play);
 
     // Auto at the highest level: the 72p picture, not the 36p a cap
     // would hold.

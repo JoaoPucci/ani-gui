@@ -409,7 +409,7 @@ fn scrape_priority(args: &PlayArgs) -> crate::scraper::gate::ScrapePriority {
 ///
 /// # Errors
 /// Inherits from the native resolve (timeout, parse failure, provider
-/// errors) and [`create_session`] (URL-shape validation on the
+/// errors) and [`create_session_with_kind`] (URL-shape validation on the
 /// resolved upstream).
 pub async fn play(state: &AppState, args: &PlayArgs) -> Result<CreateSessionResponse> {
     play_with_progress(state, args, |_| {}).await
