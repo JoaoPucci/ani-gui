@@ -728,7 +728,7 @@ describe('a card whose guessed play wrote a row on another listing stands for th
 			// §16 review: a click waits for the answer out for changed rows,
 			// and acted on whatever line it named, not the one clicked.
 			let hold: Promise<void> | null = null;
-			let release!: () => void;
+			let release: () => void = () => {};
 			let apart = false;
 			let asked = 0;
 			server.use(
@@ -759,6 +759,41 @@ describe('a card whose guessed play wrote a row on another listing stands for th
 				await settle();
 				expect(dialog()?.open ?? false).toBe(false);
 				expect(backend.linkCalls.length).toBe(links);
+			} finally {
+				release();
+				await settle();
+			}
+		});
+
+		it('its pill opens no picker over a resume clicked while the lines were asked', async () => {
+			// §16 review: the pill's click waits for the lines, and a resume
+			// clicked meanwhile put its loading overlay up; the picker then
+			// opened over it.
+			let hold: Promise<void> | null = null;
+			let release: () => void = () => {};
+			let asked = 0;
+			server.use(
+				http.post(`${API_BASE}/api/history/card-lines`, async ({ request }) => {
+					asked++;
+					const { rows } = (await request.json()) as { rows: CardLineRow[] };
+					if (hold) await hold;
+					return HttpResponse.json<Record<string, CardLine>>(cardLines(rows));
+				})
+			);
+			await openMerged();
+			await until(() => pill(JOJO_PLAYED) !== null, 'the merged card pill');
+			hold = new Promise((r) => (release = r));
+			const before = asked;
+			try {
+				await appLinkDeps().link(BC_CARD, [BC_CARD], BC_RIGHT);
+				await until(() => asked > before, 'the lines asked again');
+				pill(JOJO_PLAYED)!.click();
+				cell(JOJO_PLAYED)!.querySelector<HTMLButtonElement>('.resume-card')!.click();
+				release();
+				hold = null;
+				await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+				await settle();
+				expect(dialog()?.open ?? false).toBe(false);
 			} finally {
 				release();
 				await settle();
