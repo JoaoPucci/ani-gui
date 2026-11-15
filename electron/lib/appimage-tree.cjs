@@ -86,6 +86,10 @@ const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own bina
 //   container's PID 1 that does not reap keeps it as a zombie. The
 //   probe's subshells stop that way on SIGHUP as well as SIGTERM, so a
 //   hangup to the whole group (the terminal closing) reaps them too.
+//   That covers the launcher's own children. Chromium's helper
+//   processes (its zygotes) are forked by the binary and outlive it,
+//   the probe's as the app's own do at every quit, so on such a host
+//   only a PID 1 that reaps (`docker run --init`) collects them.
 // - The probe runs as a background job the launcher waits on, so an
 //   interrupt (Ctrl-C, SIGTERM, or SIGHUP when the terminal closes) is
 //   handled at once. It stops the probe and its watchdog, removes the

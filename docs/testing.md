@@ -175,10 +175,13 @@ holds the resolve lane that route travels on. The row
 is written with Node's built-in `node:sqlite` module, so the suite and
 the Electron helper tests (`electron/lib/*.test.cjs`) need Node 22.13 or
 later (CI runs them on Node 22). On Linux, the AppImage launcher's
-tests (`apprun-sandbox.test.cjs`) also need `python3`: each run of
-the launcher starts under a small subreaper written in Python, which
-stands in for a container PID 1 that never reaps orphans and counts
-the children the run ended without waiting for. The row's key prefix,
+tests (`apprun-sandbox.test.cjs`) also need `python3` (3.9 or
+later): each launch they run through AppRun starts under a small
+subreaper written in Python, which stands in for a container PID 1
+that never reaps orphans and counts the children the launch ended
+without waiting for. The launch's binary there is a one-process stub,
+so the count covers AppRun's own children, not Chromium's helper
+processes. The row's key prefix,
 insert statement, lifetime and fields are kept in
 `electron/e2e/fixtures/replay-row.json`, and the backend's tests check
 that file against what the cache reads
