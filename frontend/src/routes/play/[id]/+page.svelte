@@ -1737,6 +1737,7 @@
 		upNextShownFor({
 			card: upNextCard !== null,
 			hasNext,
+			countsStale: detail !== null && detail.id !== id,
 			resumeHolding,
 			dismissed: upNextDismissed,
 			videoFullscreen,
