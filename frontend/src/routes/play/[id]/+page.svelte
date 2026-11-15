@@ -43,7 +43,7 @@
 	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { settledOrder } from '$lib/watch-order/page-model';
 	import { finaleCard } from '$lib/watch-order/up-next';
-	import { atVideoEnd, upNextShown as upNextShownFor } from '$lib/play/up-next-window';
+	import { atVideoEnd, stepOpen, upNextShown as upNextShownFor } from '$lib/play/up-next-window';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
@@ -1723,6 +1723,10 @@
 			detail ? { id: detail.id, status: detail.status, episodes: detail.episode_count } : null
 		)
 	);
+	// The counts behind `hasNext` belong to another show: the page,
+	// reused for a new one, still holds the detail it read at mount.
+	const countsStale = $derived(detail !== null && detail.id !== id);
+	const nextOpen = $derived(stepOpen(hasNext, countsStale, upNextCard !== null));
 	let upNextDismissed = $state(false);
 	let upNextAnnounced = $state(false);
 	$effect(() => {
@@ -1735,8 +1739,7 @@
 	const upNextShown = $derived(
 		upNextShownFor({
 			card: upNextCard !== null,
-			hasNext,
-			countsStale: detail !== null && detail.id !== id,
+			hasNext: nextOpen,
 			resumeHolding,
 			dismissed: upNextDismissed,
 			videoFullscreen,
@@ -2880,7 +2883,7 @@
 		void switchToEpisode(prevEpisodeNum);
 	}
 	function onNext() {
-		if (!hasNext) return;
+		if (!nextOpen) return;
 		comeBackWith();
 		void switchToEpisode(nextEpisodeNum);
 	}
@@ -2919,7 +2922,8 @@
 			handedOff: handoff.handedOff,
 			episodeNum,
 			totalEpisodes,
-			extras: extraNums
+			extras: extraNums,
+			stepOpen: nextOpen
 		});
 		if (decision.advance) {
 			void switchToEpisode(decision.target);
@@ -4138,7 +4142,7 @@
 							type="button"
 							class="ep-btn"
 							onclick={onNext}
-							disabled={!hasNext || switchBusy || airingIsPending}
+							disabled={!nextOpen || switchBusy || airingIsPending}
 							aria-label={m.play_episode_nav_next_aria_label()}
 						>
 							<span>{m.play_episode_nav_next_label({ episode: String(nextEpisodeNum) })}</span>
