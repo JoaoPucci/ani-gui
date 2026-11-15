@@ -158,7 +158,7 @@ proptest! {
             prop_assert!(members.contains(a) && members.contains(b));
         }
         for e in f.films.iter().chain(&f.sides).chain(&f.recaps) {
-            prop_assert!(e.id == anchor || e.subtype.as_deref() != Some("music"));
+            prop_assert!(e.subtype.as_deref() != Some("music"));
         }
         for e in f.versions.iter().chain(&f.sides).chain(&f.recaps) {
             prop_assert!(e.subtype.as_deref() != Some("movie"), "the film {} is not a film", e.id);
