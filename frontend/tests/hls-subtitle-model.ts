@@ -35,7 +35,9 @@
 // still setting the modes); the read of the captions runs once per
 // `change` (hls.js coalesces reads into one timer); and a track taken
 // over is not taken off the list of tracks in use, so two renditions
-// named alike would share one.
+// named alike would share one; and a group a quality switch moves to is
+// added to the playlist's renditions only then, where hls.js lists every
+// group's from the manifest.
 
 export interface ModelTrack {
 	readonly kind: string;
