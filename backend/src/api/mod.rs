@@ -230,10 +230,10 @@ struct HistoryRow {
     entry: HistoryEntry,
     #[serde(skip_serializing_if = "Option::is_none")]
     key_year: Option<u32>,
-    /// The Continue card whose play wrote this row on another listing —
-    /// a guessed card's, or a named line's
+    /// The Continue card whose play wrote this row on another listing
     /// ([`crate::commands::guessed_from`]): the card stands for that line
-    /// while both show as the same show ([`crate::commands::card_line`]).
+    /// while it is a guess of the same show, or named for it
+    /// ([`crate::commands::card_line`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     guessed_from: Option<String>,
     /// The row records a show the user named for it: its link's note

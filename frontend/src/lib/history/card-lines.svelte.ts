@@ -2,12 +2,13 @@
  * The history line each Continue card stands for, and whether the card
  * can correct it, as the backend answers them (`commands/card_line.rs`).
  *
- * A guessed card's play can land on another listing and write a row of
- * its own there; while the line it came from is still in the history
- * and shows as the same show, the card stands for that line. The
- * backend decides it from what only Home holds: the rows as Continue
- * Watching matches them, each with its show and whether that is a
- * guess.
+ * A card's play can land on another listing and write a row of its own
+ * there; while the line it came from is still in the history and shows
+ * as the same show — as a guess, or named for it — the card stands for
+ * that line, and so does the card of a row whose own listing holds a
+ * line named for the same show. The backend decides it from what only
+ * Home holds: the rows as Continue Watching matches them, each with its
+ * show, whether that is a guess and whether the user named it.
  *
  * Home hands over the rows each time they change. The cards draw the
  * latest answer: until the first arrives, each card stands for its own

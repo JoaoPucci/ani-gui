@@ -12,11 +12,12 @@
 //! names it (`guessed_from`), and the card stands for that line while
 //! the two show as the same show ([`super::card_line`]).
 //!
-//! A card no guess opened notes it the same way: a line the user named
-//! a show for plays that show's own stream, from Home or from "Switch to
-//! it now", which lands on the show's listing. The card stands for the
-//! named line while it records that show, and keeps the way to change
-//! it again.
+//! Every Continue card's play notes it the same way, a card no guess
+//! opened too (`card_row`). It matters for a line the user named a show
+//! for: its play, from Home or from "Switch to it now", is that show's
+//! own stream and lands on the show's listing, and the card stands for
+//! the named line while it records that show, keeping the way to change
+//! it again. For any other line the note changes nothing.
 //!
 //! The note is a cache row (`guessed-from:v1:<row>` → the card's row),
 //! not a column of the history file: the file's format is shared with

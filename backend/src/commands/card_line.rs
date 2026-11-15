@@ -17,9 +17,13 @@
 //! stream, and lands on its listing, so the shown row records its show
 //! and is newer than the line. While the line it came from records the
 //! same show as one the user named, the card stands for that line and
-//! keeps the way to change it again. A shown row that records its own
-//! show from any other play — from that show's page — is the user's,
-//! and the card stands for it; so does a shown row the user named
+//! keeps the way to change it again. A bare line of a retired provider
+//! plays on the walked listing with its words, which is its own
+//! listing, so its play notes no card: a named line of the shown row's
+//! own listing, shown as the same show, is the line the card stands
+//! for too. Any other shown row that records its own show — played
+//! from that show's page, or by a card whose line is not named for
+//! that show — stands for itself; so does a shown row the user named
 //! itself.
 //!
 //! A card's line can be corrected while it is a guess, or once the user
@@ -38,8 +42,8 @@ use serde::{Deserialize, Serialize};
 pub struct CardRow {
     /// The row's id: its provider show key.
     pub id: String,
-    /// The card whose play wrote this row on another listing: a guessed
-    /// card's, or a named line's ([`super::guessed_from`]).
+    /// The Continue card whose play wrote this row on another listing
+    /// ([`super::guessed_from`]).
     #[serde(default)]
     pub guessed_from: Option<String>,
     /// The Kitsu id of the show the row shows, `None` while it is not
@@ -66,18 +70,33 @@ pub struct CardLine {
 /// The line the card showing `shown` stands for, among `rows`: the
 /// row its card's play came from while that row is held and shows as
 /// the same show — for a guessed `shown`, or for a line the user named
-/// when `shown` was not named itself — else `shown` itself.
+/// when `shown` was not named itself — or, for a `shown` neither
+/// guessed nor named, a named line of its own listing shown as the
+/// same show; else `shown` itself.
 #[must_use]
 pub fn card_line<'a>(shown: &'a CardRow, rows: &'a [CardRow]) -> &'a CardRow {
-    let Some(from) = shown.guessed_from.as_deref() else {
-        return shown;
-    };
-    if from == shown.id || shown.show.is_none() {
+    if shown.show.is_none() {
         return shown;
     }
+    if let Some(from) = shown.guessed_from.as_deref().filter(|f| *f != shown.id) {
+        let noted = rows.iter().find(|r| {
+            r.id == from && r.show == shown.show && (shown.guess || (r.named && !shown.named))
+        });
+        if let Some(line) = noted {
+            return line;
+        }
+    }
+    if shown.guess || shown.named {
+        return shown;
+    }
+    // A named line's play of its own listing notes no card: a bare
+    // line's lands on the walked row with its words.
     rows.iter()
         .find(|r| {
-            r.id == from && r.show == shown.show && (shown.guess || (r.named && !shown.named))
+            r.id != shown.id
+                && r.named
+                && r.show == shown.show
+                && super::history_link::card_listing(&r.id, &shown.id)
         })
         .unwrap_or(shown)
 }

@@ -374,10 +374,10 @@ export interface HistoryEntry {
 	 *  (`hianime:jojos-bizarre-adventure-2000-5182` names 2000), read by
 	 *  the backend; absent when it names none. */
 	key_year?: number;
-	/** The Continue card whose guessed play wrote this row on another
-	 *  listing — JoJo's 2000 card for the 2012 listing's row its play
-	 *  wrote. Home's card stands for that line while both show as the
-	 *  same show, as the backend answers (`historyCardLines`). */
+	/** The Continue card whose play wrote this row on another listing —
+	 *  JoJo's 2000 card for the 2012 listing's row its play wrote. Home's
+	 *  card stands for that line while it is a guess of the same show, or
+	 *  named for it, as the backend answers (`historyCardLines`). */
 	guessed_from?: string;
 	/** The row records a show the user named for it (a pick in the
 	 *  picker, or Yes): every surface offers to change it again. */
@@ -386,7 +386,7 @@ export interface HistoryEntry {
 
 /** A history row as `/api/history/by-kitsu/:id` answers it: the row
  *  alone, without what `/api/history` reads beside it (the year its
- *  show key names, the card a guessed play wrote it from, and whether
+ *  show key names, the card whose play wrote it, and whether
  *  the user named its show). */
 export type HistoryRowByKitsu = Omit<HistoryEntry, 'key_year' | 'guessed_from' | 'named'>;
 

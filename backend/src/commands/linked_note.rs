@@ -60,6 +60,38 @@ pub(crate) fn linked(state: &AppState, row: &str) -> Option<String> {
     meta_cache_get(&state.cache_pool, &key(row)).ok().flatten()
 }
 
+/// Leave the note of `row`, a retired provider's line about to be
+/// removed as superseded, on each other row of its listing that
+/// records the id the note names — the walked row its play wrote — so
+/// the naming outlives the line. Only while `row` itself records that
+/// id: a stale note names nothing. A read or write that fails is
+/// logged, and the naming goes with the line, as before.
+pub(crate) fn carry_to_listing(state: &AppState, row: &str) {
+    let carried = (|| -> Result<()> {
+        let Some(id) = linked(state, row) else {
+            return Ok(());
+        };
+        let rows = crate::history::read_all(&state.history_path)?;
+        let records = |r: &crate::history::HistoryEntry| {
+            r.kitsu_id
+                .as_deref()
+                .is_some_and(|k| crate::history::same_kitsu_id(k, &id))
+        };
+        if !rows.iter().any(|r| r.id == row && records(r)) {
+            return Ok(());
+        }
+        for r in rows.iter().filter(|r| {
+            r.id != row && records(r) && crate::commands::history_link::card_listing(row, &r.id)
+        }) {
+            record(state, &r.id, &id)?;
+        }
+        Ok(())
+    })();
+    if let Err(e) = carried {
+        tracing::warn!(row, error = ?e, "could not carry the line's naming to its listing");
+    }
+}
+
 /// Every note: the row, and the id the user linked it to.
 ///
 /// # Errors

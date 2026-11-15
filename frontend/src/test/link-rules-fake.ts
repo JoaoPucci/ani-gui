@@ -68,11 +68,20 @@ export function groupMembers(
 
 export function cardLines(rows: CardLineRow[]): Record<string, CardLine> {
 	const lineOf = (shown: CardLineRow): CardLineRow => {
+		if (shown.show === null) return shown;
 		const from = shown.guessed_from;
-		if (!from || from === shown.id || shown.show === null) return shown;
+		const noted =
+			from && from !== shown.id
+				? rows.find(
+						(r) =>
+							r.id === from && r.show === shown.show && (shown.guess || (r.named && !shown.named))
+					)
+				: undefined;
+		if (noted) return noted;
+		if (shown.guess || shown.named) return shown;
 		return (
 			rows.find(
-				(r) => r.id === from && r.show === shown.show && (shown.guess || (r.named && !shown.named))
+				(r) => r.id !== shown.id && r.named && r.show === shown.show && cardListing(r.id, shown.id)
 			) ?? shown
 		);
 	};

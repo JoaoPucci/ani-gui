@@ -5,7 +5,7 @@
 //! about the show, keyed by the row's show id or title:
 //!
 //! - the show's watch stamp (`watched-at:`);
-//! - the card its card's play came from (`guessed-from:`,
+//! - the Continue card its play came from (`guessed-from:`,
 //!   [`super::guessed_from`]);
 //! - the show the user linked it to (`history-linked:`,
 //!   [`super::linked_note`]);

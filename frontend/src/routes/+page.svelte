@@ -1522,7 +1522,7 @@
 							)
 			})}
 			{@const initials = (card.text?.show ?? target.displayTitle).slice(0, 2).toUpperCase()}
-			<!-- The line the card stands for: a row its guessed play wrote on
+			<!-- The line the card stands for: a row a card's play wrote on
 			     another listing stands for the line clicked, as the backend answers
 			     ($lib/history/card-lines.svelte). -->
 			{@const line = cardLines.lineOf(entry.id)}
