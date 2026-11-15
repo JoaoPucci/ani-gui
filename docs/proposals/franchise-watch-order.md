@@ -25,8 +25,11 @@ own title, poster and episode list. `ani-gui` takes its catalogue from
 Kitsu, which models every one of those pieces as its own anime, so
 the app does too.
 
-Today the app knows nothing about how those entries connect. Three
-things follow from that:
+Before the watch-order surfaces, the app knew nothing about how those
+entries connect. Three things followed from that; the strip
+([`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip)) answers the second, the player's Up next card
+([`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card)) the first in the player, and the surfaces still to build
+the rest of the first and the third:
 
 1. **A finale is a dead end.** When you finish the last episode of a
    season, the player stops (auto-play halts at the last known
@@ -141,7 +144,7 @@ design section. Below it, sections:
 2. **Other versions** — the walk's other versions: from every JoJo page, both
    OVAs. Movies are not listed here but under Films: the 2010 UBW film
    and the three *Heaven's Feel* films, *Gintama*'s retelling films.
-3. From `around`: **Films** (every movie around the run, whatever its
+3. From the franchise read's sections: **Films** (every movie around the run, whatever its
    role: a version, a recap or a side story), **Side stories &
    specials** (everything else: side stories, parent stories,
    spin-offs, `other`) and **Recaps** (`summary`, a TV series aside,
@@ -151,7 +154,7 @@ design section. Below it, sections:
 
 There is no order switch on the page; the app-wide setting applies.
 
-**Data.** `chain` and `around` for each entry of the run, plus
+**Data.** The franchise read (one answer for the page's anchor), plus
 progress from the local history (the row each entry's page resumes
 from) and, where a
 tracker is connected, the cached tracker list (status and episode
@@ -168,15 +171,14 @@ one unnumbered group, in air-date order, where the cycle sits in the
 run. A history row counts toward the entry whose page would resume
 from it: the entry it recorded while Kitsu still has it, else the one
 its stored mapping names, else, for a row whose recorded entry Kitsu
-deleted, the ones Home's title matches found for it (a title can
-hold one per cour, so such a row can count toward each). A row with none
-of these contributes no progress.
+deleted, the one Home's title match under the row's own cour names.
+A row with none of these contributes no progress.
 
 **Trackers.** Read-only.
 
-**Cost.** Medium to large: a new route, `around` and its paging, the
-classification into sections, and the design work AGENTS.md §7 asks
-of a new surface. It reuses (a)'s `chain`.
+**Cost.** Medium: the franchise read already serves the sections; what
+is left is the page and the design work AGENTS.md §7 asks of a new
+surface. It reuses the strip's ordering.
 
 ### (d) One Continue card per franchise
 
@@ -217,7 +219,9 @@ a bolted-on widget does not ship.
 
 ### The baseline: the app's existing design language
 
-This section describes what the app does today, as read from
+This section describes the app as it was before the watch-order
+surfaces (the strip now sits under the show page's masthead, and
+"Similar titles" leaves out what it shows), as read from
 `frontend/src/lib/design/tokens.css` and the components named below.
 AGENTS.md §7–§9 set the direction: Netflix-level polish, motion as
 structure, no generic dark-mode widgets, and the interface as the top
@@ -438,7 +442,7 @@ Built: [`architecture.md`, "Continue Watching's hand-off"](../architecture.md#co
   series' name); the entry being watched has its own line beside the
   Resume button. A note under the button says which order the list
   follows, with a link to Settings.
-- **Missing data and keyboard** as on the show page; the recaps stay
+- **Missing data and keyboard** as on the show page ([`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip)); the recaps stay
   folded behind a "Show recaps" button that reports its state.
 
 #### The setting
@@ -573,7 +577,9 @@ The third round revises the strip's footer only.
 
 ### Open design questions
 
-Each with a recommendation; the maintainer decides.
+Each with a recommendation; the maintainer decides. The footer's
+"You're watching" card is built, centred at 24rem at most and with no
+border at rest; what is open is the franchise link beside it.
 
 1. **The stack's highlight.** Surface (recommended), underline or
    border. Surface is the only one that marks the whole link as one
@@ -609,16 +615,13 @@ design gate in section 5 (mockups in the real app reviewed before
 implementation, designer and critic, a draft pull request with a
 manual test section, a consistency check) before it merges:
 
-1. **Watch order strip** (option a), on the franchise read, with the
-   "You're watching …" line, both of which need the whole run, not just the
-   neighbours. Read-only, no provider requests, no change to Continue
-   or trackers. On its own it answers "what comes before and after"
-   and most of the JoJo request.
-2. **Up next at a finale** (option b): the player end card first, then
-   Continue moving to the sequel and the finished entry's card giving
-   way. The card waits for a click, and no provider is asked about the
-   sequel.
-3. **Franchise page** (option c), in 0.19.0, reusing phase 1's walk
+1. **Watch order strip** (option a): built, with the "You're watching"
+   card and the order setting
+   ([`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip)).
+2. **Up next at a finale** (option b): the player end card is built
+   ([`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card)); Continue moving to the sequel and the finished entry's
+   card giving way is not yet.
+3. **Franchise page** (option c), in 0.19.0, reusing the franchise read
    and adding the side stories, films, recaps and other versions
    around it; the strip gains its trailing link to the page here.
 4. **One card per franchise** (option d): not planned. Revisit after
@@ -627,16 +630,44 @@ manual test section, a consistency check) before it merges:
 
 **Decided by the maintainer.**
 
-- **No provider check at a finale.** "Up next" names the next entry
-  the relations give, carried or not; the sequel's own show page
-  reports when the provider lacks it, and its strip shows what
-  follows.
-- **No auto-play across entries.** The finale shows the "Up next"
-  card and waits; auto-play stays within one entry.
+- **No provider check at a finale** and **no auto-play across
+  entries**: built, with their reasons, in [`architecture.md`, "The player's Up next card"](../architecture.md#the-players-up-next-card). Continue
+  Watching's hand-off asks the provider nothing either.
 - **The franchise page (phase 3) is part of 0.19.0.**
 - **Link order is the default**, with "As released" as an app-wide
-  preference in Settings (section 5). The maintainer disagrees with
-  some of the links Kitsu's editors chose, but does not want the app
-  to keep its own list of differences from the source for now: the
-  app follows the source, and the one setting is the way out for a
-  viewer who prefers release order.
+  preference in Settings: built, with its reasons, in
+  [`architecture.md`, "The order setting"](../architecture.md#the-order-setting).
+
+## Live requests made for this proposal
+
+All on 2026-11-01, sent one at a time with a pause of two seconds or
+more between them, 38 in total:
+
+- Kitsu REST, 34. For the first survey: the franchise list (one page
+  of two), four installments routes (all HTTP 500), one slug lookup,
+  one MyAnimeList-id mapping lookup, nine `media-relationships` reads
+  (818, 3919, 43078, 46598, 8063, 7730, 41982, 46903, 5649), whose
+  findings `title-resolution.md` summarises, and the role-filter test
+  on 818 (`filter[role]=sequel,prequel` answered one row of fifteen;
+  the walk reads unfiltered, so one listing serves it and what sits
+  around the run). For the link-order reading (now in
+  `title-resolution.md`):
+  one batched mapping lookup of six MyAnimeList ids, one test of a
+  batched read (`/anime?filter[id]=…&include=mediaRelationships.destination`),
+  thirteen batched reads of up to twenty entries each that followed
+  the prequel/sequel links of the ten franchises to closure, one
+  search for *Kamitsubaki*, and one batched read refused with HTTP 403
+  (a client without a browser-like user agent), repeated with `curl`.
+- Kitsu GraphQL, 1: a franchise lookup the schema does not have.
+- AniList GraphQL, 3: two relations queries (nine and eight entries)
+  and one schema introspection of `MediaRelation`.
+
+For the second mockup round, on 2026-11-02, three more Kitsu REST
+`media-relationships` reads, one at a time with a pause of three
+seconds: 6928, 11759 and 12064, the side stories whose parent stories
+the mockup's fixtures record.
+
+The unaired sequel of Kitsu 48677 (starting 2027-01-10), the design's
+example of an unaired title ("Coming January 2027"), is a
+repository fixture under `tests/fixtures/hianime/appended/`, not a
+live read.
