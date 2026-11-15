@@ -77,8 +77,8 @@ function renditionFragment(lang: string, n: number): string {
 interface Holds {
 	/** Milliseconds the master playlist is held back. */
 	master?: number;
-	/** Milliseconds each English rendition fragment is held back. */
-	englishFragment?: number;
+	/** English rendition fragments held back until this resolves. */
+	englishFragment?: Promise<void>;
 }
 
 /** A server for the stream, standing in for a provider's CDN. */
@@ -109,8 +109,10 @@ async function mediaServer(
 		const fragment = /^\/(en|es)_(\d)\.vtt$/.exec(at);
 		if (fragment) {
 			const [, lang, n] = fragment;
-			const hold = lang === 'en' ? (holds.englishFragment ?? 0) : 0;
-			return send(res, types['.vtt'], Buffer.from(renditionFragment(lang, Number(n))), hold);
+			const body = Buffer.from(renditionFragment(lang, Number(n)));
+			const held = lang === 'en' ? holds.englishFragment : undefined;
+			if (held) return void held.then(() => send(res, types['.vtt'], body));
+			return send(res, types['.vtt'], body);
 		}
 		const name = path.basename(at);
 		const file = [playlistDir, videoDir]
@@ -274,7 +276,10 @@ for (const [order, holds] of [
 	});
 }
 
-test("each kind picked from the captions menu shows alone with its cues, through a seek and a quality switch", async () => {
+// Both levels list the one subtitle group, so the quality switch here
+// leaves hls.js's subtitle selection as it is; a switch between groups
+// is covered by the unit tier (frontend/tests/caption-sync.test.ts).
+test("each kind picked from the captions menu shows alone with its cues, through a seek and a quality switch within one subtitle group", async () => {
 	test.setTimeout(150_000);
 	const media = await mediaServer();
 	const { app, page, profile } = await launch();
@@ -343,7 +348,11 @@ test("each kind picked from the captions menu shows alone with its cues, through
 // nothing there.
 test("a rendition's fragment that lands after the viewer moved off it is there when it is picked again", async () => {
 	test.setTimeout(120_000);
-	const media = await mediaServer({ englishFragment: 1_500 });
+	let release: () => void = () => {};
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const media = await mediaServer({ englishFragment: held });
 	const { app, page, profile } = await launch();
 	try {
 		await playing(page, profile, media.origin);
@@ -359,14 +368,16 @@ test("a rendition's fragment that lands after the viewer moved off it is there w
 		await expect
 			.poll(async () => (await shown(page))?.showing ?? [], { timeout: 10_000 })
 			.toEqual(['sidecar Français']);
-		// The fragment held back lands meanwhile.
-		await page.waitForTimeout(2_500);
+		// The fragment held back lands now, with the viewer off it.
+		release();
+		await page.waitForTimeout(2_000);
 		await pick(page, english);
 		await expect
 			.poll(async () => (await shown(page))?.cues ?? [], { timeout: 5_000 })
 			.toEqual(['Playlist English at 6']);
 		await expect.poll(() => painted(page), { timeout: 5_000 }).toEqual(['Playlist English at 6']);
 	} finally {
+		release();
 		await app.close();
 		media.close();
 	}
