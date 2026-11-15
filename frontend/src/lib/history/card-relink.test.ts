@@ -437,3 +437,37 @@ describe('a view taken while a row is being matched again', () => {
 		);
 	});
 });
+
+describe("Home's first load and a link that lands while it is out", () => {
+	it('reads the cards again only once the first load has published, so its rematch outranks the load', async () => {
+		// The first load listed the history before the link saved: its
+		// rows still say "a" is the former show.
+		let loaded!: () => void;
+		const first = new Promise<void>((r) => (loaded = r));
+		const h = home([], [[row('a', 'linked')]]);
+		h.relink.hold(first);
+		const reread = h.relink.reread();
+		await flush();
+		// Nothing reads the cards while the first load is out.
+		expect(h.deps.list).not.toHaveBeenCalled();
+		// The first load publishes its older history, and takes its view.
+		h.deps.setHistory([row('a')]);
+		const fromLoad = h.relink.since();
+		loaded();
+		await reread;
+		await flush();
+		// The link's read then sees "a" changed, and matches it again: the
+		// first load's answers for "a" are dropped.
+		expect(h.history()).toEqual([row('a', 'linked')]);
+		expect(h.published).toEqual([['a', 'linked']]);
+		expect(fromLoad('a')).toBe(false);
+	});
+
+	it('reads the cards when the first load failed', async () => {
+		const first = Promise.reject(new Error('down'));
+		const h = home([], [[row('a', 'linked')]]);
+		h.relink.hold(first);
+		await h.relink.reread();
+		expect(h.history()).toEqual([row('a', 'linked')]);
+	});
+});
