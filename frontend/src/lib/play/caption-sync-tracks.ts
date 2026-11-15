@@ -75,8 +75,11 @@ export function wantOf(
 /**
  * What the app shows once the engine has switched to rendition `picked`
  * of its current group (-1 for none): `desired` — unless it is a
- * rendition of a group the engine has left, which no rendition of the
- * current group names, when it is the engine's pick in the new group.
+ * rendition of a group the engine has left, one a rendition of the
+ * playlist (`allRenditions`) names and none of the current group does,
+ * when it is the engine's pick in the new group. A track no rendition
+ * ever named — the engine's closed captions, one left from an earlier
+ * manifest — stays the pick.
  */
 export function followGroup(
 	video: CaptionVideo,
@@ -85,10 +88,10 @@ export function followGroup(
 	allRenditions: readonly EngineTrack[],
 	picked: number
 ): Desired | null {
-	void allRenditions;
 	if (desired === null || typeof desired === 'string' || picked < 0) return desired;
 	const sidecars = new Set(Array.from(video.querySelectorAll('track'), (el) => el.track));
-	if (sidecars.has(desired) || engineIdOf(desired, renditions) !== -1) return desired;
+	const left = engineIdOf(desired, allRenditions) !== -1 && engineIdOf(desired, renditions) === -1;
+	if (sidecars.has(desired) || !left) return desired;
 	const at = renditionIndex(video.textTracks, renditions[picked], sidecars);
 	return at === -1 ? desired : video.textTracks[at];
 }
@@ -98,6 +101,7 @@ export function followGroup(
 export type CaptionSyncEvents = Pick<
 	typeof Hls.Events,
 	| 'MANIFEST_LOADING'
+	| 'SUBTITLE_TRACKS_UPDATED'
 	| 'MANIFEST_PARSED'
 	| 'FRAG_LOADING'
 	| 'SUBTITLE_FRAG_PROCESSED'

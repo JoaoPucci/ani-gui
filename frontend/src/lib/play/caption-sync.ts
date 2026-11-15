@@ -17,6 +17,7 @@ import {
 	type Desired
 } from './caption-sync-tracks';
 import { watchFragments, watchReadiness } from './caption-sync-watch';
+import { expectCaptions, showingCaption } from './caption-watch';
 
 /** Keep `engine`'s subtitle selection in step with the captions shown
  *  on `video`. */
@@ -65,8 +66,11 @@ export function createCaptionSync(
 	// was a rendition of a subtitle group the engine has left (a quality
 	// switch to a level of another group): the engine's pick in the new
 	// group, made in the same language, is the pick from then on.
+	// The follow is the app's own setting, not the viewer's pick
+	// ($lib/play/caption-watch).
 	engine.on(events.SUBTITLE_TRACK_SWITCH, () => {
 		if (applying) return;
+		const before = desired;
 		desired = followGroup(
 			video,
 			desired,
@@ -75,6 +79,7 @@ export function createCaptionSync(
 			engine.subtitleTrack
 		);
 		apply();
+		if (desired !== before) expectCaptions(video, showingCaption(video.textTracks));
 	});
 
 	return {

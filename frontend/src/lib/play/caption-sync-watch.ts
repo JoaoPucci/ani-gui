@@ -72,9 +72,13 @@ export function watchFragments(
 		inFlight = null;
 		landed();
 	};
-	engine.on(events.MANIFEST_LOADING, () => {
+	// A new subtitle group renumbers the renditions: a fragment of the
+	// group left names none of the new one.
+	const forget = () => {
 		inFlight = null;
-	});
+	};
+	engine.on(events.MANIFEST_LOADING, forget);
+	engine.on(events.SUBTITLE_TRACKS_UPDATED, forget);
 	engine.on(events.FRAG_LOADING, (_event, data) => {
 		if (isSubtitle(data.frag)) inFlight = data.frag;
 	});
