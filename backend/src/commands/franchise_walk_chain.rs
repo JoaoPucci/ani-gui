@@ -16,7 +16,6 @@
 //! none, but a side story whose parents the main story leaves out is
 //! drawn on its earliest parent's chain, or on that parent alone where
 //! it is chained to nothing (`franchise_walk_run.rs`).
-//! Music videos are no titles of a chain, the page aside.
 
 use std::collections::BTreeSet;
 
@@ -52,14 +51,9 @@ pub(crate) fn chain(
     if main.members.contains_key(anchor) || !franchise.contains(anchor) {
         return None;
     }
-    let music = |m: &str| {
-        look.entry(m, &main.consulted)
-            .is_some_and(|e| e.subtype.as_deref() == Some("music"))
-    };
     let outside: Vec<&String> = franchise
         .iter()
         .filter(|m| !main.members.contains_key(*m))
-        .filter(|m| m.as_str() == anchor || !music(m))
         .collect();
     let mut own = BTreeSet::from([anchor.to_string()]);
     let mut todo = vec![anchor.to_string()];
