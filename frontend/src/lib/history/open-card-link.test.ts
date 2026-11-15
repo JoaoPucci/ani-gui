@@ -42,6 +42,19 @@ describe('openCardLink', () => {
 		expect(log).toEqual(['dismiss', 'check:row-1:42', 'check-failed']);
 	});
 
+	it('says a card whose line could not be read could not be checked, and opens nothing', async () => {
+		// Codex review: the card's own row is not the line its pill stands for.
+		const { deps, log } = world(true);
+		expect(await openCardLink(null, '42', 3, deps)).toBe('unread');
+		expect(log).toEqual(['dismiss', 'check-failed']);
+	});
+
+	it('holds a card whose line could not be read while a remove or Clear history is out', async () => {
+		const { deps, log } = world(true, () => true);
+		expect(await openCardLink(null, '42', 3, deps)).toBe('held');
+		expect(log).toEqual([]);
+	});
+
 	it('opens nothing, and says nothing, for a card settled since the cards were read', async () => {
 		const { deps, log } = world(false);
 		expect(await openCardLink('row-1', '42', 3, deps)).toBe('settled');
@@ -88,6 +101,10 @@ describe('failedResumeGuess', () => {
 		expect(await failedResumeGuess(args, deps(false))).toBeUndefined();
 		expect(await failedResumeGuess({ ...args, guess: false }, deps(true))).toBeUndefined();
 		expect(await failedResumeGuess({ ...args, row: 'gone' }, deps(true))).toBeUndefined();
+	});
+
+	it('offers none for a play whose line could not be read: the row it played may not be the line', async () => {
+		expect(await failedResumeGuess({ ...args, unread: true }, deps(true))).toBeUndefined();
 	});
 
 	it('shows nothing once the viewer moved on while the check was out', async () => {

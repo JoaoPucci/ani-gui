@@ -899,6 +899,58 @@ describe('makeStartResume (moved on while a failure is worded)', () => {
 		expect(current?.()).toBe(false);
 	});
 
+	it('plays a card whose line could not be read from its own row, and tells the failure surface the line was not read', async () => {
+		// Codex review: the row played is not known to be the line the
+		// card stands for, so the failure must not offer to correct it.
+		let unread: boolean | undefined;
+		const h = makeHarness({
+			isGuess: () => true,
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockRejectedValue(new Error('no session')),
+			onFailure: (_title, _e, _args, _isCurrent, lineUnread) => {
+				unread = lineUnread;
+			}
+		});
+		await makeStartResume(h.deps)(
+			makeEntry('h1', '3', 'Show'),
+			makeMatch('k1', 24),
+			24,
+			false,
+			Promise.resolve(null)
+		);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: true, row: 'h1' }),
+			expect.any(Function)
+		);
+		expect(unread).toBe(true);
+	});
+
+	it('tells the failure surface a line that was read was read', async () => {
+		let unread: boolean | undefined;
+		const h = makeHarness({
+			isGuess: () => true,
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockRejectedValue(new Error('no session')),
+			onFailure: (_title, _e, _args, _isCurrent, lineUnread) => {
+				unread = lineUnread;
+			}
+		});
+		await makeStartResume(h.deps)(
+			makeEntry('h1', '3', 'Show'),
+			makeMatch('k1', 24),
+			24,
+			false,
+			Promise.resolve('h0')
+		);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ row: 'h0' }),
+			expect.any(Function)
+		);
+		expect(unread).toBe(false);
+	});
+
 	it("plays the clicked show in its own audio, the settings' mode the default", async () => {
 		const h = makeHarness({
 			modeFor: (kitsuId, fallback) => (kitsuId === 'k1' ? 'dub' : fallback)

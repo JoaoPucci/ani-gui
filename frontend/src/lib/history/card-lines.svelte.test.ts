@@ -1,6 +1,6 @@
 // Home's cards' lines, as the backend answers them: the cards draw the
 // latest answer, and a click acts only on the answer for the rows as
-// they are now. Which line a card stands for is the backend's rule
+// they are now, asking again for it after a failed one. Which line a card stands for is the backend's rule
 // (commands/card_line.rs, its own tests).
 
 import { describe, expect, it, vi } from 'vitest';
@@ -102,7 +102,9 @@ describe('CardLines', () => {
 		expect(settled).toBe(true);
 	});
 
-	it('draws the last answer after a failed later one, while a click acts on each row itself', async () => {
+	it('draws the last answer after a failed later one, while a click has no line to act on', async () => {
+		// Codex review: acting on each row itself here put a correction on
+		// another line than the one the drawn pill stands for.
 		const { ask, asks } = gated();
 		const lines = new CardLines(ask);
 		lines.update(rows('7158'));
@@ -112,7 +114,38 @@ describe('CardLines', () => {
 		asks[1].answer(false);
 		await lines.settled();
 		expect(lines.lineOf(PLAYED)).toBe(CARD);
-		expect(lines.clickLineOf(PLAYED)).toBe(PLAYED);
+		expect(lines.clickLineOf(PLAYED)).toBeNull();
+	});
+
+	it('asks again for the rows as they are when a click waits after a failed answer', async () => {
+		const { ask, asks } = gated();
+		const lines = new CardLines(ask);
+		lines.update(rows('7158'));
+		asks[0].answer(false);
+		await lines.settled();
+		expect(lines.clickLineOf(PLAYED)).toBeNull();
+		const settled = lines.settled();
+		expect(ask).toHaveBeenCalledTimes(2);
+		expect(asks[1].rows).toEqual(rows('7158'));
+		asks[1].answer(true);
+		await settled;
+		expect(lines.clickLineOf(PLAYED)).toBe(CARD);
+		// Answered: a later wait asks nothing.
+		await lines.settled();
+		expect(ask).toHaveBeenCalledTimes(2);
+	});
+
+	it('asks again once per wait while the answers keep failing', async () => {
+		const { ask, asks } = gated();
+		const lines = new CardLines(ask);
+		lines.update(rows('7158'));
+		asks[0].answer(false);
+		await lines.settled();
+		const settled = lines.settled();
+		asks[1].answer(false);
+		await settled;
+		expect(ask).toHaveBeenCalledTimes(2);
+		expect(lines.clickLineOf(PLAYED)).toBeNull();
 	});
 
 	it('acts on the line the answer for the rows as they are names', async () => {
@@ -145,6 +178,6 @@ describe('CardLines, an answer not the shape expected', () => {
 		await lines.settled();
 		expect(lines.lineOf(PLAYED)).toBe(PLAYED);
 		expect(lines.correctable(PLAYED)).toBe(false);
-		expect(lines.clickLineOf(PLAYED)).toBe(PLAYED);
+		expect(lines.clickLineOf(PLAYED)).toBeNull();
 	});
 });

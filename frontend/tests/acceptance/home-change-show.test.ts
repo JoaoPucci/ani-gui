@@ -652,6 +652,94 @@ describe('a card whose guessed play wrote a row on another listing stands for th
 		expect(backend.linkCalls[0].card).toBe(JOJO_CARD);
 		expect(backend.linkCalls[0].rows).toEqual([JOJO_CARD]);
 	});
+
+	// Codex review: the merged card keeps drawing the last answer while
+	// one for changed rows fails, so its pill still stands for the 2000
+	// line. A click must not act on the 2012 row instead: that would
+	// relabel the 2012 listing and leave the line the pill stood for as
+	// it was.
+	describe('when the lines cannot be asked again after another card changed', () => {
+		let linesUp = true;
+		let linesAsked = 0;
+
+		async function openWithLinesDown() {
+			linesUp = true;
+			linesAsked = 0;
+			server.use(
+				http.post(`${API_BASE}/api/history/card-lines`, async ({ request }) => {
+					linesAsked++;
+					if (!linesUp) return errorAnswer(500, { kind: 'internal', key: 'error.internal' });
+					const { rows } = (await request.json()) as { rows: CardLineRow[] };
+					return HttpResponse.json<Record<string, CardLine>>(cardLines(rows));
+				})
+			);
+			await openMerged();
+			await until(() => pill(JOJO_PLAYED) !== null, 'the merged card pill');
+			linesUp = false;
+			const asked = linesAsked;
+			// Another card is linked, from anywhere: Home reads its cards
+			// again and asks for their lines, which fail.
+			await appLinkDeps().link(BC_CARD, [BC_CARD], BC_RIGHT);
+			await until(
+				() => showLine(BC_CARD).includes(BC_RIGHT_TITLE),
+				'the Black Clover card relinked'
+			);
+			await until(() => linesAsked > asked, 'the lines asked again');
+			await settle();
+			// The pill still stands for the 2000 line, as last answered.
+			expect(pill(JOJO_PLAYED)).not.toBeNull();
+			expect(cell(JOJO_PLAYED)!.dataset.cardRow).toBe(JOJO_CARD);
+		}
+
+		it('its pill asks again, and says the card could not be checked rather than correct the 2012 row', async () => {
+			await openWithLinesDown();
+			const links = backend.linkCalls.length;
+			const asked = linesAsked;
+			pill(JOJO_PLAYED)!.click();
+			await until(() => toastWith(m.home_link_check_failed()) !== undefined, 'the notice');
+			expect(linesAsked).toBeGreaterThan(asked);
+			await settle();
+			expect(dialog()?.open ?? false).toBe(false);
+			expect(backend.linkCalls.length).toBe(links);
+			// The pill stays, to try again.
+			expect(pill(JOJO_PLAYED)).not.toBeNull();
+		});
+
+		it('its pill corrects the 2000 line once the lines answer again', async () => {
+			await openWithLinesDown();
+			const links = backend.linkCalls.length;
+			linesUp = true;
+			pill(JOJO_PLAYED)!.click();
+			await until(() => dialog()?.open === true, 'the picker');
+			const row = () =>
+				Array.from(dialog()?.querySelectorAll<HTMLButtonElement>('li button') ?? []).find((b) =>
+					(b.textContent ?? '').includes(JOJO_RIGHT_TITLE)
+				);
+			await until(() => row() !== undefined, 'the OVA among the candidates');
+			row()!.click();
+			await until(() => !button(m.detail_link_confirm_button())?.disabled, 'the Link button');
+			button(m.detail_link_confirm_button())!.click();
+			await until(() => backend.linkCalls.length > links, 'the link');
+			expect(backend.linkCalls.at(-1)!.card).toBe(JOJO_CARD);
+			expect(backend.linkCalls.at(-1)!.rows).toEqual([JOJO_CARD]);
+		});
+
+		it('its resume still plays, and its failure offers no pick it could not tie to the line', async () => {
+			await openWithLinesDown();
+			cell(JOJO_PLAYED)!.querySelector<HTMLButtonElement>('.resume-card')!.click();
+			await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
+			FakeEventSource.instances
+				.at(-1)!
+				.dispatch('error', JSON.stringify({ kind: 'no_results', message: 'not found' }));
+			await until(
+				() => target.querySelector('[role="alertdialog"]') !== null,
+				'the failed resume overlay'
+			);
+			await settle();
+			const overlay = target.querySelector<HTMLElement>('[role="alertdialog"]')!;
+			expect(button(m.home_link_pick_button(), overlay)).toBeNull();
+		});
+	});
 });
 
 describe("a link forgets what Home kept for the card's former show", () => {
