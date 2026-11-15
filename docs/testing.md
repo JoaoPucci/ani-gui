@@ -179,9 +179,9 @@ tests (`apprun-sandbox.test.cjs`) also need `python3` (3.9 or
 later): each launch they run through AppRun starts under a small
 subreaper written in Python, which stands in for a container PID 1
 that never reaps orphans and counts the children the launch ended
-without waiting for. The launch's binary there is a one-process stub,
-so the count covers AppRun's own children, not Chromium's helper
-processes. The row's key prefix,
+without waiting for. The launch's binary there is a stub that leaves
+no process behind, so the count covers AppRun's own children, not
+Chromium's helper processes. The row's key prefix,
 insert statement, lifetime and fields are kept in
 `electron/e2e/fixtures/replay-row.json`, and the backend's tests check
 that file against what the cache reads
