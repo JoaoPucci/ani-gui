@@ -1,17 +1,13 @@
 //! A play's session, and the playlist the proxy serves for it, name
 //! the stream proxy's origin — on every platform.
 //!
-//! `lanes.rs` runs the real binary: it checks on every platform that
-//! the stream proxy's origin is the stream lane, and, where the
-//! backend's profile can be pointed under the test's own home (Linux
-//! and macOS), that a play through the binary names that lane. On
-//! Windows the backend finds its profile through the known-folder API,
-//! which no variable a test sets redirects, so a play through the
-//! binary there would read and write the dev profile's cache and
-//! settings. This is the other half, run in-process against a state of
-//! the test's own: the play route answers with a session on the proxy's
-//! origin, and the proxy's rewritten playlist names that origin too.
-//! Together they hold the invariant on all three.
+//! `lanes.rs` runs the real binary on every platform: it checks that
+//! the stream proxy's origin is the stream lane, and that a play
+//! through the binary names that lane. This is the same invariant in
+//! process, against a state of the test's own: the play route answers
+//! with a session on the proxy's origin, and the proxy's rewritten
+//! playlist names that origin too — a failure here points at the
+//! route or the proxy rather than at the binary's wiring.
 //!
 //! The play is a replay of a cache row the test writes, as it is in the
 //! end-to-end specs: a resolve would walk a provider, and the walked one
