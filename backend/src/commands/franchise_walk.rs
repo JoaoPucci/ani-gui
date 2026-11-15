@@ -112,7 +112,12 @@ pub fn plan(
             details: needed,
         };
     }
-    let lookup = Lookup { known, details };
+    // Music videos are no part of a franchise (`franchise_walk_music.rs`).
+    let read = music::without_music(anchor, known, details);
+    let lookup = Lookup {
+        known: &read,
+        details,
+    };
     match rules::run(anchor, &lookup) {
         Err(listings) => Plan::Need {
             listings,
@@ -184,6 +189,8 @@ mod joined;
 mod links;
 #[path = "franchise_walk_meet.rs"]
 mod meet;
+#[path = "franchise_walk_music.rs"]
+pub(crate) mod music;
 #[path = "franchise_walk_name.rs"]
 mod name;
 #[path = "franchise_walk_parents.rs"]
