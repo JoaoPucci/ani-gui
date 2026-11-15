@@ -2350,25 +2350,35 @@ describe('the launch secret reaches every request to the API', () => {
 		expect(headersOf(lastCall(fetchMock).init)['content-type']).toBe('application/json');
 	});
 
-	it('an <img> URL carries it in the query', () => {
-		expect(imageProxyUrl('https://media.kitsu.app/a.jpg')).toBe(
-			`${BASE}/api/image?url=${encodeURIComponent('https://media.kitsu.app/a.jpg')}&secret=${SECRET}`
+	// An <img> or an EventSource cannot set a header; the main process
+	// adds it to their requests (electron/lib/secret-header.cjs), so the
+	// URL, which Chromium's disk cache and any log line keep, carries
+	// nothing of the secret.
+	it('an <img> URL carries no secret', () => {
+		const url = imageProxyUrl('https://media.kitsu.app/a.jpg');
+		expect(url).toBe(
+			`${BASE}/api/image?url=${encodeURIComponent('https://media.kitsu.app/a.jpg')}`
 		);
+		expect(url).not.toContain(SECRET);
 	});
 
-	it("a play's progress stream carries it in the query", async () => {
+	it("a play's progress stream URL carries no secret", async () => {
 		g.EventSource = FakeEventSource;
 		void playStream({ title: 'T', episode: '1', mode: 'sub' }, () => {}).catch(() => {});
 		await Promise.resolve();
 		await Promise.resolve();
-		expect(new URL(FakeEventSource.urls[0]).searchParams.get('secret')).toBe(SECRET);
+		expect(FakeEventSource.urls).toHaveLength(1);
+		expect(new URL(FakeEventSource.urls[0]).searchParams.has('secret')).toBe(false);
+		expect(FakeEventSource.urls[0]).not.toContain(SECRET);
 	});
 
-	it("a download's progress stream carries it in the query", async () => {
+	it("a download's progress stream URL carries no secret", async () => {
 		g.EventSource = FakeEventSource;
 		void downloadStream({ title: 'T', episode: '1', mode: 'sub' }, () => {}).catch(() => {});
 		await Promise.resolve();
 		await Promise.resolve();
-		expect(new URL(FakeEventSource.urls[0]).searchParams.get('secret')).toBe(SECRET);
+		expect(FakeEventSource.urls).toHaveLength(1);
+		expect(new URL(FakeEventSource.urls[0]).searchParams.has('secret')).toBe(false);
+		expect(FakeEventSource.urls[0]).not.toContain(SECRET);
 	});
 });

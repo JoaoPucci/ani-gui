@@ -350,13 +350,13 @@ test("the launch's secret is on no process's command line, and only the app's pa
   }
 });
 
-test("a renderer line naming a secret-bearing URL is logged without the launch's secret", async () => {
-  // The routes an <img> or an EventSource loads carry the secret as
-  // `secret=` in their URL, and the main process relays the renderer's
-  // console to its own stdout (the journal, a terminal), redacted.
-  // Chromium's own "Failed to load resource" lines are not part of that
-  // relay: Electron's console-message event never receives network
-  // messages, so the line is one the page itself logs.
+test("a renderer line naming the launch's secret is logged without it", async () => {
+  // The main process relays the renderer's console to its own stdout
+  // (the journal, a terminal), redacted: by the secret's value and by
+  // the shapes a secret travels in. Chromium's own "Failed to load
+  // resource" lines are not part of that relay (Electron's
+  // console-message event never receives network messages), so the
+  // lines here are ones the page itself logs.
   const { app, page } = await launchAppWithStubs();
   try {
     const secret = await page.evaluate(() => window.aniGui?.internalSecret);
@@ -366,16 +366,70 @@ test("a renderer line naming a secret-bearing URL is logged without the launch's
       out += chunk.toString("utf-8");
     });
     await page.evaluate(() => {
+      const secret = window.aniGui!.internalSecret;
+      console.error(`handed: ${secret}`);
+      console.warn(`x-ani-gui-internal-secret: ${secret}`);
+      console.log(`relayed: ${encodeURIComponent(`http://h/api/image?secret=${secret}`)}`);
+    });
+    for (const line of ["handed:", "x-ani-gui-internal-secret:", "relayed:"]) {
+      await expect.poll(() => out, { timeout: 15_000 }).toContain(line);
+    }
+    expect(out).toContain("<redacted>");
+    expect(out).not.toContain(secret as string);
+  } finally {
+    await app.close();
+  }
+});
+
+test("an image the app's page loads reaches the backend with no secret in its URL, and a frame's does not get in", async () => {
+  // An <img> cannot set a header, and a URL is kept where a header is
+  // not (Chromium's disk cache, a log line). The main process adds the
+  // secret header to the app's own page's image and progress-stream
+  // requests (lib/secret-header.cjs); a subframe's get nothing. These
+  // two go to the real backend rather than the stubs: the app's is let
+  // in, and the backend tries the upstream (at the helper's refusing
+  // proxy); the frame's is refused at the gate (403) and the backend
+  // never tries. The app's answer is the backend's 503 error body,
+  // which Chromium withholds from an <img> (ORB) and reports as a
+  // failed request rather than a response.
+  const { app, page, context } = await launchAppWithStubs();
+  try {
+    await routeContext(context, /gate-(app|frame)\.example/, (r) => r.continue());
+    const statuses = new Map<string, number | string>();
+    const urls: string[] = [];
+    const which = (url: string) => /gate-(app|frame)\.example/.exec(decodeURIComponent(url))?.[1];
+    context.on("response", (res) => {
+      const m = which(res.url());
+      if (m) {
+        statuses.set(m, res.status());
+        urls.push(res.url());
+      }
+    });
+    context.on("requestfailed", (req) => {
+      const m = which(req.url());
+      if (m) {
+        statuses.set(m, "failed");
+        urls.push(req.url());
+      }
+    });
+    await page.evaluate(() => {
       const bridge = window.aniGui!;
       const base = bridge.lanes?.image ?? bridge.apiBase;
-      const url = `${base}/api/image?url=${encodeURIComponent("https://e.example/a.jpg")}&secret=${bridge.internalSecret}`;
-      console.error(`poster failed: ${url}`);
-      console.log(`relayed: ${encodeURIComponent(url)}`);
+      const src = (host: string) =>
+        `${base}/api/image?url=${encodeURIComponent(`https://${host}/a.jpg`)}`;
+      const img = new Image();
+      img.src = src("gate-app.example");
+      document.body.append(img);
+      const frame = document.createElement("iframe");
+      frame.srcdoc = `<img src="${src("gate-frame.example")}">`;
+      document.body.append(frame);
     });
-    await expect.poll(() => out, { timeout: 15_000 }).toContain("poster failed:");
-    await expect.poll(() => out, { timeout: 15_000 }).toContain("relayed:");
-    expect(out).toContain("secret=<redacted>");
-    expect(out).not.toContain(secret as string);
+    await expect.poll(() => statuses.size, { timeout: 15_000 }).toBe(2);
+    expect(statuses.get("frame")).toBe(403);
+    expect(outboundAttempts(app)).toContain("CONNECT gate-app.example:443");
+    expect(outboundAttempts(app)).not.toContain("CONNECT gate-frame.example:443");
+    const secret = await page.evaluate(() => window.aniGui?.internalSecret);
+    for (const url of urls) expect(url).not.toContain(secret as string);
   } finally {
     await app.close();
   }
