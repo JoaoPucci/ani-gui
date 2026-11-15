@@ -1739,8 +1739,7 @@
 	const upNextShown = $derived(
 		upNextShownFor({
 			card: upNextCard !== null,
-			hasNext,
-			countsStale,
+			hasNext: nextOpen,
 			resumeHolding,
 			dismissed: upNextDismissed,
 			videoFullscreen,

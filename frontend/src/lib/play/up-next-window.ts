@@ -29,12 +29,9 @@ export function atVideoEnd(currentTime: number, duration: number, ended: boolean
 export interface UpNextState {
 	/** `finaleCard` found something to name. */
 	readonly card: boolean;
-	/** The player's own next-episode step is open: not the entry's end. */
+	/** The player's own next-episode step is open (`stepOpen`): not the
+	 *  entry's end. */
 	readonly hasNext: boolean;
-	/** The counts behind `hasNext` were read for another show: the page,
-	 *  reused for a new show, still holds the detail and availability
-	 *  of the one it opened on. */
-	readonly countsStale: boolean;
 	readonly resumeHolding: boolean;
 	readonly dismissed: boolean;
 	/** The <video> itself is fullscreen: nothing else on the page is drawn. */
@@ -47,9 +44,7 @@ export interface UpNextState {
 export function upNextShown(state: UpNextState): boolean {
 	return (
 		state.card &&
-		// A step counted for another show says nothing about this one:
-		// the card, decided from this show's franchise, does not wait on it.
-		!(state.hasNext && !state.countsStale) &&
+		!state.hasNext &&
 		!state.resumeHolding &&
 		!state.dismissed &&
 		!state.videoFullscreen &&
