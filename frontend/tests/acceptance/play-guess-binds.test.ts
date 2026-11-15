@@ -370,7 +370,7 @@ describe("play route — a card's session no guess opened", () => {
 	it('records no id and writes no tracker for a play kept off the line', async () => {
 		await switchInCardSession(true);
 		expect(stamped.at(-1)).not.toHaveProperty('kitsu_id');
-		await noTrackerWriteWindow();
+		await playRecorded(4);
 		expect(writes).toEqual([]);
 	});
 });
