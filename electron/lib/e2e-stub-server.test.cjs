@@ -12,7 +12,6 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
-  QUERY_SECRET_PATHS,
   SECRET_HEADER,
   corsHeaders,
   gateAdmits,
@@ -21,14 +20,14 @@ const {
 } = require("./e2e-stub-server.cjs");
 
 const SECRET = "ab".repeat(32);
+const stubServer = require("./e2e-stub-server.cjs");
+// The routes an <img> or an EventSource loads, which once took the
+// secret in their query.
+const HEADERLESS = ["/api/image", "/api/play/stream", "/api/download/stream"];
 
 test("the gate's names are the backend's", () => {
   assert.equal(SECRET_HEADER, "x-ani-gui-internal-secret");
-  assert.deepEqual([...QUERY_SECRET_PATHS].sort(), [
-    "/api/download/stream",
-    "/api/image",
-    "/api/play/stream",
-  ]);
+  assert.equal(stubServer.QUERY_SECRET_PATHS, undefined);
 });
 
 test("the gate admits the secret as the header on any API route", () => {
@@ -45,21 +44,11 @@ test("the gate admits the secret as the header on any API route", () => {
   }
 });
 
-test("the gate admits the secret in the query on a GET of the three header-less routes only", () => {
+test("the gate reads no secret from the query, on any route", () => {
   const query = `url=x&secret=${SECRET}`;
-  for (const path of QUERY_SECRET_PATHS) {
-    assert.equal(gateAdmits({ method: "GET", path, query, headers: {}, secret: SECRET }), true, path);
-    assert.equal(gateAdmits({ method: "POST", path, query, headers: {}, secret: SECRET }), false, path);
-    assert.equal(
-      gateAdmits({ method: "GET", path: `${path}/x`, query, headers: {}, secret: SECRET }),
-      false,
-      path,
-    );
+  for (const path of [...HEADERLESS, "/api/settings"]) {
+    assert.equal(gateAdmits({ method: "GET", path, query, headers: {}, secret: SECRET }), false, path);
   }
-  assert.equal(
-    gateAdmits({ method: "GET", path: "/api/settings", query, headers: {}, secret: SECRET }),
-    false,
-  );
 });
 
 test("the gate refuses a missing or wrong secret, and refuses everything when the launch's secret is unknown", () => {
@@ -92,9 +81,9 @@ const nearMiss = fc.oneof(
   fc.string(),
 );
 
-test("only the secret itself is admitted, in the carrier its route allows", () => {
+test("only the secret itself, as the header, is admitted", () => {
   const method = fc.constantFrom("GET", "POST", "PUT", "DELETE");
-  const route = fc.constantFrom(...QUERY_SECRET_PATHS, "/api/history", "/api/sessions");
+  const route = fc.constantFrom(...HEADERLESS, "/api/history", "/api/sessions");
   fc.assert(
     fc.property(nearMiss, method, route, (guess, m, p) => {
       fc.pre(guess !== SECRET);
@@ -110,7 +99,7 @@ test("only the secret itself is admitted, in the carrier its route allows", () =
       const request = inQuery
         ? { query: `other=1&secret=${SECRET}`, headers: {} }
         : { query: "", headers: { [SECRET_HEADER]: SECRET } };
-      const expected = inQuery ? m === "GET" && QUERY_SECRET_PATHS.includes(p) : true;
+      const expected = !inQuery;
       assert.equal(gateAdmits({ method: m, path: p, secret: SECRET, ...request }), expected);
     }),
   );
@@ -123,18 +112,18 @@ test("only the secret itself is admitted, in the carrier its route allows", () =
 
 // The stub server is a copy of the backend's rules, so it is held to
 // the backend's own source: the names and values below are read from
-// it, verbatim. A route that gains or loses the query secret there
-// goes red here.
-test("the gate's copy is the backend's: its query routes, header, renderer origin and preflight age", () => {
+// it, verbatim. A gate that reads the secret from anywhere but the
+// header goes red here.
+test("the gate's copy is the backend's: header only, its header, renderer origin and preflight age", () => {
   const root = path.join(__dirname, "..", "..", "backend", "src");
   const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
-  const list = QUERY_SECRET_PATHS.map((p) => `"${p}"`).join(", ");
   assert.ok(
     read("api/gate.rs").includes(
-      `pub const QUERY_SECRET_PATHS: [&str; ${QUERY_SECRET_PATHS.length}] =\n    [${list}];`,
+      "pub fn admits(secret: &InternalSecret, headers: &HeaderMap) -> bool {\n    secret.validate_header(headers).is_ok()\n}",
     ),
-    "backend/src/api/gate.rs QUERY_SECRET_PATHS",
+    "backend/src/api/gate.rs admits, header only",
   );
+  assert.ok(!read("api/gate.rs").includes("SECRET_QUERY"), "backend/src/api/gate.rs SECRET_QUERY");
   assert.ok(
     read("account/internal_secret.rs").includes(`HeaderName::from_static("${SECRET_HEADER}")`),
     "backend/src/account/internal_secret.rs INTERNAL_SECRET_HEADER",
@@ -244,7 +233,7 @@ test("an API answer goes through the backend's gate: a request without the secre
     const image = await fetch(
       server.hold({ status: 503 }, { path: "/api/image", query: `url=x&secret=${SECRET}`, secret: SECRET }),
     );
-    assert.equal(image.status, 503);
+    assert.equal(image.status, 403);
   });
 });
 
@@ -291,13 +280,15 @@ test("a URL nothing was held at is a 404, and the server's URLs are its own", as
   });
 });
 
-test("a query secret on anything but a GET is refused through the server, as the gate refuses it", async () => {
+test("a query secret is refused through the server, as the gate refuses it", async () => {
   await withServer(async (server) => {
-    const res = await fetch(
-      server.hold({ json: 1 }, { path: "/api/image", query: `secret=${SECRET}`, secret: SECRET }),
-      { method: "POST" },
-    );
-    assert.equal(res.status, 403);
+    for (const method of ["GET", "POST"]) {
+      const res = await fetch(
+        server.hold({ json: 1 }, { path: "/api/image", query: `secret=${SECRET}`, secret: SECRET }),
+        { method },
+      );
+      assert.equal(res.status, 403, method);
+    }
   });
 });
 

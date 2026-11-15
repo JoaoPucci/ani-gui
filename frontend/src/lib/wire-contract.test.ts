@@ -35,12 +35,12 @@
 //   backend requires, not by the kinds of their values, and a body
 //   nested in another (the guess's `hits`) is not held.
 // - Query strings and URL paths the renderer builds as text are not
-//   held, but for the proxy media URL below, and neither is which routes
-//   the renderer sends the secret to as a query parameter; nor is the
-//   search-page body, which the backend reads through structs local to
-//   its reader.
+//   held, but for the proxy media URL below; nor is the search-page
+//   body, which the backend reads through structs local to its reader.
 // - The Electron main process keeps its own copy of the secret header's
-//   name (`electron/lib/launch-flags.cjs`); only the renderer's is held.
+//   name (`electron/lib/secret-handoff.cjs`); only the renderer's is held
+//   here, and the main process's is held to the backend's source by its
+//   own test (`electron/lib/secret-header.test.cjs`).
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -109,7 +109,7 @@ import type {
 } from './account/api';
 import type { SetEntryBody } from './account/entry-api';
 import { WATCH_LATER_BRIDGE_MAX_IDS } from './account/watch-later-loader';
-import { SECRET_HEADER, SECRET_QUERY } from './backend/secret';
+import { SECRET_HEADER } from './backend/secret';
 import { LANES } from './backend/lanes';
 import { REFILL_HEADER } from './refill/refill';
 import { buildMediaUrl } from './play/media-url';
@@ -771,12 +771,12 @@ describe('the renderer holds the backend wire contract', () => {
 		expect(WATCH_LATER_BRIDGE_MAX_IDS).toBe(CONTRACT.constants.WATCH_LATER_BRIDGE_MAX_IDS);
 	});
 
-	it('the secret and refill headers, and the secret query parameter, are the backend names', () => {
-		expect({ SECRET_HEADER, SECRET_QUERY, REFILL_HEADER }).toEqual({
+	it('the secret and refill headers are the backend names, and the secret has no query name', () => {
+		expect({ SECRET_HEADER, REFILL_HEADER }).toEqual({
 			SECRET_HEADER: CONTRACT.names.INTERNAL_SECRET_HEADER,
-			SECRET_QUERY: CONTRACT.names.SECRET_QUERY,
 			REFILL_HEADER: CONTRACT.names.REFILL_HEADER
 		});
+		expect(Object.keys(CONTRACT.names).sort()).toEqual(['INTERNAL_SECRET_HEADER', 'REFILL_HEADER']);
 	});
 
 	it.each(MEDIA_KINDS)('a %s session plays at the URL the backend gives it', (kind) => {

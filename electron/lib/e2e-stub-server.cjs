@@ -4,10 +4,11 @@
 //
 // A spec stubs the backend by intercepting the renderer's requests. It
 // used to answer them in place, inside Playwright. That answer reaches
-// the page without its status or headers whenever the main process
-// has a webRequest listener on the window's session: Electron then
-// sends every request through its own loader, and an answer made
-// up in place arrives with status 0. So a spec holds its answer here
+// the page without its status or headers once the main process has
+// a webRequest listener on the window's session, as it does to add the
+// secret header (lib/secret-header.cjs): Electron then sends every
+// request through its own loader, and an answer made up in place
+// arrives with status 0. So a spec holds its answer here
 // and sends the request on to the URL `hold` returns (electron/e2e/
 // stubs.ts does both). The request then travels through Chromium's
 // network stack as a request to the backend does, and is answered as
@@ -24,10 +25,6 @@ const crypto = require("node:crypto");
 /** The header the backend reads the launch's secret from. */
 const SECRET_HEADER = "x-ani-gui-internal-secret";
 
-/** The routes whose callers cannot set a header, and so may carry the
- *  secret as the `secret` query parameter. `GET` only. */
-const QUERY_SECRET_PATHS = Object.freeze(["/api/image", "/api/play/stream", "/api/download/stream"]);
-
 /** How long a browser may reuse a preflight's answer, as the backend
  *  says (two hours). */
 const PREFLIGHT_MAX_AGE_SECS = 7200;
@@ -41,14 +38,14 @@ function sameSecret(got, secret) {
 
 /**
  * Whether the backend's gate lets a request through: the secret as the
- * header on any route, or as the `secret` query parameter on a GET of
- * one of QUERY_SECRET_PATHS. `headers` has lowercase names, as Node's
- * do; `secret` is the launch's, and nothing is admitted without it.
+ * header, on any route. No route reads it from the query: the main
+ * process adds the header to the requests an <img> or an EventSource
+ * makes (lib/secret-header.cjs). `headers` has lowercase names, as
+ * Node's do; `secret` is the launch's, and nothing is admitted without
+ * it. The request's method, path and query are taken, and not read.
  */
-function gateAdmits({ method, path, query, headers, secret }) {
-  if (sameSecret(headers?.[SECRET_HEADER], secret)) return true;
-  if (method !== "GET" || !QUERY_SECRET_PATHS.includes(path)) return false;
-  return new URLSearchParams(query ?? "").getAll("secret").some((v) => sameSecret(v, secret));
+function gateAdmits({ headers, secret }) {
+  return sameSecret(headers?.[SECRET_HEADER], secret);
 }
 
 /** Whether `origin` is one the app's renderer runs at: the packaged
@@ -176,7 +173,6 @@ async function startStubServer() {
 }
 
 module.exports = {
-  QUERY_SECRET_PATHS,
   SECRET_HEADER,
   corsHeaders,
   gateAdmits,
