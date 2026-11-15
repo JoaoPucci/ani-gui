@@ -32,6 +32,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use super::music::without_music;
 use super::parents::parent_stories;
 use super::Lookup;
 use crate::meta::kitsu::{FranchiseEntry, FranchiseListing, FranchiseRelation};
@@ -71,9 +72,28 @@ pub fn first_hop(
     known: &BTreeMap<String, FranchiseListing>,
     details: &BTreeMap<String, FranchiseEntry>,
 ) -> Step {
-    let Some(listing) = known.get(anchor) else {
-        return read(vec![anchor.to_string()], Vec::new());
+    // The show's own listing and its detail, as the walk reads them
+    // first: the detail says whether the show is a music video, whose
+    // page relates to nothing.
+    let missing = |has: bool| {
+        if has {
+            Vec::new()
+        } else {
+            vec![anchor.to_string()]
+        }
     };
+    let (listings, needed) = (
+        missing(known.contains_key(anchor)),
+        missing(details.contains_key(anchor)),
+    );
+    if !listings.is_empty() || !needed.is_empty() {
+        return read(listings, needed);
+    }
+    // Music videos are no part of a franchise: the walk reads every
+    // listing without them (`franchise_walk_music.rs`), and so does
+    // the first hop.
+    let known = &without_music(anchor, known, details);
+    let listing = &known[anchor];
     let hop = from_own_listing(anchor, listing);
     if hop == FirstHop::Strip || !names_a_possible_parent(anchor, listing) {
         return Step::Done(hop);
@@ -82,9 +102,6 @@ pub fn first_hop(
     // it walks from a parent story, from the show's start and the
     // candidates' own listings, as far as the walk's bound leaves room
     // beside the show's own listing.
-    if !details.contains_key(anchor) {
-        return read(Vec::new(), vec![anchor.to_string()]);
-    }
     let counted = BTreeSet::from([anchor.to_string()]);
     match parent_stories(
         anchor,
