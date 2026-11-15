@@ -92,6 +92,29 @@ bash tests/arch/run-all.sh
 python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
 ```
 
+The integration tests under `backend/tests/` that start the real
+backend binary keep it off your own profile on every platform:
+`backend/tests/common` sets `ANI_GUI_TEST_PROFILE_ROOT` to each test's
+temporary folder, and the backend then keeps its config, cache
+(`metadata.sqlite`, images, the flags cache), state (history, offsets),
+logs and default download folder under that one folder, ahead of the
+XDG variables, `HOME` and the platform's folder APIs. Without it,
+Windows would hand the binary the machine's own profile (`ani-gui-dev`
+for a debug build, `ani-gui` for `--release`): it resolves those
+folders through the known-folder API, which no other variable
+redirects. On Linux and macOS `HOME` and the XDG variables would
+redirect them, but under a layout that differs between the two; under
+the root it is one layout everywhere. The variable is for the
+backend's test harness only: nothing in the app sets it, and
+`tests/arch/test_profile_root.sh` keeps its name to the module that
+reads it, the backend's tests and these docs.
+`backend/tests/profile_root.rs` starts a backend with it and with every
+home and folder variable pointed at a sentinel folder, has it boot,
+write its settings and its history, and checks that everything it
+reports and writes is under the root and that the sentinel stays
+empty. The sentinel proves something on Linux and macOS only, where
+those variables are where a stray path would come from.
+
 ## End-to-end (Playwright + Electron)
 
 The suite under `electron/e2e/` drives the packaged app
@@ -394,6 +417,7 @@ Cheap grep / AST tests under `tests/arch/`. They fail loudly when boundaries ero
 |---|---|
 | No hardcoded English in `.svelte` files or `.ts` modules under `frontend/src/` (must go through `m.<key>()`) | custom ESLint rule `no-hardcoded-strings`, `i18n-ignore` escape |
 | Crate dependency direction (`cache` doesn't depend on `reqwest`, etc.) | `tests/arch/dep_direction.sh` (grep) |
+| Only the backend's test harness names the test-only profile root (`ANI_GUI_TEST_PROFILE_ROOT`) | `tests/arch/test_profile_root.sh` (grep) |
 
 ## Mutation testing (deferred)
 
@@ -421,6 +445,18 @@ pass through MSW: one turn of the event loop is not known to carry
 them to a handler. Where every stand-in lives in memory, as in the
 unit tests and in acceptance cases built on a fake EventSource alone,
 one turn drains every microtask and settles the question.
+
+Motion in the acceptance tier has the same shape in both directions.
+Under the tier's `element.animate()` stub a Svelte transition starts
+its timed animation a task after the update that changed the DOM, an
+element an outro holds stays in the DOM until that animation ends, and
+a scripted scroll can wait a frame for layout. So the DOM change is no
+witness for the motion it causes: read too early, "it moved" fails and
+"nothing moved" passes without having looked. A motion scenario waits
+for the recorder in `frontend/tests/acceptance/motion.ts` to report
+`settled()` (no animation still running; the stub's
+`animationsInFlight()` is the same count), or for the scroll to
+appear in `scrolls`, and asserts then.
 
 ## Test-discipline expectations for AI agents
 
