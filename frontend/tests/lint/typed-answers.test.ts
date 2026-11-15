@@ -50,8 +50,25 @@ const FRONTEND = fileURLToPath(new URL('../..', import.meta.url));
 
 const head = `import { http, HttpResponse } from 'msw';\nimport type { KitsuAnimeRef } from '$lib/api';\n`;
 
+// One ESLint for every case, on the project's own config. Its `.svelte`
+// block turns on typescript-eslint's `projectService`, which builds a
+// TypeScript program over the whole of tsconfig.json before it parses
+// the first component: alone, under the coverage run's V8 coverage,
+// that was ~7 s on a workstation and over 30 s on a shared CI runner,
+// all of it billed to the first `.svelte` case's budget. The rules
+// these cases hold are syntax rules, which read the AST, and the AST
+// is the same with or without a program, so the cases lint without
+// one. Every real component still parses under the project service in
+// `pnpm lint`.
+const eslint = new ESLint({
+	cwd: FRONTEND,
+	overrideConfig: {
+		files: ['**/*.svelte'],
+		languageOptions: { parserOptions: { projectService: false } }
+	}
+});
+
 async function lint(code: string, filePath: string): Promise<string[]> {
-	const eslint = new ESLint({ cwd: FRONTEND });
 	const [result] = await eslint.lintText(head + code, { filePath: join(FRONTEND, filePath) });
 	return result.messages
 		.filter((msg) => msg.ruleId === 'no-restricted-syntax')
@@ -125,7 +142,6 @@ describe('typed fake answers', () => {
 	const importsTesting = `import { kitsuRefAnswer } from '$lib/testing/wire-answers';\nexport const x = kitsuRefAnswer();\n`;
 
 	async function restrictedImports(code: string, file: string): Promise<string[]> {
-		const eslint = new ESLint({ cwd: FRONTEND });
 		const [result] = await eslint.lintText(code, { filePath: join(FRONTEND, file) });
 		return result.messages
 			.filter(
