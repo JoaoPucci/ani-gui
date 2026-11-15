@@ -97,6 +97,7 @@ import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { m } from '../../src/lib/paraglide/messages';
 import { recordMotion, setReducedMotion } from './motion';
 import { watchPageFetches } from './page-fetches';
+import { animationsInFlight } from './stubs/element-animate';
 
 import type { EntryView, ListEntry } from '../../src/lib/account/types';
 import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
@@ -260,7 +261,8 @@ const railTitles = () =>
  * stub a transition first runs a placeholder for its delay and starts
  * its timed animation a task later, and a card the row lets go of
  * stays in the DOM until that animation has ended. So "it moved" and
- * "it left" are only readable once no element has an animation running.
+ * "it left" are only readable once the stub has no animation in flight
+ * (the motion paragraph of docs/testing.md).
  */
 async function untilRowIdle() {
 	await until(() => {
@@ -276,7 +278,7 @@ async function untilRowIdle() {
 		const rail = rails.at(-1);
 		if (!rail || rail.started === 0 || rail.finished.size < rail.started) return false;
 		if (refreshAction()?.getAttribute('aria-disabled') === 'true') return false;
-		return Array.from(target.querySelectorAll('*')).every((el) => el.getAnimations().length === 0);
+		return animationsInFlight() === 0;
 	}, 'the Watch Later row to finish its reads and stand still');
 }
 
