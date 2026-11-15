@@ -28,9 +28,8 @@ fn spawn_backend(home: &std::path::Path, watch_parent: bool) -> std::process::Ch
     common::start(cmd).child
 }
 
-// One test, its cases in turn: on Windows the backends would share
-// the dev profile's SQLite database (see `common`), and two first
-// opens racing their migrations is a different test.
+// One test, its cases in turn, on one home: nothing requires it, it
+// only saves the cases a fresh cache each.
 #[test]
 fn the_backend_ends_with_its_parent_and_only_when_asked_to() {
     let home = tempfile::tempdir().expect("tempdir");
