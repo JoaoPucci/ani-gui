@@ -696,15 +696,18 @@ export function historyByKitsu(
  *  history: each id with the row it resumes from, or null. A value
  *  that is not a Kitsu id is left out of the answer. `signal` cancels
  *  it once the page that asked has gone. */
+/** `POST /api/history/by-kitsu`'s body (backend
+ *  `commands::history_by_kitsu::ByKitsuEachArgs`). */
+export interface HistoryByKitsuBody {
+	ids: readonly string[];
+}
+
 export function historyByKitsuEach(
 	ids: readonly string[],
-	opts: { signal?: AbortSignal } = {}
+	opts: ReadOptions = {}
 ): Promise<Record<string, HistoryEntry | null>> {
-	return postJson<Record<string, HistoryEntry | null>>(
-		'/api/history/by-kitsu',
-		{ ids },
-		{ signal: opts.signal }
-	);
+	const body: HistoryByKitsuBody = { ids };
+	return postJson<Record<string, HistoryEntry | null>>('/api/history/by-kitsu', body, opts);
 }
 
 /** The episode one history row reads as now, and the number it read as
@@ -1537,13 +1540,8 @@ export interface FranchiseChain {
  *  franchise, several rounds of Kitsu reads when Kitsu is slow, so the
  *  page that asked passes `signal` and cancels it when it goes: a read
  *  nobody waits for would hold one of the API lane's connections. */
-export function kitsuFranchise(
-	kitsuId: string,
-	opts: { signal?: AbortSignal } = {}
-): Promise<Franchise> {
-	return getJson<Franchise>(`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}`, {
-		signal: opts.signal
-	});
+export function kitsuFranchise(kitsuId: string, opts: ReadOptions = {}): Promise<Franchise> {
+	return getJson<Franchise>(`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}`, opts);
 }
 
 export function kitsuTopRated(opts: ReadOptions = {}): Promise<KitsuAnimeRef[]> {
