@@ -48,7 +48,10 @@ export function chainEndCard(
 	const run = drawn ? runOf(drawn) : null;
 	const entry = run?.entries.find((e) => e.id === id);
 	const main = runOf(data.franchise);
-	if (!entry || !main || !isFinale(self ?? entry, episode)) return null;
+	// A reading of another show (the page reused for a new one) says
+	// nothing about this entry, as for the Up next card.
+	const own = self?.id === id ? self : null;
+	if (!entry || !main || !isFinale(own ?? entry, episode)) return null;
 	const summary = franchiseSummary(main, data.franchise.name_from);
 	// The franchise page's art: the title the name comes from, else the
 	// main story's first, as franchiseSummary fronts the stack.
