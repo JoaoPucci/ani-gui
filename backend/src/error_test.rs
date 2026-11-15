@@ -33,6 +33,41 @@ proptest::proptest! {
     }
 }
 
+proptest::proptest! {
+    /// `unless_absent` reads exactly absence as no answer: an answer
+    /// comes through as one, an absent status as `Ok(None)`, and every
+    /// other upstream status — and every other error — unchanged.
+    #[test]
+    fn unless_absent_reads_exactly_absence_as_none(
+        status in proptest::num::u16::ANY,
+        value in proptest::num::u32::ANY,
+        other in 0usize..4,
+    ) {
+        proptest::prop_assert_eq!(AniError::unless_absent(Ok(value)).ok(), Some(Some(value)));
+        let upstream = AniError::unless_absent::<u32>(Err(AniError::Upstream { status }));
+        if status == 404 || status == 410 {
+            proptest::prop_assert!(matches!(upstream, Ok(None)), "{upstream:?}");
+        } else {
+            proptest::prop_assert!(
+                matches!(upstream, Err(AniError::Upstream { status: s }) if s == status),
+                "{upstream:?}"
+            );
+        }
+        let err = [
+            AniError::Network,
+            AniError::InvalidToken,
+            AniError::Timeout,
+            AniError::RateLimited { retry_after_secs: Some(u64::from(status)), refused_by: None },
+        ][other].clone();
+        let key = err.key();
+        let passed = AniError::unless_absent::<u32>(Err(err));
+        proptest::prop_assert!(
+            matches!(&passed, Err(e) if e.key() == key),
+            "{passed:?}"
+        );
+    }
+}
+
 #[test]
 fn rate_limits_block_and_verdicts_do_not() {
     assert!(AniError::RateLimited {
