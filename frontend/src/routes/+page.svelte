@@ -1623,9 +1623,12 @@
 							e.preventDefault();
 							e.stopPropagation();
 							const id = guessed.id;
+							// The line the pill was drawn for: an answer that
+							// names another acts on none.
+							const drawn = line;
 							void cardLines
 								.settled()
-								.then(() => openCardLink(cardLines.clickLineOf(entry.id), id, nextEpisode));
+								.then(() => openCardLink(cardLines.clickLineOf(entry.id, drawn), id, nextEpisode));
 						}}
 					>
 						<GuessMark size={14} />

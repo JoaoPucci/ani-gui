@@ -182,8 +182,9 @@ export function makeStartResume(deps: StartResumeDeps): (
 		deps.onProgress(null);
 		// Home may still be asking which line the card stands for: the
 		// click's claim and busy state come first, the line once known.
-		// One that could not be read (`null`) plays the card's own row: a
-		// play is not held on it, but its failure offers no correction.
+		// Home waits for one more ask when the last failed. One that still
+		// could not be read (`null`) plays the card's own row rather than
+		// refuse the play, but its failure offers no correction.
 		const asked = await cardRow;
 		const lineUnread = asked === null;
 		const line = asked ?? entry.id;

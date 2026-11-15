@@ -20,7 +20,8 @@
  * and acts on it (`clickLineOf`). With none, a click has no line: the
  * card may be drawn from an answer for other rows, standing for another
  * line than its own row, so acting on the row would correct a line the
- * card does not show. One question is out at a time; rows that change
+ * card does not show. A pill's click names the line the card was drawn
+ * with, and has no line when the answer it waited for names another. One question is out at a time; rows that change
  * meanwhile are asked once it answers. A failed answer leaves the last
  * one drawn.
  */
@@ -46,7 +47,13 @@ export class CardLines {
 		if (key === this.#wanted) return;
 		this.#wanted = key;
 		this.#rows = rows;
-		this.#out ??= this.#send();
+		this.#start();
+	}
+
+	// A send starts only with something to ask: one that asks nothing
+	// would finish before it was stored, and stay stored for good.
+	#start(): void {
+		if (!this.#out && this.#answer?.key !== this.#wanted) this.#out = this.#send();
 	}
 
 	async #send(): Promise<void> {
@@ -71,12 +78,13 @@ export class CardLines {
 	}
 
 	/** The line a click on the card showing the row `id` acts on: the
-	 *  answer's for the rows as they are, or `null` without one. Read
-	 *  once `settled`. */
+	 *  answer's for the rows as they are, or `null` without one, and
+	 *  `null` when it is not `drawn`, the line the card was drawn with
+	 *  when it was clicked. Read once `settled`. */
 	clickLineOf(id: string, drawn?: string): string | null {
-		void drawn;
 		if (this.#answer?.key !== this.#wanted) return null;
-		return this.#answer.lines[id]?.line ?? id;
+		const line = this.#answer.lines[id]?.line ?? id;
+		return drawn === undefined || line === drawn ? line : null;
 	}
 
 	/** Whether the card showing the row `id` can correct its line. */
@@ -88,7 +96,7 @@ export class CardLines {
 	 *  answer failed: `clickLineOf` then answers for the rows as they
 	 *  are, or, when that failed too, with no line. */
 	settled(): Promise<void> {
-		if (!this.#out && this.#failed) this.#out = this.#send();
+		if (this.#failed) this.#start();
 		if (!this.#out) return Promise.resolve();
 		return new Promise((resolve) => this.#waiters.push(resolve));
 	}
