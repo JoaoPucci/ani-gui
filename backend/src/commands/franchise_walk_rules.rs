@@ -1,4 +1,5 @@
-//! How the walk builds a run (rules 1–3 of the proposal's section 4):
+//! How the walk builds a run (rules 1–3 of `docs/title-resolution.md`,
+//! "Kitsu's relations, walked into a franchise"):
 //!
 //! 1. Breadth-first from the root, one distance at a time, along the
 //!    prequel and sequel links each added entry lists (anime only; the
