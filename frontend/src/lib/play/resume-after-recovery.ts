@@ -15,6 +15,11 @@
  * pager's unreflected marker learned). Near-zero positions are not
  * worth carrying: the restart the user resents is losing minutes,
  * not a second.
+ *
+ * "Switch to it now" carries its point across to the picked show's
+ * player through the same carrier, with `carry`: there the point is
+ * the one the confirmation named, 0:00 included, so it is kept exactly
+ * and wins over a position the pick kept.
  */
 import { nextWrite } from './write-order';
 

@@ -161,6 +161,22 @@ describe('armSourceScopedListeners', () => {
 		expect(video.currentTime).toBe(612.5);
 	});
 
+	it("a switch's carried 0:00 wins over the saved position, with nothing to seek or hold", () => {
+		savePosition('show-a', 6, 600, 1420, positions);
+		recoveryResume.carry('show-a', 6, 0);
+		const start = armSourceScopedListeners({
+			video,
+			showId: 'show-a',
+			episode: 6,
+			scope,
+			positions
+		});
+		expect(start.startAt).toBeNull();
+		playAt(0);
+		video.dispatchEvent(new Event('loadedmetadata'));
+		expect(video.currentTime).toBe(0);
+	});
+
 	it("a pending recovery's position wins over the saved one", () => {
 		savePosition('show-a', 6, 612.5, 1420, positions);
 		recoveryResume.capture('show-a', 6, 700);

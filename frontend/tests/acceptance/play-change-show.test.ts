@@ -748,9 +748,12 @@ describe('switching to the pick', () => {
 	it('does not take a pick the viewer is further along in back to the episode playing', async () => {
 		// The viewer watched the pick on its own listing up to episode 6;
 		// the card's line, a wrong guess, is at episode 2. "Switch to it
-		// now" asks the pick's stream for episode 2 and records it on the
-		// pick's own row, which goes back from 6 to 2: Continue Watching
-		// then offers episode 2 of a show the viewer was at 6 in.
+		// now" asks the pick's stream for episode 2, and that play's watch
+		// takes the pick's own row back from 6 to 2 (the backend's
+		// "last watched"), so Continue Watching offers episode 2 of a show
+		// the viewer was at 6 in. Which fix is the maintainer's call; this
+		// pins the one recommended, opening the pick where the viewer left
+		// it, and is rewritten in its own red if another is chosen.
 		backend.rows = [
 			...backend.rows,
 			{ ep_no: '6', id: PICK_OWN, title: RIGHT_TITLE, kitsu_id: RIGHT }
