@@ -72,8 +72,7 @@ pub fn row_episode(ep_no: &str) -> Option<f64> {
 
 /// The episode Continue opens for a show last watched at `own`.
 fn resume(own: f64, cap: Option<u32>, part_way: &[f64]) -> f64 {
-    #[allow(clippy::float_cmp)]
-    if part_way.iter().any(|e| *e == own) {
+    if part_way.contains(&own) {
         return own;
     }
     let next = if own.fract() == 0.0 {
