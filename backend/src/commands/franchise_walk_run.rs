@@ -111,7 +111,7 @@ pub(crate) fn walk_with(
 /// A side-story anchor's parents and the chain it is drawn on, from its
 /// own parent stories before its run's (`Run::parent_choices`): those
 /// in the main story and no chain; else, where the main story leaves
-/// them all out, those in the franchise, on the chain of the earliest,
+/// them all out, those on the chain of the earliest, drawn on it,
 /// or on that parent alone where it is chained to nothing (its only
 /// links being to versions or settings of it, or to music videos). Any
 /// other anchor has no parents, and its own chain.
@@ -128,8 +128,7 @@ fn side_chain(
     }
     // The anchor's own parents before its run's: those in the main
     // story, else those the main story leaves out, drawn on the
-    // earliest one's chain (or on it alone, chained to nothing); the
-    // main story may hold one the first run did not.
+    // earliest one's chain (or on it alone, chained to nothing).
     for choice in &first.parent_choices {
         let in_main: Vec<String> = choice
             .iter()
