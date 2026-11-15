@@ -46,6 +46,8 @@ import { join } from 'node:path';
 import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
+import { ruleMessages } from './rule-messages';
+
 const FRONTEND = fileURLToPath(new URL('../..', import.meta.url));
 
 const head = `import { http, HttpResponse } from 'msw';\nimport type { KitsuAnimeRef } from '$lib/api';\n`;
@@ -53,13 +55,13 @@ const head = `import { http, HttpResponse } from 'msw';\nimport type { KitsuAnim
 // One ESLint for every case, on the project's own config. Its `.svelte`
 // block turns on typescript-eslint's `projectService`, which builds a
 // TypeScript program over the whole of tsconfig.json before it parses
-// the first component: alone, under the coverage run's V8 coverage,
-// that was ~7 s on a workstation and over 30 s on a shared CI runner,
-// all of it billed to the first `.svelte` case's budget. The rules
-// these cases hold are syntax rules, which read the AST, and the AST
-// is the same with or without a program, so the cases lint without
-// one. Every real component still parses under the project service in
-// `pnpm lint`.
+// the first component. All of that was billed to the first `.svelte`
+// case: run by itself it took ~2 s on a workstation and ~7 s under the
+// coverage run's V8 coverage, and on a shared CI runner it went over
+// the case's 30 s budget. The rules these cases hold are syntax rules,
+// which read the AST, and the AST is the same with or without a
+// program, so the cases lint without one. Every real component still
+// parses under the project service in `pnpm lint`.
 const eslint = new ESLint({
 	cwd: FRONTEND,
 	overrideConfig: {
@@ -68,11 +70,13 @@ const eslint = new ESLint({
 	}
 });
 
+async function messages(code: string, filePath: string, rules: string[]): Promise<string[]> {
+	const [result] = await eslint.lintText(code, { filePath: join(FRONTEND, filePath) });
+	return ruleMessages(result, filePath, rules);
+}
+
 async function lint(code: string, filePath: string): Promise<string[]> {
-	const [result] = await eslint.lintText(head + code, { filePath: join(FRONTEND, filePath) });
-	return result.messages
-		.filter((msg) => msg.ruleId === 'no-restricted-syntax')
-		.map((msg) => msg.message);
+	return messages(head + code, filePath, ['no-restricted-syntax']);
 }
 
 /** Paths under frontend/: a scenario, a module of shared handlers, a
@@ -142,12 +146,7 @@ describe('typed fake answers', () => {
 	const importsTesting = `import { kitsuRefAnswer } from '$lib/testing/wire-answers';\nexport const x = kitsuRefAnswer();\n`;
 
 	async function restrictedImports(code: string, file: string): Promise<string[]> {
-		const [result] = await eslint.lintText(code, { filePath: join(FRONTEND, file) });
-		return result.messages
-			.filter(
-				(msg) => msg.ruleId === 'no-restricted-imports' || msg.ruleId === 'no-restricted-syntax'
-			)
-			.map((msg) => msg.message);
+		return messages(code, file, ['no-restricted-imports', 'no-restricted-syntax']);
 	}
 
 	const appImports: [string, string][] = [
