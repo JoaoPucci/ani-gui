@@ -27,7 +27,7 @@ import http from 'node:http';
 import type net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
+import { appWindow, launchPackagedApp, packagedBinary, remountFirstPage, stopDeadApp } from './launch';
 import { expect, guardPolicy, test, type PolicyGuard } from './policy-guard';
 import {
 	appInfo,
@@ -38,6 +38,8 @@ import {
 	topRated,
 	trending
 } from './fixtures/kitsu';
+import { playFromContinue, routeRealPlay, writeReplayConfig, type ReplayStream } from './real-play';
+import { answer } from './stubs';
 
 const mediaDir = path.join(__dirname, 'fixtures/media');
 
@@ -50,6 +52,9 @@ test.beforeAll(() => {
 async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 	const tmp = path.join(os.tmpdir(), `ani-gui-e2e-policy-${process.pid}-${Date.now()}`);
 	fs.mkdirSync(tmp, { recursive: true });
+	// Replays on, so a play spec's Continue card plays its own stream
+	// through the real play path (real-play.ts).
+	writeReplayConfig(tmp);
 	const app = await launchPackagedApp(
 		{
 			...process.env,
@@ -64,10 +69,15 @@ async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 	onLaunch(app);
 	const guard = guardPolicy(app);
 	const page = await appWindow(app);
-	return { app, page, guard };
+	return { app, page, guard, profile: tmp };
 }
 
-async function launch(): Promise<{ app: ElectronApplication; page: Page; guard: PolicyGuard }> {
+async function launch(): Promise<{
+	app: ElectronApplication;
+	page: Page;
+	guard: PolicyGuard;
+	profile: string;
+}> {
 	let pending: ElectronApplication | null = null;
 	return withColdLaunchRetry(
 		async () => {
@@ -332,37 +342,11 @@ async function mediaServer(): Promise<{ origin: string; close: () => void }> {
 	return { origin: `http://127.0.0.1:${port}`, close: () => server.close() };
 }
 
-/** Metadata the play page asks the API for, answered without the
- *  network; the session routes go to the real backend. */
-async function stubMetadata(page: Page, apiBase: string) {
-	await page.route(`${apiBase}/api/**`, async (r) => {
-		const p = new URL(r.request().url()).pathname;
-		if (p === '/api/sessions') return r.continue();
-		const j = (body: unknown) =>
-			r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-		if (p === '/api/app-info') return j(appInfo);
-		if (p === '/api/settings') return j(defaultSettings);
-		if (p.startsWith('/api/kitsu/anime/')) return j(continueKitsuMatch);
-		if (p.startsWith('/api/kitsu/episodes/')) return j([continueKitsuEpisode6]);
-		if (p === '/api/history') return j([]);
-		if (p.startsWith('/api/image')) return r.fulfill({ status: 503 });
-		return j(null);
-	});
-}
-
-async function createSession(page: Page, apiBase: string, upstreamUrl: string) {
-	return page.evaluate(
-		async ({ apiBase, upstreamUrl }) => {
-			const res = await fetch(`${apiBase}/api/sessions`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ upstream_url: upstreamUrl, referer: '' })
-			});
-			if (!res.ok) throw new Error(`session: ${res.status} ${await res.text()}`);
-			return (await res.json()) as { session_id: string; media_url: string; media_kind: string };
-		},
-		{ apiBase, upstreamUrl }
-	);
+/** The session a play opened, read off the player's URL. */
+function sessionOf(page: Page): string {
+	const sid = new URL(page.url()).searchParams.get('session');
+	expect(sid, 'the player names its session').toBeTruthy();
+	return sid!;
 }
 
 /** The player's state, read off its <video>. */
@@ -383,38 +367,20 @@ function videoState(page: Page) {
 test('a play through the stream proxy plays, with its subtitles, under the policy', async () => {
 	test.setTimeout(90_000);
 	const media = await mediaServer();
-	const { app, page } = await launch();
+	const { app, page, profile } = await launch();
 	try {
-		const { apiBase, lanes } = await bridge(page);
-		await stubMetadata(page, apiBase);
-		const session = await createSession(page, apiBase, `${media.origin}/master.m3u8`);
-		expect(session.media_url.startsWith(`${lanes.stream}/s/`)).toBe(true);
-
-		// The sidecar listing a resolve would attach: the backend refuses a
-		// caller-supplied list on the public session route, so the listing
-		// and its track are answered here — at the stream lane's own URLs,
-		// which is what the policy rules on.
-		const sid = session.session_id;
-		await page.route(`${lanes.stream}/s/${sid}/subtitles`, (r) =>
-			r.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				headers: { 'access-control-allow-origin': '*' },
-				body: JSON.stringify([
-					{ lang: 'en', label: 'Sidecar', default: false, url: `${lanes.stream}/s/${sid}/sub/0.vtt` }
-				])
-			})
-		);
-		await page.route(`${lanes.stream}/s/${sid}/sub/0.vtt`, (r) =>
-			r.fulfill({
-				status: 200,
-				contentType: 'text/vtt',
-				headers: { 'access-control-allow-origin': '*' },
-				body: fs.readFileSync(path.join(mediaDir, 'sidecar.vtt'), 'utf8')
-			})
-		);
-
-		await loadDocument(page, `/play/${continueKitsuMatch.id}?session=${sid}&episode=1&kind=hls`);
+		const { lanes } = await bridge(page);
+		// The Continue card's play, through the backend's play route: it
+		// opens a session on the fixture playlist, with a sidecar track the
+		// backend fetches and serves from the stream lane.
+		const stream: ReplayStream = {
+			upstreamUrl: `${media.origin}/master.m3u8`,
+			mediaKind: 'hls',
+			subtitles: [{ lang: 'en', label: 'Sidecar', default: false, url: `${media.origin}/sidecar.vtt` }]
+		};
+		const play = await routeRealPlay(page, { profile, settings: {}, stream });
+		await playFromContinue(page, play);
+		const sid = sessionOf(page);
 		// hls.js feeds the element through a MediaSource blob (media-src
 		// blob:), its playlists and segments come from the stream lane
 		// (connect-src), and playback advances.
@@ -429,7 +395,7 @@ test('a play through the stream proxy plays, with its subtitles, under the polic
 		// shown, its cue is there.
 		await expect
 			.poll(async () => (await videoState(page))?.tracks ?? [], { timeout: 10_000 })
-			.toContain(`${lanes.stream}/s/${sid}/sub/0.vtt`);
+			.toEqual([expect.stringMatching(new RegExp(`^${escaped(`${lanes.stream}/s/${sid}/`)}`))]);
 		// A disabled track exposes no cues, and hls.js disables every
 		// labelled subtitle track but the one it selected whenever it
 		// switches its own (SubtitleTrackController.toggleTrackModes) —
@@ -455,19 +421,32 @@ test('a play through the stream proxy plays, with its subtitles, under the polic
 		await expect
 			.poll(async () => (await shownCues()).cues, { timeout: 15_000 })
 			.toEqual(expect.arrayContaining(['A cue from the playlist']));
+	} finally {
+		await app.close();
+		media.close();
+	}
+});
 
-		// An MP4 session plays straight from the stream lane (media-src).
-		const mp4 = await createSession(page, apiBase, `${media.origin}/clip.mp4`);
-		expect(mp4.media_kind).toBe('mp4');
-		await loadDocument(
-			page,
-			`/play/${continueKitsuMatch.id}?session=${mp4.session_id}&episode=1&kind=mp4`
-		);
+test('an MP4 play goes straight from the stream lane, under the policy', async () => {
+	test.setTimeout(90_000);
+	const media = await mediaServer();
+	const { app, page, profile } = await launch();
+	try {
+		const { lanes } = await bridge(page);
+		const play = await routeRealPlay(page, {
+			profile,
+			settings: {},
+			stream: { upstreamUrl: `${media.origin}/clip.mp4`, mediaKind: 'mp4' }
+		});
+		await playFromContinue(page, play);
+		const sid = sessionOf(page);
+		// The element loads the file from the stream lane itself
+		// (media-src), with no MediaSource in between.
 		await expect
 			.poll(async () => (await videoState(page))?.time ?? 0, { timeout: 30_000 })
 			.toBeGreaterThan(0.5);
 		const file = await videoState(page);
-		expect(file?.src).toBe(mp4.media_url);
+		expect(file?.src.startsWith(`${lanes.stream}/s/${sid}/`)).toBe(true);
 		expect(file?.error).toBeNull();
 	} finally {
 		await app.close();
@@ -475,20 +454,29 @@ test('a play through the stream proxy plays, with its subtitles, under the polic
 	}
 });
 
+/** `text`, matched literally in a RegExp. */
+function escaped(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+}
+
 test('the loader animates under the policy', async () => {
 	test.setTimeout(90_000);
 	const { app, page } = await launch();
 	try {
+		let homeAsked: (() => void) | null = null;
 		await page.route('**/api/**', async (r) => {
 			const p = new URL(r.request().url()).pathname;
 			const j = (body: unknown) =>
-				r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 			if (p === '/api/app-info') return j(appInfo);
 			if (p === '/api/settings') return j(defaultSettings);
 			if (p === '/api/kitsu/trending-anilist') return j(trending);
 			if (p === '/api/kitsu/top-rated') return j(topRated);
-			if (p.startsWith('/api/image')) return r.fulfill({ status: 503 });
-			if (p === '/api/history') return j(continueHistory);
+			if (p.startsWith('/api/image')) return answer(r, { status: 503 });
+			if (p === '/api/history') {
+				homeAsked?.();
+				return j(continueHistory);
+			}
 			if (p === '/api/watched-at') return j({ [continueHistory[0].id]: 1_700_000_000 });
 			if (p.startsWith('/api/allmanga-kitsu-map/')) return j(continueKitsuMatch.id);
 			if (p.startsWith('/api/kitsu/anime/')) return j(continueKitsuMatch);
@@ -499,12 +487,9 @@ test('the loader animates under the policy', async () => {
 			if (p === '/api/play/stream' || p === '/api/play') return;
 			return j(null);
 		});
-		// A fresh document, so every request of the home page goes through
+		// A fresh mount, so every request of the home page goes through
 		// the routes above.
-		const home = page.url();
-		await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
-		await page.goto('about:blank');
-		await page.goto(home, { waitUntil: 'domcontentloaded' });
+		await remountFirstPage(page, () => new Promise<void>((resolve) => (homeAsked = resolve)));
 
 		const strip = page.getByRole('region', { name: /continue watching/i });
 		const card = strip.locator('button.resume-card').first();

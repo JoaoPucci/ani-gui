@@ -17,6 +17,7 @@ const answer = (over: Partial<AvailabilityResponse> = {}): AvailabilityResponse 
 	episode_count: 4,
 	extra_episodes: [],
 	episode_count_approximate: false,
+	provider: 'hianime',
 	...over
 });
 
@@ -115,13 +116,13 @@ describe('startAvailabilityLookup', () => {
 
 	it('establishes nothing from an unsettled answer, but stops saying it is open', async () => {
 		// The probe reached the provider and came back without a verdict:
-		// the pool it found was refused on how its hits are named. The
-		// answer says `available: false` and means nothing by it — the
+		// the listings it found were dead, or nobody answered for the
+		// mode. The answer says `available: false` and means nothing by it — the
 		// backend persists nothing either — so the page keeps what it
 		// had, exactly as it does when the lookup fails, and the question
 		// is still over.
 		const h = harness(() =>
-			Promise.resolve(answer({ available: false, episode_count: null, unsettled: true }))
+			Promise.resolve(answer({ available: false, episode_count: null, unsettled: 'unanswered' }))
 		);
 		startAvailabilityLookup(SUBJECT, 'sub', h.deps);
 		await settled();
@@ -358,7 +359,7 @@ describe("startAvailabilityLookup — the show's versions", () => {
 			{ kind: 'standard', show_key: 'b' }
 		];
 		const unsettled = harness(() =>
-			Promise.resolve(answer({ available: false, unsettled: true, versions }))
+			Promise.resolve(answer({ available: false, unsettled: 'past_affinity', versions }))
 		);
 		startAvailabilityLookup(SUBJECT, 'sub', unsettled.deps);
 		const unanswered = harness(() =>

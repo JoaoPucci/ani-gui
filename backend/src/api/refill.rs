@@ -99,14 +99,14 @@ async fn get_kitsu_episodes(
 }
 
 #[derive(Deserialize)]
-struct WaitBody {
-    tickets: Vec<u64>,
+pub(super) struct WaitBody {
+    pub(super) tickets: Vec<u64>,
 }
 
 #[derive(Serialize)]
-struct Ended {
-    ticket: u64,
-    landed: bool,
+pub(super) struct Ended {
+    pub(super) ticket: u64,
+    pub(super) landed: bool,
 }
 
 async fn post_refills_wait(Json(body): Json<WaitBody>) -> Json<Vec<Ended>> {

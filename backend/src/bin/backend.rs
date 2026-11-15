@@ -150,12 +150,10 @@ fn main() -> std::process::ExitCode {
         // the Electron main process is waiting for, then serve until
         // stopped.
         //
-        // The renderer-only secret goes out on
-        // the same channel so Electron's main process can parse it and
-        // thread it through preload into `window.aniGui.
-        // internalSecret`. The renderer attaches it as the
-        // `x-ani-gui-internal-secret` header on the few backend paths
-        // that need a cross-origin defense beyond the bearer.
+        // The launch's secret goes out on the same channel so
+        // Electron's main process can parse it and thread it through
+        // preload into `window.aniGui.internalSecret`. The API answers
+        // no request without it (`api::gate`).
         let bases = bound.bases();
         announce(&lanes::handshake_lines(
             &bases,

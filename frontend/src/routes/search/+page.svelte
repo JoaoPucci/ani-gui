@@ -50,6 +50,7 @@
 	import { followAddress } from '$lib/search/follow-address';
 	import { arrive, emptyView, type SearchView } from '$lib/search/arrival';
 	import { subtypeLabel } from '$lib/search/subtype-label';
+	import { SEARCH_TYPE_FILTERS } from '$lib/search/type-filters';
 	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
@@ -99,7 +100,6 @@
 		year: m.search_sort_year,
 		rating: m.search_sort_rating
 	};
-	const SUBTYPES = ['TV', 'movie', 'special', 'OVA', 'ONA', 'music'];
 	let sortKey = $state<SortKey>('relevance');
 	const activeSubtypes = new SvelteSet<string>();
 
@@ -454,7 +454,7 @@
 			<div class="control-group">
 				<span class="control-label">{m.search_control_type_label()}</span>
 				<div class="chips" role="group" aria-label={m.search_chips_type_aria_label()}>
-					{#each SUBTYPES as s (s)}
+					{#each SEARCH_TYPE_FILTERS as s (s)}
 						<button
 							type="button"
 							class="chip"

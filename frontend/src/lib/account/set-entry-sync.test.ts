@@ -4,18 +4,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // the only real code under test: read connected providers off the store,
 // resolve each bearer via fresh-bearer, delegate to the (already-tested)
 // pure fan-out, then invalidate the Watch Later snapshot per provider.
+/** The row a tracker answers a write with: the show at `progress`. */
+function written(progress: number): ListEntry {
+	return {
+		provider: 'anilist',
+		media_id: 1,
+		mal_id: null,
+		status: 'watching',
+		progress_episodes: progress,
+		score_0_to_100: null,
+		updated_at_epoch_s: 0,
+		title: 'Title'
+	};
+}
+
 const { getEntry, setEntry, removeEntry, invalidateWatchLater, byProvider } = vi.hoisted(() => ({
 	// Default getEntry → an existing entry, so the remove path (which only
 	// counts trackers that had the row) and the set path both have a row to
 	// act on. Individual tests override the resolved value as needed.
-	getEntry: vi.fn(
-		async (): Promise<{ status: string; progress: number } | null> => ({
-			status: 'watching',
-			progress: 3
-		})
-	),
-	setEntry: vi.fn(async () => ({ progress_episodes: 3 })),
-	removeEntry: vi.fn(async () => undefined),
+	getEntry: vi.fn<typeof EntryApi.getEntry>(async () => ({
+		status: 'watching',
+		progress: 3
+	})),
+	setEntry: vi.fn<typeof EntryApi.setEntry>(async () => written(3)),
+	removeEntry: vi.fn<typeof EntryApi.removeEntry>(async () => undefined),
 	invalidateWatchLater: vi.fn(),
 	byProvider: {} as Record<
 		string,
@@ -24,8 +36,8 @@ const { getEntry, setEntry, removeEntry, invalidateWatchLater, byProvider } = vi
 }));
 vi.mock('./entry-api', () => ({ getEntry, setEntry, removeEntry }));
 vi.mock('./api', () => ({
-	refreshTokens: vi.fn(),
-	persistAccount: vi.fn(async () => ({ ok: true }))
+	refreshTokens: vi.fn<typeof AccountApi.refreshTokens>(),
+	persistAccount: vi.fn<typeof AccountApi.persistAccount>(async () => ({ ok: true }))
 }));
 vi.mock('./watch-later-refresh', () => ({ invalidateWatchLater }));
 vi.mock('./store.svelte', () => ({
@@ -50,12 +62,17 @@ import { m } from '$lib/paraglide/messages';
 import { listChanges, type ListChange } from './list-changes';
 import { SupersededError } from './save-when-allowed';
 
+import type * as AccountApi from './api';
+import type * as EntryApi from './entry-api';
+import type { ListEntry } from './types';
+import { wire } from '$lib/testing/wire-answers';
+import type { AniErrorPayload } from '../api';
 /** The backend holding a write back: 429 with the wait, by shape (the
  *  api module is mocked here). */
 const refused = (secs: number) =>
 	Object.assign(new Error('rate limited'), {
 		status: 429,
-		detail: JSON.stringify({ kind: 'rate_limited', retry_after_secs: secs })
+		detail: wire<AniErrorPayload>({ kind: 'rate_limited', retry_after_secs: secs })
 	});
 
 /** A 0 s wait: the notice says the save is going now. */
@@ -76,7 +93,7 @@ beforeEach(() => {
 	getEntry.mockClear();
 	getEntry.mockResolvedValue({ status: 'watching', progress: 3 });
 	setEntry.mockReset();
-	setEntry.mockResolvedValue({ progress_episodes: 3 });
+	setEntry.mockResolvedValue(written(3));
 	removeEntry.mockReset();
 	removeEntry.mockResolvedValue(undefined);
 	for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
@@ -498,9 +515,9 @@ describe('the views a settled editor write tells', () => {
 		getEntry.mockResolvedValue(null);
 		byProvider.anilist = { kind: 'connected', account: { access_token: 'tok-a' } };
 		byProvider.mal = { kind: 'connected', account: { access_token: 'tok-m' } };
-		setEntry.mockImplementation(async (...args: unknown[]) => {
-			if (args[0] === 'mal') throw new Error('offline');
-			return { progress_episodes: 0 };
+		setEntry.mockImplementation(async (provider) => {
+			if (provider === 'mal') throw new Error('offline');
+			return written(0);
 		});
 		const heard = await announcedDuring(() =>
 			syncSetEntry('kitsu-12', { status: 'planning', statusChanged: true, progress: 0 })

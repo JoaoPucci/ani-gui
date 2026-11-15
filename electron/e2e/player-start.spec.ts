@@ -7,8 +7,9 @@
  * in and fires no `waiting` before then. A player that shows the
  * element's `paused` offers Play over a black frame for as long as the
  * first fragment takes, and viewers press it. The stream is the local
- * HLS fixture played through the backend's own stream proxy, from a
- * server that holds every fragment back the way a slow host does.
+ * HLS fixture, from a server that holds every fragment back the way a
+ * slow host does; the play is the Continue card's, clicked, and runs
+ * through the backend's play route and stream proxy (real-play.ts).
  */
 import {
   type ElectronApplication,
@@ -20,19 +21,13 @@ import http from "node:http";
 import type net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import {
-  appInfo,
-  continueKitsuEpisode6,
-  continueKitsuMatch,
-  defaultSettings,
-} from "./fixtures/kitsu";
 import { appWindow, launchPackagedApp, packagedBinary } from "./launch";
+import { playFromContinue, routeRealPlay, writeReplayConfig } from "./real-play";
 
 const mediaDir = path.join(__dirname, "fixtures", "captions");
 const HOLD_MS = 2500;
 
 const settings = {
-  ...defaultSettings,
   locale: "en",
   use_custom_player_controls: true,
 };
@@ -45,8 +40,13 @@ test.beforeAll(() => {
   }
 });
 
-async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
+async function launch(): Promise<{
+  app: ElectronApplication;
+  page: Page;
+  profile: string;
+}> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ani-gui-start-"));
+  writeReplayConfig(tmp);
   const app = await launchPackagedApp({
     ...process.env,
     XDG_STATE_HOME: path.join(tmp, "state"),
@@ -56,7 +56,7 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
     ANI_GUI_UNATTENDED: "1",
   }, { profile: tmp });
   const page = await appWindow(app);
-  return { app, page };
+  return { app, page, profile: tmp };
 }
 
 /** A server for the media fixture, standing in for a provider's CDN. */
@@ -90,59 +90,6 @@ async function mediaServer(
   return { origin: `http://127.0.0.1:${port}`, close: () => server.close() };
 }
 
-async function apiBase(page: Page): Promise<string> {
-  await page.waitForFunction(
-    () => Boolean((window as { aniGui?: unknown }).aniGui),
-    null,
-    { timeout: 30_000 },
-  );
-  return page.evaluate(
-    () => (window as unknown as { aniGui: { apiBase: string } }).aniGui.apiBase,
-  );
-}
-
-/** Metadata the play page asks the API for, answered without the
- *  network; the session route goes to the real backend. */
-async function stubMetadata(page: Page, base: string) {
-  await page.route(`${base}/api/**`, async (r) => {
-    const p = new URL(r.request().url()).pathname;
-    if (p === "/api/sessions") return r.continue();
-    const j = (body: unknown) =>
-      r.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(body),
-      });
-    if (p === "/api/app-info") return j(appInfo);
-    if (p === "/api/settings") return j(settings);
-    if (p.startsWith("/api/kitsu/anime/")) return j(continueKitsuMatch);
-    if (p.startsWith("/api/kitsu/episodes/")) return j([continueKitsuEpisode6]);
-    if (p === "/api/history") return j([]);
-    if (p.startsWith("/api/image")) return r.fulfill({ status: 503 });
-    // The backend answers skip times with a list, empty when it
-    // knows none; the page reads it as one once the length is known.
-    if (p.startsWith("/api/aniskip/")) return j([]);
-    return j(null);
-  });
-}
-
-async function session(page: Page, base: string, upstream: string) {
-  const created = await page.evaluate(
-    async ({ base, upstream }) => {
-      const res = await fetch(`${base}/api/sessions`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ upstream_url: upstream, referer: "" }),
-      });
-      if (!res.ok)
-        throw new Error(`session: ${res.status} ${await res.text()}`);
-      return (await res.json()) as { session_id: string };
-    },
-    { base, upstream },
-  );
-  return created.session_id;
-}
-
 type Sample = {
   t: number;
   paused: boolean;
@@ -154,15 +101,14 @@ type Sample = {
 test("a stream on its way reads Pause with the loading indicator on, until its first frame", async () => {
   test.setTimeout(120_000);
   const media = await mediaServer(HOLD_MS);
-  const { app, page } = await launch();
+  const { app, page, profile } = await launch();
   try {
-    const base = await apiBase(page);
-    await stubMetadata(page, base);
-    const sid = await session(page, base, `${media.origin}/master.m3u8`);
-    const url = new URL(page.url());
-    url.pathname = `/play/${continueKitsuMatch.id}`;
-    url.search = `?session=${sid}&episode=1&kind=hls`;
-    await page.goto(url.toString());
+    const play = await routeRealPlay(page, {
+      profile,
+      settings,
+      stream: { upstreamUrl: `${media.origin}/master.m3u8`, mediaKind: "hls" },
+    });
+    await playFromContinue(page, play);
     await page.locator(".pc-buttons-row .pc-btn").first().waitFor();
 
     // Read the element and the chrome until frames play.

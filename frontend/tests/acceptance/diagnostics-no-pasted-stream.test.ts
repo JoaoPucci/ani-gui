@@ -28,6 +28,8 @@ vi.mock('$app/navigation', () => ({
 
 import DiagnosticsPage from '../../src/routes/diagnostics/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import type { AppInfo, HistoryEntry } from '../../src/lib/api';
+import { appInfoAnswer } from '../answers';
 
 const VERSION = '0.17.0';
 
@@ -38,14 +40,16 @@ beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	server.use(
 		http.get(`${API_BASE}/api/app-info`, () =>
-			HttpResponse.json({
-				version: VERSION,
-				history_path: '/home/u/.local/state/ani-gui/history',
-				proxy_base_url: API_BASE,
-				removed_legacy_paths: []
-			})
+			HttpResponse.json<AppInfo>(
+				appInfoAnswer({
+					version: VERSION,
+					history_path: '/home/u/.local/state/ani-gui/history',
+					proxy_base_url: API_BASE,
+					removed_legacy_paths: []
+				})
+			)
 		),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([]))
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>([]))
 	);
 	target = document.createElement('div');
 	document.body.appendChild(target);

@@ -22,9 +22,6 @@ mod common;
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use wiremock::matchers::{method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
-
 /// The lanes beside the API that the handshake must announce.
 const LANES: [&str; 5] = ["stream", "image", "probe", "resolve", "download"];
 
@@ -80,7 +77,10 @@ async fn every_lane_serves_the_whole_router() {
     let mut failures = Vec::new();
     for base in &bases {
         for route in ["/healthz", "/api/app-info"] {
-            match client.get(format!("{base}{route}")).send().await {
+            let request = client
+                .get(format!("{base}{route}"))
+                .header("x-ani-gui-internal-secret", &backend.secret);
+            match request.send().await {
                 Ok(r) if r.status().is_success() => {}
                 other => failures.push(format!("{base}{route}: {other:?}")),
             }
@@ -96,41 +96,141 @@ async fn every_lane_serves_the_whole_router() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_stream_proxy_is_stamped_with_the_stream_lane() {
-    let upstream = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/master.m3u8"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(
-            "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000,RESOLUTION=640x360\nlow/index.m3u8\n",
-        ))
-        .mount(&upstream)
-        .await;
-
+async fn the_stream_proxy_base_is_the_stream_lane() {
     let (backend, _home) = start();
     let api = backend.api_base.clone();
     let stream = backend.lanes.get("stream").cloned();
-    let client = reqwest::Client::new();
+    let info = app_info(&api, &backend.secret).await;
+    // The stream lane serves the proxy's routes, without the secret the
+    // API wants: a session that does not exist gets the proxy's own
+    // answer, not the API gate's.
+    let unknown = match &stream {
+        Some(base) => match reqwest::Client::new()
+            .get(format!(
+                "{base}/s/00000000-0000-4000-8000-000000000000/master.m3u8"
+            ))
+            .send()
+            .await
+        {
+            Ok(r) => (r.status().as_u16(), r.text().await.unwrap_or_default()),
+            Err(e) => (0, format!("{e:?}")),
+        },
+        None => (0, String::new()),
+    };
+    stop(backend);
 
-    let info: serde_json::Value = client
+    let stream = stream.expect("a stream lane is announced");
+    assert_eq!(info["proxy_base_url"], serde_json::json!(stream));
+    assert_eq!(
+        unknown.0, 404,
+        "the stream lane answers a proxy route: {unknown:?}"
+    );
+    assert!(
+        unknown.1.contains("session not found"),
+        "the proxy, not the API, answered: {unknown:?}"
+    );
+}
+
+async fn app_info(api: &str, secret: &str) -> serde_json::Value {
+    reqwest::Client::new()
         .get(format!("{api}/api/app-info"))
+        .header("x-ani-gui-internal-secret", secret)
         .send()
         .await
         .expect("app-info")
         .json()
         .await
-        .expect("app-info json");
+        .expect("app-info json")
+}
+
+/// A play's session, opened through the play route as the renderer
+/// opens one, and the playlist the proxy serves for it, both name the
+/// stream lane.
+///
+/// The backend answers the play from its resolution cache — the test
+/// turns replays on through the settings route and writes the row the
+/// play reads, naming a stream it serves — since a resolve would walk
+/// a provider. The settings and the cache it writes are the test's
+/// own on every platform, under the profile root `common::command`
+/// sets.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_plays_session_and_its_playlist_name_the_stream_lane() {
+    use ani_gui::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let upstream = MockServer::start().await;
+    for verb in ["GET", "HEAD"] {
+        Mock::given(method(verb))
+            .and(path("/master.m3u8"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000,RESOLUTION=640x360\nlow/index.m3u8\n",
+            ))
+            .mount(&upstream)
+            .await;
+    }
+
+    let (backend, home) = start();
+    let api = backend.api_base.clone();
+    let stream = backend.lanes.get("stream").cloned();
+    let client = reqwest::Client::new();
+    let secret = backend.secret.clone();
+
+    let mut settings: serde_json::Value = client
+        .get(format!("{api}/api/settings"))
+        .header("x-ani-gui-internal-secret", &secret)
+        .send()
+        .await
+        .expect("settings")
+        .json()
+        .await
+        .expect("settings json");
+    settings["cache_resolutions"] = serde_json::json!(true);
+    let put_settings = client
+        .put(format!("{api}/api/settings"))
+        .header("x-ani-gui-internal-secret", &secret)
+        .json(&settings)
+        .send()
+        .await
+        .expect("put settings");
+    assert!(put_settings.status().is_success(), "{put_settings:?}");
+
+    let pool = ani_gui::cache::open_pool(&common::profile::metadata_db(home.path()))
+        .expect("the backend's cache");
+    put(
+        &pool,
+        &cache_key("Lanes Test Show", "sub", "1", None, None, None),
+        &CachedResolution {
+            upstream_url: format!("{}/master.m3u8", upstream.uri()),
+            referer: String::new(),
+            media_kind: ani_gui::proxy::MediaKind::Hls,
+            show_id: "hianime:lanes-test-show-1".into(),
+            show_title: "Lanes Test Show".into(),
+            resolved_slot: None,
+            played: Some("1".into()),
+            former_episode: None,
+            subtitles: Vec::new(),
+            kitsu_id: None,
+            versions: Vec::new(),
+            version: None,
+            episode_unverified: false,
+        },
+    );
+
     let session: serde_json::Value = client
-        .post(format!("{api}/api/sessions"))
+        .post(format!("{api}/api/play"))
+        .header("x-ani-gui-internal-secret", &secret)
         .json(&serde_json::json!({
-            "upstream_url": format!("{}/master.m3u8", upstream.uri()),
-            "referer": "",
+            "title": "Lanes Test Show",
+            "mode": "sub",
+            "episode": "1",
         }))
         .send()
         .await
-        .expect("session")
+        .expect("play")
         .json()
         .await
-        .expect("session json");
+        .expect("play json");
     let media_url = session["media_url"]
         .as_str()
         .unwrap_or_default()
@@ -141,8 +241,12 @@ async fn the_stream_proxy_is_stamped_with_the_stream_lane() {
     };
     stop(backend);
 
+    assert_eq!(
+        session["cache_hit"],
+        serde_json::json!(true),
+        "the play was the replay of the row: {session}"
+    );
     let stream = stream.expect("a stream lane is announced");
-    assert_eq!(info["proxy_base_url"], serde_json::json!(stream));
     assert!(
         media_url.starts_with(&format!("{stream}/s/")),
         "the player's URL is on the stream lane ({stream}): {media_url}"

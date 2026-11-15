@@ -41,7 +41,11 @@ vi.mock('hls.js', () => {
 	type Handler = (event: string, data: unknown) => void;
 	class FakeHls {
 		static instances: FakeHls[] = [];
-		static Events = { ERROR: 'hlsError', FRAG_LOADED: 'hlsFragLoaded' };
+		static Events = {
+			ERROR: 'hlsError',
+			FRAG_LOADED: 'hlsFragLoaded',
+			BACK_BUFFER_REACHED: 'hlsBackBufferReached'
+		};
 		static isSupported() {
 			return true;
 		}
@@ -75,6 +79,15 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { playerVideo, playerVideoInSlot } from './player-video';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 type FakeHlsT = InstanceType<typeof Hls> & {
 	stopLoadCalls: number;
 	startLoadCalls: number;
@@ -83,6 +96,8 @@ type FakeHlsT = InstanceType<typeof Hls> & {
 const hlsInstances = () => (Hls as unknown as { instances: FakeHlsT[] }).instances;
 const FRAG_LOADED = (Hls as unknown as { Events: { FRAG_LOADED: string } }).Events.FRAG_LOADED;
 const ERROR = (Hls as unknown as { Events: { ERROR: string } }).Events.ERROR;
+const BACK_BUFFER_REACHED = (Hls as unknown as { Events: { BACK_BUFFER_REACHED: string } }).Events
+	.BACK_BUFFER_REACHED;
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -114,43 +129,52 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
 function useShowHandlers() {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
 		// The mount's next-episode prefetch.
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([]))
 	);
 }
 
@@ -235,5 +259,38 @@ describe('play route — a fragment loaded past its allowance stops the engine',
 			}
 		}
 		expect(hls.stopLoadCalls).toBe(0);
+	});
+
+	it('does not stop a stream the viewer keeps seeking back to past the back buffer', async () => {
+		// The engine keeps a bounded stretch behind the playhead. Going
+		// back and forth between two spots further apart than that loads
+		// the far spot's fragment again on every return, each time after
+		// the engine let it go: a healthy stream, however quick the
+		// returns.
+		const hls = await mountHls();
+		// The far spot's fragment runs from 28 s to 32 s and the trim
+		// point falls inside it, at 30 s: the engine drops the whole
+		// fragment and loads it again on the next return.
+		const far = { frag: { type: 'main', level: 0, sn: 2, start: 28, end: 32 } };
+		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE * 3; i++) {
+			hls.emit(FRAG_LOADED, far);
+			hls.emit(BACK_BUFFER_REACHED, { bufferEnd: 30 });
+		}
+		expect(hls.stopLoadCalls).toBe(0);
+		expect(target.textContent ?? '').not.toContain(m.play_error_fragment_loop());
+	});
+
+	it('still stops a fragment that loops ahead of the trimmed stretch', async () => {
+		// Trims behind the playhead do not reach a fragment that loads
+		// and never buffers at the playhead: the guard still stops it.
+		const hls = await mountHls();
+		const stuck = { frag: { type: 'main', level: 0, sn: 9, start: 40, end: 44 } };
+		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE; i++) {
+			hls.emit(FRAG_LOADED, stuck);
+			hls.emit(BACK_BUFFER_REACHED, { bufferEnd: 30 });
+		}
+		expect(hls.stopLoadCalls).toBe(0);
+		hls.emit(FRAG_LOADED, stuck);
+		expect(hls.stopLoadCalls).toBe(1);
 	});
 });

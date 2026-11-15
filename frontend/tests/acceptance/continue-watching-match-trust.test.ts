@@ -34,6 +34,8 @@ import HomePage from '../../src/routes/+page.svelte';
 import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
+import type { CreateSessionResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer, sessionAnswer, wire } from '../answers';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -103,11 +105,13 @@ async function clickAndReadRecordedId(): Promise<string | null> {
 	// case's click is not folded into this one's pending request.
 	stream.dispatch(
 		'done',
-		JSON.stringify({
-			session_id: 's-1',
-			media_url: `${API_BASE}/s/s-1/file.mp4`,
-			media_kind: 'mp4'
-		})
+		wire<CreateSessionResponse>(
+			sessionAnswer({
+				session_id: 's-1',
+				media_url: `${API_BASE}/s/s-1/file.mp4`,
+				media_kind: 'mp4'
+			})
+		)
 	);
 	await until(() => vi.mocked(goto).mock.calls.length > 0, 'the navigation to the play page');
 	return recorded;
@@ -124,7 +128,7 @@ describe('what a Continue card records', () => {
 		server.use(
 			...homeHandlers({ history: [{ ep_no: '3', id: 'hianime:cowboy-bebop-1', title: SHOW }] }, [
 				http.post(`${API_BASE}/api/kitsu/search`, () =>
-					HttpResponse.json([kitsuRef('1', SHOW, 26)])
+					HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', SHOW, 26)])
 				)
 			])
 		);
@@ -140,7 +144,7 @@ describe('what a Continue card records', () => {
 				{ history: [{ ep_no: '3', id: 'hianime:cowboy-bebop-1', title: SHOW, kitsu_id: '2' }] },
 				[
 					http.get(`${API_BASE}/api/kitsu/anime/2`, () =>
-						HttpResponse.json(kitsuRef('2', SHOW, 26))
+						HttpResponse.json<KitsuAnimeRef>(kitsuRef('2', SHOW, 26))
 					)
 				]
 			)
@@ -161,7 +165,7 @@ describe("a Continue card's session", () => {
 		server.use(
 			...homeHandlers({ history: [{ ep_no: '5', id: 'hianime:cowboy-bebop-1', title: SHOW }] }, [
 				http.post(`${API_BASE}/api/kitsu/search`, () =>
-					HttpResponse.json([kitsuRef('1', SHOW, 26)])
+					HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', SHOW, 26)])
 				)
 			])
 		);
@@ -182,13 +186,10 @@ describe('a Continue row whose recorded id Kitsu no longer has', () => {
 				{ history: [{ ep_no: '3', id: 'hianime:cowboy-bebop-1', title: SHOW, kitsu_id: '999' }] },
 				[
 					http.get(`${API_BASE}/api/kitsu/anime/999`, () =>
-						HttpResponse.json(
-							{ kind: 'upstream', status: 404, key: 'error.network.upstream' },
-							{ status: 502 }
-						)
+						errorAnswer(502, { kind: 'upstream', status: 404, key: 'error.network.upstream' })
 					),
 					http.post(`${API_BASE}/api/kitsu/search`, () =>
-						HttpResponse.json([kitsuRef('3', SHOW, 26)])
+						HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('3', SHOW, 26)])
 					)
 				]
 			)

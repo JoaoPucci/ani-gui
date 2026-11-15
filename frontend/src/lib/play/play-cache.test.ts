@@ -9,12 +9,13 @@ import {
 	makeKey
 } from './play-cache';
 
+import { sessionAnswer } from '$lib/testing/wire-answers';
 function fakeResp(seed: string): CreateSessionResponse {
-	return {
+	return sessionAnswer({
 		session_id: seed,
 		media_url: `http://x/s/${seed}/master.m3u8`,
 		media_kind: 'hls'
-	};
+	});
 }
 
 /** A `fire` that doesn't emit progress — equivalent to the legacy
@@ -39,6 +40,16 @@ describe('makeKey', () => {
 		expect(makeKey('show-2', 1, 'sub')).not.toBe(base);
 		expect(makeKey('show-1', 2, 'sub')).not.toBe(base);
 		expect(makeKey('show-1', 1, 'dub')).not.toBe(base);
+	});
+
+	it("keeps a session no card asked for from serving a card's play", () => {
+		// A card's play is answered for its line (`line_kept`): a session
+		// another caller fired never answered that.
+		const card = makeKey('show-1', 1, 'sub', undefined, undefined, undefined, 'hianime:x-1');
+		expect(makeKey('show-1', 1, 'sub')).not.toBe(card);
+		expect(makeKey('show-1', 1, 'sub', undefined, undefined, undefined, 'hianime:x-2')).not.toBe(
+			card
+		);
 	});
 
 	it('keeps a session warmed for one version from serving another', () => {
@@ -133,7 +144,7 @@ describe('getOrFire', () => {
 		const key = makeKey('show', 3, 'sub');
 		const prefetchFire = vi.fn(never);
 		void getOrFire(key, prefetchFire);
-		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const foregroundFire = vi.fn(async () => fakeResp('fg'));
 		const resolved = await getOrFire(key, foregroundFire, () => {});
 		expect(resolved.session_id).toBe('fg');
 		expect(foregroundFire).toHaveBeenCalledTimes(1);
@@ -156,7 +167,7 @@ describe('getOrFire', () => {
 		);
 		void getOrFire(key, prefetchFire).catch(() => {});
 		expect(prefetchFire).toHaveBeenCalledTimes(1);
-		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const foregroundFire = vi.fn(async () => fakeResp('fg'));
 		const clicked = getOrFire(key, foregroundFire, () => {});
 		rejectPrefetch(new Error('gate refused'));
 		await expect(clicked).resolves.toMatchObject({ session_id: 'fg' });
@@ -182,7 +193,7 @@ describe('getOrFire', () => {
 		);
 		void getOrFire(key, prefetchFire).catch(() => {});
 		expect(prefetchFire).toHaveBeenCalledTimes(1);
-		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const foregroundFire = vi.fn(async () => fakeResp('fg'));
 		const clicked = getOrFire(key, foregroundFire, () => {});
 		expect(foregroundFire).toHaveBeenCalledTimes(1);
 		expect(bgAborted).toBe(true);
@@ -196,7 +207,7 @@ describe('getOrFire', () => {
 		const key = makeKey('show', 6, 'sub');
 		const prefetchFire = vi.fn(plainFire(fakeResp('warmed')));
 		await getOrFire(key, prefetchFire);
-		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const foregroundFire = vi.fn(async () => fakeResp('fg'));
 		const clicked = await getOrFire(key, foregroundFire, () => {});
 		expect(clicked.session_id).toBe('warmed');
 		expect(foregroundFire).not.toHaveBeenCalled();

@@ -40,6 +40,7 @@ import path from 'node:path';
 import { launchRefusal } from '../lib/e2e-display.cjs';
 import { stopOwnGroup } from '../lib/own-group.cjs';
 import { guardPolicy } from './policy-guard';
+import { answer } from './stubs';
 
 /** electron-builder's pre-AppImage output — the production code path:
  *  the `app://` protocol handler, the bundled SvelteKit assets and the
@@ -320,21 +321,57 @@ export async function routeContext(
 	}
 }
 
+/** The backend's answer to Home's `POST /api/history/card-lines` for the
+ *  rows `body` names (`commands/card_line.rs`): each card stands for its
+ *  own row, or for the line its guessed play came from while both show
+ *  as the same show, and offers its pill while that line is a guess or
+ *  one the user named. */
+export function cardLinesAnswer(body: unknown): Record<string, { line: string; correctable: boolean }> {
+	type Row = { id: string; guessed_from?: string | null; show?: string | null; guess?: boolean; named?: boolean };
+	const rows = ((body as { rows?: Row[] } | null)?.rows ?? []) as Row[];
+	const lineOf = (shown: Row): Row => {
+		const from = shown.guessed_from;
+		if (!from || from === shown.id || !shown.guess || !shown.show) return shown;
+		return rows.find((r) => r.id === from && r.show === shown.show) ?? shown;
+	};
+	return Object.fromEntries(
+		rows.map((shown) => {
+			const line = lineOf(shown);
+			return [shown.id, { line: line.id, correctable: line.guess === true || line.named === true }];
+		})
+	);
+}
+
 /** Answers every backend API request that none of a spec's own stubs
- *  answers with a 501, and records it as `METHOD /path`. Registered
+ *  answers with a 501 (through the stub server, so behind the gate: a
+ *  request without the launch's secret gets its 403), and records it
+ *  as `METHOD /path`. Registered
  *  before the spec's stubs, since Playwright tries the most recently
  *  registered route first: this one sees only what they leave. A spec
  *  that claims its page runs on stubs asserts the record is empty; the
  *  request itself never reaches the backend. The first mount can ask
  *  while the stubs are still being set, so a spec that remounts its
  *  page hands the record to remountFirstPage, which forgets what the
- *  first mount sent. */
-export async function refuseUnstubbed(context: BrowserContext): Promise<string[]> {
+ *  first mount sent.
+ *
+ *  It takes the app's window (appWindow), not the context, so that no
+ *  route can be set before that window has been found. Setting a
+ *  context route switches interception on for the pages Playwright has
+ *  finished attaching. A window still attaching is left out: it looks
+ *  for routes once, as it starts attaching, and is not told when a
+ *  route set while it attaches switches interception on. A window
+ *  that starts attaching before the first route and finishes after the
+ *  last is never intercepted: every request it makes goes to the
+ *  backend as if no route existed, and the remount's witness never
+ *  arrives (remountFirstPage). Playwright lists a window only once it
+ *  has finished attaching, so every route set after appWindow has
+ *  returned it reaches it. */
+export async function refuseUnstubbed(window: Page): Promise<string[]> {
 	const unstubbed: string[] = [];
-	await routeContext(context, /^http:\/\/127\.0\.0\.1:\d+\/api\//, (r) => {
+	await routeContext(window.context(), /^http:\/\/127\.0\.0\.1:\d+\/api\//, (r) => {
 		const req = r.request();
 		unstubbed.push(`${req.method()} ${new URL(req.url()).pathname}`);
-		return r.fulfill({ status: 501, contentType: 'text/plain', body: 'unstubbed in this spec' });
+		return answer(r, { status: 501, contentType: 'text/plain', body: 'unstubbed in this spec' });
 	});
 	return unstubbed;
 }
@@ -362,5 +399,29 @@ export async function remountFirstPage(
 	forget?.splice(0);
 	const live = witness();
 	await page.goto(first, { waitUntil: 'domcontentloaded' });
-	await live;
+	// The new mount asks within a fraction of a second. Bounded, so a
+	// mount whose requests miss the stubs fails here saying so, rather
+	// than as a bare test timeout with nothing pending — on a launch of
+	// usual length; a launch slow enough can still reach the test's own
+	// timeout first.
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<never>((_, reject) => {
+		timer = setTimeout(
+			() =>
+				reject(
+					new Error(
+						`remountFirstPage: no request of the remounted page reached its witness stub within ${REMOUNT_WITNESS_MS} ms`
+					)
+				),
+			REMOUNT_WITNESS_MS
+		);
+	});
+	try {
+		await Promise.race([live, late]);
+	} finally {
+		clearTimeout(timer);
+	}
 }
+
+/** How long remountFirstPage waits for the new mount's witness. */
+const REMOUNT_WITNESS_MS = 10_000;

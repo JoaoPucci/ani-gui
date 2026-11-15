@@ -434,8 +434,8 @@ starting it, and delete it when you find it done.
 
   What corrects these two is the user rather than a rule, where Kitsu
   holds the entry at all: the player's "Is this the show you meant?"
-  on a guessed play, once it ships, or a play of the show from its own
-  page, below.
+  on a guessed play, the other ways to correct a card by hand, or a
+  play of the show from its own page, all below.
 
   The first three waited because no rule tried fixed them without
   breaking picks that are right. Ruling out a hit whose titles and the
@@ -446,12 +446,15 @@ starting it, and delete it when you find it done.
   "(Uncensored)" and "(Part 1+2)" before comparing titles changed no
   pick.
 
-  There is no control on a card to correct its show. What corrects one
-  is playing the show from its own page: when that play lands on the
-  card's listing, the line records the show and the card goes by it
-  from then on — unless the cross-cour guard refuses the record, as it
-  does for the Slime season (the entry on a later season Kitsu titles
-  only with a bare number). Worth revisiting when the guess can read
+  The user can correct a card by hand: its "Not what you watched?" pill
+  on Home, its failed resume, the player's slip and ⋯ menu, and the show
+  page its player led to all link the line to the show the user names.
+  Playing the show from its own page also corrects one: when that play
+  lands on the card's listing, the line records the show and the card
+  goes by it from then on — unless the cross-cour guard refuses the
+  record, as it does for the Slime season (the entry on a later season
+  Kitsu titles only with a bare number). The guess itself is what
+  waits, and it is worth revisiting when the guess can read
   more of the provider's listing than its title, the year and words its
   key names and the episode it reached — the year it aired, its
   format, or its episode count — or when another wrong pick on a
@@ -526,7 +529,15 @@ starting it, and delete it when you find it done.
   a design pass has to settle: what the mark says and where it sits,
   whether a marked card still opens its page, whether the grid's
   order or count changes, and whether the surfaces that hide such
-  cards before rendering should show them marked too.
+  cards before rendering should show them marked too. Once that is
+  decided, search's exclusion of music videos is to be revisited
+  (maintainer, 2026-11-16): music videos are kept out because Kitsu
+  lists far more of them than the provider serves, so showing them
+  would put many results in search that then get filtered out as not
+  carried; they would belong in search only if that ratio were good.
+  The revisit covers the detail page too, which holds every music
+  video unavailable, the ones the provider does play included, and
+  the search page's type filters, which offer none for music.
 - **Search has no title order.** Kitsu cannot sort a text search by
   title: `sort=canonicalTitle` and `sort=slug` answer 500, and
   `titles.en` is refused as a sort criterion. Sorting only the pages
@@ -1042,9 +1053,10 @@ starting it, and delete it when you find it done.
   guessed-card linking work lands, the player's "Is this the show you
   meant?" and its slip, the rows' `guessed_from` notes, the failure
   overlay's "Pick the right show", and the "Which show is it?" picker
-  with "Not this show?" and the marks on rows named through it. A row
-  a normal play wrote records the show it was played from, so the
-  card cannot name the wrong show and needs no correcting. The entry
+  with "Not this show?", Home's "Not what you watched?" and the
+  marks on rows named through it. A row a normal play wrote
+  records the show it was played from, so the card cannot name the
+  wrong show and needs no correcting. The entry
   "Some guessed Continue cards still open the wrong show" goes with
   it. The maintainer has tied this removal to v1.0, with the two
   above.
@@ -1146,8 +1158,9 @@ starting it, and delete it when you find it done.
 - **The window refuses new windows through its open handler but
   installs no `will-navigate` guard**, so nothing stops the renderer's
   own document from navigating away from the app's origin, and a page
-  it navigates to gets the preload bridge, the internal secret
-  included. The content security policy does not govern navigation.
+  it navigates to gets the preload bridge (not the launch's secret:
+  the main process answers it to the app's own document alone). The
+  content security policy does not govern navigation.
   The app's own links open external pages with `target="_blank"`, so
   no path in the app does this today. Pull request #346 adds the
   guard, along with checks on IPC callers and permissions; this entry
@@ -1162,6 +1175,27 @@ starting it, and delete it when you find it done.
   and keeps the sandbox. It is a packaging question of its own; the
   renderer's content security policy is enforced either way, but
   script that got past it in the AppImage would run unsandboxed.
+
+## Which program the app runs is the page's choice
+
+- **The external player's and Syncplay's program paths are stored
+  from Settings unchecked, so the app's own page chooses what runs.**
+  The page writes them, with the rest of Settings, through
+  `PUT /api/settings` (`external_player`, `syncplay_binary`), and the
+  backend starts whatever path it was handed when the user next opens
+  an episode in the external player or watches together. No request
+  names a program any more, but a script running in the app's page,
+  which holds the launch's secret, can still pick the program by
+  rewriting Settings first. The Browse buttons open a
+  main-process file picker, but its answer comes back to the page and
+  is saved through the same `PUT`, like a typed path.
+
+  The direction chosen is that a path is set only through the
+  main-process file picker. It waited for a small Settings UI study:
+  dropping the free-text path changes how both fields look and
+  behave. What a picker cannot cover is the custom-arguments template
+  (`external_player_custom_args`): no dialog picks arguments, so it
+  needs an answer of its own.
 
 ## Metadata the app does not use yet
 
@@ -1281,11 +1315,10 @@ the shape against the app as it is then.
   to allow for. WebM plays natively in the renderer, so no HLS
   machinery is involved, and the proxy already has a progressive
   pass-through route beside its HLS one — but that route is chosen
-  by a media kind the session infers from the URL's extension, and
-  the kinds it knows are `m3u8` and `mp4`; anything else, `webm`
-  included, falls to HLS and is handed to the manifest parser, so
-  a session for a theme is not only wiring but a media kind the
-  classifier learns or the caller sets outright.
+  by the media kind whoever opens the session names, and the kinds
+  there are HLS and MP4; WebM is neither, so a session for a theme
+  is not only wiring but a kind its opener names for the
+  pass-through route to serve.
   The alternative — cutting openings
   out of episodes with the skip intervals the player already has —
   was looked at and set aside: the intervals are crowd-sourced and
@@ -1428,6 +1461,30 @@ the AppImage and the Windows installer. It leaves out, on purpose:
   in practice means CI, so it waits for release CI or a change in
   those terms.
 
+## Studying a frontend written in Rust
+
+The maintainer wants a study of rewriting the frontend as a native
+Rust interface: drawn by a Rust toolkit, with no web engine, not the
+same web interface moved into another shell. Today the interface is
+SvelteKit in an Electron shell, and `AGENTS.md` §14 keeps rendering
+in the renderer's own stack, and says the Rust default never moves
+rendering into Rust, "whether behind a request to the backend or
+compiled to WebAssembly". That rule holds until the study is decided;
+revisiting it is the study's job.
+
+It waited because it rewrites the whole interface, far beyond any one
+change, and because a Rust interface is new to the stack, which is the
+maintainer's decision after an investigation.
+
+It is more than a change of language. With no web engine there is no
+Electron and no hls.js, so playback needs a native player embedded in
+the window on both platforms, likely the largest unknown. The
+Paraglide translations (§6), packaging on both platforms (§15) and the
+frontend layers of the test pyramid all change with it. A shell around
+the system webview is not the alternative it looks like: the app ran
+on Tauri until it moved to Electron, because the Linux webview could
+not keep up drawing the interface.
+
 ## Housekeeping
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if
@@ -1439,3 +1496,18 @@ the AppImage and the Windows installer. It leaves out, on purpose:
   only. Either wire a file appender to the helper or remove it; a
   file sink would also give packaged desktop launches, which have no
   terminal, somewhere to leave a trace.
+- **Three pieces of the change-show flow's logic stay in the renderer
+  for now.** `AGENTS.md` §14 puts the app's decisions about its data in
+  the Rust backend, and the flow's rules moved there, but three pieces
+  that sit in its grey area did not: what a player session's plays go
+  out as and whether trackers hear of them after a pick
+  (`frontend/src/lib/play/session-show.ts`), the Sub or Dub a picked
+  show takes from the one watched in
+  (`frontend/src/lib/history/carry-audio.ts`), and the notes of this
+  run's guessed plays that bound what a revisited guessed URL may ask
+  (`frontend/src/lib/history/guess-plays.ts`). They are worth
+  reconsidering for the backend. The maintainer chose to wait because
+  each is tied to something the renderer owns by design — the tracker
+  sending, the per-show Sub or Dub storage, notes that last one run
+  of the app — so moving one means moving that too, a refactor larger
+  than the change that found them.

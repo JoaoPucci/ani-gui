@@ -39,6 +39,7 @@ pub mod meta;
 pub mod parent_watch;
 pub mod provider_set;
 pub mod proxy;
+pub mod renderer_origin;
 pub mod retired_provider;
 pub mod retired_provider_plan;
 pub mod scraper;
