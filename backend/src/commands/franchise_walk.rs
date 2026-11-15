@@ -95,7 +95,7 @@ pub fn plan(
     known: &BTreeMap<String, FranchiseListing>,
     details: &BTreeMap<String, FranchiseEntry>,
 ) -> Plan {
-    // The anchor's detail, then its listing, each listing read without
+    // The anchor's listing and detail, then every listing read without
     // its music videos (`franchise_walk_music.rs`).
     let read = match music::read_for(anchor, known, details) {
         Ok(read) => read,
