@@ -312,8 +312,11 @@ test('sidecar tracks turned off before two handoffs in a row show their cues whe
 // With Chromium's own controls the app takes a change to the video's
 // tracks for a pick from their captions menu, and remembers it for the
 // show. Keeping the cues switches each loaded track that is off to
-// hidden and back, as hls.js's clear does: no such change may be
-// remembered as a pick.
+// hidden and back, as hls.js's clear does, and never to showing, so no
+// pick but the one already remembered (off) could be read from it; the
+// unit tier checks that no mode it writes is showing. Here the
+// remembered choice and both tracks' modes are what they were after
+// the return, and the cues are there once a track is picked.
 test("with Chromium's controls, the cues are kept and no pick is remembered that the viewer did not make", async () => {
 	test.setTimeout(120_000);
 	const media = await mediaServer();

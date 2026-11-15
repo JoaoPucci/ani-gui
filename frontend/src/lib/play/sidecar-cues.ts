@@ -19,8 +19,9 @@
  *   hls.js itself does to clear them. What shows never changes, so no
  *   caption change is reported as the viewer's pick
  *   ({@link import('./caption-watch')});
- * - a track whose file was never asked for has no cues and is left
- *   alone: switching it on, even hidden, would have its file fetched;
+ * - a track whose file was never asked for has no cues to keep and is
+ *   left alone (hls.js's own clear sets it hidden, which may have the
+ *   browser ask for its file; nothing here adds to that);
  * - a cue still on its track is not added again.
  */
 

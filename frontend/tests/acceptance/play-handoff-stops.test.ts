@@ -109,8 +109,9 @@ vi.mock('hls.js', () => {
 			// As hls.js 1.6.19's TimelineController does as a manifest
 			// starts loading: every text track on the video loses its cues,
 			// the <track> elements' included. (Chromium lists those in
-			// `textTracks`; happy-dom lists only addTextTrack's, and hides
-			// a disabled track's cues, which hls.js sets hidden to clear.)
+			// `textTracks`; happy-dom lists only addTextTrack's. A disabled
+			// track, which hls.js sets hidden to clear, is not modelled:
+			// happy-dom hides its cues and ignores a hidden mode.)
 			const media = this.media;
 			const tracks = new Set([
 				...Array.from(media?.textTracks ?? []),

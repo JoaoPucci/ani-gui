@@ -119,7 +119,7 @@ describe('keepingSidecarCues', () => {
 		expect(texts(el)).toEqual(['a', 'b']);
 	});
 
-	it('a track never loaded is left alone: never switched, so its file is not asked for', () => {
+	it('a track never loaded is left alone: it has no cues to keep, and the keeper never switches it', () => {
 		const el = sidecar('disabled', NONE, []);
 		keepingSidecarCues(videoOf([el]), () => {});
 		expect(el.track.writes).toEqual([]);
