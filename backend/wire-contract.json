@@ -23,7 +23,8 @@
       "image",
       "probe",
       "resolve",
-      "download"
+      "download",
+      "franchise"
     ],
     "ListStatus": [
       "planning",

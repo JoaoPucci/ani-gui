@@ -26,7 +26,7 @@ describe('laneBase', () => {
 
 	it('names every lane the backend announces', () => {
 		expect([...LANES].sort()).toEqual(
-			['api', 'download', 'image', 'probe', 'resolve', 'stream'].sort()
+			['api', 'download', 'franchise', 'image', 'probe', 'resolve', 'stream'].sort()
 		);
 	});
 });
