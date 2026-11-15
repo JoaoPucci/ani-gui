@@ -94,7 +94,7 @@ pub(super) fn read_without_music(
             let relations = l
                 .relations
                 .iter()
-                .filter(|r| !(alone && id == anchor) && !music(r.subtype.as_deref()))
+                .filter(|r| !(music(r.subtype.as_deref()) || (alone && id == anchor)))
                 .cloned()
                 .collect();
             let listing = FranchiseListing {
