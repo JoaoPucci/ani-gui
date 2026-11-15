@@ -1084,7 +1084,8 @@ pub(crate) async fn write_through(
     let owner = super::account_owner::before_write(state, kind, provider, tokens).await?;
     // A tracker that no longer has the entry wrote nothing, and nothing
     // is cached as written.
-    let Some(entry) = AniError::unless_absent(provider.update_entry(tokens, native, update).await)?
+    let Some(entry) =
+        super::account_absent::update_unless_absent(provider, tokens, native, update).await?
     else {
         return Ok(None);
     };

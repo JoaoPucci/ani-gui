@@ -139,7 +139,8 @@ async fn set_entry_via(
     let owner = super::account_owner::before_write(state, kind, provider, tokens).await?;
     // A tracker that no longer has the entry wrote nothing: the save
     // answers as for a show no tracker id maps.
-    let Some(entry) = AniError::unless_absent(provider.update_entry(tokens, native, update).await)?
+    let Some(entry) =
+        super::account_absent::update_unless_absent(provider, tokens, native, update).await?
     else {
         return Ok(None);
     };
