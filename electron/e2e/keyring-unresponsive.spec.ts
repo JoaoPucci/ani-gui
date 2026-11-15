@@ -34,6 +34,7 @@ import {
   routeContext,
   stopApp,
 } from "./launch";
+import { answer } from "./stubs";
 
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
@@ -173,30 +174,30 @@ test("a secret service that never answers keeps neither the window nor the first
     // empty at the end, for everything asked after the remount.
     const unstubbed = await refuseUnstubbed(page);
     let topRatedAsked: (() => void) | null = null;
-    await routeContext(context, "**/api/app-info", (r) => r.fulfill(json(appInfo)));
-    await routeContext(context, "**/api/history", (r) => r.fulfill(json(emptyHistory)));
+    await routeContext(context, "**/api/app-info", (r) => answer(r, json(appInfo)));
+    await routeContext(context, "**/api/history", (r) => answer(r, json(emptyHistory)));
     await routeContext(context, "**/api/kitsu/trending-anilist", (r) =>
-      r.fulfill(json(trending)),
+      answer(r, json(trending)),
     );
     await routeContext(context, "**/api/kitsu/top-rated", (r) => {
       topRatedAsked?.();
-      return r.fulfill(json(topRated));
+      return answer(r, json(topRated));
     });
     // Every card known playable, so nothing is handed to the warm queue.
     await routeContext(context, "**/api/availability/batch", (r) => {
       const { kitsu_ids } = r.request().postDataJSON() as { kitsu_ids: string[] };
-      return r.fulfill(
+      return answer(r,
         json({
           cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
           playable_episode_counts: {},
         }),
       );
     });
-    await routeContext(context, "**/api/availability/warm", (r) => r.fulfill({ status: 202 }));
-    await routeContext(context, "**/api/watched-at", (r) => r.fulfill(json({})));
-    await routeContext(context, "**/api/update-check*", (r) => r.fulfill({ status: 204 }));
-    await routeContext(context, "**/api/settings", (r) => r.fulfill(json(defaultSettings)));
-    await routeContext(context, "**/api/image*", (r) => r.fulfill({ status: 503 }));
+    await routeContext(context, "**/api/availability/warm", (r) => answer(r, { status: 202 }));
+    await routeContext(context, "**/api/watched-at", (r) => answer(r, json({})));
+    await routeContext(context, "**/api/update-check*", (r) => answer(r, { status: 204 }));
+    await routeContext(context, "**/api/settings", (r) => answer(r, json(defaultSettings)));
+    await routeContext(context, "**/api/image*", (r) => answer(r, { status: 503 }));
 
     // Its first mount asked before the stubs were in place, and the
     // backend, kept off the network, could not answer: mount it again,
