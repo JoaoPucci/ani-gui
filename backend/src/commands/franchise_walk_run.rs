@@ -23,7 +23,8 @@ pub(crate) struct Run {
     pub(crate) complete: bool,
     /// Whether the run is the anchor's parent's, the anchor a side story.
     pub(crate) side_anchor: bool,
-    /// A side-story anchor's parent stories in the run, in start order.
+    /// A side-story anchor's parent stories, in start order, set on the
+    /// main story's run (`side_chain`).
     pub(crate) parents: Vec<String>,
     /// For an anchor placed by its run's parents
     /// (`franchise_walk_place.rs`): the parent stories it names outside

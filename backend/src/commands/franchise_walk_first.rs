@@ -43,11 +43,6 @@ pub(super) fn first(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>>
     let theirs = walk(&parent, look, consulted)?;
     let side_anchor = !theirs.members.contains_key(anchor);
     let parent_choices = placed.choices();
-    let parents = if side_anchor {
-        placed.parents_in(&theirs.members)
-    } else {
-        Vec::new()
-    };
     let beside = own
         .members
         .keys()
@@ -61,7 +56,6 @@ pub(super) fn first(anchor: &str, look: &Lookup<'_>) -> Result<Run, Vec<String>>
     Ok(Run {
         complete: complete && theirs.complete,
         side_anchor,
-        parents,
         parent_choices,
         beside,
         ..theirs
