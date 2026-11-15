@@ -1,6 +1,9 @@
 //! The walk's first hop: what the show page can tell from the anchor's
-//! own relation listing, the first listing the walk reads, before the
-//! walk has read anything else.
+//! own relation listing, which the walk reads in its first round,
+//! before the walk has read anything else. It reads the anchor's detail
+//! too only where its answer turns on it: for the link (a music video's
+//! page foretells nothing, and only its detail says it is one) and for
+//! the parent check.
 //!
 //! The show page reserves room for its watch-order strip (or its lone
 //! franchise link) while the walk runs, so the strip does not push the
@@ -32,7 +35,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use super::music::read_for;
+use super::music::{is_music_entry, without_music};
 use super::parents::parent_stories;
 use super::Lookup;
 use crate::meta::kitsu::{FranchiseEntry, FranchiseListing, FranchiseRelation};
@@ -72,16 +75,29 @@ pub fn first_hop(
     known: &BTreeMap<String, FranchiseListing>,
     details: &BTreeMap<String, FranchiseEntry>,
 ) -> Step {
-    // The show's detail, then its listing, as the walk reads them, each
-    // listing without its music videos (`franchise_walk_music.rs`): a
-    // music video's page relates to nothing, and foretells nothing.
-    let known = &match read_for(anchor, known, details) {
-        Ok(read) => read,
-        Err((listings, details)) => return read(listings, details),
-    };
+    // The show's listing first, read as the walk reads every listing:
+    // without its music videos (`franchise_walk_music.rs`).
+    if !known.contains_key(anchor) {
+        return read(vec![anchor.to_string()], Vec::new());
+    }
+    let known = &without_music(known);
     let listing = &known[anchor];
     let hop = from_own_listing(anchor, listing);
-    if hop == FirstHop::Strip || !names_a_possible_parent(anchor, listing) {
+    let may_place = names_a_possible_parent(anchor, listing);
+    // The strip is the one answer allowed to be wrong, and nothing stays
+    // nothing for a music video too: neither needs the show's detail.
+    if hop == FirstHop::Strip || (hop == FirstHop::None && !may_place) {
+        return Step::Done(hop);
+    }
+    // The link, and the parent check, turn on the show's detail: a
+    // music video's page relates to nothing and foretells nothing.
+    let Some(entry) = details.get(anchor) else {
+        return read(Vec::new(), vec![anchor.to_string()]);
+    };
+    if is_music_entry(entry) {
+        return Step::Done(FirstHop::None);
+    }
+    if !may_place {
         return Step::Done(hop);
     }
     // No run beside the show: the walk's parent check decides whether

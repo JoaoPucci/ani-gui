@@ -186,14 +186,25 @@ fn a_music_video_the_show_names_as_its_prequel_foretells_nothing() {
 }
 
 /// A music video's own page answers with the music video alone,
-/// whatever its listing names, and the first hop foretells nothing.
+/// whatever its listing names. Where its listing would give the link,
+/// or send the first hop to the parent check, the first hop reads its
+/// detail and foretells nothing.
 #[test]
 fn a_music_videos_own_page_foretells_nothing() {
-    let mut c = with(&[("1", "TV"), ("2", "music"), ("3", "TV")]);
-    c.rel("2", "side_story", "1")
-        .rel("2", "parent_story", "1")
-        .rel("2", "sequel", "3");
+    let mut c = with(&[("1", "TV"), ("2", "music")]);
+    c.rel("2", "side_story", "1").rel("2", "parent_story", "1");
     assert_eq!(both(&c, "2"), (FirstHop::None, FirstHop::None));
+}
+
+/// A music video's page whose listing names a sequel: the first hop
+/// reserves the strip from the listing alone, without reading the
+/// detail, and the strip gives way to nothing, the one kind of answer
+/// allowed to be wrong.
+#[test]
+fn a_music_videos_page_naming_a_sequel_is_an_allowed_miss() {
+    let mut c = with(&[("2", "music"), ("3", "TV")]);
+    c.rel("2", "sequel", "3");
+    assert_eq!(both(&c, "2"), (FirstHop::Strip, FirstHop::None));
 }
 
 /// A parent story the show also names as its sequel and its other
@@ -325,6 +336,44 @@ fn the_first_hop_matches_the_walk_on_the_walks_corpus() {
     assert!(
         wrong.is_empty(),
         "first hop differs from the walk: {wrong:?}"
+    );
+}
+
+/// The first hop reads the show's listing first, and its detail only
+/// where its answer turns on it: a show with a sequel foretells the
+/// strip from its listing alone, so on a first visit the first hop asks
+/// Kitsu for nothing the show page and the walk are not already reading
+/// in the same round (the listing read is shared in flight; the detail
+/// read is not).
+#[test]
+fn the_first_hop_reads_the_detail_only_where_its_answer_turns_on_it() {
+    let mut c = with(&[("1", "TV"), ("2", "TV")]);
+    c.rel("1", "sequel", "2");
+    let no_details = BTreeMap::new();
+    assert_eq!(
+        first_hop("1", &BTreeMap::new(), &no_details),
+        Step::Read {
+            listings: vec!["1".to_string()],
+            details: Vec::new(),
+        }
+    );
+    let known = BTreeMap::from([("1".to_string(), c.listings["1"].clone())]);
+    assert_eq!(
+        first_hop("1", &known, &no_details),
+        Step::Done(FirstHop::Strip)
+    );
+    // A show whose listing names only what the franchise page lists
+    // beside it: the link, unless the show is a music video, which only
+    // its detail says.
+    let mut c = with(&[("1", "TV"), ("2", "movie")]);
+    c.rel("1", "side_story", "2");
+    let known = BTreeMap::from([("1".to_string(), c.listings["1"].clone())]);
+    assert_eq!(
+        first_hop("1", &known, &no_details),
+        Step::Read {
+            listings: Vec::new(),
+            details: vec!["1".to_string()],
+        }
     );
 }
 
