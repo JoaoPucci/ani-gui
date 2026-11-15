@@ -19,8 +19,8 @@ type Resolver = fn() -> Option<PathBuf>;
 
 /// Every resolver `paths` exposes, by name. A resolver added to the
 /// module belongs here too: nothing fails if it is left out, beyond
-/// what `tests/profile_root.rs` happens to exercise on Linux and macOS
-/// (the boot, the settings and the history).
+/// what `tests/profile_root.rs` happens to exercise (the boot, the
+/// settings, the history and the default download folder).
 const RESOLVERS: [(&str, Resolver); 9] = [
     ("config_file", config_file),
     ("cache_dir", cache_dir),
@@ -36,9 +36,14 @@ const RESOLVERS: [(&str, Resolver); 9] = [
 /// The variables the resolvers read besides the root, each pointed
 /// somewhere the root is not, so a resolver that consults one of them
 /// first lands outside it.
-const OTHER_VARS: [&str; 8] = [
+///
+/// `USERPROFILE` is left alone. Our resolvers read it only when `HOME`
+/// is unset, and `HOME` is set here. A resolver that reached Windows'
+/// known-folder lookup with `USERPROFILE` pointed at a folder that
+/// does not exist could also break that lookup for the tests after it
+/// (see `an_empty_root_is_no_root`).
+const OTHER_VARS: [&str; 7] = [
     "HOME",
-    "USERPROFILE",
     "XDG_CONFIG_HOME",
     "XDG_CACHE_HOME",
     "XDG_STATE_HOME",
@@ -151,16 +156,19 @@ fn the_root_keeps_each_kind_in_a_folder_of_its_own() {
 
 /// An empty value is no root: the resolvers answer as they do with
 /// the variable unset, rather than relative to the working directory.
+///
+/// Only the root changes here: with it empty the resolvers reach the
+/// platform's own folder lookups. When this test also pointed
+/// `USERPROFILE` at a folder that does not exist, it was the process's
+/// first known-folder lookup on the Windows runner, and the lookups in
+/// the path tests after it failed although the variable had been
+/// restored. Neither our code nor directories-next caches a lookup, so
+/// what kept failing is presumably state inside the Windows shell.
 #[test]
 fn an_empty_root_is_no_root() {
-    let elsewhere = std::env::temp_dir().join("profile-root-empty");
-    let mut vars = rooted_env(Path::new(""), &elsewhere);
-    vars[0] = (ROOT_ENV, Some(OsString::new()));
-    let unset = {
-        let mut v = vars.clone();
-        v[0] = (ROOT_ENV, None);
-        with_env(&v, || RESOLVERS.map(|(_, r)| r()))
-    };
-    let empty = with_env(&vars, || RESOLVERS.map(|(_, r)| r()));
+    let unset = with_env(&[(ROOT_ENV, None)], || RESOLVERS.map(|(_, r)| r()));
+    let empty = with_env(&[(ROOT_ENV, Some(OsString::new()))], || {
+        RESOLVERS.map(|(_, r)| r())
+    });
     assert_eq!(empty, unset);
 }
