@@ -1,5 +1,7 @@
 "use strict";
 
+const { SECRET_HEADER } = require("./secret-handoff.cjs");
+
 // The launch's remote flags, read once from the backend before the
 // app's window opens (see backend/src/flags). The backend decides them
 // within two seconds of starting its refresh and never changes them in
@@ -15,13 +17,15 @@
 const FLAGS_WAIT_MS = 4000;
 
 /**
- * Ask the backend at `apiBase` for the launch's flags. Resolves to
+ * Ask the backend at `apiBase` for the launch's flags, carrying the
+ * launch's `secret` from the handshake, which the backend answers its
+ * API only with (backend/src/api/gate.rs). Resolves to
  * `{ origin, flags }`, or `null` when the backend does not answer
  * within `timeoutMs`, answers with an error, or answers with something
  * that is not a flags answer; the window then opens without flags and
  * every flag takes its default. Never rejects.
  */
-async function waitForLaunchFlags(apiBase, { fetch, timeoutMs = FLAGS_WAIT_MS }) {
+async function waitForLaunchFlags(apiBase, { fetch, secret, timeoutMs = FLAGS_WAIT_MS }) {
   const controller = new AbortController();
   let timer;
   const gaveUp = new Promise((resolve) => {
@@ -32,7 +36,10 @@ async function waitForLaunchFlags(apiBase, { fetch, timeoutMs = FLAGS_WAIT_MS })
   });
   const asked = (async () => {
     try {
-      const res = await fetch(`${apiBase}/api/flags`, { signal: controller.signal });
+      const res = await fetch(`${apiBase}/api/flags`, {
+        headers: { [SECRET_HEADER]: secret ?? "" },
+        signal: controller.signal,
+      });
       if (!res.ok) return null;
       const body = await res.json();
       return isFlagsAnswer(body) ? body : null;

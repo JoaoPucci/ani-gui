@@ -7,7 +7,7 @@ import { m } from '$lib/paraglide/messages';
 import { stackPartsText } from './strip-copy';
 import type { FranchiseSummary } from './strip-view';
 import type { WatchEntry } from './types';
-import type { ChainEndCard, PlayerUpNext } from './up-next';
+import type { ChainEndCard, PlayerUpNext } from './chain-end';
 
 /** The franchise card's meta line: the first two parts the strip's link names. */
 export function franchiseCardMeta(summary: FranchiseSummary): string {

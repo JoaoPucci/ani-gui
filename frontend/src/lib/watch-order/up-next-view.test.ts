@@ -8,7 +8,7 @@ import {
 	cardAnnouncement,
 	cardKey
 } from './up-next-view';
-import type { PlayerUpNext } from './up-next';
+import type { PlayerUpNext } from './chain-end';
 
 const e = (id: string): WatchEntry => ({
 	id,

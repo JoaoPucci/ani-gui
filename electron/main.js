@@ -48,11 +48,16 @@ const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cj
 const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { messagesFor, resolveLocale } = require("./lib/main-messages.cjs");
-const { stallTexts } = require("./lib/splash-progress.cjs");
+const { splashWords, stallTexts } = require("./lib/splash-progress.cjs");
+const { relaunch, relaunchPlan } = require("./lib/relaunch.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
+const { backendRelay, redactSecrets } = require("./lib/log-redact.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
+const { appDocumentFrom } = require("./lib/app-document.cjs");
+const { SECRET_CHANNEL, secretKeeper } = require("./lib/secret-handoff.cjs");
+const { backendOrigins, headerlessFilter, withLaunchSecret } = require("./lib/secret-header.cjs");
 const { revealMaximized, splashController, splashVersionLabel } = require("./lib/splash.cjs");
-const { appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
+const { abortWhenLost, appReadyBound, appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
 const {
   grantedSizeRecorder,
   initialSize,
@@ -168,6 +173,15 @@ if (!claimSingleInstance(app, { summon: () => keeper.summon() })) {
 // other path to index.html.
 const APP_SCHEME = "app";
 const APP_ORIGIN = `${APP_SCHEME}://localhost`;
+
+// The launch's secret, kept per window and handed to the app's own
+// page alone, over IPC, never on a command line (lib/secret-handoff.cjs).
+const secrets = secretKeeper({
+  app: appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL }),
+  // A refused page is named by its URL, which is redacted like any
+  // other line the main process logs (lib/log-redact.cjs).
+  logError: (line) => console.error(redactSecrets(line)),
+});
 
 // Register the scheme as standard + secure BEFORE app.whenReady, so
 // fetch + service-worker-style guarantees apply to assets loaded
@@ -309,6 +323,10 @@ function readConfigLocale() {
  * see the module), so bootApp can end the boot.
  */
 async function spawnBackend() {
+  const relay = backendRelay({
+    stdout: (text) => process.stdout.write(text),
+    stderr: (text) => process.stderr.write(text),
+  });
   // A parent pipe on stdin, the flag to watch it, and its own process
   // group — see lib/backend-spawn.cjs. `child.stdin` is never written
   // to or closed: it stays open exactly as long as this process lives.
@@ -322,16 +340,21 @@ async function spawnBackend() {
       reapOnExit(child, { platform: process.platform, signalGroup: signalBackendGroup });
     },
     handshake: (child) => {
-      child.stderr.on("data", (chunk) => {
-        process.stderr.write(`[backend] ${chunk.toString("utf-8")}`);
-      });
+      // The backend's output is relayed with any secret in it redacted
+      // (lib/log-redact.cjs): by shape from the start, and by value once
+      // the handshake has named the launch's secret.
+      child.stderr.setEncoding("utf-8");
+      child.stderr.on("data", (chunk) => relay.stderr(chunk));
+      child.stderr.on("end", () => relay.end());
       // After the handshake, downstream stdout becomes log output; it
       // is echoed through so we can see it in dev.
-      return awaitHandshake(child, {
+      const handshake = awaitHandshake(child, {
         timeoutMs: HANDSHAKE_TIMEOUT_MS,
         stopChild: killTree,
-        log: (line) => process.stdout.write(`${line}\n`),
+        log: (line) => relay.stdout(line),
       });
+      handshake.then((ready) => relay.learn(ready.internalSecret), () => {});
+      return handshake;
     },
   });
 }
@@ -414,6 +437,26 @@ const splash = splashController({
   // ready, when the splash opens).
   stallTexts: () => stallTexts(messagesFor(mainLocale())),
   stallGeneric: () => messagesFor(mainLocale()).splashStartingUp,
+  // The page's language, its name, and its stuck state's line and
+  // actions (lib/splash-stuck.cjs), in the same language.
+  pageWords: () => {
+    const locale = mainLocale();
+    return splashWords(locale, messagesFor(locale));
+  },
+  // Restart, from the stuck state: the whole app again, once this
+  // process has exited (lib/relaunch.cjs). The quit that follows is the
+  // one closing the splash starts (onDismissed above).
+  onRestart: () =>
+    relaunch(
+      relaunchPlan({
+        platform: process.platform,
+        env: process.env,
+        execPath: process.execPath,
+        argv: process.argv,
+        pid: process.pid,
+      }),
+      { app, spawn, logError: console.error },
+    ),
   // Above the splash's title. A dev run is the one that loads the Vite
   // dev server (IS_DEV), whose frontend labels the rail's version
   // `-dev` (import.meta.env.DEV); the splash marks it the same.
@@ -446,8 +489,10 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // GNOME gives Chromium no server-side decorations
   // (electron/electron#48422). The icon is for the dev session;
   // packaged builds get theirs from the .desktop file. The backend's
-  // handshake, the configured locale and the launch's flags reach the
-  // preload as additional arguments (lib/window-args.cjs).
+  // origins, the configured locale and the launch's flags reach the
+  // preload as additional arguments (lib/window-args.cjs); the
+  // launch's secret does not, and is answered over IPC to the app's
+  // own page (lib/secret-handoff.cjs).
   const win = new BrowserWindow(
     appWindowOptions({
       width: workW,
@@ -457,16 +502,45 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
       additionalArguments: windowArguments(backend, readConfigLocale(), launchFlags),
     }),
   );
+  secrets.hold(win.webContents, backend.internalSecret);
+  // An <img> or an EventSource cannot set the secret header, and a URL
+  // is no place for the secret (Chromium's disk cache, log lines): the
+  // header is added to those requests here, for the app's own page
+  // alone (lib/secret-header.cjs). One listener per session, so a later
+  // window's registration replaces this one with the same.
+  const origins = backendOrigins(backend);
+  win.webContents.session.webRequest.onBeforeSendHeaders(
+    headerlessFilter(backend),
+    (details, callback) => {
+      let requestHeaders = details.requestHeaders;
+      try {
+        requestHeaders = withLaunchSecret(details, {
+          origins,
+          secretFor: (request) => secrets.forRequest(request),
+        });
+      } catch {
+        // Whatever went wrong, the request goes out as it came.
+      }
+      callback({ requestHeaders });
+    },
+  );
   // Started now, so the renderer's word is not missed however early it
   // comes; the reveal waits for it (bounded) as well as for the splash.
+  // While the boot's splash stands in for the window the wait has no
+  // bound: a late page leaves the splash stuck, offering Restart and
+  // Quit, and the window is revealed only once its page has rendered. A
+  // window with no splash (a later one) keeps the bound.
   const appReady = appReadyWaiter(win.webContents, ipcMain, {
     isShown: () => !win.isDestroyed() && win.isVisible(),
+    timeoutMs: appReadyBound(splash),
   });
   appReady.ready.then((rendered) =>
     console.log(
       rendered
         ? "[main] app's first page rendered"
-        : "[main] app's first page did not say it rendered in time; revealing it anyway",
+        : appReady.gone()
+          ? "[main] app's window went before its first page rendered"
+          : "[main] app's first page did not say it rendered in time; revealing it anyway",
     ),
   );
 
@@ -514,11 +588,16 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // can tell whether the page actually loaded and whether scripts
   // are throwing. Without this, a blank window looks identical to a
   // successful load from the outside.
+  // Both carry URLs, and the renderer's URLs can carry the launch's
+  // secret: it is redacted from every line (lib/log-redact.cjs).
+  const launchSecrets = [backend.internalSecret];
   win.webContents.on("did-fail-load", (_e, code, desc, url) => {
-    console.error(`[renderer] did-fail-load ${url}: ${code} ${desc}`);
+    console.error(
+      redactSecrets(`[renderer] did-fail-load ${url}: ${code} ${desc}`, launchSecrets),
+    );
   });
   win.webContents.on("console-message", (_e, level, msg, line, source) => {
-    console.log(rendererConsoleLine(level, msg, line, source));
+    console.log(rendererConsoleLine(level, msg, line, source, launchSecrets));
   });
 
   // "Open maximized" is a two-step belt-and-suspenders pattern.
@@ -607,8 +686,9 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // The window loads hidden; at ready-to-show it waits for two
     // things: the splash — up to a second for it to have rendered a
     // frame, then what is left of its minimum time on screen — and its
-    // own renderer's word that the first page has rendered (at most 15
-    // seconds from the window's creation, lib/app-window.cjs). Only then
+    // own renderer's word that the first page has rendered (however
+    // long, while the splash stands in; at most 15 seconds from the
+    // window's creation without one, lib/app-window.cjs). Only then
     // is it mapped (maximized) and shown, and the splash put away. The
     // two are never on screen competing, on any platform. A later window
     // finds no splash, and waits only for its renderer.
@@ -617,10 +697,18 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // has answered (about a millisecond; at most STEP_ANSWER_WAIT_MS),
     // before the window replaces the splash; and when it lands too late
     // for the minimum to show it, the splash holds until
-    // SPLASH_COMPLETE_HOLD_MS after it landed. A wait that gave up on the
-    // render completes the rail the same way before the window is
-    // revealed anyway, so the rail is always seen complete.
+    // SPLASH_COMPLETE_HOLD_MS after it landed. A later window's wait
+    // that gave up on the render (it has no splash) is revealed anyway;
+    // a renderer gone before it rendered fails the boot.
     beforeShow: () => revealGate(splash, appReady),
+    // While the splash stands in, the wait for the page has no bound and
+    // Restart and Quit are the way out. A splash that has lost its page
+    // (lib/splash.cjs lost: it failed to load, left, exited, crashed past
+    // its reloads, or has nothing to offer) offers neither: the page then
+    // gets the 15 s bound back, and one that has not rendered by then fails the boot with
+    // the failure dialog, rather than a launch waiting forever behind a
+    // dead splash or revealing a window that may be empty.
+    abort: abortWhenLost(splash.lost(), appReady.ready),
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window
     // whose first page failed (lib/startup.cjs).
@@ -775,6 +863,13 @@ ipcMain.on("ani-gui:active-downloads", (_event, count) => {
 // happens once per renderer load.
 ipcMain.on("ani-gui:read-config-locale", (event) => {
   event.returnValue = readConfigLocale();
+});
+
+// The preload's one synchronous ask for the launch's secret, answered
+// only to the app's own page in a window it was handed to; anything
+// else gets null (lib/secret-handoff.cjs).
+ipcMain.on(SECRET_CHANNEL, (event) => {
+  event.returnValue = secrets.answer(event);
 });
 
 // ─── Account integration IPC handlers ──────────────────────────────
@@ -1083,7 +1178,8 @@ app.whenReady().then(() => {
     // The launch's remote flags, decided by the backend within its
     // two-second cap; the window opens with them, so the renderer has
     // them before its first page (lib/launch-flags.cjs).
-    fetchFlags: (backend) => waitForLaunchFlags(backend.apiBase, { fetch }),
+    fetchFlags: (backend) =>
+      waitForLaunchFlags(backend.apiBase, { fetch, secret: backend.internalSecret }),
     // The backend's handshake and the flags' decision, each lighting a
     // stretch of the splash's rail as it lands.
     stepDone: (step) => {

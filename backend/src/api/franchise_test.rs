@@ -122,7 +122,7 @@ async fn franchise_route_serves_the_walk_from_the_cache() {
     )
     .expect("seed detail");
 
-    let router = crate::api::build_api_router(state);
+    let router = crate::api::test_router(state);
     let r = router
         .oneshot(
             Request::builder()
@@ -194,7 +194,7 @@ async fn first_hop_route_answers_from_the_shows_own_listing() {
         3600,
     )
     .expect("seed detail");
-    let router = crate::api::build_api_router(state);
+    let router = crate::api::test_router(state);
     for (id, signal) in [("1", "strip"), ("2", "link"), ("3", "none")] {
         let r = router
             .clone()

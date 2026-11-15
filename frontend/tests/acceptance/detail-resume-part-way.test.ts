@@ -34,6 +34,16 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { readPosition, savePosition } from '../../src/lib/play/watch-position';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	HistoryNumber,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 /** The last episode the history records as watched. */
@@ -95,29 +105,40 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 
 function useShowHandlers() {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
 		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		),
 		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
-			HttpResponse.json({ id: 'show-1', ep_no: String(LAST), title: TITLE })
+			HttpResponse.json<HistoryRowByKitsu | null>({
+				id: 'show-1',
+				ep_no: String(LAST),
+				title: TITLE
+			})
 		),
 		// The row read again once the lookup answers reads as it did.
 		http.get(`${API_BASE}/api/history/show-1/number`, () =>
-			HttpResponse.json({ ep_no: String(LAST) })
+			HttpResponse.json<HistoryNumber | null>({ ep_no: String(LAST) })
 		)
 	);
 }

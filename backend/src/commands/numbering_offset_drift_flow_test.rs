@@ -15,7 +15,7 @@ fn key() -> String {
     .to_string()
 }
 
-fn state(td: &tempfile::TempDir) -> AppState {
+fn state(td: &tempfile::TempDir) -> crate::scratch::Scratch<AppState> {
     let mut state = crate::commands::play::tests::state_with_proxy_origin();
     state
         .providers

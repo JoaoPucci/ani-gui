@@ -3,6 +3,8 @@ import { removeEntryAcrossTrackers, setEntryAcrossTrackers } from './set-entry';
 import { AccountApiError } from './api';
 import type { EntryView, ListEntry, ListStatus, Provider } from './types';
 
+import type { SetEntryDeps } from './set-entry';
+import type { RemoveEntryDeps } from './set-entry';
 function fakeEntry(provider: Provider): ListEntry {
 	return {
 		provider,
@@ -22,10 +24,12 @@ describe('setEntryAcrossTrackers', () => {
 	it('per provider: omits status where the row exists + status is unchanged, sends it where the row is missing', async () => {
 		// anilist already has the title (keep its own status — send progress
 		// only); mal lacks it (must be created with the editor's status).
-		const getEntry = vi.fn(
+		const getEntry = vi.fn<NonNullable<SetEntryDeps['getEntry']>>(
 			async (p: Provider): Promise<EntryView | null> => (p === 'anilist' ? present : null)
 		);
-		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+		const setEntry = vi.fn<NonNullable<SetEntryDeps['setEntry']>>(async (p: Provider) =>
+			fakeEntry(p)
+		);
 		const out = await setEntryAcrossTrackers(
 			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
 			'kitsu-12',
@@ -41,8 +45,12 @@ describe('setEntryAcrossTrackers', () => {
 	});
 
 	it('sends status to every provider when the user changed it (a deliberate convergence)', async () => {
-		const getEntry = vi.fn(async (): Promise<EntryView | null> => present);
-		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+		const getEntry = vi.fn<NonNullable<SetEntryDeps['getEntry']>>(
+			async (): Promise<EntryView | null> => present
+		);
+		const setEntry = vi.fn<NonNullable<SetEntryDeps['setEntry']>>(async (p: Provider) =>
+			fakeEntry(p)
+		);
 		const out = await setEntryAcrossTrackers(
 			{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
 			'kitsu-12',
@@ -59,8 +67,12 @@ describe('setEntryAcrossTrackers', () => {
 	});
 
 	it('a provider with no bearer is a failure (unreachable), and is neither read nor written', async () => {
-		const getEntry = vi.fn(async (): Promise<EntryView | null> => null);
-		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+		const getEntry = vi.fn<NonNullable<SetEntryDeps['getEntry']>>(
+			async (): Promise<EntryView | null> => null
+		);
+		const setEntry = vi.fn<NonNullable<SetEntryDeps['setEntry']>>(async (p: Provider) =>
+			fakeEntry(p)
+		);
 		const out = await setEntryAcrossTrackers(
 			{
 				connected: ['anilist', 'mal'],
@@ -77,8 +89,10 @@ describe('setEntryAcrossTrackers', () => {
 	});
 
 	it('an unmappable setEntry (null) is neither written nor failed; a throw is a failure', async () => {
-		const getEntry = vi.fn(async (): Promise<EntryView | null> => null);
-		const setEntry = vi.fn(async (p: Provider) => {
+		const getEntry = vi.fn<NonNullable<SetEntryDeps['getEntry']>>(
+			async (): Promise<EntryView | null> => null
+		);
+		const setEntry = vi.fn<NonNullable<SetEntryDeps['setEntry']>>(async (p: Provider) => {
 			if (p === 'anilist') throw new Error('network'); // failed
 			if (p === 'mal') return null; // unmappable → neither
 			return fakeEntry(p); // inhouse → written
@@ -92,8 +106,12 @@ describe('setEntryAcrossTrackers', () => {
 	});
 
 	it('no-ops with no connected providers or empty kitsu id', async () => {
-		const getEntry = vi.fn(async (): Promise<EntryView | null> => null);
-		const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+		const getEntry = vi.fn<NonNullable<SetEntryDeps['getEntry']>>(
+			async (): Promise<EntryView | null> => null
+		);
+		const setEntry = vi.fn<NonNullable<SetEntryDeps['setEntry']>>(async (p: Provider) =>
+			fakeEntry(p)
+		);
 		const save = { status: 'planning' as const, statusChanged: false, progress: 0 };
 		expect(
 			await setEntryAcrossTrackers(
@@ -118,11 +136,11 @@ describe('removeEntryAcrossTrackers', () => {
 		// AniList has the row and is asked to delete it; MAL does not, and
 		// its stale cached row, if any, is cleared locally without asking
 		// MAL anything. The absent row does not count toward the tally.
-		const getEntry = vi.fn(
+		const getEntry = vi.fn<NonNullable<SetEntryDeps['getEntry']>>(
 			async (p: Provider): Promise<EntryView | null> => (p === 'anilist' ? present : null)
 		);
-		const removeEntry = vi.fn(async () => undefined);
-		const forgetCached = vi.fn(async () => undefined);
+		const removeEntry = vi.fn<NonNullable<RemoveEntryDeps['removeEntry']>>(async () => undefined);
+		const forgetCached = vi.fn<NonNullable<RemoveEntryDeps['forgetCached']>>(async () => undefined);
 		const out = await removeEntryAcrossTrackers(
 			{
 				connected: ['anilist', 'mal'],
@@ -144,8 +162,10 @@ describe('removeEntryAcrossTrackers', () => {
 		// Both have the row; mal removes, anilist's delete throws. The result
 		// must surface the failure so the editor keeps the entry visible
 		// rather than claiming a clean removal.
-		const getEntry = vi.fn(async (): Promise<EntryView | null> => present);
-		const removeEntry = vi.fn(async (p: Provider) => {
+		const getEntry = vi.fn<NonNullable<SetEntryDeps['getEntry']>>(
+			async (): Promise<EntryView | null> => present
+		);
+		const removeEntry = vi.fn<NonNullable<RemoveEntryDeps['removeEntry']>>(async (p: Provider) => {
 			if (p === 'anilist') throw new Error('boom');
 		});
 		const out = await removeEntryAcrossTrackers(
@@ -156,8 +176,10 @@ describe('removeEntryAcrossTrackers', () => {
 	});
 
 	it('no-ops with no connected providers', async () => {
-		const getEntry = vi.fn(async (): Promise<EntryView | null> => present);
-		const removeEntry = vi.fn(async () => undefined);
+		const getEntry = vi.fn<NonNullable<SetEntryDeps['getEntry']>>(
+			async (): Promise<EntryView | null> => present
+		);
+		const removeEntry = vi.fn<NonNullable<RemoveEntryDeps['removeEntry']>>(async () => undefined);
 		expect(
 			await removeEntryAcrossTrackers(
 				{ connected: [], bearerFor: () => 't', getEntry, removeEntry },
@@ -173,8 +195,10 @@ describe('rate-limit detection (429 surfaced distinctly)', () => {
 		// A 429 still counts as failed (the write didn't land), but the flag
 		// lets the editor show a "trackers are rate-limiting" toast instead of
 		// the generic failure copy.
-		const getEntry = vi.fn(async (): Promise<EntryView | null> => null);
-		const setEntry = vi.fn(async () => {
+		const getEntry = vi.fn<NonNullable<SetEntryDeps['getEntry']>>(
+			async (): Promise<EntryView | null> => null
+		);
+		const setEntry = vi.fn<NonNullable<SetEntryDeps['setEntry']>>(async () => {
 			throw new AccountApiError(429, 'rate limited');
 		});
 		const out = await setEntryAcrossTrackers(
@@ -187,8 +211,10 @@ describe('rate-limit detection (429 surfaced distinctly)', () => {
 	});
 
 	it('setEntryAcrossTrackers does not flag rateLimited for a non-429 failure', async () => {
-		const getEntry = vi.fn(async (): Promise<EntryView | null> => null);
-		const setEntry = vi.fn(async () => {
+		const getEntry = vi.fn<NonNullable<SetEntryDeps['getEntry']>>(
+			async (): Promise<EntryView | null> => null
+		);
+		const setEntry = vi.fn<NonNullable<SetEntryDeps['setEntry']>>(async () => {
 			throw new AccountApiError(502, 'bad gateway');
 		});
 		const out = await setEntryAcrossTrackers(
@@ -201,10 +227,12 @@ describe('rate-limit detection (429 surfaced distinctly)', () => {
 	});
 
 	it('removeEntryAcrossTrackers flags rateLimited when the read 429s', async () => {
-		const getEntry = vi.fn(async (): Promise<EntryView | null> => {
-			throw new AccountApiError(429, 'rate limited');
-		});
-		const removeEntry = vi.fn(async () => undefined);
+		const getEntry = vi.fn<NonNullable<SetEntryDeps['getEntry']>>(
+			async (): Promise<EntryView | null> => {
+				throw new AccountApiError(429, 'rate limited');
+			}
+		);
+		const removeEntry = vi.fn<NonNullable<RemoveEntryDeps['removeEntry']>>(async () => undefined);
 		const out = await removeEntryAcrossTrackers(
 			{ connected: ['anilist'], bearerFor: () => 'tok', getEntry, removeEntry },
 			'kitsu-12'
@@ -225,8 +253,12 @@ describe('setEntryAcrossTrackers — a rewatch reaches every tracker', () => {
 	];
 	for (const [name, row] of rows) {
 		it(`sends MyAnimeList the rewatch on ${name}`, async () => {
-			const getEntry = vi.fn(async (): Promise<EntryView | null> => row);
-			const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+			const getEntry = vi.fn<NonNullable<SetEntryDeps['getEntry']>>(
+				async (): Promise<EntryView | null> => row
+			);
+			const setEntry = vi.fn<NonNullable<SetEntryDeps['setEntry']>>(async (p: Provider) =>
+				fakeEntry(p)
+			);
 			const out = await setEntryAcrossTrackers(
 				{ connected: ['anilist', 'mal'], bearerFor: () => 'tok', getEntry, setEntry },
 				'kitsu-1',
@@ -255,8 +287,12 @@ describe('setEntryAcrossTrackers — every other status on MyAnimeList', () => {
 	];
 	for (const [status, progress] of cases) {
 		it(`sends ${status} as picked`, async () => {
-			const getEntry = vi.fn(async (): Promise<EntryView | null> => present);
-			const setEntry = vi.fn(async (p: Provider) => fakeEntry(p));
+			const getEntry = vi.fn<NonNullable<SetEntryDeps['getEntry']>>(
+				async (): Promise<EntryView | null> => present
+			);
+			const setEntry = vi.fn<NonNullable<SetEntryDeps['setEntry']>>(async (p: Provider) =>
+				fakeEntry(p)
+			);
 			const out = await setEntryAcrossTrackers(
 				{ connected: ['mal'], bearerFor: () => 'tok', getEntry, setEntry },
 				'kitsu-1',

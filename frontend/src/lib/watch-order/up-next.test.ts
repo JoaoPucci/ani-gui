@@ -5,14 +5,8 @@ import type { WatchOrderData } from './loader';
 import { runOf } from './strip-model';
 import { franchiseArb } from './testing/arbitraries';
 import type { FranchiseData } from './types';
-import {
-	chainEndCard,
-	finaleCard,
-	isFinale,
-	playerUpNext,
-	upNextFor,
-	type FinaleSelf
-} from './up-next';
+import { chainEndCard, playerUpNext } from './chain-end';
+import { finaleCard, isFinale, upNextFor, type FinaleSelf } from './up-next';
 
 const TODAY = '2026-11-02';
 const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
@@ -330,6 +324,14 @@ describe('finaleCard on an entry outside the main story', () => {
 
 	it('fronts the franchise card with the entry the name comes from', () => {
 		const end = chainEndCard(chainData('11', false), '11', 'linked', TODAY, 1, null)!;
+		expect(end.front).toBe('1');
+	});
+
+	it('fronts the franchise card as its page does when the name comes from no main-story title', () => {
+		const data = chainData('11', false);
+		const off = { ...data, franchise: { ...data.franchise!, name_from: '99' } };
+		const end = chainEndCard(off, '11', 'linked', TODAY, 1, null)!;
+		// The franchise page takes the main story's first title then.
 		expect(end.front).toBe('1');
 	});
 

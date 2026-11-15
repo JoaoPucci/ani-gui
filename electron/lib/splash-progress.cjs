@@ -5,10 +5,10 @@
 //
 // The rail has three stretches, one per step of the boot, lit as each
 // step really lands: the backend's handshake, the launch's flags
-// decided, and the app's first page rendered. A launch whose wait for
-// that render gave up (lib/app-window.cjs) lights the last stretch as
-// its window is about to be revealed anyway, so the rail is always
-// seen complete. The rail carries no words and no numbers. The line
+// decided, and the app's first page rendered. The last stretch lights
+// as the window is about to be revealed (lib/app-window.cjs), so the
+// rail is always seen complete; a page that is late leaves the splash
+// stuck instead (lib/splash-stuck.cjs). The rail carries no words and no numbers. The line
 // under it appears only when the pending step has taken longer than
 // STALL_MS, and then stays until the splash closes: only its words
 // change, when the reason does.
@@ -38,4 +38,19 @@ function stallTexts(messages) {
   return STEPS.map((step) => (step === "flags" ? messages.splashNetworkSlow : messages.splashStartingUp));
 }
 
-module.exports = { STALL_MS, STEPS, stallTexts };
+/**
+ * The rest of the splash page's words, from the same table: the
+ * language it is in, its name for assistive technology, and its stuck
+ * state's line and actions (lib/splash-stuck.cjs).
+ */
+function splashWords(locale, messages) {
+  return {
+    lang: locale,
+    label: messages.splashStarting,
+    stuck: messages.splashStuck,
+    restart: messages.splashRestart,
+    quit: messages.splashQuit,
+  };
+}
+
+module.exports = { STALL_MS, STEPS, splashWords, stallTexts };

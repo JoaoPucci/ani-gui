@@ -9,6 +9,7 @@
 	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { settingsGet, type Config } from '$lib/api';
+	import { beginVisit } from '$lib/navigation/visit';
 	import { pageTrail } from '$lib/page-trail';
 	import { m } from '$lib/paraglide/messages';
 	import FranchiseView from '$lib/watch-order/FranchiseView.svelte';
@@ -22,9 +23,14 @@
 	const id = $derived(page.params.id ?? '');
 	const today = localDay(new Date());
 
+	// The settings read is the page's visit's: leaving the page cancels
+	// it ($lib/navigation/visit), and an ended visit's answer is never
+	// drawn.
 	let config = $state<Config | null>(null);
 	let configFailed = $state(false);
-	void settingsGet()
+	const pageReads = beginVisit();
+	void pageReads
+		.keep(settingsGet({ signal: pageReads.signal }))
 		.then((c) => (config = c))
 		.catch(() => (configFailed = true));
 
@@ -40,7 +46,10 @@
 		void attempt;
 		reads.start((signal) => loadWatchOrder(current, watchOrderSources, signal));
 	});
-	onDestroy(() => reads.stop());
+	onDestroy(() => {
+		reads.stop();
+		pageReads.end();
+	});
 
 	const order = $derived(settledOrder(config, configFailed));
 	const model = $derived(data && order ? franchisePage(data, id, order) : null);

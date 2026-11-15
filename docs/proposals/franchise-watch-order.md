@@ -570,9 +570,11 @@ seasons only as parent story or other, so from any film the seasons
 are the run and the films sit under Films. The walk starts from the
 earliest parent story any of the films names, so every film's page
 shows the same main story, and a film the seasons do not list sits
-under Films as well. A film that names no parent of its own in the
-seasons' run is placed under the parents the other films of its chain
-name. Kitsu sometimes lists a pair the wrong way
+under Films as well. A film is placed under the parents it names in
+the main story, else under those it names that the main story leaves
+out, on the earliest one's chain; one that names no parent of its own
+in the franchise is placed under the parents the other films of its
+chain name, the same way. Kitsu sometimes lists a pair the wrong way
 round, from both sides: [data] on 2026-11-11 *One Piece* (12) named
 *LEGO ONE PIECE* (50656), a two-episode ONA from 2026, as its parent
 story, and *LEGO ONE PIECE* named *One Piece* as its side story. So
@@ -654,9 +656,9 @@ with the title it branches off after. The chain is cut from the
 franchise, so every title of it answers with the same chain, where
 Kitsu lists its links from both sides. A main-story page has none, and
 neither has a page linked to nothing else; a side story whose parents
-the main story leaves out keeps them, and is drawn on the earliest
-one's chain, or on that parent alone where it is chained to nothing.
-Music videos are no titles of a chain. The franchise page is
+the main story leaves out keeps those on the earliest one's chain,
+and is drawn on it, or on that parent alone where it is chained to
+nothing. Music videos are no titles of a chain. The franchise page is
 unchanged by it: the chain's titles stay where the sections list them.
 
 With these tie-breaks every entry has one path and one decision, so
@@ -1530,12 +1532,12 @@ The rules below hold on every surface:
   fork): "Ways to continue" over one row per branch. One not yet
   aired: "Next, when it airs", its date or "Date not announced", and
   no link. None: no card, except at the end of a chain outside the
-  main story, where it offers the whole franchise. A franchise read only in part (the walk
-  reached its bound, or a listing came back cut short) also gets no
-  card, since the entry that really comes next may be missing from
-  it. The mockup showed the card from the start of a last episode, so
-  a screenshot could catch it; the player shows it once the video
-  ends.
+  main story, where it offers the whole franchise. A franchise read
+  only in part (the walk reached its bound, or a listing came back cut
+  short) also gets no card, since the entry that really comes next may
+  be missing from it. The mockup showed the card from the start of a
+  last episode, so a screenshot could catch it; the player shows it
+  once the video ends.
 - **Keyboard and screen readers.** The card never takes focus; Esc
   dismisses it while it has focus; the dismiss button is its own tab
   stop. The announcement is written into a polite live region after

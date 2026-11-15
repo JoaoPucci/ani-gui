@@ -48,7 +48,7 @@ fn state(td: &TempDir, kitsu: &str) -> Arc<AppState> {
 }
 
 async fn send(state: Arc<AppState>, method: &str, uri: &str, body: &str) -> (StatusCode, String) {
-    let r = super::build_api_router(state)
+    let r = super::test_router(state)
         .oneshot(
             Request::builder()
                 .method(method)

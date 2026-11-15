@@ -29,6 +29,16 @@ vi.mock('$app/navigation', () => ({
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import type { RefillEnded } from '../../src/lib/refill/refill-waiter';
+import { availabilityAnswer } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 const TICKET = 13;
@@ -86,17 +96,17 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
@@ -105,12 +115,15 @@ function useShowHandlers(land: Promise<void>, episodeCount = 5) {
 	let hasLanded = false;
 	void land.then(() => (hasLanded = true));
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, episodeCount), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(KITSU_ID, TITLE, episodeCount),
+				status: 'finished'
+			})
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({
+			HttpResponse.json<AiringStatus>({
 				aired: episodeCount,
 				next_episode: null,
 				next_airing_at: null,
@@ -119,35 +132,37 @@ function useShowHandlers(land: Promise<void>, episodeCount = 5) {
 		),
 		http.get(`${API_BASE}/api/kitsu/episodes/:id`, ({ request }) => {
 			const p = new URL(request.url).searchParams.get('page') ?? '1';
-			if (p !== '1') return HttpResponse.json([]);
+			if (p !== '1') return HttpResponse.json<KitsuEpisode[]>([]);
 			seen.episodeReads += 1;
 			if (hasLanded) seen.readsAfter += 1;
 			const first = !hasLanded;
 			const eps = kitsuEpisodes(episodeCount).map((ep) => ({
 				...ep,
-				thumbnail: first ? null : { original: still(ep.number) }
+				thumbnail: first ? null : { original: still(ep.number ?? 0) }
 			}));
-			return HttpResponse.json(
+			return HttpResponse.json<KitsuEpisode[]>(
 				eps,
 				first ? { headers: { 'x-ani-gui-refill': String(TICKET) } } : undefined
 			);
 		}),
 		http.post(`${API_BASE}/api/refills/wait`, async () => {
 			await land;
-			return HttpResponse.json([{ ticket: TICKET, landed: true }]);
+			return HttpResponse.json<RefillEnded[]>([{ ticket: TICKET, landed: true }]);
 		}),
 		http.post(`${API_BASE}/api/refills/release`, () => new HttpResponse(null, { status: 204 })),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: episodeCount,
-				extra_episodes: [],
-				episode_count_approximate: false
-			})
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: episodeCount,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([]))
 	);
 	return seen;
 }

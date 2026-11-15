@@ -9,7 +9,7 @@
 //! member's share is known before any candidate is read, and one round
 //! asks for all of them.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use super::candidates::to_read;
 use super::parents::parent_stories;
@@ -31,21 +31,10 @@ pub(super) struct Placed {
 }
 
 impl Placed {
-    /// The anchor's parents among the `members` of the run the walk
-    /// moved to: its own there, else its run's there, which hold the
-    /// root, so the list is never empty.
-    pub(super) fn parents_in(self, members: &BTreeMap<String, Option<String>>) -> Vec<String> {
-        let within = |list: Vec<String>| -> Vec<String> {
-            list.into_iter()
-                .filter(|p| members.contains_key(p))
-                .collect()
-        };
-        let mine = within(self.mine);
-        if mine.is_empty() {
-            within(self.all)
-        } else {
-            mine
-        }
+    /// The parent stories the anchor names outside its run, then those
+    /// any member names, each earliest first.
+    pub(super) fn choices(&self) -> Vec<Vec<String>> {
+        vec![self.mine.clone(), self.all.clone()]
     }
 }
 

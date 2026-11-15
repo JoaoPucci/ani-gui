@@ -23,6 +23,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { availabilityAnswer, episodeAnswer, errorAnswer } from '../answers';
 import { watchPageFetches } from './page-fetches';
 import { recordMotion, setReducedMotion } from './motion';
 import { playerVideo, playerVideoInSlot } from './player-video';
@@ -44,7 +45,17 @@ vi.mock('$app/navigation', () => ({
 
 import { goto } from '$app/navigation';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
-import { __resetApiBaseForTests } from '../../src/lib/api';
+import {
+	__resetApiBaseForTests,
+	type AiringStatus,
+	type AvailabilityResponse,
+	type Config,
+	type Franchise,
+	type HistoryEntry,
+	type KitsuAnimeRef,
+	type KitsuEpisode,
+	type SkipInterval
+} from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 
 const KITSU_ID = '42';
@@ -79,9 +90,7 @@ const SAGA = entry('10', 'Saga', '2010-01-01');
 const SECOND = entry(KITSU_ID, TITLE, '2012-01-01');
 const FINAL = entry('50', 'Saga: Final Arc', '2014-01-01');
 
-function franchise(
-	over: Partial<{ entries: unknown[]; links: string[][]; complete: boolean; chain: unknown }> = {}
-) {
+function franchise(over: Partial<Franchise> = {}): Franchise {
 	return {
 		anchor: KITSU_ID,
 		name: 'Saga',
@@ -143,23 +152,22 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
-	return Array.from({ length: count }, (_, i) => ({
-		id: `ep-${i + 1}`,
-		number: i + 1,
-		relative_number: i + 1,
-		canonical_title: `Episode ${i + 1}`,
-		titles: {},
-		synopsis: null,
-		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
-	}));
+function kitsuEpisodes(count: number): KitsuEpisode[] {
+	return Array.from({ length: count }, (_, i) =>
+		episodeAnswer({
+			id: `ep-${i + 1}`,
+			number: i + 1,
+			relative_number: i + 1,
+			canonical_title: `Episode ${i + 1}`,
+			length: 24,
+			airdate: '2019-01-01'
+		})
+	);
 }
 
 interface Options {
 	episode?: number;
-	order?: string;
+	order?: Config['watch_order'];
 	autoPlayNext?: boolean;
 	nativeControls?: boolean;
 	skips?: { skip_type: string; start_time: number; end_time: number }[];
@@ -188,7 +196,7 @@ async function openEpisode(options: Options = {}) {
 	const fetches = watchPageFetches();
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({
+			HttpResponse.json<Config>({
 				...appConfig(),
 				watch_order: options.order ?? 'linked',
 				auto_play_next: options.autoPlayNext === true,
@@ -197,7 +205,10 @@ async function openEpisode(options: Options = {}) {
 			})
 		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, EPISODES), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(KITSU_ID, TITLE, EPISODES),
+				status: 'finished'
+			})
 		),
 		http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, () =>
 			options.franchise === 'held'
@@ -205,22 +216,22 @@ async function openEpisode(options: Options = {}) {
 						holding.push(() => resolve(new HttpResponse(null, { status: 503 })))
 					)
 				: options.franchise === null
-					? HttpResponse.json({ error: 'error.kitsu.unreachable' }, { status: 502 })
-					: HttpResponse.json(options.franchise ?? franchise())
+					? errorAnswer(502, { kind: 'upstream', status: 503, key: 'error.network.upstream' })
+					: HttpResponse.json<Franchise>(options.franchise ?? franchise())
 		),
 		// The rows the franchise's entries resume from, as the resume
 		// lookup names them.
 		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
 			const { ids } = (await request.json()) as { ids: string[] };
 			const rows = options.history ?? [];
-			return HttpResponse.json(
+			return HttpResponse.json<Record<string, HistoryEntry | null>>(
 				Object.fromEntries(
 					ids.map((k) => [k, options.named?.[k] ?? rows.find((r) => r.kitsu_id === k) ?? null])
 				)
 			);
 		}),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({
+			HttpResponse.json<AiringStatus>({
 				aired: options.sourceEpisodes ?? EPISODES,
 				next_episode: null,
 				next_airing_at: null,
@@ -228,23 +239,25 @@ async function openEpisode(options: Options = {}) {
 			})
 		),
 		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
-			HttpResponse.json(kitsuEpisodes(EPISODES))
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(EPISODES))
 		),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: options.sourceEpisodes ?? EPISODES,
-				extra_episodes: options.extras ?? [],
-				episode_count_approximate: false
-			})
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: options.sourceEpisodes ?? EPISODES,
+					extra_episodes: options.extras ?? [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
 		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () =>
-			HttpResponse.json(options.skips ?? [OPENING, ENDING])
+			HttpResponse.json<SkipInterval[]>(options.skips ?? [OPENING, ENDING])
 		),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl'))
 	);
 	setUrl(`/play/${KITSU_ID}`, {
 		session: 'session-1',
@@ -724,10 +737,14 @@ describe('the Up next card at a finale', () => {
 	});
 
 	it('stays when the frame is fullscreen and its controls hide', async () => {
+		// Still playing at the very end (a playhead a moment short of the
+		// length counts as the end): the only time controls hide while
+		// the card shows, since the player reads an ended video as paused.
 		const { video } = await openEpisode();
 		Object.defineProperty(video, 'paused', { configurable: true, get: () => false });
 		video.dispatchEvent(new Event('play'));
-		await playToEnd(video);
+		video.dispatchEvent(new Event('playing'));
+		await playTo(video, LENGTH);
 		await until(() => card() !== null, 'the card');
 		const frame = target.querySelector('section.player-frame')!;
 		try {
@@ -941,7 +958,9 @@ describe('the Up next card at a finale', () => {
 		await playTo(video, 600);
 		// Episode 12 opens with no opening, and its stream has not
 		// learned its length yet.
-		server.use(http.get(`${API_BASE}/api/aniskip/:id/12`, () => HttpResponse.json([])));
+		server.use(
+			http.get(`${API_BASE}/api/aniskip/:id/12`, () => HttpResponse.json<SkipInterval[]>([]))
+		);
 		Object.defineProperty(video, 'duration', { configurable: true, get: () => Number.NaN });
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '12', kind: 'mp4' });
 		await until(
@@ -989,7 +1008,7 @@ describe('the Up next card at a finale', () => {
 					await held;
 					return new HttpResponse(null, { status: 503 });
 				}
-				return HttpResponse.json([OPENING, ENDING]);
+				return HttpResponse.json<SkipInterval[]>([OPENING, ENDING]);
 			})
 		);
 		await switchTo(video, 11, 'session-2');

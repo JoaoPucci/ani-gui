@@ -52,7 +52,17 @@ import { m } from '../../src/lib/paraglide/messages';
 import { goto } from '$app/navigation';
 import { forgetNavigationListeners, startNavigation } from './navigation';
 
-function episode(n: number, airdate: string | null) {
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	CreateSessionResponse,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer, sessionAnswer } from '../answers';
+function episode(n: number, airdate: string | null): KitsuEpisode {
 	return {
 		id: `ep-${n}`,
 		canonical_title: `Episode ${n}`,
@@ -82,9 +92,12 @@ function serve(
 	opts: { airsOnRefresh: boolean; aired?: number; hold?: Promise<void> }
 ) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${kitsuId}`, () =>
-			HttpResponse.json({ ...kitsuRef(kitsuId, 'Weekly Show', 12), status: 'current' })
+			HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(kitsuId, 'Weekly Show', 12),
+				status: 'current'
+			})
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${kitsuId}`, async ({ request }) => {
 			const fresh = new URL(request.url).searchParams.get('refresh') === 'true';
@@ -92,7 +105,7 @@ function serve(
 			if (fresh && opts.hold) await opts.hold;
 			const cached = opts.aired ?? 2;
 			const aired = fresh && opts.airsOnRefresh ? 3 : cached;
-			return HttpResponse.json({
+			return HttpResponse.json<AiringStatus>({
 				aired,
 				next_episode: aired + 1,
 				next_airing_at: null,
@@ -107,27 +120,35 @@ function serve(
 			if (fresh && opts.hold) await opts.hold;
 			const third = fresh && opts.airsOnRefresh ? '2026-01-15' : null;
 			const second = (opts.aired ?? 2) >= 2 ? '2026-01-08' : null;
-			return HttpResponse.json([episode(1, '2026-01-01'), episode(2, second), episode(3, third)]);
+			return HttpResponse.json<KitsuEpisode[]>([
+				episode(1, '2026-01-01'),
+				episode(2, second),
+				episode(3, third)
+			]);
 		}),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 3,
-				extra_episodes: [],
-				episode_count_approximate: false
-			})
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 3,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play`, async ({ request }) => {
 			played.push((await request.json()) as { episode?: string; prefetch?: boolean });
-			return HttpResponse.json({
-				session_id: 'session-1',
-				media_url: `${API_BASE}/s/session-1/master.m3u8`,
-				media_kind: 'hls'
-			});
+			return HttpResponse.json<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'session-1',
+					media_url: `${API_BASE}/s/session-1/master.m3u8`,
+					media_kind: 'hls'
+				})
+			);
 		}),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([]))
 	);
 }
 

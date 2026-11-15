@@ -13,6 +13,7 @@ import {
 	waitWhileWanted
 } from './save-when-allowed';
 
+import type { SaveWaitDeps } from './save-when-allowed';
 /** The backend's answer to a write it held back: 429 with the wait. */
 const refused = (retryAfter: number | null) =>
 	new AccountApiError(
@@ -55,15 +56,15 @@ describe('busyWaitSecs', () => {
 
 describe('saveWhenAllowed', () => {
 	it('returns the first answer without waiting or saying anything', async () => {
-		const notify = vi.fn();
-		const wait = vi.fn(async () => {});
+		const notify = vi.fn<NonNullable<SaveWaitDeps['notify']>>();
+		const wait = vi.fn<NonNullable<SaveWaitDeps['wait']>>(async () => {});
 		expect(await saveWhenAllowed(async () => 'saved', { notify, wait })).toBe('saved');
 		expect(notify).not.toHaveBeenCalled();
 		expect(wait).not.toHaveBeenCalled();
 	});
 
 	it('tells its notice which tracker refused, when the refusal names one', async () => {
-		const notify = vi.fn();
+		const notify = vi.fn<NonNullable<SaveWaitDeps['notify']>>();
 		const naming = (by: string) =>
 			Object.assign(new Error('rate limited'), {
 				status: 429,
@@ -84,8 +85,8 @@ describe('saveWhenAllowed', () => {
 	});
 
 	it('says how long it waits, waits that long, and saves on the next attempt', async () => {
-		const notify = vi.fn();
-		const wait = vi.fn(async () => {});
+		const notify = vi.fn<NonNullable<SaveWaitDeps['notify']>>();
+		const wait = vi.fn<NonNullable<SaveWaitDeps['wait']>>(async () => {});
 		const attempt = vi
 			.fn<() => Promise<string>>()
 			.mockRejectedValueOnce(refused(40))
@@ -97,8 +98,8 @@ describe('saveWhenAllowed', () => {
 	});
 
 	it('gives up after its attempts and rethrows the last refusal', async () => {
-		const notify = vi.fn();
-		const wait = vi.fn(async () => {});
+		const notify = vi.fn<NonNullable<SaveWaitDeps['notify']>>();
+		const wait = vi.fn<NonNullable<SaveWaitDeps['wait']>>(async () => {});
 		const last = refused(5);
 		const attempt = vi.fn<() => Promise<string>>().mockRejectedValue(last);
 		await expect(saveWhenAllowed(attempt, { notify, wait })).rejects.toBe(last);
@@ -107,8 +108,8 @@ describe('saveWhenAllowed', () => {
 	});
 
 	it('does not wait out a failure that is not a rate limit', async () => {
-		const notify = vi.fn();
-		const wait = vi.fn(async () => {});
+		const notify = vi.fn<NonNullable<SaveWaitDeps['notify']>>();
+		const wait = vi.fn<NonNullable<SaveWaitDeps['wait']>>(async () => {});
 		const offline = new Error('offline');
 		const attempt = vi.fn<() => Promise<string>>().mockRejectedValue(offline);
 		await expect(saveWhenAllowed(attempt, { notify, wait, maxAttempts: 3 })).rejects.toBe(offline);
@@ -117,7 +118,7 @@ describe('saveWhenAllowed', () => {
 	});
 
 	it('stops at the attempts the caller allows', async () => {
-		const wait = vi.fn(async () => {});
+		const wait = vi.fn<NonNullable<SaveWaitDeps['wait']>>(async () => {});
 		const attempt = vi.fn<() => Promise<string>>().mockRejectedValue(refused(1));
 		await expect(
 			saveWhenAllowed(attempt, { notify: () => {}, wait, maxAttempts: 2 })
@@ -137,7 +138,7 @@ describe('the cap on one wait', () => {
 
 describe('a write no longer wanted after its wait', () => {
 	it('is dropped as superseded, and not sent again', async () => {
-		const notify = vi.fn();
+		const notify = vi.fn<NonNullable<SaveWaitDeps['notify']>>();
 		const attempt = vi.fn<() => Promise<string>>().mockRejectedValue(refused(3));
 		await expect(
 			saveWhenAllowed(attempt, { notify, wait: async () => {}, stillWanted: () => false })

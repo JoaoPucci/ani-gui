@@ -197,7 +197,7 @@ async fn the_first_hop_reads_the_listing_the_walk_then_reuses() {
     let state = state_with_kitsu(&server.uri());
     seed_ova_detail(&state);
 
-    let router = crate::api::build_api_router(state.clone());
+    let router = crate::api::test_router(state.clone());
     let r = tower::ServiceExt::oneshot(
         router,
         axum::http::Request::builder()
@@ -227,7 +227,7 @@ async fn the_first_hop_reads_the_listing_the_walk_then_reuses() {
 #[tokio::test]
 async fn a_first_hop_kitsu_cannot_answer_is_an_error() {
     let state = state_with_kitsu("http://127.0.0.1:1");
-    let router = crate::api::build_api_router(state.clone());
+    let router = crate::api::test_router(state.clone());
     let r = tower::ServiceExt::oneshot(
         router,
         axum::http::Request::builder()

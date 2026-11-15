@@ -8,6 +8,12 @@ import {
 	type SidecarTrack
 } from './sidecar-tracks';
 
+/** The proxy's listing of a session's sidecar tracks. */
+const listing = (tracks: SidecarTrack[]) => new Response(JSON.stringify(tracks));
+
+/** A listing no proxy sends, deliberately. */
+const malformed = (body: unknown) => new Response(JSON.stringify(body));
+
 const en: SidecarTrack = {
 	lang: 'en',
 	label: 'English',
@@ -280,7 +286,7 @@ describe('fetchSidecarTracks', () => {
 	});
 
 	it('returns the listing the proxy answers', async () => {
-		globalThis.fetch = vi.fn(async () => new Response(JSON.stringify([en]))) as typeof fetch;
+		globalThis.fetch = vi.fn(async () => listing([en])) as typeof fetch;
 		expect(await fetchSidecarTracks('http://127.0.0.1:31337', 'session-1')).toEqual([en]);
 	});
 
@@ -291,9 +297,7 @@ describe('fetchSidecarTracks', () => {
 			throw new TypeError('network');
 		}) as typeof fetch;
 		expect(await fetchSidecarTracks('http://127.0.0.1:31337', 'session-1')).toEqual([]);
-		globalThis.fetch = vi.fn(
-			async () => new Response(JSON.stringify({ not: 'a list' }))
-		) as typeof fetch;
+		globalThis.fetch = vi.fn(async () => malformed({ not: 'a list' })) as typeof fetch;
 		expect(await fetchSidecarTracks('http://127.0.0.1:31337', 'session-1')).toEqual([]);
 	});
 });
@@ -301,7 +305,7 @@ describe('fetchSidecarTracks', () => {
 describe('armSidecarTracks', () => {
 	const originalFetch = globalThis.fetch;
 	beforeEach(() => {
-		globalThis.fetch = vi.fn(async () => new Response(JSON.stringify([en]))) as typeof fetch;
+		globalThis.fetch = vi.fn(async () => listing([en])) as typeof fetch;
 	});
 	afterEach(() => {
 		globalThis.fetch = originalFetch;
@@ -328,7 +332,7 @@ describe('armSidecarTracks', () => {
 	// had sidecar tracks: whatever its teardown does to the captions —
 	// a playlist's own track switched off — is not remembered.
 	it('stops taking caption changes for picks when the session goes, tracks or none', async () => {
-		globalThis.fetch = vi.fn(async () => new Response(JSON.stringify([]))) as typeof fetch;
+		globalThis.fetch = vi.fn(async () => listing([])) as typeof fetch;
 		const v = video();
 		expectCaptions(v, 0);
 		const cleanup = armSidecarTracks(v, 'http://127.0.0.1:31337', 'session-1');
@@ -342,7 +346,7 @@ describe('armSidecarTracks', () => {
 	});
 
 	it('attaches nothing for an empty listing', async () => {
-		globalThis.fetch = vi.fn(async () => new Response(JSON.stringify([]))) as typeof fetch;
+		globalThis.fetch = vi.fn(async () => listing([])) as typeof fetch;
 		const v = video();
 		armSidecarTracks(v, 'http://127.0.0.1:31337', 'session-1');
 		await settle();
@@ -367,7 +371,7 @@ describe('the listing is asked from the origin of the media URL', () => {
 		const asked: string[] = [];
 		globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
 			asked.push(String(input));
-			return new Response('[]');
+			return listing([]);
 		}) as typeof fetch;
 		expect('aniGui' in window, 'no preload bridge').toBe(false);
 		const cleanup = armSidecarTracks(

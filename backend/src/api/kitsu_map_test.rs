@@ -10,7 +10,7 @@ use tempfile::TempDir;
 use tower::ServiceExt;
 
 async fn played_body(state: AppState, show_id: &str) -> String {
-    let router = build_api_router(Arc::new(state));
+    let router = test_router(Arc::new(state));
     let response = router
         .oneshot(
             Request::builder()
@@ -137,7 +137,7 @@ async fn a_mapping_no_watch_stored_reads_as_not_played() {
 }
 
 async fn delete_status(state: &Arc<AppState>, uri: &str) -> StatusCode {
-    build_api_router(Arc::clone(state))
+    test_router(Arc::clone(state))
         .oneshot(
             Request::builder()
                 .method("DELETE")

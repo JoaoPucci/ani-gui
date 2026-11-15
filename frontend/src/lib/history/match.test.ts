@@ -16,22 +16,25 @@ import {
 	type KitsuAnimeRef
 } from '$lib/api';
 
+import type * as Api from '$lib/api';
+import { errorEnvelope } from '$lib/testing/wire-answers';
+import type { AniErrorPayload } from '$lib/api';
 // Mock the api module wholesale — `match.ts` is decoupled from the
 // transport (HTTP fetch to the backend), and the assertions
 // here are about which api functions get called with what args.
 // Mocking the module itself lets these tests survive any future
 // transport switch without churn.
 vi.mock('$lib/api', () => ({
-	allmangaKitsuMapDelete: vi.fn(),
-	allmangaKitsuMapGet: vi.fn(),
-	allmangaKitsuMapPlayed: vi.fn(),
-	kitsuAnimeBySlug: vi.fn(),
-	kitsuAnimeDetail: vi.fn(),
-	kitsuGuessRuledOut: vi.fn(),
-	kitsuResolveAllmangaShowId: vi.fn(),
-	kitsuSearch: vi.fn(),
-	kitsuTitleMatchGet: vi.fn(),
-	kitsuTitleMatchPut: vi.fn()
+	allmangaKitsuMapDelete: vi.fn<typeof Api.allmangaKitsuMapDelete>(),
+	allmangaKitsuMapGet: vi.fn<typeof Api.allmangaKitsuMapGet>(),
+	allmangaKitsuMapPlayed: vi.fn<typeof Api.allmangaKitsuMapPlayed>(),
+	kitsuAnimeBySlug: vi.fn<typeof Api.kitsuAnimeBySlug>(),
+	kitsuAnimeDetail: vi.fn<typeof Api.kitsuAnimeDetail>(),
+	kitsuGuessRuledOut: vi.fn<typeof Api.kitsuGuessRuledOut>(),
+	kitsuResolveAllmangaShowId: vi.fn<typeof Api.kitsuResolveAllmangaShowId>(),
+	kitsuSearch: vi.fn<typeof Api.kitsuSearch>(),
+	kitsuTitleMatchGet: vi.fn<typeof Api.kitsuTitleMatchGet>(),
+	kitsuTitleMatchPut: vi.fn<typeof Api.kitsuTitleMatchPut>()
 }));
 
 const mockedAllmangaDelete = vi.mocked(allmangaKitsuMapDelete);
@@ -52,6 +55,8 @@ const stubKitsu = (
 ): KitsuAnimeRef => ({
 	id,
 	canonical_title,
+	titles: {},
+	abbreviated_titles: [],
 	slug: null,
 	synopsis: null,
 	start_date: null,
@@ -880,7 +885,8 @@ describe('a recorded id Kitsu cannot read', () => {
 
 	it.each([404, 410])('matches the row anew when Kitsu answers %i for it', async (status) => {
 		mockedDetail.mockImplementation(async (id) => {
-			if (id === '999') throw { kind: 'upstream', status, key: 'error.network.upstream' };
+			if (id === '999')
+				throw errorEnvelope({ kind: 'upstream', status, key: 'error.network.upstream' });
 			return stubKitsu(id, 'Cowboy Bebop', 26);
 		});
 		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
@@ -891,7 +897,8 @@ describe('a recorded id Kitsu cannot read', () => {
 		expect(mockedSearch).toHaveBeenCalled();
 	});
 
-	it.each([
+	// `http` is the envelope `$lib/api` builds for an error with no body.
+	it.each<[string, AniErrorPayload]>([
 		['a provider 503', { kind: 'upstream', status: 503, key: 'error.network.upstream' }],
 		['a rate limit', { kind: 'upstream', status: 429, key: 'error.network.upstream' }],
 		['an unreachable network', { kind: 'network', key: 'error.network.unreachable' }],
@@ -997,7 +1004,8 @@ describe('which Continue matches a play may record', () => {
 
 	it('does not record the match a row whose recorded id is gone falls back to', async () => {
 		mockedDetail.mockImplementation(async (id) => {
-			if (id === '999') throw { kind: 'upstream', status: 404, key: 'error.network.upstream' };
+			if (id === '999')
+				throw errorEnvelope({ kind: 'upstream', status: 404, key: 'error.network.upstream' });
 			return stubKitsu(id, 'Cowboy Bebop', 26);
 		});
 		mockedGetMatch.mockResolvedValue(null);
@@ -1217,6 +1225,77 @@ describe('the hits a row rules out', () => {
 		const got = await resolveKitsuMatch(row);
 
 		expect(got?.id).toBe('7');
+		expect(mockedPutMatch).not.toHaveBeenCalled();
+	});
+});
+
+describe('a resolution the page that asked can cancel', () => {
+	const abortError = () => new DOMException('The operation was aborted.', 'AbortError');
+
+	it('hands its signal to every read it makes', async () => {
+		const page = new AbortController();
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:some-show-1', ep_no: '3', title: 'Some Show Season 2' },
+			null
+		);
+		mockedAllmangaMap.mockResolvedValue('77');
+		mockedDetail.mockResolvedValue(stubKitsu('77', 'Unrelated Music', 1));
+		mockedGetMatch.mockResolvedValue('88');
+		mockedSlug.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('99', 'Some Show Season 2', 12)]);
+		mockedRuledOut.mockResolvedValue(['99']);
+
+		await resolveKitsuMatchWithTrust(row, { signal: page.signal });
+
+		const withSignal = { signal: page.signal };
+		for (const read of [
+			mockedAllmangaMap,
+			mockedDetail,
+			mockedGetMatch,
+			mockedSlug,
+			mockedSearch,
+			mockedRuledOut,
+			mockedResolveAllmanga
+		]) {
+			expect(read).toHaveBeenCalled();
+			for (const call of read.mock.calls) expect(call.at(-1)).toEqual(withSignal);
+		}
+	});
+
+	it('rejects with the abort once its signal aborted, never as a row with no match', async () => {
+		const page = new AbortController();
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:some-show-1', ep_no: '3', title: 'Some Show' },
+			null
+		);
+		mockedGetMatch.mockImplementation(async () => {
+			page.abort();
+			throw abortError();
+		});
+		mockedSearch.mockRejectedValue(abortError());
+		mockedResolveAllmanga.mockRejectedValue(abortError());
+
+		await expect(resolveKitsuMatchWithTrust(row, { signal: page.signal })).rejects.toMatchObject({
+			name: 'AbortError'
+		});
+		expect(mockedPutMatch).not.toHaveBeenCalled();
+	});
+
+	it('stores no title match for a pick made as its signal aborted', async () => {
+		const page = new AbortController();
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:some-show-1', ep_no: '3', title: 'Some Show' },
+			null
+		);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockImplementation(async () => {
+			page.abort();
+			return [stubKitsu('99', 'Some Show', 12)];
+		});
+
+		await expect(resolveKitsuMatchWithTrust(row, { signal: page.signal })).rejects.toMatchObject({
+			name: 'AbortError'
+		});
 		expect(mockedPutMatch).not.toHaveBeenCalled();
 	});
 });

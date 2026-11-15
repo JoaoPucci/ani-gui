@@ -4,7 +4,7 @@ Operational contract for any AI agent (Claude Code, Codex, others) working in th
 
 ## 1. Project map
 
-`ani-gui` is a desktop app: an Electron shell (`electron/`) hosts a SvelteKit static SPA (`frontend/`) and launches a Rust sidecar (`backend/`) that resolves streams natively.
+`ani-gui` is a desktop app: an Electron shell (`electron/`) hosts a SvelteKit static SPA (`frontend/`) and launches a Rust sidecar (`backend/`) that resolves streams natively. The app's logic belongs in the Rust backend by default, and its rendering in the renderer's own stack; "Choosing between options" in §14 says what each covers.
 
 The project began as a fork of [`pystardust/ani-cli`](https://github.com/pystardust/ani-cli) that drove the vendored shell scraper as a subprocess. Nothing of that remains in the tree: resolution went native, the packages stopped carrying the script, and the repository stopped vendoring it. `backend/src/legacy_script.rs` exists only to delete the copy earlier versions maintained in the user's cache, and pulling from upstream ended with the vendoring.
 
@@ -15,7 +15,9 @@ Read first:
 - `docs/development.md` — dev environment, build, debug
 - `docs/i18n.md` — adding a locale
 - `docs/title-resolution.md` — the cross-API bridge (Kitsu ↔ the streaming provider ↔ MAL ↔ aniskip / AniList) and how disambiguation by episode count works
-- `docs/proposals/` — future-feature proposals (Cast/multi-viewer, etc.)
+- `docs/proposals/` — plans for features nobody is building yet
+
+A proposal exists so that a plan made well before it is built is remembered until it is actually built. It lives in `docs/proposals/` only until its feature ships. The change that ships the feature moves what is still true of it and still useful — the design rationale, the privacy reasoning, the constraints the feature works under — into `docs/architecture.md`, or into the document that covers that area, and deletes the proposal. A proposal that covers several features loses each part as that part ships, and the change that ships the last part deletes the file. A proposal written for a feature that is already being built does not land on its own; the build's pull requests carry the final docs. So a file in `docs/proposals/` always describes something the app does not do yet, and a shipped feature is described in one place.
 
 ## 2. Test discipline (non-negotiable, TDD)
 
@@ -103,11 +105,11 @@ The full pyramid (unit → acceptance → e2e → property → architectural inv
 
 **The coverage floors (`rust.*`, `frontend.*`, `bash.*`) are also firm — tighten-only.** `node tools/check-coverage-baseline.mjs --update` now refuses to lower a floor below the recorded baseline, even if the current measurement would drop it. A PR that removes coverage must restore it (delete-with-tests, port the assertions to a new layer), not paper over the regression by re-baselining. Use `--update` when tests were deliberately added or scope grew and the floor should genuinely rise; never as a workaround for new code that skipped testing.
 
-**Svelte component logic must be testable.** The M3 design + UX detour shipped several pieces of behaviour inside `.svelte` files (BackButton depth tracking, topbar dropdown state machine, detail-page URL `$effect`s, hero rotation). Mounting Svelte 5 components against SvelteKit's runtime in vitest is brittle, so the rule is: **when you find yourself writing more than a couple of lines of imperative logic inside a `<script>`, extract it into a sibling `.ts` module under `$lib` and unit-test the module.** The component becomes a thin adapter that pulls inputs from the Svelte runtime and hands them to the pure function. `$lib/history/nav-depth.ts` is the canonical example — the layout's `afterNavigate` hook is glue around a tested function: it passes the event, `page.state` and the browser's index for the entry in, and writes back the stamp it gets.
+**Svelte component logic must be testable.** The M3 design + UX detour shipped several pieces of behaviour inside `.svelte` files (BackButton depth tracking, topbar dropdown state machine, detail-page URL `$effect`s, hero rotation). Mounting Svelte 5 components against SvelteKit's runtime in vitest is brittle, so the rule is: **when you find yourself writing more than a couple of lines of imperative code inside a `<script>`, extract it into a sibling `.ts` module under `$lib` and unit-test the module.** The component becomes a thin adapter that pulls inputs from the Svelte runtime and hands them to the pure function. This keeps rendering code, as §14's "Choosing between options" defines it, testable; logic in that subsection's sense belongs in the backend by default, not in this module. `$lib/history/nav-depth.ts` is the canonical example — the layout's `afterNavigate` hook is glue around a tested function: it passes the event, `page.state` and the browser's index for the entry in, and writes back the stamp it gets.
 
 Known test debt (extract + unit-test next time you touch them):
 
-- Topbar live-results dropdown state machine in `+layout.svelte` (debounced search, ↑/↓ navigation, blur-dismiss timing, recent-search persistence).
+- Topbar live-results dropdown state machine in `+layout.svelte` (↑/↓ navigation, blur-dismiss timing, recent-search persistence). The debounced live search itself is `$lib/topbar/live-search`.
 
 ## 3. Provenance
 
@@ -356,6 +358,12 @@ reminder, never a constraint the design has to respect.
 
 ### Choosing between options
 
+The rules under this heading are defaults that serve quality, security
+and good sense, not ends in themselves. Any of them can be questioned
+with a reason. When following one would cost one of those, say so and
+put it to the maintainer before acting. The rule holds until the
+maintainer agrees.
+
 When a change can be made more than one way, rank the options on
 correctness, safety, maintainability and the user's experience,
 weighed together rather than in a fixed order.
@@ -367,9 +375,69 @@ may be weighed against the rest.
 
 The ranking is how a recommendation is made, not a licence to decide
 alone. When the choice is the maintainer's — anything users see,
-scope (deferring work always is), a new dependency, or a real
-trade-off between these criteria — put the options to them, as
+scope (deferring work always is), anything new to the stack, or a
+real trade-off between these criteria — put the options to them, as
 **Ask** above describes, with the ranking as the recommendation.
+
+The stack is a Rust backend and a SvelteKit frontend in an Electron
+shell, plus the tools the app already uses: the binaries its packages
+bundle, listed in the `DEPS` of `electron/scripts/fetch-linux-deps.mjs`
+and `fetch-windows-deps.mjs`, the external programs it runs, listed
+under External processes in `docs/architecture.md`, and the libraries
+its manifests already declare. Anything new to it is the
+maintainer's decision: another language, a library or binary in any
+language, a new runtime, toolchain or build step, or a piece of logic
+placed outside the Rust backend against the default below. It is put
+to them before it is built, with the investigation and the ranking as
+the recommendation, and never appears first in a pull request.
+
+Where the code a change adds lives, and so its language, is one of
+these choices. Logic — the app's decisions about its data and the
+rules it follows whatever the screen shows: matching, naming,
+grouping, ranking and validating its data, and its maths — belongs in
+the Rust backend by default. New logic is not written in another
+language because the code it touches is there; "it was already written
+that way" is not a reason for where new logic goes. A different choice
+needs a reason specific to that logic, naming what Rust would cost
+there by the criteria above, and it is the maintainer's, put to them
+as the stack paragraph describes.
+
+The default is Rust because this repository is developed mostly by AI
+agents. A compiler that checks types, ownership and exhaustive
+matches turns their mistakes into build failures rather than defects
+a user meets at runtime.
+
+Rendering — the code that draws and drives the interface, and state
+that exists only on screen — is written in the renderer's own stack
+and needs no language reason. A decision that would come out the same
+with nothing on screen is logic; one that exists only because of what
+is on screen is rendering. Text shown to the user is resolved as §4
+describes. Rendering is not put in Rust to satisfy this rule, whether
+behind a request to the backend or compiled to WebAssembly.
+
+The split is the default, not a sorting machine every piece has to
+fit. A piece the test above does not settle — part of it would stand
+with nothing on screen and part would not, or it is a protocol
+carried across both sides — is decided for that piece by the criteria
+above. Where any of its logic would land outside the Rust backend,
+the choice and its reason go to the maintainer before it is built, as
+the stack paragraph describes, and the pull request repeats them.
+Showing a decision on screen does not make it such a piece. A
+well-reasoned exception, agreed with the maintainer, is the rule
+working, not breaking.
+
+Code doing a job the backend cannot do — starting it, building or
+packaging the app, checking it — is written where that job runs, in
+the language already used there; another is new to the stack. Tests
+are written for their subject's layer, as §2 requires. Configuration
+is not logic in this sense.
+
+This decides where the logic a change adds goes. It does not ask for
+existing code to be ported. A fix, making existing code do what it
+already sets out to do, stays where that code is. When added logic
+cannot stand apart from a rule that lives elsewhere, adding it there
+and moving the rule are both options, and the choice is the
+maintainer's: put both to them, as **Ask** describes.
 
 ## 15. Every change ships on every platform we package
 
@@ -498,4 +566,4 @@ what makes external review affordable.
 - `docs/testing.md` — test pyramid, fixture management, coverage targets
 - `docs/development.md` — dev setup
 - `docs/i18n.md` — locale-addition guide
-- `docs/proposals/cast-multiviewer.md` — Cast/multi-viewer future-feature proposal
+- `docs/proposals/` — plans for features not yet built, kept until they ship (§1)

@@ -17,11 +17,12 @@
  * two apart; the cue boxes the video draws, in its user-agent shadow
  * tree, can, and only the DevTools protocol reaches them.
  *
- * The stream is a local two-level HLS fixture played through the
- * backend's own stream proxy; its sidecar listing (Arabic first, then
- * English, the provider's default, then French) is answered at the
- * stream lane's URLs, by the test itself, because the public
- * session route takes no caller-supplied tracks.
+ * The stream is a local two-level HLS fixture, played from the
+ * Continue card through the backend's play route and stream proxy
+ * (real-play.ts). Its sidecar tracks (Arabic first, then English, the
+ * provider's default, then French) are listed with the stream, as a
+ * resolve lists them, and served beside it: the backend lists them to
+ * the player and relays each one.
  */
 import {
   expect,
@@ -34,13 +35,13 @@ import http from "node:http";
 import type net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import {
-  appInfo,
-  continueKitsuEpisode6,
-  continueKitsuMatch,
-  defaultSettings,
-} from "./fixtures/kitsu";
 import { appWindow, launchPackagedApp, packagedBinary } from "./launch";
+import {
+  playFromContinue,
+  routeRealPlay,
+  writeReplayConfig,
+  type ReplayStream,
+} from "./real-play";
 
 const mediaDir = path.join(__dirname, "fixtures", "captions");
 
@@ -52,8 +53,13 @@ test.beforeAll(() => {
   }
 });
 
-async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
+async function launch(): Promise<{
+  app: ElectronApplication;
+  page: Page;
+  profile: string;
+}> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ani-gui-captions-"));
+  writeReplayConfig(tmp);
   const app = await launchPackagedApp({
     ...process.env,
     XDG_STATE_HOME: path.join(tmp, "state"),
@@ -61,19 +67,41 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
     XDG_CACHE_HOME: path.join(tmp, "cache"),
     XDG_DATA_HOME: path.join(tmp, "data"),
     ANI_GUI_UNATTENDED: "1",
-  });
+  }, { profile: tmp });
   const page = await appWindow(app);
-  return { app, page };
+  return { app, page, profile: tmp };
 }
 
-/** A server for the media fixture, standing in for a provider's CDN. */
+const LISTING = [
+  { lang: "ar", label: "العربية", default: false },
+  { lang: "en", label: "English", default: true },
+  { lang: "fr", label: "Français", default: false },
+];
+
+/** A server for the media fixture, standing in for a provider's CDN:
+ *  the stream, and each listed track at `/sub/<i>.vtt`, its cues
+ *  named by the track's label. */
 async function mediaServer(): Promise<{ origin: string; close: () => void }> {
   const types: Record<string, string> = {
     ".m3u8": "application/vnd.apple.mpegurl",
     ".ts": "video/mp2t",
   };
+  const cues = fs.readFileSync(path.join(mediaDir, "sidecar.vtt"), "utf8");
   const server = http.createServer((req, res) => {
-    const name = path.basename(new URL(req.url ?? "/", "http://x").pathname);
+    const at = new URL(req.url ?? "/", "http://x").pathname;
+    const track = /^\/sub\/(\d+)\.vtt$/.exec(at);
+    if (track && LISTING[Number(track[1])]) {
+      const body = Buffer.from(
+        cues.replaceAll("Cue at", `${LISTING[Number(track[1])].label} at`),
+      );
+      res.writeHead(200, {
+        "content-type": "text/vtt",
+        "content-length": body.length,
+      });
+      res.end(body);
+      return;
+    }
+    const name = path.basename(at);
     const file = path.join(mediaDir, name);
     if (!existsSync(file)) {
       res.writeHead(404).end();
@@ -91,102 +119,16 @@ async function mediaServer(): Promise<{ origin: string; close: () => void }> {
   return { origin: `http://127.0.0.1:${port}`, close: () => server.close() };
 }
 
-async function bridge(page: Page) {
-  await page.waitForFunction(
-    () => Boolean((window as { aniGui?: unknown }).aniGui),
-    null,
-    {
-      timeout: 30_000,
-    },
-  );
-  return page.evaluate(() => {
-    const g = (
-      window as unknown as {
-        aniGui: { apiBase: string; lanes: Record<string, string> };
-      }
-    ).aniGui;
-    return { apiBase: g.apiBase, lanes: g.lanes };
-  });
+/** The fixture stream at `origin`, with its sidecar listing. */
+function stream(origin: string): ReplayStream {
+  return {
+    upstreamUrl: `${origin}/master.m3u8`,
+    mediaKind: "hls",
+    subtitles: LISTING.map((t, i) => ({ ...t, url: `${origin}/sub/${i}.vtt` })),
+  };
 }
 
-/** Metadata the play page asks the API for, answered without the
- *  network; the session route goes to the real backend. */
-async function stubMetadata(page: Page, apiBase: string) {
-  await page.route(`${apiBase}/api/**`, async (r) => {
-    const p = new URL(r.request().url()).pathname;
-    if (p === "/api/sessions") return r.continue();
-    const j = (body: unknown) =>
-      r.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(body),
-      });
-    if (p === "/api/app-info") return j(appInfo);
-    if (p === "/api/settings")
-      return j({ ...defaultSettings, use_custom_player_controls: true });
-    if (p.startsWith("/api/kitsu/anime/")) return j(continueKitsuMatch);
-    if (p.startsWith("/api/kitsu/episodes/")) return j([continueKitsuEpisode6]);
-    if (p === "/api/history") return j([]);
-    if (p.startsWith("/api/image")) return r.fulfill({ status: 503 });
-    return j(null);
-  });
-}
-
-const LISTING = [
-  { lang: "ar", label: "العربية", default: false },
-  { lang: "en", label: "English", default: true },
-  { lang: "fr", label: "Français", default: false },
-];
-
-/** A session on the fixture stream, with the sidecar listing answered
- *  at the stream lane. */
-async function session(
-  page: Page,
-  apiBase: string,
-  stream: string,
-  upstream: string,
-) {
-  const created = await page.evaluate(
-    async ({ apiBase, upstream }) => {
-      const res = await fetch(`${apiBase}/api/sessions`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ upstream_url: upstream, referer: "" }),
-      });
-      if (!res.ok)
-        throw new Error(`session: ${res.status} ${await res.text()}`);
-      return (await res.json()) as { session_id: string };
-    },
-    { apiBase, upstream },
-  );
-  const sid = created.session_id;
-  const cues = fs.readFileSync(path.join(mediaDir, "sidecar.vtt"), "utf8");
-  await page.route(`${stream}/s/${sid}/subtitles`, (r) =>
-    r.fulfill({
-      status: 200,
-      contentType: "application/json",
-      headers: { "access-control-allow-origin": "*" },
-      body: JSON.stringify(
-        LISTING.map((t, i) => ({
-          ...t,
-          url: `${stream}/s/${sid}/sub/${i}.vtt`,
-        })),
-      ),
-    }),
-  );
-  await page.route(`${stream}/s/${sid}/sub/*.vtt`, (r) => {
-    const i = Number(
-      path.basename(new URL(r.request().url()).pathname, ".vtt"),
-    );
-    r.fulfill({
-      status: 200,
-      contentType: "text/vtt",
-      headers: { "access-control-allow-origin": "*" },
-      body: cues.replaceAll("Cue at", `${LISTING[i].label} at`),
-    });
-  });
-  return sid;
-}
+const settings = { use_custom_player_controls: true };
 
 /** What the player shows: the labels of the subtitle tracks showing,
  *  the cue text on screen, the playback position and frame height. */
@@ -262,20 +204,14 @@ async function showsAloneThroughout(page: Page, label: string, ms: number) {
 test("the track a session starts on shows alone through playback, a seek and a quality switch", async () => {
   test.setTimeout(120_000);
   const media = await mediaServer();
-  const { app, page } = await launch();
+  const { app, page, profile } = await launch();
   try {
-    const { apiBase, lanes } = await bridge(page);
-    await stubMetadata(page, apiBase);
-    const sid = await session(
-      page,
-      apiBase,
-      lanes.stream,
-      `${media.origin}/master.m3u8`,
-    );
-    const url = new URL(page.url());
-    url.pathname = `/play/${continueKitsuMatch.id}`;
-    url.search = `?session=${sid}&episode=1&kind=hls`;
-    await page.goto(url.toString());
+    const play = await routeRealPlay(page, {
+      profile,
+      settings,
+      stream: stream(media.origin),
+    });
+    await playFromContinue(page, play);
 
     // The three tracks attach and playback runs.
     await expect
@@ -337,20 +273,14 @@ test("the track a session starts on shows alone through playback, a seek and a q
 test("a track picked from the captions menu shows alone and is drawn", async () => {
   test.setTimeout(120_000);
   const media = await mediaServer();
-  const { app, page } = await launch();
+  const { app, page, profile } = await launch();
   try {
-    const { apiBase, lanes } = await bridge(page);
-    await stubMetadata(page, apiBase);
-    const sid = await session(
-      page,
-      apiBase,
-      lanes.stream,
-      `${media.origin}/master.m3u8`,
-    );
-    const url = new URL(page.url());
-    url.pathname = `/play/${continueKitsuMatch.id}`;
-    url.search = `?session=${sid}&episode=1&kind=hls`;
-    await page.goto(url.toString());
+    const play = await routeRealPlay(page, {
+      profile,
+      settings,
+      stream: stream(media.origin),
+    });
+    await playFromContinue(page, play);
     await expect
       .poll(async () => (await shown(page))?.time ?? 0, { timeout: 30_000 })
       .toBeGreaterThan(1);
