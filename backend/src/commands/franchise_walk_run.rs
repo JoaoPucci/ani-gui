@@ -25,6 +25,12 @@ pub(crate) struct Run {
     pub(crate) side_anchor: bool,
     /// A side-story anchor's parent stories in the run, in start order.
     pub(crate) parents: Vec<String>,
+    /// For a side story placed by its run's parents
+    /// (`franchise_walk_place.rs`): the parent stories it names outside
+    /// its run, then those any member of its run names, each earliest
+    /// first; the main story's parents are taken from the first of them
+    /// that holds one.
+    pub(crate) parent_choices: Vec<Vec<String>>,
     /// The other entries of the anchor's own run of one-offs, when the
     /// walk moved to their parent's run and that run left them out:
     /// listed around it like the anchor, music videos aside.
@@ -93,6 +99,7 @@ pub(crate) fn walk_with(
         complete: w.complete,
         side_anchor: false,
         parents: Vec::new(),
+        parent_choices: Vec::new(),
         beside: BTreeSet::new(),
         moved: BTreeSet::new(),
         chain: None,
@@ -116,8 +123,15 @@ fn side_chain(
     if !side_anchor {
         return (Vec::new(), chain(anchor, franchise, main, look));
     }
+    // The anchor's own parents where it names one there, else its
+    // run's; the main story may hold one the first run did not.
     let among = |set: &dyn Fn(&String) -> bool| -> Vec<String> {
-        first.parents.iter().filter(|p| set(p)).cloned().collect()
+        first
+            .parent_choices
+            .iter()
+            .map(|c| c.iter().filter(|p| set(p)).cloned().collect::<Vec<_>>())
+            .find(|c| !c.is_empty())
+            .unwrap_or_default()
     };
     let in_main = among(&|p| main.members.contains_key(p));
     if !in_main.is_empty() {
