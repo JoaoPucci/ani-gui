@@ -31,6 +31,7 @@ import { mount, unmount, createRawSnippet, tick } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setPageState, setParams, setUrl } from './page-state.svelte';
 import { sessionHistory } from './session-history';
+import { afterRead, watchPageFetches } from './page-fetches';
 import { appConfig, kitsuRef } from './home-handlers';
 
 vi.mock('$app/state', () => ({
@@ -282,6 +283,8 @@ describe('the breadcrumb on a show', () => {
 	it('does not name the page after it when its detail lands late', async () => {
 		let release!: () => void;
 		detailHeld = new Promise<void>((r) => (release = r));
+		const fetches = watchPageFetches();
+		const detail = (f: { path: string }) => f.path === `/api/kitsu/anime/${SHOW}`;
 		sessionHistory.push('link', showPath);
 		mountShow();
 		await tick();
@@ -292,7 +295,13 @@ describe('the breadcrumb on a show', () => {
 		sessionHistory.push('link', `/play/${SHOW}?episode=1`);
 		await tick();
 		release();
-		for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 5));
+		// Read once the page has the late detail, or has seen its read
+		// cancelled, and what that set off has run.
+		await until(
+			() => fetches.sent.some(detail) && [...fetches.read, ...fetches.failed].some(detail),
+			'the late detail to land or fail'
+		);
+		await afterRead();
 		expect(crumbs()).toEqual([home, m.breadcrumb_watching()]);
 	});
 });
