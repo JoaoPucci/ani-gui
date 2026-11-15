@@ -178,6 +178,10 @@ const pullsSent = () =>
 		.filter((f) => f.method === 'POST' && f.path.startsWith('/api/account/list/'))
 		.map((f) => f.path.slice('/api/account/list/'.length));
 
+/** The history clears the page has sent, counted the same way. */
+const clearsSent = () =>
+	fetches.sent.filter((f) => f.method === 'DELETE' && f.path === '/api/history').length;
+
 const WL = () => m.account_watch_later_title();
 const CW = () => m.home_strip_continue_eyebrow();
 const REFRESH = () => m.account_watch_later_refresh_action();
@@ -327,9 +331,10 @@ for (const style of ['inline', 'band'] as const) {
 				'the just-updated state'
 			);
 			// The second press sent no pull of its own. A refresh waits
-			// only on the sign-in's bearer, in memory or over the network,
-			// before it pulls, so once nothing the page asked is still out
-			// a pull that press started has been sent.
+			// only on the sign-in's bearer before it pulls, and a token
+			// this far from expiry is handed back at once, so once nothing
+			// the page asked is still out a pull that press started has
+			// been sent.
 			await fetches.settled('the refresh to finish');
 			expect(pullsSent()).toEqual(['anilist']);
 			expect(refresh.hasAttribute('aria-disabled')).toBe(false);
@@ -657,7 +662,7 @@ for (const style of ['inline', 'band'] as const) {
 			cancel.click();
 			await until(() => target.querySelector('[role="dialog"]') === null, 'the dialog to close');
 			await until(() => document.activeElement === clear, 'focus to come back to Clear history');
-			expect(historyCleared).toBe(0);
+			expect(clearsSent()).toBe(0);
 		});
 
 		it('clears history after the confirm, from the row’s own action', async () => {
@@ -668,8 +673,9 @@ for (const style of ['inline', 'band'] as const) {
 
 			action(CW(), CLEAR())!.click();
 			await until(() => target.querySelector('[role="dialog"]') !== null, 'the confirm dialog');
-			// Nothing goes before the user confirms.
-			expect(historyCleared).toBe(0);
+			// Nothing goes before the user confirms: a clear the press
+			// started would be counted as the page sends it.
+			expect(clearsSent()).toBe(0);
 			const confirm = Array.from(target.querySelectorAll('[role="dialog"] button')).find(
 				(b) => b.textContent?.trim() === m.home_clear_confirm_button()
 			) as HTMLButtonElement;
