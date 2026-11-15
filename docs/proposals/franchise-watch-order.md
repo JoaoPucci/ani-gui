@@ -350,10 +350,10 @@ Built: [`architecture.md`, "The player's Up next card"](../architecture.md#the-p
 ### The watch-order setting
 
 Built: [`architecture.md`, "The order setting"](../architecture.md#the-order-setting).
-For the surfaces still to come, the setting's effect: the "Up next"
-card and Continue Watching offer the next entry in the chosen order
-(in "As released" there is always at most one), and the franchise page
-lists the run in the chosen order and numbers it the same way.
+For the surfaces still to come, the setting's effect: Continue
+Watching offers the next entry in the chosen order (in "As released"
+there is always at most one), and the franchise page lists the run in
+the chosen order and numbers it the same way.
 
 ### How each phase is designed
 
