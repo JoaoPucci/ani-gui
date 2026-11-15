@@ -349,9 +349,10 @@ test("each kind picked from the captions menu shows alone with its cues, through
 // The viewer moves off a rendition while its fragment is on its way:
 // hls.js parsed it with the rendition's track off, dropped its cues and
 // never fetched it again, so the rendition, picked back, showed
-// nothing there.
-// Moving off to the other rendition leaves the sidecar tracks out of
-// it, so on the old code only the dropped cues fail it.
+// nothing there. The viewer moves off to the other rendition, and to a
+// sidecar track, the two ways a pick leaves a rendition. Each step
+// first checks which track shows, so that only the cue check speaks to
+// the dropped cues.
 for (const [to, showsThen] of [
 	['Spanish', 'playlist Español'],
 	['French', 'sidecar Français']
@@ -372,6 +373,9 @@ for (const [to, showsThen] of [
 			await expect.poll(async () => (await shown(page))?.time ?? 0).toBeCloseTo(7, 0);
 			const english = await playlistEnglish(page);
 			await pick(page, english);
+			await expect
+				.poll(async () => (await shown(page))?.showing ?? [], { timeout: 10_000 })
+				.toEqual(['playlist English']);
 			// Off it while the fragment at 7 s is on its way.
 			await expect.poll(() => media.asked.includes('/en_1.vtt'), { timeout: 10_000 }).toBe(true);
 			await pick(page, to);
@@ -382,6 +386,9 @@ for (const [to, showsThen] of [
 			release();
 			await page.waitForTimeout(2_000);
 			await pick(page, english);
+			await expect
+				.poll(async () => (await shown(page))?.showing ?? [], { timeout: 10_000 })
+				.toEqual(['playlist English']);
 			await expect
 				.poll(async () => (await shown(page))?.cues ?? [], { timeout: 5_000 })
 				.toEqual(['Playlist English at 6']);

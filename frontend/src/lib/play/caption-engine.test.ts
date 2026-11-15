@@ -145,22 +145,19 @@ describe('sameListing', () => {
 		expect(sameListing([en], [{ name: 'English', lang: 'en-GB' }])).toBe(false);
 	});
 
-	it('for any listings, agrees with a rendition-by-rendition comparison', () => {
-		const r = fc.record({
-			name: fc.constantFrom('English', 'Español', 'Deutsch'),
-			lang: fc.constantFrom('en', 'es', 'de')
-		});
+	it('for any listings, reads them the same exactly when their name and language pairs match in order', () => {
+		const r = fc.record(
+			{
+				name: fc.constantFrom('English', 'Español', 'Deutsch'),
+				lang: fc.option(fc.constantFrom('en', 'es', 'de'), { nil: undefined })
+			},
+			{ requiredKeys: ['name'] }
+		);
+		const key = (l: EngineTrack[]) => JSON.stringify(l.map((x) => [x.name, x.lang ?? null]));
 		fc.assert(
 			fc.property(fc.array(r, { maxLength: 4 }), fc.array(r, { maxLength: 4 }), (a, b) => {
-				const same =
-					a.length === b.length && a.every((x, i) => x.name === b[i].name && x.lang === b[i].lang);
-				expect(sameListing(a, b)).toBe(same);
-				expect(
-					sameListing(
-						a,
-						a.map((x) => ({ ...x }))
-					)
-				).toBe(true);
+				expect(sameListing(a, b)).toBe(key(a) === key(b));
+				expect(sameListing(a, b)).toBe(sameListing(b, a));
 			})
 		);
 	});
