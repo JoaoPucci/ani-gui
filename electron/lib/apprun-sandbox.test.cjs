@@ -118,8 +118,10 @@ function outcome(img, run, elapsedMs, group) {
 // counts the orphans that end in its hands into `unreaped` and does not
 // keep them. With `forward`, a signal it receives is passed on to the
 // run, which is otherwise what the signal was meant for; a signal sent
-// to the whole group reaches the run directly. It ends as the run did,
-// by the same signal or with the same status.
+// to the whole group reaches the run directly. The run starts with the
+// signal dispositions it would have without the subreaper, and the
+// subreaper ends as the run did, by the same signal or with the same
+// status.
 const SUBREAPER = `
 import ctypes, os, signal, sys, time
 if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
@@ -127,6 +129,10 @@ if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD
 report, forward, argv = sys.argv[1], sys.argv[2] == "1", sys.argv[3:]
 child = os.fork()
 if child == 0:
+    # Python starts with these two ignored, and an ignored signal stays
+    # ignored across exec: the run gets the dispositions a launch has.
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    signal.signal(signal.SIGXFSZ, signal.SIG_DFL)
     os.execvp(argv[0], argv)
 def on_signal(sig, _frame):
     if forward:
