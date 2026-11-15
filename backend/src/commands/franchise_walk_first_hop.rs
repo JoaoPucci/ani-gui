@@ -17,8 +17,8 @@
 //!   show's detail and the listings of the candidates the walk's parent
 //!   check reads, within the walk's bound, as the walk does;
 //! - **link**: else, any anime relation the franchise page lists beside
-//!   the show: anything but a music video, a character crossover, an
-//!   adaptation or an alternative setting;
+//!   the show: anything but a character crossover, an adaptation or an
+//!   alternative setting (music videos it reads none of);
 //! - **none**: else.
 //!
 //! Only the strip can be wrong. Where a prequel or sequel turns out to
@@ -153,9 +153,7 @@ fn from_own_listing(anchor: &str, listing: &FranchiseListing) -> FirstHop {
     {
         return FirstHop::Strip;
     }
-    let listed_beside = |r: &&&FranchiseRelation| {
-        r.subtype.as_deref() != Some("music") && !NEVER_LISTED.contains(&r.role.as_str())
-    };
+    let listed_beside = |r: &&&FranchiseRelation| !NEVER_LISTED.contains(&r.role.as_str());
     if anime.iter().any(|r| listed_beside(&r)) {
         FirstHop::Link
     } else {
