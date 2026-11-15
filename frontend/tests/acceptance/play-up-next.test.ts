@@ -111,10 +111,20 @@ function franchise(over: Partial<Franchise> = {}): Franchise {
 	};
 }
 
+/** An event stream that never answers, keeping the URL each was opened
+ *  with: a play resolves over one (`playStream`), not over `fetch`. */
 class SilentEventSource {
+	static opened: string[] = [];
+	constructor(url: string) {
+		SilentEventSource.opened.push(url);
+	}
 	addEventListener() {}
 	close() {}
 }
+
+/** The play streams opened since `from` (an index into `opened`). */
+const playsSince = (from: number) =>
+	SilentEventSource.opened.slice(from).filter((u) => u.includes('/api/play/stream'));
 type GlobalLike = { EventSource?: unknown };
 const g = globalThis as unknown as GlobalLike;
 
@@ -128,6 +138,7 @@ beforeEach(() => {
 	__resetPlayCacheForTests();
 	window.localStorage.clear();
 	vi.mocked(goto).mockClear();
+	SilentEventSource.opened.length = 0;
 	g.EventSource = SilentEventSource;
 	setParams({ id: KITSU_ID });
 	target = document.createElement('div');
@@ -490,10 +501,12 @@ describe('the Up next card at a finale', () => {
 		const { video, fetches } = await openEpisode({ autoPlayNext: true });
 		await playTo(video, 1395);
 		const before = fetches.sent.length;
+		const streamsBefore = SilentEventSource.opened.length;
 		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		await fetches.settled('anything the end set off');
 		expect(fetches.sent.slice(before).filter((f) => f.path.startsWith('/api/play'))).toEqual([]);
+		expect(playsSince(streamsBefore)).toEqual([]);
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
 		expect(card()).not.toBeNull();
 	});
@@ -1028,6 +1041,123 @@ describe('the Up next card at a finale', () => {
 		await new Promise((r) => setTimeout(r, 50));
 		await playTo(video, 63);
 		expect(skipPill()).not.toBeNull();
+	});
+});
+
+/** A show of 24 episodes the player was opened on before it was reused. */
+const OPENED_ON = { id: '9001', title: 'Long Saga', episodes: 24 };
+
+/**
+ * Opens Long Saga's episode 12, then moves the page, reused, to Second
+ * Arc's finale (episode 12 of 12), as back/forward can: the page keeps
+ * the detail and availability it read at mount, Long Saga's, while the
+ * franchise is read again for Second Arc.
+ */
+async function openReused(options: { autoPlayNext?: boolean } = {}) {
+	const fetches = watchPageFetches();
+	server.use(
+		http.get(`${API_BASE}/api/settings`, () =>
+			HttpResponse.json<Config>({
+				...appConfig(),
+				watch_order: 'linked',
+				auto_play_next: options.autoPlayNext === true,
+				use_custom_player_controls: true
+			})
+		),
+		http.get(`${API_BASE}/api/kitsu/anime/:id`, ({ params }) =>
+			params.id === OPENED_ON.id
+				? HttpResponse.json<KitsuAnimeRef>({
+						...kitsuRef(OPENED_ON.id, OPENED_ON.title, OPENED_ON.episodes),
+						status: 'finished'
+					})
+				: HttpResponse.json<KitsuAnimeRef>({
+						...kitsuRef(KITSU_ID, TITLE, EPISODES),
+						status: 'finished'
+					})
+		),
+		http.get(`${API_BASE}/api/kitsu/franchise/:id`, ({ params }) =>
+			params.id === KITSU_ID
+				? HttpResponse.json<Franchise>(franchise())
+				: errorAnswer(502, { kind: 'upstream', status: 503, key: 'error.network.upstream' })
+		),
+		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
+			const { ids } = (await request.json()) as { ids: string[] };
+			return HttpResponse.json<Record<string, HistoryEntry | null>>(
+				Object.fromEntries(ids.map((k) => [k, null]))
+			);
+		}),
+		http.get(`${API_BASE}/api/kitsu/airing/:id`, () =>
+			HttpResponse.json<AiringStatus>({
+				aired: OPENED_ON.episodes,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(OPENED_ON.episodes))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: OPENED_ON.episodes,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
+		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () =>
+			HttpResponse.json<SkipInterval[]>([OPENING, ENDING])
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl'))
+	);
+	setParams({ id: OPENED_ON.id });
+	setUrl(`/play/${OPENED_ON.id}`, { session: 'session-1', episode: '12', kind: 'mp4' });
+	app = mount(PlayPage, { target });
+	await until(() => playerVideoInSlot(), 'the video in its slot');
+	await until(() => (target.textContent ?? '').includes(OPENED_ON.title), 'the first show');
+	const video = playerVideo();
+	Object.defineProperty(video, 'duration', { configurable: true, get: () => LENGTH });
+	await fetches.settled('the first show');
+	setParams({ id: KITSU_ID });
+	await switchTo(video, EPISODES, 'session-2');
+	await fetches.settled('the franchise of the show the page moved to');
+	return { video, fetches };
+}
+
+describe('the Up next card on a player reused for another show', () => {
+	it('shows at the finale, though the show it opened on has more episodes', async () => {
+		const { video } = await openReused();
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card');
+		expect(cardLinks().map((a) => a.getAttribute('href'))).toEqual(['/anime/50']);
+	});
+
+	it('plays nothing further at the end, even with auto-play on', async () => {
+		const { video, fetches } = await openReused({ autoPlayNext: true });
+		await playTo(video, 1395);
+		const before = fetches.sent.length;
+		const streamsBefore = SilentEventSource.opened.length;
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card');
+		await fetches.settled('anything the end set off');
+		expect(fetches.sent.slice(before).filter((f) => f.path.startsWith('/api/play'))).toEqual([]);
+		expect(playsSince(streamsBefore)).toEqual([]);
+		expect(card()).not.toBeNull();
+	});
+
+	it('leaves the next-episode button closed at the finale', async () => {
+		const { video } = await openReused();
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card');
+		const next = target.querySelector<HTMLButtonElement>(
+			`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
+		);
+		expect(next!.disabled).toBe(true);
 	});
 });
 
