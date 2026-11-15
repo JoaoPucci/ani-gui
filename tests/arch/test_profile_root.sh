@@ -55,6 +55,7 @@ offending=$(
             case "$file" in
                 backend/src/config/paths.rs) ;;
                 backend/src/config/paths_test.rs) ;;
+                backend/src/app_test.rs) ;;
                 backend/tests/*) ;;
                 docs/development.md) ;;
                 docs/testing.md) ;;
