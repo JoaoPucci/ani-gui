@@ -152,10 +152,21 @@ describe('finaleCard', () => {
 		expect(finaleCard(jojo, '46598', 'linked', TODAY, 14, null)).not.toBeNull();
 		expect(finaleCard(jojo, '46598', 'linked', TODAY, 12, null)).toBeNull();
 		// The player's reading wins where the two differ.
-		const fresh = { status: 'finished', episodes: 12 };
+		const fresh = { id: '46598', status: 'finished', episodes: 12 };
 		expect(finaleCard(jojo, '46598', 'linked', TODAY, 12, fresh)).not.toBeNull();
-		const airing = { status: 'current', episodes: 14 };
+		const airing = { id: '46598', status: 'current', episodes: 14 };
 		expect(finaleCard(jojo, '46598', 'linked', TODAY, 14, airing)).toBeNull();
+	});
+
+	it("ignores the player's reading of another show", () => {
+		// The page's detail still belongs to the show it was opened on
+		// while the franchise is already the new show's: that reading
+		// says nothing about this entry, and the run's entry decides.
+		const jojo = data('jojo', '46598');
+		const other = { id: '43078', status: 'current', episodes: 14 };
+		expect(finaleCard(jojo, '46598', 'linked', TODAY, 14, other)).not.toBeNull();
+		const otherFinished = { id: '43078', status: 'finished', episodes: 12 };
+		expect(finaleCard(jojo, '46598', 'linked', TODAY, 12, otherFinished)).toBeNull();
 	});
 
 	it("carries the next entries' progress from the history", () => {
@@ -175,19 +186,27 @@ describe('finaleCard', () => {
 				fc.integer({ min: 1, max: 40 }),
 				fc.option(
 					fc.record({
+						// The player's reading of this show, or of the show
+						// the page was opened on.
+						ours: fc.boolean(),
 						status: fc.constantFrom('finished', 'current', null),
 						episodes: fc.option(fc.integer({ min: 1, max: 40 }), { nil: null })
 					}),
 					{ nil: null }
 				),
-				(franchise, order, episode, self) => {
+				(franchise, order, episode, reading) => {
 					const id = franchise.anchor;
+					const self = reading && {
+						id: reading.ours ? id : `${id}-other`,
+						status: reading.status,
+						episodes: reading.episodes
+					};
 					const card = finaleCard({ franchise, rows: [] }, id, order, TODAY, episode, self);
 					if (card === null) return;
 					const r = runOf(franchise)!;
 					const members = new Set(r.entries.map((e) => e.id));
 					expect(members.has(id)).toBe(true);
-					const own = self ?? r.entries.find((e) => e.id === id)!;
+					const own = self?.id === id ? self : r.entries.find((e) => e.id === id)!;
 					expect(isFinale(own, episode)).toBe(true);
 					for (const n of ids(card)!) {
 						expect(members.has(n)).toBe(true);
@@ -208,7 +227,7 @@ describe('finaleCard', () => {
 					const id = franchise.anchor;
 					const r = runOf(franchise);
 					if (r === null || !r.entries.some((e) => e.id === id)) return;
-					const self = { status: 'finished', episodes: 3 };
+					const self = { id, status: 'finished', episodes: 3 };
 					const card = finaleCard({ franchise, rows: [] }, id, order, TODAY, 3, self);
 					const rule = upNextFor(r, id, order, TODAY);
 					expect(card === null).toBe(rule.kind === 'none' || !franchise.complete);
