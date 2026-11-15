@@ -197,7 +197,10 @@ describe.each([
 			'the episode to be picked out'
 		);
 		// The scroll waits a frame for the tile to be laid out.
-		await new Promise((r) => setTimeout(r, 100));
+		await until(
+			() => motion.scrolls.some((s) => s.startsWith('scrollIntoView')),
+			'the strip to scroll to the episode'
+		);
 
 		expect(motion.glides).toEqual(reduced ? [] : [expect.stringContaining('scrollIntoView')]);
 	});
@@ -207,7 +210,10 @@ describe.each([
 		await until(() => tile(1) !== null, 'the first tile');
 		tile(1)!.click();
 		await until(() => target.querySelector('[role="status"] .anim') !== null, 'the loader');
-		await until(() => motion.lottie().length > 0, 'the loader animation to load');
+		await until(
+			() => motion.lottie().length > 0 && motion.settled(),
+			'the loader animation to load'
+		);
 
 		const played = motion.lottie().includes('play') || motion.lottie().includes('load:autoplay');
 		expect(played).toBe(!reduced);
