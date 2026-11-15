@@ -5,19 +5,17 @@
 //! The show page reserves room for its watch-order strip (or its lone
 //! franchise link) while the walk runs, so the strip does not push the
 //! page down when it lands. [`first_hop`] says which of the two to
-//! reserve, or that nothing is coming, by the rules the walk applies to
-//! the same listing:
-//!
-//! The first hop answers the link or nothing only where it is certain
-//! the walk will, and says the strip everywhere else:
+//! reserve, or that nothing is coming. It answers the link or nothing
+//! only where it is certain the walk will, and says the strip
+//! everywhere else:
 //!
 //! - **strip**: the show lists an anime prequel or sequel other than
 //!   itself, whatever else it lists it as; else a parent story the
 //!   walk's own parent check accepts (`franchise_walk_parents.rs`),
 //!   whose run a side story alone takes, or a listing that check reads
 //!   naming the show as its prequel or sequel: for that it reads the
-//!   show's detail and the listings of the parent stories, side
-//!   stories and spin-offs it names, as the walk does;
+//!   show's detail and the listings of the candidates the walk's parent
+//!   check reads, within the walk's bound, as the walk does;
 //! - **link**: else, any anime relation the franchise page lists beside
 //!   the show: anything but a music video, a character crossover, an
 //!   adaptation or an alternative setting;
@@ -138,8 +136,8 @@ fn names_a_possible_parent(anchor: &str, listing: &FranchiseListing) -> bool {
 /// the parent check: a parent story it names counts for nothing here.
 /// Any anime prequel or sequel is the strip, even one the show also
 /// lists as its other version, which the walk leaves out of the run
-/// (rule 3): the walk still reads that entry's listing and goes on
-/// through it, and what it finds there can join the show's run.
+/// (rule 3): the franchise's main story is still read along that
+/// entry's links, and what they reach can put the show in a run.
 fn from_own_listing(anchor: &str, listing: &FranchiseListing) -> FirstHop {
     let anime: Vec<&FranchiseRelation> = listing
         .relations

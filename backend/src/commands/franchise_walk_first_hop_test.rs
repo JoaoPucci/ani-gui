@@ -122,8 +122,6 @@ fn a_parent_story_foretells_the_strip() {
     assert_eq!(both(&c, "2"), (FirstHop::Strip, FirstHop::Strip));
 }
 
-/// The franchise page lists a film, a side story, a recap or another
-/// version beside a show with no run: the link comes alone.
 /// A side story the parent check reads, whose own listing names the
 /// show as its prequel (the show's listing does not name it back): the
 /// franchise counts that link from either side, so the walk draws the
@@ -135,6 +133,8 @@ fn a_link_named_only_by_a_listing_the_parent_check_reads_foretells_the_strip() {
     assert_eq!(both(&c, "1"), (FirstHop::Strip, FirstHop::Strip));
 }
 
+/// The franchise page lists a film, a side story, a recap or another
+/// version beside a show with no run: the link comes alone.
 #[test]
 fn a_relation_around_the_show_foretells_the_link() {
     for role in ["side_story", "summary", "alternative_version", "spinoff"] {
@@ -147,8 +147,8 @@ fn a_relation_around_the_show_foretells_the_link() {
 /// A sequel the show itself lists as its other version is left out of
 /// the run (the walk's rule 3) and lands among the versions, so here
 /// the walk draws the link. The first hop is not certain of it: the
-/// walk still reads the sequel's listing, and an entry it names that
-/// names the show back as its prequel or sequel joins the show's run
+/// franchise's main story is still read along the sequel's links, and
+/// what they reach can put the show in a run
 /// (`a_prequel_that_is_another_version_can_still_lead_to_a_run`). So
 /// the strip is reserved, and gives way to the link.
 #[test]
@@ -159,9 +159,10 @@ fn a_sequel_that_is_another_version_is_an_allowed_miss() {
     assert_eq!(both(&c, "1"), (FirstHop::Strip, FirstHop::Link));
 }
 
-/// The walk goes on through a prequel the show lists as its other
-/// version: that prequel's own prequel names the show as its prequel,
-/// and the two make a run. The show's listing names neither link.
+/// The main story is read along the links of a prequel the show lists
+/// as its other version: that prequel's own prequel names the show as
+/// its prequel, and the two make a run. The show's listing names
+/// neither link.
 #[test]
 fn a_prequel_that_is_another_version_can_still_lead_to_a_run() {
     let mut c = with(&[("1", "TV"), ("2", "TV"), ("3", "TV")]);
@@ -173,13 +174,12 @@ fn a_prequel_that_is_another_version_can_still_lead_to_a_run() {
 }
 
 /// A music video the show names as both its prequel and its other
-/// version: what the walk makes of it turns on how it treats music
-/// videos, which the show's listing alone cannot settle, so the first
-/// hop is not certain and reserves the strip. The walk draws the link
-/// (it starts the franchise at the music video and lists the show as
-/// its version), and the strip's room gives way to it.
+/// version: a prequel, so the strip is reserved, as for any prequel
+/// that is another version. The walk draws the link (it starts the
+/// franchise at the music video and lists the show as its version),
+/// and the strip's room gives way to it.
 #[test]
-fn a_music_video_prequel_that_is_another_version_foretells_the_strip() {
+fn a_music_video_prequel_that_is_another_version_is_an_allowed_miss() {
     let mut c = with(&[("1", "music"), ("2", "TV")]);
     c.rel("2", "prequel", "1")
         .rel("2", "alternative_version", "1");
@@ -187,10 +187,11 @@ fn a_music_video_prequel_that_is_another_version_foretells_the_strip() {
 }
 
 /// A parent story the show also names as its sequel and its other
-/// version: the parent check accepts it and the first hop reserves the
-/// strip, though the walk starts at the show, leaves the entry out as a
+/// version: a sequel, so the strip is reserved before any parent check,
+/// though the walk starts at the show, leaves the entry out as a
 /// version of it and draws the link. A reserved strip that turns into
-/// the link is the one wrong answer the first hop may give.
+/// the link or into nothing is the only wrong answer the first hop may
+/// give.
 #[test]
 fn a_parent_story_that_is_a_sequel_and_another_version_is_an_allowed_miss() {
     let mut c = with(&[("1", "TV"), ("2", "TV")]);
