@@ -15,6 +15,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
+import { watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -51,6 +52,16 @@ const done = () => new HttpResponse(null, { status: 204 }) as Response;
 
 let clears = 0;
 let deletes: string[] = [];
+let fetches: ReturnType<typeof watchPageFetches>;
+/** The clears and the removes the page has sent, counted as it sends
+ *  them: a handler sees a request only once MSW has carried it there,
+ *  and a second one sent beside the first may not have arrived yet. */
+const clearsSent = () =>
+	fetches.sent.filter((f) => f.method === 'DELETE' && f.path === '/api/history').length;
+const deletesSent = () =>
+	fetches.sent
+		.filter((f) => f.method === 'DELETE' && f.path.startsWith('/api/history/'))
+		.map((f) => decodeURIComponent(f.path.slice('/api/history/'.length)));
 
 function serve(answers: { clear?: Answer; remove?: Answer }) {
 	server.use(
@@ -76,6 +87,7 @@ beforeEach(() => {
 	clears = 0;
 	deletes = [];
 	unhandled = [];
+	fetches = watchPageFetches();
 	process.on('unhandledRejection', onUnhandled);
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -213,7 +225,7 @@ describe('Clear history on Home, when the clear fails', () => {
 		confirm.click();
 		release();
 		await until(() => dialog() === null, 'the dialog to close');
-		expect(clears).toBe(1);
+		expect(clearsSent()).toBe(1);
 		expect(errorToasts()).toEqual([m.home_clear_history_failed()]);
 	});
 
@@ -283,7 +295,7 @@ describe('Removing a Continue card on Home, when the remove fails', () => {
 		await settle();
 		release();
 		await until(() => dialog() === null, 'the dialog to close');
-		expect(deletes).toEqual(['allanime-1']);
+		expect(deletesSent()).toEqual(['allanime-1']);
 		expect(errorToasts()).toEqual([m.home_delete_failed({ title: TITLE })]);
 	});
 
