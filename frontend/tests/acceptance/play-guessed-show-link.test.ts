@@ -1,7 +1,8 @@
 // Acceptance: the player's links up to the show page carry the
 // guessed Continue card's row a guessed session was opened from
 // (`?guessed=<row>`), so that page can say which history title it was
-// matched from. A session opened any other way carries nothing.
+// matched from. A session no guess opened carries nothing, unless its
+// line is one the user named a show for, which it may change again.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -10,6 +11,8 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { watchPageFetches } from './page-fetches';
+import { linkBackend, linkBackendHandlers } from './link-backend';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -156,6 +159,14 @@ interface Show {
 
 function serve(show: Show) {
 	server.use(
+		// The card's line, whose guess the title matches to this show: a
+		// session it opens with no guess offers nothing to change, so
+		// the link up carries no row; a guess's would.
+		...linkBackendHandlers(linkBackend([{ ep_no: '3', id: ROW, title: TITLE }])),
+		http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json<string | null>(KITSU_ID)),
+		http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () =>
+			HttpResponse.json<string | null>(null)
+		),
 		http.get(`${API_BASE}/api/settings`, () =>
 			HttpResponse.json<Config>(appConfig(show.mode ?? 'sub'))
 		),
@@ -211,13 +222,17 @@ const ROW = 'hianime:finished-show-7';
 async function showLink(query: Record<string, string>): Promise<string> {
 	setUrl(`/play/${KITSU_ID}`, { episode: '3', ...query });
 	serve({ kitsuCount: 12, status: 'finished', providerCount: 12 });
+	const fetches = watchPageFetches();
 	app = mount(PlayPage, { target });
-	// Once the show's detail lands, so what it sets off happens on the page.
 	await until(
 		() => (target.querySelector('a.np-link')?.textContent ?? '').includes(TITLE),
 		'the now-playing link'
 	);
-	await new Promise((r) => setTimeout(r, 200));
+	// Every answer the page asked for is in, the line's check among
+	// them (for a session no guess opened, whether the link carries the
+	// row turns on what it offers), and what each set off has run up to
+	// its next request.
+	await fetches.settled('the page');
 	const link = target.querySelector('a.np-link')!.getAttribute('href') ?? '';
 	// The breadcrumb's show segment, and the up-chevron that reads it,
 	// go to the same place.

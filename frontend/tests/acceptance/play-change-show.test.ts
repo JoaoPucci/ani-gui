@@ -22,6 +22,7 @@ import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { linkBackend, linkBackendHandlers, type LinkBackend } from './link-backend';
 import { appLinkDeps } from '../../src/lib/history/link-deps';
+import { watchPageFetches } from './page-fetches';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -216,8 +217,16 @@ const button = (label: string, within: ParentNode = target) =>
 const dialog = () => target.querySelector('dialog');
 const toastWith = (message: string) => toastStore.items.find((t) => t.message === message);
 
+/** What the page asks of the network, from the last `openPlayer`. */
+let fetches: ReturnType<typeof watchPageFetches>;
+/** Every answer the page asked for is in, the line's check and a
+ *  pick's link among them, and what each set off has run up to its
+ *  next request. */
+const pageSettled = () => fetches.settled('the page');
+
 /** The player of the JoJo card's guessed session, at episode 2. */
 async function openPlayer(query: Record<string, string> = { guess: '1', row: CARD }) {
+	fetches = watchPageFetches();
 	setParams({ id: GUESS });
 	setUrl(`/play/${GUESS}`, { session: 'session-1', kind: 'mp4', episode: '2', ...query });
 	app = mount(PlayPage, { target });
@@ -309,7 +318,7 @@ describe('the slip of a guessed session', () => {
 
 	it('is not there for a session no guess opened', async () => {
 		await openPlayer({ row: CARD });
-		await settle();
+		await pageSettled();
 		expect(slip()).toBeNull();
 	});
 
@@ -353,7 +362,7 @@ describe('the ⋯ menu of a guessed session', () => {
 
 	it('has no such entry for a session no guess opened', async () => {
 		await openPlayer({ row: CARD });
-		await settle();
+		await pageSettled();
 		target
 			.querySelector<HTMLButtonElement>(`button[aria-label="${m.play_more_aria_label()}"]`)!
 			.click();
@@ -396,14 +405,14 @@ describe('the player of a line the user named a show for', () => {
 		await until(() => held, "the line's check");
 		expect(slip()).toBeNull();
 		release();
-		await settle();
+		await pageSettled();
 		expect(slip()).toBeNull();
 	});
 
 	it('offers nothing for a line a play recorded, with no naming', async () => {
 		backend.rows = backend.rows.map((r) => (r.id === CARD ? { ...r, kitsu_id: GUESS } : r));
 		await openPlayer({ row: CARD });
-		await settle();
+		await pageSettled();
 		await moreMenu();
 		expect(button(m.play_link_menu_item())).toBeNull();
 	});
@@ -684,7 +693,8 @@ describe('a player opened again on a line picked for another show', () => {
 			expect(asked.get('card_row')).toBe(CARD);
 		} finally {
 			release();
-			await new Promise((r) => setTimeout(r, 50));
+			// The released read is answered before the page goes.
+			await pageSettled();
 		}
 	});
 });
@@ -1116,7 +1126,9 @@ describe('switching to the pick', () => {
 		app = null;
 		release();
 		await until(() => backend.linkCalls.length === 1, 'the link');
-		await settle();
+		// The link's answer has reached the page, and what it set off has
+		// run: a switch would have started there.
+		await pageSettled();
 		expect(backend.rows.find((r) => r.id === CARD)?.kitsu_id).toBe(RIGHT);
 		expect(pickPlay()).toBeUndefined();
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
@@ -1216,7 +1228,7 @@ describe('Hide', () => {
 		unmount(app!);
 		app = null;
 		await openPlayer();
-		await settle();
+		await pageSettled();
 		expect(slip()).toBeNull();
 
 		// A restart forgets it.
@@ -1291,7 +1303,8 @@ describe('a handoff of a guessed session', () => {
 		button(m.play_link_menu_item())!.click();
 		await until(() => dialog()?.open === true, 'the picker');
 		await pickAndLink(RIGHT_TITLE);
-		await settle();
+		// The pick's link has answered: the handoff names it.
+		await pageSettled();
 		await handOff(m.play_external_label());
 		await until(() => handed.external.length === 1, 'the external-player request');
 		expect(handed.external[0]).toMatchObject({ guess_row: CARD, guess_id: RIGHT });
