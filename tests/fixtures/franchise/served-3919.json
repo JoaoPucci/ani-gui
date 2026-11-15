@@ -1,0 +1,342 @@
+{
+  "anchor": "3919",
+  "name": "Bakemonogatari",
+  "name_from": "3919",
+  "entries": [
+    {
+      "id": "3919",
+      "title": "Bakemonogatari",
+      "subtype": "TV",
+      "start": "2009-07-03",
+      "episodes": 15,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6546",
+      "title": "Nisemonogatari",
+      "subtype": "TV",
+      "start": "2012-01-08",
+      "episodes": 11,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7294",
+      "title": "Nekomonogatari: Kuro",
+      "subtype": "TV",
+      "start": "2012-12-31",
+      "episodes": 4,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7573",
+      "title": "Monogatari Series: Second Season",
+      "subtype": "TV",
+      "start": "2013-07-07",
+      "episodes": 26,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8032",
+      "title": "Hanamonogatari",
+      "subtype": "TV",
+      "start": "2014-08-16",
+      "episodes": 5,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "9961",
+      "title": "Tsukimonogatari",
+      "subtype": "TV",
+      "start": "2014-12-31",
+      "episodes": 4,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11182",
+      "title": "Owarimonogatari",
+      "subtype": "TV",
+      "start": "2015-10-04",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5649",
+      "title": "Kizumonogatari I: Tekketsu-hen",
+      "subtype": "movie",
+      "start": "2016-01-08",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11613",
+      "title": "Koyomimonogatari",
+      "subtype": "ONA",
+      "start": "2016-01-10",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11406",
+      "title": "Kizumonogatari II: Nekketsu-hen",
+      "subtype": "movie",
+      "start": "2016-08-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11407",
+      "title": "Kizumonogatari III: Reiketsu-hen",
+      "subtype": "movie",
+      "start": "2017-01-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "13268",
+      "title": "Owarimonogatari 2nd Season",
+      "subtype": "TV",
+      "start": "2017-08-12",
+      "episodes": 7,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "14129",
+      "title": "Zoku Owarimonogatari",
+      "subtype": "movie",
+      "start": "2018-11-10",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42279",
+      "title": "Zoku Owarimonogatari (TV)",
+      "subtype": "TV",
+      "start": "2019-05-18",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48434",
+      "title": "Monogatari Series: Off & Monster Season",
+      "subtype": "ONA",
+      "start": "2024-07-06",
+      "episodes": 14,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50013",
+      "title": "Monogatari Series: Off & Monster Season Shin Episode",
+      "subtype": "special",
+      "start": null,
+      "episodes": null,
+      "status": "tba",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "3919",
+      "5649"
+    ],
+    [
+      "3919",
+      "6546"
+    ],
+    [
+      "5649",
+      "11406"
+    ],
+    [
+      "6546",
+      "7294"
+    ],
+    [
+      "7294",
+      "7573"
+    ],
+    [
+      "7573",
+      "8032"
+    ],
+    [
+      "7573",
+      "9961"
+    ],
+    [
+      "8032",
+      "9961"
+    ],
+    [
+      "8032",
+      "14129"
+    ],
+    [
+      "9961",
+      "11182"
+    ],
+    [
+      "9961",
+      "11613"
+    ],
+    [
+      "11182",
+      "11613"
+    ],
+    [
+      "11182",
+      "13268"
+    ],
+    [
+      "11406",
+      "11407"
+    ],
+    [
+      "11407",
+      "6546"
+    ],
+    [
+      "11407",
+      "13268"
+    ],
+    [
+      "11613",
+      "5649"
+    ],
+    [
+      "11613",
+      "13268"
+    ],
+    [
+      "13268",
+      "42279"
+    ],
+    [
+      "42279",
+      "48434"
+    ],
+    [
+      "48434",
+      "50013"
+    ]
+  ],
+  "versions": [],
+  "films": [
+    {
+      "id": "8477",
+      "title": "Mahou Shoujo Madoka★Magica Movie 3: Hangyaku no Monogatari - Magica Quartet x Nisioisin",
+      "subtype": "movie",
+      "start": "2013-10-26",
+      "episodes": 4,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48919",
+      "title": "Minna to Manner wo Manabou",
+      "subtype": "movie",
+      "start": "2016-02-09",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47927",
+      "title": "Kizumonogatari: Koyomi Vamp",
+      "subtype": "movie",
+      "start": "2024-01-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "11291",
+      "title": "Okitegami Kyouko no Bibouroku x Monogatari",
+      "subtype": "ONA",
+      "start": "2014-12-31",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "10802",
+      "title": "Nisekoimonogatari",
+      "subtype": "ONA",
+      "start": "2015-04-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49128",
+      "title": "MONOGATARI Series: OFF & MONSTER Season - A Cruel Fairy Tale: The Beautiful Princess",
+      "subtype": "special",
+      "start": "2024-08-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [
+    {
+      "id": "4800",
+      "title": "Bakemonogatari Recap",
+      "subtype": "special",
+      "start": "2009-08-07",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48484",
+      "title": "Nekomonogatari: Kuro Recap",
+      "subtype": "special",
+      "start": "2013-03-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "parents": {},
+  "complete": true
+}

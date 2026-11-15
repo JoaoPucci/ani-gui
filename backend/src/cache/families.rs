@@ -110,6 +110,9 @@ pub(crate) const ANILIST_TRENDING: &str = "kitsu:v6:trending_anilist";
 pub(crate) const KITSU_EPISODES: &str = "kitsu:episodes:";
 /// A Kitsu entry's relations.
 pub(crate) const KITSU_RELATIONS: &str = "kitsu:relations:v3:";
+/// A Kitsu entry's relations as the franchise walk reads them: every
+/// page, with titles and artwork.
+pub(crate) const KITSU_FRANCHISE_RELATIONS: &str = "kitsu:franchise-rel:v1:";
 /// A Kitsu entry looked up by its slug.
 pub(crate) const KITSU_ANIME_SLUG: &str = "kitsu:v2:anime-slug:";
 /// A Kitsu entry's detail.
@@ -193,6 +196,7 @@ pub fn live() -> Vec<Family> {
     let mut families: Vec<Family> = [
         KITSU_EPISODES,
         KITSU_RELATIONS,
+        KITSU_FRANCHISE_RELATIONS,
         KITSU_ANIME_SLUG,
         KITSU_ANIME,
         KITSU_SEARCH,

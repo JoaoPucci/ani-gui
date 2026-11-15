@@ -528,6 +528,10 @@ export interface Config {
 	 *  (UI falls back to AniList-first). Drives the topbar chip + the
 	 *  Watch Later rail order, not write-back (which fans to all). */
 	primary_account: string;
+	/** The order franchise surfaces show a run in: the order Kitsu's
+	 *  prequel and sequel links give (the default) or start dates. The
+	 *  backend reads an unknown stored value as `'linked'`. */
+	watch_order: 'linked' | 'released';
 }
 
 /** Single-size thumbnail Kitsu exposes for episodes (no tiny/small variants). */
@@ -1426,6 +1430,87 @@ export function airingGet(
 	return getJson<AiringStatus>(`/api/kitsu/airing/${encodeURIComponent(kitsuId)}${qs}`, {
 		signal: opts.signal
 	});
+}
+
+/** One entry of a franchise, as `GET /api/kitsu/franchise/:id`
+ *  serves it (backend `meta::kitsu::FranchiseEntry`). */
+export interface FranchiseEntry {
+	id: string;
+	/** Kitsu's canonical title. */
+	title: string;
+	/** Kitsu's subtype as served (`TV`, `movie`, `OVA`, `ONA`,
+	 *  `special`, …), or null when Kitsu has none. */
+	subtype: string | null;
+	/** `YYYY-MM-DD`, or null. */
+	start: string | null;
+	episodes: number | null;
+	status: string | null;
+	/** The poster's medium size, else small, else the original. */
+	poster: string | null;
+	/** The cover's large size, else the original. */
+	cover: string | null;
+}
+
+/** The franchise around an anime (backend
+ *  `commands::franchise_walk::Franchise`). Every list but `entries` is
+ *  sorted by start (unknown last), then numeric id; an id appears in
+ *  one list at most. The backend's walk decides the name; ordering,
+ *  positions and layout are the frontend's to compute. */
+export interface Franchise {
+	/** The id asked about. */
+	anchor: string;
+	/** The franchise's name: the title of the main story's first series
+	 *  by start, else of its first entry, without Kitsu's format suffix
+	 *  where nothing else in the franchise would then read the same. */
+	name: string;
+	/** The main-story entry the name comes from: the franchise page's
+	 *  artwork and the front card of the strip's poster stack. */
+	name_from: string;
+	/** The main story: start order, then numeric id. The anchor is
+	 *  among them unless it is a side story, or an entry the main story
+	 *  leaves out, listed around it (and then, mostly, on its `chain`). */
+	entries: FranchiseEntry[];
+	/** Prequel → sequel pairs between two run members. */
+	links: [string, string][];
+	/** Other versions of the run's entries. */
+	versions: FranchiseEntry[];
+	/** Films around the run. */
+	films: FranchiseEntry[];
+	/** Side stories, spin-offs and the rest around the run. */
+	sides: FranchiseEntry[];
+	/** Recaps. */
+	recaps: FranchiseEntry[];
+	/** A side-story anchor outside any run → its parent stories in the
+	 *  run, or, where the main story leaves them all out, in its
+	 *  `chain`, in start order. Empty otherwise. */
+	parents: Record<string, string[]>;
+	/** False when the walk stopped at its bound or a listing was cut
+	 *  short. */
+	complete: boolean;
+	/** The page's own chain, when the main story leaves the page out,
+	 *  or the chain a side story whose parents it leaves out is drawn on
+	 *  (its earliest parent's); absent otherwise. */
+	chain?: FranchiseChain;
+}
+
+/** A chain outside the main story (backend
+ *  `commands::franchise_walk::Chain`): the franchise's entries outside
+ *  it joined by prequel and sequel links to the page (or, for a side
+ *  story, to its parent), and the main-story titles one of them is
+ *  linked to, its seams. */
+export interface FranchiseChain {
+	/** Its own titles and its seams: start order, then numeric id. */
+	entries: FranchiseEntry[];
+	/** Prequel → sequel pairs between two of its entries. */
+	links: [string, string][];
+	/** The ids of `entries` that are main-story titles. */
+	seams: string[];
+}
+
+/** The franchise around `kitsuId`: the run it belongs to and what sits
+ *  around it. */
+export function kitsuFranchise(kitsuId: string): Promise<Franchise> {
+	return getJson<Franchise>(`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}`);
 }
 
 export function kitsuTopRated(opts: ReadOptions = {}): Promise<KitsuAnimeRef[]> {

@@ -62,6 +62,9 @@ import {
 	type DownloadProgress,
 	type DownloadResponse,
 	type ExternalPlayerKind,
+	type Franchise,
+	type FranchiseChain,
+	type FranchiseEntry,
 	type GuessRuledOutBody,
 	type HistoryEntry,
 	type HistoryNumber,
@@ -420,6 +423,35 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		episode: 'number',
 		airing_at: 'number'
 	} satisfies Spec<UpcomingEpisode>,
+	Franchise: {
+		anchor: 'string',
+		name: 'string',
+		name_from: 'string',
+		entries: 'object[]',
+		links: 'array[]',
+		versions: 'object[]',
+		films: 'object[]',
+		sides: 'object[]',
+		recaps: 'object[]',
+		parents: 'object',
+		complete: 'boolean',
+		chain: '?object'
+	} satisfies Spec<Franchise>,
+	FranchiseChain: {
+		entries: 'object[]',
+		links: 'array[]',
+		seams: 'string[]'
+	} satisfies Spec<FranchiseChain>,
+	FranchiseEntry: {
+		id: 'string',
+		title: 'string',
+		subtype: 'string|null',
+		start: 'string|null',
+		episodes: 'number|null',
+		status: 'string|null',
+		poster: 'string|null',
+		cover: 'string|null'
+	} satisfies Spec<FranchiseEntry>,
 	Config: {
 		locale: 'string',
 		mode: 'string',
@@ -436,7 +468,8 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		auto_skip_ed: 'boolean',
 		use_custom_player_controls: 'boolean',
 		update_include_prereleases: 'boolean',
-		primary_account: 'string'
+		primary_account: 'string',
+		watch_order: 'string'
 	} satisfies Spec<Config>,
 	'ProgressLine.searching': {
 		kind: 'string',
@@ -588,7 +621,8 @@ const REQUESTS: Record<string, { spec: Record<string, string>; unsent?: string[]
 			auto_skip_ed: 'required',
 			use_custom_player_controls: 'required',
 			update_include_prereleases: 'required',
-			primary_account: 'required'
+			primary_account: 'required',
+			watch_order: 'required'
 		} satisfies BodySpec<Config>
 	},
 	RuledOutRequest: {

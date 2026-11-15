@@ -1,0 +1,106 @@
+{
+  "anchor": "841",
+  "name": "Top wo Nerae! Gunbuster",
+  "name_from": "841",
+  "entries": [
+    {
+      "id": "841",
+      "title": "Top wo Nerae! Gunbuster",
+      "subtype": "OVA",
+      "start": "1988-10-07",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "892",
+      "title": "Top wo Nerae 2! Diebuster",
+      "subtype": "OVA",
+      "start": "2004-10-03",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42716",
+      "title": "Top wo Nerae 3!",
+      "subtype": "OVA",
+      "start": null,
+      "episodes": null,
+      "status": "tba",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "841",
+      "892"
+    ],
+    [
+      "892",
+      "42716"
+    ]
+  ],
+  "versions": [],
+  "films": [
+    {
+      "id": "1721",
+      "title": "Top wo Nerae! & Top wo Nerae 2! Gattai Movie!!",
+      "subtype": "movie",
+      "start": "2006-10-01",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "4911",
+      "title": "Top wo Nerae! Gunbuster Specials",
+      "subtype": "special",
+      "start": "2000-11-25",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8897",
+      "title": "Top wo Nerae 2! Kagaku Kouza",
+      "subtype": "special",
+      "start": "2012-06-22",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [
+    {
+      "id": "4108",
+      "title": "Top wo Nerae! Kagaku Kouza",
+      "subtype": "special",
+      "start": "1988-10-07",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8893",
+      "title": "Kaette Kita Top wo Nerae! Kagaku Kouza",
+      "subtype": "special",
+      "start": "2012-02-24",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "parents": {},
+  "complete": true
+}

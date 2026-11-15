@@ -1,0 +1,39 @@
+{
+  "anchor": "184",
+  "name": "R.O.D OVA",
+  "name_from": "184",
+  "entries": [
+    {
+      "id": "184",
+      "title": "R.O.D OVA",
+      "subtype": "OVA",
+      "start": "2001-05-23",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "185",
+      "title": "R.O.D the TV",
+      "subtype": "TV",
+      "start": "2003-09-01",
+      "episodes": 26,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "184",
+      "185"
+    ]
+  ],
+  "versions": [],
+  "films": [],
+  "sides": [],
+  "recaps": [],
+  "parents": {},
+  "complete": true
+}

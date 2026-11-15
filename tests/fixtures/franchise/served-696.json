@@ -1,0 +1,642 @@
+{
+  "anchor": "696",
+  "name": "Detective Conan",
+  "name_from": "210",
+  "entries": [
+    {
+      "id": "210",
+      "title": "Detective Conan",
+      "subtype": "TV",
+      "start": "1996-01-08",
+      "episodes": null,
+      "status": "current",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [],
+  "versions": [
+    {
+      "id": "12730",
+      "title": "Detective Conan: Episode One - Chiisaku Natta Meitantei",
+      "subtype": "special",
+      "start": "2016-12-09",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "films": [
+    {
+      "id": "696",
+      "title": "Detective Conan Movie 01: The Timed Skyscraper",
+      "subtype": "movie",
+      "start": "1997-04-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "697",
+      "title": "Detective Conan Movie 02: The Fourteenth Target",
+      "subtype": "movie",
+      "start": "1998-04-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "698",
+      "title": "Detective Conan Movie 03: The Last Wizard of the Century",
+      "subtype": "movie",
+      "start": "1999-04-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1217",
+      "title": "Case Closed Movie 4: Captured In Her Eyes",
+      "subtype": "movie",
+      "start": "2000-04-22",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1218",
+      "title": "Case Closed Movie 5: Countdown to Heaven",
+      "subtype": "movie",
+      "start": "2001-04-21",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1219",
+      "title": "Case Closed: The Phantom of Baker Street",
+      "subtype": "movie",
+      "start": "2002-04-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1220",
+      "title": "Detective Conan Movie 07: Crossroad in the Ancient Capital",
+      "subtype": "movie",
+      "start": "2003-04-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1221",
+      "title": "Detective Conan Movie 08: Magician of the Silver Sky",
+      "subtype": "movie",
+      "start": "2004-04-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1351",
+      "title": "Detective Conan Movie 09: Strategy Above the Depths",
+      "subtype": "movie",
+      "start": "2005-04-09",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5866",
+      "title": "Detective Conan: Conan vs. Kid - Shark & Jewel",
+      "subtype": "movie",
+      "start": "2005-07-29",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1352",
+      "title": "Detective Conan Movie 10: Requiem of the Detectives",
+      "subtype": "movie",
+      "start": "2006-04-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5867",
+      "title": "Detective Conan: Conan vs. Kid - Jet Black Sniper",
+      "subtype": "movie",
+      "start": "2006-07-28",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1966",
+      "title": "Detective Conan Movie 11: Jolly Roger in the Deep Azure",
+      "subtype": "movie",
+      "start": "2007-04-21",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3612",
+      "title": "Detective Conan Movie 12: Full Score of Fear",
+      "subtype": "movie",
+      "start": "2008-04-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4107",
+      "title": "Detective Conan: The Jet Black Chaser",
+      "subtype": "movie",
+      "start": "2009-04-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4572",
+      "title": "Detective Conan Movie 14: The Lost Ship in the Sky",
+      "subtype": "movie",
+      "start": "2010-04-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5967",
+      "title": "Detective Conan Movie 15: Quarter of Silence",
+      "subtype": "movie",
+      "start": "2011-04-16",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "14121",
+      "title": "Detective Conan: The Magician of Starlight",
+      "subtype": "movie",
+      "start": "2012-01-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6666",
+      "title": "Detective Conan Movie 16: The Eleventh Striker",
+      "subtype": "movie",
+      "start": "2012-04-14",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7159",
+      "title": "Detective Conan Movie 17: Private Eye in the Distant Sea",
+      "subtype": "movie",
+      "start": "2013-04-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8186",
+      "title": "Detective Conan Movie 18: The Sniper from Another Dimension",
+      "subtype": "movie",
+      "start": "2014-04-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "10030",
+      "title": "Detective Conan: The Sunflowers of Inferno",
+      "subtype": "movie",
+      "start": "2015-04-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11497",
+      "title": "Detective Conan Movie 20: The Darkest Nightmare",
+      "subtype": "movie",
+      "start": "2016-04-16",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "44243",
+      "title": "Detective Conan: The Scarlet Alibi",
+      "subtype": "movie",
+      "start": "2021-02-11",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "43686",
+      "title": "Meitantei Conan: Hiiro no Dangan",
+      "subtype": "movie",
+      "start": "2021-04-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "47435",
+      "title": "Meitantei Conan: Kurogane no Submarine",
+      "subtype": "movie",
+      "start": "2023-04-14",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48018",
+      "title": "Meitantei Conan: 100-man Dol no Michishirube",
+      "subtype": "movie",
+      "start": "2024-04-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49539",
+      "title": "Meitantei Conan: Sekigan no Flashback",
+      "subtype": "movie",
+      "start": "2025-04-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50660",
+      "title": "Meitantei Conan Movie 29: Highway no Datenshi",
+      "subtype": "movie",
+      "start": "2026-04-10",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50999",
+      "title": "Meitantei Conan: 30-gou Satsujin Jiken",
+      "subtype": "movie",
+      "start": "2026-09-25",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "47378",
+      "title": "Detective Conan: TDK Video Head Cleaner",
+      "subtype": "special",
+      "start": "1996-01-01",
+      "episodes": 5,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4178",
+      "title": "Gosho Aoyama's Collection of Short Stories",
+      "subtype": "special",
+      "start": "1999-03-17",
+      "episodes": 7,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1223",
+      "title": "Detective Conan OVA 01: Conan vs. Kid vs. Yaiba",
+      "subtype": "OVA",
+      "start": "2000-01-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12925",
+      "title": "Detective Conan - A Written Challenge from the Pyramids!",
+      "subtype": "OVA",
+      "start": "2001-06-22",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12562",
+      "title": "Detective Conan: Chase the Mysterious Comet Monster!",
+      "subtype": "OVA",
+      "start": "2001-11-09",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "2278",
+      "title": "Detective Conan OVA 02: 16 Suspects",
+      "subtype": "OVA",
+      "start": "2002-01-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "2279",
+      "title": "Detective Conan OVA 03: Conan and Heiji and the Vanished Boy",
+      "subtype": "OVA",
+      "start": "2003-01-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "2280",
+      "title": "Detective Conan OVA 04: Conan and Kid and Crystal Mother",
+      "subtype": "OVA",
+      "start": "2004-01-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "2281",
+      "title": "Detective Conan OVA 05: The Target is Kogoro! The Detective Boys' Secret Investigation",
+      "subtype": "OVA",
+      "start": "2005-01-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "13791",
+      "title": "Detective Conan: Anti-Crime Guide",
+      "subtype": "OVA",
+      "start": "2006-01-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1222",
+      "title": "Detective Conan OVA 06: Follow the Vanished Diamond! Conan & Heiji vs. Kid!",
+      "subtype": "OVA",
+      "start": "2006-03-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "2361",
+      "title": "Detective Conan OVA 07: A Challenge from Agasa! Agasa vs. Conan and the Detective Boys",
+      "subtype": "OVA",
+      "start": "2007-03-13",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4469",
+      "title": "Detective Conan OVA 08: High School Girl Detective Sonoko Suzuki's Case Files",
+      "subtype": "OVA",
+      "start": "2008-01-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4068",
+      "title": "Detective Conan Magic File 2: Kudou Shinichi - The Case of the Mysterious Wall and the Black Lab",
+      "subtype": "OVA",
+      "start": "2008-04-19",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4431",
+      "title": "Lupin III vs. Detective Conan",
+      "subtype": "special",
+      "start": "2009-03-27",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4487",
+      "title": "Detective Conan Magic File 3: Shinichi and Ran - Memories of Mahjong Tiles and Tanabata",
+      "subtype": "OVA",
+      "start": "2009-04-18",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4562",
+      "title": "Detective Conan OVA 09: The Stranger in 10 Years...",
+      "subtype": "OVA",
+      "start": "2009-06-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5402",
+      "title": "Detective Conan OVA 10: Kid in Trap Island",
+      "subtype": "OVA",
+      "start": "2010-04-14",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5294",
+      "title": "Detective Conan Magic File 4: Osaka Okonomiyaki Odyssey",
+      "subtype": "OVA",
+      "start": "2010-04-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6226",
+      "title": "Detective Conan Magic File 5: Niigata - Tokyo Omiyage Capriccio",
+      "subtype": "OVA",
+      "start": "2011-04-16",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6341",
+      "title": "Detective Conan vs. Wooo",
+      "subtype": "ONA",
+      "start": "2011-04-22",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6304",
+      "title": "Detective Conan OVA 11: A Secret Order from London",
+      "subtype": "OVA",
+      "start": "2011-05-30",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7044",
+      "title": "Detective Conan Bonus File: Fantasista Flower",
+      "subtype": "OVA",
+      "start": "2012-04-14",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7045",
+      "title": "Detective Conan OVA 12: The Miracle of Excalibur",
+      "subtype": "OVA",
+      "start": "2012-05-24",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8826",
+      "title": "Detective Conan: The Fugitive Kogorou Mouri",
+      "subtype": "ONA",
+      "start": "2014-04-30",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8179",
+      "title": "The Disappearance of Conan Edogawa: The Worst Two Days in History",
+      "subtype": "special",
+      "start": "2014-12-26",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "45282",
+      "title": "Meitantei Conan: Hannin no Hanzawa-san",
+      "subtype": "TV",
+      "start": "2022-10-03",
+      "episodes": 12,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "50796",
+      "title": "Meitantei Conan: Hanamaru na Answer",
+      "subtype": "special",
+      "start": "2026-06-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [
+    {
+      "id": "4933",
+      "title": "Detective Conan: Black History",
+      "subtype": "special",
+      "start": "2007-12-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5897",
+      "title": "Detective Conan: Black History 2",
+      "subtype": "special",
+      "start": "2007-12-17",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "parents": {
+    "696": [
+      "210"
+    ]
+  },
+  "complete": true
+}
