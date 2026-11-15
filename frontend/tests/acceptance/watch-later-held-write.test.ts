@@ -193,6 +193,15 @@ async function settle(steps = 40) {
 	for (let i = 0; i < steps; i++) await new Promise((r) => setTimeout(r, 5));
 }
 
+async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (predicate()) return;
+		await new Promise((r) => setTimeout(r, 10));
+	}
+	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
+}
+
 /** The Watch Later row's Refresh action, found by the name it shows. */
 const refreshAction = () =>
 	Array.from(target.querySelectorAll<HTMLButtonElement>('.strip-header button')).find(
@@ -575,7 +584,10 @@ describe.each([
 			app = mount(HomePage, { target });
 			await settle();
 			await pending;
-			await settle();
+			await until(
+				() => railTitles().length === 2 && motion.settled(),
+				'the new card, and the motion it came in with'
+			);
 			expect(railTitles()).toEqual([NEW.title, ALREADY.title]);
 
 			if (reduced) expect(motion.animations).toEqual([]);

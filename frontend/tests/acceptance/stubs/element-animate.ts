@@ -35,6 +35,22 @@ interface FakeAnimation {
  *  the ones `animate()` actually started rather than a blank list. */
 const live = new WeakMap<Element, Set<FakeAnimation>>();
 
+/** Animations started and not yet finished or cancelled, on any
+ *  element. */
+let inFlight = 0;
+
+/**
+ * How many animations are running anywhere right now. A Svelte
+ * transition starts a placeholder for its delay inside the update that
+ * changed the DOM, and the animation that carries its time only when
+ * that placeholder finishes, a task later. So a scenario that sees the
+ * DOM change has not yet seen the motion it caused: it has, once this
+ * reads zero. ../motion.ts reads it as `settled()`.
+ */
+export function animationsInFlight(): number {
+	return inFlight;
+}
+
 export function installElementAnimateStub(): void {
 	if (typeof Element === 'undefined') return;
 	const proto = Element.prototype as unknown as Record<string, unknown>;
@@ -71,12 +87,14 @@ export function installElementAnimateStub(): void {
 			cancel() {
 				if (done) return;
 				done = true;
+				inFlight--;
 				running.delete(animation);
 				animation.oncancel?.();
 			},
 			finish() {
 				if (done) return;
 				done = true;
+				inFlight--;
 				running.delete(animation);
 				animation.onfinish?.();
 			},
@@ -86,6 +104,7 @@ export function installElementAnimateStub(): void {
 			persist() {}
 		};
 		running.add(animation);
+		inFlight++;
 		// Settle on a macrotask rather than instantly: Svelte assigns
 		// `onfinish` after `animate()` returns, so finishing inline
 		// would call a handler that does not exist yet and leave the
