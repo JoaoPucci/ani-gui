@@ -80,21 +80,29 @@ fn music(subtype: Option<&str>) -> bool {
 
 /// The `known` listings as the walk reads them from `anchor`: no music
 /// video related in any, and, where `anchor` is a music video itself
-/// (by `cat`), nothing related in its own. Properties that check the
-/// walk against their own reading of the listings read them this way.
+/// (by `cat`), its own listing alone, relating nothing (the walk never
+/// reads a music video's listing). Properties that check the walk
+/// against their own reading of the listings read them this way.
 pub(super) fn read_without_music(
     cat: &Catalogue,
     anchor: &str,
     known: &BTreeMap<String, FranchiseListing>,
 ) -> BTreeMap<String, FranchiseListing> {
     let alone = music(cat.entries[anchor].subtype.as_deref());
+    if alone {
+        let nothing = FranchiseListing {
+            relations: Vec::new(),
+            complete: true,
+        };
+        return BTreeMap::from([(anchor.to_string(), nothing)]);
+    }
     known
         .iter()
         .map(|(id, l)| {
             let relations = l
                 .relations
                 .iter()
-                .filter(|r| !(music(r.subtype.as_deref()) || (alone && id == anchor)))
+                .filter(|r| !music(r.subtype.as_deref()))
                 .cloned()
                 .collect();
             let listing = FranchiseListing {
@@ -703,4 +711,54 @@ fn a_music_video_answers_alone() {
     for s in [&f.versions, &f.films, &f.sides, &f.recaps] {
         assert!(s.is_empty(), "{:?}", ids(s));
     }
+}
+
+/// A music video's page is answered from its detail alone: the walk
+/// asks for the detail before the listing, and does not read the
+/// listing of a music video, whose page relates to nothing. The answer
+/// is complete, whatever Kitsu's listing holds.
+#[test]
+fn a_music_videos_page_reads_no_listing() {
+    let mut c = Catalogue::default();
+    c.add("95301", "music", Some("2001-01-01"))
+        .add("95302", "TV", Some("2000-01-01"));
+    c.rel("95301", "side_story", "95302");
+    let none = BTreeMap::new();
+    let asked = plan("95301", &none, &BTreeMap::new());
+    assert_eq!(
+        asked,
+        Plan::Need {
+            listings: Vec::new(),
+            details: vec!["95301".to_string()],
+        }
+    );
+    let details = BTreeMap::from([("95301".to_string(), c.entries["95301"].clone())]);
+    let Plan::Done(f) = plan("95301", &none, &details) else {
+        panic!("the music video's page asked for more");
+    };
+    assert_eq!(ids(&f.entries), ["95301"]);
+    assert!(f.complete);
+}
+
+/// Any other page reads its detail first, then its listing.
+#[test]
+fn a_page_reads_its_detail_then_its_listing() {
+    let mut c = Catalogue::default();
+    c.add("95401", "TV", Some("2000-01-01"));
+    let none = BTreeMap::new();
+    assert_eq!(
+        plan("95401", &none, &BTreeMap::new()),
+        Plan::Need {
+            listings: Vec::new(),
+            details: vec!["95401".to_string()],
+        }
+    );
+    let details = BTreeMap::from([("95401".to_string(), c.entries["95401"].clone())]);
+    assert_eq!(
+        plan("95401", &none, &details),
+        Plan::Need {
+            listings: vec!["95401".to_string()],
+            details: Vec::new(),
+        }
+    );
 }
