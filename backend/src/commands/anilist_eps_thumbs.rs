@@ -12,6 +12,7 @@
 use crate::app::AppState;
 use crate::cache::ttl::{ANILIST_STREAMING_EPS_NO_IDS_TTL, ANILIST_STREAMING_EPS_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
+use crate::error::AniError;
 use crate::meta::anilist_streaming_eps::StreamingListing;
 use crate::meta::kitsu::{KitsuEpisode, KitsuEpisodeThumbnail};
 
@@ -79,13 +80,26 @@ pub(crate) async fn thumbs_for_show_with_anilist_base(
         std::ptr::from_ref(state),
         anilist_base.unwrap_or("")
     );
-    let listing = THUMBS_IN_FLIGHT
+    let (listing, held) = THUMBS_IN_FLIGHT
         .run(shared, || {
             thumbs_for_show_once(state, kitsu_id, anilist_base)
         })
         .await;
-    // A caller that took a copy of a held-back lookup waits on its
-    // retry as the one that ran it does.
+    if let Some(e) = &held {
+        // Each caller sharing the lookup acts on a listing held back on
+        // it in its own task: whichever ran the lookup, a page that
+        // asked is queued a retry, or joins it, and notes its ticket; a
+        // lookup no page asked for queues nothing (`held_fill`).
+        crate::commands::held_fill::on_unanswered(
+            state,
+            crate::commands::held_fill::Fill::Thumbs,
+            kitsu_id,
+            anilist_base,
+            e,
+        );
+    }
+    // A page served while the show's retry is pending waits on it too,
+    // whatever its own lookup met.
     crate::commands::held_fill::note_pending(
         state,
         crate::commands::held_fill::Fill::Thumbs,
@@ -96,31 +110,37 @@ pub(crate) async fn thumbs_for_show_with_anilist_base(
 }
 
 /// The thumbnail lookups in flight, by show.
-static THUMBS_IN_FLIGHT: std::sync::LazyLock<crate::meta::inflight::Inflight<StreamingListing>> =
+static THUMBS_IN_FLIGHT: std::sync::LazyLock<crate::meta::inflight::Inflight<Looked>> =
     std::sync::LazyLock::new(Default::default);
 
-/// One read-through of the show's thumbnail listing.
+/// What [`thumbs_for_show_once`] answers: the listing, and AniList's
+/// failure when the lookup got no answer from it.
+type Looked = (StreamingListing, Option<AniError>);
+
+/// One read-through of the show's thumbnail listing, with AniList's
+/// failure when it got no answer, for each caller sharing it to act on.
 async fn thumbs_for_show_once(
     state: &AppState,
     kitsu_id: &str,
     anilist_base: Option<&str>,
-) -> StreamingListing {
+) -> Looked {
     let key = anilist_eps_thumbs_key(kitsu_id);
     if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
         if let Ok(listing) = serde_json::from_str::<StreamingListing>(&body) {
-            return listing;
+            return (listing, None);
         }
     }
     match fetch_anilist_eps_thumbs(state, kitsu_id, anilist_base).await {
         // A step that got no answer says nothing about the show:
         // nothing is kept. A lookup the gate held back is retried once
-        // the pause ends (`held_fill`); otherwise the next view asks
-        // again.
-        Err(Miss::Unanswered) => StreamingListing::default(),
+        // the pause ends, for each page sharing it
+        // (`thumbs_for_show_with_anilist_base`); otherwise the next view
+        // asks again.
+        Err(Miss::Unanswered(held)) => (StreamingListing::default(), held),
         outcome => {
             let outcome = outcome.map_err(|_| ());
             cache_anilist_eps_thumbs(&state.cache_pool, kitsu_id, &outcome);
-            outcome.unwrap_or_default()
+            (outcome.unwrap_or_default(), None)
         }
     }
 }
