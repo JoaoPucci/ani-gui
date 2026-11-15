@@ -59,9 +59,10 @@ export interface FinaleCard {
  * settled (`order` null), `id` outside the run, or nothing after it.
  * `self` is the player's own reading of the entry; without one, or
  * with one read for another show (the page reused for a new show
- * before its detail is read again), the run's entry decides the finale. An entry outside the main story is
- * read on its own chain, as its strip draws it, so the card names the
- * chain's next title, or the main-story title the chain leads into.
+ * before its detail is read again), the run's entry decides the
+ * finale. An entry outside the main story is read on its own chain, as
+ * its strip draws it, so the card names the chain's next title, or the
+ * main-story title the chain leads into.
  */
 export function finaleCard(
 	data: WatchOrderData | null,
