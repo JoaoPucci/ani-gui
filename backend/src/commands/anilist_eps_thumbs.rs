@@ -73,8 +73,10 @@ pub(crate) async fn thumbs_for_show_with_anilist_base(
 ) -> StreamingListing {
     // Two views filling the same show at once — the episode page and a
     // Continue Watching card — share one lookup: one read of Kitsu's
-    // mappings, one AniList request. Keyed by the app state as well, so
-    // two states (tests) never share.
+    // mappings, one AniList request. Keyed by the app state as well:
+    // the routes share the app's one state, while two states (two tests,
+    // or a held-fill retry's clone of the state) never share, so a retry
+    // always runs a lookup of its own.
     let shared = format!(
         "{:p}\u{0}{}\u{0}{kitsu_id}",
         std::ptr::from_ref(state),

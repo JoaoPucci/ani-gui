@@ -127,8 +127,8 @@ fn url(anilist_base: Option<&str>) -> &str {
 
 /// The request being served joins `fill`'s pending retry, if it has
 /// one, whatever its own read met: a page served while a retry of the
-/// show is still out waits on it. (A read sharing a held-back lookup
-/// joins through [`on_unanswered`], as the one that ran it does.)
+/// show is still out waits on it. (A page's read sharing a held-back
+/// lookup is queued its retry, or joins it, through [`on_unanswered`].)
 pub(crate) fn note_pending(
     state: &AppState,
     fill: Fill,
