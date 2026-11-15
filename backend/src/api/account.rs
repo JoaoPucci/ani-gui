@@ -158,7 +158,8 @@ async fn post_auth_url(
 
 /// Push watch progress/status to a connected tracker. Returns the
 /// upserted entry, or `null` when the show couldn't be mapped to the
-/// provider (the renderer treats `null` as a no-op, not an error).
+/// provider or the tracker no longer has the entry it maps to (the
+/// renderer treats `null` as a no-op, not an error).
 async fn post_update(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
@@ -181,7 +182,8 @@ async fn post_update(
 /// Explicit detail-page list edit: write the user's deliberate status /
 /// progress to the tracker verbatim (no monotonic guard — they can
 /// correct an over-count downward). Returns the upserted entry, or
-/// `null` when the show couldn't be mapped to the provider.
+/// `null` when the show couldn't be mapped to the provider or the
+/// tracker no longer has the entry it maps to (nothing was written).
 async fn post_set(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
@@ -242,7 +244,8 @@ fn remove_entry_status(removed: bool) -> StatusCode {
 
 /// Remove a show from the user's tracker list (editor "Remove").
 /// Idempotent: 204 whether or not a row existed, as long as the show maps
-/// to the provider; 404 when it doesn't (see [`remove_entry_status`]).
+/// to an entry the tracker has; 404 when it doesn't (see
+/// [`remove_entry_status`]).
 async fn delete_entry(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,

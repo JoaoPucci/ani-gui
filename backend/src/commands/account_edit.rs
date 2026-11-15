@@ -189,10 +189,10 @@ async fn remove_entry_via(
     };
     let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
     // The title may already be gone upstream (double-click Remove, or
-    // removed in another client). Providers signal that differently —
-    // MAL returns Upstream{404}, AniList fails the row-id lookup with a
-    // parse error — so don't match
-    // on a status. Instead, on ANY delete error, confirm with a live
+    // removed in another client). The delete's failure does not say
+    // which: MAL answers 404 for a row not on the list, and AniList's
+    // row-id lookup fails before any delete is sent — so don't match on
+    // it. Instead, on ANY delete error, confirm with a live
     // read: if the show is no longer on the list the delete's goal is
     // already met (idempotent success, still drop the cache row); a
     // still-present show means the failure is real and propagates. A
