@@ -180,9 +180,10 @@ pub struct StreamSession {
 }
 
 impl StreamSession {
-    /// Build a session with an explicit [`MediaKind`]. Use this when
-    /// the caller has classified the upstream by HEAD response or
-    /// other side-channel signal.
+    /// Build a session of `media_kind`, which its opener names — HLS
+    /// for a resolve's validated master and for a download's relay
+    /// ([`Self::background`]), the stored kind for a replayed cache
+    /// row. Nothing reads the kind off the URL.
     #[must_use]
     pub fn new_with_kind(
         upstream_url: url::Url,
