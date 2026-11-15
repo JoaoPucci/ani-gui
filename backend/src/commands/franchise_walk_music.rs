@@ -12,8 +12,8 @@
 //! as if Kitsu had not related them, and walks through none: two
 //! seasons linked only through a music video are not joined, since a
 //! story link between them is one Kitsu lists between them. A music
-//! video's own page relates to nothing: the walk reads its detail
-//! first, never its listing, and answers with the music video alone.
+//! video's own page relates to nothing: once its detail is read, the
+//! walk answers with the music video alone.
 
 use std::collections::BTreeMap;
 
@@ -22,6 +22,11 @@ use crate::meta::kitsu::{FranchiseEntry, FranchiseListing, FranchiseRelation};
 /// Whether a Kitsu `subtype` is a music video's.
 fn is_music(subtype: Option<&str>) -> bool {
     subtype.is_some_and(|s| s.eq_ignore_ascii_case("music"))
+}
+
+/// Whether `entry` is a music video.
+pub(crate) fn is_music_entry(entry: &FranchiseEntry) -> bool {
+    is_music(entry.subtype.as_deref())
 }
 
 /// Whether `r` relates a music video.
@@ -33,32 +38,47 @@ fn relates_music(r: &FranchiseRelation) -> bool {
 pub(crate) type Unread = (Vec<String>, Vec<String>);
 
 /// The `known` listings as the walk reads them from `anchor`, or what
-/// to read first. The anchor's detail comes first: a music video's
-/// page relates to nothing, so its listing is never read, and the walk
-/// sees it alone. Any other page reads its listing next, and every
-/// listing is read with its music videos dropped.
+/// to read first: the anchor's listing and detail, together. A detail
+/// that says music video answers at once: its page relates to nothing,
+/// whatever its listing holds, and the walk sees it alone. Any other
+/// page's listings are read with their music videos dropped.
 ///
 /// # Errors
-/// The anchor's detail, else its listing, while either is unread.
+/// The anchor's listing and detail, whichever are unread.
 pub(crate) fn read_for(
     anchor: &str,
     known: &BTreeMap<String, FranchiseListing>,
     details: &BTreeMap<String, FranchiseEntry>,
 ) -> Result<BTreeMap<String, FranchiseListing>, Unread> {
-    let Some(entry) = details.get(anchor) else {
-        return Err((Vec::new(), vec![anchor.to_string()]));
-    };
-    if is_music(entry.subtype.as_deref()) {
+    if details.get(anchor).is_some_and(is_music_entry) {
         let alone = FranchiseListing {
             relations: Vec::new(),
             complete: true,
         };
         return Ok(BTreeMap::from([(anchor.to_string(), alone)]));
     }
-    if !known.contains_key(anchor) {
-        return Err((vec![anchor.to_string()], Vec::new()));
+    let unread = |has: bool| {
+        if has {
+            Vec::new()
+        } else {
+            vec![anchor.to_string()]
+        }
+    };
+    let (listings, needed) = (
+        unread(known.contains_key(anchor)),
+        unread(details.contains_key(anchor)),
+    );
+    if !listings.is_empty() || !needed.is_empty() {
+        return Err((listings, needed));
     }
-    Ok(known
+    Ok(without_music(known))
+}
+
+/// `known` with every music video dropped from each listing.
+pub(crate) fn without_music(
+    known: &BTreeMap<String, FranchiseListing>,
+) -> BTreeMap<String, FranchiseListing> {
+    known
         .iter()
         .map(|(id, listing)| {
             let relations = listing
@@ -73,5 +93,5 @@ pub(crate) fn read_for(
             };
             (id.clone(), read)
         })
-        .collect())
+        .collect()
 }

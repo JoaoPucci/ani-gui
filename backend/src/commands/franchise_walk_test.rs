@@ -713,12 +713,12 @@ fn a_music_video_answers_alone() {
     }
 }
 
-/// A music video's page is answered from its detail alone: the walk
-/// asks for the detail before the listing, and does not read the
-/// listing of a music video, whose page relates to nothing. The answer
-/// is complete, whatever Kitsu's listing holds.
+/// A music video's page is answered once its detail is read: the walk
+/// asks for the anchor's listing and detail together, as for any page,
+/// and a detail that says music video answers alone and complete,
+/// whatever the listing holds or whether it was read.
 #[test]
-fn a_music_videos_page_reads_no_listing() {
+fn a_music_videos_page_is_answered_from_its_detail() {
     let mut c = Catalogue::default();
     c.add("95301", "music", Some("2001-01-01"))
         .add("95302", "TV", Some("2000-01-01"));
@@ -728,7 +728,7 @@ fn a_music_videos_page_reads_no_listing() {
     assert_eq!(
         asked,
         Plan::Need {
-            listings: Vec::new(),
+            listings: vec!["95301".to_string()],
             details: vec!["95301".to_string()],
         }
     );
@@ -740,16 +740,17 @@ fn a_music_videos_page_reads_no_listing() {
     assert!(f.complete);
 }
 
-/// Any other page reads its detail first, then its listing.
+/// Any other page asks for its listing and detail together, in one
+/// round, and then for its listing alone if only the detail came.
 #[test]
-fn a_page_reads_its_detail_then_its_listing() {
+fn a_page_reads_its_listing_and_detail_together() {
     let mut c = Catalogue::default();
     c.add("95401", "TV", Some("2000-01-01"));
     let none = BTreeMap::new();
     assert_eq!(
         plan("95401", &none, &BTreeMap::new()),
         Plan::Need {
-            listings: Vec::new(),
+            listings: vec!["95401".to_string()],
             details: vec!["95401".to_string()],
         }
     );
