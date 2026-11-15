@@ -194,10 +194,31 @@ before it; the 2000 *JoJo* OVA covers the start of Part 3 and the
 
 ## 2. What data the app has
 
-Built. What Kitsu's relations say and do not say, why the walk reads
-Kitsu's links and neither Kitsu's franchise model nor AniList's
-relations, and the listing it reads are documented in
-[`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise).
+The franchise read is built. What Kitsu's relations say and do not
+say, why the walk reads Kitsu's links and neither Kitsu's franchise
+model nor AniList's relations, and the listing it reads are documented
+in [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise).
+What the streaming provider adds matters to the surfaces still to
+come:
+
+### What the streaming provider adds
+
+[data] The provider lists versions as separate shows: the author's
+development-build history holds both "JoJo's Bizarre Adventure Part 2:
+Stardust Crusaders" and its "(Uncensored)" listing, both recorded
+against Kitsu 8063, and the provider names that entry "Part 2" where
+Kitsu and the franchise call it Part 3. hianime also renames
+*Gintama*'s entries "Season 2", "Season 4", "Season 5"; in the same
+history those rows carry no Kitsu id, where other rows written the
+same day do. [inference] Somewhere between the play and the history
+write, the app did not settle which Kitsu entry those listings are;
+the exact cause was not traced.
+
+[inference] Every surface below works on Kitsu entries, so provider
+versions collapse into the one Kitsu entry and the existing play path
+picks the listing. Rows that never resolved to a Kitsu id cannot join
+a franchise grouping — they stay outside it, as they stay outside
+other Kitsu-keyed features.
 
 ## 3. What the author's library says
 
@@ -246,7 +267,8 @@ build's history:
 All four options share one backend piece, `GET
 /api/kitsu/franchise/:kitsu_id`, which is built and documented in
 [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise):
-how the walk builds a run (the "rules 1–3" below), the main story
+how the walk builds a run (its rules 1–3, which "rule 2" and "rule 3"
+below refer to), the main story
 every page of a franchise shares, a page's own chain outside it, and
 what sits around the run, its other versions among them. What is not
 built yet is the order the surfaces show a run in, below.
@@ -288,8 +310,8 @@ them.
 
 ### What the order setting changes
 
-[inference: the [proposal] rules applied to the [data] links read on
-2026-11-01] One anchor per franchise, two for JoJo and Fate. The
+[inference: the walk's rules (title-resolution.md) applied to the
+[data] links read on 2026-11-01] One anchor per franchise, two for JoJo and Fate. The
 computation used the links from both entries' listings, as the main
 story's walk counts them; following only each entry's own listing
 gives the same members and other versions for every anchor below. "Differ" counts the run members
@@ -438,8 +460,8 @@ year.
 ordinary play of a Kitsu entry, filed through the existing episode
 map.
 
-**Cost.** Medium: the `chain` walk and its cache, one backend route,
-one component, and one pure module that turns the chain into slots
+**Cost.** Medium: the backend's franchise read is built; what is left
+is one component, and one pure module that turns the chain into slots
 and a position (unit- and property-testable, per the project's rule
 that component logic lives in a tested `.ts` module). **Build
 first.**
@@ -1294,7 +1316,7 @@ design gate in section 5 (mockups in the real app reviewed before
 implementation, designer and critic, a draft pull request with a
 manual test section, a consistency check) before it merges:
 
-1. **Watch order strip** (option a), with the `chain` walk and the
+1. **Watch order strip** (option a), on the franchise read, with the
    "You're watching …" line, both of which need the whole run, not just the
    neighbours. Read-only, no provider requests, no change to Continue
    or trackers. On its own it answers "what comes before and after"
@@ -1334,8 +1356,11 @@ more between them, 38 in total:
 - Kitsu REST, 34. For the first survey: the franchise list (one page
   of two), four installments routes (all HTTP 500), one slug lookup,
   one MyAnimeList-id mapping lookup, nine `media-relationships` reads
-  (818, 3919, 43078, 46598, 8063, 7730, 41982, 46903, 5649) and the
-  role-filter test on 818. For the link-order reading (now in
+  (818, 3919, 43078, 46598, 8063, 7730, 41982, 46903, 5649), whose
+  findings `title-resolution.md` summarises, and the role-filter test
+  on 818 (`filter[role]=sequel,prequel` answered one row of fifteen;
+  the walk reads unfiltered, so one listing serves it and what sits
+  around the run). For the link-order reading (now in
   `title-resolution.md`):
   one batched mapping lookup of six MyAnimeList ids, one test of a
   batched read (`/anime?filter[id]=…&include=mediaRelationships.destination`),
@@ -1352,7 +1377,6 @@ For the second mockup round, on 2026-11-02, three more Kitsu REST
 seconds: 6928, 11759 and 12064, the side stories whose parent stories
 the mockup's fixtures record.
 
-The Fate and Ranma relation samples are the repository's recorded
-fixtures under `tests/fixtures/tracker-map/wire/`, and the unaired
-sequel of Kitsu 48677 one under `tests/fixtures/hianime/appended/`;
-none of them are live reads.
+The unaired sequel of Kitsu 48677 the strip's edge cases cite is a
+repository fixture under `tests/fixtures/hianime/appended/`, not a
+live read.
