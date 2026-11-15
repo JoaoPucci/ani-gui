@@ -13,14 +13,13 @@
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
 	import { mastheadArt } from './masthead';
-	import MetaLine from './MetaLine.svelte';
+	import MetaLine from '../MetaLine.svelte';
 	import MockSwitch from './MockSwitch.svelte';
 	import RunCard from './RunCard.svelte';
-	import { metaLine, numeral, railKeyText } from './meta';
-	import { pathNote, placement, railItems, segments } from './order';
+	import { loopGroupText, metaLine, numeral, railKeyText } from '../meta';
+	import { pathNote, placement, railItems, segments } from '../order';
 	import type { WatchOrderMockPrefs } from './prefs';
-	import { shortTitle } from './short-title';
-	import { franchiseSummary } from './strip-view';
+	import { franchiseSummary } from '../strip-view';
 	import type { MockEntry, MockRun } from './types';
 	import { asRef, currentIn, franchiseName, progressOf, progressShare } from './view';
 
@@ -41,18 +40,16 @@
 	const segs = $derived(segments(run, prefs.order));
 	const items = $derived(railItems(run, prefs.order));
 	const first = $derived(run.entries.find((e) => e.id === run.nameId)!);
-	const onNow = $derived(currentIn(run, prefs.order));
+	const onNow = $derived(currentIn(run, run.progress, prefs.order));
 	// The artwork is the named entry's; Resume goes to the entry being watched.
 	const heroEntry = $derived(mastheadArt(run, prefs.order));
 	const accent = $derived(accentFor(heroEntry.id));
-	const titles = $derived(run.entries.map((e) => e.title));
 	const franchiseTitles = $derived(
 		[...run.entries, ...run.versions, ...run.films, ...run.sides, ...run.recaps]
 			.filter((e) => e.id !== first.id)
 			.map((e) => e.title)
 	);
-	const label = (e: MockEntry) =>
-		prefs.titles === 'short' ? shortTitle(e.title, titles) : e.title;
+	const label = (e: MockEntry) => e.title;
 	const posOf = (e: MockEntry) => placement(run, e.id, prefs.order).position;
 	let recapsOpen = $state(false);
 </script>
@@ -118,13 +115,13 @@
 
 		{#if prefs.switcher}
 			<div class="switch-row">
-				<MockSwitch {prefs} keys={['order', 'franchise', 'titles']} {onchoose} />
+				<MockSwitch {prefs} keys={['order', 'franchise']} {onchoose} />
 			</div>
 		{/if}
 
 		{#snippet row(e: MockEntry, numbered: boolean)}
 			{@const pos = numbered ? posOf(e) : null}
-			{@const share = progressShare(progressOf(run, e))}
+			{@const share = progressShare(progressOf(e, run.progress[e.id]))}
 			{@const note = pathNote(run, e.id, prefs.order)}
 			<li class:here={e.id === id} style:--row-accent={accentFor(e.id)}>
 				<a
@@ -148,8 +145,7 @@
 					<span class="row-text">
 						{#if e.id === id}<span class="here-key">{m.watchorder_franchise_here()}</span>{/if}
 						<span class="row-title">{label(e)}</span>
-						{#if label(e) !== e.title}<span class="sr-only">{e.title}</span>{/if}
-						<MetaLine segments={metaLine(run, e, today)} />
+						<MetaLine segments={metaLine(e, run.progress[e.id], today)} />
 						{#if note?.kind === 'leads-into'}
 							<span class="row-note"
 								>{m.watchorder_strip_leads_into({ title: label(note.entry) })}</span
@@ -197,7 +193,7 @@
 					{:else}
 						<div class="loop">
 							<p class="group-key">
-								{m.watchorder_strip_unnumbered_cycle({ count: seg.entries.length })}
+								{loopGroupText(seg.entries.length)}
 							</p>
 							<p class="group-hint">{m.watchorder_franchise_cycle_hint()}</p>
 							<ol class="story-list">
@@ -567,14 +563,6 @@
 		text-decoration: underline;
 		text-decoration-color: color-mix(in oklab, var(--bone-100) 30%, transparent);
 		text-underline-offset: 0.25em;
-	}
-	.sr-only {
-		position: absolute;
-		inline-size: 1px;
-		block-size: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
 	}
 	@media (max-width: 1100px) {
 		.masthead {

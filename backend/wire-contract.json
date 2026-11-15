@@ -299,6 +299,14 @@
         "pkce"
       ]
     },
+    "HistoryByKitsuBody": {
+      "accepts": [
+        "ids"
+      ],
+      "requires": [
+        "ids"
+      ]
+    },
     "KitsuByMalIdsBody": {
       "accepts": [
         "mal_ids"

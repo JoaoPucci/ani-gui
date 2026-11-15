@@ -75,6 +75,7 @@ use crate::commands::continue_guess::RuledOutRequest;
 use crate::commands::download::{DownloadArgs, DownloadProgress, DownloadResponse};
 use crate::commands::external_player::ExternalPlayerKind;
 use crate::commands::franchise_walk::{Chain, Franchise};
+use crate::commands::history::ByKitsuEachArgs;
 use crate::commands::history_number::HistoryNumber;
 use crate::commands::play::PlayArgs;
 use crate::commands::play_native_versions::{VersionInfo, VersionKind};
@@ -710,6 +711,7 @@ fn requests() -> Value {
         })),
         "SearchBody": request::<SearchBody>(&json!({ "query": "frieren" })),
         "KitsuByMalIdsBody": request::<KitsuByMalIdsBody>(&json!({ "mal_ids": [52991] })),
+        "HistoryByKitsuBody": request::<ByKitsuEachArgs>(&json!({ "ids": ["7158"] })),
         "WaitBody": request::<WaitBody>(&json!({ "tickets": [7] })),
         "AuthUrlRequest": request::<AuthUrlRequest>(&json!({ "state": "s", "pkce": pkce })),
         "ExchangeCodeRequest": request::<ExchangeCodeRequest>(&json!({

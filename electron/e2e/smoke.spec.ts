@@ -142,6 +142,44 @@ async function launchAppWithStubsOnce(
   await stub("**/api/kitsu/episodes/*", (r) => answer(r, json([])));
   await stub("**/api/kitsu/airing/*", (r) => answer(r, json(null)));
   await stub("**/api/history/by-kitsu/*", (r) => answer(r, json(null)));
+  // The rows the franchise's entries resume from: none, as the
+  // backend answers with no history.
+  await stub("**/api/history/by-kitsu", (r) => {
+    const { ids } = r.request().postDataJSON() as { ids: string[] };
+    return answer(r, json(Object.fromEntries(ids.map((i) => [i, null]))));
+  });
+  // The show's franchise, as the backend answers for a show alone:
+  // itself, no strip and no franchise link.
+  await stub("**/api/kitsu/franchise/*", (r) => {
+    const at = new URL(r.request().url()).pathname;
+    const id = decodeURIComponent(at.split("/").pop() ?? "");
+    const entry = {
+      id,
+      title: "Show",
+      subtype: "TV",
+      start: null,
+      episodes: null,
+      status: null,
+      poster: null,
+      cover: null,
+    };
+    return answer(
+      r,
+      json({
+        anchor: id,
+        name: "Show",
+        name_from: id,
+        entries: [entry],
+        links: [],
+        versions: [],
+        films: [],
+        sides: [],
+        recaps: [],
+        parents: {},
+        complete: true,
+      }),
+    );
+  });
   await stub("**/api/download/default-dir", (r) => answer(r, json(null)));
   await stub("**/api/availability", (r) =>
     answer(r, json({ available: true, episode_count: 12, extra_episodes: [] })),

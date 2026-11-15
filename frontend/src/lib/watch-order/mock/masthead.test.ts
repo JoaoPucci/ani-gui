@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MOCK_RUNS } from './fixtures';
-import { currentIn } from './handoff';
+import { currentIn } from '../strip-view';
 import { mastheadArt } from './masthead';
 import type { MockRun } from './types';
 
@@ -10,7 +10,7 @@ describe('mastheadArt', () => {
 	it('is the entry the franchise is named after, not the one being watched', () => {
 		const jojo = run('jojo');
 		// The viewer is on Steel Ball Run; the name is the 2012 series'.
-		expect(currentIn(jojo, 'linked')?.entry.id).toBe('49847');
+		expect(currentIn(jojo, jojo.progress, 'linked')?.entry.id).toBe('49847');
 		for (const order of ['linked', 'released'] as const) {
 			expect(mastheadArt(jojo, order).id).toBe('7158');
 		}

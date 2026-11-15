@@ -2,16 +2,18 @@
 
 **Status**: proposed as the main feature of the 0.19.0 release. The
 product questions are decided (section 6); the design questions are
-open (section 5). Built so far: the backend's franchise read, `GET
-/api/kitsu/franchise/:kitsu_id`, and the stored "Watch order" value it
-is shown in. The read, the walk behind it and the data findings it
-rests on (formerly sections 2 and 4 here) are documented in
-[`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise). Not built yet:
-everything a viewer sees. The strip, the Up next card, Continue
-Watching's hand-off, the franchise page and the setting's control
-exist only as design mockups drawn from fixture data, behind a
-Diagnostics switch. The research was done on 2026-11-01; the live
-samples it quotes describe the catalogues on that day and will drift.
+open (section 5). Built so far, and documented where the app's
+documentation describes it: the backend's franchise read, `GET
+/api/kitsu/franchise/:kitsu_id`, in
+[`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise);
+the watch-order strip on the show page, the order the surfaces show a
+run in, and the "Watch order" setting, in
+[`architecture.md`, "Watch order"](../architecture.md#watch-order). The sections that described them here (the research of
+sections 1 and 2, the order rules of section 4, option (a) and their
+parts of section 5) now point there. Not built yet: the Up next card,
+Continue Watching's hand-off and the franchise page, which exist only
+as design mockups drawn from fixture data, behind a Diagnostics
+switch.
 
 ## The problem in plain terms
 
@@ -23,8 +25,10 @@ own title, poster and episode list. `ani-gui` takes its catalogue from
 Kitsu, which models every one of those pieces as its own anime, so
 the app does too.
 
-Today the app knows nothing about how those entries connect. Three
-things follow from that:
+Before the watch-order surfaces, the app knew nothing about how those
+entries connect. Three things followed from that; the strip
+([`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip)) answers the second, and the surfaces still to build answer
+the first and the third:
 
 1. **A finale is a dead end.** When you finish the last episode of a
    season, the player stops (auto-play halts at the last known
@@ -53,144 +57,10 @@ drawn from data; **[proposal]** is a design choice.
 
 ## 1. How others do it
 
-### Netflix: seasons live inside one title
-
-Netflix's model is one title with numbered seasons, and its autoplay
-setting is phrased in those terms: "You can set Netflix to
-automatically play the next episode in a series" ([Netflix Help: How
-to autoplay the next
-episode](https://help.netflix.com/en/node/121518)).
-
-Anime that the catalogues split into separately named entries is
-folded into that model. *Demon Slayer*'s *Entertainment District
-Arc* reached Netflix as "season 3" of the one *Demon Slayer* title,
-where Crunchyroll, following the Japanese seasons, has it as the
-second part of season 2 ([What's on Netflix](https://www.whats-on-netflix.com/news/demon-slayer-season-3-sets-netflix-us-release-date/);
-[Den of Geek on the two "season 3"s](https://www.denofgeek.com/tv/why-does-demon-slayer-have-two-season-3s-the-confusing-world-of-anime-arcs/)).
-*JoJo's Bizarre Adventure: Stone Ocean* is described as "the defacto
-fifth season" of the one JoJo title, with country tables counting five
-seasons ([What's on Netflix](https://www.whats-on-netflix.com/news/jojos-bizarre-adventure-stone-ocean-part-2-is-coming-to-netflix-in-2022/)).
-Netflix also labels seasons "Part 1"/"Part 2" where a producer split
-one, which trackers then have to translate back into seasons
-([SIMKL: parts vs seasons](https://docs.simkl.org/how-to-use-simkl/getting-started-with-simkl/basic-navigation/tv-shows-tracking/parts-vs-seasons-tv-show-formats)).
-
-[inference] Netflix can merge because it is the publisher: it decides
-what a title contains, by licensing, and its numbering is its own. It
-does not merge *everything* — films and spin-offs stay separate
-titles. And its numbering disagrees with everyone else's, which is
-the cost of curating by hand.
-
-### Crunchyroll: one series page, a season dropdown
-
-Crunchyroll groups seasons under one show page with a season dropdown
-— its help centre describes marking a whole season watched "from the
-season dropdown on the show page"
-([Crunchyroll Help](https://help.crunchyroll.com/hc/en-us/articles/31320247305748-How-do-I-mark-episodes-seasons-and-shows-as-watched)).
-For years every dub was listed as its own "season" (*Spy × Family*
-showed nine seasons), until a language picker moved into the player
-in January 2023 ([Epicstream](https://epicstream.com/article/crunchyroll-fixes-its-seasons-interface)).
-
-[inference] The lesson is that "next season" is only as good as the
-grouping beneath it: for years Crunchyroll's grouping mixed language
-versions with seasons, so "the next season" was ambiguous on its own
-show pages.
-
-### HIDIVE
-
-HIDIVE's pages are rendered client-side and did not load for this
-research; a fetched series page showed only "Oshi No Ko – Season 1"
-with no selector. Nothing is claimed about HIDIVE here.
-
-### Plex and Jellyfin: collections plus "Next Up"
-
-Self-hosted servers separate two ideas:
-
-- **Collections** — a group of whole shows and films, made by hand
-  or by a metadata agent
-  ([Plex Support: Collections](https://support.plex.tv/articles/201273953-collections/)).
-  A collection is a shelf: it has no progress of its own and does not
-  resume.
-- **Next Up / On Deck** — per-show, number-driven. Jellyfin's Next Up
-  "queues things by using the season and episode number" and "never
-  uses aired dates", and specials appear only when a setting places
-  them inside a season
-  ([Jellyfin forum](https://forum.jellyfin.org/t-special-episode-not-showing-in-next-up?pid=49647));
-  in Plex, a user reports On Deck going by air date while the
-  post-play "up next" screen does not interleave specials
-  ([Plex forum](https://forums.plex.tv/t/on-deck-suggesting-next-seasons-episode/604802)).
-
-Both rely on the library already being organised as one show with
-seasons (by TVDB/TMDB conventions). Anime libraries split per
-AniDB/MAL entry suffer exactly the problem described here, which is
-why anime users of those servers lean on custom orderings and
-plugins.
-
-### AniList, MyAnimeList and Kitsu: relation graphs, not lists
-
-The anime databases do not store "a franchise". They store **edges**
-between entries, each with a type.
-
-- **AniList** shows a "Relations" row on every entry. Its GraphQL
-  schema's own descriptions (read by introspection on 2026-11-01)
-  say `PREQUEL` means "Released before the relation" and `SEQUEL`
-  "Released after the relation" — i.e. *release* order. The other
-  types: `PARENT`, `SIDE_STORY`, `SUMMARY`, `ALTERNATIVE`, `SPIN_OFF`,
-  `CHARACTER`, `ADAPTATION`, `OTHER`, plus `SOURCE`, `COMPILATION`
-  and `CONTAINS` in the schema's version 2 and `SAME_UNIVERSE` in its
-  version 3.
-  But a submission manual written for AniList contributors says
-  "Relations should be in ***chronological*** order" and defines a
-  prequel as "a story preceding the current work (chronologically)"
-  ([AniList submission manual, gitbook](https://anilist2.gitbook.io/submission-manual/submission-form/relations);
-  the page does not say it is official). The two definitions
-  disagree, and the data shows both in use (see [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise)).
-- **MyAnimeList** lists "Related Entries" on each page. Watch order
-  across a franchise is community work: MAL's *Anime Entry Guide
-  Club* asks contributors to link the franchise view on
-  [chiaki.site](https://chiaki.site/), a third-party site that walks
-  MAL's relations into a watch-order list, when a series should be
-  watched in broadcast order, and to write the order out by hand
-  otherwise ([MAL club](https://myanimelist.net/clubs.php?cid=79626);
-  the [MAL stack "Largest Anime Franchises (51-100)"](https://myanimelist.net/stacks/39205)
-  links chiaki's groups). Guide sites such as AnimeBookmark
-  offer separate release-order and story-order lists per franchise.
-- **Kitsu** stores `media-relationships` with a role from a fixed
-  set — `sequel`, `prequel`, `alternative_setting`,
-  `alternative_version`, `side_story`, `parent_story`, `summary`,
-  `full_story`, `spinoff`, `adaptation`, `character`, `other`
-  ([kitsu-server `media_relationship.rb`](https://github.com/hummingbird-me/kitsu-server/blob/the-future/app/models/media_relationship.rb)).
-  Kitsu's source also has a **franchise** model whose installments
-  carry both a `release_order` and an `alternative_order` and a tag
-  (`main_story`, `side_story`, `spinoff`, `crossover`,
-  `alternate_setting`, `alternate_version`)
-  ([kitsu-server `installment.rb`](https://github.com/hummingbird-me/kitsu-server/blob/the-future/app/models/installment.rb))
-  — exactly the shape this feature wants. It cannot be used; [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise)
-  says why.
-
-### Release order versus story order
-
-"Prequel" and "sequel" are ambiguous in the wild. For most shows
-the two orders coincide — season 2 aired after season 1 and continues
-it. They diverge where a story was told out of order:
-*Fate/Zero* (2011) is set before *Fate/stay night* (2006); the
-*Monogatari* series aired *Bakemonogatari* (2009) first but set
-*Kizumonogatari* (films, 2016–17) and *Nekomonogatari (Kuro)* (2012)
-before it; the 2000 *JoJo* OVA covers the start of Part 3 and the
-1993 OVA its end. The databases encode these cases inconsistently
-(see [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise)), which decides how much the app can promise.
-
-### What to take from this
-
-[inference]
-
-- Viewers expect "next" to just work at a season's end; the
-  platforms that do it well own the grouping.
-- No platform merges a franchise's *films and side stories* into the
-  season run. Merging stops at the main story; the rest is shelved
-  around it (Netflix: separate titles; Plex: collections).
-- Where grouping is derived from data rather than curated,
-  "what's next" has to tolerate ambiguity — several candidates, an
-  unknown order — rather than guess.
+Moved. What the research found, and what the app takes from it (do
+not merge entries; shelve films and side stories around the run;
+admit ambiguity rather than guess), is the opening of
+[`architecture.md`, "Watch order"](../architecture.md#watch-order).
 
 ## 2. What data the app has
 
@@ -222,249 +92,35 @@ other Kitsu-keyed features.
 
 ## 3. What the author's library says
 
-Read-only copies, taken 2026-11-01, of the installed app's history
-and both metadata caches (the installed build's and the development
-build's). The tracker list cache holds the author's MyAnimeList list
-(294 entries) and AniList list (83 entries). Development histories mix
-real watching with test plays, so single-episode rows are not read as
-intent.
-
-[data, approximate] Grouping the 294 MyAnimeList entries by title
-family (a crude title match, which over-counts — *Fullmetal Alchemist*
-and *Brotherhood* are separate adaptations, not a sequel pair): about
-205 entries, 70 %, sit in 43 families of two or more. The largest:
-Dragon Ball 32, Gintama 20, Digimon 12, Saint Seiya 12, JoJo 10,
-Naruto 10, Bleach 8, Yu-Gi-Oh! 7. [inference] For this viewer,
-franchises are the normal case, not the edge case, and they are long:
-most of them carry films or specials beside the run of series.
-
-[data] Where "what's next" would have mattered, from the installed
-build's history:
-
-- ***Bleach: Thousand-Year Blood War***. Part 1 was played to episode
-  13 of 13 — its finale — on 2026-10-05. [inference, from the Continue
-  rule in `frontend/src/lib/play/next-episode.ts`] Its card now offers
-  episode 13 again. The history then has *The Separation* (part 2) and
-  *The Calamity* (part 4) rows, and no row for *The Conflict* (part
-  3); neither tracker list has *The Conflict* either. [inference]
-  Whatever the reason, a show page for *The Calamity* that named its
-  prequel and marked it unwatched would have made the gap visible.
-- ***Bleach*** (episode 286 of 366) and ***Naruto Shippuden*** (425 of
-  500) are long single entries mid-run: "next" inside an entry already
-  works; these gain only a sense of the franchise around them.
-- ***Gintama***: the 201-episode series at 175 (a rewatch — the
-  MyAnimeList list has it completed). The list holds the run's TV
-  entries — *Gintama*, *Gintama'*, *Enchousen*, *Gintama°*,
-  *Gintama.* and both *Silver Soul* parts — beside the films, *The
-  Semi-Final*, *The Final* and several specials; the provider names
-  some of the TV entries "Season 2/4/5".
-- ***JoJo***: ten list entries — Parts 1 to 4 and 6, the two OVAs and
-  *Steel Ball Run* (planned); none for Part 5 — the franchise behind
-  the original request.
+The library survey this plan was made from showed franchises to be
+the normal case, and long: about 70 % of the author's 294 MyAnimeList
+entries sit in franchises of two or more, most with films or specials
+beside the run of series. Where "what's next" would have mattered:
+*Bleach: Thousand-Year Blood War* part 1 played to its finale, its
+Continue card offering episode 13 again, and part 3 never played
+between parts 2 and 4; *JoJo*, the franchise behind the original
+request, with ten list entries and no Part 5.
 
 ## 4. Design options
 
 All four options share one backend piece, `GET
 /api/kitsu/franchise/:kitsu_id`, which is built and documented in
 [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise):
-how the walk builds a run (its rules 1–3, which "rule 2" and "rule 3"
-below refer to), the main story
-every page of a franchise shares, a page's own chain outside it, and
-what sits around the run, its other versions among them. What is not
-built yet is the order the surfaces show a run in, below.
+how the walk builds a run, the main story every page of a franchise
+shares, a page's own chain outside it, and what sits around the run,
+its other versions among them. The order the surfaces show a run in
+is built too, below.
 
 ### Order and position numbers
 
-**Order.** The walk decides which entries form the run. A
-single app-wide setting (section 5) decides the order they are shown
-in:
-
-- **Link order** (the default): the order the links give, using every
-  prequel/sequel link between two run members, whichever of the two
-  lists it. A link that a longer path through the run already covers
-  is a shortcut and is ignored. Cycles are taken as a block: entries
-  that lead round to one another (as ten *Monogatari* entries do)
-  count as a single step, links inside a cycle are never shortcuts,
-  and a link counts as covered only by a path that does not pass back
-  through the entry it starts from. [data] Digimon's *Last Evolution
-  Kizuna* lists *tri. 6* as its prequel, while *tri. 6* lists the 20th
-  anniversary story as its sequel and that story lists *Kizuna* as its
-  sequel, so the direct *tri. 6* → *Kizuna* link adds nothing and
-  would otherwise show a fork that is not one. An entry with two
-  remaining next entries is a fork; both are shown as the ways to
-  continue. An entry with two remaining previous entries is a join.
-- **Release order**: every run member in order of start date (an
-  unknown date last), as one line with no forks.
-
-**Position numbers.** In link order, positions count along the
-anchor's own path from the run's first entry: the entry reached by
-following prequels from the anchor (shortcuts ignored), taking the
-earliest-starting one at a join and stopping at a cycle. Entries after
-a forward fork, and entries in a cycle, are not numbered, and a total
-("of 05") is shown only for a run with no fork, join or cycle. In
-release order, the position is the entry's place in the date-ordered
-line. A position is shown as a plain number ("05"), not as a "part":
-franchises use "part" for their own divisions (JoJo's Parts 1–9,
-*Thousand-Year Blood War*'s cours), and the run's count does not match
-them.
-
-### What the order setting changes
-
-[inference: the walk's rules (title-resolution.md) applied to the
-[data] links read on 2026-11-01] One anchor per franchise, two for JoJo and Fate. The
-computation used the links from both entries' listings, as the main
-story's walk counts them; following only each entry's own listing
-gives the same members and other versions for every anchor below. "Differ" counts the run members
-whose previous or next entry is not the same in the two orders.
-
-| Franchise (anchor) | Run members | Differ | Forks and joins in link order |
-|---|---|---|---|
-| Attack on Titan (season 1) | 8 | 0 | none |
-| Bleach (2004 series) | 5 | 0 | none |
-| Naruto (2002 series) | 4 | 0 | none |
-| JoJo (2012 series) | 9 | 0 | none |
-| JoJo (the 2000 OVA) | 9 | 0 | none |
-| Fate (*Unlimited Blade Works*) | 6 | 3 | fork after *Fate/Zero 2nd Season* |
-| Digimon (*Adventure*) | 14 | 0 | none (one shortcut ignored) |
-| Fate (*Fate/Zero*) | 6 | 3 | fork after *Fate/Zero 2nd Season* |
-| Dragon Ball (1986 series) | 8 | 3 | fork after *Z* |
-| Gintama (2006 series) | 11 | 2 | join at *The Final* (one shortcut ignored) |
-| Saint Seiya (1986 series) | 8 | 8 | none (one shortcut ignored) |
-| Monogatari (*Bakemonogatari*) | 16 | 13 | seven forks, five joins, ten entries in a cycle |
-
-Where they differ, entry by entry:
-
-- **JoJo, from the 2000 OVA.** The run is the franchise's main story,
-  as from any TV part: the nine entries from the 2012 series to *Steel
-  Ball Run* (an ONA), the same in both orders. Walked from the OVA
-  itself, it would be *JoJo* (TV, 2012) → 2000 OVA → 1993 OVA, but the
-  OVA's prequel, the 2012 series, is followed by *Stardust Crusaders*
-  as well, a version of the OVA in the series' format, which rule 2
-  keeps (the main story, in [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise)). Both OVAs are other
-  versions, since run members list them as `alternative_version`; the
-  2007 *Phantom Blood* film is listed with the films.
-- **Fate, from *Fate/Zero*.** Link order: *Fate/Zero* → *2nd Season* →
-  either *Fate/stay night* (2006) or the UBW prologue → UBW → UBW 2nd
-  season. Release order: *Fate/stay night* (2006) → *Fate/Zero* → *2nd
-  Season* → prologue → UBW → UBW 2nd season. They differ at *Fate/stay
-  night* (2006), *Fate/Zero* and its 2nd season. The 2010 UBW film and
-  the first *Heaven's Feel* film are left out: with *Fate/stay night*
-  (2006) they list one another as versions, and the TV series wins
-  (rule 2). Being movies, they are listed with the films, with the
-  second and third *Heaven's Feel* films that follow the first. The other versions add
-  *Fate/Prototype* and a UBW 2nd-season special, which run members
-  list as versions; the same-world series
-  (*Apocrypha* and the rest) are not listed. From the UBW series' own
-  page the run is the same: walked from UBW itself, *Fate/stay night*
-  (2006) would be left out (rule 3: UBW lists it as a version), but the
-  main story is the walk from *Fate/Zero*, the franchise's root.
-- **Dragon Ball.** Link order: *Dragon Ball* → *Z* → either *GT* (→ its
-  1997 special) or *Super* → *Broly* → *Super Hero* → *Ginga Patrol*.
-  Release order puts *GT*'s special before *Super*, so *Z*, the special
-  and *Super* differ. Other versions include both *Kai* series and
-  *Daima*: Kitsu lists *Daima* as a version of *GT*, and rule 2 keeps
-  the earlier one. [inference] Viewers may not expect *Daima* there;
-  it is what the data says.
-- **Gintama.** Both orders run *Enchousen* → the second film →
-  *Gintama°* (the direct *Enchousen* → *Gintama°* link is a shortcut).
-  They differ only at the end. [data] Kitsu stores *The Semi-Final*
-  (special, start 2021-01-15) with *The Final* (film, start
-  2021-01-08) as its sequel, and *The Final* names both *The
-  Semi-Final* and the second *Silver Soul* part as its prequels. In
-  link order, *The Final* is a join: the *Silver Soul* finale and *The
-  Semi-Final* both lead to it. In release order, *The Final* comes
-  first and *The Semi-Final* follows it. Two entries differ.
-- **Digimon.** No difference once the shortcut is ignored. [data]
-  *tri. 6* (film, 2018-05-05) lists the *20th Anniversary Memorial
-  Story* (ONA, 2019-11-22) as its sequel; that story lists *Last
-  Evolution Kizuna* (film, 2020-02-21) as its sequel; and *Kizuna*
-  lists both the story and *tri. 6* as prequels. Taken literally, the
-  last link would make *tri. 6*'s strip offer "2 ways to continue"
-  (the story or *Kizuna*) and *Kizuna*'s strip show two entries before
-  it, where release order shows a single line, *tri. 6* → story →
-  *Kizuna*. With the shortcut ignored, link order is that same line.
-- **Saint Seiya.** Link order: *The Lost Canvas* → *Lost Canvas 2* →
-  *Saint Seiya* (1986) (the direct *Lost Canvas* → 1986 link is a
-  shortcut) → the Hades OVAs → *Elysion* → *Overture* → *Omega*.
-  Release order: *Saint Seiya* (1986) → Hades *Sanctuary* (2002) →
-  *Overture* (2004) → Hades *Inferno* (2005) → *Elysion* (2008) → *The
-  Lost Canvas* (2009, 2011) → *Omega* (2012). Every entry differs.
-- **Monogatari.** Link order is a web, and a circular one. [data]
-  *Kizumonogatari I* → *II* → *III* → *Nisemonogatari* → *Nekomonogatari
-  (Kuro)* → *Second Season* → … → *Koyomimonogatari* → *Kizumonogatari
-  I* closes a loop through ten entries. No link is a shortcut once the
-  loop is taken as a block; seven entries fork and five are joins
-  (*Owarimonogatari 2nd Season* has three entries before it). Release
-  order is a single line from *Bakemonogatari* (2009) to *Off &
-  Monster Season* (2024), then its undated special. Thirteen entries
-  differ.
-
-[inference] For most of the library the setting changes nothing. It
-matters for franchises with prequel stories and remakes (Saint Seiya,
-Fate, the JoJo OVAs) and for *Monogatari*, where link order is a web
-rather than a sequence.
+Built: how a run is ordered as linked and as released, how positions
+are counted, and what the setting changes across ten franchises are in
+[`architecture.md`, "Order and position numbers"](../architecture.md#order-and-position-numbers).
 
 ### (a) A "Watch order" strip on the show page
 
-**How it looks.** A row under the hero, before the episodes: the
-entry's run (the walk's main story) around it — the entry before, this entry,
-the entry after, in the order the app-wide setting chooses — each
-with poster, title, year, format (TV, Movie, OVA), episode count, and
-your progress (from the local history: "Watched", "EP 9 of 13",
-nothing). The current entry is marked in the show's accent colour;
-its position in the run uses the app's large tabular numerals ("05"
-for *The Calamity*, counted from *Bleach*, the run's first entry).
-Once the franchise page (c) exists, a link opens it; before then the
-strip has no such link (section 5, "The strip, second round", has its
-two forms). If you have progress elsewhere in
-the franchise, the strip says so: "You're watching *Golden Wind* ·
-EP 12", a link to that entry's page (section 5, "The strip, second
-round", compares its forms).
-That one line answers the JoJo request on whichever JoJo
-page the viewer lands.
-
-**Which order.** One app-wide setting decides (section 5): link order
-by default, release order if chosen. The strip has no toggle of its
-own and marks nothing as "out of order"; each card already shows its
-year.
-
-**Edge cases.**
-
-- A fork, in link order (*Fate/Zero 2nd Season* continues into
-  *Fate/stay night* (2006) and the UBW prologue; *Bakemonogatari* into
-  *Nisemonogatari* and *Kizumonogatari I*): the "next" slot becomes a
-  small fan — "2 ways to continue" — in air-date order, not a guess,
-  and the branches are unnumbered. *Fate/Zero 2nd Season*'s other two
-  sequel links, the 2010 film and the first *Heaven's Feel* film, are
-  other versions (rule 2): not offered as next, and listed on the
-  franchise page. In release order there are no forks.
-- A join, in link order (*The Final* follows both the *Silver Soul*
-  finale and *The Semi-Final*): the "before" slot holds both, side by
-  side, the way a fork fills the "next" slot. The position number
-  follows the earliest-starting one (section 4).
-- Recaps (`summary`) never take a slot; the walk follows only
-  prequel and sequel links, which leaves them out.
-- An unaired sequel (a start date in the future — the repository's
-  fixture for Kitsu 48677 has a sequel starting 2027-01-10 with no
-  episode count): shown dated,
-  "Coming January 2027", not playable.
-- An entry the provider does not carry: the strip shows it anyway, as
-  the catalogue does; the show page it opens runs the existing
-  availability check. The strip does not dim entries from cached
-  verdicts either, for the same reason the finale card does not (see
-  option b): the order is shown as it is, and the show page says what
-  is unavailable.
-- No relations, or Kitsu unreachable: the strip is absent.
-
-**Trackers.** None. The strip reads; every play it leads to is an
-ordinary play of a Kitsu entry, filed through the existing episode
-map.
-
-**Cost.** Medium: the backend's franchise read is built; what is left
-is one component, and one pure module that turns the chain into slots
-and a position (unit- and property-testable, per the project's rule
-that component logic lives in a tested `.ts` module). **Build
-first.**
+Built: [`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip).
+The strip's way to the franchise page arrives with option (c).
 
 ### (b) "Up next: season 2" at a finale, and Continue moving on
 
@@ -490,7 +146,8 @@ first.**
 
 **Rules** [proposal]. The end card appears only on the last episode of
 an entry that has finished airing. Its candidates are the entry's next
-entries in the run, in the order the setting chooses (section 4):
+entries in the run, in the order the setting chooses
+([`architecture.md`, "Order and position numbers"](../architecture.md#order-and-position-numbers)):
 every run member it links to as a sequel in link order, shortcuts
 ignored, or the one that started next in release order. Recaps and
 other versions are never candidates; no other filter applies. What the
@@ -548,19 +205,21 @@ smaller.
 
 **How it looks.** `/anime/<id>/franchise`, reached from the strip's
 trailing link and from search results that belong to a franchise. A
-header named after the run's first entry, with your position: "05 ·
+header named as the franchise read names it (`name`, in
+`title-resolution.md`), with your position: "05 ·
 *Golden Wind* · EP 12" (with a total only for a run with no fork, join
 or cycle) and a Resume button; its hero and accent are set in the
 design section. Below it, sections:
 
 1. **Main story** — the run (the walk's main story), in the order the
-   setting chooses, numbered as section 4 describes, with branches
+   setting chooses, numbered as
+   [`architecture.md`, "Order and position numbers"](../architecture.md#order-and-position-numbers) describes, with branches
    unnumbered beside the numbered path, progress bars per entry and a
    "you are here" marker.
 2. **Other versions** — the walk's other versions: from every JoJo page, both
    OVAs. Movies are not listed here but under Films: the 2010 UBW film
    and the three *Heaven's Feel* films, *Gintama*'s retelling films.
-3. From `around`: **Films** (every movie around the run, whatever its
+3. From the franchise read's sections: **Films** (every movie around the run, whatever its
    role: a version, a recap or a side story), **Side stories &
    specials** (everything else: side stories, parent stories,
    spin-offs, `other`) and **Recaps** (`summary`, a TV series aside,
@@ -570,8 +229,9 @@ design section. Below it, sections:
 
 There is no order switch on the page; the app-wide setting applies.
 
-**Data.** `chain` and `around` for each entry of the run, plus
-progress from the local history (Kitsu id per row) and, where a
+**Data.** The franchise read (one answer for the page's anchor), plus
+progress from the local history (the row each entry's page resumes
+from) and, where a
 tracker is connected, the cached tracker list (status and episode
 count per MyAnimeList id, through Kitsu's mappings, which the app
 already caches for 30 days).
@@ -583,14 +243,17 @@ nothing. Forked runs (Fate seen from *Fate/Zero*) render as the
 numbered path and the branches side by side; a join shows its earlier
 entries side by side above it; the entries of a cycle are listed as
 one unnumbered group, in air-date order, where the cycle sits in the
-run. Entries without a Kitsu id in the history (the hianime "Gintama
-Season N" rows) contribute no progress.
+run. A history row counts toward the entry whose page would resume
+from it: the entry it recorded while Kitsu still has it, else the one
+its stored mapping names, else, for a row whose recorded entry Kitsu
+deleted, the one Home's title match under the row's own cour names.
+A row with none of these contributes no progress.
 
 **Trackers.** Read-only.
 
-**Cost.** Medium to large: a new route, `around` and its paging, the
-classification into sections, and the design work AGENTS.md §7 asks
-of a new surface. It reuses (a)'s `chain`.
+**Cost.** Medium: the franchise read already serves the sections; what
+is left is the page and the design work AGENTS.md §7 asks of a new
+surface. It reuses the strip's ordering.
 
 ### (d) One Continue card per franchise
 
@@ -631,7 +294,9 @@ a bolted-on widget does not ship.
 
 ### The baseline: the app's existing design language
 
-This section describes what the app does today, as read from
+This section describes the app as it was before the watch-order
+surfaces (the strip now sits under the show page's masthead, and
+"Similar titles" leaves out what it shows), as read from
 `frontend/src/lib/design/tokens.css` and the components named below.
 AGENTS.md §7–§9 set the direction: Netflix-level polish, motion as
 structure, no generic dark-mode widgets, and the interface as the top
@@ -714,72 +379,7 @@ them introduces a new widget style.
 
 ### The watch-order strip (show page)
 
-- **Placement.** The strip comes right after the masthead, above the
-  synopsis, under its own eyebrow ("Watch order"), as what comes
-  before this entry, its position ("05"; a total, "of 05", only for a
-  run with no fork, join or cycle) and what comes after (the
-  maintainer chose this arrangement over a rail of the whole run;
-  "The strip, second round" below has its layout). The
-  masthead's eyebrow gains the position in its value
-  slot ("TV · Finished · 05 of 09"), only for a run that is one line:
-  a bare "05" there reads as nothing in particular. The reason
-  for this spot: "where am I, and did I miss something" is answered
-  before choosing an episode, not after scrolling past them. The strip
-  is one row of entries, so it costs little height. Entries
-  already in the strip are removed from the "Similar titles" rail
-  below, so no poster appears twice on the page. Whether the strip
-  should sit lower, just above "Similar titles", was decided: under
-  the masthead ("Decisions recorded", 1).
-- **At a glance.** Each card follows `PosterCard`'s anatomy at a
-  smaller width:
-  - a 5:7 poster with the accent rule;
-  - the position as an oversized mono numeral ("03"), as the Continue
-    card shows "EP N";
-  - the title;
-  - one meta line in `PosterCard`'s meta style: format, year, and
-    episode count or progress ("TV · 2023 · 13", or "EP 9 of 13").
-- **The current entry** is marked rather than linked: its accent rule
-  stays drawn at rest (other cards draw theirs on hover) and it carries
-  a "You are here" key in the eyebrow voice, the same words the
-  franchise page uses. A watched entry shows a check in
-  the meta line, never a dimmed poster: dimming would read as
-  "unavailable". A line for the entry the viewer is part-way
-  through, when it is another entry of the run, links to that entry's
-  page; it never plays. Its form is chosen in the second mockup round
-  ("The strip, second round", below).
-- **On hover or focus.** The card lifts on hover like any poster card,
-  draws its accent rule on hover or focus, and shows the full title.
-  Long titles are clamped to two lines on the card, so a name like
-  "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 3" or "Gintama.:
-  Silver Soul Arc – Second Half War" never breaks the row height. The
-  full title is always the card's accessible name and tooltip. Whether
-  cards should drop the part of the name the run shares and show only
-  the distinguishing part ("Stone Ocean Part 3") was decided: yes
-  ("Decisions recorded", 2).
-- **Readability.** Titles and meta keep `PosterCard`'s sizes and tones
-  so the strip sits with the rails below it. Progress is the one new
-  piece of text on these cards; it follows the poster card's meta (the
-  figure bright, the word faint), and the mockup review checks that "EP
-  9 of 13" reads at that size. The accent is used only for the
-  rule and the marker, never as a text colour on dark.
-- **Keyboard and motion.** Each entry is a link with the poster
-  card's focus ring, and Enter opens it, in reading order: before,
-  then after. The line for the entry being watched and the franchise
-  link are separate tab stops. Under reduced motion there is no lift and no
-  entrance; the tokens already do this.
-- **When data is missing.**
-  - No relations, or Kitsu unreachable: no strip, no position in the
-    eyebrow, and no empty state. The page looks as it does today.
-  - An entry the provider lacks: shown like any other (decided in
-    option b).
-  - A forked run (link order only): the "next" position holds the
-    branches side by side, each with its year and format, under a "2
-    ways to continue" key, and they are unnumbered.
-  - A join or a cycle (link order only): a join fills the "before"
-    position the same way; an entry in a cycle shows its linked
-    neighbours like any other, without a position number.
-  - An unaired entry: a card with its date in the meta line ("Coming
-    January 2027") and no episode count.
+Built: [`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip).
 
 ### The "Up next" card (player and Continue Watching)
 
@@ -831,14 +431,14 @@ them introduces a new widget style.
     beside the name is that entry's. The entry being watched has its
     own line beside the Resume button.
   - **Masthead:** the run's name in the italic display serif under a
-    "Franchise · 15 entries" eyebrow (every entry the page lists, the
+    "Franchise · 15 titles" eyebrow (every entry the page lists, the
     total the strip's "Whole franchise" link stands for), with a Resume
     button styled and
     glowing like the show page's Play. The page takes the accent of the
     entry the hero shows; Resume goes to the entry being watched.
   - **Main story:** a vertical list rather than a rail, so long titles
     have room, numbered along the path from the run's first entry
-    (section 4, "Position numbers"). Each row shows the oversized mono
+    ([`architecture.md`, "Order and position numbers"](../architecture.md#order-and-position-numbers)). Each row shows the oversized mono
     numeral, a small poster, the title in the body face, a format,
     year and episode-count line, and a thin progress bar in that
     entry's own accent. A "You are here" marker sits on the current
@@ -850,7 +450,7 @@ them introduces a new widget style.
   year and progress. Hover or focus reveals the full title, the
   episode count and the link target, as on the show page.
 - **Keyboard and motion.** The list is a list of links in reading
-  order. There is no order switch (section 4). The page enters like the
+  order. There is no order switch (one setting decides everywhere). The page enters like the
   show page. Under reduced motion it does not
   animate.
 - **When data is missing.**
@@ -862,34 +462,11 @@ them introduces a new widget style.
 
 ### The watch-order setting
 
-[decided: link order is the default; "As released" is the setting]
-One setting decides the order everywhere; no surface has a toggle of
-its own, and nothing is marked as "out of order". A choice made in
-one place and explained once is less to think about than a switch
-and a warning on every strip, card and page.
-
-- **Where.** Settings, in the Playback section ("defaults applied to
-  every stream"), directly under "Auto-play next episode", as a
-  two-option segmented control like the audio and quality choices
-  there.
-- **Wording.** Key: "Watch order". Options: "As linked" (the default)
-  and "As released". Hint, in the field-hint voice: "How a series'
-  seasons, films and specials are ordered: as the anime databases link
-  them, or by release date. The links generally follow the story, but
-  they are maintained by each database's community and can be wrong."
-- **Effect.**
-  - The watch-order strip shows the previous and next entries, and
-    the position number, in the chosen order. Forks appear only in
-    "As linked".
-  - The "Up next" card and Continue Watching offer the next entry in
-    the chosen order. In "As released" there is always at most one.
-  - The franchise page lists the run in the chosen order and numbers
-    it the same way.
-  - Which entries form the run, and which are other versions, does not
-    change (the walk decides them; see
-    [`title-resolution.md`](../title-resolution.md#kitsus-relations-walked-into-a-franchise)).
-- **When it applies.** On the next render of each surface; nothing
-  already shown re-orders under the viewer.
+Built: [`architecture.md`, "The order setting"](../architecture.md#the-order-setting).
+For the surfaces still to come, the setting's effect: the "Up next"
+card and Continue Watching offer the next entry in the chosen order
+(in "As released" there is always at most one), and the franchise page
+lists the run in the chosen order and numbers it the same way.
 
 ### How each phase is designed
 
@@ -935,71 +512,13 @@ turned on in Diagnostics; nothing is fetched or walked at runtime, and
 lands. Where a choice is real, the mockup offers two options; the
 recommendation follows each.
 
-The rules below hold on every surface:
-
-- **Locales.** Every string is in the four catalogues. Russian and
-  Brazilian Portuguese run longest. The screenshots are taken in
-  English and Russian at 1920 and 1280 px, in Brazilian Portuguese
-  for the strip, the franchise page, the setting, Continue and the
-  player, and in English at 960 px, the smallest window the app
-  allows. Counts that sit beside a
-  noun ("10 entries", "2 ways to continue") use plural variants; the
-  rest put the number where no noun agrees with it ("Comes after these
-  2"). Order words follow the setting's wording: "As linked" is "Por
-  vínculo" in Portuguese, since "ligado" reads as "switched on".
-- **Reduced motion.** Every transition is zero under
-  `prefers-reduced-motion`: the cards use the duration tokens, and the
-  Up next card enters with the skip pill's own transition, which
-  checks the preference itself. Nothing moves on a timer.
-- **Logical properties** only, so a right-to-left locale is a
-  translation.
-- **Titles.** A card clamps its title to two lines and keeps the full
-  title as its tooltip and accessible name. The "short titles" option
-  drops the leading words another entry of the run shares, up to a
-  separator (": ", " - "): *JoJo no Kimyou na Bouken: Stone Ocean Part
-  3* becomes *Stone Ocean Part 3*. A title with no shared part, such
-  as *Steel Ball Run: JoJo no Kimyou na Bouken*, stays whole.
+The rules every surface follows (whole titles, plain words, a
+franchise read in part, motion and direction) are in
+[`architecture.md`, "Watch order"](../architecture.md#watch-order).
 
 #### The watch-order strip (show page)
 
-- **Options.** *Whole run*: the run as a rail of compact poster cards,
-  scrolled so the entry being viewed sits three quarters of the way
-  along with what came before it in sight. *Before and after*: three
-  columns, the entries before, this entry's oversized numeral with "of
-  09", and the entries after, as small landscape tiles.
-  **Decided: before and after** (the maintainer's answer; its second
-  round is "The strip, second round" below). It answers the question
-  the strip exists for ("what came before, what comes next") without scrolling,
-  and a fork or a join reads as two tiles under one key ("2 ways to
-  continue", "Comes after these 2"). The whole run belongs on the
-  franchise page, one click away.
-- **Placement.** Under the masthead (decided), or just above
-  "Similar titles". Lower down, the strip competes with "Similar
-  titles" and is found only after the episodes; under the masthead it
-  costs one row and answers "did I miss something" before an episode
-  is chosen.
-- **Structure in the rail.** A flat row would draw *Fate/stay night*
-  (2006) → the UBW prologue → UBW as one sequence, though they are two
-  ways on from *Fate/Zero 2nd Season*. So each branch opens with a key
-  ("Way 1 of 2") and a hairline in the gap before it; a loop opens
-  with "Part of a loop of 10 entries"; an entry that only leads into a
-  join says so ("Leads into 10", by the number of the entry it leads
-  into, since a title would not fit the key line). Every member of a
-  loop carries a rule over its poster that runs across the gaps, so
-  the loop reads as one stretch even where "You are here" takes its
-  key. Positions count
-  along the path to the run's first entry: *The Semi-Final*, which no
-  prequel reaches, has no number rather than a second "01". The key
-  line is reserved on every card, so titles share one baseline.
-- **Missing data.** No run: no strip, no position in the masthead.
-  First or last entry: "Start of the run", "End of the run" in the
-  empty column. Unknown date: "Date not announced" in place of the
-  year and count. An entry the provider lacks looks like any other.
-- **Keyboard.** The rail is the existing `Strip` (focusable, arrow
-  keys page it); every card and tile is a link with the poster card's
-  bone focus ring; the entry being viewed is not a link. The line for
-  the entry being watched and "Whole franchise" are separate tab
-  stops.
+Built: [`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip).
 
 #### The "Up next" card (player)
 
@@ -1045,12 +564,12 @@ The rules below hold on every surface:
   entry; a stretch after a loop is not, since the loop gives it no
   single place, and its key says so. A fork is a group
   under "2 ways to continue", its branches side by side as unnumbered
-  columns, each under "Way n of N". A loop is a group under "Part of a
-  loop of 10 entries" with one sentence on why it has no single order;
-  its entries are listed along their links, from where the run enters
-  the loop. In release order every one of these is a single numbered
-  line.
-- **Masthead.** The franchise is named after the run's first entry,
+  columns, each under "Way n of N". A loop is a group under "10
+  linked titles, order unclear" with one sentence on why it has no
+  clear order; its entries are listed along their links. In release
+  order every one of these is a single numbered line.
+- **Masthead.** The franchise is named as the franchise read names it
+  (`name`, in `title-resolution.md`),
   without Kitsu's format suffix ("(TV)", "(Movie)", …) unless another
   entry of the franchise would then read the same, ignoring case; the
   suffix then stays, since it is what tells the two apart. *JoJo no
@@ -1061,26 +580,20 @@ The rules below hold on every surface:
   series' name); the entry being watched has its own line beside the
   Resume button. A note under the button says which order the list
   follows, with a link to Settings.
-- **Missing data and keyboard** as on the show page; the recaps stay
+- **Missing data and keyboard** as on the show page ([`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip)); the recaps stay
   folded behind a "Show recaps" button that reports its state.
 
 #### The setting
 
-- **Options.** Two buttons, like the audio and quality choices; or two
-  options each with a one-line description. **Recommended: buttons.**
-  They keep the Playback section's two-column field rhythm; the
-  described options bring a bordered-box control no other setting
-  uses. The field's hint carries the explanation either way.
+Built: [`architecture.md`, "The order setting"](../architecture.md#the-order-setting).
 
 ### Decisions recorded (first review round)
 
-The maintainer answered the eight questions the first mockups asked:
+The maintainer answered the eight questions the first mockups asked.
+The answers on the strip, short titles and the setting (1, 2 and 7)
+are built and documented in [`architecture.md`, "Watch order"](../architecture.md#watch-order);
+the rest:
 
-1. **Strip.** Before and after, under the title (the masthead). The whole-run rail
-   was liked, but forks and joins break it up. The strip needed a
-   second round, below.
-2. **Short titles** on cards: yes, with the full title as tooltip and
-   accessible name.
 3. **The player's "next episode" button** stays within the entry; only
    the Up next card crosses to another entry.
 4. **Accents.** Each entry keeps its own accent.
@@ -1090,9 +603,6 @@ The maintainer answered the eight questions the first mockups asked:
    arrives where the strip, the synopsis and the episode list say what
    they are about to start.
 6. **Franchise page** as a list.
-7. **The setting** uses buttons. Its hint adds that the links
-   generally follow the story but are maintained by each database's
-   community and can be wrong (section 5, "The watch-order setting").
 8. **The franchise's name** drops Kitsu's format suffix, guarded
    against clashes: the suffix stays when another entry of the same
    franchise would read the same without it (Phase 0, "The franchise
@@ -1103,54 +613,18 @@ The maintainer answered the eight questions the first mockups asked:
 
 ### The strip, second round
 
-The second round revises the before-and-after strip only. It is a
-mockup like the first, behind the same Diagnostics switch, and each
-variant below is one of the switch's options.
+The second round revised the before-and-after strip. Its balance, band,
+column wording and the card for the entry being watched are built and
+documented in [`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip).
+The way to the franchise page, at the end of the band's footer, is
+not built yet:
 
-- **Balance.** The three columns are mirrored about the centre: the
-  entries before read towards it (poster on the side nearest the
-  centre, text aligned to it), the entries after read away from it,
-  and the outer columns take equal shares of the width, so the
-  position numeral is the strip's centre whichever side is longer. The
-  grid has three rows (the keys, the join or fork line, the entries),
-  so the three keys share one baseline whatever sits under them, and
-  the centre's two hairlines run through all three rows. An empty
-  side keeps its column, drops its key and says why it is empty
-  ("Start of the run", "End of the run"), so the numeral does not move
-  at either end of a run. The centre column stays at every window
-  width; the first round hid it below 1100 px.
-- **The band.** The strip sits on one faint band: the page's own ink,
-  one step up (`--ink-050`), at 72 % opacity, with the card corner
-  radius. No border, blur, shadow or gradient. Its footer, under a
-  hairline, holds the line for the entry being watched at the start
-  and the way to the franchise page at the end.
-- **Wording of the two columns.** Four options:
-  - *Relation*: Kitsu's role for the link. "Prequel" and "Sequel",
-    plural at a join or a fork ("Sequels", over "2 ways to continue");
-    a side story's strip names its "Parent story" (two on *Fate/Zero:
-    Onegai! Einzbern Soudanshitsu*, which Kitsu relates to both
-    *Fate/Zero* seasons), with no "Comes after these 2" line, since two
-    parents are not a join. A role names a link, so in "As released"
-    order, where the neighbours are neighbours by date, this option
-    says "Released before" and "Released after": calling the 2006
-    *Fate/stay night* the "Prequel" of *Fate/Zero* would be false.
-  - *Previous / Next*.
-  - *Watch before / Watch after*.
-  - *Before / After*, the first round's words.
-
-  **Recommended: Relation.** It is the only wording that is right on a
-  side story: "Previous: *Gintama°*" on *Gintama°: Aizome Kaori-hen*
-  puts the two in one sequence, and "Watch before: *Gintama°*" is an
-  instruction the data does not give; "Parent story" says what Kitsu
-  says. Kitsu names both branches of *Fate/Zero 2nd
-  Season*'s fork `sequel`, so roles do not tell the branches apart;
-  the "2 ways to continue" line under the key does.
 - **"Whole franchise".** Two variants, both the same link, at the end
   of the band's footer:
   - *Button*: the show page's outline button at its full size (the
     size of Download), with the number of entries the franchise page
     lists, recaps included, and the app's arrow ("Whole franchise |
-    15 entries →" on JoJo).
+    15 titles →" on JoJo).
   - *Poster stack*: three posters fanned (the run's first entry, a
     film or other version, a side story), "See the whole franchise",
     and what the page holds ("9 in the main story · 4 films and
@@ -1165,55 +639,22 @@ variant below is one of the switch's options.
   more than the strip shows. The stack shows *what* there is, which
   the button cannot, but it is a widget no other page has; it is the
   option to take if the button reads as too quiet in use.
-- **The entry being watched.** The first round's "You're on *Steel
-  Ball Run* · EP 1 · Resume" (on *Golden Wind*) read as a second play
-  button. Two
-  variants, both linking to that entry's show page, neither playing:
-  - *Card*: a small link with the entry's poster, "You're watching",
-    its title and episode, and an arrow. Its visible text is its
-    accessible name.
-  - *Sentence*: "You're watching *Steel Ball Run* · EP 1." followed by a
-    text link, "Go to its page".
-
-  Either way the line shows only when the entry being watched is not
-  already one of the strip's tiles: on *Stone Ocean Part 3* the sequel
-  tile is *Steel Ball Run*, with its progress, so the line would only
-  repeat it.
-
-  When the footer has no room for both on one row, the franchise link
-  takes the upper row.
-
-  **Recommended: card.** The poster says "this is a show" before the
-  words are read, which is the confusion the round set out to fix.
+  When the footer has no room for both the card for the entry being
+  watched and the franchise link on one row, the franchise link takes
+  the upper row.
 
 ### Decisions recorded (second review round)
 
-The maintainer answered the second round's six questions:
+The maintainer answered the second round's six questions. The
+answers on the strip itself (1, 4 and 5, and the card in 3) are built
+and documented in [`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip);
+the rest:
 
-1. **Column wording: Relation.** In Brazilian Portuguese "Prequela"
-   goes: it reads as translated or European, and is not what a
-   Brazilian viewer says. A prequel is "Anterior" (plural
-   "Anteriores") and a sequel "Continuação"; a side story's parent is
-   "História principal" ("Histórias principais"), beside the existing
-   "História paralela". "Lançado antes / depois" stays for release
-   order. Russian and Latin American Spanish keep their reviewed words.
-   In Portuguese the relation wording and the "Previous / Next" option
-   now share "Anterior" for the column before, and a parent story's
-   key reads as the franchise page's "História principal" section; a
-   side story's parents are main-story entries, so the two agree.
 2. **"Whole franchise": the poster stack**, not the button. Its third
    round is below: the fan on hover, a highlight on the whole link,
    focus, reduced motion, and one, two or no posters.
-3. **The entry being watched: the card.** When it and the stack share
-   the footer, both are centred at matching widths (third round,
-   below).
-4. **A parent story's strip does not list its side stories.** It would
-   repeat "Similar titles"; what that row does with a franchise's side
-   stories is a separate discussion.
-5. **No "of N" at forks, joins and loops** stays. In "As released"
-   order every run is one line, and the strip says "N of total" there:
-   *Nisemonogatari* is "02 of 16", and *Off & Monster Season Shin
-   Episode*, which has no date and sorts last, "16 of 16".
+3. **The entry being watched and the stack**, when they share the
+   footer, are both centred at matching widths (third round, below).
 6. **The franchise page's masthead** takes its artwork from the entry
    the name comes from, the run's first in link order (on JoJo, the 2012 series, not
    *Steel Ball Run*, which the viewer is watching); the entry being
@@ -1280,7 +721,9 @@ The third round revises the strip's footer only.
 
 ### Open design questions
 
-Each with a recommendation; the maintainer decides.
+Each with a recommendation; the maintainer decides. The footer's
+"You're watching" card is built, centred at 24rem at most and with no
+border at rest; what is open is the franchise link beside it.
 
 1. **The stack's highlight.** Surface (recommended), underline or
    border. Surface is the only one that marks the whole link as one
@@ -1293,11 +736,9 @@ Each with a recommendation; the maintainer decides.
    width; the centre-line version ties the pair to the strip's
    columns but only fits side by side from about a 1210 px window,
    and below that stacks them, centred. The design critic agreed.
-3. **The watching card's border.** In the centred footers the card
-   loses its resting border so it pairs with the stack (both bare at
-   rest, the same plate on hover and focus). Recommended: keep that;
-   the alternative is a border on both, which makes the stack read as
-   a second card. This one came from the design critic's review.
+3. **The watching card's border.** Built as recommended: the card has
+   no border at rest, so it will pair with the stack (both bare at
+   rest, the same plate on hover and focus).
 
 ## 6. Recommendation and plan for 0.19.0
 
@@ -1316,16 +757,14 @@ design gate in section 5 (mockups in the real app reviewed before
 implementation, designer and critic, a draft pull request with a
 manual test section, a consistency check) before it merges:
 
-1. **Watch order strip** (option a), on the franchise read, with the
-   "You're watching …" line, both of which need the whole run, not just the
-   neighbours. Read-only, no provider requests, no change to Continue
-   or trackers. On its own it answers "what comes before and after"
-   and most of the JoJo request.
+1. **Watch order strip** (option a): built, with the "You're watching"
+   card and the order setting
+   ([`architecture.md`, "The show page's strip"](../architecture.md#the-show-pages-strip)).
 2. **Up next at a finale** (option b): the player end card first, then
    Continue moving to the sequel and the finished entry's card giving
    way. The card waits for a click, and no provider is asked about the
    sequel.
-3. **Franchise page** (option c), in 0.19.0, reusing phase 1's walk
+3. **Franchise page** (option c), in 0.19.0, reusing the franchise read
    and adding the side stories, films, recaps and other versions
    around it; the strip gains its trailing link to the page here.
 4. **One card per franchise** (option d): not planned. Revisit after
@@ -1342,11 +781,8 @@ manual test section, a consistency check) before it merges:
   card and waits; auto-play stays within one entry.
 - **The franchise page (phase 3) is part of 0.19.0.**
 - **Link order is the default**, with "As released" as an app-wide
-  preference in Settings (section 5). The maintainer disagrees with
-  some of the links Kitsu's editors chose, but does not want the app
-  to keep its own list of differences from the source for now: the
-  app follows the source, and the one setting is the way out for a
-  viewer who prefers release order.
+  preference in Settings: built, with its reasons, in
+  [`architecture.md`, "The order setting"](../architecture.md#the-order-setting).
 
 ## Live requests made for this proposal
 
@@ -1377,6 +813,7 @@ For the second mockup round, on 2026-11-02, three more Kitsu REST
 seconds: 6928, 11759 and 12064, the side stories whose parent stories
 the mockup's fixtures record.
 
-The unaired sequel of Kitsu 48677 the strip's edge cases cite is a
+The unaired sequel of Kitsu 48677 (starting 2027-01-10), the design's
+example of an unaired title ("Coming January 2027"), is a
 repository fixture under `tests/fixtures/hianime/appended/`, not a
 live read.

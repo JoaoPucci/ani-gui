@@ -12,7 +12,7 @@
 		saveMockPrefs,
 		type WatchOrderMockPrefs
 	} from '$lib/watch-order/mock/prefs';
-	import { stripRunFor } from '$lib/watch-order/mock/strip-view';
+	import { stripRunFor } from '$lib/watch-order/mock/strip-run';
 
 	const id = $derived(page.params.id ?? '');
 	const today = new Date().toISOString().slice(0, 10);

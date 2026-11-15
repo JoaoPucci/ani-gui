@@ -11,11 +11,16 @@
  * player, and starve them. Each lane is an origin of its own and so a
  * connection budget of its own:
  *
- *   - `api`      — everything not named below: short calls, and one
- *                  long-lived request — the renderer's single wait on
- *                  held-back fills (`$lib/refill/refill`), open up to
- *                  20 s at a time while a page waits on one. It holds
- *                  one of the six, never more.
+ *   - `api`      — everything not named below: short calls, and two
+ *                  kinds of long-lived request. The renderer's single
+ *                  wait on held-back fills (`$lib/refill/refill`), open
+ *                  up to 20 s at a time while a page waits on one, holds
+ *                  one of the six, never more. A franchise read
+ *                  (`$lib/watch-order/loader`) stays open while the
+ *                  backend walks the franchise, several rounds of Kitsu
+ *                  reads when Kitsu is slow; the page that asked
+ *                  cancels it when the viewer leaves, so a page holds
+ *                  at most one.
  *   - `stream`   — the stream proxy; what the player waits on.
  *   - `image`    — `/api/image`, an upstream fetch on a cold cache.
  *   - `probe`    — availability probes, a provider walk each.

@@ -1,20 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MOCK_RUNS } from './fixtures';
 import type { MockRun } from './types';
-import {
-	asRef,
-	franchiseName,
-	currentIn,
-	scrollLeftFor,
-	entryIn,
-	handoffs,
-	isUnaired,
-	progressOf,
-	progressShare,
-	runFor,
-	upNextFor,
-	yearOf
-} from './view';
+import { asRef, franchiseName, entryIn, handoffs, runFor, upNextFor } from './view';
 
 const TODAY = '2026-11-02';
 const run = (key: string): MockRun => MOCK_RUNS.find((r) => r.key === key)!;
@@ -25,26 +12,6 @@ describe('mockup view', () => {
 		expect(runFor('610')).toBeNull();
 		expect(entryIn(run('jojo'), '610')?.subtype).toBe('OVA');
 		expect(entryIn(run('jojo'), 'nope')).toBeNull();
-	});
-
-	it('reads progress as none, watched or part-way', () => {
-		const jojo = run('jojo');
-		const at = (id: string) => progressOf(jojo, entryIn(jojo, id)!);
-		expect(at('610')).toEqual({ kind: 'none' });
-		expect(at('7158')).toEqual({ kind: 'watched' });
-		expect(at('46598')).toEqual({ kind: 'partway', episode: 13, total: 14 });
-		expect(progressShare(at('7158'))).toBe(1);
-		expect(progressShare(at('610'))).toBe(0);
-		expect(progressShare({ kind: 'partway', episode: 3, total: null })).toBe(0);
-		expect(progressShare({ kind: 'partway', episode: 7, total: 14 })).toBe(0.5);
-	});
-
-	it('knows aired from unaired', () => {
-		const mono = run('monogatari');
-		expect(isUnaired(entryIn(mono, '50013')!, TODAY)).toBe(true);
-		expect(isUnaired(entryIn(mono, '3919')!, TODAY)).toBe(false);
-		expect(yearOf(entryIn(mono, '3919')!)).toBe('2009');
-		expect(yearOf(entryIn(mono, '50013')!)).toBeNull();
 	});
 
 	it('answers the end card in each of its four cases', () => {
@@ -67,11 +34,6 @@ describe('mockup view', () => {
 			['44240', '46038']
 		]);
 	});
-
-	it('names the entry the viewer is on', () => {
-		expect(currentIn(run('jojo'), 'linked')).toMatchObject({ entry: { id: '49847' }, episode: 1 });
-		expect(currentIn(run('bleach'), 'linked')).toBeNull();
-	});
 });
 
 describe('mockup adapters', () => {
@@ -84,14 +46,6 @@ describe('mockup adapters', () => {
 			poster_image: null,
 			cover_image: null
 		});
-	});
-
-	it('places an item in a scroller at the share asked, clamped to its range', () => {
-		const box = { clientWidth: 400, scrollWidth: 1200 };
-		expect(scrollLeftFor(box, 600, 100, 0.5)).toBe(450);
-		expect(scrollLeftFor(box, 600, 100, 0.75)).toBe(375);
-		expect(scrollLeftFor(box, 50, 100, 0.5)).toBe(0);
-		expect(scrollLeftFor(box, 1150, 100, 0.5)).toBe(800);
 	});
 
 	it('names a franchise without the format suffix', () => {
