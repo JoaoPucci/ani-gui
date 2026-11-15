@@ -4,7 +4,9 @@
 product questions are decided (section 6); the design questions are
 open (section 5). Built so far: the backend's franchise read, `GET
 /api/kitsu/franchise/:kitsu_id`, and the stored "Watch order" value it
-is shown in (section 4 describes the read as built). Not built yet:
+is shown in. The read, the walk behind it and the data findings it
+rests on (formerly sections 2 and 4 here) are documented in
+[`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise). Not built yet:
 everything a viewer sees. The strip, the Up next card, Continue
 Watching's hand-off, the franchise page and the setting's control
 exist only as design mockups drawn from fixture data, behind a
@@ -141,7 +143,7 @@ between entries, each with a type.
   prequel as "a story preceding the current work (chronologically)"
   ([AniList submission manual, gitbook](https://anilist2.gitbook.io/submission-manual/submission-form/relations);
   the page does not say it is official). The two definitions
-  disagree, and the data (section 2) shows both in use.
+  disagree, and the data shows both in use (see [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise)).
 - **MyAnimeList** lists "Related Entries" on each page. Watch order
   across a franchise is community work: MAL's *Anime Entry Guide
   Club* asks contributors to link the franchise view on
@@ -162,8 +164,8 @@ between entries, each with a type.
   (`main_story`, `side_story`, `spinoff`, `crossover`,
   `alternate_setting`, `alternate_version`)
   ([kitsu-server `installment.rb`](https://github.com/hummingbird-me/kitsu-server/blob/the-future/app/models/installment.rb))
-  — exactly the shape this feature wants. Section 2 shows why it
-  cannot be used.
+  — exactly the shape this feature wants. It cannot be used; [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise)
+  says why.
 
 ### Release order versus story order
 
@@ -174,8 +176,8 @@ it. They diverge where a story was told out of order:
 *Monogatari* series aired *Bakemonogatari* (2009) first but set
 *Kizumonogatari* (films, 2016–17) and *Nekomonogatari (Kuro)* (2012)
 before it; the 2000 *JoJo* OVA covers the start of Part 3 and the
-1993 OVA its end. Section 2 shows that the databases encode these
-cases inconsistently, which decides how much the app can promise.
+1993 OVA its end. The databases encode these cases inconsistently
+(see [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise)), which decides how much the app can promise.
 
 ### What to take from this
 
@@ -192,252 +194,10 @@ cases inconsistently, which decides how much the app can promise.
 
 ## 2. What data the app has
 
-### Kitsu `media-relationships` (already read)
-
-[data] The backend already reads this endpoint:
-`KitsuClient::media_relationships` in
-`backend/src/meta/kitsu_relations.rs` asks for one page of up to 20
-relations with each destination's subtype, status, episode count and
-start date, and `commands::kitsu::kitsu_relationships` caches the
-result under `kitsu:relations:v3:<id>` for a week. Today it feeds the
-tracker episode map (`single_relation` in
-`backend/src/commands/tracker_map_kitsu.rs`, which accepts a sequel or
-prequel only when the page was complete and named exactly one) and
-the appended-extras check. No screen shows relations.
-
-[data] The parsed record keeps a `complete` flag: whether the one page
-read held every relation Kitsu counts. *Ranma ½* (Kitsu 186, a
-repository fixture) has 15, *Gintama* (818) 15. [inference] Long
-franchises with many specials can pass 20, and then a `sequel` edge
-may be on a page not read. [data] Kitsu honours a role filter on this
-endpoint: `filter[role]=sequel,prequel` on *Gintama* answered `count:
-1` instead of 15 — a cheap way to ask only for the edges a watch order
-needs.
-
-Samples (live reads on 2026-11-01 unless marked as a repository
-fixture):
-
-| Entry (Kitsu id) | What Kitsu relates it to | Reading |
-|---|---|---|
-| *Bleach: TYBW* part 1 (43078) | prequel *Bleach* (2004, 366 eps); sequel *The Separation* (2023); three music videos as `other` | Linear, correct. |
-| *TYBW – The Separation* (46903) | prequel part 1; sequel *The Conflict* (2024, 14 eps); a recap special as `summary` | Linear; the recap is correctly marked and easy to skip. |
-| *Attack on Titan* S3 Part 2 (41982) | prequel S3 (2018); sequel *The Final Season* (2020); two recaps (*Chronicle*, a 25-minute digest) as `summary` | Linear, correct. |
-| *JoJo: Stardust Crusaders* (8063) | prequel *JoJo* (TV, 2012); sequel *Stardust Crusaders 2nd Season* (2015); the 2000 OVA as `alternative_version` | Linear; Kitsu splits Part 3 into two entries, as MAL and AniList do. |
-| *JoJo: Stone Ocean Part 3* (46598) | prequel *Stone Ocean Part 2*; sequel *Steel Ball Run* (ONA, 2026) | The chain runs across "parts" into the newest series. |
-| *JoJo* 2000 OVA (7730) | sequel the 1993 OVA; prequel *JoJo* (TV, 2012); `alternative_version` *Stardust Crusaders* | **Story order**: the 2000 OVA's "sequel" aired seven years earlier, and its "prequel" twelve years later. |
-| *Gintama* (818) | sequel *Gintama'* (2011); four specials as `side_story`; film 1, the 2012 *Yorinuki* film and the 2026 film as `alternative_version`; film 2 as `other`; the 2025 *Ginpachi-sensei* spin-off as `side_story` | Linear; films classified loosely. |
-| *Bakemonogatari* (3919) | sequels *Nisemonogatari* (2012) **and** *Kizumonogatari I* (2016); a recap as `summary` | **Release order**, and two sequels. |
-| *Kizumonogatari I* (5649) | prequels *Bakemonogatari* and *Koyomimonogatari*; sequel *Kizumonogatari II* | Mostly **release order** (*Bakemonogatari*); its *Koyomimonogatari* prequel aired two days later. In story order *Kizumonogatari* comes first. |
-| *Fate/Zero* 2nd season (7658, repository fixture) | prequel *Fate/Zero*; **four sequels**: *Fate/stay night* (2006), the *Unlimited Blade Works* film (2010), the *Heaven's Feel* film (2017), the UBW prologue (2014) | **Story order** (2006 is the "sequel" of 2012), and one sequel per route. |
-| *Fate/stay night: UBW* (7882, repository fixture) | prequel the UBW prologue; sequel UBW 2nd season; the 2006 series and both films as `alternative_version` | The routes are alternatives of each other. |
-
-[inference] Kitsu's prequel/sequel edges are reliable for linear runs —
-every TV continuation sampled (Bleach, TYBW, Attack on Titan, JoJo's
-TV parts, Gintama) is linked correctly and recaps are marked
-`summary`. They are **not** consistently release order or story
-order: *Fate/Zero* and the *JoJo* OVAs follow story order,
-*Monogatari* mostly release order (the next section reads every link
-in ten franchises). And an entry can have several
-sequels (Fate's routes; *Bakemonogatari*), so "the next one" is not
-always a single answer.
-
-### Is Kitsu's link order the story order?
-
-The question matters because the proposal's default (section 4)
-follows Kitsu's links. To answer it, every prequel/sequel link in ten
-franchises was read: the seven largest in the author's library (Dragon
-Ball, Gintama, Digimon, Saint Seiya, JoJo, Naruto, Bleach) plus
-*Attack on Titan*, *Monogatari* and *Fate*. The read started from
-known entries of each franchise and followed prequel/sequel links
-outward until no new entry appeared (live reads on 2026-11-01, listed
-at the end). It saw only links listed by entries it read; a link
-listed solely by an entry nothing else points to stays invisible — the
-2000 *JoJo* OVA was reached only because it was a starting point, and
-the app's own walk has the same blind spot. A link is a pair of
-entries joined as prequel and sequel, from either side; 101 pairs were
-found. One more pair, *Kamitsubaki City Under Construction*, was read
-because it had looked wrong in use.
-
-[data] Each pair was compared with the two entries' start dates:
-
-| Franchise | Pairs | Agree with release dates | Run against them | Dates missing |
-|---|---|---|---|---|
-| Dragon Ball | 13 | 12 | 0 | 1 |
-| Saint Seiya | 8 | 5 | 3 | 0 |
-| JoJo | 10 | 8 | 2 | 0 |
-| Digimon | 14 | 14 | 0 | 0 |
-| Naruto | 4 | 3 | 0 | 1 |
-| Bleach | 4 | 4 | 0 | 0 |
-| Attack on Titan | 7 | 7 | 0 | 0 |
-| Fate | 9 | 7 | 2 | 0 |
-| Gintama | 11 | 10 | 1 | 0 |
-| Monogatari | 21 | 18 | 2 | 1 |
-| Kamitsubaki | 1 | 0 | 1 | 0 |
-| **Total** | **102** | **88** | **11** | **3** |
-
-The eleven links that run against the release dates, and what each
-follows ([inference] — the story placement is general knowledge of
-these works, not something the data says):
-
-| Link (prequel → sequel, as Kitsu has it) | Aired | Follows |
-|---|---|---|
-| *Saint Seiya: The Lost Canvas* → *Saint Seiya* | 2009 → 1986 | Story: *The Lost Canvas* is set centuries earlier |
-| *The Lost Canvas* 2 → *Saint Seiya* | 2011 → 1986 | Story, as above |
-| *Hades – Elysion* → *Tenkai-hen Josou – Overture* | 2008 → 2004 | Story: the film is set after the Hades war |
-| *JoJo* 2000 OVA → *JoJo* 1993 OVA | 2000 → 1993 | Story: the 2000 OVA adapts the start of Part 3, the 1993 OVA its end |
-| *JoJo* (TV, 2012) → *JoJo* 2000 OVA | 2012 → 2000 | Story: Parts 1–2 come before Part 3 (listed only on the OVA's side) |
-| *Fate/Zero 2nd Season* → *Fate/stay night* | 2012 → 2006 | Story: *Fate/Zero* is the earlier war |
-| *Fate/Zero 2nd Season* → *Unlimited Blade Works* (film) | 2012 → 2010 | Story, as above |
-| *Gintama: The Semi-Final* → *Gintama: The Final* | 2021-01-15 → 2021-01-08 | Story: a lead-in streamed a week after the film opened ([Anime News Network](https://www.animenewsnetwork.com/news/2021-01-07/gintama-the-semi-final-net-anime-special-posts-new-trailer/.168186): the film opened in Japan on 8 January 2021, the special's first episode on 15 January) |
-| *Kizumonogatari III* → *Nisemonogatari* | 2017 → 2012 | Story, skipping the entries set in between |
-| *Koyomimonogatari* → *Kizumonogatari I* | 2016-01-10 → 2016-01-08 | Neither: *Kizumonogatari* is the earliest story, and the gap is two days of release |
-| *Kamitsubaki* (TV) → *Witchling – Zenpen* (special) | 2025-07-09 → 2025-07-03 | Not established: the special aired six days before the series it is listed after |
-
-And among the 88 links that agree with the release dates, some go
-against the story where the two differ ([inference], same caveat):
-*Bakemonogatari* → *Kizumonogatari I* and *Nisemonogatari* →
-*Nekomonogatari (Kuro)* follow release order, though both films and
-*Kuro* are set before *Bakemonogatari*. Others link a re-edit or a
-remake as a continuation: *Dragon Ball* → *Dragon Ball Kai* (a re-edit
-of *Z*), *Dragon Ball Kai (2014)* → *Dragon Ball Super* and → *Dragon
-Ball Super: Beerus* (2026). Kitsu marks both *Kai* series as
-`alternative_version` of *Z*, which section 4's rules use to keep them
-out of the run.
-
-**What this says** [inference]. The hypothesis that a link which looks
-wrong is a story-order link holds for the cases sampled: of the
-eleven links that run against the release dates, eight follow the
-story (nine counting *Kizumonogatari III* → *Nisemonogatari*), one
-follows neither and one could not be judged. But the converse does not
-hold. Kitsu's links do not consistently encode story order: where the
-two orders differ, *Monogatari*'s TV entries follow release, and
-*Dragon Ball*'s links treat versions as continuations. The fairest
-reading is that each link records what its editor judged to come next.
-Usually that is the release order, often the story order, and the
-data does not say which.
-
-### Where the links come from
-
-Labels here: [code] is what Kitsu's published server code shows;
-[not found] is a search that came back empty; [not checked] is a
-question left open.
-
-- **Kitsu** [code]. The relationship table was added to
-  Kitsu's server in January 2017
-  ([kitsu-server pull request 44](https://github.com/hummingbird-me/kitsu-server/pull/44),
-  migration `20170116051758_create_media_relationships.rb`). Creating
-  or changing a relationship needs the `database_mod` permission
-  ([`media_relationship_policy.rb`](https://github.com/hummingbird-me/kitsu-server/blob/the-future/app/policies/media_relationship_policy.rb)),
-  so only accounts holding that permission — Kitsu's database
-  moderators — can write a link directly. [not checked] Kitsu also has
-  a user-submitted wiki-draft flow (`wiki_submission` mutations, added
-  2021); whether it can propose relationship changes for a moderator
-  to approve was not checked. The roles are a bare list
-  ([`media_relationship.rb`](https://github.com/hummingbird-me/kitsu-server/blob/the-future/app/models/media_relationship.rb);
-  the GraphQL enum, [`media_relationship_kind.rb`](https://github.com/hummingbird-me/kitsu-server/blob/the-future/app/graphql/types/enum/media_relationship_kind.rb),
-  describes the field as "The relationship kind from one media entry
-  to another" and gives the values no descriptions). [not found] No
-  definition of the roles, no statement of whether prequel/sequel
-  follows story or release order, and no record of where the initial
-  2017 data came from (an import from another database, or entry by
-  hand) was found in Kitsu's code or in a web search. [inference] With
-  no written rule, each link reflects its moderator's judgement, which
-  matches the mixed pattern above.
-- **AniList** [stated]. Its API schema describes `PREQUEL` as
-  "Released before the relation" and `SEQUEL` as "Released after the
-  relation" (introspection, section 1). A contributor manual written
-  for AniList says relations "should be in ***chronological*** order"
-  ([gitbook](https://anilist2.gitbook.io/submission-manual/submission-form/relations);
-  the page does not say it is official). The two disagree; AniList's
-  *Monogatari* data follows the story (section 2).
-- **MyAnimeList** [not found]. No published definition of its "Related
-  Entries" prequel/sequel was found; its help centre and guideline
-  pages refused automated reads, and a web search turned up only an
-  old manga-database guideline on its forum, which does not define
-  them for anime.
-
-[inference] For trusting the default: of the sources, only AniList's
-schema states a rule, and its own data departs from it. Kitsu states
-none. Link order is therefore "what the editors thought comes next":
-right for straight runs, and for the out-of-order cases it mostly
-gives the story order, which is what someone asking "what comes next"
-usually wants. Release order is the one ordering the app can compute
-exactly from the data, which is why it is offered as the alternative.
-
-### Kitsu franchises and installments (not usable)
-
-[data] `GET /franchises` answers, with 1,332 franchises; the first two
-were created and last updated on 2013-07-07. Every installments route
-tried answered HTTP 500: `/franchises?include=installments.media`,
-`/franchises/2/installments` with and without `include=media`, and
-`/anime/7730/installments`. Kitsu's GraphQL schema has no franchise
-lookup (`findFranchiseById` does not exist; the media type exposes
-`relationships` and `mappings` but no franchise field, per
-kitsu-server's `app/graphql/types/interface/media.rb`).
-
-[inference] The model that would carry release and alternative order
-exists in Kitsu's code, but the two franchises sampled were last
-touched in 2013, and the route to their entries is broken. Do not
-build on it.
-
-### AniList `relations` (not read yet)
-
-[data] Listed in
-[`deferred-work.md`](../deferred-work.md#metadata-the-app-does-not-use-yet)
-under "Relations". A single GraphQL request can fetch the relations of
-several entries at once (the samples below were two requests of eight
-and nine entries). Samples, 2026-11-01:
-
-| Entry | AniList relations (anime only) | Reading |
-|---|---|---|
-| *TYBW* part 1 / *The Separation* | prequel *Bleach*; sequel *The Separation*; then sequel *The Conflict* | Same as Kitsu. |
-| *AoT* S3 Part 2 / *The Final Season* | S3 → S3P2 → *Final Season* → *Final Season Part 2*; *Chronicle* as `SUMMARY` | Same as Kitsu. |
-| *JoJo* (TV, 2012) | sequel *Stardust Crusaders*; the 2007 *Phantom Blood* film as `ALTERNATIVE` | Linear. |
-| *JoJo* 1993 OVA | prequel the 2000 OVA; both OVAs `ALTERNATIVE` of *Stardust Crusaders* | Story order, like Kitsu. |
-| *Nekomonogatari (Kuro)* | sequel *Bakemonogatari*; prequel *Kizumonogatari III* | **Story order** — the opposite of Kitsu's *Monogatari* edges. |
-| *Bakemonogatari* | prequel *Nekomonogatari (Kuro)*; sequel *Nisemonogatari* | Story order. |
-| *Fate/stay night* (2006) | prequel *Fate/Zero 2nd Season*; UBW, the films, *Apocrypha*, *EXTRA*, *Prototype*, *Grand Order* as `ALTERNATIVE` | Story order; "alternative" spans unrelated series. |
-| *Gintama* | sequel *Gintama'*; specials `SIDE_STORY`; films `ALTERNATIVE`/`OTHER`; *Saiki Kusuo* and a *Keroro* film as `CHARACTER` | Same chain as Kitsu, more noise. |
-
-[inference] AniList agrees with Kitsu on every linear run sampled and
-disagrees on *Monogatari*, where it follows story order despite its
-schema describing release order. It adds no franchise that Kitsu's
-chain misses in these samples. Using it as the source would cost an
-id bridge per entry (AniList → MAL → Kitsu, through Kitsu's mappings),
-because the renderer keys everything on Kitsu ids. **Recommendation:
-Kitsu's relations are the source; AniList's is not needed for this
-feature.** It stays listed as unused metadata.
-
-### What the dates give
-
-[inference] Every relation already carries its destination's start
-date, so **release order is computable** for any set of entries the
-app has collected: sort by start date. **Story order is not**: it
-exists only where the databases' editors chose to encode it in the
-prequel/sequel edges, and as shown above they did so for some
-franchises and not others, with Kitsu and AniList disagreeing. The app
-can follow the order the databases link entries in, or the order they
-aired; it cannot promise a correct story order. Which to use by
-default is section 4's question.
-
-### What the streaming provider adds
-
-[data] The provider lists versions as separate shows: the author's
-development-build history holds both "JoJo's Bizarre Adventure Part 2:
-Stardust Crusaders" and its "(Uncensored)" listing, both recorded
-against Kitsu 8063, and the provider names that entry "Part 2" where
-Kitsu and the franchise call it Part 3. hianime also renames
-*Gintama*'s entries "Season 2", "Season 4", "Season 5"; in the same
-history those rows carry no Kitsu id, where other rows written the
-same day do. [inference] Somewhere between the play and the history
-write, the app did not settle which Kitsu entry those listings are;
-the exact cause was not traced.
-
-[inference] Every surface below works on Kitsu entries, so provider
-versions collapse into the one Kitsu entry and the existing play path
-picks the listing. Rows that never resolved to a Kitsu id cannot join
-a franchise grouping — they stay outside it, as they stay outside
-other Kitsu-keyed features.
+Built. What Kitsu's relations say and do not say, why the walk reads
+Kitsu's links and neither Kitsu's franchise model nor AniList's
+relations, and the listing it reads are documented in
+[`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise).
 
 ## 3. What the author's library says
 
@@ -484,191 +244,16 @@ build's history:
 ## 4. Design options
 
 All four options share one backend piece, `GET
-/api/kitsu/franchise/:kitsu_id`, built on one read of Kitsu's
-relations per entry. As built, that read is not role-filtered: it lists
-every relation an entry has, each related anime with its title,
-format, start, episode count, status, poster and cover, paged in id
-order past 20 where Kitsu counts more, and cached separately from the
-`kitsu:relations:v3` read the tracker map uses, which asks for neither
-titles nor posters. From those listings it builds two things:
+/api/kitsu/franchise/:kitsu_id`, which is built and documented in
+[`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise):
+how the walk builds a run (the "rules 1–3" below), the main story
+every page of a franchise shares, a page's own chain outside it, and
+what sits around the run, its other versions among them. What is not
+built yet is the order the surfaces show a run in, below.
 
-- the **run** an entry belongs to: a bounded walk along prequel/sequel
-  edges from that entry (up to 40 entries and 80 listings), under the
-  rules below. JoJo's TV run, from the 2012 series to *Steel Ball Run*,
-  is nine entries;
-- what sits **around** the run: side stories, recaps, films and other
-  versions, from the members' own listings. They are attached as
-  leaves and not walked from, because `alternative_version`/`ALTERNATIVE`
-  links unrelated series (Fate's *Apocrypha* and *Grand Order* hang
-  off *Fate/stay night*).
+### Order and position numbers
 
-The read is unfiltered so one cached listing serves both. An earlier
-draft of this section filtered the walk's read to
-`sequel,prequel,alternative_version,alternative_setting` (four rows
-instead of fifteen for *Gintama*) and read one entry's other
-relations separately; one unfiltered listing serves both.
-
-It makes no provider request. Kitsu is the metadata service the
-app already pages through on every show page.
-
-### How the walk builds a run, and keeps other versions out
-
-A prequel/sequel link does not by itself mean "the same run". [data]
-The 2000 *JoJo* OVA (Kitsu 7730) names the 2012 TV series as its
-prequel and the 1993 OVA as its sequel, and *Dragon Ball* names *Dragon
-Ball Kai*, a re-edit of *Z*, as a sequel. A walk that followed every
-link would fold the OVAs into JoJo's TV run and *Kai* into Dragon
-Ball's, contradicting the franchise page's "Other versions". The walk
-is defined from where it starts — the entry being viewed, the anchor,
-until the main story is settled (below) — by these rules [proposal]:
-
-1. **Walk the links, both ways.** Starting at the anchor, the walk
-   reads each entry it adds and follows the prequel and sequel links
-   that entry lists, breadth-first, one distance from the anchor at a
-   time. An entry first met at a given distance takes as its path the
-   one through the listing entry that started earliest (then the
-   lowest Kitsu id). Each entry is decided once, on that path: an
-   entry left out is not reconsidered through another entry, and is
-   not walked from.
-2. **Versions side by side keep one.** When an entry lists several
-   sequels (or several prequels) of which some list one another, in
-   either direction, as `alternative_version` or
-   `alternative_setting`, only one of each such group is added: the
-   one in the same format as the entry it was met through (TV, movie,
-   OVA…), else the one that started first, else the lowest Kitsu id.
-   A group is decided once per distance, over every entry that lists
-   its members, so it keeps one even when they were met through
-   different entries, and adds none when one of them is already in
-   the run. Groups that share an entry are one group: entries that
-   are versions of one another, directly or through one another.
-3. **Versions along the path are left out.** An entry is not added if
-   it and any entry on its path to the anchor list each other (in
-   either direction) as `alternative_version` or
-   `alternative_setting`. The anchor is never left out.
-4. **Other versions** are the anime entries rules 2 and 3 left out,
-   music videos aside, plus the anime that run members list as
-   `alternative_version`.
-   `alternative_setting` is not listed: Kitsu uses it for separate
-   series in the same world (*Fate/stay night* lists *Apocrypha*,
-   *Prisma☆Illya* and *Grand Order* that way). Manga and novels are
-   never listed. A movie among them is listed with the films instead:
-   *Boruto: Naruto the Movie*, left out beside the *Boruto* series it
-   is a version of, is a film on Naruto's franchise page, not an
-   other version. The same holds for a recap that is a movie. A TV
-   series a member lists as its summary is a version of it, not a
-   recap: *Dragon Ball Super: Beerus*, a 19-episode re-edit of
-   *Super*'s opening arc, is listed beside both *Kai* series.
-
-**Side stories.** An anchor whose own run is itself alone, and that
-names a parent story, is walked from its earliest parent story
-instead, and listed beside that run (with the films, if it is a movie)
-with its parents named. So is an anchor whose own run holds no series
-(no TV series, OVA or ONA of more than one episode, or of a count
-Kitsu does not give yet) when the run names a parent story: *My Hero
-Academia*'s four films are linked to each other by sequel, and to the
-seasons only as parent story or other, so from any film the seasons
-are the run and the films sit under Films. The walk starts from the
-earliest parent story any of the films names, so every film's page
-shows the same main story, and a film the seasons do not list sits
-under Films as well. A film is placed under the parents it names in
-the main story, else under those it names that the main story leaves
-out, on the earliest one's chain; one that names no parent of its own
-in the franchise is placed under the parents the other films of its
-chain name, the same way. Kitsu sometimes lists a pair the wrong way
-round, from both sides: [data] on 2026-11-11 *One Piece* (12) named
-*LEGO ONE PIECE* (50656), a two-episode ONA from 2026, as its parent
-story, and *LEGO ONE PIECE* named *One Piece* as its side story. So
-an entry the anchor names as its parent story is refused when it did
-not start before the anchor and its own listing names fewer side
-stories, spin-offs and recaps than the anchor's; and an entry the
-anchor names as its side story or spin-off is taken as its parent
-story when it started before the anchor, names the anchor back as its
-parent story, and names more of them. A listing read for this counts
-toward the bound on what the walk reads after it; the candidates are
-read only as far as the bound leaves room, and one left unread, or cut
-short, makes the answer incomplete. *One Piece* names sixty-three;
-*LEGO ONE PIECE* names one.
-
-**One main story per franchise.** Rule 3 never leaves out the entry
-a walk starts from, so the anchor's own run can be a line the rest of
-the franchise treats as another version of it. [data] From the first
-2012 *Berserk* film, the three films and the 2016 series made the run;
-from the 2016 series, the 1997 series and the 2016 one. From the 2000
-*JoJo* OVA, the two OVAs and the 2012 series; from any TV part, the
-nine entries from the 2012 series to *Steel Ball Run*. The name and the front of the strip's poster stack
-followed the run, so one franchise read under two names depending on
-the page. The run the rules above walk to (the anchor's, or its parent
-story's) is therefore only where the walk starts:
-
-- The franchise is every entry joined to that run by prequel and
-  sequel links, a link counted from either side (an entry that names
-  another as its prequel follows it, though the other's listing does
-  not say so).
-- Going back from its ends (the entries nothing in it follows), of
-  prequels that are versions of one another one is followed, chosen as
-  rule 2 chooses; the others are passed over.
-- The franchise's root is the earliest entry reached that has no
-  prequel and was not passed over, so the choice made where two lines
-  meet decides. Where no entry reached is one (every way back leads
-  into a loop, or every first entry reached was passed over somewhere),
-  the earliest entry reached that was not passed over stands for it.
-- The main story is the walk from the root, links counted from either
-  side.
-
-*Berserk*'s 2016 series keeps the 1997 series, in its own format, over
-the third film among its prequels: every *Berserk* page starts the
-main story at the 1997 series and lists the films under Films.
-*JoJo*'s 2012 series is followed both by *Stardust Crusaders* and, by
-the OVA's own listing, by the 2000 OVA, versions of each other:
-*Stardust Crusaders*, in the series' format, is kept, so the OVA's
-franchise page lists the TV run, with both OVAs as other versions. An
-entry of the franchise that the main story leaves out is listed around
-it, where the main story's listings place it, else a movie under Films
-and anything else under other versions, so every page lists the same
-ones: [data] from every *Fate* page, Films holds *Heaven's Feel* II and
-III beside I, though only a walk through *Heaven's Feel I* reaches them. A
-side story keeps those of its parents that are in the main story.
-Every page that reaches the same franchise reads it the same way, and
-so answers with the same main story, name, front poster and franchise
-page; where every link is listed from both sides, that is every page
-of it. A link Kitsu lists on one side only is seen from that side
-alone: a page that cannot reach the listing naming it cannot count it,
-so two pages of one franchise can then answer differently. [data] On
-the corpus, every page of each franchise reads one franchise page, and
-reading the franchise costs at most seven more listings than the
-anchor's run (from the 2000 *JoJo* OVA), and none for 38 of the 48
-anchors.
-
-**A page's own chain.** A page the main story leaves out is not left
-without a run of its own. Its chain is the franchise's entries outside
-the main story joined to it by prequel and sequel links, a link counted
-from either side, with the main-story titles one of them is linked to:
-its seams, where the chain leaves the main story or leads into it. Two
-entries are never linked on a chain where either lists the other as
-another version or setting, as rule 3 never puts both in a run: a page
-listing one entry as both its prequel and its other version gets no
-seam into it.
-[data] *Heaven's Feel* I to III, with *Fate/Zero 2nd Season*; the three
-*Berserk* Golden Age films, with the 2016 series they lead into; the two
-*JoJo* OVAs, with the 2012 series the 2000 OVA names as its prequel; the
-*Unlimited Blade Works* film and *Boruto: Naruto the Movie*, each alone
-with the title it branches off after. The chain is cut from the
-franchise, so every title of it answers with the same chain, where
-Kitsu lists its links from both sides. A main-story page has none, and
-neither has a page linked to nothing else; a side story whose parents
-the main story leaves out keeps those on the earliest one's chain,
-and is drawn on it, or on that parent alone where it is chained to
-nothing. Music videos are no titles of a chain. The franchise page is
-unchanged by it: the chain's titles stay where the sections list them.
-
-With these tie-breaks every entry has one path and one decision, so
-the result does not depend on the order the walk happens to read
-things in. [data] Checked on the links read for section 2: with every
-one of its 101 entries as the anchor, 300 random read orders each gave
-the same run and the same other versions. The walk costs one cached
-read for each entry it considers, added or not.
-
-**Order.** The rules above decide which entries form the run. A
+**Order.** The walk decides which entries form the run. A
 single app-wide setting (section 5) decides the order they are shown
 in:
 
@@ -703,8 +288,8 @@ them.
 
 ### What the order setting changes
 
-[inference: the [proposal] rules applied to the [data] links read for
-section 2] One anchor per franchise, two for JoJo and Fate. The
+[inference: the [proposal] rules applied to the [data] links read on
+2026-11-01] One anchor per franchise, two for JoJo and Fate. The
 computation used the links from both entries' listings, as the main
 story's walk counts them; following only each entry's own listing
 gives the same members and other versions for every anchor below. "Differ" counts the run members
@@ -733,7 +318,7 @@ Where they differ, entry by entry:
   itself, it would be *JoJo* (TV, 2012) → 2000 OVA → 1993 OVA, but the
   OVA's prequel, the 2012 series, is followed by *Stardust Crusaders*
   as well, a version of the OVA in the series' format, which rule 2
-  keeps (*One main story per franchise*, above). Both OVAs are other
+  keeps (the main story, in [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise)). Both OVAs are other
   versions, since run members list them as `alternative_version`; the
   2007 *Phantom Blood* film is listed with the films.
 - **Fate, from *Fate/Zero*.** Link order: *Fate/Zero* → *2nd Season* →
@@ -744,7 +329,7 @@ Where they differ, entry by entry:
   the first *Heaven's Feel* film are left out: with *Fate/stay night*
   (2006) they list one another as versions, and the TV series wins
   (rule 2). Being movies, they are listed with the films, with the
-  second and third *Heaven's Feel* films that follow the first. Rule 4 adds
+  second and third *Heaven's Feel* films that follow the first. The other versions add
   *Fate/Prototype* and a UBW 2nd-season special, which run members
   list as versions; the same-world series
   (*Apocrypha* and the rest) are not listed. From the UBW series' own
@@ -800,7 +385,7 @@ rather than a sequence.
 ### (a) A "Watch order" strip on the show page
 
 **How it looks.** A row under the hero, before the episodes: the
-entry's run (section above) around it — the entry before, this entry,
+entry's run (the walk's main story) around it — the entry before, this entry,
 the entry after, in the order the app-wide setting chooses — each
 with poster, title, year, format (TV, Movie, OVA), episode count, and
 your progress (from the local history: "Watched", "EP 9 of 13",
@@ -946,11 +531,11 @@ header named after the run's first entry, with your position: "05 ·
 or cycle) and a Resume button; its hero and accent are set in the
 design section. Below it, sections:
 
-1. **Main story** — the run (section 4's rules), in the order the
+1. **Main story** — the run (the walk's main story), in the order the
    setting chooses, numbered as section 4 describes, with branches
    unnumbered beside the numbered path, progress bars per entry and a
    "you are here" marker.
-2. **Other versions** — section 4's rule 4: from every JoJo page, both
+2. **Other versions** — the walk's other versions: from every JoJo page, both
    OVAs. Movies are not listed here but under Films: the 2010 UBW film
    and the three *Heaven's Feel* films, *Gintama*'s retelling films.
 3. From `around`: **Films** (every movie around the run, whatever its
@@ -1279,7 +864,8 @@ and a warning on every strip, card and page.
   - The franchise page lists the run in the chosen order and numbers
     it the same way.
   - Which entries form the run, and which are other versions, does not
-    change (section 4).
+    change (the walk decides them; see
+    [`title-resolution.md`](../title-resolution.md#kitsus-relations-walked-into-a-franchise)).
 - **When it applies.** On the next render of each surface; nothing
   already shown re-orders under the viewer.
 
@@ -1701,7 +1287,7 @@ reads store edges, not franchises.
 **Treat order simply.** Follow the databases' links by default, offer
 release order as one app-wide setting, keep other versions out of the
 run, and never call either order "the story order": the data does not
-support that claim (section 2).
+support that claim (see [`title-resolution.md`, "Kitsu's relations, walked into a franchise"](../title-resolution.md#kitsus-relations-walked-into-a-franchise)).
 
 **Phases**, each shippable on its own, and each going through the
 design gate in section 5 (mockups in the real app reviewed before
@@ -1749,7 +1335,8 @@ more between them, 38 in total:
   of two), four installments routes (all HTTP 500), one slug lookup,
   one MyAnimeList-id mapping lookup, nine `media-relationships` reads
   (818, 3919, 43078, 46598, 8063, 7730, 41982, 46903, 5649) and the
-  role-filter test on 818. For the link-order reading in section 2:
+  role-filter test on 818. For the link-order reading (now in
+  `title-resolution.md`):
   one batched mapping lookup of six MyAnimeList ids, one test of a
   batched read (`/anime?filter[id]=…&include=mediaRelationships.destination`),
   thirteen batched reads of up to twenty entries each that followed

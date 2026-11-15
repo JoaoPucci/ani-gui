@@ -1,5 +1,6 @@
-//! Worked cases for the franchise walk, from the listings the proposal
-//! (`docs/proposals/franchise-watch-order.md`, sections 2 and 4) reads.
+//! Worked cases for the franchise walk, from the listings read when it
+//! was designed (`docs/title-resolution.md`, "Kitsu's relations, walked
+//! into a franchise").
 //! JoJo's and Fate's ids and dates are Kitsu's; Dragon Ball's and most
 //! of Gintama's entries are stand-ins with the shape Kitsu gives them.
 

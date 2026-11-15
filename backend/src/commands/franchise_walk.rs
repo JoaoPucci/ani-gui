@@ -7,8 +7,8 @@
 //! each round starts from scratch, so the answer depends only on what
 //! the listings say, never on the order they arrived in.
 //!
-//! The run follows the rules of `docs/proposals/franchise-watch-order.md`
-//! section 4 ([`rules`]), walked from the franchise's root rather than
+//! The run follows the rules `docs/title-resolution.md` documents under
+//! "Kitsu's relations, walked into a franchise" ([`rules`]), walked from the franchise's root rather than
 //! from the anchor, so every page of a franchise answers with one main
 //! story ([`root`]); the strips around it are attached from the run
 //! members' listings ([`around`]).
