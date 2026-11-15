@@ -12,8 +12,8 @@
  * card's row (`card_row`), as the session's later episodes do: the
  * backend notes the card beside the row the play lands on, and Home's
  * card for that row stands for the line the user named. Once the
- * stream is had, the point playback stood at is carried over to it
- * (the recovery's carry-over, `$lib/play/resume-after-recovery`), the
+ * stream is had, the point playback stood at is carried over to it,
+ * for the card's episode only (`$lib/play/resume-after-recovery`), the
  * session it opens is told once that it plays the pick now
  * (`$lib/history/guess-slip`), and the player opens on it. The play
  * route mounts its page afresh for the other show

@@ -115,6 +115,7 @@
 	import { createSourceScope } from '$lib/play/source-scope';
 	import { keptEpisodes, markStarted } from '$lib/play/watch-position';
 	import { SwitchPreview } from '$lib/play/switch-preview.svelte';
+	import { switchEpisodeAsk } from '$lib/play/switch-plan';
 	import { armSidecarTracks } from '$lib/play/sidecar-tracks';
 	import { StripPager } from '$lib/play/strip-pager';
 	import { playPageWarmTargets } from '$lib/play/warm-plan';
@@ -247,15 +248,12 @@
 	 *  backend decides it from the history and the pick's kept positions
 	 *  ($lib/play/switch-show). */
 	const switchEpisodeOf = (to: KitsuAnimeRef, episode: number): Promise<number | null> =>
-		fromRow
-			? historySwitchEpisode({
-					pick: to.id,
-					card: fromRow,
-					episode,
-					episode_count: to.episode_count ?? null,
-					part_way: keptEpisodes(to.id)
-				}).then((a) => a.episode)
-			: Promise.resolve(null);
+		switchEpisodeAsk(
+			{ ask: historySwitchEpisode, airing: (id) => airingGet(id), kept: keptEpisodes },
+			to,
+			episode,
+			fromRow
+		);
 	// What the switch step says of the pick chosen, for the episode
 	// playing ($lib/play/switch-preview).
 	const switchKey = (to: KitsuAnimeRef) => `${to.id}@${episodeNum}`;
@@ -2758,7 +2756,9 @@
 	}
 
 	/** "Switch to it now": the same episode, from the point playback
-	 *  stands at, on the stream of the show picked for the card
+	 *  stands at — or the pick's own episode, when the viewer is further
+	 *  along in it, as Continue would play it — on the stream of the show
+	 *  picked for the card
 	 *  ($lib/play/switch-show.ts). The between-episodes loading band
 	 *  holds the player meanwhile. The route mounts the page afresh for
 	 *  the other show (./+layout.svelte); a stream that cannot be had
@@ -2804,7 +2804,7 @@
 		return {
 			resolve: (args) =>
 				getOrFire(
-					makeKey(pickId, req.episode, req.mode, req.version, undefined, args.caption),
+					makeKey(pickId, Number(args.episode), req.mode, req.version, undefined, args.caption),
 					(emit, signal) => playStream(args, emit, signal),
 					(p) => {
 						switchProgress = progressLabel(p);

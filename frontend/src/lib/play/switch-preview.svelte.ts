@@ -4,9 +4,9 @@
  * read once per pick as the step shows it.
  *
  * The latest pick's answer is the one held: an answer for an earlier
- * pick that lands later is dropped. A read that fails leaves the card's
- * line (episode and point): the switch asks again before it plays, and
- * fails rather than take the pick back.
+ * pick that lands later is dropped. A read that fails says nothing: the
+ * switch asks again before it plays, and fails rather than take the
+ * pick back.
  */
 
 export type SwitchOwn = { episode: string } | null | 'pending';
@@ -30,7 +30,8 @@ export class SwitchPreview {
 		};
 		this.#ask(pickId).then(
 			(episode) => settle(episode === null ? null : { episode: String(episode) }),
-			() => settle(null)
+			// A read that fails claims nothing: the switch asks again.
+			() => undefined
 		);
 	}
 

@@ -17,9 +17,10 @@
  * not a second.
  *
  * "Switch to it now" carries its point across to the picked show's
- * player through the same carrier, with `carry`: there the point is
- * the one the confirmation named, 0:00 included, so it is kept exactly
- * and wins over a position the pick kept.
+ * player through the same carrier, with `carry`, when it opens the
+ * card's episode: there the point is the one the confirmation named,
+ * 0:00 included, so it is kept exactly and wins over a position the
+ * pick kept. A switch to the pick's own episode carries none.
  */
 import { nextWrite } from './write-order';
 

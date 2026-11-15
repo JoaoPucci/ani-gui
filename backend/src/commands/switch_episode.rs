@@ -7,9 +7,10 @@
 //! Continue Watching offered an episode the viewer was past. Progress
 //! never moves back now: where the pick's own row stands, by the app's
 //! Continue rule (the next episode, the last one again when it was left
-//! part-way or when the show ends there, an extra going on to the whole
-//! episode above it — `frontend/src/lib/play/next-episode.ts`), is
-//! opened when it is past the card's episode. Less, the same or no
+//! part-way or when it is the last one available — Kitsu's count capped
+//! at the episodes aired, as the renderer sends it — and an extra going
+//! on to the whole episode above it: `frontend/src/lib/play/next-episode.ts`),
+//! is opened when it is past the card's episode. Less, the same or no
 //! progress of its own keeps the card's episode, as before.
 //!
 //! The pick's own row is the one its Kitsu id finds in the history, by
@@ -34,7 +35,8 @@ pub struct SwitchArgs {
     pub card: String,
     /// The episode playing on the card's session.
     pub episode: f64,
-    /// The pick's episode count, when Kitsu knows it.
+    /// The pick's last episode available: Kitsu's count, capped at the
+    /// episodes aired for a show still airing, when known.
     #[serde(default)]
     pub episode_count: Option<u32>,
     /// The pick's episodes with a kept position: left part-way.
@@ -50,24 +52,23 @@ pub struct SwitchEpisode {
     pub episode: Option<f64>,
 }
 
-/// The episode a row's `ep_no` names, as the history reads it: its
-/// leading number (`7.5`, the first of a range `1-12`), `None` for no
-/// positive episode.
+/// The episode a row's `ep_no` names, as the history reads it (the
+/// renderer's `parseHistoryEpisode`): its leading number, a fraction
+/// included when a dot and digits follow (`7.5`, the first of a range
+/// `1-12`), `None` for no positive episode.
 #[must_use]
 pub fn row_episode(ep_no: &str) -> Option<f64> {
-    let lead: String = ep_no
-        .trim_start()
-        .chars()
-        .take_while(|c| c.is_ascii_digit() || *c == '.')
-        .collect();
-    let lead = match lead.split_once('.') {
-        Some((whole, frac)) if !frac.is_empty() && !frac.contains('.') => format!("{whole}.{frac}"),
-        Some((whole, _)) => whole.to_string(),
-        None => lead,
-    };
-    lead.parse::<f64>()
-        .ok()
-        .filter(|n| n.is_finite() && *n > 0.0)
+    let text = ep_no.trim_start();
+    let whole = text.chars().take_while(char::is_ascii_digit).count();
+    if whole == 0 {
+        return None;
+    }
+    let rest = &text[whole..];
+    let frac = rest
+        .strip_prefix('.')
+        .map_or(0, |r| r.chars().take_while(char::is_ascii_digit).count());
+    let end = if frac > 0 { whole + 1 + frac } else { whole };
+    text[..end].parse::<f64>().ok().filter(|n| *n > 0.0)
 }
 
 /// The episode Continue opens for a show last watched at `own`.
