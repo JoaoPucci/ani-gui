@@ -360,15 +360,18 @@ test("without setpriv, the app is still off the terminal", { skip }, async () =>
   }
 });
 
-test("a launcher whose own file goes away while the app runs still hands it the stop and ends with its status", { skip }, async () => {
+test("a launcher whose own file goes away while the app runs still hands it the stop and ends with its status, its output still held", { skip }, async () => {
   // The AppImage's launcher sits on its FUSE mount, which can go before
   // the launcher is done with it; bash reads a script as it runs it.
   const tree = packedTree();
-  const term = await onTerminal(tree, { env: { STUB_EXIT: "5" } });
+  // Something still holds the app's output as it exits (a helper, a
+  // restarted app), so the launcher waits on its relays after the app.
+  const term = await onTerminal(tree, { env: { STUB_EXIT: "5", STUB_HOLD_MS: "1000" } });
   try {
     await until("the app to be ready", () => events(tree.events).some((e) => e.ready));
     fs.truncateSync(tree.launcher, 0);
-    term.send("hangup");
+    // A stop that leaves the terminal, and so the relays, in place.
+    process.kill(term.pid, "SIGTERM");
     await until("the launcher's ending", () => term.ended(), 15_000);
     assert.deepEqual(signalsOf(tree.events), ["TERM"]);
     assert.equal(exitOf(tree.events), 5);
@@ -426,6 +429,29 @@ test("with stdout sent to a file, the app's stdout goes there and only its stder
     assert.match(text, /out 3\n/);
     assert.match(text, /bye 3\n/);
     assert.doesNotMatch(text, /err 1/);
+  } finally {
+    await term.close();
+  }
+});
+
+test("a stop that reaches the launcher twice and then the app is not passed on on top of the app's own", { skip }, async () => {
+  // A scope's stop: a SIGHUP and a SIGTERM to every process, the
+  // launcher's group included, landing a moment apart. The launcher's
+  // pause before it decides must outlast the second, or it sends the
+  // app a SIGTERM the app has already had, which kills it outright.
+  const tree = packedTree();
+  const term = await onTerminal(tree);
+  try {
+    const start = await until("the app to be ready", () => events(tree.events).some((e) => e.ready) && startOf(tree.events));
+    process.kill(term.pid, "SIGHUP");
+    await sleep(50);
+    process.kill(-term.pid, "SIGINT");
+    await sleep(50);
+    process.kill(start.pid, "SIGTERM");
+    await until("the launcher's ending", () => term.ended(), 15_000);
+    assert.deepEqual(term.ended(), { exit: 0 });
+    assert.deepEqual(signalsOf(tree.events), ["TERM"]);
+    assert.equal(exitOf(tree.events), 0);
   } finally {
     await term.close();
   }

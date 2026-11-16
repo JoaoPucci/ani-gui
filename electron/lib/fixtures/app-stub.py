@@ -20,6 +20,9 @@ Environment:
     STUB_EXIT        the exit status (default 0)
     STUB_BYE_LINES   lines written to each stream after a stop signal
                      ("bye N", default 3)
+    STUB_HOLD_MS     as it exits, leave a child holding its stdout and
+                     stderr for this long, as Chromium's helpers or a
+                     restarted app do (default 0: none)
 
 Events: {"start": {...}} once, then {"ready": true} once the handlers are in
 place, {"signal": "TERM"} per stop signal, {"write_error": "EPIPE"} at the
@@ -60,6 +63,17 @@ def stop(signum, _frame):
     signal.signal(signum, signal.SIG_DFL)
     event({"signal": signal.Signals(signum).name[3:]})
     stopping.append(signum)
+
+
+def hold():
+    """Leaves a child with this process's stdout and stderr open for
+    STUB_HOLD_MS, which then exits by itself."""
+    ms = int(os.environ.get("STUB_HOLD_MS", "0"))
+    if ms <= 0:
+        return
+    if os.fork() == 0:
+        time.sleep(ms / 1000)
+        os._exit(0)
 
 
 def target(fd):
@@ -106,6 +120,7 @@ def main():
     # Shutting down takes a moment, as the app's does: a second signal
     # of the same kind in that window ends it on the spot.
     time.sleep(0.5)
+    hold()
     event({"exit": status})
     return status
 
