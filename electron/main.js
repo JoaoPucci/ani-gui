@@ -17,6 +17,12 @@
 
 "use strict";
 
+// First, before anything can write to them: a stdout or stderr that has
+// gone away — the terminal the app was started from closed, a pipe's
+// reader exited — must not take the app down with it
+// (lib/stdio-guard.cjs).
+require("./lib/stdio-guard.cjs").guardStdio(process);
+
 const {
   app,
   BrowserWindow,
