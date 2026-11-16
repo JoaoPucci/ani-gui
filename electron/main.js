@@ -199,7 +199,11 @@ const APP_DOCUMENT = appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL });
 // Every IPC handler, and the wait for the renderer's app-ready word,
 // answers only the main frame holding that document (lib/ipc-guard.cjs);
 // tests/arch/ipc_sender.sh keeps them all registered through it.
-const ipc = mainProcessIpc({ app: APP_DOCUMENT, logError: console.error });
+// The guards name a refused page by its URL, which can carry a secret:
+// their lines are redacted like any other the main process logs
+// (lib/log-redact.cjs).
+const loggedRedacted = (...parts) => console.error(redactSecrets(parts.join(" ")));
+const ipc = mainProcessIpc({ app: APP_DOCUMENT, logError: loggedRedacted });
 // Every window, the splash's and the app's, holds what the main process
 // loaded into it, and a page can take it only to the app's document:
 // navigations, redirects, subframes, webviews and new windows all pass
@@ -210,7 +214,7 @@ const makeWindow = guardedWindowMaker({
   BrowserWindow,
   app: APP_DOCUMENT,
   openExternal: (url) => shell.openExternal(url),
-  logError: console.error,
+  logError: loggedRedacted,
 });
 
 // The launch's secret, kept per window and handed to the app's own
