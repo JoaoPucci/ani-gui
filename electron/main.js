@@ -1363,7 +1363,7 @@ function takeOverStopSignals() {
       // The terminal this was launched from may be gone (SIGHUP):
       // a failed write must not stop the ending.
       try {
-        console.warn(`[main] ${signal} reached the app's helpers too (${reason}); ending by it`);
+        console.warn(`[main] ${signal}: ${reason}; ending by it`);
       } catch {
         // Nowhere to report it.
       }
