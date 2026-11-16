@@ -5,9 +5,9 @@
 // A stop signal often reaches every process of the app at once: a
 // logout or shutdown stops the systemd scope the desktop launched the
 // app in, which holds all of its processes (Electron does not move
-// its main process into a scope of its own), `pkill ani-gui` matches
-// by name, a closed terminal or
-// `kill -- -<pgid>` signals the process group. Chromium's zygote, GPU
+// its main process into a scope of its own), a kill by process name
+// matches all of them, a closed terminal or `kill -- -<pgid>` signals
+// the process group. Chromium's zygote, GPU
 // and utility helpers then die while the main process is still
 // quitting. Chromium relaunches the GPU process through the dead
 // zygote, fails every attempt, and aborts with "GPU process isn't
