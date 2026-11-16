@@ -94,6 +94,13 @@ function watchSessionEnd({ platform, powerMonitor, spawn, env, onEnding, logErro
     onEnding(reason);
   };
 
+  // Electron creates its native monitor on powerMonitor's first
+  // listener and, on Linux, reports whether a `shutdown` listener
+  // exists before that first listener is in place — so a `shutdown`
+  // listener added first is never reported, and no inhibitor is taken
+  // (lib/browser/api/power-monitor.ts, 33 and later). One added after
+  // any other listener is.
+  powerMonitor.on("resume", () => {});
   powerMonitor.on("shutdown", (event) => {
     // Keeps Electron's delay inhibitor held until this process exits.
     event.preventDefault();
