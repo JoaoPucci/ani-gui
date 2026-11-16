@@ -1172,9 +1172,10 @@ starting it, and delete it when you find it done.
   The unprivileged FUSE mount an AppImage runs from does not honour
   setuid execution, so Chromium's setuid sandbox helper cannot be used
   from inside it. The `.deb` sets the helper's SUID bit in its postinst
-  and keeps the sandbox. It is a packaging question of its own; the
-  renderer's content security policy is enforced either way, but
-  script that got past it in the AppImage would run unsandboxed.
+  and keeps the sandbox. It is a packaging question of its own — see
+  "Chromium's namespace sandbox in the AppImage"; the renderer's
+  content security policy is enforced either way, but script that got
+  past it in the AppImage would run unsandboxed.
 
 ## Which program the app runs is the page's choice
 
