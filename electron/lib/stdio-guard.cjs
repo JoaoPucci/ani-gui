@@ -12,8 +12,8 @@
 //     fails with EIO from then on;
 //   - the reader of a pipe goes away (`ani-gui | head`, a launcher that
 //     exits): EPIPE, since Node ignores SIGPIPE;
-//   - on Windows, the console the app attached to is closed, or a pipe
-//     breaks, which libuv reports as EPIPE, EOF or ECONNRESET.
+//   - on Windows, a pipe the output goes to breaks, which libuv reports
+//     as EPIPE, EOF or ECONNRESET.
 //
 // Node reports such a failure as an 'error' event on the stream. With
 // no listener that is an uncaught exception, which in Electron's main
@@ -38,8 +38,12 @@
 // found it when the process exits (node::ResetStdio), and on a terminal
 // that has hung up that step aborts the process (SIGABRT) — after the
 // app has shut down, but as a crash. That happens in native code at
-// exit, below anything JavaScript can reach; only how the app is
-// launched (its stdio not being the terminal) avoids it.
+// exit. Node skips a descriptor that has been closed or now names
+// another file, but JavaScript has no dup2 to swap the terminal out
+// atomically, and closing descriptors 0 to 2 would let any thread's
+// next open take them (Chromium's own log on fd 2 included). Nothing
+// the main process can safely do avoids it; only how the app is
+// launched (its stdio not being the terminal) does.
 
 /** A write that goes nowhere and reports itself done. */
 function discard(_chunk, encoding, callback) {
