@@ -125,7 +125,9 @@ function outcome(img, run, elapsedMs, group) {
 // the signal dispositions it would have without the subreaper. Once the
 // run has ended the subreaper marks it in `<report>.ended`, and goes on
 // reaping for up to `linger` seconds while orphans remain; it then ends
-// as the run did, by the same signal or with the same status.
+// as the run did, by the same signal or with the same status. It ends
+// by a signal only once it is no longer dumpable, so a signal that
+// dumps core leaves no core of its own.
 const SUBREAPER = `
 import ctypes, os, signal, sys, time
 if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
@@ -165,6 +167,9 @@ while True:
 with open(report, "w") as f:
     f.write(str(unreaped))
 if os.WIFSIGNALED(status):
+    # Not dumpable, so a signal that dumps core ends it without a core
+    # for the host's crash reporter (see the core-dump cases below).
+    ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE
     signal.signal(os.WTERMSIG(status), signal.SIG_DFL)
     os.kill(os.getpid(), os.WTERMSIG(status))
 sys.exit(os.waitstatus_to_exitcode(status))
