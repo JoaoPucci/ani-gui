@@ -5,6 +5,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fc = require("fast-check");
 const { EventEmitter, once } = require("node:events");
 const { PassThrough } = require("node:stream");
 const { spawn } = require("node:child_process");
@@ -68,6 +69,39 @@ test("lineSplitter hands over whole lines and keeps a partial one", () => {
   assert.deepEqual(lines, ["a", "bc", ""]);
   feed(Buffer.from("\n"));
   assert.deepEqual(lines, ["a", "bc", "", "d"]);
+});
+
+test("lineSplitter gives the same lines however the bytes are cut", () => {
+  // gdbus monitor's output arrives as Buffers cut anywhere, a
+  // multi-byte character included.
+  const text = fc.string({ unit: "grapheme", maxLength: 40 });
+  fc.assert(
+    fc.property(fc.array(text, { maxLength: 6 }), fc.array(fc.nat(), { maxLength: 8 }), (parts, cuts) => {
+      const whole = Buffer.from(parts.join("\n") + "\n");
+      const at = [...new Set(cuts.map((c) => c % (whole.length + 1)))].sort((a, b) => a - b);
+      const lines = [];
+      const feed = lineSplitter((line) => lines.push(line));
+      let from = 0;
+      for (const cut of [...at, whole.length]) {
+        feed(whole.subarray(from, cut));
+        from = cut;
+      }
+      assert.deepEqual(lines, parts.join("\n").split("\n"));
+    }),
+  );
+});
+
+test("isSessionOver matches nothing but SessionOver's line", () => {
+  fc.assert(
+    fc.property(fc.string({ maxLength: 80 }), (line) =>
+      isSessionOver(line) === line.trim().startsWith(`${GNOME_SESSION.path}: ${GNOME_SESSION.service}.SessionOver (`),
+    ),
+  );
+  fc.assert(
+    fc.property(fc.constantFrom("SessionRunning", "ClientAdded", "InhibitorAdded", "SessionOve"), (member) =>
+      !isSessionOver(`${GNOME_SESSION.path}: ${GNOME_SESSION.service}.${member} ()`),
+    ),
+  );
 });
 
 test("off Linux nothing is listened for", () => {
