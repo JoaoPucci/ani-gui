@@ -212,6 +212,7 @@
 	import { chromeReadsPlaying, type StartPhase } from '$lib/play/start-state';
 	import { watchStart, type StartWatch } from '$lib/play/start-watch';
 	import { HandoffGate } from '$lib/play/handoff-gate';
+	import { keepingSidecarCues } from '$lib/play/sidecar-cues';
 	import { startEngine } from '$lib/play/quality-sink';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
@@ -448,9 +449,12 @@
 	const handoff = new HandoffGate(
 		() => hls?.startLoad(),
 		// A manifest the handoff cut off is asked for again; the engine,
-		// its listeners and the fragment-loop guard stay as they are.
+		// its listeners and the fragment-loop guard stay as they are,
+		// and so do the sidecar tracks' cues ($lib/play/sidecar-cues).
 		() => {
-			if (hls && attachedUrl) hls.loadSource(attachedUrl);
+			const engine = hls;
+			const url = attachedUrl;
+			if (engine && url) keepingSidecarCues(ownVideo, () => engine.loadSource(url));
 		}
 	);
 	// Bumped when the viewer comes back, so the attach runs again for a
