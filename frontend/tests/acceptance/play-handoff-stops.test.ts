@@ -499,8 +499,10 @@ describe('play route — an episode handed to another player stays stopped here'
 	// reload cleared would show nothing for the rest of the play. The
 	// sidecar tracks wait for the playlist ($lib/play/sidecar-tracks),
 	// so none is on the video yet when a return loads it again, and a
-	// handoff once it is in loads nothing again.
-	it('coming back before the stream has its levels keeps the sidecar track its cues', async () => {
+	// handoff once it is in loads nothing again. (The listing's answer
+	// and the reload are each followed by a settle: a track joining
+	// without waiting for the playlist would be on the video by then.)
+	it('coming back before the stream has its levels loads it again before any sidecar track joins, and the track joins with its cues and keeps them', async () => {
 		// Each <track> keeps one TextTrack, as a browser's does.
 		const browser = installBrowserTrackSelection();
 		onTestFinished(() => browser.uninstall());
@@ -533,6 +535,7 @@ describe('play route — an episode handed to another player stays stopped here'
 		await settle();
 		expect(hls.loadSourceCalls).toBe(2);
 		expect(tracksAtReload).toEqual([0]);
+		expect(playerVideo().querySelectorAll('track')).toHaveLength(0);
 
 		expect(hls.deliverManifest(LEVELS)).toBe(true);
 		await until(() => playerVideo().querySelector('track') !== null, 'the sidecar track');
@@ -545,6 +548,31 @@ describe('play route — an episode handed to another player stays stopped here'
 		await settle();
 		expect(hls.loadSourceCalls).toBe(2);
 		expect(Array.from(track.cues ?? [], (c) => (c as VTTCue).text)).toEqual(['English at 0']);
+	});
+
+	// The page keeps the cues of any <track> on the video through that
+	// reload ($lib/play/sidecar-cues), so their safety does not rest on
+	// the sidecar tracks joining only after it. A track put on the
+	// video before the return stands in for one that got there early.
+	it('a track already on the video when a return loads the stream again keeps its cues', async () => {
+		const browser = installBrowserTrackSelection();
+		onTestFinished(() => browser.uninstall());
+		const hls = await mountPlayingHls();
+		const el = document.createElement('track');
+		el.setAttribute('kind', 'subtitles');
+		el.setAttribute('srclang', 'en');
+		el.setAttribute('label', 'English');
+		// happy-dom reads cues only from a track it started showing, as
+		// it starts a `default` one.
+		el.setAttribute('default', '');
+		playerVideo().appendChild(el);
+		el.track.mode = 'showing';
+		el.track.addCue(new VTTCue(0, 2, 'English at 0'));
+		await handToExternal();
+		playerVideo().dispatchEvent(new Event('play'));
+		await settle();
+		expect(hls.loadSourceCalls).toBe(2);
+		expect(Array.from(el.track.cues ?? [], (c) => (c as VTTCue).text)).toEqual(['English at 0']);
 	});
 
 	it('Next while handed off replaces the stream without starting the old one again', async () => {
