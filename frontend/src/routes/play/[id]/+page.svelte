@@ -454,7 +454,8 @@
 		// ($lib/play/sidecar-cues). With an engine the sidecar tracks
 		// join once its playlist is parsed ($lib/play/sidecar-tracks),
 		// which is also when this stops being needed, so none is there
-		// yet; the keeper makes that order no condition of their cues.
+		// yet unless a handler before the page's own failed in that
+		// event; the keeper keeps their cues either way.
 		() => {
 			const engine = hls;
 			const url = attachedUrl;
