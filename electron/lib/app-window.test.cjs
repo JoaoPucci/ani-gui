@@ -515,13 +515,34 @@ test("only Linux maximizes the woken window: elsewhere maximizing a mapped windo
   // On Windows maximize() of a visible window is ShowWindow(SW_MAXIMIZE),
   // which activates it: the wake would take the focus. There the reveal
   // maximizes it (revealMaximized's up path), as it shows it anyway.
+  // The granted-size recorder is armed where the maximize happens: at
+  // the wake on Linux, at the reveal elsewhere, or a reveal more than its
+  // settling time after the wake would record nothing.
   for (const [platform, expected] of [
-    ["linux", ["showInactive", "maximize"]],
+    ["linux", ["revealing", "showInactive", "maximize"]],
     ["win32", ["showInactive"]],
     ["darwin", ["showInactive"]],
   ]) {
     const win = wakeableWindow();
-    wakeHidden(win, { restack: () => {}, platform });
+    wakeHidden(win, { restack: () => {}, platform, revealing: () => win.calls.push("revealing") });
     assert.deepEqual(win.calls, expected, platform);
   }
+});
+
+test("a launch cancelled after the page mounted, before the bound, wakes nothing", (t) => {
+  // The boot failing (main.js: the splash put away, the failure
+  // reported) or the splash dismissed while the wake is pending.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const { ready } = readyLatch();
+  let cancelled = false;
+  let wakes = 0;
+  frameWake(contents, ipc, { ready, wake: () => (wakes += 1), cancelled: () => cancelled });
+  ipc.emit(APP_MOUNTED_CHANNEL, { sender: contents });
+  t.mock.timers.tick(FRAME_WAKE_MS - 1);
+  cancelled = true;
+  t.mock.timers.tick(1);
+  assert.equal(wakes, 0);
+  assert.equal(lastWake().woken, false);
 });

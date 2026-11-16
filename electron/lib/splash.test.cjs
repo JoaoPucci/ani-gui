@@ -1617,3 +1617,24 @@ test("a restack waits for the splash to have the focus back before it restacks a
   splash.restack();
   assert.equal(restacks(), 2, "the splash had the focus back");
 });
+
+test("a restack whose splash never gets the focus back does not block the next one for good", (t) => {
+  // A compositor may refuse to activate the splash (the person moved to
+  // another app meanwhile): the next restack still runs once the first
+  // has had RESTACK_SETTLE_MS to land.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { RESTACK_SETTLE_MS } = require("./splash.cjs");
+  const win = fakeSplash();
+  win.isVisible = () => true;
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.emit("ready-to-show");
+  const restacks = () => win.calls.filter((c) => c === "hide").length;
+  splash.restack();
+  t.mock.timers.tick(RESTACK_SETTLE_MS - 1);
+  splash.restack();
+  assert.equal(restacks(), 1);
+  t.mock.timers.tick(1);
+  splash.restack();
+  assert.equal(restacks(), 2);
+});
