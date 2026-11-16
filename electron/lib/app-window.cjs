@@ -17,6 +17,17 @@ const APP_BACKGROUND = "#0c0a09";
 /** The channel the renderer says it has rendered on. */
 const APP_READY_CHANNEL = "ani-gui:app-ready";
 
+/** The channel the renderer says its first page has mounted on: before
+ *  any frame, so it comes whether or not the window gets frames. */
+const APP_MOUNTED_CHANNEL = "ani-gui:app-mounted";
+
+/** How long after the page mounted its rendered word may take before
+ *  the window is woken (frameWake). Where a hidden window gets frames
+ *  the word follows within a couple of frames; where it gets none
+ *  (native Wayland without GPU compositing) the word never comes, and
+ *  this is what the boot pays before the window is mapped. */
+const FRAME_WAKE_MS = 1500;
+
 /** The longest the reveal waits for that word, counted from the
  *  window's creation, when no splash stands in for the window: a
  *  window opened later (macOS reopening one against the running
@@ -108,7 +119,9 @@ let current = { rendered: false, gaveUp: false, beforeReveal: false };
  * a hidden window only because `paintWhenInitiallyHidden` is left at its
  * default (true). Turned off, `ready-to-show` never fires either, and
  * the window is never revealed (packaged: the boot fails at the
- * first-show deadline).
+ * first-show deadline). Even left on, a hidden window gets no frames
+ * under native Wayland with software compositing; frameWake maps such a
+ * window so the word can come.
  */
 function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown = () => false } = {}) {
   const state = { rendered: false, gaveUp: false, beforeReveal: false };
@@ -160,6 +173,103 @@ function lastAppReady() {
   return { ...current };
 }
 
+let currentWake = { mounted: false, woken: false };
+
+/**
+ * Wake a hidden window whose page cannot draw.
+ *
+ * The reveal waits for the page's rendered word (appReadyWaiter), which
+ * takes two animation frames. Under native Wayland with software
+ * compositing (a virtual machine, a GPU that failed or is blocklisted,
+ * `--disable-gpu`) a window that is not mapped gets no frames after its
+ * first, sometimes not even that, so the word would never come. X11
+ * keeps hidden windows ticking, and so does a GPU, which is why the
+ * reveal can wait for it at all.
+ *
+ * So the page also says when it has mounted (APP_MOUNTED_CHANNEL),
+ * which needs no frame. `ready` is the waiter's: once the window's own
+ * page (matched by its contents' id) has mounted, if `ready` has not
+ * settled within `boundMs`, `wake` runs, once — main.js maps the window
+ * (wakeHidden) and its frames resume; the rendered word then follows and
+ * the reveal goes as usual. Nothing runs when `ready` settles first,
+ * when `stop()` was called (the reveal came, or the window went), or
+ * when the launch was `cancelled` by then.
+ *
+ * Returns `woken()`, and `stop()`. The latest wait's record, for the
+ * end-to-end suite, is lastWake().
+ */
+function frameWake(contents, ipc, { ready, wake, cancelled = () => false, boundMs = FRAME_WAKE_MS }) {
+  const record = { mounted: false, woken: false };
+  currentWake = record;
+  let timer = null;
+  let over = false;
+  const end = () => {
+    if (over) return;
+    over = true;
+    clearTimeout(timer);
+    timer = null;
+    ipc.removeListener(APP_MOUNTED_CHANNEL, onMounted);
+  };
+  function onMounted(event) {
+    if (!event || !event.sender || event.sender.id !== contents.id) return;
+    if (record.mounted || over) return;
+    record.mounted = true;
+    timer = setTimeout(() => {
+      timer = null;
+      if (over || cancelled()) return end();
+      end();
+      record.woken = true;
+      wake();
+    }, boundMs);
+  }
+  ipc.on(APP_MOUNTED_CHANNEL, onMounted);
+  Promise.resolve(ready).then(end, end);
+  return { woken: () => record.woken, stop: end };
+}
+
+/** What the latest window's wake saw: whether its page said it mounted,
+ *  and whether the window was woken. For the end-to-end suite. */
+function lastWake() {
+  return { ...currentWake };
+}
+
+/**
+ * Map the hidden window `win` so it gets frames, behind the splash
+ * where the platform keeps the splash on top.
+ *
+ * Mapped without asking for the focus first: maximize() on a hidden
+ * window maps and activates it. On Linux it is then maximized, a state
+ * request that activates nothing, with `revealing` run first (main.js
+ * arms the granted-size recorder, lib/window-geometry.cjs) so the size
+ * the desktop grants it lands now; elsewhere the reveal arms it, where
+ * the maximize happens. Elsewhere maximize() of a mapped
+ * window activates it (Windows: ShowWindow(SW_MAXIMIZE)), so the reveal
+ * maximizes it there (lib/splash.cjs revealMaximized), as it shows it
+ * anyway.
+ *
+ * Native Wayland honours no always-on-top. Measured on GNOME (headless,
+ * with the app focused, and with another app focused): the compositor
+ * stacks the woken window over the splash and gives it the focus. Each
+ * focus it takes before the reveal runs `restack` (main.js maps the
+ * splash again, which puts it back on top); the window is visible
+ * around the splash meanwhile. A compositor that maps it without the
+ * focus may leave it over the splash until the person comes back to
+ * the app, whose focus restacks it then.
+ *
+ * Returns what detaches the restack (the reveal calls it), or null for
+ * a window gone or already on screen, which is left alone.
+ */
+function wakeHidden(win, { revealing = () => {}, restack, platform = process.platform }) {
+  if (win.isDestroyed() || win.isVisible()) return null;
+  const maximizeNow = platform === "linux";
+  if (maximizeNow) revealing();
+  win.showInactive();
+  if (maximizeNow) win.maximize();
+  const onFocus = () => restack();
+  win.on("focus", onFocus);
+  return () => win.removeListener("focus", onFocus);
+}
+
 /** The reveal's gate: open once the splash is done (`whenShown`) and
  *  the renderer has said its first page rendered, or the wait for it
  *  gave up — and, either way, once the splash has been told and has
@@ -178,6 +288,11 @@ module.exports = {
   abortWhenLost,
   revealGate,
   APP_BACKGROUND,
+  APP_MOUNTED_CHANNEL,
+  FRAME_WAKE_MS,
+  frameWake,
+  lastWake,
+  wakeHidden,
   APP_READY_CHANNEL,
   APP_READY_WAIT_MS,
   appReadyBound,

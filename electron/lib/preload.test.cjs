@@ -180,3 +180,28 @@ test("reading a saved sign-in is asynchronous: a keyring that waits holds no ren
   assert.equal(typeof result.then, "function");
   assert.deepEqual(calls, [["invoke", "ani-gui:account:get-token", "anilist"]]);
 });
+
+test("the renderer can say its first page has mounted, once, on the app-mounted channel", () => {
+  // Sent before any frame: the main process wakes a window whose frames
+  // do not come (lib/app-window.cjs frameWake).
+  const sent = [];
+  const exposed = {};
+  const electron = {
+    contextBridge: { exposeInMainWorld: (name, value) => (exposed[name] = value) },
+    ipcRenderer: {
+      invoke() {},
+      send: (channel) => sent.push(channel),
+      sendSync() {},
+      on() {},
+      removeListener() {},
+    },
+  };
+  vm.runInNewContext(source, {
+    require: () => electron,
+    process: { argv: ["electron", "--ani-gui-api-base=http://127.0.0.1:1"], platform: "linux" },
+    console: { error() {} },
+  });
+  exposed.aniGui.appMounted();
+  exposed.aniGui.appMounted();
+  assert.deepEqual(sent, ["ani-gui:app-mounted"]);
+});
