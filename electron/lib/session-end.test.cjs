@@ -228,6 +228,9 @@ test("a watcher that fails to spawn is logged", () => {
 });
 
 // The watcher's shell itself, run for real against a stand-in gdbus.
+// It is Linux's only (the module listens for nothing elsewhere), and
+// the death signal setpriv sets is Linux's own.
+const linuxOnly = { skip: process.platform !== "linux" };
 
 function fakeGdbusDir(script) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "session-watch-"));
@@ -253,7 +256,7 @@ const alive = (pid) => {
   }
 };
 
-test("the watcher passes gdbus monitor's output through, with gnome-session's names", { timeout: 5000 }, async (t) => {
+test("the watcher passes gdbus monitor's output through, with gnome-session's names", { ...linuxOnly, timeout: 5000 }, async (t) => {
   const dir = fakeGdbusDir('echo "$*"; exec sleep 30');
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const watcher = runWatcher(dir);
@@ -267,7 +270,7 @@ test("the watcher passes gdbus monitor's output through, with gnome-session's na
   assert.equal(code, 0);
 });
 
-test("the watcher ends its gdbus when its input closes", { timeout: 5000 }, async (t) => {
+test("the watcher ends its gdbus when its input closes", { ...linuxOnly, timeout: 5000 }, async (t) => {
   const dir = fakeGdbusDir('echo "$$"; exec sleep 30');
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const watcher = runWatcher(dir);
@@ -289,7 +292,7 @@ for (const [signal, target] of [
   // watcher's shell and not its gdbus still has to take the gdbus too.
   ["SIGKILL", "shell"],
 ]) {
-  test(`${signal} to the watcher's ${target === "group" ? "whole group" : "shell alone"} ends its gdbus too`, { timeout: 5000 }, async (t) => {
+  test(`${signal} to the watcher's ${target === "group" ? "whole group" : "shell alone"} ends its gdbus too`, { ...linuxOnly, timeout: 5000 }, async (t) => {
     // Ctrl-C or Ctrl-\ on the terminal, a closed terminal or a stop of
     // the app's group reaches the watcher's shell and its gdbus
     // together; a signal to the shell alone reaches only the shell. A
@@ -327,7 +330,7 @@ for (const [signal, target] of [
   });
 }
 
-test("without a working setpriv the watcher still runs gdbus and ends it on a signal", { timeout: 5000 }, async (t) => {
+test("without a working setpriv the watcher still runs gdbus and ends it on a signal", { ...linuxOnly, timeout: 5000 }, async (t) => {
   // setpriv missing, or too old for --pdeathsig: gdbus starts bare.
   const dir = fakeGdbusDir('echo "$$ $*"; exec sleep 30');
   fs.writeFileSync(path.join(dir, "setpriv"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
@@ -363,7 +366,7 @@ test("without a working setpriv the watcher still runs gdbus and ends it on a si
   assert.equal(alive(gdbusPid), false);
 });
 
-test("without gdbus the watcher exits at once", { timeout: 5000 }, async (t) => {
+test("without gdbus the watcher exits at once", { ...linuxOnly, timeout: 5000 }, async (t) => {
   const dir = fakeGdbusDir(null);
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const watcher = spawn(SESSION_WATCHER.cmd, SESSION_WATCHER.args, {
