@@ -79,6 +79,7 @@ vi.mock('hls.js', () => {
 		static Events = {
 			ERROR: 'hlsError',
 			FRAG_LOADED: 'hlsFragLoaded',
+			MANIFEST_LOADING: 'hlsManifestLoading',
 			MANIFEST_PARSED: 'hlsManifestParsed'
 		};
 		static isSupported() {
@@ -99,6 +100,11 @@ vi.mock('hls.js', () => {
 		nextLevel = -1;
 		currentLevel = -1;
 		autoLevelEnabled = true;
+		// A playlist without subtitle renditions, as hls.js reports one.
+		subtitleTracks: unknown[] = [];
+		allSubtitleTracks: unknown[] = [];
+		subtitleTrack = -1;
+		subtitleDisplay = true;
 		constructor() {
 			FakeHls.instances.push(this);
 		}
@@ -106,6 +112,7 @@ vi.mock('hls.js', () => {
 		loadSource() {
 			this.loadSourceCalls += 1;
 			this.manifestLost = false;
+			this.emit('hlsManifestLoading', {});
 			// As hls.js 1.6.19's TimelineController does as a manifest
 			// starts loading: every text track on the video loses its cues,
 			// the <track> elements' included. (Chromium lists those in
@@ -489,25 +496,45 @@ describe('play route — an episode handed to another player stays stopped here'
 	});
 
 	// The browser loads a <track>'s file once: a sidecar track the
-	// reload cleared would show nothing for the rest of the play.
+	// reload cleared would show nothing for the rest of the play. The
+	// sidecar tracks wait for the playlist ($lib/play/sidecar-tracks),
+	// so none is on the video yet when a return loads it again, and a
+	// handoff once it is in loads nothing again.
 	it('coming back before the stream has its levels keeps the sidecar track its cues', async () => {
 		// Each <track> keeps one TextTrack, as a browser's does.
 		const browser = installBrowserTrackSelection();
 		onTestFinished(() => browser.uninstall());
+		let listed = false;
 		const hls = await mountPlayingHls(() =>
 			server.use(
-				http.get(`${API_BASE}/s/:session/subtitles`, ({ params }) =>
-					HttpResponse.json<SessionSubtitle[]>([
+				http.get(`${API_BASE}/s/:session/subtitles`, ({ params }) => {
+					listed = true;
+					return HttpResponse.json<SessionSubtitle[]>([
 						{
 							lang: 'en',
 							label: 'English',
 							default: true,
 							url: `${API_BASE}/s/${String(params.session)}/sub/0.vtt`
 						}
-					])
-				)
+					]);
+				})
 			)
 		);
+		await until(() => listed, 'the sidecar listing');
+		await settle();
+		const tracksAtReload: number[] = [];
+		const loadSource = hls.loadSource.bind(hls);
+		hls.loadSource = (url) => {
+			tracksAtReload.push(playerVideo().querySelectorAll('track').length);
+			loadSource(url);
+		};
+		await handToExternal();
+		playerVideo().dispatchEvent(new Event('play'));
+		await settle();
+		expect(hls.loadSourceCalls).toBe(2);
+		expect(tracksAtReload).toEqual([0]);
+
+		expect(hls.deliverManifest(LEVELS)).toBe(true);
 		await until(() => playerVideo().querySelector('track') !== null, 'the sidecar track');
 		const track = (playerVideo().querySelector('track') as HTMLTrackElement).track;
 		expect(track.mode).toBe('showing');

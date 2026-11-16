@@ -8,15 +8,22 @@
  * ($lib/play/handoff-gate). hls.js clears the cues of every text track
  * on the video as a playlist starts loading, the `<track>` elements'
  * included, and the browser loads a `<track>`'s file once: with its
- * src unchanged it never asks again. Before the fix, a sidecar track
- * cleared that way showed nothing for the rest of the play.
+ * src unchanged it never asks again, so a sidecar track cleared that
+ * way would show nothing for the rest of the play.
+ *
+ * The sidecar tracks join the video once its playlist is parsed
+ * ($lib/play/sidecar-tracks), so none is on it yet when a return loads
+ * the playlist again, and a handoff once the playlist is in loads
+ * nothing again. These cases check both in the real app: the tracks
+ * join after the return, with their cues, and keep them through later
+ * handoffs.
  *
  * The stream is the two-level fixture of captions-start.spec.ts, its
  * session listing two sidecar tracks, English (the start) and
  * Français. The server holds the master playlist back until the spec
  * lets it go, so the episode can be handed off before it is in; the
- * sidecar listing and files come through meanwhile. The backend's
- * check that the stream answers, a HEAD, is answered at once.
+ * sidecar listing comes through meanwhile. The backend's check that
+ * the stream answers, a HEAD, is answered at once.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from './policy-guard';
@@ -193,10 +200,15 @@ async function pick(page: Page, name: string) {
 
 /** Hands the episode to the external player, which the stub answers
  *  will not start, and closes the app's notice of that; then plays the
- *  embedded video again, which asks for the playlist again: from the
- *  app's play button, or, with Chromium's controls, as their play
- *  button does. */
-async function handOffAndComeBack(page: Page, media: { masters: () => number }, custom = true) {
+ *  embedded video again: from the app's play button, or, with
+ *  Chromium's controls, as their play button does. With the playlist
+ *  not in yet (`reloads`), that asks for it again; once it is in, it
+ *  asks for nothing again. */
+async function handOffAndComeBack(
+	page: Page,
+	media: { masters: () => number },
+	{ custom = true, reloads = true } = {}
+) {
 	const before = media.masters();
 	await page.locator('button[aria-label="More actions"]').click();
 	await page.getByRole('menuitem', { name: /Open in external/ }).click();
@@ -210,11 +222,19 @@ async function handOffAndComeBack(page: Page, media: { masters: () => number }, 
 	} else {
 		await page.evaluate(() => void document.querySelector('video')?.play());
 	}
-	await expect.poll(() => media.masters(), { timeout: 10_000 }).toBe(before + 1);
+	if (reloads) {
+		await expect.poll(() => media.masters(), { timeout: 10_000 }).toBe(before + 1);
+	} else {
+		await expect
+			.poll(() => page.evaluate(() => document.querySelector('video')?.paused ?? true))
+			.toBe(false);
+		expect(media.masters()).toBe(before);
+	}
 }
 
 /** Plays the card's episode, its master playlist held back, until the
- *  start's sidecar file is in. */
+ *  session's sidecar listing is in: no sidecar track has joined the
+ *  video, which waits for the playlist. */
 async function heldAtStart(page: Page, profile: string, media: { origin: string }, custom = true) {
 	const play = await routeRealPlay(page, {
 		profile,
@@ -223,11 +243,42 @@ async function heldAtStart(page: Page, profile: string, media: { origin: string 
 	});
 	await playFromContinue(page, play);
 	await expect
-		.poll(async () => (await sidecars(page))?.tracks ?? [], { timeout: 30_000 })
+		.poll(
+			() =>
+				page.evaluate(() =>
+					performance
+						.getEntriesByType('resource')
+						.some((e) => new URL(e.name).pathname.endsWith('/subtitles'))
+				),
+			{ timeout: 30_000 }
+		)
+		.toBe(true);
+	expect((await sidecars(page))?.tracks).toEqual([]);
+}
+
+/** Lets the playlist in and waits for playback past one second, with
+ *  the sidecar tracks joined: English the start, its file in. */
+async function releasedAndPlaying(page: Page, media: { release: () => void }) {
+	media.release();
+	await expect
+		.poll(async () => (await sidecars(page))?.time ?? 0, { timeout: 30_000 })
+		.toBeGreaterThan(1);
+	await expect
+		.poll(async () => (await sidecars(page))?.tracks ?? [], { timeout: 10_000 })
 		.toEqual([
 			{ label: 'English', mode: 'showing', loaded: true, cues: 12 },
 			{ label: 'Français', mode: 'disabled', loaded: false, cues: null }
 		]);
+}
+
+async function showsCue(page: Page, label: string) {
+	const line = new RegExp(`^${label} at `);
+	await expect
+		.poll(async () => (await sidecars(page))?.cues ?? [], { timeout: 10_000 })
+		.toEqual([expect.stringMatching(line)]);
+	await expect
+		.poll(() => painted(page), { timeout: 10_000 })
+		.toEqual([expect.stringMatching(line)]);
 }
 
 test('the sidecar track showing when the episode is handed off before its playlist is in has its cues when the viewer comes back', async () => {
@@ -237,22 +288,19 @@ test('the sidecar track showing when the episode is handed off before its playli
 	try {
 		await heldAtStart(page, profile, media);
 		await handOffAndComeBack(page, media);
-		media.release();
-		await expect
-			.poll(async () => (await sidecars(page))?.time ?? 0, { timeout: 30_000 })
-			.toBeGreaterThan(1);
+		await releasedAndPlaying(page, media);
+		await showsCue(page, 'English');
+
+		// Handed off again with the playlist in: nothing is asked for
+		// again, and the track keeps its cues.
+		await handOffAndComeBack(page, media, { reloads: false });
 		expect((await sidecars(page))?.tracks[0]).toEqual({
 			label: 'English',
 			mode: 'showing',
 			loaded: true,
 			cues: 12
 		});
-		await expect
-			.poll(async () => (await sidecars(page))?.cues ?? [], { timeout: 10_000 })
-			.toEqual([expect.stringMatching(/^English at /)]);
-		await expect
-			.poll(() => painted(page), { timeout: 10_000 })
-			.toEqual([expect.stringMatching(/^English at /)]);
+		await showsCue(page, 'English');
 	} finally {
 		media.release();
 		await app.close();
@@ -260,48 +308,32 @@ test('the sidecar track showing when the episode is handed off before its playli
 	}
 });
 
-test('sidecar tracks turned off before two handoffs in a row show their cues when picked after', async () => {
+test('sidecar tracks after two handoffs in a row before the playlist is in show their cues when picked', async () => {
 	test.setTimeout(150_000);
 	const media = await mediaServer();
 	const { app, page, profile } = await launch();
 	try {
 		await heldAtStart(page, profile, media);
-		// French is picked, so its file comes in, then captions go off:
-		// both tracks loaded, both off.
+		// Handed off and back twice, the playlist held back both times.
+		await handOffAndComeBack(page, media);
+		await handOffAndComeBack(page, media);
+		await releasedAndPlaying(page, media);
+
 		await pick(page, 'French');
-		await expect
-			.poll(async () => (await sidecars(page))?.tracks[1] ?? null, { timeout: 10_000 })
-			.toEqual({ label: 'Français', mode: 'showing', loaded: true, cues: 12 });
+		await showsCue(page, 'Français');
 		await pick(page, 'Off');
 		await expect
 			.poll(async () => (await sidecars(page))?.tracks.map((t) => t.mode) ?? [])
 			.toEqual(['disabled', 'disabled']);
 
-		// Handed off and back twice, the playlist held back both times.
-		await handOffAndComeBack(page, media);
-		await handOffAndComeBack(page, media);
-		media.release();
-		await expect
-			.poll(async () => (await sidecars(page))?.time ?? 0, { timeout: 30_000 })
-			.toBeGreaterThan(1);
-		// Off stays off.
+		// Off, both files in, and handed off again: nothing is asked for
+		// again, off stays off, and each track has its cues when picked.
+		await handOffAndComeBack(page, media, { reloads: false });
 		expect((await sidecars(page))?.tracks.map((t) => t.mode)).toEqual(['disabled', 'disabled']);
-
 		await pick(page, 'English');
-		await expect
-			.poll(async () => (await sidecars(page))?.cues ?? [], { timeout: 10_000 })
-			.toEqual([expect.stringMatching(/^English at /)]);
-		await expect
-			.poll(() => painted(page), { timeout: 10_000 })
-			.toEqual([expect.stringMatching(/^English at /)]);
-
+		await showsCue(page, 'English');
 		await pick(page, 'French');
-		await expect
-			.poll(async () => (await sidecars(page))?.cues ?? [], { timeout: 10_000 })
-			.toEqual([expect.stringMatching(/^Français at /)]);
-		await expect
-			.poll(() => painted(page), { timeout: 10_000 })
-			.toEqual([expect.stringMatching(/^Français at /)]);
+		await showsCue(page, 'Français');
 	} finally {
 		media.release();
 		await app.close();
@@ -311,49 +343,33 @@ test('sidecar tracks turned off before two handoffs in a row show their cues whe
 
 // With Chromium's own controls the app takes a change to the video's
 // tracks for a pick from their captions menu, and remembers it for the
-// show. Keeping the cues switches each loaded track that is off to
-// hidden and back, as hls.js's clear does, and never to showing, so no
-// pick but the one already remembered (off) could be read from it; the
-// unit tier checks that no mode it writes is showing. Here the
-// remembered choice and both tracks' modes are what they were after
-// the return, and the cues are there once a track is picked.
-test("with Chromium's controls, the cues are kept and the remembered choice and modes are unchanged", async () => {
+// show. The return before the playlist is in changes no track (none
+// has joined yet), so nothing is remembered from it; the tracks join
+// with the start, and the cues are there once a track is picked.
+test("with Chromium's controls, the return remembers no choice and the cues are there when a track is picked", async () => {
 	test.setTimeout(120_000);
 	const media = await mediaServer();
 	const { app, page, profile } = await launch();
 	try {
 		await heldAtStart(page, profile, media, false);
-		// The viewer picks French from Chromium's menu, then Off, as its
-		// menu sets the modes: both tracks loaded, both off.
-		const choose = (which: number | null) =>
-			page.evaluate((i) => {
-				const v = document.querySelector('video');
-				if (!v) return;
-				for (const [j, t] of [...v.textTracks].entries())
-					t.mode = j === i ? 'showing' : 'disabled';
-			}, which);
-		await choose(1);
-		await expect
-			.poll(async () => (await sidecars(page))?.tracks[1] ?? null, { timeout: 10_000 })
-			.toEqual({ label: 'Français', mode: 'showing', loaded: true, cues: 12 });
-		await choose(null);
 		const remembered = () => page.evaluate(() => localStorage.getItem('ani-gui.caption-choices'));
-		await expect.poll(remembered).toContain('off');
 		const before = await remembered();
 
-		await handOffAndComeBack(page, media, false);
-		media.release();
-		await expect
-			.poll(async () => (await sidecars(page))?.time ?? 0, { timeout: 30_000 })
-			.toBeGreaterThan(1);
+		await handOffAndComeBack(page, media, { custom: false });
+		await releasedAndPlaying(page, media);
 		await page.waitForTimeout(1_000);
 		expect(await remembered()).toBe(before);
-		expect((await sidecars(page))?.tracks.map((t) => t.mode)).toEqual(['disabled', 'disabled']);
 
-		await choose(0);
+		// The viewer picks French from Chromium's menu, as its menu sets
+		// the modes.
+		await page.evaluate(() => {
+			const v = document.querySelector('video');
+			if (!v) return;
+			for (const [j, t] of [...v.textTracks].entries()) t.mode = j === 1 ? 'showing' : 'disabled';
+		});
 		await expect
 			.poll(async () => (await sidecars(page))?.cues ?? [], { timeout: 10_000 })
-			.toEqual([expect.stringMatching(/^English at /)]);
+			.toEqual([expect.stringMatching(/^Français at /)]);
 	} finally {
 		media.release();
 		await app.close();
