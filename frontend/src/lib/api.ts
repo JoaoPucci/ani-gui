@@ -62,6 +62,10 @@ declare global {
 			 *  `defaults` or `test`; null when the window opened
 			 *  without them. */
 			flagsOrigin?: string | null;
+			/** Tell the main process the app's first page has mounted,
+			 *  before it has drawn a frame (`$lib/app-ready`). Absent in
+			 *  browser-only dev. */
+			appMounted?: () => void;
 			/** Tell the main process the app's first page has rendered,
 			 *  which the window's reveal waits for (`$lib/app-ready`).
 			 *  Absent in browser-only dev. */

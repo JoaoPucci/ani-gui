@@ -262,6 +262,20 @@ only. The launch helper accepts Xvfb only on a GitHub Actions runner
 `smoke.spec.ts` checks that the app landed on Wayland in the headless
 session and on X11 in CI.
 
+One defect is visible only on Wayland. Under native Wayland with
+software compositing (a virtual machine, a GPU that failed or is
+blocklisted, `--disable-gpu`) a window that is not on screen gets no
+animation frames, and the app's window is made hidden and revealed once
+its page has drawn two of them. `reveal-without-frames.spec.ts` launches
+the app with `--disable-gpu` (the launch helper's `switches`) and checks
+that the boot completes and the splash hands over to the window. In the
+headless GNOME Shell session the hidden window really gets no frames,
+so the spec fails there if nothing maps the window, and it also checks
+that the wake mapped it (`electron/lib/app-window.cjs`). On CI's Xvfb,
+X11 keeps hidden windows ticking with or without a GPU, so the same
+spec passes there whether the wake works or not: CI cannot see this
+defect, and only the local run of the packaged suite covers it.
+
 One process is not launched by the helper: the app the splash's Restart
 starts again (`splash-stuck.spec.ts`). It is outside the test's process
 tree and group, reparented to the session's subreaper when its parent
