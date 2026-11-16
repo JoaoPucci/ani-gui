@@ -359,3 +359,74 @@ test("without setpriv, the app is still off the terminal", { skip }, async () =>
     await term.close();
   }
 });
+
+test("a launcher whose own file goes away while the app runs still hands it the stop and ends with its status", { skip }, async () => {
+  // The AppImage's launcher sits on its FUSE mount, which can go before
+  // the launcher is done with it; bash reads a script as it runs it.
+  const tree = packedTree();
+  const term = await onTerminal(tree, { env: { STUB_EXIT: "5" } });
+  try {
+    await until("the app to be ready", () => events(tree.events).some((e) => e.ready));
+    fs.truncateSync(tree.launcher, 0);
+    term.send("hangup");
+    await until("the launcher's ending", () => term.ended(), 15_000);
+    assert.deepEqual(signalsOf(tree.events), ["TERM"]);
+    assert.equal(exitOf(tree.events), 5);
+    assert.deepEqual(term.ended(), { exit: 5 });
+  } finally {
+    await term.close();
+  }
+});
+
+/** The launcher on a terminal, with some of its streams sent elsewhere
+ *  first, as `ani-gui >log 2>&1` does: a shell that redirects and then
+ *  becomes the launcher. */
+async function onTerminalRedirected(tree, redirect) {
+  const shell = path.join(tree.dir, "redirected");
+  fs.writeFileSync(shell, `#!/bin/bash\nexec "${tree.launcher}" ${redirect}\n`, { mode: 0o755 });
+  fs.chmodSync(shell, 0o755);
+  return onTerminal({ ...tree, launcher: shell });
+}
+
+test("with only stdin on the terminal, the app's output goes where it was sent and it still holds no terminal", { skip }, async () => {
+  const tree = packedTree();
+  const log = path.join(tree.dir, "log");
+  const term = await onTerminalRedirected(tree, `>"${log}" 2>&1`);
+  try {
+    const start = await until("the app to be ready", () => events(tree.events).some((e) => e.ready) && startOf(tree.events));
+    assert.deepEqual(start.tty, [false, false, false]);
+    assert.equal(start.stdin, "/dev/null");
+    term.send("hangup");
+    await until("the launcher's ending", () => term.ended(), 15_000);
+    assert.deepEqual(term.ended(), { exit: 0 });
+    assert.deepEqual(signalsOf(tree.events), ["TERM"]);
+    const text = fs.readFileSync(log, "utf8");
+    assert.match(text, /out 3\n/);
+    assert.match(text, /err 3\n/);
+    assert.doesNotMatch(term.screen(), /out 1|err 1/);
+  } finally {
+    await term.close();
+  }
+});
+
+test("with stdout sent to a file, the app's stdout goes there and only its stderr is relayed to the terminal", { skip }, async () => {
+  const tree = packedTree();
+  const log = path.join(tree.dir, "log");
+  const term = await onTerminalRedirected(tree, `>"${log}"`);
+  try {
+    const start = await until("the app to be ready", () => events(tree.events).some((e) => e.ready) && startOf(tree.events));
+    assert.deepEqual(start.tty, [false, false, false]);
+    await until("the app's stderr on the terminal", () => term.screen().includes("err 3\n"));
+    assert.doesNotMatch(term.screen(), /out 1/);
+    process.kill(-term.pid, "SIGINT");
+    await until("the launcher's ending", () => term.ended(), 15_000);
+    assert.deepEqual(term.ended(), { exit: 0 });
+    assert.deepEqual(signalsOf(tree.events), ["TERM"]);
+    const text = fs.readFileSync(log, "utf8");
+    assert.match(text, /out 3\n/);
+    assert.match(text, /bye 3\n/);
+    assert.doesNotMatch(text, /err 1/);
+  } finally {
+    await term.close();
+  }
+});
