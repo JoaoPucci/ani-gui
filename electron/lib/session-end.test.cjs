@@ -248,7 +248,7 @@ const alive = (pid) => {
   }
 };
 
-test("the watcher passes gdbus monitor's output through, with gnome-session's names", async (t) => {
+test("the watcher passes gdbus monitor's output through, with gnome-session's names", { timeout: 5000 }, async (t) => {
   const dir = fakeGdbusDir('echo "$*"; exec sleep 30');
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const watcher = runWatcher(dir);
@@ -262,7 +262,7 @@ test("the watcher passes gdbus monitor's output through, with gnome-session's na
   assert.equal(code, 0);
 });
 
-test("the watcher ends its gdbus when its input closes", async (t) => {
+test("the watcher ends its gdbus when its input closes", { timeout: 5000 }, async (t) => {
   const dir = fakeGdbusDir('echo "$$"; exec sleep 30');
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const watcher = runWatcher(dir);
@@ -279,7 +279,7 @@ for (const [signal, target] of ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"].flatMa
   [each, "group"],
   [each, "shell"],
 ])) {
-  test(`${signal} to the watcher's ${target === "group" ? "whole group" : "shell alone"} ends its gdbus too`, async (t) => {
+  test(`${signal} to the watcher's ${target === "group" ? "whole group" : "shell alone"} ends its gdbus too`, { timeout: 5000 }, async (t) => {
     // Ctrl-C or Ctrl-\ on the terminal, a closed terminal or a stop of
     // the app's group reaches the watcher's shell and its gdbus
     // together; a signal to the shell alone reaches only the shell. A
@@ -287,11 +287,21 @@ for (const [signal, target] of ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"].flatMa
     // so the gdbus has to be ended by the shell, not left to the signal.
     const dir = fakeGdbusDir('echo "$$"; exec sleep 30');
     let gdbusPid = 0;
+    let watcher = null;
     t.after(() => {
+      // A case that timed out leaves nothing behind: the watcher's own
+      // group (this test created it), and its gdbus by recorded pid.
+      if (watcher && watcher.exitCode === null && watcher.signalCode === null) {
+        try {
+          process.kill(-watcher.pid, "SIGKILL");
+        } catch {
+          // Already gone.
+        }
+      }
       if (gdbusPid && alive(gdbusPid)) process.kill(gdbusPid, "SIGKILL");
       fs.rmSync(dir, { recursive: true, force: true });
     });
-    const watcher = spawn(SESSION_WATCHER.cmd, SESSION_WATCHER.args, {
+    watcher = spawn(SESSION_WATCHER.cmd, SESSION_WATCHER.args, {
       env: { PATH: `${dir}:/usr/bin:/bin` },
       stdio: ["pipe", "pipe", "ignore"],
       detached: true,
@@ -307,7 +317,7 @@ for (const [signal, target] of ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"].flatMa
   });
 }
 
-test("without gdbus the watcher exits at once", async (t) => {
+test("without gdbus the watcher exits at once", { timeout: 5000 }, async (t) => {
   const dir = fakeGdbusDir(null);
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const watcher = spawn(SESSION_WATCHER.cmd, SESSION_WATCHER.args, {
