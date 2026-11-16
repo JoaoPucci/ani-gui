@@ -1330,9 +1330,8 @@ app.whenReady().then(() => {
 
 /**
  * Quit without the downloads prompt: nobody is there to answer it.
- * The session is ending, or a stop signal asked — Chrome skips its own
- * prompts on both — and a modal prompt would only hold the quit until
- * the stop turns into a kill.
+ * The session is ending, or a stop signal asked, and a modal prompt
+ * would only hold the quit until the stop turns into a kill.
  */
 function quitUnattended() {
   confirmedQuit = true;
@@ -1346,8 +1345,8 @@ function quitUnattended() {
  * (lib/termination-signals.cjs).
  */
 function takeOverStopSignals() {
-  if (process.platform !== "linux") return;
   const takeover = installTerminationSignals({
+    platform: process.platform,
     source: process,
     mainPid: process.pid,
     listHelpers: () => app.getAppMetrics(),

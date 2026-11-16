@@ -6,10 +6,11 @@
 // Without this the app learns of a reboot, a power-off or a logout
 // only from the SIGTERM systemd sends every process in its scope at
 // once, which Chromium does not survive cleanly (see
-// lib/termination-signals.cjs). Chrome answers the announcements
-// themselves (chrome/browser/lifetime/session_end_listener_linux.cc);
-// Electron does not build that code (electron/electron#55560), so the
-// app listens for the same two:
+// lib/termination-signals.cjs). Chrome answers logind's announcement
+// of a reboot or power-off itself
+// (chrome/browser/lifetime/session_end_listener_linux.cc); Electron
+// does not build that code (electron/electron#55560), so the app
+// listens for it, and for GNOME's announcement of a logout too:
 //
 //   - Reboot and power-off: logind's PrepareForShutdown(true), which
 //     Electron passes on as powerMonitor's `shutdown` event. While a
@@ -27,6 +28,8 @@
 // A desktop that announces a logout some other way (KDE, the Inhibit
 // portal's session monitor, which needs a D-Bus connection of the
 // app's own) gets no early quit; its logout reaches the app as signals.
+
+const { StringDecoder } = require("node:string_decoder");
 
 /** gnome-session's object, and the line `gdbus monitor` prints for its
  *  SessionOver signal. */
@@ -64,9 +67,12 @@ function isSessionOver(line) {
  * a partial line waits for the rest.
  */
 function lineSplitter(onLine) {
+  // A Buffer may end inside a multi-byte character: the decoder keeps
+  // its first bytes until the rest arrive.
+  const decoder = new StringDecoder("utf8");
   let pending = "";
   return (chunk) => {
-    pending += String(chunk);
+    pending += typeof chunk === "string" ? chunk : decoder.write(chunk);
     const lines = pending.split("\n");
     pending = lines.pop();
     for (const line of lines) onLine(line);

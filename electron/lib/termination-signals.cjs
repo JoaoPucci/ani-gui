@@ -4,14 +4,14 @@
 //
 // A stop signal often reaches every process of the app at once: a
 // logout or shutdown stops the systemd scope the desktop launched the
-// app in, `pkill ani-gui` matches by name, a closed terminal or
+// app in, which holds all of its processes (Electron does not move its
+// main process into a scope of its own), `pkill ani-gui` matches by name, a closed terminal or
 // `kill -- -<pgid>` signals the process group. Chromium's zygote, GPU
 // and utility helpers then die while the main process is still
 // quitting. Chromium relaunches the GPU process through the dead
 // zygote, fails every attempt, and aborts with "GPU process isn't
 // usable. Goodbye." — a SIGTRAP, which the desktop's crash reporter
-// announces as a crash, and which leaves the profile's lock behind
-// (electron/electron#54547). Chromium's own handler is also gone after
+// announces as a crash (electron/electron#54547). Chromium's own handler is also gone after
 // the first signal, so a second one kills the app outright.
 //
 // So, once the app is ready, the main process takes the three signals
@@ -24,14 +24,25 @@
 //     `beforeEnd` runs: it stops the backend and makes the app's own
 //     storage reach disk (see `persistStorage`). Then every listener
 //     for the three signals is removed, so the signal's default action
-//     applies, and the signal is raised again.
+//     applies, and the signal is raised again. Like the abort, this
+//     ends the app without removing its profile's lock; the next
+//     launch takes over a lock whose owner is gone.
 //
-// "Reached the helpers" means a helper Chromium lists that is not a
-// renderer (the GPU process, a utility process) is gone or a zombie
-// when the signal arrives, or within HELPER_WATCH_WINDOW_MS of it
-// (checked every HELPER_WATCH_INTERVAL_MS, and on `child-process-gone`).
-// Renderers are never counted: their windows close, and they exit,
-// during an ordinary quit too.
+// "Reached the helpers" means the GPU process is gone or a zombie when
+// the signal arrives, or within HELPER_WATCH_WINDOW_MS of it (checked
+// every HELPER_WATCH_INTERVAL_MS, and on `child-process-gone`); a
+// signal that arrives after an earlier one's window opens a window of
+// its own. The GPU process is the one whose death makes Chromium
+// abort, and in the measurements an ordinary quit never had it exit
+// inside the window. Renderers and utility processes are not counted:
+// renderers exit with their windows, and utility processes exit on
+// their own, cleanly, at any time.
+//
+// This is a race the takeover usually wins, not a guarantee: the
+// watch and Chromium's relaunch of the GPU process both run on the
+// main thread, and the relaunch follows the helpers' death within
+// about 15 ms. The before-and-after measurements are in the pull
+// request that brought this module.
 //
 // Nothing is installed before `ready`. Electron puts its own handler in
 // place after the main script has run, and a listener added earlier
@@ -66,14 +77,14 @@ function procStatState(stat) {
 }
 
 /**
- * Names the first helper that has exited, or null while every one
- * runs. `helpers` is `app.getAppMetrics()`'s shape ({ pid, type }); the
- * main process and renderers ("Tab") are skipped. A helper not yet
- * reaped is a zombie ("Z"), not gone.
+ * Names the GPU process once it has exited, or null while it runs (or
+ * there is none). `helpers` is `app.getAppMetrics()`'s shape
+ * ({ pid, type }). A process not yet reaped is a zombie ("Z"), not
+ * gone.
  */
-function exitedHelper(helpers, mainPid, readProcStat) {
+function exitedGpuProcess(helpers, mainPid, readProcStat) {
   for (const helper of helpers) {
-    if (helper.pid === mainPid || helper.type === "Browser" || helper.type === "Tab") continue;
+    if (helper.pid === mainPid || helper.type !== "GPU") continue;
     const state = procStatState(readProcStat(helper.pid));
     if (state === null) return `${helper.type} process ${helper.pid} is gone`;
     if (state === "Z" || state === "X" || state === "x") {
@@ -88,6 +99,7 @@ function exitedHelper(helpers, mainPid, readProcStat) {
  * to be fed every `child-process-gone` event.
  *
  * Options:
+ *   platform      process.platform: off Linux nothing is taken over
  *   source        `process`: on(signal, fn), removeAllListeners(signal)
  *   mainPid       this process's pid
  *   listHelpers   () => [{ pid, type }]  (app.getAppMetrics())
@@ -98,6 +110,7 @@ function exitedHelper(helpers, mainPid, readProcStat) {
  *   setInterval, clearInterval, now: the clock
  */
 function installTerminationSignals(options) {
+  if (options.platform !== "linux") return { childProcessGone() {} };
   let quitSignal = null;
   let quitSignalAt = 0;
   let watch = null;
@@ -114,7 +127,7 @@ function installTerminationSignals(options) {
 
   const helperGone = () => {
     try {
-      return exitedHelper(options.listHelpers(), options.mainPid, options.readProcStat);
+      return exitedGpuProcess(options.listHelpers(), options.mainPid, options.readProcStat);
     } catch {
       return null;
     }
@@ -141,7 +154,8 @@ function installTerminationSignals(options) {
       end(signal, gone);
       return;
     }
-    if (quitSignal === null) {
+    if (!watching()) {
+      stopWatching();
       quitSignal = signal;
       quitSignalAt = options.now();
       watch = options.setInterval(() => {
@@ -164,8 +178,7 @@ function installTerminationSignals(options) {
         quitSignal !== null &&
         !ended &&
         watching() &&
-        details.type !== "Tab" &&
-        details.reason !== "clean-exit"
+        details.type === "GPU"
       ) {
         end(quitSignal, `${details.type} process ${details.reason}`);
       }
@@ -211,7 +224,7 @@ module.exports = {
   STORAGE_COMMIT_WAIT_MS,
   TERMINATION_SIGNALS,
   blockFor,
-  exitedHelper,
+  exitedGpuProcess,
   installTerminationSignals,
   persistStorage,
   procStatState,
