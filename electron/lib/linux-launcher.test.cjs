@@ -324,7 +324,12 @@ function pathWithout(tree, missing) {
     if (missing.includes(tool)) continue;
     let real;
     try {
-      real = execFileSync("sh", ["-c", `command -v ${tool}`], { encoding: "utf8" }).trim();
+      // python3 may be a version manager's shim (pyenv), a script that
+      // needs tools left out of this PATH: link the interpreter itself.
+      real =
+        tool === "python3"
+          ? execFileSync("python3", ["-c", "import sys; print(sys.executable)"], { encoding: "utf8" }).trim()
+          : execFileSync("sh", ["-c", `command -v ${tool}`], { encoding: "utf8" }).trim();
     } catch {
       continue;
     }
