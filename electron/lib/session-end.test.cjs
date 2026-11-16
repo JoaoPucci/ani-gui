@@ -327,6 +327,42 @@ for (const [signal, target] of [
   });
 }
 
+test("without a working setpriv the watcher still runs gdbus and ends it on a signal", { timeout: 5000 }, async (t) => {
+  // setpriv missing, or too old for --pdeathsig: gdbus starts bare.
+  const dir = fakeGdbusDir('echo "$$ $*"; exec sleep 30');
+  fs.writeFileSync(path.join(dir, "setpriv"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  let gdbusPid = 0;
+  let watcher = null;
+  t.after(() => {
+    if (watcher && watcher.exitCode === null && watcher.signalCode === null) {
+      try {
+        process.kill(-watcher.pid, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    }
+    if (gdbusPid && alive(gdbusPid)) process.kill(gdbusPid, "SIGKILL");
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  watcher = spawn(SESSION_WATCHER.cmd, SESSION_WATCHER.args, {
+    env: { PATH: `${dir}:/usr/bin:/bin` },
+    stdio: ["pipe", "pipe", "ignore"],
+    detached: true,
+  });
+  const [chunk] = await once(watcher.stdout, "data");
+  const [pid, ...args] = String(chunk).trim().split(" ");
+  gdbusPid = Number(pid);
+  assert.equal(
+    args.join(" "),
+    `monitor --session --dest ${GNOME_SESSION.service} --object-path ${GNOME_SESSION.path}`,
+  );
+  const exited = once(watcher, "exit");
+  process.kill(watcher.pid, "SIGTERM");
+  await exited;
+  for (let i = 0; i < 100 && alive(gdbusPid); i += 1) await new Promise((r) => setTimeout(r, 10));
+  assert.equal(alive(gdbusPid), false);
+});
+
 test("without gdbus the watcher exits at once", { timeout: 5000 }, async (t) => {
   const dir = fakeGdbusDir(null);
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
