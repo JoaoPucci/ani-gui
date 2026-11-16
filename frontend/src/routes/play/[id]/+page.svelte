@@ -450,7 +450,11 @@
 		() => hls?.startLoad(),
 		// A manifest the handoff cut off is asked for again; the engine,
 		// its listeners and the fragment-loop guard stay as they are,
-		// and so do the sidecar tracks' cues ($lib/play/sidecar-cues).
+		// and so do the cues of any sidecar track on the video
+		// ($lib/play/sidecar-cues). With an engine the sidecar tracks
+		// join once its playlist is parsed ($lib/play/sidecar-tracks),
+		// which is also when this stops being needed, so none is there
+		// yet; the keeper makes that order no condition of their cues.
 		() => {
 			const engine = hls;
 			const url = attachedUrl;
