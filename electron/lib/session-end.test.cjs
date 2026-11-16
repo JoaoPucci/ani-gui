@@ -58,6 +58,8 @@ test("isSessionOver matches gdbus monitor's line for SessionOver only", () => {
   assert.equal(isSessionOver("/org/gnome/SessionManager: org.gnome.SessionManager.SessionRunning ()"), false);
   assert.equal(isSessionOver("The name org.gnome.SessionManager is owned by :1.12"), false);
   assert.equal(isSessionOver("/org/other: org.gnome.SessionManager.SessionOver ()"), false);
+  // A SessionOver line quoted after something else is not the signal.
+  assert.equal(isSessionOver(`x ${SESSION_OVER}`), false);
   assert.equal(isSessionOver(undefined), false);
 });
 
