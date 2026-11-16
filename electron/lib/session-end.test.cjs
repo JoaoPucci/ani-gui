@@ -94,6 +94,40 @@ test("a shutdown announcement quits the app and holds the shutdown for it", () =
   assert.deepEqual(endings, ["shutdown"]);
 });
 
+/**
+ * Electron's powerMonitor as of 33 (lib/browser/api/power-monitor.ts,
+ * unchanged on main): the native monitor is created on the first
+ * listener and, on Linux, told whether a `shutdown` listener exists
+ * before that first listener has been added. Only a `shutdown`
+ * listener added later goes through the path that counts it.
+ */
+function electronPowerMonitor() {
+  const pm = new EventEmitter();
+  pm.listening = [];
+  pm.once("newListener", () => {
+    pm.listening.push(pm.listenerCount("shutdown") > 0);
+    pm.on("newListener", (event) => {
+      if (event === "shutdown") pm.listening.push(pm.listenerCount("shutdown") + 1 > 0);
+    });
+  });
+  return pm;
+}
+
+test("Electron is told of the shutdown listener, so it holds the inhibitor", () => {
+  const powerMonitor = electronPowerMonitor();
+  watchSessionEnd({
+    platform: "linux",
+    powerMonitor,
+    spawn: () => {
+      throw new Error("no watcher here");
+    },
+    env: {},
+    onEnding: () => {},
+    logError: () => {},
+  });
+  assert.equal(powerMonitor.listening.at(-1), true);
+});
+
 test("SessionOver from the watcher quits the app", () => {
   const { child, endings } = rig();
   child.stdout.write("The name org.gnome.SessionManager is owned by :1.5\n");
