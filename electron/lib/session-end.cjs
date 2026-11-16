@@ -47,7 +47,10 @@ const SESSION_OVER_LINE = `${GNOME_SESSION.path}: ${GNOME_SESSION.service}.Sessi
  * alive). A stop signal that reaches the shell (Ctrl-C, a closed
  * terminal, a stop of the app's group) ends the gdbus too: the shell
  * started it as a background job, which ignores SIGINT and SIGQUIT,
- * so it would otherwise outlive the shell. Without gdbus it exits at once.
+ * so it would otherwise outlive the shell. A SIGKILL to the shell
+ * alone, as a kill by command line matching "ani-gui" sends it, still
+ * leaves the gdbus behind, its input /dev/null. Without gdbus it exits
+ * at once.
  */
 const SESSION_WATCHER = Object.freeze({
   cmd: "/bin/sh",
