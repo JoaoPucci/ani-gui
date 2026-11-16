@@ -22,9 +22,10 @@
  * '@playwright/test'; the shared launch helper (./launch.ts) guards
  * every app it starts — through all three paths for a launch through
  * Playwright's driver, through its output alone for spawnPackagedApp's
- * plain child process, which Playwright does not attach to. After each test, a line that matches none of the
- * patterns the test declared with `expectViolation` fails it. A test
- * that declares some gets its app's guard from `guardPolicy(app)`.
+ * plain child process, which Playwright does not attach to. After each
+ * test, a line that matches none of the patterns the test declared
+ * with `expectViolation` fails it. A test that declares some gets its
+ * app's guard from `guardPolicy(app)`.
  */
 import { test as base, expect, type ElectronApplication } from '@playwright/test';
 

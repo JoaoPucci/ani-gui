@@ -202,8 +202,11 @@ removed at once. `smoke.spec.ts` checks that the profile is gone after
 the app quits. Two specs manage their profile themselves, removing it
 in their own teardown and, if the launch fails, at once: the keyring
 spec, whose profile also holds its session bus, and the splash-stuck
-spec, whose restarted app outlives the launch. A worker that is killed
-before its app exits leaves the profile behind.
+spec, whose restarted app outlives the launch. `terminal-closed.spec.ts`
+launches through `spawnPackagedApp`, which takes no profile: the spec
+looks at the profile after the app has exited (for the single-instance
+lock) and only then hands it to the helper's `removeAfterExit`. A worker
+that is killed before its app exits leaves the profile behind.
 
 The Node tests that make temporary directories (`electron/lib/`,
 `tests/tools/`, `tests/complexity/`) remove them in their own
@@ -273,7 +276,7 @@ starts on a terminal is the child of the terminal fixture
 `python3`): the fixture signals the app's group only before it has
 reaped the app, kills what is left in the group once the app has
 exited and before reaping it, and kills the whole group if the spec's
-end of its stdin closes first.
+end of its stdin closes first, as it does when the test worker exits.
 
 One process is not launched by the helper: the app the splash's Restart
 starts again (`splash-stuck.spec.ts`). It is outside the test's process

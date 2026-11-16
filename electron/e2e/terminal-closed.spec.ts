@@ -123,8 +123,11 @@ test("the app quits cleanly after the reader of its output has gone", async () =
     expect(await ended(running, QUIT_MS)).toEqual({ code: 0, signal: null });
     expect(locked()).toBe(false);
   } finally {
-    if (app) await stopOwnGroup(app, { exe, termMs: 2000, killMs: 2000 });
-    removeAfterExit(profile);
+    try {
+      if (app) await stopOwnGroup(app, { exe, termMs: 2000, killMs: 2000 });
+    } finally {
+      removeAfterExit(profile);
+    }
   }
 });
 
@@ -169,13 +172,16 @@ test("the app quits after the terminal it was started from has closed", async ()
     // avoids it. Any other ending is a crash this spec does not expect.
     expect([{ exit: 0 }, { signal: os.constants.signals.SIGABRT }]).toContainEqual(status());
   } finally {
-    if (terminal) {
-      // Kills the app's group if it is still running, then ends the
-      // fixture, which kills what is left as its stdin closes.
-      if (terminal.exitCode === null) terminal.stdin!.write("kill\n");
-      terminal.stdin!.end();
-      expect(await ended(terminal, 10_000), "the terminal fixture did not end").not.toBeNull();
+    try {
+      if (terminal) {
+        // Kills the app's group if it is still running, then ends the
+        // fixture, which kills what is left as its stdin closes.
+        if (terminal.exitCode === null) terminal.stdin!.write("kill\n");
+        terminal.stdin!.end();
+        expect.soft(await ended(terminal, 10_000), "the terminal fixture did not end").not.toBeNull();
+      }
+    } finally {
+      removeAfterExit(profile);
     }
-    removeAfterExit(profile);
   }
 });

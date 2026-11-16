@@ -209,9 +209,12 @@ export async function launchPackagedApp(
  *  that program — leads a process group of its own, as it does under
  *  Playwright's driver, and is stopped the way lib/own-group.cjs
  *  stops one: what it leaves in its group is killed in the turn its
- *  exit is reported, and if the test worker exits first, the group is
- *  killed then, while the child is still unreaped. The spec removes
- *  its profile itself (removeAfterExit), once it has looked at it. */
+ *  exit is reported. If the test worker exits first, an app started
+ *  directly has its group killed then, while it is still unreaped; an
+ *  app started `via` the terminal fixture is in a session of its own,
+ *  outside the fixture's group, and the fixture kills it itself once
+ *  the worker's exit closes the fixture's stdin. The spec removes its
+ *  profile itself (removeAfterExit), once it has looked at it. */
 export async function spawnPackagedApp(
 	env: NodeJS.ProcessEnv,
 	{ stdio, via = [] }: { stdio: StdioOptions; via?: string[] }
@@ -234,7 +237,7 @@ export async function spawnPackagedApp(
 	const killGroup = () => {
 		if (!child.pid) return;
 		try {
-			process.kill(-child.pid!, 'SIGKILL');
+			process.kill(-child.pid, 'SIGKILL');
 		} catch {
 			/* nothing left in the group */
 		}
@@ -242,7 +245,7 @@ export async function spawnPackagedApp(
 	const onWorkerExit = () => {
 		if (child.exitCode === null && child.signalCode === null) killGroup();
 	};
-	process.once('exit', onWorkerExit);
+	if (via.length === 0) process.once('exit', onWorkerExit);
 	child.once('exit', () => {
 		// The reap's own turn: the group id is still the child's.
 		killGroup();
@@ -250,6 +253,8 @@ export async function spawnPackagedApp(
 		proxy.close();
 	});
 	child.once('error', () => {
+		// A spawn that failed: no process, and no exit to come.
+		if (child.pid !== undefined) return;
 		process.removeListener('exit', onWorkerExit);
 		proxy.close();
 	});
