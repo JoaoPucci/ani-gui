@@ -25,7 +25,7 @@ pub const UA: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0";
 
 /// Build the proxy's outbound HTTP client with the right defaults.
-/// It follows no redirect on its own: [`send_paced`] follows them hop
+/// It follows no redirect on its own: [`send_paced_as`] follows them hop
 /// by hop, charging each to the host that answers it.
 ///
 /// # Errors
@@ -81,30 +81,6 @@ pub(crate) fn redirect_target(
     from.join(location?).ok()
 }
 
-/// Send `method` to `url` with `headers`, hop by hop: the URL asked
-/// for and each redirect it names is admitted against its host's
-/// budget before it is sent, so a redirect is charged to the host
-/// that answers it — the same host again, or another one. The
-/// headers go with every hop as given, the session's referer among
-/// them, where a transport following the redirect itself would
-/// replace the referer with the URL that redirected. Returns the
-/// first response that is not a redirect. Every hop is admitted as
-/// the player's traffic, in the host's line; [`send_paced_as`] sends
-/// background traffic.
-///
-/// # Errors
-/// [`AniError::Network`] for a connection or DNS failure on any hop,
-/// and once [`REDIRECT_HOP_CAP`] hops have all redirected.
-pub(crate) async fn send_paced(
-    client: &reqwest::Client,
-    budget: &HostBudget,
-    method: Method,
-    url: &Url,
-    headers: HeaderMap,
-) -> Result<reqwest::Response> {
-    send_paced_as(client, budget, Admission::Player, method, url, headers).await
-}
-
 /// Whose traffic a paced fetch is: the player's, which waits its
 /// turn in the host's line, or background traffic, which takes turns
 /// with it ([`HostBudget::admit_background`]).
@@ -129,10 +105,18 @@ pub enum Admission {
     Background,
 }
 
-/// [`send_paced`], each hop admitted as `admission` says.
+/// Send `method` to `url` with `headers`, hop by hop: the URL asked
+/// for and each redirect it names is admitted against its host's
+/// budget before it is sent, as `admission` says, so a redirect is
+/// charged to the host that answers it — the same host again, or
+/// another one. The headers go with every hop as given, the session's
+/// referer among them, where a transport following the redirect itself
+/// would replace the referer with the URL that redirected. Returns the
+/// first response that is not a redirect.
 ///
 /// # Errors
-/// As [`send_paced`].
+/// [`AniError::Network`] for a connection or DNS failure on any hop,
+/// and once [`REDIRECT_HOP_CAP`] hops have all redirected.
 pub(crate) async fn send_paced_as(
     client: &reqwest::Client,
     budget: &HostBudget,
@@ -358,55 +342,6 @@ pub async fn fetch_text(
     Ok((bytes, content_type, served_from))
 }
 
-/// HEAD an upstream URL and decide whether the body it would return is
-/// an HLS manifest or an MP4 byte stream. Used as a fallback when the
-/// URL path has no recognisable extension (some embed hosts hand back
-/// opaque paths like `…/videos/<id>/sub/1`).
-///
-/// Rule: any `content-type` mentioning "mpegurl" or "m3u8" is HLS.
-/// Everything else (incl. `application/octet-stream`, `video/mp4`,
-/// missing content-type) is MP4. HLS manifests always advertise
-/// themselves; MP4 streams sometimes don't, so the fall-through goes
-/// to MP4 to avoid trying to parse a multi-hundred-MB binary as text.
-///
-/// # Errors
-/// - [`AniError::Network`] for connection or DNS failures
-/// - [`AniError::Upstream`] when the HEAD response is non-2xx
-pub async fn classify_via_head(
-    client: &reqwest::Client,
-    budget: &HostBudget,
-    url: &Url,
-    referer: &str,
-) -> Result<crate::proxy::token::MediaKind> {
-    use crate::proxy::token::MediaKind;
-
-    let mut headers = HeaderMap::new();
-    if let Some(v) = referer_header(referer) {
-        headers.insert(REFERER, v);
-    }
-    headers.insert(USER_AGENT, HeaderValue::from_static(UA));
-
-    let resp = send_paced(client, budget, Method::HEAD, url, headers).await?;
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(AniError::Upstream {
-            status: status.as_u16(),
-        });
-    }
-    let ct = resp
-        .headers()
-        .get(HeaderName::from_static("content-type"))
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    let is_hls = ct.contains("mpegurl") || ct.contains("m3u8");
-    Ok(if is_hls {
-        MediaKind::Hls
-    } else {
-        MediaKind::Mp4
-    })
-}
-
 /// Issue a GET to upstream and return the [`reqwest::Response`] without
 /// buffering its body. The proxy's MP4 pass-through hands the response
 /// stream straight to axum, so a 600 MB MP4 doesn't get materialised in
@@ -591,7 +526,6 @@ mod tests {
             CappedBody::Oversized
         ));
     }
-    use crate::proxy::token::MediaKind;
 
     #[test]
     fn build_client_succeeds() {
@@ -603,92 +537,6 @@ mod tests {
         // Covers the tight-timeout builder; the fallback arm is the
         // never-observed builder failure.
         let _c = build_meta_client();
-    }
-
-    /// classify_via_head() resolves the media kind for upstreams whose
-    /// URL path doesn't carry a `.m3u8` / `.mp4` extension (some
-    /// providers — fast4speed.rsvp for one — hand back opaque paths
-    /// like `…/videos/<id>/sub/1`). We HEAD the URL with the right
-    /// Referer; the response's `content-type` is enough to route the
-    /// session through the manifest-rewrite or byte-stream path.
-    #[tokio::test]
-    async fn head_classify_returns_hls_for_mpegurl_content_type() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .insert_header("content-type", "application/vnd.apple.mpegurl"),
-            )
-            .mount(&server)
-            .await;
-        let client = build_client().unwrap();
-        let url = Url::parse(&format!("{}/abc/sub/1", server.uri())).unwrap();
-        let kind = classify_via_head(&client, &HostBudget::fresh(), &url, "https://allmanga.to")
-            .await
-            .unwrap();
-        assert_eq!(kind, MediaKind::Hls);
-    }
-
-    #[tokio::test]
-    async fn head_classify_returns_mp4_for_video_mp4_content_type() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).insert_header("content-type", "video/mp4"),
-            )
-            .mount(&server)
-            .await;
-        let client = build_client().unwrap();
-        let url = Url::parse(&format!("{}/x", server.uri())).unwrap();
-        let kind = classify_via_head(&client, &HostBudget::fresh(), &url, "https://allmanga.to")
-            .await
-            .unwrap();
-        assert_eq!(kind, MediaKind::Mp4);
-    }
-
-    /// Real-world case: tools.fast4speed.rsvp returns
-    /// `content-type: application/octet-stream` with a multi-hundred-MB
-    /// content-length for episodes encoded as raw MP4. Treating the
-    /// fall-through as MP4 is the right default in this codebase —
-    /// HLS manifests are tiny + always advertised, so no MP4 false
-    /// positive should also be served as HLS.
-    #[tokio::test]
-    async fn head_classify_falls_back_to_mp4_for_octet_stream() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .insert_header("content-type", "application/octet-stream")
-                    .insert_header("content-length", "290000000"),
-            )
-            .mount(&server)
-            .await;
-        let client = build_client().unwrap();
-        let url = Url::parse(&format!("{}/videos/x/sub/1", server.uri())).unwrap();
-        let kind = classify_via_head(&client, &HostBudget::fresh(), &url, "https://allmanga.to")
-            .await
-            .unwrap();
-        assert_eq!(kind, MediaKind::Mp4);
-    }
-
-    /// `application/x-mpegURL` is the older Apple HLS content type;
-    /// it still appears in the wild on hianime/megacloud manifests.
-    #[tokio::test]
-    async fn head_classify_returns_hls_for_x_mpegurl_content_type() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .insert_header("content-type", "application/x-mpegURL"),
-            )
-            .mount(&server)
-            .await;
-        let client = build_client().unwrap();
-        let url = Url::parse(&format!("{}/playlist", server.uri())).unwrap();
-        let kind = classify_via_head(&client, &HostBudget::fresh(), &url, "https://allmanga.to")
-            .await
-            .unwrap();
-        assert_eq!(kind, MediaKind::Hls);
     }
 
     #[tokio::test]

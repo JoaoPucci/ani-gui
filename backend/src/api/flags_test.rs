@@ -8,7 +8,7 @@ use axum::http::{Request, StatusCode};
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-use super::build_api_router;
+use super::test_router;
 use super::tests::{body_string, test_app_state};
 use crate::app::AppState;
 use crate::flags::store::{Origin, SETTLE_LIMIT};
@@ -16,7 +16,7 @@ use crate::flags::test_decls::TEST_DECLS;
 use crate::flags::FlagStore;
 
 async fn get_flags(state: AppState) -> (StatusCode, serde_json::Value) {
-    let router = build_api_router(Arc::new(state));
+    let router = test_router(Arc::new(state));
     let response = router
         .oneshot(
             Request::builder()

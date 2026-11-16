@@ -35,6 +35,18 @@ vi.mock('$app/navigation', () => ({
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
+import type {
+	AiringStatus,
+	AvailabilityBatchResponse,
+	AvailabilityResponse,
+	Config,
+	HistoryEntry,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	UnsettledReason
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 const KITSU_ID = '40684';
 const TITLE = 'Ongoing Show';
 
@@ -84,43 +96,63 @@ function useHandlers(
 	other: CacheAnswer | 'fails',
 	probeAvailable = false,
 	subtype: string | null = null,
-	unsettled?: string
+	unsettled?: UnsettledReason
 ): Asked {
 	const asked: Asked = { batch: [], probeModes: [], warms: 0 };
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig(mode))),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig(mode))),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished', subtype })
+			HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(KITSU_ID, TITLE, 12),
+				status: 'finished',
+				subtype
+			})
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
 		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 			asked.probeModes.push(((await request.json()) as { mode: string }).mode);
-			return HttpResponse.json(
+			return HttpResponse.json<AvailabilityResponse>(
 				probeAvailable
-					? { available: true, episode_count: 12, extra_episodes: [] }
-					: { available: false, episode_count: null, extra_episodes: [], unsettled }
+					? availabilityAnswer({ available: true, episode_count: 12, extra_episodes: [] })
+					: availabilityAnswer({
+							available: false,
+							episode_count: null,
+							extra_episodes: [],
+							unsettled
+						})
 			);
 		}),
 		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 			const body = (await request.json()) as { kitsu_ids: string[]; mode: string };
 			asked.batch.push(body);
-			if (body.mode === mode) return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+			if (body.mode === mode)
+				return HttpResponse.json<AvailabilityBatchResponse>({
+					cached: {},
+					playable_episode_counts: {}
+				});
 			if (other === 'fails') return new HttpResponse(null, { status: 500 });
-			return HttpResponse.json(other);
+			return HttpResponse.json<AvailabilityBatchResponse>(other);
 		}),
 		http.post(`${API_BASE}/api/availability/warm`, () => {
 			asked.warms += 1;
 			return new HttpResponse(null, { status: 202 });
 		}),
 		http.put(`${API_BASE}/api/settings`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
-		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>([])),
+		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
+		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({}))
 	);
 	return asked;
 }
@@ -238,9 +270,12 @@ describe('detail — the notice asks about the other audio only while it is up',
 				if (body.mode === 'sub') {
 					askedSub = true;
 					await held;
-					return HttpResponse.json(HAS);
+					return HttpResponse.json<AvailabilityBatchResponse>(HAS);
 				}
-				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+				return HttpResponse.json<AvailabilityBatchResponse>({
+					cached: {},
+					playable_episode_counts: {}
+				});
 			})
 		);
 		app = mount(DetailPage, { target });
@@ -297,9 +332,12 @@ describe('detail — a new question starts from no answer', () => {
 				if (body.mode === 'dub') {
 					askedDub = true;
 					await held;
-					return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+					return HttpResponse.json<AvailabilityBatchResponse>({
+						cached: {},
+						playable_episode_counts: {}
+					});
 				}
-				return HttpResponse.json(HAS);
+				return HttpResponse.json<AvailabilityBatchResponse>(HAS);
 			})
 		);
 		app = mount(DetailPage, { target });
@@ -350,10 +388,18 @@ describe('detail — an answer for a show the page has left', () => {
 		let askedFirst = false;
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/anime/${OTHER_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(OTHER_ID, 'Another Show', 12), status: 'finished' })
+				HttpResponse.json<KitsuAnimeRef>({
+					...kitsuRef(OTHER_ID, 'Another Show', 12),
+					status: 'finished'
+				})
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${OTHER_ID}`, () =>
-				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+				HttpResponse.json<AiringStatus>({
+					aired: 12,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
+				})
 			),
 			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 				const body = (await request.json()) as { kitsu_ids: string[]; mode: string };
@@ -363,12 +409,15 @@ describe('detail — an answer for a show the page has left', () => {
 					// The first show has it subtitled — and answers with
 					// the id of the show the page is now on as well, so a
 					// late answer applied to the wrong question would show.
-					return HttpResponse.json({
+					return HttpResponse.json<AvailabilityBatchResponse>({
 						cached: { [KITSU_ID]: true, [OTHER_ID]: true },
 						playable_episode_counts: {}
 					});
 				}
-				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+				return HttpResponse.json<AvailabilityBatchResponse>({
+					cached: {},
+					playable_episode_counts: {}
+				});
 			})
 		);
 		app = mount(DetailPage, { target });

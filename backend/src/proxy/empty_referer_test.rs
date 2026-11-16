@@ -13,8 +13,7 @@
 //! a header that names nobody is still a header. Each route that
 //! fetches upstream builds its own headers, so each is pinned here:
 //! the master playlist, a media playlist reached through the segment
-//! route, a raw segment, the MP4 pass-through, and the HEAD that
-//! classifies an extensionless upstream.
+//! route, a raw segment, and the MP4 pass-through.
 
 use super::*;
 use tower::ServiceExt as _;
@@ -30,11 +29,12 @@ const MEDIA: &str = "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6.0,\nseg-001.ts\
 
 /// A proxy holding one session over `upstream_url` whose stored
 /// referer is empty, plus that session's id and signing secret.
-fn proxy_over(upstream_url: &str) -> (Router, SessionId, AppSecret) {
+fn proxy_over(upstream_url: &str, kind: MediaKind) -> (Router, SessionId, AppSecret) {
     let secret = AppSecret::from_bytes([9u8; 32]);
     let sessions = SessionTable::new();
-    let session = StreamSession::new(
+    let session = StreamSession::new_with_kind(
         url::Url::parse(upstream_url).expect("upstream url"),
+        kind,
         String::new(),
     );
     let id = session.id;
@@ -94,7 +94,8 @@ async fn a_master_fetch_without_a_referer_sends_no_referer_header() {
         .mount(&server)
         .await;
 
-    let (router, session, _secret) = proxy_over(&format!("{}/master.m3u8", server.uri()));
+    let (router, session, _secret) =
+        proxy_over(&format!("{}/master.m3u8", server.uri()), MediaKind::Hls);
     let status = get(router, format!("/s/{}/master.m3u8", session.as_string())).await;
 
     assert_eq!(status, StatusCode::OK);
@@ -117,7 +118,7 @@ async fn a_media_playlist_fetch_without_a_referer_sends_no_referer_header() {
         .mount(&server)
         .await;
 
-    let (router, session, secret) = proxy_over("https://cdn.example/master.m3u8");
+    let (router, session, secret) = proxy_over("https://cdn.example/master.m3u8", MediaKind::Hls);
     let uri = seg_uri(&secret, session, &format!("{}/subs/en.m3u8", server.uri()));
     let status = get(router, uri).await;
 
@@ -141,7 +142,7 @@ async fn a_raw_segment_without_a_referer_sends_no_referer_header() {
         .mount(&server)
         .await;
 
-    let (router, session, secret) = proxy_over("https://cdn.example/master.m3u8");
+    let (router, session, secret) = proxy_over("https://cdn.example/master.m3u8", MediaKind::Hls);
     let uri = seg_uri(&secret, session, &format!("{}/subs/en.vtt", server.uri()));
     let status = get(router, uri).await;
 
@@ -162,7 +163,8 @@ async fn an_mp4_pass_through_without_a_referer_sends_no_referer_header() {
         .mount(&server)
         .await;
 
-    let (router, session, _secret) = proxy_over(&format!("{}/video.mp4", server.uri()));
+    let (router, session, _secret) =
+        proxy_over(&format!("{}/video.mp4", server.uri()), MediaKind::Mp4);
     let status = get(router, format!("/s/{}/file.mp4", session.as_string())).await;
 
     assert_eq!(status, StatusCode::OK);
@@ -170,33 +172,5 @@ async fn an_mp4_pass_through_without_a_referer_sends_no_referer_header() {
         referer_seen_by(&server).await,
         None,
         "the MP4 pass-through announced an empty referer instead of none",
-    );
-}
-
-#[tokio::test]
-async fn a_kind_probe_without_a_referer_sends_no_referer_header() {
-    // The probe that classifies an upstream with no usable extension
-    // reaches no route — it runs before a session exists — so it is
-    // driven directly. It reads the same stored referer and had the
-    // same empty-header answer.
-    let server = MockServer::start().await;
-    Mock::given(method("HEAD"))
-        .and(wm_path("/videos/x/sub/1"))
-        .respond_with(ResponseTemplate::new(200).insert_header("content-type", "video/mp4"))
-        .mount(&server)
-        .await;
-
-    let client = upstream::build_client().expect("client builds");
-    let budget = crate::proxy::host_budget::HostBudget::fresh();
-    let url = Url::parse(&format!("{}/videos/x/sub/1", server.uri())).expect("probe url");
-    let kind = upstream::classify_via_head(&client, &budget, &url, "")
-        .await
-        .expect("the probe answers");
-
-    assert!(matches!(kind, MediaKind::Mp4));
-    assert_eq!(
-        referer_seen_by(&server).await,
-        None,
-        "the kind probe announced an empty referer instead of none",
     );
 }

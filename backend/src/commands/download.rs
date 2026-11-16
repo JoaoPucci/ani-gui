@@ -1310,6 +1310,8 @@ where
 /// the process environment; tests stage stub executables.
 ///
 /// # Errors
+/// [`AniError::ParseFailed`] when the stream is not an http(s) URL
+/// ([`super::external_player::is_stream_url`]), before any tool runs;
 /// [`AniError::FfmpegMissing`] when neither tool is on `path_env`
 /// (the typed error the install modal renders);
 /// [`AniError::Scraper`] when the chosen tool exits non-zero;
@@ -1333,6 +1335,10 @@ where
     F: FnMut(&str) + Send,
 {
     let master_url = source.master_url.as_str();
+    // yt-dlp takes the stream as a bare argument among its options: one
+    // from the provider's answer that is not an http(s) URL could read
+    // as an option, and no tool runs on it.
+    super::external_player::ensure_stream_url(master_url)?;
     let referer = source.referer.as_deref();
     let target = dest.join(format!("{file_stem}.mp4"));
     // The ceiling belongs to the transfer, not to each step inside

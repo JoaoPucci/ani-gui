@@ -16,6 +16,7 @@ import { mount, unmount, flushSync } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
+import { afterRead, watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -42,6 +43,8 @@ import { listChanges } from '../../src/lib/account/list-changes';
 import { ROW_PREFS_STORAGE_KEY, type RowStyle } from '../../src/lib/rows/prefs';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 
@@ -52,6 +55,7 @@ let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 let historyCleared = 0;
 let pulls: Provider[] = [];
+let fetches: ReturnType<typeof watchPageFetches>;
 
 function connect(provider: Provider) {
 	accountStore.setConnected(provider, {
@@ -82,16 +86,18 @@ function serve(pull: (provider: Provider) => Promise<Response> | Response) {
 	server.use(
 		...homeHandlers({ history: HISTORY }, [
 			http.get(`${API_BASE}/api/account/list/:provider/cached`, ({ params }) =>
-				HttpResponse.json([planned(params.provider as Provider)])
+				HttpResponse.json<ListEntry[]>([planned(params.provider as Provider)])
 			),
 			http.post(`${API_BASE}/api/account/list/:provider`, ({ params }) => {
 				pulls.push(params.provider as Provider);
 				return pull(params.provider as Provider);
 			}),
 			http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () =>
-				HttpResponse.json([kitsuRef(String(PLANNED.malId), PLANNED.title, 12)])
+				HttpResponse.json<KitsuAnimeRef[]>([kitsuRef(String(PLANNED.malId), PLANNED.title, 12)])
 			),
-			http.post(`${API_BASE}/api/availability/batch`, () => HttpResponse.json({ cached: {} })),
+			http.post(`${API_BASE}/api/availability/batch`, () =>
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
+			),
 			http.delete(`${API_BASE}/api/history`, () => {
 				historyCleared += 1;
 				return new HttpResponse(null, { status: 204 });
@@ -100,13 +106,14 @@ function serve(pull: (provider: Provider) => Promise<Response> | Response) {
 	);
 }
 
-const ok = (provider: Provider) => HttpResponse.json([planned(provider)]);
+const ok = (provider: Provider) => HttpResponse.json<ListEntry[]>([planned(provider)]);
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	localStorage.clear();
 	historyCleared = 0;
 	pulls = [];
+	fetches = watchPageFetches();
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -163,6 +170,17 @@ const settledAnnouncement = () => {
 };
 const short = (n: number, unit: 'minute' | 'hour') =>
 	new Intl.RelativeTimeFormat('en', { numeric: 'always', style: 'short' }).format(-n, unit);
+
+/** The tracker re-pulls the page has sent, counted as it sends them:
+ *  a handler sees a request only once MSW has carried it there. */
+const pullsSent = () =>
+	fetches.sent
+		.filter((f) => f.method === 'POST' && f.path.startsWith('/api/account/list/'))
+		.map((f) => f.path.slice('/api/account/list/'.length));
+
+/** The history clears the page has sent, counted the same way. */
+const clearsSent = () =>
+	fetches.sent.filter((f) => f.method === 'DELETE' && f.path === '/api/history').length;
 
 const WL = () => m.account_watch_later_title();
 const CW = () => m.home_strip_continue_eyebrow();
@@ -305,8 +323,6 @@ for (const style of ['inline', 'band'] as const) {
 			expect(refresh.getAttribute('aria-disabled')).toBe('true');
 			expect(document.activeElement).toBe(refresh);
 			refresh.click();
-			await new Promise((r) => setTimeout(r, 50));
-			expect(pulls).toEqual(['anilist']);
 			expect(announced()).toBe(m.account_watch_later_refreshing());
 
 			release();
@@ -314,6 +330,13 @@ for (const style of ['inline', 'band'] as const) {
 				() => status().includes(m.account_watch_later_updated_now()),
 				'the just-updated state'
 			);
+			// The second press sent no pull of its own. A refresh waits
+			// only on the sign-in's bearer before it pulls, and a token
+			// this far from expiry is handed back at once, so once nothing
+			// the page asked is still out a pull that press started has
+			// been sent.
+			await fetches.settled('the refresh to finish');
+			expect(pullsSent()).toEqual(['anilist']);
 			expect(refresh.hasAttribute('aria-disabled')).toBe(false);
 			expect(document.activeElement).toBe(refresh);
 			expect(announced()).toBe(m.account_watch_later_updated_now());
@@ -364,7 +387,7 @@ for (const style of ['inline', 'band'] as const) {
 			serve(ok);
 			server.use(
 				http.get(`${API_BASE}/api/account/list/:provider/cached`, () =>
-					HttpResponse.json({ key: 'error.network.upstream', kind: 'upstream' }, { status: 502 })
+					errorAnswer(502, { key: 'error.network.upstream', kind: 'upstream' })
 				)
 			);
 			localStorage.setItem(ROW_PREFS_STORAGE_KEY, JSON.stringify({ style, controls: false }));
@@ -385,11 +408,8 @@ for (const style of ['inline', 'band'] as const) {
 			server.use(
 				http.get(`${API_BASE}/api/account/list/:provider/cached`, ({ params }) =>
 					failing
-						? HttpResponse.json(
-								{ key: 'error.network.upstream', kind: 'upstream' },
-								{ status: 502 }
-							)
-						: HttpResponse.json([planned(params.provider as Provider)])
+						? errorAnswer(502, { key: 'error.network.upstream', kind: 'upstream' })
+						: HttpResponse.json<ListEntry[]>([planned(params.provider as Provider)])
 				)
 			);
 			localStorage.setItem(ROW_PREFS_STORAGE_KEY, JSON.stringify({ style, controls: false }));
@@ -418,7 +438,7 @@ for (const style of ['inline', 'band'] as const) {
 			serve(ok);
 			server.use(
 				http.get(`${API_BASE}/api/account/list/:provider/cached`, () =>
-					HttpResponse.json({ key: 'error.network.upstream', kind: 'upstream' }, { status: 502 })
+					errorAnswer(502, { key: 'error.network.upstream', kind: 'upstream' })
 				)
 			);
 			localStorage.setItem(ROW_PREFS_STORAGE_KEY, JSON.stringify({ style, controls: false }));
@@ -445,11 +465,10 @@ for (const style of ['inline', 'band'] as const) {
 			server.use(
 				http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () =>
 					failing
-						? HttpResponse.json(
-								{ key: 'error.network.upstream', kind: 'upstream' },
-								{ status: 502 }
-							)
-						: HttpResponse.json([kitsuRef(String(PLANNED.malId), PLANNED.title, 12)])
+						? errorAnswer(502, { key: 'error.network.upstream', kind: 'upstream' })
+						: HttpResponse.json<KitsuAnimeRef[]>([
+								kitsuRef(String(PLANNED.malId), PLANNED.title, 12)
+							])
 				)
 			);
 			await mountHome(style);
@@ -495,12 +514,9 @@ for (const style of ['inline', 'band'] as const) {
 						await refreshRead;
 					} else if (phase === 'reread') {
 						await rereadRead;
-						return HttpResponse.json(
-							{ key: 'error.network.upstream', kind: 'upstream' },
-							{ status: 502 }
-						);
+						return errorAnswer(502, { key: 'error.network.upstream', kind: 'upstream' });
 					}
-					return HttpResponse.json([planned(params.provider as Provider)]);
+					return HttpResponse.json<ListEntry[]>([planned(params.provider as Provider)]);
 				})
 			);
 			await mountHome(style);
@@ -520,8 +536,18 @@ for (const style of ['inline', 'band'] as const) {
 				landed: ['anilist'],
 				source: 'editor'
 			});
+			const since = fetches.sent.length;
 			releaseRefresh();
-			await new Promise((r) => setTimeout(r, 50));
+			// The refresh's own load has finished: its read of the rail is
+			// in, and so is the availability check that read set off.
+			await until(
+				() =>
+					fetches.sent
+						.slice(since)
+						.some((f) => f.path === '/api/availability/batch' && fetches.read.includes(f)),
+				'the refresh’s own load to finish'
+			);
+			await afterRead();
 			// The refresh's own read landed, but it was superseded: the
 			// refresh has nothing of its own to say yet.
 			expect(settledAnnouncement()).toBeNull();
@@ -636,7 +662,7 @@ for (const style of ['inline', 'band'] as const) {
 			cancel.click();
 			await until(() => target.querySelector('[role="dialog"]') === null, 'the dialog to close');
 			await until(() => document.activeElement === clear, 'focus to come back to Clear history');
-			expect(historyCleared).toBe(0);
+			expect(clearsSent()).toBe(0);
 		});
 
 		it('clears history after the confirm, from the row’s own action', async () => {
@@ -647,14 +673,16 @@ for (const style of ['inline', 'band'] as const) {
 
 			action(CW(), CLEAR())!.click();
 			await until(() => target.querySelector('[role="dialog"]') !== null, 'the confirm dialog');
-			// Nothing goes before the user confirms.
-			expect(historyCleared).toBe(0);
+			// Nothing goes before the user confirms: a clear the press
+			// started would be counted as the page sends it.
+			expect(clearsSent()).toBe(0);
 			const confirm = Array.from(target.querySelectorAll('[role="dialog"] button')).find(
 				(b) => b.textContent?.trim() === m.home_clear_confirm_button()
 			) as HTMLButtonElement;
 			confirm.click();
 			await until(() => row(CW()) === null, 'the Continue Watching row to go');
 			expect(historyCleared).toBe(1);
+			expect(clearsSent()).toBe(1);
 		});
 	});
 }

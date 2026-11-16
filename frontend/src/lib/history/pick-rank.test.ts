@@ -3,13 +3,14 @@ import * as fc from 'fast-check';
 import { namedCandidates, rowYear } from './pick-rank';
 import type { KitsuAnimeRef } from '$lib/api';
 
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 const hit = (
 	id: string,
 	canonical_title: string,
 	start_date: string | null,
 	titles: Record<string, string> = {}
 ): KitsuAnimeRef =>
-	({
+	kitsuRefAnswer({
 		id,
 		canonical_title,
 		titles,
@@ -18,7 +19,7 @@ const hit = (
 		episode_count: null,
 		subtype: 'TV',
 		status: 'finished'
-	}) as unknown as KitsuAnimeRef;
+	});
 
 const ids = (hits: KitsuAnimeRef[]) => hits.map((h) => h.id);
 

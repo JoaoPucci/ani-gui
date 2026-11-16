@@ -37,6 +37,17 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 
+import type {
+	AiringStatus,
+	AniErrorPayload,
+	AvailabilityResponse,
+	Config,
+	HistoryEntry,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import { availabilityAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 
@@ -94,17 +105,17 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Kitsu title ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
@@ -112,27 +123,38 @@ function kitsuEpisodes(count: number) {
  *  is `cap` and it lists `extras` beside them. */
 function useShow(kitsu: number, cap: number, extras: string[]) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, kitsu), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, kitsu), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: kitsu, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(kitsu))),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: cap,
-				extra_episodes: extras,
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: kitsu,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
 		),
-		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(kitsu))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: cap,
+					extra_episodes: extras,
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>([])),
+		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({}))
 	);
 }
 
@@ -159,7 +181,7 @@ async function requestedBy(n: number): Promise<string> {
 		.filter((i) => !i.url.includes('prefetch=1') && i.url.includes('/api/play/stream'))
 		.pop()!;
 	const ep = new URL(s.url).searchParams.get('episode') ?? '';
-	s.dispatch('error', JSON.stringify({ kind: 'timeout' }));
+	s.dispatch('error', wire<AniErrorPayload>({ kind: 'timeout', key: 'error.scraper.timeout' }));
 	await until(() => !tileButton(n)!.closest('li')!.matches('.busy'), 'the click to settle');
 	return ep;
 }

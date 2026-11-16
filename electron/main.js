@@ -27,6 +27,7 @@ const {
   protocol,
   safeStorage,
   screen,
+  session,
   shell,
 } = require("electron");
 const { spawn } = require("node:child_process");
@@ -51,7 +52,11 @@ const { messagesFor, resolveLocale } = require("./lib/main-messages.cjs");
 const { splashWords, stallTexts } = require("./lib/splash-progress.cjs");
 const { relaunch, relaunchPlan } = require("./lib/relaunch.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
+const { backendRelay, redactSecrets } = require("./lib/log-redact.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
+const { appDocumentFrom } = require("./lib/app-document.cjs");
+const { SECRET_CHANNEL, secretKeeper } = require("./lib/secret-handoff.cjs");
+const { backendOrigins, headerlessFilter, withLaunchSecret } = require("./lib/secret-header.cjs");
 const { revealMaximized, splashController, splashVersionLabel } = require("./lib/splash.cjs");
 const { abortWhenLost, appReadyBound, appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
 const {
@@ -69,6 +74,13 @@ const {
   openFirstPage,
 } = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
+const {
+  devOriginFrom,
+  policedResponse,
+  rendererPolicy,
+  withPolicyHeader,
+} = require("./lib/renderer-csp.cjs");
+const { bundleTarget } = require("./lib/bundle-path.cjs");
 const { KEYRING_HELPER_SWITCH, serveKeyring } = require("./lib/keyring-helper.cjs");
 const {
   createHelperClient,
@@ -80,6 +92,17 @@ const {
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
 const VITE_DEV_URL = process.env.VITE_DEV_URL || "http://localhost:5173";
+
+// The renderer's content security policy: the header half, written for
+// this launch from the backend's handshake (lib/renderer-csp.cjs); the
+// bundle's <meta> carries the script half. Until a window is created
+// against a handshake, the policy names no loopback origin at all —
+// fail closed, never a wildcard.
+const DEV_ORIGIN = IS_DEV ? devOriginFrom(VITE_DEV_URL) : null;
+let policyBackend = null;
+function rendererPolicyNow() {
+  return rendererPolicy({ backend: policyBackend, devOrigin: DEV_ORIGIN });
+}
 
 // Dev builds run against a separate data profile so they never read or
 // migrate the installed app's data. The backend resolves its config /
@@ -169,6 +192,15 @@ if (!claimSingleInstance(app, { summon: () => keeper.summon() })) {
 // other path to index.html.
 const APP_SCHEME = "app";
 const APP_ORIGIN = `${APP_SCHEME}://localhost`;
+
+// The launch's secret, kept per window and handed to the app's own
+// page alone, over IPC, never on a command line (lib/secret-handoff.cjs).
+const secrets = secretKeeper({
+  app: appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL }),
+  // A refused page is named by its URL, which is redacted like any
+  // other line the main process logs (lib/log-redact.cjs).
+  logError: (line) => console.error(redactSecrets(line)),
+});
 
 // Register the scheme as standard + secure BEFORE app.whenReady, so
 // fetch + service-worker-style guarantees apply to assets loaded
@@ -310,6 +342,10 @@ function readConfigLocale() {
  * see the module), so bootApp can end the boot.
  */
 async function spawnBackend() {
+  const relay = backendRelay({
+    stdout: (text) => process.stdout.write(text),
+    stderr: (text) => process.stderr.write(text),
+  });
   // A parent pipe on stdin, the flag to watch it, and its own process
   // group — see lib/backend-spawn.cjs. `child.stdin` is never written
   // to or closed: it stays open exactly as long as this process lives.
@@ -323,16 +359,21 @@ async function spawnBackend() {
       reapOnExit(child, { platform: process.platform, signalGroup: signalBackendGroup });
     },
     handshake: (child) => {
-      child.stderr.on("data", (chunk) => {
-        process.stderr.write(`[backend] ${chunk.toString("utf-8")}`);
-      });
+      // The backend's output is relayed with any secret in it redacted
+      // (lib/log-redact.cjs): by shape from the start, and by value once
+      // the handshake has named the launch's secret.
+      child.stderr.setEncoding("utf-8");
+      child.stderr.on("data", (chunk) => relay.stderr(chunk));
+      child.stderr.on("end", () => relay.end());
       // After the handshake, downstream stdout becomes log output; it
       // is echoed through so we can see it in dev.
-      return awaitHandshake(child, {
+      const handshake = awaitHandshake(child, {
         timeoutMs: HANDSHAKE_TIMEOUT_MS,
         stopChild: killTree,
-        log: (line) => process.stdout.write(`${line}\n`),
+        log: (line) => relay.stdout(line),
       });
+      handshake.then((ready) => relay.learn(ready.internalSecret), () => {});
+      return handshake;
     },
   });
 }
@@ -446,6 +487,8 @@ const splash = splashController({
 const geometryFile = () => path.join(app.getPath("userData"), "window-geometry.json");
 
 async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
+  // The page this window loads is policed against this backend's lanes.
+  policyBackend = backend;
   // Pre-compute the maximized size so the window opens at it in one
   // shot. Setting the constructor width/height to it avoids the "open
   // at 1280×800, then animate to maximized" flash some WMs (mutter,
@@ -467,8 +510,10 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // GNOME gives Chromium no server-side decorations
   // (electron/electron#48422). The icon is for the dev session;
   // packaged builds get theirs from the .desktop file. The backend's
-  // handshake, the configured locale and the launch's flags reach the
-  // preload as additional arguments (lib/window-args.cjs).
+  // origins, the configured locale and the launch's flags reach the
+  // preload as additional arguments (lib/window-args.cjs); the
+  // launch's secret does not, and is answered over IPC to the app's
+  // own page (lib/secret-handoff.cjs).
   const win = new BrowserWindow(
     appWindowOptions({
       width: workW,
@@ -477,6 +522,28 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
       preload: path.join(__dirname, "preload.js"),
       additionalArguments: windowArguments(backend, readConfigLocale(), launchFlags),
     }),
+  );
+  secrets.hold(win.webContents, backend.internalSecret);
+  // An <img> or an EventSource cannot set the secret header, and a URL
+  // is no place for the secret (Chromium's disk cache, log lines): the
+  // header is added to those requests here, for the app's own page
+  // alone (lib/secret-header.cjs). One listener per session, so a later
+  // window's registration replaces this one with the same.
+  const origins = backendOrigins(backend);
+  win.webContents.session.webRequest.onBeforeSendHeaders(
+    headerlessFilter(backend),
+    (details, callback) => {
+      let requestHeaders = details.requestHeaders;
+      try {
+        requestHeaders = withLaunchSecret(details, {
+          origins,
+          secretFor: (request) => secrets.forRequest(request),
+        });
+      } catch {
+        // Whatever went wrong, the request goes out as it came.
+      }
+      callback({ requestHeaders });
+    },
   );
   // Started now, so the renderer's word is not missed however early it
   // comes; the reveal waits for it (bounded) as well as for the splash.
@@ -542,11 +609,16 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // can tell whether the page actually loaded and whether scripts
   // are throwing. Without this, a blank window looks identical to a
   // successful load from the outside.
+  // Both carry URLs, and the renderer's URLs can carry the launch's
+  // secret: it is redacted from every line (lib/log-redact.cjs).
+  const launchSecrets = [backend.internalSecret];
   win.webContents.on("did-fail-load", (_e, code, desc, url) => {
-    console.error(`[renderer] did-fail-load ${url}: ${code} ${desc}`);
+    console.error(
+      redactSecrets(`[renderer] did-fail-load ${url}: ${code} ${desc}`, launchSecrets),
+    );
   });
   win.webContents.on("console-message", (_e, level, msg, line, source) => {
-    console.log(rendererConsoleLine(level, msg, line, source));
+    console.log(rendererConsoleLine(level, msg, line, source, launchSecrets));
   });
 
   // "Open maximized" is a two-step belt-and-suspenders pattern.
@@ -696,35 +768,53 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
  * Resolution rules:
  *   - `/_app/...` and other extensioned paths → file in the bundle.
  *   - any extensionless path → `index.html` (SvelteKit SPA fallback).
- *   - 404 if the resolved path escapes the bundle dir (defence in
- *     depth — the URL parser shouldn't permit `..` traversal, but
- *     it's cheap to check).
+ *   - 403 if the resolved path escapes the bundle dir, 400 if it does
+ *     not decode (lib/bundle-path.cjs).
  */
 function registerAppProtocol() {
   const bundleDir = path.join(process.resourcesPath, "frontend", "build");
   protocol.handle(APP_SCHEME, async (request) => {
-    const url = new URL(request.url);
-    let pathname = decodeURIComponent(url.pathname);
-    if (!pathname || pathname === "/") pathname = "/index.html";
-    const target = path.normalize(path.join(bundleDir, pathname));
-    if (!target.startsWith(bundleDir)) {
-      return new Response("forbidden", { status: 403 });
-    }
-    try {
-      await fs.promises.access(target);
-      return net.fetch(pathToFileURL(target).toString());
-    } catch {
-      // SPA fallback — anything routerly (no file extension)
-      // hands back the index so SvelteKit's client router takes
-      // over. A real missing asset (image, css) returns 404.
-      if (!path.extname(pathname)) {
-        return net.fetch(
-          pathToFileURL(path.join(bundleDir, "index.html")).toString(),
-        );
-      }
-      return new Response("not found", { status: 404 });
-    }
+    // Every answer carries the renderer's policy — the index, the SPA
+    // fallback, every asset and every error — so no path, however
+    // spelled, serves a document without it (lib/renderer-csp.cjs).
+    const target = bundleTarget(bundleDir, new URL(request.url).pathname, path);
+    return policedResponse(await serveBundlePath(bundleDir, target), rendererPolicyNow());
   });
+}
+
+async function serveBundlePath(bundleDir, target) {
+  if (target.kind === "bad") return new Response("bad request", { status: 400 });
+  if (target.kind === "forbidden") return new Response("forbidden", { status: 403 });
+  try {
+    await fs.promises.access(target.file);
+    return await net.fetch(pathToFileURL(target.file).toString());
+  } catch {
+    // SPA fallback — anything routerly (no file extension)
+    // hands back the index so SvelteKit's client router takes
+    // over. A real missing asset (image, css) returns 404.
+    if (target.route) {
+      return net.fetch(pathToFileURL(path.join(bundleDir, "index.html")).toString());
+    }
+    return new Response("not found", { status: 404 });
+  }
+}
+
+/**
+ * Development: the Vite server's main-frame responses get the header
+ * half of the policy, appended to the policy SvelteKit's dev server
+ * sends itself. Electron keeps one onHeadersReceived listener per
+ * session; this is the default session's only one.
+ */
+function policeDevServer() {
+  if (!DEV_ORIGIN) {
+    console.error(`[main] VITE_DEV_URL ${VITE_DEV_URL} is not a plain http(s) origin; no policy header`);
+    return;
+  }
+  session.defaultSession.webRequest.onHeadersReceived(
+    { urls: [`${DEV_ORIGIN}/*`] },
+    (details, callback) =>
+      callback(withPolicyHeader(details, { devOrigin: DEV_ORIGIN, policy: rendererPolicyNow() })),
+  );
 }
 
 // Window controls for the renderer's custom (frameless) titlebar.
@@ -812,6 +902,13 @@ ipcMain.on("ani-gui:active-downloads", (_event, count) => {
 // happens once per renderer load.
 ipcMain.on("ani-gui:read-config-locale", (event) => {
   event.returnValue = readConfigLocale();
+});
+
+// The preload's one synchronous ask for the launch's secret, answered
+// only to the app's own page in a window it was handed to; anything
+// else gets null (lib/secret-handoff.cjs).
+ipcMain.on(SECRET_CHANNEL, (event) => {
+  event.returnValue = secrets.answer(event);
 });
 
 // ─── Account integration IPC handlers ──────────────────────────────
@@ -1105,7 +1202,8 @@ app.whenReady().then(() => {
       // the platform menu was just adding a strip of system chrome the
       // app doesn't use.
       Menu.setApplicationMenu(null);
-      if (!IS_DEV) registerAppProtocol();
+      if (IS_DEV) policeDevServer();
+      else registerAppProtocol();
       return spawnBackend();
     },
     // The splash opens at once, before the desktop's reduced-motion
@@ -1120,7 +1218,8 @@ app.whenReady().then(() => {
     // The launch's remote flags, decided by the backend within its
     // two-second cap; the window opens with them, so the renderer has
     // them before its first page (lib/launch-flags.cjs).
-    fetchFlags: (backend) => waitForLaunchFlags(backend.apiBase, { fetch }),
+    fetchFlags: (backend) =>
+      waitForLaunchFlags(backend.apiBase, { fetch, secret: backend.internalSecret }),
     // The backend's handshake and the flags' decision, each lighting a
     // stretch of the splash's rail as it lands.
     stepDone: (step) => {

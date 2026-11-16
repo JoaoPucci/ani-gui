@@ -92,6 +92,29 @@ bash tests/arch/run-all.sh
 python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
 ```
 
+The integration tests under `backend/tests/` that start the real
+backend binary keep it off your own profile on every platform:
+`backend/tests/common` sets `ANI_GUI_TEST_PROFILE_ROOT` to each test's
+temporary folder, and the backend then keeps its config, cache
+(`metadata.sqlite`, images, the flags cache), state (history, offsets),
+logs and default download folder under that one folder, ahead of the
+XDG variables, `HOME` and the platform's folder APIs. Without it,
+Windows would hand the binary the machine's own profile (`ani-gui-dev`
+for a debug build, `ani-gui` for `--release`): it resolves those
+folders through the known-folder API, which no other variable
+redirects. On Linux and macOS `HOME` and the XDG variables would
+redirect them, but under a layout that differs between the two; under
+the root it is one layout everywhere. The variable is for the
+backend's test harness only: nothing in the app sets it, and
+`tests/arch/test_profile_root.sh` keeps its name to the module that
+reads it, the backend's tests and these docs.
+`backend/tests/profile_root.rs` starts a backend with it and with every
+home and folder variable pointed at a sentinel folder, has it boot,
+write its settings and its history, and checks that everything it
+reports and writes is under the root and that the sentinel stays
+empty. The sentinel proves something on Linux and macOS only, where
+those variables are where a stray path would come from.
+
 ## End-to-end (Playwright + Electron)
 
 The suite under `electron/e2e/` drives the packaged app
@@ -106,10 +129,61 @@ proxy settings at a local proxy that refuses every connection and
 records it (`outboundAttempts`). Loopback is exempt, so a spec's own
 local servers still answer. `smoke.spec.ts` checks that a request only
 GitHub could answer ends up at that proxy instead. A spec whose page
-should run on stubs alone does three things: it sets `refuseUnstubbed`
-before its stubs, mounts the page again with `remountFirstPage`, and
-asserts that no request was left unanswered. `smoke.spec.ts` and
-`keyring-unresponsive.spec.ts` do.
+should run on stubs alone does four things: it finds the app's window
+with `appWindow` before setting any route, sets `refuseUnstubbed`
+(which takes that window) before its stubs, mounts the page again with
+`remountFirstPage`, and asserts that no request was left unanswered.
+`smoke.spec.ts` and `keyring-unresponsive.spec.ts` do. The window comes
+first because when every route is set while the window is still being
+attached, none of them reaches it.
+
+A stub answers through `answer` in `electron/e2e/stubs.ts`, never in
+place inside Playwright. `answer` holds what the stub says at a local
+stub server (`electron/lib/e2e-stub-server.cjs`) and sends the request
+on to it, so the answer comes back over real HTTP through Chromium's
+network stack, as the backend's does. The stub server answers an API
+request as the backend would: the gate in front (the launch's secret as
+the header, on every route; an empty 403 otherwise) and the
+backend's CORS rules on the answer. A preflight never reaches it:
+Playwright answers preflights itself, for any origin, so the CORS a
+spec meets is the answer's own. An answer to the request made in place
+loses its status and headers once the main process has a webRequest
+listener on the window's session, as it has to add the secret header
+(`electron/lib/secret-header.cjs`): every stubbed page then reads its
+data as unreachable. `tests/arch/e2e_stub_server.sh` keeps
+Playwright's in-place answer out of `electron/`.
+
+Every spec takes `test` and `expect` from `electron/e2e/policy-guard.ts`,
+not from `@playwright/test`, and `tests/arch/e2e_policy_guard.sh`
+checks that each spec imports from it. The launch helper guards every
+app it starts: it reads the app's output for content security policy
+violations, the first page's included. The guard's `test` then fails
+a test on any violation it did not declare with `expectViolation`.
+
+A spec that plays a stream starts it as a viewer does, by clicking the
+home page's Continue card (`electron/e2e/real-play.ts`), and the play
+runs through the backend: its play route, its session and its stream
+proxy. The one step it cannot take is the provider walk, since the
+backend is kept off the network. Instead the spec's profile turns on
+replaying resolved plays (`cache_resolutions`), and when the renderer's
+play request arrives, the spec writes the row that play reads into the
+backend's resolution cache, naming a stream the spec serves, before
+letting the request through (`electron/lib/e2e-replay.cjs`).
+`lanes.spec.ts`, whose subject is the connections each lane holds,
+writes the row itself and asks the play route directly, before it
+holds the resolve lane that route travels on. The row
+is written with Node's built-in `node:sqlite` module, so the suite and
+the Electron helper tests (`electron/lib/*.test.cjs`) need Node 22.13 or
+later (CI runs them on Node 22). The row's key prefix,
+insert statement, lifetime and fields are kept in
+`electron/e2e/fixtures/replay-row.json`, and the backend's tests check
+that file against what the cache reads
+(`play_resolution_cache_e2e_row_test.rs`), so a change to the cache's
+schema fails there, by name, and not as a play that times out. A
+hand-off to an external player or Syncplay is never passed to the
+backend, because with replays on it would launch the configured
+program. The stub answers as the backend does when that program will
+not start.
 
 Each launch runs on a scratch profile the spec makes under the
 system's temporary directory. The spec passes that directory to
@@ -273,6 +347,60 @@ shape the docs answer, in the PR that fixes it. The golden and the
 allowlist change only in a PR that changes the rules, with the reason
 in the commit body.
 
+## The wire contract
+
+The renderer's types for what crosses the HTTP seam (`frontend/src/lib/api.ts`,
+`account/types.ts` and the modules beside them) are written by hand; no
+generator makes them from the backend's structs. Two tests keep the sides
+saying the same thing:
+
+- `backend/src/api/wire_contract_test.rs` builds `backend/wire-contract.json`
+  from the backend's own types — a full and a minimal sample of each
+  response type the renderer reads, the fields each request body reads and
+  requires, every value of each enum the renderer names (and the names the
+  launch announces each connection lane under), the error envelope
+  of every variant, and the values the renderer keeps a copy of (the Watch
+  Later bridge cap, the names of the secret and refill headers, and the
+  proxy's media URL shape; the Electron main process's own copy of the
+  secret header's name is not in the contract, and
+  `electron/lib/secret-header.test.cjs` holds it to the backend's source
+  instead) — and
+  `cargo test` fails until the file says the same. A field added to a
+  published type, or a variant to a published enum, does not compile until
+  the samples carry it.
+- `frontend/src/lib/wire-contract.test.ts` holds each renderer type to that
+  file through a spec the compiler derives from the type, and names each
+  field where they disagree: missing, extra, optional when always sent (or
+  the reverse), or of another JSON kind.
+
+A change to what the backend sends fails the first; replace the file with
+the contents its message prints, and the second then names what the
+renderer's types must change. Both test files' headers list what they do
+not hold, among them answers that are not a struct, map values, request
+value kinds, and URLs built as text.
+
+The tests' fake backend is held to the same types, so a fake does not keep a
+test green on an answer no backend sends. An MSW handler names the route's
+type at the answer (`HttpResponse.json<KitsuAnimeRef[]>([...])`), which the
+type check reads; stream event data goes through `wire<T>`; the unit
+tests' `fetch` stubs (`mockFetchOnce<T>`) and the stand-ins for API
+functions and injected dependencies (`vi.fn<typeof f>()`) take the type of
+what they replace. `frontend/tests/answers.ts` carries the MSW side:
+`errorAnswer` for an error and its envelope, and `malformedAnswer` for an
+answer that is wrong on purpose, so it reads as deliberate. The builders
+that fill the fields a test does not care about with values the backend
+sends (`kitsuRefAnswer`, `sessionAnswer`, `configAnswer` and the rest), with
+`wire` and `malformedAs`, live in `frontend/src/lib/testing/wire-answers.ts`,
+where the unit tests can reach them (they import nothing from outside
+`src/`; `tests/arch/dep_direction.sh` holds that), and `tests/answers.ts`
+re-exports them. ESLint refuses an `HttpResponse.json` with no type, or one
+that types nothing, and app code importing through a path segment named
+`testing` (but not a path built at run time, or a glob that reaches it
+through a wildcard);
+`tests/lint/typed-answers.test.ts` lists what it does not see, such as a
+`vi.fn()` left untyped, which only review catches. When a renderer type
+changes, the type check names every typed fake that no longer matches it.
+
 ## Fixture management
 
 `tests/fixtures/` is the single source of truth for golden data, shared across all test layers.
@@ -294,10 +422,9 @@ Cheap grep / AST tests under `tests/arch/`. They fail loudly when boundaries ero
 
 | Invariant | Tool |
 |---|---|
-| Frontend imports no Rust types except generated `bindings/*.ts` | custom ESLint rule |
-| Every HTTP API handler returns `Result<T, AniError>` | syn-based audit |
 | No hardcoded English in `.svelte` files or `.ts` modules under `frontend/src/` (must go through `m.<key>()`) | custom ESLint rule `no-hardcoded-strings`, `i18n-ignore` escape |
-| Crate dependency direction (`cache` doesn't depend on `reqwest`, etc.) | `cargo-deny` + `cargo-modules` |
+| Crate dependency direction (`cache` doesn't depend on `reqwest`, etc.) | `tests/arch/dep_direction.sh` (grep) |
+| Only the backend's test harness names the test-only profile root (`ANI_GUI_TEST_PROFILE_ROOT`) | `tests/arch/test_profile_root.sh` (grep) |
 
 ## Mutation testing (deferred)
 
@@ -318,13 +445,29 @@ and assert the negative then. Where the action would begin before a
 call returns, such as a click whose handler would send its request
 straight away, count it where the request is made rather than where a
 handler answers it, and the negative can be read as soon as the call
-returns.
+returns. Where the subject waits on a timer of its own before it
+acts, as the topbar's live search waits for the typing to pause, the
+witness is that timer's end: `frontend/tests/acceptance/scheduled-timers.ts`
+follows the timers an action arms until each has fired or been
+cleared, and what the subject asks on them is recorded as it asks.
 
 A 0 ms timer is a sleep of the same kind wherever the page's requests
 pass through MSW: one turn of the event loop is not known to carry
 them to a handler. Where every stand-in lives in memory, as in the
 unit tests and in acceptance cases built on a fake EventSource alone,
 one turn drains every microtask and settles the question.
+
+Motion in the acceptance tier has the same shape in both directions.
+Under the tier's `element.animate()` stub a Svelte transition starts
+its timed animation a task after the update that changed the DOM, an
+element an outro holds stays in the DOM until that animation ends, and
+a scripted scroll can wait a frame for layout. So the DOM change is no
+witness for the motion it causes: read too early, "it moved" fails and
+"nothing moved" passes without having looked. A motion scenario waits
+for the recorder in `frontend/tests/acceptance/motion.ts` to report
+`settled()` (no animation still running; the stub's
+`animationsInFlight()` is the same count), or for the scroll to
+appear in `scrolls`, and asserts then.
 
 ## Test-discipline expectations for AI agents
 
