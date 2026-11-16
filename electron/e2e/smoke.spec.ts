@@ -882,9 +882,12 @@ async function waitForHome(page: import("@playwright/test").Page) {
   });
 }
 
-/** A harmless page on disk, the kind of file a user might drop. */
-function droppedPage(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ani-gui-e2e-drop-"));
+/**
+ * A harmless page on disk, the kind of file a user might drop. Written
+ * under the launch's scratch profile, which goes when the app quits.
+ */
+function droppedPage(profile: string): string {
+  const dir = fs.mkdtempSync(path.join(profile, "drop-"));
   const file = path.join(dir, "dropped.html");
   fs.writeFileSync(file, "<!doctype html><title>dropped</title><h1>dropped page</h1>");
   return file;
@@ -939,7 +942,7 @@ async function pageNavigatesTo(page: import("@playwright/test").Page, url: strin
 }
 
 test("a navigation off the app's document is refused and the app stays", async () => {
-  const { app, page } = await launchAppWithStubs();
+  const { app, page, profile } = await launchAppWithStubs();
   try {
     await waitForHome(page);
     await recordNavigations(app);
@@ -950,7 +953,7 @@ test("a navigation off the app's document is refused and the app stays", async (
     // Chromium itself refuses a page's navigation to a local file or a
     // top-level data: document, before any main-process hook is asked;
     // the line it logs is the witness that it ruled.
-    const file = `file://${droppedPage()}`;
+    const file = `file://${droppedPage(profile)}`;
     await pageNavigatesTo(page, file);
     await expect.poll(() => consoleLines.some((l) => l.includes("Not allowed to load local resource"))).toBe(true);
     expect(page.url(), `navigated to ${file}`).toBe(home);
@@ -984,12 +987,12 @@ test("a navigation off the app's document is refused and the app stays", async (
 });
 
 test("a file or link dropped on the window does not replace the app", async () => {
-  const { app, page } = await launchAppWithStubs();
+  const { app, page, profile } = await launchAppWithStubs();
   try {
     await waitForHome(page);
     await recordNavigations(app);
     const home = page.url();
-    const file = droppedPage();
+    const file = droppedPage(profile);
     // Witness that each drag reached the page at all.
     await page.evaluate(() => {
       const g = window as unknown as { __dragovers: number };
@@ -1241,7 +1244,7 @@ test("the app's own document still reaches the bridge", async () => {
 });
 
 test("revealInFolder opens a directory and never a file", async () => {
-  const { app, page } = await launchAppWithStubs();
+  const { app, page, profile } = await launchAppWithStubs();
   try {
     await waitForHome(page);
     await app.evaluate(({ shell }) => {
@@ -1252,7 +1255,7 @@ test("revealInFolder opens a directory and never a file", async () => {
         return "";
       };
     });
-    const file = droppedPage();
+    const file = droppedPage(profile);
     const dir = path.dirname(file);
     const answers = await page.evaluate(
       async ([f, d]) => {
