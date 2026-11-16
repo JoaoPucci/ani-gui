@@ -215,13 +215,14 @@ async function handOffAndComeBack(
 ) {
 	const before = media.masters();
 	const time = async () => (await sidecars(page))?.time ?? 0;
-	const at = await time();
 	await page.locator('button[aria-label="More actions"]').click();
 	await page.getByRole('menuitem', { name: /Open in external/ }).click();
 	const dialog = page.getByRole('alertdialog');
 	await dialog.waitFor({ timeout: 15_000 });
 	await page.keyboard.press('Escape');
 	await expect(dialog).toHaveCount(0);
+	// Paused by the handoff: playback past this is the return's.
+	const at = await time();
 	if (custom) {
 		await page.locator('.player-frame').hover();
 		await page.locator('.pc-buttons-row .pc-btn').first().click();
@@ -327,6 +328,8 @@ test('after two handoffs in a row before the playlist is in, each sidecar track 
 
 		await pick(page, 'French');
 		await showsCue(page, 'Français');
+		await pick(page, 'English');
+		await showsCue(page, 'English');
 		await pick(page, 'Off');
 		await expect
 			.poll(async () => (await sidecars(page))?.tracks.map((t) => t.mode) ?? [])
