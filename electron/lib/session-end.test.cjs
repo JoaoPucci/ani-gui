@@ -280,10 +280,15 @@ test("the watcher ends its gdbus when its input closes", { timeout: 5000 }, asyn
   assert.equal(alive(gdbusPid), false);
 });
 
-for (const [signal, target] of ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"].flatMap((each) => [
-  [each, "group"],
-  [each, "shell"],
-])) {
+for (const [signal, target] of [
+  ...["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"].flatMap((each) => [
+    [each, "group"],
+    [each, "shell"],
+  ]),
+  // No trap runs for SIGKILL: a kill by command line that matches the
+  // watcher's shell and not its gdbus still has to take the gdbus too.
+  ["SIGKILL", "shell"],
+]) {
   test(`${signal} to the watcher's ${target === "group" ? "whole group" : "shell alone"} ends its gdbus too`, { timeout: 5000 }, async (t) => {
     // Ctrl-C or Ctrl-\ on the terminal, a closed terminal or a stop of
     // the app's group reaches the watcher's shell and its gdbus
