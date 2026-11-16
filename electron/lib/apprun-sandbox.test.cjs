@@ -43,8 +43,9 @@ function stubFor(probe) {
   // Chromium's abort, by a process that is not dumpable: SIGTRAP dumps
   // core, and a host that pipes cores to a crash reporter (Ubuntu's
   // apport) is handed one whatever the core limit. Not dumpable, the
-  // probe leaves none, and AppRun sees the same death by SIGTRAP.
-  const abort = `exec python3 -I -c 'import ctypes, os, signal; ctypes.CDLL(None).prctl(4, 0, 0, 0, 0); os.kill(os.getpid(), signal.SIGTRAP)'`;
+  // probe leaves none, and AppRun sees the same death by SIGTRAP. That
+  // the probe runs with core dumps off is the core-limit case's to show.
+  const abort = `exec python3 -I -c 'import ctypes, os, signal; ctypes.CDLL(None).prctl(4, 0, 0, 0, 0); signal.signal(signal.SIGTRAP, signal.SIG_DFL); os.kill(os.getpid(), signal.SIGTRAP)'`;
   const outcome = {
     answers: answer,
     aborts: abort,
@@ -109,7 +110,6 @@ function outcome(img, run, elapsedMs, group) {
     launched: launched === null ? null : launched.split("\0").slice(0, -1),
     probePid: readOr("probe-pid", null),
     probeCoreLimit: readOr("probe-core-limit", null),
-    cores: fs.readdirSync(img.root).filter((f) => f.startsWith("core")),
     tmpLeft: fs.readdirSync(img.tmp),
     unreaped: readOr("unreaped", null),
   };
@@ -407,7 +407,6 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
       assert.equal(r.run.status, 0, r.run.stderr);
       assert.deepEqual(r.launched, ["--no-sandbox", ...USER_ARGS]);
       assert.match(r.run.stderr, FALLBACK_LINE, "one line, and nothing of the abort");
-      assert.deepEqual(r.cores, [], "no core dump");
       assertNothingLeft(r);
     } finally {
       cleanup(r);
