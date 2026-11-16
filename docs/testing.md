@@ -234,10 +234,14 @@ A spec stops the app it launched through `stopApp` in
 `electron/e2e/launch.ts`, and nothing else but the one exception
 below. Playwright starts the app
 in a process group of its own; `electron/lib/own-group.cjs` sends
-SIGTERM to that group, then SIGKILL to the same group if the app is
-still there, and only while the group is provably the app's: its main
-process not yet reaped, leading the group, running the binary it was
-launched from. What the app leaves in its group as it exits is killed in the
+SIGTERM to the app's main process alone, then SIGKILL to its group if
+the app is still there, and only while the group is provably the app's:
+its main process not yet reaped, leading the group, running the binary
+it was launched from. SIGTERM to the whole group would kill Chromium's
+helpers in the same instant as the main process, which then aborts as
+it quits, missing its GPU process (a SIGTRAP the host's crash reporter
+is called for); a stop that sees the app end by a signal it did not
+send fails the spec. What the app leaves in its group as it exits is killed in the
 turn its exit is reported; after that nothing is signalled, since an
 emptied group's id can be handed to someone else. The backend runs
 outside that group and stops itself when the app's end of its stdin
