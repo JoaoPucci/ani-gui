@@ -435,7 +435,20 @@ three-second limit below.
    rendered, so the rail's last stretch is seen lit.
    The two are never on screen competing, so it does not matter that
    native Wayland ignores always-on-top. A splash that never paints, or
-   is minimized, holds the window no longer than that first second. The
+   is minimized, holds the window no longer than that first second.
+   The exception is a machine where a hidden window gets no frames:
+   native Wayland with software compositing (a virtual machine, a GPU
+   that failed or is blocklisted, `--disable-gpu`). There the page could
+   never draw the two frames, so the renderer also says when the layout
+   has mounted, which needs no frame, and a window whose rendered word
+   has not followed 1.5 seconds later is mapped without focus and
+   maximized behind the splash; its frames resume and the reveal goes on
+   as above. Wayland stacks that window over the splash, so the splash
+   is mapped again whenever the woken window takes the focus, and the
+   window shows around it until the reveal. The splash itself is shown
+   250 ms after its page loaded when no paint came first, and the
+   window's first-show guard accepts the page's rendered word as well as
+   `ready-to-show`, which a window never on screen may not reach. The
    hidden window is made at the size the desktop granted the window when
    a launch last revealed it maximized on the same display (by id, size
    and scale), kept in `window-geometry.json` under the app's user data,
