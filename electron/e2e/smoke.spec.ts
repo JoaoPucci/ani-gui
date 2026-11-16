@@ -355,6 +355,31 @@ test("the launch's secret is on no process's command line, and only the app's pa
   }
 });
 
+test("a refused page's URL is logged without a secret it carries", async () => {
+  // The main process names a refused caller by its URL, and a URL can
+  // carry a secret in a `secret=` parameter. Whichever check refuses it
+  // (the IPC guard ahead of the secret handoff), the line it logs is
+  // redacted like every other line the main process writes.
+  const { app, page, profile } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    const stderr = collectStderr(app);
+    const other = path.join(profile, "refused.html");
+    fs.writeFileSync(other, "<!doctype html><title>refused</title><p>refused</p>");
+    const planted = "0123456789abcdef".repeat(4);
+    const win = await app.browserWindow(page);
+    await win.evaluate((w, target) => w.loadURL(target), `file://${other}?secret=${planted}`);
+    expect(await page.evaluate(() => document.title)).toBe("refused");
+    // Witness: the preload asked for the secret and was refused.
+    await expect
+      .poll(() => stderr.some((l) => l.includes("refused ani-gui:internal-secret")))
+      .toBe(true);
+    expect(stderr.filter((l) => l.includes(planted))).toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
 test("a renderer line naming the launch's secret is logged without it", async () => {
   // The main process relays the renderer's console to its own stdout
   // (the journal, a terminal), redacted: by the secret's value and by
