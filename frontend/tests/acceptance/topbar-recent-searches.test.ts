@@ -13,6 +13,8 @@ import { mount, unmount, createRawSnippet } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { setUrl } from './page-state.svelte';
+import { afterRead, watchPageFetches } from './page-fetches';
+import { armedBy } from './scheduled-timers';
 import { page } from './page-state.svelte';
 
 vi.mock('$app/state', () => ({
@@ -33,6 +35,8 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { RECENT_STORAGE_KEY } from '../../src/lib/topbar/recent-searches';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 let target: HTMLElement;
 let layout: ReturnType<typeof mount> | null = null;
 
@@ -47,8 +51,8 @@ beforeEach(() => {
 		account: { getToken: async () => ({ ok: false, kind: 'not_found' }) }
 	};
 	server.use(
-		http.get(`${API_BASE}/api/update-check`, () => HttpResponse.json(null, { status: 503 })),
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(null, { status: 503 }))
+		http.get(`${API_BASE}/api/update-check`, () => errorAnswer(503)),
+		http.get(`${API_BASE}/api/settings`, () => errorAnswer(503))
 	);
 	setUrl('/');
 	localStorage.clear();
@@ -98,13 +102,15 @@ describe('topbar recent searches', () => {
 		server.use(
 			http.post(`${API_BASE}/api/kitsu/search`, () => {
 				liveSearched = true;
-				return HttpResponse.json([]);
+				return HttpResponse.json<KitsuAnimeRef[]>([]);
 			})
 		);
 		localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(['one piece', 'jojo']));
+		const fetches = watchPageFetches();
 		await mountLayout();
 		input().value = 'One  Piece';
-		input().dispatchEvent(new Event('input', { bubbles: true }));
+		const pause = armedBy(() => input().dispatchEvent(new Event('input', { bubbles: true })));
+		expect(pause.pending, 'typing armed the pause before the search').toBe(1);
 		(input().closest('form') as HTMLFormElement).requestSubmit();
 		await vi.waitFor(() =>
 			expect(JSON.parse(localStorage.getItem(RECENT_STORAGE_KEY) ?? '[]')).toEqual([
@@ -112,8 +118,12 @@ describe('topbar recent searches', () => {
 				'jojo'
 			])
 		);
-		// Past the live search's pause, when it would have gone out.
-		await new Promise((r) => setTimeout(r, 500));
+		// Once the live search's pause has come due or been called off,
+		// a search it started has been asked, and is recorded where the
+		// page asks it.
+		await pause.done('the pause before the live search to end');
+		await afterRead();
+		expect(fetches.sent.filter((f) => f.path === '/api/kitsu/search')).toEqual([]);
 		expect(liveSearched).toBe(false);
 	});
 });

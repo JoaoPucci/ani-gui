@@ -3,9 +3,10 @@
 // Keeps a window on the app's own document (see app-document.cjs).
 //
 // Every document a window loads runs the preload, and the preload hands
-// it the bridge: the backend's internal secret, the OAuth token reads,
-// revealInFolder. So the window may hold the app's document and nothing
-// else. Installed on each window as it is created.
+// it the bridge: the backend's origins, the OAuth token reads,
+// revealInFolder (the internal secret it asks for is answered to the
+// app's document alone, secret-handoff.cjs). So the window may hold the
+// app's document and nothing else. Installed on each window as it is created.
 //
 //   will-navigate        main frame, renderer-initiated: the app's own
 //                        document passes; a web page is refused and

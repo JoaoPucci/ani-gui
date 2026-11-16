@@ -37,6 +37,8 @@ import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AvailabilityResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 const SHOW = 'Cowboy Bebop';
 const ANNOUNCED = 26;
 
@@ -79,15 +81,13 @@ async function mountRow(opts: { watched: number; probedCap: number }) {
 	server.use(
 		...homeHandlers({ history: [{ ep_no: String(opts.watched), id: 'allanime-1', title: SHOW }] }, [
 			http.post(`${API_BASE}/api/kitsu/search`, () =>
-				HttpResponse.json([kitsuRef('1', SHOW, ANNOUNCED)])
+				HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', SHOW, ANNOUNCED)])
 			),
 			http.post(`${API_BASE}/api/availability`, () => {
 				probeAnswered = true;
-				return HttpResponse.json({
-					available: true,
-					episode_count: opts.probedCap,
-					approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: true, episode_count: opts.probedCap })
+				);
 			})
 		])
 	);

@@ -88,7 +88,7 @@ describe('ExpiryToastTracker', () => {
 		const push = vi
 			.fn()
 			.mockImplementation((info: { provider: Provider }) => `toast-${info.provider}`);
-		const dismiss = vi.fn();
+		const dismiss = vi.fn<NonNullable<ExpirySyncDeps['dismiss']>>();
 		return { deps: { push, dismiss }, push, dismiss };
 	}
 
@@ -248,8 +248,10 @@ describe('signInNotice', () => {
 describe('ExpiryToastTracker with renewal failures', () => {
 	function fakeDeps() {
 		let n = 0;
-		const push = vi.fn().mockImplementation(() => `toast-${++n}`);
-		const dismiss = vi.fn();
+		const push = vi
+			.fn<NonNullable<ExpirySyncDeps['push']>>()
+			.mockImplementation(() => `toast-${++n}`);
+		const dismiss = vi.fn<NonNullable<ExpirySyncDeps['dismiss']>>();
 		const deps: ExpirySyncDeps = { push, dismiss };
 		return { deps, push, dismiss };
 	}

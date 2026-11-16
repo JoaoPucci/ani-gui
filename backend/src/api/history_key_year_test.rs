@@ -34,7 +34,7 @@ async fn the_history_names_the_year_a_rows_key_carries() {
         ],
     )
     .expect("history");
-    let router = build_api_router(Arc::new(state));
+    let router = test_router(Arc::new(state));
     let response = router
         .oneshot(
             Request::builder()

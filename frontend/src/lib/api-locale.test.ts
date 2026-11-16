@@ -45,6 +45,8 @@ beforeEach(() => {
 	__resetApiBaseForTests(API);
 	g.window = { aniGui: { apiBase: API } };
 	g.EventSource = FakeEventSource;
+	// These tests read the request bodies the plays send; what comes
+	// back is read as no route's type.
 	g.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
 		bodies.push(JSON.parse(String(init?.body)));
 		return new Response('{}', { status: 200 });

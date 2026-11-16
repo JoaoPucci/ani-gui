@@ -14,8 +14,11 @@
 // but the bridge's calls into main are refused.
 //
 // It cannot take back what the preload hands out without IPC: the
-// backend origins and internal secret it reads from the window's
-// launch arguments. Keeping other documents out is the guard's job.
+// backend origins it reads from the window's launch arguments. The
+// launch's internal secret is not among them: the preload asks for it
+// over IPC, through this guard, and secret-handoff.cjs checks the
+// frame again behind it. Keeping other documents out is the guard's
+// job.
 
 const { isAppDocument } = require("./app-document.cjs");
 

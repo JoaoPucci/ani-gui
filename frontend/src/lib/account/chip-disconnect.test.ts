@@ -2,13 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { handleChipDisconnect } from './chip-disconnect';
 import type { ProviderState } from './types';
 
+import type { ChipDisconnectDeps } from './chip-disconnect';
 function makeState(): ProviderState {
 	return { kind: 'disconnected' };
 }
 
 describe('handleChipDisconnect', () => {
 	it('calls disconnectAccount with the persisted-account clear deps', async () => {
-		const disconnectAccount = vi.fn().mockResolvedValue({ kind: 'ok' });
+		const disconnectAccount = vi
+			.fn<ChipDisconnectDeps['disconnectAccount']>()
+			.mockResolvedValue({ kind: 'ok' });
 		const cb = {
 			setError: vi.fn(),
 			setDisconnected: vi.fn(),
@@ -19,12 +22,12 @@ describe('handleChipDisconnect', () => {
 			stateOf: (): ProviderState => ({ kind: 'disconnected' }),
 			dismissToast: vi.fn()
 		};
-		const deps = {
+		const deps: ChipDisconnectDeps = {
 			disconnectAccount,
-			beginAccountChange: vi.fn(),
-			clearPersistedAccount: vi.fn(),
-			dropListCache: vi.fn(),
-			dropProviderCache: vi.fn()
+			beginAccountChange: vi.fn<NonNullable<ChipDisconnectDeps['beginAccountChange']>>(),
+			clearPersistedAccount: vi.fn<NonNullable<ChipDisconnectDeps['clearPersistedAccount']>>(),
+			dropListCache: vi.fn<NonNullable<ChipDisconnectDeps['dropListCache']>>(),
+			dropProviderCache: vi.fn<NonNullable<ChipDisconnectDeps['dropProviderCache']>>()
 		};
 		await handleChipDisconnect('anilist', makeState(), deps, cb);
 		expect(disconnectAccount).toHaveBeenCalledWith('anilist', expect.anything(), {
@@ -46,12 +49,14 @@ describe('handleChipDisconnect', () => {
 			stateOf: (): ProviderState => ({ kind: 'disconnected' }),
 			dismissToast: vi.fn()
 		};
-		const deps = {
-			disconnectAccount: vi.fn().mockResolvedValue({ kind: 'ok' }),
-			beginAccountChange: vi.fn(),
-			clearPersistedAccount: vi.fn(),
-			dropListCache: vi.fn(),
-			dropProviderCache: vi.fn()
+		const deps: ChipDisconnectDeps = {
+			disconnectAccount: vi
+				.fn<NonNullable<ChipDisconnectDeps['disconnectAccount']>>()
+				.mockResolvedValue({ kind: 'ok' }),
+			beginAccountChange: vi.fn<NonNullable<ChipDisconnectDeps['beginAccountChange']>>(),
+			clearPersistedAccount: vi.fn<NonNullable<ChipDisconnectDeps['clearPersistedAccount']>>(),
+			dropListCache: vi.fn<NonNullable<ChipDisconnectDeps['dropListCache']>>(),
+			dropProviderCache: vi.fn<NonNullable<ChipDisconnectDeps['dropProviderCache']>>()
 		};
 		await handleChipDisconnect('anilist', makeState(), deps, cb);
 		expect(cb.setDisconnected).toHaveBeenCalledWith('anilist');
@@ -70,12 +75,14 @@ describe('handleChipDisconnect', () => {
 			stateOf: (): ProviderState => ({ kind: 'disconnected' }),
 			dismissToast: vi.fn()
 		};
-		const deps = {
-			disconnectAccount: vi.fn().mockResolvedValue({ kind: 'token_clear_failed' }),
-			beginAccountChange: vi.fn(),
-			clearPersistedAccount: vi.fn(),
-			dropListCache: vi.fn(),
-			dropProviderCache: vi.fn()
+		const deps: ChipDisconnectDeps = {
+			disconnectAccount: vi
+				.fn<NonNullable<ChipDisconnectDeps['disconnectAccount']>>()
+				.mockResolvedValue({ kind: 'token_clear_failed' }),
+			beginAccountChange: vi.fn<NonNullable<ChipDisconnectDeps['beginAccountChange']>>(),
+			clearPersistedAccount: vi.fn<NonNullable<ChipDisconnectDeps['clearPersistedAccount']>>(),
+			dropListCache: vi.fn<NonNullable<ChipDisconnectDeps['dropListCache']>>(),
+			dropProviderCache: vi.fn<NonNullable<ChipDisconnectDeps['dropProviderCache']>>()
 		};
 		await handleChipDisconnect('anilist', makeState(), deps, cb);
 		expect(cb.setError).toHaveBeenCalledWith('anilist', 'unknown');
@@ -95,13 +102,15 @@ describe('handleChipDisconnect', () => {
 				avatar_url: null
 			}
 		};
-		const disconnectAccount = vi.fn().mockResolvedValue({ kind: 'ok' });
-		const deps = {
+		const disconnectAccount = vi
+			.fn<ChipDisconnectDeps['disconnectAccount']>()
+			.mockResolvedValue({ kind: 'ok' });
+		const deps: ChipDisconnectDeps = {
 			disconnectAccount,
-			beginAccountChange: vi.fn(),
-			clearPersistedAccount: vi.fn(),
-			dropListCache: vi.fn(),
-			dropProviderCache: vi.fn()
+			beginAccountChange: vi.fn<NonNullable<ChipDisconnectDeps['beginAccountChange']>>(),
+			clearPersistedAccount: vi.fn<NonNullable<ChipDisconnectDeps['clearPersistedAccount']>>(),
+			dropListCache: vi.fn<NonNullable<ChipDisconnectDeps['dropListCache']>>(),
+			dropProviderCache: vi.fn<NonNullable<ChipDisconnectDeps['dropProviderCache']>>()
 		};
 		const cb = {
 			setError: vi.fn(),
@@ -136,12 +145,14 @@ describe('handleChipDisconnect', () => {
 				stateOf: () => stateAfterReread,
 				dismissToast: vi.fn()
 			};
-			const deps = {
-				disconnectAccount: vi.fn().mockRejectedValue(new Error('ipc gone')),
-				beginAccountChange: vi.fn(),
-				clearPersistedAccount: vi.fn(),
-				dropListCache: vi.fn(),
-				dropProviderCache: vi.fn()
+			const deps: ChipDisconnectDeps = {
+				disconnectAccount: vi
+					.fn<NonNullable<ChipDisconnectDeps['disconnectAccount']>>()
+					.mockRejectedValue(new Error('ipc gone')),
+				beginAccountChange: vi.fn<NonNullable<ChipDisconnectDeps['beginAccountChange']>>(),
+				clearPersistedAccount: vi.fn<NonNullable<ChipDisconnectDeps['clearPersistedAccount']>>(),
+				dropListCache: vi.fn<NonNullable<ChipDisconnectDeps['dropListCache']>>(),
+				dropProviderCache: vi.fn<NonNullable<ChipDisconnectDeps['dropProviderCache']>>()
 			};
 			return { cb, deps, order };
 		}

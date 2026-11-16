@@ -19,7 +19,7 @@ import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
-import { homeHandlers, kitsuRef, type KitsuRefFixture } from './home-handlers';
+import { homeHandlers, kitsuRef } from './home-handlers';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -37,6 +37,8 @@ import HomePage from '../../src/routes/+page.svelte';
 import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
+import type { CreateSessionResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { sessionAnswer, wire } from '../answers';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -97,7 +99,7 @@ function entry(
 	titles: Record<string, string>,
 	abbreviated: string[],
 	episodes: number
-): KitsuRefFixture {
+): KitsuAnimeRef {
 	return {
 		...kitsuRef(id, canonical, episodes),
 		slug,
@@ -153,18 +155,24 @@ const REZERO_4 = entry(
 /** Home with one Continue row whose mapping a play stored as `ref`.
  *  Kitsu's search answers `ref` too, so a card that passes the mapping
  *  over still resolves — as a guess. */
-function mountWithPlayedMapping(showId: string, title: string, ref: KitsuRefFixture) {
+function mountWithPlayedMapping(showId: string, title: string, ref: KitsuAnimeRef) {
 	server.use(
 		...homeHandlers({ history: [{ ep_no: '3', id: showId, title }] }, [
 			http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId/played`, () =>
-				HttpResponse.json(ref.id)
+				HttpResponse.json<string | null>(ref.id)
 			),
-			http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(ref.id)),
-			http.get(`${API_BASE}/api/kitsu/anime/${ref.id}`, () => HttpResponse.json(ref)),
+			http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () =>
+				HttpResponse.json<string | null>(ref.id)
+			),
+			http.get(`${API_BASE}/api/kitsu/anime/${ref.id}`, () =>
+				HttpResponse.json<KitsuAnimeRef>(ref)
+			),
 			// The slug fallback a multi-cour row tries before searching
 			// finds no entry under the provider's title.
-			http.get(`${API_BASE}/api/kitsu/anime-by-slug/:slug`, () => HttpResponse.json(null)),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([ref]))
+			http.get(`${API_BASE}/api/kitsu/anime-by-slug/:slug`, () =>
+				HttpResponse.json<KitsuAnimeRef | null>(null)
+			),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([ref]))
 		])
 	);
 	app = mount(HomePage, { target });
@@ -184,11 +192,13 @@ async function play(title: string): Promise<{ recorded: string | null; guess: bo
 	const recorded = new URL(stream.url).searchParams.get('kitsu_id');
 	stream.dispatch(
 		'done',
-		JSON.stringify({
-			session_id: 's-1',
-			media_url: `${API_BASE}/s/s-1/file.mp4`,
-			media_kind: 'mp4'
-		})
+		wire<CreateSessionResponse>(
+			sessionAnswer({
+				session_id: 's-1',
+				media_url: `${API_BASE}/s/s-1/file.mp4`,
+				media_kind: 'mp4'
+			})
+		)
 	);
 	await until(() => vi.mocked(goto).mock.calls.length > 0, 'the navigation to the play page');
 	const url = String(vi.mocked(goto).mock.calls.at(-1)?.[0] ?? '');
@@ -263,11 +273,15 @@ describe('a remembered title match to a later season', () => {
 					history: [{ ep_no: '3', id: 'hianime:gintama-season-2-1153', title: 'Gintama Season 2' }]
 				},
 				[
-					http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json(GINTAMA_2.id)),
-					http.get(`${API_BASE}/api/kitsu/anime/${GINTAMA_2.id}`, () =>
-						HttpResponse.json(GINTAMA_2)
+					http.get(`${API_BASE}/api/title-match`, () =>
+						HttpResponse.json<string | null>(GINTAMA_2.id)
 					),
-					http.get(`${API_BASE}/api/kitsu/anime-by-slug/:slug`, () => HttpResponse.json(null))
+					http.get(`${API_BASE}/api/kitsu/anime/${GINTAMA_2.id}`, () =>
+						HttpResponse.json<KitsuAnimeRef>(GINTAMA_2)
+					),
+					http.get(`${API_BASE}/api/kitsu/anime-by-slug/:slug`, () =>
+						HttpResponse.json<KitsuAnimeRef | null>(null)
+					)
 				]
 			)
 		);

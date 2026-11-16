@@ -52,12 +52,28 @@ import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { externalLaunchSuccessToast } from '../../src/lib/play/external-toast';
 import { syncplayLaunchSuccessToast } from '../../src/lib/play/syncplay-toast';
 
+import type {
+	AiringStatus,
+	AniErrorPayload,
+	AvailabilityBatchResponse,
+	AvailabilityResponse,
+	Config,
+	CreateSessionResponse,
+	HistoryEntry,
+	HistoryNumber,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer, errorAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '40684';
 const TITLE = 'Ongoing Show';
-const VERDICT = JSON.stringify({
+const VERDICT_ENVELOPE: AniErrorPayload = {
 	kind: 'episode_unavailable',
 	key: 'error.play.episode_unavailable'
-});
+};
+const VERDICT = JSON.stringify(VERDICT_ENVELOPE);
 
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
@@ -126,17 +142,17 @@ async function playJudged() {
 	await tick();
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
@@ -160,20 +176,25 @@ function availabilityHandlers(cache: CacheAnswer | 'fails', asked: Asked) {
 	return [
 		http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 			asked.probeModes.push(((await request.json()) as { mode: string }).mode);
-			return HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
-			});
+			return HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			);
 		}),
 		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 			const body = (await request.json()) as { kitsu_ids: string[]; mode: string };
 			asked.batch.push(body);
 			if (body.mode !== 'dub')
-				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+				return HttpResponse.json<AvailabilityBatchResponse>({
+					cached: {},
+					playable_episode_counts: {}
+				});
 			if (cache === 'fails') return new HttpResponse(null, { status: 500 });
-			return HttpResponse.json(cache);
+			return HttpResponse.json<AvailabilityBatchResponse>(cache);
 		}),
 		http.post(`${API_BASE}/api/availability/warm`, () => {
 			asked.warms += 1;
@@ -195,29 +216,36 @@ type Handoff = 'external' | 'syncplay';
 function useHandlers(cache: CacheAnswer | 'fails'): Asked {
 	const asked: Asked = { batch: [], probeModes: [], warms: 0 };
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig('sub'))),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig('sub'))),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
 		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		...availabilityHandlers(cache, asked),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
-		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>([])),
+		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
+		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({})),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
 		// Both handoffs resolve the episode before they spawn anything;
 		// the resolve answers with the verdict.
 		...(['external', 'syncplay'] as Handoff[]).map((h) =>
-			http.post(`${API_BASE}/api/play/${h}`, () =>
-				HttpResponse.json(JSON.parse(VERDICT), { status: 404 })
-			)
+			http.post(`${API_BASE}/api/play/${h}`, () => errorAnswer(404, VERDICT_ENVELOPE))
 		)
 	);
 	return asked;
@@ -348,23 +376,29 @@ describe('play — a handoff that meets the episode verdict and the other audio'
 
 function useHomeHandlers(cache: CacheAnswer | 'fails', asked: Asked) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig('sub'))),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig('sub'))),
 		http.get(`${API_BASE}/api/history`, () =>
-			HttpResponse.json([{ ep_no: '3', id: 'provider-1', title: TITLE }])
+			HttpResponse.json<HistoryEntry[]>([{ ep_no: '3', id: 'provider-1', title: TITLE }])
 		),
 		// The row read again before it resumes reads as it did.
-		http.get(`${API_BASE}/api/history/provider-1/number`, () => HttpResponse.json({ ep_no: '3' })),
+		http.get(`${API_BASE}/api/history/provider-1/number`, () =>
+			HttpResponse.json<HistoryNumber | null>({ ep_no: '3' })
+		),
 		http.post(`${API_BASE}/api/kitsu/search`, () =>
-			HttpResponse.json([{ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' }])
+			HttpResponse.json<KitsuAnimeRef[]>([{ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' }])
 		),
 		...availabilityHandlers(cache, asked),
-		http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
-		http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+			HttpResponse.json<KitsuAnimeRef[]>([])
+		),
+		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({})),
+		http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () =>
+			HttpResponse.json<string | null>(null)
+		),
+		http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json<string | null>(null)),
 		http.put(`${API_BASE}/api/title-match`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([]))
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([]))
 	);
 }
 
@@ -412,7 +446,10 @@ describe('detail — the page stays busy while the failure is worded', () => {
 					asked = true;
 					await answered;
 				}
-				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+				return HttpResponse.json<AvailabilityBatchResponse>({
+					cached: {},
+					playable_episode_counts: {}
+				});
 			})
 		);
 		const play = () =>
@@ -443,7 +480,10 @@ describe('home — the Continue card stays busy while the failure is worded', ()
 					held = true;
 					await answered;
 				}
-				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+				return HttpResponse.json<AvailabilityBatchResponse>({
+					cached: {},
+					playable_episode_counts: {}
+				});
 			})
 		);
 		await resumeAndFail();
@@ -512,9 +552,7 @@ describe('play — a handoff names the episode it launched, not the one on scree
 
 	for (const [handoff, label, headline] of labels) {
 		it(`${handoff}: a failed launch names episode 3 and looks episode 3 up`, async () => {
-			await launchThenSwitch(handoff, label, () =>
-				HttpResponse.json(JSON.parse(VERDICT), { status: 404 })
-			);
+			await launchThenSwitch(handoff, label, () => errorAnswer(404, VERDICT_ENVELOPE));
 			await expectCopy(SUGGESTS);
 			expect(target.textContent).toContain(headline());
 		});
@@ -540,12 +578,14 @@ describe('detail — a fractional extra and the other audio', () => {
 		server.use(
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				asked.probeModes.push(((await request.json()) as { mode: string }).mode);
-				return HttpResponse.json({
-					available: true,
-					episode_count: 12,
-					extra_episodes: ['7.5'],
-					episode_count_approximate: false
-				});
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 12,
+						extra_episodes: ['7.5'],
+						episode_count_approximate: false
+					})
+				);
 			})
 		);
 		app = mount(DetailPage, { target });
@@ -564,21 +604,31 @@ describe('a play for one show that answers after the page moved on', () => {
 	// navigation into the player — is about a visit the viewer left.
 	const OTHER_ID = '777';
 	const OTHER_TITLE = 'Another Show';
-	const SESSION = JSON.stringify({
-		session_id: 'session-late',
-		media_url: `${API_BASE}/s/session-late/file.mp4`,
-		media_kind: 'mp4'
-	});
+	const SESSION = wire<CreateSessionResponse>(
+		sessionAnswer({
+			session_id: 'session-late',
+			media_url: `${API_BASE}/s/session-late/file.mp4`,
+			media_kind: 'mp4'
+		})
+	);
 	const HAS_IT = { cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 12 } };
 
 	function useOtherShowAndRecord() {
 		const marked: Record<string, unknown>[] = [];
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/anime/${OTHER_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(OTHER_ID, OTHER_TITLE, 24), status: 'finished' })
+				HttpResponse.json<KitsuAnimeRef>({
+					...kitsuRef(OTHER_ID, OTHER_TITLE, 24),
+					status: 'finished'
+				})
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${OTHER_ID}`, () =>
-				HttpResponse.json({ aired: 24, next_episode: null, next_airing_at: null, upcoming: [] })
+				HttpResponse.json<AiringStatus>({
+					aired: 24,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
+				})
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, async ({ request }) => {
 				marked.push((await request.json()) as Record<string, unknown>);
@@ -762,9 +812,12 @@ describe('a play for one show that answers after the page moved on', () => {
 				if (body.mode === 'dub') {
 					asked = true;
 					await held;
-					return HttpResponse.json(HAS_IT);
+					return HttpResponse.json<AvailabilityBatchResponse>(HAS_IT);
 				}
-				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+				return HttpResponse.json<AvailabilityBatchResponse>({
+					cached: {},
+					playable_episode_counts: {}
+				});
 			})
 		);
 		return { release: () => release(), asked: () => asked };
@@ -815,7 +868,7 @@ describe('a play for one show that answers after the page moved on', () => {
 				http.post(`${API_BASE}/api/play/${handoff}`, async () => {
 					launched = true;
 					await held;
-					return HttpResponse.json(JSON.parse(VERDICT), { status: 404 });
+					return errorAnswer(404, VERDICT_ENVELOPE);
 				})
 			);
 			setUrl(`/play/${KITSU_ID}`, { session: 'session-move', episode: '3', kind: 'mp4' });
@@ -862,7 +915,9 @@ describe('a play whose page is left before it answers', () => {
 		vi.mocked(goto).mockClear();
 		stream.dispatch(
 			'done',
-			JSON.stringify({ session_id: 's', media_url: `${API_BASE}/s/s/file.mp4`, media_kind: 'mp4' })
+			wire<CreateSessionResponse>(
+				sessionAnswer({ session_id: 's', media_url: `${API_BASE}/s/s/file.mp4`, media_kind: 'mp4' })
+			)
 		);
 		await playJudged();
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
@@ -884,13 +939,21 @@ describe('detail — warms queued before the page moved to another show', () => 
 		useHandlers({ cached: {}, playable_episode_counts: {} });
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () =>
-				HttpResponse.json({ ...appConfig('sub'), cache_resolutions: true })
+				HttpResponse.json<Config>({ ...appConfig('sub'), cache_resolutions: true })
 			),
 			http.get(`${API_BASE}/api/kitsu/anime/${OTHER_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(OTHER_ID, 'Another Show', 24), status: 'finished' })
+				HttpResponse.json<KitsuAnimeRef>({
+					...kitsuRef(OTHER_ID, 'Another Show', 24),
+					status: 'finished'
+				})
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${OTHER_ID}`, () =>
-				HttpResponse.json({ aired: 24, next_episode: null, next_airing_at: null, upcoming: [] })
+				HttpResponse.json<AiringStatus>({
+					aired: 24,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
+				})
 			)
 		);
 		app = mount(DetailPage, { target });

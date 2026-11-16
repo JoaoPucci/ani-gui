@@ -35,6 +35,8 @@ import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { m } from '../../src/lib/paraglide/messages';
 import { editorProps, showEditorFor } from './editor-props.svelte';
 
+import type { EntryView, ListEntry } from '../../src/lib/account/types';
+import { errorAnswer } from '../answers';
 const KITSU_ID = '42';
 /** The wait the backend relays. Short, so the scenario sees the save
  *  that follows it. */
@@ -106,7 +108,7 @@ interface Saves {
 function useTracker(saves: Saves, retryAfter: number = RETRY_AFTER_S, landAfterMs = 0) {
 	server.use(
 		http.get(`${API_BASE}/api/account/entry/anilist`, () =>
-			HttpResponse.json({ status: 'watching', progress: 3 })
+			HttpResponse.json<EntryView | null>({ status: 'watching', progress: 3 })
 		),
 		http.post(`${API_BASE}/api/account/set/anilist`, async ({ request }) => {
 			saves.at.push(Date.now());
@@ -115,17 +117,14 @@ function useTracker(saves: Saves, retryAfter: number = RETRY_AFTER_S, landAfterM
 				await new Promise((r) => setTimeout(r, landAfterMs));
 			}
 			if (saves.at.length === 1) {
-				return HttpResponse.json(
-					{
-						kind: 'rate_limited',
-						key: 'error.network.rate_limited',
-						retry_after_secs: retryAfter,
-						refused_by: 'anilist'
-					},
-					{ status: 429 }
-				);
+				return errorAnswer(429, {
+					kind: 'rate_limited',
+					key: 'error.network.rate_limited',
+					retry_after_secs: retryAfter,
+					refused_by: 'anilist'
+				});
 			}
-			return HttpResponse.json({
+			return HttpResponse.json<ListEntry | null>({
 				provider: 'anilist',
 				media_id: 7,
 				mal_id: 21,
@@ -255,7 +254,7 @@ describe('list editor — a save still waiting on one show', () => {
 		useTracker(saves);
 		server.use(
 			http.get(`${API_BASE}/api/account/entry/anilist`, () =>
-				HttpResponse.json({ status: 'watching', progress: 3 })
+				HttpResponse.json<EntryView | null>({ status: 'watching', progress: 3 })
 			)
 		);
 		toasts = mount(ToastHost, { target: stack });

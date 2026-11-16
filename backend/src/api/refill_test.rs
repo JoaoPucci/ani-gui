@@ -48,7 +48,7 @@ async fn send(
     uri: &str,
     body: &str,
 ) -> axum::response::Response {
-    crate::api::build_api_router(state)
+    crate::api::test_router(state)
         .oneshot(
             Request::builder()
                 .method(method)

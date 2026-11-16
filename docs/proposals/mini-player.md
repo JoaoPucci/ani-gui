@@ -165,14 +165,16 @@ playback ends.
 from the same SvelteKit build: `app://localhost/mini/…` in a packaged
 build, the Vite server in development. **[data]** Nothing new is
 needed to serve it: the `app://` handler hands `index.html` to any
-extensionless path (`electron/main.js:683`), and SvelteKit's client
+extensionless path (`registerAppProtocol` in `electron/main.js`), and SvelteKit's client
 router takes the route from there.
 
 The window gets the same preload and the same `additionalArguments`
-as the main one (`electron/main.js:457`, `windowArguments(backend, …)`),
-so it sees the same backend handshake: `window.aniGui.apiBase`, the
-secret and the six loopback lanes, with the configured locale and the
-launch's flags. **[data]** The main process already
+as the main one (`windowArguments(backend, …)` in `electron/main.js`),
+and is handed the launch's secret the same way, which the preload asks
+the main process for over IPC (`secrets.hold`,
+`electron/lib/secret-handoff.cjs`), so it sees the same backend
+handshake: `window.aniGui.apiBase`, the secret and the six loopback
+lanes, with the configured locale and the launch's flags. **[data]** The main process already
 keeps that handshake for a later window: `keeper.booted(backend)`
 records it for the single-instance reopen path
 (`electron/lib/single-instance.cjs:70`). Both windows share Electron's
@@ -222,12 +224,10 @@ Two of the layout's effects would be wrong in a second window:
 
 ### One engine per window, owned by the player page
 
-AGENTS.md §6 says hls.js is a singleton inside `Player.svelte`.
-**[data]** No `Player.svelte` exists. The engine is constructed in the
-play page (`+page.svelte:2009`) and, separately, in the `/play`
-diagnostic page that plays a pasted URL
-(`frontend/src/routes/play/+page.svelte:35`). The rule's intent holds:
-one engine per player surface, never one built ad hoc.
+AGENTS.md §6 says hls.js is a singleton inside the player page.
+**[data]** The engine is constructed in the play page
+(`+page.svelte:2132`), the one place it is built. The rule's intent
+holds: one engine per player surface, never one built ad hoc.
 
 **[proposal]** The play page's attach path (engine, sidecar tracks,
 quality control, resume hold, stall recovery, position writing) moves
@@ -729,9 +729,7 @@ About 13–21 working days in all.
    proxy-side fragment cache can follow if the gap reads badly in
    use.
 6. **Chromium's picture-in-picture.** **Recommended:** remove it,
-   including from the native controls. The `/play` diagnostic page,
-   which plays a pasted URL with its own element, keeps whatever
-   Chromium offers there; it is a developer tool.
+   including from the native controls.
 7. **Entering the mini player on leaving the player.**
    **Recommended:** not in the first version; revisit after it ships.
 8. **The mini window in the taskbar and Alt+Tab.** **Recommended:**

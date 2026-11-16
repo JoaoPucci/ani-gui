@@ -12,12 +12,14 @@ const LANE_NAME = /^[a-z]+$/;
 const ORIGIN = /^\S+$/;
 
 /**
- * `backend` is what the handshake resolved with (`apiBase`,
- * `internalSecret`, `lanes`); `locale` is the one config.toml names,
- * or null. A missing locale or secret is left out rather than sent
- * empty, so the preload falls through to its own default — for the
- * locale, Paraglide's own resolution (localStorage, preferred language,
- * base locale).
+ * `backend` is what the handshake resolved with (`apiBase`, `lanes`,
+ * and `internalSecret`, which is never sent here: a process's command
+ * line is readable by other local programs, so the preload asks the
+ * main process for the secret instead, lib/secret-handoff.cjs);
+ * `locale` is the one config.toml names, or null. A missing locale is
+ * left out rather than sent empty, so the preload falls through to
+ * Paraglide's own resolution (localStorage, preferred language, base
+ * locale).
  *
  * `launchFlags` is the backend's flags answer (lib/launch-flags.cjs),
  * or null. The flags go URI-encoded JSON in one argument, so no
@@ -26,9 +28,6 @@ const ORIGIN = /^\S+$/;
 function windowArguments(backend, locale, launchFlags = null) {
   const args = [`--ani-gui-api-base=${backend.apiBase}`];
   if (locale) args.push(`--ani-gui-locale=${locale}`);
-  if (backend.internalSecret) {
-    args.push(`--ani-gui-internal-secret=${backend.internalSecret}`);
-  }
   for (const [name, origin] of Object.entries(backend.lanes || {})) {
     if (LANE_NAME.test(name) && typeof origin === "string" && ORIGIN.test(origin)) {
       args.push(`--ani-gui-lane-${name}=${origin}`);

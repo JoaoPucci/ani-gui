@@ -40,6 +40,8 @@ import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AvailabilityResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 /** The card the user deletes mid-retry. */
 const DROPPED = 'Cowboy Bebop';
 /** The card left alone — the control, so a run where the retry simply
@@ -109,7 +111,7 @@ function mountTwoUnconfirmedRows() {
 			[
 				http.post(`${API_BASE}/api/kitsu/search`, async ({ request }) => {
 					const { query } = (await request.json()) as { query: string };
-					return HttpResponse.json(
+					return HttpResponse.json<KitsuAnimeRef[]>(
 						query === DROPPED ? [kitsuRef('1', DROPPED, 26)] : [kitsuRef('2', KEPT, 26)]
 					);
 				}),
@@ -119,11 +121,13 @@ function mountTwoUnconfirmedRows() {
 					// Never confirmed: a row leaves the queue only by
 					// running out of attempts or by being skipped, and the
 					// window below is well inside its budget.
-					return HttpResponse.json({
-						available: true,
-						episode_count: 27,
-						episode_count_approximate: true
-					});
+					return HttpResponse.json<AvailabilityResponse>(
+						availabilityAnswer({
+							available: true,
+							episode_count: 27,
+							episode_count_approximate: true
+						})
+					);
 				}),
 				http.delete(`${API_BASE}/api/history/:id`, ({ params }) => {
 					deleted.push(String(params.id));

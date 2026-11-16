@@ -28,7 +28,15 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 // about route behaviour.
 import { m } from '../../src/lib/paraglide/messages';
 
-function ref(id: string, title: string) {
+import type {
+	AvailabilityBatchResponse,
+	AvailabilityResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuSearchPage
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
+function ref(id: string, title: string): KitsuAnimeRef {
 	return {
 		id,
 		canonical_title: title,
@@ -41,11 +49,15 @@ function ref(id: string, title: string) {
 		episode_count: 12,
 		status: 'finished',
 		start_date: '2019-01-01',
-		average_rating: null
+		average_rating: null,
+		end_date: null,
+		subtype: null,
+		age_rating: null,
+		popularity_rank: null
 	};
 }
 
-const CONFIG = {
+const CONFIG: Config = {
 	locale: 'en',
 	mode: 'sub',
 	download_quality: 'best',
@@ -55,11 +67,11 @@ const CONFIG = {
 	syncplay_binary: '',
 	image_cache_cap_mb: 100,
 	auto_play_next: false,
+	cache_resolutions: false,
 	download_bottom_bar_enabled: true,
 	auto_skip_op: false,
 	auto_skip_ed: false,
 	use_custom_player_controls: true,
-	auto_update_anicli: false,
 	update_include_prereleases: false,
 	primary_account: ''
 };
@@ -68,11 +80,11 @@ const CONFIG = {
  *  route fetches on mount, which the setup would otherwise reject. */
 function baseHandlers() {
 	return [
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(CONFIG)),
-		http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(CONFIG)),
+		http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability/batch`, () =>
-			HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+			HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 		)
 	];
 }
@@ -131,14 +143,16 @@ describe('/search late prune', () => {
 		server.use(
 			...baseHandlers(),
 			http.post(`${API_BASE}/api/kitsu/search/page`, () =>
-				HttpResponse.json({
+				HttpResponse.json<KitsuSearchPage>({
 					hits: [ref('1', 'Gone One'), ref('2', 'Gone Two')],
 					next_offset: null
 				})
 			),
 			http.post(`${API_BASE}/api/availability`, async () => {
 				await probesHeld;
-				return HttpResponse.json({ available: false, episode_count: 0, approximate: false });
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: false, episode_count: 0 })
+				);
 			})
 		);
 
@@ -214,7 +228,7 @@ describe('/search late prune', () => {
 			// The stale run's cache read, its last network call: a run
 			// that has been replaced asks the provider nothing more.
 			http.post(`${API_BASE}/api/availability/batch`, () =>
-				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 			),
 			...baseHandlers(),
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
@@ -224,14 +238,25 @@ describe('/search late prune', () => {
 					// The stale run: held open, then answered with
 					// results that must never reach the screen.
 					await firstAHeld;
-					return HttpResponse.json({ hits: [ref('9', 'Stale Result')], next_offset: null });
+					return HttpResponse.json<KitsuSearchPage>({
+						hits: [ref('9', 'Stale Result')],
+						next_offset: null
+					});
 				}
 				if (query === 'trigun')
-					return HttpResponse.json({ hits: [ref('5', 'Interim Result')], next_offset: null });
-				return HttpResponse.json({ hits: [ref('7', 'Fresh Result')], next_offset: null });
+					return HttpResponse.json<KitsuSearchPage>({
+						hits: [ref('5', 'Interim Result')],
+						next_offset: null
+					});
+				return HttpResponse.json<KitsuSearchPage>({
+					hits: [ref('7', 'Fresh Result')],
+					next_offset: null
+				});
 			}),
 			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({ available: true, episode_count: 12, approximate: false })
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: true, episode_count: 12 })
+				)
 			)
 		);
 
