@@ -148,6 +148,10 @@ function removeAfterExit(dir: string): void {
  *  be looking at, which throws, saying how to run the suite instead.
  *  `binary` is another copy of the packaged tree's launcher, for a spec
  *  that ships the app a frontend of its own (splash-stuck.spec.ts).
+ *  `switches` go on the command line after testLaunchSwitches, which
+ *  they cannot take away: a spec that runs the app the way a machine
+ *  without GPU acceleration does passes `--disable-gpu`
+ *  (reveal-without-frames.spec.ts).
  *  `profile` is the scratch directory the spec made for this launch
  *  (its HOME or XDG directories): it is removed, that path alone, once
  *  the app has exited, and again once its backend has had time to stop,
@@ -157,7 +161,11 @@ function removeAfterExit(dir: string): void {
  *  (./policy-guard.ts). */
 export async function launchPackagedApp(
 	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env'],
-	{ binary = packagedBinary, profile }: { binary?: string; profile?: string } = {}
+	{
+		binary = packagedBinary,
+		profile,
+		switches = []
+	}: { binary?: string; profile?: string; switches?: readonly string[] } = {}
 ): Promise<ElectronApplication> {
 	const refusal = launchRefusal(env ?? {});
 	if (refusal) {
@@ -176,7 +184,7 @@ export async function launchPackagedApp(
 	try {
 		app = await _electron.launch({
 			executablePath: binary,
-			args: [...testLaunchSwitches],
+			args: [...testLaunchSwitches, ...switches],
 			env: { ...env, ...proxyEnv(proxy.origin), ...testRunEnv }
 		});
 	} catch (err) {
@@ -211,11 +219,14 @@ const refused = new WeakMap<ElectronApplication, string[]>();
  *  must still tell an exited app from a running one then. */
 const launched = new WeakMap<ElectronApplication, { child: ChildProcess; exe: string }>();
 
-/** Stop an app this suite launched, and nothing else: SIGTERM to the
- *  process group Playwright created for it, SIGKILL to the same group if
- *  it is still there after `termMs`, and only while that group is
- *  provably the app's — the main process unreaped, leading its group,
- *  running the binary it was launched from (lib/own-group.cjs). Then
+/** Stop an app this suite launched, and nothing else: SIGTERM to its
+ *  main process alone, which quits it as a user's kill would, SIGKILL to
+ *  the process group Playwright created for it if it is still there
+ *  after `termMs`, and only while that group is provably the app's —
+ *  the main process unreaped, leading its group, running the binary it
+ *  was launched from (lib/own-group.cjs). An app that ends by a signal
+ *  the stop did not send crashed as it quit, or, before the stop,
+ *  crashed or was killed from outside it, and the stop throws. Then
  *  Playwright's close, which settles once the process has gone,
  *  whatever the stop did. An app that has already exited is closed without a signal.
  *
