@@ -22,11 +22,10 @@ const APP_READY_CHANNEL = "ani-gui:app-ready";
 const APP_MOUNTED_CHANNEL = "ani-gui:app-mounted";
 
 /** How long after the page mounted its rendered word may take before
- *  the window is woken (frameWake). Two frames take tens of
- *  milliseconds where a hidden window gets frames, and a heavy first
- *  layout a few hundred; where it gets none (native Wayland without GPU
- *  compositing) the word never comes, and this is what the boot pays
- *  before the window is mapped. */
+ *  the window is woken (frameWake). Where a hidden window gets frames
+ *  the word follows within a couple of frames; where it gets none
+ *  (native Wayland without GPU compositing) the word never comes, and
+ *  this is what the boot pays before the window is mapped. */
 const FRAME_WAKE_MS = 1500;
 
 /** The longest the reveal waits for that word, counted from the
@@ -238,27 +237,32 @@ function lastWake() {
  * Map the hidden window `win` so it gets frames, behind the splash
  * where the platform keeps the splash on top.
  *
- * Mapped inactive first, then maximized: maximize() on a hidden window
- * maps and activates it, which would take the focus from wherever the
- * person is. `revealing` runs first (main.js arms the granted-size
- * recorder, lib/window-geometry.cjs): the window is maximized here, not
- * at the reveal, so the size the desktop grants it lands now.
+ * Mapped without asking for the focus first: maximize() on a hidden
+ * window maps and activates it. On Linux it is then maximized, a state
+ * request that activates nothing, with `revealing` run first (main.js
+ * arms the granted-size recorder, lib/window-geometry.cjs) so the size
+ * the desktop grants it lands now. Elsewhere maximize() of a mapped
+ * window activates it (Windows: ShowWindow(SW_MAXIMIZE)), so the reveal
+ * maximizes it there (lib/splash.cjs revealMaximized), as it shows it
+ * anyway.
  *
- * Native Wayland honours no always-on-top: the compositor stacks the
- * new window over the splash and, the app being the focused one, gives
- * it the focus. Each focus it takes before the reveal runs `restack`
- * (main.js maps the splash again, which puts it back on top). The window
- * is still visible around the splash meanwhile; on those machines it
- * is that or no window at all.
+ * Native Wayland honours no always-on-top. Measured on GNOME with the
+ * app focused: the compositor stacks the woken window over the splash
+ * and gives it the focus. Each focus it takes before the reveal runs
+ * `restack` (main.js maps the splash again, which puts it back on top);
+ * the window is visible around the splash meanwhile. Where the person
+ * has focused another app the window may take no focus, and then
+ * nothing restacks the splash: not measured, and the reveal ends it as
+ * soon as the page renders.
  *
  * Returns what detaches the restack (the reveal calls it), or null for
  * a window gone or already on screen, which is left alone.
  */
-function wakeHidden(win, { revealing = () => {}, restack }) {
+function wakeHidden(win, { revealing = () => {}, restack, platform = process.platform }) {
   if (win.isDestroyed() || win.isVisible()) return null;
   revealing();
   win.showInactive();
-  win.maximize();
+  if (platform === "linux") win.maximize();
   const onFocus = () => restack();
   win.on("focus", onFocus);
   return () => win.removeListener("focus", onFocus);

@@ -198,6 +198,8 @@ function splashController({
   let backstop = null;
   // The bound on the splash's first paint (show).
   let paintTimer = null;
+  // A restack waiting for the splash to have the focus back.
+  let restacking = false;
   // Reloads of a crashed splash page so far.
   let reloads = 0;
   // Rejects once the splash has lost its page while it stands in for
@@ -527,11 +529,19 @@ function splashController({
     // always-on-top, and mapping a window again stacks it on top. Only a
     // splash on screen and still standing in; it takes the focus back
     // from the woken window, which had just taken it.
+    // One at a time: hide() and show() land asynchronously on Wayland,
+    // and a focus the woken window takes again meanwhile starts nothing
+    // until the splash has had the focus back.
     restack() {
-      if (over || !alive() || !win.isVisible()) return;
+      if (restacking || over || !alive() || !win.isVisible()) return;
+      restacking = true;
+      const target = win;
+      target.once("focus", () => {
+        restacking = false;
+      });
       log(`[main] splash put back on top of the woken window (${since()})`);
-      win.hide();
-      win.show();
+      target.hide();
+      target.show();
     },
     standsIn() {
       return state.opened && !over && alive() === true;
@@ -656,7 +666,7 @@ function lastSplashState() {
 }
 
 /** How long after its page loaded the splash shows without having
- *  painted (show). Its first paint normally comes with the load. */
+ *  painted (show), when ready-to-show has not come by then. */
 const SPLASH_PAINT_WAIT_MS = 250;
 
 /** The longest the app's window waits for the splash to paint. The

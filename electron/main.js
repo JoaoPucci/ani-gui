@@ -492,6 +492,9 @@ const splash = splashController({
 
 /** Where the window's remembered maximized size lives: beside the
  *  app's other per-user state, under this profile's userData. */
+/** Set once the boot has failed: a window's pending wake is off. */
+let bootFailed = false;
+
 const geometryFile = () => path.join(app.getPath("userData"), "window-geometry.json");
 
 async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
@@ -714,7 +717,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // blocklisted, --disable-gpu — and its page then never says it
   // rendered. Its page says when it has mounted, which needs no frame;
   // when the rendered word does not follow soon, the window is mapped
-  // behind the splash (without focus, then maximized), its frames
+  // without asking for the focus (and maximized, on Linux), its frames
   // resume, and the reveal below goes as usual (lib/app-window.cjs
   // frameWake, wakeHidden). Where the platform keeps the splash on top
   // the woken window is hidden behind it; native Wayland does not, and
@@ -723,9 +726,9 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   let unwake = null;
   const wake = frameWake(win.webContents, ipcMain, {
     ready: appReady.ready,
-    cancelled: () => win.isDestroyed() || splash.dismissed() || revealed,
+    cancelled: () => win.isDestroyed() || splash.dismissed() || revealed || bootFailed,
     wake: () => {
-      console.log("[main] app's page mounted and drew no frames in time: mapping its window behind the splash");
+      console.log("[main] app's page mounted and drew no frames in time: mapping its window, behind the splash where it stays on top");
       unwake = wakeHidden(win, {
         revealing: () => granted.revealing(),
         restack: () => splash.restack(),
@@ -1210,7 +1213,9 @@ function mainLocale() {
  */
 function reportBootFailure(err) {
   // A failed boot has no window worth bringing forward: a later launch
-  // that arrives while this one says why must not re-show it.
+  // that arrives while this one says why must not re-show it. Nor may a
+  // wake still pending map it again (createWindow, frameWake).
+  bootFailed = true;
   keeper.failed();
   // A failed boot's window is normally never revealed; what is on
   // screen is the splash (put away by the boot) and, rarely, a window

@@ -62,7 +62,8 @@ async function loadFirstPage(win, url, logError, onFailed = () => {}) {
   }
 }
 
-// How long a packaged launch gives its window to reach ready-to-show:
+// How long a packaged launch gives its window to reach ready-to-show,
+// or its page to say it rendered (awaitFirstShow's `painted`):
 // two minutes, the handshake's budget, for the handshake's reason
 // (lib/backend-handshake.cjs).
 //
@@ -79,8 +80,8 @@ async function loadFirstPage(win, url, logError, onFailed = () => {}) {
 const FIRST_SHOW_TIMEOUT_MS = 120_000;
 
 /**
- * How long a launch gives its window to reach ready-to-show, or
- * `null` for no deadline.
+ * How long a launch gives its window to reach ready-to-show (or its
+ * page to say it rendered), or `null` for no deadline.
  *
  * A dev launch has none. Its first page comes from Vite, and a cold
  * Vite re-optimizing its dependencies can take longer over the first
