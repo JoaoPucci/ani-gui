@@ -94,7 +94,9 @@ test('without GPU acceleration the window still opens: the boot completes and th
 	try {
 		const r = await bootDone(app);
 		expect(r.ready).toEqual({ rendered: true, gaveUp: false, beforeReveal: true });
-		expect(r.windows).toEqual([{ splash: false, visible: true, maximized: true }]);
+		// Maximized where a compositor grants it; Xvfb has no window manager.
+		const maximized = expectedPlatform(process.env) === 'wayland' ? true : r.windows[0]?.maximized;
+		expect(r.windows).toEqual([{ splash: false, visible: true, maximized }]);
 		// On Wayland the hidden window got no frames: the wake is what let
 		// its page render. Xvfb keeps hidden windows ticking (see above).
 		if (expectedPlatform(process.env) === 'wayland') {
@@ -124,7 +126,9 @@ test('where hidden windows get their frames the window is revealed from hidden, 
 		// A machine whose GPU Chromium cannot use (a VM) is the defect's own
 		// condition even without --disable-gpu: there the wake is right.
 		if (await hiddenWindowsGetFrames(app)) expect(r.wake.woken).toBe(false);
-		expect(r.windows).toEqual([{ splash: false, visible: true, maximized: true }]);
+		// Maximized where a compositor grants it; Xvfb has no window manager.
+		const maximized = expectedPlatform(process.env) === 'wayland' ? true : r.windows[0]?.maximized;
+		expect(r.windows).toEqual([{ splash: false, visible: true, maximized }]);
 	} finally {
 		await stopApp(app);
 	}
