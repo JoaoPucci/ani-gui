@@ -23,6 +23,11 @@ export ELECTRON_OZONE_PLATFORM_HINT
 HERE="$(dirname "$(readlink -f "$0")")"
 app=("$HERE/${exe}.bin" --enable-wayland-ime "$@")
 
+# Everything below is one function, read whole before any of it runs:
+# bash reads a script from its file as it goes, and the AppImage's file
+# sits on a mount that can be gone before this launcher is done.
+main() {
+
 # Off a terminal (the desktop, a pipe, a file), the launcher becomes the
 # app. So it does without setsid, which only util-linux-less hosts lack.
 if { [ ! -t 0 ] && [ ! -t 1 ] && [ ! -t 2 ]; } || ! command -v setsid >/dev/null 2>&1; then
@@ -70,7 +75,8 @@ exec 3>&- 4>&-
 # this launcher, and Chromium answers a second stop signal by dying on
 # the spot: its handler for each goes back to the default as it runs.
 # So none is sent while a SIGTERM is pending for the app, or once its
-# handler for SIGTERM has gone while those for SIGINT and SIGHUP remain.
+# handler for SIGTERM has gone while one for SIGINT or SIGHUP remains (a
+# stop that sends SIGHUP as well as SIGTERM resets both).
 # An app with no handler yet takes the SIGTERM's default, as it would
 # have before this launcher existed.
 needs_term() {
@@ -90,7 +96,15 @@ sent=0
 stop_app() {
   [ "$sent" -eq 0 ] || return 0
   sent=1
+  # From the first stop on, the launcher ignores the rest: nothing more
+  # is passed on, and the pause below, which inherits that, is not cut
+  # short by the same stop reaching it too (a Ctrl-C to the group, a
+  # scope's SIGTERM to every process).
+  trap '' HUP INT TERM
   # A stop meant for every process may still be on its way to the app.
+  # An app that quits within the pause can already be reaped after it,
+  # its status file gone, and then nothing is sent; only a pid reused
+  # within those 0.2 s would be mistaken for it.
   sleep 0.2
   if needs_term; then
     kill -s TERM "$pid" 2>/dev/null
@@ -111,6 +125,8 @@ while :; do
   [ "$again" -eq 127 ] || status=$again
   break
 done
+# A stop after this point has no app to act for: it is reaped.
+trap '' HUP INT TERM
 
 # The relays end once nothing holds their pipes: the app and its helper
 # processes. A restarted app (lib/relaunch.cjs) holds them on, so they
@@ -124,6 +140,8 @@ for ((i = 0; i < 40; i++)); do
   sleep 0.05
 done
 exit "$status"
+}
+main; exit
 `;
 }
 
