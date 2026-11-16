@@ -39,7 +39,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { launchRefusal } from '../lib/e2e-display.cjs';
 import { stopOwnGroup } from '../lib/own-group.cjs';
-import { guardPolicy } from './policy-guard';
+import { guardOutput, guardPolicy } from './policy-guard';
 import { answer } from './stubs';
 
 /** electron-builder's pre-AppImage output — the production code path:
@@ -134,7 +134,7 @@ process.once('exit', () => {
 	for (const dir of removedProfiles) removeScratch(dir);
 });
 
-function removeAfterExit(dir: string): void {
+export function removeAfterExit(dir: string): void {
 	removeScratch(dir);
 	removedProfiles.add(dir);
 	setTimeout(() => {
@@ -199,23 +199,25 @@ export async function launchPackagedApp(
  *  stdout and stderr lead to (terminal-closed.spec.ts): the driver
  *  keeps both as pipes it reads itself. Otherwise the same launch as
  *  launchPackagedApp — the display refusal, testLaunchSwitches, the
- *  refusing proxy and a test run's environment — and `profile` is
- *  removed the same way once the child has exited.
+ *  refusing proxy and a test run's environment — and the same policy
+ *  guard, over the child's stdout and stderr where they are pipes (the
+ *  driver's page listeners need Playwright attached, which it is not).
  *
  *  `via` is a program to start the app under, which gets the app's
  *  command line as its arguments (a terminal of its own:
  *  e2e/fixtures/terminal/on-a-terminal.py). The child — the app, or
  *  that program — leads a process group of its own, as it does under
- *  Playwright's driver (lib/own-group.cjs). */
+ *  Playwright's driver, and is stopped the way lib/own-group.cjs
+ *  stops one: what it leaves in its group is killed in the turn its
+ *  exit is reported, and if the test worker exits first, the group is
+ *  killed then, while the child is still unreaped. The spec removes
+ *  its profile itself (removeAfterExit), once it has looked at it. */
 export async function spawnPackagedApp(
 	env: NodeJS.ProcessEnv,
-	{ stdio, via = [], profile }: { stdio: StdioOptions; via?: string[]; profile?: string }
+	{ stdio, via = [] }: { stdio: StdioOptions; via?: string[] }
 ): Promise<ChildProcess> {
 	const refusal = launchRefusal(env);
-	if (refusal) {
-		if (profile) removeScratch(profile);
-		throw new Error(refusal);
-	}
+	if (refusal) throw new Error(refusal);
 	const proxy = await refusingProxy();
 	const command = [...via, packagedBinary, ...testLaunchSwitches];
 	let child: ChildProcess;
@@ -227,17 +229,31 @@ export async function spawnPackagedApp(
 		});
 	} catch (err) {
 		proxy.close();
-		if (profile) removeScratch(profile);
 		throw err;
 	}
+	const killGroup = () => {
+		if (!child.pid) return;
+		try {
+			process.kill(-child.pid!, 'SIGKILL');
+		} catch {
+			/* nothing left in the group */
+		}
+	};
+	const onWorkerExit = () => {
+		if (child.exitCode === null && child.signalCode === null) killGroup();
+	};
+	process.once('exit', onWorkerExit);
 	child.once('exit', () => {
+		// The reap's own turn: the group id is still the child's.
+		killGroup();
+		process.removeListener('exit', onWorkerExit);
 		proxy.close();
-		if (profile) removeAfterExit(profile);
 	});
 	child.once('error', () => {
+		process.removeListener('exit', onWorkerExit);
 		proxy.close();
-		if (profile) removeScratch(profile);
 	});
+	guardOutput([child.stdout, child.stderr]);
 	return child;
 }
 

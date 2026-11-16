@@ -18,7 +18,8 @@ This script's stdin takes one command per line:
 On its stdout, one JSON object per line: {"pid": <pid>} once the program has
 started, then {"exit": <code>} or {"signal": <number>} when it ends, and this
 script exits. If this script's stdin closes first, it kills the program's
-process group, so a test that dies leaves nothing behind.
+process group, so a test that dies leaves nothing behind; and when the
+program ends, whatever it left in its group is killed before it is reaped.
 
 The program is this script's child, so its pid, and the id of the process
 group it leads, stay its own until this script reaps it: the group is
@@ -64,8 +65,12 @@ def main():
     # end has closed it.
     relaying = True
     while True:
-        done, status = os.waitpid(pid, os.WNOHANG)
-        if done:
+        # Seen without reaping it: while the program is a zombie, its pid
+        # and its group's id are still its own, so what it left in the
+        # group is killed before the reap gives them up.
+        if os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT):
+            kill_group()
+            _, status = os.waitpid(pid, 0)
             break
         watched = [commands] + ([terminal] if terminal is not None and relaying else [])
         ready, _, _ = select.select(watched, [], [], 0.1)

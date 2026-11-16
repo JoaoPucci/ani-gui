@@ -11,21 +11,23 @@
  * gone, the process never ended, and the profile stayed locked
  * (lib/stdio-guard.cjs).
  *
- * Each launch gets a scratch profile of its own. The app is stopped
- * the way a user stops it there: closing the terminal hangs it up,
- * which is the app's SIGHUP; on a pipe, a SIGTERM to the app's own
- * pid, as `kill` from another terminal sends. It is signalled only
- * while it is this spec's unreaped child, and anything left after the
- * wait is stopped by its process group (lib/own-group.cjs; the
- * terminal fixture does the same for the app it runs).
+ * Each launch gets a scratch profile of its own, removed once the spec
+ * has looked at it. The app is stopped the way a user stops it there:
+ * closing the terminal hangs it up, which is the app's SIGHUP; on a
+ * pipe, a SIGTERM to the app's own pid, as `kill` from another terminal
+ * sends. It is signalled only while it is unreaped: on the pipe, it is
+ * this spec's child, stopped with lib/own-group.cjs if it outlives the
+ * wait, and what it leaves in its group is killed as its exit is
+ * reported (spawnPackagedApp); on the terminal, it is the fixture's
+ * child, and the fixture does the same.
  */
 import { expect, test } from "./policy-guard";
-import type { ChildProcess } from "node:child_process";
+import { execFileSync, type ChildProcess } from "node:child_process";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { stopOwnGroup } from "../lib/own-group.cjs";
-import { packagedBinary, spawnPackagedApp } from "./launch";
+import { packagedBinary, removeAfterExit, spawnPackagedApp } from "./launch";
 
 /** What the main process logs once the app's first page is up: the
  *  boot is over, and the app has written to its stdout and stderr. */
@@ -40,6 +42,12 @@ const TERMINAL = path.join(__dirname, "fixtures", "terminal", "on-a-terminal.py"
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
     throw new Error(`prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package`);
+  }
+  // The terminal fixture is a Python script.
+  try {
+    execFileSync("python3", ["-c", "import pty"], { stdio: "ignore" });
+  } catch {
+    throw new Error("prereq missing: python3 (with its pty module), for e2e/fixtures/terminal/on-a-terminal.py");
   }
 });
 
@@ -60,8 +68,10 @@ function scratchProfile(tag: string) {
 /** Whether Chromium's single-instance lock is in `profile`: there while
  *  the app runs, removed as it shuts down. Left behind, it means the
  *  app never shut down. The lock is a symlink to a name, not to a file,
- *  so it is looked at itself rather than followed. */
+ *  so it is looked at itself rather than followed. The profile itself
+ *  must still be there, or a missing lock would prove nothing. */
 function locked(profile: string): boolean {
+  expect(existsSync(path.join(profile, "config", "ani-gui")), `profile ${profile} is gone`).toBe(true);
   try {
     fs.lstatSync(path.join(profile, "config", "ani-gui", "SingletonLock"));
     return true;
@@ -92,37 +102,44 @@ function ended(child: ChildProcess, ms: number): Promise<{ code: number | null; 
 test("the app quits cleanly after the reader of its output has gone", async () => {
   test.setTimeout(90_000);
   const { profile, env, locked } = scratchProfile("reader-gone");
-  const app = await spawnPackagedApp(env, { stdio: ["ignore", "pipe", "pipe"], profile });
+  // Resolved before the launch, so a launched app is always stopped.
   const exe = fs.realpathSync(`${packagedBinary}.bin`);
+  let app: ChildProcess | undefined;
   try {
+    app = await spawnPackagedApp(env, { stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     app.stdout!.on("data", (chunk) => (output += chunk));
     app.stderr!.on("data", (chunk) => (output += chunk));
+    const running = app;
     await until(() => output, BOOTED, 60_000);
     expect(locked()).toBe(true);
 
     // The reader goes: every write the app makes from here fails.
-    app.stdout!.destroy();
-    app.stderr!.destroy();
-    expect(app.exitCode === null && app.signalCode === null).toBe(true);
-    process.kill(app.pid!, "SIGTERM");
+    running.stdout!.destroy();
+    running.stderr!.destroy();
+    expect(running.exitCode === null && running.signalCode === null).toBe(true);
+    process.kill(running.pid!, "SIGTERM");
 
-    expect(await ended(app, QUIT_MS)).toEqual({ code: 0, signal: null });
+    expect(await ended(running, QUIT_MS)).toEqual({ code: 0, signal: null });
     expect(locked()).toBe(false);
   } finally {
-    await stopOwnGroup(app, { exe, termMs: 2000, killMs: 2000 });
+    if (app) await stopOwnGroup(app, { exe, termMs: 2000, killMs: 2000 });
+    removeAfterExit(profile);
   }
 });
 
 test("the app quits after the terminal it was started from has closed", async () => {
   test.setTimeout(90_000);
   const { profile, env, locked } = scratchProfile("terminal-closed");
-  const terminal = await spawnPackagedApp(env, {
-    stdio: ["pipe", "pipe", "pipe"],
-    via: ["python3", TERMINAL],
-    profile,
-  });
+  let terminal: ChildProcess | undefined;
   try {
+    terminal = await spawnPackagedApp(env, {
+      stdio: ["pipe", "pipe", "pipe"],
+      via: ["python3", TERMINAL],
+    });
+    // A command written after the fixture has exited fails with EPIPE;
+    // the fixture's own exit is what reports that.
+    terminal.stdin!.on("error", () => {});
     let events = "";
     let output = "";
     terminal.stdout!.on("data", (chunk) => (events += chunk));
@@ -152,10 +169,13 @@ test("the app quits after the terminal it was started from has closed", async ()
     // avoids it. Any other ending is a crash this spec does not expect.
     expect([{ exit: 0 }, { signal: os.constants.signals.SIGABRT }]).toContainEqual(status());
   } finally {
-    // Kills the app's group if it is still running, then ends the
-    // fixture, which kills what is left as its stdin closes.
-    if (terminal.exitCode === null) terminal.stdin!.write("kill\n");
-    terminal.stdin!.end();
-    await ended(terminal, 10_000);
+    if (terminal) {
+      // Kills the app's group if it is still running, then ends the
+      // fixture, which kills what is left as its stdin closes.
+      if (terminal.exitCode === null) terminal.stdin!.write("kill\n");
+      terminal.stdin!.end();
+      expect(await ended(terminal, 10_000), "the terminal fixture did not end").not.toBeNull();
+    }
+    removeAfterExit(profile);
   }
 });

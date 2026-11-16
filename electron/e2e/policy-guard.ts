@@ -20,7 +20,9 @@
  *
  * Specs import `test` and `expect` from here instead of
  * '@playwright/test'; the shared launch helper (./launch.ts) guards
- * every app it starts. After each test, a line that matches none of the
+ * every app it starts — through all three paths for a launch through
+ * Playwright's driver, through its output alone for spawnPackagedApp's
+ * plain child process, which Playwright does not attach to. After each test, a line that matches none of the
  * patterns the test declared with `expectViolation` fails it. A test
  * that declares some gets its app's guard from `guardPolicy(app)`.
  */
@@ -42,18 +44,27 @@ export interface PolicyGuard {
 const guards: { guard: PolicyGuard; declared: RegExp[] }[] = [];
 const byApp = new WeakMap<ElectronApplication, PolicyGuard>();
 
-/** Listen for violations on `app` for the rest of the current test; the
- *  same guard again for an app already guarded. */
-export function guardPolicy(app: ElectronApplication): PolicyGuard {
-	const known = byApp.get(app);
-	if (known) return known;
+/** A guard for the rest of the current test, and the function that
+ *  records a line in it when the line reports a violation. */
+function newGuard(): { guard: PolicyGuard; note: (line: string) => void } {
 	const seen: string[] = [];
 	const declared: RegExp[] = [];
-	const note = (line: string) => {
-		if (VIOLATION.test(line)) seen.push(line.trim());
+	const guard: PolicyGuard = {
+		seen,
+		expectViolation: (pattern) => declared.push(pattern)
 	};
-	const proc = app.process();
-	for (const stream of [proc.stdout, proc.stderr]) {
+	guards.push({ guard, declared });
+	return {
+		guard,
+		note: (line) => {
+			if (VIOLATION.test(line)) seen.push(line.trim());
+		}
+	};
+}
+
+/** Feed every line `streams` carry to `note`. */
+function readLines(streams: (NodeJS.ReadableStream | null | undefined)[], note: (line: string) => void): void {
+	for (const stream of streams) {
 		let buf = '';
 		stream?.on('data', (chunk: Buffer) => {
 			buf += chunk.toString('utf8');
@@ -66,6 +77,25 @@ export function guardPolicy(app: ElectronApplication): PolicyGuard {
 		// A last line the app printed with no newline after it.
 		stream?.on('end', () => note(buf));
 	}
+}
+
+/** Listen for violations in what `streams` carry — the stdout and
+ *  stderr of an app Playwright's driver did not start — for the rest of
+ *  the current test. */
+export function guardOutput(streams: (NodeJS.ReadableStream | null | undefined)[]): PolicyGuard {
+	const { guard, note } = newGuard();
+	readLines(streams, note);
+	return guard;
+}
+
+/** Listen for violations on `app` for the rest of the current test; the
+ *  same guard again for an app already guarded. */
+export function guardPolicy(app: ElectronApplication): PolicyGuard {
+	const known = byApp.get(app);
+	if (known) return known;
+	const { guard, note } = newGuard();
+	const proc = app.process();
+	readLines([proc.stdout, proc.stderr], note);
 	void app
 		.context()
 		.addInitScript(() => {
@@ -92,11 +122,6 @@ export function guardPolicy(app: ElectronApplication): PolicyGuard {
 	};
 	for (const page of app.windows()) watchPage(page);
 	app.on('window', watchPage);
-	const guard: PolicyGuard = {
-		seen,
-		expectViolation: (pattern) => declared.push(pattern)
-	};
-	guards.push({ guard, declared });
 	byApp.set(app, guard);
 	return guard;
 }
