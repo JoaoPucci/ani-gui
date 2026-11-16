@@ -125,9 +125,11 @@ function within(promise, ms) {
  * Stop the process group `child` leads — the app a spec launched — and
  * resolve with how it ended:
  *
- *   - 'exited': it had already exited and been reaped. Nothing is
- *     signalled; its group id can no longer be shown to be the app's.
- *   - 'stopped': it exited after SIGTERM to the leader.
+ *   - 'exited': it had already exited and been reaped, by its own quit
+ *     (a crash throws, as below). Nothing is signalled; its group id
+ *     can no longer be shown to be the app's.
+ *   - 'stopped': it exited after SIGTERM to the leader, or was found
+ *     exiting and exited without one.
  *   - 'killed': it outlived SIGTERM by `termMs`, and exited after
  *     SIGKILL to its group — or, found exiting by then, without one.
  *
@@ -136,7 +138,7 @@ function within(promise, ms) {
  * the process is not the leader this module may signal (see
  * `leaderState`), or when it outlives SIGKILL by `killMs`. Throws too,
  * once it has gone, when it ended by a signal the stop did not send:
- * it crashed as it quit.
+ * it crashed, as it quit or before the stop.
  *
  * `kill`, `readFile` and `readLink` are process.kill, fs.readFileSync
  * and fs.readlinkSync; tests replace them.
@@ -153,9 +155,24 @@ async function stopOwnGroup(
 	} = {},
 ) {
 	const io = { exe, readFile, readLink };
-	const first = leaderState(child, io);
-	if (first === 'exited') return 'exited';
+	const sent = new Set();
+	// How the leader ended, once it has: a signal the stop did not send
+	// means it crashed — before the stop asked it to quit, when nothing
+	// was sent yet, or as it quit.
+	const ended = (how) => {
+		const by = child.signalCode;
+		if (by && !sent.has(by)) {
+			throw new Error(
+				sent.size === 0
+					? `process ${pid} ended by ${by} before the stop asked it to quit: it had crashed`
+					: `process ${pid} ended by ${by}, a signal the stop did not send: it crashed as it quit`,
+			);
+		}
+		return how;
+	};
 	const pid = child.pid;
+	const first = leaderState(child, io);
+	if (first === 'exited') return ended('exited');
 	const signal = (sig, target = -pid) => {
 		try {
 			kill(target, sig);
@@ -176,14 +193,6 @@ async function stopOwnGroup(
 			resolve();
 		});
 	});
-	const sent = new Set();
-	const ended = (how) => {
-		const by = child.signalCode;
-		if (by && !sent.has(by)) {
-			throw new Error(`process ${pid} ended by ${by}, a signal the stop did not send: it crashed as it quit`);
-		}
-		return how;
-	};
 	if (first === 'running') {
 		sent.add('SIGTERM');
 		signal('SIGTERM', pid);

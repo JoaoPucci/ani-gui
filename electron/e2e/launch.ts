@@ -217,7 +217,8 @@ const launched = new WeakMap<ElectronApplication, { child: ChildProcess; exe: st
  *  after `termMs`, and only while that group is provably the app's —
  *  the main process unreaped, leading its group, running the binary it
  *  was launched from (lib/own-group.cjs). An app that ends by a signal
- *  the stop did not send crashed as it quit, and the stop throws. Then
+ *  the stop did not send crashed, as it quit or before the stop, and the
+ *  stop throws. Then
  *  Playwright's close, which settles once the process has gone,
  *  whatever the stop did. An app that has already exited is closed without a signal.
  *
