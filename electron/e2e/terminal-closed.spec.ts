@@ -11,15 +11,21 @@
  * gone, the process never ended, and the profile stayed locked
  * (lib/stdio-guard.cjs).
  *
+ * Both launch the packaged launcher (`ani-gui`). On a pipe it becomes
+ * the app; on the terminal it keeps the app off the terminal, relays
+ * its output there, and hands it one SIGTERM when the terminal closes
+ * (lib/linux-launcher.cjs).
+ *
  * Each launch gets a scratch profile of its own, removed once the spec
  * has looked at it. The app is stopped the way a user stops it there:
- * closing the terminal hangs it up, which is the app's SIGHUP; on a
- * pipe, a SIGTERM to the app's own pid, as `kill` from another terminal
- * sends. It is signalled only while it is unreaped: on the pipe, it is
- * this spec's child, stopped with lib/own-group.cjs if it outlives the
- * wait, and what it leaves in its group is killed as its exit is
- * reported (spawnPackagedApp); on the terminal, it is the fixture's
- * child, and the fixture does the same.
+ * closing the terminal hangs it up, which is the launcher's SIGHUP; on
+ * a pipe, a SIGTERM to the app's own pid, as `kill` from another
+ * terminal sends. It is signalled only while it is unreaped: on the
+ * pipe, it is this spec's child, stopped with lib/own-group.cjs if it
+ * outlives the wait, and what it leaves in its group is killed as its
+ * exit is reported (spawnPackagedApp); on the terminal, the launcher is
+ * the fixture's child, and the fixture does the same for the launcher,
+ * whose death the app is told of with a SIGTERM.
  */
 import { expect, test } from "./policy-guard";
 import { execFileSync, type ChildProcess } from "node:child_process";

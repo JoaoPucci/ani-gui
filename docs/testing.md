@@ -276,13 +276,24 @@ rules. The app it starts on a pipe is its own child, leading a group of
 its own: it is stopped with `own-group.cjs`'s `stopOwnGroup` directly,
 since it is not a Playwright launch, and `spawnPackagedApp` kills what
 it leaves in its group in the turn its exit is reported, or the whole
-group if the test worker exits while it is still unreaped. The app it
-starts on a terminal is the child of the terminal fixture
+group if the test worker exits while it is still unreaped. On a
+terminal, the launcher it starts is the child of the terminal fixture
 (`electron/e2e/fixtures/terminal/on-a-terminal.py`, which needs
-`python3`): the fixture signals the app's group only before it has
-reaped the app, kills what is left in the group once the app has
-exited and before reaping it, and kills the whole group if the spec's
-end of its stdin closes first, as it does when the test worker exits.
+`python3`): the fixture signals the launcher's group only before it
+has reaped the launcher, kills what is left in the group once the
+launcher has exited and before reaping it, and kills the whole group
+if the spec's end of its stdin closes first, as it does when the test
+worker exits. The app itself is the launcher's child, in a session of
+its own outside that group (`electron/lib/linux-launcher.cjs`): a
+killed launcher leaves it a SIGTERM, and an app that does not quit on
+it outlives the test.
+
+`electron/lib/linux-launcher.test.cjs` runs the launcher with a
+stand-in for the app's binary (`electron/lib/fixtures/app-stub.py`),
+on that terminal fixture too, so it also needs `python3`; it is
+skipped off Linux. Every process it signals is the launcher it
+started, by pid or group, or the stand-in, by the pid the stand-in
+recorded.
 
 One process is not launched by the helper: the app the splash's Restart
 starts again (`splash-stuck.spec.ts`). It is outside the test's process

@@ -16,9 +16,10 @@ const { launcherScript } = require("../lib/linux-launcher.cjs");
 // launcher. (The splash's Restart relaunches too, lib/relaunch.cjs, but on
 // the display platform it already runs on: the crash was the switch.)
 //
-// So: rename the packed `ani-gui` ELF to `ani-gui.bin` and drop a tiny `ani-gui`
+// So: rename the packed `ani-gui` ELF to `ani-gui.bin` and drop a small `ani-gui`
 // shell wrapper in its place (lib/linux-launcher.cjs) that exports the hint and
-// execs the real binary.
+// execs the real binary — or, started from a terminal, runs it off that
+// terminal and relays its output (the script says why).
 // Every launch path goes through this one file — the .deb desktop `Exec`, the
 // `/usr/local/bin/ani-gui` symlink, and the AppImage `AppRun` all exec
 // `ani-gui` — so one wrapper covers them all. Idempotent and self-locating.

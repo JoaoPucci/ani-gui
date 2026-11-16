@@ -43,7 +43,11 @@
 // atomically, and closing descriptors 0 to 2 would let any thread's
 // next open take them (Chromium's own log on fd 2 included). Nothing
 // the main process can safely do avoids it; only how the app is
-// launched (its stdio not being the terminal) does.
+// launched (its stdio not being the terminal) does. The packaged Linux
+// launcher does that for a launch from a terminal
+// (lib/linux-launcher.cjs): the app gets /dev/null and pipes, and its
+// output reaches the terminal through the launcher, so a terminal that
+// closes leaves the app the EPIPE above, never the abort.
 
 /** A write that goes nowhere and reports itself done. */
 function discard(_chunk, encoding, callback) {

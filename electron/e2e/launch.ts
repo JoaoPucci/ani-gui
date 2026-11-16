@@ -213,7 +213,11 @@ export async function launchPackagedApp(
  *  directly has its group killed then, while it is still unreaped; an
  *  app started `via` the terminal fixture is in a session of its own,
  *  outside the fixture's group, and the fixture kills it itself once
- *  the worker's exit closes the fixture's stdin. The spec removes its
+ *  the worker's exit closes the fixture's stdin. On the terminal the
+ *  fixture's program is the launcher, and the app runs off the terminal
+ *  as its child, in a session of its own (lib/linux-launcher.cjs): the
+ *  fixture's kill ends the launcher, and the app gets the SIGTERM the
+ *  launcher arranged for that. The spec removes its
  *  profile itself (removeAfterExit), once it has looked at it. */
 export async function spawnPackagedApp(
 	env: NodeJS.ProcessEnv,
