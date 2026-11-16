@@ -247,14 +247,14 @@ function lastWake() {
  * maximizes it there (lib/splash.cjs revealMaximized), as it shows it
  * anyway.
  *
- * Native Wayland honours no always-on-top. Measured on GNOME with the
- * app focused: the compositor stacks the woken window over the splash
- * and gives it the focus. Each focus it takes before the reveal runs
- * `restack` (main.js maps the splash again, which puts it back on top);
- * the window is visible around the splash meanwhile. Where the person
- * has focused another app the window may take no focus, and then
- * nothing restacks the splash: not measured, and the reveal ends it as
- * soon as the page renders.
+ * Native Wayland honours no always-on-top. Measured on GNOME (headless,
+ * with the app focused, and with another app focused): the compositor
+ * stacks the woken window over the splash and gives it the focus. Each
+ * focus it takes before the reveal runs `restack` (main.js maps the
+ * splash again, which puts it back on top); the window is visible
+ * around the splash meanwhile. A compositor that maps it without the
+ * focus may leave it over the splash until the person comes back to
+ * the app, whose focus restacks it then.
  *
  * Returns what detaches the restack (the reveal calls it), or null for
  * a window gone or already on screen, which is left alone.
