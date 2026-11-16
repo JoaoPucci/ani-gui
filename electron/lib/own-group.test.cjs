@@ -166,7 +166,59 @@ test('a leader that ends by a signal the stop did not send fails the stop: it cr
 	]);
 });
 
-test('a group that ignores SIGTERM is killed', linuxOnly, async () => {
+test('a leader that had already crashed and been reaped fails the stop, signalling nothing', async () => {
+	const { EventEmitter } = require('node:events');
+	const child = Object.assign(new EventEmitter(), { pid: 4248, exitCode: null, signalCode: 'SIGTRAP' });
+	const spy = spyKill();
+	await assert.rejects(
+		stopOwnGroup(child, { exe: '/opt/app/bin', kill: spy.kill }),
+		/ended by SIGTRAP before the stop/,
+	);
+	assert.deepEqual(spy.calls, []);
+});
+
+test('a leader that had crashed and awaits its reap fails the stop, as having crashed before it', async () => {
+	const { EventEmitter } = require('node:events');
+	const child = Object.assign(new EventEmitter(), { pid: 4249, exitCode: null, signalCode: null });
+	const spy = spyKill();
+	const stop = stopOwnGroup(child, {
+		exe: '/opt/app/bin',
+		kill: spy.kill,
+		readFile: () => '4249 (app) Z 1 4249 4249 0 -1',
+		readLink: () => {
+			throw new Error('a zombie has no exe');
+		},
+	});
+	child.signalCode = 'SIGTRAP';
+	child.emit('exit', null, 'SIGTRAP');
+	await assert.rejects(stop, /ended by SIGTRAP before the stop/);
+	assert.deepEqual(spy.calls, [[-4249, 'SIGKILL']]);
+});
+
+test('a leader found dying after the SIGTERM that ends by another signal fails the stop as a crash on quit', async () => {
+	const { EventEmitter } = require('node:events');
+	const child = Object.assign(new EventEmitter(), { pid: 4250, exitCode: null, signalCode: null });
+	const spy = spyKill();
+	const stop = stopOwnGroup(child, {
+		exe: '/opt/app/bin',
+		termMs: 10,
+		killMs: 1000,
+		kill: spy.kill,
+		readFile: () => (spy.calls.length > 0 ? '4250 (app) Z 1 4250 4250 0 -1' : '4250 (app) S 1 4250 4250 0 -1'),
+		readLink: () => '/opt/app/bin',
+	});
+	setTimeout(() => {
+		child.signalCode = 'SIGSEGV';
+		child.emit('exit', null, 'SIGSEGV');
+	}, 50);
+	await assert.rejects(stop, /ended by SIGSEGV, a signal the stop did not send: it crashed as it quit/);
+	assert.deepEqual(spy.calls, [
+		[4250, 'SIGTERM'],
+		[-4250, 'SIGKILL'],
+	]);
+});
+
+test('a leader that ignores SIGTERM has its group killed', linuxOnly, async () => {
 	const { child, line } = await leader("trap '' TERM; sleep 300 & echo $!; wait");
 	const member = Number(line);
 	try {
@@ -178,8 +230,8 @@ test('a group that ignores SIGTERM is killed', linuxOnly, async () => {
 });
 
 test('what the leader leaves in its group when it exits is killed as it exits', linuxOnly, async () => {
-	// The leader quits on SIGTERM; the member ignores it and would
-	// outlive the leader.
+	// The leader quits on SIGTERM; the member is never sent it, ignores
+	// it besides, and would outlive the leader.
 	const { child, line } = await leader(
 		`trap 'exit 0' TERM; (trap '' TERM; exec sleep 300) & echo $!; wait`,
 	);
