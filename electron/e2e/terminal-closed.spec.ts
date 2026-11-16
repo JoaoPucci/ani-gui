@@ -6,7 +6,8 @@
  * and the backend's, relayed as [backend] lines. Once a pipe's reader
  * exits, every one of those writes fails (EPIPE); started from a
  * terminal, the app's output goes through the launcher's relay, which
- * ends with the terminal, so a closed terminal comes to the same.
+ * ends at its first write after the terminal has closed, so a closed
+ * terminal comes to the same.
  * Unhandled, the first failure was an uncaught exception in the main
  * process, which opened Electron's "A JavaScript error occurred"
  * dialog in the middle of quitting: the window was gone, the process
@@ -160,8 +161,9 @@ test("the app quits after the terminal it was started from has closed", async ()
     expect(locked()).toBe(true);
 
     // Closing the terminal window: the launcher gets its SIGHUP and
-    // hands the app a SIGTERM, which asks it to quit. The relay ends
-    // with the terminal, and the app's writes fail once it has.
+    // hands the app a SIGTERM, which asks it to quit. The relay ends at
+    // its next write to the terminal that has gone, and the app's writes
+    // fail once it has.
     terminal.stdin!.write("hangup\n");
     // The fixture's last complete line, once it is the app's ending
     // rather than its pid.

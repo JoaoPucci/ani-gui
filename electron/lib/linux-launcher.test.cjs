@@ -203,8 +203,8 @@ test("closing the terminal hands the app one SIGTERM, and it quits cleanly", { s
     assert.deepEqual(term.ended(), { exit: 0 });
     assert.deepEqual(signalsOf(tree.events), ["TERM"]);
     assert.equal(exitOf(tree.events), 0);
-    // The relay went with the terminal: the app's writes fail as a pipe's
-    // do, never as a dead terminal's.
+    // The relay ended at its first write to the closed terminal: the
+    // app's writes fail as a pipe's do, never as a dead terminal's.
     const failures = events(tree.events).filter((e) => e.write_error).map((e) => e.write_error);
     assert.deepEqual(failures, ["EPIPE"]);
   } finally {
@@ -435,10 +435,11 @@ test("with stdout sent to a file, the app's stdout goes there and only its stder
 });
 
 test("a stop that reaches the launcher twice and then the app is not passed on on top of the app's own", { skip }, async () => {
-  // A scope's stop: a SIGHUP and a SIGTERM to every process, the
-  // launcher's group included, landing a moment apart. The launcher's
-  // pause before it decides must outlast the second, or it sends the
-  // app a SIGTERM the app has already had, which kills it outright.
+  // One stop reaching the launcher more than once and the app as well,
+  // a moment apart: a SIGHUP to the launcher, a SIGINT to its group,
+  // then a SIGTERM to the app. The launcher's pause before it decides
+  // must outlast them, or it sends the app a SIGTERM on top of the one
+  // it has already had, which kills it outright.
   const tree = packedTree();
   const term = await onTerminal(tree);
   try {
