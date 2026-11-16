@@ -48,9 +48,11 @@ const SESSION_OVER_LINE = `${GNOME_SESSION.path}: ${GNOME_SESSION.service}.Sessi
  * terminal, a stop of the app's group) ends the gdbus too: the shell
  * started it as a background job, which ignores SIGINT and SIGQUIT,
  * so it would otherwise outlive the shell. A SIGKILL to the shell
- * alone, as a kill by command line matching "ani-gui" sends it, still
- * leaves the gdbus behind, its input /dev/null. Without gdbus it exits
- * at once.
+ * alone, as a kill by command line matching "ani-gui" sends it, runs no
+ * trap, and gdbus reads /dev/null: setpriv asks the kernel to send
+ * gdbus SIGTERM when the shell dies, however it dies. On a system
+ * without setpriv (util-linux 2.33 or later) that one case still leaves
+ * gdbus behind. Without gdbus the watcher exits at once.
  */
 const SESSION_WATCHER = Object.freeze({
   cmd: "/bin/sh",
@@ -58,10 +60,14 @@ const SESSION_WATCHER = Object.freeze({
     "-c",
     [
       "command -v gdbus >/dev/null 2>&1 || exit 0",
+      // setpriv (util-linux) has gdbus sent SIGTERM when this shell
+      // dies, a SIGKILL included, which no trap sees.
+      "run=",
+      "if setpriv --pdeathsig TERM -- true >/dev/null 2>&1; then run='setpriv --pdeathsig TERM --'; fi",
       // $! is gdbus, the only background job, from the moment it is
       // started; empty before.
       `trap '[ -n "$!" ] && kill "$!" 2>/dev/null; exit 0' INT TERM HUP QUIT`,
-      'gdbus monitor --session --dest "$1" --object-path "$2" &',
+      '$run gdbus monitor --session --dest "$1" --object-path "$2" &',
       "read -r _",
       'kill "$!" 2>/dev/null',
     ].join("\n"),
