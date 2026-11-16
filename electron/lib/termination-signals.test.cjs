@@ -400,11 +400,34 @@ test("a helper table that cannot be read leaves the ordinary quit", () => {
   assert.deepEqual(state.raised, []);
 });
 
+test("once the session is ending, a stop signal ends the app by it at once", () => {
+  // A logout's stop of the app's scope can overtake the quit its
+  // announcement started; by then the GPU process may already be gone
+  // from the metrics, and nothing is left to look at. The signal is the
+  // session's end itself.
+  const { state, options, send } = rig();
+  const takeover = installTerminationSignals(options);
+  takeover.sessionEnding();
+  send("SIGTERM");
+  assert.deepEqual(state.ended, [{ signal: "SIGTERM", reason: "the session is ending" }]);
+  assert.deepEqual(state.raised, ["SIGTERM"]);
+  assert.deepEqual(state.quits, []);
+});
+
+test("before the session's end is announced, a stop signal alone still quits", () => {
+  const { state, options, send, advance } = rig();
+  installTerminationSignals(options);
+  send("SIGTERM");
+  advance(HELPER_WATCH_WINDOW_MS + 10);
+  assert.deepEqual(state.raised, []);
+});
+
 test("off Linux the signals are left to Electron", () => {
   for (const platform of ["win32", "darwin"]) {
     const { state, options, send } = rig();
     options.platform = platform;
     const takeover = installTerminationSignals(options);
+    takeover.sessionEnding();
     assert.deepEqual(state.listeners, {});
     state.stats.delete(200);
     send("SIGTERM");
