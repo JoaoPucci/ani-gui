@@ -5,6 +5,10 @@
 // app's window is not mapped until the splash has painted
 // (revealMaximized), so the two never compete for the top, whether or
 // not the platform honours always-on-top (native Wayland does not).
+// The one exception is a window that gets no frames while hidden
+// (native Wayland without GPU compositing): it is woken, mapped behind
+// the splash, so its page can render, and the splash is restacked on
+// top of it (lib/app-window.cjs wakeHidden, restack below).
 // It closes as the app's window shows, in that window's reveal
 // (main.js), with bootApp's close in lib/startup.cjs as the fallback.
 // A splash the user closes first cancels the launch (onDismissed).
@@ -192,6 +196,8 @@ function splashController({
   let signalled = false;
   let win = null;
   let backstop = null;
+  // The bound on the splash's first paint (show).
+  let paintTimer = null;
   // Reloads of a crashed splash page so far.
   let reloads = 0;
   // Rejects once the splash has lost its page while it stands in for
@@ -350,8 +356,24 @@ function splashController({
         windowShown = true;
         signal();
       });
-      splash.once("ready-to-show", () => {
-        if (!suppressed && win === splash && !splash.isDestroyed()) splash.show();
+      // Shown at its first paint, or SPLASH_PAINT_WAIT_MS after its page
+      // loaded when no paint came by then: a window that is not on screen
+      // may never paint (native Wayland without GPU compositing), and the
+      // splash would then appear only when it went stuck. Its window
+      // paints the page's own ink meanwhile.
+      let asked = false;
+      const reveal = () => {
+        if (asked || suppressed || over || win !== splash || splash.isDestroyed()) return;
+        asked = true;
+        splash.show();
+      };
+      splash.once("ready-to-show", reveal);
+      splash.webContents.once("did-finish-load", () => {
+        paintTimer = setTimeout(() => {
+          paintTimer = null;
+          if (!asked) log(`[main] splash shown without a paint ${SPLASH_PAINT_WAIT_MS} ms after its page loaded (${since()})`);
+          reveal();
+        }, SPLASH_PAINT_WAIT_MS);
       });
       splash.on("closed", () => {
         // Load-bearing: a splash destroyed while its shown signal is
@@ -360,6 +382,7 @@ function splashController({
         markUp();
         if (win === splash) {
           clearTimeout(backstop);
+          clearTimeout(paintTimer);
           stuck.stop();
         }
         const byUser = win === splash && !over;
@@ -439,6 +462,7 @@ function splashController({
     close() {
       over = true;
       clearTimeout(backstop);
+      clearTimeout(paintTimer);
       stuck.stop();
       if (alive()) {
         state.closed = true;
@@ -498,6 +522,17 @@ function splashController({
     dismissed() {
       return dismissedByUser || chosen !== null;
     },
+    // Put the splash back on top of a window woken behind it
+    // (lib/app-window.cjs wakeHidden): native Wayland honours no
+    // always-on-top, and mapping a window again stacks it on top. Only a
+    // splash on screen and still standing in; it takes the focus back
+    // from the woken window, which had just taken it.
+    restack() {
+      if (over || !alive() || !win.isVisible()) return;
+      log(`[main] splash put back on top of the woken window (${since()})`);
+      win.hide();
+      win.show();
+    },
     standsIn() {
       return state.opened && !over && alive() === true;
     },
@@ -550,6 +585,7 @@ function splashController({
       over = true;
       suppressed = true;
       clearTimeout(backstop);
+      clearTimeout(paintTimer);
       stuck.stop();
       state.suppressed = true;
       // Put away: it can no longer be on screen, so nothing waits on it.
@@ -619,6 +655,10 @@ function lastSplashState() {
   return { ...current };
 }
 
+/** How long after its page loaded the splash shows without having
+ *  painted (show). Its first paint normally comes with the load. */
+const SPLASH_PAINT_WAIT_MS = 250;
+
 /** The longest the app's window waits for the splash to paint. The
  *  splash is a light static page and paints well within this; the bound
  *  is for one that never does. With the minimum time on screen after a
@@ -655,9 +695,22 @@ const SPLASH_COMPLETE_HOLD_REDUCED_MS = 150;
  * `afterShow` — the splash's close, at the moment the window is up. A
  * window gone meanwhile is left alone, and so is a launch `cancelled`
  * by the user closing the splash first.
+ *
+ * A window a wake already mapped (lib/app-window.cjs wakeHidden) is
+ * maximized again only if the desktop dropped it, shown (which raises
+ * and focuses it), and handed over through `onUp` at once: the `show`
+ * event the listeners onMapped attaches wait for comes with a hidden
+ * window's map, and this one is mapped already.
  */
-function revealMaximized(win, { onMapped, afterShow, cancelled = () => false }) {
+function revealMaximized(win, { onMapped, onUp = () => {}, afterShow, cancelled = () => false }) {
   if (win.isDestroyed() || cancelled()) return;
+  if (win.isVisible()) {
+    if (!win.isMaximized()) win.maximize();
+    win.show();
+    onUp();
+    afterShow();
+    return;
+  }
   win.maximize();
   onMapped();
   win.show();
@@ -669,6 +722,7 @@ module.exports = {
   SPLASH_COMPLETE_HOLD_REDUCED_MS,
   SPLASH_MIN_ON_SCREEN_MS,
   SPLASH_MIN_ON_SCREEN_REDUCED_MS,
+  SPLASH_PAINT_WAIT_MS,
   SPLASH_SHOW_WAIT_MS,
   revealMaximized,
   SPLASH_MARK,
