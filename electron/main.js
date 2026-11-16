@@ -490,11 +490,12 @@ const splash = splashController({
   version: splashVersionLabel(app.getVersion(), IS_DEV),
 });
 
-/** Where the window's remembered maximized size lives: beside the
- *  app's other per-user state, under this profile's userData. */
-/** Set once the boot has failed: a window's pending wake is off. */
+/** Set once the boot has failed (its splash put away, then the failure
+ *  reported): a window's pending wake is off. */
 let bootFailed = false;
 
+/** Where the window's remembered maximized size lives: beside the
+ *  app's other per-user state, under this profile's userData. */
 const geometryFile = () => path.join(app.getPath("userData"), "window-geometry.json");
 
 async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
@@ -1266,7 +1267,10 @@ app.whenReady().then(() => {
       splash.show();
       reducedMotion.then((reduced) => splash.motionPreference(reduced === true));
     },
-    suppressSplash: () => splash.suppress(),
+    suppressSplash: () => {
+      bootFailed = true;
+      splash.suppress();
+    },
     // The launch's remote flags, decided by the backend within its
     // two-second cap; the window opens with them, so the renderer has
     // them before its first page (lib/launch-flags.cjs).

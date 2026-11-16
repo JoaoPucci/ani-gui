@@ -241,7 +241,8 @@ function lastWake() {
  * window maps and activates it. On Linux it is then maximized, a state
  * request that activates nothing, with `revealing` run first (main.js
  * arms the granted-size recorder, lib/window-geometry.cjs) so the size
- * the desktop grants it lands now. Elsewhere maximize() of a mapped
+ * the desktop grants it lands now; elsewhere the reveal arms it, where
+ * the maximize happens. Elsewhere maximize() of a mapped
  * window activates it (Windows: ShowWindow(SW_MAXIMIZE)), so the reveal
  * maximizes it there (lib/splash.cjs revealMaximized), as it shows it
  * anyway.
@@ -260,9 +261,10 @@ function lastWake() {
  */
 function wakeHidden(win, { revealing = () => {}, restack, platform = process.platform }) {
   if (win.isDestroyed() || win.isVisible()) return null;
-  revealing();
+  const maximizeNow = platform === "linux";
+  if (maximizeNow) revealing();
   win.showInactive();
-  if (platform === "linux") win.maximize();
+  if (maximizeNow) win.maximize();
   const onFocus = () => restack();
   win.on("focus", onFocus);
   return () => win.removeListener("focus", onFocus);

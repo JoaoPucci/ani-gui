@@ -531,14 +531,20 @@ function splashController({
     // from the woken window, which had just taken it.
     // One at a time: hide() and show() land asynchronously on Wayland,
     // and a focus the woken window takes again meanwhile starts nothing
-    // until the splash has had the focus back.
+    // until the splash has had the focus back, or RESTACK_SETTLE_MS has
+    // passed (a compositor may refuse to activate it).
     restack() {
       if (restacking || over || !alive() || !win.isVisible()) return;
       restacking = true;
       const target = win;
-      target.once("focus", () => {
+      let settle = null;
+      const release = () => {
+        clearTimeout(settle);
+        target.removeListener("focus", release);
         restacking = false;
-      });
+      };
+      target.once("focus", release);
+      settle = setTimeout(release, RESTACK_SETTLE_MS);
       log(`[main] splash put back on top of the woken window (${since()})`);
       target.hide();
       target.show();
@@ -669,6 +675,10 @@ function lastSplashState() {
  *  painted (show), when ready-to-show has not come by then. */
 const SPLASH_PAINT_WAIT_MS = 250;
 
+/** The longest a restack waits for the splash to have the focus back
+ *  before another may run (restack). */
+const RESTACK_SETTLE_MS = 500;
+
 /** The longest the app's window waits for the splash to paint. The
  *  splash is a light static page and paints well within this; the bound
  *  is for one that never does. With the minimum time on screen after a
@@ -732,6 +742,7 @@ module.exports = {
   SPLASH_COMPLETE_HOLD_REDUCED_MS,
   SPLASH_MIN_ON_SCREEN_MS,
   SPLASH_MIN_ON_SCREEN_REDUCED_MS,
+  RESTACK_SETTLE_MS,
   SPLASH_PAINT_WAIT_MS,
   SPLASH_SHOW_WAIT_MS,
   revealMaximized,
