@@ -13,7 +13,7 @@ const {
   STORAGE_COMMIT_WAIT_MS,
   TERMINATION_SIGNALS,
   blockFor,
-  exitedGpuProcess,
+  exitedRelaunchHelper,
   installTerminationSignals,
   persistStorage,
   procStatState,
@@ -103,46 +103,51 @@ test("procStatState reads the state whatever the command name holds", () => {
   );
 });
 
-test("exitedGpuProcess counts the GPU process only", () => {
+test("exitedRelaunchHelper counts the GPU process and the zygote only", () => {
   // Utility processes come and go during an ordinary quit, and a
-  // renderer exits with its window: only the GPU process's death is
-  // what makes Chromium relaunch it through a dead zygote and abort.
+  // renderer exits with its window: only the GPU process's death, and
+  // the zygote's it would be relaunched through, make Chromium abort.
   const gone = () => null;
   const helpers = [
     { pid: 100, type: "Browser" },
     { pid: 300, type: "Tab" },
     { pid: 201, type: "Utility" },
-    { pid: 202, type: "Zygote" },
+    { pid: 203, type: "Sandbox helper" },
   ];
-  assert.equal(exitedGpuProcess(helpers, 100, gone), null);
-  assert.equal(exitedGpuProcess(helpers, 100, (pid) => zombie(pid)), null);
+  assert.equal(exitedRelaunchHelper(helpers, 100, gone), null);
+  assert.equal(exitedRelaunchHelper(helpers, 100, (pid) => zombie(pid)), null);
 });
 
-test("exitedGpuProcess names the GPU process once it is gone or a zombie", () => {
+test("exitedRelaunchHelper names the GPU process once it is gone or a zombie", () => {
   const helpers = [
     { pid: 201, type: "Utility" },
     { pid: 200, type: "GPU" },
   ];
-  assert.equal(exitedGpuProcess(helpers, MAIN, running), null);
-  assert.equal(exitedGpuProcess(helpers, MAIN, () => null), "GPU process 200 is gone");
-  assert.equal(exitedGpuProcess(helpers, MAIN, (pid) => zombie(pid)), "GPU process 200 exited");
+  assert.equal(exitedRelaunchHelper(helpers, MAIN, running), null);
+  assert.equal(exitedRelaunchHelper(helpers, MAIN, () => null), "GPU process 200 is gone");
   assert.equal(
-    exitedGpuProcess(helpers, MAIN, (pid) => `${pid} (x) X 1`),
+    exitedRelaunchHelper([{ pid: 202, type: "Zygote" }], MAIN, (pid) => zombie(pid)),
+    "Zygote process 202 exited",
+  );
+  assert.equal(exitedRelaunchHelper(helpers, MAIN, (pid) => zombie(pid)), "GPU process 200 exited");
+  assert.equal(
+    exitedRelaunchHelper(helpers, MAIN, (pid) => `${pid} (x) X 1`),
     "GPU process 200 exited",
   );
 });
 
-test("exitedGpuProcess never names anything but a GPU process", () => {
+test("exitedRelaunchHelper names the GPU process or the zygote exactly when one has exited", () => {
   const types = fc.constantFrom("Browser", "Tab", "Utility", "Zygote", "Sandbox helper", "GPU", "Unknown");
   const helper = fc.record({ pid: fc.integer({ min: 1, max: 4194304 }), type: types });
   const states = fc.constantFrom("gone", "R", "S", "Z", "X");
   fc.assert(
     fc.property(fc.array(helper, { maxLength: 8 }), states, fc.integer({ min: 1, max: 4194304 }), (helpers, st, mainPid) => {
       const read = (pid) => (st === "gone" ? null : `${pid} (ani-gui.bin) ${st} 1 2 3`);
-      const named = exitedGpuProcess(helpers, mainPid, read);
-      if (named === null) return true;
-      const pid = Number(named.split(" ")[2]);
-      return helpers.some((h) => h.pid === pid && h.pid !== mainPid && h.type === "GPU");
+      const named = exitedRelaunchHelper(helpers, mainPid, read);
+      const counted = helpers.filter((h) => h.pid !== mainPid && (h.type === "GPU" || h.type === "Zygote"));
+      const exited = st === "gone" || st === "Z" || st === "X";
+      if (!exited || counted.length === 0) return named === null;
+      return named === `${counted[0].type} process ${counted[0].pid} ${st === "gone" ? "is gone" : "exited"}`;
     }),
   );
 });
@@ -175,7 +180,7 @@ test("a second signal asks for the quit again instead of killing the app", () =>
   send("SIGINT");
   assert.deepEqual(state.quits, ["SIGTERM", "SIGTERM", "SIGINT"]);
   assert.deepEqual(state.raised, []);
-  // One watch, started by the first signal.
+  // One watch at a time, the latest signal's.
   assert.equal(state.timers.size, 1);
 });
 
@@ -272,6 +277,32 @@ test("child-process-gone after a later signal counts in that signal's window", (
   assert.deepEqual(state.raised, ["SIGINT"]);
 });
 
+test("a signal late in an earlier one's window gets a full window, and the app ends by it", () => {
+  const { state, options, send, advance } = rig();
+  const takeover = installTerminationSignals(options);
+  send("SIGTERM");
+  advance(HELPER_WATCH_WINDOW_MS - 10);
+  send("SIGHUP");
+  advance(20);
+  state.stats.delete(200);
+  advance(HELPER_WATCH_INTERVAL_MS);
+  assert.deepEqual(state.ended, [{ signal: "SIGHUP", reason: "GPU process 200 is gone" }]);
+  assert.deepEqual(state.raised, ["SIGHUP"]);
+  takeover.childProcessGone({ type: "GPU", reason: "killed" });
+  assert.equal(state.timers.size, 0);
+});
+
+test("child-process-gone in a late signal's window ends the app by that signal", () => {
+  const { state, options, send, advance } = rig();
+  const takeover = installTerminationSignals(options);
+  send("SIGTERM");
+  advance(HELPER_WATCH_WINDOW_MS - 10);
+  send("SIGINT");
+  advance(30);
+  takeover.childProcessGone({ type: "Zygote", reason: "killed" });
+  assert.deepEqual(state.ended, [{ signal: "SIGINT", reason: "Zygote process killed" }]);
+});
+
 test("a later signal that finds a helper gone still ends the app", () => {
   const { state, options, send, advance } = rig();
   installTerminationSignals(options);
@@ -292,7 +323,7 @@ test("child-process-gone within the window ends the app", () => {
   assert.deepEqual(state.raised, ["SIGTERM"]);
 });
 
-test("child-process-gone counts only the GPU process, in the window", () => {
+test("child-process-gone counts only the GPU process's or the zygote's unclean exit, in the window", () => {
   const { state, options, send, advance } = rig();
   const takeover = installTerminationSignals(options);
   // No signal yet: a GPU crash on its own is Chromium's to recover from.
@@ -301,6 +332,8 @@ test("child-process-gone counts only the GPU process, in the window", () => {
   takeover.childProcessGone({ type: "Tab", reason: "killed" });
   takeover.childProcessGone({ type: "Utility", reason: "clean-exit" });
   takeover.childProcessGone({ type: "Utility", reason: "killed" });
+  // The GPU process's host torn down cleanly is the quit's own doing.
+  takeover.childProcessGone({ type: "GPU", reason: "clean-exit" });
   advance(HELPER_WATCH_WINDOW_MS + 10);
   takeover.childProcessGone({ type: "GPU", reason: "killed" });
   assert.deepEqual(state.raised, []);

@@ -91,16 +91,20 @@ test("lineSplitter gives the same lines however the bytes are cut", () => {
   );
 });
 
-test("isSessionOver matches nothing but SessionOver's line", () => {
+test("isSessionOver holds for SessionOver's line and its arguments, and for no near miss", () => {
+  const prefix = "/org/gnome/SessionManager: org.gnome.SessionManager.SessionOver (";
+  const tail = fc.string({ maxLength: 20 }).filter((t) => !t.includes("\n"));
+  const space = fc.constantFrom("", " ", "  ", "\t");
   fc.assert(
-    fc.property(fc.string({ maxLength: 80 }), (line) =>
-      isSessionOver(line) === line.trim().startsWith(`${GNOME_SESSION.path}: ${GNOME_SESSION.service}.SessionOver (`),
-    ),
+    fc.property(space, tail, space, (lead, rest, trail) => isSessionOver(`${lead}${prefix}${rest}${trail}`)),
   );
+  // Any one character of the prefix changed or dropped is another line.
   fc.assert(
-    fc.property(fc.constantFrom("SessionRunning", "ClientAdded", "InhibitorAdded", "SessionOve"), (member) =>
-      !isSessionOver(`${GNOME_SESSION.path}: ${GNOME_SESSION.service}.${member} ()`),
-    ),
+    fc.property(fc.nat(prefix.length - 1), fc.constantFrom("", "x", "_", "."), tail, (at, put, rest) => {
+      const near = prefix.slice(0, at) + put + prefix.slice(at + 1);
+      fc.pre(near !== prefix);
+      return !isSessionOver(`${near}${rest}`);
+    }),
   );
 });
 
