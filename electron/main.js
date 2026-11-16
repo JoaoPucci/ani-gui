@@ -200,7 +200,10 @@ const APP_DOCUMENT = appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL });
 // answers only the main frame holding that document (lib/ipc-guard.cjs);
 // tests/arch/ipc_sender.sh keeps them all registered through it.
 // The guards name a refused page by its URL, which can carry a secret:
-// their lines are redacted like any other the main process logs
+// their lines are redacted in the shapes a secret travels in (a
+// `secret=` parameter, the header), as the handoff's refusal line is
+// below. They are built before the backend has a secret, so a URL that
+// carries one in any other shape is not caught by its value
 // (lib/log-redact.cjs).
 const loggedRedacted = (...parts) => console.error(redactSecrets(parts.join(" ")));
 const ipc = mainProcessIpc({ app: APP_DOCUMENT, logError: loggedRedacted });
@@ -221,8 +224,8 @@ const makeWindow = guardedWindowMaker({
 // page alone, over IPC, never on a command line (lib/secret-handoff.cjs).
 const secrets = secretKeeper({
   app: APP_DOCUMENT,
-  // A refused page is named by its URL, which is redacted like any
-  // other line the main process logs (lib/log-redact.cjs).
+  // A refused page is named by its URL, redacted in the shapes a secret
+  // travels in, as the guards' lines are (lib/log-redact.cjs).
   logError: (line) => console.error(redactSecrets(line)),
 });
 
