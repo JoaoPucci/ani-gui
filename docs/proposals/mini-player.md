@@ -379,7 +379,7 @@ script in the appendix.
 
 **[data]** The app runs native Wayland under a Wayland session: the
 launcher exports `ELECTRON_OZONE_PLATFORM_HINT=auto` before Electron
-starts (`electron/build-resources/after-pack.cjs:45`, comment at
+starts (`electron/lib/linux-launcher.cjs`, comment at
 `electron/main.js:93`), and the maintainer's logs show
 `--ozone-platform=wayland`.
 
@@ -448,7 +448,7 @@ cannot run on XWayland while the other runs natively. The choices are:
    (38.0)"), so the launcher's mechanism changes when the app moves to
    Electron 38 or later in any case. A viewer can already do this today by exporting
    `ELECTRON_OZONE_PLATFORM_HINT=x11` before launching; the launcher
-   honours a value already set (`after-pack.cjs:45`).
+   honours a value already set (`linux-launcher.cjs`).
 3. **A second Electron process for the mini window on XWayland.**
    Rejected: it would need its own profile under the single-instance
    lock (`electron/main.js:137`), so it would not share `localStorage`
