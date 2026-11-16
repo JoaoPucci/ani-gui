@@ -118,9 +118,10 @@ function outcome(img, run, elapsedMs, group) {
 // counts the orphans that end in its hands into `unreaped` and does not
 // keep them. With `forward`, a signal it receives is passed on to the
 // run, which is otherwise what the signal was meant for; a signal sent
-// to the whole group reaches the run directly. Those signals are held
-// from before the run starts until its handlers are in place, so none
-// that arrives early ends the subreaper instead. The run starts with
+// to the whole group reaches the run directly. The subreaper holds
+// SIGINT, SIGTERM and SIGHUP from before it forks the run until its own
+// handlers are in place, so none that arrives early ends the subreaper
+// instead; the run unblocks them before it starts. The run starts with
 // the signal dispositions it would have without the subreaper. Once the
 // run has ended the subreaper marks it in `<report>.ended`, and goes on
 // reaping for up to `linger` seconds while orphans remain; it then ends
@@ -172,6 +173,25 @@ sys.exit(os.waitstatus_to_exitcode(status))
 /** python3's arguments to run `argv` under the subreaper above. */
 function underSubreaper(img, forward, argv, linger = 2) {
   return ["-I", "-c", SUBREAPER, path.join(img.app, "unreaped"), forward ? "1" : "0", String(linger), ...argv];
+}
+
+/** SIGKILL to the group a test started, which may already be gone. */
+function killOwnGroup(group) {
+  try {
+    process.kill(-group, "SIGKILL");
+  } catch (err) {
+    if (err.code !== "ESRCH") throw err;
+  }
+}
+
+/** Whether `pid` is a live process: present, and not a zombie. */
+function liveProcess(pid) {
+  try {
+    return !/^\d+ \(.*\) Z /s.test(fs.readFileSync(`/proc/${pid}/stat`, "utf8"));
+  } catch (err) {
+    if (err.code === "ENOENT") return false;
+    throw err;
+  }
 }
 
 const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -232,15 +252,22 @@ async function launchAndSignal(template, probe, args, { settleMs, signal, group 
   child.stderr.on("data", (d) => {
     stderr += d;
   });
-  const closed = new Promise((resolve) => child.on("close", (code, sig) => resolve([code, sig])));
+  let gone = false;
+  const closed = new Promise((resolve) =>
+    child.on("close", (code, sig) => {
+      gone = true;
+      resolve([code, sig]);
+    }),
+  );
   let signalledAt = null;
-  if (await until(() => fs.existsSync(path.join(img.app, "probe-pid")), 15000)) {
+  await until(() => gone || fs.existsSync(path.join(img.app, "probe-pid")), 15000);
+  if (!gone && fs.existsSync(path.join(img.app, "probe-pid"))) {
     await sleepMs(settleMs);
     signalledAt = Date.now();
     if (group) process.kill(-child.pid, signal);
     else child.kill(signal);
-  } else {
-    process.kill(-child.pid, "SIGKILL");
+  } else if (!gone) {
+    killOwnGroup(child.pid);
   }
   const [status, killedBy] = await closed;
   // Detached: the child leads a session, and so a group, of its own,
@@ -248,7 +275,7 @@ async function launchAndSignal(template, probe, args, { settleMs, signal, group 
   const r = outcome(img, { status, signal: killedBy, stderr }, Date.now() - (signalledAt ?? 0), child.pid);
   if (signalledAt === null) {
     cleanup(r);
-    assert.fail("the probe never started, so nothing was signalled");
+    assert.fail(`the probe never started, so nothing was signalled (status ${status}, signal ${killedBy}): ${stderr}`);
   }
   return r;
 }
@@ -473,31 +500,37 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
  */
 async function runWithBystander(img, script) {
   const { spawn } = require("node:child_process");
+  // Detached: the subreaper leads a group of its own, which the script
+  // and its bystander start in, so a case that hangs is ended whole.
   const child = spawn("python3", underSubreaper(img, false, ["bash", "-c", script], 15), {
     env: img.env({}),
+    detached: true,
     stdio: ["ignore", "ignore", "pipe"],
   });
   let stderr = "";
   child.stderr.on("data", (d) => {
     stderr += d;
   });
-  const closed = new Promise((resolve) => child.on("close", (code, sig) => resolve([code, sig])));
-  if (!(await until(() => fs.existsSync(path.join(img.app, "unreaped.ended")), 15000))) {
-    child.kill("SIGKILL");
-    await closed;
-    assert.fail("the script did not end");
+  let gone = false;
+  const closed = new Promise((resolve) =>
+    child.on("close", (code, sig) => {
+      gone = true;
+      resolve([code, sig]);
+    }),
+  );
+  const ended = () => fs.existsSync(path.join(img.app, "unreaped.ended"));
+  await until(() => gone || ended(), 15000);
+  if (!ended()) {
+    killOwnGroup(child.pid);
+    const [status, signal] = await closed;
+    assert.fail(`the script did not end, or the subreaper failed (status ${status}, signal ${signal}): ${stderr}`);
   }
   let alive = false;
   const bystanderFile = path.join(img.app, "bystander");
   if (fs.existsSync(bystanderFile)) {
     const bystander = Number(fs.readFileSync(bystanderFile, "utf8"));
-    try {
-      process.kill(bystander, 0);
-      alive = true;
-      process.kill(bystander, "SIGKILL");
-    } catch (err) {
-      if (err.code !== "ESRCH") throw err;
-    }
+    alive = liveProcess(bystander);
+    if (alive) process.kill(bystander, "SIGKILL");
   }
   const [status, signal] = await closed;
   return { run: { status, signal, stderr }, alive };
