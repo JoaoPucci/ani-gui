@@ -374,7 +374,9 @@ test("a refused page's URL is logged without a secret it carries", async () => {
     await expect
       .poll(() => stderr.some((l) => l.includes("refused ani-gui:internal-secret")))
       .toBe(true);
-    expect(stderr.filter((l) => l.includes(planted))).toEqual([]);
+    // Joined, so a value split across two of the pipe's chunks is
+    // still found.
+    expect(stderr.join("")).not.toContain(planted);
   } finally {
     await app.close();
   }
