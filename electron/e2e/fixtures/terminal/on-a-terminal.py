@@ -17,7 +17,8 @@ This script's stdin takes one command per line:
 
 On its stdout, one JSON object per line: {"pid": <pid>} once the program has
 started, then {"exit": <code>} or {"signal": <number>} when it ends, and this
-script exits. If this script's stdin closes first, it kills the program's
+script exits; what the terminal still holds when the program ends is
+relayed first. If this script's stdin closes first, it kills the program's
 process group, so a test that dies leaves nothing behind; and when the
 program ends, whatever it left in its group is killed before it is reaped.
 
@@ -32,6 +33,7 @@ import resource
 import select
 import signal
 import sys
+import time
 
 
 def report(event):
@@ -41,6 +43,27 @@ def report(event):
         os.write(sys.stdout.fileno(), (json.dumps(event) + "\n").encode())
     except OSError:
         pass
+
+
+def drain(terminal):
+    """Passes on what the terminal still holds once the program has ended:
+    its last lines may arrive after the check that saw it end. Stops at
+    the first quiet 0.2 s, or once nothing holds the terminal's other end."""
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        ready, _, _ = select.select([terminal], [], [], 0.2)
+        if not ready:
+            return
+        try:
+            chunk = os.read(terminal, 65536)
+        except OSError:
+            return
+        if not chunk:
+            return
+        try:
+            os.write(sys.stderr.fileno(), chunk)
+        except OSError:
+            return
 
 
 def main():
@@ -77,6 +100,8 @@ def main():
         if os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT):
             kill_group()
             _, status = os.waitpid(pid, 0)
+            if terminal is not None and relaying and forwarding:
+                drain(terminal)
             break
         watched = [commands] + ([terminal] if terminal is not None and relaying else [])
         ready, _, _ = select.select(watched, [], [], 0.1)

@@ -164,13 +164,13 @@ test("the app quits after the terminal it was started from has closed", async ()
 
     // The app shut down: the profile is unlocked.
     expect(locked()).toBe(false);
-    // It ended without an error, or — and this the main process cannot
-    // prevent — with Node's abort at exit. Node puts a terminal back as
+    // It ended without an error. Node puts a terminal it holds back as
     // it found it when the process exits, and on a terminal that has
-    // hung up that step fails and aborts (SIGABRT) after the app has
-    // already shut down. Only a launch whose stdio is not the terminal
-    // avoids it. Any other ending is a crash this spec does not expect.
-    expect([{ exit: 0 }, { signal: os.constants.signals.SIGABRT }]).toContainEqual(status());
+    // hung up that step aborts (SIGABRT) after the app has shut down;
+    // the launcher keeps the app's stdio off the terminal, relaying its
+    // output, so there is nothing for that step to fail on
+    // (lib/linux-launcher.cjs).
+    expect(status()).toEqual({ exit: 0 });
   } finally {
     try {
       if (terminal) {
