@@ -154,8 +154,10 @@ function installTerminationSignals(options) {
     }
   };
 
-  const recentGpuDeath = () =>
-    gpuGone !== null && options.now() - gpuGone.at <= HELPER_WATCH_WINDOW_MS ? gpuGone.reason : null;
+  const recentGpuDeath = () => {
+    if (gpuGone === null || options.now() - gpuGone.at > HELPER_WATCH_WINDOW_MS) return null;
+    return gpuGone.reason;
+  };
 
   const onSignal = (signal) => {
     if (ended) return;
