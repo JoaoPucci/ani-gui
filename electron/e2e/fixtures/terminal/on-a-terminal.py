@@ -35,8 +35,12 @@ import sys
 
 
 def report(event):
-    sys.stdout.write(json.dumps(event) + "\n")
-    sys.stdout.flush()
+    # The test may be gone; that must not stop the script from stopping
+    # the program.
+    try:
+        os.write(sys.stdout.fileno(), (json.dumps(event) + "\n").encode())
+    except OSError:
+        pass
 
 
 def main():
@@ -64,6 +68,8 @@ def main():
     # Stops once the terminal reads nothing more: every holder of its other
     # end has closed it.
     relaying = True
+    # Whether what the terminal reads is passed on to stderr.
+    forwarding = True
     while True:
         # Seen without reaping it: while the program is a zombie, its pid
         # and its group's id are still its own, so what it left in the
@@ -79,9 +85,16 @@ def main():
                 chunk = os.read(terminal, 65536)
             except OSError:
                 chunk = b""
-            if chunk:
-                os.write(sys.stderr.fileno(), chunk)
-            else:
+            if chunk and forwarding:
+                try:
+                    os.write(sys.stderr.fileno(), chunk)
+                except OSError:
+                    # Nobody reads the relay any more (the test worker
+                    # has exited): the terminal is still drained, so the
+                    # program never blocks on it, and the stdin EOF that
+                    # comes with it is read next.
+                    forwarding = False
+            elif not chunk:
                 relaying = False
         if commands in ready:
             chunk = os.read(commands, 4096)
