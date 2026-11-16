@@ -4,15 +4,17 @@
 //
 // A stop signal often reaches every process of the app at once: a
 // logout or shutdown stops the systemd scope the desktop launched the
-// app in, which holds all of its processes (Electron does not move its
-// main process into a scope of its own), `pkill ani-gui` matches by name, a closed terminal or
+// app in, which holds all of its processes (Electron does not move
+// its main process into a scope of its own), `pkill ani-gui` matches
+// by name, a closed terminal or
 // `kill -- -<pgid>` signals the process group. Chromium's zygote, GPU
 // and utility helpers then die while the main process is still
 // quitting. Chromium relaunches the GPU process through the dead
 // zygote, fails every attempt, and aborts with "GPU process isn't
 // usable. Goodbye." — a SIGTRAP, which the desktop's crash reporter
-// announces as a crash (electron/electron#54547). Chromium's own handler is also gone after
-// the first signal, so a second one kills the app outright.
+// announces as a crash (electron/electron#54547). Chromium's own
+// handler is also gone after the first signal, so a second one kills
+// the app outright.
 //
 // So, once the app is ready, the main process takes the three signals
 // over (the approach of TheOrcDev/videorc#1198):
@@ -28,15 +30,18 @@
 //     ends the app without removing its profile's lock; the next
 //     launch takes over a lock whose owner is gone.
 //
-// "Reached the helpers" means the GPU process is gone or a zombie when
-// the signal arrives, or within HELPER_WATCH_WINDOW_MS of it (checked
-// every HELPER_WATCH_INTERVAL_MS, and on `child-process-gone`); a
-// signal that arrives after an earlier one's window opens a window of
-// its own. The GPU process is the one whose death makes Chromium
-// abort, and in the measurements an ordinary quit never had it exit
-// inside the window. Renderers and utility processes are not counted:
-// renderers exit with their windows, and utility processes exit on
-// their own, cleanly, at any time.
+// "Reached the helpers" means the GPU process or the zygote is gone or
+// a zombie when the signal arrives, or within HELPER_WATCH_WINDOW_MS
+// of it (checked every HELPER_WATCH_INTERVAL_MS, and on an unclean
+// `child-process-gone`). Every signal opens a full window of its own,
+// and the app ends by the latest. The GPU process's death, with the
+// zygote it would be relaunched through, is what makes Chromium
+// abort; the zygote also tells of a stop to every process when
+// Chromium has already dealt with the GPU process by the time the
+// signal's handler runs. In the measurements an ordinary quit never
+// had either exit inside the window. Renderers and utility processes
+// are not counted: renderers exit with their windows, and utility
+// processes exit on their own, cleanly, at any time.
 //
 // This is a race the takeover usually wins, not a guarantee: the
 // watch and Chromium's relaunch of the GPU process both run on the
@@ -53,6 +58,9 @@
 // wires it to `process`, `app.getAppMetrics()` and /proc.
 
 const TERMINATION_SIGNALS = Object.freeze(["SIGTERM", "SIGINT", "SIGHUP"]);
+
+/** The helpers whose death makes Chromium abort as it quits. */
+const RELAUNCH_HELPERS = Object.freeze(["GPU", "Zygote"]);
 
 /** How often a signalled quit looks at the helpers again. The relaunch
  *  that aborts Chromium follows the helpers' death within about 15 ms. */
@@ -77,14 +85,14 @@ function procStatState(stat) {
 }
 
 /**
- * Names the GPU process once it has exited, or null while it runs (or
- * there is none). `helpers` is `app.getAppMetrics()`'s shape
+ * Names the GPU process or the zygote once it has exited, or null
+ * while both run (or there is neither). `helpers` is `app.getAppMetrics()`'s shape
  * ({ pid, type }). A process not yet reaped is a zombie ("Z"), not
  * gone.
  */
-function exitedGpuProcess(helpers, mainPid, readProcStat) {
+function exitedRelaunchHelper(helpers, mainPid, readProcStat) {
   for (const helper of helpers) {
-    if (helper.pid === mainPid || helper.type !== "GPU") continue;
+    if (helper.pid === mainPid || !RELAUNCH_HELPERS.includes(helper.type)) continue;
     const state = procStatState(readProcStat(helper.pid));
     if (state === null) return `${helper.type} process ${helper.pid} is gone`;
     if (state === "Z" || state === "X" || state === "x") {
@@ -127,7 +135,7 @@ function installTerminationSignals(options) {
 
   const helperGone = () => {
     try {
-      return exitedGpuProcess(options.listHelpers(), options.mainPid, options.readProcStat);
+      return exitedRelaunchHelper(options.listHelpers(), options.mainPid, options.readProcStat);
     } catch {
       return null;
     }
@@ -154,19 +162,18 @@ function installTerminationSignals(options) {
       end(signal, gone);
       return;
     }
-    if (!watching()) {
-      stopWatching();
-      quitSignal = signal;
-      quitSignalAt = options.now();
-      watch = options.setInterval(() => {
-        if (!watching()) {
-          stopWatching();
-          return;
-        }
-        const helper = helperGone();
-        if (helper) end(quitSignal, helper);
-      }, HELPER_WATCH_INTERVAL_MS);
-    }
+    // Each signal watches for its own window, replacing the last one's.
+    stopWatching();
+    quitSignal = signal;
+    quitSignalAt = options.now();
+    watch = options.setInterval(() => {
+      if (!watching()) {
+        stopWatching();
+        return;
+      }
+      const helper = helperGone();
+      if (helper) end(quitSignal, helper);
+    }, HELPER_WATCH_INTERVAL_MS);
     options.requestQuit(signal);
   };
 
@@ -178,7 +185,8 @@ function installTerminationSignals(options) {
         quitSignal !== null &&
         !ended &&
         watching() &&
-        details.type === "GPU"
+        RELAUNCH_HELPERS.includes(details.type) &&
+        details.reason !== "clean-exit"
       ) {
         end(quitSignal, `${details.type} process ${details.reason}`);
       }
@@ -224,7 +232,7 @@ module.exports = {
   STORAGE_COMMIT_WAIT_MS,
   TERMINATION_SIGNALS,
   blockFor,
-  exitedGpuProcess,
+  exitedRelaunchHelper,
   installTerminationSignals,
   persistStorage,
   procStatState,

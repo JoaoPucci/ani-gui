@@ -20,8 +20,8 @@
 // there first, the main process finds its GPU process gone, fails to
 // start another through the dead zygote, and aborts as it quits ("GPU
 // process isn't usable. Goodbye.", a SIGTRAP the host's crash reporter
-// is called for). Only SIGKILL, which nothing handles and which leaves no core,
-// goes to the group.
+// is called for). Only SIGKILL, which nothing handles and which leaves
+// no core, goes to the group.
 //
 // A group id is only worth signalling while it is provably the app's:
 //
