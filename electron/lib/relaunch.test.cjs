@@ -27,7 +27,7 @@ test("the launcher's switches are the AppImage wrapper's then AppRun's, in that 
   // wrapper and the person's own arguments.
   assert.deepEqual(LAUNCHER_SWITCHES, ["--enable-wayland-ime", "--no-sandbox"]);
   const wrapper = fs.readFileSync(path.join(__dirname, "linux-launcher.cjs"), "utf-8");
-  assert.match(wrapper, /exec "\$HERE\/\$\{exe\}\.bin" --enable-wayland-ime "\$@"/);
+  assert.match(wrapper, /"\$HERE\/\$\{exe\}\.bin" --enable-wayland-ime "\$@"/);
   const tree = fs.readFileSync(path.join(__dirname, "appimage-tree.cjs"), "utf-8");
   assert.match(tree, /exec "\$BIN" --no-sandbox "\$\{args\[@\]\}"/);
 });
