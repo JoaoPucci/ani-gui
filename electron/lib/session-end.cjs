@@ -50,9 +50,9 @@ const SESSION_OVER_LINE = `${GNOME_SESSION.path}: ${GNOME_SESSION.service}.Sessi
  * so it would otherwise outlive the shell. A SIGKILL to the shell
  * alone, as a kill by command line matching "ani-gui" sends it, runs no
  * trap, and gdbus reads /dev/null: setpriv asks the kernel to send
- * gdbus SIGTERM when the shell dies, however it dies. On a system
- * without setpriv (util-linux 2.33 or later) that one case still leaves
- * gdbus behind. Without gdbus the watcher exits at once.
+ * gdbus SIGTERM when the shell dies once gdbus has started, a SIGKILL
+ * included. On a system without setpriv's --pdeathsig that one case
+ * still leaves gdbus behind. Without gdbus the watcher exits at once.
  */
 const SESSION_WATCHER = Object.freeze({
   cmd: "/bin/sh",
