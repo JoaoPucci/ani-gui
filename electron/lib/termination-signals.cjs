@@ -21,11 +21,15 @@
 //
 //   - A signal that reached the main process alone asks for the
 //     ordinary quit, every time it arrives — a second signal included —
-//     until the session's end is announced (`sessionEnding()`): the
-//     signals after that are the session's own, sent to every process
-//     of the app, and end it at once as below. Such a signal can
-//     overtake the quit the announcement started, when the GPU
-//     process's death may leave nothing to look at in time.
+//     until the session's end is announced (`sessionEnding()`). After
+//     that every one of the three ends the app at once as below,
+//     whoever sent it: mostly the session stopping every process of
+//     the app, which can overtake the quit the announcement started
+//     when the GPU process's death leaves nothing to look at in time;
+//     also a signal passed on to the main process alone (a terminal
+//     launcher relaying its hangup, a kill by pid), which then cuts
+//     that quit short, the backend stopped and the storage written
+//     first.
 //   - A signal that reached the helpers too ends the app at once, by
 //     that same signal, before the relaunch that would abort it. First
 //     `beforeEnd` runs: it stops the backend and makes the app's own
@@ -191,8 +195,8 @@ function installTerminationSignals(options) {
   for (const signal of TERMINATION_SIGNALS) options.source.on(signal, () => onSignal(signal));
 
   return {
-    /** The session's end was announced: the stop signals that follow
-     *  are its own, and end the app at once. */
+    /** The session's end was announced: any stop signal that follows
+     *  ends the app at once, whoever sent it. */
     sessionEnding() {
       sessionEnded = true;
     },
