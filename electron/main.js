@@ -1245,13 +1245,14 @@ function reportBootFailure(err) {
 app.whenReady().then(() => {
   // How the app ends when the session ends, or when a stop signal
   // arrives (Linux). At ready, not before: see lib/termination-signals.cjs.
-  takeOverStopSignals();
+  const stopSignals = takeOverStopSignals();
   const sessionEnd = watchSessionEnd({
     platform: process.platform,
     powerMonitor,
     spawn,
     env: readerEnv(process.env),
     onEnding: (reason) => {
+      stopSignals.sessionEnding();
       console.log(`[main] the session is ending (${reason}); quitting`);
       quitUnattended();
     },
@@ -1378,6 +1379,7 @@ function takeOverStopSignals() {
     now: () => Date.now(),
   });
   app.on("child-process-gone", (_event, details) => takeover.childProcessGone(details));
+  return takeover;
 }
 
 app.on("window-all-closed", () => {

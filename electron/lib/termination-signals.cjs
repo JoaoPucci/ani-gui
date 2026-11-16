@@ -20,7 +20,12 @@
 // over (the approach of TheOrcDev/videorc#1198):
 //
 //   - A signal that reached the main process alone asks for the
-//     ordinary quit, every time it arrives — a second signal included.
+//     ordinary quit, every time it arrives — a second signal included —
+//     until the session's end is announced (`sessionEnding()`): the
+//     signals after that are the session's own, sent to every process
+//     of the app, and end it at once as below. Such a signal can
+//     overtake the quit the announcement started, when the GPU
+//     process's death may leave nothing to look at in time.
 //   - A signal that reached the helpers too ends the app at once, by
 //     that same signal, before the relaunch that would abort it. First
 //     `beforeEnd` runs: it stops the backend and makes the app's own
@@ -115,13 +120,15 @@ function exitedGpuProcess(helpers, mainPid, readProcStat) {
  *   setInterval, clearInterval, now: the clock
  */
 function installTerminationSignals(options) {
-  if (options.platform !== "linux") return { childProcessGone() {} };
+  if (options.platform !== "linux") return { childProcessGone() {}, sessionEnding() {} };
   let quitSignal = null;
   let quitSignalAt = 0;
   let watch = null;
   let ended = false;
   // The GPU process's last unclean exit, as child-process-gone told it.
   let gpuGone = null;
+  // The session's end has been announced (lib/session-end.cjs).
+  let sessionEnded = false;
 
   const stopWatching = () => {
     if (watch !== null) {
@@ -161,7 +168,7 @@ function installTerminationSignals(options) {
 
   const onSignal = (signal) => {
     if (ended) return;
-    const gone = helperGone() || recentGpuDeath();
+    const gone = (sessionEnded && "the session is ending") || helperGone() || recentGpuDeath();
     if (gone) {
       end(signal, gone);
       return;
@@ -184,6 +191,11 @@ function installTerminationSignals(options) {
   for (const signal of TERMINATION_SIGNALS) options.source.on(signal, () => onSignal(signal));
 
   return {
+    /** The session's end was announced: the stop signals that follow
+     *  are its own, and end the app at once. */
+    sessionEnding() {
+      sessionEnded = true;
+    },
     childProcessGone(details) {
       if (ended || details.type !== "GPU" || details.reason === "clean-exit") return;
       const reason = `GPU process ${details.reason}`;
