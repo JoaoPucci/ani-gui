@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // imports inside `start.ts` resolve to these stubs at load time.
 
 const apiMock = vi.hoisted(() => ({
-	downloadStream: vi.fn(),
-	availabilityBatch: vi.fn()
+	downloadStream: vi.fn<typeof Api.downloadStream>(),
+	availabilityBatch: vi.fn<typeof Api.availabilityBatch>()
 }));
 vi.mock('$lib/api', () => apiMock);
 
@@ -49,6 +49,9 @@ import { startDownload } from './start';
 import { m } from '$lib/paraglide/messages';
 import { describeError, describePlayFailure } from '$lib/play/error-copy';
 
+import type * as Api from '$lib/api';
+import type { AniErrorPayload, AvailabilityBatchResponse } from '$lib/api';
+import { errorEnvelope, malformedAs } from '$lib/testing/wire-answers';
 const baseArgs = {
 	title: 'Demon Slayer',
 	episode: '5',
@@ -155,11 +158,13 @@ describe('startDownload', () => {
 		// property, so the generic branch would render "Download
 		// failed" and discard the advertised wait. The dock row must
 		// show the shared busy-source copy with the seconds instead.
-		apiMock.downloadStream.mockRejectedValueOnce({
-			kind: 'rate_limited',
-			key: 'error.network.rate_limited',
-			retry_after_secs: 9
-		});
+		apiMock.downloadStream.mockRejectedValueOnce(
+			errorEnvelope({
+				kind: 'rate_limited',
+				key: 'error.network.rate_limited',
+				retry_after_secs: 9
+			})
+		);
 		startDownload(baseArgs);
 		await Promise.resolve();
 		await Promise.resolve();
@@ -181,10 +186,12 @@ describe('startDownload', () => {
 		// generic branch would render "Download failed". The dock row
 		// must carry the same episode copy the play page shows: the
 		// show is there, this episode is not.
-		apiMock.downloadStream.mockRejectedValueOnce({
-			kind: 'episode_unavailable',
-			key: 'error.play.episode_unavailable'
-		});
+		apiMock.downloadStream.mockRejectedValueOnce(
+			errorEnvelope({
+				kind: 'episode_unavailable',
+				key: 'error.play.episode_unavailable'
+			})
+		);
 		startDownload(baseArgs);
 		await vi.waitFor(() => expect(storeMock.downloadStore.markError).toHaveBeenCalled());
 		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
@@ -199,8 +206,11 @@ describe('startDownload', () => {
 		// The episode verdict says this audio lacks the episode; what
 		// the dock row adds about the other audio comes from the
 		// availability cache and nowhere else.
-		const verdict = { kind: 'episode_unavailable', key: 'error.play.episode_unavailable' };
-		const cases: [Record<string, unknown> | Error, string][] = [
+		const verdict: AniErrorPayload = {
+			kind: 'episode_unavailable',
+			key: 'error.play.episode_unavailable'
+		};
+		const cases: [AvailabilityBatchResponse | Error, string][] = [
 			[
 				{ cached: { '40684': true }, playable_episode_counts: { '40684': 12 } },
 				m.play_play_failure_episode_unavailable_try_other_audio()
@@ -239,10 +249,12 @@ describe('startDownload', () => {
 			cached: { '40684': true },
 			playable_episode_counts: { '40684': 12 }
 		});
-		apiMock.downloadStream.mockRejectedValueOnce({
-			kind: 'episode_unavailable',
-			key: 'error.play.episode_unavailable'
-		});
+		apiMock.downloadStream.mockRejectedValueOnce(
+			errorEnvelope({
+				kind: 'episode_unavailable',
+				key: 'error.play.episode_unavailable'
+			})
+		);
 		startDownload({ ...baseArgs, kitsu_id: '40684', episode: '1-12', mode: 'sub' });
 		await vi.waitFor(() => expect(storeMock.downloadStore.markError).toHaveBeenCalled());
 		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
@@ -252,7 +264,9 @@ describe('startDownload', () => {
 	});
 
 	it('asks the cache nothing about the other audio for any other failure', async () => {
-		apiMock.downloadStream.mockRejectedValueOnce({ kind: 'no_results' });
+		apiMock.downloadStream.mockRejectedValueOnce(
+			errorEnvelope({ kind: 'no_results', key: 'error.search.no_results' })
+		);
 		startDownload({ ...baseArgs, kitsu_id: '40684' });
 		await vi.waitFor(() => expect(storeMock.downloadStore.markError).toHaveBeenCalled());
 		expect(apiMock.availabilityBatch).not.toHaveBeenCalled();
@@ -277,7 +291,8 @@ describe('startDownload', () => {
 	});
 
 	it('shows describeError copy for a thrown string, never the string', async () => {
-		apiMock.downloadStream.mockRejectedValueOnce('aborted by user');
+		// Not an envelope: a thrown string, on purpose.
+		apiMock.downloadStream.mockRejectedValueOnce(malformedAs<AniErrorPayload>('aborted by user'));
 		startDownload(baseArgs);
 		await Promise.resolve();
 		await Promise.resolve();
@@ -292,7 +307,7 @@ describe('startDownload', () => {
 		// and a parse failure there is the provider's page no longer
 		// read by this version. The row says so, as the play overlay
 		// does, instead of the shared try-again-later sentence.
-		const failure = {
+		const failure: AniErrorPayload = {
 			kind: 'parse_failed',
 			key: 'error.scraper.parse_failed',
 			detail: 'the page is not the search shape'
@@ -315,11 +330,11 @@ describe('startDownload', () => {
 		// catalogue miss, a source outage and any other upstream status
 		// read the same on both surfaces.
 		for (const failure of [
-			{ kind: 'no_results' },
-			{ kind: 'upstream', status: 503 },
-			{ kind: 'upstream', status: 404 },
-			{ kind: 'upstream', status: 403 }
-		]) {
+			{ kind: 'no_results', key: 'error.search.no_results' },
+			{ kind: 'upstream', key: 'error.network.upstream', status: 503 },
+			{ kind: 'upstream', key: 'error.network.upstream', status: 404 },
+			{ kind: 'upstream', key: 'error.network.upstream', status: 403 }
+		] satisfies AniErrorPayload[]) {
 			storeMock.downloadStore.markError.mockReset();
 			apiMock.downloadStream.mockRejectedValueOnce(failure);
 			startDownload(baseArgs);
@@ -337,7 +352,7 @@ describe('startDownload', () => {
 		// stream server not serving reads the same in the dock: the
 		// source's video server, never the user's connection — and the
 		// host the verdict carries for the log stays out of the row.
-		const failure = {
+		const failure: AniErrorPayload = {
 			kind: 'stream_server_failed',
 			key: 'error.play.stream_server_failed',
 			stage: 'embed',
@@ -363,7 +378,7 @@ describe('startDownload', () => {
 		// deadline, which is not a service being slow; `io` is the
 		// destination folder refusing the file; `config` is no folder
 		// being set; `scraper` is the download tool exiting non-zero.
-		const cases: Array<[object, RegExp]> = [
+		const cases: Array<[AniErrorPayload, RegExp]> = [
 			[{ kind: 'timeout', key: 'error.scraper.timeout' }, /download took too long/i],
 			[{ kind: 'io', key: 'error.io.generic' }, /download folder/i],
 			[{ kind: 'config', key: 'error.config.parse' }, /no download folder/i],
@@ -386,8 +401,8 @@ describe('startDownload', () => {
 		// when yt-dlp or ffmpeg is found but cannot be started; a tool
 		// that ran and failed carries the other key. The user acts on
 		// the two differently, so they read differently.
-		const spawn = { kind: 'scraper', key: 'error.download.tool_spawn_failed' };
-		const ran = { kind: 'scraper', key: 'error.download.tool_failed' };
+		const spawn: AniErrorPayload = { kind: 'scraper', key: 'error.download.tool_spawn_failed' };
+		const ran: AniErrorPayload = { kind: 'scraper', key: 'error.download.tool_failed' };
 		const shown: string[] = [];
 		for (const failure of [spawn, ran]) {
 			storeMock.downloadStore.markError.mockReset();
@@ -403,7 +418,9 @@ describe('startDownload', () => {
 	});
 
 	it('falls back to localized generic copy for an unrecognised rejection', async () => {
-		apiMock.downloadStream.mockRejectedValueOnce({ unexpected: true });
+		apiMock.downloadStream.mockRejectedValueOnce(
+			malformedAs<AniErrorPayload>({ unexpected: true })
+		);
 		startDownload(baseArgs);
 		await Promise.resolve();
 		await Promise.resolve();
@@ -421,10 +438,12 @@ describe('startDownload', () => {
 		// user; instead, hand the failure to the layout-level modal
 		// (failure store) and clear the broken dock row so the user
 		// sees one clear surface.
-		apiMock.downloadStream.mockRejectedValueOnce({
-			kind: 'ffmpeg_missing',
-			key: 'error.download.ffmpeg_missing'
-		});
+		apiMock.downloadStream.mockRejectedValueOnce(
+			errorEnvelope({
+				kind: 'ffmpeg_missing',
+				key: 'error.download.ffmpeg_missing'
+			})
+		);
 		startDownload(baseArgs);
 		await Promise.resolve();
 		await Promise.resolve();

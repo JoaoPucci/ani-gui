@@ -17,6 +17,8 @@ import { page, setUrl } from './page-state.svelte';
 import { kitsuRef } from './home-handlers';
 import { sixConnections, type Connections } from './connections';
 import { hangingReads, type HangingReads } from './hanging-reads';
+import { afterRead, watchPageFetches } from './page-fetches';
+import { armedBy } from './scheduled-timers';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -35,6 +37,8 @@ import Layout from '../../src/routes/+layout.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AvailabilityBatchResponse, KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 let target: HTMLElement;
 let layout: ReturnType<typeof mount> | null = null;
 let pool: Connections | null = null;
@@ -48,8 +52,8 @@ beforeEach(() => {
 	};
 	reads = hangingReads();
 	server.use(
-		http.get(`${API_BASE}/api/update-check`, () => HttpResponse.json(null, { status: 503 })),
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(null, { status: 503 }))
+		http.get(`${API_BASE}/api/update-check`, () => errorAnswer(503)),
+		http.get(`${API_BASE}/api/settings`, () => errorAnswer(503))
 	);
 	setUrl('/');
 	localStorage.clear();
@@ -93,13 +97,16 @@ describe('topbar live search — the query moves on', () => {
 				const { query } = (await info.request.clone().json()) as { query: string };
 				asked.push(query);
 				if (query === 'fri') return reads.hang(info);
-				return HttpResponse.json([kitsuRef('7', 'Frieren', 28)]);
+				return HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('7', 'Frieren', 28)]);
 			}),
 			http.post(`${API_BASE}/api/availability/batch`, () =>
-				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 			)
 		);
 		pool = sixConnections();
+		// Inside the connections, so a request the stand-in cancels is
+		// seen failing where the page asked it.
+		const fetches = watchPageFetches();
 		const children = createRawSnippet(() => ({ render: () => '<div></div>' }));
 		layout = mount(Layout, { target, props: { children } });
 		input().focus();
@@ -109,8 +116,13 @@ describe('topbar live search — the query moves on', () => {
 		type('frieren');
 		await until(() => pool!.cancelled.includes('/api/kitsu/search'), 'the first search cancelled');
 		// Before the next search answers, the cancelled one shows
-		// nothing: no failure, no empty list.
-		await new Promise((r) => setTimeout(r, 0));
+		// nothing: no failure, no empty list. Read once the page has
+		// seen its request fail and what that set off has run.
+		await until(
+			() => fetches.failed.some((f) => f.path === '/api/kitsu/search'),
+			'the page to see the first search fail'
+		);
+		await afterRead();
 		expect(target.textContent).not.toContain(m.app_search_error_kitsu());
 		expect(target.textContent).not.toContain(m.app_search_error_no_matches());
 		await until(() => (target.textContent ?? '').includes('Frieren'), "the second search's hit");
@@ -135,11 +147,12 @@ describe('topbar live search — the query moves on', () => {
 		server.use(
 			http.post(`${API_BASE}/api/kitsu/search`, async (info) => {
 				const { query } = (await info.request.clone().json()) as { query: string };
-				if (query === 'fri') return HttpResponse.json([kitsuRef('8', 'Fried Rice Show', 12)]);
+				if (query === 'fri')
+					return HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('8', 'Fried Rice Show', 12)]);
 				return reads.hang(info);
 			}),
 			http.post(`${API_BASE}/api/availability/batch`, () =>
-				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 			)
 		);
 		pool = sixConnections();
@@ -166,16 +179,22 @@ describe('topbar live search — the query moves on', () => {
 		server.use(
 			http.post(`${API_BASE}/api/kitsu/search`, () => {
 				asked += 1;
-				return HttpResponse.json([]);
+				return HttpResponse.json<KitsuAnimeRef[]>([]);
 			})
 		);
+		const fetches = watchPageFetches();
 		const children = createRawSnippet(() => ({ render: () => '<div></div>' }));
 		layout = mount(Layout, { target, props: { children } });
 		input().focus();
 		input().dispatchEvent(new FocusEvent('focus'));
-		type('frieren');
+		const pause = armedBy(() => type('frieren'));
+		expect(pause.pending, 'typing armed the pause before the search').toBe(1);
 		(input().closest('form') as HTMLFormElement).requestSubmit();
-		await new Promise((r) => setTimeout(r, 500));
+		// Once the pause has come due or been called off, a search it
+		// started has been asked, and is recorded where the page asks it.
+		await pause.done('the pause before the search to end');
+		await afterRead();
+		expect(fetches.sent.filter((f) => f.path === '/api/kitsu/search')).toEqual([]);
 		expect(asked).toBe(0);
 	});
 });

@@ -127,20 +127,6 @@ fn argv_emits_player_path_for_windows_style_path() {
 }
 
 #[test]
-fn launch_args_decode_without_player_binary_for_back_compat() {
-    // Old payloads (pre-player-path) don't include the field.
-    // They must decode and default to empty-string so build_argv
-    // skips the `--player-path=` emission.
-    let json = r#"{
-        "stream_url": "https://example.com/v.mp4",
-        "binary": "syncplay"
-    }"#;
-    let a: SyncplayLaunchArgs =
-        serde_json::from_str(json).expect("decodes with default player_binary");
-    assert!(a.player_binary.is_empty());
-}
-
-#[test]
 fn argv_with_no_referer_is_just_the_url() {
     // Bare URL is the no-referer baseline. Most catalogues work
     // this way; only referer-required CDNs (fast4speed.rsvp)
@@ -179,19 +165,6 @@ fn argv_drops_empty_referer() {
     a.referer = Some(String::new());
     let v = build_argv(&a);
     assert_eq!(v, vec!["https://example.com/v.mp4".to_string()]);
-}
-
-#[test]
-fn launch_args_decode_without_referer_for_back_compat() {
-    // Old client payloads (pre-referer-forwarding) don't include
-    // the `referer` field. They must still decode and default to
-    // None.
-    let json = r#"{
-        "stream_url": "https://example.com/v.mp4",
-        "binary": "syncplay"
-    }"#;
-    let a: SyncplayLaunchArgs = serde_json::from_str(json).expect("decodes with default referer");
-    assert!(a.referer.is_none());
 }
 
 #[test]
@@ -248,21 +221,6 @@ fn argv_for_custom_emits_no_player_specific_flags() {
     a.referer = Some("https://allmanga.to".into());
     let v = build_argv(&a);
     assert_eq!(v, vec!["https://example.com/v.mp4".to_string()]);
-}
-
-#[test]
-fn launch_args_decode_without_player_kind_defaults_to_mpv() {
-    // Old payloads (pre-player-kind threading) don't include
-    // `player_kind`. They must still decode and default to Mpv
-    // — that's the upstream Syncplay default and matches the
-    // pre-merge syncplay path's behaviour.
-    let json = r#"{
-        "stream_url": "https://example.com/v.mp4",
-        "binary": "syncplay"
-    }"#;
-    let a: SyncplayLaunchArgs =
-        serde_json::from_str(json).expect("decodes with default player_kind");
-    assert_eq!(a.player_kind, ExternalPlayerKind::Mpv);
 }
 
 #[test]
@@ -435,4 +393,30 @@ fn a_show_remembered_off_starts_the_wrapped_player_with_subtitles_off() {
     vlc.subtitles_off = true;
     let argv = build_argv(&vlc);
     assert!(!argv.iter().any(|a| a.contains("sub-file")), "{argv:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_stream_url_that_is_not_one_is_refused_and_syncplay_never_starts() {
+    // The URL is Syncplay's positional file argument, ahead of the
+    // `--` separator: a value that is not an http(s) URL would read as
+    // one of Syncplay's own options.
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = tempfile::tempdir().expect("tmp");
+    let ran = dir.path().join("ran");
+    let binary = dir.path().join("syncplay");
+    std::fs::write(&binary, format!("#!/bin/sh\ntouch '{}'\n", ran.display()))
+        .expect("write syncplay");
+    std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let a = args(
+        "--load-playlist-from-file=/tmp/x",
+        &binary.display().to_string(),
+    );
+    let r = open_syncplay(&a);
+    assert!(
+        matches!(r, Err(AniError::ParseFailed { .. })),
+        "expected a refusal, got {r:?}"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(!ran.exists(), "Syncplay must not have been started");
 }

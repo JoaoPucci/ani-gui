@@ -8,6 +8,7 @@ import {
 	otherAudioMode
 } from './other-audio';
 
+import { malformedAs } from '$lib/testing/wire-answers';
 const EPISODE_UNAVAILABLE = {
 	kind: 'episode_unavailable',
 	key: 'error.play.episode_unavailable'
@@ -91,7 +92,7 @@ describe('lookupOtherAudio — what the availability cache says, never a probe',
 	});
 
 	it('is unknown when the lookup answers nonsense', async () => {
-		const batch = vi.fn(async () => null as unknown as AvailabilityBatchResponse);
+		const batch = vi.fn(async () => malformedAs<AvailabilityBatchResponse>(null));
 		expect(await lookupOtherAudio({ kitsuId: '7', mode: 'sub', episode: 1 }, batch)).toBeNull();
 	});
 

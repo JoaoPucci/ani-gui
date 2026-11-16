@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PersistedAccount } from './types';
+import type { PersistedAccount, Tokens } from './types';
 
 // Mock the store + api collaborators so the unit under test is the
 // fresh-bearer wiring (+ the real refresh-flow.freshBearer it delegates
 // to). The store mock exposes just the surface fresh-bearer touches.
 const { refreshTokens, persistAccount, store } = vi.hoisted(() => ({
-	refreshTokens: vi.fn(),
-	persistAccount: vi.fn(async () => ({ ok: true }) as { ok: true }),
+	refreshTokens: vi.fn<typeof AccountApi.refreshTokens>(),
+	persistAccount: vi.fn<typeof AccountApi.persistAccount>(
+		async () => ({ ok: true }) as { ok: true }
+	),
 	store: {
 		byProvider: {} as Record<string, { kind: string; account?: PersistedAccount }>,
 		accountGeneration: { anilist: 0, mal: 0, inhouse: 0 } as Record<string, number>,
@@ -31,6 +33,9 @@ vi.mock('./store.svelte', () => ({ accountStore: store }));
 import { __resetInFlightRefreshes, bearerRefusedFor, freshBearerFor } from './fresh-bearer';
 import { AccountApiError } from './api';
 
+import type * as AccountApi from './api';
+import { wire } from '$lib/testing/wire-answers';
+import type { AniErrorPayload } from '../api';
 function account(over: Partial<PersistedAccount> = {}): PersistedAccount {
 	return {
 		access_token: 'old',
@@ -93,7 +98,7 @@ describe('freshBearerFor', () => {
 		// watched-progress sync) hitting the same near-expiry provider must
 		// share ONE refresh-token exchange, not start two independent
 		// rotations whose writes race.
-		let release!: (v: unknown) => void;
+		let release!: (v: Tokens) => void;
 		refreshTokens.mockImplementation(
 			() =>
 				new Promise((r) => {
@@ -164,7 +169,7 @@ describe('freshBearerFor', () => {
 		// promise — when that resolves `superseded`, freshBearer falls back
 		// to the PREVIOUS account's bearer, which would be sent for the new
 		// session (wrong user). The later caller starts its own refresh.
-		let release!: (v: unknown) => void;
+		let release!: (v: Tokens) => void;
 		refreshTokens.mockImplementationOnce(
 			() =>
 				new Promise((r) => {
@@ -218,7 +223,7 @@ describe('freshBearerFor', () => {
 const refused = () =>
 	new AccountApiError(
 		401,
-		JSON.stringify({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' })
+		wire<AniErrorPayload>({ kind: 'refresh_rejected', key: 'error.account.refresh_rejected' })
 	);
 
 describe('freshBearerFor and a failed renewal', () => {

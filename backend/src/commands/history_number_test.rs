@@ -88,7 +88,7 @@ async fn the_route_answers_with_the_rows_number() {
     let state = state(&td);
     seed_former_recap_row(&state);
     repair(&state);
-    let router = crate::api::build_api_router(std::sync::Arc::new((*state).clone()));
+    let router = crate::api::test_router(std::sync::Arc::new((*state).clone()));
     let response = router
         .oneshot(
             axum::http::Request::builder()

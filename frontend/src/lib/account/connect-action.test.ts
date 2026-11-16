@@ -18,6 +18,7 @@ import { cancelConnect, connectProvider, type ConnectActionDeps } from './connec
 import type { ConnectFlowDeps } from './connect-flow';
 import type { PersistedAccount, Provider } from './types';
 
+import { AccountApiError } from './api';
 // Resolve the locale once while no window is stubbed. Paraglide's first
 // lookup records the locale it resolved, in localStorage when a window
 // exists; the fake windows below carry none.
@@ -294,10 +295,12 @@ describe('cancelConnect', () => {
 
 	it('an abandoned sign-in that completes in the browser anyway is not saved', async () => {
 		const oauth = deferred<{ ok: true; code: string; state: string }>();
-		const persist = vi.fn(async (p: Provider, payload: PersistedAccount) => {
-			disk[p] = payload;
-			return { ok: true as const };
-		});
+		const persist = vi.fn<NonNullable<ConnectFlowDeps['persistAccount']>>(
+			async (p: Provider, payload: PersistedAccount) => {
+				disk[p] = payload;
+				return { ok: true as const };
+			}
+		);
 		const running = connectProvider(
 			'anilist',
 			deps(flow({ openOAuth: () => oauth.promise, persistAccount: persist }))
@@ -429,10 +432,12 @@ describe('cancelConnect', () => {
 		await firstRun;
 		await settle();
 		const second = deferred<{ ok: true; code: string; state: string }>();
-		const persist = vi.fn(async (p: Provider, payload: PersistedAccount) => {
-			disk[p] = payload;
-			return { ok: true as const };
-		});
+		const persist = vi.fn<NonNullable<ConnectFlowDeps['persistAccount']>>(
+			async (p: Provider, payload: PersistedAccount) => {
+				disk[p] = payload;
+				return { ok: true as const };
+			}
+		);
 		const secondRun = connectProvider(
 			'anilist',
 			deps(flow({ openOAuth: () => second.promise, persistAccount: persist }))
@@ -551,7 +556,7 @@ describe('connectProvider: outcomes that answer', () => {
 	it('an API failure carries its status', async () => {
 		await connectProvider(
 			'anilist',
-			deps(flow({ exchangeCode: () => Promise.reject({ status: 502 }) }))
+			deps(flow({ exchangeCode: () => Promise.reject(new AccountApiError(502, '')) }))
 		);
 		expect(messages()).toEqual([`${m.account_connect_error_unknown()} (502)`]);
 	});
@@ -574,5 +579,118 @@ describe('connectProvider: outcomes that answer', () => {
 		const s = accountStore.byProvider.anilist;
 		expect(s.kind).toBe('error');
 		expect(s.kind === 'error' && s.account?.access_token).toBe('old-bearer');
+	});
+});
+
+/**
+ * A second authorize request stops the first one's callback server
+ * (the main process keeps one), so the first sign-in settles as
+ * cancelled, and Allow on the first page then reaches the second
+ * sign-in with a state it did not issue, which it rejects, whatever the
+ * provider does with the older page. So one click opens at most one
+ * authorize request, whatever the sign-in then does: nothing retries
+ * it, and a hydrate while it waits does not offer Connect again.
+ */
+describe('connectProvider: one click opens one authorize request', () => {
+	function counted(overrides: Partial<ConnectFlowDeps> = {}) {
+		const f = flow(overrides);
+		const spies = {
+			generateState: vi.fn(f.generateState),
+			generatePkce: vi.fn(f.generatePkce),
+			buildAuthUrl: vi.fn(f.buildAuthUrl),
+			openOAuth: vi.fn(f.openOAuth),
+			exchangeCode: vi.fn(f.exchangeCode)
+		};
+		return { flow: { ...f, ...spies }, spies };
+	}
+
+	function expectOneAuthorize(spies: ReturnType<typeof counted>['spies']) {
+		expect(spies.generateState).toHaveBeenCalledTimes(1);
+		expect(spies.generatePkce).toHaveBeenCalledTimes(1);
+		expect(spies.buildAuthUrl).toHaveBeenCalledTimes(1);
+		expect(spies.openOAuth).toHaveBeenCalledTimes(1);
+	}
+
+	it('a sign-in that succeeds opens the URL it built, and exchanges with the same PKCE', async () => {
+		const { flow: f, spies } = counted({
+			generateState: () => 'state-1',
+			buildAuthUrl: async () => ({ url: 'https://auth.example/one' }),
+			openOAuth: async () => ({ ok: true, code: 'code', state: 'state-1' })
+		});
+		await connectProvider('mal', deps(f));
+		expectOneAuthorize(spies);
+		expect(spies.openOAuth).toHaveBeenCalledWith('https://auth.example/one');
+		const sent = spies.buildAuthUrl.mock.calls[0][1];
+		expect(sent.state).toBe('state-1');
+		expect(spies.exchangeCode).toHaveBeenCalledTimes(1);
+		expect(spies.exchangeCode.mock.calls[0][1].pkce).toEqual(sent.pkce);
+		expect(accountStore.byProvider.mal.kind).toBe('connected');
+	});
+
+	const failures: [string, Partial<ConnectFlowDeps>][] = [
+		['the callback IPC rejects', { openOAuth: () => Promise.reject(new Error('ipc gone')) }],
+		['the wait times out', { openOAuth: async () => ({ ok: false, kind: 'timeout' }) }],
+		['the user cancels', { openOAuth: async () => ({ ok: false, kind: 'cancelled' }) }],
+		['the provider declines', { openOAuth: async () => ({ ok: false, kind: 'oauth_error' }) }],
+		['the port is busy', { openOAuth: async () => ({ ok: false, kind: 'port_busy' }) }],
+		[
+			'the browser cannot open',
+			{ openOAuth: async () => ({ ok: false, kind: 'browser_launch_failed' }) }
+		],
+		[
+			'the state does not match',
+			{ openOAuth: async () => ({ ok: true, code: 'code', state: 'other' }) }
+		],
+		[
+			'the code exchange fails',
+			{ exchangeCode: () => Promise.reject(new AccountApiError(400, 'invalid_grant')) }
+		],
+		[
+			'the profile read fails',
+			{ fetchMe: () => Promise.reject(new AccountApiError(502, 'upstream')) }
+		],
+		['the save fails', { persistAccount: async () => ({ ok: false, kind: 'io_error' }) }]
+	];
+
+	for (const [name, overrides] of failures) {
+		it(`opens it once when ${name}, and nothing tries again`, async () => {
+			const { flow: f, spies } = counted(overrides);
+			await connectProvider('mal', deps(f));
+			await settle();
+			expectOneAuthorize(spies);
+			expect(accountStore.byProvider.mal.kind).not.toBe('connecting');
+		});
+	}
+
+	it('a URL that cannot be built opens nothing, and nothing tries again', async () => {
+		const { flow: f, spies } = counted({
+			buildAuthUrl: () => Promise.reject(new AccountApiError(500, 'boom'))
+		});
+		await connectProvider('mal', deps(f));
+		await settle();
+		expect(spies.generateState).toHaveBeenCalledTimes(1);
+		expect(spies.buildAuthUrl).toHaveBeenCalledTimes(1);
+		expect(spies.openOAuth).not.toHaveBeenCalled();
+		expect(accountStore.byProvider.mal.kind).toBe('disconnected');
+	});
+
+	it('a hydrate while the sign-in waits leaves it connecting, so Connect is not offered again', async () => {
+		disk.mal = account({ access_token: 'saved-before' });
+		const callback = deferred<{ ok: true; code: string; state: string }>();
+		const { flow: f, spies } = counted({ openOAuth: () => callback.promise });
+		const running = connectProvider('mal', deps(f));
+		await settle();
+		// The account page mounting again re-runs the hydrate; the
+		// sign-in stays under way, so Connect is not offered again.
+		void accountStore.hydrate();
+		await settle();
+		expect(accountStore.byProvider.mal.kind).toBe('connecting');
+		expectOneAuthorize(spies);
+		callback.resolve({ ok: true, code: 'code', state: 'st' });
+		await running;
+		await settle();
+		expectOneAuthorize(spies);
+		const s = accountStore.byProvider.mal;
+		expect(s.kind === 'connected' && s.account.access_token).toBe('new-bearer');
 	});
 });

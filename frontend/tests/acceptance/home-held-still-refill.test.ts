@@ -26,6 +26,8 @@ vi.mock('$app/navigation', () => ({
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
+import type { KitsuAnimeRef, KitsuEpisode } from '../../src/lib/api';
+import type { RefillEnded } from '../../src/lib/refill/refill-waiter';
 const TICKET = 17;
 const STILL = 'https://img1.ak.crunchyroll.com/bebop-4.jpg';
 
@@ -75,19 +77,21 @@ describe('home Continue Watching — a held-back still', () => {
 		server.use(
 			...homeHandlers({ history: [{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' }] }, [
 				http.post(`${API_BASE}/api/kitsu/search`, () =>
-					HttpResponse.json([{ ...kitsuRef('1', 'Cowboy Bebop', 26), status: 'finished' }])
+					HttpResponse.json<KitsuAnimeRef[]>([
+						{ ...kitsuRef('1', 'Cowboy Bebop', 26), status: 'finished' }
+					])
 				),
 				http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => {
 					reads += 1;
 					if (hasLanded) readsAfter += 1;
-					return HttpResponse.json(
+					return HttpResponse.json<KitsuEpisode[]>(
 						episodes(hasLanded),
 						hasLanded ? undefined : { headers: { 'x-ani-gui-refill': String(TICKET) } }
 					);
 				}),
 				http.post(`${API_BASE}/api/refills/wait`, async () => {
 					await landed;
-					return HttpResponse.json([{ ticket: TICKET, landed: true }]);
+					return HttpResponse.json<RefillEnded[]>([{ ticket: TICKET, landed: true }]);
 				}),
 				http.post(`${API_BASE}/api/refills/release`, () => new HttpResponse(null, { status: 204 }))
 			])

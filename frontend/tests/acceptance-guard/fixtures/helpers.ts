@@ -9,13 +9,14 @@ export { API_BASE };
 
 export const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** `/ok` answers at once, `/slow` after `ms`, `/never` not at all. */
+/** `/ok` answers at once, `/slow` after `ms`, `/never` not at all.
+ *  None is a backend route: each answers an empty object. */
 export function useHandlers(ms = 40) {
 	server.use(
-		http.get(`${API_BASE}/ok`, () => HttpResponse.json({})),
+		http.get(`${API_BASE}/ok`, () => HttpResponse.json<Record<string, never>>({})),
 		http.get(`${API_BASE}/slow`, async () => {
 			await wait(ms);
-			return HttpResponse.json({});
+			return HttpResponse.json<Record<string, never>>({});
 		}),
 		http.get(`${API_BASE}/never`, () => new Promise<never>(() => {}))
 	);

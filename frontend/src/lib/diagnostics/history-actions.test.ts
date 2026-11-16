@@ -8,8 +8,9 @@ import {
 	type DiagnosticsState
 } from './history-actions';
 
-const INFO = { version: '1.0.0' } as AppInfo;
-const ROW = { id: 'allanime-1', ep_no: '3', title: 'Cowboy Bebop' } as HistoryEntry;
+import { appInfoAnswer } from '$lib/testing/wire-answers';
+const INFO = appInfoAnswer({ version: '1.0.0' });
+const ROW: HistoryEntry = { id: 'allanime-1', ep_no: '3', title: 'Cowboy Bebop' };
 
 /** A backend whose answers the test sets per call, and which can hold
  *  a call until released. */

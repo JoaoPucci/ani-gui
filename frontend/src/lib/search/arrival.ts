@@ -8,6 +8,7 @@
 
 import type { SearchOrder } from '$lib/api';
 import type { ScrollAnchor, SearchSnapshot } from './snapshot';
+import { offeredTypeFilters } from './type-filters';
 
 /** The page state a search shows, outside its results. */
 export interface SearchView {
@@ -35,12 +36,14 @@ export function emptyView(): SearchView {
 
 /** The view a saved search puts back. The cards it saved do not rise
  *  in again, whether they come back as they were or from the search
- *  run again. */
+ *  run again. A filter the page no longer offers (one an earlier
+ *  version kept, such as music) is dropped rather than left to empty
+ *  the grid with nothing on screen to explain it. */
 export function restoredView(saved: SearchSnapshot): SearchView {
 	return {
 		q: saved.q,
 		order: saved.order,
-		subtypes: [...saved.subtypes],
+		subtypes: offeredTypeFilters(saved.subtypes),
 		anchor: saved.anchor,
 		restoredIds: new Set(saved.results?.hits.map((h) => h.id))
 	};

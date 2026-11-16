@@ -249,6 +249,7 @@ async fn a_play_that_records_its_id_does_not_drop_a_watch_waiting_on_it() {
         &watch,
         Some("45412"),
         requested,
+        None,
     )
     .await;
     let row = row(&state, &key(STITCHED_SLUG));

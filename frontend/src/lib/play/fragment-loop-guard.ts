@@ -9,14 +9,25 @@
  * with it, and the requests went on after the user had left the page,
  * because the engine then outlived the route.
  *
- * A playing stream loads each fragment once. A rewind past the back
- * buffer loads one again, minutes apart. The guard counts loads of one
- * fragment inside a short window, and past the allowance it tells the
- * player to stop the engine rather than ask again. The allowance is
- * above hls.js's own retries for a fragment that loads but cannot be
- * parsed or appended — one on timeout, three on error, four loads
- * before its own fatal — so it never trips on a retry the load policy
- * would have made anyway.
+ * A playing stream loads each fragment once. A seek back past the
+ * back buffer loads one again, and a viewer going back and forth
+ * between two spots further apart than the back buffer does so on
+ * every return, as quickly as they move. Each of those loads follows
+ * the engine trimming the back buffer into the fragment, and hls.js
+ * loads the whole of a fragment again once any part of it has left
+ * the buffer, so a trim forgets the loads of every fragment starting
+ * before its point. A fragment that loads and never buffers sits at
+ * the playhead, and a trim point is always at least the back buffer's
+ * length (`$lib/play/hls-buffer-policy`, 30 s) or one target duration,
+ * whichever is longer, behind the playhead: no trim reaches a fragment
+ * shorter than that.
+ *
+ * The guard counts loads of one fragment inside a short window, and
+ * past the allowance it tells the player to stop the engine rather
+ * than ask again. The allowance is above hls.js's own retries for a
+ * fragment that loads but cannot be parsed or appended — one on
+ * timeout, three on error, four loads before its own fatal — so it
+ * never trips on a retry the load policy would have made anyway.
  */
 
 import type { Fragment } from 'hls.js';
@@ -38,7 +49,9 @@ export function fragmentLoopKey(frag: FragmentIdentity): string {
 }
 
 export class FragmentLoopGuard {
-	private readonly loads = new Map<string, number[]>();
+	// Per fragment: the times it loaded inside the window, and where it
+	// starts in the stream (seconds).
+	private readonly loads = new Map<string, { at: number[]; start: number }>();
 	private tripped = false;
 
 	constructor(private readonly now: () => number = () => Date.now()) {}
@@ -50,17 +63,25 @@ export class FragmentLoopGuard {
 	}
 
 	/** Records a load of the fragment `key` names — its rendition,
-	 *  level and sequence number. True the one time a fragment has
-	 *  loaded more times inside the window than the allowance: the
-	 *  engine the caller then stops is stopped, and a late report is
-	 *  not a second trip. */
-	loaded(key: string): boolean {
+	 *  level and sequence number — starting at `start` seconds. True
+	 *  the one time a fragment has loaded more times inside the window
+	 *  than the allowance: the engine the caller then stops is stopped,
+	 *  and a late report is not a second trip. */
+	loaded(key: string, start: number = Infinity): boolean {
 		if (this.tripped) return false;
 		const at = this.now();
-		const recent = (this.loads.get(key) ?? []).filter((t) => at - t < FRAGMENT_LOAD_WINDOW_MS);
+		const recent = (this.loads.get(key)?.at ?? []).filter((t) => at - t < FRAGMENT_LOAD_WINDOW_MS);
 		recent.push(at);
-		this.loads.set(key, recent);
+		this.loads.set(key, { at: recent, start });
 		this.tripped = recent.length > FRAGMENT_LOAD_ALLOWANCE;
 		return this.tripped;
+	}
+
+	/** The engine let go of everything buffered before `upTo` seconds.
+	 *  A fragment starting before that point lost some or all of itself
+	 *  and is loaded whole again, so its next load is the first since;
+	 *  one starting at or after it keeps its count. */
+	released(upTo: number): void {
+		for (const [key, { start }] of this.loads) if (start < upTo) this.loads.delete(key);
 	}
 }

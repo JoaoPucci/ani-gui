@@ -32,6 +32,15 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 const EPISODES = 12;
@@ -79,45 +88,55 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
 function mountPlayer() {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, EPISODES), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(KITSU_ID, TITLE, EPISODES),
+				status: 'finished'
+			})
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: EPISODES, next_episode: null, next_airing_at: null, upcoming: [] })
+			HttpResponse.json<AiringStatus>({
+				aired: EPISODES,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
 		),
 		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
-			HttpResponse.json(kitsuEpisodes(EPISODES))
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(EPISODES))
 		),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: EPISODES,
-				extra_episodes: [],
-				episode_count_approximate: false
-			})
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: EPISODES,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl'))
 	);
 	setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
 	app = mount(PlayPage, { target });
@@ -140,7 +159,10 @@ describe.each([
 			'the more button'
 		);
 		target.querySelector<HTMLButtonElement>('[aria-controls="np-more-menu"]')!.click();
-		await until(() => target.querySelector('#np-more-menu') !== null, 'the menu');
+		await until(
+			() => target.querySelector('#np-more-menu') !== null && motion.settled(),
+			"the menu, and its opening's motion"
+		);
 
 		if (reduced) expect(motion.animations).toEqual([]);
 		else expect(motion.animations.some((a) => a.includes('more-menu'))).toBe(true);
@@ -151,7 +173,10 @@ describe.each([
 		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
 		await until(() => tile(3) !== null, 'the episode strip');
 		tile(3)!.click();
-		await until(() => motion.lottie().length > 0, 'the loader animation to load');
+		await until(
+			() => motion.lottie().length > 0 && motion.settled(),
+			'the loader animation to load'
+		);
 
 		const played = motion.lottie().includes('play') || motion.lottie().includes('load:autoplay');
 		expect(played).toBe(!reduced);
@@ -171,7 +196,11 @@ describe.each([
 			() => target.querySelector('li.ep-highlight[data-ep-num="4"]') !== null,
 			'the episode to be picked out'
 		);
-		await new Promise((r) => setTimeout(r, 100));
+		// The scroll waits a frame for the tile to be laid out.
+		await until(
+			() => motion.scrolls.some((s) => s.startsWith('scrollIntoView')),
+			'the strip to scroll to the episode'
+		);
 
 		expect(motion.glides).toEqual(reduced ? [] : [expect.stringContaining('scrollIntoView')]);
 	});

@@ -48,7 +48,6 @@ use axum::routing::get;
 use axum::Router;
 use base64::Engine;
 use serde::Deserialize;
-use tower_http::cors::{Any, CorsLayer};
 use url::Url;
 
 use crate::error::AniError;
@@ -93,12 +92,11 @@ pub fn build_router(state: ProxyState) -> Router {
         .route("/s/:session/seg", get(handle_seg))
         .route("/s/:session/subtitles", get(handle_subtitle_list))
         .route("/s/:session/sub/:track", get(handle_subtitle))
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
-        )
+        // hls.js, and the `<video>` and `<track>` the player marks
+        // `crossorigin`, read the proxy's answers from the renderer's
+        // origin; the download tools send no origin and need no CORS.
+        // Nothing else is allowed to read them (`crate::renderer_origin`).
+        .layer(crate::renderer_origin::cors())
         .with_state(Arc::new(state))
 }
 

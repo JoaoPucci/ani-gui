@@ -8311,3 +8311,34 @@ async fn a_download_puts_every_copys_stamp_right() {
         );
     }
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_stream_that_is_not_an_http_url_is_refused_before_any_tool_runs() {
+    // yt-dlp takes the stream as a bare argument among its options; a
+    // value from the provider's answer such as `--exec=…` would read
+    // as one.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = bin.path().join("ran");
+    let touch = format!("touch '{}'\nexit 0", ran.display());
+    stage_tool(bin.path(), "yt-dlp", &touch);
+    stage_tool(bin.path(), "ffmpeg", &touch);
+    let got = spawn_download_tool(
+        &StreamSource {
+            master_url: "--exec=touch /tmp/x".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    assert!(matches!(got, Err(AniError::ParseFailed { .. })), "{got:?}");
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(!ran.exists(), "no download tool may have run");
+}
