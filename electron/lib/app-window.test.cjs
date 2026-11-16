@@ -369,3 +369,140 @@ test("a page that renders only after the bound has run out does not undo the fai
   for (let i = 0; i < 5; i++) await Promise.resolve();
   assert.match(String(failed), /lost/);
 });
+
+// Under native Wayland without GPU compositing (a VM, a blocklisted or
+// failed GPU, --disable-gpu) a window that is not on screen gets no
+// frames after its first, sometimes not even that: requestAnimationFrame
+// never fires, so the page's rendered word never comes and the reveal
+// waits for good. The page says it has mounted first, which needs no
+// frame; when the rendered word does not follow within FRAME_WAKE_MS,
+// the window is mapped (behind the splash) so its frames resume.
+const { APP_MOUNTED_CHANNEL, FRAME_WAKE_MS, frameWake, lastWake, wakeHidden } = require("./app-window.cjs");
+
+/** A settable stand-in for the waiter's `ready`. */
+function readyLatch() {
+  let settle;
+  const ready = new Promise((resolve) => (settle = resolve));
+  return { ready, settle };
+}
+
+test("a page that mounted but has not drawn its frames within the bound wakes its window, once", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const { ready } = readyLatch();
+  let wakes = 0;
+  const wake = frameWake(contents, ipc, { ready, wake: () => (wakes += 1) });
+  assert.equal(APP_MOUNTED_CHANNEL, "ani-gui:app-mounted");
+  ipc.emit(APP_MOUNTED_CHANNEL, { sender: contents });
+  t.mock.timers.tick(FRAME_WAKE_MS - 1);
+  assert.equal(wakes, 0);
+  assert.equal(wake.woken(), false);
+  t.mock.timers.tick(1);
+  assert.equal(wakes, 1);
+  assert.equal(wake.woken(), true);
+  assert.deepEqual(lastWake(), { mounted: true, woken: true });
+  ipc.emit(APP_MOUNTED_CHANNEL, { sender: contents });
+  t.mock.timers.tick(FRAME_WAKE_MS * 2);
+  assert.equal(wakes, 1, "one wake per window");
+});
+
+test("a page that draws its frames in time wakes nothing: the reveal is the hidden-window one", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const { ready, settle } = readyLatch();
+  let wakes = 0;
+  const wake = frameWake(contents, ipc, { ready, wake: () => (wakes += 1) });
+  ipc.emit(APP_MOUNTED_CHANNEL, { sender: contents });
+  settle(true);
+  await ready;
+  await Promise.resolve();
+  t.mock.timers.tick(FRAME_WAKE_MS * 2);
+  assert.equal(wakes, 0);
+  assert.equal(wake.woken(), false);
+  assert.deepEqual(lastWake(), { mounted: true, woken: false });
+  assert.equal(ipc.listenerCount(APP_MOUNTED_CHANNEL), 0, "the listener goes with the wait");
+});
+
+test("only the window's own page wakes it, and a page that never mounts wakes nothing", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ipc = new EventEmitter();
+  const contents = sender();
+  const { ready } = readyLatch();
+  let wakes = 0;
+  frameWake(contents, ipc, { ready, wake: () => (wakes += 1) });
+  ipc.emit(APP_MOUNTED_CHANNEL, { sender: sender() });
+  ipc.emit(APP_MOUNTED_CHANNEL, {});
+  t.mock.timers.tick(FRAME_WAKE_MS * 10);
+  assert.equal(wakes, 0);
+  assert.deepEqual(lastWake(), { mounted: false, woken: false });
+});
+
+test("a wake stopped (the reveal came, the window went) or a launch cancelled wakes nothing", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const how of ["stop", "cancelled", "ready-false"]) {
+    const ipc = new EventEmitter();
+    const contents = sender();
+    const { ready, settle } = readyLatch();
+    let wakes = 0;
+    const wake = frameWake(contents, ipc, {
+      ready,
+      wake: () => (wakes += 1),
+      cancelled: () => how === "cancelled",
+    });
+    ipc.emit(APP_MOUNTED_CHANNEL, { sender: contents });
+    if (how === "stop") wake.stop();
+    if (how === "ready-false") settle(false);
+    // The waiter's answer reaches the wake as a settled promise does.
+    await Promise.resolve();
+    await Promise.resolve();
+    t.mock.timers.tick(FRAME_WAKE_MS);
+    assert.equal(wakes, 0, how);
+  }
+});
+
+/** A fake of the app's window for the wake: records what is done to it. */
+function wakeableWindow({ visible = false, destroyed = false } = {}) {
+  const win = new EventEmitter();
+  win.calls = [];
+  win.isDestroyed = () => destroyed;
+  win.isVisible = () => visible;
+  win.showInactive = () => {
+    win.calls.push("showInactive");
+    visible = true;
+  };
+  win.maximize = () => win.calls.push("maximize");
+  return win;
+}
+
+test("a woken window is mapped without focus, then maximized, its granted size recorded from there", () => {
+  // maximize() on a hidden window maps it and activates it; mapped
+  // inactive first, it takes no focus from wherever the person is.
+  const win = wakeableWindow();
+  const detach = wakeHidden(win, { revealing: () => win.calls.push("revealing"), restack: () => {} });
+  assert.deepEqual(win.calls, ["revealing", "showInactive", "maximize"]);
+  assert.equal(typeof detach, "function");
+});
+
+test("a woken window that takes the focus puts the splash back on top, until the reveal", () => {
+  // Native Wayland ignores always-on-top: the compositor stacks the
+  // woken window over the splash and, the app being the focused one,
+  // focuses it. Mapping the splash again puts it back on top.
+  const win = wakeableWindow();
+  let restacks = 0;
+  const detach = wakeHidden(win, { restack: () => (restacks += 1) });
+  win.emit("focus");
+  assert.equal(restacks, 1);
+  detach();
+  win.emit("focus");
+  assert.equal(restacks, 1, "after the reveal, focus is the window's own");
+});
+
+test("a window already on screen, or gone, is not woken", () => {
+  for (const options of [{ visible: true }, { destroyed: true }]) {
+    const win = wakeableWindow(options);
+    assert.equal(wakeHidden(win, { restack: () => {} }), null);
+    assert.deepEqual(win.calls, []);
+  }
+});

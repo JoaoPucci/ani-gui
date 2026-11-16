@@ -931,6 +931,7 @@ test("every way the splash cannot reach the screen releases the wait at once, no
 function fakeAppWindow() {
   const win = { calls: [], destroyed: false };
   win.isDestroyed = () => win.destroyed;
+  win.isVisible = () => false;
   win.maximize = () => win.calls.push("maximize");
   win.show = () => win.calls.push("show");
   return win;
@@ -1503,4 +1504,98 @@ test("whatever steps did not land, the reveal's step lights the whole rail first
     ["js:window.splashProgress && window.splashProgress.set(3)"],
   );
   splash.close();
+});
+
+// The splash is made hidden and shown at ready-to-show, its first
+// paint. Under native Wayland without GPU compositing an unmapped
+// window may never paint, so the splash shows SPLASH_PAINT_WAIT_MS after
+// its page has loaded if no paint came first: nothing in its reveal may
+// need a frame from a window that is not on screen.
+const { SPLASH_PAINT_WAIT_MS } = require("./splash.cjs");
+
+test("a splash whose window never paints still shows, once its page has loaded", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = fakeSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.webContents.emit("did-finish-load");
+  const shows = () => win.calls.filter((c) => c === "show").length;
+  t.mock.timers.tick(SPLASH_PAINT_WAIT_MS - 1);
+  assert.equal(shows(), 0, "a paint may still come");
+  t.mock.timers.tick(1);
+  assert.equal(shows(), 1);
+  win.emit("ready-to-show");
+  assert.equal(shows(), 1, "shown once");
+});
+
+test("a splash that paints in time shows at its paint, and the load's bound adds no second show", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = fakeSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.emit("ready-to-show");
+  win.webContents.emit("did-finish-load");
+  t.mock.timers.tick(SPLASH_PAINT_WAIT_MS * 2);
+  assert.equal(win.calls.filter((c) => c === "show").length, 1);
+});
+
+test("a splash put away or closed before the load's bound is not shown by it", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const end of ["suppress", "close"]) {
+    const win = fakeSplash();
+    const splash = splashController({ createWindow: () => win, logError: () => {} });
+    splash.show();
+    win.webContents.emit("did-finish-load");
+    splash[end]();
+    t.mock.timers.tick(SPLASH_PAINT_WAIT_MS);
+    assert.equal(win.calls.filter((c) => c === "show").length, 0, end);
+  }
+});
+
+test("restacking the splash maps it again, on top, while it stands in; not once the boot is past it", () => {
+  const win = fakeSplash();
+  win.isVisible = () => true;
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.emit("ready-to-show");
+  win.calls.length = 0;
+  splash.restack();
+  assert.deepEqual(
+    win.calls.filter((c) => !c.startsWith("js:")),
+    ["hide", "show"],
+  );
+  splash.close();
+  win.calls.length = 0;
+  splash.restack();
+  assert.deepEqual(win.calls, []);
+});
+
+test("a hidden splash is not restacked: it was never shown, or was put away", () => {
+  const win = fakeSplash();
+  win.isVisible = () => false;
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  splash.restack();
+  assert.deepEqual(win.calls, ["load:index.html"]);
+});
+
+test("revealing a window already mapped by a wake shows it maximized, and says it is up directly", () => {
+  // A woken window was mapped behind the splash: no `show` event from
+  // a hidden-to-mapped change is coming for the listeners onMapped
+  // attaches, so the reveal hands over through onUp instead.
+  for (const maximized of [true, false]) {
+    const app = fakeAppWindow();
+    app.isVisible = () => true;
+    app.isMaximized = () => maximized;
+    revealMaximized(app, {
+      onMapped: () => app.calls.push("listening"),
+      onUp: () => app.calls.push("up"),
+      afterShow: () => app.calls.push("splash-closed"),
+    });
+    assert.deepEqual(
+      app.calls,
+      maximized ? ["show", "up", "splash-closed"] : ["maximize", "show", "up", "splash-closed"],
+      `maximized: ${maximized}`,
+    );
+  }
 });
