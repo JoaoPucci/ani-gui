@@ -1,7 +1,8 @@
 // The Linux stop-signal takeover: a signal to the main process alone
 // quits the app the ordinary way; a signal that reached the app's
 // helpers too ends it by that signal, after its storage is written
-// out, instead of letting Chromium abort with a SIGTRAP.
+// out, instead of letting Chromium abort with a SIGTRAP; once the
+// session's end is announced, any of them ends it that way at once.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");

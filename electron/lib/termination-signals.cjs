@@ -36,8 +36,9 @@
 //     storage reach disk (see `persistStorage`). Then every listener
 //     for the three signals is removed, so the signal's default action
 //     applies, and the signal is raised again. Like the abort, this
-//     ends the app without removing its profile's lock; the next
-//     launch takes over a lock whose owner is gone.
+//     can end the app before its profile's lock is removed (a quit
+//     already far along removes it first); the next launch takes over
+//     a lock whose owner is gone.
 //
 // "Reached the helpers" means the GPU process is gone or a zombie when
 // the signal arrives, or within HELPER_WATCH_WINDOW_MS of it (checked

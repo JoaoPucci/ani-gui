@@ -1341,9 +1341,10 @@ function quitUnattended() {
 
 /**
  * Linux: answer SIGTERM, SIGINT and SIGHUP so that a signal sent to
- * every process of the app ends it by that signal, its storage written
- * out, instead of the abort Chromium falls into
- * (lib/termination-signals.cjs).
+ * every process of the app, or any after the session's end is announced
+ * (`sessionEnding()`), ends it by that signal, its storage written out,
+ * instead of the abort Chromium falls into (lib/termination-signals.cjs).
+ * Returns the takeover.
  */
 function takeOverStopSignals() {
   const takeover = installTerminationSignals({
