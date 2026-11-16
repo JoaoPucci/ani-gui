@@ -43,11 +43,11 @@ const SESSION_OVER_LINE = `${GNOME_SESSION.path}: ${GNOME_SESSION.service}.Sessi
  * The watcher: `gdbus monitor` under a shell that ends it as soon as
  * its stdin — the main process's end of a pipe — closes. The pipe
  * closes however the app ends, a SIGKILL included, so the watcher
- * never outlives the app (it would keep the app's systemd scope
+ * does not outlive the app (it would keep the app's systemd scope
  * alive). A stop signal that reaches the shell (Ctrl-C, a closed
  * terminal, a stop of the app's group) ends the gdbus too: the shell
- * started it as a background job, which ignores SIGINT, so it would
- * otherwise outlive the shell. Without gdbus it exits at once.
+ * started it as a background job, which ignores SIGINT and SIGQUIT,
+ * so it would otherwise outlive the shell. Without gdbus it exits at once.
  */
 const SESSION_WATCHER = Object.freeze({
   cmd: "/bin/sh",
@@ -55,12 +55,13 @@ const SESSION_WATCHER = Object.freeze({
     "-c",
     [
       "command -v gdbus >/dev/null 2>&1 || exit 0",
-      "watcher=",
-      `trap '[ -n "$watcher" ] && kill "$watcher" 2>/dev/null; exit 0' INT TERM HUP`,
-      'gdbus monitor --session --dest "$1" --object-path "$2" & watcher=$!',
+      // $! is gdbus, the only background job, from the moment it is
+      // started; empty before.
+      `trap '[ -n "$!" ] && kill "$!" 2>/dev/null; exit 0' INT TERM HUP QUIT`,
+      'gdbus monitor --session --dest "$1" --object-path "$2" &',
       "read -r _",
-      'kill "$watcher" 2>/dev/null',
-    ].join("; "),
+      'kill "$!" 2>/dev/null',
+    ].join("\n"),
     "ani-gui-session-watch",
     GNOME_SESSION.service,
     GNOME_SESSION.path,

@@ -280,7 +280,7 @@ for (const [signal, target] of ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"].flatMa
   [each, "shell"],
 ])) {
   test(`${signal} to the watcher's ${target === "group" ? "whole group" : "shell alone"} ends its gdbus too`, async (t) => {
-    // Ctrl-C or Ctrl-\\ on the terminal, a closed terminal or a stop of
+    // Ctrl-C or Ctrl-\ on the terminal, a closed terminal or a stop of
     // the app's group reaches the watcher's shell and its gdbus
     // together; a signal to the shell alone reaches only the shell. A
     // shell starts its background job with SIGINT and SIGQUIT ignored,
