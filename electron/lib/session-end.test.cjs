@@ -275,6 +275,34 @@ test("the watcher ends its gdbus when its input closes", async (t) => {
   assert.equal(alive(gdbusPid), false);
 });
 
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  test(`${signal} to the app's whole group ends the watcher's gdbus too`, async (t) => {
+    // Ctrl-C on the terminal, a closed terminal or a stop of the app's
+    // group reaches the watcher's shell and its gdbus together. A shell
+    // starts its background job with SIGINT ignored, so the gdbus has
+    // to be ended by the shell, not left to the signal.
+    const dir = fakeGdbusDir('echo "$$"; exec sleep 30');
+    let gdbusPid = 0;
+    t.after(() => {
+      if (gdbusPid && alive(gdbusPid)) process.kill(gdbusPid, "SIGKILL");
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+    const watcher = spawn(SESSION_WATCHER.cmd, SESSION_WATCHER.args, {
+      env: { PATH: `${dir}:/usr/bin:/bin` },
+      stdio: ["pipe", "pipe", "ignore"],
+      detached: true,
+    });
+    const [chunk] = await once(watcher.stdout, "data");
+    gdbusPid = Number(String(chunk).trim());
+    assert.ok(alive(gdbusPid));
+    const exited = once(watcher, "exit");
+    process.kill(-watcher.pid, signal);
+    await exited;
+    for (let i = 0; i < 100 && alive(gdbusPid); i += 1) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(alive(gdbusPid), false);
+  });
+}
+
 test("without gdbus the watcher exits at once", async (t) => {
   const dir = fakeGdbusDir(null);
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
