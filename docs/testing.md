@@ -176,9 +176,10 @@ is written with Node's built-in `node:sqlite` module, so the suite and
 the Electron helper tests (`electron/lib/*.test.cjs`) need Node 22.13 or
 later (CI runs them on Node 22). On Linux, the AppImage launcher's
 tests (`apprun-sandbox.test.cjs`) also need `python3` (3.9 or
-later): each launch they run through AppRun starts under a small
-subreaper written in Python, which stands in for a container PID 1
-that never reaps orphans and counts the children the launch ended
+later): they run AppRun, and its stop handler on its own, under a
+small subreaper written in Python, which stands in for a container
+PID 1 that never reaps orphans, so the suite itself leaves none
+behind there. For each launch it counts the children the launch ended
 without waiting for. The launch's binary there is a stub that leaves
 no process behind, so the count covers AppRun's own children, not
 Chromium's helper processes. The row's key prefix,
