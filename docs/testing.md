@@ -285,8 +285,10 @@ launcher has exited and before reaping it, and kills the whole group
 if the spec's end of its stdin closes first, as it does when the test
 worker exits. The app itself is the launcher's child, in a session of
 its own outside that group (`electron/lib/linux-launcher.cjs`): a
-killed launcher leaves it a SIGTERM, and an app that does not quit on
-it outlives the test.
+killed launcher leaves it a SIGTERM where `setpriv` supports
+`--pdeathsig`, and an app that does not quit on it outlives the test.
+So do the launcher's two output relays (`cat`, each in a session of its
+own) until the app and its helpers have closed their pipes.
 
 `electron/lib/linux-launcher.test.cjs` runs the launcher with a
 stand-in for the app's binary (`electron/lib/fixtures/app-stub.py`),

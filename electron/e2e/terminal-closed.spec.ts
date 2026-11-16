@@ -3,12 +3,14 @@
  * from has closed, or after the reader of its output has gone.
  *
  * The main process writes its log to stdout and stderr: its own lines
- * and the backend's, relayed as [backend] lines. Once the terminal
- * closes, every one of those writes fails (EIO); once a pipe's reader
- * exits, the same (EPIPE). Unhandled, the first failure was an uncaught
- * exception in the main process, which opened Electron's "A JavaScript
- * error occurred" dialog in the middle of quitting: the window was
- * gone, the process never ended, and the profile stayed locked
+ * and the backend's, relayed as [backend] lines. Once a pipe's reader
+ * exits, every one of those writes fails (EPIPE); started from a
+ * terminal, the app's output goes through the launcher's relay, which
+ * ends with the terminal, so a closed terminal comes to the same.
+ * Unhandled, the first failure was an uncaught exception in the main
+ * process, which opened Electron's "A JavaScript error occurred"
+ * dialog in the middle of quitting: the window was gone, the process
+ * never ended, and the profile stayed locked
  * (lib/stdio-guard.cjs).
  *
  * Both launch the packaged launcher (`ani-gui`). On a pipe it becomes
@@ -25,7 +27,8 @@
  * outlives the wait, and what it leaves in its group is killed as its
  * exit is reported (spawnPackagedApp); on the terminal, the launcher is
  * the fixture's child, and the fixture does the same for the launcher,
- * whose death the app is told of with a SIGTERM.
+ * whose death the app is told of with a SIGTERM where setpriv supports
+ * --pdeathsig.
  */
 import { expect, test } from "./policy-guard";
 import { execFileSync, type ChildProcess } from "node:child_process";
@@ -156,8 +159,9 @@ test("the app quits after the terminal it was started from has closed", async ()
     await until(() => output, BOOTED, 60_000);
     expect(locked()).toBe(true);
 
-    // Closing the terminal window: the app gets its SIGHUP, which asks
-    // it to quit, and every write it makes to the terminal fails.
+    // Closing the terminal window: the launcher gets its SIGHUP and
+    // hands the app a SIGTERM, which asks it to quit. The relay ends
+    // with the terminal, and the app's writes fail once it has.
     terminal.stdin!.write("hangup\n");
     // The fixture's last complete line, once it is the app's ending
     // rather than its pid.
@@ -180,8 +184,10 @@ test("the app quits after the terminal it was started from has closed", async ()
   } finally {
     try {
       if (terminal) {
-        // Kills the app's group if it is still running, then ends the
-        // fixture, which kills what is left as its stdin closes.
+        // Kills the launcher's group if it is still running (the app
+        // gets its SIGTERM where setpriv supports --pdeathsig), then
+        // ends the fixture, which kills what is left in that group as
+        // its stdin closes.
         if (terminal.exitCode === null) terminal.stdin!.write("kill\n");
         terminal.stdin!.end();
         expect.soft(await ended(terminal, 10_000), "the terminal fixture did not end").not.toBeNull();
