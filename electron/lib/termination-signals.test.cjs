@@ -403,15 +403,32 @@ test("a helper table that cannot be read leaves the ordinary quit", () => {
 test("once the session is ending, a stop signal ends the app by it at once", () => {
   // A logout's stop of the app's scope can overtake the quit its
   // announcement started; by then the GPU process may already be gone
-  // from the metrics, and nothing is left to look at. The signal is the
-  // session's end itself.
-  const { state, options, send } = rig();
+  // from the metrics, and nothing is left to look at. So after the
+  // announcement no evidence is asked for, whoever sent the signal.
+  for (const signal of TERMINATION_SIGNALS) {
+    const { state, options, send } = rig();
+    const takeover = installTerminationSignals(options);
+    takeover.sessionEnding();
+    send(signal);
+    assert.deepEqual(state.ended, [{ signal, reason: "the session is ending" }]);
+    assert.deepEqual(state.raised, [signal]);
+    assert.deepEqual(state.quits, []);
+  }
+});
+
+test("a signal before the announcement quits; one after it ends the app, and the first's watch stops", () => {
+  const { state, options, send, advance } = rig();
   const takeover = installTerminationSignals(options);
-  takeover.sessionEnding();
   send("SIGTERM");
-  assert.deepEqual(state.ended, [{ signal: "SIGTERM", reason: "the session is ending" }]);
-  assert.deepEqual(state.raised, ["SIGTERM"]);
-  assert.deepEqual(state.quits, []);
+  advance(20);
+  takeover.sessionEnding();
+  send("SIGHUP");
+  assert.deepEqual(state.quits, ["SIGTERM"]);
+  assert.deepEqual(state.ended, [{ signal: "SIGHUP", reason: "the session is ending" }]);
+  assert.equal(state.timers.size, 0);
+  state.stats.delete(200);
+  advance(50);
+  assert.deepEqual(state.raised, ["SIGHUP"]);
 });
 
 test("before the session's end is announced, a stop signal alone still quits", () => {
@@ -419,6 +436,7 @@ test("before the session's end is announced, a stop signal alone still quits", (
   installTerminationSignals(options);
   send("SIGTERM");
   advance(HELPER_WATCH_WINDOW_MS + 10);
+  assert.deepEqual(state.quits, ["SIGTERM"]);
   assert.deepEqual(state.raised, []);
 });
 
