@@ -480,7 +480,11 @@ test("a woken window is mapped without focus, then maximized, its granted size r
   // maximize() on a hidden window maps it and activates it; mapped
   // inactive first, it takes no focus from wherever the person is.
   const win = wakeableWindow();
-  const detach = wakeHidden(win, { revealing: () => win.calls.push("revealing"), restack: () => {} });
+  const detach = wakeHidden(win, {
+    revealing: () => win.calls.push("revealing"),
+    restack: () => {},
+    platform: "linux",
+  });
   assert.deepEqual(win.calls, ["revealing", "showInactive", "maximize"]);
   assert.equal(typeof detach, "function");
 });
@@ -504,5 +508,20 @@ test("a window already on screen, or gone, is not woken", () => {
     const win = wakeableWindow(options);
     assert.equal(wakeHidden(win, { restack: () => {} }), null);
     assert.deepEqual(win.calls, []);
+  }
+});
+
+test("only Linux maximizes the woken window: elsewhere maximizing a mapped window activates it, so the reveal does it", () => {
+  // On Windows maximize() of a visible window is ShowWindow(SW_MAXIMIZE),
+  // which activates it: the wake would take the focus. There the reveal
+  // maximizes it (revealMaximized's up path), as it shows it anyway.
+  for (const [platform, expected] of [
+    ["linux", ["showInactive", "maximize"]],
+    ["win32", ["showInactive"]],
+    ["darwin", ["showInactive"]],
+  ]) {
+    const win = wakeableWindow();
+    wakeHidden(win, { restack: () => {}, platform });
+    assert.deepEqual(win.calls, expected, platform);
   }
 });

@@ -105,13 +105,25 @@ test('without GPU acceleration the window still opens: the boot completes and th
 	}
 });
 
+/** Whether Chromium composites on the GPU in this run: only then does
+ *  a hidden window get its frames on Wayland. X11 keeps them coming
+ *  either way (CI's Xvfb has no GPU). */
+async function hiddenWindowsGetFrames(app: ElectronApplication): Promise<boolean> {
+	if (expectedPlatform(process.env) === 'x11') return true;
+	const status = await app.evaluate(({ app: electronApp }) => electronApp.getGPUFeatureStatus());
+	return String(status.gpu_compositing).startsWith('enabled');
+}
+
 test('where hidden windows get their frames the window is revealed from hidden, never woken', async () => {
 	const { tmp, env } = profileEnv();
 	const app = await launchPackagedApp(env, { profile: tmp });
 	try {
 		const r = await bootDone(app);
 		expect(r.ready).toEqual({ rendered: true, gaveUp: false, beforeReveal: true });
-		expect(r.wake).toEqual({ mounted: true, woken: false });
+		expect(r.wake.mounted).toBe(true);
+		// A machine whose GPU Chromium cannot use (a VM) is the defect's own
+		// condition even without --disable-gpu: there the wake is right.
+		if (await hiddenWindowsGetFrames(app)) expect(r.wake.woken).toBe(false);
 		expect(r.windows).toEqual([{ splash: false, visible: true, maximized: true }]);
 	} finally {
 		await stopApp(app);

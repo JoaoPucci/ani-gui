@@ -1599,3 +1599,21 @@ test("revealing a window already mapped by a wake shows it maximized, and says i
     );
   }
 });
+
+test("a restack waits for the splash to have the focus back before it restacks again", () => {
+  // hide() and show() land asynchronously on Wayland: a focus the woken
+  // window takes again meanwhile must not start another hide and show,
+  // or the two windows could trade the focus until the reveal.
+  const win = fakeSplash();
+  win.isVisible = () => true;
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.emit("ready-to-show");
+  const restacks = () => win.calls.filter((c) => c === "hide").length;
+  splash.restack();
+  splash.restack();
+  assert.equal(restacks(), 1, "one restack in flight");
+  win.emit("focus");
+  splash.restack();
+  assert.equal(restacks(), 2, "the splash had the focus back");
+});
