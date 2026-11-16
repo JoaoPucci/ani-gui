@@ -98,13 +98,16 @@ test("isSessionOver holds for SessionOver's line and its arguments, and for no n
   fc.assert(
     fc.property(space, tail, space, (lead, rest, trail) => isSessionOver(`${lead}${prefix}${rest}${trail}`)),
   );
-  // Any one character of the prefix changed or dropped is another line.
+  // Any one character of the prefix changed or dropped is another line,
+  // unless what follows puts the prefix back (a dropped "(" followed by
+  // one), which is SessionOver's line again.
   fc.assert(
     fc.property(fc.nat(prefix.length - 1), fc.constantFrom("", "x", "_", "."), tail, (at, put, rest) => {
-      const near = prefix.slice(0, at) + put + prefix.slice(at + 1);
-      fc.pre(near !== prefix);
-      return !isSessionOver(`${near}${rest}`);
+      const line = prefix.slice(0, at) + put + prefix.slice(at + 1) + rest;
+      fc.pre(!line.startsWith(prefix));
+      return !isSessionOver(line);
     }),
+    { numRuns: 2000 },
   );
 });
 
