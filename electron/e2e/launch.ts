@@ -33,7 +33,7 @@ import {
 	type ElectronApplication,
 	type Page
 } from '@playwright/test';
-import type { ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess, type StdioOptions } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -192,6 +192,53 @@ export async function launchPackagedApp(
 	refused.set(app, proxy.seen);
 	guardPolicy(app);
 	return app;
+}
+
+/** Launch the packaged app as a plain child process, not through
+ *  Playwright's driver, for a spec that has to own what the app's
+ *  stdout and stderr lead to (terminal-closed.spec.ts): the driver
+ *  keeps both as pipes it reads itself. Otherwise the same launch as
+ *  launchPackagedApp — the display refusal, testLaunchSwitches, the
+ *  refusing proxy and a test run's environment — and `profile` is
+ *  removed the same way once the child has exited.
+ *
+ *  `via` is a program to start the app under, which gets the app's
+ *  command line as its arguments (a terminal of its own:
+ *  e2e/fixtures/terminal/on-a-terminal.py). The child — the app, or
+ *  that program — leads a process group of its own, as it does under
+ *  Playwright's driver (lib/own-group.cjs). */
+export async function spawnPackagedApp(
+	env: NodeJS.ProcessEnv,
+	{ stdio, via = [], profile }: { stdio: StdioOptions; via?: string[]; profile?: string }
+): Promise<ChildProcess> {
+	const refusal = launchRefusal(env);
+	if (refusal) {
+		if (profile) removeScratch(profile);
+		throw new Error(refusal);
+	}
+	const proxy = await refusingProxy();
+	const command = [...via, packagedBinary, ...testLaunchSwitches];
+	let child: ChildProcess;
+	try {
+		child = spawn(command[0], command.slice(1), {
+			env: { ...env, ...proxyEnv(proxy.origin), ...testRunEnv },
+			stdio,
+			detached: true
+		});
+	} catch (err) {
+		proxy.close();
+		if (profile) removeScratch(profile);
+		throw err;
+	}
+	child.once('exit', () => {
+		proxy.close();
+		if (profile) removeAfterExit(profile);
+	});
+	child.once('error', () => {
+		proxy.close();
+		if (profile) removeScratch(profile);
+	});
+	return child;
 }
 
 /** Every connection the launched app tried to open to a host beyond

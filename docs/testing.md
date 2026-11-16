@@ -121,6 +121,11 @@ The suite under `electron/e2e/` drives the packaged app
 (`electron/dist/linux-unpacked/`). Every spec launches it through
 `electron/e2e/launch.ts`, which mutes it and refuses to open it on a
 display someone may be looking at (`electron/lib/e2e-display.cjs`).
+A spec that has to own what the app's stdout and stderr lead to — a
+pipe it closes, a terminal it hangs up (`terminal-closed.spec.ts`) —
+launches it with `spawnPackagedApp` from the same helper, as a plain
+child process rather than through Playwright's driver, with the same
+switches, display check and environment.
 
 The same helper keeps the backend off the network. A spec can set its
 stubs only once the app is up, by which time the first page has
@@ -231,7 +236,7 @@ picked the desktop's Wayland compositor — throws before any window
 opens, saying how to run the suite.
 
 A spec stops the app it launched through `stopApp` in
-`electron/e2e/launch.ts`, and nothing else but the one exception
+`electron/e2e/launch.ts`, and nothing else but the exceptions
 below. Playwright starts the app
 in a process group of its own; `electron/lib/own-group.cjs` sends
 SIGTERM to that group, then SIGKILL to the same group if the app is
@@ -255,6 +260,16 @@ only. The launch helper accepts Xvfb only on a GitHub Actions runner
 (`GITHUB_ACTIONS=true`), and refuses any Wayland session there.
 `smoke.spec.ts` checks that the app landed on Wayland in the headless
 session and on X11 in CI.
+
+`terminal-closed.spec.ts` stops its apps itself, under the same
+rules. The app it starts on a pipe is its own child, leading a group of
+its own, and is stopped with `own-group.cjs`'s `stopOwnGroup` directly,
+since it is not a Playwright launch. The app it starts on a terminal is
+the child of the terminal fixture
+(`electron/e2e/fixtures/terminal/on-a-terminal.py`, which needs
+`python3`): the fixture signals the app's group only before it has
+reaped the app, and kills that group if the spec's end of its stdin
+closes first.
 
 One process is not launched by the helper: the app the splash's Restart
 starts again (`splash-stuck.spec.ts`). It is outside the test's process
