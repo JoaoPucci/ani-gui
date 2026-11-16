@@ -219,11 +219,14 @@ const refused = new WeakMap<ElectronApplication, string[]>();
  *  must still tell an exited app from a running one then. */
 const launched = new WeakMap<ElectronApplication, { child: ChildProcess; exe: string }>();
 
-/** Stop an app this suite launched, and nothing else: SIGTERM to the
- *  process group Playwright created for it, SIGKILL to the same group if
- *  it is still there after `termMs`, and only while that group is
- *  provably the app's — the main process unreaped, leading its group,
- *  running the binary it was launched from (lib/own-group.cjs). Then
+/** Stop an app this suite launched, and nothing else: SIGTERM to its
+ *  main process alone, which quits it as a user's kill would, SIGKILL to
+ *  the process group Playwright created for it if it is still there
+ *  after `termMs`, and only while that group is provably the app's —
+ *  the main process unreaped, leading its group, running the binary it
+ *  was launched from (lib/own-group.cjs). An app that ends by a signal
+ *  the stop did not send crashed as it quit, or, before the stop,
+ *  crashed or was killed from outside it, and the stop throws. Then
  *  Playwright's close, which settles once the process has gone,
  *  whatever the stop did. An app that has already exited is closed without a signal.
  *
