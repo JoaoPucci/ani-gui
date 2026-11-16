@@ -6,7 +6,7 @@
  * window will show has been drawn. Outside the app (browser-only dev,
  * tests) there is no bridge and it does nothing.
  */
-type ReadyWindow = { aniGui?: { appReady?: () => void } } | undefined;
+type ReadyWindow = { aniGui?: { appMounted?: () => void; appReady?: () => void } } | undefined;
 
 export function signalAppReady(
 	win: ReadyWindow = globalThis.window,
