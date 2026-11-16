@@ -12,7 +12,7 @@
 // stand down, and the embedded player starts again only when the
 // viewer comes back to it: plays it, picks an episode, or reloads.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { flushSync, mount, unmount } from 'svelte';
 
@@ -102,11 +102,28 @@ vi.mock('hls.js', () => {
 		constructor() {
 			FakeHls.instances.push(this);
 		}
+		media: HTMLMediaElement | null = null;
 		loadSource() {
 			this.loadSourceCalls += 1;
 			this.manifestLost = false;
+			// As hls.js 1.6.19's TimelineController does as a manifest
+			// starts loading: every text track on the video loses its cues,
+			// the <track> elements' included. (Chromium lists those in
+			// `textTracks`; happy-dom lists only addTextTrack's. A disabled
+			// track, which hls.js sets hidden to clear, is not modelled:
+			// happy-dom's cues getter ignores a hidden mode.)
+			const media = this.media;
+			const tracks = new Set([
+				...Array.from(media?.textTracks ?? []),
+				...Array.from(media?.querySelectorAll('track') ?? [], (el) => el.track)
+			]);
+			for (const track of tracks) {
+				for (const cue of Array.from(track.cues ?? [])) track.removeCue(cue);
+			}
 		}
-		attachMedia() {}
+		attachMedia(media: HTMLMediaElement) {
+			this.media = media;
+		}
 		on(event: string, handler: Handler) {
 			(this.handlers[event] ??= []).push(handler);
 		}
@@ -137,6 +154,7 @@ import Hls from 'hls.js';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { playerVideo, playerVideoInSlot } from './player-video';
+import { installBrowserTrackSelection } from './browser-track-selection';
 
 import type {
 	AiringStatus,
@@ -145,6 +163,7 @@ import type {
 	Config,
 	KitsuAnimeRef,
 	KitsuEpisode,
+	SessionSubtitle,
 	SkipInterval
 } from '../../src/lib/api';
 import { availabilityAnswer, wire } from '../answers';
@@ -467,6 +486,38 @@ describe('play route — an episode handed to another player stays stopped here'
 		expect(hls.deliverManifest(LEVELS)).toBe(true);
 		await settle();
 		expect(hls.startLoadCalls).toBe(1);
+	});
+
+	// The browser loads a <track>'s file once: a sidecar track the
+	// reload cleared would show nothing for the rest of the play.
+	it('coming back before the stream has its levels keeps the sidecar track its cues', async () => {
+		// Each <track> keeps one TextTrack, as a browser's does.
+		const browser = installBrowserTrackSelection();
+		onTestFinished(() => browser.uninstall());
+		const hls = await mountPlayingHls(() =>
+			server.use(
+				http.get(`${API_BASE}/s/:session/subtitles`, ({ params }) =>
+					HttpResponse.json<SessionSubtitle[]>([
+						{
+							lang: 'en',
+							label: 'English',
+							default: true,
+							url: `${API_BASE}/s/${String(params.session)}/sub/0.vtt`
+						}
+					])
+				)
+			)
+		);
+		await until(() => playerVideo().querySelector('track') !== null, 'the sidecar track');
+		const track = (playerVideo().querySelector('track') as HTMLTrackElement).track;
+		expect(track.mode).toBe('showing');
+		// Its file is in.
+		track.addCue(new VTTCue(0, 2, 'English at 0'));
+		await handToExternal();
+		playerVideo().dispatchEvent(new Event('play'));
+		await settle();
+		expect(hls.loadSourceCalls).toBe(2);
+		expect(Array.from(track.cues ?? [], (c) => (c as VTTCue).text)).toEqual(['English at 0']);
 	});
 
 	it('Next while handed off replaces the stream without starting the old one again', async () => {
