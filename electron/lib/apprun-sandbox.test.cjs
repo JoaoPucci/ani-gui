@@ -175,6 +175,62 @@ function underSubreaper(img, forward, argv, linger = 2) {
   return ["-I", "-c", SUBREAPER, path.join(img.app, "unreaped"), forward ? "1" : "0", String(linger), ...argv];
 }
 
+// A run that dies by a signal that dumps core (Chromium ends on
+// SIGTRAP when it fails; SIGABRT, SIGSEGV and the rest are crashes) is
+// passed on by the subreaper ending itself by that same signal. Were
+// the subreaper dumpable then, the kernel would dump its core in turn,
+// and a host that pipes cores to a crash reporter (Ubuntu's apport)
+// would report python3 itself as crashed, on the desktop of whoever ran
+// the suite. A core limit of 0 does not stop that: the pipe is started
+// whatever the limit, and apport writes its report anyway. A process
+// that is not dumpable is never dumped, so the subreaper has to stop
+// being dumpable before it ends itself.
+//
+// No dumpable process dies here, before the fix or after it. Each run
+// makes itself non-dumpable before it signals itself, so it leaves no
+// core. The subreaper runs with os.kill replaced for its own pid: in
+// place of ending itself, it writes down the signal and whether it is
+// dumpable at that moment, and exits.
+const CORE_SIGNALS = ["SIGQUIT", "SIGILL", "SIGTRAP", "SIGABRT", "SIGBUS", "SIGFPE", "SIGSEGV", "SIGXCPU", "SIGXFSZ", "SIGSYS"];
+for (const sig of CORE_SIGNALS) {
+  test(`a run that dies by ${sig} is passed on by a subreaper that cannot dump core`, () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "apprun-sandbox-"));
+    try {
+      const ending = path.join(root, "ending");
+      const shim = [
+        "import ctypes, os, sys",
+        "real_kill = os.kill",
+        "def kill(pid, sig):",
+        "    if pid != os.getpid():",
+        "        return real_kill(pid, sig)",
+        "    dumpable = ctypes.CDLL(None).prctl(3, 0, 0, 0, 0)  # PR_GET_DUMPABLE",
+        `    with open(${JSON.stringify(ending)}, "w") as f:`,
+        '        f.write(f"{int(sig)} {dumpable}")',
+        "    os._exit(0)",
+        "os.kill = kill",
+        `exec(compile(${JSON.stringify(SUBREAPER)}, "<subreaper>", "exec"))`,
+      ].join("\n");
+      const run = [
+        "import ctypes, os, signal",
+        "ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE: this run leaves no core",
+        `signal.signal(signal.${sig}, signal.SIG_DFL)`,
+        `os.kill(os.getpid(), signal.${sig})`,
+      ].join("\n");
+      const r = spawnSync("python3", ["-I", "-c", shim, path.join(root, "unreaped"), "0", "0", "python3", "-I", "-c", run], {
+        encoding: "utf8",
+        timeout: 10000,
+      });
+      assert.equal(r.status, 0, `the subreaper ended with status ${r.status}, signal ${r.signal}: ${r.stderr}`);
+      assert.ok(fs.existsSync(ending), `the subreaper did not signal itself: ${r.stderr}`);
+      const [signalled, dumpable] = fs.readFileSync(ending, "utf8").split(" ").map(Number);
+      assert.equal(signalled, os.constants.signals[sig], "it ends by the run's own signal");
+      assert.equal(dumpable, 0, "it is still dumpable as it ends itself, so its own core is dumped");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
 /** SIGKILL to the group a test started, which may already be gone. */
 function killOwnGroup(group) {
   try {
