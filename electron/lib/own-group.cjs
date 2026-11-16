@@ -15,12 +15,12 @@
 // a user's kill of the app does, and leaves its helpers for it to bring
 // down. SIGTERM to the whole group kills Chromium's zygote and GPU
 // process in the same instant as it reaches the main process. The app
-// then ends by that SIGTERM rather than quitting, its profile lock left
-// behind (lib/termination-signals.cjs); left to Chromium, the main
-// process would find its GPU process gone, fail to start another
-// through the dead zygote, and abort as it quits ("GPU process isn't
-// usable. Goodbye.", a SIGTRAP the host's crash reporter is called
-// for). Only SIGKILL, which nothing handles and which leaves no core,
+// then usually ends by that SIGTERM rather than quitting, its profile
+// lock left behind (lib/termination-signals.cjs); when Chromium gets
+// there first, the main process finds its GPU process gone, fails to
+// start another through the dead zygote, and aborts as it quits ("GPU
+// process isn't usable. Goodbye.", a SIGTRAP the host's crash reporter
+// is called for). Only SIGKILL, which nothing handles and which leaves no core,
 // goes to the group.
 //
 // A group id is only worth signalling while it is provably the app's:
