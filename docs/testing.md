@@ -238,9 +238,10 @@ SIGTERM to the app's main process alone, then SIGKILL to its group if
 the app is still there, and only while the group is provably the app's:
 its main process not yet reaped, leading the group, running the binary
 it was launched from. SIGTERM to the whole group would kill Chromium's
-helpers in the same instant as the main process, which then aborts as
-it quits, missing its GPU process (a SIGTRAP the host's crash reporter
-is called for). An app that ends by a signal the stop did not send
+helpers in the same instant as the main process, and the app would end
+by that signal instead of quitting (`electron/lib/termination-signals.cjs`,
+which keeps Chromium from aborting as it quits without its GPU process,
+a SIGTRAP the host's crash reporter is called for). An app that ends by a signal the stop did not send
 crashed as it quit, or, before the stop, crashed or was killed from
 outside it, and `stopApp` throws, failing the spec; the cold-launch retry's cleanup (`stopDeadApp`) discards that
 error, as it does any other from stopping the launch it gives up on. What the app leaves in its group as it exits is killed in the
