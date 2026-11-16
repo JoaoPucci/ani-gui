@@ -40,15 +40,20 @@ const FALLBACK_LINE = /^ani-gui: Chromium's sandbox cannot start on this system\
 /** The stub that stands where `$APPDIR/ani-gui` goes. */
 function stubFor(probe) {
   const answer = `exec "${process.execPath}" -e 'require(process.argv[1]).answerSandboxProbe(process.argv, process.stdout, process.exit)' "${path.join(__dirname, "sandbox-probe.cjs")}" "$@"`;
+  // Chromium's abort, by a process that is not dumpable: SIGTRAP dumps
+  // core, and a host that pipes cores to a crash reporter (Ubuntu's
+  // apport) is handed one whatever the core limit. Not dumpable, the
+  // probe leaves none, and AppRun sees the same death by SIGTRAP.
+  const abort = `exec python3 -I -c 'import ctypes, os, signal; ctypes.CDLL(None).prctl(4, 0, 0, 0, 0); os.kill(os.getpid(), signal.SIGTRAP)'`;
   const outcome = {
     answers: answer,
-    aborts: 'kill -TRAP "$$"',
+    aborts: abort,
     "exits 1": "exit 1",
     "exits 0 unanswered": "exit 0",
     hangs: 'echo "$$" > "$here/probe-pid"; exec sleep 600',
     "answers, then exits 1": `${answer.replace(/^exec /, "")}; exit 1`,
     "answers, then hangs": `${answer.replace(/^exec /, "")}; exec sleep 600`,
-    "records its core limit, then aborts": 'ulimit -c > "$here/probe-core-limit"; kill -TRAP "$$"',
+    "records its core limit, then aborts": `ulimit -c > "$here/probe-core-limit"; ${abort}`,
   }[probe];
   return [
     "#!/bin/bash",
