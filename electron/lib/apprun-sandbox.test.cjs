@@ -40,15 +40,21 @@ const FALLBACK_LINE = /^ani-gui: Chromium's sandbox cannot start on this system\
 /** The stub that stands where `$APPDIR/ani-gui` goes. */
 function stubFor(probe) {
   const answer = `exec "${process.execPath}" -e 'require(process.argv[1]).answerSandboxProbe(process.argv, process.stdout, process.exit)' "${path.join(__dirname, "sandbox-probe.cjs")}" "$@"`;
+  // Chromium's abort, by a process that is not dumpable: SIGTRAP dumps
+  // core, and a host that pipes cores to a crash reporter (Ubuntu's
+  // apport) is handed one whatever the core limit. Not dumpable, the
+  // probe leaves none, and AppRun sees the same death by SIGTRAP. That
+  // the probe runs with core dumps off is the core-limit case's to show.
+  const abort = `exec python3 -I -c 'import ctypes, os, signal; ctypes.CDLL(None).prctl(4, 0, 0, 0, 0); signal.signal(signal.SIGTRAP, signal.SIG_DFL); os.kill(os.getpid(), signal.SIGTRAP)'`;
   const outcome = {
     answers: answer,
-    aborts: 'kill -TRAP "$$"',
+    aborts: abort,
     "exits 1": "exit 1",
     "exits 0 unanswered": "exit 0",
     hangs: 'echo "$$" > "$here/probe-pid"; exec sleep 600',
     "answers, then exits 1": `${answer.replace(/^exec /, "")}; exit 1`,
     "answers, then hangs": `${answer.replace(/^exec /, "")}; exec sleep 600`,
-    "records its core limit, then aborts": 'ulimit -c > "$here/probe-core-limit"; kill -TRAP "$$"',
+    "records its core limit, then aborts": `ulimit -c > "$here/probe-core-limit"; ${abort}`,
   }[probe];
   return [
     "#!/bin/bash",
@@ -104,7 +110,6 @@ function outcome(img, run, elapsedMs, group) {
     launched: launched === null ? null : launched.split("\0").slice(0, -1),
     probePid: readOr("probe-pid", null),
     probeCoreLimit: readOr("probe-core-limit", null),
-    cores: fs.readdirSync(img.root).filter((f) => f.startsWith("core")),
     tmpLeft: fs.readdirSync(img.tmp),
     unreaped: readOr("unreaped", null),
   };
@@ -125,7 +130,9 @@ function outcome(img, run, elapsedMs, group) {
 // the signal dispositions it would have without the subreaper. Once the
 // run has ended the subreaper marks it in `<report>.ended`, and goes on
 // reaping for up to `linger` seconds while orphans remain; it then ends
-// as the run did, by the same signal or with the same status.
+// as the run did, by the same signal or with the same status. It ends
+// by a signal only once it is no longer dumpable, so a signal that
+// dumps core leaves no core of its own.
 const SUBREAPER = `
 import ctypes, os, signal, sys, time
 if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
@@ -165,6 +172,9 @@ while True:
 with open(report, "w") as f:
     f.write(str(unreaped))
 if os.WIFSIGNALED(status):
+    # Not dumpable, so a signal that dumps core ends it without a core
+    # for the host's crash reporter (see the core-dump cases below).
+    ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE
     signal.signal(os.WTERMSIG(status), signal.SIG_DFL)
     os.kill(os.getpid(), os.WTERMSIG(status))
 sys.exit(os.waitstatus_to_exitcode(status))
@@ -173,6 +183,62 @@ sys.exit(os.waitstatus_to_exitcode(status))
 /** python3's arguments to run `argv` under the subreaper above. */
 function underSubreaper(img, forward, argv, linger = 2) {
   return ["-I", "-c", SUBREAPER, path.join(img.app, "unreaped"), forward ? "1" : "0", String(linger), ...argv];
+}
+
+// A run that dies by a signal that dumps core (Chromium ends on
+// SIGTRAP when it fails; SIGABRT, SIGSEGV and the rest are crashes) is
+// passed on by the subreaper ending itself by that same signal. Were
+// the subreaper dumpable then, the kernel would dump its core in turn,
+// and a host that pipes cores to a crash reporter (Ubuntu's apport)
+// would report python3 itself as crashed, on the desktop of whoever ran
+// the suite. A core limit of 0 does not stop that: the pipe is started
+// whatever the limit, and apport writes its report anyway. A process
+// that is not dumpable is never dumped, so the subreaper has to stop
+// being dumpable before it ends itself.
+//
+// No dumpable process dies here, before the fix or after it. Each run
+// makes itself non-dumpable before it signals itself, so it leaves no
+// core. The subreaper runs with os.kill replaced for its own pid: in
+// place of ending itself, it writes down the signal and whether it is
+// dumpable at that moment, and exits.
+const CORE_SIGNALS = ["SIGQUIT", "SIGILL", "SIGTRAP", "SIGABRT", "SIGBUS", "SIGFPE", "SIGSEGV", "SIGXCPU", "SIGXFSZ", "SIGSYS"];
+for (const sig of CORE_SIGNALS) {
+  test(`a run that dies by ${sig} is passed on by a subreaper that cannot dump core`, () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "apprun-sandbox-"));
+    try {
+      const ending = path.join(root, "ending");
+      const shim = [
+        "import ctypes, os, sys",
+        "real_kill = os.kill",
+        "def kill(pid, sig):",
+        "    if pid != os.getpid():",
+        "        return real_kill(pid, sig)",
+        "    dumpable = ctypes.CDLL(None).prctl(3, 0, 0, 0, 0)  # PR_GET_DUMPABLE",
+        `    with open(${JSON.stringify(ending)}, "w") as f:`,
+        '        f.write(f"{int(sig)} {dumpable}")',
+        "    os._exit(0)",
+        "os.kill = kill",
+        `exec(compile(${JSON.stringify(SUBREAPER)}, "<subreaper>", "exec"))`,
+      ].join("\n");
+      const run = [
+        "import ctypes, os, signal",
+        "ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE: this run leaves no core",
+        `signal.signal(signal.${sig}, signal.SIG_DFL)`,
+        `os.kill(os.getpid(), signal.${sig})`,
+      ].join("\n");
+      const r = spawnSync("python3", ["-I", "-c", shim, path.join(root, "unreaped"), "0", "0", "python3", "-I", "-c", run], {
+        encoding: "utf8",
+        timeout: 10000,
+      });
+      assert.equal(r.status, 0, `the subreaper ended with status ${r.status}, signal ${r.signal}: ${r.stderr}`);
+      assert.ok(fs.existsSync(ending), `the subreaper did not signal itself: ${r.stderr}`);
+      const [signalled, dumpable] = fs.readFileSync(ending, "utf8").split(" ").map(Number);
+      assert.equal(signalled, os.constants.signals[sig], "it ends by the run's own signal");
+      assert.equal(dumpable, 0, "it is still dumpable as it ends itself, so its own core is dumped");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
 }
 
 /** SIGKILL to the group a test started, which may already be gone. */
@@ -341,7 +407,6 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
       assert.equal(r.run.status, 0, r.run.stderr);
       assert.deepEqual(r.launched, ["--no-sandbox", ...USER_ARGS]);
       assert.match(r.run.stderr, FALLBACK_LINE, "one line, and nothing of the abort");
-      assert.deepEqual(r.cores, [], "no core dump");
       assertNothingLeft(r);
     } finally {
       cleanup(r);
