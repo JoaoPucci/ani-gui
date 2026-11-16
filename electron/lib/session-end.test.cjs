@@ -275,12 +275,16 @@ test("the watcher ends its gdbus when its input closes", async (t) => {
   assert.equal(alive(gdbusPid), false);
 });
 
-for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
-  test(`${signal} to the app's whole group ends the watcher's gdbus too`, async (t) => {
-    // Ctrl-C on the terminal, a closed terminal or a stop of the app's
-    // group reaches the watcher's shell and its gdbus together. A shell
-    // starts its background job with SIGINT ignored, so the gdbus has
-    // to be ended by the shell, not left to the signal.
+for (const [signal, target] of ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"].flatMap((each) => [
+  [each, "group"],
+  [each, "shell"],
+])) {
+  test(`${signal} to the watcher's ${target === "group" ? "whole group" : "shell alone"} ends its gdbus too`, async (t) => {
+    // Ctrl-C or Ctrl-\\ on the terminal, a closed terminal or a stop of
+    // the app's group reaches the watcher's shell and its gdbus
+    // together; a signal to the shell alone reaches only the shell. A
+    // shell starts its background job with SIGINT and SIGQUIT ignored,
+    // so the gdbus has to be ended by the shell, not left to the signal.
     const dir = fakeGdbusDir('echo "$$"; exec sleep 30');
     let gdbusPid = 0;
     t.after(() => {
@@ -296,7 +300,7 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     gdbusPid = Number(String(chunk).trim());
     assert.ok(alive(gdbusPid));
     const exited = once(watcher, "exit");
-    process.kill(-watcher.pid, signal);
+    process.kill(target === "group" ? -watcher.pid : watcher.pid, signal);
     await exited;
     for (let i = 0; i < 100 && alive(gdbusPid); i += 1) await new Promise((r) => setTimeout(r, 10));
     assert.equal(alive(gdbusPid), false);
