@@ -18,6 +18,13 @@
  * window. CI runs on Xvfb, where X11 keeps hidden windows ticking with
  * or without a GPU: there it checks only that a launch without GPU
  * acceleration opens, and cannot see the Wayland defect.
+ *
+ * Maximized, too, is checked differently on each (openedMaximized): the
+ * compositor grants the reveal's maximize on Wayland; Xvfb has no window
+ * manager to grant one, so there the window is checked to have opened at
+ * the work area's size, the maximized size a fresh profile opens it at.
+ * That the reveal and the wake ask for the maximize is unit-tested
+ * (lib/splash.test.cjs, lib/app-window.test.cjs).
  */
 import { type ElectronApplication } from '@playwright/test';
 import fs from 'node:fs';
@@ -53,7 +60,7 @@ function profileEnv() {
 /** What the main process saw of the reveal: the renderer's words and the
  *  wake (lib/app-window.cjs), and the windows still open. */
 function revealRecord(app: ElectronApplication) {
-	return app.evaluate(({ BrowserWindow }) => {
+	return app.evaluate(({ BrowserWindow, screen }) => {
 		const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
 		const appWindow = main.require('./lib/app-window.cjs');
 		return {
@@ -64,11 +71,37 @@ function revealRecord(app: ElectronApplication) {
 				.filter((w) => !w.isDestroyed())
 				.map((w) => ({
 					splash: (w as unknown as Record<string, unknown>).aniGuiSplash === true,
-					visible: w.isVisible(),
-					maximized: w.isMaximized()
-				}))
+					visible: w.isVisible()
+				})),
+			// The one window bootDone leaves: the app's own.
+			shape: BrowserWindow.getAllWindows()
+				.filter((w) => !w.isDestroyed())
+				.map((w) => {
+					const [width, height] = w.getSize();
+					return { maximized: w.isMaximized(), width, height };
+				})[0],
+			workArea: screen.getPrimaryDisplay().workAreaSize
 		};
 	});
+}
+
+/** The app's window opened maximized, as far as the display can show it.
+ *  On Wayland the compositor grants the maximize the reveal asks for.
+ *  Xvfb has no window manager, and nothing grants it; there the window
+ *  keeps the size it was made at, which for a fresh profile is the work
+ *  area (lib/window-geometry.cjs initialSize). A window made at exactly
+ *  the screen's size, then maximized and shown as the reveal does, is a
+ *  pixel smaller in each direction there (measured under Xvfb: 1279×1023
+ *  for a 1280×1024 work area), hence the pixel's margin. */
+function openedMaximized(r: Awaited<ReturnType<typeof revealRecord>>) {
+	if (expectedPlatform(process.env) === 'wayland') {
+		expect(r.shape.maximized).toBe(true);
+		return;
+	}
+	for (const side of ['width', 'height'] as const) {
+		expect(r.shape[side]).toBeLessThanOrEqual(r.workArea[side]);
+		expect(r.shape[side]).toBeGreaterThanOrEqual(r.workArea[side] - 1);
+	}
 }
 
 /** Waits for the boot to be done: the page rendered, the splash closed
@@ -94,9 +127,8 @@ test('without GPU acceleration the window still opens: the boot completes and th
 	try {
 		const r = await bootDone(app);
 		expect(r.ready).toEqual({ rendered: true, gaveUp: false, beforeReveal: true });
-		// Maximized where a compositor grants it; Xvfb has no window manager.
-		const maximized = expectedPlatform(process.env) === 'wayland' ? true : r.windows[0]?.maximized;
-		expect(r.windows).toEqual([{ splash: false, visible: true, maximized }]);
+		expect(r.windows).toEqual([{ splash: false, visible: true }]);
+		openedMaximized(r);
 		// On Wayland the hidden window got no frames: the wake is what let
 		// its page render. Xvfb keeps hidden windows ticking (see above).
 		if (expectedPlatform(process.env) === 'wayland') {
@@ -126,9 +158,8 @@ test('where hidden windows get their frames the window is revealed from hidden, 
 		// A machine whose GPU Chromium cannot use (a VM) is the defect's own
 		// condition even without --disable-gpu: there the wake is right.
 		if (await hiddenWindowsGetFrames(app)) expect(r.wake.woken).toBe(false);
-		// Maximized where a compositor grants it; Xvfb has no window manager.
-		const maximized = expectedPlatform(process.env) === 'wayland' ? true : r.windows[0]?.maximized;
-		expect(r.windows).toEqual([{ splash: false, visible: true, maximized }]);
+		expect(r.windows).toEqual([{ splash: false, visible: true }]);
+		openedMaximized(r);
 	} finally {
 		await stopApp(app);
 	}
