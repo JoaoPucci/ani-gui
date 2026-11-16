@@ -956,3 +956,32 @@ test("an abort that never comes changes nothing", async () => {
   await opened;
   assert.equal(win.shows, 1);
 });
+
+// A window that is not on screen may never paint under native Wayland
+// without GPU compositing, and then never reaches ready-to-show. The
+// renderer's word that its page rendered (lib/app-window.cjs) means a
+// frame was drawn, so it passes the guard as well: ready-to-show no
+// longer gates a window whose page has said it rendered.
+test("a window whose page says it rendered passes the first-show guard without ready-to-show", async () => {
+  const win = fakeWindow();
+  await awaitFirstShow(win, { timeoutMs: 1_000, painted: Promise.resolve(true) });
+  assert.equal(win.listenerCount("ready-to-show"), 0);
+});
+
+test("a page that did not say it rendered does not pass the guard in place of ready-to-show", async () => {
+  const win = fakeWindow();
+  await assert.rejects(
+    awaitFirstShow(win, { timeoutMs: 20, painted: Promise.resolve(false) }),
+    /ready-to-show/,
+  );
+});
+
+test("the window is revealed on its page's rendered word when no ready-to-show comes", async () => {
+  const win = showableWindow(answers(200));
+  await openFirstPage(win, "app://localhost/", {
+    timeoutMs: 1_000,
+    logError: () => {},
+    painted: Promise.resolve(true),
+  });
+  assert.equal(win.shows, 1);
+});
