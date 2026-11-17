@@ -156,9 +156,9 @@ export const DEPS = [
 // than stage. It is not every program the Linux side takes from the
 // system: the .deb's `depends`, the launcher's bash, setsid and
 // setpriv, and the session watcher's gdbus are not anything Windows
-// stages or downloads, and are not listed. Nothing here is downloaded;
-// the list exists so the arch checks can tell a declared exception
-// from a forgotten dependency — each entry must appear in
+// stages or downloads, and are not listed. This script downloads none
+// of them; the list exists so the arch checks can tell a declared
+// exception from a forgotten dependency — each entry must appear in
 // `build.deb.recommends`, and the Windows fetcher must stage it or
 // declare it downloaded at install time.
 export const SYSTEM_DEPS = [

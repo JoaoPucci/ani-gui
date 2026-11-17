@@ -108,9 +108,10 @@ esac
 #    declares, Windows must stage or download; whatever Windows
 #    downloads, Linux must stage or declare in `SYSTEM_DEPS`; and
 #    nothing is both staged and downloaded on Windows, or both staged
-#    and declared in `SYSTEM_DEPS` on Linux. `linux_deps.sh` holds every `SYSTEM_DEPS`
-#    entry to `build.deb.recommends`, and check 7 below holds every
-#    `INSTALL_TIME_DEPS` entry to the installer script. The
+#    and declared in `SYSTEM_DEPS` on Linux. `linux_deps.sh` holds
+#    every `SYSTEM_DEPS` entry to `build.deb.recommends`, and check 7
+#    below holds every `INSTALL_TIME_DEPS` entry to the installer
+#    script. The
 #    declarations are lists the parser reads, not names this check
 #    exempts, so neither can excuse a dependency a platform does not
 #    provide at all.
