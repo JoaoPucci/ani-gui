@@ -49,7 +49,7 @@
 # channel refuses a sender that is not the app's document" calls every
 # ipcMain handler on an `ani-gui:` channel; it does not see the
 # per-contents or per-frame objects, or a listener removed before it
-# runs (the app-ready wait's).
+# runs (the app-ready and app-mounted waits').
 
 set -eu
 

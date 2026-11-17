@@ -57,7 +57,15 @@ const { appDocumentFrom } = require("./lib/app-document.cjs");
 const { SECRET_CHANNEL, secretKeeper } = require("./lib/secret-handoff.cjs");
 const { backendOrigins, headerlessFilter, withLaunchSecret } = require("./lib/secret-header.cjs");
 const { revealMaximized, splashController, splashVersionLabel } = require("./lib/splash.cjs");
-const { abortWhenLost, appReadyBound, appReadyWaiter, appWindowOptions, revealGate } = require("./lib/app-window.cjs");
+const {
+  abortWhenLost,
+  appReadyBound,
+  appReadyWaiter,
+  appWindowOptions,
+  frameWake,
+  revealGate,
+  wakeHidden,
+} = require("./lib/app-window.cjs");
 const {
   grantedSizeRecorder,
   initialSize,
@@ -196,9 +204,10 @@ const APP_SCHEME = "app";
 const APP_ORIGIN = `${APP_SCHEME}://localhost`;
 // The one document the window may hold (lib/app-document.cjs).
 const APP_DOCUMENT = appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL });
-// Every IPC handler, and the wait for the renderer's app-ready word,
-// answers only the main frame holding that document (lib/ipc-guard.cjs);
-// tests/arch/ipc_sender.sh keeps them all registered through it.
+// Every IPC handler, and the waits for the renderer's app-mounted and
+// app-ready words, answer only the main frame holding that document
+// (lib/ipc-guard.cjs); tests/arch/ipc_sender.sh keeps them all
+// registered through it.
 // The guards name a refused page by its URL, which can carry a secret:
 // their lines are redacted in the shapes a secret travels in (a
 // `secret=` parameter, the header), as the handoff's refusal line is
@@ -509,6 +518,10 @@ const splash = splashController({
   version: splashVersionLabel(app.getVersion(), IS_DEV),
 });
 
+/** Set once the boot has failed (its splash put away, then the failure
+ *  reported): a window's pending wake is off. */
+let bootFailed = false;
+
 /** Where the window's remembered maximized size lives: beside the
  *  app's other per-user state, under this profile's userData. */
 const geometryFile = () => path.join(app.getPath("userData"), "window-geometry.json");
@@ -578,8 +591,11 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // bound: a late page leaves the splash stuck, offering Restart and
   // Quit, and the window is revealed only once its page has rendered. A
   // window with no splash (a later one) keeps the bound.
+  // Whether the reveal has put the window on screen. Not isVisible(): a
+  // wake (below) maps the window before its reveal.
+  let revealed = false;
   const appReady = appReadyWaiter(win.webContents, ipc, {
-    isShown: () => !win.isDestroyed() && win.isVisible(),
+    isShown: () => revealed,
     timeoutMs: appReadyBound(splash),
   });
   appReady.ready.then((rendered) =>
@@ -685,6 +701,31 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   win.on("resize", rememberMaximized);
   win.on("unmaximize", sendMaxState);
 
+  // A hidden window may get no frames at all — native Wayland with
+  // software compositing: a virtual machine, a GPU that failed or is
+  // blocklisted, --disable-gpu — and its page then never says it
+  // rendered. Its page says when it has mounted, which needs no frame;
+  // when the rendered word does not follow soon, the window is mapped
+  // without asking for the focus (and maximized, on Linux), its frames
+  // resume, and the reveal below goes as usual (lib/app-window.cjs
+  // frameWake, wakeHidden). Where the platform keeps the splash on top
+  // the woken window is hidden behind it; native Wayland does not, and
+  // the splash is mapped again whenever the woken window takes the
+  // focus, so it stays in front, with the window around it.
+  let unwake = null;
+  const wake = frameWake(win.webContents, ipc, {
+    ready: appReady.ready,
+    cancelled: () => win.isDestroyed() || splash.dismissed() || revealed || bootFailed,
+    wake: () => {
+      console.log("[main] app's page mounted and drew no frames in time: mapping its window, behind the splash where it stays on top");
+      unwake = wakeHidden(win, {
+        revealing: () => granted.revealing(),
+        restack: () => splash.restack(),
+      });
+    },
+  });
+  win.on("closed", () => wake.stop());
+
   // A window that never gets its first page — a load that fails, an
   // error page, a renderer gone, or, in a packaged build, no first
   // paint within the deadline — fails the boot (see lib/startup.cjs).
@@ -698,8 +739,10 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // long, while the splash stands in; at most 15 seconds from the
     // window's creation without one, lib/app-window.cjs). Only then
     // is it mapped (maximized) and shown, and the splash put away. The
-    // two are never on screen competing, on any platform. A later window
-    // finds no splash, and waits only for its renderer.
+    // two are never on screen competing where a hidden window gets
+    // frames; where it gets none, the wake above maps it behind the
+    // splash first. A later window finds no splash, and waits only for
+    // its renderer.
     // The page's render is the last step of the boot the splash's rail
     // shows (lib/splash-progress.cjs). The rail hears it, and its page
     // has answered (about a millisecond; at most STEP_ANSWER_WAIT_MS),
@@ -717,16 +760,25 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     // the failure dialog, rather than a launch waiting forever behind a
     // dead splash or revealing a window that may be empty.
     abort: abortWhenLost(splash.lost(), appReady.ready),
+    // The page's rendered word means a frame was drawn: it passes the
+    // first-show guard as ready-to-show does, which a window that was
+    // never on screen may never reach (lib/startup.cjs awaitFirstShow).
+    painted: appReady.ready,
     // Map maximized, show, and put the splash away at that moment —
     // not when the page later finishes loading. Never for a window
     // whose first page failed (lib/startup.cjs).
     // A launch the user cancelled by closing the splash is quitting,
     // and reveals nothing.
     reveal: () => {
+      wake.stop();
+      if (unwake) unwake();
       granted.revealing();
+      revealed = true;
       revealMaximized(win, {
         cancelled: () => splash.dismissed(),
         onMapped: mapped,
+        // A woken window is up already: what the show listeners would do.
+        onUp: () => keeper.shown(win),
         afterShow: () => splash.close(),
       });
     },
@@ -1151,7 +1203,9 @@ function mainLocale() {
  */
 function reportBootFailure(err) {
   // A failed boot has no window worth bringing forward: a later launch
-  // that arrives while this one says why must not re-show it.
+  // that arrives while this one says why must not re-show it. Nor may a
+  // wake still pending map it again (createWindow, frameWake).
+  bootFailed = true;
   keeper.failed();
   // A failed boot's window is normally never revealed; what is on
   // screen is the splash (put away by the boot) and, rarely, a window
@@ -1202,7 +1256,10 @@ app.whenReady().then(() => {
       splash.show();
       reducedMotion.then((reduced) => splash.motionPreference(reduced === true));
     },
-    suppressSplash: () => splash.suppress(),
+    suppressSplash: () => {
+      bootFailed = true;
+      splash.suppress();
+    },
     // The launch's remote flags, decided by the backend within its
     // two-second cap; the window opens with them, so the renderer has
     // them before its first page (lib/launch-flags.cjs).

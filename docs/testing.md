@@ -234,10 +234,16 @@ A spec stops the app it launched through `stopApp` in
 `electron/e2e/launch.ts`, and nothing else but the one exception
 below. Playwright starts the app
 in a process group of its own; `electron/lib/own-group.cjs` sends
-SIGTERM to that group, then SIGKILL to the same group if the app is
-still there, and only while the group is provably the app's: its main
-process not yet reaped, leading the group, running the binary it was
-launched from. What the app leaves in its group as it exits is killed in the
+SIGTERM to the app's main process alone, then SIGKILL to its group if
+the app is still there, and only while the group is provably the app's:
+its main process not yet reaped, leading the group, running the binary
+it was launched from. SIGTERM to the whole group would kill Chromium's
+helpers in the same instant as the main process, which then aborts as
+it quits, missing its GPU process (a SIGTRAP the host's crash reporter
+is called for). An app that ends by a signal the stop did not send
+crashed as it quit, or, before the stop, crashed or was killed from
+outside it, and `stopApp` throws, failing the spec; the cold-launch retry's cleanup (`stopDeadApp`) discards that
+error, as it does any other from stopping the launch it gives up on. What the app leaves in its group as it exits is killed in the
 turn its exit is reported; after that nothing is signalled, since an
 emptied group's id can be handed to someone else. The backend runs
 outside that group and stops itself when the app's end of its stdin
@@ -255,6 +261,20 @@ only. The launch helper accepts Xvfb only on a GitHub Actions runner
 (`GITHUB_ACTIONS=true`), and refuses any Wayland session there.
 `smoke.spec.ts` checks that the app landed on Wayland in the headless
 session and on X11 in CI.
+
+One defect is visible only on Wayland. Under native Wayland with
+software compositing (a virtual machine, a GPU that failed or is
+blocklisted, `--disable-gpu`) a window that is not on screen gets no
+animation frames, and the app's window is made hidden and revealed once
+its page has drawn two of them. `reveal-without-frames.spec.ts` launches
+the app with `--disable-gpu` (the launch helper's `switches`) and checks
+that the boot completes and the splash hands over to the window. In the
+headless GNOME Shell session the hidden window really gets no frames,
+so the spec fails there if nothing maps the window, and it also checks
+that the wake mapped it (`electron/lib/app-window.cjs`). On CI's Xvfb,
+X11 keeps hidden windows ticking with or without a GPU, so the same
+spec passes there whether the wake works or not: CI cannot see this
+defect, and only the local run of the packaged suite covers it.
 
 One process is not launched by the helper: the app the splash's Restart
 starts again (`splash-stuck.spec.ts`). It is outside the test's process
