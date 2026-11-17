@@ -30,6 +30,20 @@ const test = (name, fn) => nodeTest(name, { skip: process.platform !== "linux" }
 const { SANDBOX_PROBE_SWITCH } = require("./sandbox-probe.cjs");
 const { launcherScript } = require("./linux-launcher.cjs");
 
+// The interpreter itself, not what PATH names: a python3 that is a
+// shim (pyenv's is a shell script) starts children of its own before
+// Python runs, and starts slowly, so the cases that launch many runs at
+// once would spend their start budget on it. Resolved once, on first
+// use, so a host without python3 fails no case it skips.
+let pythonPath = null;
+function python() {
+  if (pythonPath === null) {
+    const r = spawnSync("python3", ["-I", "-c", "import sys; print(sys.executable)"], { encoding: "utf8" });
+    pythonPath = (r.stdout || "").trim() || "python3";
+  }
+  return pythonPath;
+}
+
 const fixture = (name) => fs.readFileSync(path.join(__dirname, "fixtures", name), "utf8");
 const TEMPLATES = {
   "electron-builder 25": fixture("AppRun.electron-builder-25"),
@@ -46,7 +60,7 @@ function stubFor(probe) {
   // apport) is handed one whatever the core limit. Not dumpable, the
   // probe leaves none, and AppRun sees the same death by SIGTRAP. That
   // the probe runs with core dumps off is the core-limit case's to show.
-  const abort = `exec python3 -I -c 'import ctypes, os, signal; ctypes.CDLL(None).prctl(4, 0, 0, 0, 0); signal.signal(signal.SIGTRAP, signal.SIG_DFL); os.kill(os.getpid(), signal.SIGTRAP)'`;
+  const abort = `exec ${shellQuote(python())} -I -c 'import ctypes, os, signal; ctypes.CDLL(None).prctl(4, 0, 0, 0, 0); signal.signal(signal.SIGTRAP, signal.SIG_DFL); os.kill(os.getpid(), signal.SIGTRAP)'`;
   const outcome = {
     answers: answer,
     aborts: abort,
@@ -235,7 +249,7 @@ for (const sig of CORE_SIGNALS) {
         `signal.signal(signal.${sig}, signal.SIG_DFL)`,
         `os.kill(os.getpid(), signal.${sig})`,
       ].join("\n");
-      const r = spawnSync("python3", ["-I", "-c", shim, path.join(root, "unreaped"), "0", "0", "python3", "-I", "-c", run], {
+      const r = spawnSync(python(), ["-I", "-c", shim, path.join(root, "unreaped"), "0", "0", python(), "-I", "-c", run], {
         encoding: "utf8",
         timeout: 10000,
       });
@@ -297,7 +311,7 @@ function launch(template, probe, args, extraEnv = {}, shell = null, throughLaunc
   const groupFile = path.join(img.root, "group");
   const recordGroup = 'echo "$$" > "$1"; shift; exec "$@"';
   const started = Date.now();
-  const run = spawnSync("python3", underSubreaper(img, false, ["setsid", "--wait", "bash", "-c", recordGroup, "bash", groupFile, ...inner]), {
+  const run = spawnSync(python(), underSubreaper(img, false, ["setsid", "--wait", "bash", "-c", recordGroup, "bash", groupFile, ...inner]), {
     cwd: img.root,
     encoding: "utf8",
     env: img.env(extraEnv),
@@ -317,7 +331,7 @@ function launch(template, probe, args, extraEnv = {}, shell = null, throughLaunc
 async function launchAndSignal(template, probe, args, { settleMs, signal, group, slowToGo = false, then = null }) {
   const { spawn } = require("node:child_process");
   const img = image(template, probe);
-  const child = spawn("python3", underSubreaper(img, !group, ["bash", path.join(img.app, "AppRun"), ...args]), {
+  const child = spawn(python(), underSubreaper(img, !group, ["bash", path.join(img.app, "AppRun"), ...args]), {
     cwd: img.root,
     env: img.env(slowToGo ? { PATH: `${slowSleepDir(img, slowReady(img))}:${process.env.PATH}` } : {}),
     detached: true,
@@ -386,10 +400,10 @@ function slowReady(img) {
  *  one, once its handlers are in place, writes a file named after its
  *  pid into `ready`, so a test can wait for both before it signals. */
 function slowSleepDir(img, ready) {
-  // The interpreter itself, not what PATH names: a python3 that is a
-  // shim (pyenv's is a shell script) starts children of its own before
-  // Python runs, and a signal then would leave them orphaned.
-  const python = spawnSync("python3", ["-I", "-c", "import sys; print(sys.executable)"], { encoding: "utf8" }).stdout.trim();
+  // The interpreter itself (python(), above): a shim would start
+  // children of its own before Python runs, and a signal then would
+  // leave them orphaned.
+  const interpreter = python();
   const dir = path.join(img.root, "slow-bin");
   fs.mkdirSync(dir);
   // One process, with no children of its own: the probe is stopped
@@ -399,7 +413,7 @@ function slowSleepDir(img, ready) {
   // characters it holds.
   fs.writeFileSync(
     path.join(dir, "sleep"),
-    ["#!/bin/sh", `exec ${shellQuote(python)} -I ${shellQuote(path.join(dir, "slow-sleep.py"))} "$@"`, ""].join("\n"),
+    ["#!/bin/sh", `exec ${shellQuote(interpreter)} -I ${shellQuote(path.join(dir, "slow-sleep.py"))} "$@"`, ""].join("\n"),
     { mode: 0o755 },
   );
   fs.writeFileSync(
@@ -698,7 +712,7 @@ async function runWithBystander(img, script) {
   const { spawn } = require("node:child_process");
   // Detached: the subreaper leads a group of its own, which the script
   // and its bystander start in, so a case that hangs is ended whole.
-  const child = spawn("python3", underSubreaper(img, false, ["bash", "-c", script], 15), {
+  const child = spawn(python(), underSubreaper(img, false, ["bash", "-c", script], 15), {
     env: img.env({}),
     detached: true,
     stdio: ["ignore", "ignore", "pipe"],
@@ -881,7 +895,7 @@ test("a reap whose every wait is cut short still ends within its bound", async (
     // Detached, so a reap that never ends is stopped with the group the
     // case started.
     const began = Date.now();
-    const child = spawn("python3", underSubreaper(img, false, ["bash", "-c", script]), {
+    const child = spawn(python(), underSubreaper(img, false, ["bash", "-c", script]), {
       env: img.env({}),
       detached: true,
       stdio: ["ignore", "ignore", "pipe"],
