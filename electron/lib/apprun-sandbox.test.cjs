@@ -837,6 +837,45 @@ test("a reap of a child already reaped ends even when its pid answers again", ()
   }
 });
 
+// A stale signal can also cut every `wait` short for good: a stress run
+// caught the watchdog's subshell spinning with its sleeper a zombie
+// nobody collected. The reap must end within a bound however `wait`
+// behaves, never spin, and leave the shell able to go on. `wait`
+// shadowed to return 143 without collecting anything, and a child that
+// outlives the reap, stand in for that bash.
+test("a reap whose every wait is cut short still ends within its bound", () => {
+  const img = image(EB25, "answers");
+  try {
+    const appRun = fs.readFileSync(path.join(img.app, "AppRun"), "utf8");
+    const start = appRun.indexOf("ANI_GUI_SANDBOX=(--no-sandbox)\n");
+    const end = appRun.indexOf("ani_gui_user_no_sandbox=0\n");
+    assert.ok(start > 0 && end > start, "the probe's functions are in AppRun");
+    const script = [
+      "set -e",
+      appRun.slice(start, end),
+      "sleep 30 </dev/null >/dev/null 2>&1 & child=$!",
+      'echo "$child" > "$APPDIR/reap-child"',
+      "wait() { return 143 ; }",
+      'ani_gui_reap "$child"',
+      'echo ended > "$APPDIR/reap-ended"',
+      'kill -9 "$child"',
+    ].join("\n");
+    const began = Date.now();
+    const r = spawnSync("bash", ["-c", script], { env: img.env({}), encoding: "utf8", timeout: 10000, killSignal: "SIGKILL" });
+    const tookMs = Date.now() - began;
+    const childFile = path.join(img.app, "reap-child");
+    if (fs.existsSync(childFile)) {
+      const child = Number(fs.readFileSync(childFile, "utf8"));
+      if (liveProcess(child)) process.kill(child, "SIGKILL");
+    }
+    assert.ok(fs.existsSync(path.join(img.app, "reap-ended")), `the reap did not end (status ${r.status}, signal ${r.signal}): ${r.stderr}`);
+    assert.ok(tookMs < 5000, `the reap took ${tookMs} ms`);
+    assert.equal(r.status, 0, r.stderr);
+  } finally {
+    fs.rmSync(img.root, { recursive: true, force: true });
+  }
+});
+
 test("a stop after the probe has ended signals nothing but AppRun itself", async () => {
   const img = image(EB25, "answers");
   try {
