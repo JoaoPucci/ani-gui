@@ -851,7 +851,8 @@ test("a reap of a child already reaped ends even when its pid is another live pr
 // behaves, never spin, and leave the shell able to go on. `wait`
 // shadowed to return 143 without collecting anything, and a child that
 // outlives the reap, stand in for that bash.
-test("a reap whose every wait is cut short still ends within its bound", () => {
+test("a reap whose every wait is cut short still ends within its bound", async () => {
+  const { spawn } = require("node:child_process");
   const img = image(EB25, "answers");
   try {
     const appRun = fs.readFileSync(path.join(img.app, "AppRun"), "utf8");
@@ -865,28 +866,47 @@ test("a reap whose every wait is cut short still ends within its bound", () => {
       // the subshell's, not the outer shell's.
       "(",
       "  sleep 30 </dev/null >/dev/null 2>&1 & child=$!",
-      '  echo "$child" > "$APPDIR/reap-child"',
       "  waits=0",
       "  wait() { waits=$((waits + 1)) ; return 143 ; }",
       '  ani_gui_reap "$child"',
       '  echo "$waits" > "$APPDIR/reap-ended"',
+      // The case's own cleanup: the child ended and collected, past
+      // the shadowed wait, so it is no one else's to reap.
       '  kill -9 "$child"',
+      '  builtin wait "$child" || true',
       ")",
     ].join("\n");
+    // Under the subreaper, as the launch cases run: it stands in for a
+    // PID 1 that does not reap, and counts what the case leaves it.
+    // Detached, so a reap that never ends is stopped with the group the
+    // case started.
     const began = Date.now();
-    const r = spawnSync("bash", ["-c", script], { env: img.env({}), encoding: "utf8", timeout: 10000, killSignal: "SIGKILL" });
+    const child = spawn("python3", underSubreaper(img, false, ["bash", "-c", script]), {
+      env: img.env({}),
+      detached: true,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr.on("data", (d) => {
+      stderr += d;
+    });
+    let gone = false;
+    const closed = new Promise((resolve) =>
+      child.on("close", (code, sig) => {
+        gone = true;
+        resolve([code, sig]);
+      }),
+    );
+    if (!(await until(() => gone, 10000))) killOwnGroup(child.pid);
+    const [status, signal] = await closed;
     const tookMs = Date.now() - began;
-    const childFile = path.join(img.app, "reap-child");
-    if (fs.existsSync(childFile)) {
-      const child = Number(fs.readFileSync(childFile, "utf8"));
-      if (liveProcess(child)) process.kill(child, "SIGKILL");
-    }
-    assert.ok(fs.existsSync(path.join(img.app, "reap-ended")), `the reap did not end (status ${r.status}, signal ${r.signal}): ${r.stderr}`);
+    assert.ok(fs.existsSync(path.join(img.app, "reap-ended")), `the reap did not end (status ${status}, signal ${signal}): ${stderr}`);
     // Its own child, still running: the reap kept at it to the bound
     // (the first wait and a hundred retries), and no further.
     assert.equal(fs.readFileSync(path.join(img.app, "reap-ended"), "utf8").trim(), "101", "the reap gave up on its own running child before its bound");
     assert.ok(tookMs < 5000, `the reap took ${tookMs} ms`);
-    assert.equal(r.status, 0, r.stderr);
+    assert.equal(status, 0, stderr);
+    assert.equal(fs.readFileSync(path.join(img.app, "unreaped"), "utf8"), "0", "the case left a child for PID 1 to collect");
   } finally {
     fs.rmSync(img.root, { recursive: true, force: true });
   }
