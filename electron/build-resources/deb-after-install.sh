@@ -36,8 +36,9 @@ fi
 # unconfined otherwise, with the rules Ubuntu 24.04's own profiles for
 # Chrome, VS Code and Obsidian carry. Later Ubuntus add `@{exec_path}
 # mr,` to theirs, but only AppArmor 5.0 defines that variable, and
-# 24.04's AppArmor 4.0 would reject the profile. The path is
-# root-owned, so no other program can borrow it.
+# AppArmor 4.0 and 4.1 (Ubuntu 24.04 and 25.04, Debian 13) would
+# reject the profile. The path is root-owned, so no other program can
+# borrow it.
 #
 # Written only where AppArmor ships ABI 4.0, the first that knows the
 # `userns` rule: an older AppArmor (Debian 12's 3.0) could not parse
