@@ -301,3 +301,42 @@ async fn an_embed_url_that_names_no_origin_is_never_requested() {
         );
     }
 }
+
+/// hianime's answers as recorded on 2026-11-17, when the site moved
+/// from hianime.at to hianime.fm: the old origin answers every request
+/// with a 301 to the same path on the new one — which a request held
+/// to its origin does not follow — and the new origin serves the
+/// pages as before.
+struct MovedToFm;
+
+#[async_trait::async_trait]
+impl Fetch for MovedToFm {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        if req.url.starts_with("https://hianime.at/") {
+            return Ok(FetchResponse {
+                status: 301,
+                body: "<html><head><title>301 Moved Permanently</title></head><body><center><h1>301 Moved Permanently</h1></center><hr><center>cloudflare</center></body></html>".into(),
+                url: req.url.clone(),
+            });
+        }
+        let body = if req.url.starts_with("https://hianime.fm/search?") {
+            ONE_RESULT
+        } else {
+            NO_RESULTS
+        };
+        Ok(FetchResponse {
+            status: 200,
+            body: body.into(),
+            url: req.url.clone(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn the_production_client_asks_the_origin_hianime_serves_from() {
+    let hits = HianimeClient::new(MovedToFm)
+        .search("cowboy bebop")
+        .await
+        .expect("the production origin answers the search itself");
+    assert_eq!(hits.len(), 1, "{hits:?}");
+}
