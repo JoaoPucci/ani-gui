@@ -182,6 +182,11 @@
       "kind": "refresh_rejected"
     },
     {
+      "key": "error.account.tracker_rejected",
+      "kind": "tracker_rejected",
+      "status": 403
+    },
+    {
       "host": null,
       "key": "error.play.stream_server_failed",
       "kind": "stream_server_failed",

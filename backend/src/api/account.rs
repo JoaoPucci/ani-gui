@@ -82,8 +82,9 @@ use account_wire::{
 /// decide whether to fall
 /// through to the renderer-supplied identity (still gated by the
 /// internal secret). The path is open for `InvalidToken`, and for
-/// `Network` and
-/// `Upstream` so an offline disconnect can still clear the local cache
+/// `Network`,
+/// `Upstream` and the tracker's own rejection (`TrackerRejected`) so an
+/// offline disconnect can still clear the local cache
 /// rows the docs/PRIVACY.md promise to drop. A tracker's rate limit
 /// (`RateLimited`, its HTTP 429) is an answer of the same kind as a
 /// 5xx — about the tracker's willingness, not the identity — and opens
@@ -96,6 +97,7 @@ fn me_failure_allows_renderer_fallback(e: &AniError) -> bool {
         AniError::InvalidToken
             | AniError::Network
             | AniError::Upstream { .. }
+            | AniError::TrackerRejected { .. }
             | AniError::RateLimited { .. }
     )
 }
@@ -158,7 +160,8 @@ async fn post_auth_url(
 
 /// Push watch progress/status to a connected tracker. Returns the
 /// upserted entry, or `null` when the show couldn't be mapped to the
-/// provider (the renderer treats `null` as a no-op, not an error).
+/// provider or the tracker no longer has the entry it maps to (the
+/// renderer treats `null` as a no-op, not an error).
 async fn post_update(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
@@ -181,7 +184,8 @@ async fn post_update(
 /// Explicit detail-page list edit: write the user's deliberate status /
 /// progress to the tracker verbatim (no monotonic guard — they can
 /// correct an over-count downward). Returns the upserted entry, or
-/// `null` when the show couldn't be mapped to the provider.
+/// `null` when the show couldn't be mapped to the provider or the
+/// tracker no longer has the entry it maps to (nothing was written).
 async fn post_set(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
@@ -201,7 +205,9 @@ async fn post_set(
 
 /// Read the user's live current entry for a show so the detail-page
 /// editor opens on the real tracker state. `null` when the show isn't on
-/// the list or isn't mapped to the provider.
+/// the list or isn't mapped to the provider — which includes a show
+/// mapped to an entry the tracker answers it no longer has (404/410), so
+/// that answer is not a 502 the renderer would retry.
 async fn get_entry(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
@@ -221,8 +227,9 @@ async fn get_entry(
 }
 
 /// Map `remove_entry`'s result to a status: 204 when a tracker entry was
-/// actually removed (or was already gone — idempotent), 404 when no
-/// connected provider maps this show so nothing could be removed. The 404
+/// actually removed (or was already gone — idempotent, which includes an
+/// entry the tracker no longer has at all), 404 when no connected
+/// provider maps this show so nothing could be removed. The 404
 /// matters for the renderer's multi-tracker fan-out: it counts any
 /// resolved DELETE as a successful removal, so an unmappable provider must
 /// reject rather than mask a real provider's failed delete (mirrors the
@@ -238,8 +245,9 @@ fn remove_entry_status(removed: bool) -> StatusCode {
 }
 
 /// Remove a show from the user's tracker list (editor "Remove").
-/// Idempotent: 204 whether or not a row existed, as long as the show maps
-/// to the provider; 404 when it doesn't (see [`remove_entry_status`]).
+/// Idempotent: 204 whether or not a row existed — or the tracker still
+/// has the entry at all — as long as the show maps to the provider; 404
+/// when it doesn't (see [`remove_entry_status`]).
 async fn delete_entry(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,

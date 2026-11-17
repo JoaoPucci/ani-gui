@@ -47,6 +47,7 @@ const nameOf = (key: string) => key.replaceAll('.', '_');
  *  claims (404, 410, 429 and 5xx each have a sentence of their own),
  *  so the key's message is what shows. */
 const FIELDS: Readonly<Record<string, Record<string, string | number>>> = {
+	'error.account.tracker_rejected': { status: 403 },
 	'error.network.upstream': { status: 400 },
 	'error.player.spawn_failed': { binary: 'mpv' },
 	'error.syncplay.spawn_failed': { binary: 'syncplay' }
