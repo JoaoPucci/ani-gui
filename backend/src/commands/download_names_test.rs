@@ -39,6 +39,33 @@ fn an_episode_of_a_title_with_a_colon_is_named_as_one_file() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn a_failed_downloads_leftover_does_not_hand_its_broken_name_out_again() {
+    // What a colon title left on Windows before: an empty file named up
+    // to the colon, with the episode's name as a stream of it. The
+    // provider's spelling then looks like a file that exists.
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(
+        dest.path().join("Dragon Ball Super: Beerus Episode 4.mp4"),
+        b"",
+    )
+    .expect("NTFS takes the colon path as a stream");
+    assert!(
+        dest.path().join("Dragon Ball Super").is_file(),
+        "the write left the empty file the stream belongs to"
+    );
+    assert!(
+        std::fs::symlink_metadata(dest.path().join("Dragon Ball Super: Beerus Episode 4.mp4"))
+            .is_ok(),
+        "the stream answers a lookup under the provider's spelling"
+    );
+    assert_eq!(
+        episode_stem(dest.path(), "Dragon Ball Super: Beerus", "4", None),
+        "Dragon Ball Super - Beerus Episode 4"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn an_episode_an_earlier_version_saved_under_the_raw_title_keeps_that_name() {
