@@ -35,8 +35,8 @@
 ; and that uninstaller empties $INSTDIR (uninstaller.nsh line
 ; 169, `RMDir /r $INSTDIR`). `customInstall` only runs after the new
 ; files land (installSection.nsh line 82), by which time the copy is
-; gone. Releases through 0.18.0 also deleted it by name in their
-; customUnInstall.
+; gone. Releases through 0.18.0 also named it in a `Delete` in their
+; customUnInstall, which 25.1.8 runs after that `RMDir`.
 ;
 ; So the copy is set aside before that uninstaller runs, and put back
 ; after the new files land:
