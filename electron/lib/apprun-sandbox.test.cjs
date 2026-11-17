@@ -337,8 +337,9 @@ async function launchAndSignal(template, probe, args, { settleMs, signal, group,
   let signalledAt = null;
   await until(() => gone || fs.existsSync(path.join(img.app, "probe-pid")), 15000);
   // The probe's sleep and the watchdog's sleeper, each with its
-  // handlers in place.
-  if (slowToGo && !(await until(() => gone || fs.readdirSync(slowReady(img)).length >= 2, 15000))) {
+  // handlers in place. A probe that never started is reported below.
+  const probeStarted = fs.existsSync(path.join(img.app, "probe-pid"));
+  if (slowToGo && probeStarted && !(await until(() => gone || fs.readdirSync(slowReady(img)).length >= 2, 15000))) {
     const ready = fs.readdirSync(slowReady(img)).length;
     killOwnGroup(child.pid);
     await closed;
