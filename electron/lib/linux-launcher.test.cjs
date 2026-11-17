@@ -627,19 +627,27 @@ test("the signals of one event, however they land on the launcher, end nothing b
     for (let i = 0; i < 12; i++) runs.push({ name: `${name}, ${i * 10} µs apart`, burst: (pid) => burst(pid, i * 10), tree: packedTree() });
   }
   try {
-    await Promise.all(
+    // Every launcher is set up, or has failed to be, before any check
+    // can end the test: one that comes up after another's failure is
+    // still closed below.
+    const setups = await Promise.allSettled(
       runs.map(async (run) => {
         run.term = await onTerminal(run.tree, { env: { STUB_STOP: "hang" } });
         run.start = await until("the app to be ready", () => events(run.tree.events).some((e) => e.ready) && startOf(run.tree.events), 30_000);
         await until("the launcher's traps", () => catchesStops(run.term.pid));
       }),
     );
+    for (const setup of setups) if (setup.status === "rejected") throw setup.reason;
     for (const run of runs) run.burst(run.term.pid);
     await Promise.all(runs.map((run) => until("the app's SIGTERM", () => signalsOf(run.tree.events).includes("TERM"))));
     await sleep(1500);
     const forced = runs.filter((run) => run.term.ended() !== undefined || !running(run.start.pid, run.start.started)).map((run) => run.name);
     assert.deepEqual(forced, []);
     for (const run of runs) assert.deepEqual(signalsOf(run.tree.events), ["TERM"], run.name);
+    // Nor does bash complain on the terminal about a signal it had
+    // marked for a trap the launcher has since set aside.
+    const complaints = runs.filter((run) => /warning:/.test(run.term.screen())).map((run) => `${run.name}: ${run.term.screen()}`);
+    assert.deepEqual(complaints, []);
   } finally {
     await Promise.all(runs.filter((run) => run.term).map((run) => run.term.close()));
   }
