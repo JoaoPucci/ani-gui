@@ -790,7 +790,7 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
         }),
       ),
     );
-    const runs = settled.filter((s) => s.status === "fulfilled").map((s) => s.value);
+    const runs = settled.filter((s) => s.status !== "rejected").map((s) => s.value);
     try {
       const failed = settled.find((s) => s.status === "rejected");
       if (failed) throw failed.reason;
