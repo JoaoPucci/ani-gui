@@ -778,7 +778,9 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
 // the pair of signals at once, and every one must still reap all.
 for (const [name, template] of Object.entries(TEMPLATES)) {
   test(`${name}: SIGTERM to the whole group together with SIGHUP still waits for every child`, async () => {
-    const runs = await Promise.all(
+    // Settled, not all: a launch that fails must not keep the others'
+    // images from being removed.
+    const settled = await Promise.allSettled(
       Array.from({ length: 32 }, () =>
         launchAndSignal(template, "hangs", USER_ARGS, {
           settleMs: 200,
@@ -788,7 +790,10 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
         }),
       ),
     );
+    const runs = settled.filter((s) => s.status === "fulfilled").map((s) => s.value);
     try {
+      const failed = settled.find((s) => s.status === "rejected");
+      if (failed) throw failed.reason;
       for (const r of runs) {
         assert.equal(r.launched, null, "nothing launched");
         assertNothingLeft(r);
