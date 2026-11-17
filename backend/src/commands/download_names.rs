@@ -94,7 +94,9 @@ pub(crate) fn episode_stem(
     if let Some(n) = former {
         earlier.push(stem(&safe, n));
     }
-    if !cfg!(windows) && safe != title {
+    // A title with a slash was never an earlier download's name, and
+    // joining it as a path can reach outside `dest`.
+    if !cfg!(windows) && safe != title && !title.contains('/') {
         if let Some(n) = former {
             earlier.push(stem(title, n));
         }
@@ -103,7 +105,29 @@ pub(crate) fn episode_stem(
     earlier
         .into_iter()
         .find(on_disk)
-        .unwrap_or_else(|| stem(&safe, episode))
+        .unwrap_or_else(|| not_a_device(stem(&safe, episode)))
+}
+
+/// `name` with its first dot made a hyphen when the part before that
+/// dot is a device name, which Windows 10 opens as the device whatever
+/// follows the dot. Any other name is returned as it is.
+fn not_a_device(name: String) -> String {
+    const DEVICES: [&str; 4] = ["CON", "PRN", "AUX", "NUL"];
+    let Some(dot) = name.find('.') else {
+        return name;
+    };
+    let base = name[..dot].trim_end().to_ascii_uppercase();
+    let numbered = |prefix: &str| {
+        base.strip_prefix(prefix)
+            .is_some_and(|n| n.len() == 1 && n.as_bytes()[0].is_ascii_digit() && n != "0")
+    };
+    if DEVICES.contains(&base.as_str()) || numbered("COM") || numbered("LPT") {
+        let mut renamed = name;
+        renamed.replace_range(dot..=dot, "-");
+        renamed
+    } else {
+        name
+    }
 }
 
 #[cfg(test)]
