@@ -406,6 +406,11 @@ function slowSleepDir(img, ready) {
     path.join(dir, "slow-sleep.py"),
     [
       "import os, signal, sys, time",
+      // A short sleep (AppRun's reap runs one between retries) is not
+      // one of the two being stood in for: it ends at once, and is not
+      // counted as ready.
+      "if float(sys.argv[1]) <= 0.05:",
+      "    sys.exit(0)",
       "def go(*_):",
       "    signal.signal(signal.SIGTERM, signal.SIG_IGN)",
       "    signal.signal(signal.SIGHUP, signal.SIG_IGN)",
@@ -790,7 +795,7 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
         }),
       ),
     );
-    const runs = settled.filter((s) => s.status === "fulfilled").map((s) => s.value);
+    const runs = settled.filter((s) => s.status !== "rejected").map((s) => s.value);
     try {
       const failed = settled.find((s) => s.status === "rejected");
       if (failed) throw failed.reason;
@@ -810,9 +815,11 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
 // and the moment its pid is cleared. Bash then answers `wait` with the
 // remembered status, never "not a child", and the pid may by then
 // belong to another live process. The reap must end at once there, not
-// wait on that process forever. Every pid answering `kill -0` here
-// stands in for the reuse, which no test can arrange on demand.
-test("a reap of a child already reaped ends even when its pid answers again", () => {
+// wait on that process. `wait` shadowed to answer 0, as bash does for
+// the remembered child, and the test runner's own pid, live and not
+// the shell's child, stand in for the reuse, which no test can arrange on
+// demand.
+test("a reap of a child already reaped ends even when its pid is another live process's", () => {
   const img = image(EB25, "answers");
   try {
     const appRun = fs.readFileSync(path.join(img.app, "AppRun"), "utf8");
@@ -823,14 +830,15 @@ test("a reap of a child already reaped ends even when its pid answers again", ()
     const script = [
       "set -e",
       appRun.slice(start, end),
-      "sleep 0 </dev/null >/dev/null 2>&1 & child=$!",
-      'wait "$child"',
-      'kill() { return 0 ; }',
-      'ani_gui_reap "$child"',
-      'echo ended > "$APPDIR/reap-ended"',
+      "waits=0",
+      "wait() { waits=$((waits + 1)) ; return 0 ; }",
+      'ani_gui_reap "$LIVE_PID"',
+      'echo "$waits" > "$APPDIR/reap-waits"',
     ].join("\n");
-    const r = spawnSync("bash", ["-c", script], { env: img.env({}), encoding: "utf8", timeout: 5000, killSignal: "SIGKILL" });
-    assert.ok(fs.existsSync(path.join(img.app, "reap-ended")), `the reap did not end (status ${r.status}, signal ${r.signal}): ${r.stderr}`);
+    const r = spawnSync("bash", ["-c", script], { env: img.env({ LIVE_PID: String(process.pid) }), encoding: "utf8", timeout: 5000, killSignal: "SIGKILL" });
+    const waitsFile = path.join(img.app, "reap-waits");
+    assert.ok(fs.existsSync(waitsFile), `the reap did not end (status ${r.status}, signal ${r.signal}): ${r.stderr}`);
+    assert.equal(fs.readFileSync(waitsFile, "utf8").trim(), "1", "the reap waited again on a process that is not the shell's child");
     assert.equal(r.status, 0, r.stderr);
   } finally {
     fs.rmSync(img.root, { recursive: true, force: true });
@@ -853,12 +861,17 @@ test("a reap whose every wait is cut short still ends within its bound", () => {
     const script = [
       "set -e",
       appRun.slice(start, end),
-      "sleep 30 </dev/null >/dev/null 2>&1 & child=$!",
-      'echo "$child" > "$APPDIR/reap-child"',
-      "wait() { return 143 ; }",
-      'ani_gui_reap "$child"',
-      'echo ended > "$APPDIR/reap-ended"',
-      'kill -9 "$child"',
+      // In a subshell, as two of the three callers are: the child is
+      // the subshell's, not the outer shell's.
+      "(",
+      "  sleep 30 </dev/null >/dev/null 2>&1 & child=$!",
+      '  echo "$child" > "$APPDIR/reap-child"',
+      "  waits=0",
+      "  wait() { waits=$((waits + 1)) ; return 143 ; }",
+      '  ani_gui_reap "$child"',
+      '  echo "$waits" > "$APPDIR/reap-ended"',
+      '  kill -9 "$child"',
+      ")",
     ].join("\n");
     const began = Date.now();
     const r = spawnSync("bash", ["-c", script], { env: img.env({}), encoding: "utf8", timeout: 10000, killSignal: "SIGKILL" });
@@ -869,6 +882,9 @@ test("a reap whose every wait is cut short still ends within its bound", () => {
       if (liveProcess(child)) process.kill(child, "SIGKILL");
     }
     assert.ok(fs.existsSync(path.join(img.app, "reap-ended")), `the reap did not end (status ${r.status}, signal ${r.signal}): ${r.stderr}`);
+    // Its own child, still running: the reap kept at it to the bound
+    // (the first wait and a hundred retries), and no further.
+    assert.equal(fs.readFileSync(path.join(img.app, "reap-ended"), "utf8").trim(), "101", "the reap gave up on its own running child before its bound");
     assert.ok(tookMs < 5000, `the reap took ${tookMs} ms`);
     assert.equal(r.status, 0, r.stderr);
   } finally {
