@@ -309,7 +309,9 @@ test("the launcher ends with the app's exit status", { skip }, async () => {
   try {
     await until("the launcher's ending", () => term.ended(), 15_000);
     assert.deepEqual(term.ended(), { exit: 3 });
-    assert.match(term.screen(), /out 3\n/);
+    // The terminal's own report of it can come after the launcher's
+    // ending is reported.
+    await until("the app's last line on the terminal", () => /out 3\n/.test(term.screen()));
   } finally {
     await term.close();
   }
@@ -520,7 +522,7 @@ test("a second Ctrl-C, after the first, ends an app stuck in its quit by force, 
     assert.equal(exitOf(tree.events), undefined);
     assert.equal(running(start.pid, start.started), false);
     await until("the helper's end", () => !running(start.helper, start.helper_started), 5_000);
-    assert.ok(term.screen().includes(`${FORCED}\n`), term.screen());
+    await until("the forced line on the terminal", () => term.screen().includes(`${FORCED}\n`));
   } finally {
     await term.close();
   }
@@ -713,7 +715,7 @@ test("a second Ctrl-C inside the half second is ignored, and one after it still 
     process.kill(-term.pid, "SIGINT");
     await until("the launcher's ending", () => term.ended(), 15_000);
     assert.deepEqual(term.ended(), { exit: SIGKILL_STATUS });
-    assert.ok(term.screen().includes(`${FORCED}\n`), term.screen());
+    await until("the forced line on the terminal", () => term.screen().includes(`${FORCED}\n`));
   } finally {
     await term.close();
   }
