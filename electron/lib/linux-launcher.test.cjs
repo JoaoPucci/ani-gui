@@ -202,7 +202,9 @@ test("on a terminal, the app holds none of it, and its output reaches the termin
     assert.notEqual(start.sid, term.pid, "the app is outside the terminal's session");
     assert.deepEqual(start.argv, ["--enable-wayland-ime", "--some-flag"]);
     assert.equal(start.hint, "auto");
-    await until("the app's output on the terminal", () => term.screen().includes("err 400\n"));
+    // Each stream has a relay of its own, and neither waits for the
+    // other: the last line of each says that stream is through.
+    await until("the app's output on the terminal", () => term.screen().includes("out 400\n") && term.screen().includes("err 400\n"));
     const lines = term.screen().split("\n");
     const outs = lines.filter((l) => l.startsWith("out "));
     const errs = lines.filter((l) => l.startsWith("err "));
@@ -307,7 +309,9 @@ test("the launcher ends with the app's exit status", { skip }, async () => {
   try {
     await until("the launcher's ending", () => term.ended(), 15_000);
     assert.deepEqual(term.ended(), { exit: 3 });
-    assert.match(term.screen(), /out 3\n/);
+    // The terminal's own report of it can come after the launcher's
+    // ending is reported.
+    await until("the app's last line on the terminal", () => /out 3\n/.test(term.screen()));
   } finally {
     await term.close();
   }
@@ -518,7 +522,7 @@ test("a second Ctrl-C, after the first, ends an app stuck in its quit by force, 
     assert.equal(exitOf(tree.events), undefined);
     assert.equal(running(start.pid, start.started), false);
     await until("the helper's end", () => !running(start.helper, start.helper_started), 5_000);
-    assert.ok(term.screen().includes(`${FORCED}\n`), term.screen());
+    await until("the forced line on the terminal", () => term.screen().includes(`${FORCED}\n`));
   } finally {
     await term.close();
   }
@@ -580,6 +584,79 @@ test("the signals of one terminal close, and a Ctrl-C right after them, end noth
   }
 });
 
+/** Whether the launcher catches SIGHUP, SIGINT and SIGTERM: its traps
+ *  are set, which it does just after it has started the app. */
+function catchesStops(pid) {
+  let status;
+  try {
+    status = fs.readFileSync(`/proc/${pid}/status`, "utf8");
+  } catch {
+    return false;
+  }
+  const caught = BigInt(`0x${/^SigCgt:\s*([0-9a-f]+)/m.exec(status)?.[1] ?? "0"}`);
+  return (caught & 0x4003n) === 0x4003n;
+}
+
+test("the signals of one event, however they land on the launcher, end nothing by force", { skip }, async () => {
+  // One event's signals come back to back. Bash can take the first of
+  // them and then the next before it has started on the first's trap;
+  // it then runs the next's trap only once the first's is done, half a
+  // second on, when a stop would count as a second one. How often that
+  // happens is down to the scheduler, so many launchers take each
+  // burst at once, which also keeps the machine busy as it lands.
+  //
+  // `spin` waits `us` microseconds: the gap between a burst's first
+  // signal and the rest, spread across the launchers so that some of
+  // them take the rest just as they wake for the first.
+  const spin = (us) => {
+    const end = process.hrtime.bigint() + BigInt(us) * 1000n;
+    while (process.hrtime.bigint() < end);
+  };
+  const bursts = {
+    "a terminal close and a Ctrl-C": (pid, us) => {
+      process.kill(pid, "SIGHUP");
+      spin(us);
+      process.kill(pid, "SIGCONT");
+      process.kill(pid, "SIGHUP");
+      process.kill(pid, "SIGINT");
+    },
+    "a scope's stop": (pid, us) => {
+      process.kill(pid, "SIGTERM");
+      spin(us);
+      process.kill(pid, "SIGHUP");
+    },
+  };
+  const runs = [];
+  for (const [name, burst] of Object.entries(bursts)) {
+    for (let i = 0; i < 12; i++) runs.push({ name: `${name}, ${i * 10} µs apart`, burst: (pid) => burst(pid, i * 10), tree: packedTree() });
+  }
+  try {
+    // Every launcher is set up, or has failed to be, before any check
+    // can end the test: one that comes up after another's failure is
+    // still closed below.
+    const setups = await Promise.allSettled(
+      runs.map(async (run) => {
+        run.term = await onTerminal(run.tree, { env: { STUB_STOP: "hang" } });
+        run.start = await until("the app to be ready", () => events(run.tree.events).some((e) => e.ready) && startOf(run.tree.events), 30_000);
+        await until("the launcher's traps", () => catchesStops(run.term.pid));
+      }),
+    );
+    for (const setup of setups) if (setup.status === "rejected") throw setup.reason;
+    for (const run of runs) run.burst(run.term.pid);
+    await Promise.all(runs.map((run) => until("the app's SIGTERM", () => signalsOf(run.tree.events).includes("TERM"))));
+    await sleep(1500);
+    const forced = runs.filter((run) => run.term.ended() !== undefined || !running(run.start.pid, run.start.started)).map((run) => run.name);
+    assert.deepEqual(forced, []);
+    for (const run of runs) assert.deepEqual(signalsOf(run.tree.events), ["TERM"], run.name);
+    // Nor does bash complain on the terminal about a signal it had
+    // marked for a trap the launcher has since set aside.
+    const complaints = runs.filter((run) => /warning:/.test(run.term.screen())).map((run) => `${run.name}: ${run.term.screen()}`);
+    assert.deepEqual(complaints, []);
+  } finally {
+    await Promise.all(runs.filter((run) => run.term).map((run) => run.term.close()));
+  }
+});
+
 test("a SIGTERM and SIGHUP to the launcher and the app together, as a scope's stop sends, end nothing by force", { skip }, async () => {
   const tree = packedTree();
   const term = await onTerminal(tree, { env: { STUB_STOP: "hang" } });
@@ -638,7 +715,7 @@ test("a second Ctrl-C inside the half second is ignored, and one after it still 
     process.kill(-term.pid, "SIGINT");
     await until("the launcher's ending", () => term.ended(), 15_000);
     assert.deepEqual(term.ended(), { exit: SIGKILL_STATUS });
-    assert.ok(term.screen().includes(`${FORCED}\n`), term.screen());
+    await until("the forced line on the terminal", () => term.screen().includes(`${FORCED}\n`));
   } finally {
     await term.close();
   }
