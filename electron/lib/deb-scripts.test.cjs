@@ -113,13 +113,14 @@ test("the profile parses, attaches to the installed binary and grants userns", (
     assert.match(text, /^\s*userns,$/m);
     // Ubuntu 25.10 and later write `@{exec_path} mr,` into their own
     // profiles for Chrome, VS Code and Obsidian, but @{exec_path} is a
-    // variable only AppArmor 5.0's parser defines. AppArmor 4.0 and 4.1
-    // (Ubuntu 24.04 and 25.04, Debian 13), which the ABI 4.0 gate
-    // admits, reject the profile with "Found reference to variable exec_path, but is never
-    // declared", and the parse below runs on whatever AppArmor this
-    // host has, so it would not catch that. 24.04's own profiles carry
-    // no such rule, and under flags=(unconfined) it grants nothing.
-    assert.doesNotMatch(text, /@\{exec_path\}/, "the profile names a variable AppArmor 4.0 does not define");
+    // variable only AppArmor 5.0's parser defines. AppArmor 4.0 and
+    // 4.1 (Ubuntu 24.04 and 25.04, Debian 13), which the ABI 4.0 gate
+    // admits, reject the profile with "Found reference to variable
+    // exec_path, but is never declared", and the parse below runs on
+    // whatever AppArmor this host has, so it would not catch that.
+    // 24.04's own profiles carry no such rule, and under
+    // flags=(unconfined) it grants nothing.
+    assert.doesNotMatch(text, /@\{exec_path\}/, "the profile names a variable AppArmor 4.0 and 4.1 do not define");
     if (!parser) {
       t.skip("apparmor_parser is not installed here: the profile was not parsed");
       return;
