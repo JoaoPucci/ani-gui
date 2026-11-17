@@ -352,7 +352,10 @@ async function launchAndSignal(template, probe, args, { settleMs, signal, group,
     if (group) process.kill(-child.pid, signal);
     else child.kill(signal);
     if (then !== null) {
-      await sleepMs(then.afterMs);
+      // An afterMs of 0 sends the second signal in the same tick as the
+      // first, microseconds behind it, as a terminal's hangup and a
+      // service manager's SIGTERM can land together.
+      if (then.afterMs > 0) await sleepMs(then.afterMs);
       if (!gone) process.kill(-child.pid, then.signal);
     }
   } else if (!gone) {
@@ -765,6 +768,36 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
       }
     });
   }
+}
+
+// The second stop can also land together with the first, before the
+// handler has started: bash then keeps it recorded even once the
+// handler ignores it, and a single `wait` in the handler can return at
+// once with the child still running, so the handler would exit with it
+// unreaped. The window is microseconds wide, so several launches take
+// the pair of signals at once, and every one must still reap all.
+for (const [name, template] of Object.entries(TEMPLATES)) {
+  test(`${name}: SIGTERM to the whole group together with SIGHUP still waits for every child`, async () => {
+    const runs = await Promise.all(
+      Array.from({ length: 32 }, () =>
+        launchAndSignal(template, "hangs", USER_ARGS, {
+          settleMs: 200,
+          signal: "SIGHUP",
+          group: true,
+          then: { signal: "SIGTERM", afterMs: 0 },
+        }),
+      ),
+    );
+    try {
+      for (const r of runs) {
+        assert.equal(r.launched, null, "nothing launched");
+        assertNothingLeft(r);
+        assert.deepEqual(r.tmpLeft, [], "the probe's answer file is removed");
+      }
+    } finally {
+      runs.forEach(cleanup);
+    }
+  });
 }
 
 test("a stop after the probe has ended signals nothing but AppRun itself", async () => {
