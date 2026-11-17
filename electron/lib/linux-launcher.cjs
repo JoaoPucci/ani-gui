@@ -41,13 +41,14 @@ fi
 # terminal, which \`cat\` relays to it, and runs in a session of its own:
 # whatever the terminal does to its session and foreground group (a
 # hangup, Ctrl-C) reaches this launcher alone, which hands the app one
-# SIGTERM, and ends it by force on a second Ctrl-C (see stop_app). The
-# relays run in sessions of their own too, and ignore SIGHUP and SIGTERM,
-# so the app's last lines still reach the terminal while it shuts down; once the terminal has gone, each ends at its next
+# SIGTERM, and ends it by force on a second Ctrl-C or kill (see
+# stop_app). The relays run in sessions of their own too, and ignore
+# SIGHUP and SIGTERM, so the app's last lines still reach the terminal
+# while it shuts down; once the terminal has gone, each ends at its next
 # write to it, and the app's writes after that fail as a closed pipe's
-# do, which it ignores
-# (lib/stdio-guard.cjs). With setpriv, the app also gets a
-# SIGTERM if this launcher is killed outright, rather than outliving it.
+# do, which it ignores (lib/stdio-guard.cjs). With setpriv, the app also
+# gets a SIGTERM if this launcher is killed outright, rather than
+# outliving it.
 out=1
 err=2
 relays=()
@@ -124,8 +125,9 @@ stop_app() {
 # its own and stops itself once the app's end of its stdin closes
 # (backend/src/parent_watch.rs). An app that has exited is left alone:
 # bash reaps it as soon as it exits, so its status file is gone, or it
-# is a zombie for the moment before that. While any helper is left in
-# the group, its id is not given to another process.
+# is a zombie for the moment before that. (Only for the moment before
+# the wait below notices: after it, every stop is ignored.) While any
+# helper is left in the group, its id is not given to another process.
 force_app() {
   trap '' HUP INT TERM
   local stat
