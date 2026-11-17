@@ -30,7 +30,8 @@ Environment:
                      (lib/termination-signals.cjs)
     STUB_HELPER      1: start a helper process in the stub's process
                      group, as Chromium's are, whose pid the start event
-                     carries ("helper"); it exits by itself after 30 s
+                     carries ("helper", with its start time in clock
+                     ticks, "helper_started"); it exits by itself after 30 s
 
 Events: {"start": {...}} once, then {"ready": true} once the handlers are in
 place, {"signal": "TERM"} per stop signal, {"write_error": "EPIPE"} at the
@@ -100,6 +101,14 @@ def helper():
     return pid
 
 
+def started(pid):
+    """A process's start time in clock ticks (/proc/<pid>/stat field 22),
+    which tells it from a later process given the same pid."""
+    with open(f"/proc/{pid}/stat") as f:
+        stat = f.read()
+    return int(stat[stat.rindex(")") + 2:].split()[19])
+
+
 def target(fd):
     try:
         return os.readlink(f"/proc/self/fd/{fd}")
@@ -111,7 +120,9 @@ def main():
     helper_pid = helper()
     event({"start": {
         "helper": helper_pid,
+        "helper_started": started(helper_pid) if helper_pid else None,
         "pid": os.getpid(),
+        "started": started(os.getpid()),
         "pgid": os.getpgid(0),
         "sid": os.getsid(0),
         "argv": sys.argv[1:],
