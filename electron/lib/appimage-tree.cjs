@@ -93,7 +93,12 @@ const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own bina
 //   Each stop handler ignores further stop signals before it starts
 //   waiting: a second one (the subshell gets AppRun's SIGTERM as well
 //   as the group's hangup) would otherwise cut a wait short, and the
-//   handler would exit with a child still unreaped.
+//   handler would exit with a child still unreaped. And each handler
+//   waits through ani_gui_reap, not one `wait`: a second signal that
+//   lands before the handler's first line, together with the first,
+//   stays recorded in bash even once ignored, and can end any later
+//   `wait` at once with the child still running. ani_gui_reap waits
+//   again until the child is gone.
 //   That covers the launcher's own children. Chromium's helper
 //   processes (its zygotes) are forked by the binary and outlive it,
 //   the probe's as the app's own do at every quit, so on such a host
@@ -117,6 +122,21 @@ ani_gui_answer_file=
 ani_gui_probe_job=
 ani_gui_probe_starting=0
 ani_gui_probe_prev_bg=
+# Waits for child $1 until it has ended, however often a signal bash
+# still holds cuts the wait short. Ends at once for a pid that is not
+# (or no longer) the shell's child. Statuses are kept off set -e,
+# which electron-builder's AppRun runs under.
+ani_gui_reap()
+{
+  local rc
+  while true ; do
+    rc=0
+    wait "$1" 2>/dev/null || rc=$?
+    if [ "$rc" -eq 127 ] || ! kill -0 "$1" 2>/dev/null ; then
+      return 0
+    fi
+  done
+}
 ani_gui_probe_stop()
 {
   # A signal between starting the job and recording it finds it in $!,
@@ -129,7 +149,7 @@ ani_gui_probe_stop()
   fi
   if [ -n "$job" ] ; then
     kill "$job" 2>/dev/null || true
-    wait "$job" 2>/dev/null || true
+    ani_gui_reap "$job"
   fi
   if [ -n "$ani_gui_answer_file" ] ; then
     rm -f "$ani_gui_answer_file"
@@ -157,8 +177,8 @@ ani_gui_sandbox_starts()
     stop_children()
     {
       trap '' TERM HUP
-      if [ -n "$probe" ] ; then kill -9 "$probe" || true ; wait "$probe" || true ; elif [ -z "$watchdog" ] && [ "$!" != "$prev_bg" ] ; then kill -9 "$!" || true ; wait "$!" || true ; fi
-      if [ -n "$watchdog" ] ; then kill "$watchdog" || true ; wait "$watchdog" || true ; elif [ -n "$probe" ] && [ "$!" != "$probe" ] ; then kill "$!" || true ; wait "$!" || true ; fi
+      if [ -n "$probe" ] ; then kill -9 "$probe" || true ; ani_gui_reap "$probe" ; elif [ -z "$watchdog" ] && [ "$!" != "$prev_bg" ] ; then kill -9 "$!" || true ; ani_gui_reap "$!" ; fi
+      if [ -n "$watchdog" ] ; then kill "$watchdog" || true ; ani_gui_reap "$watchdog" ; elif [ -n "$probe" ] && [ "$!" != "$probe" ] ; then kill "$!" || true ; ani_gui_reap "$!" ; fi
       exit 143
     }
     trap stop_children TERM HUP
@@ -167,7 +187,7 @@ ani_gui_sandbox_starts()
     probe=$!
     (
       sleeper=
-      trap 'trap "" TERM HUP ; if [ -n "$sleeper" ] ; then kill "$sleeper" || true ; wait "$sleeper" || true ; elif [ "$!" != "$probe" ] ; then kill "$!" || true ; wait "$!" || true ; fi ; exit 0' TERM HUP
+      trap 'trap "" TERM HUP ; if [ -n "$sleeper" ] ; then kill "$sleeper" || true ; ani_gui_reap "$sleeper" ; elif [ "$!" != "$probe" ] ; then kill "$!" || true ; ani_gui_reap "$!" ; fi ; exit 0' TERM HUP
       sleep ${PROBE_BOUND_SECONDS} &
       sleeper=$!
       wait "$sleeper"
