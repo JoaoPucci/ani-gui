@@ -174,8 +174,11 @@ stop_app() {
 forced=0
 force_app() {
   ((forced++ == 0)) || return 0
-  local stat
-  { stat=$(<"/proc/$pid/stat"); } 2>/dev/null || return 0
+  # Read without a subshell: one would take a stop arriving now by
+  # default, and die of it.
+  local stat=
+  { read -r -d '' stat <"/proc/$pid/stat"; } 2>/dev/null
+  [ -n "$stat" ] || return 0
   case "\${stat##*) }" in
     [ZXx]*) return 0 ;;
   esac
