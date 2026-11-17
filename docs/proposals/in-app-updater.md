@@ -96,7 +96,7 @@ place for its updates is the system's package manager.
 - **The Windows installer** is assisted (`oneClick: false`), lets the
   user change the install directory, and has `perMachine: false`. Its
   `installer.nsh` downloads ffmpeg (a ~90 MB zip) during install unless
-  one is on `PATH`. Through 0.17.0 its uninstall step deleted that
+  one is on `PATH`. Through 0.18.0 its uninstall step deleted that
   ffmpeg, including during the silent uninstall electron-builder runs
   before an upgrade; the installer now sets the copy aside before that
   uninstall and puts it back. In the same install it downloads again
@@ -367,7 +367,7 @@ back to the whole file. [source: `src/AppUpdater.ts` at 6.3.9;
 whether today's installers already write that copy]
 
 **What the app's own installer script did on an update, through
-0.17.0.** The update replaced the install directory, and with it the
+0.18.0.** The update replaced the install directory, and with it the
 ffmpeg the first install downloaded; the `customInstall` macro then
 ran again (electron-builder does not skip it on updates) and
 downloaded ffmpeg again (a ~90 MB zip) unless one was on `PATH`. In a

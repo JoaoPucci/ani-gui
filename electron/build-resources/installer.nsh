@@ -22,7 +22,7 @@
 ;
 ; Keeping the copy across updates
 ; -------------------------------
-; Through 0.17.0 every update deleted the downloaded copy and fetched
+; Through 0.18.0 every update deleted the downloaded copy and fetched
 ; it again, and an update run offline ended with none. The cause is
 ; electron-builder's upgrade order (app-builder-lib 25.1.8,
 ; templates/nsis/installSection.nsh): it runs the previous version's
@@ -35,7 +35,7 @@
 ; and that uninstaller empties $INSTDIR (uninstaller.nsh line
 ; 169, `RMDir /r $INSTDIR`). `customInstall` only runs after the new
 ; files land (installSection.nsh line 82), by which time the copy is
-; gone. Releases through 0.17.0 also deleted it by name in their
+; gone. Releases through 0.18.0 also deleted it by name in their
 ; customUnInstall.
 ;
 ; So the copy is set aside before that uninstaller runs, and put back
@@ -50,7 +50,7 @@
 ;      FFMPEG_STAGING, beside $INSTDIR, which an uninstaller run by an
 ;      update (--updated) leaves alone. Under --delete-app-data it sets
 ;      nothing aside and removes any FFMPEG_STAGING it finds: an
-;      uninstaller from 0.17.0 or earlier would leave that folder, and
+;      uninstaller from 0.18.0 or earlier would leave that folder, and
 ;      step 2 would restore it into what should be a fresh install.
 ;
 ;      Why not `customInit` (.onInit, installer.nsi line 73): it runs
@@ -85,7 +85,7 @@
 ; uninstaller failing — both end in `Quit`) leaves the existing install
 ; whole. The stale staging copy is replaced or restored by the next
 ; install, and a real uninstall by this version's uninstaller removes
-; it. One left by an aborted upgrade from 0.17.0 or earlier, and then
+; it. One left by an aborted upgrade from 0.18.0 or earlier, and then
 ; uninstalled with that version's uninstaller, stays behind: those
 ; uninstallers do not know about it.
 ;
@@ -110,7 +110,7 @@
 ;     for unstamped.)
 ;   - ffmpeg.exe present, no stamp                      → treat it as
 ;     FFMPEG_UNSTAMPED_VERSION, write that stamp, and compare as above.
-;     Every installer released, 0.1.1 through 0.17.0, pinned 7.1.1 and wrote
+;     Every installer released, 0.1.1 through 0.18.0, pinned 7.1.1 and wrote
 ;     no stamp, so an unstamped copy they fetched is 7.1.1. The other
 ;     way to have one is a copy the user put there by hand, as the old
 ;     failure message suggested; that is kept too, until a release pins
@@ -130,7 +130,7 @@
 !define FFMPEG_URL "https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-essentials_build.zip"
 !define FFMPEG_ARCHIVE_PATH "ffmpeg-7.1.1-essentials_build\bin\ffmpeg.exe"
 ; What an unstamped copy is taken to be: the build every installer
-; released, 0.1.1 through 0.17.0, fetched. Fixed history, not the pin.
+; released, 0.1.1 through 0.18.0, fetched. Fixed history, not the pin.
 !define FFMPEG_UNSTAMPED_VERSION "7.1.1"
 
 !define FFMPEG_DIR "$INSTDIR\resources\bin"
@@ -172,7 +172,7 @@
             ; uninstall followed by a fresh install, ffmpeg download
             ; included: nothing is set aside, and a staging folder an
             ; interrupted install left is dropped rather than restored.
-            ; An uninstaller from 0.17.0 or earlier would not remove
+            ; An uninstaller from 0.18.0 or earlier would not remove
             ; that folder, so this cannot be left to the uninstaller.
             ;
             ; `isDeleteAppData` is electron-builder's own test of the flag
