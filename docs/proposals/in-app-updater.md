@@ -381,8 +381,8 @@ installer runs with `--updated` [source: electron-builder 25.1.8,
 `src/targets/nsis/nsisScriptGenerator.ts`], but the old copy is gone
 by the time `customInstall` runs. The fix has to keep the old copy
 through the update: have the *new* installer set it aside before it
-runs the old version's uninstaller (whose `customUnInstall`, already
-shipped, deletes it) and put it back under `${isUpdated}`, or keep it
+runs the old version's uninstaller (whose `customUnInstall`, as
+shipped through 0.18.0, deletes it) and put it back under `${isUpdated}`, or keep it
 outside the install directory. The first update after the fix still
 meets the shipped uninstaller. The app's per-user data folder does not fit the second: a
 per-machine install serves several users, and an installer elevated
