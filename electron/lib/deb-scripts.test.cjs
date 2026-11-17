@@ -111,8 +111,15 @@ test("the profile parses, attaches to the installed binary and grants userns", (
     const text = fs.readFileSync(profileAt(h), "utf8");
     assert.match(text, /^profile ani-gui \/opt\/ani-gui\/ani-gui\.bin flags=\(unconfined\) \{$/m);
     assert.match(text, /^\s*userns,$/m);
-    // As in Ubuntu's own profiles for Chrome, VS Code and Obsidian.
-    assert.match(text, /^\s*@\{exec_path\} mr,$/m);
+    // Ubuntu 25.04 and later write `@{exec_path} mr,` into their own
+    // profiles for Chrome, VS Code and Obsidian, but @{exec_path} is a
+    // variable only AppArmor 5.0's parser defines. AppArmor 4.0
+    // (Ubuntu 24.04), which the ABI 4.0 gate admits, rejects the
+    // profile with "Found reference to variable exec_path, but is never
+    // declared", and the parse below runs on whatever AppArmor this
+    // host has, so it would not catch that. 24.04's own profiles carry
+    // no such rule, and under flags=(unconfined) it grants nothing.
+    assert.doesNotMatch(text, /@\{exec_path\}/, "the profile names a variable AppArmor 4.0 does not define");
     if (!parser) {
       t.skip("apparmor_parser is not installed here: the profile was not parsed");
       return;
