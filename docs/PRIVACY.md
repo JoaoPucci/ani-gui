@@ -212,7 +212,7 @@ the list again when the saved copy is six hours old or more. For each
 kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, and the streaming
-  catalogue playback resolves against: hianime (reached at hianime.at). anidb.app was asked first
+  catalogue playback resolves against: hianime (reached at hianime.fm). anidb.app was asked first
   until it was retired in October 2026, and nothing contacts it now.
   Searches and episode listings are asked for as you browse and play;
   the rows of shows on the home page and the search page, and a show
