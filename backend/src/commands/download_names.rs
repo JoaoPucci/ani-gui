@@ -33,6 +33,12 @@ pub(crate) fn portable_name(tag: &str) -> Option<String> {
     }
 }
 
+/// `name` with the characters Windows refuses in a file name taken out.
+#[must_use]
+pub(crate) fn file_safe(name: &str) -> String {
+    todo!("{name}")
+}
+
 /// The name an episode's download takes in `dest`: `"{title} Episode
 /// {episode}"`, or the one an earlier version gave it, numbered
 /// `former`, when a file under that name is already there — that file
