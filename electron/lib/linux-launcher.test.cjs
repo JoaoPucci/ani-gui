@@ -90,15 +90,30 @@ function stubEnv(tree, extra = {}) {
   return env;
 }
 
-/** Kills the stub by its recorded pid if it is still running. */
+/** Kills the stub, and the helper it started, by their recorded pids
+ *  if they are still running. */
 function stopStub(tree) {
   const start = startOf(tree.events);
-  if (!start || exitOf(tree.events) !== undefined) return;
-  try {
-    process.kill(start.pid, "SIGKILL");
-  } catch {
-    /* already gone */
+  if (!start) return;
+  const pids = [start.helper, exitOf(tree.events) === undefined ? start.pid : null];
+  for (const pid of pids.filter(Boolean)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      /* already gone */
+    }
   }
+}
+
+/** Whether `pid` still runs: neither gone nor a zombie. */
+function running(pid) {
+  let stat;
+  try {
+    stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+  } catch {
+    return false;
+  }
+  return !"ZXx".includes(stat[stat.lastIndexOf(")") + 2]);
 }
 
 /**
@@ -458,6 +473,133 @@ test("a stop that reaches the launcher twice and then the app is not passed on o
     assert.deepEqual(term.ended(), { exit: 0 });
     assert.deepEqual(signalsOf(tree.events), ["TERM"]);
     assert.equal(exitOf(tree.events), 0);
+  } finally {
+    await term.close();
+  }
+});
+
+// A second stop ends the app by force, as `docker run` does: the
+// person asked twice. Only a stop that comes after the first has been
+// handed on and a moment more counts. The signals one event delivers
+// arrive well inside that (a closed terminal's two SIGHUPs and SIGCONT,
+// a scope's SIGTERM and SIGHUP, under a millisecond apart), and a
+// hangup is never one: it says the terminal has gone, not "stop now".
+
+const FORCED = "[launcher] a second stop: ani-gui ended by force (SIGKILL); what it changed in its last moments may not be saved";
+const SIGKILL_STATUS = 128 + os.constants.signals.SIGKILL;
+
+test("a second Ctrl-C, after the first, ends an app stuck in its quit by force, with the helpers in its group", { skip }, async () => {
+  const tree = packedTree();
+  const term = await onTerminal(tree, { env: { STUB_STOP: "hang", STUB_HELPER: "1" } });
+  try {
+    const start = await until("the app to be ready", () => events(tree.events).some((e) => e.ready) && startOf(tree.events));
+    process.kill(-term.pid, "SIGINT");
+    await sleep(1000);
+    assert.ok(running(start.pid), "the first Ctrl-C asks, and waits");
+    process.kill(-term.pid, "SIGINT");
+    await until("the launcher's ending", () => term.ended(), 15_000);
+    assert.deepEqual(term.ended(), { exit: SIGKILL_STATUS });
+    assert.deepEqual(signalsOf(tree.events), ["TERM"], "the second is a SIGKILL, which no handler sees");
+    assert.equal(exitOf(tree.events), undefined);
+    assert.equal(running(start.pid), false);
+    await until("the helper's end", () => !running(start.helper), 5_000);
+    assert.ok(term.screen().includes(`${FORCED}\n`), term.screen());
+  } finally {
+    await term.close();
+  }
+});
+
+test("a second SIGTERM to the launcher, after the first, ends the app by force", { skip }, async () => {
+  const tree = packedTree();
+  const term = await onTerminal(tree, { env: { STUB_STOP: "hang" } });
+  try {
+    const start = await until("the app to be ready", () => events(tree.events).some((e) => e.ready) && startOf(tree.events));
+    process.kill(term.pid, "SIGTERM");
+    await sleep(1000);
+    process.kill(term.pid, "SIGTERM");
+    await until("the launcher's ending", () => term.ended(), 15_000);
+    assert.deepEqual(term.ended(), { exit: SIGKILL_STATUS });
+    assert.equal(running(start.pid), false);
+  } finally {
+    await term.close();
+  }
+});
+
+test("closing the terminal is not a second stop, alone or after a Ctrl-C", { skip }, async () => {
+  const tree = packedTree();
+  const term = await onTerminal(tree, { env: { STUB_STOP: "hang", STUB_HELPER: "1" } });
+  try {
+    const start = await until("the app to be ready", () => events(tree.events).some((e) => e.ready) && startOf(tree.events));
+    process.kill(-term.pid, "SIGINT");
+    await sleep(1000);
+    // The terminal's hangup: SIGHUP and SIGCONT to the launcher, and
+    // the shell's SIGHUP after it.
+    term.send("hangup");
+    await sleep(100);
+    process.kill(term.pid, "SIGHUP");
+    await sleep(1000);
+    assert.equal(term.ended(), undefined);
+    assert.ok(running(start.pid));
+    assert.ok(running(start.helper));
+    assert.deepEqual(signalsOf(tree.events), ["TERM"]);
+  } finally {
+    await term.close();
+  }
+});
+
+test("the signals of one terminal close, a moment apart, end nothing by force", { skip }, async () => {
+  const tree = packedTree();
+  const term = await onTerminal(tree, { env: { STUB_STOP: "hang" } });
+  try {
+    const start = await until("the app to be ready", () => events(tree.events).some((e) => e.ready) && startOf(tree.events));
+    process.kill(term.pid, "SIGHUP");
+    process.kill(term.pid, "SIGCONT");
+    process.kill(term.pid, "SIGHUP");
+    await sleep(50);
+    process.kill(-term.pid, "SIGINT");
+    await sleep(1500);
+    assert.equal(term.ended(), undefined);
+    assert.ok(running(start.pid));
+    assert.deepEqual(signalsOf(tree.events), ["TERM"]);
+  } finally {
+    await term.close();
+  }
+});
+
+test("a SIGTERM and SIGHUP to the launcher and the app together, as a scope's stop sends, end nothing by force", { skip }, async () => {
+  const tree = packedTree();
+  const term = await onTerminal(tree, { env: { STUB_STOP: "hang" } });
+  try {
+    const start = await until("the app to be ready", () => events(tree.events).some((e) => e.ready) && startOf(tree.events));
+    process.kill(term.pid, "SIGTERM");
+    process.kill(start.pid, "SIGTERM");
+    process.kill(term.pid, "SIGHUP");
+    process.kill(start.pid, "SIGHUP");
+    await sleep(1500);
+    assert.equal(term.ended(), undefined);
+    assert.ok(running(start.pid));
+    // The app's own handlers stay in place (as lib/termination-signals'
+    // do), so the launcher still hands it its SIGTERM: the same quit.
+    assert.ok(signalsOf(tree.events).every((s) => s === "TERM" || s === "HUP"));
+  } finally {
+    await term.close();
+  }
+});
+
+test("a second stop once the app has exited ends nothing by force", { skip }, async () => {
+  const tree = packedTree();
+  // Something still holds the app's output as it exits, so the launcher
+  // is still there, waiting on its relays, after the app.
+  const term = await onTerminal(tree, { env: { STUB_HOLD_MS: "2500" } });
+  try {
+    await until("the app to be ready", () => events(tree.events).some((e) => e.ready));
+    process.kill(-term.pid, "SIGINT");
+    await until("the app's exit", () => exitOf(tree.events) !== undefined, 15_000);
+    await sleep(700);
+    process.kill(-term.pid, "SIGINT");
+    await until("the launcher's ending", () => term.ended(), 15_000);
+    assert.deepEqual(term.ended(), { exit: 0 });
+    assert.doesNotMatch(term.screen(), /by force/);
   } finally {
     await term.close();
   }
