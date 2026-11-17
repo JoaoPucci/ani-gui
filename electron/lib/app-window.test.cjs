@@ -478,6 +478,26 @@ test("only the window's own page wakes it, and a page that never mounts wakes no
   assert.deepEqual(lastWake(), { mounted: false, woken: false });
 });
 
+test("a mounted word from a document that is not the app's wakes nothing, even from the window's own contents", (t) => {
+  // The wake listens through the guarded IPC too: a document the
+  // navigation guard missed cannot map the hidden window.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const refusals = [];
+  const ipc = guardedChannel(refusals);
+  const contents = sender();
+  const { ready } = readyLatch();
+  let wakes = 0;
+  frameWake(contents, ipc, { ready, wake: () => (wakes += 1) });
+  ipc.emit(APP_MOUNTED_CHANNEL, { sender: contents, senderFrame: { url: "file:///tmp/dropped.html", parent: null } });
+  t.mock.timers.tick(FRAME_WAKE_MS * 2);
+  assert.equal(wakes, 0, "the guard drops it before the wake sees it");
+  assert.deepEqual(lastWake(), { mounted: false, woken: false });
+  assert.ok(refusals.some((l) => l.includes(APP_MOUNTED_CHANNEL)), refusals.join("\n"));
+  ipc.emit(APP_MOUNTED_CHANNEL, { sender: contents });
+  t.mock.timers.tick(FRAME_WAKE_MS);
+  assert.equal(wakes, 1, "the app's own word still wakes it");
+});
+
 test("a wake stopped (the reveal came, the window went) or a launch cancelled wakes nothing", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   for (const how of ["stop", "cancelled", "ready-false"]) {
