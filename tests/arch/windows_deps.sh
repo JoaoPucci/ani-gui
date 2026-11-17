@@ -3,7 +3,10 @@
 # Architectural invariant: the Windows package must stage every
 # runtime dependency the Linux packages stage, including the
 # impersonating transport native resolution needs, and stage or
-# download at install time what Linux declares in `SYSTEM_DEPS`.
+# download at install time what Linux declares in `SYSTEM_DEPS`; in
+# the other direction, everything Windows stages or downloads must be
+# staged for Linux or declared in `SYSTEM_DEPS` there, and no
+# dependency may sit in two lists of the same platform.
 #
 # `linux_deps.sh` has asserted the Linux half of this since the
 # bundling landed, and says in its own header that the Windows
