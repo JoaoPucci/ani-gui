@@ -979,10 +979,10 @@ starting it, and delete it when you find it done.
   episode has somewhere left to play from when the hianime the app
   reads runs out of working embed hosts. hianime.ms is a second
   front under the hianime name and a different application from
-  hianime.at: its watch page takes its own shape
+  hianime.fm (formerly hianime.at): its watch page takes its own shape
   (`https://hianime.ms/watch-<slug>-episode-1-f3808`) and is served
   from its own templates, it exposes a `/api/player/check` endpoint
-  rather than hianime.at's `/api/theme/...` listing endpoints, and
+  rather than hianime.fm's `/api/theme/...` listing endpoints, and
   its server list is drawn as buttons — "Ryu", which is its own
   built-in backup player (`data-server="backup"`), and an embed on
   vidnest.fun (`https://vidnest.fun/anime/<id>/...`).

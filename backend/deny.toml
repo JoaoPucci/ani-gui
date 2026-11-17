@@ -11,10 +11,20 @@ feature-depth = 1
 yanked = "deny"
 # Unmaintained-advisory acknowledgements live here as ignores when CI
 # flags "this crate is no longer maintained" notices for transitive
-# deps. We don't carry any today — the gtk-rs / webkit2gtk-sys family
-# was pruned when the desktop shell stopped depending on those.
-# Re-add lines as needed when CI surfaces new advisories.
-ignore = []
+# deps. Each entry is by advisory id, so a vulnerability advisory filed
+# against the same crate later still fails the check.
+ignore = [
+    # chrono is unmaintained (informational, no vulnerability, no patched
+    # version). It is not our dependency: m3u8-rs, the HLS manifest
+    # parser/rewriter behind the stream proxy, requires it unconditionally
+    # (features = ["std"]) to parse and re-serialize the RFC 3339 dates in
+    # EXT-X-PROGRAM-DATE-TIME and EXT-X-DATERANGE. Every m3u8-rs release
+    # since 5.0, 6.0.1 (the latest) included, depends on it, so no version
+    # bump or feature flag removes it; only replacing the parser would. Remove this entry
+    # when m3u8-rs moves off chrono (to jiff or time, the advisory's
+    # recommended alternatives), or when the proxy stops using m3u8-rs.
+    { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained, not vulnerable; pulled in only by m3u8-rs, whose releases since 5.0, the latest included, require it" },
+]
 
 [licenses]
 # Our crate is GPL-3.0 (inherited from ani-cli). Everything else we link
