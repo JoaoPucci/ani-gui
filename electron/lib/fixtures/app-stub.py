@@ -23,6 +23,15 @@ Environment:
     STUB_HOLD_MS     as it exits, leave a child holding its stdout and
                      stderr for this long, as Chromium's helpers or a
                      restarted app do (default 0: none)
+    STUB_STOP        quit: shut down on the first stop signal (default)
+                     hang: note every stop signal and never finish
+                     shutting down, as an app stuck in its quit does;
+                     its handlers stay in place, as the app's own do
+                     (lib/termination-signals.cjs)
+    STUB_HELPER      1: start a helper process in the stub's process
+                     group, as Chromium's are, whose pid the start event
+                     carries ("helper", with its start time in clock
+                     ticks, "helper_started"); it exits by itself after 30 s
 
 Events: {"start": {...}} once, then {"ready": true} once the handlers are in
 place, {"signal": "TERM"} per stop signal, {"write_error": "EPIPE"} at the
@@ -59,8 +68,12 @@ def put(fd, text):
             event({"write_error": errno.errorcode.get(err.errno, str(err.errno))})
 
 
+HANG = os.environ.get("STUB_STOP", "quit") == "hang"
+
+
 def stop(signum, _frame):
-    signal.signal(signum, signal.SIG_DFL)
+    if not HANG:
+        signal.signal(signum, signal.SIG_DFL)
     event({"signal": signal.Signals(signum).name[3:]})
     stopping.append(signum)
 
@@ -76,6 +89,26 @@ def hold():
         os._exit(0)
 
 
+def helper():
+    """A child in this process's group that runs until it is killed, or
+    for 30 s; its pid, or None."""
+    if os.environ.get("STUB_HELPER") != "1":
+        return None
+    pid = os.fork()
+    if pid == 0:
+        time.sleep(30)
+        os._exit(0)
+    return pid
+
+
+def started(pid):
+    """A process's start time in clock ticks (/proc/<pid>/stat field 22),
+    which tells it from a later process given the same pid."""
+    with open(f"/proc/{pid}/stat") as f:
+        stat = f.read()
+    return int(stat[stat.rindex(")") + 2:].split()[19])
+
+
 def target(fd):
     try:
         return os.readlink(f"/proc/self/fd/{fd}")
@@ -84,8 +117,12 @@ def target(fd):
 
 
 def main():
+    helper_pid = helper()
     event({"start": {
+        "helper": helper_pid,
+        "helper_started": started(helper_pid) if helper_pid else None,
         "pid": os.getpid(),
+        "started": started(os.getpid()),
         "pgid": os.getpgid(0),
         "sid": os.getsid(0),
         "argv": sys.argv[1:],
@@ -114,6 +151,11 @@ def main():
     if not stopping:
         event({"exit": 99})
         return 99
+    while HANG and time.monotonic() < deadline:
+        time.sleep(0.02)
+    if HANG:
+        event({"exit": 98})
+        return 98
     for n in range(1, int(os.environ.get("STUB_BYE_LINES", "3")) + 1):
         put(1, f"bye {n}")
         put(2, f"bye-err {n}")
