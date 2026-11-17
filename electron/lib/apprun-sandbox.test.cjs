@@ -28,6 +28,7 @@ const { prepareTree, PROBE_BOUND_SECONDS } = require("./appimage-tree.cjs");
 // own; on any other platform there is nothing to run it on.
 const test = (name, fn) => nodeTest(name, { skip: process.platform !== "linux" }, fn);
 const { SANDBOX_PROBE_SWITCH } = require("./sandbox-probe.cjs");
+const { launcherScript } = require("./linux-launcher.cjs");
 
 const fixture = (name) => fs.readFileSync(path.join(__dirname, "fixtures", name), "utf8");
 const TEMPLATES = {
@@ -73,8 +74,11 @@ function stubFor(probe) {
   ].join("\n");
 }
 
-/** An image prepared from `template`, its binary a stub for `probe`. */
-function image(template, probe) {
+/** An image prepared from `template`, its binary a stub for `probe`.
+ *  `throughLauncher` lays it out as the packages do: the stub is
+ *  `ani-gui.bin`, behind the real launcher at `ani-gui`
+ *  (lib/linux-launcher.cjs). Otherwise the stub stands at `ani-gui`. */
+function image(template, probe, throughLauncher = false) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "apprun-sandbox-"));
   const app = path.join(root, "squashfs-root");
   const tmp = path.join(root, "tmp");
@@ -83,7 +87,12 @@ function image(template, probe) {
   fs.writeFileSync(path.join(app, "AppRun"), template, { mode: 0o755 });
   fs.writeFileSync(path.join(app, "ani-gui.desktop"), fixture("ani-gui.desktop"));
   prepareTree(app);
-  fs.writeFileSync(path.join(app, "ani-gui"), stubFor(probe), { mode: 0o755 });
+  if (throughLauncher) {
+    fs.writeFileSync(path.join(app, "ani-gui.bin"), stubFor(probe), { mode: 0o755 });
+    fs.writeFileSync(path.join(app, "ani-gui"), launcherScript("ani-gui"), { mode: 0o755 });
+  } else {
+    fs.writeFileSync(path.join(app, "ani-gui"), stubFor(probe), { mode: 0o755 });
+  }
   const env = (extraEnv) => ({
     PATH: process.env.PATH,
     HOME: root,
@@ -277,8 +286,8 @@ async function until(done, boundMs) {
  * `shell`, AppRun is started from that bash snippet instead, which ends
  * by exec'ing `"$@"` (AppRun and its arguments).
  */
-function launch(template, probe, args, extraEnv = {}, shell = null) {
-  const img = image(template, probe);
+function launch(template, probe, args, extraEnv = {}, shell = null, throughLauncher = false) {
+  const img = image(template, probe, throughLauncher);
   const appRun = [path.join(img.app, "AppRun"), ...args];
   const inner = shell === null ? ["bash", ...appRun] : ["bash", "-c", shell, "bash", "bash", ...appRun];
   // The run gets a session, and so a process group, of its own: setsid
@@ -427,6 +436,52 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
 }
 
 const EB25 = TEMPLATES["electron-builder 25"];
+
+// AppRun's $BIN is the packages' launcher, which puts its own switch
+// first and, given no terminal on any of the three streams (as the
+// probe never is), execs the binary: the probe AppRun waits on, and its
+// watchdog kills, is then the binary itself.
+for (const [name, template] of Object.entries(TEMPLATES)) {
+  test(`${name}: through the packages' launcher, an answered probe starts the app sandboxed`, () => {
+    const r = launch(template, "answers", USER_ARGS, {}, null, true);
+    try {
+      assert.equal(r.run.status, 0, r.run.stderr);
+      assert.deepEqual(r.launched, ["--enable-wayland-ime", ...USER_ARGS]);
+      assert.deepEqual(r.calls, [`--enable-wayland-ime ${SANDBOX_PROBE_SWITCH}`, ["--enable-wayland-ime", ...USER_ARGS].join(" ")]);
+      assert.equal(r.run.stderr, "");
+      assert.deepEqual(r.tmpLeft, []);
+      assertNothingLeft(r);
+    } finally {
+      cleanup(r);
+    }
+  });
+
+  test(`${name}: through the packages' launcher, an aborted probe starts the app with --no-sandbox`, () => {
+    const r = launch(template, "aborts", USER_ARGS, {}, null, true);
+    try {
+      assert.equal(r.run.status, 0, r.run.stderr);
+      assert.deepEqual(r.launched, ["--enable-wayland-ime", "--no-sandbox", ...USER_ARGS]);
+      assert.match(r.run.stderr, FALLBACK_LINE);
+      assertNothingLeft(r);
+    } finally {
+      cleanup(r);
+    }
+  });
+}
+
+test("through the packages' launcher, a probe that never returns is killed at the bound", () => {
+  const r = launch(EB25, "hangs", USER_ARGS, {}, null, true);
+  try {
+    assert.deepEqual(r.launched, ["--enable-wayland-ime", "--no-sandbox", ...USER_ARGS]);
+    assert.match(r.run.stderr, FALLBACK_LINE);
+    assert.ok(r.elapsedMs >= PROBE_BOUND_SECONDS * 1000, `waited ${r.elapsedMs} ms`);
+    assert.ok(r.elapsedMs < (PROBE_BOUND_SECONDS + 5) * 1000, `waited ${r.elapsedMs} ms`);
+    assert.ok(r.probePid, "the probe started");
+    assertNothingLeft(r);
+  } finally {
+    cleanup(r);
+  }
+});
 
 for (const probe of ["exits 1", "exits 0 unanswered"]) {
   test(`a probe that ${probe} starts the app with --no-sandbox`, () => {
