@@ -314,12 +314,12 @@ function launch(template, probe, args, extraEnv = {}, shell = null, throughLaunc
  * the signal. A probe that never starts is a failed test, not a signal
  * sent anyway.
  */
-async function launchAndSignal(template, probe, args, { settleMs, signal, group }) {
+async function launchAndSignal(template, probe, args, { settleMs, signal, group, slowToGo = false, then = null }) {
   const { spawn } = require("node:child_process");
   const img = image(template, probe);
   const child = spawn("python3", underSubreaper(img, !group, ["bash", path.join(img.app, "AppRun"), ...args]), {
     cwd: img.root,
-    env: img.env({}),
+    env: img.env(slowToGo ? { PATH: `${slowSleepDir(img)}:${process.env.PATH}` } : {}),
     detached: true,
     stdio: ["ignore", "ignore", "pipe"],
   });
@@ -341,6 +341,10 @@ async function launchAndSignal(template, probe, args, { settleMs, signal, group 
     signalledAt = Date.now();
     if (group) process.kill(-child.pid, signal);
     else child.kill(signal);
+    if (then !== null) {
+      await sleepMs(then.afterMs);
+      if (!gone) process.kill(-child.pid, then.signal);
+    }
   } else if (!gone) {
     killOwnGroup(child.pid);
   }
@@ -353,6 +357,36 @@ async function launchAndSignal(template, probe, args, { settleMs, signal, group 
     assert.fail(`the probe never started, so nothing was signalled (status ${status}, signal ${killedBy}): ${stderr}`);
   }
   return r;
+}
+
+/** A directory holding a \`sleep\` that is slow to go: stopped by
+ *  SIGTERM or SIGHUP, it takes half a second more to exit, as any
+ *  child may on a loaded host. Put ahead of PATH, it stands in for the
+ *  watchdog's sleeper and for the probe's own \`exec sleep\`. */
+function slowSleepDir(img) {
+  const python = spawnSync("bash", ["-c", "command -v python3"], { encoding: "utf8" }).stdout.trim();
+  const dir = path.join(img.root, "slow-bin");
+  fs.mkdirSync(dir);
+  // One process, with no children of its own: the probe is stopped
+  // with SIGKILL, which would leave a stand-in's own children orphaned.
+  fs.writeFileSync(
+    path.join(dir, "sleep"),
+    [
+      `#!${python} -I`,
+      "import signal, sys, time",
+      "def go(*_):",
+      "    signal.signal(signal.SIGTERM, signal.SIG_IGN)",
+      "    signal.signal(signal.SIGHUP, signal.SIG_IGN)",
+      "    time.sleep(0.5)",
+      "    sys.exit(143)",
+      "signal.signal(signal.SIGTERM, go)",
+      "signal.signal(signal.SIGHUP, go)",
+      "time.sleep(float(sys.argv[1]))",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  return dir;
 }
 
 /** Whether any process is still in `group`, the run's own group:
@@ -664,6 +698,41 @@ async function runWithBystander(img, script) {
 // probe's own functions, cut from the rendered AppRun at the lines
 // the repack writes, with an answering stub, then a background
 // process standing in for the next one `$!` would name.
+// A second stop can come while the first is still being handled: a
+// service manager that follows its SIGTERM with another, a terminal's
+// hangup followed by the user's own kill, or, under load, AppRun's
+// SIGTERM to the probe's subshell landing after the hangup to the
+// whole group. The children are slow to go here, so the second signal
+// lands while the launch is still waiting for them. It must not cut
+// those waits short: a child the launch stops waiting for is left
+// unreaped. The launch still ends by the first signal.
+for (const [name, template] of Object.entries(TEMPLATES)) {
+  for (const [signal, second] of [
+    ["SIGHUP", "SIGTERM"],
+    ["SIGTERM", "SIGTERM"],
+    ["SIGTERM", "SIGHUP"],
+  ]) {
+    test(`${name}: ${second} to the whole group while it handles ${signal} still waits for every child`, async () => {
+      const r = await launchAndSignal(template, "hangs", USER_ARGS, {
+        settleMs: 200,
+        signal,
+        group: true,
+        slowToGo: true,
+        then: { signal: second, afterMs: 150 },
+      });
+      try {
+        assert.equal(r.launched, null, "nothing launched");
+        assertNothingLeft(r);
+        assert.equal(r.run.signal, signal, `AppRun ended with status ${r.run.status}, not by ${signal}`);
+        assert.ok(r.elapsedMs < 3000, `stopped after ${r.elapsedMs} ms`);
+        assert.deepEqual(r.tmpLeft, [], "the probe's answer file is removed");
+      } finally {
+        cleanup(r);
+      }
+    });
+  }
+}
+
 test("a stop after the probe has ended signals nothing but AppRun itself", async () => {
   const img = image(EB25, "answers");
   try {
