@@ -202,7 +202,9 @@ test("on a terminal, the app holds none of it, and its output reaches the termin
     assert.notEqual(start.sid, term.pid, "the app is outside the terminal's session");
     assert.deepEqual(start.argv, ["--enable-wayland-ime", "--some-flag"]);
     assert.equal(start.hint, "auto");
-    await until("the app's output on the terminal", () => term.screen().includes("err 400\n"));
+    // Each stream has a relay of its own, and neither waits for the
+    // other: the last line of each says that stream is through.
+    await until("the app's output on the terminal", () => term.screen().includes("out 400\n") && term.screen().includes("err 400\n"));
     const lines = term.screen().split("\n");
     const outs = lines.filter((l) => l.startsWith("out "));
     const errs = lines.filter((l) => l.startsWith("err "));
