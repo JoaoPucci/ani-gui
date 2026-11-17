@@ -97,8 +97,8 @@ const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own bina
 //   waits through ani_gui_reap, not one `wait`: a second signal that
 //   lands before the handler's first line, together with the first,
 //   stays recorded in bash even once ignored, and can end any later
-//   `wait` at once with the child still running. ani_gui_reap waits
-//   again until the child is gone.
+//   `wait` at once with the child still running, or still uncollected.
+//   ani_gui_reap waits again until the child is gone, within a bound.
 //   That covers the launcher's own children. Chromium's helper
 //   processes (its zygotes) are forked by the binary and outlive it,
 //   the probe's as the app's own do at every quit, so on such a host
@@ -123,18 +123,30 @@ ani_gui_probe_job=
 ani_gui_probe_starting=0
 ani_gui_probe_prev_bg=
 # Waits for child $1 until it has ended, however often a signal bash
-# still holds cuts the wait short. Ends at once for a pid that is not
-# (or no longer) the shell's child. Statuses are kept off set -e,
+# still holds cuts the wait short. It goes on only while the kernel
+# names this shell as the pid's parent: bash answers a child it has
+# already collected with the remembered status, not "not a child", and
+# the pid may by then be another process's. A cut-short wait can also
+# leave a dead child uncollected, so each retry runs one short sleep,
+# which bash waits for in the foreground, and the retries are bounded
+# (about a second): past that the child is left to PID 1 rather than the
+# stop hanging. Builtins only otherwise, and statuses kept off set -e,
 # which electron-builder's AppRun runs under.
 ani_gui_reap()
 {
-  local rc
+  local rc stat tries=0
   while true ; do
     rc=0
     wait "$1" 2>/dev/null || rc=$?
-    if [ "$rc" -eq 127 ] || ! kill -0 "$1" 2>/dev/null ; then
-      return 0
-    fi
+    [ "$rc" -ne 127 ] || return 0
+    { read -r stat < "/proc/$1/stat" ; } 2>/dev/null || return 0
+    # After the name, which ends at the last ")": state, then parent.
+    stat=\${stat##*) }
+    stat=\${stat#* }
+    [ "\${stat%% *}" = "$BASHPID" ] || return 0
+    tries=$((tries + 1))
+    [ "$tries" -le 100 ] || return 0
+    sleep 0.01 </dev/null >/dev/null 2>&1 || true
   done
 }
 ani_gui_probe_stop()
