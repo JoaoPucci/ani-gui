@@ -79,6 +79,10 @@ const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own bina
 //   stderr and the shell's job reports are dropped, so the only output
 //   a failed probe leaves is the one line below. The host may still
 //   log the abort (kernel trap line, AppArmor audit, apport's own log).
+// - $BIN is not the binary but the wrapper script both packages put in
+//   front of it (lib/linux-launcher.cjs). Given no terminal on any of
+//   its three streams, as here, the wrapper execs the binary, so the
+//   probe this block waits on and kills is the binary itself.
 // - A watchdog kills a probe that has not returned by the bound, with
 //   bash's own `wait`, not coreutils `timeout`.
 // - Every child the block signals, it then waits for, the watchdog's
