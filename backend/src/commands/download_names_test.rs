@@ -39,6 +39,53 @@ fn an_episode_of_a_title_with_a_colon_is_named_as_one_file() {
     );
 }
 
+#[test]
+fn a_title_that_starts_with_a_device_name_before_a_dot_is_not_that_device() {
+    // Windows 10 reads a name whose part before the first dot is a
+    // device (CON, NUL, COM1, ...) as that device, extension or not.
+    let dest = tempfile::tempdir().expect("dest");
+    assert_eq!(
+        episode_stem(dest.path(), "Nul. Show", "1", None),
+        "Nul- Show Episode 1"
+    );
+    assert_eq!(
+        episode_stem(dest.path(), "com1.Part", "2", None),
+        "com1-Part Episode 2"
+    );
+    assert_eq!(
+        episode_stem(dest.path(), "Con .x", "3", None),
+        "Con -x Episode 3"
+    );
+    // A device name that is only the start of a longer word, or a
+    // title with no dot at all, is an ordinary name.
+    assert_eq!(
+        episode_stem(dest.path(), "Mr. Osomatsu", "1", None),
+        "Mr. Osomatsu Episode 1"
+    );
+    assert_eq!(
+        episode_stem(dest.path(), "Console. Wars", "1", None),
+        "Console. Wars Episode 1"
+    );
+    assert_eq!(episode_stem(dest.path(), "Aux", "1", None), "Aux Episode 1");
+}
+
+#[cfg(unix)]
+#[test]
+fn an_earlier_spelling_is_never_looked_for_outside_the_folder() {
+    // A provider title with a slash could only have been an earlier
+    // download's name if it named a subfolder, which no version
+    // created; looking it up joins it as a path and can reach a file
+    // outside the folder the download writes to.
+    let root = tempfile::tempdir().expect("root");
+    let dest = root.path().join("downloads");
+    std::fs::create_dir(&dest).expect("dest");
+    std::fs::write(root.path().join("Show Episode 1.mp4"), b"x").expect("outside file");
+    assert_eq!(
+        episode_stem(&dest, "../Show", "1", None),
+        "..-Show Episode 1"
+    );
+}
+
 #[cfg(windows)]
 #[test]
 fn a_failed_downloads_leftover_does_not_hand_its_broken_name_out_again() {
