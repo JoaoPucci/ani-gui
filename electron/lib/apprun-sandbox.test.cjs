@@ -319,7 +319,7 @@ async function launchAndSignal(template, probe, args, { settleMs, signal, group,
   const img = image(template, probe);
   const child = spawn("python3", underSubreaper(img, !group, ["bash", path.join(img.app, "AppRun"), ...args]), {
     cwd: img.root,
-    env: img.env(slowToGo ? { PATH: `${slowSleepDir(img)}:${process.env.PATH}` } : {}),
+    env: img.env(slowToGo ? { PATH: `${slowSleepDir(img, slowReady(img))}:${process.env.PATH}` } : {}),
     detached: true,
     stdio: ["ignore", "ignore", "pipe"],
   });
@@ -336,6 +336,9 @@ async function launchAndSignal(template, probe, args, { settleMs, signal, group,
   );
   let signalledAt = null;
   await until(() => gone || fs.existsSync(path.join(img.app, "probe-pid")), 15000);
+  // The probe's sleep and the watchdog's sleeper, each with its
+  // handlers in place.
+  if (slowToGo) await until(() => gone || fs.readdirSync(slowReady(img)).length >= 2, 15000);
   if (!gone && fs.existsSync(path.join(img.app, "probe-pid"))) {
     await sleepMs(settleMs);
     signalledAt = Date.now();
@@ -359,12 +362,24 @@ async function launchAndSignal(template, probe, args, { settleMs, signal, group,
   return r;
 }
 
-/** A directory holding a \`sleep\` that is slow to go: stopped by
+/** Where the slow `sleep`s below say they are ready. */
+function slowReady(img) {
+  const ready = path.join(img.root, "slow-ready");
+  fs.mkdirSync(ready, { recursive: true });
+  return ready;
+}
+
+/** A directory holding a `sleep` that is slow to go: stopped by
  *  SIGTERM or SIGHUP, it takes half a second more to exit, as any
  *  child may on a loaded host. Put ahead of PATH, it stands in for the
- *  watchdog's sleeper and for the probe's own \`exec sleep\`. */
-function slowSleepDir(img) {
-  const python = spawnSync("bash", ["-c", "command -v python3"], { encoding: "utf8" }).stdout.trim();
+ *  watchdog's sleeper and for the probe's own `exec sleep`. Each
+ *  one, once its handlers are in place, writes a file named after its
+ *  pid into `ready`, so a test can wait for both before it signals. */
+function slowSleepDir(img, ready) {
+  // The interpreter itself, not what PATH names: a python3 that is a
+  // shim (pyenv's is a shell script) starts children of its own before
+  // Python runs, and a signal then would leave them orphaned.
+  const python = spawnSync("python3", ["-I", "-c", "import sys; print(sys.executable)"], { encoding: "utf8" }).stdout.trim();
   const dir = path.join(img.root, "slow-bin");
   fs.mkdirSync(dir);
   // One process, with no children of its own: the probe is stopped
@@ -373,7 +388,7 @@ function slowSleepDir(img) {
     path.join(dir, "sleep"),
     [
       `#!${python} -I`,
-      "import signal, sys, time",
+      "import os, signal, sys, time",
       "def go(*_):",
       "    signal.signal(signal.SIGTERM, signal.SIG_IGN)",
       "    signal.signal(signal.SIGHUP, signal.SIG_IGN)",
@@ -381,6 +396,7 @@ function slowSleepDir(img) {
       "    sys.exit(143)",
       "signal.signal(signal.SIGTERM, go)",
       "signal.signal(signal.SIGHUP, go)",
+      `open(${JSON.stringify(ready)} + "/" + str(os.getpid()), "w").close()`,
       "time.sleep(float(sys.argv[1]))",
       "",
     ].join("\n"),
