@@ -118,8 +118,13 @@ fn not_a_device(name: String) -> String {
     };
     let base = name[..dot].trim_end().to_ascii_uppercase();
     let numbered = |prefix: &str| {
-        base.strip_prefix(prefix)
-            .is_some_and(|n| n.len() == 1 && n.as_bytes()[0].is_ascii_digit() && n != "0")
+        base.strip_prefix(prefix).is_some_and(|n| {
+            let mut digits = n.chars();
+            matches!(
+                (digits.next(), digits.next()),
+                (Some('1'..='9' | '¹' | '²' | '³'), None)
+            )
+        })
     };
     if DEVICES.contains(&base.as_str()) || numbered("COM") || numbered("LPT") {
         let mut renamed = name;
