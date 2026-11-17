@@ -41,9 +41,9 @@ fi
 # terminal, which \`cat\` relays to it, and runs in a session of its own:
 # whatever the terminal does to its session and foreground group (a
 # hangup, Ctrl-C) reaches this launcher alone, which hands the app one
-# SIGTERM, and ends it by force on a second Ctrl-C (see stop_app). The relays run in sessions of their own too, and ignore
-# SIGHUP and SIGTERM, so the app's last lines still reach the terminal
-# while it shuts down; once the terminal has gone, each ends at its next
+# SIGTERM, and ends it by force on a second Ctrl-C (see stop_app). The
+# relays run in sessions of their own too, and ignore SIGHUP and SIGTERM,
+# so the app's last lines still reach the terminal while it shuts down; once the terminal has gone, each ends at its next
 # write to it, and the app's writes after that fail as a closed pipe's
 # do, which it ignores
 # (lib/stdio-guard.cjs). With setpriv, the app also gets a
@@ -133,7 +133,8 @@ force_app() {
   case "\${stat##*) }" in
     [ZXx]*) return 0 ;;
   esac
-  kill -s KILL -- "-$pid" 2>/dev/null
+  # A group already gone by now gets no SIGKILL, and no line claims one.
+  kill -s KILL -- "-$pid" 2>/dev/null || return 0
   # A closed stream must not end the launcher before it has the app's
   # status.
   trap '' PIPE
