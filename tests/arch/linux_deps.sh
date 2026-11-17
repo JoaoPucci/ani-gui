@@ -24,9 +24,11 @@
 # The Windows installer has the same shape
 # (`fetch-windows-deps.mjs` + NSIS bundle) and `windows_deps.sh` is
 # its counterpart, including an inventory comparison that holds the
-# two platforms to the same dependency set. One difference is worth
-# knowing: the e2e workflow runs `pnpm run dist`, so a Linux package
-# really is built in CI, while nothing builds the Windows installer.
+# two platforms' declared lists to each other (staged, downloaded at
+# install time, or declared in `SYSTEM_DEPS`), not every program
+# either side runs. One difference is worth knowing: the e2e workflow
+# runs `pnpm run dist`, so a Linux package really is built in CI,
+# while nothing builds the Windows installer.
 # On this side the configuration is checked and then exercised; on
 # that side only the configuration.
 #

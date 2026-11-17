@@ -154,13 +154,13 @@ export const DEPS = [
 // Dependencies the Windows package provides (stages, or its installer
 // downloads) that the Linux packages take from the distribution rather
 // than stage. It is not every program the Linux side takes from the
-// system: the .deb's `depends`, the launcher's bash, setsid and
-// setpriv, and the session watcher's gdbus are not anything Windows
-// stages or downloads, and are not listed. This script downloads
-// nothing in this list; it exists so the arch checks can tell a declared
-// exception from a forgotten dependency — each entry must appear in
-// `build.deb.recommends`, and the Windows fetcher must stage it or
-// declare it downloaded at install time.
+// system: the .deb's `depends`, or the bash, setsid, setpriv and
+// gdbus the launcher and session watcher run, for example, are
+// nothing Windows stages or downloads, so they are not listed. This
+// script downloads nothing in the list. The list exists so the arch
+// checks can tell a declared exception from a forgotten dependency:
+// each entry must appear in `build.deb.recommends`, and the Windows
+// fetcher must stage it or declare it downloaded at install time.
 export const SYSTEM_DEPS = [
 	{
 		name: 'ffmpeg',

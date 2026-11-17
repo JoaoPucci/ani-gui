@@ -1,8 +1,9 @@
 #!/bin/sh
 
-# Architectural invariant: the Windows package must ship the same
-# runtime dependencies the Linux packages do, including the
-# impersonating transport native resolution needs.
+# Architectural invariant: the Windows package must stage every
+# runtime dependency the Linux packages stage, including the
+# impersonating transport native resolution needs, and stage or
+# download at install time what Linux declares in `SYSTEM_DEPS`.
 #
 # `linux_deps.sh` has asserted the Linux half of this since the
 # bundling landed, and says in its own header that the Windows
