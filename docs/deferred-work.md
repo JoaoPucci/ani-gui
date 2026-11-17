@@ -992,10 +992,10 @@ starting it, and delete it when you find it done.
   episode has somewhere left to play from when the hianime the app
   reads runs out of working embed hosts. hianime.ms is a second
   front under the hianime name and a different application from
-  hianime.at: its watch page takes its own shape
+  hianime.fm (formerly hianime.at): its watch page takes its own shape
   (`https://hianime.ms/watch-<slug>-episode-1-f3808`) and is served
   from its own templates, it exposes a `/api/player/check` endpoint
-  rather than hianime.at's `/api/theme/...` listing endpoints, and
+  rather than hianime.fm's `/api/theme/...` listing endpoints, and
   its server list is drawn as buttons — "Ryu", which is its own
   built-in backup player (`data-server="backup"`), and an embed on
   vidnest.fun (`https://vidnest.fun/anime/<id>/...`).
@@ -1508,7 +1508,18 @@ not keep up drawing the interface.
   backend's `tracing_subscriber::fmt()` writes to the default stream
   only. Either wire a file appender to the helper or remove it; a
   file sink would also give packaged desktop launches, which have no
-  terminal, somewhere to leave a trace.
+  terminal, somewhere to leave a trace, and it is what detaching a
+  terminal launch waits for (the next entry).
+- **Detaching a terminal launch instead of relaying its output.**
+  Started from a terminal, the Linux launcher keeps the app as its
+  child and relays its output to the terminal through pipes
+  (`electron/lib/linux-launcher.cjs`), so the app never holds the
+  terminal and a closed one cannot abort it as it exits. The
+  alternative is to detach the app from the terminal by default, as
+  VS Code's `code` command does, with an opt-in to stay attached (a
+  flag, or `ANI_GUI_DEV=1`). It waits for the log file in the entry
+  above: detached, a launch's output has nowhere to go until there is
+  one.
 - **Three pieces of the change-show flow's logic stay in the renderer
   for now.** `AGENTS.md` §14 puts the app's decisions about its data in
   the Rust backend, and the flow's rules moved there, but three pieces

@@ -62,7 +62,8 @@ async function loadFirstPage(win, url, logError, onFailed = () => {}) {
   }
 }
 
-// How long a packaged launch gives its window to reach ready-to-show:
+// How long a packaged launch gives its window to reach ready-to-show,
+// or its page to say it rendered (awaitFirstShow's `painted`):
 // two minutes, the handshake's budget, for the handshake's reason
 // (lib/backend-handshake.cjs).
 //
@@ -79,8 +80,8 @@ async function loadFirstPage(win, url, logError, onFailed = () => {}) {
 const FIRST_SHOW_TIMEOUT_MS = 120_000;
 
 /**
- * How long a launch gives its window to reach ready-to-show, or
- * `null` for no deadline.
+ * How long a launch gives its window to reach ready-to-show (or its
+ * page to say it rendered), or `null` for no deadline.
  *
  * A dev launch has none. Its first page comes from Vite, and a cold
  * Vite re-optimizing its dependencies can take longer over the first
@@ -101,8 +102,9 @@ function firstShowTimeoutMs({ isDev }) {
  * left out, which sets no deadline (see firstShowTimeoutMs).
  *
  * The window stays hidden until it is revealed after `ready-to-show`
- * (main.js maximizes it, which maps it, only then), so the splash is
- * all that is on screen while it waits. A window that never gets its
+ * (main.js maximizes it, which maps it, only then; or a wake maps it
+ * behind the splash when its page can draw no frames hidden), so the
+ * splash is all that is in front while it waits. A window that never gets its
  * first paint would leave the splash standing, with nothing to click
  * — the app's window is frameless, its close button the renderer's to
  * draw — and the app would otherwise sit there with its backend
@@ -110,8 +112,16 @@ function firstShowTimeoutMs({ isDev }) {
  *
  * After the first show the guard lets go: a later renderer crash is
  * not a boot failure.
+ *
+ * `painted`, when given, settles true once the page has said it
+ * rendered (lib/app-window.cjs appReadyWaiter), which means a frame was
+ * drawn: it passes the guard as ready-to-show does. A window that is not
+ * on screen may never paint (native Wayland without GPU compositing),
+ * and ready-to-show then never comes; the page's word does, once the
+ * window is woken (lib/app-window.cjs frameWake). Anything but true
+ * leaves the guard waiting for ready-to-show.
  */
-function awaitFirstShow(win, { timeoutMs }) {
+function awaitFirstShow(win, { timeoutMs, painted }) {
   // Taken once, for the same reason as in loadFirstPage.
   const contents = win.webContents;
   return new Promise((resolve, reject) => {
@@ -148,6 +158,14 @@ function awaitFirstShow(win, { timeoutMs }) {
     win.once("ready-to-show", onShow);
     win.once("closed", onClosed);
     contents.on("render-process-gone", onGone);
+    // settle() is idempotent in effect: a second call finds the listeners
+    // gone and a promise that has already settled.
+    Promise.resolve(painted).then(
+      (rendered) => {
+        if (rendered === true) settle(resolve);
+      },
+      () => {},
+    );
   });
 }
 
@@ -199,7 +217,9 @@ async function openFirstPage(
   // main.js passes lib/app-window.cjs abortWhenLost, which rejects when
   // the splash is lost and the page has not rendered within the bound
   // it then gets back.
-  { timeoutMs, logError, beforeShow = async () => {}, reveal = () => win.show(), abort = new Promise(() => {}) },
+  // `painted`: the page's word that it rendered, which passes the
+  // first-show guard as ready-to-show does (awaitFirstShow).
+  { timeoutMs, logError, beforeShow = async () => {}, reveal = () => win.show(), abort = new Promise(() => {}), painted },
 ) {
   const contents = win.webContents;
   let failed = false;
@@ -214,7 +234,7 @@ async function openFirstPage(
   aborted.catch(() => {});
   // `beforeShow` is whatever must happen first — the splash on screen,
   // the page's first render (main.js).
-  const shown = awaitFirstShow(win, { timeoutMs })
+  const shown = awaitFirstShow(win, { timeoutMs, painted })
     .then(() => waitBeforeShow(contents, beforeShow, logError))
     .then(() => {
       // `reveal` is what puts the window on screen — a plain show, or
