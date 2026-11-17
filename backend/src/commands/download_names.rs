@@ -33,16 +33,53 @@ pub(crate) fn portable_name(tag: &str) -> Option<String> {
     }
 }
 
-/// `name` with the characters Windows refuses in a file name taken out.
+/// `name` with the characters Windows refuses in a file name taken out,
+/// so a title becomes a name on every platform the app writes to: on
+/// NTFS a colon names a hidden stream of the file named up to it, and
+/// the rest are refused outright. A colon reads as " - " between the
+/// words it joined; `/`, `\` and `|` become a hyphen; `?`, `"`, `<`,
+/// `>`, `*` and control characters go. Everything else is kept, so a
+/// title Windows already accepts is its own name.
 #[must_use]
 pub(crate) fn file_safe(name: &str) -> String {
-    todo!("{name}")
+    let mut out = String::with_capacity(name.len() + 4);
+    let mut after_colon = false;
+    for c in name.chars() {
+        let kept = match c {
+            ':' => {
+                out.truncate(out.trim_end().len());
+                out.push_str(if out.is_empty() { "-" } else { " -" });
+                after_colon = true;
+                continue;
+            }
+            '/' | '\\' | '|' => '-',
+            '?' | '"' | '<' | '>' | '*' => continue,
+            c if (c as u32) < 0x20 => continue,
+            c => c,
+        };
+        if after_colon {
+            if kept.is_whitespace() {
+                continue;
+            }
+            out.push(' ');
+            after_colon = false;
+        }
+        out.push(kept);
+    }
+    out
 }
 
 /// The name an episode's download takes in `dest`: `"{title} Episode
-/// {episode}"`, or the one an earlier version gave it, numbered
-/// `former`, when a file under that name is already there — that file
-/// is the episode.
+/// {episode}"` with the title made [`file_safe`], or the one an
+/// earlier version gave it — numbered `former`, or spelled with the
+/// title as the provider gave it — when a file under that name is
+/// already there: that file is the episode.
+///
+/// The provider's spelling is looked for only off Windows. Earlier
+/// versions saved it as a real file only where the filesystem accepts
+/// the colon; on Windows the same path names a stream of the empty
+/// file a failed download left, and finding that stream would hand
+/// the broken name out again.
 #[must_use]
 pub(crate) fn episode_stem(
     dest: &std::path::Path,
@@ -50,11 +87,23 @@ pub(crate) fn episode_stem(
     episode: &str,
     former: Option<&str>,
 ) -> String {
-    let stem = |n: &str| format!("{title} Episode {n}");
-    former
-        .map(stem)
-        .filter(|s| std::fs::symlink_metadata(dest.join(format!("{s}.mp4"))).is_ok())
-        .unwrap_or_else(|| stem(episode))
+    let safe = file_safe(title);
+    let stem = |t: &str, n: &str| format!("{t} Episode {n}");
+    let on_disk = |s: &String| std::fs::symlink_metadata(dest.join(format!("{s}.mp4"))).is_ok();
+    let mut earlier: Vec<String> = Vec::new();
+    if let Some(n) = former {
+        earlier.push(stem(&safe, n));
+    }
+    if !cfg!(windows) && safe != title {
+        if let Some(n) = former {
+            earlier.push(stem(title, n));
+        }
+        earlier.push(stem(title, episode));
+    }
+    earlier
+        .into_iter()
+        .find(on_disk)
+        .unwrap_or_else(|| stem(&safe, episode))
 }
 
 #[cfg(test)]
