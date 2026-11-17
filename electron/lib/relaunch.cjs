@@ -24,7 +24,11 @@
 //   tree this way: on X11 in CI, and on Wayland when run locally under
 //   tools/headless-wayland.sh.) Under `pnpm dev` the new Electron is
 //   no longer attached to the dev script's terminal, and the Vite
-//   server it loads from has to be still running.
+//   server it loads from has to be still running. Started from a
+//   terminal through the .deb's launcher (lib/linux-launcher.cjs), the
+//   new process is not that launcher's child: the launcher exits
+//   shortly after this one, and the terminal's stops no longer reach
+//   the new process.
 // - The AppImage. Its binary sits on a FUSE mount that goes away the
 //   moment this process exits, so neither it nor Electron's helper
 //   (which runs from the same mount) can be what starts the new one.
@@ -51,9 +55,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 /** What the packaged Linux launchers put before the person's
- *  arguments on every launch: the AppImage's wrapper script
- *  (build-resources/after-pack.cjs). AppRun's --no-sandbox is not one of
- *  them; it depends on the launch (lib/appimage-tree.cjs). */
+ *  arguments on every launch: the wrapper script both packages run
+ *  (lib/linux-launcher.cjs, written by build-resources/after-pack.cjs).
+ *  The AppImage's AppRun's --no-sandbox is not one of them; it depends
+ *  on the launch (lib/appimage-tree.cjs). */
 const LAUNCHER_SWITCHES = ["--enable-wayland-ime"];
 
 /** The waiter: `$1` is the process to outlive, the rest the command to

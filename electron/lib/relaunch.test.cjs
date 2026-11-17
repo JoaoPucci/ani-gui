@@ -20,14 +20,15 @@ const appImageEnv = {
 };
 const appImageExec = "/tmp/.mount_ani-guXYZ/ani-gui.bin";
 
-test("the launcher's own switch is the AppImage wrapper's; AppRun's sandbox switch is decided per launch", () => {
-  // electron/build-resources/after-pack.cjs puts --enable-wayland-ime
-  // first. AppRun (lib/appimage-tree.cjs) passes --no-sandbox only when
-  // the sandbox probe got no answer, or when the person passed it: it is
+test("the launcher's own switch is the wrapper's; AppRun's sandbox switch is decided per launch", () => {
+  // The wrapper (lib/linux-launcher.cjs, written by
+  // build-resources/after-pack.cjs) puts --enable-wayland-ime first.
+  // AppRun (lib/appimage-tree.cjs) passes --no-sandbox only when the
+  // sandbox probe got no answer, or when the person passed it: it is
   // not a switch every launch carries, so the restart keeps it.
   assert.deepEqual(LAUNCHER_SWITCHES, ["--enable-wayland-ime"]);
-  const wrapper = fs.readFileSync(path.join(__dirname, "..", "build-resources", "after-pack.cjs"), "utf-8");
-  assert.match(wrapper, /exec "\$HERE\/\$\{exe\}\.bin" --enable-wayland-ime "\$@"/);
+  const wrapper = fs.readFileSync(path.join(__dirname, "linux-launcher.cjs"), "utf-8");
+  assert.match(wrapper, /"\$HERE\/\$\{exe\}\.bin" --enable-wayland-ime "\$@"/);
   const tree = fs.readFileSync(path.join(__dirname, "appimage-tree.cjs"), "utf-8");
   assert.match(tree, /exec "\$BIN" "\$\{ANI_GUI_SANDBOX\[@\]\}" "\$\{args\[@\]\}"/);
   assert.doesNotMatch(tree, /exec "\$BIN" --no-sandbox/);
