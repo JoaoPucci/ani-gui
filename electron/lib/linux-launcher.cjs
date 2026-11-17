@@ -95,13 +95,44 @@ needs_term() {
   return 0
 }
 sent=0
+armed=
+# Hundredths of a second since boot, in \`now\`: a clock that a change
+# of the date does not move, read without starting a process.
+clock() {
+  local up rest
+  read -r up rest </proc/uptime
+  now=$((10#\${up/./}))
+}
+# Every stop comes here. The first is handed on (stop_app). After it, a
+# SIGINT or SIGTERM ends the app by force (force_app), once 0.3 s have
+# passed since the app was handed its SIGTERM. The signals one event
+# delivers come well inside that (a closed terminal's SIGHUPs and
+# SIGCONT, a scope stop's SIGTERM and SIGHUP: under a millisecond
+# apart), and a second Ctrl-C meant as one comes after them. A SIGHUP
+# never forces: it says the terminal has gone, and the quit carries on
+# without it.
+# The window is measured, not slept through with the stops set aside,
+# because bash does not run a trap when its signal arrives. It marks
+# the signal and runs the traps later, so a signal of the first stop's
+# burst can be marked before stop_app has set the rest aside, and run
+# only once stop_app is done: it is still one of the first stop's.
+# Bash can also run a trap between any two commands of another, so the
+# test for the first stop and its record are one command.
+on_stop() {
+  if ((sent++ == 0)); then
+    stop_app
+    return 0
+  fi
+  [ "$1" != HUP ] && [ -n "$armed" ] || return 0
+  clock
+  ((now - armed >= 30)) || return 0
+  force_app
+}
 stop_app() {
-  [ "$sent" -eq 0 ] || return 0
-  sent=1
-  # From the first stop on, the launcher ignores the rest for a moment:
-  # nothing more is passed on, and the pauses below, which inherit that,
-  # are not cut short by the same stop reaching it too (a Ctrl-C to the
-  # group, a scope's SIGTERM to every process).
+  # For the pause below, the launcher ignores the rest: nothing more is
+  # passed on, and the pause, which inherits that, is not cut short by
+  # the same stop reaching it too (a Ctrl-C to the group, a scope's
+  # SIGTERM to every process).
   trap '' HUP INT TERM
   # A stop meant for every process may still be on its way to the app.
   # An app that quits within the pause can already be reaped after it,
@@ -111,14 +142,11 @@ stop_app() {
   if needs_term; then
     kill -s TERM "$pid" 2>/dev/null
   fi
-  # Then a second SIGINT or SIGTERM ends the app by force. The signals
-  # one event delivers come well inside these 0.5 s (a closed terminal's
-  # SIGHUPs and SIGCONT, a scope stop's SIGTERM and SIGHUP: under a
-  # millisecond apart), and a second Ctrl-C meant as one comes after
-  # them. A SIGHUP never forces: it says the terminal has gone, and the
-  # quit carries on without it.
-  sleep 0.3
-  trap force_app INT TERM
+  clock
+  armed=$now
+  trap 'on_stop HUP' HUP
+  trap 'on_stop INT' INT
+  trap 'on_stop TERM' TERM
 }
 # A SIGKILL to the app's process group, which setsid made its own: the
 # app and the helpers it started there. The backend leads a group of
@@ -128,7 +156,9 @@ stop_app() {
 # is a zombie for the moment before that. (Only for the moment before
 # the wait below notices: after it, every stop is ignored.) While any
 # helper is left in the group, its id is not given to another process.
+forced=0
 force_app() {
+  ((forced++ == 0)) || return 0
   trap '' HUP INT TERM
   local stat
   { stat=$(<"/proc/$pid/stat"); } 2>/dev/null || return 0
@@ -142,7 +172,9 @@ force_app() {
   trap '' PIPE
   printf '%s\\n' "[launcher] a second stop: ani-gui ended by force (SIGKILL); what it changed in its last moments may not be saved" >&2
 }
-trap stop_app HUP INT TERM
+trap 'on_stop HUP' HUP
+trap 'on_stop INT' INT
+trap 'on_stop TERM' TERM
 
 # \`wait\` also returns above 128 when a signal's trap interrupts it, with
 # the app still running.
