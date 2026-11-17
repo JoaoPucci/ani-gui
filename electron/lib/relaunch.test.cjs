@@ -21,12 +21,13 @@ const appImageEnv = {
 const appImageExec = "/tmp/.mount_ani-guXYZ/ani-gui.bin";
 
 test("the launcher's switches are the AppImage wrapper's then AppRun's, in that order", () => {
-  // electron/build-resources/after-pack.cjs puts --enable-wayland-ime
-  // first; AppRun (lib/appimage-tree.cjs) puts --no-sandbox between the
+  // The wrapper (lib/linux-launcher.cjs, written by
+  // build-resources/after-pack.cjs) puts --enable-wayland-ime first;
+  // AppRun (lib/appimage-tree.cjs) puts --no-sandbox between the
   // wrapper and the person's own arguments.
   assert.deepEqual(LAUNCHER_SWITCHES, ["--enable-wayland-ime", "--no-sandbox"]);
-  const wrapper = fs.readFileSync(path.join(__dirname, "..", "build-resources", "after-pack.cjs"), "utf-8");
-  assert.match(wrapper, /exec "\$HERE\/\$\{exe\}\.bin" --enable-wayland-ime "\$@"/);
+  const wrapper = fs.readFileSync(path.join(__dirname, "linux-launcher.cjs"), "utf-8");
+  assert.match(wrapper, /"\$HERE\/\$\{exe\}\.bin" --enable-wayland-ime "\$@"/);
   const tree = fs.readFileSync(path.join(__dirname, "appimage-tree.cjs"), "utf-8");
   assert.match(tree, /exec "\$BIN" --no-sandbox "\$\{args\[@\]\}"/);
 });
