@@ -67,6 +67,24 @@ fn a_title_that_starts_with_a_device_name_before_a_dot_is_not_that_device() {
         "Console. Wars Episode 1"
     );
     assert_eq!(episode_stem(dest.path(), "Aux", "1", None), "Aux Episode 1");
+    assert_eq!(
+        episode_stem(dest.path(), "COM0.x", "1", None),
+        "COM0.x Episode 1"
+    );
+}
+
+#[test]
+fn the_superscript_numbered_ports_are_devices_too() {
+    // Windows reserves COM¹-³ and LPT¹-³ alongside the plain-digit ports.
+    let dest = tempfile::tempdir().expect("dest");
+    assert_eq!(
+        episode_stem(dest.path(), "COM¹.x", "1", None),
+        "COM¹-x Episode 1"
+    );
+    assert_eq!(
+        episode_stem(dest.path(), "lpt³.y", "1", None),
+        "lpt³-y Episode 1"
+    );
 }
 
 #[cfg(unix)]
