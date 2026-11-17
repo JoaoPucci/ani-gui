@@ -816,8 +816,8 @@ for (const [name, template] of Object.entries(TEMPLATES)) {
 // remembered status, never "not a child", and the pid may by then
 // belong to another live process. The reap must end at once there, not
 // wait on that process. `wait` shadowed to answer 0, as bash does for
-// the remembered child, and the pid of the shell's own parent, live and
-// not its child, stand in for the reuse, which no test can arrange on
+// the remembered child, and the test runner's own pid, live and not
+// the shell's child, stand in for the reuse, which no test can arrange on
 // demand.
 test("a reap of a child already reaped ends even when its pid is another live process's", () => {
   const img = image(EB25, "answers");
@@ -832,10 +832,10 @@ test("a reap of a child already reaped ends even when its pid is another live pr
       appRun.slice(start, end),
       "waits=0",
       "wait() { waits=$((waits + 1)) ; return 0 ; }",
-      'ani_gui_reap "$PPID"',
+      'ani_gui_reap "$LIVE_PID"',
       'echo "$waits" > "$APPDIR/reap-waits"',
     ].join("\n");
-    const r = spawnSync("bash", ["-c", script], { env: img.env({}), encoding: "utf8", timeout: 5000, killSignal: "SIGKILL" });
+    const r = spawnSync("bash", ["-c", script], { env: img.env({ LIVE_PID: String(process.pid) }), encoding: "utf8", timeout: 5000, killSignal: "SIGKILL" });
     const waitsFile = path.join(img.app, "reap-waits");
     assert.ok(fs.existsSync(waitsFile), `the reap did not end (status ${r.status}, signal ${r.signal}): ${r.stderr}`);
     assert.equal(fs.readFileSync(waitsFile, "utf8").trim(), "1", "the reap waited again on a process that is not the shell's child");
