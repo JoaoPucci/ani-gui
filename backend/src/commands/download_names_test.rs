@@ -139,7 +139,7 @@ fn runs_outside_the_alphabet_become_one_hyphen_and_edges_are_trimmed() {
     assert_eq!(portable_name("zh_Hans").as_deref(), Some("zh-Hans"));
     assert_eq!(portable_name("  en  1 ").as_deref(), Some("en-1"));
     assert_eq!(portable_name("--en--").as_deref(), Some("en"));
-    assert_eq!(portable_name("σ"), None);
+    assert_eq!(portable_name("Ïƒ"), None);
     assert_eq!(portable_name(""), None);
 }
 
@@ -170,7 +170,7 @@ proptest! {
 
     /// Whatever the title, nothing Windows refuses survives.
     #[test]
-    fn a_file_safe_name_holds_nothing_windows_refuses(name in "\\PC{0,24}|[ -~]{0,24}") {
+    fn a_file_safe_name_holds_nothing_windows_refuses(name in "\\PC{0,24}|[\\x00-\\x7f]{0,24}") {
         let safe = file_safe(&name);
         prop_assert!(!safe.chars().any(refused_by_windows), "{safe:?}");
     }
@@ -183,7 +183,7 @@ proptest! {
     }
 
     #[test]
-    fn making_a_name_file_safe_twice_changes_nothing_more(name in "[ -~]{0,24}") {
+    fn making_a_name_file_safe_twice_changes_nothing_more(name in "\\PC{0,24}|[\\x00-\\x7f]{0,24}") {
         let once = file_safe(&name);
         prop_assert_eq!(file_safe(&once), once);
     }
