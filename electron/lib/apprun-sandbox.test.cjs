@@ -338,7 +338,13 @@ async function launchAndSignal(template, probe, args, { settleMs, signal, group,
   await until(() => gone || fs.existsSync(path.join(img.app, "probe-pid")), 15000);
   // The probe's sleep and the watchdog's sleeper, each with its
   // handlers in place.
-  if (slowToGo) await until(() => gone || fs.readdirSync(slowReady(img)).length >= 2, 15000);
+  if (slowToGo && !(await until(() => gone || fs.readdirSync(slowReady(img)).length >= 2, 15000))) {
+    const ready = fs.readdirSync(slowReady(img)).length;
+    killOwnGroup(child.pid);
+    await closed;
+    fs.rmSync(img.root, { recursive: true, force: true });
+    assert.fail(`only ${ready} of the two slow sleeps became ready, so nothing was signalled: ${stderr}`);
+  }
   if (!gone && fs.existsSync(path.join(img.app, "probe-pid"))) {
     await sleepMs(settleMs);
     signalledAt = Date.now();
@@ -384,10 +390,17 @@ function slowSleepDir(img, ready) {
   fs.mkdirSync(dir);
   // One process, with no children of its own: the probe is stopped
   // with SIGKILL, which would leave a stand-in's own children orphaned.
+  // `sleep` itself only execs Python on the script, so no shebang
+  // carries the interpreter's path, however long it is or whatever
+  // characters it holds.
   fs.writeFileSync(
     path.join(dir, "sleep"),
+    ["#!/bin/sh", `exec ${shellQuote(python)} -I ${shellQuote(path.join(dir, "slow-sleep.py"))} "$@"`, ""].join("\n"),
+    { mode: 0o755 },
+  );
+  fs.writeFileSync(
+    path.join(dir, "slow-sleep.py"),
     [
-      `#!${python} -I`,
       "import os, signal, sys, time",
       "def go(*_):",
       "    signal.signal(signal.SIGTERM, signal.SIG_IGN)",
@@ -400,9 +413,13 @@ function slowSleepDir(img, ready) {
       "time.sleep(float(sys.argv[1]))",
       "",
     ].join("\n"),
-    { mode: 0o755 },
   );
   return dir;
+}
+
+/** `text` as one single-quoted sh word. */
+function shellQuote(text) {
+  return `'${text.replaceAll("'", "'\\''")}'`;
 }
 
 /** Whether any process is still in `group`, the run's own group:
