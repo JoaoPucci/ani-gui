@@ -121,6 +121,12 @@ The suite under `electron/e2e/` drives the packaged app
 (`electron/dist/linux-unpacked/`). Every spec launches it through
 `electron/e2e/launch.ts`, which mutes it and refuses to open it on a
 display someone may be looking at (`electron/lib/e2e-display.cjs`).
+A spec that has to own what the app's stdout and stderr lead to — a
+pipe it closes, a terminal it hangs up (`terminal-closed.spec.ts`) —
+launches it with `spawnPackagedApp` from the same helper, as a plain
+child process rather than through Playwright's driver, with the same
+switches, display check, environment and policy guard (over the app's
+output alone, since Playwright is not attached to its pages).
 
 The same helper keeps the backend off the network. A spec can set its
 stubs only once the app is up, by which time the first page has
@@ -196,8 +202,11 @@ removed at once. `smoke.spec.ts` checks that the profile is gone after
 the app quits. Two specs manage their profile themselves, removing it
 in their own teardown and, if the launch fails, at once: the keyring
 spec, whose profile also holds its session bus, and the splash-stuck
-spec, whose restarted app outlives the launch. A worker that is killed
-before its app exits leaves the profile behind.
+spec, whose restarted app outlives the launch. `terminal-closed.spec.ts`
+launches through `spawnPackagedApp`, which takes no profile: the spec
+looks at the profile after the app has exited (for the single-instance
+lock) and only then hands it to the helper's `removeAfterExit`. A worker
+that is killed before its app exits leaves the profile behind.
 
 The Node tests that make temporary directories (`electron/lib/`,
 `tests/tools/`, `tests/complexity/`) remove them in their own
@@ -231,7 +240,7 @@ picked the desktop's Wayland compositor — throws before any window
 opens, saying how to run the suite.
 
 A spec stops the app it launched through `stopApp` in
-`electron/e2e/launch.ts`, and nothing else but the one exception
+`electron/e2e/launch.ts`, and nothing else but the exceptions
 below. Playwright starts the app
 in a process group of its own; `electron/lib/own-group.cjs` sends
 SIGTERM to the app's main process alone, then SIGKILL to its group if
@@ -264,6 +273,32 @@ only. The launch helper accepts Xvfb only on a GitHub Actions runner
 (`GITHUB_ACTIONS=true`), and refuses any Wayland session there.
 `smoke.spec.ts` checks that the app landed on Wayland in the headless
 session and on X11 in CI.
+
+`terminal-closed.spec.ts` stops its apps itself, under the same
+rules. The app it starts on a pipe is its own child, leading a group of
+its own: it is stopped with `own-group.cjs`'s `stopOwnGroup` directly,
+since it is not a Playwright launch, and `spawnPackagedApp` kills what
+it leaves in its group in the turn its exit is reported, or the whole
+group if the test worker exits while it is still unreaped. On a
+terminal, the launcher it starts is the child of the terminal fixture
+(`electron/e2e/fixtures/terminal/on-a-terminal.py`, which needs
+`python3`): the fixture signals the launcher's group only before it
+has reaped the launcher, kills what is left in the group once the
+launcher has exited and before reaping it, and kills the whole group
+if the spec's end of its stdin closes first, as it does when the test
+worker exits. The app itself is the launcher's child, in a session of
+its own outside that group (`electron/lib/linux-launcher.cjs`): a
+killed launcher leaves it a SIGTERM where `setpriv` supports
+`--pdeathsig`, and an app that does not quit on it outlives the test.
+So do the launcher's two output relays (`cat`, each in a session of its
+own) until the app and its helpers have closed their pipes.
+
+`electron/lib/linux-launcher.test.cjs` runs the launcher with a
+stand-in for the app's binary (`electron/lib/fixtures/app-stub.py`),
+on that terminal fixture too, so it also needs `python3`; it is
+skipped off Linux. Every process it signals is the launcher it
+started, by pid or group, or the stand-in, by the pid the stand-in
+recorded.
 
 One defect is visible only on Wayland. Under native Wayland with
 software compositing (a virtual machine, a GPU that failed or is
