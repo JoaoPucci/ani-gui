@@ -41,7 +41,7 @@ fi
 # terminal, which \`cat\` relays to it, and runs in a session of its own:
 # whatever the terminal does to its session and foreground group (a
 # hangup, Ctrl-C) reaches this launcher alone, which hands the app one
-# SIGTERM. The relays run in sessions of their own too, and ignore
+# SIGTERM, and ends it by force on a second Ctrl-C (see stop_app). The relays run in sessions of their own too, and ignore
 # SIGHUP and SIGTERM, so the app's last lines still reach the terminal
 # while it shuts down; once the terminal has gone, each ends at its next
 # write to it, and the app's writes after that fail as a closed pipe's
@@ -97,10 +97,10 @@ sent=0
 stop_app() {
   [ "$sent" -eq 0 ] || return 0
   sent=1
-  # From the first stop on, the launcher ignores the rest: nothing more
-  # is passed on, and the pause below, which inherits that, is not cut
-  # short by the same stop reaching it too (a Ctrl-C to the group, a
-  # scope's SIGTERM to every process).
+  # From the first stop on, the launcher ignores the rest for a moment:
+  # nothing more is passed on, and the pauses below, which inherit that,
+  # are not cut short by the same stop reaching it too (a Ctrl-C to the
+  # group, a scope's SIGTERM to every process).
   trap '' HUP INT TERM
   # A stop meant for every process may still be on its way to the app.
   # An app that quits within the pause can already be reaped after it,
@@ -110,6 +110,34 @@ stop_app() {
   if needs_term; then
     kill -s TERM "$pid" 2>/dev/null
   fi
+  # Then a second SIGINT or SIGTERM ends the app by force. The signals
+  # one event delivers come well inside these 0.5 s (a closed terminal's
+  # SIGHUPs and SIGCONT, a scope stop's SIGTERM and SIGHUP: under a
+  # millisecond apart), and a second Ctrl-C meant as one comes after
+  # them. A SIGHUP never forces: it says the terminal has gone, and the
+  # quit carries on without it.
+  sleep 0.3
+  trap force_app INT TERM
+}
+# A SIGKILL to the app's process group, which setsid made its own: the
+# app and the helpers it started there. The backend leads a group of
+# its own and stops itself once the app's end of its stdin closes
+# (backend/src/parent_watch.rs). An app that has exited is left alone:
+# bash reaps it as soon as it exits, so its status file is gone, or it
+# is a zombie for the moment before that. While any helper is left in
+# the group, its id is not given to another process.
+force_app() {
+  trap '' HUP INT TERM
+  local stat
+  { stat=$(<"/proc/$pid/stat"); } 2>/dev/null || return 0
+  case "\${stat##*) }" in
+    [ZXx]*) return 0 ;;
+  esac
+  kill -s KILL -- "-$pid" 2>/dev/null
+  # A closed stream must not end the launcher before it has the app's
+  # status.
+  trap '' PIPE
+  printf '%s\\n' "[launcher] a second stop: ani-gui ended by force (SIGKILL); what it changed in its last moments may not be saved" >&2
 }
 trap stop_app HUP INT TERM
 
