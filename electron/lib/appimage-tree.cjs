@@ -90,6 +90,10 @@ const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own bina
 //   container's PID 1 that does not reap keeps it as a zombie. The
 //   probe's subshells stop that way on SIGHUP as well as SIGTERM, so a
 //   hangup to the whole group (the terminal closing) reaps them too.
+//   Each stop handler ignores further stop signals before it starts
+//   waiting: a second one (the subshell gets AppRun's SIGTERM as well
+//   as the group's hangup) would otherwise cut a wait short, and the
+//   handler would exit with a child still unreaped.
 //   That covers the launcher's own children. Chromium's helper
 //   processes (its zygotes) are forked by the binary and outlive it,
 //   the probe's as the app's own do at every quit, so on such a host
@@ -119,6 +123,7 @@ ani_gui_probe_stop()
   # once $! has moved past whatever background job AppRun had before.
   # At any other time $! names nothing of the probe's.
   local job="$ani_gui_probe_job"
+  trap '' INT TERM HUP
   if [ -z "$job" ] && [ "$ani_gui_probe_starting" -eq 1 ] && [ "$!" != "$ani_gui_probe_prev_bg" ] ; then
     job=$!
   fi
@@ -151,6 +156,7 @@ ani_gui_sandbox_starts()
     # PID 1 does not reap, it stays there as a zombie.
     stop_children()
     {
+      trap '' TERM HUP
       if [ -n "$probe" ] ; then kill -9 "$probe" || true ; wait "$probe" || true ; elif [ -z "$watchdog" ] && [ "$!" != "$prev_bg" ] ; then kill -9 "$!" || true ; wait "$!" || true ; fi
       if [ -n "$watchdog" ] ; then kill "$watchdog" || true ; wait "$watchdog" || true ; elif [ -n "$probe" ] && [ "$!" != "$probe" ] ; then kill "$!" || true ; wait "$!" || true ; fi
       exit 143
@@ -161,7 +167,7 @@ ani_gui_sandbox_starts()
     probe=$!
     (
       sleeper=
-      trap 'if [ -n "$sleeper" ] ; then kill "$sleeper" || true ; wait "$sleeper" || true ; elif [ "$!" != "$probe" ] ; then kill "$!" || true ; wait "$!" || true ; fi ; exit 0' TERM HUP
+      trap 'trap "" TERM HUP ; if [ -n "$sleeper" ] ; then kill "$sleeper" || true ; wait "$sleeper" || true ; elif [ "$!" != "$probe" ] ; then kill "$!" || true ; wait "$!" || true ; fi ; exit 0' TERM HUP
       sleep ${PROBE_BOUND_SECONDS} &
       sleeper=$!
       wait "$sleeper"
