@@ -7,7 +7,8 @@
 // app holds none of it: its output goes through the launcher to the
 // terminal, and the launcher hands it one SIGTERM however the terminal
 // stops it (a second Ctrl-C ends it by force: the end of this file).
-// That is what keeps a closed terminal from aborting the app as it exits (Node puts a terminal it holds back as it found it, and on a
+// That is what keeps a closed terminal from aborting the app as it
+// exits (Node puts a terminal it holds back as it found it, and on a
 // terminal that has hung up that step aborts).
 //
 // The terminal is e2e/fixtures/terminal/on-a-terminal.py: the launcher
@@ -485,8 +486,8 @@ test("a stop that reaches the launcher twice and then the app is not passed on o
 });
 
 // A second stop ends the app by force, as a second Ctrl-C does for
-// `docker compose up`: the person asked twice. Only a stop that comes after the first has been
-// handed on and a moment more counts. The signals one event delivers
+// `docker compose up`: the person asked twice. Only a stop that comes
+// after the first has been handed on and a moment more counts. The signals one event delivers
 // arrive well inside that (a closed terminal's two SIGHUPs and SIGCONT,
 // a scope's SIGTERM and SIGHUP, under a millisecond apart), and a
 // hangup is never one: it says the terminal has gone, not "stop now".
@@ -560,7 +561,7 @@ test("closing the terminal is not a second stop, alone or after a Ctrl-C", { ski
   }
 });
 
-test("the signals of one terminal close, a moment apart, end nothing by force", { skip }, async () => {
+test("the signals of one terminal close, and a Ctrl-C right after them, end nothing by force", { skip }, async () => {
   const tree = packedTree();
   const term = await onTerminal(tree, { env: { STUB_STOP: "hang" } });
   try {
@@ -568,7 +569,6 @@ test("the signals of one terminal close, a moment apart, end nothing by force", 
     process.kill(term.pid, "SIGHUP");
     process.kill(term.pid, "SIGCONT");
     process.kill(term.pid, "SIGHUP");
-    await sleep(50);
     process.kill(-term.pid, "SIGINT");
     await sleep(1500);
     assert.equal(term.ended(), undefined);
@@ -600,6 +600,9 @@ test("a SIGTERM and SIGHUP to the launcher and the app together, as a scope's st
 });
 
 test("a second stop once the app has exited ends nothing by force", { skip }, async () => {
+  // The launcher has noticed the exit here and ignores every stop. The
+  // moment before it notices, which force_app's own check covers, is
+  // too short to stage.
   const tree = packedTree();
   // Something still holds the app's output as it exits, so the launcher
   // is still there, waiting on its relays, after the app.
