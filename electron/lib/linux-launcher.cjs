@@ -42,7 +42,7 @@ fi
 # whatever the terminal does to its session and foreground group (a
 # hangup, Ctrl-C) reaches this launcher alone, which hands the app one
 # SIGTERM, and ends it by force on a second Ctrl-C or kill (see
-# stop_app). The relays run in sessions of their own too, and ignore
+# on_stop). The relays run in sessions of their own too, and ignore
 # SIGHUP and SIGTERM, so the app's last lines still reach the terminal
 # while it shuts down; once the terminal has gone, each ends at its next
 # write to it, and the app's writes after that fail as a closed pipe's
@@ -94,59 +94,74 @@ needs_term() {
   ((caught & 0x3)) && return 1
   return 0
 }
-sent=0
-armed=
 # Hundredths of a second since boot, in \`now\`: a clock that a change
 # of the date does not move, read without starting a process.
 clock() {
   local up rest
-  read -r up rest </proc/uptime
+  read -r up rest 2>/dev/null </proc/uptime || return 1
   now=$((10#\${up/./}))
 }
-# Every stop comes here. The first is handed on (stop_app). After it, a
-# SIGINT or SIGTERM ends the app by force (force_app), once 0.3 s have
-# passed since the app was handed its SIGTERM. The signals one event
-# delivers come well inside that (a closed terminal's SIGHUPs and
-# SIGCONT, a scope stop's SIGTERM and SIGHUP: under a millisecond
-# apart), and a second Ctrl-C meant as one comes after them. A SIGHUP
-# never forces: it says the terminal has gone, and the quit carries on
-# without it.
-# The window is measured, not slept through with the stops set aside,
-# because bash does not run a trap when its signal arrives. It marks
-# the signal and runs the traps later, so a signal of the first stop's
-# burst can be marked before stop_app has set the rest aside, and run
-# only once stop_app is done: it is still one of the first stop's.
-# Bash can also run a trap between any two commands of another, so the
-# test for the first stop and its record are one command.
+# A pause of $1 hundredths of a second, inside this shell: a pipe only
+# this shell holds, read until the time is up. A pause in a process of
+# its own, as \`sleep\`, would be cut short by the stop it waits out (a
+# Ctrl-C to the group, a scope's SIGTERM to every process), which only
+# a disposition this shell set aside first could spare it. A trap runs
+# during the read and the read carries on, so the clock is only a
+# guard.
+exec {pausefd}<> <(:)
+pause() {
+  local left=$1 end=
+  clock && end=$((now + left))
+  while ((left > 0)); do
+    read -r -t "$((left / 100)).$((left / 10 % 10))$((left % 10))" -u "$pausefd" _
+    [ -n "$end" ] && clock || return 0
+    left=$((end - now))
+  done
+}
+# Every stop comes here, and whether it counts is decided here, by the
+# state the launcher is in when bash gets to it. Bash does not run a
+# trap when its signal arrives: it marks the signal and runs the traps
+# later, between commands, an inner pass inside another trap included.
+# So a signal of one burst can be run long after the rest, and a trap
+# swapped or set aside in the meantime would act for it, or have bash
+# complain on the terminal about it. None is: these stay in place
+# until the launcher exits.
+# The first stop is handed on (stop_app). After it, a SIGINT or SIGTERM
+# ends the app by force (force_app), once more than 0.3 s have passed
+# since the first stop was handed on. The signals one event delivers
+# come well inside that (a closed terminal's SIGHUPs and SIGCONT, a
+# scope stop's SIGTERM and SIGHUP: under a millisecond apart), and a
+# second Ctrl-C meant as one comes after them. A SIGHUP never forces:
+# it says the terminal has gone, and the quit carries on without it.
+# A trap can run between any two commands of another, so each test of
+# the launcher's state and its record are one command.
+sent=0
+armed=0
+handed=
+reaped=0
 on_stop() {
+  ((reaped == 0)) || return 0
   if ((sent++ == 0)); then
     stop_app
     return 0
   fi
-  [ "$1" != HUP ] && [ -n "$armed" ] || return 0
-  clock
-  ((now - armed >= 30)) || return 0
+  [ "$1" != HUP ] && ((armed)) || return 0
+  if [ -n "$handed" ] && clock && ((now - handed <= 30)); then
+    return 0
+  fi
   force_app
 }
 stop_app() {
-  # For the pause below, the launcher ignores the rest: nothing more is
-  # passed on, and the pause, which inherits that, is not cut short by
-  # the same stop reaching it too (a Ctrl-C to the group, a scope's
-  # SIGTERM to every process).
-  trap '' HUP INT TERM
   # A stop meant for every process may still be on its way to the app.
   # An app that quits within the pause can already be reaped after it,
   # its status file gone, and then nothing is sent; only a pid reused
   # within those 0.2 s would be mistaken for it.
-  sleep 0.2
+  pause 20
   if needs_term; then
     kill -s TERM "$pid" 2>/dev/null
   fi
-  clock
-  armed=$now
-  trap 'on_stop HUP' HUP
-  trap 'on_stop INT' INT
-  trap 'on_stop TERM' TERM
+  clock && handed=$now
+  armed=1
 }
 # A SIGKILL to the app's process group, which setsid made its own: the
 # app and the helpers it started there. The backend leads a group of
@@ -159,7 +174,6 @@ stop_app() {
 forced=0
 force_app() {
   ((forced++ == 0)) || return 0
-  trap '' HUP INT TERM
   local stat
   { stat=$(<"/proc/$pid/stat"); } 2>/dev/null || return 0
   case "\${stat##*) }" in
@@ -190,7 +204,7 @@ while :; do
   break
 done
 # A stop after this point has no app to act for: it is reaped.
-trap '' HUP INT TERM
+reaped=1
 
 # The relays end once nothing holds their pipes: the app and its helper
 # processes. A restarted app (lib/relaunch.cjs) holds them on, so they
@@ -201,7 +215,7 @@ for ((i = 0; i < 40; i++)); do
     kill -0 "$relay" 2>/dev/null && alive=1
   done
   [ "$alive" -eq 1 ] || break
-  sleep 0.05
+  pause 5
 done
 exit "$status"
 }
