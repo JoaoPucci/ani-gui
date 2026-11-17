@@ -487,10 +487,11 @@ test("a stop that reaches the launcher twice and then the app is not passed on o
 
 // A second stop ends the app by force, as a second Ctrl-C does for
 // `docker compose up`: the person asked twice. Only a stop that comes
-// after the first has been handed on and a moment more counts. The signals one event delivers
-// arrive well inside that (a closed terminal's two SIGHUPs and SIGCONT,
-// a scope's SIGTERM and SIGHUP, under a millisecond apart), and a
-// hangup is never one: it says the terminal has gone, not "stop now".
+// after the first has been handed on and a moment more counts. The
+// signals one event delivers arrive well inside that (a closed
+// terminal's two SIGHUPs and SIGCONT, a scope's SIGTERM and SIGHUP,
+// under a millisecond apart), and a hangup is never one: it says the
+// terminal has gone, not "stop now".
 
 const FORCED = "[launcher] a second stop: ani-gui ended by force (SIGKILL); what it changed in its last moments may not be saved";
 const SIGKILL_STATUS = 128 + os.constants.signals.SIGKILL;
