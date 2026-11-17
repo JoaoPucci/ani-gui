@@ -6,7 +6,7 @@
 // launcher becomes the app, as it always has. Launched from a terminal, the
 // app holds none of it: its output goes through the launcher to the
 // terminal, and the launcher hands it one SIGTERM however the terminal
-// stops it. That is what keeps a closed terminal from aborting the app as
+// stops it (a second Ctrl-C ends it by force, at the end of this file). That is what keeps a closed terminal from aborting the app as
 // it exits (Node puts a terminal it holds back as it found it, and on a
 // terminal that has hung up that step aborts).
 //
