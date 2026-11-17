@@ -580,6 +580,71 @@ test("the signals of one terminal close, and a Ctrl-C right after them, end noth
   }
 });
 
+/** Whether the launcher catches SIGHUP, SIGINT and SIGTERM: its traps
+ *  are set, which it does just after it has started the app. */
+function catchesStops(pid) {
+  let status;
+  try {
+    status = fs.readFileSync(`/proc/${pid}/status`, "utf8");
+  } catch {
+    return false;
+  }
+  const caught = BigInt(`0x${/^SigCgt:\s*([0-9a-f]+)/m.exec(status)?.[1] ?? "0"}`);
+  return (caught & 0x4003n) === 0x4003n;
+}
+
+test("the signals of one event, however they land on the launcher, end nothing by force", { skip }, async () => {
+  // One event's signals come back to back. Bash can take the first of
+  // them and then the next before it has started on the first's trap;
+  // it then runs the next's trap only once the first's is done, half a
+  // second on, when a stop would count as a second one. How often that
+  // happens is down to the scheduler, so many launchers take each
+  // burst at once, which also keeps the machine busy as it lands.
+  //
+  // `spin` waits `us` microseconds: the gap between a burst's first
+  // signal and the rest, spread across the launchers so that some of
+  // them take the rest just as they wake for the first.
+  const spin = (us) => {
+    const end = process.hrtime.bigint() + BigInt(us) * 1000n;
+    while (process.hrtime.bigint() < end);
+  };
+  const bursts = {
+    "a terminal close and a Ctrl-C": (pid, us) => {
+      process.kill(pid, "SIGHUP");
+      spin(us);
+      process.kill(pid, "SIGCONT");
+      process.kill(pid, "SIGHUP");
+      process.kill(pid, "SIGINT");
+    },
+    "a scope's stop": (pid, us) => {
+      process.kill(pid, "SIGTERM");
+      spin(us);
+      process.kill(pid, "SIGHUP");
+    },
+  };
+  const runs = [];
+  for (const [name, burst] of Object.entries(bursts)) {
+    for (let i = 0; i < 12; i++) runs.push({ name: `${name}, ${i * 10} µs apart`, burst: (pid) => burst(pid, i * 10), tree: packedTree() });
+  }
+  try {
+    await Promise.all(
+      runs.map(async (run) => {
+        run.term = await onTerminal(run.tree, { env: { STUB_STOP: "hang" } });
+        run.start = await until("the app to be ready", () => events(run.tree.events).some((e) => e.ready) && startOf(run.tree.events), 30_000);
+        await until("the launcher's traps", () => catchesStops(run.term.pid));
+      }),
+    );
+    for (const run of runs) run.burst(run.term.pid);
+    await Promise.all(runs.map((run) => until("the app's SIGTERM", () => signalsOf(run.tree.events).includes("TERM"))));
+    await sleep(1500);
+    const forced = runs.filter((run) => run.term.ended() !== undefined || !running(run.start.pid, run.start.started)).map((run) => run.name);
+    assert.deepEqual(forced, []);
+    for (const run of runs) assert.deepEqual(signalsOf(run.tree.events), ["TERM"], run.name);
+  } finally {
+    await Promise.all(runs.filter((run) => run.term).map((run) => run.term.close()));
+  }
+});
+
 test("a SIGTERM and SIGHUP to the launcher and the app together, as a scope's stop sends, end nothing by force", { skip }, async () => {
   const tree = packedTree();
   const term = await onTerminal(tree, { env: { STUB_STOP: "hang" } });
