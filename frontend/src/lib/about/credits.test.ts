@@ -36,9 +36,10 @@ import path from 'node:path';
  *  script. Read here: each fetcher's `DEPS` (what its package carries)
  *  and the Windows fetcher's `INSTALL_TIME_DEPS` (what its installer
  *  downloads instead). The Linux fetcher's `SYSTEM_DEPS` — what the
- *  distribution provides — is not read: the package does nothing to
- *  provide those. The fetchers guard their entry point, so importing
- *  one downloads nothing.
+ *  distribution provides in place of a dependency Windows stages or
+ *  downloads — is not read: the package does nothing to provide
+ *  those. The fetchers guard their entry point, so importing one
+ *  downloads nothing.
  *
  *  Loaded while the file is collected, not inside the tests that
  *  compare it: a test's 5 s budget is wall time, and a cold read queued

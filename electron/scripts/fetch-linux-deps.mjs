@@ -24,7 +24,8 @@
 //                downloader rather than only those who happened to
 //                install it. ~37 MB, one self-contained file.
 //
-// Taken from the system, not bundled — see `SYSTEM_DEPS` below:
+// Provided on Windows, taken from the system here — see `SYSTEM_DEPS`
+// below:
 //   - ffmpeg   — declared as a `Recommends:` on the .deb so apt pulls
 //                the distro build; AppImage users fall back to system
 //                PATH or see the typed FfmpegMissing modal. Windows
@@ -34,10 +35,12 @@
 //
 // This script is the Linux analog of `fetch-windows-deps.mjs`. Keep
 // the two in lockstep when adding a new bundled dep. The one exception
-// is declared, not implied: `SYSTEM_DEPS` names the dependencies
-// Windows carries that Linux takes from the distribution instead, and `tests/arch/{linux,windows}_deps.sh` hold the
-// .deb to recommending it and Windows to staging it or downloading it
-// at install time.
+// is declared, not implied: `SYSTEM_DEPS` names the dependencies the
+// Windows package provides (stages, or its installer downloads) that
+// Linux takes from the distribution instead, and
+// `tests/arch/{linux,windows}_deps.sh` hold the .deb to recommending
+// them and Windows to staging them or downloading them at install
+// time.
 //
 // The two stage curl-impersonate differently, which is a difference in
 // what upstream ships rather than in what each platform needs. Here the
@@ -148,15 +151,16 @@ export const DEPS = [
 	},
 ];
 
-// Dependencies Windows carries that the Linux packages take from the
-// distribution rather than stage. It is not every system program the
-// Linux side uses (the .deb's `depends`, the launcher's bash, setsid
-// and setpriv, the session watcher's gdbus have no Windows
-// counterpart and are not listed). Nothing here is downloaded; the list exists so
-// the arch checks can tell a declared exception from a forgotten
-// dependency — each entry must appear in `build.deb.recommends`, and
-// the Windows fetcher must stage it or declare it downloaded at install
-// time.
+// Dependencies the Windows package provides (stages, or its installer
+// downloads) that the Linux packages take from the distribution rather
+// than stage. It is not every program the Linux side takes from the
+// system: the .deb's `depends`, the launcher's bash, setsid and
+// setpriv, and the session watcher's gdbus are not anything Windows
+// stages or downloads, and are not listed. Nothing here is downloaded;
+// the list exists so the arch checks can tell a declared exception
+// from a forgotten dependency — each entry must appear in
+// `build.deb.recommends`, and the Windows fetcher must stage it or
+// declare it downloaded at install time.
 export const SYSTEM_DEPS = [
 	{
 		name: 'ffmpeg',

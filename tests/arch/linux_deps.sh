@@ -38,8 +38,8 @@
 #     the staged binaries into both AppImage and .deb payloads.
 #   - `build.deb.recommends` must include "ffmpeg", and every
 #     dependency `fetch-linux-deps.mjs` declares in `SYSTEM_DEPS` —
-#     the dependencies Windows carries that Linux takes from the
-#     distribution rather than staging.
+#     the dependencies the Windows package stages or downloads that
+#     Linux takes from the distribution rather than staging.
 #   - every staged binary ships its licence text in the package.
 #   - `dist` / `dist:release` scripts must chain `fetch:linux-deps`
 #     so any invocation path (package, dist, e2e) gets the bin

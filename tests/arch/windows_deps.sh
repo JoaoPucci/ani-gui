@@ -104,11 +104,11 @@ esac
 #    an offer of corresponding source that cannot be made, because that
 #    build does not publish the versions of the libraries it links. So
 #    the installer downloads it at install time, and the Windows
-#    fetcher says so in `INSTALL_TIME_DEPS`. Whatever Linux takes from
-#    the system, Windows must stage or download; whatever Windows
-#    downloads, Linux must stage or take from the system; and nothing is
-#    both staged and downloaded on Windows, or both staged and taken
-#    from the system on Linux. `linux_deps.sh` holds every `SYSTEM_DEPS`
+#    fetcher says so in `INSTALL_TIME_DEPS`. Whatever `SYSTEM_DEPS`
+#    declares, Windows must stage or download; whatever Windows
+#    downloads, Linux must stage or declare in `SYSTEM_DEPS`; and
+#    nothing is both staged and downloaded on Windows, or both staged
+#    and declared in `SYSTEM_DEPS` on Linux. `linux_deps.sh` holds every `SYSTEM_DEPS`
 #    entry to `build.deb.recommends`, and check 7 below holds every
 #    `INSTALL_TIME_DEPS` entry to the installer script. The
 #    declarations are lists the parser reads, not names this check
