@@ -30,6 +30,7 @@ const {
   dialog,
   ipcMain,
   net,
+  powerMonitor,
   protocol,
   safeStorage,
   screen,
@@ -81,7 +82,13 @@ const {
   writeGeometry,
 } = require("./lib/window-geometry.cjs");
 const { bootedWith, launchFlagsOf, waitForLaunchFlags } = require("./lib/launch-flags.cjs");
-const { applyReducedMotion, execText } = require("./lib/reduced-motion.cjs");
+const { applyReducedMotion, execText, readerEnv } = require("./lib/reduced-motion.cjs");
+const { watchSessionEnd } = require("./lib/session-end.cjs");
+const {
+  blockFor,
+  installTerminationSignals,
+  persistStorage,
+} = require("./lib/termination-signals.cjs");
 const {
   bootApp,
   firstShowTimeoutMs,
@@ -1242,6 +1249,22 @@ function reportBootFailure(err) {
 }
 
 app.whenReady().then(() => {
+  // How the app ends when the session ends, or when a stop signal
+  // arrives (Linux). At ready, not before: see lib/termination-signals.cjs.
+  const stopSignals = takeOverStopSignals();
+  const sessionEnd = watchSessionEnd({
+    platform: process.platform,
+    powerMonitor,
+    spawn,
+    env: readerEnv(process.env),
+    onEnding: (reason) => {
+      stopSignals.sessionEnding();
+      console.log(`[main] the session is ending (${reason}); quitting`);
+      quitUnattended();
+    },
+    logError: console.error,
+  });
+  app.on("will-quit", () => sessionEnd.stop());
   // GNOME's Reduced Motion switch never reaches Chromium on its own
   // (see lib/reduced-motion.cjs). The read runs beside the backend's
   // start and settles within its own short budget; the first window
@@ -1311,6 +1334,60 @@ app.whenReady().then(() => {
     logError: console.error,
   });
 });
+
+/**
+ * Quit without the downloads prompt: nobody is there to answer it.
+ * The session is ending, or a stop signal asked, and a modal prompt
+ * would only hold the quit until the stop turns into a kill.
+ */
+function quitUnattended() {
+  confirmedQuit = true;
+  app.quit();
+}
+
+/**
+ * Linux: answer SIGTERM, SIGINT and SIGHUP so that a signal sent to
+ * every process of the app, or any after the session's end is announced
+ * (`sessionEnding()`), ends it by that signal, its storage written out,
+ * instead of the abort Chromium falls into (lib/termination-signals.cjs).
+ * Returns the takeover.
+ */
+function takeOverStopSignals() {
+  const takeover = installTerminationSignals({
+    platform: process.platform,
+    source: process,
+    mainPid: process.pid,
+    listHelpers: () => app.getAppMetrics(),
+    readProcStat: (pid) => {
+      try {
+        return fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+      } catch {
+        return null;
+      }
+    },
+    requestQuit: () => quitUnattended(),
+    beforeEnd: (signal, reason) => {
+      // The terminal this was launched from may be gone (SIGHUP):
+      // a failed write must not stop the ending.
+      try {
+        console.warn(`[main] ${signal}: ${reason}; ending by it`);
+      } catch {
+        // Nowhere to report it.
+      }
+      killBackendTree();
+      persistStorage({
+        flush: () => session.defaultSession.flushStorageData(),
+        block: blockFor,
+      });
+    },
+    raise: (signal) => process.kill(process.pid, signal),
+    setInterval: (fn, ms) => setInterval(fn, ms),
+    clearInterval: (id) => clearInterval(id),
+    now: () => Date.now(),
+  });
+  app.on("child-process-gone", (_event, details) => takeover.childProcessGone(details));
+  return takeover;
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
