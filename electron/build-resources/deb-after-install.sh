@@ -33,9 +33,11 @@ fi
 # the installed binary Chromium falls through to the setuid helper.
 # The profile grants `userns` to /opt/ani-gui/ani-gui.bin (the ELF the
 # /opt/ani-gui/ani-gui wrapper starts), and nothing else: it is
-# unconfined otherwise, with the rules Ubuntu's own profiles for Chrome,
-# VS Code and Obsidian carry. The path is root-owned, so no other
-# program can borrow it.
+# unconfined otherwise, with the rules Ubuntu 24.04's own profiles for
+# Chrome, VS Code and Obsidian carry. Later Ubuntus add `@{exec_path}
+# mr,` to theirs, but only AppArmor 5.0 defines that variable, and
+# 24.04's AppArmor 4.0 would reject the profile. The path is
+# root-owned, so no other program can borrow it.
 #
 # Written only where AppArmor ships ABI 4.0, the first that knows the
 # `userns` rule: an older AppArmor (Debian 12's 3.0) could not parse
@@ -56,7 +58,6 @@ include <tunables/global>
 
 profile ani-gui /opt/ani-gui/ani-gui.bin flags=(unconfined) {
   userns,
-  @{exec_path} mr,
 
   # Site-specific additions and overrides. See local/README for details.
   include if exists <local/ani-gui>
