@@ -98,7 +98,9 @@ place for its updates is the system's package manager.
   `installer.nsh` downloads ffmpeg (about 80 MB) during install unless
   one is on `PATH`, and its uninstall step deletes that ffmpeg —
   including during the silent uninstall electron-builder runs before
-  an upgrade. [code: `electron/package.json`,
+  an upgrade: through 0.18.0 by name in `customUnInstall`, and after
+  that with the rest of the install directory.
+  [code: `electron/package.json`,
   `electron/build-resources/installer.nsh`] It is not code-signed: the
   0.17.0 installer's PE security directory is empty. [tried: read
   from the first 4 KB of the published file]
@@ -382,13 +384,15 @@ installer runs with `--updated` [source: electron-builder 25.1.8,
 by the time `customInstall` runs. The fix has to keep the old copy
 through the update: have the *new* installer set it aside before it
 runs the old version's uninstaller (whose `customUnInstall`, as
-shipped through 0.18.0, deletes it) and put it back under `${isUpdated}`, or keep it
-outside the install directory. The first update after the fix still
-meets the shipped uninstaller. The app's per-user data folder does not fit the second: a
-per-machine install serves several users, and an installer elevated
-with another account resolves that folder to the administrator's
-profile. Either way the uninstall step's cleanup of ffmpeg moves with
-it. [proposal; which hook runs early enough is unverified]
+shipped through 0.18.0, deletes it) and put it back under
+`${isUpdated}`, or keep it outside the install directory. The first
+update after the fix still meets the shipped uninstaller. The app's
+per-user data folder does not fit the second: a per-machine install
+serves several users, and an installer elevated with another account
+resolves that folder to the administrator's profile. Either way a real
+uninstall still has to remove any copy kept outside the install
+directory: the standard uninstall sequence empties only that one.
+[proposal; which hook runs early enough is unverified]
 
 **SmartScreen.** See section 4: an installer the app downloads and
 starts itself is not expected to meet the "Windows protected your PC"
@@ -1034,8 +1038,8 @@ a day or less, **M** a few days, **L** a week or more.
    test. M.
 6. **ffmpeg survives a Windows update**: keep the ffmpeg the
    installer fetched through an update (section 2, for per-user and
-   per-machine installs alike), with the uninstall step's cleanup to
-   match. Lands with or before phase 4. S–M.
+   per-machine installs alike), with a real uninstall still removing
+   it. Lands with or before phase 4. S–M.
 7. **`.deb`: "Download .deb"**, saving to Downloads and revealing it.
    S.
 
