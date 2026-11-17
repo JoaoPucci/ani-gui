@@ -98,8 +98,9 @@ place for its updates is the system's package manager.
   `installer.nsh` downloads ffmpeg (about 80 MB) during install unless
   one is on `PATH`, and its uninstall step deletes that ffmpeg —
   including during the silent uninstall electron-builder runs before
-  an upgrade: through 0.18.0 by name in `customUnInstall`, and after
-  that with the rest of the install directory.
+  an upgrade: the standard sequence removes it with the rest of the
+  install directory (releases through 0.18.0 also name it in a
+  `Delete` in `customUnInstall`, which runs after that sequence).
   [code: `electron/package.json`,
   `electron/build-resources/installer.nsh`] It is not code-signed: the
   0.17.0 installer's PE security directory is empty. [tried: read
@@ -383,15 +384,15 @@ installer runs with `--updated` [source: electron-builder 25.1.8,
 `src/targets/nsis/nsisScriptGenerator.ts`], but the old copy is gone
 by the time `customInstall` runs. The fix has to keep the old copy
 through the update: have the *new* installer set it aside before it
-runs the old version's uninstaller (whose `customUnInstall`, as
-shipped through 0.18.0, deletes it) and put it back under
+runs the old version's uninstaller (which empties the install
+directory, ffmpeg included) and put it back under
 `${isUpdated}`, or keep it outside the install directory. The first
 update after the fix still meets the shipped uninstaller. The app's
 per-user data folder does not fit the second: a per-machine install
 serves several users, and an installer elevated with another account
 resolves that folder to the administrator's profile. Either way a real
 uninstall still has to remove any copy kept outside the install
-directory: the standard uninstall sequence empties only that one.
+directory.
 [proposal; which hook runs early enough is unverified]
 
 **SmartScreen.** See section 4: an installer the app downloads and
