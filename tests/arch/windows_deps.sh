@@ -111,10 +111,9 @@ esac
 #    and declared in `SYSTEM_DEPS` on Linux. `linux_deps.sh` holds
 #    every `SYSTEM_DEPS` entry to `build.deb.recommends`, and check 7
 #    below holds every `INSTALL_TIME_DEPS` entry to the installer
-#    script. The
-#    declarations are lists the parser reads, not names this check
-#    exempts, so neither can excuse a dependency a platform does not
-#    provide at all.
+#    script. The declarations are lists the parser reads, not names
+#    this check exempts, so neither can excuse a dependency a platform
+#    does not provide at all.
 LINUX_FETCH=electron/scripts/fetch-linux-deps.mjs
 WINDOWS_FETCH=electron/scripts/fetch-windows-deps.mjs
 
