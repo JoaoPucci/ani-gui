@@ -18,7 +18,7 @@
 
 const path = require("node:path");
 
-const { APP_BACKGROUND } = require("./app-window.cjs");
+const { APP_BACKGROUND, windowIcon } = require("./app-window.cjs");
 const { STALL_MS, STEPS } = require("./splash-progress.cjs");
 const { NOT_A_CRASH, SPLASH_RELOADS, stuckWatch } = require("./splash-stuck.cjs");
 
@@ -71,9 +71,11 @@ function isSplashPage(url) {
   }
 }
 
-/** The splash window's options. */
-function splashWindowOptions() {
+/** The splash window's options: on the task bar under the app's icon
+ *  (windowIcon), like the window it stands in for. */
+function splashWindowOptions({ platform = process.platform } = {}) {
   return {
+    icon: windowIcon(platform),
     width: 480,
     height: 300,
     frame: false,

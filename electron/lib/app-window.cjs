@@ -1,5 +1,7 @@
 "use strict";
 
+const path = require("node:path");
+
 // The app's own window: how it is made, and the renderer's word that
 // its first page has actually rendered, which the reveal waits for.
 //
@@ -83,8 +85,32 @@ function abortWhenLost(lost, ready, { graceMs = APP_READY_WAIT_MS } = {}) {
   });
 }
 
+/**
+ * The icon the app's windows set themselves on `platform`, or undefined
+ * where they set none.
+ *
+ * On Linux a window's own icon is what the desktop shows for it when no
+ * installed .desktop file matches its app id, as for an AppImage run
+ * without desktop integration. Chromium sets it as _NET_WM_ICON under
+ * X11 and hands it to a Wayland compositor that implements
+ * xdg-toplevel-icon-v1 (KDE Plasma); GNOME Shell under Wayland reads no
+ * window icon and goes by the .desktop file alone. The file is in the
+ * package because package.json's `build.files` names it: that list is
+ * an explicit allowlist, and nothing else under build-resources is
+ * packaged.
+ *
+ * On Windows the window takes the executable's own icon, which
+ * electron-builder makes from the same image at the sizes the shell
+ * asks for (Electron's documentation recommends leaving `icon` unset
+ * there); macOS shows the bundle's icon and ignores a window's.
+ */
+function windowIcon(platform = process.platform) {
+  return platform === "linux" ? path.join(__dirname, "..", "build-resources", "icon.png") : undefined;
+}
+
 /** The app window's options. */
-function appWindowOptions({ width, height, icon, preload, additionalArguments }) {
+function appWindowOptions({ width, height, preload, additionalArguments, platform = process.platform }) {
+  const icon = windowIcon(platform);
   return {
     width,
     height,
@@ -299,4 +325,5 @@ module.exports = {
   appReadyWaiter,
   appWindowOptions,
   lastAppReady,
+  windowIcon,
 };

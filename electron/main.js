@@ -533,8 +533,9 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // renderer draws its own titlebar and window controls, which keeps
   // them where Linux users expect them under native Wayland, where
   // GNOME gives Chromium no server-side decorations
-  // (electron/electron#48422). The icon is for the dev session;
-  // packaged builds get theirs from the .desktop file. The backend's
+  // (electron/electron#48422). On Linux it carries the app's icon,
+  // which is what the desktop shows where no installed .desktop file
+  // names the window (lib/app-window.cjs windowIcon). The backend's
   // origins, the configured locale and the launch's flags reach the
   // preload as additional arguments (lib/window-args.cjs); the
   // launch's secret does not, and is answered over IPC to the app's
@@ -543,7 +544,6 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     appWindowOptions({
       width: workW,
       height: workH,
-      icon: path.join(__dirname, "build-resources", "icon.png"),
       preload: path.join(__dirname, "preload.js"),
       additionalArguments: windowArguments(backend, readConfigLocale(), launchFlags),
     }),
