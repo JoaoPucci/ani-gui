@@ -298,7 +298,11 @@ stand-in for the app's binary (`electron/lib/fixtures/app-stub.py`),
 on that terminal fixture too, so it also needs `python3`; it is
 skipped off Linux. Every process it signals is the launcher it
 started, by pid or group, or the stand-in, by the pid the stand-in
-recorded.
+recorded. Its AppImage cases start the launcher behind a stand-in for
+the AppImage runtime (`electron/lib/fixtures/appimage-runtime.py`),
+which deletes the packed binary, as an unmount would, once nothing
+holds the pipe end it passed on fd 3; its watcher runs in a session of
+its own and exits by itself once that has happened, or after 60 s.
 
 One defect is visible only on Wayland. Under native Wayland with
 software compositing (a virtual machine, a GPU that failed or is
