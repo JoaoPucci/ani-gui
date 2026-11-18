@@ -114,6 +114,44 @@ function windowIcon(platform = process.platform, packaged = true) {
   return own ? path.join(__dirname, "..", "build-resources", "icon.png") : undefined;
 }
 
+let windowIcons = [];
+
+/**
+ * Set `win`'s `icon` again each time it is shown, and at once when it
+ * is already on screen; returns `win`. `name` labels the record
+ * (lastWindowIcons). Nothing is done for no icon.
+ *
+ * The icon in a window's options is not enough under Wayland with the
+ * Chromium that Electron 33 ships (130): a window gets its
+ * xdg_toplevel when it is shown, and a new one each time it is shown
+ * after a hide, and WaylandToplevelWindow::SetWindowIcons drops an icon
+ * set while it has none rather than keeping it (Chromium 135 keeps it).
+ * Both of the app's windows are made hidden, so the compositor (KDE
+ * Plasma) never got either icon. Electron's "show" comes once the
+ * window is mapped, which is after its toplevel is made. Under X11
+ * the second set is a no-op that rewrites the same _NET_WM_ICON.
+ */
+function holdWindowIcon(win, icon, name, { logError = console.error } = {}) {
+  if (!icon) return win;
+  const apply = () => {
+    try {
+      if (win.isDestroyed()) return;
+      win.setIcon(icon);
+      windowIcons.push({ name, icon });
+    } catch (err) {
+      logError(`[main] the ${name} window's icon could not be set:`, err);
+    }
+  };
+  win.on("show", apply);
+  if (win.isVisible()) apply();
+  return win;
+}
+
+/** Every icon holdWindowIcon has set, for the end-to-end suite. */
+function lastWindowIcons() {
+  return windowIcons.slice();
+}
+
 /** The app window's options. */
 function appWindowOptions({
   width,
@@ -337,6 +375,8 @@ module.exports = {
   appReadyBound,
   appReadyWaiter,
   appWindowOptions,
+  holdWindowIcon,
   lastAppReady,
+  lastWindowIcons,
   windowIcon,
 };
