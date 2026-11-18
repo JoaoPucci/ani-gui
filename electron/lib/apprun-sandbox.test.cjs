@@ -674,17 +674,40 @@ nodeTest("the probe runs with a core limit of exactly 1 byte, which no crash rep
   }
 });
 
-// Where a limit of 1 cannot be set (a hard limit of 0 already, or no
-// prlimit on the host) the probe still runs, with core dumps off, and
-// the fallback still launches.
-test("where a core limit of 1 cannot be set, the probe runs with core dumps off and the app still starts", () => {
-  const r = launch(EB25, "records its core limit, then aborts", [], {}, 'ulimit -H -c 0; exec "$@"');
+// Where a limit of 1 cannot be set (a hard limit of 0 already, no
+// prlimit on the host, or a call the host refuses) the probe still
+// runs, with core dumps off, and the fallback still launches. Soft and
+// hard both go to 0: a hard limit alone below the soft one is refused.
+test("where the hard core limit is 0 already, the probe runs with core dumps off and the app still starts", () => {
+  const r = launch(EB25, "records its core limit, then aborts", [], {}, 'ulimit -c 0; exec "$@"');
   try {
     assert.deepEqual(coreLimit(r.probeCoreLimit), { soft: "0", hard: "0" });
     assert.deepEqual(r.launched, ["--no-sandbox"]);
     assert.match(r.run.stderr, FALLBACK_LINE);
   } finally {
     cleanup(r);
+  }
+});
+
+// A prlimit that cannot run stands in for a host without one: a
+// directory ahead of the rest of PATH whose prlimit answers as a
+// missing command does.
+nodeTest("where prlimit is missing, the probe runs with core dumps off and the app still starts", { skip: process.platform !== "linux" }, (t) => {
+  const hard = spawnSync("bash", ["-c", "ulimit -H -c"], { encoding: "utf8" }).stdout.trim();
+  if (hard === "0") {
+    t.skip("the hard core limit here is 0: the limit would be 0 either way");
+    return;
+  }
+  const shims = fs.mkdtempSync(path.join(os.tmpdir(), "apprun-no-prlimit-"));
+  fs.writeFileSync(path.join(shims, "prlimit"), "#!/bin/sh\nexit 127\n", { mode: 0o755 });
+  const r = launch(EB25, "records its core limit, then aborts", [], { PATH: `${shims}:${process.env.PATH}` }, 'ulimit -S -c "$(ulimit -H -c)"; exec "$@"');
+  try {
+    assert.deepEqual(coreLimit(r.probeCoreLimit), { soft: "0", hard: "0" });
+    assert.deepEqual(r.launched, ["--no-sandbox"]);
+    assert.match(r.run.stderr, FALLBACK_LINE);
+  } finally {
+    cleanup(r);
+    fs.rmSync(shims, { recursive: true, force: true });
   }
 });
 
