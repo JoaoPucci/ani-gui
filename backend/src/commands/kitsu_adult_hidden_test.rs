@@ -247,3 +247,96 @@ async fn a_stale_trending_row_is_served_without_a_show_kitsu_hides_as_adult() {
 
     assert_eq!(ids(&refs), ["12"]);
 }
+
+// --- Watch Later --------------------------------------------------------
+
+/// AniList, which the Watch Later bridge asks only for a MAL id Kitsu
+/// did not map: never, here.
+async fn anilist_never_asked() -> MockServer {
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&anilist)
+        .await;
+    anilist
+}
+
+#[tokio::test]
+async fn watch_later_leaves_out_a_show_kitsu_hides_as_adult() {
+    let kitsu = kitsu_with_an_adult_show().await;
+    let anilist = anilist_never_asked().await;
+    let state = state_with_kitsu(&kitsu.uri());
+
+    let cards = crate::commands::account::kitsu_for_mal_ids_with_anilist_base(
+        &state,
+        vec![ADULT_MAL, 21],
+        Some(&anilist.uri()),
+    )
+    .await;
+
+    assert_eq!(ids(&cards), ["12"]);
+    // Kitsu answered what the show is: neither AniList nor Kitsu's
+    // AniList-id mapping is asked about it.
+    anilist.verify().await;
+    kitsu.verify().await;
+}
+
+#[tokio::test]
+async fn watch_later_leaves_out_an_adult_show_it_resolves_from_cache() {
+    // The first load remembers the mapping and keeps the card's detail,
+    // as every build has; the next load resolves both from the cache,
+    // the way a rail whose cache a build before this one filled does.
+    let kitsu = kitsu_with_an_adult_show().await;
+    let anilist = anilist_never_asked().await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let anilist_uri = anilist.uri();
+    let load = || {
+        crate::commands::account::kitsu_for_mal_ids_with_anilist_base(
+            &state,
+            vec![ADULT_MAL, 21],
+            Some(&anilist_uri),
+        )
+    };
+    load().await;
+
+    let cards = load().await;
+
+    assert_eq!(ids(&cards), ["12"]);
+    let mappings = kitsu
+        .received_requests()
+        .await
+        .expect("requests")
+        .iter()
+        .filter(|r| r.url.path() == "/mappings")
+        .count();
+    assert_eq!(
+        mappings, 2,
+        "the second load reads both mappings from the cache"
+    );
+}
+
+#[tokio::test]
+async fn watch_later_leaves_out_an_adult_show_whose_kept_detail_has_expired() {
+    // Remembered mapping, detail past its window: the read asks Kitsu,
+    // which refuses the hidden entry.
+    let kitsu = kitsu_with_an_adult_show().await;
+    let anilist = anilist_never_asked().await;
+    let state = state_with_kitsu(&kitsu.uri());
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &format!("{}{ADULT_MAL}", crate::cache::families::KITSU_MAL_MAP),
+        ADULT_KITSU,
+        3600,
+    )
+    .expect("a remembered mapping");
+
+    let cards = crate::commands::account::kitsu_for_mal_ids_with_anilist_base(
+        &state,
+        vec![ADULT_MAL, 21],
+        Some(&anilist.uri()),
+    )
+    .await;
+
+    assert_eq!(ids(&cards), ["12"]);
+}
