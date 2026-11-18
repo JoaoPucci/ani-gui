@@ -474,9 +474,9 @@ starting it, and delete it when you find it done.
   some erotic short series that aired censored R and shows them
   (Yubisaki kara Honki no Netsujou), so the line it draws is its own;
   and the mappings lookup by MAL or AniList id does serve a hidden
-  entry inline (MAL 40750 gives Redo of Healer, Kitsu 42732, R18), and
-  the tracker-list and trending bridges use that lookup, filtering out
-  only music entries.
+  entry inline (MAL 40750 gives Redo of Healer, Kitsu 42732, R18); the
+  trending row and the Watch Later rail are built on that lookup and
+  leave such entries out, so they show only what search and browse can.
 
 ## Interface
 
