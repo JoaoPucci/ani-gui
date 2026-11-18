@@ -465,6 +465,54 @@ test("with stdout sent to a file, the app's stdout goes there and only its stder
   }
 });
 
+const RUNTIME = path.join(__dirname, "fixtures", "appimage-runtime.py");
+
+/** The launcher as the AppImage starts it, on a terminal, with some of
+ *  its streams sent elsewhere first: the runtime (fixtures/appimage-runtime.py)
+ *  holds the packed tree's binary only while something holds the
+ *  keepalive end it passes on fd 3. */
+async function inAnAppImage(tree, redirect) {
+  const shell = path.join(tree.dir, "appimage");
+  const bin = path.join(tree.dir, "ani-gui.bin");
+  fs.writeFileSync(shell, `#!/bin/bash\nexec python3 "${RUNTIME}" "${bin}" "${tree.launcher}" ${redirect}\n`, { mode: 0o755 });
+  fs.chmodSync(shell, 0o755);
+  return onTerminal({ ...tree, launcher: shell });
+}
+
+// Every combination of stdin, stdout and stderr on the terminal or not
+// (a pipe is to the launcher what a file is: not a terminal). The last
+// one is off the terminal altogether: the launcher becomes the app.
+for (const [name, redirect] of [
+  ["all three on the terminal", ""],
+  ["stdout sent to a file", '>"$LOG"'],
+  ["stderr sent to a file", '2>"$LOG"'],
+  ["stdout and stderr sent to a file", '>"$LOG" 2>&1'],
+  ["stdin off the terminal", "</dev/null"],
+  ["stdin off the terminal, stdout sent to a file", '</dev/null >"$LOG"'],
+  ["stdin off the terminal, stderr sent to a file", '</dev/null 2>"$LOG"'],
+  ["none of the three on the terminal", '</dev/null >"$LOG" 2>&1'],
+]) {
+  test(`in an AppImage, with ${name}, the app starts and keeps the image mounted until it quits`, { skip }, async () => {
+    const tree = packedTree();
+    const bin = path.join(tree.dir, "ani-gui.bin");
+    const log = path.join(tree.dir, "log");
+    const term = await inAnAppImage(tree, redirect.replaceAll("$LOG", log));
+    try {
+      const start = await until("the app to be ready", () => events(tree.events).some((e) => e.ready) && startOf(tree.events));
+      // The runtime notices a released mount within milliseconds.
+      await sleep(300);
+      assert.ok(fs.existsSync(bin), "the image is still mounted while the app runs");
+      // The launcher, or the app itself where the launcher became it.
+      process.kill(term.pid, "SIGTERM");
+      await until("the app's exit", () => exitOf(tree.events) !== undefined, 15_000);
+      assert.equal(exitOf(tree.events), 0);
+      assert.deepEqual(signalsOf(tree.events), ["TERM"]);
+    } finally {
+      await term.close();
+    }
+  });
+}
+
 test("a stop that reaches the launcher twice and then the app is not passed on on top of the app's own", { skip }, async () => {
   // One stop reaching the launcher more than once and the app as well,
   // a moment apart: a SIGHUP to the launcher, a SIGINT to its group,
