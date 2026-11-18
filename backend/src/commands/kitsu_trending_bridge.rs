@@ -9,7 +9,8 @@ use super::*;
 /// its `anilist/anime` mapping — Kitsu's MAL table lags brand-new
 /// seasonal entries by weeks while the AniList row exists from day
 /// one, and a drop here removes exactly the season's hottest shows
-/// from the strip. Entries mapped on neither site are dropped.
+/// from the strip. Entries mapped on neither site are dropped, and so
+/// are entries Kitsu marks nsfw (`crate::meta::kitsu::is_nsfw`).
 /// Preserves the AniList ranking — order matters because the home
 /// hero takes the first three entries with art. Two entries Kitsu
 /// maps to the same show both stay; the home page keeps the first
@@ -62,6 +63,13 @@ pub(super) async fn bridge_answered(
                     Err(_) => return Err(false),
                 },
             };
+            // Kitsu hides an entry it marks nsfw from everything but
+            // this lookup: no search or browse lists it, and its page
+            // answers 404. Kitsu has answered what the show is, so it
+            // is left out as a show Kitsu maps nowhere is.
+            if crate::meta::kitsu::is_nsfw(kref.age_rating.as_deref()) {
+                return Err(true);
+            }
             // AniList's banner rides beside Kitsu's cover, free: this
             // request already carried it.
             kref.anilist_banner.clone_from(&banner);

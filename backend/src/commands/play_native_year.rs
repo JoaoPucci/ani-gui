@@ -29,7 +29,9 @@ pub(crate) enum Genre {
     /// while its heading carries one of the [`ORDINARY_RATINGS`].
     Listed,
     /// The page files the listing under [`HENTAI`], or its heading
-    /// rates it [`ADULT_RATING`]: no entry the app shows is one.
+    /// rates it [`ADULT_RATING`]: Kitsu's search, browse and reads by
+    /// id serve no adult entry, so only a show bridged in by its MAL or
+    /// AniList id can be one.
     Hentai,
     /// The page lists no genre and its heading no rating on the site's
     /// scale — a missing page reads as one, and so does a sparse page
@@ -67,7 +69,8 @@ pub(crate) fn genre_of(page: &EntryPage) -> Genre {
 /// its own, so a markup change that loses the year degrades to
 /// year-blind picking. A hit its page files under [`HENTAI`], or whose
 /// heading rates it [`ADULT_RATING`], is excluded the same way a year
-/// off is: no entry the app shows is one.
+/// off is: Kitsu's search, browse and reads by id serve no adult entry,
+/// so only a show bridged in by its MAL or AniList id can be one.
 /// So is a hit whose page lists no genre and no rating on the site's scale at all ([`Genre::Unread`]) —
 /// a 404ing page reads as one — which nothing says is not one; its slug
 /// joins `unread`, since a pool whose verdict rests on a page that
@@ -119,10 +122,12 @@ pub(crate) async fn year_filtered<'a, P: Provider + ?Sized>(
             Some(_) => continue,
             None => false,
         };
-        // A hentai is never the entry: Kitsu serves the app no adult
-        // entry, so a hit its own page files under the genre or rates
-        // Rx is out, as a hit from another year is — and so is one whose page
-        // lists no genre and no rating on the site's scale, which nothing says is not one.
+        // A hentai is never the entry: Kitsu's search, browse and reads
+        // by id serve the app no adult entry (only a show bridged in by
+        // its MAL or AniList id can be one), so a hit its own page files
+        // under the genre or rates Rx is out, as a hit from another year
+        // is — and so is one whose page lists no genre and no rating on
+        // the site's scale, which nothing says is not one.
         match genre {
             Genre::Listed => kept.push((h, confirmed)),
             Genre::Hentai => {}
