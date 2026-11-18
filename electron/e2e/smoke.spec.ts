@@ -486,6 +486,37 @@ test("the splash shows while the app starts, and is gone once the app's window h
   }
 });
 
+test("the packaged app's windows name an icon the packaged app can load", async () => {
+  // A non-integrated AppImage has no .desktop file a Linux desktop can
+  // match its windows to, so the icon each window sets is the one the
+  // task bar shows. Electron loads it when the window is made, from
+  // inside app.asar here, and a path the package does not carry loads
+  // as an empty image with nothing but a warning: no icon at all.
+  const { app } = await launchAppWithStubs();
+  try {
+    const seen = await app.evaluate(({ nativeImage }) => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      const { appWindowOptions } = main.require("./lib/app-window.cjs");
+      const { splashWindowOptions } = main.require("./lib/splash.cjs");
+      const icons = [
+        appWindowOptions({ width: 1, height: 1, preload: "p", additionalArguments: [] }).icon,
+        splashWindowOptions().icon,
+      ] as (string | undefined)[];
+      return icons.map((icon) => {
+        const image = icon ? nativeImage.createFromPath(icon) : null;
+        return { icon, inAsar: !!icon && icon.includes("app.asar"), size: image && !image.isEmpty() ? image.getSize() : null };
+      });
+    });
+    for (const s of seen) {
+      expect(s.icon, "the window names an icon").toBeTruthy();
+      expect(s.inAsar, `${s.icon} is inside the package`).toBe(true);
+      expect(s.size, `${s.icon} loads`).toEqual({ width: 512, height: 512 });
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 test("the splash page, opened as the launch opens it, shows the app's version above its title", async () => {
   // The launch's own splash comes and goes before a spec can look at
   // it, so the page is opened again here as the main process opens it

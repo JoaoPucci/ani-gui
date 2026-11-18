@@ -45,6 +45,36 @@ test("the app's window is made with the app's own dark background, the splash's 
   assert.equal(o.webPreferences.contextIsolation, true);
 });
 
+// A Linux window's icon is the one it sets itself: an AppImage run
+// without desktop integration has no installed .desktop file for the
+// desktop to match its app id against, and KDE's Wayland task bar
+// showed a generic "W" for it. The icon has to be a file the packaged
+// app carries: electron-builder's `build.files` is an explicit
+// allowlist, and nothing under build-resources is packaged unless it
+// is named there.
+const ICON = path.join(__dirname, "..", "build-resources", "icon.png");
+
+test("on Linux the app's window and the splash carry the app's icon, from a file the package ships", () => {
+  const app = appWindowOptions({ width: 1, height: 1, preload: "p", additionalArguments: [], platform: "linux" });
+  assert.equal(app.icon, ICON);
+  assert.equal(splashWindowOptions({ platform: "linux" }).icon, ICON);
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"));
+  assert.ok(pkg.build.files.includes("build-resources/icon.png"), "electron-builder's files allowlist carries it");
+  // A PNG, and square: Chromium hands a Wayland compositor square icons
+  // only (xdg-toplevel-icon-v1) and drops any other.
+  const png = fs.readFileSync(ICON);
+  assert.equal(png.subarray(1, 4).toString("latin1"), "PNG");
+  assert.equal(png.readUInt32BE(16), png.readUInt32BE(20));
+});
+
+test("on Windows and macOS the windows set no icon of their own: the executable's or the bundle's stands", () => {
+  for (const platform of ["win32", "darwin"]) {
+    const app = appWindowOptions({ width: 1, height: 1, preload: "p", additionalArguments: [], platform });
+    assert.equal(app.icon, undefined, platform);
+    assert.equal(splashWindowOptions({ platform }).icon, undefined, platform);
+  }
+});
+
 let ids = 0;
 const sender = () => ({ id: (ids += 1) });
 
