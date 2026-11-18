@@ -84,6 +84,8 @@ function stubFor(probe) {
     // One NUL-terminated entry per argument; printf alone would write
     // one empty entry for a launch with none.
     ': > "$here/launched"',
+    // The signals the app starts with ignored, as the kernel shows them.
+    'grep "^SigIgn:" "/proc/$$/status" > "$here/launched-ignores"',
     'for a in "$@"; do printf "%s\\0" "$a" >> "$here/launched"; done',
     "",
   ].join("\n");
@@ -134,6 +136,7 @@ function outcome(img, run, elapsedMs, group) {
     launched: launched === null ? null : launched.split("\0").slice(0, -1),
     probePid: readOr("probe-pid", null),
     probeCoreLimit: readOr("probe-core-limit", null),
+    launchedIgnores: readOr("launched-ignores", null),
     tmpLeft: fs.readdirSync(img.tmp),
     unreaped: readOr("unreaped", null),
   };
@@ -627,17 +630,29 @@ for (const probe of ["answers, then exits 1", "answers, then hangs"]) {
 
 // The fallback is for the hosts where the sandbox cannot start, and it
 // must start the app there whatever happens to its one line of output:
-// a launcher with no stderr (closed, or a full disk) still launches.
+// a launcher with no stderr (closed, a full disk, or a pipe whose reader
+// has gone, a write to which is a SIGPIPE) still launches. The app
+// starts with SIGPIPE as the launch had it, not ignored on the line's
+// account: an ignored signal stays ignored across exec.
+const SIGPIPE_BIT = 1n << BigInt(os.constants.signals.SIGPIPE - 1);
+const ignoresSigpipe = (line) => {
+  const m = /^SigIgn:\s*([0-9a-f]+)\s*$/.exec(line || "");
+  return m === null ? line : (BigInt(`0x${m[1]}`) & SIGPIPE_BIT) !== 0n;
+};
 for (const [how, shell] of [
   ["closed", 'exec 2>&-; exec "$@"'],
   ["unwritable", 'exec 2>/dev/full; exec "$@"'],
+  // The reader is a process substitution that exits at once; bash waits
+  // for it, so it has gone before AppRun starts.
+  ["a pipe whose reader has gone", 'exec 2> >(:); wait "$!"; exec "$@"'],
 ]) {
   test(`a fallback whose stderr is ${how} still starts the app with --no-sandbox`, () => {
     for (const template of Object.values(TEMPLATES)) {
       const r = launch(template, "aborts", USER_ARGS, {}, shell);
       try {
-        assert.equal(r.run.status, 0);
+        assert.equal(r.run.status, 0, `AppRun ended with status ${r.run.status}, signal ${r.run.signal}`);
         assert.deepEqual(r.launched, ["--no-sandbox", ...USER_ARGS]);
+        assert.equal(ignoresSigpipe(r.launchedIgnores), false, "the app started with SIGPIPE ignored");
       } finally {
         cleanup(r);
       }
