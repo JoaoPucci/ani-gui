@@ -73,9 +73,9 @@ function isSplashPage(url) {
 
 /** The splash window's options: on the task bar under the app's icon
  *  (windowIcon), like the window it stands in for. */
-function splashWindowOptions({ platform = process.platform } = {}) {
+function splashWindowOptions({ platform = process.platform, packaged = true } = {}) {
   return {
-    icon: windowIcon(platform),
+    icon: windowIcon(platform, packaged),
     width: 480,
     height: 300,
     frame: false,
@@ -148,6 +148,10 @@ function splashController({
   // Restart was chosen: arrange the relaunch (lib/relaunch.cjs), before
   // this launch ends. Throws when it cannot.
   onRestart = () => {},
+  // Whether this is the installed app rather than a dev session
+  // (Electron's app.isPackaged), which decides the splash's icon on
+  // Windows (lib/app-window.cjs windowIcon).
+  packaged = true,
 }) {
   const state = fresh();
   state.version = version;
@@ -338,7 +342,7 @@ function splashController({
       const query = splashPageQuery({ version, stallTexts: texts, generic, words });
       let splash;
       try {
-        splash = createWindow(splashWindowOptions());
+        splash = createWindow(splashWindowOptions({ packaged }));
       } catch (err) {
         logError("[main] could not show the splash:", err);
         log("[main] splash not opened: the window could not be made");

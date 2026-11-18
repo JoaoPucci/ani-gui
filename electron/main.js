@@ -465,6 +465,7 @@ function signalBackendGroup(pid) {
  *  decided (lib/splash.cjs). */
 const splash = splashController({
   createWindow: (options) => new BrowserWindow(options),
+  packaged: app.isPackaged,
   logError: console.error,
   // The user closed the splash (from the taskbar, say) before the
   // app's window was revealed: they cancelled the launch. While that
@@ -535,7 +536,8 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // GNOME gives Chromium no server-side decorations
   // (electron/electron#48422). On Linux it carries the app's icon,
   // which is what the desktop shows where no installed .desktop file
-  // names the window (lib/app-window.cjs windowIcon). The backend's
+  // matches the window, and so does a Windows dev session
+  // (lib/app-window.cjs windowIcon). The backend's
   // origins, the configured locale and the launch's flags reach the
   // preload as additional arguments (lib/window-args.cjs); the
   // launch's secret does not, and is answered over IPC to the app's
@@ -546,6 +548,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
       height: workH,
       preload: path.join(__dirname, "preload.js"),
       additionalArguments: windowArguments(backend, readConfigLocale(), launchFlags),
+      packaged: app.isPackaged,
     }),
   );
   secrets.hold(win.webContents, backend.internalSecret);
