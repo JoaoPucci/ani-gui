@@ -460,6 +460,24 @@ starting it, and delete it when you find it done.
   format, or its episode count — or when another wrong pick on a
   user's card is reported.
 
+- **Kitsu hides every entry it marks adult, and some are not hentai.**
+  Read without a login, Kitsu leaves out every entry it flags `nsfw`
+  (all of them rated R18): search and browse never return one,
+  `filter[ageRating]=R18` answers an empty list, and `/anime/<id>`
+  answers 404. So the app cannot search for, browse to or open these
+  shows. The flag is meant for hentai, but of 152 hidden shows
+  checked, 13 were not hentai, among them Redo of Healer, Kanashimi no
+  Belladonna, Cleopatra (1970), Senya Ichiya Monogatari, the Nukitashi
+  OVAs, Maou Evelogia ni Mi wo Sasageyo and Ikenai BOY. It waits
+  because the maintainer chose to leave it for now. Two things worth
+  knowing: nor does the flag follow erotic content, since Kitsu rates
+  some erotic short series that aired censored R and shows them
+  (Yubisaki kara Honki no Netsujou), so the line it draws is its own;
+  and the mappings lookup by MAL or AniList id does serve a hidden
+  entry inline (MAL 40750 gives Redo of Healer, Kitsu 42732, R18), and
+  the tracker-list and trending bridges use that lookup, filtering out
+  only music entries.
+
 ## Interface
 
 - **GNOME's newer Reduced Motion preference does not reach the renderer.**
