@@ -87,12 +87,13 @@ const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own bina
 //   1 the kernel starts no pipe at all ("RLIMIT_CORE is set to 1,
 //   aborting core", fs/coredump.c: the value it gives its own helpers
 //   so that their crashes do not recurse), and 1 byte is below any
-//   core file's size. Where 1 cannot be set (no prlimit, or a hard
-//   limit of 0 already) the probe runs with core dumps off. Not covered
-//   either way: a core_pattern that is a socket (systemd-coredump from
-//   systemd 262 on, which uses one on Linux 6.19 or later), for which
-//   the kernel reads no limit. The host may still log the abort (kernel
-//   trap and coredump lines, AppArmor audit).
+//   core file's size. Where 1 cannot be set (no prlimit, a hard limit
+//   of 0 already, or a call the host refuses) the probe runs with core
+//   dumps off. Not covered either way: a core_pattern that is a socket
+//   (systemd-coredump from systemd 262 on, which registers one on Linux
+//   6.19 or later), for which the kernel reads no limit. The host may
+//   still log the abort (kernel trap and coredump lines, AppArmor
+//   audit).
 // - $BIN is not the binary but the wrapper script both packages put in
 //   front of it (lib/linux-launcher.cjs). Given no terminal on any of
 //   its three streams, as here, the wrapper execs the binary, so the
