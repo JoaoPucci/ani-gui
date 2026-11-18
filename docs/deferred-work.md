@@ -1573,3 +1573,22 @@ not keep up drawing the interface.
   sending, the per-show Sub or Dub storage, notes that last one run
   of the app — so moving one means moving that too, a refactor larger
   than the change that found them.
+- **Runs on the dev profile have no icon of their own.** `pnpm dev`
+  (in `electron/`) and a packaged build started with `ANI_GUI_DEV=1`
+  both run as `ani-gui-dev` (`APP_NAME` in `electron/main.js`), and
+  where a dev run shows an icon it is the installed app's, so the two
+  are not told apart at a glance. The wanted icon is the app's own
+  with its two colours swapped, cream for near-black and near-black
+  for cream. The maintainer chose to leave it.
+
+  GNOME on Wayland ignores the icon a window sets and takes the icon
+  of the desktop entry matching the window's app ID (`APP_NAME`), so
+  there the dev icon shows only if an `ani-gui-dev` desktop entry
+  exists (without one a dev run there shows GNOME's generic icon).
+  Making one, for instance a hidden (`NoDisplay=true`) entry written
+  by `pnpm dev`, writes outside the repository, under
+  `~/.local/share/applications/` (`AGENTS.md` §11). Recent KDE Plasma
+  on Wayland, and X11, use the icon the window sets. A packaged build
+  sets a window icon only from a file electron-builder's `build.files`
+  allowlist packages, so a dev icon for packaged test builds has to be
+  added there too.
