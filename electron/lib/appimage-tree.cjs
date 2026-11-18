@@ -71,9 +71,17 @@ const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own bina
 //
 // - `--no-sandbox` is the default until the probe has answered, so
 //   an exit before then launches the app unsandboxed rather than not
-//   at all; the fallback relies on it. The block's place after the
-//   launcher and the `|| true` on its one line of output back each
-//   other up: either keeps a fallback with no usable stderr launching.
+//   at all; the fallback relies on it. Its one line of output cannot
+//   stop the launch. A write that fails (a closed stderr, a full disk)
+//   returns a status, which `|| true` absorbs. A write to a pipe whose
+//   reader has gone raises SIGPIPE, so the line is written from a
+//   subshell that ignores it, and fails the same way. The ignored
+//   SIGPIPE stays in that subshell: the app starts with the
+//   disposition AppRun was given. Without it AppRun would still launch
+//   today, but only by accident: bash catches SIGPIPE, and runs the
+//   EXIT trap on it, because the probe's traps on INT, TERM and HUP
+//   are set. The block's place after the launcher covers any other
+//   exit before the launch.
 // - The probe's stdout goes to a file, not a pipe, so a child that
 //   outlives it cannot hold the wait open. Its stderr and the shell's
 //   job reports are dropped, so the only output a failed probe leaves
@@ -254,7 +262,7 @@ else
   if ani_gui_sandbox_starts ; then
     ANI_GUI_SANDBOX=()
   else
-    echo "ani-gui: Chromium's sandbox cannot start on this system. Starting without it (--no-sandbox)." >&2 || true
+    ( trap '' PIPE ; echo "ani-gui: Chromium's sandbox cannot start on this system. Starting without it (--no-sandbox)." >&2 ) || true
   fi
   trap - INT TERM HUP
 fi
