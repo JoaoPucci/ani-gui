@@ -916,6 +916,9 @@ impl KitsuClient {
 #[path = "kitsu_mapped.rs"]
 mod mapped;
 pub use mapped::KitsuMapped;
+#[cfg(test)]
+#[path = "kitsu_adult_test.rs"]
+mod adult_tests;
 #[path = "kitsu_relations.rs"]
 mod relations;
 pub use relations::{
