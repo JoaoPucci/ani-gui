@@ -386,9 +386,10 @@ pub fn parse_anime_response(body: &[u8]) -> Result<KitsuAnimeRef> {
 /// the reply does not include, since such a reply says nothing of the
 /// show.
 ///
-/// Used by [`KitsuClient::lookup_by_mal_id`] — the AniList trending
-/// bridge feeds MAL ids in and gets full Kitsu refs out, in a single
-/// round-trip per lookup.
+/// Used by [`KitsuClient::lookup_by_mal_id`] and
+/// [`KitsuClient::lookup_by_anilist_id`] — the AniList trending feed and
+/// the Watch Later rail feed tracker ids in and get full Kitsu refs out,
+/// in a single round-trip per lookup.
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the body isn't valid
@@ -440,9 +441,15 @@ pub fn parse_mappings_response(body: &[u8]) -> Result<Option<KitsuAnimeRef>> {
         .ok_or_else(|| AniError::ParseFailed {
             detail: format!("kitsu mappings parse: anime {target_id} not included"),
         })?;
-    // Single chokepoint for every MAL→Kitsu bridge (AniList trending feed +
-    // Watch Later rail): a music-subtype mapping resolves to None so it never
-    // reaches a list surface or the availability warmer.
+    // Every bridge from a tracker id to a Kitsu card resolves its id
+    // here (`lookup_by_mal_id` and `lookup_by_anilist_id`, behind the
+    // AniList trending feed and the Watch Later rail, whose cached ids
+    // were written from this parse), so a music-subtype mapping
+    // resolves to None and never reaches a list surface or the
+    // availability warmer. It is not the only mappings reader: the episode
+    // map's owner lookup (`anime_by_external_id`) parses with
+    // `kitsu_mapped::parse_mapped_anime_response`, which drops music
+    // entries on its own.
     Ok(Some(into_ref(anime)).filter(|r| !is_music_subtype(r.subtype.as_deref())))
 }
 
@@ -916,6 +923,12 @@ impl KitsuClient {
 #[path = "kitsu_mapped.rs"]
 mod mapped;
 pub use mapped::KitsuMapped;
+#[path = "kitsu_adult.rs"]
+mod adult;
+pub use adult::{drop_nsfw, is_nsfw};
+#[cfg(test)]
+#[path = "kitsu_adult_test.rs"]
+mod adult_tests;
 #[path = "kitsu_relations.rs"]
 mod relations;
 pub use relations::{
@@ -1308,8 +1321,9 @@ mod tests {
         // trending feed and the Watch Later rail. A Plan-to-Watch MAL entry
         // mapping to a Kitsu `subtype: music` item must not surface there —
         // no list surface offers a music video (see `is_music_subtype`) —
-        // so the mappings parser returns None for it (the single
-        // chokepoint for every bridge).
+        // so the mappings parser returns None for it (every card bridge
+        // resolves its id here; the episode map's lookup in `kitsu_mapped` drops
+        // music on its own).
         let body = br#"{"data":[{"type":"mappings","relationships":{"item":{"data":{"id":"42","type":"anime"}}}}],
             "included":[{"id":"42","type":"anime","attributes":{"canonicalTitle":"Idol","subtype":"music"}}]}"#;
         assert!(parse_mappings_response(body).expect("parses").is_none());

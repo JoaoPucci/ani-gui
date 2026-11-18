@@ -361,6 +361,54 @@ async fn a_range_download_resolves_and_spawns_per_episode() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn a_range_download_names_each_episode_by_the_file_safe_title() {
+    // The range loop builds its own names: a title with a colon must
+    // come out as the single-episode path spells it, or Windows writes
+    // each episode into a hidden stream of a file named up to the colon.
+    let server = std::sync::Arc::new(
+        TableProvider::one_show(
+            "",
+            ("range-colon-22", "Range Show: Beerus"),
+            &[(2201, 1)],
+            &[],
+            "",
+        )
+        .stream(2201, "sub", "https://cdn.example/m/2201/master.m3u8"),
+    );
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show: Beerus",
+        "episode": "1-1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    download_with_tools(&state, &args, &path_env, |_| {})
+        .await
+        .expect("the range downloads");
+    let names: Vec<String> = std::fs::read_dir(dest.path())
+        .expect("dest")
+        .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
+        .collect();
+    assert!(
+        dest.path()
+            .join("Range Show - Beerus Episode 1.mp4")
+            .exists(),
+        "the episode is published under the file-safe title: {names:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_range_download_stops_at_the_first_failing_episode() {
     // "1-3" on a two-episode listing: episodes 1 and 2 transfer,
     // episode 3 resolves to the typed dead end and the loop stops
