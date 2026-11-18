@@ -35,7 +35,7 @@ test("the app's window is made with the app's own dark background, the splash's 
   const splashInk = /--ink-000:\s*(#[0-9a-f]{6})/i.exec(splashCss);
   assert.ok(splashInk, "splash.css defines --ink-000");
   assert.equal(splashInk[1].toLowerCase(), APP_BACKGROUND.toLowerCase());
-  const o = appWindowOptions({ width: 1920, height: 1048, icon: "i", preload: "p", additionalArguments: [] });
+  const o = appWindowOptions({ width: 1920, height: 1048, preload: "p", additionalArguments: [] });
   assert.equal(o.backgroundColor, APP_BACKGROUND);
   assert.equal(splashWindowOptions().backgroundColor, APP_BACKGROUND);
   assert.equal(o.show, false);
