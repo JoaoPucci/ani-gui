@@ -102,19 +102,18 @@ function iconWindow({ visible = false } = {}) {
 
 test("a window's icon is set again each time it is shown", () => {
   const win = iconWindow();
-  assert.equal(holdWindowIcon(win, ICON, "app"), win);
+  assert.equal(holdWindowIcon(win, ICON, "shown-twice"), win);
   assert.deepEqual(win.icons, []);
   win.emit("show");
   assert.deepEqual(win.icons, [ICON]);
   win.emit("hide");
   win.emit("show");
   assert.deepEqual(win.icons, [ICON, ICON]);
+  // One record per window name, however often it is shown: the record
+  // lives as long as the app does.
   assert.deepEqual(
-    lastWindowIcons().filter((r) => r.name === "app"),
-    [
-      { name: "app", icon: ICON },
-      { name: "app", icon: ICON },
-    ],
+    lastWindowIcons().filter((r) => r.name === "shown-twice"),
+    [{ name: "shown-twice", icon: ICON, sets: 2 }],
   );
 });
 
