@@ -58,8 +58,8 @@ function stubFor(probe) {
   // Chromium's abort, by a process that is not dumpable: SIGTRAP dumps
   // core, and a host that pipes cores to a crash reporter (Ubuntu's
   // apport) is handed one whatever the core limit. Not dumpable, the
-  // probe leaves none, and AppRun sees the same death by SIGTRAP. That
-  // the probe runs with core dumps off is the core-limit case's to show.
+  // probe leaves none, and AppRun sees the same death by SIGTRAP. The
+  // limit the probe runs under is the core-limit cases' to show.
   const abort = `exec ${shellQuote(python())} -I -c 'import ctypes, os, signal; ctypes.CDLL(None).prctl(4, 0, 0, 0, 0); signal.signal(signal.SIGTRAP, signal.SIG_DFL); os.kill(os.getpid(), signal.SIGTRAP)'`;
   const outcome = {
     answers: answer,
@@ -69,7 +69,8 @@ function stubFor(probe) {
     hangs: 'echo "$$" > "$here/probe-pid"; exec sleep 600',
     "answers, then exits 1": `${answer.replace(/^exec /, "")}; exit 1`,
     "answers, then hangs": `${answer.replace(/^exec /, "")}; exec sleep 600`,
-    "records its core limit, then aborts": `ulimit -c > "$here/probe-core-limit"; ${abort}`,
+    // The kernel's own line, in bytes: bash's ulimit counts kilobytes.
+    "records its core limit, then aborts": `grep '^Max core file size' /proc/self/limits > "$here/probe-core-limit"; ${abort}`,
   }[probe];
   return [
     "#!/bin/bash",
@@ -644,22 +645,44 @@ for (const [how, shell] of [
   });
 }
 
-// A probe that aborts would dump core on every launch on the hosts it
-// fails on. Whether a core file would land anywhere depends on the
-// host's core_pattern (Ubuntu pipes cores to apport), so what is
-// checked is the limit the probe runs under, from a launcher whose own
-// limit allows cores. Where the hard limit is already 0 the check has
-// nothing to show and says so.
-nodeTest("the probe runs with core dumps off", { skip: process.platform !== "linux" }, (t) => {
+// A probe that aborts would be a crash on every launch on the hosts it
+// fails on, and a core limit of 0 does not keep that from the host's
+// crash reporter: a core_pattern that pipes to one (apport,
+// systemd-coredump, ABRT) is started whatever the limit, and
+// systemd-coredump records the crash with no core, which KDE's DrKonqi
+// shows as a crash notification. A limit of exactly 1 byte is the one
+// the kernel answers by starting no pipe at all ("RLIMIT_CORE is set
+// to 1, aborting core", fs/coredump.c), and too small for a core file.
+// What is checked is the limit the probe runs under, in bytes, from a
+// launcher whose own limit allows cores.
+const coreLimit = (line) => {
+  const m = /^Max core file size\s+(\S+)\s+(\S+)\s+bytes\s*$/.exec(line || "");
+  return m === null ? line : { soft: m[1], hard: m[2] };
+};
+nodeTest("the probe runs with a core limit of exactly 1 byte, which no crash reporter is started for", { skip: process.platform !== "linux" }, (t) => {
   const hard = spawnSync("bash", ["-c", "ulimit -H -c"], { encoding: "utf8" }).stdout.trim();
   if (hard === "0") {
-    t.skip("the hard core limit here is 0: nothing to turn off");
+    t.skip("the hard core limit here is 0: no limit of 1 can be set");
     return;
   }
   const r = launch(EB25, "records its core limit, then aborts", [], {}, 'ulimit -S -c "$(ulimit -H -c)"; exec "$@"');
   try {
-    assert.equal(r.probeCoreLimit, "0\n");
+    assert.deepEqual(coreLimit(r.probeCoreLimit), { soft: "1", hard: "1" });
     assert.deepEqual(r.launched, ["--no-sandbox"]);
+  } finally {
+    cleanup(r);
+  }
+});
+
+// Where a limit of 1 cannot be set (a hard limit of 0 already, or no
+// prlimit on the host) the probe still runs, with core dumps off, and
+// the fallback still launches.
+test("where a core limit of 1 cannot be set, the probe runs with core dumps off and the app still starts", () => {
+  const r = launch(EB25, "records its core limit, then aborts", [], {}, 'ulimit -H -c 0; exec "$@"');
+  try {
+    assert.deepEqual(coreLimit(r.probeCoreLimit), { soft: "0", hard: "0" });
+    assert.deepEqual(r.launched, ["--no-sandbox"]);
+    assert.match(r.run.stderr, FALLBACK_LINE);
   } finally {
     cleanup(r);
   }
