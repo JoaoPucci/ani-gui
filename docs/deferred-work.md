@@ -1017,31 +1017,40 @@ starting it, and delete it when you find it done.
 
 ## Reading hianime.ms and vidnest.fun as providers
 
-- **Read hianime.ms, and the vidnest.fun embed it lists**, so an
-  episode has somewhere left to play from when the hianime the app
-  reads runs out of working embed hosts. hianime.ms is a second
-  front under the hianime name and a different application from
-  hianime.fm (formerly hianime.at): its watch page takes its own shape
+- **Read hianime.ms, and the embeds it lists beside its megaplay
+  server**, so an episode has somewhere left to play from when the
+  hianime the app reads runs out of working embed hosts. hianime.ms
+  is a second front under the hianime name and a different
+  application from hianime.fm (formerly hianime.at): its watch page
+  takes its own shape
   (`https://hianime.ms/watch-<slug>-episode-1-f3808`) and is served
-  from its own templates, it exposes a `/api/player/check` endpoint
-  rather than hianime.fm's `/api/theme/...` listing endpoints, and
-  its server list is drawn as buttons — "Ryu", which is its own
-  built-in backup player (`data-server="backup"`), and an embed on
-  vidnest.fun (`https://vidnest.fun/anime/<id>/...`).
+  from its own templates, and it exposes a `/api/player/check`
+  endpoint rather than hianime.fm's `/api/theme/...` listing
+  endpoints. Its first server is not a host of its own, though:
+  "Ryu" (`data-server="backup"`) redirects to megaplay.buzz's
+  `/stream/s-2/<id>/<mode>`, the host and address the app already
+  decodes from hianime.fm's listings, so the two sites are fronts over
+  the same library there. What hianime.ms adds is the servers beside
+  Ryu, embeds keyed by AniList id on hosts the app does not read: two
+  on vidnest.fun (`https://vidnest.fun/anime/<id>/...` and
+  `/animepahe/...`) and one on tryembed.us.cc.
 
   Why it matters: on 2026-09-17 both embed hosts hianime.at lists
   for an episode failed for the app at once — zokoanime's CDN origin
   timed out with a 522, and megaplay changed its sources answer to
   an encrypted field with a CDN selector on the embed URL — while
   the provider the app then asked first was under maintenance, and
-  hianime.ms kept playing the
-  same episodes through Ryu. A third catalogue front, or a third
-  embed host, is what a fallback of one site cannot give.
+  hianime.ms kept playing the same episodes through Ryu. Ryu
+  redirects to megaplay today; if it did then too, that was most
+  likely megaplay's own player reading the answer the client could
+  not yet read (it reads it now), not a host the app lacked. Whatever
+  hianime.ms offers against megaplay itself failing lies in its other
+  servers.
 
-  Why it waited: reading either site is its own reverse-engineering
-  — hianime.ms's player and catalogue API, vidnest's embed page —
-  each a maintenance cost of its own, like every host the client
-  reads.
+  Why it waited: reading it is its own reverse-engineering —
+  hianime.ms's player and catalogue API, the vidnest and tryembed
+  embed pages — each a maintenance cost of its own, like every host
+  the client reads.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 
@@ -1567,3 +1576,22 @@ not keep up drawing the interface.
   sending, the per-show Sub or Dub storage, notes that last one run
   of the app — so moving one means moving that too, a refactor larger
   than the change that found them.
+- **Runs on the dev profile have no icon of their own.** `pnpm dev`
+  (in `electron/`) and a packaged build started with `ANI_GUI_DEV=1`
+  both run as `ani-gui-dev` (`APP_NAME` in `electron/main.js`), and
+  where a dev run shows an icon it is the installed app's, so the two
+  are not told apart at a glance. The wanted icon is the app's own
+  with its two colours swapped, cream for near-black and near-black
+  for cream. The maintainer chose to leave it.
+
+  GNOME on Wayland ignores the icon a window sets and takes the icon
+  of the desktop entry matching the window's app ID (`APP_NAME`), so
+  there the dev icon shows only if an `ani-gui-dev` desktop entry
+  exists (without one a dev run there shows GNOME's generic icon).
+  Making one, for instance a hidden (`NoDisplay=true`) entry written
+  by `pnpm dev`, writes outside the repository, under
+  `~/.local/share/applications/` (`AGENTS.md` §11). Recent KDE Plasma
+  on Wayland, and X11, use the icon the window sets. A packaged build
+  sets a window icon only from a file electron-builder's `build.files`
+  allowlist packages, so a dev icon for packaged test builds has to be
+  added there too.
