@@ -14,11 +14,11 @@ use crate::app::AppState;
 use crate::cache::families::ANILIST_TRENDING;
 use crate::meta::kitsu::KitsuAnimeRef;
 
-/// Redo of Healer: MAL 40750, Kitsu 42732, which the mappings lookup
-/// serves with `nsfw: true` and `ageRating: "R18"`, and `/anime/42732`
-/// answers with 404.
+/// Redo of Healer: MAL 40750, AniList 113425, Kitsu 42732, which the
+/// mappings lookup serves with `nsfw: true` and `ageRating: "R18"`, and
+/// `/anime/42732` answers with 404.
 const ADULT_MAL: u32 = 40_750;
-const ADULT_ANILIST: u32 = 112_444;
+const ADULT_ANILIST: u32 = 113_425;
 const ADULT_KITSU: &str = "42732";
 
 fn state_with_kitsu(kitsu_uri: &str) -> crate::scratch::Scratch<Arc<AppState>> {
@@ -339,4 +339,46 @@ async fn watch_later_leaves_out_an_adult_show_whose_kept_detail_has_expired() {
     .await;
 
     assert_eq!(ids(&cards), ["12"]);
+}
+
+#[tokio::test]
+async fn watch_later_leaves_out_an_adult_show_it_finds_by_its_anilist_id() {
+    // Kitsu has no MAL mapping for the show, so the bridge asks AniList
+    // for its AniList id and Kitsu's AniList-id mapping names it.
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "data": [] })))
+        .mount(&kitsu)
+        .await;
+    mount_mapping(&kitsu, "anilist/anime", ADULT_ANILIST, ADULT_KITSU, "R18").await;
+    // A show found the same way and rated PG: the path delivers cards.
+    mount_mapping(&kitsu, "anilist/anime", 101, "12", "PG").await;
+    mount_hidden_detail(&kitsu).await;
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": {
+                "pageInfo": { "hasNextPage": false },
+                "media": [
+                    { "id": ADULT_ANILIST, "idMal": ADULT_MAL },
+                    { "id": 101, "idMal": 21 },
+                ],
+            } }
+        })))
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+
+    let cards = crate::commands::account::kitsu_for_mal_ids_with_anilist_base(
+        &state,
+        vec![ADULT_MAL, 21],
+        Some(&anilist.uri()),
+    )
+    .await;
+
+    assert_eq!(ids(&cards), ["12"]);
+    anilist.verify().await;
 }
