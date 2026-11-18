@@ -71,14 +71,38 @@ const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own bina
 //
 // - `--no-sandbox` is the default until the probe has answered, so
 //   an exit before then launches the app unsandboxed rather than not
-//   at all; the fallback relies on it. The block's place after the
-//   launcher and the `|| true` on its one line of output back each
-//   other up: either keeps a fallback with no usable stderr launching.
+//   at all; the fallback relies on it. Its one line of output cannot
+//   stop the launch. A write that fails (a closed stderr, a full disk)
+//   returns a status, which `|| true` absorbs. A write to a pipe whose
+//   reader has gone raises SIGPIPE, so the line is written from a
+//   subshell that ignores it, and fails the same way. The ignored
+//   SIGPIPE stays in that subshell: the app starts with the
+//   disposition AppRun was given. (Without the subshell the app would
+//   still start: with an EXIT trap set, as electron-builder's AppRun
+//   sets one, bash catches SIGPIPE and runs that trap, the launcher.
+//   The subshell keeps AppRun on its ordinary path instead.) The
+//   block's place after the launcher covers any other exit before the
+//   launch.
 // - The probe's stdout goes to a file, not a pipe, so a child that
-//   outlives it cannot hold the wait open. Core dumps are off, and its
-//   stderr and the shell's job reports are dropped, so the only output
-//   a failed probe leaves is the one line below. The host may still
-//   log the abort (kernel trap line, AppArmor audit, apport's own log).
+//   outlives it cannot hold the wait open. Its stderr and the shell's
+//   job reports are dropped, so the only output a failed probe leaves
+//   is the one line below.
+// - The probe runs with a core limit of exactly 1 byte, set with
+//   util-linux's prlimit (bash's ulimit counts kilobytes). A limit of 0
+//   stops a core file, not the crash reporter: a core_pattern that
+//   pipes to one (apport, systemd-coredump, ABRT) starts it whatever
+//   the limit, and systemd-coredump records the crash with no core,
+//   which KDE's DrKonqi shows as a crash notification. For a limit of
+//   1 the kernel starts no pipe at all ("RLIMIT_CORE is set to 1,
+//   aborting core", fs/coredump.c: the value it gives its own helpers
+//   so that their crashes do not recurse), and 1 byte is below any
+//   core file's size. Where 1 cannot be set (no prlimit, a hard limit
+//   of 0 already, or a call the host refuses) the probe runs with core
+//   dumps off. Not covered either way: a core_pattern that is a socket
+//   (systemd-coredump from systemd 262 on, which registers one on Linux
+//   6.19 or later), for which the kernel reads no limit. The host may
+//   still log the abort (kernel trap and coredump lines, AppArmor
+//   audit).
 // - $BIN is not the binary but the wrapper script both packages put in
 //   front of it (lib/linux-launcher.cjs). Given no terminal on any of
 //   its three streams, as here, the wrapper execs the binary, so the
@@ -194,7 +218,7 @@ ani_gui_sandbox_starts()
       exit 143
     }
     trap stop_children TERM HUP
-    ulimit -c 0
+    prlimit --pid "$BASHPID" --core=1:1 >/dev/null 2>&1 || ulimit -c 0
     "$BIN" ${SANDBOX_PROBE_SWITCH} </dev/null >"$ani_gui_answer_file" &
     probe=$!
     (
@@ -239,7 +263,7 @@ else
   if ani_gui_sandbox_starts ; then
     ANI_GUI_SANDBOX=()
   else
-    echo "ani-gui: Chromium's sandbox cannot start on this system. Starting without it (--no-sandbox)." >&2 || true
+    ( trap '' PIPE ; echo "ani-gui: Chromium's sandbox cannot start on this system. Starting without it (--no-sandbox)." >&2 ) || true
   fi
   trap - INT TERM HUP
 fi

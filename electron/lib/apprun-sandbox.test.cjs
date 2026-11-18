@@ -58,8 +58,8 @@ function stubFor(probe) {
   // Chromium's abort, by a process that is not dumpable: SIGTRAP dumps
   // core, and a host that pipes cores to a crash reporter (Ubuntu's
   // apport) is handed one whatever the core limit. Not dumpable, the
-  // probe leaves none, and AppRun sees the same death by SIGTRAP. That
-  // the probe runs with core dumps off is the core-limit case's to show.
+  // probe leaves none, and AppRun sees the same death by SIGTRAP. The
+  // limit the probe runs under is the core-limit cases' to show.
   const abort = `exec ${shellQuote(python())} -I -c 'import ctypes, os, signal; ctypes.CDLL(None).prctl(4, 0, 0, 0, 0); signal.signal(signal.SIGTRAP, signal.SIG_DFL); os.kill(os.getpid(), signal.SIGTRAP)'`;
   const outcome = {
     answers: answer,
@@ -69,7 +69,8 @@ function stubFor(probe) {
     hangs: 'echo "$$" > "$here/probe-pid"; exec sleep 600',
     "answers, then exits 1": `${answer.replace(/^exec /, "")}; exit 1`,
     "answers, then hangs": `${answer.replace(/^exec /, "")}; exec sleep 600`,
-    "records its core limit, then aborts": `ulimit -c > "$here/probe-core-limit"; ${abort}`,
+    // The kernel's own line, in bytes: bash's ulimit counts kilobytes.
+    "records its core limit, then aborts": `grep '^Max core file size' /proc/self/limits > "$here/probe-core-limit"; ${abort}`,
   }[probe];
   return [
     "#!/bin/bash",
@@ -83,6 +84,8 @@ function stubFor(probe) {
     // One NUL-terminated entry per argument; printf alone would write
     // one empty entry for a launch with none.
     ': > "$here/launched"',
+    // The signals the app starts with ignored, as the kernel shows them.
+    'grep "^SigIgn:" "/proc/$$/status" > "$here/launched-ignores"',
     'for a in "$@"; do printf "%s\\0" "$a" >> "$here/launched"; done',
     "",
   ].join("\n");
@@ -133,6 +136,7 @@ function outcome(img, run, elapsedMs, group) {
     launched: launched === null ? null : launched.split("\0").slice(0, -1),
     probePid: readOr("probe-pid", null),
     probeCoreLimit: readOr("probe-core-limit", null),
+    launchedIgnores: readOr("launched-ignores", null),
     tmpLeft: fs.readdirSync(img.tmp),
     unreaped: readOr("unreaped", null),
   };
@@ -626,17 +630,29 @@ for (const probe of ["answers, then exits 1", "answers, then hangs"]) {
 
 // The fallback is for the hosts where the sandbox cannot start, and it
 // must start the app there whatever happens to its one line of output:
-// a launcher with no stderr (closed, or a full disk) still launches.
+// a launcher with no stderr (closed, a full disk, or a pipe whose reader
+// has gone, a write to which is a SIGPIPE) still launches. The app
+// starts with SIGPIPE as the launch had it, not ignored on the line's
+// account: an ignored signal stays ignored across exec.
+const SIGPIPE_BIT = 1n << BigInt(os.constants.signals.SIGPIPE - 1);
+const ignoresSigpipe = (line) => {
+  const m = /^SigIgn:\s*([0-9a-f]+)\s*$/.exec(line || "");
+  return m === null ? line : (BigInt(`0x${m[1]}`) & SIGPIPE_BIT) !== 0n;
+};
 for (const [how, shell] of [
   ["closed", 'exec 2>&-; exec "$@"'],
   ["unwritable", 'exec 2>/dev/full; exec "$@"'],
+  // The reader is a process substitution that exits at once; bash waits
+  // for it, so it has gone before AppRun starts.
+  ["a pipe whose reader has gone", 'exec 2> >(:); wait "$!"; exec "$@"'],
 ]) {
   test(`a fallback whose stderr is ${how} still starts the app with --no-sandbox`, () => {
     for (const template of Object.values(TEMPLATES)) {
       const r = launch(template, "aborts", USER_ARGS, {}, shell);
       try {
-        assert.equal(r.run.status, 0);
+        assert.equal(r.run.status, 0, `AppRun ended with status ${r.run.status}, signal ${r.run.signal}`);
         assert.deepEqual(r.launched, ["--no-sandbox", ...USER_ARGS]);
+        assert.equal(ignoresSigpipe(r.launchedIgnores), false, "the app started with SIGPIPE ignored");
       } finally {
         cleanup(r);
       }
@@ -644,24 +660,69 @@ for (const [how, shell] of [
   });
 }
 
-// A probe that aborts would dump core on every launch on the hosts it
-// fails on. Whether a core file would land anywhere depends on the
-// host's core_pattern (Ubuntu pipes cores to apport), so what is
-// checked is the limit the probe runs under, from a launcher whose own
-// limit allows cores. Where the hard limit is already 0 the check has
-// nothing to show and says so.
-nodeTest("the probe runs with core dumps off", { skip: process.platform !== "linux" }, (t) => {
+// A probe that aborts would be a crash on every launch on the hosts it
+// fails on, and a core limit of 0 does not keep that from the host's
+// crash reporter: a core_pattern that pipes to one (apport,
+// systemd-coredump, ABRT) is started whatever the limit, and
+// systemd-coredump records the crash with no core, which KDE's DrKonqi
+// shows as a crash notification. A limit of exactly 1 byte is the one
+// the kernel answers by starting no pipe at all ("RLIMIT_CORE is set
+// to 1, aborting core", fs/coredump.c), and too small for a core file.
+// What is checked is the limit the probe runs under, in bytes, from a
+// launcher whose own limit allows cores.
+const coreLimit = (line) => {
+  const m = /^Max core file size\s+(\S+)\s+(\S+)\s+bytes\s*$/.exec(line || "");
+  return m === null ? line : { soft: m[1], hard: m[2] };
+};
+nodeTest("the probe runs with a core limit of exactly 1 byte, which no crash reporter is started for", { skip: process.platform !== "linux" }, (t) => {
   const hard = spawnSync("bash", ["-c", "ulimit -H -c"], { encoding: "utf8" }).stdout.trim();
   if (hard === "0") {
-    t.skip("the hard core limit here is 0: nothing to turn off");
+    t.skip("the hard core limit here is 0: no limit of 1 can be set");
     return;
   }
   const r = launch(EB25, "records its core limit, then aborts", [], {}, 'ulimit -S -c "$(ulimit -H -c)"; exec "$@"');
   try {
-    assert.equal(r.probeCoreLimit, "0\n");
+    assert.deepEqual(coreLimit(r.probeCoreLimit), { soft: "1", hard: "1" });
     assert.deepEqual(r.launched, ["--no-sandbox"]);
   } finally {
     cleanup(r);
+  }
+});
+
+// Where a limit of 1 cannot be set (a hard limit of 0 already, no
+// prlimit on the host, or a call the host refuses) the probe still
+// runs, with core dumps off, and the fallback still launches. Soft and
+// hard both go to 0: a hard limit alone below the soft one is refused.
+test("where the hard core limit is 0 already, the probe runs with core dumps off and the app still starts", () => {
+  const r = launch(EB25, "records its core limit, then aborts", [], {}, 'ulimit -c 0; exec "$@"');
+  try {
+    assert.deepEqual(coreLimit(r.probeCoreLimit), { soft: "0", hard: "0" });
+    assert.deepEqual(r.launched, ["--no-sandbox"]);
+    assert.match(r.run.stderr, FALLBACK_LINE);
+  } finally {
+    cleanup(r);
+  }
+});
+
+// A prlimit that cannot run stands in for a host without one: a
+// directory ahead of the rest of PATH whose prlimit answers as a
+// missing command does.
+nodeTest("where prlimit is missing, the probe runs with core dumps off and the app still starts", { skip: process.platform !== "linux" }, (t) => {
+  const hard = spawnSync("bash", ["-c", "ulimit -H -c"], { encoding: "utf8" }).stdout.trim();
+  if (hard === "0") {
+    t.skip("the hard core limit here is 0: the limit would be 0 either way");
+    return;
+  }
+  const shims = fs.mkdtempSync(path.join(os.tmpdir(), "apprun-no-prlimit-"));
+  fs.writeFileSync(path.join(shims, "prlimit"), "#!/bin/sh\nexit 127\n", { mode: 0o755 });
+  const r = launch(EB25, "records its core limit, then aborts", [], { PATH: `${shims}:${process.env.PATH}` }, 'ulimit -S -c "$(ulimit -H -c)"; exec "$@"');
+  try {
+    assert.deepEqual(coreLimit(r.probeCoreLimit), { soft: "0", hard: "0" });
+    assert.deepEqual(r.launched, ["--no-sandbox"]);
+    assert.match(r.run.stderr, FALLBACK_LINE);
+  } finally {
+    cleanup(r);
+    fs.rmSync(shims, { recursive: true, force: true });
   }
 });
 

@@ -83,6 +83,7 @@ const {
   appReadyBound,
   appReadyWaiter,
   appWindowOptions,
+  holdWindowIcon,
   frameWake,
   revealGate,
   wakeHidden,
@@ -477,7 +478,8 @@ function signalBackendGroup(pid) {
 /** The splash, while the backend starts and the launch's flags are
  *  decided (lib/splash.cjs). */
 const splash = splashController({
-  createWindow: (options) => new BrowserWindow(options),
+  createWindow: (options) => holdWindowIcon(new BrowserWindow(options), options.icon, "splash"),
+  packaged: app.isPackaged,
   logError: console.error,
   // The user closed the splash (from the taskbar, say) before the
   // app's window was revealed: they cancelled the launch. While that
@@ -546,21 +548,23 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // renderer draws its own titlebar and window controls, which keeps
   // them where Linux users expect them under native Wayland, where
   // GNOME gives Chromium no server-side decorations
-  // (electron/electron#48422). The icon is for the dev session;
-  // packaged builds get theirs from the .desktop file. The backend's
+  // (electron/electron#48422). On Linux, and in a Windows dev session,
+  // it carries the app's icon (lib/app-window.cjs windowIcon): on Linux
+  // that is what the desktop shows where no installed .desktop file
+  // matches the window. The backend's
   // origins, the configured locale and the launch's flags reach the
   // preload as additional arguments (lib/window-args.cjs); the
   // launch's secret does not, and is answered over IPC to the app's
   // own page (lib/secret-handoff.cjs).
-  const win = new BrowserWindow(
-    appWindowOptions({
-      width: workW,
-      height: workH,
-      icon: path.join(__dirname, "build-resources", "icon.png"),
-      preload: path.join(__dirname, "preload.js"),
-      additionalArguments: windowArguments(backend, readConfigLocale(), launchFlags),
-    }),
-  );
+  const options = appWindowOptions({
+    width: workW,
+    height: workH,
+    preload: path.join(__dirname, "preload.js"),
+    additionalArguments: windowArguments(backend, readConfigLocale(), launchFlags),
+    packaged: app.isPackaged,
+  });
+  // Set again once shown, where Wayland can take it (holdWindowIcon).
+  const win = holdWindowIcon(new BrowserWindow(options), options.icon, "app");
   secrets.hold(win.webContents, backend.internalSecret);
   // An <img> or an EventSource cannot set the secret header, and a URL
   // is no place for the secret (Chromium's disk cache, log lines): the

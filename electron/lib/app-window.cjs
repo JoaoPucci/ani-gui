@@ -1,5 +1,7 @@
 "use strict";
 
+const path = require("node:path");
+
 // The app's own window: how it is made, and the renderer's word that
 // its first page has actually rendered, which the reveal waits for.
 //
@@ -83,8 +85,90 @@ function abortWhenLost(lost, ready, { graceMs = APP_READY_WAIT_MS } = {}) {
   });
 }
 
+/**
+ * The icon the app's windows set themselves on `platform`, or undefined
+ * where they set none. `packaged` is whether this is the installed app
+ * (Electron's app.isPackaged) rather than a dev session.
+ *
+ * On Linux a window's own icon is what the desktop shows for it when no
+ * installed .desktop file matches its app id, as for an AppImage run
+ * without desktop integration. Electron passes it to Chromium's window
+ * (SetWindowIcons), which sets it as _NET_WM_ICON under X11 and hands
+ * it to a Wayland compositor that offers xdg-toplevel-icon-v1 (KDE
+ * Plasma does: Chromium's XDGToplevelWrapperImpl::SetIcon) — under
+ * Wayland only once the window is shown, which is why the windows set
+ * it again then (holdWindowIcon). A compositor that offers none (GNOME
+ * Shell, at the time of writing) goes by the .desktop file alone.
+ * The file is in the package because package.json's `build.files`
+ * names it: that list is an explicit allowlist, and nothing else under
+ * build-resources is packaged.
+ *
+ * The installed app on Windows sets none, so its windows take the
+ * executable's own icon, which electron-builder makes from the same
+ * image at several sizes (Electron's documentation notes that leaving
+ * `icon` unset uses the executable's). A Windows dev session runs
+ * electron.exe, whose icon is Electron's, so it sets the app's. macOS
+ * shows the bundle's icon and ignores a window's.
+ */
+function windowIcon(platform = process.platform, packaged = true) {
+  const own = platform === "linux" || (platform === "win32" && !packaged);
+  return own ? path.join(__dirname, "..", "build-resources", "icon.png") : undefined;
+}
+
+/** Per window name, the icon holdWindowIcon last set and how often. */
+const windowIcons = new Map();
+
+/**
+ * Set `win`'s `icon` again each time it is shown, and at once when it
+ * is already on screen; returns `win`. `name` labels the record
+ * (lastWindowIcons). Nothing is done for no icon.
+ *
+ * The icon in a window's options does not reach a Wayland compositor:
+ * a window gets its xdg_toplevel when it is shown, and a new one each
+ * time it is shown after a hide, and WaylandToplevelWindow::
+ * SetWindowIcons returns early while there is none, keeping nothing
+ * for later. Both of the app's windows are made hidden, so KDE Plasma
+ * never got either icon. Read in the Chromium Electron 33 ships (130),
+ * in 135 and in later main: from 135 Chromium keeps an icon given when
+ * the window is created, but only the toolkit's default
+ * (ViewsDelegate::GetDefaultWindowIcon, which Electron leaves empty),
+ * and only for the first toplevel, so this stays needed. Electron
+ * emits "show" right after the platform window's Show(), which makes
+ * the toplevel. Under X11 the set rewrites the same _NET_WM_ICON.
+ */
+function holdWindowIcon(win, icon, name, { logError = console.error } = {}) {
+  if (!icon) return win;
+  const apply = () => {
+    try {
+      if (win.isDestroyed()) return;
+      win.setIcon(icon);
+      const sets = (windowIcons.get(name)?.sets ?? 0) + 1;
+      windowIcons.set(name, { icon, sets });
+    } catch (err) {
+      logError(`[main] the ${name} window's icon could not be set:`, err);
+    }
+  };
+  win.on("show", apply);
+  if (win.isVisible()) apply();
+  return win;
+}
+
+/** The icons holdWindowIcon has set, one record per window name, for
+ *  the end-to-end suite. */
+function lastWindowIcons() {
+  return [...windowIcons].map(([name, { icon, sets }]) => ({ name, icon, sets }));
+}
+
 /** The app window's options. */
-function appWindowOptions({ width, height, icon, preload, additionalArguments }) {
+function appWindowOptions({
+  width,
+  height,
+  preload,
+  additionalArguments,
+  platform = process.platform,
+  packaged = true,
+}) {
+  const icon = windowIcon(platform, packaged);
   return {
     width,
     height,
@@ -298,5 +382,8 @@ module.exports = {
   appReadyBound,
   appReadyWaiter,
   appWindowOptions,
+  holdWindowIcon,
   lastAppReady,
+  lastWindowIcons,
+  windowIcon,
 };
