@@ -77,11 +77,12 @@ const PROBE_MARK = "# ani-gui: Chromium's sandbox, decided by the app's own bina
 //   reader has gone raises SIGPIPE, so the line is written from a
 //   subshell that ignores it, and fails the same way. The ignored
 //   SIGPIPE stays in that subshell: the app starts with the
-//   disposition AppRun was given. Without it AppRun would still launch
-//   today, but only by accident: bash catches SIGPIPE, and runs the
-//   EXIT trap on it, because the probe's traps on INT, TERM and HUP
-//   are set. The block's place after the launcher covers any other
-//   exit before the launch.
+//   disposition AppRun was given. (Without the subshell the app would
+//   still start: with an EXIT trap set, as electron-builder's AppRun
+//   sets one, bash catches SIGPIPE and runs that trap, the launcher.
+//   The subshell keeps AppRun on its ordinary path instead.) The
+//   block's place after the launcher covers any other exit before the
+//   launch.
 // - The probe's stdout goes to a file, not a pipe, so a child that
 //   outlives it cannot hold the wait open. Its stderr and the shell's
 //   job reports are dropped, so the only output a failed probe leaves
