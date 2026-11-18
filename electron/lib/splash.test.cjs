@@ -103,6 +103,30 @@ test("a splash shows once it has painted, marked as the splash", () => {
   assert.deepEqual(windowCalls(), ["load:index.html", "show", "close"]);
 });
 
+test("the splash the controller opens takes its icon from the platform and whether the app is installed", () => {
+  const icon = path.join(__dirname, "..", "build-resources", "icon.png");
+  const cases = [
+    { platform: "win32", packaged: false, want: icon },
+    { platform: "win32", packaged: true, want: undefined },
+    { platform: "linux", packaged: true, want: icon },
+  ];
+  for (const { platform, packaged, want } of cases) {
+    let seen = null;
+    const win = fakeSplash();
+    const splash = splashController({
+      createWindow: (options) => {
+        seen = options;
+        return win;
+      },
+      logError: () => {},
+      platform,
+      packaged,
+    });
+    splash.show();
+    assert.equal(seen.icon, want, `${platform}, packaged ${packaged}`);
+  }
+});
+
 test("a splash suppressed before it painted never comes back on top of the failure report", () => {
   const win = fakeSplash();
   const splash = splashController({ createWindow: () => win, logError: () => {} });

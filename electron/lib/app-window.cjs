@@ -1,5 +1,7 @@
 "use strict";
 
+const path = require("node:path");
+
 // The app's own window: how it is made, and the renderer's word that
 // its first page has actually rendered, which the reveal waits for.
 //
@@ -83,8 +85,45 @@ function abortWhenLost(lost, ready, { graceMs = APP_READY_WAIT_MS } = {}) {
   });
 }
 
+/**
+ * The icon the app's windows set themselves on `platform`, or undefined
+ * where they set none. `packaged` is whether this is the installed app
+ * (Electron's app.isPackaged) rather than a dev session.
+ *
+ * On Linux a window's own icon is what the desktop shows for it when no
+ * installed .desktop file matches its app id, as for an AppImage run
+ * without desktop integration. Electron passes it to Chromium's window
+ * (SetWindowIcons), which sets it as _NET_WM_ICON under X11 and, in
+ * the Chromium that Electron 33 ships, hands it to a Wayland compositor
+ * that offers xdg-toplevel-icon-v1 (KDE Plasma does: Chromium's
+ * XDGToplevelWrapperImpl::SetIcon); a compositor that offers none
+ * (GNOME Shell, at the time of writing) goes by the .desktop file
+ * alone. The file is in the package because package.json's
+ * `build.files` names it: that list is an explicit allowlist, and
+ * nothing else under build-resources is packaged.
+ *
+ * The installed app on Windows sets none, so its windows take the
+ * executable's own icon, which electron-builder makes from the same
+ * image at several sizes (Electron's documentation notes that leaving
+ * `icon` unset uses the executable's). A Windows dev session runs
+ * electron.exe, whose icon is Electron's, so it sets the app's. macOS
+ * shows the bundle's icon and ignores a window's.
+ */
+function windowIcon(platform = process.platform, packaged = true) {
+  const own = platform === "linux" || (platform === "win32" && !packaged);
+  return own ? path.join(__dirname, "..", "build-resources", "icon.png") : undefined;
+}
+
 /** The app window's options. */
-function appWindowOptions({ width, height, icon, preload, additionalArguments }) {
+function appWindowOptions({
+  width,
+  height,
+  preload,
+  additionalArguments,
+  platform = process.platform,
+  packaged = true,
+}) {
+  const icon = windowIcon(platform, packaged);
   return {
     width,
     height,
@@ -299,4 +338,5 @@ module.exports = {
   appReadyWaiter,
   appWindowOptions,
   lastAppReady,
+  windowIcon,
 };

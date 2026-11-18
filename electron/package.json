@@ -49,6 +49,7 @@
 			"package.json",
 			"lib/**/*.cjs",
 			"splash/**/*",
+			"build-resources/icon.png",
 			"!lib/**/*.test.cjs",
 			"node_modules/**/*"
 		],
