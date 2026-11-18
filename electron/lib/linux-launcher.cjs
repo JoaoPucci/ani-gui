@@ -49,18 +49,25 @@ fi
 # do, which it ignores (lib/stdio-guard.cjs). With setpriv, the app also
 # gets a SIGTERM if this launcher is killed outright, rather than
 # outliving it.
+# The relays' pipes take descriptors bash picks, and only those are
+# closed: every other one this launcher was given is passed on to the
+# app, as the exec above passes it. The AppImage runtime gives one
+# (fd 3): the end of a pipe that keeps the image mounted while any
+# process holds it, so closing it unmounts the app's own files from
+# under it.
 out=1
 err=2
+opened=()
 relays=()
 if [ -t 1 ]; then
-  exec 3> >(trap '' HUP TERM; exec setsid cat)
+  exec {out}> >(trap '' HUP TERM; exec setsid cat)
   relays+=("$!")
-  out=3
+  opened+=("$out")
 fi
 if [ -t 2 ]; then
-  exec 4> >(trap '' HUP TERM; exec setsid cat >&2 3>&-)
+  exec {err}> >(trap '' HUP TERM; for fd in "\${opened[@]}"; do exec {fd}>&-; done; exec setsid cat >&2)
   relays+=("$!")
-  err=4
+  opened+=("$err")
 fi
 launch=(setsid)
 if command -v setpriv >/dev/null 2>&1 && setpriv --pdeathsig TERM -- true 2>/dev/null; then
@@ -68,9 +75,15 @@ if command -v setpriv >/dev/null 2>&1 && setpriv --pdeathsig TERM -- true 2>/dev
 fi
 # A background job of this shell starts with SIGINT and SIGQUIT ignored;
 # the app starts with the dispositions this launcher was given.
-(trap - INT QUIT; exec "\${launch[@]}" "\${app[@]}" </dev/null >&"$out" 2>&"$err" 3>&- 4>&-) &
+(
+  trap - INT QUIT
+  exec </dev/null >&"$out"
+  exec 2>&"$err"
+  for fd in "\${opened[@]}"; do exec {fd}>&-; done
+  exec "\${launch[@]}" "\${app[@]}"
+) &
 pid=$!
-exec 3>&- 4>&-
+for fd in "\${opened[@]}"; do exec {fd}>&-; done
 
 # Whether the app still needs a SIGTERM. A stop sent to every process at
 # once (a session's scope stopped, a kill by name) reaches the app as well as
