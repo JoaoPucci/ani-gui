@@ -98,9 +98,10 @@ function abortWhenLost(lost, ready, { graceMs = APP_READY_WAIT_MS } = {}) {
  * Plasma does: Chromium's XDGToplevelWrapperImpl::SetIcon) — under
  * Wayland only once the window is shown, which is why the windows set
  * it again then (holdWindowIcon). A compositor that offers none (GNOME
- * Shell, at the time of writing) goes by the .desktop file alone. The file is in the package because package.json's
- * `build.files` names it: that list is an explicit allowlist, and
- * nothing else under build-resources is packaged.
+ * Shell, at the time of writing) goes by the .desktop file alone.
+ * The file is in the package because package.json's `build.files`
+ * names it: that list is an explicit allowlist, and nothing else under
+ * build-resources is packaged.
  *
  * The installed app on Windows sets none, so its windows take the
  * executable's own icon, which electron-builder makes from the same
@@ -127,9 +128,9 @@ const windowIcons = new Map();
  * time it is shown after a hide, and WaylandToplevelWindow::
  * SetWindowIcons returns early while there is none, keeping nothing
  * for later. Both of the app's windows are made hidden, so KDE Plasma
- * never got either icon. Read in the Chromium Electron 33 ships (130)
- * and in later ones: from 135 Chromium keeps an icon given when the
- * window is created, but only the toolkit's default
+ * never got either icon. Read in the Chromium Electron 33 ships (130),
+ * in 135 and in later main: from 135 Chromium keeps an icon given when
+ * the window is created, but only the toolkit's default
  * (ViewsDelegate::GetDefaultWindowIcon, which Electron leaves empty),
  * and only for the first toplevel, so this stays needed. Electron
  * emits "show" right after the platform window's Show(), which makes

@@ -520,14 +520,15 @@ test("the packaged app's windows name an icon the packaged app can load", async 
 test("the splash and the app's window each set their icon once on screen, where Wayland can take it", async () => {
   // Chromium 130 drops an icon set on a Wayland window before it is
   // shown, and both windows are made hidden: KDE Plasma got no icon
-  // from either. The main process records each icon it sets after a
-  // window shows (lib/app-window.cjs holdWindowIcon).
+  // from either. The main process records, per window, the icon it
+  // last set after a show and how often (lib/app-window.cjs
+  // holdWindowIcon).
   const { app, page } = await launchAppWithStubs();
   try {
     await expect(page.getByText(/top rated/i).first()).toBeVisible({ timeout: 15_000 });
     const set = await app.evaluate(() => {
       const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
-      return main.require("./lib/app-window.cjs").lastWindowIcons() as { name: string; icon: string }[];
+      return main.require("./lib/app-window.cjs").lastWindowIcons() as { name: string; icon: string; sets: number }[];
     });
     const names = new Set(set.map((s) => s.name));
     expect([...names].sort(), JSON.stringify(set)).toEqual(["app", "splash"]);
