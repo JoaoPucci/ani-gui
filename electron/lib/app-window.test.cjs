@@ -67,12 +67,18 @@ test("on Linux the app's window and the splash carry the app's icon, from a file
   assert.equal(png.readUInt32BE(16), png.readUInt32BE(20));
 });
 
-test("on Windows and macOS the windows set no icon of their own: the executable's or the bundle's stands", () => {
+test("installed on Windows or macOS, the windows set no icon of their own: the executable's or the bundle's stands", () => {
   for (const platform of ["win32", "darwin"]) {
-    const app = appWindowOptions({ width: 1, height: 1, preload: "p", additionalArguments: [], platform });
+    const app = appWindowOptions({ width: 1, height: 1, preload: "p", additionalArguments: [], platform, packaged: true });
     assert.equal(app.icon, undefined, platform);
-    assert.equal(splashWindowOptions({ platform }).icon, undefined, platform);
+    assert.equal(splashWindowOptions({ platform, packaged: true }).icon, undefined, platform);
   }
+});
+
+test("a Windows dev session, run by electron.exe, carries the app's icon rather than Electron's", () => {
+  const app = appWindowOptions({ width: 1, height: 1, preload: "p", additionalArguments: [], platform: "win32", packaged: false });
+  assert.equal(app.icon, ICON);
+  assert.equal(splashWindowOptions({ platform: "win32", packaged: false }).icon, ICON);
 });
 
 let ids = 0;
