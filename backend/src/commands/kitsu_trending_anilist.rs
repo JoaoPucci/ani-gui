@@ -104,8 +104,9 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
         bridged
     };
 
-    // Bridged refs come from lookup_by_mal_id (single-resource parse), not
-    // the list parser, so sanitize music here too.
+    // Bridged refs come from lookup_by_mal_id or its lookup_by_anilist_id
+    // fallback (single-resource parse), not the list parser, so sanitize
+    // music here too.
     let hits = drop_music(hits);
     if let Ok(body) = serde_json::to_string(&hits) {
         if keep {
