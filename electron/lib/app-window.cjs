@@ -93,7 +93,7 @@ function abortWhenLost(lost, ready, { graceMs = APP_READY_WAIT_MS } = {}) {
  * On Linux a window's own icon is what the desktop shows for it when no
  * installed .desktop file matches its app id, as for an AppImage run
  * without desktop integration. Electron passes it to Chromium's window
- * (SetWindowIcons), which sets it as _NET_WM_ICON under X11 and, from
+ * (SetWindowIcons), which sets it as _NET_WM_ICON under X11 and, in
  * the Chromium that Electron 33 ships, hands it to a Wayland compositor
  * that offers xdg-toplevel-icon-v1 (KDE Plasma does: Chromium's
  * XDGToplevelWrapperImpl::SetIcon); a compositor that offers none
