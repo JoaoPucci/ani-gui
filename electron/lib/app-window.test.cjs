@@ -17,7 +17,9 @@ const {
   appReadyBound,
   appReadyWaiter,
   appWindowOptions,
+  holdWindowIcon,
   lastAppReady,
+  lastWindowIcons,
   revealGate,
 } = require("./app-window.cjs");
 const { splashWindowOptions } = require("./splash.cjs");
@@ -79,6 +81,66 @@ test("a Windows dev session, run by electron.exe, carries the app's icon rather 
   const app = appWindowOptions({ width: 1, height: 1, preload: "p", additionalArguments: [], platform: "win32", packaged: false });
   assert.equal(app.icon, ICON);
   assert.equal(splashWindowOptions({ platform: "win32", packaged: false }).icon, ICON);
+});
+
+// Chromium 130 (Electron 33) drops an icon set on a Wayland window
+// before it is shown: the toplevel the icon goes to is made when the
+// window is shown, and made again each time it is shown after a hide,
+// and the icon is not kept for it (WaylandToplevelWindow::SetWindowIcons
+// returns early). Both windows are made hidden, so on KDE Plasma the
+// icon never reached the compositor. It is set again each time the
+// window is shown.
+function iconWindow({ visible = false } = {}) {
+  const win = new EventEmitter();
+  win.icons = [];
+  win.visible = visible;
+  win.setIcon = (icon) => win.icons.push(icon);
+  win.isVisible = () => win.visible;
+  win.isDestroyed = () => false;
+  return win;
+}
+
+test("a window's icon is set again each time it is shown", () => {
+  const win = iconWindow();
+  assert.equal(holdWindowIcon(win, ICON, "shown-twice"), win);
+  assert.deepEqual(win.icons, []);
+  win.emit("show");
+  assert.deepEqual(win.icons, [ICON]);
+  win.emit("hide");
+  win.emit("show");
+  assert.deepEqual(win.icons, [ICON, ICON]);
+  // One record per window name, however often it is shown: the record
+  // lives as long as the app does.
+  assert.deepEqual(
+    lastWindowIcons().filter((r) => r.name === "shown-twice"),
+    [{ name: "shown-twice", icon: ICON, sets: 2 }],
+  );
+});
+
+test("a window already on screen gets its icon at once", () => {
+  const win = iconWindow({ visible: true });
+  holdWindowIcon(win, ICON, "splash");
+  assert.deepEqual(win.icons, [ICON]);
+});
+
+test("a window with no icon of its own (installed Windows, macOS) is left alone", () => {
+  const win = iconWindow();
+  assert.equal(holdWindowIcon(win, undefined, "app"), win);
+  win.emit("show");
+  assert.deepEqual(win.icons, []);
+  assert.equal(win.listenerCount("show"), 0);
+});
+
+test("an icon that cannot be set is logged, and the show goes on", () => {
+  const win = iconWindow();
+  win.setIcon = () => {
+    throw new Error("gone");
+  };
+  const logged = [];
+  holdWindowIcon(win, ICON, "app", { logError: (...a) => logged.push(a.join(" ")) });
+  assert.doesNotThrow(() => win.emit("show"));
+  assert.equal(logged.length, 1);
+  assert.match(logged[0], /gone/);
 });
 
 let ids = 0;
