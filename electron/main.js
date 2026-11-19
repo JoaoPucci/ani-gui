@@ -23,6 +23,19 @@
 // (lib/stdio-guard.cjs).
 require("./lib/stdio-guard.cjs").guardStdio(process);
 
+// The AppImage's sandbox probe (lib/sandbox-probe.cjs): a run started
+// only to learn that Chromium's sandbox came up, which it has by the
+// time this file runs. Answered before anything but that guard, so a
+// probe never reaches the single-instance claim, the backend, a window
+// or the profile; its one write goes through the guard.
+if (
+  require("./lib/sandbox-probe.cjs").answerSandboxProbe(process.argv, process.stdout, (code) =>
+    process.exit(code),
+  )
+) {
+  return;
+}
+
 const {
   app,
   BrowserWindow,

@@ -1217,15 +1217,18 @@ starting it, and delete it when you find it done.
   guard, along with checks on IPC callers and permissions; this entry
   goes when it lands.
 
-## The AppImage runs without Chromium's sandbox
+## The AppImage runs without Chromium's sandbox where the namespace sandbox cannot start
 
-- **The AppImage is repacked to start Electron with `--no-sandbox`.**
-  The unprivileged FUSE mount an AppImage runs from does not honour
-  setuid execution, so Chromium's setuid sandbox helper cannot be used
-  from inside it. The `.deb` sets the helper's SUID bit in its postinst
-  and keeps the sandbox. It is a packaging question of its own; the
+- **The AppImage starts Electron with `--no-sandbox` wherever
+  Chromium's namespace sandbox cannot start for it** — Ubuntu 23.10
+  and later, by default. The unprivileged FUSE mount an AppImage runs
+  from does not honour setuid execution, so Chromium's setuid sandbox
+  helper cannot be used from inside it. The `.deb` sets the helper's
+  SUID bit in its postinst and keeps the sandbox. It is a packaging
+  question of its own, described in `docs/architecture.md`; the
   renderer's content security policy is enforced either way, but
-  script that got past it in the AppImage would run unsandboxed.
+  script that got past it in an AppImage that fell back would run
+  unsandboxed.
 
 ## Which program the app runs is the page's choice
 
