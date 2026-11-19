@@ -46,6 +46,12 @@ fi
 # Loaded only where AppArmor is active (as dh_apparmor's snippet
 # does), and a load that fails never fails the install: the setuid
 # helper above still works.
+#
+# build-resources/apparmor-profile is this same text: electron-builder
+# ships it in the package as /opt/ani-gui/resources/apparmor-profile
+# (deb.appArmorProfile), where nothing loads it, and would otherwise
+# ship its own stock profile there (lib/deb-scripts.test.cjs keeps the
+# two equal).
 APPARMOR_D="$DPKG_ROOT/etc/apparmor.d"
 PROFILE="$APPARMOR_D/ani-gui"
 if [ -e "$APPARMOR_D/abi/4.0" ]; then

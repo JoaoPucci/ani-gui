@@ -88,6 +88,7 @@
 		"deb": {
 			"afterInstall": "build-resources/deb-after-install.sh",
 			"afterRemove": "build-resources/deb-after-remove.sh",
+			"appArmorProfile": "build-resources/apparmor-profile",
 			"depends": [
 				"curl",
 				"sed",
