@@ -180,17 +180,28 @@ function appWindowOptions({
     // Frameless: the renderer draws its titlebar and controls. Resizable
     // stays at its default (true), so the OS resize edges still work.
     frame: false,
-    webPreferences: { preload, contextIsolation: true, nodeIntegration: false, additionalArguments },
+    webPreferences: {
+      preload,
+      contextIsolation: true,
+      nodeIntegration: false,
+      additionalArguments,
+      // Electron's default, stated: a file or link dropped on the window
+      // must not become a navigation. Were one asked for, it would come
+      // from the page and meet the navigation guard (window-guard.cjs).
+      navigateOnDragDrop: false,
+    },
   };
 }
 
 let current = { rendered: false, gaveUp: false, beforeReveal: false };
 
 /**
- * Wait for `contents`' renderer to say, on APP_READY_CHANNEL of `ipc`,
- * that its first page has rendered. `ready` settles true when it does,
- * false after `timeoutMs` (never, when that is null), and false when
- * the renderer goes or the contents are destroyed first — `gone()` then
+ * Wait for `contents`' renderer to say, on APP_READY_CHANNEL of `ipc`
+ * (the main process's guarded IPC, lib/ipc-guard.cjs, so a word from
+ * any document but the app's is dropped before it gets here), that its
+ * first page has rendered. `ready` settles true when it does, false
+ * after `timeoutMs` (never, when that is null), and false when the
+ * renderer goes or the contents are destroyed first — `gone()` then
  * says so. A renderer gone fails the boot (lib/startup.cjs
  * waitBeforeShow); destroyed contents are a window closed by a quit,
  * which reveals nothing (revealMaximized).
@@ -213,13 +224,14 @@ function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown 
   let settle;
   const ready = new Promise((resolve) => (settle = resolve));
   let timer = null;
+  let stopListening = () => {};
   let settled = false;
   let lost = false;
   const watchesContents = typeof contents.on === "function";
   const done = (rendered, { gaveUp = !rendered } = {}) => {
     if (settled) return;
     settled = true;
-    ipc.removeListener(APP_READY_CHANNEL, onReady);
+    stopListening();
     if (watchesContents) {
       contents.removeListener("render-process-gone", onGone);
       contents.removeListener("destroyed", onGone);
@@ -242,7 +254,7 @@ function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown 
     lost = true;
     done(false, { gaveUp: false });
   }
-  ipc.on(APP_READY_CHANNEL, onReady);
+  stopListening = ipc.on(APP_READY_CHANNEL, onReady);
   if (watchesContents) {
     contents.on("render-process-gone", onGone);
     contents.on("destroyed", onGone);
@@ -270,12 +282,13 @@ let currentWake = { mounted: false, woken: false };
  * keeps hidden windows ticking, and so does a GPU, which is why the
  * reveal can wait for it at all.
  *
- * So the page also says when it has mounted (APP_MOUNTED_CHANNEL),
- * which needs no frame. `ready` is the waiter's: once the window's own
- * page (matched by its contents' id) has mounted, if `ready` has not
- * settled within `boundMs`, `wake` runs, once — main.js maps the window
- * (wakeHidden) and its frames resume; the rendered word then follows and
- * the reveal goes as usual. Nothing runs when `ready` settles first,
+ * So the page also says when it has mounted (APP_MOUNTED_CHANNEL of
+ * `ipc`, the main process's guarded IPC, lib/ipc-guard.cjs, as for the
+ * rendered word), which needs no frame. `ready` is the waiter's: once
+ * the window's own page (matched by its contents' id) has mounted, if
+ * `ready` has not settled within `boundMs`, `wake` runs, once — main.js
+ * maps the window (wakeHidden) and its frames resume; the rendered word
+ * then follows and the reveal goes as usual. Nothing runs when `ready` settles first,
  * when `stop()` was called (the reveal came, or the window went), or
  * when the launch was `cancelled` by then.
  *
@@ -287,12 +300,13 @@ function frameWake(contents, ipc, { ready, wake, cancelled = () => false, boundM
   currentWake = record;
   let timer = null;
   let over = false;
+  let stopListening = () => {};
   const end = () => {
     if (over) return;
     over = true;
     clearTimeout(timer);
     timer = null;
-    ipc.removeListener(APP_MOUNTED_CHANNEL, onMounted);
+    stopListening();
   };
   function onMounted(event) {
     if (!event || !event.sender || event.sender.id !== contents.id) return;
@@ -306,7 +320,7 @@ function frameWake(contents, ipc, { ready, wake, cancelled = () => false, boundM
       wake();
     }, boundMs);
   }
-  ipc.on(APP_MOUNTED_CHANNEL, onMounted);
+  stopListening = ipc.on(APP_MOUNTED_CHANNEL, onMounted);
   Promise.resolve(ready).then(end, end);
   return { woken: () => record.woken, stop: end };
 }

@@ -8,8 +8,9 @@
 //!
 //! What is offered: the lookup reads the most recent releases, a
 //! page of [`RELEASE_PAGE`], newest first, and offers the first one
-//! that is published (not a draft), counts under the pre-release
-//! setting (with `include_prereleases=false` a pre-release does not),
+//! that is published (not a draft) with an https release page, counts
+//! under the pre-release setting (with `include_prereleases=false` a
+//! pre-release does not),
 //! and carries a package for the platform this binary was built for
 //! (see [`Platform::carries`]; the endings are in `release_assets.json`,
 //! which `electron/lib/release-asset-names.cjs` holds to the names
@@ -195,3 +196,7 @@ async fn get_body(client: &reqwest::Client, url: &str) -> Option<bytes::Bytes> {
 #[cfg(test)]
 #[path = "github_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "github_https_test.rs"]
+mod https_tests;

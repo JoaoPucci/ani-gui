@@ -306,9 +306,11 @@ function rewriteAppRun(original, appRunPath) {
 }
 
 // electron-builder writes the image's desktop entry as
-// `Exec=AppRun --no-sandbox %U` (its `appImage.executableArgs`, which
-// version 25 cannot set empty). A launch through desktop integration
-// would pass that flag as the user's own, and skip the probe.
+// `Exec=AppRun --no-sandbox %U`: the default of its
+// `appImage.executableArgs`, which version 25 cannot set empty and
+// version 26 can, though this app leaves it unset. A launch through
+// desktop integration would pass that flag as the user's own, and skip
+// the probe. An entry already reading `Exec=AppRun %U` is kept.
 const DESKTOP_FLAGGED = 'Exec=AppRun --no-sandbox %U';
 const DESKTOP_PLAIN = 'Exec=AppRun %U';
 

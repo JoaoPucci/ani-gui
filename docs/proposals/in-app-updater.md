@@ -438,8 +438,8 @@ electron-builder's companion library: npm's `latest` tag is 6.8.11
 (electron-builder 26.18.0); 7.0 is in alpha with electron-builder 27.
 [source: npm registry, `npm view electron-updater dist-tags` and
 `electron-builder dist-tags`] The repository uses electron-builder
-25.1.8 and Electron 33.4.11, so adopting it current would also mean
-moving electron-builder a major version. [code: `pnpm-lock.yaml`]
+26.18.0 and Electron 33.4.11, so the current release pairs with the
+electron-builder it already has. [code: `pnpm-lock.yaml`]
 
 It supports NSIS on Windows and AppImage, `.deb`, `.rpm` and pacman on
 Linux. [source: <https://www.electron.build/docs/features/auto-update>;

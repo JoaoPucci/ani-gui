@@ -1217,19 +1217,6 @@ starting it, and delete it when you find it done.
   directory-handle-relative filesystem work (a `cap-std`-shaped
   dependency) on Linux and a separate answer for Windows path limits.
 
-## The window does not keep its document from navigating away
-
-- **The window refuses new windows through its open handler but
-  installs no `will-navigate` guard**, so nothing stops the renderer's
-  own document from navigating away from the app's origin, and a page
-  it navigates to gets the preload bridge (not the launch's secret:
-  the main process answers it to the app's own document alone). The
-  content security policy does not govern navigation.
-  The app's own links open external pages with `target="_blank"`, so
-  no path in the app does this today. Pull request #346 adds the
-  guard, along with checks on IPC callers and permissions; this entry
-  goes when it lands.
-
 ## The AppImage runs without Chromium's sandbox where the namespace sandbox cannot start
 
 - **The AppImage starts Electron with `--no-sandbox` wherever

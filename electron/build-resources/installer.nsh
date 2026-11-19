@@ -24,25 +24,33 @@
 ; -------------------------------
 ; Through 0.18.0 every update deleted the downloaded copy and fetched
 ; it again, and an update run offline ended with none. The cause is
-; electron-builder's upgrade order (app-builder-lib 25.1.8,
-; templates/nsis/installSection.nsh): it runs the previous version's
+; electron-builder's upgrade order (app-builder-lib 26.18.0,
+; templates/nsis/installSection.nsh, the same line for line in 25.1.8,
+; as is include/installUtil.nsh): it runs the previous version's
 ; uninstaller (`uninstallOldVersion`, line 52, which execs it with
 ; `/S /KEEP_APP_DATA --updated` — include/installUtil.nsh lines 206 and
 ; 224; an installer launched with --delete-app-data passes that flag
 ; instead of --updated, lines 202-203, and the update then behaves as
 ; an uninstall followed by a fresh install, ffmpeg download included:
 ; step 1 below sets nothing aside then),
-; and that uninstaller empties $INSTDIR (uninstaller.nsh line
-; 169, `RMDir /r $INSTDIR`). `customInstall` only runs after the new
-; files land (installSection.nsh line 82), by which time the copy is
-; gone. Releases through 0.18.0 also named it in a `Delete` in their
-; customUnInstall, which 25.1.8 runs after that `RMDir`.
+; and that uninstaller empties $INSTDIR. It is the uninstaller the
+; previous version shipped. Through 0.18.0 that one was built with
+; 25.1.8 and removes the tree outright (uninstaller.nsh line 169,
+; `RMDir /r $INSTDIR`). From this version on it is built with 26.18.0,
+; which under --updated moves the tree aside and then removes it
+; (uninstaller.nsh lines 164-168 and 187), or, when a file is busy,
+; moves it back and fails (lines 171-179); the installer retries it
+; and, once the user cancels, stops the update (installUtil.nsh lines
+; 215-239 and 128-132). `customInstall` only runs after the
+; new files land (installSection.nsh line 82), by which time the copy
+; is gone. Releases through 0.18.0 also named it in a `Delete` in their
+; customUnInstall, which 25.1.8 runs after that `RMDir` (line 239).
 ;
 ; So the copy is set aside before that uninstaller runs, and put back
 ; after the new files land:
 ;
-;   1. `customHeader` (inserted at installer.nsi line 39, before the
-;      "install" section is defined at line 87) defines a hidden section
+;   1. `customHeader` (inserted at installer.nsi line 46, before the
+;      "install" section is defined at line 94) defines a hidden section
 ;      of its own. NSIS runs sections in the order they are defined, so
 ;      it runs immediately before "install", in the same process and
 ;      after every page: $INSTDIR is final, and a user who cancels on a
@@ -53,7 +61,7 @@
 ;      uninstaller from 0.18.0 or earlier would leave that folder, and
 ;      step 2 would restore it into what should be a fresh install.
 ;
-;      Why not `customInit` (.onInit, installer.nsi line 73): it runs
+;      Why not `customInit` (.onInit, installer.nsi line 80): it runs
 ;      before the install-mode and directory pages, so $INSTDIR is not
 ;      final yet and the user can still cancel; and in a per-machine
 ;      install it also runs in the outer, unelevated instance. Why not
@@ -67,13 +75,13 @@
 ;      included, run only in the elevated instance. The one exception
 ;      is a silent update of a per-machine install started unelevated:
 ;      the "install" section relaunches elevated and quits (installer.nsi
-;      lines 94-108), after this section has already run unelevated.
+;      lines 101-115), after this section has already run unelevated.
 ;      This section skips that case — it could not write $INSTDIR
 ;      anyway — and the elevated instance runs it. That elevated
 ;      instance switches to the per-machine install only inside the
-;      "install" section (installer.nsi line 110), after this section,
+;      "install" section (installer.nsi line 117), after this section,
 ;      so this section makes the same switch first, under the same
-;      condition (installer.nsi lines 94-95: a per-machine install
+;      condition (installer.nsi lines 101-102: a per-machine install
 ;      exists and the run is silent); otherwise a machine with both a
 ;      per-user and a per-machine install would set aside the wrong one.
 ;
@@ -83,7 +91,8 @@
 ; Setting aside copies rather than moves, so an install that stops
 ; between the two steps (the app-running prompt cancelled, the old
 ; uninstaller failing — both end in `Quit`) leaves the existing install
-; whole. The stale staging copy is replaced or restored by the next
+; whole; from 26.18.0 an uninstaller that fails on a busy file has
+; moved its tree back first. The stale staging copy is replaced or restored by the next
 ; install, and a real uninstall by this version's uninstaller removes
 ; it. One left by an aborted upgrade from 0.18.0 or earlier, and then
 ; uninstalled with that version's uninstaller, stays behind: those
@@ -152,9 +161,9 @@
                 StrCpy $ffmpegSetAsideHere "0"
             ${EndIf}
             ; The silent per-machine update, as installer.nsi lines
-            ; 94-110 will handle it: elevated, switch to the per-machine
+            ; 101-117 will handle it: elevated, switch to the per-machine
             ; install now; unelevated, leave it to the elevated instance.
-            ; Under the template's own guards (installer.nsi lines 92-93),
+            ; Under the template's own guards (installer.nsi lines 99-100),
             ; outside which these variables and macros do not exist.
             !ifndef INSTALL_MODE_PER_ALL_USERS
                 !ifndef ONE_CLICK
@@ -354,15 +363,18 @@
 
 !macro customUnInstall
     ; A real uninstall removes ffmpeg, its stamp and any staging copy an
-    ; interrupted install left behind. The standard sequence has already
-    ; emptied $INSTDIR (uninstaller.nsh line 169) by the time this runs
-    ; (line 239), so the first two are belt and braces; the staging
-    ; directory sits outside $INSTDIR and is removed only here.
+    ; interrupted install left behind. The standard sequence would remove
+    ; the first two anyway: in 26.18.0 this macro runs just before it
+    ; (uninstaller.nsh lines 156-157, ahead of the `RMDir /r $INSTDIR` at
+    ; line 187), so they are belt and braces; the staging directory sits
+    ; outside $INSTDIR and is removed only here.
     ;
     ; Not during an update. A newer installer runs this uninstaller with
     ; --updated after it has set the copy aside in that same staging
     ; directory, and removing it here would delete the very copy the
-    ; update is about to restore.
+    ; update is about to restore. Nor would a removal under $INSTDIR be
+    ; safe there: when a file is busy the sequence moves the tree back
+    ; and fails the update, and a deletion made here would stay made.
     ${IfNot} ${isUpdated}
         Delete "${FFMPEG_EXE}"
         Delete "${FFMPEG_STAMP}"
