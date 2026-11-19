@@ -1514,8 +1514,9 @@ the AppImage and the Windows installer. It leaves out, on purpose:
   The cheap services want either an individual developer in the
   United States or Canada (Azure Artifact Signing) or binaries built
   "from source code in a verifiable way" (SignPath Foundation), which
-  in practice means CI, so it waits for release CI or a change in
-  those terms.
+  in practice means CI, so it waits for releases to take their files
+  from the Packages workflow (which builds them in CI and signs
+  nothing) or a change in those terms.
 
 ## Studying a frontend written in Rust
 

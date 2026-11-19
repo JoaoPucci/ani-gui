@@ -73,11 +73,15 @@ place for its updates is the system's package manager.
   `ani-gui-0.17.0-x64-setup.exe` (105 MB). No `latest.yml`,
   `latest-linux.yml`, `.blockmap`, `.zsync` or signature file. GitHub
   reports a SHA-256 `digest` for each asset. [release]
-- **How packages are built.** By hand, on two machines: `pnpm
-  package:release` on x86_64 Linux builds the AppImage and the `.deb`;
-  `pnpm package:win` on x64 Windows builds the NSIS installer. No CI
-  publishes anything. [code: `docs/development.md`, "Build for
-  distribution"] The electron-builder config has no `publish` section,
+- **How packages are built.** Up to 0.18.0, by hand, on two machines:
+  `pnpm package:release` on x86_64 Linux builds the AppImage and the
+  `.deb`; `pnpm package:win` on x64 Windows builds the NSIS installer.
+  The Packages workflow (`.github/workflows/packages.yml`), started by
+  hand, now runs the same two commands on GitHub's runners and keeps
+  the three files as run artifacts, so a release can take them from
+  there; it attests, signs and publishes nothing, and the files still
+  reach the release by hand. No CI publishes anything. [code:
+  `docs/development.md`, "Build for distribution"] The electron-builder config has no `publish` section,
   and none is inferred: electron-builder falls back to a GitHub
   provider when it finds repository information — a `repository`
   field, a CI variable, or `.git/config` in the project directory —
@@ -616,10 +620,12 @@ Linux packages arrived about five hours after it was published,
 `created_at` against `published_at`]
 
 GitHub's **artifact attestations** prove which workflow built a file;
-they are made by GitHub Actions, and nothing here builds in Actions.
-[source:
+they are made by GitHub Actions. [source:
 <https://docs.github.com/en/actions/concepts/security/artifact-attestations>]
-Not usable without release CI.
+The Packages workflow builds the release packages in Actions but makes
+no attestation, and a release built on a host has none to make. Usable
+once releases take their files from that workflow and it gains an
+attestation step.
 
 Only a signature checked against a key *outside* GitHub answers
 problem 3. The proposal is **minisign**: Ed25519 over a BLAKE2b-512
@@ -853,9 +859,9 @@ the progress bar does not animate under reduced motion.
 
 ## 6. Release-process changes
 
-Today a release is: build on Linux, build on Windows, create a
-pre-release with `gh release create --prerelease`, upload three files
-by hand. [code: `AGENTS.md` §13, `docs/development.md`] Since 0.14.0
+Today a release is: build on Linux, build on Windows (or take both
+from one run of the Packages workflow), create a pre-release with
+`gh release create --prerelease`, upload three files by hand. [code: `AGENTS.md` §13, `docs/development.md`] Since 0.14.0
 the files have been uploaded to a draft that is published once all
 three are there, though neither document says so. [release] What each
 route adds:
@@ -1083,8 +1089,9 @@ proposal's findings, and "What the in-app updater leaves out").
 9. **Authenticode signing?** Recommended: not now. The updater does
    not need it; the cheap options do not fit a hand-built installer by
    an individual outside the United States and Canada [inference: the
-   maintainer's location was not checked]. Revisit if releases move to
-   CI, which would also open SignPath and artifact attestations.
+   maintainer's location was not checked]. Revisit once releases take
+   their files from the Packages workflow, which builds them in CI and
+   would also open SignPath and artifact attestations.
 10. **A switch to turn the update check off?** There is none today.
     Recommended: add it in phase 5, on by default, and say so in
     `docs/PRIVACY.md`.
