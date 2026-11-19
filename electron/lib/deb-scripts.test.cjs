@@ -306,7 +306,8 @@ test("purge removes the profile's local override and markers", () => {
 
 // electron-builder 26 puts an AppArmor profile into every .deb, at
 // /opt/ani-gui/resources/apparmor-profile: `deb.appArmorProfile`, or its
-// stock template when that is unset (FpmTarget.js), with no way to
+// stock template when that is unset (app-builder-lib 26.18.0,
+// out/targets/FpmTarget.js, the copy before fpm runs), with no way to
 // leave it out. The stock one is a profile also named `ani-gui`,
 // attached to the launcher script /opt/ani-gui/ani-gui instead of the
 // binary. Nothing installs or loads that copy — our postinst replaces

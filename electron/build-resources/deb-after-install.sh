@@ -56,8 +56,9 @@ APPARMOR_D="$DPKG_ROOT/etc/apparmor.d"
 PROFILE="$APPARMOR_D/ani-gui"
 if [ -e "$APPARMOR_D/abi/4.0" ]; then
     cat > "$PROFILE" <<'EOF'
-# AppArmor profile for ani-gui, written by its package's postinst and
-# removed by its postrm. It lets Chromium's namespace sandbox start
+# AppArmor profile for ani-gui. The .deb's postinst installs it as
+# /etc/apparmor.d/ani-gui where AppArmor knows ABI 4.0, and its postrm
+# removes it. It lets Chromium's namespace sandbox start
 # for the installed binary on hosts that restrict unprivileged user
 # namespaces (Ubuntu 23.10 and later).
 abi <abi/4.0>,
