@@ -460,6 +460,24 @@ starting it, and delete it when you find it done.
   format, or its episode count — or when another wrong pick on a
   user's card is reported.
 
+- **Kitsu hides every entry it marks adult, and some are not hentai.**
+  Read without a login, Kitsu leaves out every entry it flags `nsfw`
+  (all of them rated R18): search and browse never return one,
+  `filter[ageRating]=R18` answers an empty list, and `/anime/<id>`
+  answers 404. So the app cannot search for, browse to or open these
+  shows. The flag is meant for hentai, but of 152 hidden shows
+  checked, 13 were not hentai, among them Redo of Healer, Kanashimi no
+  Belladonna, Cleopatra (1970), Senya Ichiya Monogatari, the Nukitashi
+  OVAs, Maou Evelogia ni Mi wo Sasageyo and Ikenai BOY. It waits
+  because the maintainer chose to leave it for now. Two things worth
+  knowing: nor does the flag follow erotic content, since Kitsu rates
+  some erotic short series that aired censored R and shows them
+  (Yubisaki kara Honki no Netsujou), so the line it draws is its own;
+  and the mappings lookup by MAL or AniList id does serve a hidden
+  entry inline (MAL 40750 gives Redo of Healer, Kitsu 42732, R18); the
+  trending row and the Watch Later rail are built on that lookup and
+  leave such entries out, so they show only what search and browse can.
+
 ## Interface
 
 - **GNOME's newer Reduced Motion preference does not reach the renderer.**
@@ -913,16 +931,40 @@ starting it, and delete it when you find it done.
   redirect off it is not followed, and an answer from elsewhere is a
   failure (`docs/architecture.md`, "Providers and failover"). That
   stops a redirect to an unrelated site from being read as the
-  provider's answer, as anidb.app's was; the price is that when
-  hianime moves its front by redirect — its canonical domain is
-  filtered per ISP, and the app already reads it at another front —
-  the app treats the move as an outage until a release changes the
-  client's base URL.
+  provider's answer, as anidb.app's was; the price is that a
+  provider's legitimate move by redirect looks like an outage until a
+  release changes the client's base URL. That happened when, by
+  2026-11-17, hianime.at was redirecting every request to hianime.fm:
+  nothing played in any release that reads hianime until pull request
+  #473 changed the base and 0.18.0 shipped, which every user then had
+  to install by hand.
 
-  Why it waits: telling a provider's own move from a hijack needs a
-  source of truth other than the redirect itself, such as a list of
-  fronts the app trusts or one it can update outside a release, and
-  none exists yet.
+  Why it waits: the maintainer chose (2026-11-18) to keep fixing a
+  move with a release, and to revisit it later. Whatever names the
+  address decides where every user's searches and plays go, and from
+  that host's answers which embed pages and video servers the app
+  contacts and what plays; moving it outside a release means trusting
+  a signing key with all of that, and that trade was declined for now.
+
+  What a revisit needs: the address signed, not merely fetched. A
+  flag's file can only choose among the values its declaration
+  allows, while an address can name any host, so a signature is the
+  only limit on where it sends every user. A signature alone is not
+  enough either: an old signed file still verifies, and one naming a
+  domain the site later abandoned and someone else registered is a
+  hijack. So the file also needs a sequence number that only rises,
+  with each release's own number as the floor so a fresh install
+  cannot be handed an older file; an expiry; and strict checks on the
+  value. It builds on the signed flags work, whose signature check it
+  would reuse, and on refusing a signed file older than the one
+  already held, which that check does not do by itself.
+
+  Less of it is new than it sounds: the client already takes its base
+  as a value (`HianimeClient::with_base`), the provider set carries a
+  per-provider override that every client the app builds reads, fixed
+  when the app starts (`ProviderSet::set_origin`, set only by tests
+  today), and nothing on disk — show keys, availability rows,
+  history — names the host, so a new address invalidates no cache.
 
 ## Decoding hianime's other embed hosts
 
@@ -975,31 +1017,40 @@ starting it, and delete it when you find it done.
 
 ## Reading hianime.ms and vidnest.fun as providers
 
-- **Read hianime.ms, and the vidnest.fun embed it lists**, so an
-  episode has somewhere left to play from when the hianime the app
-  reads runs out of working embed hosts. hianime.ms is a second
-  front under the hianime name and a different application from
-  hianime.fm (formerly hianime.at): its watch page takes its own shape
+- **Read hianime.ms, and the embeds it lists beside its megaplay
+  server**, so an episode has somewhere left to play from when the
+  hianime the app reads runs out of working embed hosts. hianime.ms
+  is a second front under the hianime name and a different
+  application from hianime.fm (formerly hianime.at): its watch page
+  takes its own shape
   (`https://hianime.ms/watch-<slug>-episode-1-f3808`) and is served
-  from its own templates, it exposes a `/api/player/check` endpoint
-  rather than hianime.fm's `/api/theme/...` listing endpoints, and
-  its server list is drawn as buttons — "Ryu", which is its own
-  built-in backup player (`data-server="backup"`), and an embed on
-  vidnest.fun (`https://vidnest.fun/anime/<id>/...`).
+  from its own templates, and it exposes a `/api/player/check`
+  endpoint rather than hianime.fm's `/api/theme/...` listing
+  endpoints. Its first server is not a host of its own, though:
+  "Ryu" (`data-server="backup"`) redirects to megaplay.buzz's
+  `/stream/s-2/<id>/<mode>`, the host and address the app already
+  decodes from hianime.fm's listings, so the two sites are fronts over
+  the same library there. What hianime.ms adds is the servers beside
+  Ryu, embeds keyed by AniList id on hosts the app does not read: two
+  on vidnest.fun (`https://vidnest.fun/anime/<id>/...` and
+  `/animepahe/...`) and one on tryembed.us.cc.
 
   Why it matters: on 2026-09-17 both embed hosts hianime.at lists
   for an episode failed for the app at once — zokoanime's CDN origin
   timed out with a 522, and megaplay changed its sources answer to
   an encrypted field with a CDN selector on the embed URL — while
   the provider the app then asked first was under maintenance, and
-  hianime.ms kept playing the
-  same episodes through Ryu. A third catalogue front, or a third
-  embed host, is what a fallback of one site cannot give.
+  hianime.ms kept playing the same episodes through Ryu. Ryu
+  redirects to megaplay today; if it did then too, that was most
+  likely megaplay's own player reading the answer the client could
+  not yet read (it reads it now), not a host the app lacked. Whatever
+  hianime.ms offers against megaplay itself failing lies in its other
+  servers.
 
-  Why it waited: reading either site is its own reverse-engineering
-  — hianime.ms's player and catalogue API, vidnest's embed page —
-  each a maintenance cost of its own, like every host the client
-  reads.
+  Why it waited: reading it is its own reverse-engineering —
+  hianime.ms's player and catalogue API, the vidnest and tryembed
+  embed pages — each a maintenance cost of its own, like every host
+  the client reads.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 
@@ -1153,15 +1204,18 @@ starting it, and delete it when you find it done.
   directory-handle-relative filesystem work (a `cap-std`-shaped
   dependency) on Linux and a separate answer for Windows path limits.
 
-## The AppImage runs without Chromium's sandbox
+## The AppImage runs without Chromium's sandbox where the namespace sandbox cannot start
 
-- **The AppImage is repacked to start Electron with `--no-sandbox`.**
-  The unprivileged FUSE mount an AppImage runs from does not honour
-  setuid execution, so Chromium's setuid sandbox helper cannot be used
-  from inside it. The `.deb` sets the helper's SUID bit in its postinst
-  and keeps the sandbox. It is a packaging question of its own; the
+- **The AppImage starts Electron with `--no-sandbox` wherever
+  Chromium's namespace sandbox cannot start for it** — Ubuntu 23.10
+  and later, by default. The unprivileged FUSE mount an AppImage runs
+  from does not honour setuid execution, so Chromium's setuid sandbox
+  helper cannot be used from inside it. The `.deb` sets the helper's
+  SUID bit in its postinst and keeps the sandbox. It is a packaging
+  question of its own, described in `docs/architecture.md`; the
   renderer's content security policy is enforced either way, but
-  script that got past it in the AppImage would run unsandboxed.
+  script that got past it in an AppImage that fell back would run
+  unsandboxed.
 
 ## Which program the app runs is the page's choice
 
@@ -1509,3 +1563,22 @@ not keep up drawing the interface.
   sending, the per-show Sub or Dub storage, notes that last one run
   of the app — so moving one means moving that too, a refactor larger
   than the change that found them.
+- **Runs on the dev profile have no icon of their own.** `pnpm dev`
+  (in `electron/`) and a packaged build started with `ANI_GUI_DEV=1`
+  both run as `ani-gui-dev` (`APP_NAME` in `electron/main.js`), and
+  where a dev run shows an icon it is the installed app's, so the two
+  are not told apart at a glance. The wanted icon is the app's own
+  with its two colours swapped, cream for near-black and near-black
+  for cream. The maintainer chose to leave it.
+
+  GNOME on Wayland ignores the icon a window sets and takes the icon
+  of the desktop entry matching the window's app ID (`APP_NAME`), so
+  there the dev icon shows only if an `ani-gui-dev` desktop entry
+  exists (without one a dev run there shows GNOME's generic icon).
+  Making one, for instance a hidden (`NoDisplay=true`) entry written
+  by `pnpm dev`, writes outside the repository, under
+  `~/.local/share/applications/` (`AGENTS.md` §11). Recent KDE Plasma
+  on Wayland, and X11, use the icon the window sets. A packaged build
+  sets a window icon only from a file electron-builder's `build.files`
+  allowlist packages, so a dev icon for packaged test builds has to be
+  added there too.

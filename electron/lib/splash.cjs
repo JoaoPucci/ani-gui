@@ -18,7 +18,7 @@
 
 const path = require("node:path");
 
-const { APP_BACKGROUND } = require("./app-window.cjs");
+const { APP_BACKGROUND, windowIcon } = require("./app-window.cjs");
 const { STALL_MS, STEPS } = require("./splash-progress.cjs");
 const { NOT_A_CRASH, SPLASH_RELOADS, stuckWatch } = require("./splash-stuck.cjs");
 
@@ -71,9 +71,11 @@ function isSplashPage(url) {
   }
 }
 
-/** The splash window's options. */
-function splashWindowOptions() {
+/** The splash window's options: on the task bar under the app's icon
+ *  (windowIcon), like the window it stands in for. */
+function splashWindowOptions({ platform = process.platform, packaged = true } = {}) {
   return {
+    icon: windowIcon(platform, packaged),
     width: 480,
     height: 300,
     frame: false,
@@ -146,6 +148,11 @@ function splashController({
   // Restart was chosen: arrange the relaunch (lib/relaunch.cjs), before
   // this launch ends. Throws when it cannot.
   onRestart = () => {},
+  // Whether this is the installed app rather than a dev session
+  // (Electron's app.isPackaged), and the platform: together they decide
+  // the splash's icon (lib/app-window.cjs windowIcon).
+  packaged = true,
+  platform = process.platform,
 }) {
   const state = fresh();
   state.version = version;
@@ -336,7 +343,7 @@ function splashController({
       const query = splashPageQuery({ version, stallTexts: texts, generic, words });
       let splash;
       try {
-        splash = createWindow(splashWindowOptions());
+        splash = createWindow(splashWindowOptions({ platform, packaged }));
       } catch (err) {
         logError("[main] could not show the splash:", err);
         log("[main] splash not opened: the window could not be made");
