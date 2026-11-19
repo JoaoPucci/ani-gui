@@ -33,8 +33,8 @@ jobs:
           # `git diff | grep -q` under pipefail (SIGPIPE on early grep
           # exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          # The snapshot generator, the rust workflow filter, the
-          # hostile temporary-directory tool, the runner the picker
+          # The snapshot generator, the rust and packages workflow
+          # filters, the hostile temporary-directory tool, the runner the picker
           # oracle jobs start their steps with and the headless Wayland
           # session the e2e suite runs in locally live in tools/ and the
           # bats suites execute them, so a change to any of them must
@@ -44,7 +44,7 @@ jobs:
           # the recorded snapshot, and the composite actions because
           # arch checks the bats cases run read them and these jobs
           # install through one.
-          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|tools/workflow-snapshot\.py$|tools/rust-workflow-filter\.sh$|tools/rust-lcov\.sh$|tools/hostile-tmpdir\.sh$|tools/alongside\.sh$|tools/headless-wayland\.sh$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$|\.github/actions/)' <<<"$changed"; then
+          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|tools/workflow-snapshot\.py$|tools/rust-workflow-filter\.sh$|tools/packages-filter\.sh$|tools/rust-lcov\.sh$|tools/hostile-tmpdir\.sh$|tools/alongside\.sh$|tools/headless-wayland\.sh$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$|\.github/actions/)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
