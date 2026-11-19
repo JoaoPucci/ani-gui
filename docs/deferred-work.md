@@ -289,14 +289,18 @@ starting it, and delete it when you find it done.
   builds the Windows installer, and nothing installs or runs it.
 - **Test builds and release builds from the Packages workflow.** A
   run started by hand builds whatever version the committed manifests
-  carry. It could offer two kinds instead: a test build whose version
+  carry, so a test build and a release build of the same version look
+  alike. It could offer two kinds instead: a test build whose version
   is generated (for example `<next patch>-test.<run number>`, marked
   as a test in its file names, and below the real release in semver so
   the update notifier still offers that release), and a release build
-  on the committed version, run on the release commit. The maintainer
-  chose to revisit it with the planned quality work. Today an update
-  test — installing over the previous build — needs a second build
-  with a higher version, made by hand and never committed.
+  on the committed version, run on the release commit. The point is
+  telling test builds apart and ordering them, not installing one over
+  another: the Windows installer already replaces an existing install
+  whatever its version, since electron-builder's NSIS template runs the
+  old install's uninstaller without comparing versions
+  (`uninstallOldVersion` in `templates/nsis/include/installUtil.nsh`).
+  The maintainer chose to revisit it with the planned quality work.
 
 ## Correctness in the app (continued)
 
