@@ -80,8 +80,8 @@ fi
 # context first and back after, as electron-builder's own app-data
 # removal does (uninstaller.nsh, "electron always uses per user app
 # data").
-if ! printf '%s\n' "$LINES" | grep -Fx -- 'SetShellVarContext current' >/dev/null \
-    || ! printf '%s\n' "$LINES" | grep -Fx -- 'SetShellVarContext all' >/dev/null; then
+if ! printf '%s\n' "$LINES" | grep -Fx -- 'SetShellVarContext current' >/dev/null ||
+    ! printf '%s\n' "$LINES" | grep -Fx -- 'SetShellVarContext all' >/dev/null; then
     printf 'arch/windows_uninstall FAIL: %s does not switch to the current user'"'"'s shell context for its removals: on a per-machine install they reach C:\\ProgramData instead of the user'"'"'s folders\n' "$NSH" >&2
     failed=1
 fi
