@@ -435,7 +435,8 @@ fi
 #    between the one column-zero `!macro customUnInstall` and the next
 #    column-zero `!macroend`: every line there starting with `Delete`,
 #    `RMDir` or `Rename` (any case) may name no `${...}` define other
-#    than `${FFMPEG_STAGING}`; and the file defines FFMPEG_STAGING on
+#    than `${FFMPEG_STAGING}`, nor contain `..` (a step from the staging
+#    folder back into the install directory); and the file defines FFMPEG_STAGING on
 #    exactly one line, at column zero, as
 #    `!define FFMPEG_STAGING "$INSTDIR-ffmpeg-staging"`, with no other
 #    line naming `!define` and FFMPEG_STAGING together. The other hooks
@@ -468,6 +469,7 @@ else {
         if (!/^\s*(delete|rmdir|rename)\s/i.test(lines[i])) continue;
         const others = (lines[i].match(/\$\{[^}]*\}/g) || []).filter((d) => d !== "${FFMPEG_STAGING}");
         if (others.length) bad.push("line " + (i + 1) + " removes through " + others.join(", ") + ", not only ${FFMPEG_STAGING}: " + lines[i].trim());
+        if (lines[i].includes("..")) bad.push("line " + (i + 1) + " has a .. path step, which could climb from the staging folder back into $INSTDIR: " + lines[i].trim());
     }
 }
 if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
