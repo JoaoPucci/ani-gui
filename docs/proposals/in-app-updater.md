@@ -89,7 +89,8 @@ place for its updates is the system's package manager.
   `linux-unpacked/resources/` holds no such file]
 - **The AppImage is rebuilt after electron-builder.**
   `electron/scripts/repack-appimage.mjs` extracts electron-builder's
-  AppImage, patches its `AppRun` to pass `--no-sandbox`, re-packs the
+  AppImage, patches its `AppRun` to decide at each launch whether to
+  pass `--no-sandbox` (a sandbox probe), re-packs the
   tree with `mksquashfs`, and prepends the type2 runtime. The output is
   exactly runtime + squashfs; anything electron-builder had appended
   to its file is gone. [code]

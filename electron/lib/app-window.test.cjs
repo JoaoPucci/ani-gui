@@ -17,7 +17,9 @@ const {
   appReadyBound,
   appReadyWaiter,
   appWindowOptions,
+  holdWindowIcon,
   lastAppReady,
+  lastWindowIcons,
   revealGate,
 } = require("./app-window.cjs");
 const { splashWindowOptions } = require("./splash.cjs");
@@ -35,7 +37,7 @@ test("the app's window is made with the app's own dark background, the splash's 
   const splashInk = /--ink-000:\s*(#[0-9a-f]{6})/i.exec(splashCss);
   assert.ok(splashInk, "splash.css defines --ink-000");
   assert.equal(splashInk[1].toLowerCase(), APP_BACKGROUND.toLowerCase());
-  const o = appWindowOptions({ width: 1920, height: 1048, icon: "i", preload: "p", additionalArguments: [] });
+  const o = appWindowOptions({ width: 1920, height: 1048, preload: "p", additionalArguments: [] });
   assert.equal(o.backgroundColor, APP_BACKGROUND);
   assert.equal(splashWindowOptions().backgroundColor, APP_BACKGROUND);
   assert.equal(o.show, false);
@@ -43,6 +45,102 @@ test("the app's window is made with the app's own dark background, the splash's 
   assert.deepEqual([o.width, o.height], [1920, 1048]);
   assert.equal(o.webPreferences.preload, "p");
   assert.equal(o.webPreferences.contextIsolation, true);
+});
+
+// A Linux window's icon is the one it sets itself: an AppImage run
+// without desktop integration has no installed .desktop file for the
+// desktop to match its app id against, and KDE's Wayland task bar
+// showed a generic "W" for it. The icon has to be a file the packaged
+// app carries: electron-builder's `build.files` is an explicit
+// allowlist, and nothing under build-resources is packaged unless it
+// is named there.
+const ICON = path.join(__dirname, "..", "build-resources", "icon.png");
+
+test("on Linux the app's window and the splash carry the app's icon, from a file the package ships", () => {
+  const app = appWindowOptions({ width: 1, height: 1, preload: "p", additionalArguments: [], platform: "linux" });
+  assert.equal(app.icon, ICON);
+  assert.equal(splashWindowOptions({ platform: "linux" }).icon, ICON);
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"));
+  assert.ok(pkg.build.files.includes("build-resources/icon.png"), "electron-builder's files allowlist carries it");
+  // A PNG, and square: Chromium hands a Wayland compositor square icons
+  // only (xdg-toplevel-icon-v1) and drops any other.
+  const png = fs.readFileSync(ICON);
+  assert.equal(png.subarray(1, 4).toString("latin1"), "PNG");
+  assert.equal(png.readUInt32BE(16), png.readUInt32BE(20));
+});
+
+test("installed on Windows or macOS, the windows set no icon of their own: the executable's or the bundle's stands", () => {
+  for (const platform of ["win32", "darwin"]) {
+    const app = appWindowOptions({ width: 1, height: 1, preload: "p", additionalArguments: [], platform, packaged: true });
+    assert.equal(app.icon, undefined, platform);
+    assert.equal(splashWindowOptions({ platform, packaged: true }).icon, undefined, platform);
+  }
+});
+
+test("a Windows dev session, run by electron.exe, carries the app's icon rather than Electron's", () => {
+  const app = appWindowOptions({ width: 1, height: 1, preload: "p", additionalArguments: [], platform: "win32", packaged: false });
+  assert.equal(app.icon, ICON);
+  assert.equal(splashWindowOptions({ platform: "win32", packaged: false }).icon, ICON);
+});
+
+// Chromium 130 (Electron 33) drops an icon set on a Wayland window
+// before it is shown: the toplevel the icon goes to is made when the
+// window is shown, and made again each time it is shown after a hide,
+// and the icon is not kept for it (WaylandToplevelWindow::SetWindowIcons
+// returns early). Both windows are made hidden, so on KDE Plasma the
+// icon never reached the compositor. It is set again each time the
+// window is shown.
+function iconWindow({ visible = false } = {}) {
+  const win = new EventEmitter();
+  win.icons = [];
+  win.visible = visible;
+  win.setIcon = (icon) => win.icons.push(icon);
+  win.isVisible = () => win.visible;
+  win.isDestroyed = () => false;
+  return win;
+}
+
+test("a window's icon is set again each time it is shown", () => {
+  const win = iconWindow();
+  assert.equal(holdWindowIcon(win, ICON, "shown-twice"), win);
+  assert.deepEqual(win.icons, []);
+  win.emit("show");
+  assert.deepEqual(win.icons, [ICON]);
+  win.emit("hide");
+  win.emit("show");
+  assert.deepEqual(win.icons, [ICON, ICON]);
+  // One record per window name, however often it is shown: the record
+  // lives as long as the app does.
+  assert.deepEqual(
+    lastWindowIcons().filter((r) => r.name === "shown-twice"),
+    [{ name: "shown-twice", icon: ICON, sets: 2 }],
+  );
+});
+
+test("a window already on screen gets its icon at once", () => {
+  const win = iconWindow({ visible: true });
+  holdWindowIcon(win, ICON, "splash");
+  assert.deepEqual(win.icons, [ICON]);
+});
+
+test("a window with no icon of its own (installed Windows, macOS) is left alone", () => {
+  const win = iconWindow();
+  assert.equal(holdWindowIcon(win, undefined, "app"), win);
+  win.emit("show");
+  assert.deepEqual(win.icons, []);
+  assert.equal(win.listenerCount("show"), 0);
+});
+
+test("an icon that cannot be set is logged, and the show goes on", () => {
+  const win = iconWindow();
+  win.setIcon = () => {
+    throw new Error("gone");
+  };
+  const logged = [];
+  holdWindowIcon(win, ICON, "app", { logError: (...a) => logged.push(a.join(" ")) });
+  assert.doesNotThrow(() => win.emit("show"));
+  assert.equal(logged.length, 1);
+  assert.match(logged[0], /gone/);
 });
 
 let ids = 0;

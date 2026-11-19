@@ -156,6 +156,10 @@ mod kitsu_id_compare_test;
 mod anilist_unanswered_test;
 
 #[cfg(test)]
+#[path = "kitsu_adult_hidden_test.rs"]
+mod kitsu_adult_hidden_test;
+
+#[cfg(test)]
 #[path = "guessed_from_test.rs"]
 mod guessed_from_test;
 
