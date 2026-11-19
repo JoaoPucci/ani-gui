@@ -41,7 +41,6 @@ const {
   BrowserWindow,
   Menu,
   dialog,
-  ipcMain,
   net,
   powerMonitor,
   protocol,
@@ -109,6 +108,9 @@ const {
   openFirstPage,
 } = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
+const { guardedWindowMaker } = require("./lib/guarded-window.cjs");
+const { mainProcessIpc } = require("./lib/ipc-guard.cjs");
+const { isRevealableDirectory } = require("./lib/reveal-folder.cjs");
 const {
   devOriginFrom,
   policedResponse,
@@ -227,13 +229,39 @@ if (!claimSingleInstance(app, { summon: () => keeper.summon() })) {
 // other path to index.html.
 const APP_SCHEME = "app";
 const APP_ORIGIN = `${APP_SCHEME}://localhost`;
+// The one document the window may hold (lib/app-document.cjs).
+const APP_DOCUMENT = appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL });
+// Every IPC handler, and the waits for the renderer's app-mounted and
+// app-ready words, answer only the main frame holding that document
+// (lib/ipc-guard.cjs); tests/arch/ipc_sender.sh keeps them all
+// registered through it.
+// The guards name a refused page by its URL, which can carry a secret:
+// their lines are redacted in the shapes a secret travels in (a
+// `secret=` parameter, the header), as the handoff's refusal line is
+// below. They are built before the backend has a secret, so a URL that
+// carries one in any other shape is not caught by its value
+// (lib/log-redact.cjs).
+const loggedRedacted = (...parts) => console.error(redactSecrets(parts.join(" ")));
+const ipc = mainProcessIpc({ app: APP_DOCUMENT, logError: loggedRedacted });
+// Every window, the splash's and the app's, holds what the main process
+// loaded into it, and a page can take it only to the app's document:
+// navigations, redirects, subframes, webviews and new windows all pass
+// through one verdict, and web links go to the system browser.
+// Fullscreen and clipboard writes for the app's document; every other
+// permission denied (lib/guarded-window.cjs, tests/arch/window_guard.sh).
+const makeWindow = guardedWindowMaker({
+  BrowserWindow,
+  app: APP_DOCUMENT,
+  openExternal: (url) => shell.openExternal(url),
+  logError: loggedRedacted,
+});
 
 // The launch's secret, kept per window and handed to the app's own
 // page alone, over IPC, never on a command line (lib/secret-handoff.cjs).
 const secrets = secretKeeper({
-  app: appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL }),
-  // A refused page is named by its URL, which is redacted like any
-  // other line the main process logs (lib/log-redact.cjs).
+  app: APP_DOCUMENT,
+  // A refused page is named by its URL, redacted in the shapes a secret
+  // travels in, as the guards' lines are (lib/log-redact.cjs).
   logError: (line) => console.error(redactSecrets(line)),
 });
 
@@ -478,7 +506,7 @@ function signalBackendGroup(pid) {
 /** The splash, while the backend starts and the launch's flags are
  *  decided (lib/splash.cjs). */
 const splash = splashController({
-  createWindow: (options) => holdWindowIcon(new BrowserWindow(options), options.icon, "splash"),
+  createWindow: (options) => holdWindowIcon(makeWindow(options), options.icon, "splash"),
   packaged: app.isPackaged,
   logError: console.error,
   // The user closed the splash (from the taskbar, say) before the
@@ -564,7 +592,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
     packaged: app.isPackaged,
   });
   // Set again once shown, where Wayland can take it (holdWindowIcon).
-  const win = holdWindowIcon(new BrowserWindow(options), options.icon, "app");
+  const win = holdWindowIcon(makeWindow(options), options.icon, "app");
   secrets.hold(win.webContents, backend.internalSecret);
   // An <img> or an EventSource cannot set the secret header, and a URL
   // is no place for the secret (Chromium's disk cache, log lines): the
@@ -596,7 +624,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // Whether the reveal has put the window on screen. Not isVisible(): a
   // wake (below) maps the window before its reveal.
   let revealed = false;
-  const appReady = appReadyWaiter(win.webContents, ipcMain, {
+  const appReady = appReadyWaiter(win.webContents, ipc, {
     isShown: () => revealed,
     timeoutMs: appReadyBound(splash),
   });
@@ -609,46 +637,6 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
           : "[main] app's first page did not say it rendered in time; revealing it anyway",
     ),
   );
-
-  // New-window requests come from three places:
-  //   1. `window.open(...)` or `<a target="_blank">` to an external
-  //      site (e.g. settings help links, ffmpeg.org from the error
-  //      overlay) — route through shell.openExternal so the user's
-  //      default browser opens it.
-  //   2. Middle-click / ctrl-click / shift-click on any in-app
-  //      `<a href="/route">` — Chromium would normally open a new
-  //      tab. Electron has no tabs and our renderer is a single-
-  //      window app, so allowing this either leaks the dev URL to
-  //      the system browser (dev) or spawns a preload-less, broken
-  //      BrowserWindow (packaged). Deny.
-  //   3. Anything we don't recognise — deny, never spawn windows
-  //      we didn't ask for.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    let target;
-    try {
-      target = new URL(url);
-    } catch {
-      return { action: "deny" };
-    }
-    if (target.protocol === "http:" || target.protocol === "https:") {
-      const currentUrl = win.webContents.getURL();
-      let currentOrigin = null;
-      try {
-        currentOrigin = new URL(currentUrl).origin;
-      } catch {
-        currentOrigin = null;
-      }
-      // Same-origin http(s) is the dev server hosting our own
-      // routes (http://localhost:5173/...). Treat it as internal —
-      // a middle-click on a SvelteKit `<a href="/route">` link
-      // shouldn't bounce the URL into the user's system browser.
-      if (currentOrigin && target.origin === currentOrigin) {
-        return { action: "deny" };
-      }
-      shell.openExternal(url);
-    }
-    return { action: "deny" };
-  });
 
   // Renderer-side diagnostics surface in the main process log so we
   // can tell whether the page actually loaded and whether scripts
@@ -755,7 +743,7 @@ async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
   // the splash is mapped again whenever the woken window takes the
   // focus, so it stays in front, with the window around it.
   let unwake = null;
-  const wake = frameWake(win.webContents, ipcMain, {
+  const wake = frameWake(win.webContents, ipc, {
     ready: appReady.ready,
     cancelled: () => win.isDestroyed() || splash.dismissed() || revealed || bootFailed,
     wake: () => {
@@ -902,28 +890,28 @@ function policeDevServer() {
 // Each resolves the sender's own window, so they're correct even if a
 // second window ever exists. `close` goes through win.close() so the
 // existing close-prompt guard (win.on("close", …)) still fires.
-ipcMain.on("ani-gui:window:minimize", (event) => {
+ipc.on("ani-gui:window:minimize", (event) => {
   BrowserWindow.fromWebContents(event.sender)?.minimize();
 });
-ipcMain.on("ani-gui:window:toggle-maximize", (event) => {
+ipc.on("ani-gui:window:toggle-maximize", (event) => {
   const w = BrowserWindow.fromWebContents(event.sender);
   if (!w) return;
   if (w.isMaximized()) w.unmaximize();
   else w.maximize();
 });
-ipcMain.on("ani-gui:window:close", (event) => {
+ipc.on("ani-gui:window:close", (event) => {
   BrowserWindow.fromWebContents(event.sender)?.close();
 });
 // Synchronous so the titlebar can paint the correct maximize/restore
 // icon on first render without a flash; the maximize-changed event keeps
 // it live afterwards.
-ipcMain.on("ani-gui:window:is-maximized", (event) => {
+ipc.onSync("ani-gui:window:is-maximized", (event) => {
   event.returnValue = Boolean(BrowserWindow.fromWebContents(event.sender)?.isMaximized());
-});
+}, false);
 
 // IPC handlers for the renderer's preload bridge. Exposed as
 // window.aniGui.pickDirectory() / .pickFile() / .revealInFolder(path).
-ipcMain.handle("ani-gui:pick-directory", async (_event, options) => {
+ipc.handle("ani-gui:pick-directory", async (_event, options) => {
   const result = await dialog.showOpenDialog({
     properties: ["openDirectory", "createDirectory"],
     title: options?.title || "Choose download folder",
@@ -938,7 +926,7 @@ ipcMain.handle("ani-gui:pick-directory", async (_event, options) => {
 // on Windows where mpv.exe is often installed under
 // `C:\Program Files\mpv\` outside the system PATH). Mirrors
 // pick-directory: returns the absolute path or null on cancel.
-ipcMain.handle("ani-gui:pick-file", async (_event, options) => {
+ipc.handle("ani-gui:pick-file", async (_event, options) => {
   const filters = Array.isArray(options?.filters) ? options.filters : undefined;
   const result = await dialog.showOpenDialog({
     properties: ["openFile"],
@@ -950,11 +938,12 @@ ipcMain.handle("ani-gui:pick-file", async (_event, options) => {
   return result.filePaths[0];
 });
 
-ipcMain.handle("ani-gui:reveal-in-folder", async (_event, dirPath) => {
-  if (typeof dirPath !== "string" || !dirPath) return false;
+ipc.handle("ani-gui:reveal-in-folder", async (_event, dirPath) => {
+  // An existing absolute directory and nothing else: openPath opens a
+  // file in its application and runs an executable (lib/reveal-folder.cjs).
+  if (!isRevealableDirectory(dirPath, { pathModule: path, statSync: fs.statSync })) return false;
   // Use openPath for directories (showItemInFolder targets a file
-  // and selects it; for our case the renderer always passes a
-  // directory). Returns '' on success per Electron docs.
+  // and selects it). Returns '' on success per Electron docs.
   const err = await shell.openPath(dirPath);
   return err === "";
 });
@@ -968,7 +957,7 @@ let activeDownloadCount = 0;
 // prompt. Without this we'd recurse.
 let confirmedQuit = false;
 
-ipcMain.on("ani-gui:active-downloads", (_event, count) => {
+ipc.on("ani-gui:active-downloads", (_event, count) => {
   if (typeof count !== "number" || !Number.isFinite(count) || count < 0) return;
   activeDownloadCount = Math.floor(count);
 });
@@ -981,16 +970,16 @@ ipcMain.on("ani-gui:active-downloads", (_event, count) => {
 // frozen at whatever config.toml held when Electron first started.
 // Re-reading the file here is cheap (config is a handful of KB) and
 // happens once per renderer load.
-ipcMain.on("ani-gui:read-config-locale", (event) => {
+ipc.onSync("ani-gui:read-config-locale", (event) => {
   event.returnValue = readConfigLocale();
-});
+}, null);
 
 // The preload's one synchronous ask for the launch's secret, answered
 // only to the app's own page in a window it was handed to; anything
 // else gets null (lib/secret-handoff.cjs).
-ipcMain.on(SECRET_CHANNEL, (event) => {
+ipc.onSync(SECRET_CHANNEL, (event) => {
   event.returnValue = secrets.answer(event);
-});
+}, null);
 
 // ─── Account integration IPC handlers ──────────────────────────────
 //
@@ -1028,7 +1017,7 @@ let activeOAuth = null;
  * Renderer gets `{ code, state }` back when the user approves, or an
  * error with one of the documented `kind`s.
  */
-ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
+ipc.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
   if (typeof authUrl !== "string" || !authUrl.startsWith("https://")) {
     return { ok: false, kind: "bad_request" };
   }
@@ -1111,7 +1100,7 @@ ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
 });
 
 /** Cancel the active OAuth attempt (renderer pressed cancel). */
-ipcMain.handle("ani-gui:account:cancel-oauth", () => {
+ipc.handle("ani-gui:account:cancel-oauth", () => {
   if (activeOAuth) {
     try {
       activeOAuth.stop();
@@ -1156,7 +1145,7 @@ process.on("exit", () => keyringHelper.stop());
  * obfuscate it (see `isRealEncryption` in lib/keyring.cjs), so the
  * renderer can point the user at the missing keyring.
  */
-ipcMain.handle("ani-gui:account:set-token", (_event, { provider, payload }) =>
+ipc.handle("ani-gui:account:set-token", (_event, { provider, payload }) =>
   writeToken({ file: () => tokenPathFor(provider), fs, keyring, payload }),
 );
 
@@ -1167,12 +1156,12 @@ ipcMain.handle("ani-gui:account:set-token", (_event, { provider, payload }) =>
  * keyring that is locked or not answering holds this call, not the
  * renderer and not this process.
  */
-ipcMain.handle("ani-gui:account:get-token", (_event, provider) =>
+ipc.handle("ani-gui:account:get-token", (_event, provider) =>
   readToken({ file: () => tokenPathFor(provider), fs, keyring }),
 );
 
 /** Delete the persisted token file for the given provider. */
-ipcMain.handle("ani-gui:account:clear-token", async (_event, provider) => {
+ipc.handle("ani-gui:account:clear-token", async (_event, provider) => {
   try {
     const p = tokenPathFor(provider);
     if (fs.existsSync(p)) {
@@ -1189,7 +1178,7 @@ ipcMain.handle("ani-gui:account:clear-token", async (_event, provider) => {
  * Privacy Policy link. Only allows https / http schemes — a renderer
  * compromise can't redirect this to a file:// path.
  */
-ipcMain.handle("ani-gui:open-external", async (_event, url) => {
+ipc.handle("ani-gui:open-external", async (_event, url) => {
   if (typeof url !== "string") return false;
   if (!/^https?:\/\//.test(url)) return false;
   await shell.openExternal(url);
