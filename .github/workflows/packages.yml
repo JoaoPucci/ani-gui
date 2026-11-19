@@ -1,0 +1,393 @@
+name: 'Packages'
+# Builds the three packages a release ships — the Windows NSIS
+# installer, the AppImage and the .deb — the way the release commands
+# build them on a host (`pnpm run package:win` on Windows,
+# `pnpm run package:release` on Linux). It runs two ways:
+#
+#   - Started by hand (Actions › Packages › Run workflow) on any branch,
+#     tag or commit, it uploads the three packages as artifacts with a
+#     SHA256SUMS naming them, so they can be installed on a machine
+#     nobody in CI has, and a release can take its files from one run
+#     on its commit. Only a deliberate run uploads: release-style builds
+#     appearing beside a pull request on their own would invite someone
+#     who does not know what they are to install one.
+#   - On every pull request it builds and uploads nothing. The filter
+#     job (tools/packages-filter.sh, which
+#     tests/bash/arch/packages_filter.bats runs) decides whether the
+#     pull request changed how a package is built or what it installs;
+#     the builds run only then. The `packages-build` job always
+#     reports, passing when the builds passed or were not needed, and
+#     is the one check name to require. A workflow-level path filter
+#     would leave a required name waiting forever on every pull request
+#     it skipped.
+#
+# Nothing here installs or runs a package, and none is signed, as the
+# hand-built release packages are not.
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: >
+          A branch, tag or commit to build. Empty builds the branch
+          chosen above.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# A newer push to a pull request cancels the run it supersedes; the new
+# run reports the gate for the new head. Runs started by hand never
+# cancel one another.
+concurrency:
+  group: packages-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  filter:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.detect.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: tools/packages-filter.sh "$EVENT" "$BASE_SHA" "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: filter
+    if: needs.filter.outputs.build == 'true'
+    name: Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 60
+    outputs:
+      file: ${{ steps.built.outputs.exe }}
+      sha256: ${{ steps.built.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A run started by hand builds its `ref` input, or the branch
+          # it was started on when that is empty. A pull request builds
+          # the merge GitHub checks out by default, what would land.
+          ref: ${{ inputs.ref }}
+          # The build runs its dependencies' own scripts; none of them
+          # needs the token in the checkout's git config.
+          persist-credentials: false
+
+      - name: Name the artifact
+        id: name
+        shell: bash
+        env:
+          REF: ${{ inputs.ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse --short=9 HEAD)
+          # An artifact name takes no slash and a few other characters.
+          ref=${REF//[^A-Za-z0-9._-]/-}
+          printf 'artifact=ani-gui-windows-installer-%s-%s\n' "$ref" "$sha" >> "$GITHUB_OUTPUT"
+
+      # No Rust cache: caches save only from master
+      # (tests/arch/ci_caches.sh), and this workflow runs there only
+      # when started there by hand, so a cache would nearly always miss
+      # while a release-mode target directory took a large share of the
+      # repository's cache limit. The pnpm and apt install actions keep
+      # their own rule: a run started by hand on master saves its store
+      # for the next one.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: pnpm install (workspace)
+        uses: ./.github/actions/pnpm-install
+        with:
+          working-directory: .
+          args: --frozen-lockfile
+
+      - name: Which tar the dependency fetcher finds
+        # The fetcher spawns `tar` from PATH, and a Windows host's is
+        # Windows' own bsdtar. GNU tar from Git's tools would read the
+        # drive letter of an archive path as a remote host.
+        run: |
+          Get-Command tar
+          tar --version
+
+      - name: Package the installer (package:win)
+        # The script builds the release backend (the MSVC static-CRT
+        # flags come from backend/.cargo/config.toml, so nothing here
+        # sets RUSTFLAGS), the frontend, stages the bundled Windows
+        # binaries, and runs electron-builder --win. No GitHub token is
+        # in the environment: one would make electron-builder treat the
+        # build as a release to publish.
+        working-directory: electron
+        run: pnpm run package:win
+
+      - name: Record what was built
+        id: built
+        shell: bash
+        working-directory: electron/dist
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          exes=(*-x64-setup.exe)
+          ls -la
+          if [[ ${#exes[@]} -ne 1 ]]; then
+            echo "expected one *-x64-setup.exe in electron/dist, found ${#exes[@]}" >&2
+            exit 1
+          fi
+          {
+            printf 'exe=%s\n' "${exes[0]}"
+            printf 'sha256=%s\n' "$(sha256sum "${exes[0]}" | cut -d' ' -f1)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload the installer
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.artifact }}
+          path: electron/dist/${{ steps.built.outputs.exe }}
+          if-no-files-found: error
+          # Thirty days, not GitHub's default ninety: long enough to
+          # test a build or cut a release from it, short enough that
+          # some 380 MB per run does not pile up.
+          retention-days: 30
+          # The packages are already compressed.
+          compression-level: 0
+
+  linux:
+    needs: filter
+    if: needs.filter.outputs.build == 'true'
+    name: AppImage and .deb
+    # Pinned rather than ubuntu-latest (26.04 by now), so a runner image
+    # moving on never changes a release build unannounced. 24.04 is the
+    # oldest the cached apt install can serve: it refreshes from the
+    # deb822 source list 22.04 does not have. Nothing in the packages
+    # links against the runner's C library anyway: the backend is
+    # static musl (checked below), and Electron, the AppImage runtime
+    # and the bundled tools arrive prebuilt. The glibc step reports what
+    # the packaged binaries need.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      appimage: ${{ steps.built.outputs.appimage }}
+      appimage_sha256: ${{ steps.built.outputs.appimage_sha256 }}
+      deb: ${{ steps.built.outputs.deb }}
+      deb_sha256: ${{ steps.built.outputs.deb_sha256 }}
+      suffix: ${{ steps.name.outputs.suffix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Name the artifacts
+        id: name
+        env:
+          REF: ${{ inputs.ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse --short=9 HEAD)
+          ref=${REF//[^A-Za-z0-9._-]/-}
+          printf 'suffix=%s-%s\n' "$ref" "$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust musl target for the pinned toolchain
+        # The Linux packages carry a backend linked statically against
+        # musl. The target goes on the toolchain rust-toolchain.toml
+        # pins, which cargo uses here.
+        run: rustup target add x86_64-unknown-linux-musl
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build tools
+        # musl-gcc for the C the backend compiles in (SQLite, ring);
+        # mksquashfs for the AppImage repack.
+        uses: ./.github/actions/apt-install
+        with:
+          packages: musl-tools squashfs-tools
+
+      - name: pnpm install (workspace)
+        uses: ./.github/actions/pnpm-install
+        with:
+          working-directory: .
+          args: --frozen-lockfile
+
+      - name: Package the AppImage and the .deb (package:release)
+        # No GitHub token in the environment, as on Windows.
+        working-directory: electron
+        run: pnpm run package:release
+
+      - name: The packaged backend needs no system C library
+        # The same assertion e2e.yml makes of its build.
+        working-directory: electron
+        run: |
+          set -euo pipefail
+          backend=dist/linux-unpacked/resources/ani-gui-backend
+          test -f "$backend"
+          kind=$(file -b "$backend")
+          echo "$kind"
+          case "$kind" in
+            *"static-pie linked"* | *"statically linked"*) ;;
+            *)
+              echo "the packaged backend is not statically linked" >&2
+              exit 1
+              ;;
+          esac
+          dynamic=$(readelf -d "$backend")
+          if grep -q NEEDED <<<"$dynamic"; then
+            grep NEEDED <<<"$dynamic"
+            echo "the packaged backend needs shared libraries" >&2
+            exit 1
+          fi
+
+      - name: Report the glibc the packaged binaries need
+        id: glibc
+        # The newest GLIBC_ symbol version any ELF file in the package
+        # tree asks for: a system with an older glibc cannot run it.
+        # Reported, not enforced.
+        working-directory: electron/dist/linux-unpacked
+        run: |
+          set -euo pipefail
+          report=$(find . -type f -print0 | while IFS= read -r -d '' f; do
+            [[ "$(head -c 4 "$f" | od -An -tx1 | tr -d ' \n')" == 7f454c46 ]] || continue
+            v=$(objdump -T "$f" 2>/dev/null | grep -oE 'GLIBC_[0-9.]+' | sed 's/^GLIBC_//' | sort -uV | tail -n 1 || true)
+            printf '%s %s\n' "${v:--}" "$f"
+          done | sort -V)
+          echo "$report"
+          max=$(awk '$1 != "-" { print $1 }' <<<"$report" | sort -V | tail -n 1)
+          printf 'max=%s\n' "$max" >> "$GITHUB_OUTPUT"
+
+      - name: Record what was built
+        id: built
+        working-directory: electron/dist
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          appimages=(*-x86_64.AppImage)
+          debs=(*-amd64.deb)
+          ls -la
+          if [[ ${#appimages[@]} -ne 1 || ${#debs[@]} -ne 1 ]]; then
+            echo "expected one AppImage and one .deb in electron/dist" >&2
+            exit 1
+          fi
+          {
+            printf 'appimage=%s\n' "${appimages[0]}"
+            printf 'appimage_sha256=%s\n' "$(sha256sum "${appimages[0]}" | cut -d' ' -f1)"
+            printf 'deb=%s\n' "${debs[0]}"
+            printf 'deb_sha256=%s\n' "$(sha256sum "${debs[0]}" | cut -d' ' -f1)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload the AppImage
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ani-gui-appimage-${{ steps.name.outputs.suffix }}
+          path: electron/dist/${{ steps.built.outputs.appimage }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Upload the .deb
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ani-gui-deb-${{ steps.name.outputs.suffix }}
+          path: electron/dist/${{ steps.built.outputs.deb }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Summarise the glibc requirement
+        env:
+          MAX: ${{ steps.glibc.outputs.max }}
+        run: |
+          printf 'The Linux packages need glibc %s or newer.\n\n' "$MAX" >> "$GITHUB_STEP_SUMMARY"
+
+  checksums:
+    needs: [windows, linux]
+    # A run started by hand, once both builds succeeded (the default
+    # for `needs`), so the file always names all three packages.
+    if: github.event_name != 'pull_request'
+    name: SHA256SUMS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write SHA256SUMS
+        env:
+          EXE: ${{ needs.windows.outputs.file }}
+          EXE_SHA256: ${{ needs.windows.outputs.sha256 }}
+          APPIMAGE: ${{ needs.linux.outputs.appimage }}
+          APPIMAGE_SHA256: ${{ needs.linux.outputs.appimage_sha256 }}
+          DEB: ${{ needs.linux.outputs.deb }}
+          DEB_SHA256: ${{ needs.linux.outputs.deb_sha256 }}
+        run: |
+          set -euo pipefail
+          # The format `sha256sum -c` reads, one line per package.
+          {
+            printf '%s  %s\n' "$EXE_SHA256" "$EXE"
+            printf '%s  %s\n' "$APPIMAGE_SHA256" "$APPIMAGE"
+            printf '%s  %s\n' "$DEB_SHA256" "$DEB"
+          } > SHA256SUMS
+          cat SHA256SUMS
+          if grep -qvE '^[0-9a-f]{64}  [^ /]+$' SHA256SUMS; then
+            echo "a package is missing from SHA256SUMS" >&2
+            exit 1
+          fi
+          {
+            printf '### Packages\n\nUnsigned, and not installed or run by CI. SHA-256:\n\n'
+            # Indented four spaces: a Markdown code block.
+            sed 's/^/    /' SHA256SUMS
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload SHA256SUMS
+        uses: actions/upload-artifact@v4
+        with:
+          name: ani-gui-sha256sums-${{ needs.linux.outputs.suffix }}
+          path: SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+  gate:
+    # The check to require. It reports on every run, whatever the
+    # filter decided: green when the builds passed, or when the pull
+    # request changed nothing they depend on and they were skipped;
+    # red when the filter failed, when a build failed or was cancelled,
+    # or when the builds were skipped although the filter asked for
+    # them.
+    needs: [filter, windows, linux]
+    if: always()
+    name: packages-build
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          FILTER: ${{ needs.filter.result }}
+          BUILD: ${{ needs.filter.outputs.build }}
+          WINDOWS: ${{ needs.windows.result }}
+          LINUX: ${{ needs.linux.result }}
+        run: |
+          set -euo pipefail
+          echo "filter: $FILTER (build=$BUILD), windows: $WINDOWS, linux: $LINUX"
+          if [[ "$FILTER" != success ]]; then
+            echo "the filter job did not succeed" >&2
+            exit 1
+          fi
+          case "$BUILD" in
+            true) want=success ;;
+            false) want=skipped ;;
+            *)
+              echo "the filter decided nothing: build=$BUILD" >&2
+              exit 1
+              ;;
+          esac
+          if [[ "$WINDOWS" != "$want" || "$LINUX" != "$want" ]]; then
+            echo "expected both builds to be $want" >&2
+            exit 1
+          fi
