@@ -34,17 +34,18 @@
 ; an uninstall followed by a fresh install, ffmpeg download included:
 ; step 1 below sets nothing aside then),
 ; and that uninstaller empties $INSTDIR. It is the uninstaller the
-; previous version shipped. Through 0.18.0 that one was built with
-; 25.1.8 and removes the tree outright (uninstaller.nsh line 169,
-; `RMDir /r $INSTDIR`). From this version on it is built with 26.18.0,
-; which under --updated moves the tree aside and then removes it
-; (uninstaller.nsh lines 164-168 and 187), or, when a file is busy,
-; moves it back and fails (lines 171-179); the installer retries it
-; and, once the user cancels, stops the update (installUtil.nsh lines
-; 215-239 and 128-132). `customInstall` only runs after the
-; new files land (installSection.nsh line 82), by which time the copy
-; is gone. Releases through 0.18.0 also named it in a `Delete` in their
-; customUnInstall, which 25.1.8 runs after that `RMDir` (line 239).
+; previous version shipped, built with 25.1.8 through 0.18.0 and with
+; 26.18.0 from this version on, and both remove the tree the same way:
+; under --updated they move it aside and then remove it, or, when a
+; file is busy, move it back and fail (26.18.0 uninstaller.nsh lines
+; 164-187; 25.1.8 lines 148-169). The installer retries a failed
+; uninstaller and, once the user cancels, stops the update
+; (installUtil.nsh lines 215-239 and 128-132). The two differ only in
+; where `customUnInstall` runs: 25.1.8 runs it after that removal
+; (line 239), 26.18.0 before it (lines 156-157). `customInstall` only
+; runs after the new files land (installSection.nsh line 82), by which
+; time the copy is gone. Releases through 0.18.0 also named it in a
+; `Delete` in their customUnInstall.
 ;
 ; So the copy is set aside before that uninstaller runs, and put back
 ; after the new files land:
@@ -90,11 +91,15 @@
 ;
 ; Setting aside copies rather than moves, so an install that stops
 ; between the two steps (the app-running prompt cancelled, the old
-; uninstaller failing — both end in `Quit`) leaves the existing install
-; whole; from 26.18.0 an uninstaller that fails on a busy file has
-; moved its tree back first. The stale staging copy is replaced or restored by the next
-; install, and a real uninstall by this version's uninstaller removes
-; it. One left by an aborted upgrade from 0.18.0 or earlier, and then
+; uninstaller failing on a busy file, which moves its tree back first —
+; both end in `Quit`) leaves the existing install whole. One exception:
+; a per-machine update also runs the per-user install's uninstaller,
+; after the per-machine one has succeeded (installSection.nsh lines
+; 55-57), and if that second one fails the update stops with the
+; per-machine folder already removed; installing to that folder again
+; restores the copy. The stale staging copy is replaced or restored by
+; the next install, and a real uninstall by this version's uninstaller
+; removes it. One left by an aborted upgrade from 0.18.0 or earlier, and then
 ; uninstalled with that version's uninstaller, stays behind: those
 ; uninstallers do not know about it.
 ;

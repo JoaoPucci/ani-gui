@@ -380,8 +380,8 @@ output". [source: electron-builder 25.1.8,
 user ran a newer installer by hand, and an updater would have made it
 frequent and invisible: each update would have cost the installer's
 105 MB plus ffmpeg's ~90 MB, and an update run offline after its
-download would have ended with no ffmpeg. electron-builder offers `${isUpdated}` to tell an
-update from a fresh install [source:
+download would have ended with no ffmpeg. electron-builder offers
+`${isUpdated}` to tell an update from a fresh install [source:
 <https://www.electron.build/docs/nsis>], which is set when the
 installer runs with `--updated` [source: electron-builder 25.1.8,
 `src/targets/nsis/nsisScriptGenerator.ts`], but the old copy was gone
@@ -394,11 +394,12 @@ folder beside the install directory (`$INSTDIR-ffmpeg-staging`), and
 `customInstall` puts it back when the new files did not bring one. It
 downloads again, in the same install, only when the release pins a
 different ffmpeg, or when the copy or its version stamp could not be
-carried over or read. The
-uninstall step's own cleanup of ffmpeg is skipped under
-`${isUpdated}`. Only the same install is kept: switching between
-per-user and per-machine, or picking another folder, is a new install
-directory and downloads ffmpeg like a fresh install, and an installer
+carried over or read. A real uninstall removes the staging folder in
+the uninstall step (not under `${isUpdated}`), and ffmpeg itself goes
+with the rest of the install directory. Only the same install is
+kept: switching between per-user and per-machine, or picking another
+folder, is a new install directory and downloads ffmpeg like a fresh
+install, and an installer
 run with `--delete-app-data` makes the update an uninstall followed by
 a fresh install. This holds for a hand-run installer and an updater
 alike. [code: `electron/build-resources/installer.nsh`, its "Keeping
