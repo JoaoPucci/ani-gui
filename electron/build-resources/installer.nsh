@@ -112,12 +112,26 @@
     ; brought it in outside the manifest.
     Delete "$INSTDIR\resources\bin\ffmpeg.exe"
 
+    ; Everything below lives in the user's own profile, whatever the
+    ; install mode. A per-machine install runs this in the all-users
+    ; shell context, where $APPDATA and $LOCALAPPDATA name
+    ; C:\ProgramData, so switch to the current user's context for the
+    ; removals and back once they are done, as electron-builder's own
+    ; app-data removal does (uninstaller.nsh: "electron always uses per
+    ; user app data"). The installer writes its copy below in the
+    ; current user's context too.
+    ${If} $installMode == "all"
+        SetShellVarContext current
+    ${EndIf}
+
     ; Every install leaves a copy of its installer here
     ; (electron-builder's APP_INSTALLER_STORE_FILE, kept for
     ; electron-updater, which this app does not use), and nothing in
-    ; electron-builder's sequence removes it. Not during an update: an
-    ; update runs this uninstaller with --updated, and the copy there is
-    ; then the running installer's own.
+    ; electron-builder's sequence removes it. An update runs the
+    ; previous version's uninstaller with --updated before the new
+    ; installer writes its own copy, so removing it then would be
+    ; harmless; it is kept anyway, so an update never deletes a folder
+    ; an updater would download into.
     ${IfNot} ${isUpdated}
         RMDir /r "$LOCALAPPDATA\ani-gui-updater"
     ${EndIf}
@@ -166,4 +180,7 @@
         Goto purge_done
 
     purge_done:
+    ${If} $installMode == "all"
+        SetShellVarContext all
+    ${EndIf}
 !macroend
