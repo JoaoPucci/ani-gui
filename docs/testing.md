@@ -402,7 +402,7 @@ by hand on a real machine. To build a branch, tag or commit:
 2. Click **Run workflow** (top right of the run list). Choose the branch
    under "Use workflow from", or type a branch, tag or commit hash in
    the `ref` box, then click the green **Run workflow** button. Both
-   builds use the one commit that ref named when the run started.
+   builds use the one commit that ref named as the run began building.
 3. Open the new run once it finishes (the Windows build is the slow
    one). Its summary page lists four artifacts
    under **Artifacts**, each named after the ref and the commit:
@@ -415,7 +415,8 @@ by hand on a real machine. To build a branch, tag or commit:
    against the hashes the build recorded (`--ignore-missing` lets a
    folder hold only some of them). On Windows,
    `Get-FileHash <file> -Algorithm SHA256` in PowerShell prints the
-   hash to compare with the file's line. The Windows installer is
+   hash to compare with the file's line (in capitals; the comparison
+   ignores case). The Windows installer is
    unsigned, so SmartScreen warns before it runs: More info, then Run
    anyway.
 

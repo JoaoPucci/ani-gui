@@ -72,9 +72,13 @@ jobs:
             name=$REF_NAME
           else
             # A tag or a commit hash resolves as given; a branch is
-            # fetched as its remote-tracking ref.
+            # fetched as its remote-tracking ref. Anything else the
+            # checkout did not fetch (a full ref name, a pull request's
+            # ref, a commit only such a ref reaches) is fetched by name.
             sha=$(git rev-parse --verify --quiet "$REF^{commit}" ||
-              git rev-parse --verify --quiet "origin/$REF^{commit}") || {
+              git rev-parse --verify --quiet "origin/$REF^{commit}" ||
+              { git fetch --quiet --no-tags origin "$REF" &&
+                git rev-parse --verify --quiet "FETCH_HEAD^{commit}"; }) || {
               echo "no branch, tag or commit named $REF" >&2
               exit 1
             }
@@ -213,8 +217,12 @@ jobs:
         # pins, which cargo uses here.
         run: rustup target add x86_64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
-        # e2e.yml's cache: master saves it from the same build (the
-        # release backend for the musl target), so this restores it.
+        # e2e.yml's cache, which master saves from the same build (the
+        # release backend for the musl target), on a pull request only.
+        # e2e.yml runs on ubuntu-latest, so its compiled dependencies
+        # come from another image; a run started by hand, which may be
+        # a release, compiles everything on the pinned one.
+        if: github.event_name == 'pull_request'
         with:
           save-if: ${{ github.ref == 'refs/heads/master' }}
           workspaces: backend
