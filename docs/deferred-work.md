@@ -285,7 +285,8 @@ starting it, and delete it when you find it done.
 
   The same goes for what the shell shows on that platform: the
   failed-startup dialog and the quit prompt have been seen on Linux
-  only, since nothing builds or launches the Windows app in CI.
+  only, since nothing launches the Windows app in CI: a workflow
+  builds the Windows installer, and nothing installs or runs it.
 
 ## Correctness in the app (continued)
 

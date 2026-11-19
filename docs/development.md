@@ -188,12 +188,21 @@ sudo apt install musl-tools   # musl-gcc, for the C the backend compiles in (SQL
 that backend themselves (`pnpm run build:backend:linux`). The dev loop
 keeps using the ordinary debug build.
 
-Artifacts land in `electron/dist/`. There is no release-packaging CI —
-no workflow triggers on a tag and nothing publishes installers. (The
-e2e workflow does run `pnpm run dist` on Linux to produce the
-`linux-unpacked/` build it tests against, so electron-builder itself is
-exercised in CI; publishing is not.) Release artifacts are built on a
-matching host and uploaded to the GitHub release by hand:
+Artifacts land in `electron/dist/`. No workflow triggers on a tag and
+nothing publishes installers: release files are uploaded to the GitHub
+release by hand. They can come from either of two places.
+
+- **The Packages workflow.** `.github/workflows/packages.yml`, started
+  by hand on the release commit, builds all three packages on GitHub's
+  runners with the same commands as below and keeps them as run
+  artifacts for thirty days, with a `SHA256SUMS` naming them. "Packages
+  built in CI" in `docs/testing.md` has the steps.
+- **A matching host**, with the commands below.
+
+(The e2e workflow also runs `pnpm run dist` on Linux to produce the
+`linux-unpacked/` build it tests against, and the Packages workflow
+builds every package on a pull request that changes how one is built,
+uploading nothing.)
 
 | Target | Host | Command |
 |---|---|---|

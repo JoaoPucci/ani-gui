@@ -1030,8 +1030,8 @@ a day or less, **M** a few days, **L** a week or more.
    installer. Both happen on "Restart to update" or on a normal quit.
    Tests in
    `electron/lib/*.test.cjs`, an acceptance test for the flow, and a
-   manual check on a Windows machine, since no CI builds the
-   installer. M–L.
+   manual check on a Windows machine, since nothing in CI installs
+   or runs the installer. M–L.
 5. **The dialog and settings**: the states in section 5, the badge's
    ring, "Install updates from inside the app", "Download updates
    automatically" and "Check for updates at launch" (with its line in

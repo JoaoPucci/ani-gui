@@ -371,6 +371,51 @@ Every PR runs all gating workflows; merge blocks until they're green:
 | `frontend.yml` | PR touches `frontend/**` | yes |
 | `arch.yml` | always | yes |
 | `mutation.yml` | nightly cron + manual dispatch | no (informational) |
+| `packages.yml` | every PR; the builds run only when the PR touches `electron/package.json`, `electron/build-resources/**`, `electron/scripts/fetch-{windows,linux}-deps.mjs`, `electron/scripts/repack-appimage.mjs`, `electron/lib/{dep-staging,linux-launcher,appimage-tree,sandbox-probe}.cjs`, an `electron/electron-builder.*` config, an `.npmrc` (root or `electron/`), `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, `backend/.cargo/**`, `rust-toolchain.toml`, `.github/actions/{pnpm,apt}-install/`, its filter or the workflow — decided by `tools/packages-filter.sh`, which `tests/bash/arch/packages_filter.bats` runs, from the PR's own changes since it branched; also started by hand | its `packages-build` job, which passes when the builds passed or were not needed |
+
+### Packages built in CI
+
+`packages.yml` builds the Windows NSIS installer on `windows-latest`
+with `pnpm run package:win`, and the AppImage and the `.deb` on
+`ubuntu-24.04` with `pnpm run package:release`, the commands a release
+host runs. The Ubuntu runner is pinned so a new runner image never
+changes a release build unannounced. Nothing in the Linux packages
+links against the runner's C library (the backend is static musl, which
+the job asserts, and Electron, the AppImage runtime and the bundled
+tools arrive prebuilt); the job's summary reports the newest glibc any
+packaged binary needs.
+
+On a pull request it uploads nothing. Its `packages-build` job always
+reports, so it is the one name for the master ruleset to require: a
+required name from a workflow-level path filter would wait forever on
+every pull request the filter skipped. A Windows runner that GitHub
+cancels fails that job and blocks the merge until the run is re-run,
+as with the macOS leg of `rust.yml`.
+
+Started by hand it uploads the packages. CI only builds them: they are
+unsigned, as the hand-built release packages are, and nothing in CI
+installs one or runs the app, so a Windows or Linux check is still done
+by hand on a real machine. To build a branch, tag or commit:
+
+1. On GitHub, open the repository's **Actions** tab and choose
+   **Packages** in the list of workflows on the left.
+2. Click **Run workflow** (top right of the run list). Choose the branch
+   under "Use workflow from", or type a tag or commit in the `ref` box,
+   then click the green **Run workflow** button.
+3. Open the new run once it finishes (about half an hour, the Windows
+   build being the slow one). Its summary page lists four artifacts
+   under **Artifacts**, each named after the ref and the commit:
+   `ani-gui-windows-installer-…`, `ani-gui-appimage-…`, `ani-gui-deb-…`
+   and `ani-gui-sha256sums-…`. Clicking one downloads it as a zip
+   holding the one file. They are kept for thirty days (GitHub's default
+   is ninety; a run's packages come to some 380 MB).
+4. Unzip them into one folder and run `sha256sum -c SHA256SUMS` there
+   to check them against the hashes the build recorded. The Windows
+   installer is unsigned, so SmartScreen warns before it runs: More
+   info, then Run anyway.
+
+For a release, run it on the release commit and upload the three
+packages to the GitHub release.
 
 ## The season picker
 
