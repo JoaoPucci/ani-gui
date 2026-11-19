@@ -99,7 +99,10 @@ place for its updates is the system's package manager.
   `installer.nsh` downloads ffmpeg (about 80 MB) during install unless
   one is on `PATH`, and its uninstall step deletes that ffmpeg —
   including during the silent uninstall electron-builder runs before
-  an upgrade. [code: `electron/package.json`,
+  an upgrade: the standard sequence removes it with the rest of the
+  install directory (releases through 0.18.0 also name it in a
+  `Delete` in `customUnInstall`, which runs after that sequence).
+  [code: `electron/package.json`,
   `electron/build-resources/installer.nsh`] It is not code-signed: the
   0.17.0 installer's PE security directory is empty. [tried: read
   from the first 4 KB of the published file]
@@ -382,14 +385,16 @@ installer runs with `--updated` [source: electron-builder 25.1.8,
 `src/targets/nsis/nsisScriptGenerator.ts`], but the old copy is gone
 by the time `customInstall` runs. The fix has to keep the old copy
 through the update: have the *new* installer set it aside before it
-runs the old version's uninstaller (whose `customUnInstall`, already
-shipped, deletes it) and put it back under `${isUpdated}`, or keep it
-outside the install directory. The first update after the fix still
-meets the shipped uninstaller. The app's per-user data folder does not fit the second: a
-per-machine install serves several users, and an installer elevated
-with another account resolves that folder to the administrator's
-profile. Either way the uninstall step's cleanup of ffmpeg moves with
-it. [proposal; which hook runs early enough is unverified]
+runs the old version's uninstaller (which empties the install
+directory, ffmpeg included) and put it back under
+`${isUpdated}`, or keep it outside the install directory. The first
+update after the fix still meets the shipped uninstaller. The app's
+per-user data folder does not fit the second: a per-machine install
+serves several users, and an installer elevated with another account
+resolves that folder to the administrator's profile. Either way a real
+uninstall still has to remove any copy kept outside the install
+directory.
+[proposal; which hook runs early enough is unverified]
 
 **SmartScreen.** See section 4: an installer the app downloads and
 starts itself is not expected to meet the "Windows protected your PC"
@@ -425,8 +430,8 @@ electron-builder's companion library: npm's `latest` tag is 6.8.11
 (electron-builder 26.18.0); 7.0 is in alpha with electron-builder 27.
 [source: npm registry, `npm view electron-updater dist-tags` and
 `electron-builder dist-tags`] The repository uses electron-builder
-25.1.8 and Electron 33.4.11, so adopting it current would also mean
-moving electron-builder a major version. [code: `pnpm-lock.yaml`]
+26.18.0 and Electron 33.4.11, so the current release pairs with the
+electron-builder it already has. [code: `pnpm-lock.yaml`]
 
 It supports NSIS on Windows and AppImage, `.deb`, `.rpm` and pacman on
 Linux. [source: <https://www.electron.build/docs/features/auto-update>;
@@ -1035,8 +1040,8 @@ a day or less, **M** a few days, **L** a week or more.
    test. M.
 6. **ffmpeg survives a Windows update**: keep the ffmpeg the
    installer fetched through an update (section 2, for per-user and
-   per-machine installs alike), with the uninstall step's cleanup to
-   match. Lands with or before phase 4. S–M.
+   per-machine installs alike), with a real uninstall still removing
+   it. Lands with or before phase 4. S–M.
 7. **`.deb`: "Download .deb"**, saving to Downloads and revealing it.
    S.
 
