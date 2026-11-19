@@ -29,8 +29,8 @@ on:
     inputs:
       ref:
         description: >
-          A branch, tag or commit to build. Empty builds the branch
-          chosen above.
+          A branch, tag or commit (full or short hash) to build. Empty
+          builds the branch chosen above.
         required: false
         default: ''
 
@@ -49,10 +49,43 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.detect.outputs.build }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      label: ${{ steps.resolve.outputs.label }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Resolve what a run started by hand builds
+        id: resolve
+        # Once, here, so both builds check out the same commit: a branch
+        # name resolved by each job's own checkout could move between
+        # the two. A pull request leaves `sha` empty and both builds
+        # check out the merge GitHub prepares, what would land.
+        if: github.event_name != 'pull_request'
+        env:
+          REF: ${{ inputs.ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$REF" ]]; then
+            sha=$(git rev-parse --verify HEAD)
+            name=$REF_NAME
+          else
+            # A tag or a commit hash resolves as given; a branch is
+            # fetched as its remote-tracking ref.
+            sha=$(git rev-parse --verify --quiet "$REF^{commit}" ||
+              git rev-parse --verify --quiet "origin/$REF^{commit}") || {
+              echo "no branch, tag or commit named $REF" >&2
+              exit 1
+            }
+            name=$REF
+          fi
+          # An artifact name takes no slash and a few other characters.
+          name=${name//[^A-Za-z0-9._-]/-}
+          {
+            printf 'sha=%s\n' "$sha"
+            printf 'label=%s-%s\n' "$name" "${sha:0:9}"
+          } >> "$GITHUB_OUTPUT"
       - id: detect
         env:
           EVENT: ${{ github.event_name }}
@@ -72,33 +105,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # A run started by hand builds its `ref` input, or the branch
-          # it was started on when that is empty. A pull request builds
-          # the merge GitHub checks out by default, what would land.
-          ref: ${{ inputs.ref }}
+          # The commit the filter job resolved for a run started by
+          # hand; empty on a pull request, which builds the merge.
+          ref: ${{ needs.filter.outputs.sha }}
           # The build runs its dependencies' own scripts; none of them
           # needs the token in the checkout's git config.
           persist-credentials: false
 
-      - name: Name the artifact
-        id: name
-        shell: bash
-        env:
-          REF: ${{ inputs.ref || github.ref_name }}
-        run: |
-          set -euo pipefail
-          sha=$(git rev-parse --short=9 HEAD)
-          # An artifact name takes no slash and a few other characters.
-          ref=${REF//[^A-Za-z0-9._-]/-}
-          printf 'artifact=ani-gui-windows-installer-%s-%s\n' "$ref" "$sha" >> "$GITHUB_OUTPUT"
-
-      # No Rust cache: caches save only from master
+      # No Rust cache on Windows: caches save only from master
       # (tests/arch/ci_caches.sh), and this workflow runs there only
-      # when started there by hand, so a cache would nearly always miss
-      # while a release-mode target directory took a large share of the
-      # repository's cache limit. The pnpm and apt install actions keep
-      # their own rule: a run started by hand on master saves its store
-      # for the next one.
+      # when started there by hand, so a cache of its own would nearly
+      # always miss while a release-mode target directory took a large
+      # share of the repository's cache limit. The pnpm install action
+      # keeps its own rule: a run started by hand on master saves its
+      # store for the next one.
       - uses: dtolnay/rust-toolchain@stable
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -151,7 +171,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.name.outputs.artifact }}
+          name: ani-gui-windows-installer-${{ needs.filter.outputs.label }}
           path: electron/dist/${{ steps.built.outputs.exe }}
           if-no-files-found: error
           # Thirty days, not GitHub's default ninety: long enough to
@@ -180,22 +200,11 @@ jobs:
       appimage_sha256: ${{ steps.built.outputs.appimage_sha256 }}
       deb: ${{ steps.built.outputs.deb }}
       deb_sha256: ${{ steps.built.outputs.deb_sha256 }}
-      suffix: ${{ steps.name.outputs.suffix }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.filter.outputs.sha }}
           persist-credentials: false
-
-      - name: Name the artifacts
-        id: name
-        env:
-          REF: ${{ inputs.ref || github.ref_name }}
-        run: |
-          set -euo pipefail
-          sha=$(git rev-parse --short=9 HEAD)
-          ref=${REF//[^A-Za-z0-9._-]/-}
-          printf 'suffix=%s-%s\n' "$ref" "$sha" >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@stable
       - name: Rust musl target for the pinned toolchain
@@ -203,6 +212,13 @@ jobs:
         # musl. The target goes on the toolchain rust-toolchain.toml
         # pins, which cargo uses here.
         run: rustup target add x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        # e2e.yml's cache: master saves it from the same build (the
+        # release backend for the musl target), so this restores it.
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+          workspaces: backend
+          shared-key: e2e
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -290,7 +306,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: ani-gui-appimage-${{ steps.name.outputs.suffix }}
+          name: ani-gui-appimage-${{ needs.filter.outputs.label }}
           path: electron/dist/${{ steps.built.outputs.appimage }}
           if-no-files-found: error
           retention-days: 30
@@ -300,7 +316,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: ani-gui-deb-${{ steps.name.outputs.suffix }}
+          name: ani-gui-deb-${{ needs.filter.outputs.label }}
           path: electron/dist/${{ steps.built.outputs.deb }}
           if-no-files-found: error
           retention-days: 30
@@ -313,7 +329,7 @@ jobs:
           printf 'The Linux packages need glibc %s or newer.\n\n' "$MAX" >> "$GITHUB_STEP_SUMMARY"
 
   checksums:
-    needs: [windows, linux]
+    needs: [filter, windows, linux]
     # A run started by hand, once both builds succeeded (the default
     # for `needs`), so the file always names all three packages.
     if: github.event_name != 'pull_request'
@@ -350,7 +366,7 @@ jobs:
       - name: Upload SHA256SUMS
         uses: actions/upload-artifact@v4
         with:
-          name: ani-gui-sha256sums-${{ needs.linux.outputs.suffix }}
+          name: ani-gui-sha256sums-${{ needs.filter.outputs.label }}
           path: SHA256SUMS
           if-no-files-found: error
           retention-days: 30
