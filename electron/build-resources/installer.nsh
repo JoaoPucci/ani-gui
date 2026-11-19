@@ -362,22 +362,21 @@
 !macroend
 
 !macro customUnInstall
-    ; A real uninstall removes ffmpeg, its stamp and any staging copy an
-    ; interrupted install left behind. The standard sequence would remove
-    ; the first two anyway: in 26.18.0 this macro runs just before it
-    ; (uninstaller.nsh lines 156-157, ahead of the `RMDir /r $INSTDIR` at
-    ; line 187), so they are belt and braces; the staging directory sits
-    ; outside $INSTDIR and is removed only here.
+    ; A real uninstall removes any staging copy an interrupted install
+    ; left behind. It sits beside $INSTDIR, not in it, so only this
+    ; removes it. ffmpeg and its stamp are left to the standard sequence,
+    ; which removes the whole of $INSTDIR right after this macro
+    ; (26.18.0 uninstaller.nsh lines 156-157, then `RMDir /r $INSTDIR` at
+    ; line 187). Nothing here removes under $INSTDIR: on an update that
+    ; sequence moves the tree back and fails when a file is busy, and a
+    ; deletion made here would stay made. tests/arch/windows_deps.sh
+    ; check 9 holds this macro to that.
     ;
     ; Not during an update. A newer installer runs this uninstaller with
     ; --updated after it has set the copy aside in that same staging
     ; directory, and removing it here would delete the very copy the
-    ; update is about to restore. Nor would a removal under $INSTDIR be
-    ; safe there: when a file is busy the sequence moves the tree back
-    ; and fails the update, and a deletion made here would stay made.
+    ; update is about to restore.
     ${IfNot} ${isUpdated}
-        Delete "${FFMPEG_EXE}"
-        Delete "${FFMPEG_STAMP}"
         RMDir /r "${FFMPEG_STAGING}"
     ${EndIf}
 
