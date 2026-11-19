@@ -33,8 +33,9 @@
 #     else.
 #   - every staged binary ships its licence text in the package, and
 #     no licence text ships for a binary no package carries.
-#   - the installer script writes no removal under $INSTDIR plainly:
-#     the uninstall sequence owns that tree (check 9).
+#   - the installer script writes no removal under $INSTDIR plainly,
+#     and its uninstall hook none through a define: the uninstall
+#     sequence owns that tree (check 9).
 #
 # What this check does NOT establish: that the fetch succeeds, that
 # the archive still contains the entry the dep names, or that the
@@ -412,7 +413,8 @@ if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
 fi
 
 # 9. No line of the installer script removes a path under $INSTDIR
-#    by naming `$INSTDIR` itself. electron-builder's uninstall sequence
+#    by naming `$INSTDIR` itself, and `customUnInstall` removes nothing
+#    under it through a define either. electron-builder's uninstall sequence
 #    removes the whole install tree, the ffmpeg.exe the install hook
 #    fetched included; on an update it first moves the tree aside and,
 #    when a file is busy, moves it back and aborts. From
@@ -425,14 +427,61 @@ fi
 #    on that same line. NSIS comments start with `;`, so a commented-out
 #    line does not match. It does not see a removal split across a `\`
 #    continuation, one that reaches `$INSTDIR` through a variable, a
-#    macro or a `!define` (the ffmpeg hooks name their paths through
-#    `FFMPEG_*` defines), or a `Rename` out of it; a green run means no
-#    such command is written plainly, not that none can happen.
+#    macro, or a `!define` outside `customUnInstall` (the ffmpeg hooks
+#    name their paths through `FFMPEG_*` defines), or a `Rename` out of
+#    it; a green run means no such command is written plainly, not that
+#    none can happen.
 #    `$INSTDIR` is NSIS's, not the shell's, so it stays in single
 #    quotes. `NSH` is set by check 7.
+#
+#    Inside `customUnInstall` the defines are seen too. Its body is the
+#    lines between the one column-zero `!macro customUnInstall` and the
+#    next column-zero `!macroend`; there, no line starting with
+#    `Delete`, `RMDir` or `Rename` may name `${NAME}` for a define under
+#    $INSTDIR. A define is under $INSTDIR when a column-zero line
+#    `!define NAME "<value>"` gives it a value that is `$INSTDIR`,
+#    starts with `$INSTDIR\`, or is `${OTHER}` or starts with
+#    `${OTHER}\` for a define OTHER under $INSTDIR. So
+#    `$INSTDIR-ffmpeg-staging`, beside the install directory, is not. A
+#    removal guarded by `${IfNot} ${isUpdated}` is refused as well: the
+#    check does not read guards, and on a real uninstall the sequence
+#    removes that path anyway. The other hooks may remove under $INSTDIR
+#    through defines: `customInstall` runs after the uninstall sequence
+#    has finished, and `customHeader` before it starts. Not seen: a
+#    define given in any other form (`!define /redef`, indented, or
+#    built from a variable), a path held in a variable, and a removal
+#    made by a macro or function this one calls.
 # shellcheck disable=SC2016
 if [ -f "$NSH" ] && grep -inE '^[[:space:]]*(Delete|RMDir)[[:space:]].*\$INSTDIR' "$NSH" >&2; then
     printf 'arch/windows_deps FAIL: %s removes files under $INSTDIR — the uninstall sequence already does, and a removal in customUnInstall survives an aborted update\n' "$NSH" >&2
+    failed=1
+fi
+# shellcheck disable=SC2016
+if [ -f "$NSH" ] && ! node -e '
+const lines = require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/);
+const values = new Map();
+for (const l of lines) {
+    const m = /^!define ([A-Za-z_][A-Za-z0-9_]*) "(.*)"$/.exec(l);
+    if (m) values.set(m[1], m[2]);
+}
+const under = new Set();
+const inside = (v) => v === "$INSTDIR" || v.startsWith("$INSTDIR\\") ||
+    [...under].some((n) => v === "${" + n + "}" || v.startsWith("${" + n + "}\\"));
+for (let grew = true; grew; ) {
+    grew = false;
+    for (const [n, v] of values) if (!under.has(n) && inside(v)) { under.add(n); grew = true; }
+}
+const starts = lines.flatMap((l, i) => (l === "!macro customUnInstall" ? [i] : []));
+if (starts.length !== 1) { console.error("expected exactly one line [!macro customUnInstall], found " + starts.length); process.exit(1); }
+const bad = [];
+for (let i = starts[0] + 1; i < lines.length && lines[i] !== "!macroend"; i++) {
+    if (!/^\s*(delete|rmdir|rename)\s/i.test(lines[i])) continue;
+    const named = [...under].filter((n) => lines[i].includes("${" + n + "}"));
+    if (named.length) bad.push("line " + (i + 1) + " removes under $INSTDIR through " + named.join(", ") + ": " + lines[i].trim());
+}
+if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
+' "$REPO_ROOT/$NSH"; then
+    printf 'arch/windows_deps FAIL: %s customUnInstall removes under $INSTDIR through a define (above) — the uninstall sequence owns that tree, and a removal there survives an aborted update\n' "$NSH" >&2
     failed=1
 fi
 
