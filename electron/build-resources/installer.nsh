@@ -112,6 +112,16 @@
     ; brought it in outside the manifest.
     Delete "$INSTDIR\resources\bin\ffmpeg.exe"
 
+    ; Every install leaves a copy of its installer here
+    ; (electron-builder's APP_INSTALLER_STORE_FILE, kept for
+    ; electron-updater, which this app does not use), and nothing in
+    ; electron-builder's sequence removes it. Not during an update: an
+    ; update runs this uninstaller with --updated, and the copy there is
+    ; then the running installer's own.
+    ${IfNot} ${isUpdated}
+        RMDir /r "$LOCALAPPDATA\ani-gui-updater"
+    ${EndIf}
+
     ; Skip the purge prompt during the silent pre-upgrade uninstall.
     ; electron-builder runs the previous version's uninstaller with
     ; /S before installing the new one; surfacing a "delete settings?"
@@ -126,7 +136,12 @@
         ; runtime via the `directories` Rust crate (ProjectDirs::from(
         ; "net", "thirdmovement", "ani-gui")), which on Windows resolves
         ; to %LOCALAPPDATA%\thirdmovement\ani-gui\ for cache/data and
-        ; %APPDATA%\thirdmovement\ani-gui\ for config.
+        ; %APPDATA%\thirdmovement\ani-gui\ for config. Electron keeps its
+        ; own profile in %APPDATA%\ani-gui\ (the Chromium profile, window
+        ; state, and the tracker sign-ins under tokens\), named for the
+        ; app's production name in electron/main.js; a Yes removes that
+        ; too. The dev profile, ani-gui-dev, is not the installed app's
+        ; and is left alone.
         ;
         ; Default is No: a "reinstall to fix something" cycle should
         ; preserve the user's settings + cached resolutions (instant
@@ -146,6 +161,8 @@
         RMDir /r "$LOCALAPPDATA\thirdmovement\ani-gui"
         DetailPrint "Removing user data under $APPDATA\thirdmovement\ani-gui..."
         RMDir /r "$APPDATA\thirdmovement\ani-gui"
+        DetailPrint "Removing the app profile under $APPDATA\ani-gui..."
+        RMDir /r "$APPDATA\ani-gui"
         Goto purge_done
 
     purge_done:
