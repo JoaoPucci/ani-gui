@@ -202,7 +202,9 @@ test("on a terminal, the app holds none of it, and its output reaches the termin
     assert.notEqual(start.sid, term.pid, "the app is outside the terminal's session");
     assert.deepEqual(start.argv, ["--enable-wayland-ime", "--some-flag"]);
     assert.equal(start.hint, "auto");
-    await until("the app's output on the terminal", () => term.screen().includes("err 400\n"));
+    // Each stream has a relay of its own, and neither waits for the
+    // other: the last line of each says that stream is through.
+    await until("the app's output on the terminal", () => term.screen().includes("out 400\n") && term.screen().includes("err 400\n"));
     const lines = term.screen().split("\n");
     const outs = lines.filter((l) => l.startsWith("out "));
     const errs = lines.filter((l) => l.startsWith("err "));
@@ -307,7 +309,9 @@ test("the launcher ends with the app's exit status", { skip }, async () => {
   try {
     await until("the launcher's ending", () => term.ended(), 15_000);
     assert.deepEqual(term.ended(), { exit: 3 });
-    assert.match(term.screen(), /out 3\n/);
+    // The terminal's own report of it can come after the launcher's
+    // ending is reported.
+    await until("the app's last line on the terminal", () => /out 3\n/.test(term.screen()));
   } finally {
     await term.close();
   }
@@ -461,6 +465,54 @@ test("with stdout sent to a file, the app's stdout goes there and only its stder
   }
 });
 
+const RUNTIME = path.join(__dirname, "fixtures", "appimage-runtime.py");
+
+/** The launcher as the AppImage starts it, on a terminal, with some of
+ *  its streams sent elsewhere first: the runtime (fixtures/appimage-runtime.py)
+ *  holds the packed tree's binary only while something holds the
+ *  keepalive end it passes on fd 3. */
+async function inAnAppImage(tree, redirect) {
+  const shell = path.join(tree.dir, "appimage");
+  const bin = path.join(tree.dir, "ani-gui.bin");
+  fs.writeFileSync(shell, `#!/bin/bash\nexec python3 "${RUNTIME}" "${bin}" "${tree.launcher}" ${redirect}\n`, { mode: 0o755 });
+  fs.chmodSync(shell, 0o755);
+  return onTerminal({ ...tree, launcher: shell });
+}
+
+// Every combination of stdin, stdout and stderr on the terminal or not
+// (a pipe is to the launcher what a file is: not a terminal). The last
+// one is off the terminal altogether: the launcher becomes the app.
+for (const [name, redirect] of [
+  ["all three on the terminal", ""],
+  ["stdout sent to a file", '>"$LOG"'],
+  ["stderr sent to a file", '2>"$LOG"'],
+  ["stdout and stderr sent to a file", '>"$LOG" 2>&1'],
+  ["stdin off the terminal", "</dev/null"],
+  ["stdin off the terminal, stdout sent to a file", '</dev/null >"$LOG"'],
+  ["stdin off the terminal, stderr sent to a file", '</dev/null 2>"$LOG"'],
+  ["none of the three on the terminal", '</dev/null >"$LOG" 2>&1'],
+]) {
+  test(`in an AppImage, with ${name}, the app starts and keeps the image mounted until it quits`, { skip }, async () => {
+    const tree = packedTree();
+    const bin = path.join(tree.dir, "ani-gui.bin");
+    const log = path.join(tree.dir, "log");
+    const term = await inAnAppImage(tree, redirect.replaceAll("$LOG", log));
+    try {
+      const start = await until("the app to be ready", () => events(tree.events).some((e) => e.ready) && startOf(tree.events));
+      // The runtime notices a released mount within milliseconds.
+      await sleep(300);
+      assert.ok(fs.existsSync(bin), "the image is still mounted while the app runs");
+      // The launcher, or the app itself where the launcher became it.
+      process.kill(term.pid, "SIGTERM");
+      await until("the app's exit", () => exitOf(tree.events) !== undefined, 15_000);
+      assert.equal(exitOf(tree.events), 0);
+      assert.deepEqual(signalsOf(tree.events), ["TERM"]);
+    } finally {
+      await term.close();
+    }
+  });
+}
+
 test("a stop that reaches the launcher twice and then the app is not passed on on top of the app's own", { skip }, async () => {
   // One stop reaching the launcher more than once and the app as well,
   // a moment apart: a SIGHUP to the launcher, a SIGINT to its group,
@@ -518,7 +570,7 @@ test("a second Ctrl-C, after the first, ends an app stuck in its quit by force, 
     assert.equal(exitOf(tree.events), undefined);
     assert.equal(running(start.pid, start.started), false);
     await until("the helper's end", () => !running(start.helper, start.helper_started), 5_000);
-    assert.ok(term.screen().includes(`${FORCED}\n`), term.screen());
+    await until("the forced line on the terminal", () => term.screen().includes(`${FORCED}\n`));
   } finally {
     await term.close();
   }
@@ -580,6 +632,79 @@ test("the signals of one terminal close, and a Ctrl-C right after them, end noth
   }
 });
 
+/** Whether the launcher catches SIGHUP, SIGINT and SIGTERM: its traps
+ *  are set, which it does just after it has started the app. */
+function catchesStops(pid) {
+  let status;
+  try {
+    status = fs.readFileSync(`/proc/${pid}/status`, "utf8");
+  } catch {
+    return false;
+  }
+  const caught = BigInt(`0x${/^SigCgt:\s*([0-9a-f]+)/m.exec(status)?.[1] ?? "0"}`);
+  return (caught & 0x4003n) === 0x4003n;
+}
+
+test("the signals of one event, however they land on the launcher, end nothing by force", { skip }, async () => {
+  // One event's signals come back to back. Bash can take the first of
+  // them and then the next before it has started on the first's trap;
+  // it then runs the next's trap only once the first's is done, half a
+  // second on, when a stop would count as a second one. How often that
+  // happens is down to the scheduler, so many launchers take each
+  // burst at once, which also keeps the machine busy as it lands.
+  //
+  // `spin` waits `us` microseconds: the gap between a burst's first
+  // signal and the rest, spread across the launchers so that some of
+  // them take the rest just as they wake for the first.
+  const spin = (us) => {
+    const end = process.hrtime.bigint() + BigInt(us) * 1000n;
+    while (process.hrtime.bigint() < end);
+  };
+  const bursts = {
+    "a terminal close and a Ctrl-C": (pid, us) => {
+      process.kill(pid, "SIGHUP");
+      spin(us);
+      process.kill(pid, "SIGCONT");
+      process.kill(pid, "SIGHUP");
+      process.kill(pid, "SIGINT");
+    },
+    "a scope's stop": (pid, us) => {
+      process.kill(pid, "SIGTERM");
+      spin(us);
+      process.kill(pid, "SIGHUP");
+    },
+  };
+  const runs = [];
+  for (const [name, burst] of Object.entries(bursts)) {
+    for (let i = 0; i < 12; i++) runs.push({ name: `${name}, ${i * 10} µs apart`, burst: (pid) => burst(pid, i * 10), tree: packedTree() });
+  }
+  try {
+    // Every launcher is set up, or has failed to be, before any check
+    // can end the test: one that comes up after another's failure is
+    // still closed below.
+    const setups = await Promise.allSettled(
+      runs.map(async (run) => {
+        run.term = await onTerminal(run.tree, { env: { STUB_STOP: "hang" } });
+        run.start = await until("the app to be ready", () => events(run.tree.events).some((e) => e.ready) && startOf(run.tree.events), 30_000);
+        await until("the launcher's traps", () => catchesStops(run.term.pid));
+      }),
+    );
+    for (const setup of setups) if (setup.status === "rejected") throw setup.reason;
+    for (const run of runs) run.burst(run.term.pid);
+    await Promise.all(runs.map((run) => until("the app's SIGTERM", () => signalsOf(run.tree.events).includes("TERM"))));
+    await sleep(1500);
+    const forced = runs.filter((run) => run.term.ended() !== undefined || !running(run.start.pid, run.start.started)).map((run) => run.name);
+    assert.deepEqual(forced, []);
+    for (const run of runs) assert.deepEqual(signalsOf(run.tree.events), ["TERM"], run.name);
+    // Nor does bash complain on the terminal about a signal it had
+    // marked for a trap the launcher has since set aside.
+    const complaints = runs.filter((run) => /warning:/.test(run.term.screen())).map((run) => `${run.name}: ${run.term.screen()}`);
+    assert.deepEqual(complaints, []);
+  } finally {
+    await Promise.all(runs.filter((run) => run.term).map((run) => run.term.close()));
+  }
+});
+
 test("a SIGTERM and SIGHUP to the launcher and the app together, as a scope's stop sends, end nothing by force", { skip }, async () => {
   const tree = packedTree();
   const term = await onTerminal(tree, { env: { STUB_STOP: "hang" } });
@@ -638,7 +763,7 @@ test("a second Ctrl-C inside the half second is ignored, and one after it still 
     process.kill(-term.pid, "SIGINT");
     await until("the launcher's ending", () => term.ended(), 15_000);
     assert.deepEqual(term.ended(), { exit: SIGKILL_STATUS });
-    assert.ok(term.screen().includes(`${FORCED}\n`), term.screen());
+    await until("the forced line on the terminal", () => term.screen().includes(`${FORCED}\n`));
   } finally {
     await term.close();
   }

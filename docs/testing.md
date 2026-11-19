@@ -180,7 +180,15 @@ writes the row itself and asks the play route directly, before it
 holds the resolve lane that route travels on. The row
 is written with Node's built-in `node:sqlite` module, so the suite and
 the Electron helper tests (`electron/lib/*.test.cjs`) need Node 22.13 or
-later (CI runs them on Node 22). The row's key prefix,
+later (CI runs them on Node 22). On Linux, the AppImage launcher's
+tests (`apprun-sandbox.test.cjs`) also need `python3` (3.9 or
+later): they run AppRun, and its stop handler on its own, under a
+small subreaper written in Python, which stands in for a container
+PID 1 that never reaps orphans, so the suite itself leaves none
+behind there. For each launch it counts the children the launch ended
+without waiting for. The launch's binary there is a stub that leaves
+no process behind, so the count covers AppRun's own children, not
+Chromium's helper processes. The row's key prefix,
 insert statement, lifetime and fields are kept in
 `electron/e2e/fixtures/replay-row.json`, and the backend's tests check
 that file against what the cache reads
@@ -298,7 +306,11 @@ stand-in for the app's binary (`electron/lib/fixtures/app-stub.py`),
 on that terminal fixture too, so it also needs `python3`; it is
 skipped off Linux. Every process it signals is the launcher it
 started, by pid or group, or the stand-in, by the pid the stand-in
-recorded.
+recorded. Its AppImage cases start the launcher behind a stand-in for
+the AppImage runtime (`electron/lib/fixtures/appimage-runtime.py`),
+which deletes the packed binary, as an unmount would, once nothing
+holds the pipe end it passed on fd 3; its watcher runs in a session of
+its own and exits by itself once that has happened, or after 60 s.
 
 One defect is visible only on Wayland. Under native Wayland with
 software compositing (a virtual machine, a GPU that failed or is
