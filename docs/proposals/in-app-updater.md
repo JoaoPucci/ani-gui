@@ -359,8 +359,11 @@ the new installer on the release, and a copy of the old installer,
 which electron-builder's NSIS template keeps at
 `%LOCALAPPDATA%\ani-gui-updater\installer.exe`; without them it falls
 back to the whole file. [source: `src/AppUpdater.ts` at 6.3.9;
-`templates/nsis/include/installer.nsh` at 25.1.8] [unverified:
-whether today's installers already write that copy]
+`templates/nsis/include/installer.nsh` at 25.1.8] Today's installers
+do write that copy: an install of the published 0.18.0 on Windows left
+it there, and nothing removed it on uninstall until the uninstall hook
+began removing it outside an update. An update keeps it, which is
+what a differential download needs.
 
 **What the app's own installer script does on an update.** The
 update replaces the install directory, and with it the ffmpeg the
