@@ -356,10 +356,10 @@ const NATIVE_CA: bool = cfg!(windows);
 /// stages beside it ([`CA_BUNDLE_FILE`]). The native store alone is
 /// not enough on Windows: a fresh install carries a minimal root set
 /// and downloads the rest on demand, only when Windows' own crypto
-/// stack builds a chain. BoringSSL enumerates the store and never
-/// asks, so a host whose root nobody on the machine has used yet fails
-/// to verify. Elsewhere the transport reads the distribution's store
-/// and no bundle is staged.
+/// stack builds a chain. curl copies the store's current contents into
+/// BoringSSL and never asks Windows to build one, so a host whose root
+/// nobody on the machine has used yet fails to verify. Elsewhere the
+/// transport reads the distribution's store and no bundle is staged.
 const READS_CA_BUNDLE: bool = cfg!(windows);
 
 /// The file name of the CA bundle the Windows package stages in the
@@ -370,9 +370,10 @@ pub const CA_BUNDLE_FILE: &str = "cacert.pem";
 /// The trust-anchor flags for the child: the native store, the bundle,
 /// or both. curl loads the two additively (its OpenSSL-family backend
 /// imports the Windows ROOT and CA stores, then the file), so a chain
-/// verifies against either; and once the native store has loaded, a
-/// bundle that fails to load is logged and skipped rather than failing
-/// the transfer.
+/// verifies against either; and once the native store has loaded at
+/// least one certificate, a bundle that fails to load is skipped
+/// rather than failing the transfer (curl reports it only under
+/// `--verbose`).
 ///
 /// The bundle is named relative to the child's working directory,
 /// which the spawn sets to the directory holding it. BoringSSL opens
