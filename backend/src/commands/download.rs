@@ -1362,8 +1362,8 @@ where
     // And the other app instance's download. Taken after the
     // in-process mutex so this process's own tasks queue on the cheap
     // lock and only one of them contends the file. Held to the return
-    // — dropping the handle closes the descriptor, which is what
-    // releases it.
+    // — dropping it releases the lock and removes the lock file, on
+    // every way out of here, a cancel included.
     // Best-effort, because publishing is what makes this safe. A lock
     // that cannot be taken costs a duplicate transfer — which then
     // finds the name taken and discards its copy — and refusing the

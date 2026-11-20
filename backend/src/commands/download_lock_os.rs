@@ -1,0 +1,129 @@
+//! What differs between platforms in opening, checking and removing a
+//! lock file. See [`super::release::InstanceLock`] for why each side does what
+//! it does.
+
+pub(crate) use imp::*;
+
+/// Open the lock file at `path`, creating it and its directory, and
+/// hide the directory where a leading dot does not.
+pub(crate) fn open_creating(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    let dir = path.parent().unwrap_or(path);
+    std::fs::create_dir_all(dir)?;
+    let file = lock_file_options().create(true).open(path)?;
+    hide_dir(dir, &file);
+    Ok(file)
+}
+
+#[cfg(not(windows))]
+mod imp {
+    /// How every lock file is opened: for writing (which the lock
+    /// needs), never truncated. Creating is the caller's choice.
+    pub(crate) fn lock_file_options() -> std::fs::OpenOptions {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).truncate(false);
+        options
+    }
+
+    /// Nothing to do: the leading dot already hides the directory.
+    pub(crate) fn hide_dir(_dir: &std::path::Path, _file: &std::fs::File) {}
+
+    /// The directory went between creating it and opening the file in
+    /// it: another instance removed it as it emptied.
+    pub(crate) fn lost_to_removal(e: &std::io::Error) -> bool {
+        e.kind() == std::io::ErrorKind::NotFound
+    }
+
+    /// Whether the locked `file` is still the file named `path`: the
+    /// same device and inode.
+    pub(crate) fn still_named(file: &std::fs::File, path: &std::path::Path) -> bool {
+        use std::os::unix::fs::MetadataExt;
+        let same =
+            |a: &std::fs::Metadata, b: &std::fs::Metadata| a.dev() == b.dev() && a.ino() == b.ino();
+        matches!(
+            (file.metadata(), std::fs::metadata(path)),
+            (Ok(held), Ok(named)) if same(&held, &named)
+        )
+    }
+
+    /// Remove the name while the lock is still held, then release it.
+    /// Checked first, so a file somebody else put at the name — after
+    /// removing this one from outside the protocol — is not taken from
+    /// them.
+    pub(crate) fn release(file: std::fs::File, path: &std::path::Path) {
+        if still_named(&file, path) {
+            let _ = std::fs::remove_file(path);
+        }
+        drop(file);
+    }
+}
+
+#[cfg(windows)]
+mod imp {
+    use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+
+    const FILE_SHARE_READ: u32 = 0x1;
+    const FILE_SHARE_WRITE: u32 = 0x2;
+    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+    const ERROR_ACCESS_DENIED: i32 = 5;
+    const ERROR_SHARING_VIOLATION: i32 = 32;
+    const ERROR_DELETE_PENDING: i32 = 303;
+
+    /// How every lock file is opened: for writing (which the lock
+    /// needs), never truncated, shared for reading and writing but not
+    /// for deletion, and hidden if this open creates it. Creating is
+    /// the caller's choice.
+    pub(crate) fn lock_file_options() -> std::fs::OpenOptions {
+        let mut options = std::fs::OpenOptions::new();
+        options
+            .write(true)
+            .truncate(false)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .attributes(FILE_ATTRIBUTE_HIDDEN);
+        options
+    }
+
+    /// Give the lock directory the hidden attribute, unless it has it.
+    ///
+    /// The standard library sets attributes only from a
+    /// [`std::fs::Permissions`] it read from a file, so they are copied
+    /// from the lock file just opened, which was created hidden — and
+    /// is not read-only, having just been opened for writing. A file
+    /// that is not hidden — one an earlier version created and
+    /// somebody still holds, since the sweep removed the rest — is no
+    /// source, and the next lock file hides the directory instead.
+    /// Best-effort throughout: a visible directory is cosmetic.
+    pub(crate) fn hide_dir(dir: &std::path::Path, file: &std::fs::File) {
+        let hidden = |m: &std::fs::Metadata| m.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0;
+        if std::fs::metadata(dir).is_ok_and(|m| hidden(&m)) {
+            return;
+        }
+        let Ok(meta) = file.metadata() else { return };
+        if hidden(&meta) {
+            let _ = std::fs::set_permissions(dir, meta.permissions());
+        }
+    }
+
+    /// The open met a removal in flight: the directory gone (not
+    /// found), a delete holding the file (sharing violation), or a
+    /// delete still pending, which Windows reports as a denial.
+    pub(crate) fn lost_to_removal(e: &std::io::Error) -> bool {
+        e.kind() == std::io::ErrorKind::NotFound
+            || matches!(
+                e.raw_os_error(),
+                Some(ERROR_SHARING_VIOLATION | ERROR_DELETE_PENDING | ERROR_ACCESS_DENIED)
+            )
+    }
+
+    /// Always: a file opened without delete sharing cannot lose its
+    /// name while the handle is open.
+    pub(crate) fn still_named(_file: &std::fs::File, _path: &std::path::Path) -> bool {
+        true
+    }
+
+    /// Release first, then delete — which fails, harmlessly, while any
+    /// other handle is open on the file.
+    pub(crate) fn release(file: std::fs::File, path: &std::path::Path) {
+        drop(file);
+        let _ = std::fs::remove_file(path);
+    }
+}
