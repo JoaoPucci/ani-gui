@@ -390,8 +390,27 @@ async fn cancelled_acquisitions_leave_nothing_behind() {
     while !left().is_empty() && tokio::time::Instant::now() < settled {
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
+    // What a leftover is still doing, for a failure on a platform this
+    // cannot be run on locally: whether its lock is free and whether
+    // removing it now succeeds, which tells "nobody tried to remove it"
+    // from "a removal was refused".
+    let report: Vec<String> = left()
+        .iter()
+        .map(|name| {
+            let path = lock_dir.join(name);
+            let lock = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&path)
+                .map(|f| match fs4::FileExt::try_lock(&f) {
+                    Ok(()) => "lock free".to_owned(),
+                    Err(e) => format!("lock refused: {e:?}"),
+                });
+            let removed = std::fs::remove_file(&path);
+            format!("{name}: open {lock:?}, removal now {removed:?}")
+        })
+        .collect();
     assert_eq!(
-        left(),
+        report,
         Vec::<String>::new(),
         "cancelled acquisitions kept files"
     );
