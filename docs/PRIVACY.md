@@ -194,6 +194,18 @@ ani-gui keeps the following on your computer only:
   `remote-flags.json` under your OS's cache directory. It holds only
   the maintainer's switches, nothing about you.
 
+**Uninstalling on Windows.** The uninstaller asks whether to delete
+your ani-gui settings, cache and watch history. Answered Yes, it
+removes the app's data folders under `thirdmovement\ani-gui` in
+`%APPDATA%` and `%LOCALAPPDATA%`, and the app's folder in
+`%APPDATA%\ani-gui`, which holds the local browser storage, the window
+size and the encrypted OAuth tokens. Answered No, those stay for a
+later install. Either way it removes the copy of
+the installer it keeps in `%LOCALAPPDATA%\ani-gui-updater`. Releases
+up to and including 0.18.0 left `%APPDATA%\ani-gui` and that installer
+copy behind even on Yes. On Linux, removing the package leaves your
+data in place.
+
 ## What ani-gui transmits to public services
 
 Most requests follow what you open: a page fetches what it shows, and
