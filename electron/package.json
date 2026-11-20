@@ -104,7 +104,8 @@
 				"coreutils"
 			],
 			"recommends": [
-				"ffmpeg"
+				"ffmpeg",
+				"ca-certificates"
 			]
 		},
 		"win": {

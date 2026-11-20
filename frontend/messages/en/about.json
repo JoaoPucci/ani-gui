@@ -23,6 +23,7 @@
 	"license_link_url": "https://github.com/JoaoPucci/ani-gui",
 	"dep_version_unversioned": "—",
 	"bundled_tool_note_curl_impersonate": "HTTP transport for source resolution. The provider turns away ordinary requests, so playback and downloads depend on it.",
+	"bundled_tool_note_cacert": "Windows only. Mozilla's list of trusted certificate authorities, as curl publishes it. It lets the source transport verify secure sites on a Windows that has not downloaded their root certificates yet.",
 	"bundled_tool_note_yt_dlp": "Download engine. Fetches the episode in parallel fragments and retries the ones that fail, so a flaky connection does not restart the whole file.",
 	"bundled_tool_note_ffmpeg": "The Windows installer downloads it at install time and keeps it across updates. The .deb declares it as Recommends. AppImage relies on the system install. Used to mux downloaded segments into MP4.",
 	"bundled_tools_licenses": "Each package installs the license texts of the tools it bundles, with the notices of the libraries built into them, under resources/licenses: in the install folder on Windows and for the .deb, inside the image for the AppImage.",

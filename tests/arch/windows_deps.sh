@@ -125,6 +125,13 @@ esac
 #    script. The declarations are lists the parser reads, not names
 #    this check exempts, so neither can excuse a dependency a platform
 #    does not provide at all.
+#
+#    `SYSTEM_DEPS` declares a third asymmetry, the CA certificates the
+#    transport verifies with. The Linux transport reads the
+#    distribution's store, and the .deb recommends `ca-certificates`.
+#    On Windows the package stages Mozilla's bundle beside the
+#    transport, because a fresh Windows root store is incomplete to it
+#    (check 5b).
 LINUX_FETCH=electron/scripts/fetch-linux-deps.mjs
 WINDOWS_FETCH=electron/scripts/fetch-windows-deps.mjs
 
@@ -217,6 +224,30 @@ if [ -f "$FETCH" ]; then
         printf "arch/windows_deps FAIL: %s does not stage 'curl-impersonate.exe' — the native transport falls back to plain curl, which the provider 403s\n" "$FETCH" >&2
         failed=1
     fi
+fi
+
+# 5b. The transport's CA bundle must be staged by name, beside it. The
+#    bundled curl-impersonate verifies with BoringSSL, into which
+#    `--ca-native` copies the Windows certificate store as it stands:
+#    a fresh install carries a minimal root set and downloads the rest
+#    only when Windows' own crypto stack builds a chain, which curl
+#    never asks it to do. Without the bundle every host whose root the
+#    machine has not used yet fails to verify, and every play from it
+#    fails — a Windows-only failure no Linux run can show. The backend
+#    reads the file by this name from the bundled directory
+#    (`CA_BUNDLE_FILE` in backend/src/scraper/fetch.rs).
+if [ -f "$FETCH" ]; then
+    if ! grep -q "binary: 'cacert.pem'" "$FETCH"; then
+        printf "arch/windows_deps FAIL: %s does not stage 'cacert.pem' — on a fresh Windows the transport fails to verify every host whose root the machine has not downloaded yet\n" "$FETCH" >&2
+        failed=1
+    fi
+fi
+# The name is a contract between two files, so both ends are pinned:
+# a rename on either side alone ships a bundle the transport never
+# opens.
+if ! grep -q '^pub const CA_BUNDLE_FILE: &str = "cacert.pem";$' backend/src/scraper/fetch.rs; then
+    printf "arch/windows_deps FAIL: backend/src/scraper/fetch.rs does not read the bundle as 'cacert.pem', the name the Windows fetcher stages\n" >&2
+    failed=1
 fi
 
 # 6. ffmpeg is downloaded at install time, by name, and never staged.
