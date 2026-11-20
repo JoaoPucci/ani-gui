@@ -285,20 +285,34 @@ starting it, and delete it when you find it done.
 
   The same goes for what the shell shows on that platform: the
   failed-startup dialog and the quit prompt have been seen on Linux
-  only, since nothing builds or launches the Windows app in CI.
-- **Nothing runs the Windows installer's script.** There is no NSIS
-  here and CI builds no Windows installer, so a change to
-  `electron/build-resources/installer.nsh` cannot start from a failing
-  test, as `AGENTS.md` §2 asks. The maintainer accepted the fix for a
-  restored ffmpeg whose version stamp could not be put back (it is now
-  downloaded again instead of taken for 7.1.1) on that basis, checked
-  by reading, and chose to make the script testable later rather than
-  hold that fix for it. NSIS and Wine on the Linux runners is the
+  only, since nothing launches the Windows app in CI: a workflow
+  builds the Windows installer, and nothing installs or runs it.
+- **Nothing runs the Windows installer's script.** A workflow builds
+  the Windows installer (`packages.yml`), but nothing installs or runs
+  it, so a change to `electron/build-resources/installer.nsh` cannot
+  start from a failing test, as `AGENTS.md` §2 asks. The maintainer
+  accepted the fix for a restored ffmpeg whose version stamp could not
+  be put back (it is now downloaded again instead of taken for 7.1.1)
+  on that basis, checked by reading, and chose to make the script
+  testable later rather than hold that fix for it. NSIS and Wine on the Linux runners is the
   cheaper route, but Wine is not Windows, and file renames and locks
-  are where the two can differ; a Windows runner that builds the
-  installer, installs it and runs an update is the faithful one, at
-  more CI time. Either is new to the stack and the maintainer's
-  decision.
+  are where the two can differ; a Windows runner that installs the
+  installer it built and runs an update is the faithful one, at more
+  CI time. Either is new to the stack and the maintainer's decision.
+- **Test builds and release builds from the Packages workflow.** A
+  run started by hand builds whatever version the committed manifests
+  carry, so a test build and a release build of the same version look
+  alike. It could offer two kinds instead: a test build whose version
+  is generated (for example `<next patch>-test.<run number>`, marked
+  as a test in its file names, and below the real release in semver so
+  the update notifier still offers that release), and a release build
+  on the committed version, run on the release commit. The point is
+  telling test builds apart and ordering them, not installing one over
+  another: the Windows installer already replaces an existing install
+  whatever its version, since electron-builder's NSIS template runs the
+  old install's uninstaller without comparing versions
+  (`uninstallOldVersion` in `templates/nsis/include/installUtil.nsh`).
+  The maintainer chose to revisit it with the planned quality work.
 
 ## Correctness in the app (continued)
 
@@ -1512,8 +1526,9 @@ the AppImage and the Windows installer. It leaves out, on purpose:
   The cheap services want either an individual developer in the
   United States or Canada (Azure Artifact Signing) or binaries built
   "from source code in a verifiable way" (SignPath Foundation), which
-  in practice means CI, so it waits for release CI or a change in
-  those terms.
+  in practice means CI, so it waits for releases to take their files
+  from the Packages workflow (which builds them in CI and signs
+  nothing) or a change in those terms.
 
 ## Studying a frontend written in Rust
 

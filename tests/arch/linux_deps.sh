@@ -27,10 +27,12 @@
 # two platforms' declared lists to each other (staged, downloaded at
 # install time, or declared in `SYSTEM_DEPS`), not every program
 # either side runs. One difference is worth knowing: the e2e workflow
-# runs `pnpm run dist`, so a Linux package really is built in CI,
-# while nothing builds the Windows installer.
-# On this side the configuration is checked and then exercised; on
-# that side only the configuration.
+# runs `pnpm run dist`, so a Linux package is built and launched in CI
+# on every relevant change, while the Windows installer is built only
+# when a pull request changes how a package is built or a run is
+# started by hand (packages.yml), and never run. On this side the
+# configuration is checked and then exercised; on that side it is
+# checked, and only sometimes built.
 #
 # Specifically:
 #   - `electron/scripts/fetch-linux-deps.mjs` must exist as the

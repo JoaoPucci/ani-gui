@@ -73,12 +73,17 @@ place for its updates is the system's package manager.
   `ani-gui-0.17.0-x64-setup.exe` (105 MB). No `latest.yml`,
   `latest-linux.yml`, `.blockmap`, `.zsync` or signature file. GitHub
   reports a SHA-256 `digest` for each asset. [release]
-- **How packages are built.** By hand, on two machines: `pnpm
-  package:release` on x86_64 Linux builds the AppImage and the `.deb`;
-  `pnpm package:win` on x64 Windows builds the NSIS installer. No CI
-  publishes anything. [code: `docs/development.md`, "Build for
-  distribution"] The electron-builder config has no `publish` section,
-  and none is inferred: electron-builder falls back to a GitHub
+- **How packages are built.** Up to 0.18.0, by hand, on two machines:
+  `pnpm package:release` on x86_64 Linux builds the AppImage and the
+  `.deb`; `pnpm package:win` on x64 Windows builds the NSIS installer.
+  The Packages workflow (`.github/workflows/packages.yml`), started by
+  hand, now runs the same two commands on GitHub's runners and keeps
+  the three files as run artifacts, so a release can take them from
+  there; it attests, signs and publishes nothing, and the files still
+  reach the release by hand. No CI publishes anything. [code:
+  `docs/development.md`, "Build for distribution"] The
+  electron-builder config has no `publish` section, and none is
+  inferred: electron-builder falls back to a GitHub
   provider when it finds repository information — a `repository`
   field, a CI variable, or `.git/config` in the project directory —
   and `electron/` offers none. (A `GH_TOKEN` or `GITHUB_TOKEN` in the
@@ -410,8 +415,8 @@ starts itself is not expected to meet the "Windows protected your PC"
 screen, which a browser download of the same unsigned file does.
 
 **The build machine.** Whatever the route, the installer is built on
-the Windows machine and must reach the release before it is published
-(section 6).
+a Windows machine, or on the Packages workflow's Windows runner, and
+must reach the release before it is published (section 6).
 
 **Two ways to install, from simple to complete:**
 
@@ -625,10 +630,12 @@ Linux packages arrived about five hours after it was published,
 `created_at` against `published_at`]
 
 GitHub's **artifact attestations** prove which workflow built a file;
-they are made by GitHub Actions, and nothing here builds in Actions.
-[source:
+they are made by GitHub Actions. [source:
 <https://docs.github.com/en/actions/concepts/security/artifact-attestations>]
-Not usable without release CI.
+The Packages workflow builds the release packages in Actions but makes
+no attestation, and a release built on a host has none to make. Usable
+once releases take their files from that workflow and it gains an
+attestation step.
 
 Only a signature checked against a key *outside* GitHub answers
 problem 3. The proposal is **minisign**: Ed25519 over a BLAKE2b-512
@@ -698,7 +705,7 @@ Getting a signature:
 | Option | Cost | Fit |
 |---|---|---|
 | Azure Artifact Signing (was Trusted Signing) | From $9.99 a month [source: the SmartScreen reputation page above] | Individual developers must be in the United States or Canada; needs a paid Azure subscription. [source: <https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart>, <https://learn.microsoft.com/en-us/azure/artifact-signing/faq>] |
-| SignPath Foundation | Free for open source | Binaries "must be built from source code in a verifiable way" — in practice CI, which this project does not have — and the certificate names SignPath Foundation as publisher. [source: <https://signpath.org/terms>] |
+| SignPath Foundation | Free for open source | Binaries "must be built from source code in a verifiable way" — in practice CI: the Packages workflow builds the packages there, but it signs nothing and releases do not yet take their files from it — and the certificate names SignPath Foundation as publisher. [source: <https://signpath.org/terms>] |
 | OV certificate from a CA | Paid yearly [unverified: prices not checked] | Since June 2023 the key must live in hardware (a token or HSM). [source: <https://cabforum.org/working-groups/code-signing/requirements/>] |
 | EV certificate | More | No longer skips SmartScreen's reputation check. [source: SmartScreen reputation page above] |
 
@@ -862,10 +869,11 @@ the progress bar does not animate under reduced motion.
 
 ## 6. Release-process changes
 
-Today a release is: build on Linux, build on Windows, create a
-pre-release with `gh release create --prerelease`, upload three files
-by hand. [code: `AGENTS.md` §13, `docs/development.md`] Since 0.14.0
-the files have been uploaded to a draft that is published once all
+Today a release is: build on Linux, build on Windows (or take both
+from one run of the Packages workflow), create a pre-release with
+`gh release create --prerelease`, upload three files by hand. [code:
+`AGENTS.md` §13, `docs/development.md`] Since 0.14.0 the files have
+been uploaded to a draft that is published once all
 three are there, though neither document says so. [release] What each
 route adds:
 
@@ -881,7 +889,10 @@ route adds:
   maintainer's Linux machine downloads it from the draft, checks its
   SHA-256 against the one the Windows machine printed, signs all three
   packages, and uploads the signatures. One script does it.
-  [proposal] The alternative, a second copy of the key on the Windows
+  [proposal] With the packages taken from one run of the Packages
+  workflow instead, the signing machine downloads all three from that
+  run, checks them against its `SHA256SUMS`, signs them and uploads
+  packages and signatures together. The alternative, a second copy of the key on the Windows
   machine, doubles the places it can leak.
 - The release stays a **draft** until every package and its signature
   are attached. The notifier already ignores drafts, so publishing
@@ -988,7 +999,8 @@ does add requests, so `docs/PRIVACY.md` would say what they reveal.
   carries a package for the platform; electron-updater would pick
   again by a different rule (the newest entry in the releases feed,
   bare tags included), break on the AppImage repack, need new
-  metadata files on every release from both build machines, and send
+  metadata files on every release from whatever builds the packages,
+  and send
   a per-install id on every check. Its strengths — differential
   downloads and years of NSIS edge cases handled — matter less than
   one source of truth and a privacy policy that stays true.
@@ -1039,8 +1051,8 @@ a day or less, **M** a few days, **L** a week or more.
    installer. Both happen on "Restart to update" or on a normal quit.
    Tests in
    `electron/lib/*.test.cjs`, an acceptance test for the flow, and a
-   manual check on a Windows machine, since no CI builds the
-   installer. M–L.
+   manual check on a Windows machine, since nothing in CI installs
+   or runs the installer. M–L.
 5. **The dialog and settings**: the states in section 5, the badge's
    ring, "Install updates from inside the app", "Download updates
    automatically" and "Check for updates at launch" (with its line in
@@ -1088,10 +1100,11 @@ proposal's findings, and "What the in-app updater leaves out").
    probably on a hosted service, since GitHub Pages cannot hold the
    packages.
 9. **Authenticode signing?** Recommended: not now. The updater does
-   not need it; the cheap options do not fit a hand-built installer by
-   an individual outside the United States and Canada [inference: the
-   maintainer's location was not checked]. Revisit if releases move to
-   CI, which would also open SignPath and artifact attestations.
+   not need it; the cheap options do not fit an installer released by
+   hand by an individual outside the United States and Canada [inference: the
+   maintainer's location was not checked]. Revisit once releases take
+   their files from the Packages workflow, which builds them in CI and
+   would also open SignPath and artifact attestations.
 10. **A switch to turn the update check off?** There is none today.
     Recommended: add it in phase 5, on by default, and say so in
     `docs/PRIVACY.md`.
