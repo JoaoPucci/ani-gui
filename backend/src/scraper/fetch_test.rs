@@ -959,3 +959,28 @@ async fn the_child_finds_the_bundle_it_is_handed() {
     let resp = fetch.get("https://example.test/x").await.expect("get");
     assert_eq!(resp.body, format!("found {CA_BUNDLE_FILE}"));
 }
+
+/// The platform default the production resolver uses: the Windows
+/// package's transport reads the bundle staged beside it.
+#[cfg(windows)]
+#[test]
+fn the_windows_resolver_reads_the_bundle_beside_the_bundled_transport() {
+    let bundled = tempfile::tempdir().expect("tmp");
+    std::fs::write(bundled.path().join("curl-impersonate.exe"), "MZ").expect("write stub");
+    std::fs::write(bundled.path().join(CA_BUNDLE_FILE), "pem").expect("write bundle");
+    let fetch = CurlImpersonateFetch::resolve(Some(bundled.path()), "").expect("resolved");
+    assert_eq!(fetch.ca_bundle_dir(), Some(bundled.path()));
+}
+
+/// Elsewhere the transport reads the distribution's store, and a file
+/// of that name in the bundled directory changes nothing: on Linux a
+/// `--cacert` would replace the distribution's bundle, not add to it.
+#[cfg(unix)]
+#[test]
+fn other_platforms_resolve_no_bundle_whatever_sits_beside_the_transport() {
+    let bundled = tempfile::tempdir().expect("tmp");
+    stage_exe(bundled.path(), "curl-impersonate");
+    std::fs::write(bundled.path().join(CA_BUNDLE_FILE), "pem").expect("write bundle");
+    let fetch = CurlImpersonateFetch::resolve(Some(bundled.path()), "").expect("resolved");
+    assert_eq!(fetch.ca_bundle_dir(), None);
+}
