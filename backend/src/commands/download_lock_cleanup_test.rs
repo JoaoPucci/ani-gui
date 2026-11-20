@@ -426,3 +426,43 @@ async fn the_sweep_spares_a_download_this_process_is_running() {
     );
     drop(held);
 }
+
+/// A download cancelled while it waits for another holder leaves
+/// nothing behind once that holder is gone.
+///
+/// On Windows this is the case that needs care. The waiter's open
+/// handle is what makes the holder's delete fail, so the holder leaves
+/// the file for the waiter, and a waiter cancelled before its next try
+/// is then the only one who can remove it. On Unix the holder removes
+/// the name under its lock whatever the waiter has open, so this holds
+/// by construction there.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_waiter_cancelled_after_its_holder_left_leaves_nothing() {
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Waiting Show Episode 1.mp4");
+    let lock_path = target_lock_path(&target).expect("a lock path");
+    let held = acquire_instance_lock(&target, long_deadline())
+        .await
+        .expect("the first holder");
+    let waiting = {
+        let target = target.clone();
+        tokio::spawn(async move { acquire_instance_lock(&target, long_deadline()).await })
+    };
+    // Long enough for the waiter to have opened the file and be
+    // polling.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    drop(held);
+    // Before the waiter's next try, which would take the lock.
+    waiting.abort();
+    let _ = waiting.await;
+
+    let settled = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    while lock_path.exists() && tokio::time::Instant::now() < settled {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(
+        !lock_path.exists(),
+        "a cancelled waiter must not leave the lock file behind"
+    );
+    assert!(!lock_path.parent().expect("lock dir").exists());
+}
