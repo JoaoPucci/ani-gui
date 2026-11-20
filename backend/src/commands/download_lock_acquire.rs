@@ -110,7 +110,9 @@ fn attempt(path: &std::path::Path, open: Option<std::fs::File>) -> Attempt {
     }
     let lock = InstanceLock::new(file, path.to_path_buf());
     // Removed while this waited: what it holds has no name, and
-    // dropping it removes nothing, since the release checks the same.
+    // dropping it removes no file, since the release checks the same
+    // (it may remove the directory, which an opener answers by opening
+    // again).
     if lock.is_at_path() {
         Attempt::Held(lock)
     } else {

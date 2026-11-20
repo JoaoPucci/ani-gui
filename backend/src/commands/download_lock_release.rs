@@ -135,8 +135,11 @@ pub(super) async fn sweep_once(lock_path: &std::path::Path) {
 /// rather than to the open file (NFS emulates `flock` with POSIX
 /// record locks), a second handle in this process would be granted a
 /// running download's lock, remove its file and, on closing, release
-/// its lock. Checked per entry, so a download registered while the
-/// sweep runs is spared from then on.
+/// its lock. Checked per entry, which narrows that to a download that
+/// registers and locks in the instant between the check and the
+/// sweep's own try — not closed, since closing the sweep's handle
+/// would release a process-wide lock anyway. The cost there is the
+/// lock's ordinary failure, a duplicate transfer.
 fn sweep(dir: &std::path::Path, own: &std::path::Path) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
