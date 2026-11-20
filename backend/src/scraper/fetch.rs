@@ -245,9 +245,8 @@ impl CurlImpersonateFetch {
         reads_bundle: bool,
     ) -> Option<Self> {
         if let Some(dir) = extra_dir {
-            // The seam only: no bundle is read yet.
-            let _ = reads_bundle;
-            let ca_bundle_dir: Option<PathBuf> = None;
+            let ca_bundle_dir =
+                (reads_bundle && dir.join(CA_BUNDLE_FILE).is_file()).then(|| dir.to_path_buf());
             for cand in CURL_FAILOVER {
                 for file in candidate_names(cand.name, suffixes) {
                     let candidate = dir.join(&file);
@@ -387,8 +386,10 @@ pub(crate) fn trust_args(native: bool, bundle: bool) -> Vec<&'static str> {
     if native {
         args.push("--ca-native");
     }
-    // The seam only: no bundle is passed yet.
-    let _ = bundle;
+    if bundle {
+        args.push("--cacert");
+        args.push(CA_BUNDLE_FILE);
+    }
     args
 }
 
@@ -597,6 +598,10 @@ impl CurlImpersonateFetch {
             // output() future, the child goes with it instead of
             // surviving as an orphan for its full hang.
             .kill_on_drop(true);
+        // Where the bundle's relative name resolves (see `trust_args`).
+        if let Some(dir) = &self.ca_bundle_dir {
+            cmd.current_dir(dir);
+        }
         // ETXTBSY is transient by construction — a fork elsewhere in
         // the process still holds the executable's write fd (the auto
         // -updater re-staging a binary; the test suite staging stubs)
