@@ -28,7 +28,7 @@ mod lock;
 use lock::*;
 // The lock's property cases reach these through this module.
 #[cfg(test)]
-pub(crate) use lock::{acquire_instance_lock, target_lock_path};
+pub(crate) use lock::{acquire_instance_lock, target_lock, target_lock_path};
 #[path = "download_resume.rs"]
 mod resume;
 use resume::resumed_partials;

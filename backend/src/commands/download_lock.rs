@@ -107,7 +107,7 @@ where
         .map_err(|_| crate::error::AniError::Io)
 }
 
-pub(super) fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+pub(crate) fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
     // Keyed by the lock path, so this and the file lock share one
     // notion of identity rather than two that can disagree. It is the
     // weaker of the pair: two names a case-insensitive filesystem

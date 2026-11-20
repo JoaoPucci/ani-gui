@@ -347,3 +347,82 @@ async fn an_open_that_keeps_losing_gives_up_before_the_deadline() {
         started.elapsed()
     );
 }
+
+/// An acquisition cancelled at any point leaves nothing behind.
+///
+/// Cancelling drops the future wherever it is, including while a
+/// filesystem call it handed to the blocking pool is still running —
+/// and that call carries on regardless. A lock file opened or locked
+/// there has to be released by whoever ends up owning it, or every
+/// cancel in that window keeps one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelled_acquisitions_leave_nothing_behind() {
+    let dest = tempfile::tempdir().expect("dest");
+    // One episode per round: a later acquisition of the same name would
+    // take over and remove an earlier round's leftover, hiding it.
+    for round in 0..200u64 {
+        let attempt = {
+            let target = dest
+                .path()
+                .join(format!("Cancelled Show Episode {round}.mp4"));
+            tokio::spawn(async move {
+                let held = acquire_instance_lock(&target, long_deadline()).await;
+                drop(held);
+            })
+        };
+        // Spread the cancels across the open, the lock and the check.
+        tokio::time::sleep(std::time::Duration::from_micros(round * 7 % 400)).await;
+        attempt.abort();
+        let _ = attempt.await;
+    }
+    // Let any blocking call a cancel left running finish.
+    let lock_dir = dest.path().join(".ani-gui-locks");
+    let left = || -> Vec<String> {
+        std::fs::read_dir(&lock_dir)
+            .map(|d| {
+                d.flatten()
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let settled = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !left().is_empty() && tokio::time::Instant::now() < settled {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert_eq!(
+        left(),
+        Vec::<String>::new(),
+        "cancelled acquisitions kept files"
+    );
+}
+
+/// The sweep never touches the lock file of a download this process
+/// is running in the same folder.
+///
+/// On a local volume that download's lock already refuses the sweep.
+/// Where locks belong to the process rather than the open file — NFS
+/// emulates `flock` with POSIX record locks — the sweep would be
+/// granted it, remove the file, and release the download's lock when
+/// it closed its handle.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_sweep_spares_a_download_this_process_is_running() {
+    let dest = tempfile::tempdir().expect("dest");
+    let sibling = dest.path().join("Sibling Show Episode 2.mp4");
+    let sibling_lock = target_lock_path(&sibling).expect("a lock path");
+    // Registered the way a running download registers, its file
+    // present but — standing in for a process-wide lock the sweep
+    // would be granted — not locked against another handle.
+    let _registered = super::download::target_lock(&sibling);
+    drop(foreign_handle(&sibling_lock));
+
+    let target = dest.path().join("Sibling Show Episode 1.mp4");
+    let held = acquire_instance_lock(&target, long_deadline())
+        .await
+        .expect("a lock");
+    assert!(
+        sibling_lock.is_file(),
+        "the sweep must not remove a file this process's own download uses"
+    );
+    drop(held);
+}
