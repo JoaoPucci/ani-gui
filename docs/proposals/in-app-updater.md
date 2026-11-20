@@ -101,13 +101,15 @@ place for its updates is the system's package manager.
   to its file is gone. [code]
 - **The Windows installer** is assisted (`oneClick: false`), lets the
   user change the install directory, and has `perMachine: false`. Its
-  `installer.nsh` downloads ffmpeg (about 80 MB) during install unless
-  one is on `PATH`, and its uninstall step deletes that ffmpeg —
-  including during the silent uninstall electron-builder runs before
-  an upgrade: the standard sequence removes it with the rest of the
-  install directory (releases through 0.18.0 also name it in a
-  `Delete` in `customUnInstall`, which runs after that sequence).
-  [code: `electron/package.json`,
+  `installer.nsh` downloads ffmpeg (a ~90 MB zip) during install unless
+  one is on `PATH`. Through 0.18.0 its uninstall step deleted that
+  ffmpeg, including during the silent uninstall electron-builder runs
+  before an upgrade; the installer now sets the copy aside before that
+  uninstall and puts it back. In the same install it downloads again
+  only when a release pins a different ffmpeg or the copy or its
+  version stamp could not be carried over; a new install folder, a
+  per-user/per-machine switch or `--delete-app-data` downloads as a
+  fresh install does. [code: `electron/package.json`,
   `electron/build-resources/installer.nsh`] It is not code-signed: the
   0.17.0 installer's PE security directory is empty. [tried: read
   from the first 4 KB of the published file]
@@ -370,36 +372,43 @@ back to the whole file. [source: `src/AppUpdater.ts` at 6.3.9;
 `templates/nsis/include/installer.nsh` at 25.1.8] [unverified:
 whether today's installers already write that copy]
 
-**What the app's own installer script does on an update.** The
-update replaces the install directory, and with it the ffmpeg the
-first install downloaded; the `customInstall` macro then runs again —
-electron-builder does not skip it on updates — and downloads ffmpeg
-again (about 80 MB) unless one is on `PATH`. In a silent install the
-download shows no window: the inetc plug-in "recognizes Installer's
-Silent mode and in this case hides any output". [source:
-electron-builder 25.1.8, `templates/nsis/installSection.nsh`,
-`templates/nsis/uninstaller.nsh`; <https://nsis.sourceforge.io/Inetc_plug-in>;
-code: `electron/build-resources/installer.nsh`] The same happens today
-when a user runs a newer installer by hand. An updater makes it
-frequent and invisible: each update is the installer's 105 MB plus
-ffmpeg's 80 MB, and an update made offline after the download ends
-with no ffmpeg. electron-builder offers `${isUpdated}` to tell an
-update from a fresh install [source:
+**What the app's own installer script did on an update, through
+0.18.0.** The update replaced the install directory, and with it the
+ffmpeg the first install downloaded; the `customInstall` macro then
+ran again (electron-builder does not skip it on updates) and
+downloaded ffmpeg again (a ~90 MB zip) unless one was on `PATH`. In a
+silent install the download showed no window: the inetc plug-in
+"recognizes Installer's Silent mode and in this case hides any
+output". [source: electron-builder 25.1.8,
+`templates/nsis/installSection.nsh`, `templates/nsis/uninstaller.nsh`;
+<https://nsis.sourceforge.io/Inetc_plug-in>] The same happened when a
+user ran a newer installer by hand, and an updater would have made it
+frequent and invisible: each update would have cost the installer's
+105 MB plus ffmpeg's ~90 MB, and an update run offline after its
+download would have ended with no ffmpeg. electron-builder offers
+`${isUpdated}` to tell an update from a fresh install [source:
 <https://www.electron.build/docs/nsis>], which is set when the
 installer runs with `--updated` [source: electron-builder 25.1.8,
-`src/targets/nsis/nsisScriptGenerator.ts`], but the old copy is gone
-by the time `customInstall` runs. The fix has to keep the old copy
-through the update: have the *new* installer set it aside before it
-runs the old version's uninstaller (which empties the install
-directory, ffmpeg included) and put it back under
-`${isUpdated}`, or keep it outside the install directory. The first
-update after the fix still meets the shipped uninstaller. The app's
-per-user data folder does not fit the second: a per-machine install
-serves several users, and an installer elevated with another account
-resolves that folder to the administrator's profile. Either way a real
-uninstall still has to remove any copy kept outside the install
-directory.
-[proposal; which hook runs early enough is unverified]
+`src/targets/nsis/nsisScriptGenerator.ts`], but the old copy was gone
+by the time `customInstall` ran.
+
+**What it does now.** The *new* installer sets the copy aside before
+it runs the old version's uninstaller, in a hidden section its
+`customHeader` defines just ahead of the install section, into a
+folder beside the install directory (`$INSTDIR-ffmpeg-staging`), and
+`customInstall` puts it back when the new files did not bring one. It
+downloads again, in the same install, only when the release pins a
+different ffmpeg, or when the copy or its version stamp could not be
+carried over or read. A real uninstall removes the staging folder in
+the uninstall step (not under `${isUpdated}`), and ffmpeg itself goes
+with the rest of the install directory. Only the same install is
+kept: switching between per-user and per-machine, or picking another
+folder, is a new install directory and downloads ffmpeg like a fresh
+install, and an installer
+run with `--delete-app-data` makes the update an uninstall followed by
+a fresh install. This holds for a hand-run installer and an updater
+alike. [code: `electron/build-resources/installer.nsh`, its "Keeping
+the copy across updates" header]
 
 **SmartScreen.** See section 4: an installer the app downloads and
 starts itself is not expected to meet the "Windows protected your PC"
@@ -1050,10 +1059,8 @@ a day or less, **M** a few days, **L** a week or more.
    `docs/PRIVACY.md`), every string in all shipped locales, `vitest` for
    the state machine extracted from the component, and an acceptance
    test. M.
-6. **ffmpeg survives a Windows update**: keep the ffmpeg the
-   installer fetched through an update (section 2, for per-user and
-   per-machine installs alike), with a real uninstall still removing
-   it. Lands with or before phase 4. S–M.
+6. **ffmpeg survives a Windows update**: done in the installer
+   itself, ahead of phase 4 (section 2, "What it does now").
 7. **`.deb`: "Download .deb"**, saving to Downloads and revealing it.
    S.
 

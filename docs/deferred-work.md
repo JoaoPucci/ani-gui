@@ -287,6 +287,18 @@ starting it, and delete it when you find it done.
   failed-startup dialog and the quit prompt have been seen on Linux
   only, since nothing launches the Windows app in CI: a workflow
   builds the Windows installer, and nothing installs or runs it.
+- **Nothing runs the Windows installer's script.** A workflow builds
+  the Windows installer (`packages.yml`), but nothing installs or runs
+  it, so a change to `electron/build-resources/installer.nsh` cannot
+  start from a failing test, as `AGENTS.md` §2 asks. The maintainer
+  accepted the fix for a restored ffmpeg whose version stamp could not
+  be put back (it is now downloaded again instead of taken for 7.1.1)
+  on that basis, checked by reading, and chose to make the script
+  testable later rather than hold that fix for it. NSIS and Wine on the Linux runners is the
+  cheaper route, but Wine is not Windows, and file renames and locks
+  are where the two can differ; a Windows runner that installs the
+  installer it built and runs an update is the faithful one, at more
+  CI time. Either is new to the stack and the maintainer's decision.
 - **Test builds and release builds from the Packages workflow.** A
   run started by hand builds whatever version the committed manifests
   carry, so a test build and a release build of the same version look
