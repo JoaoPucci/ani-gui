@@ -303,3 +303,30 @@ test("purge removes the profile's local override and markers", () => {
     cleanup(h);
   }
 });
+
+// electron-builder 26 puts an AppArmor profile into every .deb, at
+// /opt/ani-gui/resources/apparmor-profile: `deb.appArmorProfile`, or its
+// stock template when that is unset (app-builder-lib 26.18.0,
+// out/targets/FpmTarget.js, the copy before fpm runs), with no way to
+// leave it out. The stock one is a profile also named `ani-gui`,
+// attached to the launcher script /opt/ani-gui/ani-gui instead of the
+// binary. Nothing installs or loads that copy — our postinst replaces
+// electron-builder's and writes its own — but a package that ships one
+// profile and installs another tells whoever reads it the wrong one.
+// So the package's copy is the profile the postinst writes, byte for
+// byte, and it carries no macro electron-builder would fill in.
+test("the profile the package ships is the one the postinst installs", () => {
+  const build = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")).build;
+  const shipped = build.deb.appArmorProfile;
+  assert.equal(typeof shipped, "string", "deb.appArmorProfile names the profile the package ships");
+  const text = fs.readFileSync(path.join(__dirname, "..", shipped), "utf8");
+  assert.deepEqual(text.match(/\$\{[a-zA-Z]+\}/g) ?? [], [], shipped);
+  assert.deepEqual(text.match(/<%=[a-zA-Z]+%>/g) ?? [], [], shipped);
+  const h = host();
+  try {
+    run(h, POSTINST, "configure");
+    assert.equal(text, fs.readFileSync(profileAt(h), "utf8"));
+  } finally {
+    cleanup(h);
+  }
+});

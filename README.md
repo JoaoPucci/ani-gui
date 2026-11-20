@@ -24,7 +24,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 | **OP / ED skip** | aniskip intervals — one-click or fully automatic. |
 | **Picture-in-Picture** | Pop the player out while it is open. |
 | **Background prefetch** | Adjacent episodes warm in advance. |
-| **Downloads** | Per-episode or ranged, progress dock. yt-dlp bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, installer-time fetch on Windows, system PATH on AppImage). |
+| **Downloads** | Per-episode or ranged, progress dock. yt-dlp bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, downloaded by the Windows installer at install time, system PATH on AppImage). |
 | **Watch history** | Continue Watching — and a show's Play button — takes you back to the last episode you watched — resuming where you left it, or from its start if you left in its first 15 seconds — unless you finished it (its last 90 seconds, or to its end), when it goes on to the next episode. It also goes on when the app has no record of that episode: points are kept for the 200 most recently played episodes, in local storage that can be unavailable. Remove a single card or clear the lot from the rail. |
 | **External player** | One click to mpv / VLC / IINA / custom. |
 | **Watch together** | Hand the current stream to [Syncplay](https://syncplay.pl/) for a watch party. |
@@ -34,7 +34,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 
 ## Install
 
-ani-gui is distributed as a desktop bundle. The transport it uses to reach the stream provider ships inside it, so browsing and playback need nothing else. Downloads additionally want `ffmpeg`, which each platform sources differently — see the tier notes below.
+ani-gui is distributed as a desktop bundle. The transport it uses to reach the stream provider ships inside it, so browsing and playback need nothing else. Each package installs the license texts of the tools it bundles, with the notices of the libraries built into them, under `resources/licenses/`. Downloads additionally want `ffmpeg`, which each platform sources differently — see the tier notes below.
 
 Platform support tiers:
 
@@ -86,7 +86,9 @@ Platform support tiers:
 
 NSIS installer (`.exe`). Run it; it installs per-user by default and creates Start menu and desktop shortcuts.
 
-The installer will fetch ffmpeg automatically the first time it runs (~80 MB) so the download feature works out of the box; the impersonating transport and yt-dlp are bundled directly. The ffmpeg fetch runs even when you already have ffmpeg installed via a per-user package manager (scoop, winget user-scope) — the installer's elevated context doesn't see per-user PATH entries, and the bundled copy is what the app uses at runtime in either case.
+The installer carries the impersonating transport and yt-dlp. It downloads ffmpeg (a ~90 MB zip) while it installs, so the download feature works out of the box without the installer carrying it. If the download fails — offline, say — the install still completes, playback works, and running the installer again online fetches it. An update of the same install keeps the downloaded ffmpeg, so it normally needs no network. It downloads again when a release pins a different ffmpeg version, when the copy or its version stamp cannot be carried over or read (a file copy that fails, which the installer's details list says), and when the update is in effect a fresh install: a switch between per-user and per-machine, another install folder, or an installer run with `--delete-app-data`. If the installer has not placed a copy and an `ffmpeg.exe` is already on `PATH`, it skips the download and the app uses that one; a copy the installer placed is the one the app uses, even when you have your own on `PATH`.
+
+The installer downloads ffmpeg from gyan.dev's [7.1.1 essentials build](https://github.com/GyanD/codexffmpeg/releases/tag/7.1.1); FFmpeg's source code for that version is at [n7.1.1](https://github.com/FFmpeg/FFmpeg/tree/n7.1.1). ani-gui does not redistribute it. The license texts of the tools the installer carries, with the notices of the libraries built into them, are installed in `resources\licenses\` in the install directory.
 
 </details>
 
@@ -100,7 +102,7 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    . "$HOME/.cargo/env"   # (or re-open the shell) so `cargo` is on PATH
    ```
    Windows: download and run `rustup-init.exe` from [rustup.rs](https://rustup.rs) — it sets up the MSVC toolchain and offers to install the Visual Studio build tools it needs.
-2. **Install Node 22.13–24 and enable corepack.** The repository pins its pnpm version in `package.json`, so `corepack enable` is the whole pnpm setup — corepack fetches the pinned version on first use. Node 25+ no longer bundles corepack; on those, install it first (`npm install -g corepack`) and the rest is unchanged. The Electron end-to-end suite and its helper tests need 22.13 at least ([docs/testing.md](docs/testing.md)); the frontend alone still runs on Node 20. Linux / macOS (via nvm — skip the curl step if you already have nvm or installed Node another way):
+2. **Install Node 22.13–24 and enable corepack.** Packaging needs 22.12 or later: electron-builder runs `@electron/rebuild`, which requires it. The repository pins its pnpm version in `package.json`, so `corepack enable` is the whole pnpm setup — corepack fetches the pinned version on first use. Node 25+ no longer bundles corepack; on those, install it first (`npm install -g corepack`) and the rest is unchanged. The Electron end-to-end suite and its helper tests need 22.13 at least ([docs/testing.md](docs/testing.md)); the frontend alone still runs on Node 20. Linux / macOS (via nvm — skip the curl step if you already have nvm or installed Node another way):
    ```sh
    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
    # re-open the shell (or `source ~/.bashrc`) so nvm is on PATH
