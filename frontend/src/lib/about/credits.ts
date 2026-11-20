@@ -29,7 +29,8 @@ import { m } from '$lib/paraglide/messages';
 export type BundledToolNoteId = 'curl_impersonate' | 'cacert' | 'yt_dlp' | 'ffmpeg';
 
 export interface BundledTool {
-	/** Display label — the upstream's own name. */
+	/** Display label — the upstream's own name, or the dependency's
+	 *  id where it has no product name (ca-certificates). */
 	name: string;
 	/** Version string as it appears in the manifest. `null` when
 	 *  the platforms don't ship one version (ffmpeg: the Windows
@@ -86,7 +87,9 @@ export function ffmpegProvenance(version: string): BuildProvenance {
  *  two stage the same set, so one version here covers both. ffmpeg is
  *  the exception: no package carries it — the Windows installer
  *  downloads it at install time, and Linux takes the distribution's —
- *  so its version is `null`. */
+ *  so its version is `null`. ca-certificates is the other: only the
+ *  Windows package stages it, so its version is that bundle's date,
+ *  and Linux uses the distribution's. */
 export const BUNDLED_TOOLS: BundledTool[] = [
 	{
 		// The transport the native resolver spawns. The provider

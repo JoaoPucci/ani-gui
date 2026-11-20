@@ -125,6 +125,13 @@ esac
 #    script. The declarations are lists the parser reads, not names
 #    this check exempts, so neither can excuse a dependency a platform
 #    does not provide at all.
+#
+#    `SYSTEM_DEPS` declares a third asymmetry, the CA certificates the
+#    transport verifies with. The Linux transport reads the
+#    distribution's store, and the .deb recommends `ca-certificates`.
+#    On Windows the package stages Mozilla's bundle beside the
+#    transport, because a fresh Windows root store is incomplete to it
+#    (check 5b).
 LINUX_FETCH=electron/scripts/fetch-linux-deps.mjs
 WINDOWS_FETCH=electron/scripts/fetch-windows-deps.mjs
 
