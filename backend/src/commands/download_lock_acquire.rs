@@ -4,6 +4,7 @@
 use super::on_blocking_pool;
 use super::os;
 use super::release::{sweep_once, InstanceLock};
+use super::waiting::Waiting;
 use crate::error::{AniError, Result};
 
 /// How often a download waiting on another instance re-tries the OS
@@ -65,8 +66,8 @@ pub(crate) async fn acquire_instance_lock(
         let open = busy.take();
         match on_blocking_pool(path.clone(), move |p| attempt(p, open)).await? {
             Attempt::Held(lock) => return Ok(lock),
-            Attempt::Busy(file) => {
-                busy = Some(file);
+            Attempt::Busy(waiting) => {
+                busy = Some(waiting);
                 poll_until(deadline).await?;
             }
             Attempt::Lost => note_loss(&mut losses, deadline).await?,
@@ -80,7 +81,7 @@ enum Attempt {
     /// Locked, and still the file at the lock's name.
     Held(InstanceLock),
     /// Another holder has it; the handle to try again with.
-    Busy(std::fs::File),
+    Busy(Waiting),
     /// A concurrent removal got in the way: try again from the open.
     Lost,
     /// The lock file cannot be opened or locked at all.
@@ -94,21 +95,28 @@ enum Attempt {
 /// A cancelled acquisition drops the join handle, not the call, and
 /// the call's answer is then dropped with nobody to read it. A lock
 /// taken here is already an [`InstanceLock`] by then, so dropping it
-/// releases and removes the file as any holder's drop does; a lock
-/// handed back as a bare handle to be wrapped on the async side would
-/// be closed without either.
-fn attempt(path: &std::path::Path, open: Option<std::fs::File>) -> Attempt {
-    let file = match open.map_or_else(|| os::open_creating(path), Ok) {
-        Ok(file) => file,
+/// releases and removes the file as any holder's drop does; a handle
+/// still waiting is a [`Waiting`], which gives the file up the way its
+/// platform allows. Neither is ever a bare handle that closes without
+/// tidying.
+fn attempt(path: &std::path::Path, open: Option<Waiting>) -> Attempt {
+    let waiting = match open.map_or_else(
+        || os::open_creating(path).map(|f| Waiting::new(f, path)),
+        Ok,
+    ) {
+        Ok(waiting) => waiting,
         Err(e) if os::lost_to_removal(&e) => return Attempt::Lost,
         Err(_) => return Attempt::Failed,
     };
-    match fs4::FileExt::try_lock(&file) {
-        Ok(()) => {}
-        Err(fs4::TryLockError::WouldBlock) => return Attempt::Busy(file),
-        Err(fs4::TryLockError::Error(_)) => return Attempt::Failed,
+    match waiting.file().map(fs4::FileExt::try_lock) {
+        Some(Ok(())) => {}
+        Some(Err(fs4::TryLockError::WouldBlock)) => return Attempt::Busy(waiting),
+        // Dropping `waiting` gives the file up (see `Waiting`).
+        Some(Err(fs4::TryLockError::Error(_))) | None => return Attempt::Failed,
     }
-    let lock = InstanceLock::new(file, path.to_path_buf());
+    let Some(lock) = waiting.into_lock() else {
+        return Attempt::Failed;
+    };
     // Removed while this waited: what it holds has no name, and
     // dropping it removes no file, since the release checks the same
     // (it may remove the directory, which an opener answers by opening

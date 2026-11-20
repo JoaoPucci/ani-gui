@@ -45,6 +45,12 @@ mod imp {
         )
     }
 
+    /// Give up a handle that holds no lock: close it. The name is not
+    /// this handle's to remove.
+    pub(crate) fn abandon(file: std::fs::File, _path: &std::path::Path) {
+        drop(file);
+    }
+
     /// Remove the name while the lock is still held, then release it.
     /// Checked first, so a file somebody else put at the name — after
     /// removing this one from outside the protocol — is not taken from
@@ -120,6 +126,13 @@ mod imp {
     /// name while the handle is open.
     pub(crate) fn still_named(_file: &std::fs::File, _path: &std::path::Path) -> bool {
         true
+    }
+
+    /// Give up a handle that holds no lock: the same as a release,
+    /// since the delete succeeds only once nobody has the file open —
+    /// and so only once nobody holds it.
+    pub(crate) fn abandon(file: std::fs::File, path: &std::path::Path) {
+        release(file, path);
     }
 
     /// Release first, then delete — which fails, harmlessly, while any

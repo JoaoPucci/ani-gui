@@ -98,6 +98,8 @@ mod acquire;
 mod os;
 #[path = "download_lock_release.rs"]
 mod release;
+#[path = "download_lock_waiting.rs"]
+mod waiting;
 pub(crate) use acquire::acquire_instance_lock;
 
 /// Run a filesystem call on `path` on the blocking pool.

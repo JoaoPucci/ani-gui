@@ -2,6 +2,7 @@
 //! emptied directory, and leftovers nothing removed in time.
 
 use super::os;
+use super::waiting::Waiting;
 
 /// The cross-instance lock, held: the open lock file, removed from
 /// disk when this is dropped.
@@ -87,7 +88,7 @@ impl Drop for InstanceLock {
 /// another instance is harmless either way: a directory with a file
 /// in it refuses, one already gone is not found, and an instance whose
 /// open loses to the removal opens again.
-fn remove_dir_if_empty(dir: &std::path::Path) {
+pub(super) fn remove_dir_if_empty(dir: &std::path::Path) {
     let _ = std::fs::remove_dir(dir);
 }
 
@@ -155,8 +156,17 @@ fn sweep(dir: &std::path::Path, own: &std::path::Path) {
         let Ok(file) = os::lock_file_options().open(&path) else {
             continue;
         };
-        if fs4::FileExt::try_lock(&file).is_ok() {
-            os::release(file, &path);
+        // Either way out gives the file up as a holder or a waiter
+        // would: released and removed if the lock was free, closed (and
+        // on Windows the delete retried) if not — so the sweep's own
+        // brief handle never strands a file its holder failed to remove
+        // because of it.
+        let waiting = Waiting::new(file, &path);
+        if waiting
+            .file()
+            .is_some_and(|f| fs4::FileExt::try_lock(f).is_ok())
+        {
+            drop(waiting.into_lock());
         }
     }
 }
