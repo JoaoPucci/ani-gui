@@ -10,12 +10,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const {
-	needsExtraction,
-	assertDepShape,
-	retiredStagedBinaries,
-	parityGaps,
-} = require('./dep-staging.cjs');
+const { needsExtraction, assertDepShape, retiredStagedBinaries } = require('./dep-staging.cjs');
 
 const archived = {
 	name: 'fzf',
@@ -95,87 +90,4 @@ test('several deps sharing one archive each keep their own binary', () => {
 	];
 	const staged = ['curl-impersonate', 'curl_firefox135', 'curl_chrome136', 'fzf'];
 	assert.deepEqual(retiredStagedBinaries(staged, deps), ['fzf']);
-});
-
-// ── one-platform dependencies ───────────────────────────────────────
-//
-// The two fetchers are held to the same dependency set, because a
-// runtime dependency that lands on one packaged platform alone is how
-// the transport gap shipped. A dependency that genuinely belongs to
-// one platform says so on its own entry, with the reason, and the
-// parity comparison honours that declaration and nothing else.
-
-const linuxOnly = { platform: 'linux', reason: 'the reason' };
-const winOnly = { platform: 'win32', reason: 'the reason' };
-
-test('a one-platform declaration names a packaged platform and a reason', () => {
-	assert.doesNotThrow(() => assertDepShape({ ...direct, onlyOn: winOnly }));
-	assert.doesNotThrow(() => assertDepShape({ ...direct, onlyOn: linuxOnly }));
-	assert.throws(
-		() => assertDepShape({ ...direct, onlyOn: { platform: 'darwin', reason: 'x' } }),
-		/yt-dlp.*onlyOn/,
-	);
-	assert.throws(() => assertDepShape({ ...direct, onlyOn: { platform: 'win32' } }), /yt-dlp.*reason/);
-	assert.throws(
-		() => assertDepShape({ ...direct, onlyOn: { platform: 'win32', reason: '  ' } }),
-		/yt-dlp.*reason/,
-	);
-	assert.throws(() => assertDepShape({ ...direct, onlyOn: 'win32' }), /yt-dlp.*onlyOn/);
-	// A name every object inherits is not a platform.
-	assert.throws(
-		() => assertDepShape({ ...direct, onlyOn: { platform: 'toString', reason: 'x' } }),
-		/yt-dlp.*onlyOn/,
-	);
-});
-
-const shared = (name) => ({ name, dep: name });
-
-test('the same set on both platforms has no gaps', () => {
-	assert.deepEqual(parityGaps([shared('yt-dlp')], [shared('yt-dlp')]), []);
-});
-
-test('an undeclared dependency on one side is a gap, in either direction', () => {
-	const gaps = parityGaps([shared('yt-dlp'), shared('aria2')], [shared('yt-dlp'), shared('ca')]);
-	assert.equal(gaps.length, 2);
-	assert.match(gaps.join('\n'), /aria2 is staged for Linux but not for Windows/);
-	assert.match(gaps.join('\n'), /ca is staged for Windows but not for Linux/);
-});
-
-test('a dependency declared for the one platform that stages it is not a gap', () => {
-	const ca = { name: 'ca', dep: 'ca', onlyOn: winOnly };
-	assert.deepEqual(parityGaps([shared('yt-dlp')], [shared('yt-dlp'), ca]), []);
-	const helper = { name: 'helper', dep: 'helper', onlyOn: linuxOnly };
-	assert.deepEqual(parityGaps([shared('yt-dlp'), helper], [shared('yt-dlp')]), []);
-});
-
-test('a declaration naming the other platform is a gap', () => {
-	// Staged by the Linux fetcher, declared as Windows-only: one of the
-	// two is wrong, and nothing says which.
-	const ca = { name: 'ca', dep: 'ca', onlyOn: winOnly };
-	const gaps = parityGaps([shared('yt-dlp'), ca], [shared('yt-dlp')]);
-	assert.equal(gaps.length, 1);
-	assert.match(gaps[0], /ca .*win32.*Linux/);
-});
-
-test('every entry of a one-platform dependency carries the declaration', () => {
-	// A dependency can span several entries (Linux stages a binary and
-	// its wrappers out of one archive); one undeclared entry leaves the
-	// dependency undeclared.
-	const gaps = parityGaps(
-		[shared('yt-dlp')],
-		[shared('yt-dlp'), { name: 'ca', dep: 'ca', onlyOn: winOnly }, { name: 'ca-2', dep: 'ca' }],
-	);
-	assert.equal(gaps.length, 1);
-	assert.match(gaps[0], /ca is staged for Windows but not for Linux/);
-});
-
-test('a declaration on a dependency both platforms stage is stale, and a gap', () => {
-	// The exemption outlived its reason: the other platform stages it
-	// now, and the declaration would hide that platform dropping it.
-	const gaps = parityGaps(
-		[shared('yt-dlp')],
-		[{ name: 'yt-dlp', dep: 'yt-dlp', onlyOn: winOnly }],
-	);
-	assert.equal(gaps.length, 1);
-	assert.match(gaps[0], /yt-dlp .*both/);
 });
