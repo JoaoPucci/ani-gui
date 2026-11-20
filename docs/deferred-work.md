@@ -285,7 +285,22 @@ starting it, and delete it when you find it done.
 
   The same goes for what the shell shows on that platform: the
   failed-startup dialog and the quit prompt have been seen on Linux
-  only, since nothing builds or launches the Windows app in CI.
+  only, since nothing launches the Windows app in CI: a workflow
+  builds the Windows installer, and nothing installs or runs it.
+- **Test builds and release builds from the Packages workflow.** A
+  run started by hand builds whatever version the committed manifests
+  carry, so a test build and a release build of the same version look
+  alike. It could offer two kinds instead: a test build whose version
+  is generated (for example `<next patch>-test.<run number>`, marked
+  as a test in its file names, and below the real release in semver so
+  the update notifier still offers that release), and a release build
+  on the committed version, run on the release commit. The point is
+  telling test builds apart and ordering them, not installing one over
+  another: the Windows installer already replaces an existing install
+  whatever its version, since electron-builder's NSIS template runs the
+  old install's uninstaller without comparing versions
+  (`uninstallOldVersion` in `templates/nsis/include/installUtil.nsh`).
+  The maintainer chose to revisit it with the planned quality work.
 
 ## Correctness in the app (continued)
 
@@ -1499,8 +1514,9 @@ the AppImage and the Windows installer. It leaves out, on purpose:
   The cheap services want either an individual developer in the
   United States or Canada (Azure Artifact Signing) or binaries built
   "from source code in a verifiable way" (SignPath Foundation), which
-  in practice means CI, so it waits for release CI or a change in
-  those terms.
+  in practice means CI, so it waits for releases to take their files
+  from the Packages workflow (which builds them in CI and signs
+  nothing) or a change in those terms.
 
 ## Studying a frontend written in Rust
 

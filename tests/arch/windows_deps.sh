@@ -26,11 +26,15 @@
 #
 # What this check does NOT establish: that the fetch succeeds, that
 # the archive still contains the entry the dep names, or that the
-# staged binary runs. Those want a Windows packaging job, and there is
-# none — CI runs `cargo test` on windows-latest and never builds the
-# installer, which is the other half of why the gap shipped unnoticed.
-# So a green run here means the package is *configured* to carry a
-# transport, not that a built installer has one.
+# staged binary runs. A Windows packaging job settles the first two:
+# .github/workflows/packages.yml runs `package:win` on windows-latest,
+# but only for a pull request that changes how a package is built (the
+# fetcher among those paths) or a run started by hand. Nothing in CI
+# installs the installer or runs what it staged. When this check was
+# written CI never built the installer at all, the other half of why
+# the gap shipped unnoticed. So a green run here means the package is
+# *configured* to carry a transport, not that a built installer has
+# one.
 
 set -eu
 

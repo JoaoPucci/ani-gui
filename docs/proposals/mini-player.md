@@ -465,8 +465,8 @@ keeping the window on top" below.
 **[data]** Electron documents `setAlwaysOnTop` levels for Windows; the
 default `floating` level stays below the taskbar. `setAspectRatio` and
 `-webkit-app-region` are supported. **[unverified]** Everything else:
-nobody in the loop runs Windows, and nothing builds the Windows
-installer in CI (AGENTS.md §15). Before the window phase merges, the
+nobody in the loop runs Windows, and nothing in CI installs or runs
+the Windows installer it can build (AGENTS.md §15). Before the window phase merges, the
 appendix steps run on a Windows install: on top of other windows,
 dragging, resizing at the ratio, Aero Snap, a second monitor at another
 scale, minimizing the main window, and the taskbar entry.
