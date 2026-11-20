@@ -22,8 +22,14 @@
 # The Windows installer has the same shape
 # (`fetch-windows-deps.mjs` + NSIS bundle) and `windows_deps.sh` is
 # its counterpart, including an inventory comparison that holds the
-# two platforms to the same dependency set. One difference is worth
-# knowing: the e2e workflow runs `pnpm run dist`, so a Linux package
+# two platforms to the same dependency set. A dependency only one
+# platform needs is exempt from that comparison only by declaring it
+# on its own entry (`onlyOn`, with the reason): Windows stages a CA
+# bundle beside its transport because a fresh Windows root store is
+# incomplete until Windows' own crypto stack fills it in, which the
+# transport never asks it to do, while the Linux transport reads the
+# distribution's CA store, so nothing of that kind is staged here.
+# One difference is worth knowing: the e2e workflow runs `pnpm run dist`, so a Linux package
 # is built and launched in CI on every relevant change, while the
 # Windows installer is built only when a pull request changes how a
 # package is built or a run is started by hand (packages.yml), and

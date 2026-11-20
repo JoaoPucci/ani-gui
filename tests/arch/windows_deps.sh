@@ -96,37 +96,39 @@ esac
 LINUX_FETCH=electron/scripts/fetch-linux-deps.mjs
 WINDOWS_FETCH=electron/scripts/fetch-windows-deps.mjs
 
-# The distinct dependencies a fetcher declares, one per line. An entry
-# with no `dep` is an error rather than an anonymous member of the set:
-# a silent `undefined` would compare equal across platforms and hide
-# exactly what this is here to find.
-canonical_deps() {
-    node --input-type=module -e "
-        import { DEPS } from '$REPO_ROOT/$1';
-        const missing = DEPS.filter((d) => typeof d.dep !== 'string' || !d.dep);
+# The comparison itself lives in electron/lib/dep-staging.cjs
+# (`parityGaps`, unit-tested beside it), so the cases it decides —
+# a declared one-platform dependency, a declaration naming the wrong
+# platform, one that outlived its reason — are exercised there rather
+# than re-derived here. A dependency only one platform needs is not a
+# gap when every entry of it says so in an `onlyOn` field naming that
+# platform and the reason; anything else on one side alone is.
+# `assertDepShape` runs over every entry first, so a malformed
+# declaration fails by name instead of being read as an exemption.
+if [ -f "$LINUX_FETCH" ] && [ -f "$WINDOWS_FETCH" ]; then
+    if ! node --input-type=module -e "
+        import { createRequire } from 'node:module';
+        import { DEPS as linux } from '$REPO_ROOT/$LINUX_FETCH';
+        import { DEPS as windows } from '$REPO_ROOT/$WINDOWS_FETCH';
+        const require = createRequire('$REPO_ROOT/electron/lib/');
+        const { assertDepShape, parityGaps } = require('./dep-staging.cjs');
+        const missing = [...linux, ...windows].filter((d) => typeof d.dep !== 'string' || !d.dep);
         if (missing.length) {
             console.error('entries without a dep field: ' + missing.map((d) => d.name).join(', '));
             process.exit(1);
         }
-        console.log([...new Set(DEPS.map((d) => d.dep))].sort().join('\n'));
-    "
-}
-
-if [ -f "$LINUX_FETCH" ] && [ -f "$WINDOWS_FETCH" ]; then
-    linux_deps=$(canonical_deps "$LINUX_FETCH")
-    windows_deps=$(canonical_deps "$WINDOWS_FETCH")
-    for dep in $linux_deps; do
-        if ! printf '%s\n' "$windows_deps" | grep -qx -- "$dep"; then
-            printf 'arch/windows_deps FAIL: %s is staged for Linux but not for Windows — a runtime dependency that lands on one packaged platform is unfinished\n' "$dep" >&2
-            failed=1
-        fi
-    done
-    for dep in $windows_deps; do
-        if ! printf '%s\n' "$linux_deps" | grep -qx -- "$dep"; then
-            printf 'arch/windows_deps FAIL: %s is staged for Windows but not for Linux — a runtime dependency that lands on one packaged platform is unfinished\n' "$dep" >&2
-            failed=1
-        fi
-    done
+        try {
+            for (const d of [...linux, ...windows]) assertDepShape(d);
+        } catch (e) {
+            console.error('arch/windows_deps FAIL: ' + e.message);
+            process.exit(1);
+        }
+        const gaps = parityGaps(linux, windows);
+        for (const g of gaps) console.error('arch/windows_deps FAIL: ' + g);
+        process.exit(gaps.length ? 1 : 0);
+    "; then
+        failed=1
+    fi
 fi
 
 # 5. The impersonating transport must be staged by name. Parity alone
@@ -145,6 +147,30 @@ if [ -f "$FETCH" ]; then
         printf "arch/windows_deps FAIL: %s does not stage 'curl-impersonate.exe' — the native transport falls back to plain curl, which the provider 403s\n" "$FETCH" >&2
         failed=1
     fi
+fi
+
+# 5b. The transport's CA bundle must be staged by name, beside it. The
+#    bundled curl-impersonate verifies with BoringSSL, into which
+#    `--ca-native` copies the Windows certificate store as it stands:
+#    a fresh install carries a minimal root set and downloads the rest
+#    only when Windows' own crypto stack builds a chain, which curl
+#    never asks it to do. Without the bundle every host whose root the
+#    machine has not used yet fails to verify, and every play from it
+#    fails — a Windows-only failure no Linux run can show. The backend
+#    reads the file by this name from the bundled directory
+#    (`CA_BUNDLE_FILE` in backend/src/scraper/fetch.rs).
+if [ -f "$FETCH" ]; then
+    if ! grep -q "binary: 'cacert.pem'" "$FETCH"; then
+        printf "arch/windows_deps FAIL: %s does not stage 'cacert.pem' — on a fresh Windows the transport fails to verify every host whose root the machine has not downloaded yet\n" "$FETCH" >&2
+        failed=1
+    fi
+fi
+# The name is a contract between two files, so both ends are pinned:
+# a rename on either side alone ships a bundle the transport never
+# opens.
+if ! grep -q '^pub const CA_BUNDLE_FILE: &str = "cacert.pem";$' backend/src/scraper/fetch.rs; then
+    printf "arch/windows_deps FAIL: backend/src/scraper/fetch.rs does not read the bundle as 'cacert.pem', the name the Windows fetcher stages\n" >&2
+    failed=1
 fi
 
 # 6. The installer's own hooks must not remove anything under
