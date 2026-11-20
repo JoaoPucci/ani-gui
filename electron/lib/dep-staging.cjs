@@ -58,7 +58,8 @@ const PLATFORM_LABELS = { linux: 'Linux', win32: 'Windows' };
 function assertOnlyOnShape(dep) {
 	if (dep.onlyOn === undefined) return;
 	const { onlyOn } = dep;
-	if (typeof onlyOn !== 'object' || onlyOn === null || !Object.hasOwn(PLATFORM_LABELS, onlyOn.platform)) {
+	const isObject = typeof onlyOn === 'object' && onlyOn !== null;
+	if (!isObject || !Object.hasOwn(PLATFORM_LABELS, onlyOn.platform)) {
 		throw new Error(
 			`dep '${dep.name}': onlyOn must be { platform, reason } with platform one of ` +
 				Object.keys(PLATFORM_LABELS).join(', '),
