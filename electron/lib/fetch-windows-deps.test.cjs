@@ -26,10 +26,22 @@ test('the package does not carry ffmpeg', async () => {
 	assert.deepEqual(carried, []);
 });
 
-test('the package still carries the transport and the downloader', async () => {
-	// Taking ffmpeg out must not take its neighbours with it.
+test('the package still carries the transport, its CA bundle and the downloader', async () => {
+	// Taking ffmpeg out must not take its neighbours with it. The CA
+	// bundle is the transport's trust anchors on a Windows whose root
+	// store has not filled in yet.
 	const { DEPS } = await import(FETCHER);
-	assert.deepEqual(DEPS.map((d) => d.dep).sort(), ['curl-impersonate', 'yt-dlp']);
+	assert.deepEqual(DEPS.map((d) => d.dep).sort(), ['ca-certificates', 'curl-impersonate', 'yt-dlp']);
+});
+
+test('Linux declares the CA bundle as taken from the distribution', async () => {
+	// The Linux transport reads the distribution's CA store, so the
+	// bundle Windows stages is a system dependency there, declared
+	// rather than left as a one-sided entry.
+	const linux = pathToFileURL(path.join(__dirname, '..', 'scripts', 'fetch-linux-deps.mjs')).href;
+	const { DEPS, SYSTEM_DEPS } = await import(linux);
+	assert.deepEqual(SYSTEM_DEPS.filter((d) => d.dep === 'ca-certificates').length, 1);
+	assert.deepEqual(DEPS.filter((d) => d.dep === 'ca-certificates'), []);
 });
 
 test('the installer downloads ffmpeg, once, from the essentials build the pin names', async () => {
