@@ -99,23 +99,22 @@ export const DEPS = [
 	// Staged under `binary` like the executables because the staging
 	// and the retired-file sweep key on that name; it is data, not a
 	// program, and the resolver never considers it one.
+	//
+	// Windows only, declared on the Linux side: a fresh Windows carries
+	// a minimal root store and downloads the rest only when Windows' own
+	// crypto stack builds a chain, and the transport copies the store as
+	// it stands without ever asking it to. The Linux transport reads the
+	// distribution's CA store, so `fetch-linux-deps.mjs` lists the same
+	// dependency in `SYSTEM_DEPS` and the .deb recommends it.
 	{
 		name: 'cacert',
-		dep: 'cacert',
+		dep: 'ca-certificates',
 		version: '2026-11-05',
 		archiveName: 'cacert-2026-11-05.pem',
 		url: 'https://curl.se/ca/cacert-2026-11-05.pem',
 		sha256: '427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285',
 		binary: 'cacert.pem',
 		directBinary: true,
-		onlyOn: {
-			platform: 'win32',
-			reason:
-				"A fresh Windows carries a minimal root store and downloads the rest only when Windows' own " +
-				'crypto stack builds a chain. The transport copies the store as it stands and never asks ' +
-				'Windows to build one, so without a bundle every host whose root the machine has not used ' +
-				"yet fails to verify. The Linux transport reads the distribution's complete CA store.",
-		},
 	},
 ];
 

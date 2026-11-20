@@ -103,7 +103,7 @@ export const BUNDLED_TOOLS: BundledTool[] = [
 		// beside the Windows certificate store. A fresh Windows has not
 		// downloaded most root certificates yet, and only Windows' own
 		// crypto stack makes it, which the transport never uses.
-		name: 'cacert',
+		name: 'ca-certificates',
 		version: '2026-11-05',
 		license: 'MPL-2.0',
 		url: 'https://curl.se/docs/caextract.html',

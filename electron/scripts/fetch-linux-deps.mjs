@@ -166,6 +166,14 @@ export const SYSTEM_DEPS = [
 		name: 'ffmpeg',
 		dep: 'ffmpeg',
 	},
+	// The CA certificates the transport verifies with. curl-impersonate
+	// reads the distribution's store here; on Windows the package stages
+	// Mozilla's list beside the transport instead, because a fresh
+	// Windows root store is incomplete to it.
+	{
+		name: 'ca-certificates',
+		dep: 'ca-certificates',
+	},
 ];
 
 const cacheDir = path.join(electronDir, '.linux-deps-cache');
