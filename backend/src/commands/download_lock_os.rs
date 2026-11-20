@@ -91,6 +91,8 @@ mod imp {
     /// that is not hidden — one an earlier version created and
     /// somebody still holds, since the sweep removed the rest — is no
     /// source, and the next lock file hides the directory instead.
+    /// The copy replaces the directory's attributes rather than adding
+    /// one: the standard library has no way to set a single bit.
     /// Best-effort throughout: a visible directory is cosmetic.
     pub(crate) fn hide_dir(dir: &std::path::Path, file: &std::fs::File) {
         let hidden = |m: &std::fs::Metadata| m.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0;

@@ -75,9 +75,13 @@ pub(super) static TARGET_LOCKS: std::sync::Mutex<
 /// transfer rather than a deleted file.
 ///
 /// The cost the user sees is a directory in their download folder
-/// while a download runs, and nothing after: the lock file goes when
-/// its download ends and the directory when the last one does (see
-/// [`release::InstanceLock`]). It is dot-prefixed, which hides it on Linux and
+/// while a download runs: the lock file goes when its download ends
+/// and the directory when the last one does (see
+/// [`release::InstanceLock`]). A process that ends without unwinding —
+/// a crash, a kill, every quit on Windows — leaves its file until a
+/// later download in the same folder sweeps it, and a volume that
+/// cannot lock at all keeps every file, since nothing can prove one is
+/// unheld. It is dot-prefixed, which hides it on Linux and
 /// macOS, and carries the hidden attribute on Windows, where a dot
 /// hides nothing.
 pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::PathBuf> {
@@ -105,6 +109,15 @@ where
     tokio::task::spawn_blocking(move || f(&path))
         .await
         .map_err(|_| crate::error::AniError::Io)
+}
+
+/// Whether a download in this process has used the lock at
+/// `lock_path` this run — the map's entries are kept, see above.
+fn in_use_here(lock_path: &std::path::Path) -> bool {
+    let guard = TARGET_LOCKS.lock().unwrap_or_else(|e| e.into_inner());
+    guard
+        .as_ref()
+        .is_some_and(|map| map.contains_key(lock_path))
 }
 
 pub(crate) fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {

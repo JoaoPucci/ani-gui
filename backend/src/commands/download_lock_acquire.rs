@@ -33,9 +33,10 @@ const INSTANCE_LOCK_LOSSES: u32 = 40;
 /// invisibly. Waiting between polls on the async side means a
 /// cancelled download lands on an await point and is simply dropped.
 ///
-/// Only the filesystem calls run on the blocking pool — the sweep, the
-/// open and the check that the locked file is still the one at the
-/// path — where none of them can park indefinitely.
+/// Only the filesystem calls run on the blocking pool — the sweep, and
+/// each try at the lock: the open, the lock's non-blocking try and the
+/// check that the locked file is still the one at the path. None of
+/// them waits for another holder, which is what would park a thread.
 ///
 /// Once locked, the handle is checked against the path, and an
 /// attempt whose file was removed while it waited opens again: see
@@ -59,37 +60,61 @@ pub(crate) async fn acquire_instance_lock(
     let path = super::target_lock_path(target).ok_or(AniError::Io)?;
     sweep_once(&path).await;
     let mut losses = 0;
+    let mut busy = None;
     loop {
-        if let Some(file) = open_lock_file(&path, &mut losses, deadline).await? {
-            wait_for_lock(&file, deadline).await?;
-            let (file, kept) = on_blocking_pool(path.clone(), move |p| {
-                let kept = os::still_named(&file, p);
-                (file, kept)
-            })
-            .await?;
-            if kept {
-                return Ok(InstanceLock::new(file, path));
+        let open = busy.take();
+        match on_blocking_pool(path.clone(), move |p| attempt(p, open)).await? {
+            Attempt::Held(lock) => return Ok(lock),
+            Attempt::Busy(file) => {
+                busy = Some(file);
+                poll_until(deadline).await?;
             }
-            // Removed while this waited: what it holds has no name.
-            note_loss(&mut losses, deadline).await?;
+            Attempt::Lost => note_loss(&mut losses, deadline).await?,
+            Attempt::Failed => return Err(AniError::Io),
         }
     }
 }
 
-/// Open (creating) the lock file, or `None` when a concurrent removal
-/// got in the way and the caller should try again.
-async fn open_lock_file(
-    path: &std::path::Path,
-    losses: &mut u32,
-    deadline: tokio::time::Instant,
-) -> Result<Option<std::fs::File>> {
-    match on_blocking_pool(path.to_path_buf(), os::open_creating).await? {
-        Ok(file) => Ok(Some(file)),
-        Err(e) if os::lost_to_removal(&e) => {
-            note_loss(losses, deadline).await?;
-            Ok(None)
-        }
-        Err(_) => Err(AniError::Io),
+/// One try at the lock, run whole on the blocking pool.
+enum Attempt {
+    /// Locked, and still the file at the lock's name.
+    Held(InstanceLock),
+    /// Another holder has it; the handle to try again with.
+    Busy(std::fs::File),
+    /// A concurrent removal got in the way: try again from the open.
+    Lost,
+    /// The lock file cannot be opened or locked at all.
+    Failed,
+}
+
+/// Open the lock file (unless `open` is a handle from a busy try),
+/// try its lock, and check what is locked is still at the path.
+///
+/// Whole on the blocking pool, so a cancel cannot strand what it took.
+/// A cancelled acquisition drops the join handle, not the call, and
+/// the call's answer is then dropped with nobody to read it. A lock
+/// taken here is already an [`InstanceLock`] by then, so dropping it
+/// releases and removes the file as any holder's drop does; a lock
+/// handed back as a bare handle to be wrapped on the async side would
+/// be closed without either.
+fn attempt(path: &std::path::Path, open: Option<std::fs::File>) -> Attempt {
+    let file = match open.map_or_else(|| os::open_creating(path), Ok) {
+        Ok(file) => file,
+        Err(e) if os::lost_to_removal(&e) => return Attempt::Lost,
+        Err(_) => return Attempt::Failed,
+    };
+    match fs4::FileExt::try_lock(&file) {
+        Ok(()) => {}
+        Err(fs4::TryLockError::WouldBlock) => return Attempt::Busy(file),
+        Err(fs4::TryLockError::Error(_)) => return Attempt::Failed,
+    }
+    let lock = InstanceLock::new(file, path.to_path_buf());
+    // Removed while this waited: what it holds has no name, and
+    // dropping it removes nothing, since the release checks the same.
+    if lock.is_at_path() {
+        Attempt::Held(lock)
+    } else {
+        Attempt::Lost
     }
 }
 
@@ -101,17 +126,6 @@ async fn note_loss(losses: &mut u32, deadline: tokio::time::Instant) -> Result<(
         return Err(AniError::Io);
     }
     poll_until(deadline).await
-}
-
-/// Poll the OS lock on `file` until it is granted or `deadline` passes.
-async fn wait_for_lock(file: &std::fs::File, deadline: tokio::time::Instant) -> Result<()> {
-    loop {
-        match fs4::FileExt::try_lock(file) {
-            Ok(()) => return Ok(()),
-            Err(fs4::TryLockError::WouldBlock) => poll_until(deadline).await?,
-            Err(fs4::TryLockError::Error(_)) => return Err(AniError::Io),
-        }
-    }
 }
 
 /// Sleep one poll interval, clipped to `deadline`; [`AniError::Timeout`]

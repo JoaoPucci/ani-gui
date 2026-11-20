@@ -25,8 +25,9 @@ use crate::scraper::provider::StreamSource;
 
 #[path = "download_lock.rs"]
 mod lock;
-use lock::*;
-// The lock's property cases reach these through this module.
+#[cfg(not(test))]
+use lock::{acquire_instance_lock, target_lock};
+// The lock's own cases reach these through this module.
 #[cfg(test)]
 pub(crate) use lock::{acquire_instance_lock, target_lock, target_lock_path};
 #[path = "download_resume.rs"]

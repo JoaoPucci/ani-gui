@@ -37,6 +37,12 @@ use super::os;
 ///   and the crate forbids the unsafe call that reads it — but a file
 ///   that cannot be deleted while open needs no check that it was.
 ///
+/// An instance of an earlier version takes part in none of this: it
+/// opens the file allowing deletion and never checks what it locked,
+/// so a removal here can leave it holding a nameless file while a new
+/// instance locks a fresh one. The lock is best-effort, and what that
+/// costs is a duplicate transfer, which publication refuses to install.
+///
 /// The work is done inline rather than on the blocking pool. A drop
 /// during runtime teardown is exactly when blocking tasks no longer
 /// start, and a removal and a directory removal are no heavier than
@@ -54,6 +60,15 @@ impl InstanceLock {
             file: Some(file),
             path,
         }
+    }
+}
+
+impl InstanceLock {
+    /// Whether the locked file is still the one at the lock's name.
+    pub(super) fn is_at_path(&self) -> bool {
+        self.file
+            .as_ref()
+            .is_some_and(|file| os::still_named(file, &self.path))
     }
 }
 
@@ -101,7 +116,8 @@ pub(super) async fn sweep_once(lock_path: &std::path::Path) {
             .insert(dir.clone())
     };
     if first {
-        let _ = super::on_blocking_pool(dir, sweep).await;
+        let own = lock_path.to_path_buf();
+        let _ = super::on_blocking_pool(dir, move |d| sweep(d, &own)).await;
     }
 }
 
@@ -113,7 +129,15 @@ pub(super) async fn sweep_once(lock_path: &std::path::Path) {
 /// open is handled by the same discipline that protects a release.
 /// Anything that cannot be opened or locked is left alone: a leftover
 /// costs an empty file, a wrong removal a lock.
-fn sweep(dir: &std::path::Path) {
+/// Lock files of this process's own downloads are skipped, however the
+/// lock would answer — except `own`, the one about to be taken, whose
+/// leftover is better replaced. Where locks belong to the process
+/// rather than to the open file (NFS emulates `flock` with POSIX
+/// record locks), a second handle in this process would be granted a
+/// running download's lock, remove its file and, on closing, release
+/// its lock. Checked per entry, so a download registered while the
+/// sweep runs is spared from then on.
+fn sweep(dir: &std::path::Path, own: &std::path::Path) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -122,6 +146,9 @@ fn sweep(dir: &std::path::Path) {
             continue;
         }
         let path = entry.path();
+        if path != own && super::in_use_here(&path) {
+            continue;
+        }
         let Ok(file) = os::lock_file_options().open(&path) else {
             continue;
         };
