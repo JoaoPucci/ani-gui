@@ -281,3 +281,69 @@ async fn a_held_lock_file_cannot_be_deleted_on_windows() {
     drop(held);
     assert!(!lock_path.exists(), "its holder removes it on release");
 }
+
+/// A lock directory that cannot be created is a refusal, not a wait:
+/// here a file already has the directory's name.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unusable_lock_directory_is_refused_at_once() {
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(dest.path().join(".ani-gui-locks"), b"").expect("stage an obstruction");
+    let target = dest.path().join("Blocked Show Episode 1.mp4");
+    let got = acquire_instance_lock(&target, long_deadline()).await;
+    assert!(
+        matches!(got, Err(crate::error::AniError::Io)),
+        "an obstructed lock directory must refuse: {got:?}"
+    );
+}
+
+/// A release leaves alone a file somebody else put at the lock's name
+/// after removing this one from outside the protocol — it is theirs
+/// now, and removing it would free a lock they hold.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_release_keeps_a_file_that_replaced_its_own() {
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Replaced Show Episode 1.mp4");
+    let lock_path = target_lock_path(&target).expect("a lock path");
+    let held = acquire_instance_lock(&target, long_deadline())
+        .await
+        .expect("a lock");
+    std::fs::remove_file(&lock_path).expect("removed from outside");
+    let replacement = foreign_handle(&lock_path);
+    drop(held);
+    assert!(
+        lock_path.is_file(),
+        "a release must not remove a file that is not the one it held"
+    );
+    drop(replacement);
+}
+
+/// An open that keeps failing the way a concurrent removal does gives
+/// up after a bounded number of tries instead of polling to the
+/// deadline. A dangling link at the lock's name, into a directory that
+/// does not exist, makes every open report "not found".
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_open_that_keeps_losing_gives_up_before_the_deadline() {
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Dangling Show Episode 1.mp4");
+    let lock_path = target_lock_path(&target).expect("a lock path");
+    std::fs::create_dir_all(lock_path.parent().expect("lock dir")).expect("lock dir");
+    std::os::unix::fs::symlink(dest.path().join("missing/dir/file"), &lock_path)
+        .expect("stage a dangling link");
+    let started = std::time::Instant::now();
+    let got = acquire_instance_lock(
+        &target,
+        tokio::time::Instant::now() + std::time::Duration::from_secs(60),
+    )
+    .await;
+    assert!(
+        matches!(got, Err(crate::error::AniError::Io)),
+        "a lock that cannot be opened must be given up: {got:?}"
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(30),
+        "giving up must not wait out the deadline: {:?}",
+        started.elapsed()
+    );
+}
