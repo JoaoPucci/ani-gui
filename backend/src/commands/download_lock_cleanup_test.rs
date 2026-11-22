@@ -14,6 +14,7 @@
 //! process.
 
 use super::download::{acquire_instance_lock, target_lock_path};
+use super::download_lock_deadline_test::Deadline;
 
 fn long_deadline() -> tokio::time::Instant {
     tokio::time::Instant::now() + std::time::Duration::from_secs(30)
@@ -50,6 +51,7 @@ fn foreign_handle(path: &std::path::Path) -> std::fs::File {
 /// runtime teardown dropping the task — so this is all four.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn releasing_the_lock_removes_its_file_and_the_empty_directory() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Tidy Show Episode 1.mp4");
     let lock_path = target_lock_path(&target).expect("a lock path");
@@ -74,6 +76,7 @@ async fn releasing_the_lock_removes_its_file_and_the_empty_directory() {
 /// in the same folder keeps it, and keeps its own file.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_directory_stays_while_another_lock_is_in_it() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     let first = dest.path().join("Show Episode 1.mp4");
     let second = dest.path().join("Show Episode 2.mp4");
@@ -107,6 +110,7 @@ async fn the_directory_stays_while_another_lock_is_in_it() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_waiter_whose_file_was_removed_ends_up_holding_the_path() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Raced Show Episode 1.mp4");
     let lock_path = target_lock_path(&target).expect("a lock path");
@@ -154,6 +158,7 @@ async fn a_waiter_whose_file_was_removed_ends_up_holding_the_path() {
 /// within a few rounds.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn contenders_removing_the_lock_never_hold_it_together() {
+    let _deadline = Deadline::arm();
     use std::sync::atomic::{AtomicUsize, Ordering};
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Busy Show Episode 1.mp4");
@@ -196,6 +201,7 @@ async fn contenders_removing_the_lock_never_hold_it_together() {
 /// next uses the folder — but never one somebody still holds.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stale_lock_files_are_swept_and_held_ones_are_kept() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     let stale = target_lock_path(&dest.path().join("Old Show Episode 3.mp4")).expect("stale");
     let live = target_lock_path(&dest.path().join("Old Show Episode 4.mp4")).expect("live");
@@ -222,6 +228,7 @@ async fn stale_lock_files_are_swept_and_held_ones_are_kept() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_download_that_never_starts_leaves_no_lock() {
+    let _deadline = Deadline::arm();
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let got = super::download::spawn_download_tool(
@@ -250,6 +257,7 @@ async fn a_download_that_never_starts_leaves_no_lock() {
 #[cfg(windows)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_lock_directory_is_hidden_on_windows() {
+    let _deadline = Deadline::arm();
     use std::os::windows::fs::MetadataExt;
     const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
     let dest = tempfile::tempdir().expect("dest");
@@ -281,6 +289,7 @@ async fn the_lock_directory_is_hidden_on_windows() {
 #[cfg(windows)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_held_lock_file_cannot_be_deleted_on_windows() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Pinned Show Episode 1.mp4");
     let lock_path = target_lock_path(&target).expect("a lock path");
@@ -303,6 +312,7 @@ async fn a_held_lock_file_cannot_be_deleted_on_windows() {
 /// here a file already has the directory's name.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_unusable_lock_directory_is_refused_at_once() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     std::fs::write(dest.path().join(".ani-gui-locks"), b"").expect("stage an obstruction");
     let target = dest.path().join("Blocked Show Episode 1.mp4");
@@ -319,6 +329,7 @@ async fn an_unusable_lock_directory_is_refused_at_once() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_release_keeps_a_file_that_replaced_its_own() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Replaced Show Episode 1.mp4");
     let lock_path = target_lock_path(&target).expect("a lock path");
@@ -342,6 +353,7 @@ async fn a_release_keeps_a_file_that_replaced_its_own() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_open_that_keeps_losing_gives_up_before_the_deadline() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Dangling Show Episode 1.mp4");
     let lock_path = target_lock_path(&target).expect("a lock path");
@@ -374,6 +386,7 @@ async fn an_open_that_keeps_losing_gives_up_before_the_deadline() {
 /// cancel in that window keeps one.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cancelled_acquisitions_leave_nothing_behind() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     // One episode per round: a later acquisition of the same name would
     // take over and remove an earlier round's leftover, hiding it.
@@ -443,6 +456,7 @@ async fn cancelled_acquisitions_leave_nothing_behind() {
 /// it closed its handle.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_sweep_spares_a_download_this_process_is_running() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     let sibling = dest.path().join("Sibling Show Episode 2.mp4");
     let sibling_lock = target_lock_path(&sibling).expect("a lock path");
@@ -474,6 +488,7 @@ async fn the_sweep_spares_a_download_this_process_is_running() {
 /// by construction there.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_waiter_cancelled_after_its_holder_left_leaves_nothing() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Waiting Show Episode 1.mp4");
     let lock_path = target_lock_path(&target).expect("a lock path");
@@ -510,6 +525,7 @@ async fn a_waiter_cancelled_after_its_holder_left_leaves_nothing() {
 /// lock can say whether the file is free.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_waiter_that_gives_up_keeps_a_file_another_handle_holds() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Held Show Episode 1.mp4");
     let lock_path = target_lock_path(&target).expect("a lock path");
@@ -538,6 +554,7 @@ async fn a_waiter_that_gives_up_keeps_a_file_another_handle_holds() {
 #[cfg(windows)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_release_outlasts_a_brief_outside_handle_on_windows() {
+    let _deadline = Deadline::arm();
     use std::os::windows::fs::OpenOptionsExt;
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Scanned Show Episode 1.mp4");
@@ -583,6 +600,7 @@ async fn a_release_outlasts_a_brief_outside_handle_on_windows() {
 #[cfg(windows)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_release_with_a_waiter_behind_it_returns_at_once_on_windows() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Queued Show Episode 1.mp4");
     let held = acquire_instance_lock(&target, long_deadline())
@@ -639,6 +657,7 @@ fn refusal_passes(e: &std::io::Error) -> bool {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_passing_refusal_is_retried_off_the_caller() {
+    let _deadline = Deadline::arm();
     let Some((_root, file)) = refused_for(std::time::Duration::from_millis(5)) else {
         return;
     };
@@ -664,6 +683,7 @@ async fn a_passing_refusal_is_retried_off_the_caller() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_refusal_that_outlasts_the_retries_leaves_the_file() {
+    let _deadline = Deadline::arm();
     let Some((_root, file)) = refused_for(std::time::Duration::from_millis(600)) else {
         return;
     };
@@ -678,6 +698,7 @@ async fn a_refusal_that_outlasts_the_retries_leaves_the_file() {
 #[cfg(unix)]
 #[test]
 fn without_a_runtime_the_retries_run_in_place() {
+    let _deadline = Deadline::arm();
     let Some((_root, file)) = refused_for(std::time::Duration::from_millis(5)) else {
         return;
     };
@@ -691,6 +712,7 @@ fn without_a_runtime_the_retries_run_in_place() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn on_unix_a_refused_delete_is_not_retried() {
+    let _deadline = Deadline::arm();
     // Shorter than the retry window (seven tries 10 ms apart), so a
     // retry would land after the refusal lifts and remove the file.
     let Some((_root, file)) = refused_for(std::time::Duration::from_millis(40)) else {
@@ -715,6 +737,7 @@ async fn on_unix_a_refused_delete_is_not_retried() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_waiter_outlasts_any_number_of_handovers() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Busy Show Episode 9.mp4");
     let lock_path = target_lock_path(&target).expect("a lock path");
