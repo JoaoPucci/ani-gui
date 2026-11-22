@@ -6,19 +6,22 @@
 /// The name an episode's download takes in `dest`: `"{title} Episode
 /// {episode}"` with the title made
 /// [`file_safe`](super::download_names::file_safe), [`unhidden`] and
-/// not a device — just `"Episode {episode}"` for a title of dots — or
-/// the one an earlier version gave it — numbered `former`, spelled
-/// with its leading dots, or with the title as the provider gave it —
-/// when a file under that name is already there: that file is the
-/// episode, and it keeps the name the user has it under. The name
+/// not a device, or just `"Episode {episode}"` for a title of dots.
+///
+/// When a file is already there under a name an earlier version gave
+/// the episode, that file is the episode and keeps the name the user
+/// has it under. The earlier names are the ones numbered `former`, the
+/// ones spelled with the title's leading dots, the ones from before
+/// the device rule, and the title as the provider gave it. The name
 /// this version gives leads each number's spellings, so where the
 /// visible and the dotted file are both there the visible one is it.
 ///
-/// The provider's spelling is looked for only off Windows. Earlier
-/// versions saved it as a real file only where the filesystem accepts
-/// the colon; on Windows the same path names a stream of the empty
-/// file a failed download left, and finding that stream would hand
-/// the broken name out again.
+/// The spelling from before the device rule is looked for only off
+/// Windows, which opens it as the device. The provider's spelling is
+/// too: earlier versions saved it as a real file only where the
+/// filesystem accepts the colon, and on Windows the same path names a
+/// stream of the empty file a failed download left, so finding that
+/// stream would hand the broken name out again.
 #[must_use]
 pub(crate) fn episode_stem(
     dest: &std::path::Path,
@@ -30,13 +33,14 @@ pub(crate) fn episode_stem(
     let shown = unhidden(&safe);
     let dotted = shown != safe;
     let stem = |t: &str, n: &str| format!("{t} Episode {n}");
-    let named = |n: &str| {
-        not_a_device(if dotted && shown.is_empty() {
+    let plain = |n: &str| {
+        if dotted && shown.is_empty() {
             format!("Episode {n}")
         } else {
             stem(shown, n)
-        })
+        }
     };
+    let named = |n: &str| not_a_device(plain(n));
     let on_disk = |s: &String| std::fs::symlink_metadata(dest.join(format!("{s}.mp4"))).is_ok();
     // A title with a slash was never an earlier download's name, and
     // joining it as a path can reach outside `dest`.
@@ -44,6 +48,11 @@ pub(crate) fn episode_stem(
     let mut earlier: Vec<String> = Vec::new();
     for n in former.into_iter().chain([episode]) {
         earlier.push(named(n));
+        // Before the device rule, the name was this one with its dot:
+        // an ordinary file off Windows, and the console on it.
+        if !cfg!(windows) && plain(n) != named(n) {
+            earlier.push(plain(n));
+        }
         if dotted {
             earlier.push(stem(&safe, n));
         }
