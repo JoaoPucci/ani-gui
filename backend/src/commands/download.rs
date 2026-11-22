@@ -385,8 +385,8 @@ where
         super::download_place::episode_place(&dest, &resolved.title, &played, former.as_deref());
     sweep_lock_leftovers(&dest).await;
     let mut visits = OldScratchVisits::default();
-    visits.visit(&dest);
-    visits.visit(&place.dir);
+    drop(visits.visit(&dest));
+    drop(visits.visit(&place.dir));
     tracing::info!(
         slug = %resolved.slug,
         episode = %args.episode,

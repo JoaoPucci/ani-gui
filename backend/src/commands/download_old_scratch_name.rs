@@ -91,8 +91,10 @@ fn is_tool_file(file: &str) -> bool {
 /// group and rendition names, with whitespace and `,/+[]()` replaced
 /// by `_` (on Windows, the characters Windows forbids in a name by
 /// `#`), so any letter can be in it and none of those can. One holding
-/// any of them is not yt-dlp's: a copy of a leftover, say, renamed
-/// `… (1).mp4` by a file manager.
+/// any of them, or a path separator, is not yt-dlp's: a copy of a
+/// leftover, say, renamed `… (1).mp4` or `… - Copy.mp4` by a file
+/// manager. A copy named with only letters, digits, `_`, `-` and `.`
+/// added is indistinguishable from an id, and still matches.
 fn is_format_id(id: &str) -> bool {
     !id.is_empty()
         && !id.chars().any(|c| {

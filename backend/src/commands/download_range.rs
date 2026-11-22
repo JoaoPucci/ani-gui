@@ -240,7 +240,7 @@ where
     let mut reveal = super::download_place::RevealFolder::new(dest);
     super::download::sweep_lock_leftovers(dest).await;
     let mut visits = super::download::OldScratchVisits::default();
-    visits.visit(dest);
+    drop(visits.visit(dest));
     for ep in first..=last {
         // The shape the dock's progress parser consumes — the script's
         // own per-iteration announcement, which drives the
@@ -279,7 +279,7 @@ where
             }
         };
         let place = super::download_place::episode_place(dest, &serving.hit.title, &ep_no, None);
-        visits.visit(&place.dir);
+        drop(visits.visit(&place.dir));
         tracing::info!(
             slug = %serving.hit.slug,
             episode = %ep_no,
