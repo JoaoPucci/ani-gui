@@ -8632,3 +8632,39 @@ async fn a_range_whose_every_episode_was_already_there_opens_the_chosen_folder()
         "no empty show folder"
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_into_a_show_folder_sweeps_the_locks_earlier_versions_left_in_the_chosen_one() {
+    // Every version before show folders took its lock beside a flat
+    // episode, so their leftovers sit in the chosen folder's lock
+    // directory, which a download into a show's folder never locks in.
+    // The first download into a chosen folder sweeps it all the same.
+    for episode in ["1", "1-2"] {
+        let chosen = tempfile::tempdir().expect("chosen");
+        let logs = tempfile::tempdir().expect("logs");
+        let ran = logs.path().join("ran");
+        let locks = chosen.path().join(".ani-gui-locks");
+        std::fs::create_dir(&locks).expect("lock dir");
+        std::fs::write(locks.join("Old Show Episode 3.mp4"), b"").expect("leftover");
+        let server = show_with_two_episodes(
+            if episode == "1" {
+                "sweep-show-34"
+            } else {
+                "sweep-range-35"
+            },
+            "Sweep Show",
+            "https://subs.invalid/en.vtt",
+        );
+        download_into(&server, "Sweep Show", episode, chosen.path(), &ran).await;
+        assert!(
+            !locks.exists(),
+            "{episode}: the earlier version's leftover and its directory are gone: {:?}",
+            tree(chosen.path())
+        );
+        assert!(chosen
+            .path()
+            .join("Sweep Show/Sweep Show Episode 1.mp4")
+            .is_file());
+    }
+}
