@@ -24,13 +24,19 @@ const INSTANCE_LOCK_POLL: std::time::Duration = std::time::Duration::from_millis
 /// In a row, because a try that finds the lock held starts the count
 /// again: the volume opened and locked the file, so it plainly works,
 /// and the losses before were others' handovers. A waiter queued behind
-/// a busy episode meets one now and then for as long as the episode
-/// keeps changing hands, and counted over the whole wait those ran past
-/// the cap and refused a waiter on a working volume.
+/// a busy episode can meet one at any handover for as long as the
+/// episode keeps changing hands, and counted over the whole wait enough
+/// handovers would refuse it on a working volume.
 ///
-/// A lock taken on a file that lost its name while this waited does not
-/// count either: that is a holder finishing and another taking over,
-/// which such a waiter sees once per handover.
+/// The reset leaves one case a volume that never works can still poll
+/// to the deadline: one whose open files never match their path (the
+/// overlay and FUSE mounts below) with another instance contending,
+/// whose brief hold can answer a try as busy. The deadline bounds it.
+///
+/// A lock taken on a file that lost its name while this waited is not
+/// counted at all: that is a holder finishing and another taking over,
+/// which such a waiter sees once per handover. Since a busy try always
+/// comes before it, the reset alone would leave it at most one count.
 const INSTANCE_LOCK_LOSSES: u32 = 40;
 
 /// Take the lock that crosses app instances for `target`, waiting for
@@ -188,10 +194,23 @@ fn open_creating_with(
     create_dir: impl FnOnce(&std::path::Path) -> std::io::Result<()>,
 ) -> std::io::Result<std::fs::File> {
     let dir = path.parent().unwrap_or(path);
-    create_dir(dir)?;
+    match create_dir(dir) {
+        Ok(()) => {}
+        // Found there and removed before the check that it is a
+        // directory: a release emptied it. The open answers for what is
+        // there now — a directory made again, or "not found", a loss.
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && !obstructed(dir) => {}
+        Err(e) => return Err(e),
+    }
     let file = os::lock_file_options().create(true).open(path)?;
     os::hide_dir(dir, &file);
     Ok(file)
+}
+
+/// Whether something other than a directory has the lock directory's
+/// name — a refusal that no retry will change.
+fn obstructed(dir: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(dir).is_ok_and(|m| !m.is_dir())
 }
 
 #[cfg(test)]
