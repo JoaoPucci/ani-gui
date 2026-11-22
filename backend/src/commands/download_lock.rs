@@ -76,9 +76,10 @@ pub(super) static TARGET_LOCKS: std::sync::Mutex<
 /// lock can alias differently — the consequence is now a wasted
 /// transfer rather than a deleted file.
 ///
-/// The cost the user sees is a directory in their download folder. It
-/// is dot-prefixed, so hidden on Linux and macOS and visible on
-/// Windows.
+/// The cost the user sees is a directory beside their episodes: in
+/// the show's folder, or in the download folder for an episode a
+/// version from before show folders saved there. It is dot-prefixed,
+/// so hidden on Linux and macOS and visible on Windows.
 pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::PathBuf> {
     let parent = target.parent()?;
     Some(parent.join(".ani-gui-locks").join(target.file_name()?))

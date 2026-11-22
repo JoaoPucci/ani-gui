@@ -1,7 +1,8 @@
 //! Where an episode's download goes inside the folder the user chose:
 //! a folder of its own per show, named for the show, with the episode
-//! and its sidecars in it — the layout Plex, Jellyfin and Kodi read a
-//! series library in.
+//! and its sidecars in it — the folder-per-show convention media
+//! servers such as Plex, Jellyfin and Kodi organise a series library
+//! by.
 //!
 //! The folder takes the title the file's name is made from, through
 //! the same [`file_safe`](super::download_names::file_safe), so the
@@ -9,10 +10,11 @@
 //! a provider lists a season's uncensored copy as "… (Uncensored)",
 //! a range can take one episode from each copy, and both are the same
 //! show, so they share its folder while each file keeps the name of
-//! the copy it came from. A folder name is a whole
-//! path component rather than the start of a longer name, which a file
-//! name never is, so it answers four more questions the stem never had
-//! to — see [`show_folder_name`].
+//! the copy it came from. A folder name is a whole path component
+//! rather than the start of a longer name, so its edges, its spacing
+//! and its length matter in ways the stem's never did, and a device
+//! name has to be ruled out on the name alone — see
+//! [`show_folder_name`].
 //!
 //! Earlier versions saved every episode straight into the chosen
 //! folder. Those files stay where they are: the user's files are not
@@ -26,12 +28,16 @@ use std::path::{Path, PathBuf};
 /// Windows measures names and paths in.
 ///
 /// The folder adds its name to every path under it, and the episode's
-/// own name already carries the same title. A packaged Windows build
-/// runs yt-dlp and ffmpeg, which are not guaranteed to reach past the
-/// 260-unit `MAX_PATH` where the system has not opted into long paths,
-/// so a long light-novel title, counted twice, would carry an episode
-/// past it. Eighty keeps the folder readable and leaves the file's
-/// name the room it had before folders existed.
+/// own name already carries the same title, so a long light-novel title
+/// appears twice in each episode's path. The bound keeps that second
+/// copy readable and short. It matters most for the paths the bundled
+/// yt-dlp and ffmpeg are handed: they write to a scratch name in the
+/// show's folder, and are not guaranteed to reach past Windows' 260-unit
+/// `MAX_PATH` where the system has not opted into long paths, so the
+/// folder's length is most of what stands between a deep download
+/// folder and that limit. It does not bound the episode's own name,
+/// which the app writes itself, through paths the standard library
+/// passes on without the limit.
 pub(crate) const SHOW_FOLDER_MAX_UNITS: usize = 80;
 
 /// The names Windows opens as a device whatever follows them: a folder
@@ -145,6 +151,11 @@ pub(crate) struct EpisodePlace {
 /// empty one is what an interrupted download leaves at its name, and a
 /// directory or anything else is not an episode; both are left alone,
 /// and the download goes to the show's folder.
+///
+/// A show's folder that is a link to a folder elsewhere is followed,
+/// as any folder the user made would be: linking a show onto another
+/// drive is a choice about where its episodes live. The episode's own
+/// name is still never written through a link (`at_target`).
 #[must_use]
 pub(crate) fn episode_place(
     chosen: &Path,
