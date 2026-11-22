@@ -52,13 +52,16 @@ impl OldScratchVisits {
     /// Sweep `dir` on the blocking pool, without waiting for it, unless
     /// this download already has. Migration code, to go around v1.0:
     /// "Retiring the old-scratch sweep" in `docs/deferred-work.md`.
-    pub(crate) fn visit(&mut self, dir: &Path) {
-        if self.first_visit(dir) {
+    /// Says whether it started one.
+    pub(crate) fn visit(&mut self, dir: &Path) -> bool {
+        let first = self.first_visit(dir);
+        if first {
             let dir = dir.to_path_buf();
             drop(tokio::task::spawn_blocking(move || {
                 sweep(&dir, SystemTime::now());
             }));
         }
+        first
     }
 
     /// Whether this download has not swept `dir` yet, noting that it
