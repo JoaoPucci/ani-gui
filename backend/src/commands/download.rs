@@ -26,8 +26,11 @@ use crate::scraper::provider::StreamSource;
 #[path = "download_lock.rs"]
 mod lock;
 pub(crate) use lock::sweep_lock_leftovers;
+#[path = "download_old_scratch.rs"]
+mod old_scratch;
 #[cfg(not(test))]
 use lock::{acquire_instance_lock, target_lock};
+pub(crate) use old_scratch::OldScratchVisits;
 // The lock's own cases reach these through this module.
 #[cfg(test)]
 pub(crate) use lock::{acquire_instance_lock, target_lock, target_lock_path};
@@ -382,6 +385,9 @@ where
     let place =
         super::download_place::episode_place(&dest, &resolved.title, &played, former.as_deref());
     sweep_lock_leftovers(&dest).await;
+    let mut visits = OldScratchVisits::default();
+    drop(visits.visit(&dest));
+    drop(visits.visit(&place.dir));
     tracing::info!(
         slug = %resolved.slug,
         episode = %args.episode,
