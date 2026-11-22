@@ -367,19 +367,19 @@ where
             }
         };
 
-    tracing::info!(
-        slug = %resolved.slug,
-        episode = %args.episode,
-        mode = %args.mode,
-        dest = %dest.display(),
-        "download: spawning tool on natively resolved stream",
-    );
     // Named for the episode it plays, or for the number an earlier
     // version gave it where that version's download is in the folder.
     let played = crate::commands::play_native_record::matched_episode(&resolved, &args.episode);
     let former = crate::commands::play_native_merge::former_number(&resolved);
     let place =
         super::download_place::episode_place(&dest, &resolved.title, &played, former.as_deref());
+    tracing::info!(
+        slug = %resolved.slug,
+        episode = %args.episode,
+        mode = %args.mode,
+        dest = %place.dir.display(),
+        "download: spawning tool on natively resolved stream",
+    );
     let source = StreamSource {
         master_url: resolved.master_url,
         referer: resolved.referer,
