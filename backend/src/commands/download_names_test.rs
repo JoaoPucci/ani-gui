@@ -311,6 +311,33 @@ fn an_episode_saved_before_the_device_rule_keeps_its_name() {
 
 #[cfg(unix)]
 #[test]
+fn only_a_file_with_something_in_it_is_the_episode_under_a_name() {
+    // An empty file is what an interrupted download leaves at its name,
+    // and a directory is not an episode: an earlier name's real file
+    // beside either is the episode.
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(dest.path().join("Show: Part Episode 1.mp4"), b"x").expect("seed");
+    std::fs::write(dest.path().join("Show - Part Episode 1.mp4"), b"").expect("leftover");
+    assert_eq!(
+        episode_stem(dest.path(), "Show: Part", "1", None),
+        "Show: Part Episode 1"
+    );
+    std::fs::write(dest.path().join(".hack--Sign Episode 2.mp4"), b"x").expect("seed");
+    std::fs::create_dir(dest.path().join("hack--Sign Episode 2.mp4")).expect("dir");
+    assert_eq!(
+        episode_stem(dest.path(), ".hack//Sign", "2", None),
+        ".hack--Sign Episode 2"
+    );
+    // With no real file under any name, the name is this version's.
+    std::fs::write(dest.path().join(".hack--Sign Episode 3.mp4"), b"").expect("leftover");
+    assert_eq!(
+        episode_stem(dest.path(), ".hack//Sign", "3", None),
+        "hack--Sign Episode 3"
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn an_earlier_raw_spelling_that_starts_with_a_dot_is_still_the_episode() {
     let dest = tempfile::tempdir().expect("dest");
     std::fs::write(dest.path().join(".hack: Roots Episode 1.mp4"), b"x").expect("seed");
