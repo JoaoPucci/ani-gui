@@ -178,9 +178,22 @@ async fn poll_until(deadline: tokio::time::Instant) -> Result<()> {
 /// Open the lock file at `path`, creating it and its directory, and
 /// hide the directory where a leading dot does not.
 fn open_creating(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    open_creating_with(path, |dir| std::fs::create_dir_all(dir))
+}
+
+/// [`open_creating`], with the directory's creation given — the seam the
+/// cases stage a removal racing it through.
+fn open_creating_with(
+    path: &std::path::Path,
+    create_dir: impl FnOnce(&std::path::Path) -> std::io::Result<()>,
+) -> std::io::Result<std::fs::File> {
     let dir = path.parent().unwrap_or(path);
-    std::fs::create_dir_all(dir)?;
+    create_dir(dir)?;
     let file = os::lock_file_options().create(true).open(path)?;
     os::hide_dir(dir, &file);
     Ok(file)
 }
+
+#[cfg(test)]
+#[path = "download_lock_acquire_test.rs"]
+mod tests;

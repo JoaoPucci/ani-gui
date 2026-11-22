@@ -17,14 +17,14 @@ const BOUND: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// Armed for the life of one test: dropping it — the test returning or
 /// panicking — disarms it.
-pub(super) struct Deadline {
+pub(crate) struct Deadline {
     _armed: std::sync::mpsc::Sender<()>,
 }
 
 impl Deadline {
     /// Arm the watchdog for the test running on this thread, which the
     /// harness names after the test.
-    pub(super) fn arm() -> Self {
+    pub(crate) fn arm() -> Self {
         let name = std::thread::current()
             .name()
             .unwrap_or("a download-lock test")
