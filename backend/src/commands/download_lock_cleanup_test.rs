@@ -586,3 +586,84 @@ async fn a_release_with_a_waiter_behind_it_returns_at_once_on_windows() {
         "a release must not wait on a waiter's handle: took {took:?}"
     );
 }
+
+/// A directory whose permissions refuse the delete, until a thread
+/// lifts them after `after` — the stand-in, where nothing else can
+/// refuse a delete for a moment, for a Windows handle that closes.
+/// `None` when the refusal does not hold (run as root).
+#[cfg(unix)]
+fn refused_for(after: std::time::Duration) -> Option<(tempfile::TempDir, std::path::PathBuf)> {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().expect("root");
+    let dir = root.path().join(".ani-gui-locks");
+    std::fs::create_dir(&dir).expect("lock dir");
+    let file = dir.join("Refused Show Episode 1.mp4");
+    std::fs::write(&file, b"").expect("lock file");
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).expect("refuse");
+    if std::fs::write(dir.join("probe"), b"").is_ok() {
+        return None;
+    }
+    let lift = dir.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(after);
+        let _ = std::fs::set_permissions(&lift, std::fs::Permissions::from_mode(0o755));
+    });
+    Some((root, file))
+}
+
+#[cfg(unix)]
+fn refusal_passes(e: &std::io::Error) -> bool {
+    e.kind() == std::io::ErrorKind::PermissionDenied
+}
+
+/// A refusal that passes is outlasted off the caller: the delete
+/// returns at once, and the file and its emptied directory go once the
+/// refusal lifts.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_passing_refusal_is_retried_off_the_caller() {
+    let Some((_root, file)) = refused_for(std::time::Duration::from_millis(5)) else {
+        return;
+    };
+    let started = std::time::Instant::now();
+    super::download::remove_lock_file_with(&file, refusal_passes);
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(50),
+        "the retries must not run on the caller: {:?}",
+        started.elapsed()
+    );
+    let settled = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    while file.parent().expect("dir").exists() && tokio::time::Instant::now() < settled {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(!file.exists(), "the retry removes the file");
+    assert!(
+        !file.parent().expect("dir").exists(),
+        "and then the directory"
+    );
+}
+
+/// A refusal that outlasts the retries leaves the file in place.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refusal_that_outlasts_the_retries_leaves_the_file() {
+    let Some((_root, file)) = refused_for(std::time::Duration::from_millis(600)) else {
+        return;
+    };
+    super::download::remove_lock_file_with(&file, refusal_passes);
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(file.is_file(), "a refusal that does not pass is left alone");
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+}
+
+/// Without a runtime the retries run in place, and the delete has
+/// landed by the time the call returns.
+#[cfg(unix)]
+#[test]
+fn without_a_runtime_the_retries_run_in_place() {
+    let Some((_root, file)) = refused_for(std::time::Duration::from_millis(5)) else {
+        return;
+    };
+    super::download::remove_lock_file_with(&file, refusal_passes);
+    assert!(!file.exists(), "the in-place retries remove the file");
+}

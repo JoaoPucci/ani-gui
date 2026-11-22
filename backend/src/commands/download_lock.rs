@@ -103,6 +103,8 @@ mod remove;
 #[path = "download_lock_waiting.rs"]
 mod waiting;
 pub(crate) use acquire::acquire_instance_lock;
+#[cfg(all(test, unix))]
+pub(crate) use remove::remove_lock_file_with;
 
 /// Run a filesystem call on `path` on the blocking pool.
 async fn on_blocking_pool<T, F>(path: std::path::PathBuf, f: F) -> crate::error::Result<T>
