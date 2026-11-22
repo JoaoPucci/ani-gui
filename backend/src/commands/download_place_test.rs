@@ -210,6 +210,34 @@ fn an_empty_leftover_or_a_directory_in_the_chosen_folder_is_not_the_episode() {
 }
 
 #[test]
+fn a_dotted_titles_episode_is_visible_in_a_visible_folder() {
+    // Neither the folder nor the episode in it starts with a dot, which
+    // Linux and macOS would hide.
+    let chosen = tempfile::tempdir().expect("chosen");
+    assert_eq!(
+        episode_place(chosen.path(), ".hack//Sign", "1", None),
+        place(&chosen.path().join("hack--Sign"), "hack--Sign Episode 1")
+    );
+}
+
+#[test]
+fn a_dotted_episode_an_earlier_version_left_in_the_chosen_folder_is_found() {
+    // Saved before show folders, under the dotted name: that file is the
+    // episode, where it is and as it is named.
+    let chosen = tempfile::tempdir().expect("chosen");
+    std::fs::write(chosen.path().join(".hack--Sign Episode 1.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_place(chosen.path(), ".hack//Sign", "1", None),
+        place(chosen.path(), ".hack--Sign Episode 1")
+    );
+    assert_eq!(
+        episode_place(chosen.path(), ".hack//Sign", "2", None),
+        place(&chosen.path().join("hack--Sign"), "hack--Sign Episode 2"),
+        "an episode with no earlier file goes in the show's folder"
+    );
+}
+
+#[test]
 fn a_title_with_no_folder_name_goes_in_the_chosen_folder() {
     let chosen = tempfile::tempdir().expect("chosen");
     assert_eq!(
