@@ -4,16 +4,6 @@
 
 pub(crate) use imp::*;
 
-/// Open the lock file at `path`, creating it and its directory, and
-/// hide the directory where a leading dot does not.
-pub(crate) fn open_creating(path: &std::path::Path) -> std::io::Result<std::fs::File> {
-    let dir = path.parent().unwrap_or(path);
-    std::fs::create_dir_all(dir)?;
-    let file = lock_file_options().create(true).open(path)?;
-    hide_dir(dir, &file);
-    Ok(file)
-}
-
 #[cfg(not(windows))]
 mod imp {
     /// How every lock file is opened: for writing (which the lock
@@ -45,6 +35,12 @@ mod imp {
         )
     }
 
+    /// Never: nothing but the lock's own protocol removes or holds the
+    /// name here, so a delete that failed fails again.
+    pub(crate) fn delete_refused_for_now(_e: &std::io::Error) -> bool {
+        false
+    }
+
     /// Give up a handle that holds no lock: close it. The name is not
     /// this handle's to remove.
     pub(crate) fn abandon(file: std::fs::File, _path: &std::path::Path) {
@@ -57,7 +53,7 @@ mod imp {
     /// them.
     pub(crate) fn release(file: std::fs::File, path: &std::path::Path) {
         if still_named(&file, path) {
-            let _ = std::fs::remove_file(path);
+            super::super::remove::remove_lock_file(path);
         }
         drop(file);
     }
@@ -128,17 +124,38 @@ mod imp {
         true
     }
 
-    /// Give up a handle that holds no lock: the same as a release,
-    /// since the delete succeeds only once nobody has the file open —
-    /// and so only once nobody holds it.
+    /// A delete refused by a handle that may close in a moment: one
+    /// opened without sharing delete (a waiter, or a scanner or indexer
+    /// looking at the new file), or a delete still pending.
+    pub(crate) fn delete_refused_for_now(e: &std::io::Error) -> bool {
+        matches!(
+            e.raw_os_error(),
+            Some(ERROR_SHARING_VIOLATION | ERROR_ACCESS_DENIED)
+        )
+    }
+
+    /// Give up a handle that holds no lock — only by taking the lock.
+    ///
+    /// Granted, nobody holds the file, and it is released like any
+    /// held lock. Refused, somebody does, and the handle is only
+    /// closed: their release removes it. Closing and deleting without
+    /// asking would be safe against this app's own handles, which do
+    /// not share delete, but not against one that does — the standard
+    /// library's default, which an earlier version of the app opens
+    /// with — and that delete would remove a file its holder still
+    /// holds.
     pub(crate) fn abandon(file: std::fs::File, path: &std::path::Path) {
-        release(file, path);
+        if fs4::FileExt::try_lock(&file).is_ok() {
+            release(file, path);
+        }
     }
 
     /// Release first, then delete — which fails, harmlessly, while any
-    /// other handle is open on the file.
+    /// other handle is open on the file (see
+    /// [`super::super::remove::remove_lock_file`] for how long it keeps
+    /// trying).
     pub(crate) fn release(file: std::fs::File, path: &std::path::Path) {
         drop(file);
-        let _ = std::fs::remove_file(path);
+        super::super::remove::remove_lock_file(path);
     }
 }

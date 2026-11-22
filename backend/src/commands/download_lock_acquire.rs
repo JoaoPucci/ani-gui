@@ -100,10 +100,8 @@ enum Attempt {
 /// platform allows. Neither is ever a bare handle that closes without
 /// tidying.
 fn attempt(path: &std::path::Path, open: Option<Waiting>) -> Attempt {
-    let waiting = match open.map_or_else(
-        || os::open_creating(path).map(|f| Waiting::new(f, path)),
-        Ok,
-    ) {
+    let waiting = match open.map_or_else(|| open_creating(path).map(|f| Waiting::new(f, path)), Ok)
+    {
         Ok(waiting) => waiting,
         Err(e) if os::lost_to_removal(&e) => return Attempt::Lost,
         Err(_) => return Attempt::Failed,
@@ -147,4 +145,14 @@ async fn poll_until(deadline: tokio::time::Instant) -> Result<()> {
     }
     tokio::time::sleep_until(deadline.min(now + INSTANCE_LOCK_POLL)).await;
     Ok(())
+}
+
+/// Open the lock file at `path`, creating it and its directory, and
+/// hide the directory where a leading dot does not.
+fn open_creating(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    let dir = path.parent().unwrap_or(path);
+    std::fs::create_dir_all(dir)?;
+    let file = os::lock_file_options().create(true).open(path)?;
+    os::hide_dir(dir, &file);
+    Ok(file)
 }

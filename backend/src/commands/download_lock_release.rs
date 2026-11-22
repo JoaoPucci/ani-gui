@@ -47,7 +47,10 @@ use super::waiting::Waiting;
 /// The work is done inline rather than on the blocking pool. A drop
 /// during runtime teardown is exactly when blocking tasks no longer
 /// start, and a removal and a directory removal are no heavier than
-/// the open that took the lock.
+/// the open that took the lock. On Windows a delete that something
+/// else's handle refuses is tried again for a few tens of milliseconds
+/// before it is left to that handle's owner; that pause is the longest
+/// a release takes.
 #[derive(Debug)]
 pub(crate) struct InstanceLock {
     file: Option<std::fs::File>,

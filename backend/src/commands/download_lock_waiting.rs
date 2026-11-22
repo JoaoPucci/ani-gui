@@ -8,12 +8,14 @@ use super::os;
 ///
 /// On Unix that is only closing it: removing a name without the lock is
 /// exactly what the discipline forbids, and the holder removes it under
-/// its lock anyway. On Windows it is closing and then trying the
-/// delete, because this handle may be what made the holder's own
-/// delete fail — the holder leaves the file to whoever still has it
-/// open, and a waiter cancelled before its next try would otherwise
-/// leave it to nobody. The delete is as safe there as a release's: it
-/// succeeds only once no handle at all is open on the file.
+/// its lock anyway. On Windows it is trying the lock once more on this
+/// handle: granted, nobody holds the file — its holder left it to this
+/// handle, whose open is what made the holder's delete fail — and it is
+/// released and removed like a held lock; refused, its holder is still
+/// there and removes it. A waiter cancelled before its next try would
+/// otherwise leave the file to nobody. Deleting without that question
+/// would remove a file held through a handle that shares delete, as the
+/// standard library's default open does.
 #[derive(Debug)]
 pub(super) struct Waiting {
     file: Option<std::fs::File>,
