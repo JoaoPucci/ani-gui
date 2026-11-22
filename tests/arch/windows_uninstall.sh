@@ -50,9 +50,12 @@
 # context switch brackets the removals. Placing them is the installer
 # script's job, and nothing in this repository runs NSIS. A line
 # carrying a trailing `;` comment fails it, which is stricter than NSIS.
-# The refusal reads only `RMDir` lines that name `thirdmovement`
-# themselves: a recursive removal of a path held in a variable or a
-# `!define`, or a `Delete` of the folder's files, is invisible to it.
+# The two required publisher-folder lines are matched exactly, case
+# included, which is stricter than NSIS. The refusal reads only single
+# `RMDir` lines that name `thirdmovement` themselves: a recursive
+# removal of a path held in a variable or a `!define`, one continued
+# onto the next line with a trailing `\`, or a `Delete` of the folder's
+# files, is invisible to it.
 # Nor can it tell that the publisher folders are removed after the
 # app's folders inside them, which is what lets them be empty.
 # It also cannot see the profile renamed: the folder is named for the
@@ -114,9 +117,10 @@ done
 
 # Never a recursive removal of a `thirdmovement` path other than the
 # app's own folder in it. NSIS reads instructions and their flags
-# without regard to case, so this match ignores case too.
+# without regard to case, and strips quotes from a quoted flag, so this
+# match ignores case and accepts the flag in quotes.
 RECURSIVE=$(printf '%s\n' "$LINES" |
-    grep -iE -- '^rmdir[[:space:]](.*[[:space:]])?/r([[:space:]]|$)' |
+    grep -iE -- "^rmdir[[:space:]](.*[[:space:]])?[\"'\`]?/r[\"'\`]?([[:space:]]|\$)" |
     grep -i -- 'thirdmovement' |
     grep -Fvx -e 'RMDir /r "$LOCALAPPDATA\thirdmovement\ani-gui"' \
         -e 'RMDir /r "$APPDATA\thirdmovement\ani-gui"' || true)
