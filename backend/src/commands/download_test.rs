@@ -8490,14 +8490,15 @@ async fn download_into(
         .expect("downloaded")
 }
 
-/// Every entry under `dir` a person browsing it sees, as paths relative
-/// to it, sorted. The app's own hidden entries — the cross-instance
-/// lock folder beside a target — are not part of the layout.
+/// Every entry under `dir`, as paths relative to it, sorted — but for
+/// the cross-instance lock folder beside a target, which is the
+/// target lock's to tidy, not part of the layout. Anything else hidden,
+/// a scratch file left behind among them, is listed.
 #[cfg(unix)]
 fn tree(dir: &std::path::Path) -> Vec<String> {
     fn walk(root: &std::path::Path, at: &std::path::Path, out: &mut Vec<String>) {
         for entry in std::fs::read_dir(at).expect("read").flatten() {
-            if entry.file_name().as_encoded_bytes().starts_with(b".") {
+            if entry.file_name() == ".ani-gui-locks" {
                 continue;
             }
             let path = entry.path();

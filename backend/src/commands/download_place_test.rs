@@ -259,6 +259,23 @@ fn every_folder_name_is_the_folder_windows_creates() {
     }
 }
 
+/// Whether Windows opens `base` (the part of a name before its first
+/// dot, upper-cased) as a device. Written out here rather than taken
+/// from the implementation, so a name missing from one is caught by
+/// the other.
+fn windows_device(base: &str) -> bool {
+    let port = |prefix: &str| {
+        base.strip_prefix(prefix).is_some_and(|rest| {
+            let mut c = rest.chars();
+            matches!(
+                (c.next(), c.next()),
+                (Some('0'..='9' | '¹' | '²' | '³'), None)
+            )
+        })
+    };
+    ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"].contains(&base) || port("COM") || port("LPT")
+}
+
 /// What Windows refuses anywhere in a file name.
 fn refused_by_windows(c: char) -> bool {
     matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || (c as u32) < 0x20
@@ -271,7 +288,7 @@ proptest! {
     /// length, not a device.
     #[test]
     fn a_show_folder_name_is_one_portable_component(
-        title in "\\PC{0,120}|[\\x00-\\x7f]{0,120}|(CON|PRN|AUX|NUL|COM1|LPT9|con|Nul)[. ]{0,2}[a-z]{0,3}"
+        title in "\\PC{0,120}|[\\x00-\\x7f]{0,120}|[ .]{0,2}(CON|PRN|AUX|NUL|CONIN\\$|CONOUT\\$|COM[0-9¹²³]|LPT[0-9¹²³]|con|Nul|coM¹|lpt0)[. ]{0,2}[a-z]{0,3}"
     ) {
         let Some(name) = show_folder_name(&title) else {
             return Ok(());
@@ -281,13 +298,7 @@ proptest! {
         prop_assert!(!name.ends_with('.') && !name.ends_with(char::is_whitespace), "{name:?}");
         prop_assert!(name.encode_utf16().count() <= SHOW_FOLDER_MAX_UNITS + 1, "{name:?}");
         let base = name.split('.').next().unwrap_or_default().trim_end().to_uppercase();
-        prop_assert!(
-            !super::DEVICES.contains(&base.as_str())
-                && !(base.len() == 4
-                    && (base.starts_with("COM") || base.starts_with("LPT"))
-                    && base[3..].chars().all(|c| c.is_ascii_digit())),
-            "{name:?}"
-        );
+        prop_assert!(!windows_device(&base), "{name:?}");
         let chosen = std::path::Path::new("/chosen");
         let joined = chosen.join(&name);
         prop_assert_eq!(joined.parent(), Some(chosen), "{:?}", name);
