@@ -138,7 +138,9 @@ mod imp {
     ///
     /// Granted, nobody holds the file, and it is released like any
     /// held lock. Refused, somebody does, and the handle is only
-    /// closed: their release removes it. Closing and deleting without
+    /// closed: this app's holder removes the file on release, and one
+    /// of an earlier version, which never does, leaves it to the next
+    /// run's sweep. Closing and deleting without
     /// asking would be safe against this app's own handles, which do
     /// not share delete, but not against one that does — the standard
     /// library's default, which an earlier version of the app opens

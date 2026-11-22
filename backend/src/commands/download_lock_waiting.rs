@@ -12,7 +12,8 @@ use super::os;
 /// handle: granted, nobody holds the file — its holder left it to this
 /// handle, whose open is what made the holder's delete fail — and it is
 /// released and removed like a held lock; refused, its holder is still
-/// there and removes it. A waiter cancelled before its next try would
+/// there and removes it (or, for an earlier version's holder, which
+/// never does, the next run's sweep). A waiter cancelled before its next try would
 /// otherwise leave the file to nobody. Deleting without that question
 /// would remove a file held through a handle that shares delete, as the
 /// standard library's default open does.

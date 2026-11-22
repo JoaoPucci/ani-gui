@@ -48,9 +48,9 @@ use super::waiting::Waiting;
 /// during runtime teardown is exactly when blocking tasks no longer
 /// start, and a removal and a directory removal are no heavier than
 /// the open that took the lock. On Windows a delete that something
-/// else's handle refuses is tried again for a few tens of milliseconds
-/// before it is left to that handle's owner; that pause is the longest
-/// a release takes.
+/// else's handle refuses is tried again for a few tens of milliseconds,
+/// on the blocking pool rather than here (see
+/// [`super::remove::remove_lock_file`]).
 #[derive(Debug)]
 pub(crate) struct InstanceLock {
     file: Option<std::fs::File>,
@@ -160,10 +160,10 @@ fn sweep(dir: &std::path::Path, own: &std::path::Path) {
             continue;
         };
         // Either way out gives the file up as a holder or a waiter
-        // would: released and removed if the lock was free, closed (and
-        // on Windows the delete retried) if not — so the sweep's own
-        // brief handle never strands a file its holder failed to remove
-        // because of it.
+        // would: released and removed if the lock was free, only closed
+        // if not. A holder whose delete the sweep's brief handle refused
+        // is still retrying it when that handle closes, so the sweep
+        // does not strand the file.
         let waiting = Waiting::new(file, &path);
         if waiting
             .file()
