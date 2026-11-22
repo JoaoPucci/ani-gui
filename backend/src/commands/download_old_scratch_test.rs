@@ -64,10 +64,27 @@ fn a_leftover_written_within_the_day_stays() {
     let dir = tempfile::tempdir().expect("dir");
     let now = SystemTime::now();
     let fresh = file_at(dir.path(), &old(".part.mp4.part"), now - HOUR);
-    let edge = file_at(dir.path(), &old(".part.mp4.ytdl"), now - MIN_AGE);
+    let almost = file_at(
+        dir.path(),
+        &old(".part.mp4.ytdl"),
+        now - MIN_AGE + Duration::from_secs(60),
+    );
     sweep(dir.path(), now);
     assert!(fresh.exists());
-    assert!(edge.exists(), "exactly a day old is not past it");
+    assert!(almost.exists(), "a minute short of a day is within it");
+}
+
+#[test]
+fn exactly_a_day_is_not_past_it() {
+    // Asked of the age alone: a volume with coarse timestamps (FAT
+    // keeps two seconds) would move a file set to the boundary.
+    let now = SystemTime::now();
+    assert!(!super::is_stale(Some(now - MIN_AGE), now));
+    assert!(super::is_stale(
+        Some(now - MIN_AGE - Duration::from_secs(1)),
+        now
+    ));
+    assert!(!super::is_stale(None, now), "no time is no age");
 }
 
 #[test]
@@ -189,6 +206,36 @@ fn each_folder_is_swept_once_per_download() {
         OldScratchVisits::default().first_visit(chosen),
         "a new download sweeps again"
     );
+}
+
+#[tokio::test]
+async fn a_second_visit_by_the_same_download_does_not_sweep() {
+    // A range's episodes after the first go into a folder it already
+    // swept: no second listing of it. A leftover that appears after
+    // the first visit is still there once a second visit's sweep would
+    // have finished.
+    let dir = tempfile::tempdir().expect("dir");
+    let mut visits = OldScratchVisits::default();
+    let first = file_at(
+        dir.path(),
+        &old(".part.mp4"),
+        SystemTime::now() - MIN_AGE * 2,
+    );
+    visits.visit(dir.path());
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    while first.exists() {
+        assert!(tokio::time::Instant::now() < deadline, "first visit sweeps");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let later = file_at(
+        dir.path(),
+        &old(".part.vtt"),
+        SystemTime::now() - MIN_AGE * 2,
+    );
+    visits.visit(dir.path());
+    // Longer than the first visit's sweep of this folder took.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(later.exists(), "the second visit did not sweep");
 }
 
 #[tokio::test]
