@@ -7,6 +7,10 @@
 /// {episode}"` with the title made
 /// [`file_safe`](super::download_names::file_safe), [`unhidden`] and
 /// not a device, or just `"Episode {episode}"` for a title of dots.
+/// Such a title has no show folder either, so every title of dots
+/// names its episodes alike in the chosen folder: nothing visible is
+/// left of it to tell them apart, and a name that kept the dots would
+/// be hidden.
 ///
 /// When a file is already there under a name an earlier version gave
 /// the episode, that file is the episode and keeps the name the user
