@@ -25,6 +25,7 @@ use crate::scraper::provider::StreamSource;
 
 #[path = "download_lock.rs"]
 mod lock;
+pub(crate) use lock::sweep_lock_leftovers;
 #[cfg(not(test))]
 use lock::{acquire_instance_lock, target_lock};
 // The lock's own cases reach these through this module.
@@ -377,6 +378,7 @@ where
     let former = crate::commands::play_native_merge::former_number(&resolved);
     let place =
         super::download_place::episode_place(&dest, &resolved.title, &played, former.as_deref());
+    sweep_lock_leftovers(&dest).await;
     tracing::info!(
         slug = %resolved.slug,
         episode = %args.episode,

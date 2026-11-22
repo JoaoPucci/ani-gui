@@ -238,6 +238,7 @@ where
     });
     let mut first_resolved = Some((first_served, first_resolved));
     let mut reveal = super::download_place::RevealFolder::new(dest);
+    super::download::sweep_lock_leftovers(dest).await;
     for ep in first..=last {
         // The shape the dock's progress parser consumes — the script's
         // own per-iteration announcement, which drives the

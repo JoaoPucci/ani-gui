@@ -114,6 +114,20 @@ pub(super) async fn sweep_once(lock_path: &std::path::Path) {
     let Some(dir) = lock_path.parent().map(std::path::Path::to_path_buf) else {
         return;
     };
+    sweep_dir_once(dir, lock_path.to_path_buf()).await;
+}
+
+/// Sweep the lock directory `dir` the first time this run asks, taking
+/// no lock in it — the chosen folder's, where every version before
+/// show folders took its locks and a download into a show's folder
+/// never does.
+pub(super) async fn sweep_leftovers_once(dir: &std::path::Path) {
+    sweep_dir_once(dir.to_path_buf(), dir.to_path_buf()).await;
+}
+
+/// [`sweep`] `dir` once per run, `own` exempt from the skip of this
+/// process's own lock files.
+async fn sweep_dir_once(dir: std::path::PathBuf, own: std::path::PathBuf) {
     let first = {
         let mut swept = SWEPT.lock().unwrap_or_else(|e| e.into_inner());
         swept
@@ -121,7 +135,6 @@ pub(super) async fn sweep_once(lock_path: &std::path::Path) {
             .insert(dir.clone())
     };
     if first {
-        let own = lock_path.to_path_buf();
         let _ = super::on_blocking_pool(dir, move |d| sweep(d, &own)).await;
     }
 }

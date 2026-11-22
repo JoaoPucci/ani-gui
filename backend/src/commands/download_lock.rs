@@ -86,6 +86,17 @@ pub(super) static TARGET_LOCKS: std::sync::Mutex<
 /// since nothing can prove one is unheld. It is dot-prefixed, which
 /// hides it on Linux and macOS, and carries the hidden attribute on
 /// Windows, where a dot hides nothing.
+/// Sweep the lock directory in `folder` of the files nobody holds, once
+/// per run, without taking a lock there ([`release::sweep_once`]).
+///
+/// For the folder the user chose. Every version before show folders
+/// took its locks beside episodes saved straight into it, and left
+/// their files there; a download into a show's folder locks in that
+/// folder instead, so nothing else would ever sweep the chosen one.
+pub(crate) async fn sweep_lock_leftovers(folder: &std::path::Path) {
+    release::sweep_leftovers_once(&folder.join(".ani-gui-locks")).await;
+}
+
 pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::PathBuf> {
     let parent = target.parent()?;
     Some(parent.join(".ani-gui-locks").join(target.file_name()?))
