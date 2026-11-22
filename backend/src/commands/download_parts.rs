@@ -19,7 +19,7 @@
 //! a file it cannot prove is its own or dead:
 //!
 //! - Each download names its files under a key of its own,
-//!   `.ani-gui-<pid>-<uuid>`, and keeps `<key>.hold` open and locked
+//!   `.ani-gui-<pid>-<random>`, and keeps `<key>.hold` open and locked
 //!   for as long as it may write. The hold exists before any of its
 //!   parts and goes after the last of them.
 //! - A download that ends removes its key's files, then its hold, then
@@ -52,12 +52,15 @@ pub(crate) enum Entry {
 }
 
 const KEY_PREFIX: &str = ".ani-gui-";
-const UUID_LEN: usize = 32;
+/// The random part of a key: 64 bits, in lowercase hex. Short, because
+/// every name a tool derives inside the working folder carries it on
+/// top of the destination's path, and Windows paths have a ceiling.
+const ID_LEN: usize = 16;
 
 /// The key that owns `name`, and what the name is to it; none for a
 /// name this scheme did not give out, which the sweep leaves alone.
 ///
-/// A key is `.ani-gui-<pid>-<32 lowercase hex>`, exactly as [`Hold`]
+/// A key is `.ani-gui-<pid>-<16 lowercase hex>`, exactly as [`Hold`]
 /// spells it, so the parse is syntactic: the hold is the key and
 /// `.hold`, a part the key and a hyphen and anything after it.
 #[must_use]
@@ -68,14 +71,14 @@ pub(crate) fn owner_of(name: &str) -> Option<(&str, Entry)> {
         return None;
     }
     let rest = rest[digits..].strip_prefix('-')?;
-    let uuid = rest.get(..UUID_LEN)?;
-    if !uuid
+    let id = rest.get(..ID_LEN)?;
+    if !id
         .bytes()
         .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     {
         return None;
     }
-    let key_len = KEY_PREFIX.len() + digits + 1 + UUID_LEN;
+    let key_len = KEY_PREFIX.len() + digits + 1 + ID_LEN;
     let (key, tail) = name.split_at(key_len);
     if tail == ".hold" {
         Some((key, Entry::Hold))
@@ -95,6 +98,8 @@ pub(crate) struct Hold {
     dir: PathBuf,
     key: String,
     file: Option<std::fs::File>,
+    /// How many names [`Hold::part`] has given out.
+    parts: std::sync::atomic::AtomicU32,
 }
 
 /// How many times taking a hold starts over when the folder or the
@@ -122,9 +127,9 @@ impl Hold {
                 Err(e) => return Err(e),
             }
             let key = format!(
-                "{KEY_PREFIX}{}-{}",
+                "{KEY_PREFIX}{}-{:016x}",
                 std::process::id(),
-                uuid::Uuid::new_v4().simple()
+                uuid::Uuid::new_v4().as_u64_pair().0
             );
             let path = dir.join(format!("{key}.hold"));
             let file = match os::hold_options().create_new(true).open(&path) {
@@ -151,6 +156,7 @@ impl Hold {
                 dir,
                 key,
                 file: Some(file),
+                parts: std::sync::atomic::AtomicU32::new(0),
             };
             if sweep {
                 hold.sweep_dead();
@@ -167,13 +173,13 @@ impl Hold {
         &self.dir
     }
 
-    /// A fresh name of this hold's, ending in `suffix`.
+    /// A fresh name of this hold's, ending in `suffix`: the key, and
+    /// a number no earlier name of the hold's has had.
     pub(crate) fn part(&self, suffix: &str) -> PathBuf {
-        self.dir.join(format!(
-            "{}-{}{suffix}",
-            self.key,
-            uuid::Uuid::new_v4().simple()
-        ))
+        let n = self
+            .parts
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.dir.join(format!("{}-{n}{suffix}", self.key))
     }
 
     fn hold_path(&self, key: &str) -> PathBuf {
