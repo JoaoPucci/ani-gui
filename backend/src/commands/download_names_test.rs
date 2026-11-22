@@ -267,9 +267,9 @@ fn a_title_with_nothing_file_safe_keeps_the_name_it_always_had() {
 
 #[test]
 fn an_episode_numbered_the_former_way_is_looked_for_under_its_device_safe_name() {
-    // The name a download of "CON.x" took is "CON-x …", so that is the
-    // spelling an episode numbered the former way is under — and on
-    // Windows a lookup of "CON.x …" would ask the console instead.
+    // The name this version gives leads the lookup under either number,
+    // and it is device-safe: on Windows a lookup of "CON.x …" would ask
+    // the console instead of the folder.
     let dest = tempfile::tempdir().expect("dest");
     std::fs::write(dest.path().join("CON-x Episode 7.mp4"), b"x").expect("seed");
     assert_eq!(
@@ -280,6 +280,26 @@ fn an_episode_numbered_the_former_way_is_looked_for_under_its_device_safe_name()
     assert_eq!(
         episode_stem(dest.path(), "..CON.x", "2", Some("8")),
         "CON-x Episode 8"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn an_episode_saved_before_the_device_rule_keeps_its_name() {
+    // Versions before the device rule saved "CON.x" and "Nul. Show"
+    // under those spellings, which Linux and macOS store as ordinary
+    // files: that file is the episode, under the former number or the
+    // episode's own.
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(dest.path().join("CON.x Episode 7.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), "CON.x", "1", Some("7")),
+        "CON.x Episode 7"
+    );
+    std::fs::write(dest.path().join("Nul. Show Episode 1.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), "Nul. Show", "1", None),
+        "Nul. Show Episode 1"
     );
 }
 
