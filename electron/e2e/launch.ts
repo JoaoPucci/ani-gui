@@ -39,7 +39,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { launchRefusal } from '../lib/e2e-display.cjs';
 import { stopOwnGroup } from '../lib/own-group.cjs';
-import { guardOutput, guardPolicy } from './policy-guard';
+import { guardOutput, guardPolicy, recordAppOutput } from './policy-guard';
 import { answer } from './stubs';
 
 /** electron-builder's pre-AppImage output — the production code path:
@@ -197,6 +197,10 @@ export async function launchPackagedApp(
 		if (profile) removeAfterExit(profile);
 	});
 	launched.set(app, { child: app.process(), exe });
+	// Kept for the report of a test that fails (policy-guard.ts appOutput).
+	// Playwright's driver hands the process over once the launch has
+	// resolved: what the app wrote before then is not seen.
+	recordAppOutput(app.process(), { since: 'its output from the moment the launch resolved' });
 	refused.set(app, proxy.seen);
 	guardPolicy(app);
 	return app;
@@ -272,6 +276,8 @@ export async function spawnPackagedApp(
 		proxy.close();
 	});
 	guardOutput([child.stdout, child.stderr]);
+	// Under `via`, the child is that program, not the app.
+	recordAppOutput(child, via.length ? { name: `${path.basename(via[via.length - 1])} (the app started under it)` } : {});
 	return child;
 }
 
