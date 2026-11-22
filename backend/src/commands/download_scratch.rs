@@ -32,24 +32,36 @@ pub(super) struct Scratch {
     /// else will ever know to remove it.
     pub(super) retired: Vec<std::path::PathBuf>,
     pub(super) published: std::sync::atomic::AtomicBool,
+    /// The download's claim on the working folder every name above is
+    /// in. Declared last, so it drops after the sweep below: the hold
+    /// goes after the last of its files, never before.
+    pub(super) hold: super::parts::Hold,
 }
 
 impl Scratch {
-    pub(super) fn new(dest: &std::path::Path) -> Self {
-        Self {
-            path: scratch_path(dest),
+    /// A scratch in `dest`'s working folder, after sweeping what
+    /// downloads that are no longer running left there.
+    ///
+    /// # Errors
+    /// The working folder or the hold could not be created — a
+    /// destination nothing can be written in.
+    pub(super) fn new(dest: &std::path::Path) -> std::io::Result<Self> {
+        let hold = super::parts::Hold::take(dest, true)?;
+        Ok(Self {
+            path: scratch_path(&hold),
             retired: Vec::new(),
             published: std::sync::atomic::AtomicBool::new(false),
-        }
+            hold,
+        })
     }
 
     /// Point at a fresh file, dropping whatever the last one was —
     /// the retry path, where yt-dlp's output is condemned and ffmpeg
     /// needs a name nothing can confuse with it. The condemned name
     /// is retired, not forgotten: the discard here is an attempt.
-    pub(super) fn renew(&mut self, dest: &std::path::Path) {
+    pub(super) fn renew(&mut self) {
         self.discard();
-        let old = std::mem::replace(&mut self.path, scratch_path(dest));
+        let old = std::mem::replace(&mut self.path, scratch_path(&self.hold));
         self.retired.push(old);
     }
 
@@ -67,13 +79,13 @@ impl Scratch {
     /// reconstructing which spellings are one file: correct until the
     /// tool adds a suffix, and unfixable without knowing it had. The
     /// scratch name carries a uuid this run generated, so a prefix
-    /// sweep of the destination is exact — nothing else can hold that
+    /// sweep of the working folder is exact — nothing else can hold that
     /// prefix, and nothing derived from the path can lose it.
     pub(super) fn discard(&self) {
         self.sweep(true);
     }
 
-    /// One pass over the destination, removing every entry that
+    /// One pass over the working folder, removing every entry that
     /// carries a prefix this guard owns: the retired names always,
     /// and the current one unless publication already consumed it.
     /// Costs nothing when there is nothing owned — the common
@@ -96,10 +108,7 @@ impl Scratch {
         if prefixes.is_empty() {
             return;
         }
-        let Some(dir) = self.path.parent() else {
-            return;
-        };
-        let Ok(entries) = std::fs::read_dir(dir) else {
+        let Ok(entries) = std::fs::read_dir(self.hold.dir()) else {
             return;
         };
         for entry in entries.flatten() {
@@ -129,17 +138,14 @@ impl Drop for Scratch {
     }
 }
 
-/// Where a transfer writes before it is anyone's episode.
+/// Where a transfer writes before it is anyone's episode: a name of
+/// `hold`'s in the destination's working folder.
 ///
-/// Beside the target rather than in a temp directory, because
-/// publishing is a rename or a link and both need the same
-/// filesystem. Carries `.mp4` because yt-dlp and ffmpeg both choose a
-/// container from the extension, and a scratch name they cannot read
-/// as MP4 changes what they produce.
-pub(super) fn scratch_path(dest: &std::path::Path) -> std::path::PathBuf {
-    dest.join(format!(
-        ".ani-gui-{}-{}.part.mp4",
-        std::process::id(),
-        uuid::Uuid::new_v4().simple()
-    ))
+/// In the destination's own folder rather than a temp directory,
+/// because publishing is a rename or a link and both need the same
+/// filesystem (see [`super::parts`]). Carries `.mp4` because yt-dlp
+/// and ffmpeg both choose a container from the extension, and a
+/// scratch name they cannot read as MP4 changes what they produce.
+pub(super) fn scratch_path(hold: &super::parts::Hold) -> std::path::PathBuf {
+    hold.part(".part.mp4")
 }

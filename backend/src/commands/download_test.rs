@@ -1865,16 +1865,17 @@ async fn a_scratch_that_survived_its_removal_is_still_the_guards_to_take() {
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Show Episode 1.mp4");
     std::fs::write(&target, b"the episode").expect("episode");
-    let scratch = Scratch::new(dest.path());
+    let scratch = Scratch::new(dest.path()).expect("scratch");
     std::fs::write(&scratch.path, b"the whole episode").expect("scratch");
     let scratch_path = scratch.path.clone();
     // A directory nothing can unlink from: every read inside
     // publication succeeds and the removal fails.
+    let folder = scratch_path.parent().expect("working folder").to_path_buf();
     let chmod = |mode: u32| {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(dest.path()).expect("meta").permissions();
+        let mut perms = std::fs::metadata(&folder).expect("meta").permissions();
         perms.set_mode(mode);
-        std::fs::set_permissions(dest.path(), perms).expect("chmod");
+        std::fs::set_permissions(&folder, perms).expect("chmod");
     };
     chmod(0o555);
 
@@ -1914,13 +1915,14 @@ async fn a_retired_scratch_the_retry_could_not_remove_is_swept_at_the_end() {
     // for good. A name this guard condemned stays its to remove
     // until the end.
     let dest = tempfile::tempdir().expect("dest");
-    let mut scratch = Scratch::new(dest.path());
+    let mut scratch = Scratch::new(dest.path()).expect("scratch");
     let old_partial = std::path::PathBuf::from(format!("{}.part", scratch.path.display()));
     std::fs::write(&old_partial, b"most of an episode").expect("partial");
 
-    dir_chmod(dest.path(), 0o555);
-    scratch.renew(dest.path());
-    dir_chmod(dest.path(), 0o755);
+    let folder = scratch.path.parent().expect("working folder").to_path_buf();
+    dir_chmod(&folder, 0o555);
+    scratch.renew();
+    dir_chmod(&folder, 0o755);
     assert!(
         old_partial.exists(),
         "the retirement's own removal failed, which is the premise"
@@ -1942,13 +1944,14 @@ async fn publication_does_not_orphan_what_a_retry_left_behind() {
     // ever remove it.
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Retried Show Episode 1.mp4");
-    let mut scratch = Scratch::new(dest.path());
+    let mut scratch = Scratch::new(dest.path()).expect("scratch");
     let old_partial = std::path::PathBuf::from(format!("{}.part", scratch.path.display()));
     std::fs::write(&old_partial, b"the condemned first attempt").expect("partial");
 
-    dir_chmod(dest.path(), 0o555);
-    scratch.renew(dest.path());
-    dir_chmod(dest.path(), 0o755);
+    let folder = scratch.path.parent().expect("working folder").to_path_buf();
+    dir_chmod(&folder, 0o555);
+    scratch.renew();
+    dir_chmod(&folder, 0o755);
     assert!(old_partial.exists(), "the retirement's removal failed");
 
     std::fs::write(&scratch.path, b"the whole episode").expect("retry output");
@@ -3054,6 +3057,7 @@ async fn a_sidecar_scratch_that_survived_its_removal_is_still_the_claims_to_take
         file: None,
         installed: false,
         finished: false,
+        _hold: super::parts::Hold::take(pen.path(), false).expect("hold"),
     };
     // The link needs the target's directory writable and the removal
     // the scratch's; only the latter is refused.
