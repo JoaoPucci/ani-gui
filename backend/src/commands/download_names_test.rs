@@ -98,10 +98,8 @@ fn an_earlier_spelling_is_never_looked_for_outside_the_folder() {
     let dest = root.path().join("downloads");
     std::fs::create_dir(&dest).expect("dest");
     std::fs::write(root.path().join("Show Episode 1.mp4"), b"x").expect("outside file");
-    assert_eq!(
-        episode_stem(&dest, "../Show", "1", None),
-        "..-Show Episode 1"
-    );
+    // The name it does take starts with no dot, which would hide it.
+    assert_eq!(episode_stem(&dest, "../Show", "1", None), "-Show Episode 1");
 }
 
 #[cfg(windows)]
