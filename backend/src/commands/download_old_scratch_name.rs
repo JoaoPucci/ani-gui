@@ -21,6 +21,11 @@
 //!   state, and a fragment, `.part-Frag<n>`, with a `.part` of its own
 //!   while it is in flight.
 //!
+//! yt-dlp merges a split format into mp4 when its streams are mp4 and
+//! m4a, as an HLS listing's are. A merge into another container names
+//! its files after `<key>.part.mp4.` instead; those are not parsed, and
+//! would stay.
+//!
 //! The format this version gives its names — a 16-digit key, and only
 //! inside the working folder — never parses.
 
@@ -65,12 +70,10 @@ fn without_tool_suffix(rest: &str) -> &str {
         return base;
     }
     let partial = rest.strip_suffix(".part").unwrap_or(rest);
-    if let Some((base, n)) = partial.rsplit_once(".part-Frag") {
-        if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) {
-            return base;
-        }
+    match partial.rsplit_once(".part-Frag") {
+        Some((base, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => base,
+        _ => partial,
     }
-    rest.strip_suffix(".part").unwrap_or(rest)
 }
 
 /// Whether `file`, what follows `<key>.part.`, is a file yt-dlp wrote
@@ -84,13 +87,11 @@ fn is_tool_file(file: &str) -> bool {
         .is_some_and(|(id, ext)| is_format_id(id) && STREAM_EXTS.contains(&ext))
 }
 
-/// A format id of the shape an HLS listing gives yt-dlp: ASCII
-/// letters and digits, `-`, `_` and `.`. One with anything else in it
-/// is left where it is — a leftover kept costs disk, a wrong removal
-/// a file of the user's.
+/// A format id as yt-dlp puts it in a name: built from the listing's
+/// group and rendition names, with only whitespace and `,/+[]()`
+/// replaced (on Windows `:` and `?` too), so any letter can be in it.
+/// Under the old 32-digit key nothing of the user's can carry one, so
+/// the parse asks only that it be there and be a single name.
 fn is_format_id(id: &str) -> bool {
-    !id.is_empty()
-        && id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+    !id.is_empty() && !id.chars().any(|c| c.is_control() || c == '/' || c == '\\')
 }
