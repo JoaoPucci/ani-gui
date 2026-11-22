@@ -268,3 +268,41 @@ fn a_listing_that_missed_a_running_downloads_hold_does_not_cost_it_its_parts() {
     drop(sweeper);
     drop(running);
 }
+
+#[cfg(windows)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn on_windows_a_holds_removal_outlasts_a_brief_outside_handle() {
+    // A scanner or indexer opening the new hold without sharing delete
+    // refuses its removal for a moment. A removal tried once leaves the
+    // hold, and with it the folder, until the next download's sweep.
+    use std::os::windows::fs::OpenOptionsExt;
+    let dest = tempfile::tempdir().expect("dest");
+    let hold = Hold::take(dest.path(), false).expect("hold");
+    let held = names(hold.dir());
+    let path = hold.dir().join(&held[0]);
+    let (opened_tx, opened_rx) = std::sync::mpsc::channel();
+    let scanner = {
+        let path = path.clone();
+        std::thread::spawn(move || {
+            let handle = std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0x1 | 0x2)
+                .open(&path)
+                .expect("a scanner's open");
+            opened_tx.send(()).expect("signal");
+            std::thread::sleep(std::time::Duration::from_millis(15));
+            drop(handle);
+        })
+    };
+    opened_rx.recv().expect("the scanner opened the hold");
+    drop(hold);
+    scanner.join().expect("scanner");
+    // The retries may run after the drop returns.
+    let folder = parts_dir(dest.path());
+    let settled = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    while folder.exists() && tokio::time::Instant::now() < settled {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(!path.exists(), "the hold goes once the scanner lets go");
+    assert!(!folder.exists(), "and the folder with it");
+}
