@@ -231,12 +231,10 @@ impl Hold {
                     let _ = std::fs::remove_file(path);
                 }
             };
-            if !holds.contains(key) {
-                // A hold exists before its first part and goes after
-                // its last: parts with none have no writer.
-                remove_parts();
-                continue;
-            }
+            // Asked of the hold's path even when the listing showed
+            // none: a listing is not a snapshot, and a hold created
+            // while it ran may be missing from it beside a part that is
+            // not.
             let path = self.hold_path(key);
             match os::hold_options().open(&path) {
                 Ok(file) => {
@@ -245,9 +243,9 @@ impl Hold {
                         os::release(file, &path);
                     }
                 }
-                // Gone since the listing: its owner ended, or a sweep
-                // beside this one removed it — either way after the
-                // parts, which are no one's now.
+                // No hold: a hold exists before its first part, so its
+                // owner ended, or a sweep beside this one removed it —
+                // either way the parts are no one's now.
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => remove_parts(),
                 Err(_) => {}
             }
