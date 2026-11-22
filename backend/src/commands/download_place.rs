@@ -82,8 +82,9 @@ pub(crate) fn episode_place(
 
 /// The folder a download's "open folder" opens, noted episode by
 /// episode: the show's folder once any episode went there, and the
-/// chosen folder while every one so far was already in it from a
-/// version before show folders.
+/// chosen folder while every one so far went there instead — already
+/// in it from a version before show folders, or of a title that gives
+/// the show no folder name.
 pub(crate) struct RevealFolder {
     chosen: PathBuf,
     show: Option<PathBuf>,

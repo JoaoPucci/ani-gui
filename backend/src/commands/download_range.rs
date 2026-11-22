@@ -133,8 +133,8 @@ async fn resolve_episode<P: Provider + ?Sized>(
 /// Each episode goes where a single download of it would
 /// ([`super::download_place::episode_place`]). Returns the show's
 /// folder when any episode went there, and the chosen folder when every
-/// one was already in it from a version before show folders: the
-/// folder the dock's "open folder" opens.
+/// one went in it instead ([`super::download_place::RevealFolder`]):
+/// the folder the dock's "open folder" opens.
 ///
 /// # Errors
 /// The walk's or the failing episode's typed error; the tool's own

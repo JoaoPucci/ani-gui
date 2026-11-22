@@ -77,8 +77,9 @@ pub(super) static TARGET_LOCKS: std::sync::Mutex<
 /// transfer rather than a deleted file.
 ///
 /// The cost the user sees is a directory beside their episodes: in
-/// the show's folder, or in the download folder for an episode a
-/// version from before show folders saved there. It is dot-prefixed,
+/// the show's folder, or in the download folder for an episode that
+/// goes there (one a version from before show folders saved there, or
+/// one whose title gives the show no folder name). It is dot-prefixed,
 /// so hidden on Linux and macOS and visible on Windows.
 pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::PathBuf> {
     let parent = target.parent()?;

@@ -164,8 +164,9 @@ pub struct DownloadProgress {
 /// in, which is what a "reveal in folder" intent needs: the show's own
 /// folder inside the one the user chose
 /// ([`super::download_place::episode_place`]), or the chosen folder
-/// itself where the episode was already there from a version before
-/// show folders.
+/// itself where the episode goes there instead — already in it from a
+/// version before show folders, or of a title that gives the show no
+/// folder name.
 ///
 /// Only the directory, because the same response ends a range
 /// download: `1-12` writes twelve files and there is no single name to
