@@ -485,3 +485,68 @@ async fn a_waiter_cancelled_after_its_holder_left_leaves_nothing() {
     );
     assert!(!lock_path.parent().expect("lock dir").exists());
 }
+
+/// A waiter that gives up never removes a file somebody else holds,
+/// even one opened the way the standard library opens files by
+/// default — sharing delete access, as an earlier version of the app
+/// does. On Windows such a handle does not stop a delete, so only the
+/// lock can say whether the file is free.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_waiter_that_gives_up_keeps_a_file_another_handle_holds() {
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Held Show Episode 1.mp4");
+    let lock_path = target_lock_path(&target).expect("a lock path");
+    let holder = foreign_handle(&lock_path);
+    fs4::FileExt::lock(&holder).expect("holder locks");
+
+    let got = acquire_instance_lock(
+        &target,
+        tokio::time::Instant::now() + std::time::Duration::from_millis(300),
+    )
+    .await;
+    assert!(
+        matches!(got, Err(crate::error::AniError::Timeout)),
+        "the lock is held: {got:?}"
+    );
+    assert!(
+        lock_path.is_file(),
+        "a waiter giving up must not remove a file another handle holds"
+    );
+    drop(holder);
+}
+
+/// On Windows a release's delete that meets a brief outside handle —
+/// a scanner or indexer opening the new file without sharing delete —
+/// tries again for a moment instead of leaving the file for good.
+#[cfg(windows)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_release_outlasts_a_brief_outside_handle_on_windows() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Scanned Show Episode 1.mp4");
+    let lock_path = target_lock_path(&target).expect("a lock path");
+    let held = acquire_instance_lock(&target, long_deadline())
+        .await
+        .expect("a lock");
+    let (opened_tx, opened_rx) = std::sync::mpsc::channel();
+    let scanner = {
+        let lock_path = lock_path.clone();
+        std::thread::spawn(move || {
+            let handle = std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0x1 | 0x2)
+                .open(&lock_path)
+                .expect("a scanner's open");
+            opened_tx.send(()).expect("signal");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            drop(handle);
+        })
+    };
+    opened_rx.recv().expect("the scanner opened the file");
+    drop(held);
+    scanner.join().expect("scanner");
+    assert!(
+        !lock_path.exists(),
+        "a release must outlast a brief outside handle"
+    );
+}
