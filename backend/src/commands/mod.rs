@@ -48,6 +48,9 @@ pub(crate) mod switch_episode;
 #[path = "appended_extras_flow_test.rs"]
 mod appended_extras_flow_test;
 #[cfg(test)]
+#[path = "download_lock_cleanup_test.rs"]
+mod download_lock_cleanup_tests;
+#[cfg(test)]
 #[path = "download_lock_prop_test.rs"]
 mod download_lock_prop_tests;
 mod download_pacing;
