@@ -139,7 +139,8 @@ fn attempt(path: &std::path::Path, open: Option<Waiting>) -> Attempt {
         // A fresh open whose file has no name a moment later: a remover
         // won the race, or the volume reports an open file's identity
         // differently from its path's (some overlay and FUSE mounts).
-        // Counted, so the second gives up instead of spinning.
+        // Counted, so a volume like that gives up at the cap instead
+        // of polling to the deadline.
         Attempt::Lost
     }
 }
