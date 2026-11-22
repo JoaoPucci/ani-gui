@@ -25,10 +25,13 @@ use crate::scraper::provider::StreamSource;
 
 #[path = "download_lock.rs"]
 mod lock;
-use lock::*;
-// The lock's property cases reach these through this module.
+#[cfg(not(test))]
+use lock::{acquire_instance_lock, target_lock};
+// The lock's own cases reach these through this module.
 #[cfg(test)]
-pub(crate) use lock::{acquire_instance_lock, target_lock_path};
+pub(crate) use lock::{acquire_instance_lock, target_lock, target_lock_path};
+#[cfg(all(test, unix))]
+pub(crate) use lock::{remove_lock_file, remove_lock_file_with};
 #[path = "download_resume.rs"]
 mod resume;
 use resume::resumed_partials;
@@ -1363,8 +1366,8 @@ where
     // And the other app instance's download. Taken after the
     // in-process mutex so this process's own tasks queue on the cheap
     // lock and only one of them contends the file. Held to the return
-    // — dropping the handle closes the descriptor, which is what
-    // releases it.
+    // — dropping it releases the lock and removes the lock file, on
+    // every way out of here, a cancel included.
     // Best-effort, because publishing is what makes this safe. A lock
     // that cannot be taken costs a duplicate transfer — which then
     // finds the name taken and discards its copy — and refusing the
