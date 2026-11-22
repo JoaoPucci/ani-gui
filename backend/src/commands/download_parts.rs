@@ -203,3 +203,7 @@ impl Drop for Hold {
 #[cfg(test)]
 #[path = "download_parts_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "download_parts_prop_test.rs"]
+mod prop_tests;
