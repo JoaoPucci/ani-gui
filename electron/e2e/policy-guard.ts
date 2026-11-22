@@ -28,6 +28,8 @@
  * app's guard from `guardPolicy(app)`.
  */
 import { test as base, expect, type ElectronApplication } from '@playwright/test';
+import type { ChildProcess } from 'node:child_process';
+import { outputRecorder } from '../lib/app-output.cjs';
 
 export { expect };
 
@@ -134,7 +136,72 @@ function undeclared(): string[] {
 	);
 }
 
-export const test = base.extend<{ policyGuard: void }>({
+/** What each app launched inside the current test said, and how it
+ *  ended (lib/app-output.cjs). An app launched in a hook outside any
+ *  test (a beforeAll) is not kept: no spec launches one there. */
+const outputs: ReturnType<typeof outputRecorder>[] = [];
+
+/** How many of a record's last lines a failing test prints to its
+ *  stderr, which the list reporter shows in full in the CI log; the
+ *  whole record goes in the HTML report. The list reporter cuts an
+ *  attachment it prints to its first 300 characters, which would show
+ *  the oldest lines and not the ones near the app's end. */
+const PRINTED_LINES = 150;
+
+/** Keep what `child` — a process the shared launch helper started —
+ *  writes to its stdout and stderr, and how it ends, for the report of
+ *  the current test should it fail (the appOutput fixture below).
+ *  `name` says what the process is (the app, or the program it was
+ *  started under); `since` says from when on its output was read, for
+ *  a child whose first lines went before it was handed over. A stream
+ *  that is not a pipe this process reads is not seen, and the record
+ *  says so. */
+export function recordAppOutput(
+	child: ChildProcess,
+	{ name = 'app', since }: { name?: string; since?: string } = {}
+): void {
+	const unread = (['stdout', 'stderr'] as const).filter((stream) => !child[stream]);
+	const notes = [since, ...unread.map((stream) => `${stream} not read`)].filter(Boolean);
+	const record = outputRecorder(`${name} pid ${child.pid ?? '?'}${notes.length ? ` (${notes.join('; ')})` : ''}`);
+	outputs.push(record);
+	for (const stream of ['stdout', 'stderr'] as const) {
+		child[stream]?.on('data', (chunk: Buffer) => record.feed(stream, chunk));
+		child[stream]?.on('end', () => record.end(stream));
+	}
+	if (child.exitCode !== null || child.signalCode !== null) record.exited(child.exitCode, child.signalCode);
+	child.once('exit', (code, signal) => record.exited(code, signal));
+	// A spawn that failed emits this, and no exit.
+	child.once('error', (err) => {
+		if (child.pid === undefined) record.failed(err);
+	});
+}
+
+export const test = base.extend<{ policyGuard: void; appOutput: void }>({
+	// A test that did not end as expected carries, in its report, what
+	// each app it launched said and how that app ended: the main
+	// process's record of the boot, the backend's log, an exit code or
+	// a signal. Its error alone is often only what Playwright saw — an
+	// app that quit on its own leaves "Execution context was destroyed"
+	// and nothing about why.
+	//
+	// Declared before policyGuard on purpose: auto fixtures are torn down
+	// in the reverse of their order here, so this one runs after the
+	// policy guard's check and sees the test fail by it too.
+	appOutput: [
+		// eslint-disable-next-line no-empty-pattern
+		async ({}, use, testInfo) => {
+			outputs.length = 0;
+			await use();
+			const records = outputs.splice(0);
+			if (testInfo.status === testInfo.expectedStatus) return;
+			for (const [i, record] of records.entries()) {
+				const title = `app output ${i + 1} of ${records.length}`;
+				process.stderr.write(`\n── ${title} ──\n${record.text({ last: PRINTED_LINES })}\n`);
+				await testInfo.attach(title, { body: record.text(), contentType: 'text/plain' });
+			}
+		},
+		{ auto: true }
+	],
 	policyGuard: [
 		// eslint-disable-next-line no-empty-pattern
 		async ({}, use) => {
