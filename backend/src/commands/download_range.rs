@@ -237,7 +237,7 @@ where
         line: format!("Matched {}", picked.hit.title),
     });
     let mut first_resolved = Some((first_served, first_resolved));
-    let mut landed: Option<std::path::PathBuf> = None;
+    let mut reveal = super::download_place::RevealFolder::new(dest);
     for ep in first..=last {
         // The shape the dock's progress parser consumes — the script's
         // own per-iteration announcement, which drives the
@@ -276,7 +276,6 @@ where
             }
         };
         let place = super::download_place::episode_place(dest, &serving.hit.title, &ep_no, None);
-        std::fs::create_dir_all(&place.dir).map_err(|_| crate::error::AniError::Io)?;
         tracing::info!(
             slug = %serving.hit.slug,
             episode = %ep_no,
@@ -326,13 +325,9 @@ where
             &pacing,
         )
         .await?;
-        // An episode found in the chosen folder from before show
-        // folders does not move the reveal off the show's folder.
-        if landed.is_none() || place.dir != dest {
-            landed = Some(place.dir);
-        }
+        reveal.note(&place.dir);
     }
-    Ok(landed.unwrap_or_else(|| dest.to_path_buf()))
+    Ok(reveal.folder())
 }
 
 #[cfg(test)]

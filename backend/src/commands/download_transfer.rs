@@ -34,6 +34,11 @@ use std::path::{Path, PathBuf};
 /// cleanly having written nothing is not a failed transfer, and not
 /// one with an episode to sit beside either: the staged tracks drop
 /// the same way, and nothing is reported written.
+///
+/// `dest` is created first when it is not there — a show's folder
+/// inside the chosen one, on the show's first download — and a folder
+/// that cannot be made is [`crate::error::AniError::Io`], before
+/// anything is fetched.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn transfer_with_sidecars<F>(
     client: &reqwest::Client,
@@ -50,6 +55,7 @@ pub(crate) async fn transfer_with_sidecars<F>(
 where
     F: FnMut(&str) + Send,
 {
+    std::fs::create_dir_all(dest).map_err(|_| crate::error::AniError::Io)?;
     // The tracks are paced with the transfer. Whether playback is live
     // is read once, as the phase starts, for the phase's concurrency
     // and deadline: one at a time under a deadline long enough for a

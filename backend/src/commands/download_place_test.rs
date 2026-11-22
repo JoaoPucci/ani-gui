@@ -1,4 +1,4 @@
-use super::{episode_place, show_folder_name, EpisodePlace, SHOW_FOLDER_MAX_UNITS};
+use super::{episode_place, show_folder_name, EpisodePlace, RevealFolder, SHOW_FOLDER_MAX_UNITS};
 use proptest::prelude::*;
 
 fn place(dir: &std::path::Path, stem: &str) -> EpisodePlace {
@@ -160,6 +160,28 @@ fn a_title_with_no_folder_name_goes_in_the_chosen_folder() {
         episode_place(chosen.path(), "...", "1", None),
         place(chosen.path(), "... Episode 1")
     );
+}
+
+#[test]
+fn the_reveal_opens_the_shows_folder_once_any_episode_went_there() {
+    let chosen = std::path::Path::new("/chosen");
+    let show = chosen.join("Show");
+    let reveal = RevealFolder::new(chosen);
+    assert_eq!(reveal.folder(), chosen, "nothing noted: the chosen folder");
+    let mut reveal = RevealFolder::new(chosen);
+    reveal.note(chosen);
+    assert_eq!(
+        reveal.folder(),
+        chosen,
+        "every episode already in the chosen folder"
+    );
+    for order in [[chosen, show.as_path()], [show.as_path(), chosen]] {
+        let mut reveal = RevealFolder::new(chosen);
+        for dir in order {
+            reveal.note(dir);
+        }
+        assert_eq!(reveal.folder(), show, "{order:?}");
+    }
 }
 
 #[cfg(windows)]

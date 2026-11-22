@@ -380,7 +380,6 @@ where
     let former = crate::commands::play_native_merge::former_number(&resolved);
     let place =
         super::download_place::episode_place(&dest, &resolved.title, &played, former.as_deref());
-    std::fs::create_dir_all(&place.dir).map_err(|_| AniError::Io)?;
     let source = StreamSource {
         master_url: resolved.master_url,
         referer: resolved.referer,

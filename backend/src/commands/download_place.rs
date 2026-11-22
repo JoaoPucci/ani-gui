@@ -166,6 +166,36 @@ pub(crate) fn episode_place(
     EpisodePlace { dir, stem }
 }
 
+/// The folder a download's "open folder" opens, noted episode by
+/// episode: the show's folder once any episode went there, and the
+/// chosen folder while every one so far was already in it from a
+/// version before show folders.
+pub(crate) struct RevealFolder {
+    chosen: PathBuf,
+    show: Option<PathBuf>,
+}
+
+impl RevealFolder {
+    pub(crate) fn new(chosen: &Path) -> Self {
+        Self {
+            chosen: chosen.to_path_buf(),
+            show: None,
+        }
+    }
+
+    /// Note that an episode went in `dir`.
+    pub(crate) fn note(&mut self, dir: &Path) {
+        if dir != self.chosen {
+            self.show = Some(dir.to_path_buf());
+        }
+    }
+
+    /// The folder to open.
+    pub(crate) fn folder(self) -> PathBuf {
+        self.show.unwrap_or(self.chosen)
+    }
+}
+
 /// Whether `dir` holds an episode under `stem`: a regular file, not
 /// followed through a link, with bytes in it.
 fn holds_episode(dir: &Path, stem: &str) -> bool {
