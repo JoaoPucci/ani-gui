@@ -691,11 +691,13 @@ fn without_a_runtime_the_retries_run_in_place() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn on_unix_a_refused_delete_is_not_retried() {
-    let Some((_root, file)) = refused_for(std::time::Duration::from_millis(150)) else {
+    // Shorter than the retry window (seven tries 10 ms apart), so a
+    // retry would land after the refusal lifts and remove the file.
+    let Some((_root, file)) = refused_for(std::time::Duration::from_millis(40)) else {
         return;
     };
     super::download::remove_lock_file(&file);
-    // Past the refusal's end: a retry would have removed it by now.
+    // Past the retry window: a retry would have removed it by now.
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
     assert!(file.is_file(), "a refused delete on Unix is not retried");
 }
@@ -725,7 +727,7 @@ async fn a_waiter_outlasts_any_number_of_handovers() {
     };
     // More handovers than the cap allows refusals: each replaces the
     // file at the name with a fresh, held one, then lets the old go.
-    for _ in 0..45 {
+    for _ in 0..60 {
         tokio::time::sleep(std::time::Duration::from_millis(110)).await;
         std::fs::remove_file(&lock_path).expect("the holder removes under its lock");
         let next = foreign_handle(&lock_path);
