@@ -88,7 +88,7 @@ fn note_removal(path: &std::path::Path, removed: std::io::Result<()>) {
             path = %path.display(),
             error = %e,
             code = ?e.raw_os_error(),
-            "download lock file left in place"
+            "download lock or hold file left in place"
         ),
         _ => {}
     }

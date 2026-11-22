@@ -33,6 +33,8 @@ use lock::{acquire_instance_lock, target_lock};
 pub(crate) use lock::{acquire_instance_lock, target_lock, target_lock_path};
 #[cfg(all(test, unix))]
 pub(crate) use lock::{remove_lock_file, remove_lock_file_with};
+#[path = "download_parts.rs"]
+pub(crate) mod parts;
 #[path = "download_resume.rs"]
 mod resume;
 use resume::resumed_partials;
@@ -1036,7 +1038,8 @@ fn name_is_taken(path: &std::path::Path) -> std::io::Result<bool> {
 }
 
 /// A sidecar's name, taken only for a complete file. The bytes go to
-/// a hidden scratch sibling; finishing installs the scratch at the
+/// a scratch in the destination's hidden working folder (see
+/// [`parts`]); finishing installs the scratch at the
 /// name — a link, or a create-new and a rename where links are not
 /// offered — refusing a name already taken, which is the user's. A
 /// claim dropped unfinished removes its scratch and the name stays
@@ -1068,6 +1071,9 @@ pub(crate) struct SidecarClaim {
     installed: bool,
     /// The scratch is provably gone, and the drop has nothing to do.
     finished: bool,
+    /// The claim on the working folder the scratch is in. Declared
+    /// last, so it drops after the scratch's own removal.
+    _hold: parts::Hold,
 }
 
 /// Claim `path` for a new sidecar.
@@ -1082,11 +1088,8 @@ pub(crate) async fn claim_new(path: &std::path::Path) -> std::io::Result<Sidecar
             "a sidecar is already at the name",
         ));
     }
-    let scratch = path.with_file_name(format!(
-        ".ani-gui-{}-{}.part.vtt",
-        std::process::id(),
-        uuid::Uuid::new_v4().simple()
-    ));
+    let hold = parts::take_beside(path, false).await?;
+    let scratch = hold.part(".part.vtt");
     let file = tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -1098,6 +1101,7 @@ pub(crate) async fn claim_new(path: &std::path::Path) -> std::io::Result<Sidecar
         file: Some(file),
         installed: false,
         finished: false,
+        _hold: hold,
     })
 }
 
@@ -1439,7 +1443,7 @@ where
     // Everything below writes here. Nothing is at the target until a
     // whole file exists, so a half transfer is never sitting under the
     // name the dock, the file manager and every other download read.
-    let mut scratch = Scratch::new(dest);
+    let mut scratch = Scratch::for_target(&target).await?;
     // The ceiling guards a hung tool. A paced run is slow by design
     // and ends the moment playback stops, so it runs under a ceiling
     // of its own; a wait for the lane while playback is live ends the
@@ -1590,7 +1594,7 @@ where
             // A fresh name for the retry rather than writing
             // over the condemned one, so nothing it leaves can
             // be mistaken for what ffmpeg produces.
-            scratch.renew(dest);
+            scratch.renew();
             on_line("status.download.repackage_retry");
         } else {
             // v5's && chain: a failing yt-dlp run retries the
@@ -1598,7 +1602,7 @@ where
             if ffmpeg.is_none() {
                 return Err(e);
             }
-            scratch.renew(dest);
+            scratch.renew();
             on_line("status.download.retry_ffmpeg");
         }
     }
@@ -2215,3 +2219,8 @@ mod prop_tests;
 #[cfg(test)]
 #[path = "download_test.rs"]
 mod tests;
+// Whole transfers against the working folder stage stub tools as
+// shell scripts, which only a unix runner spawns.
+#[cfg(all(test, unix))]
+#[path = "download_parts_flow_test.rs"]
+mod parts_flow_tests;

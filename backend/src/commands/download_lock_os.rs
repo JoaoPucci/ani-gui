@@ -1,6 +1,13 @@
 //! What differs between platforms in opening, checking and removing a
 //! lock file. See [`super::release::InstanceLock`] for why each side does what
 //! it does.
+//!
+//! The download working folder's holds go through the same layer (see
+//! `download_parts.rs`): a hold is a lock file in a folder of its own,
+//! opened, hidden, checked and released the same way. Where a comment
+//! here speaks of the lock directory, the working folder is treated
+//! alike; the note about files an earlier version created applies to
+//! lock files only, since no earlier version made holds.
 
 pub(crate) use imp::*;
 
