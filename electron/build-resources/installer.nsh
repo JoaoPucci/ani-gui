@@ -448,6 +448,14 @@
         RMDir /r "$LOCALAPPDATA\thirdmovement\ani-gui"
         DetailPrint "Removing user data under $APPDATA\thirdmovement\ani-gui..."
         RMDir /r "$APPDATA\thirdmovement\ani-gui"
+        ; The publisher folder holding those two goes as well, but only
+        ; once empty: other apps by the same publisher keep their data
+        ; there, and so does the dev profile, ani-gui-dev. RMDir without
+        ; /r removes nothing from a folder that still holds anything.
+        ; tests/arch/windows_uninstall.sh refuses a recursive removal of
+        ; any thirdmovement path but the app's own.
+        RMDir "$LOCALAPPDATA\thirdmovement"
+        RMDir "$APPDATA\thirdmovement"
         DetailPrint "Removing the app profile under $APPDATA\ani-gui..."
         RMDir /r "$APPDATA\ani-gui"
         Goto purge_done
