@@ -28,11 +28,13 @@ const DEVICES: [&str; 6] = ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"];
 /// It is the title made [`file_safe`](super::download_names::file_safe),
 /// then:
 ///
-/// - **One space between words.** A run of whitespace reads as the
-///   first space in it, the title's own (an ideographic space stays
-///   one), so a title spelled with spacing aside is the one folder —
-///   the version tag of "… (Uncensored) Season 2" leaves its own space
-///   beside the ones either side of it, and the copy is the same show.
+/// - **One space between words.** A run of whitespace reads as one
+///   space: the first in it that is not an ASCII space, or an ASCII
+///   space when all are. Removing a version tag leaves an ASCII space
+///   where the tag stood, beside the title's own spaces — "… (Uncensored)
+///   Season 2" — so the copy reads as the plain title does, its folder
+///   the same, and a title's ideographic or no-break space stays the
+///   title's.
 /// - **No leading dot.** A folder whose name starts with one is hidden
 ///   on Linux and macOS, and every episode would be hidden with it
 ///   (`.hack//Sign`).
@@ -73,13 +75,17 @@ pub(crate) fn show_folder_name(title: &str) -> Option<String> {
     Some(not_a_device(name))
 }
 
-/// `s` with each run of whitespace read as the first space in it.
+/// `s` with each run of whitespace read as one space, as
+/// [`show_folder_name`] says.
 fn one_space(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut after_space = false;
     for c in s.chars() {
         let space = c.is_whitespace();
         if !(space && after_space) {
+            out.push(c);
+        } else if out.ends_with(' ') && c != ' ' {
+            out.pop();
             out.push(c);
         }
         after_space = space;
