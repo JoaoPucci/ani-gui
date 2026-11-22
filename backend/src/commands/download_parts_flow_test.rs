@@ -170,7 +170,7 @@ async fn a_download_sweeps_what_a_killed_run_left_and_keeps_a_running_ones() {
     let dest = tempfile::tempdir().expect("dest");
     let dir = parts_dir(dest.path());
     std::fs::create_dir(&dir).expect("working folder");
-    let dead = ".ani-gui-4242-0123456789abcdef0123456789abcdef";
+    let dead = ".ani-gui-4242-0123456789abcdef";
     std::fs::write(dir.join(format!("{dead}.hold")), b"").expect("dead hold");
     let dead_part = dir.join(format!("{dead}-77.part.mp4.part-Frag12"));
     std::fs::write(&dead_part, b"most of an episode").expect("dead part");

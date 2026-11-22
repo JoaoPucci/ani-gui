@@ -34,7 +34,7 @@ fn leave_dead_owner(dest: &std::path::Path, key: &str) -> Vec<std::path::PathBuf
     parts
 }
 
-const DEAD: &str = ".ani-gui-7-0123456789abcdef0123456789abcdef";
+const DEAD: &str = ".ani-gui-7-0123456789abcdef";
 
 #[test]
 fn a_hold_names_its_files_inside_the_working_folder_under_its_own_key() {
@@ -50,6 +50,31 @@ fn a_hold_names_its_files_inside_the_working_folder_under_its_own_key() {
     let hold_name = format!("{key}.hold");
     assert_eq!(names(hold.dir()), vec![hold_name], "the hold is its key");
     assert_ne!(part, hold.part(".part.mp4"), "every part name is fresh");
+}
+
+#[test]
+fn a_scratch_name_adds_no_more_to_the_path_than_the_old_one_did() {
+    // Windows paths have a ceiling, and every name a tool derives in
+    // the working folder carries the scratch's on top of the
+    // destination's path — yt-dlp adds `.part-Frag<n>.part` to it. The
+    // scratch used to sit beside the target as
+    // `.ani-gui-<pid>-<32 hex>.part.mp4`, about 55 characters; the
+    // working folder and the hold's key must not make it longer.
+    let dest = tempfile::tempdir().expect("dest");
+    let hold = Hold::take(dest.path(), false).expect("hold");
+    let scratch = hold.part(".part.mp4");
+    let added = scratch
+        .strip_prefix(dest.path())
+        .expect("inside the destination")
+        .as_os_str()
+        .len();
+    // `/.ani-gui-parts/` and the key and a counter: room for a
+    // ten-digit pid.
+    assert!(
+        added <= 64,
+        "{added} characters on top of the destination: {}",
+        scratch.display()
+    );
 }
 
 #[test]
