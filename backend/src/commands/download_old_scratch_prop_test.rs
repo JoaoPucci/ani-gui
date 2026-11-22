@@ -13,7 +13,9 @@ fn old_tail() -> impl Strategy<Value = String> {
     let file = prop_oneof![
         Just("mp4".to_string()),
         (
-            "[a-zA-Z0-9_-][a-zA-Z0-9_.-]{0,20}",
+            // Any id yt-dlp could put in a name: no separator, no
+            // control character.
+            "[^/\\\\\x00-\x1f\x7f\u{80}-\u{9f}]{1,20}",
             "(mp4|m4a|m4v|ts|aac|mp3|webm|mkv)"
         )
             .prop_map(|(id, ext)| format!("f{id}.{ext}")),
@@ -162,6 +164,12 @@ fn the_names_an_earlier_version_wrote_are_its_scratch() {
         ".part.fhls-1080p.mp4",
         ".part.fhls-audio_aac-English.m4a.part",
         ".part.fhls-2.5.mp4.part-Frag3.part",
+        // yt-dlp builds an HLS id from the rendition's group and name,
+        // replacing only whitespace and `,/+[]()` (and on Windows `:`
+        // and `?`, with `#`), so an id can carry any letter.
+        ".part.fhls-audio-日本語.m4a.part",
+        ".part.fhls-audio-Español.m4a.ytdl",
+        ".part.fhls-audio#1.m4a",
     ] {
         let name = format!(".ani-gui-4242-{hex}{tail}");
         assert!(is_old_scratch(&name), "{name}");
