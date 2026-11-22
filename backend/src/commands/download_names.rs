@@ -70,10 +70,11 @@ pub(crate) fn file_safe(name: &str) -> String {
 }
 
 /// The name an episode's download takes in `dest`: `"{title} Episode
-/// {episode}"` with the title made [`file_safe`], or the one an
-/// earlier version gave it — numbered `former`, or spelled with the
-/// title as the provider gave it — when a file under that name is
-/// already there: that file is the episode.
+/// {episode}"` with the title made [`file_safe`] and [`unhidden`], or
+/// the one an earlier version gave it — numbered `former`, spelled
+/// with its leading dots, or with the title as the provider gave it —
+/// when a file under that name is already there: that file is the
+/// episode, and it keeps the name the user has it under.
 ///
 /// The provider's spelling is looked for only off Windows. Earlier
 /// versions saved it as a real file only where the filesystem accepts
@@ -88,24 +89,55 @@ pub(crate) fn episode_stem(
     former: Option<&str>,
 ) -> String {
     let safe = file_safe(title);
+    let shown = unhidden(&safe);
     let stem = |t: &str, n: &str| format!("{t} Episode {n}");
+    let named = |n: &str| {
+        if shown.is_empty() {
+            format!("Episode {n}")
+        } else {
+            stem(shown, n)
+        }
+    };
     let on_disk = |s: &String| std::fs::symlink_metadata(dest.join(format!("{s}.mp4"))).is_ok();
-    let mut earlier: Vec<String> = Vec::new();
-    if let Some(n) = former {
-        earlier.push(stem(&safe, n));
-    }
+    let dotted = shown != safe;
     // A title with a slash was never an earlier download's name, and
     // joining it as a path can reach outside `dest`.
-    if !cfg!(windows) && safe != title && !title.contains('/') {
-        if let Some(n) = former {
+    let raw = !cfg!(windows) && safe != title && !title.contains('/');
+    let mut earlier: Vec<String> = Vec::new();
+    if let Some(n) = former {
+        earlier.push(named(n));
+        if dotted {
+            earlier.push(stem(&safe, n));
+        }
+        if raw {
             earlier.push(stem(title, n));
         }
+    }
+    if dotted {
+        earlier.push(stem(&safe, episode));
+    }
+    if raw {
         earlier.push(stem(title, episode));
     }
     earlier
         .into_iter()
         .find(on_disk)
-        .unwrap_or_else(|| not_a_device(stem(&safe, episode)))
+        .unwrap_or_else(|| not_a_device(named(episode)))
+}
+
+/// `name` without the dots it starts with, and the spaces between and
+/// after them: Linux and macOS hide a file whose name starts with a
+/// dot, and the user could not see the episode they downloaded
+/// (`.hack//Sign`). The show's folder drops them by the same rule. A
+/// name that does not start with a dot was never hidden and is
+/// returned as it is, so its episodes keep the names they have.
+#[must_use]
+fn unhidden(name: &str) -> &str {
+    if name.starts_with('.') {
+        name.trim_start_matches(|c: char| c == '.' || c.is_whitespace())
+    } else {
+        name
+    }
 }
 
 /// `name` with its first dot made a hyphen when the part before that
