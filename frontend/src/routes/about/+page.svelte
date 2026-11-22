@@ -33,6 +33,8 @@
 		switch (id) {
 			case 'curl_impersonate':
 				return m.about_bundled_tool_note_curl_impersonate();
+			case 'cacert':
+				return m.about_bundled_tool_note_cacert();
 			case 'yt_dlp':
 				return m.about_bundled_tool_note_yt_dlp();
 			case 'ffmpeg':

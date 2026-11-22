@@ -32,6 +32,11 @@
 //                has no package manager to recommend through, so its
 //                installer downloads ffmpeg at install time instead
 //                (`INSTALL_TIME_DEPS` in fetch-windows-deps.mjs).
+//   - ca-certificates — the CA store the transport verifies with,
+//                declared as a `Recommends:` on the .deb. The Windows
+//                package stages Mozilla's bundle beside its transport
+//                instead, because a fresh Windows root store is
+//                incomplete to it.
 //
 // This script is the Linux analog of `fetch-windows-deps.mjs`. Keep
 // the two in lockstep when adding a new bundled dep. The one exception
@@ -165,6 +170,14 @@ export const SYSTEM_DEPS = [
 	{
 		name: 'ffmpeg',
 		dep: 'ffmpeg',
+	},
+	// The CA certificates the transport verifies with. curl-impersonate
+	// reads the distribution's store here; on Windows the package stages
+	// Mozilla's list beside the transport instead, because a fresh
+	// Windows root store is incomplete to it.
+	{
+		name: 'ca-certificates',
+		dep: 'ca-certificates',
 	},
 ];
 

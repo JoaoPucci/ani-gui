@@ -86,7 +86,7 @@ Platform support tiers:
 
 NSIS installer (`.exe`). Run it; it installs per-user by default and creates Start menu and desktop shortcuts.
 
-The installer carries the impersonating transport and yt-dlp. It downloads ffmpeg (a ~90 MB zip) while it installs, so the download feature works out of the box without the installer carrying it. If the download fails — offline, say — the install still completes, playback works, and running the installer again online fetches it. An update of the same install keeps the downloaded ffmpeg, so it normally needs no network. It downloads again when a release pins a different ffmpeg version, when the copy or its version stamp cannot be carried over or read (a file copy that fails, which the installer's details list says), and when the update is in effect a fresh install: a switch between per-user and per-machine, another install folder, or an installer run with `--delete-app-data`. If the installer has not placed a copy and an `ffmpeg.exe` is already on `PATH`, it skips the download and the app uses that one; a copy the installer placed is the one the app uses, even when you have your own on `PATH`.
+The installer carries the impersonating transport, Mozilla's list of certificate authorities for it to verify sites with (a fresh Windows has not downloaded most of its own yet), and yt-dlp. It downloads ffmpeg (a ~90 MB zip) while it installs, so the download feature works out of the box without the installer carrying it. If the download fails — offline, say — the install still completes, playback works, and running the installer again online fetches it. An update of the same install keeps the downloaded ffmpeg, so it normally needs no network. It downloads again when a release pins a different ffmpeg version, when the copy or its version stamp cannot be carried over or read (a file copy that fails, which the installer's details list says), and when the update is in effect a fresh install: a switch between per-user and per-machine, another install folder, or an installer run with `--delete-app-data`. If the installer has not placed a copy and an `ffmpeg.exe` is already on `PATH`, it skips the download and the app uses that one; a copy the installer placed is the one the app uses, even when you have your own on `PATH`.
 
 The installer downloads ffmpeg from gyan.dev's [7.1.1 essentials build](https://github.com/GyanD/codexffmpeg/releases/tag/7.1.1); FFmpeg's source code for that version is at [n7.1.1](https://github.com/FFmpeg/FFmpeg/tree/n7.1.1). ani-gui does not redistribute it. The license texts of the tools the installer carries, with the notices of the libraries built into them, are installed in `resources\licenses\` in the install directory.
 
@@ -136,7 +136,7 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    cd frontend
    pnpm dev
    ```
-   Terminal B, the Electron shell — spawns the backend binary from step 5, and on Windows also stages the bundled tools (impersonating transport, yt-dlp) next to it, so playback works:
+   Terminal B, the Electron shell — spawns the backend binary from step 5, and on Windows also stages the bundled tools (impersonating transport and its CA bundle, yt-dlp) next to it, so playback works:
    ```sh
    cd electron
    pnpm dev
