@@ -8490,17 +8490,13 @@ async fn download_into(
         .expect("downloaded")
 }
 
-/// Every entry under `dir`, as paths relative to it, sorted — but for
-/// the cross-instance lock folder beside a target, which is the
-/// target lock's to tidy, not part of the layout. Anything else hidden,
-/// a scratch file left behind among them, is listed.
+/// Every entry under `dir`, as paths relative to it, sorted — hidden
+/// ones included, so a scratch file or a lock folder a finished
+/// download left behind is part of the layout it is checked against.
 #[cfg(unix)]
 fn tree(dir: &std::path::Path) -> Vec<String> {
     fn walk(root: &std::path::Path, at: &std::path::Path, out: &mut Vec<String>) {
         for entry in std::fs::read_dir(at).expect("read").flatten() {
-            if entry.file_name() == ".ani-gui-locks" {
-                continue;
-            }
             let path = entry.path();
             let rel = path.strip_prefix(root).expect("under root");
             out.push(rel.to_string_lossy().into_owned());
