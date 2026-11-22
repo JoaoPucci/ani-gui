@@ -28,10 +28,10 @@ mod lock;
 #[cfg(not(test))]
 use lock::{acquire_instance_lock, target_lock};
 // The lock's own cases reach these through this module.
-#[cfg(all(test, unix))]
-pub(crate) use lock::remove_lock_file_with;
 #[cfg(test)]
 pub(crate) use lock::{acquire_instance_lock, target_lock, target_lock_path};
+#[cfg(all(test, unix))]
+pub(crate) use lock::{remove_lock_file, remove_lock_file_with};
 #[path = "download_resume.rs"]
 mod resume;
 use resume::resumed_partials;

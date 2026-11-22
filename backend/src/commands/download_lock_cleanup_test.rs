@@ -684,3 +684,18 @@ fn without_a_runtime_the_retries_run_in_place() {
     super::download::remove_lock_file_with(&file, refusal_passes);
     assert!(!file.exists(), "the in-place retries remove the file");
 }
+
+/// On Unix a refused delete is final: nothing but the lock's own
+/// protocol holds or removes the name there, so the platform asks for
+/// no retry, and the file stays for the next run's sweep.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn on_unix_a_refused_delete_is_not_retried() {
+    let Some((_root, file)) = refused_for(std::time::Duration::from_millis(150)) else {
+        return;
+    };
+    super::download::remove_lock_file(&file);
+    // Past the refusal's end: a retry would have removed it by now.
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    assert!(file.is_file(), "a refused delete on Unix is not retried");
+}
