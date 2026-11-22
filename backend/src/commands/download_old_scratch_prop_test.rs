@@ -14,8 +14,8 @@ fn old_tail() -> impl Strategy<Value = String> {
         Just("mp4".to_string()),
         (
             // Any id yt-dlp could put in a name: no separator, no
-            // control character.
-            "[^/\\\\\x00-\x1f\x7f\u{80}-\u{9f}]{1,20}",
+            // control character, none of what it replaces in one.
+            "[^/\\\\\x00-\x1f\x7f\u{80}-\u{9f}\\s,+\\[\\]()]{1,20}",
             "(mp4|m4a|m4v|ts|aac|mp3|webm|mkv)"
         )
             .prop_map(|(id, ext)| format!("f{id}.{ext}")),
@@ -103,6 +103,25 @@ proptest! {
         prop_assert!(!is_old_scratch(&name), "{name}");
     }
 
+    /// A copy of a split stream's leftover, as a file manager or a
+    /// browser names one — its text before the extension — is not one.
+    #[test]
+    fn a_copy_of_a_split_streams_leftover_is_never_one(
+        pid in any::<u32>(),
+        id in "[a-z0-9-]{1,12}",
+        ext in "(mp4|m4a|ts)",
+        copy in prop_oneof![
+            Just(" (1)"),
+            Just(" (2)"),
+            Just(" - Copy"),
+            Just(" (copy)"),
+            Just(" copy"),
+        ],
+    ) {
+        let name = format!("{}.part.f{id}{copy}.{ext}", old_key(pid, 7));
+        prop_assert!(!is_old_scratch(&name), "{name}");
+    }
+
     /// A name that does not start with the old prefix is never one,
     /// whatever follows.
     #[test]
@@ -138,6 +157,12 @@ fn names_near_the_old_shape_are_not_its_scratch() {
         format!(".ani-gui-42-{hex}.part.mp4.part-Frag"),
         format!(".ani-gui-42-{hex}.part.vtt.ytdl"),
         format!(".ani-gui-42-{hex}.part.mp4.part.part"),
+        // A copy of a stream's leftover, renamed before its extension.
+        format!(".ani-gui-42-{hex}.part.fhls-720 (1).mp4"),
+        format!(".ani-gui-42-{hex}.part.fhls-720 - Copy.mp4"),
+        format!(".ani-gui-42-{hex}.part.fhls-720,1.mp4"),
+        format!(".ani-gui-42-{hex}.part.fhls-720+1.mp4"),
+        format!(".ani-gui-42-{hex}.part.fhls-720[1].mp4"),
         // The folders this version and the last kept.
         ".ani-gui-parts".to_string(),
         ".ani-gui-locks".to_string(),
@@ -165,8 +190,9 @@ fn the_names_an_earlier_version_wrote_are_its_scratch() {
         ".part.fhls-audio_aac-English.m4a.part",
         ".part.fhls-2.5.mp4.part-Frag3.part",
         // yt-dlp builds an HLS id from the rendition's group and name,
-        // replacing only whitespace and `,/+[]()` (and on Windows `:`
-        // and `?`, with `#`), so an id can carry any letter.
+        // replacing only whitespace and `,/+[]()` with `_` (and on
+        // Windows the characters Windows forbids in a name, with `#`),
+        // so an id can carry any letter.
         ".part.fhls-audio-日本語.m4a.part",
         ".part.fhls-audio-Español.m4a.ytdl",
         ".part.fhls-audio#1.m4a",
