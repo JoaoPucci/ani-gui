@@ -418,6 +418,82 @@ async fn a_range_download_names_each_episode_by_the_file_safe_title() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn a_downloaded_episode_of_a_dotted_title_and_its_subtitles_are_visible() {
+    // Linux and macOS hide a name that starts with a dot: ".hack//Sign"
+    // saved its episode as ".hack--Sign Episode 1.mp4", beside a
+    // ".hack--Sign Episode 1.en.vtt", and the user saw neither.
+    use crate::scraper::provider::{StreamSource, SubtitleTrack};
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let subs = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n"))
+        .mount(&subs)
+        .await;
+    let server = std::sync::Arc::new(
+        TableProvider::one_show("", ("dot-hack-23", ".hack//Sign"), &[(2301, 1)], &[], "")
+            .stream_from(
+                2301,
+                "sub",
+                StreamSource {
+                    master_url: "https://cdn.example/m/2301/master.m3u8".into(),
+                    referer: None,
+                    subtitles: vec![SubtitleTrack {
+                        lang: "en".into(),
+                        label: "English".into(),
+                        default: true,
+                        url: format!("{}/subs/en.vtt", subs.uri()),
+                    }],
+                },
+            ),
+    );
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": ".hack//Sign",
+        "episode": "1-1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    download_with_tools(&state, &args, &path_env, |_| {})
+        .await
+        .expect("the range downloads");
+    // The show's folder drops the dots too, and the episode lands in it.
+    let names_in = |dir: &std::path::Path| -> Vec<String> {
+        std::fs::read_dir(dir)
+            .map(|d| {
+                d.filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let show = dest.path().join("hack--Sign");
+    let names = names_in(&show);
+    for name in ["hack--Sign Episode 1.mp4", "hack--Sign Episode 1.en.vtt"] {
+        assert!(
+            show.join(name).is_file(),
+            "{name} is published under a visible name: {names:?}"
+        );
+    }
+    let chosen = names_in(dest.path());
+    assert!(
+        !names.iter().chain(&chosen).any(|n| n.starts_with(".hack")),
+        "nothing of the episode is hidden: {chosen:?} {names:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_range_download_stops_at_the_first_failing_episode() {
     // "1-3" on a two-episode listing: episodes 1 and 2 transfer,
     // episode 3 resolves to the typed dead end and the loop stops

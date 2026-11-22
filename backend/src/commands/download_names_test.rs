@@ -1,4 +1,5 @@
-use super::{episode_stem, file_safe, portable_name};
+use super::{file_safe, portable_name};
+use crate::commands::download_episode_stem::{episode_stem, not_a_device};
 use proptest::prelude::*;
 
 /// What Windows refuses anywhere in a file name: the nine reserved
@@ -98,10 +99,8 @@ fn an_earlier_spelling_is_never_looked_for_outside_the_folder() {
     let dest = root.path().join("downloads");
     std::fs::create_dir(&dest).expect("dest");
     std::fs::write(root.path().join("Show Episode 1.mp4"), b"x").expect("outside file");
-    assert_eq!(
-        episode_stem(&dest, "../Show", "1", None),
-        "..-Show Episode 1"
-    );
+    // The name it does take starts with no dot, which would hide it.
+    assert_eq!(episode_stem(&dest, "../Show", "1", None), "-Show Episode 1");
 }
 
 #[cfg(windows)]
@@ -143,6 +142,208 @@ fn an_episode_an_earlier_version_saved_under_the_raw_title_keeps_that_name() {
     assert_eq!(
         episode_stem(dest.path(), "Show: Part", "1", None),
         "Show: Part Episode 1"
+    );
+}
+
+#[test]
+fn a_title_that_starts_with_a_dot_does_not_name_a_hidden_file() {
+    // Linux and macOS hide a file whose name starts with a dot, so an
+    // episode of ".hack//Sign" saved as ".hack--Sign Episode 1.mp4"
+    // was a download the user could not see.
+    let dest = tempfile::tempdir().expect("dest");
+    assert_eq!(
+        episode_stem(dest.path(), ".hack//Sign", "1", None),
+        "hack--Sign Episode 1"
+    );
+    assert_eq!(
+        episode_stem(dest.path(), "..Show", "2", None),
+        "Show Episode 2"
+    );
+    // The dots and the spaces between them go together, so the name
+    // does not start with a space either.
+    assert_eq!(
+        episode_stem(dest.path(), ". . Show", "3", None),
+        "Show Episode 3"
+    );
+    // Titles that differ only by their leading dots share a name, as
+    // two titles that file-safe spelling makes one already do.
+    assert_eq!(
+        episode_stem(dest.path(), ".hack", "1", None),
+        episode_stem(dest.path(), "hack", "1", None)
+    );
+    // Windows' device names are checked on what is left.
+    assert_eq!(
+        episode_stem(dest.path(), "..CON.x", "1", None),
+        "CON-x Episode 1"
+    );
+}
+
+#[test]
+fn a_title_of_only_dots_names_the_episode_alone() {
+    let dest = tempfile::tempdir().expect("dest");
+    assert_eq!(episode_stem(dest.path(), "...", "1", None), "Episode 1");
+    assert_eq!(episode_stem(dest.path(), ". . .", "4", None), "Episode 4");
+}
+
+#[test]
+fn a_title_whose_name_was_never_hidden_keeps_its_name() {
+    // Only a name that starts with a dot is hidden: a dot further in,
+    // or after a space, was always a visible file and stays the name
+    // earlier versions gave it.
+    let dest = tempfile::tempdir().expect("dest");
+    assert_eq!(
+        episode_stem(dest.path(), "Mr. Osomatsu", "1", None),
+        "Mr. Osomatsu Episode 1"
+    );
+    assert_eq!(
+        episode_stem(dest.path(), " .hack", "1", None),
+        " .hack Episode 1"
+    );
+    assert_eq!(
+        episode_stem(dest.path(), "Show...", "1", None),
+        "Show... Episode 1"
+    );
+}
+
+#[test]
+fn an_episode_an_earlier_version_saved_under_a_dotted_name_keeps_it() {
+    // The user's file is the episode: it is recognised under the name
+    // it has rather than renamed, or downloaded a second time beside it.
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(dest.path().join(".hack--Sign Episode 1.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), ".hack//Sign", "1", None),
+        ".hack--Sign Episode 1"
+    );
+    // Numbered the way an earlier version numbered it, too.
+    std::fs::write(dest.path().join(".hack--Sign Episode 26.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), ".hack//Sign", "2", Some("26")),
+        ".hack--Sign Episode 26"
+    );
+    // A title of only dots had its dots in the name.
+    std::fs::write(dest.path().join("... Episode 3.mp4"), b"x").expect("seed");
+    assert_eq!(episode_stem(dest.path(), "...", "3", None), "... Episode 3");
+    // An episode with no earlier file gets the visible name.
+    assert_eq!(
+        episode_stem(dest.path(), ".hack//Sign", "4", None),
+        "hack--Sign Episode 4"
+    );
+}
+
+#[test]
+fn the_visible_name_found_on_disk_wins_over_a_dotted_one() {
+    // Both spellings on disk: the one this version writes is the one
+    // it keeps naming the episode by.
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(dest.path().join("hack--Sign Episode 7.mp4"), b"x").expect("seed");
+    std::fs::write(dest.path().join(".hack--Sign Episode 7.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), ".hack//Sign", "1", Some("7")),
+        "hack--Sign Episode 7"
+    );
+}
+
+#[test]
+fn the_visible_name_on_disk_wins_over_the_dotted_one_for_the_same_number() {
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(dest.path().join("hack--Sign Episode 1.mp4"), b"x").expect("seed");
+    std::fs::write(dest.path().join(".hack--Sign Episode 1.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), ".hack//Sign", "1", None),
+        "hack--Sign Episode 1"
+    );
+}
+
+#[test]
+fn a_title_with_nothing_file_safe_keeps_the_name_it_always_had() {
+    // Only a title of dots loses its whole name to the dot rule; a
+    // title file-safe spelling empties ("???") was never hidden, and
+    // its earlier downloads sit under the name it gave them.
+    let dest = tempfile::tempdir().expect("dest");
+    assert_eq!(episode_stem(dest.path(), "???", "1", None), " Episode 1");
+    assert_eq!(episode_stem(dest.path(), "", "2", None), " Episode 2");
+}
+
+#[test]
+fn an_episode_numbered_the_former_way_is_looked_for_under_its_device_safe_name() {
+    // The name this version gives is device-safe under either number:
+    // on Windows a lookup of "CON.x …" would ask the console instead of
+    // the folder.
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(dest.path().join("CON-x Episode 7.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), "CON.x", "1", Some("7")),
+        "CON-x Episode 7"
+    );
+    std::fs::write(dest.path().join("CON-x Episode 8.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), "..CON.x", "2", Some("8")),
+        "CON-x Episode 8"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn an_episode_saved_before_the_device_rule_keeps_its_name() {
+    // Versions before the device rule saved "CON.x" and "Nul. Show"
+    // under those spellings, which Linux and macOS store as ordinary
+    // files: that file is the episode, under the former number or the
+    // episode's own.
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(dest.path().join("CON.x Episode 7.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), "CON.x", "1", Some("7")),
+        "CON.x Episode 7"
+    );
+    // Beside the device-safe file, the device-safe one is the episode.
+    std::fs::write(dest.path().join("CON-x Episode 7.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), "CON.x", "1", Some("7")),
+        "CON-x Episode 7"
+    );
+    std::fs::write(dest.path().join("Nul. Show Episode 1.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), "Nul. Show", "1", None),
+        "Nul. Show Episode 1"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn only_a_file_with_something_in_it_is_the_episode_under_a_name() {
+    // An empty file is what an interrupted download leaves at its name,
+    // and a directory is not an episode: an earlier name's real file
+    // beside either is the episode.
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(dest.path().join("Show: Part Episode 1.mp4"), b"x").expect("seed");
+    std::fs::write(dest.path().join("Show - Part Episode 1.mp4"), b"").expect("leftover");
+    assert_eq!(
+        episode_stem(dest.path(), "Show: Part", "1", None),
+        "Show: Part Episode 1"
+    );
+    std::fs::write(dest.path().join(".hack--Sign Episode 2.mp4"), b"x").expect("seed");
+    std::fs::create_dir(dest.path().join("hack--Sign Episode 2.mp4")).expect("dir");
+    assert_eq!(
+        episode_stem(dest.path(), ".hack//Sign", "2", None),
+        ".hack--Sign Episode 2"
+    );
+    // With no real file under any name, the name is this version's.
+    std::fs::write(dest.path().join(".hack--Sign Episode 3.mp4"), b"").expect("leftover");
+    assert_eq!(
+        episode_stem(dest.path(), ".hack//Sign", "3", None),
+        "hack--Sign Episode 3"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn an_earlier_raw_spelling_that_starts_with_a_dot_is_still_the_episode() {
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(dest.path().join(".hack: Roots Episode 1.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), ".hack: Roots", "1", None),
+        ".hack: Roots Episode 1"
     );
 }
 
@@ -198,6 +399,32 @@ proptest! {
     #[test]
     fn a_name_windows_accepts_is_its_own_file_safe_name(name in "[^<>:\"/\\\\|?*\\x00-\\x1f]{0,24}") {
         prop_assert_eq!(file_safe(&name), name);
+    }
+
+    /// Whatever the title, the name a new download takes is never a
+    /// hidden file.
+    #[test]
+    fn a_new_episodes_name_never_starts_with_a_dot(
+        title in "[. ]{0,4}(\\PC{0,16}|[\\x00-\\x7f]{0,16})",
+        episode in "[0-9]{1,4}",
+    ) {
+        let dest = tempfile::tempdir().expect("dest");
+        let stem = episode_stem(dest.path(), &title, &episode, None);
+        prop_assert!(!stem.starts_with('.'), "{title:?} -> {stem:?}");
+        prop_assert!(stem.ends_with(&format!("Episode {episode}")), "{stem:?}");
+    }
+
+    /// A title whose file-safe name does not start with a dot names its
+    /// episode as it always has, so no visible download changes name.
+    #[test]
+    fn a_name_that_was_never_hidden_is_unchanged(
+        title in "[^.<>:\"/\\\\|?*\\x00-\\x1f][^<>:\"/\\\\|?*\\x00-\\x1f]{0,16}",
+    ) {
+        let dest = tempfile::tempdir().expect("dest");
+        prop_assert_eq!(
+            episode_stem(dest.path(), &title, "1", None),
+            not_a_device(format!("{title} Episode 1"))
+        );
     }
 
     #[test]
