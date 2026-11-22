@@ -48,6 +48,10 @@ jobs:
     needs: filter
     name: Playwright + _electron
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
       - if: needs.filter.outputs.relevant != 'true'
         run: 'echo "Not required: no backend / frontend / electron changes in this PR"'
@@ -162,22 +166,19 @@ jobs:
         working-directory: electron
         run: |
           set +e
-          DEBUG=pw:browser,pw:protocol xvfb-run --auto-servernum pnpm exec playwright test e2e/reveal-without-frames.spec.ts --repeat-each=100 --reporter=line > diag-loop.log 2>&1
-          echo "loop exit $?"
-          grep -E 'passed|failed|flaky' diag-loop.log | tail -5
-          DEBUG=pw:browser xvfb-run --auto-servernum pnpm exec playwright test --repeat-each=2 --reporter=line > diag-full.log 2>&1
-          echo "full exit $?"
-          grep -E 'passed|failed|flaky|✘' diag-full.log | tail -20
+          for i in 1 2 3; do
+            DEBUG=pw:browser xvfb-run --auto-servernum pnpm exec playwright test --reporter=line > diag-full-$i.log 2>&1
+            echo "full $i exit $?"
+            grep -E ' passed| failed|✘' diag-full-$i.log | tail -5
+          done
           exit 0
 
       - if: always() && needs.filter.outputs.relevant == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: diag-logs
+          name: diag-logs-${{ matrix.shard }}
           path: |
-            electron/diag-loop.log
-            electron/diag-full.log
-            electron/test-results/
+            electron/diag-full-*.log
           retention-days: 7
 
       - if: failure() && needs.filter.outputs.relevant == 'true'
