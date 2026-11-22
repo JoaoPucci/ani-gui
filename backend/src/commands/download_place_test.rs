@@ -123,6 +123,27 @@ fn a_version_tag_anywhere_in_the_title_leaves_one_folder() {
 }
 
 #[test]
+fn a_version_tag_beside_a_title_spelled_with_its_own_spaces_leaves_one_folder() {
+    // The tag's removal leaves an ASCII space where it stood. Beside the
+    // title's own ideographic space, the run is the title's space, as the
+    // plain copy spells it.
+    let chosen = tempfile::tempdir().expect("chosen");
+    let plain = episode_place(chosen.path(), "The Show\u{3000}Season 2", "1", None).dir;
+    assert_eq!(plain, chosen.path().join("The Show\u{3000}Season 2"));
+    for title in [
+        "The Show（uncensored）\u{3000}Season 2",
+        "The Show\u{3000}(Uncensored)\u{3000}Season 2",
+        "The Show\u{3000}[UNCENSORED] Season 2",
+    ] {
+        assert_eq!(
+            episode_place(chosen.path(), title, "1", None).dir,
+            plain,
+            "{title:?}"
+        );
+    }
+}
+
+#[test]
 fn a_space_the_title_spells_its_own_way_is_kept() {
     // Japanese titles separate words with an ideographic space, and the
     // episode's name keeps it: so does the folder, with a run read as
