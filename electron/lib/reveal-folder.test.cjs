@@ -58,3 +58,27 @@ test("a stat that throws for any reason refuses", () => {
   };
   assert.strictEqual(isRevealableDirectory("/root", { pathModule: path.posix, statSync }), false);
 });
+
+test("a show's download folder opens, on the real filesystem", () => {
+  // Downloads go in a folder per show inside the chosen one, and the
+  // dock hands that folder over: names with spaces, hyphens, a
+  // device-name hyphen and letters outside ASCII are ordinary folders.
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const chosen = fs.mkdtempSync(path.join(os.tmpdir(), "ani-gui-reveal-"));
+  try {
+    for (const name of ["Re - Zero", "CON-", "Fate-Zero", "Shingeki no Kyojin – 進撃の巨人"]) {
+      const show = path.join(chosen, name);
+      fs.mkdirSync(show);
+      fs.writeFileSync(path.join(show, `${name} Episode 1.mp4`), "v");
+      assert.strictEqual(isRevealableDirectory(show, { pathModule: path, statSync: fs.statSync }), true, name);
+      assert.strictEqual(
+        isRevealableDirectory(path.join(show, `${name} Episode 1.mp4`), { pathModule: path, statSync: fs.statSync }),
+        false,
+        `${name}: the episode itself is a file`,
+      );
+    }
+  } finally {
+    fs.rmSync(chosen, { recursive: true, force: true });
+  }
+});
