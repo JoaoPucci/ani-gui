@@ -2,7 +2,7 @@
 //! on: nothing here stages a shell stub, so the Windows leg runs the
 //! same cases against its own locking and its own hidden attribute.
 
-use super::{owner_of, parts_dir, Entry, Hold, PARTS_DIR};
+use super::{owner_of, parts_dir, Entry, Hold, Step, PARTS_DIR};
 
 fn names(dir: &std::path::Path) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(dir)
@@ -305,4 +305,125 @@ async fn on_windows_a_holds_removal_outlasts_a_brief_outside_handle() {
     }
     assert!(!path.exists(), "the hold goes once the scanner lets go");
     assert!(!folder.exists(), "and the folder with it");
+}
+
+#[test]
+fn a_folder_removed_before_the_hold_is_created_is_made_again() {
+    // Another download removed the folder as it emptied, between this
+    // one making sure of it and creating its hold in it.
+    let dest = tempfile::tempdir().expect("dest");
+    let mut removed = false;
+    let hold = Hold::take_with(dest.path(), false, &mut |step, dir| {
+        if step == Step::BeforeCreate && !removed {
+            std::fs::remove_dir(dir).expect("another download removes it");
+            removed = true;
+        }
+    })
+    .expect("the second attempt takes the hold");
+    assert!(removed);
+    assert!(hold.dir().is_dir());
+    assert_eq!(names(hold.dir()).len(), 1, "one hold, this one's");
+}
+
+#[test]
+fn a_hold_a_sweep_locked_first_is_given_up_for_a_new_one() {
+    // A sweep found the hold before its owner locked it and took it
+    // for a dead download's. The owner starts over under a new key.
+    let dest = tempfile::tempdir().expect("dest");
+    let mut sweeper: Option<(std::path::PathBuf, std::fs::File)> = None;
+    let hold = Hold::take_with(dest.path(), false, &mut |step, path| {
+        if step == Step::BeforeLock && sweeper.is_none() {
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(path)
+                .expect("the sweep opens the hold");
+            fs4::FileExt::lock(&file).expect("and locks it first");
+            sweeper = Some((path.to_path_buf(), file));
+        }
+    })
+    .expect("a hold under another key");
+    let (lost, _file) = sweeper.expect("the sweep acted");
+    let mine = hold.part("");
+    let mine = mine.file_name().and_then(|n| n.to_str()).expect("name");
+    let lost = lost.file_name().and_then(|n| n.to_str()).expect("name");
+    assert_ne!(
+        owner_of(mine).map(|(k, _)| k),
+        owner_of(lost).map(|(k, _)| k),
+        "the hold the sweep took is not the one kept"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_hold_whose_name_a_sweep_removed_before_the_lock_is_given_up() {
+    // A sweep locked the new hold, found nothing under its key, removed
+    // the name and let go — all before the owner's lock. The owner's
+    // lock then holds a file nobody can see, so it starts over.
+    let dest = tempfile::tempdir().expect("dest");
+    let mut unlinked: Option<std::path::PathBuf> = None;
+    let hold = Hold::take_with(dest.path(), false, &mut |step, path| {
+        if step == Step::BeforeLock && unlinked.is_none() {
+            std::fs::remove_file(path).expect("the sweep removes the name");
+            unlinked = Some(path.to_path_buf());
+        }
+    })
+    .expect("a hold under another key");
+    let unlinked = unlinked.expect("the sweep acted");
+    assert!(!unlinked.exists());
+    assert_eq!(names(hold.dir()).len(), 1, "the kept hold is named");
+}
+
+#[test]
+fn a_folder_that_keeps_disappearing_is_an_error_not_a_loop() {
+    let dest = tempfile::tempdir().expect("dest");
+    let mut attempts = 0;
+    let got = Hold::take_with(dest.path(), false, &mut |step, dir| {
+        if step == Step::BeforeCreate {
+            attempts += 1;
+            std::fs::remove_dir(dir).expect("removed again");
+        }
+    });
+    assert!(got.is_err(), "taking a hold gives up");
+    assert!(attempts > 1, "after starting over: {attempts}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_hold_that_cannot_be_created_is_reported() {
+    // Not a removal in flight: a folder nothing can be created in.
+    use std::os::unix::fs::PermissionsExt;
+    let dest = tempfile::tempdir().expect("dest");
+    let mut attempts = 0;
+    let got = Hold::take_with(dest.path(), false, &mut |step, dir| {
+        if step == Step::BeforeCreate {
+            attempts += 1;
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o555)).expect("chmod");
+        }
+    });
+    std::fs::set_permissions(
+        parts_dir(dest.path()),
+        std::fs::Permissions::from_mode(0o755),
+    )
+    .expect("chmod back");
+    let err = got.expect_err("refused");
+    assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+    assert_eq!(attempts, 1, "reported at once, not retried");
+}
+
+#[test]
+fn a_hold_the_sweep_cannot_open_keeps_its_parts() {
+    // Unprovable is not dead: whatever is at the hold's name, if the
+    // sweep cannot open it, its parts stay.
+    let dest = tempfile::tempdir().expect("dest");
+    let dir = parts_dir(dest.path());
+    std::fs::create_dir_all(dir.join(format!("{DEAD}.hold"))).expect("a directory at the name");
+    let part = dir.join(format!("{DEAD}-0.part.mp4"));
+    std::fs::write(&part, b"someone's").expect("part");
+    drop(Hold::take(dest.path(), true).expect("hold"));
+    assert!(part.exists(), "a part whose hold cannot be opened is kept");
+}
+
+#[test]
+fn a_key_without_a_pid_is_nobodys() {
+    assert_eq!(owner_of(".ani-gui--0123456789abcdef.hold"), None);
 }
