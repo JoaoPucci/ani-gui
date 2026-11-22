@@ -25,6 +25,7 @@ use crate::scraper::provider::StreamSource;
 
 #[path = "download_lock.rs"]
 mod lock;
+pub(crate) use lock::sweep_lock_leftovers;
 #[cfg(not(test))]
 use lock::{acquire_instance_lock, target_lock};
 // The lock's own cases reach these through this module.
@@ -164,16 +165,21 @@ pub struct DownloadProgress {
 }
 
 /// SSE final-event body. `dest_dir` is the directory the file landed
-/// in, which is what a "reveal in folder" intent needs.
+/// in, which is what a "reveal in folder" intent needs: the show's own
+/// folder inside the one the user chose
+/// ([`super::download_place::episode_place`]), or the chosen folder
+/// itself where the episode goes there instead — already in it from a
+/// version before show folders, or of a title that gives the show no
+/// folder name.
 ///
 /// Only the directory, because the same response ends a range
 /// download: `1-12` writes twelve files and there is no single name to
-/// return. A single-episode download lands on the name
-/// `download_episode_stem::episode_stem` gives it however it
-/// got there — including a yt-dlp run that could not repackage and was
-/// retried through ffmpeg, which discards the mislabeled file and
-/// writes the same target. Only a repackage
-/// failure with no ffmpeg to retry through fails instead, with
+/// return. A single-episode download lands on the place
+/// `download_place::episode_place` gives it however it got there —
+/// including a yt-dlp run that could not repackage and was retried
+/// through ffmpeg, which discards the mislabeled file and writes the
+/// same target. Only a repackage failure with no ffmpeg to retry
+/// through fails instead, with
 /// [`AniError::FfmpegMissing`].
 #[derive(Debug, Clone, Serialize)]
 pub struct DownloadResponse {
@@ -247,7 +253,7 @@ where
     // script's own -e loop, one pick then one transfer per episode.
     if let Some((first, last)) = super::download_range::episode_range(&args.episode) {
         let quality = args.quality.as_deref().unwrap_or("best");
-        super::download_range::download_range(
+        let landed = super::download_range::download_range(
             state,
             args,
             first,
@@ -259,7 +265,7 @@ where
         )
         .await?;
         return Ok(DownloadResponse {
-            dest_dir: dest.to_string_lossy().into_owned(),
+            dest_dir: landed.to_string_lossy().into_owned(),
         });
     }
 
@@ -367,22 +373,19 @@ where
             }
         };
 
-    tracing::info!(
-        slug = %resolved.slug,
-        episode = %args.episode,
-        mode = %args.mode,
-        dest = %dest.display(),
-        "download: spawning tool on natively resolved stream",
-    );
     // Named for the episode it plays, or for the number an earlier
     // version gave it where that version's download is in the folder.
     let played = crate::commands::play_native_record::matched_episode(&resolved, &args.episode);
     let former = crate::commands::play_native_merge::former_number(&resolved);
-    let file_stem = super::download_episode_stem::episode_stem(
-        &dest,
-        &resolved.title,
-        &played,
-        former.as_deref(),
+    let place =
+        super::download_place::episode_place(&dest, &resolved.title, &played, former.as_deref());
+    sweep_lock_leftovers(&dest).await;
+    tracing::info!(
+        slug = %resolved.slug,
+        episode = %args.episode,
+        mode = %args.mode,
+        dest = %place.dir.display(),
+        "download: spawning tool on natively resolved stream",
     );
     let source = StreamSource {
         master_url: resolved.master_url,
@@ -413,8 +416,8 @@ where
         &state.proxy_http,
         &state.host_budget,
         &source,
-        &dest,
-        &file_stem,
+        &place.dir,
+        &place.stem,
         Some(quality),
         path_env,
         std::time::Duration::from_secs(60 * 60),
@@ -429,7 +432,7 @@ where
     .await?;
 
     Ok(DownloadResponse {
-        dest_dir: dest.to_string_lossy().into_owned(),
+        dest_dir: place.dir.to_string_lossy().into_owned(),
     })
 }
 
