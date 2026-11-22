@@ -16,16 +16,81 @@
 //! - `<key>.part.f<format id>.<ext>` — one stream of a format yt-dlp
 //!   fetched video and audio apart for, before the merge, with `<ext>`
 //!   a container yt-dlp writes a stream in.
-//! - after either of the last two shapes but one, what yt-dlp keeps
-//!   beside a file it is writing: `.part`, the `.ytdl` resume state,
-//!   and a fragment in flight, `.part-Frag<n>`, with its own `.part`.
+//! - after `<key>.part.mp4` or a split format's stream, what yt-dlp
+//!   keeps beside a file it is writing: `.part`, the `.ytdl` resume
+//!   state, and a fragment, `.part-Frag<n>`, with a `.part` of its own
+//!   while it is in flight.
 //!
 //! The format this version gives its names — a 16-digit key, and only
 //! inside the working folder — never parses.
 
+const KEY_PREFIX: &str = ".ani-gui-";
+/// The digits of a `u32` pid, at most.
+const PID_MAX_DIGITS: usize = 10;
+/// A uuid's simple form.
+const ID_LEN: usize = 32;
+/// The containers yt-dlp writes one stream of a split format in.
+const STREAM_EXTS: [&str; 8] = ["mp4", "m4a", "m4v", "ts", "aac", "mp3", "webm", "mkv"];
+
 /// Whether `name` is a scratch file an earlier version left beside
 /// its episodes.
 #[must_use]
-pub(crate) fn is_old_scratch(_name: &str) -> bool {
-    false
+pub(crate) fn is_old_scratch(name: &str) -> bool {
+    after_key(name).is_some_and(|tail| {
+        matches!(tail, ".part.vtt" | ".part.temp.mp4")
+            || tail
+                .strip_prefix(".part.")
+                .is_some_and(|rest| is_tool_file(without_tool_suffix(rest)))
+    })
+}
+
+/// What follows `.ani-gui-<pid>-<32 hex>` in `name`.
+fn after_key(name: &str) -> Option<&str> {
+    let rest = name.strip_prefix(KEY_PREFIX)?;
+    let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+    if digits == 0 || digits > PID_MAX_DIGITS {
+        return None;
+    }
+    let rest = rest[digits..].strip_prefix('-')?;
+    let id = rest.get(..ID_LEN)?;
+    id.bytes()
+        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        .then(|| &rest[ID_LEN..])
+}
+
+/// `rest` without the one suffix yt-dlp adds beside a file it writes,
+/// if it carries one.
+fn without_tool_suffix(rest: &str) -> &str {
+    if let Some(base) = rest.strip_suffix(".ytdl") {
+        return base;
+    }
+    let partial = rest.strip_suffix(".part").unwrap_or(rest);
+    if let Some((base, n)) = partial.rsplit_once(".part-Frag") {
+        if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) {
+            return base;
+        }
+    }
+    rest.strip_suffix(".part").unwrap_or(rest)
+}
+
+/// Whether `file`, what follows `<key>.part.`, is a file yt-dlp wrote
+/// to: `mp4`, or `f<format id>.<ext>`.
+fn is_tool_file(file: &str) -> bool {
+    if file == "mp4" {
+        return true;
+    }
+    file.strip_prefix('f')
+        .and_then(|rest| rest.rsplit_once('.'))
+        .is_some_and(|(id, ext)| is_format_id(id) && STREAM_EXTS.contains(&ext))
+}
+
+/// A format id of the shape an HLS listing gives yt-dlp: ASCII
+/// letters and digits, `-`, `_` and `.`. One with anything else in it
+/// is left where it is — a leftover kept costs disk, a wrong removal
+/// a file of the user's.
+fn is_format_id(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
 }

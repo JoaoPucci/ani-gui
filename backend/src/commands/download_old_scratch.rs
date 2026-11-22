@@ -50,19 +50,68 @@ pub(crate) struct OldScratchVisits {
 
 impl OldScratchVisits {
     /// Sweep `dir` on the blocking pool, without waiting for it, unless
-    /// this download already has.
-    pub(crate) fn visit(&mut self, _dir: &Path) {}
+    /// this download already has. Migration code, to go around v1.0:
+    /// "Retiring the old-scratch sweep" in `docs/deferred-work.md`.
+    pub(crate) fn visit(&mut self, dir: &Path) {
+        if self.first_visit(dir) {
+            let dir = dir.to_path_buf();
+            drop(tokio::task::spawn_blocking(move || {
+                sweep(&dir, SystemTime::now());
+            }));
+        }
+    }
 
     /// Whether this download has not swept `dir` yet, noting that it
     /// now has.
-    pub(crate) fn first_visit(&mut self, _dir: &Path) -> bool {
-        false
+    pub(crate) fn first_visit(&mut self, dir: &Path) -> bool {
+        self.swept.insert(dir.to_path_buf())
     }
 }
 
 /// Remove, from `dir`, every leftover as the module describes one,
 /// aged by `now`.
-pub(crate) fn sweep(_dir: &Path, _now: SystemTime) {}
+pub(crate) fn sweep(dir: &Path, now: SystemTime) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        if file_name.to_str().is_some_and(name::is_old_scratch) {
+            remove_if_stale(&entry.path(), now);
+        }
+    }
+}
+
+/// Remove `path` if it is a regular file last written more than
+/// [`MIN_AGE`] before `now`.
+fn remove_if_stale(path: &Path, now: SystemTime) {
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return;
+    };
+    if !meta.file_type().is_file() || !is_stale(meta.modified().ok(), now) {
+        return;
+    }
+    match std::fs::remove_file(path) {
+        Ok(()) => tracing::info!(
+            path = %path.display(),
+            "download: removed an earlier version's unfinished file"
+        ),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => tracing::warn!(
+            path = %path.display(),
+            error = %e,
+            "download: an earlier version's unfinished file not removed"
+        ),
+    }
+}
+
+/// Whether a file last written at `modified` is older than
+/// [`MIN_AGE`] at `now`; never for a time unknown or ahead of `now`.
+fn is_stale(modified: Option<SystemTime>, now: SystemTime) -> bool {
+    modified
+        .and_then(|m| now.duration_since(m).ok())
+        .is_some_and(|age| age > MIN_AGE)
+}
 
 #[cfg(test)]
 #[path = "download_old_scratch_test.rs"]

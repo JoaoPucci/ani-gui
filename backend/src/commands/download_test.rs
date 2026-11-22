@@ -8691,7 +8691,7 @@ async fn a_download_into_a_show_folder_sweeps_the_locks_earlier_versions_left_in
 async fn a_download_sweeps_the_scratch_earlier_versions_left_in_the_chosen_and_show_folders() {
     // Versions up to 0.18.0 wrote a transfer's scratch beside the
     // episode, and a quit that ended the backend outright left it in
-    // view on Windows. A download into a folder removes those that are
+    // view on Windows. A download into a folder removes those more than
     // a day old, in the chosen folder and in the show's; one written
     // since stays, as does everything else.
     let stale = std::time::SystemTime::now() - std::time::Duration::from_secs(3 * 24 * 60 * 60);
