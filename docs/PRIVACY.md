@@ -203,9 +203,9 @@ the local browser storage, the window size and the encrypted OAuth
 tokens. Answered No, those stay for a later install. Either way it
 removes the copy of the installer it keeps in
 `%LOCALAPPDATA%\ani-gui-updater`. Releases up to and including 0.18.0
-left `%APPDATA%\ani-gui`, that installer copy and an empty
-`%LOCALAPPDATA%\thirdmovement` behind even on Yes. On Linux, removing the package leaves your
-data in place.
+left `%APPDATA%\ani-gui`, that installer copy and the emptied
+`thirdmovement` folders behind even on Yes. On Linux, removing the
+package leaves your data in place.
 
 ## What ani-gui transmits to public services
 
