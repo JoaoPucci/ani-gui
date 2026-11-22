@@ -41,19 +41,44 @@ pub(super) struct Scratch {
 
 impl Scratch {
     /// A scratch in `dest`'s working folder, after sweeping what
-    /// downloads that are no longer running left there.
+    /// downloads that are no longer running left there; on the calling
+    /// thread, for the cases that build one directly.
     ///
     /// # Errors
     /// The working folder or the hold could not be created — a
     /// destination nothing can be written in.
+    #[cfg(all(test, unix))]
     pub(super) fn new(dest: &std::path::Path) -> std::io::Result<Self> {
-        let hold = super::parts::Hold::take(dest, true)?;
-        Ok(Self {
+        Ok(Self::with_hold(super::parts::Hold::take(dest, true)?))
+    }
+
+    /// A scratch for `target`, in the working folder beside it, taken
+    /// on the blocking pool (see [`super::parts::take_beside`]).
+    ///
+    /// # Errors
+    /// [`crate::error::AniError::Io`] when the working folder or the
+    /// hold could not be created, with the cause logged.
+    pub(super) async fn for_target(target: &std::path::Path) -> crate::error::Result<Self> {
+        match super::parts::take_beside(target, true).await {
+            Ok(hold) => Ok(Self::with_hold(hold)),
+            Err(e) => {
+                tracing::warn!(
+                    target = %target.display(),
+                    error = %e,
+                    "download: working folder not created"
+                );
+                Err(crate::error::AniError::Io)
+            }
+        }
+    }
+
+    fn with_hold(hold: super::parts::Hold) -> Self {
+        Self {
             path: scratch_path(&hold),
             retired: Vec::new(),
             published: std::sync::atomic::AtomicBool::new(false),
             hold,
-        })
+        }
     }
 
     /// Point at a fresh file, dropping whatever the last one was —

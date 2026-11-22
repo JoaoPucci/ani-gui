@@ -42,60 +42,14 @@ use std::path::{Path, PathBuf};
 // past a brief outside handle — so it uses the lock's own layer.
 use super::lock::os;
 
-/// The working folder's name inside a destination.
-pub(crate) const PARTS_DIR: &str = ".ani-gui-parts";
-
-/// Where `dest`'s unfinished files live.
-pub(crate) fn parts_dir(dest: &Path) -> PathBuf {
-    dest.join(PARTS_DIR)
-}
-
-/// What a name in the working folder is to the download that owns it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Entry {
-    /// `<key>.hold`, the file the owner keeps locked.
-    Hold,
-    /// `<key>-…`, one of the owner's files.
-    Part,
-}
-
-const KEY_PREFIX: &str = ".ani-gui-";
-/// The random part of a key: 64 bits, in lowercase hex. Short, because
-/// every name a tool derives inside the working folder carries it on
-/// top of the destination's path, and Windows paths have a ceiling.
-const ID_LEN: usize = 16;
-
-/// The key that owns `name`, and what the name is to it; none for a
-/// name this scheme did not give out, which the sweep leaves alone.
-///
-/// A key is `.ani-gui-<pid>-<16 lowercase hex>`, exactly as [`Hold`]
-/// spells it, so the parse is syntactic: the hold is the key and
-/// `.hold`, a part the key and a hyphen and anything after it.
-#[must_use]
-pub(crate) fn owner_of(name: &str) -> Option<(&str, Entry)> {
-    let rest = name.strip_prefix(KEY_PREFIX)?;
-    let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
-    if digits == 0 {
-        return None;
-    }
-    let rest = rest[digits..].strip_prefix('-')?;
-    let id = rest.get(..ID_LEN)?;
-    if !id
-        .bytes()
-        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    {
-        return None;
-    }
-    let key_len = KEY_PREFIX.len() + digits + 1 + ID_LEN;
-    let (key, tail) = name.split_at(key_len);
-    if tail == ".hold" {
-        Some((key, Entry::Hold))
-    } else if tail.len() > 1 && tail.starts_with('-') {
-        Some((key, Entry::Part))
-    } else {
-        None
-    }
-}
+#[path = "download_parts_names.rs"]
+mod names;
+pub(crate) use names::parts_dir;
+use names::KEY_PREFIX;
+#[cfg(test)]
+pub(crate) use names::{owner_of, Entry, PARTS_DIR};
+#[path = "download_parts_sweep.rs"]
+mod sweep;
 
 /// A download's claim on its files in the working folder: the locked
 /// hold, and the key every one of its names carries. Dropped, it
@@ -108,6 +62,30 @@ pub(crate) struct Hold {
     file: Option<std::fs::File>,
     /// How many names [`Hold::part`] has given out.
     parts: std::sync::atomic::AtomicU32,
+}
+
+/// Where in taking a hold [`Hold::take_with`] lets a case act.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Step {
+    /// The folder exists; the hold is about to be created in it.
+    BeforeCreate,
+    /// The hold is created and open; it is about to be locked.
+    BeforeLock,
+}
+
+/// Take a hold in the working folder beside `target` — the folder of
+/// the file a download is for — on the blocking pool: with `sweep`, it
+/// can remove episode-sized files a killed run left, on whatever volume
+/// the user chose.
+///
+/// # Errors
+/// What [`Hold::take`] reports; a task that did not finish, as an io
+/// error of its own.
+pub(crate) async fn take_beside(target: &Path, sweep: bool) -> std::io::Result<Hold> {
+    let dest = target.parent().map(Path::to_path_buf).unwrap_or_default();
+    tokio::task::spawn_blocking(move || Hold::take(&dest, sweep))
+        .await
+        .map_err(std::io::Error::other)?
 }
 
 /// How many times taking a hold starts over when the folder or the
@@ -125,6 +103,17 @@ impl Hold {
     /// What creating the folder or the hold reports, or an error of
     /// its own when the folder kept disappearing.
     pub(crate) fn take(dest: &Path, sweep: bool) -> std::io::Result<Self> {
+        Self::take_with(dest, sweep, &mut |_, _| {})
+    }
+
+    /// [`Hold::take`], with `between` called at each point another
+    /// download or a sweep can act on the folder or the hold — the seam
+    /// the cases stage those races through.
+    pub(crate) fn take_with(
+        dest: &Path,
+        sweep: bool,
+        between: &mut dyn FnMut(Step, &Path),
+    ) -> std::io::Result<Self> {
         let dir = parts_dir(dest);
         for _ in 0..ATTEMPTS {
             // The folder, never the destination: a destination that is
@@ -141,6 +130,7 @@ impl Hold {
                 uuid::Uuid::new_v4().as_u64_pair().0
             );
             let path = dir.join(format!("{key}.hold"));
+            between(Step::BeforeCreate, &dir);
             let file = match os::lock_file_options().create_new(true).open(&path) {
                 Ok(file) => file,
                 // The folder went between creating it and the open:
@@ -148,6 +138,7 @@ impl Hold {
                 Err(e) if os::lost_to_removal(&e) => continue,
                 Err(e) => return Err(e),
             };
+            between(Step::BeforeLock, &path);
             match fs4::FileExt::try_lock(&file) {
                 Ok(()) => {}
                 // A sweep reached the hold before this lock did and
@@ -193,85 +184,6 @@ impl Hold {
 
     fn hold_path(&self, key: &str) -> PathBuf {
         self.dir.join(format!("{key}.hold"))
-    }
-
-    /// Remove the files of every other key whose download is provably
-    /// not running: its hold gone, or locked here. A hold that cannot
-    /// be opened or locked is somebody's, or unprovable, and stays.
-    fn sweep_dead(&self) {
-        let Ok(entries) = std::fs::read_dir(&self.dir) else {
-            return;
-        };
-        self.sweep_listed(entries.flatten().map(|e| e.file_name()));
-    }
-
-    /// [`Hold::sweep_dead`] over the names a listing of the folder
-    /// returned — the seam the cases drive with a listing of their own.
-    fn sweep_listed(&self, listed: impl IntoIterator<Item = std::ffi::OsString>) {
-        let mut holds = std::collections::BTreeSet::new();
-        let mut parts: std::collections::BTreeMap<String, Vec<PathBuf>> =
-            std::collections::BTreeMap::new();
-        for name in listed {
-            let Some(name) = name.to_str() else { continue };
-            match owner_of(name) {
-                Some((key, Entry::Hold)) => {
-                    holds.insert(key.to_owned());
-                }
-                Some((key, Entry::Part)) => {
-                    parts
-                        .entry(key.to_owned())
-                        .or_default()
-                        .push(self.dir.join(name));
-                }
-                None => {}
-            }
-        }
-        let keys: std::collections::BTreeSet<&String> = holds.iter().chain(parts.keys()).collect();
-        for key in keys {
-            if *key == self.key {
-                continue;
-            }
-            let remove_parts = || {
-                for path in parts.get(key).into_iter().flatten() {
-                    let _ = std::fs::remove_file(path);
-                }
-            };
-            // Asked of the hold's path even when the listing showed
-            // none: a listing is not a snapshot, and a hold created
-            // while it ran may be missing from it beside a part that is
-            // not.
-            let path = self.hold_path(key);
-            match os::lock_file_options().open(&path) {
-                Ok(file) => {
-                    if fs4::FileExt::try_lock(&file).is_ok() {
-                        remove_parts();
-                        os::release(file, &path);
-                    }
-                }
-                // No hold: a hold exists before its first part, so its
-                // owner ended, or a sweep beside this one removed it —
-                // either way the parts are no one's now.
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => remove_parts(),
-                Err(_) => {}
-            }
-        }
-    }
-
-    /// Remove every file of this hold's key except the hold itself.
-    fn remove_own_parts(&self) {
-        let Ok(entries) = std::fs::read_dir(&self.dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            if name
-                .to_str()
-                .and_then(owner_of)
-                .is_some_and(|(key, kind)| key == self.key && kind == Entry::Part)
-            {
-                let _ = std::fs::remove_file(entry.path());
-            }
-        }
     }
 }
 

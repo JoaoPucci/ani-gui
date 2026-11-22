@@ -1081,11 +1081,7 @@ pub(crate) async fn claim_new(path: &std::path::Path) -> std::io::Result<Sidecar
             "a sidecar is already at the name",
         ));
     }
-    let dest = path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let owned = dest.to_path_buf();
-    let hold = tokio::task::spawn_blocking(move || parts::Hold::take(&owned, false))
-        .await
-        .map_err(std::io::Error::other)??;
+    let hold = parts::take_beside(path, false).await?;
     let scratch = hold.part(".part.vtt");
     let file = tokio::fs::OpenOptions::new()
         .write(true)
@@ -1440,23 +1436,7 @@ where
     // Everything below writes here. Nothing is at the target until a
     // whole file exists, so a half transfer is never sitting under the
     // name the dock, the file manager and every other download read.
-    // On the blocking pool: the sweep can remove episode-sized files a
-    // killed run left, on whatever volume the user chose.
-    let owned = dest.to_path_buf();
-    let mut scratch = tokio::task::spawn_blocking(move || Scratch::new(&owned))
-        .await
-        .map_err(|e| {
-            tracing::warn!(error = %e, "download: working folder task failed");
-            AniError::Io
-        })?
-        .map_err(|e| {
-            tracing::warn!(
-                dest = %dest.display(),
-                error = %e,
-                "download: working folder not created"
-            );
-            AniError::Io
-        })?;
+    let mut scratch = Scratch::for_target(&target).await?;
     // The ceiling guards a hung tool. A paced run is slow by design
     // and ends the moment playback stops, so it runs under a ceiling
     // of its own; a wait for the lane while playback is live ends the
