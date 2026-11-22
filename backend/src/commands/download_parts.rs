@@ -197,18 +197,26 @@ impl Hold {
         let Ok(entries) = std::fs::read_dir(&self.dir) else {
             return;
         };
+        self.sweep_listed(entries.flatten().map(|e| e.file_name()));
+    }
+
+    /// [`Hold::sweep_dead`] over the names a listing of the folder
+    /// returned — the seam the cases drive with a listing of their own.
+    fn sweep_listed(&self, listed: impl IntoIterator<Item = std::ffi::OsString>) {
         let mut holds = std::collections::BTreeSet::new();
         let mut parts: std::collections::BTreeMap<String, Vec<PathBuf>> =
             std::collections::BTreeMap::new();
-        for entry in entries.flatten() {
-            let name = entry.file_name();
+        for name in listed {
             let Some(name) = name.to_str() else { continue };
             match owner_of(name) {
                 Some((key, Entry::Hold)) => {
                     holds.insert(key.to_owned());
                 }
                 Some((key, Entry::Part)) => {
-                    parts.entry(key.to_owned()).or_default().push(entry.path());
+                    parts
+                        .entry(key.to_owned())
+                        .or_default()
+                        .push(self.dir.join(name));
                 }
                 None => {}
             }
