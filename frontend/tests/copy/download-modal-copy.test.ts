@@ -53,3 +53,29 @@ describe('missing-tool modal bodies', () => {
 	// reference existed only inside the yt-dlp advice — there is no
 	// longer a claim about script updates for it to condition.
 });
+
+describe("the confirm dialog's file-name hint", () => {
+	const locales: Record<string, Record<string, unknown>> = {
+		en,
+		'es-419': es419,
+		'pt-BR': ptBR,
+		ru
+	};
+
+	it('names the show folder and the file name the backend writes, in every locale', () => {
+		// Downloads go in a folder per show inside the chosen one, and
+		// the backend names every file `<title> Episode N.mp4` whatever
+		// the locale, so the template is the same path everywhere.
+		for (const [locale, messages] of Object.entries(locales)) {
+			expect(messages.hint_filename_template, locale).toBe('{title}/{title} Episode N.mp4');
+		}
+	});
+
+	it('never uses a semicolon', () => {
+		for (const [locale, messages] of Object.entries(locales)) {
+			for (const key of ['hint_filename_prefix', 'hint_filename_suffix']) {
+				expect(messages[key], `${locale}.${key}`).not.toContain(';');
+			}
+		}
+	});
+});
