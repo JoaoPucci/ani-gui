@@ -538,15 +538,51 @@ async fn a_release_outlasts_a_brief_outside_handle_on_windows() {
                 .open(&lock_path)
                 .expect("a scanner's open");
             opened_tx.send(()).expect("signal");
-            std::thread::sleep(std::time::Duration::from_millis(20));
+            std::thread::sleep(std::time::Duration::from_millis(5));
             drop(handle);
         })
     };
     opened_rx.recv().expect("the scanner opened the file");
     drop(held);
     scanner.join().expect("scanner");
+    // The retries may run after the release returns.
+    let settled = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    while lock_path.exists() && tokio::time::Instant::now() < settled {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
     assert!(
         !lock_path.exists(),
         "a release must outlast a brief outside handle"
+    );
+}
+
+/// On Windows a release with a waiter behind it returns at once.
+///
+/// The waiter's open handle refuses every delete, and the waiter
+/// removes the file itself when its own download ends, so trying again
+/// only costs time — and a release runs where the download's task was
+/// dropped, on a runtime worker the playback proxy shares. Whatever
+/// retrying a delete still does happens off that worker.
+#[cfg(windows)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_release_with_a_waiter_behind_it_returns_at_once_on_windows() {
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Queued Show Episode 1.mp4");
+    let held = acquire_instance_lock(&target, long_deadline())
+        .await
+        .expect("the first holder");
+    let waiting = {
+        let target = target.clone();
+        tokio::spawn(async move { acquire_instance_lock(&target, long_deadline()).await })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let started = std::time::Instant::now();
+    drop(held);
+    let took = started.elapsed();
+    let next = waiting.await.expect("join").expect("the waiter takes over");
+    drop(next);
+    assert!(
+        took < std::time::Duration::from_millis(30),
+        "a release must not wait on a waiter's handle: took {took:?}"
     );
 }
