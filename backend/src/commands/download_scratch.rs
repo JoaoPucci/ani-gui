@@ -14,10 +14,11 @@
 /// handed over a finished file has already cleaned its own derived
 /// names — so the drop's own sweep would read the working folder to
 /// find nothing, once per episode of a range download; the hold reads
-/// it once more as it goes, for whatever a tool left under its key. The flag is set after
-/// publication answers, never before it: set ahead of the call, it
-/// disarms the guard for the failures too, which is the off-by-one-
-/// branch this struct once shipped. And it is set on the scratch
+/// it once more as it goes, for whatever a tool left under its key.
+/// The flag is set after publication answers, never before it: set
+/// ahead of the call, it disarms the guard for the failures too,
+/// which is the off-by-one-branch this struct once shipped. And it
+/// is set on the scratch
 /// being gone rather than on the answer, because publication ignores
 /// a failed removal on its success arms — a delivered episode is not
 /// an error — and disarming on the report alone would leave that one

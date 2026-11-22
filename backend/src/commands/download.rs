@@ -1447,9 +1447,13 @@ where
             AniError::Io
         })?
         .map_err(|e| {
-        tracing::warn!(dest = %dest.display(), error = %e, "download: working folder not created");
-        AniError::Io
-    })?;
+            tracing::warn!(
+                dest = %dest.display(),
+                error = %e,
+                "download: working folder not created"
+            );
+            AniError::Io
+        })?;
     // The ceiling guards a hung tool. A paced run is slow by design
     // and ends the moment playback stops, so it runs under a ceiling
     // of its own; a wait for the lane while playback is live ends the
