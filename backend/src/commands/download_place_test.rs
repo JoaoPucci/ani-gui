@@ -355,11 +355,12 @@ proptest! {
         words in proptest::collection::vec("[A-Za-z0-9]{1,6}", 1..6),
         at in 0usize..6,
         tag in "\\(Uncensored\\)|\\[UNCENSORED\\]|（uncensored）",
+        space in "[ \u{3000}\u{a0}]",
     ) {
-        let plain = words.join(" ");
+        let plain = words.join(&space);
         let mut tagged = words.clone();
         tagged.insert(at.min(words.len()), tag);
-        let tagged = tagged.join(" ");
+        let tagged = tagged.join(&space);
         let chosen = std::path::Path::new("/nonexistent-chosen");
         prop_assert_eq!(
             episode_place(chosen, &tagged, "1", None).dir,
