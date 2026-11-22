@@ -247,3 +247,24 @@ fn on_windows_a_running_downloads_hold_cannot_be_removed_by_a_sweep() {
     drop(running);
     assert!(!parts_dir(dest.path()).exists(), "and goes with its owner");
 }
+
+#[test]
+fn a_listing_that_missed_a_running_downloads_hold_does_not_cost_it_its_parts() {
+    // A directory listing is not a snapshot: a name created while it
+    // runs may be returned or not, so a hold made mid-listing can be
+    // missing beside a part that is not. Parts are no one's only when
+    // their hold is really gone, not when a listing did not show it.
+    let dest = tempfile::tempdir().expect("dest");
+    let running = Hold::take(dest.path(), false).expect("running");
+    let theirs = running.part(".part.mp4.part");
+    std::fs::write(&theirs, b"in flight").expect("theirs");
+    let sweeper = Hold::take(dest.path(), false).expect("sweeper");
+    let listed = vec![theirs.file_name().expect("name").to_os_string()];
+    sweeper.sweep_listed(listed);
+    assert!(
+        theirs.exists(),
+        "a running download's part survives a listing that missed its hold"
+    );
+    drop(sweeper);
+    drop(running);
+}
