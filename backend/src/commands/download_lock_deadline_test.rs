@@ -1,6 +1,6 @@
-//! A bound on every download-lock test that touches the filesystem, so
-//! one that hangs fails the run with its name instead of holding the
-//! job until CI cancels it.
+//! A bound on each test in the download-lock test files that touches
+//! the filesystem, so one that hangs fails the run with its name
+//! instead of holding the job until CI cancels it.
 //!
 //! The harness only warns that a test has run past sixty seconds, and
 //! a timeout around a test's future cannot help when what hangs is a
@@ -11,8 +11,8 @@
 //! cannot be made to fail any other way.
 
 /// How long one of these tests may run. The slowest finishes in about
-/// seven seconds alone, and the lock's own deadlines in them are thirty
-/// at most; the rest is room for a loaded runner.
+/// nine seconds alone, and the lock's own deadlines in them are a
+/// minute at most; the rest is room for a loaded runner.
 const BOUND: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// Armed for the life of one test: dropping it — the test returning or

@@ -731,9 +731,9 @@ async fn on_unix_a_refused_delete_is_not_retried() {
 /// finds, once it gets that file's lock, that it no longer has the name,
 /// and opens again. That is others making progress, not the volume
 /// refusing, so it must not count toward the cap on refusals that only
-/// look like a removal: a waiter queued behind a busy episode was
-/// refused outright once that count ran out (seen on macOS CI, where
-/// four contenders handed one lock around a hundred times).
+/// look like a removal, or a waiter queued behind a busy episode would
+/// be refused outright once that count ran out. The reset of that count
+/// on a busy try now covers this as well (see the case below).
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_waiter_outlasts_any_number_of_handovers() {
@@ -791,9 +791,8 @@ fn hand_over(holder: &mut std::fs::File, staging: &std::path::Path, lock_path: &
 /// file that lost its name between the open and the check. Each such
 /// loss is someone else finishing, and a waiter that keeps finding the
 /// lock held between them is plainly on a volume that works — so the
-/// cap on losses has to count them in a row, not over the whole wait.
-/// Counted in total, four contenders handing one lock around on macOS
-/// CI ran a waiter past the cap and refused it outright.
+/// cap on losses has to count them in a row, not over the whole wait,
+/// or enough handovers refuse a waiter outright.
 ///
 /// Staged with a dangling link at the lock's name, which every open
 /// meets as "not found": between holders the name is that link for a
