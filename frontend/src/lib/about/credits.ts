@@ -26,10 +26,11 @@
 
 import { m } from '$lib/paraglide/messages';
 
-export type BundledToolNoteId = 'curl_impersonate' | 'yt_dlp' | 'ffmpeg';
+export type BundledToolNoteId = 'curl_impersonate' | 'cacert' | 'yt_dlp' | 'ffmpeg';
 
 export interface BundledTool {
-	/** Display label — the upstream's own name. */
+	/** Display label — the upstream's own name, or the dependency's
+	 *  id where it has no product name (ca-certificates). */
 	name: string;
 	/** Version string as it appears in the manifest. `null` when
 	 *  the platforms don't ship one version (ffmpeg: the Windows
@@ -86,7 +87,9 @@ export function ffmpegProvenance(version: string): BuildProvenance {
  *  two stage the same set, so one version here covers both. ffmpeg is
  *  the exception: no package carries it — the Windows installer
  *  downloads it at install time, and Linux takes the distribution's —
- *  so its version is `null`. */
+ *  so its version is `null`. ca-certificates is the other: only the
+ *  Windows package stages it, so its version is that bundle's date,
+ *  and Linux uses the distribution's. */
 export const BUNDLED_TOOLS: BundledTool[] = [
 	{
 		// The transport the native resolver spawns. The provider
@@ -97,6 +100,17 @@ export const BUNDLED_TOOLS: BundledTool[] = [
 		license: 'MIT',
 		url: 'https://github.com/lexiforest/curl-impersonate',
 		noteId: 'curl_impersonate'
+	},
+	{
+		// Windows only: the CA bundle that transport verifies with,
+		// beside the Windows certificate store. A fresh Windows has not
+		// downloaded most root certificates yet, and only Windows' own
+		// crypto stack makes it, which the transport never uses.
+		name: 'ca-certificates',
+		version: '2026-11-05',
+		license: 'MPL-2.0',
+		url: 'https://curl.se/docs/caextract.html',
+		noteId: 'cacert'
 	},
 	{
 		// The downloader. Preferred over ffmpeg when both are present:

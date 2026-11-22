@@ -1,5 +1,6 @@
 // Pre-build step for `package:win`: download the binaries the app
-// spawns that a Windows host will not have, and stage them under
+// spawns that a Windows host will not have, and the CA bundle one of
+// them verifies with, and stage them under
 // `build-resources/win/bin/`. electron-builder copies the dir into
 // the NSIS payload via `win.extraResources` in `package.json`,
 // landing at `<install>/resources/bin/<binary>` at runtime. The Rust
@@ -15,6 +16,8 @@
 //
 // Bundled today:
 //   - curl-impersonate.exe — the transport native resolution spawns.
+//   - cacert.pem           — the CA bundle that transport verifies with,
+//                            beside the Windows store (Windows only).
 //   - yt-dlp.exe           — the downloader.
 // Not bundled: ffmpeg. The NSIS installer downloads it at install
 // time instead — see `INSTALL_TIME_DEPS` below and
@@ -34,7 +37,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(electronDir, '..');
 
-// Each dep declares: pinned version, GitHub-releases URL, archive
+// Each dep declares: pinned version, download URL, archive
 // name + SHA-256, binary name (what gets dropped in build-resources),
 // and the path to the binary inside the archive (so we can extract
 // just the file, not the whole archive). The SHA-256 is captured on
@@ -85,6 +88,33 @@ export const DEPS = [
 		// the name as written — dropping the prefix fails the extract
 		// with "not found in archive".
 		archivePath: './curl-impersonate.exe',
+	},
+	// The CA bundle the transport verifies against, beside the Windows
+	// certificate store it already reads (`--ca-native`). curl's own
+	// extract of Mozilla's root store — the set Firefox ships — pinned
+	// by date like a release. The backend passes it as `--cacert`
+	// (CA_BUNDLE_FILE in backend/src/scraper/fetch.rs), and curl loads
+	// it in addition to the store, not instead of it.
+	//
+	// Staged under `binary` like the executables because the staging
+	// and the retired-file sweep key on that name; it is data, not a
+	// program, and the resolver never considers it one.
+	//
+	// Windows only, declared on the Linux side: a fresh Windows carries
+	// a minimal root store and downloads the rest only when Windows' own
+	// crypto stack builds a chain, and the transport copies the store as
+	// it stands without ever asking it to. The Linux transport reads the
+	// distribution's CA store, so `fetch-linux-deps.mjs` lists the same
+	// dependency in `SYSTEM_DEPS` and the .deb recommends it.
+	{
+		name: 'cacert',
+		dep: 'ca-certificates',
+		version: '2026-11-05',
+		archiveName: 'cacert-2026-11-05.pem',
+		url: 'https://curl.se/ca/cacert-2026-11-05.pem',
+		sha256: '427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285',
+		binary: 'cacert.pem',
+		directBinary: true,
 	},
 ];
 
