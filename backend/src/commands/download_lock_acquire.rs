@@ -12,19 +12,25 @@ use crate::error::{AniError, Result};
 /// enough that the handover is not what the user notices.
 const INSTANCE_LOCK_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 
-/// How many times an attempt's open may lose to a concurrent removal —
-/// the directory or the file found mid-delete — before the lock is
-/// given up as unobtainable. Each loss is one remover winning a race,
-/// so a real contention ends in a handful; the cap is for a
+/// How many times in a row an attempt's open may lose to a concurrent
+/// removal — the directory or the file found mid-delete — before the
+/// lock is given up as unobtainable. Each loss is one remover winning a
+/// race, so a real contention ends in a handful; the cap is for a
 /// volume that answers every open with a refusal that only looks like
 /// a removal (Windows reports a delete in progress and a plain denial
 /// with the same code), which would otherwise poll to the deadline.
 /// Giving up is the lock's ordinary best-effort failure.
 ///
+/// In a row, because a try that finds the lock held starts the count
+/// again: the volume opened and locked the file, so it plainly works,
+/// and the losses before were others' handovers. A waiter queued behind
+/// a busy episode meets one now and then for as long as the episode
+/// keeps changing hands, and counted over the whole wait those ran past
+/// the cap and refused a waiter on a working volume.
+///
 /// A lock taken on a file that lost its name while this waited does not
-/// count: that is a holder finishing and another taking over, which a
-/// waiter queued behind a busy episode sees once per handover, and the
-/// volume plainly works.
+/// count either: that is a holder finishing and another taking over,
+/// which such a waiter sees once per handover.
 const INSTANCE_LOCK_LOSSES: u32 = 40;
 
 /// Take the lock that crosses app instances for `target`, waiting for
@@ -71,6 +77,8 @@ pub(crate) async fn acquire_instance_lock(
         match on_blocking_pool(path.clone(), move |p| attempt(p, open)).await? {
             Attempt::Held(lock) => return Ok(lock),
             Attempt::Busy(waiting) => {
+                // Held by another: the volume works (see the cap).
+                losses = 0;
                 busy = Some(waiting);
                 poll_until(deadline).await?;
             }
@@ -146,7 +154,8 @@ fn attempt(path: &std::path::Path, open: Option<Waiting>) -> Attempt {
 }
 
 /// Count one loss to a concurrent removal and wait a poll before the
-/// next attempt — or give up, past the cap or the deadline.
+/// next attempt — or give up, past the cap on losses in a row or the
+/// deadline.
 async fn note_loss(losses: &mut u32, deadline: tokio::time::Instant) -> Result<()> {
     *losses += 1;
     if *losses > INSTANCE_LOCK_LOSSES {
