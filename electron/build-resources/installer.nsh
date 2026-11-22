@@ -385,6 +385,30 @@
         RMDir /r "${FFMPEG_STAGING}"
     ${EndIf}
 
+    ; Everything below lives in the user's own profile, whatever the
+    ; install mode. A per-machine install runs this in the all-users
+    ; shell context, where $APPDATA and $LOCALAPPDATA name
+    ; C:\ProgramData, so switch to the current user's context for the
+    ; removals and back once they are done, as electron-builder's own
+    ; app-data removal does (uninstaller.nsh: "electron always uses per
+    ; user app data"). The installer writes its copy below in the
+    ; current user's context too.
+    ${If} $installMode == "all"
+        SetShellVarContext current
+    ${EndIf}
+
+    ; Every install leaves a copy of its installer here
+    ; (electron-builder's APP_INSTALLER_STORE_FILE, kept for
+    ; electron-updater, which this app does not use), and nothing in
+    ; electron-builder's sequence removes it. An update runs the
+    ; previous version's uninstaller with --updated before the new
+    ; installer writes its own copy, so removing it then would be
+    ; harmless; it is kept anyway, so an update never deletes a folder
+    ; an updater would download into.
+    ${IfNot} ${isUpdated}
+        RMDir /r "$LOCALAPPDATA\ani-gui-updater"
+    ${EndIf}
+
     ; Skip the purge prompt during the silent pre-upgrade uninstall.
     ; electron-builder runs the previous version's uninstaller with
     ; /S before installing the new one; surfacing a "delete settings?"
@@ -399,7 +423,12 @@
         ; runtime via the `directories` Rust crate (ProjectDirs::from(
         ; "net", "thirdmovement", "ani-gui")), which on Windows resolves
         ; to %LOCALAPPDATA%\thirdmovement\ani-gui\ for cache/data and
-        ; %APPDATA%\thirdmovement\ani-gui\ for config.
+        ; %APPDATA%\thirdmovement\ani-gui\ for config. Electron keeps its
+        ; own profile in %APPDATA%\ani-gui\ (the Chromium profile, window
+        ; state, and the tracker sign-ins under tokens\), named for the
+        ; app's production name in electron/main.js; a Yes removes that
+        ; too. The dev profile, ani-gui-dev, is not the installed app's
+        ; and is left alone.
         ;
         ; Default is No: a "reinstall to fix something" cycle should
         ; preserve the user's settings + cached resolutions (instant
@@ -419,7 +448,20 @@
         RMDir /r "$LOCALAPPDATA\thirdmovement\ani-gui"
         DetailPrint "Removing user data under $APPDATA\thirdmovement\ani-gui..."
         RMDir /r "$APPDATA\thirdmovement\ani-gui"
+        ; The publisher folder holding those two goes as well, but only
+        ; once empty: other apps by the same publisher keep their data
+        ; there, and so does the dev profile, ani-gui-dev. RMDir without
+        ; /r removes nothing from a folder that still holds anything.
+        ; tests/arch/windows_uninstall.sh refuses a recursive removal of
+        ; any thirdmovement path but the app's own.
+        RMDir "$LOCALAPPDATA\thirdmovement"
+        RMDir "$APPDATA\thirdmovement"
+        DetailPrint "Removing the app profile under $APPDATA\ani-gui..."
+        RMDir /r "$APPDATA\ani-gui"
         Goto purge_done
 
     purge_done:
+    ${If} $installMode == "all"
+        SetShellVarContext all
+    ${EndIf}
 !macroend
