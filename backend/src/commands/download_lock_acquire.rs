@@ -12,15 +12,19 @@ use crate::error::{AniError, Result};
 /// enough that the handover is not what the user notices.
 const INSTANCE_LOCK_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 
-/// How many times an attempt may lose the lock file to a concurrent
-/// removal — an open that found the directory or the file mid-delete,
-/// or a lock taken on a file that lost its name meanwhile — before the
-/// lock is given up as unobtainable. Each loss is one remover winning a
-/// race, so a real contention ends in a handful; the cap is for a
+/// How many times an attempt's open may lose to a concurrent removal —
+/// the directory or the file found mid-delete — before the lock is
+/// given up as unobtainable. Each loss is one remover winning a race,
+/// so a real contention ends in a handful; the cap is for a
 /// volume that answers every open with a refusal that only looks like
 /// a removal (Windows reports a delete in progress and a plain denial
 /// with the same code), which would otherwise poll to the deadline.
 /// Giving up is the lock's ordinary best-effort failure.
+///
+/// A lock taken on a file that lost its name while this waited does not
+/// count: that is a holder finishing and another taking over, which a
+/// waiter queued behind a busy episode sees once per handover, and the
+/// volume plainly works.
 const INSTANCE_LOCK_LOSSES: u32 = 40;
 
 /// Take the lock that crosses app instances for `target`, waiting for
@@ -51,8 +55,8 @@ const INSTANCE_LOCK_LOSSES: u32 = 40;
 /// instance still holding it — the transfer's own ceiling, since a
 /// download blocked on another instance is spending the wait the
 /// transfer was given. [`AniError::Io`] when the lock file cannot be
-/// created or opened at all, or keeps being removed from under the
-/// attempt; see [`super::target_lock_path`] for why that is worth
+/// created or opened at all, or its open keeps meeting what looks like
+/// a removal in progress; see [`super::target_lock_path`] for why that is worth
 /// refusing over.
 pub(crate) async fn acquire_instance_lock(
     target: &std::path::Path,
@@ -71,6 +75,8 @@ pub(crate) async fn acquire_instance_lock(
                 poll_until(deadline).await?;
             }
             Attempt::Lost => note_loss(&mut losses, deadline).await?,
+            // Others' progress: open again at once, uncounted.
+            Attempt::Overtaken => {}
             Attempt::Failed => return Err(AniError::Io),
         }
     }
@@ -82,8 +88,13 @@ enum Attempt {
     Held(InstanceLock),
     /// Another holder has it; the handle to try again with.
     Busy(Waiting),
-    /// A concurrent removal got in the way: try again from the open.
+    /// The open met a concurrent removal: try again from the open.
     Lost,
+    /// Locked after waiting, but the file had lost its name while this
+    /// waited: its holder removed it and another may hold the name now.
+    /// Open again. Every such outcome follows a busy try, which polls
+    /// and checks the deadline, so these cannot spin.
+    Overtaken,
     /// The lock file cannot be opened or locked at all.
     Failed,
 }
@@ -100,6 +111,7 @@ enum Attempt {
 /// platform allows. Neither is ever a bare handle that closes without
 /// tidying.
 fn attempt(path: &std::path::Path, open: Option<Waiting>) -> Attempt {
+    let waited = open.is_some();
     let waiting = match open.map_or_else(|| open_creating(path).map(|f| Waiting::new(f, path)), Ok)
     {
         Ok(waiting) => waiting,
@@ -121,7 +133,13 @@ fn attempt(path: &std::path::Path, open: Option<Waiting>) -> Attempt {
     // again).
     if lock.is_at_path() {
         Attempt::Held(lock)
+    } else if waited {
+        Attempt::Overtaken
     } else {
+        // A fresh open whose file has no name a moment later: a remover
+        // won the race, or the volume reports an open file's identity
+        // differently from its path's (some overlay and FUSE mounts).
+        // Counted, so the second gives up instead of spinning.
         Attempt::Lost
     }
 }
