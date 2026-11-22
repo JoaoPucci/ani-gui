@@ -1188,6 +1188,23 @@ starting it, and delete it when you find it done.
   would be its own migration, through the cross-catalogue id mappings
   first, and is no reason to keep the guess.
 
+## Retiring the old-scratch sweep — the v1.0 marker
+
+- **Remove the sweep that clears the scratch files versions up to
+  0.18.0 left in a download folder**
+  (`backend/src/commands/download_old_scratch.rs`, its name parser and
+  their tests). Those versions wrote a transfer's unfinished files
+  beside the episode, and a quit that ended the backend outright —
+  every quit on Windows — left them there, in view on Windows. A
+  download now removes the ones more than a day old from each folder
+  it runs into. It is migration code: the maintainer has tied its removal
+  to around v1.0, once installs from before 0.18.1 are no longer
+  expected.
+
+  Why it waits: nothing else removes those files. Taking the sweep out
+  leaves them, often most of an episode each, in the folders of anyone
+  who upgrades straight from 0.18.0 or earlier.
+
 ## Recovering a download's abandoned claim automatically
 
 - **Take back the empty file an interrupted download left at an
