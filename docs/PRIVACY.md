@@ -197,14 +197,14 @@ ani-gui keeps the following on your computer only:
 **Uninstalling on Windows.** The uninstaller asks whether to delete
 your ani-gui settings, cache and watch history. Answered Yes, it
 removes the app's data folders under `thirdmovement\ani-gui` in
-`%APPDATA%` and `%LOCALAPPDATA%`, and the app's folder in
-`%APPDATA%\ani-gui`, which holds the local browser storage, the window
-size and the encrypted OAuth tokens, and each `thirdmovement` folder
-that is left empty. Answered No, all of those stay for a
-later install. Either way it removes the copy of
-the installer it keeps in `%LOCALAPPDATA%\ani-gui-updater`. Releases
-up to and including 0.18.0 left `%APPDATA%\ani-gui` and that installer
-copy behind even on Yes. On Linux, removing the package leaves your
+`%APPDATA%` and `%LOCALAPPDATA%`, then each `thirdmovement` folder that
+is left empty, and the app's folder in `%APPDATA%\ani-gui`, which holds
+the local browser storage, the window size and the encrypted OAuth
+tokens. Answered No, those stay for a later install. Either way it
+removes the copy of the installer it keeps in
+`%LOCALAPPDATA%\ani-gui-updater`. Releases up to and including 0.18.0
+left `%APPDATA%\ani-gui`, that installer copy and an empty
+`%LOCALAPPDATA%\thirdmovement` behind even on Yes. On Linux, removing the package leaves your
 data in place.
 
 ## What ani-gui transmits to public services
