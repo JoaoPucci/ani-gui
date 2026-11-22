@@ -199,7 +199,8 @@ your ani-gui settings, cache and watch history. Answered Yes, it
 removes the app's data folders under `thirdmovement\ani-gui` in
 `%APPDATA%` and `%LOCALAPPDATA%`, and the app's folder in
 `%APPDATA%\ani-gui`, which holds the local browser storage, the window
-size and the encrypted OAuth tokens. Answered No, those stay for a
+size and the encrypted OAuth tokens, and each `thirdmovement` folder
+that is left empty. Answered No, all of those stay for a
 later install. Either way it removes the copy of
 the installer it keeps in `%LOCALAPPDATA%\ani-gui-updater`. Releases
 up to and including 0.18.0 left `%APPDATA%\ani-gui` and that installer
