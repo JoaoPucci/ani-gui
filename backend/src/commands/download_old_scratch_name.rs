@@ -88,10 +88,16 @@ fn is_tool_file(file: &str) -> bool {
 }
 
 /// A format id as yt-dlp puts it in a name: built from the listing's
-/// group and rendition names, with only whitespace and `,/+[]()`
-/// replaced (on Windows `:` and `?` too), so any letter can be in it.
-/// Under the old 32-digit key nothing of the user's can carry one, so
-/// the parse asks only that it be there and be a single name.
+/// group and rendition names, with whitespace and `,/+[]()` replaced
+/// by `_` (on Windows, the characters Windows forbids in a name by
+/// `#`), so any letter can be in it and none of those can. One holding
+/// any of them is not yt-dlp's: a copy of a leftover, say, renamed
+/// `… (1).mp4` by a file manager.
 fn is_format_id(id: &str) -> bool {
-    !id.is_empty() && !id.chars().any(|c| c.is_control() || c == '/' || c == '\\')
+    !id.is_empty()
+        && !id.chars().any(|c| {
+            c.is_control()
+                || c.is_whitespace()
+                || matches!(c, '/' | '\\' | ',' | '+' | '[' | ']' | '(' | ')')
+        })
 }
