@@ -165,9 +165,8 @@ fn a_title_that_starts_with_a_dot_does_not_name_a_hidden_file() {
         episode_stem(dest.path(), ". . Show", "3", None),
         "Show Episode 3"
     );
-    // A title that opens on a dot and on nothing else Windows keeps
-    // reads as the same name a title without the dot gives — the rule
-    // the show's folder follows.
+    // Titles that differ only by their leading dots share a name, as
+    // two titles that file-safe spelling makes one already do.
     assert_eq!(
         episode_stem(dest.path(), ".hack", "1", None),
         episode_stem(dest.path(), "hack", "1", None)
@@ -242,6 +241,45 @@ fn the_visible_name_found_on_disk_wins_over_a_dotted_one() {
     assert_eq!(
         episode_stem(dest.path(), ".hack//Sign", "1", Some("7")),
         "hack--Sign Episode 7"
+    );
+}
+
+#[test]
+fn the_visible_name_on_disk_wins_over_the_dotted_one_for_the_same_number() {
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(dest.path().join("hack--Sign Episode 1.mp4"), b"x").expect("seed");
+    std::fs::write(dest.path().join(".hack--Sign Episode 1.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), ".hack//Sign", "1", None),
+        "hack--Sign Episode 1"
+    );
+}
+
+#[test]
+fn a_title_with_nothing_file_safe_keeps_the_name_it_always_had() {
+    // Only a title of dots loses its whole name to the dot rule; a
+    // title file-safe spelling empties ("???") was never hidden, and
+    // its earlier downloads sit under the name it gave them.
+    let dest = tempfile::tempdir().expect("dest");
+    assert_eq!(episode_stem(dest.path(), "???", "1", None), " Episode 1");
+    assert_eq!(episode_stem(dest.path(), "", "2", None), " Episode 2");
+}
+
+#[test]
+fn an_episode_numbered_the_former_way_is_looked_for_under_its_device_safe_name() {
+    // The name a download of "CON.x" took is "CON-x …", so that is the
+    // spelling an episode numbered the former way is under — and on
+    // Windows a lookup of "CON.x …" would ask the console instead.
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(dest.path().join("CON-x Episode 7.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), "CON.x", "1", Some("7")),
+        "CON-x Episode 7"
+    );
+    std::fs::write(dest.path().join("CON-x Episode 8.mp4"), b"x").expect("seed");
+    assert_eq!(
+        episode_stem(dest.path(), "..CON.x", "2", Some("8")),
+        "CON-x Episode 8"
     );
 }
 
