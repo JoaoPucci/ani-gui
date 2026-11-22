@@ -65,7 +65,22 @@ const DEVICES: [&str; 6] = ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"];
 /// than under a name invented for it.
 #[must_use]
 pub(crate) fn show_folder_name(title: &str) -> Option<String> {
-    Some(title.to_string())
+    let safe = super::download_names::file_safe(title);
+    let trimmed = trim_edges(&safe);
+    let mut name = String::with_capacity(trimmed.len());
+    let mut units = 0;
+    for c in trimmed.chars() {
+        units += c.len_utf16();
+        if units > SHOW_FOLDER_MAX_UNITS {
+            break;
+        }
+        name.push(c);
+    }
+    let name = trim_edges(&name);
+    if name.is_empty() {
+        return None;
+    }
+    Some(not_a_device(name))
 }
 
 /// `s` without leading dots and whitespace, and without trailing dots
@@ -132,10 +147,23 @@ pub(crate) fn episode_place(
     episode: &str,
     former: Option<&str>,
 ) -> EpisodePlace {
-    EpisodePlace {
+    let flat = || EpisodePlace {
         dir: chosen.to_path_buf(),
         stem: super::download_names::episode_stem(chosen, title, episode, former),
+    };
+    let show = super::play_native_version_tag::without_version_tag(title);
+    let Some(folder) = show_folder_name(&show) else {
+        return flat();
+    };
+    let dir = chosen.join(folder);
+    let stem = super::download_names::episode_stem(&dir, title, episode, former);
+    if !holds_episode(&dir, &stem) {
+        let earlier = flat();
+        if holds_episode(&earlier.dir, &earlier.stem) {
+            return earlier;
+        }
     }
+    EpisodePlace { dir, stem }
 }
 
 /// Whether `dir` holds an episode under `stem`: a regular file, not

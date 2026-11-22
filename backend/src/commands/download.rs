@@ -161,7 +161,11 @@ pub struct DownloadProgress {
 }
 
 /// SSE final-event body. `dest_dir` is the directory the file landed
-/// in, which is what a "reveal in folder" intent needs.
+/// in, which is what a "reveal in folder" intent needs: the show's own
+/// folder inside the one the user chose
+/// ([`super::download_place::episode_place`]), or the chosen folder
+/// itself where the episode was already there from a version before
+/// show folders.
 ///
 /// Only the directory, because the same response ends a range
 /// download: `1-12` writes twelve files and there is no single name to
@@ -243,7 +247,7 @@ where
     // script's own -e loop, one pick then one transfer per episode.
     if let Some((first, last)) = super::download_range::episode_range(&args.episode) {
         let quality = args.quality.as_deref().unwrap_or("best");
-        super::download_range::download_range(
+        let landed = super::download_range::download_range(
             state,
             args,
             first,
@@ -255,7 +259,7 @@ where
         )
         .await?;
         return Ok(DownloadResponse {
-            dest_dir: dest.to_string_lossy().into_owned(),
+            dest_dir: landed.to_string_lossy().into_owned(),
         });
     }
 
@@ -374,8 +378,9 @@ where
     // version gave it where that version's download is in the folder.
     let played = crate::commands::play_native_record::matched_episode(&resolved, &args.episode);
     let former = crate::commands::play_native_merge::former_number(&resolved);
-    let file_stem =
-        super::download_names::episode_stem(&dest, &resolved.title, &played, former.as_deref());
+    let place =
+        super::download_place::episode_place(&dest, &resolved.title, &played, former.as_deref());
+    std::fs::create_dir_all(&place.dir).map_err(|_| AniError::Io)?;
     let source = StreamSource {
         master_url: resolved.master_url,
         referer: resolved.referer,
@@ -405,8 +410,8 @@ where
         &state.proxy_http,
         &state.host_budget,
         &source,
-        &dest,
-        &file_stem,
+        &place.dir,
+        &place.stem,
         Some(quality),
         path_env,
         std::time::Duration::from_secs(60 * 60),
@@ -421,7 +426,7 @@ where
     .await?;
 
     Ok(DownloadResponse {
-        dest_dir: dest.to_string_lossy().into_owned(),
+        dest_dir: place.dir.to_string_lossy().into_owned(),
     })
 }
 
