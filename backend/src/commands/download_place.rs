@@ -44,6 +44,10 @@ const DEVICES: [&str; 6] = ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"];
 /// It is the title made [`file_safe`](super::download_names::file_safe),
 /// then:
 ///
+/// - **One space between words.** A run of whitespace reads as a single
+///   space, so a title spelled with spacing aside is the one folder —
+///   the version tag of "… (Uncensored) Season 2" leaves its own space
+///   beside the ones either side of it, and the copy is the same show.
 /// - **No leading dot.** A folder whose name starts with one is hidden
 ///   on Linux and macOS, and every episode would be hidden with it
 ///   (`.hack//Sign`).
@@ -66,7 +70,8 @@ const DEVICES: [&str; 6] = ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"];
 #[must_use]
 pub(crate) fn show_folder_name(title: &str) -> Option<String> {
     let safe = super::download_names::file_safe(title);
-    let trimmed = trim_edges(&safe);
+    let spaced = safe.split_whitespace().collect::<Vec<_>>().join(" ");
+    let trimmed = trim_edges(&spaced);
     let mut name = String::with_capacity(trimmed.len());
     let mut units = 0;
     for c in trimmed.chars() {
