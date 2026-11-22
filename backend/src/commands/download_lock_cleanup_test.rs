@@ -727,12 +727,10 @@ async fn a_waiter_outlasts_any_number_of_handovers() {
     };
     // More handovers than the cap allows refusals: each replaces the
     // file at the name with a fresh, held one, then lets the old go.
+    let staging = dest.path().join("next holder");
     for _ in 0..60 {
         tokio::time::sleep(std::time::Duration::from_millis(110)).await;
-        std::fs::remove_file(&lock_path).expect("the holder removes under its lock");
-        let next = foreign_handle(&lock_path);
-        fs4::FileExt::lock(&next).expect("the next holder");
-        drop(std::mem::replace(&mut holder, next));
+        hand_over(&mut holder, &staging, &lock_path);
     }
     drop(holder);
     let got = waiting.await.expect("join");
@@ -740,4 +738,25 @@ async fn a_waiter_outlasts_any_number_of_handovers() {
         got.is_ok(),
         "a waiter must not be refused for others' progress: {got:?}"
     );
+}
+
+/// Replace `holder`'s file at `lock_path` with a fresh one, already
+/// locked, in one step — then let the old one go.
+///
+/// The next holder is prepared under `staging` and renamed over the
+/// name, so the name is never absent. Removing the old file and then
+/// creating the next left a moment with no file at the name, and a
+/// waiter whose open landed there — its first try, or its open after
+/// being overtaken, late on a loaded runner — created the file and
+/// took the lock, as it should. The staged holder's blocking lock on
+/// that file then waited on the waiter, which was waiting to be
+/// awaited, and the test hung until macOS CI cancelled the job.
+/// Locking the staged file before it has the name, without waiting,
+/// means neither can happen.
+#[cfg(unix)]
+fn hand_over(holder: &mut std::fs::File, staging: &std::path::Path, lock_path: &std::path::Path) {
+    let next = foreign_handle(staging);
+    fs4::FileExt::try_lock(&next).expect("nobody else can know the staged file");
+    std::fs::rename(staging, lock_path).expect("the next holder takes the name");
+    drop(std::mem::replace(holder, next));
 }
