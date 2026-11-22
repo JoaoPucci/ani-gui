@@ -49,8 +49,9 @@ use super::waiting::Waiting;
 /// start, and a removal and a directory removal are no heavier than
 /// the open that took the lock. On Windows a delete that something
 /// else's handle refuses is tried again for a few tens of milliseconds,
-/// on the blocking pool rather than here (see
-/// [`super::remove::remove_lock_file`]).
+/// on the blocking pool rather than here, which is also where they are
+/// lost if the runtime is already tearing down (see
+/// [`super::remove::remove_lock_file`] for why that is harmless).
 #[derive(Debug)]
 pub(crate) struct InstanceLock {
     file: Option<std::fs::File>,
@@ -161,9 +162,9 @@ fn sweep(dir: &std::path::Path, own: &std::path::Path) {
         };
         // Either way out gives the file up as a holder or a waiter
         // would: released and removed if the lock was free, only closed
-        // if not. A holder whose delete the sweep's brief handle refused
-        // is still retrying it when that handle closes, so the sweep
-        // does not strand the file.
+        // if not. A holder of this version whose delete the sweep's
+        // brief handle refused is normally still retrying it when that
+        // handle closes, so the sweep does not strand the file.
         let waiting = Waiting::new(file, &path);
         if waiting
             .file()

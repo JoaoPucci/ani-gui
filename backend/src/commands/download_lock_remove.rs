@@ -21,9 +21,16 @@ const DELETE_PAUSE: std::time::Duration = std::time::Duration::from_millis(10);
 /// playback proxy shares, and sleeping there between tries would stall
 /// it. The retries go to the blocking pool, and the lock directory is
 /// removed after them, since it cannot go while the file is there.
-/// Without a runtime, they run in place. A retry deletes only what no
-/// handle of this app has open, since every one of them refuses it, so
-/// a late one cannot take a file a later holder has created.
+/// Without a runtime, they run in place. During runtime teardown the
+/// blocking pool takes no new work and the retries are dropped; that
+/// costs a leftover the next run's sweep removes, and it does not arise
+/// in practice — Unix never retries, and a Windows quit ends the
+/// backend outright rather than tearing it down. A retry deletes only
+/// what no handle of this app has open, since every one of them
+/// refuses it, so a late one cannot take a file a later holder of this
+/// version created; one of an earlier version, which shares delete, is
+/// exposed here as everywhere else (see
+/// [`super::release::InstanceLock`]).
 pub(crate) fn remove_lock_file(path: &std::path::Path) {
     remove_lock_file_with(path, os::delete_refused_for_now);
 }
@@ -69,10 +76,12 @@ fn retry_delete(path: &std::path::Path, passing: Refusal) {
 
 /// Record a lock file's delete that did not happen. Not found means
 /// somebody else already removed it, which is the protocol working.
-/// Anything else leaves the file to whoever still has it open — this
-/// app's waiter removes it, an outside handle's owner does not, and
-/// then the next run's sweep does — and the log says which file and
-/// why.
+/// Anything else leaves the file in place: to this app's waiter, which
+/// removes it; to an outside handle's owner, which does not, and then
+/// the next run's sweep does; or, where nothing has it open and the
+/// delete itself is refused (permissions, a read-only volume), for good
+/// — the sweep's delete fails the same way. The log says which file
+/// and why.
 fn note_removal(path: &std::path::Path, removed: std::io::Result<()>) {
     match removed {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => tracing::debug!(
