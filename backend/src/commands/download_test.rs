@@ -8685,3 +8685,58 @@ async fn a_download_into_a_show_folder_sweeps_the_locks_earlier_versions_left_in
             .is_file());
     }
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_sweeps_the_scratch_earlier_versions_left_in_the_chosen_and_show_folders() {
+    // Versions up to 0.18.0 wrote a transfer's scratch beside the
+    // episode, and a quit that ended the backend outright left it in
+    // view on Windows. A download into a folder removes those that are
+    // a day old, in the chosen folder and in the show's; one written
+    // since stays, as does everything else.
+    let stale = std::time::SystemTime::now() - std::time::Duration::from_secs(3 * 24 * 60 * 60);
+    let fresh = std::time::SystemTime::now();
+    let hex = "0123456789abcdef0123456789abcdef";
+    let write_at = |path: &std::path::Path, at: std::time::SystemTime| {
+        std::fs::write(path, b"most of an episode").expect("seed");
+        std::fs::File::options()
+            .write(true)
+            .open(path)
+            .expect("open")
+            .set_modified(at)
+            .expect("mtime");
+    };
+    for (episode, slug) in [("1", "old-scratch-36"), ("1-2", "old-scratch-range-37")] {
+        let chosen = tempfile::tempdir().expect("chosen");
+        let logs = tempfile::tempdir().expect("logs");
+        let ran = logs.path().join("ran");
+        let show = chosen.path().join("Sweep Show");
+        std::fs::create_dir(&show).expect("show folder");
+        let in_chosen = chosen
+            .path()
+            .join(format!(".ani-gui-77-{hex}.part.mp4.part"));
+        let in_show = show.join(format!(".ani-gui-78-{hex}.part.vtt"));
+        let recent = chosen
+            .path()
+            .join(format!(".ani-gui-79-{hex}.part.mp4.ytdl"));
+        write_at(&in_chosen, stale);
+        write_at(&in_show, stale);
+        write_at(&recent, fresh);
+        let server = show_with_two_episodes(slug, "Sweep Show", "https://subs.invalid/en.vtt");
+        download_into(&server, "Sweep Show", episode, chosen.path(), &ran).await;
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+        while in_chosen.exists() || in_show.exists() {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "{episode}: the leftovers are gone: {:?}",
+                tree(chosen.path())
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            recent.exists(),
+            "{episode}: one written within the day stays"
+        );
+        assert!(show.join("Sweep Show Episode 1.mp4").is_file());
+    }
+}
