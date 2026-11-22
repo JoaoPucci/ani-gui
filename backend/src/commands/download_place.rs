@@ -39,7 +39,7 @@ pub(crate) struct EpisodePlace {
 /// Where the episode named `episode` of `title` goes in `chosen`: the
 /// show's folder — [`show_folder_name`] of `title` without its version
 /// tag — under the name
-/// [`episode_stem`](super::download_names::episode_stem) gives it
+/// [`episode_stem`](super::download_episode_stem::episode_stem) gives it
 /// there — unless the show's folder does not hold it and `chosen`
 /// itself already does, saved there by a version from before show
 /// folders, under any name `episode_stem` recognises. Then that file is
@@ -63,14 +63,14 @@ pub(crate) fn episode_place(
 ) -> EpisodePlace {
     let flat = || EpisodePlace {
         dir: chosen.to_path_buf(),
-        stem: super::download_names::episode_stem(chosen, title, episode, former),
+        stem: super::download_episode_stem::episode_stem(chosen, title, episode, former),
     };
     let show = super::play_native_version_tag::without_version_tag(title);
     let Some(folder) = show_folder_name(&show) else {
         return flat();
     };
     let dir = chosen.join(folder);
-    let stem = super::download_names::episode_stem(&dir, title, episode, former);
+    let stem = super::download_episode_stem::episode_stem(&dir, title, episode, former);
     if !holds_episode(&dir, &stem) {
         let earlier = flat();
         if holds_episode(&earlier.dir, &earlier.stem) {
@@ -112,8 +112,10 @@ impl RevealFolder {
 }
 
 /// Whether `dir` holds an episode under `stem`: a regular file, not
-/// followed through a link, with bytes in it.
-fn holds_episode(dir: &Path, stem: &str) -> bool {
+/// followed through a link, with bytes in it. An empty one is what an
+/// interrupted download leaves at its name, and a directory or anything
+/// else is not an episode.
+pub(crate) fn holds_episode(dir: &Path, stem: &str) -> bool {
     std::fs::symlink_metadata(dir.join(format!("{stem}.mp4")))
         .is_ok_and(|m| m.is_file() && m.len() > 0)
 }
