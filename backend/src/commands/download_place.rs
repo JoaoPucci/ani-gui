@@ -112,8 +112,10 @@ impl RevealFolder {
 }
 
 /// Whether `dir` holds an episode under `stem`: a regular file, not
-/// followed through a link, with bytes in it.
-fn holds_episode(dir: &Path, stem: &str) -> bool {
+/// followed through a link, with bytes in it. An empty one is what an
+/// interrupted download leaves at its name, and a directory or anything
+/// else is not an episode.
+pub(crate) fn holds_episode(dir: &Path, stem: &str) -> bool {
     std::fs::symlink_metadata(dir.join(format!("{stem}.mp4")))
         .is_ok_and(|m| m.is_file() && m.len() > 0)
 }

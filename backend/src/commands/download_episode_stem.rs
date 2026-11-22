@@ -12,15 +12,17 @@
 /// left of it to tell them apart, and a name that kept the dots would
 /// be hidden.
 ///
-/// When a file is already there under a name an earlier version gave
-/// the episode, that file is the episode and keeps the name the user
-/// has it under. The earlier names are the ones numbered `former`, the
-/// ones spelled with the title's leading dots, the ones from before
-/// the device rule, and the title as the provider gave it. The name
-/// this version gives leads each number's spellings, so where the
-/// visible and the dotted file are both there for one number the
-/// visible one is it. The former number is looked for before the
-/// episode's own, as it always was.
+/// When the folder already holds the episode under one of its names —
+/// a file [`holds_episode`](super::download_place::holds_episode)
+/// counts, not an empty leftover or a directory — that file is the
+/// episode and keeps the name the user has it under. The names are
+/// this version's, the ones numbered `former`, the ones spelled with
+/// the title's leading dots, the ones from before the device rule, and
+/// the title as the provider gave it. The name this version gives
+/// leads each number's spellings, so where the visible and the dotted
+/// file are both there for one number the visible one is it. The
+/// former number is looked for before the episode's own, as it always
+/// was.
 ///
 /// The spelling from before the device rule is looked for only off
 /// Windows, which opens it as the device. The provider's spelling is
@@ -47,7 +49,7 @@ pub(crate) fn episode_stem(
         }
     };
     let named = |n: &str| not_a_device(plain(n));
-    let on_disk = |s: &String| std::fs::symlink_metadata(dest.join(format!("{s}.mp4"))).is_ok();
+    let on_disk = |s: &String| super::download_place::holds_episode(dest, s);
     // A title with a slash was never an earlier download's name, and
     // joining it as a path can reach outside `dest`.
     let raw = !cfg!(windows) && safe != title && !title.contains('/');
