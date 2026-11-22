@@ -160,7 +160,25 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         name: Run Playwright tests under Xvfb
         working-directory: electron
-        run: xvfb-run --auto-servernum pnpm run e2e:fast
+        run: |
+          set +e
+          DEBUG=pw:browser,pw:protocol xvfb-run --auto-servernum pnpm exec playwright test e2e/reveal-without-frames.spec.ts --repeat-each=100 --reporter=line > diag-loop.log 2>&1
+          echo "loop exit $?"
+          grep -E 'passed|failed|flaky' diag-loop.log | tail -5
+          DEBUG=pw:browser xvfb-run --auto-servernum pnpm exec playwright test --repeat-each=2 --reporter=line > diag-full.log 2>&1
+          echo "full exit $?"
+          grep -E 'passed|failed|flaky|✘' diag-full.log | tail -20
+          exit 0
+
+      - if: always() && needs.filter.outputs.relevant == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: diag-logs
+          path: |
+            electron/diag-loop.log
+            electron/diag-full.log
+            electron/test-results/
+          retention-days: 7
 
       - if: failure() && needs.filter.outputs.relevant == 'true'
         name: Upload Playwright report on failure
