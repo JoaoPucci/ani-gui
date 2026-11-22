@@ -699,3 +699,43 @@ async fn on_unix_a_refused_delete_is_not_retried() {
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
     assert!(file.is_file(), "a refused delete on Unix is not retried");
 }
+
+/// A waiter outlasts any number of handovers.
+///
+/// Each time a holder removes the file and the next one creates a
+/// fresh file at the name, a waiter that was waiting on the old file
+/// finds, once it gets that file's lock, that it no longer has the name,
+/// and opens again. That is others making progress, not the volume
+/// refusing, so it must not count toward the cap on refusals that only
+/// look like a removal: a waiter queued behind a busy episode was
+/// refused outright once that count ran out (seen on macOS CI, where
+/// four contenders handed one lock around a hundred times).
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_waiter_outlasts_any_number_of_handovers() {
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Busy Show Episode 9.mp4");
+    let lock_path = target_lock_path(&target).expect("a lock path");
+    let mut holder = foreign_handle(&lock_path);
+    fs4::FileExt::lock(&holder).expect("first holder");
+
+    let waiting = {
+        let target = target.clone();
+        tokio::spawn(async move { acquire_instance_lock(&target, long_deadline()).await })
+    };
+    // More handovers than the cap allows refusals: each replaces the
+    // file at the name with a fresh, held one, then lets the old go.
+    for _ in 0..45 {
+        tokio::time::sleep(std::time::Duration::from_millis(110)).await;
+        std::fs::remove_file(&lock_path).expect("the holder removes under its lock");
+        let next = foreign_handle(&lock_path);
+        fs4::FileExt::lock(&next).expect("the next holder");
+        drop(std::mem::replace(&mut holder, next));
+    }
+    drop(holder);
+    let got = waiting.await.expect("join");
+    assert!(
+        got.is_ok(),
+        "a waiter must not be refused for others' progress: {got:?}"
+    );
+}
