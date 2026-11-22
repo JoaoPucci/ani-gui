@@ -35,6 +35,7 @@ mod cour_ordinal_form;
 mod cour_pairing;
 pub mod cour_same_name;
 pub mod download;
+mod download_folder_name;
 mod download_names;
 mod download_place;
 pub(crate) mod external_ids;
