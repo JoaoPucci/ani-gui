@@ -169,7 +169,7 @@ pub struct DownloadProgress {
 /// Only the directory, because the same response ends a range
 /// download: `1-12` writes twelve files and there is no single name to
 /// return. A single-episode download lands on the name
-/// [`super::download_episode_stem::episode_stem`] gives it however it
+/// `download_episode_stem::episode_stem` gives it however it
 /// got there — including a yt-dlp run that could not repackage and was
 /// retried through ffmpeg, which discards the mislabeled file and
 /// writes the same target. Only a repackage
