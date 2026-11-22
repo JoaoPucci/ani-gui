@@ -2351,7 +2351,7 @@ async fn until_dir(
 ///
 /// Files only, because `.ani-gui-locks` shares the prefix and is not
 /// transfer data — it is the lock directory, which has to sit on the
-/// destination's own volume and outlives any one download. The
+/// destination's own volume and stays while any download in it runs. The
 /// production sweep is narrower still: it matches the full scratch
 /// file name, which no other entry can begin with.
 #[cfg(unix)]
