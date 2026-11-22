@@ -26,8 +26,9 @@ fn source() -> StreamSource {
     }
 }
 
-/// The names in `dir` a person browsing it would see; the lock
-/// directory is its own change's to tidy.
+/// The names in `dir` a download leaves there, other than the lock
+/// directory: that one belongs to the cross-instance lock, which keeps
+/// and removes it by its own rules.
 fn visible(dir: &std::path::Path) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(dir)
         .expect("dir")

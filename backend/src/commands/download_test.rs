@@ -2140,15 +2140,10 @@ async fn a_refusal_names_the_file_after_a_stable_key() {
 #[cfg(unix)]
 #[tokio::test]
 async fn a_successful_download_leaves_only_the_episode() {
-    // The sweep exists for the kill and the failure, where the tool's
-    // derived files sit orphaned beside a scratch nothing will rename.
-    // A publication that succeeded already consumed the scratch, so
-    // the sweep has nothing to find — but finding nothing still reads
-    // every entry in the destination, once per episode of a range
-    // download, on whatever filesystem the user chose. The walk is
-    // observable by what it removes: a file the tool derived from the
-    // scratch name must survive a download that ended with the
-    // episode published.
+    // A file the tool derived from the scratch name and left behind
+    // is in the working folder with it, under the download's key, and
+    // goes when the download does — published or not. The destination
+    // itself is never walked: what is read is the working folder.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     stage_tool(
@@ -2342,7 +2337,7 @@ async fn until_dir(
 }
 
 /// Every file in `dir` this app's transfer could have put there. The
-/// scratch name is `.ani-gui-<pid>-<uuid>…`, and nothing a tool
+/// scratch name is `.ani-gui-<pid>-<id>-<n>…`, and nothing a tool
 /// derives from it loses that prefix.
 ///
 /// Files only, because `.ani-gui-locks` shares the prefix and is not

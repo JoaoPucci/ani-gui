@@ -7,7 +7,8 @@
 //! and a subtitle's scratch, is a file in `<destination>/.ani-gui-parts/`.
 //! The leading dot hides them on Linux and macOS; on Windows a dot
 //! hides nothing, and the folder carries the hidden attribute instead.
-//! Only a finished file is ever a name in the folder the user sees.
+//! What a download writes in the folder the user sees is the finished
+//! file and nothing else.
 //!
 //! The folder is a child of the destination rather than a temp
 //! directory, because publishing is a rename or a link and both need
@@ -21,7 +22,9 @@
 //! - Each download names its files under a key of its own,
 //!   `.ani-gui-<pid>-<random>`, and keeps `<key>.hold` open and locked
 //!   for as long as it may write. The hold exists before any of its
-//!   parts and goes after the last of them.
+//!   parts and goes after the last of them it removes; a tool tree
+//!   that outlived its teardown can still write one after, and the
+//!   next sweep finds it with no hold.
 //! - A download that ends removes its key's files, then its hold, then
 //!   the folder — which only an empty folder lets go, so another
 //!   download's files keep it.
@@ -109,8 +112,9 @@ const ATTEMPTS: usize = 8;
 
 impl Hold {
     /// Take a hold in `dest`'s working folder, creating the folder —
-    /// hidden on Windows — if it is not there; `dest` itself must be. With `sweep`, the files
-    /// of every download that is provably not running go first.
+    /// hidden on Windows — if it is not there; `dest` itself must be.
+    /// With `sweep`, the files of every download that is provably not
+    /// running go first.
     ///
     /// # Errors
     /// What creating the folder or the hold reports, or an error of
