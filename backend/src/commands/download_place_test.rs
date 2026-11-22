@@ -103,6 +103,26 @@ fn every_copy_of_a_show_shares_its_folder_and_keeps_its_own_name() {
 }
 
 #[test]
+fn a_version_tag_anywhere_in_the_title_leaves_one_folder() {
+    // The tag's own space joins the spaces either side of it: the folder
+    // reads the title with spacing aside, as version identity does.
+    let chosen = tempfile::tempdir().expect("chosen");
+    for title in [
+        "The Show Season 2",
+        "The Show (Uncensored) Season 2",
+        "(Uncensored) The Show Season 2",
+        "The Show Season 2 [UNCENSORED]",
+        "The  Show   Season 2",
+    ] {
+        assert_eq!(
+            episode_place(chosen.path(), title, "1", None).dir,
+            chosen.path().join("The Show Season 2"),
+            "{title:?}"
+        );
+    }
+}
+
+#[test]
 fn an_episode_an_earlier_version_saved_in_the_chosen_folder_is_found_there() {
     let chosen = tempfile::tempdir().expect("chosen");
     std::fs::write(chosen.path().join("Frieren Episode 2.mp4"), b"video").expect("seed");
@@ -279,6 +299,26 @@ proptest! {
     #[test]
     fn a_plain_title_is_its_own_folder(title in "[A-Za-z0-9]{5}( ?[A-Za-z0-9]){0,37}") {
         prop_assert_eq!(show_folder_name(&title), Some(title.clone()));
+    }
+
+    /// Wherever the version tag sits, the copies of a show share its
+    /// folder.
+    #[test]
+    fn every_copy_of_a_title_shares_one_folder(
+        words in proptest::collection::vec("[A-Za-z0-9]{1,6}", 1..6),
+        at in 0usize..6,
+        tag in "\\(Uncensored\\)|\\[UNCENSORED\\]|（uncensored）",
+    ) {
+        let plain = words.join(" ");
+        let mut tagged = words.clone();
+        tagged.insert(at.min(words.len()), tag);
+        let tagged = tagged.join(" ");
+        let chosen = std::path::Path::new("/nonexistent-chosen");
+        prop_assert_eq!(
+            episode_place(chosen, &tagged, "1", None).dir,
+            episode_place(chosen, &plain, "1", None).dir,
+            "{:?}", tagged
+        );
     }
 
     /// The folder always holds the episode, whatever the title: the
