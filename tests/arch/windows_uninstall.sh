@@ -29,7 +29,16 @@
 #   - an uninstall removing the installer copy, `$LOCALAPPDATA\ani-gui-updater`;
 #   - a switch to the current user's shell context and back, since a
 #     per-machine install's uninstaller otherwise resolves both
-#     folders under C:\ProgramData.
+#     folders under C:\ProgramData;
+#   - the purge removing the publisher folder each backend folder sits
+#     in, `$LOCALAPPDATA\thirdmovement` and `$APPDATA\thirdmovement`,
+#     with a plain `RMDir`, which removes a folder only when it is
+#     empty. A Yes that removed `thirdmovement\ani-gui` left an empty
+#     `%LOCALAPPDATA%\thirdmovement` behind, seen in a Windows 11 VM;
+#   - no recursive removal of any `thirdmovement` path other than the
+#     app's own `thirdmovement\ani-gui`. Other apps by the same
+#     publisher, and the dev profile `ani-gui-dev`, live in that
+#     folder, so it is only ever removed once empty.
 #
 # What this check does NOT establish. It finds each instruction as a
 # whole line of the file once indentation is dropped, and reads nothing
@@ -41,6 +50,11 @@
 # context switch brackets the removals. Placing them is the installer
 # script's job, and nothing in this repository runs NSIS. A line
 # carrying a trailing `;` comment fails it, which is stricter than NSIS.
+# The refusal reads only `RMDir` lines that name `thirdmovement`
+# themselves: a recursive removal of a path held in a variable or a
+# `!define`, or a `Delete` of the folder's files, is invisible to it.
+# Nor can it tell that the publisher folders are removed after the
+# app's folders inside them, which is what lets them be empty.
 # It also cannot see the profile renamed: the folder is named for the
 # app's production name in `electron/main.js`, and a change there has to
 # change this too.
@@ -83,6 +97,31 @@ fi
 if ! printf '%s\n' "$LINES" | grep -Fx -- 'SetShellVarContext current' >/dev/null ||
     ! printf '%s\n' "$LINES" | grep -Fx -- 'SetShellVarContext all' >/dev/null; then
     printf 'arch/windows_uninstall FAIL: %s does not switch to the current user'"'"'s shell context for its removals: on a per-machine install they reach C:\\ProgramData instead of the user'"'"'s folders\n' "$NSH" >&2
+    failed=1
+fi
+
+# The purge removes the app's folders under the publisher folder
+# `thirdmovement` in both places, and a Yes means nothing of the app is
+# left, so the publisher folder goes too when nothing else is in it.
+# Only a plain `RMDir` does that: without /r it refuses a folder that
+# still holds anything, another app's data included.
+for base in '$LOCALAPPDATA' '$APPDATA'; do
+    if ! printf '%s\n' "$LINES" | grep -Fx -- "RMDir \"$base\\thirdmovement\"" >/dev/null; then
+        printf 'arch/windows_uninstall FAIL: %s never removes an emptied %s\\thirdmovement: a purge answered Yes leaves the empty publisher folder behind\n' "$NSH" "$base" >&2
+        failed=1
+    fi
+done
+
+# Never a recursive removal of a `thirdmovement` path other than the
+# app's own folder in it. NSIS reads instructions and their flags
+# without regard to case, so this match ignores case too.
+RECURSIVE=$(printf '%s\n' "$LINES" |
+    grep -iE -- '^rmdir[[:space:]](.*[[:space:]])?/r([[:space:]]|$)' |
+    grep -i -- 'thirdmovement' |
+    grep -Fvx -e 'RMDir /r "$LOCALAPPDATA\thirdmovement\ani-gui"' \
+        -e 'RMDir /r "$APPDATA\thirdmovement\ani-gui"' || true)
+if [ -n "$RECURSIVE" ]; then
+    printf 'arch/windows_uninstall FAIL: %s removes a thirdmovement path recursively that is not the app'"'"'s own folder, which would delete other apps'"'"' data:\n%s\n' "$NSH" "$RECURSIVE" >&2
     failed=1
 fi
 
