@@ -37,6 +37,11 @@
 
 use std::path::{Path, PathBuf};
 
+// A hold is opened, hidden, checked and released exactly as a lock
+// file is — on Windows without delete sharing, its removal retried
+// past a brief outside handle — so it uses the lock's own layer.
+use super::lock::os;
+
 /// The working folder's name inside a destination.
 pub(crate) const PARTS_DIR: &str = ".ani-gui-parts";
 
@@ -136,7 +141,7 @@ impl Hold {
                 uuid::Uuid::new_v4().as_u64_pair().0
             );
             let path = dir.join(format!("{key}.hold"));
-            let file = match os::hold_options().create_new(true).open(&path) {
+            let file = match os::lock_file_options().create_new(true).open(&path) {
                 Ok(file) => file,
                 // The folder went between creating it and the open:
                 // another download removed it as it emptied.
@@ -236,7 +241,7 @@ impl Hold {
             // while it ran may be missing from it beside a part that is
             // not.
             let path = self.hold_path(key);
-            match os::hold_options().open(&path) {
+            match os::lock_file_options().open(&path) {
                 Ok(file) => {
                     if fs4::FileExt::try_lock(&file).is_ok() {
                         remove_parts();
@@ -283,114 +288,6 @@ impl Drop for Hold {
     }
 }
 
-#[cfg(not(windows))]
-mod os {
-    /// How a hold is opened: for writing, which the lock needs, never
-    /// truncated. Creating is the caller's choice.
-    pub(super) fn hold_options() -> std::fs::OpenOptions {
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).truncate(false);
-        options
-    }
-
-    /// Nothing to do: the leading dot already hides the folder.
-    pub(super) fn hide_dir(_dir: &std::path::Path, _file: &std::fs::File) {}
-
-    /// The folder went between creating it and the open.
-    pub(super) fn lost_to_removal(e: &std::io::Error) -> bool {
-        e.kind() == std::io::ErrorKind::NotFound
-    }
-
-    /// Whether `file` is still the file named `path`: a sweep can
-    /// remove the name between the create and the lock, and a lock on
-    /// an unnamed file holds nothing anyone can see.
-    pub(super) fn still_named(file: &std::fs::File, path: &std::path::Path) -> bool {
-        use std::os::unix::fs::MetadataExt;
-        matches!(
-            (file.metadata(), std::fs::metadata(path)),
-            (Ok(held), Ok(named)) if held.dev() == named.dev() && held.ino() == named.ino()
-        )
-    }
-
-    /// Remove the name while the lock is still held, then let go.
-    pub(super) fn release(file: std::fs::File, path: &std::path::Path) {
-        if still_named(&file, path) {
-            let _ = std::fs::remove_file(path);
-        }
-        drop(file);
-    }
-}
-
-#[cfg(windows)]
-mod os {
-    use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
-
-    const FILE_SHARE_READ: u32 = 0x1;
-    const FILE_SHARE_WRITE: u32 = 0x2;
-    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
-    const ERROR_ACCESS_DENIED: i32 = 5;
-    const ERROR_SHARING_VIOLATION: i32 = 32;
-    const ERROR_DELETE_PENDING: i32 = 303;
-
-    /// How a hold is opened: for writing, never truncated, shared for
-    /// reading and writing but not for deletion — so no sweep can
-    /// remove a hold while its owner has it open — and hidden if this
-    /// open creates it. Creating is the caller's choice.
-    pub(super) fn hold_options() -> std::fs::OpenOptions {
-        let mut options = std::fs::OpenOptions::new();
-        options
-            .write(true)
-            .truncate(false)
-            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
-            .attributes(FILE_ATTRIBUTE_HIDDEN);
-        options
-    }
-
-    /// Give the folder the hidden attribute, unless it has it.
-    ///
-    /// The standard library sets attributes only from a
-    /// [`std::fs::Permissions`] it read from a file, so they are
-    /// copied from the hold just created, which is hidden and — opened
-    /// for writing — not read-only. Best-effort: a visible folder is
-    /// cosmetic.
-    pub(super) fn hide_dir(dir: &std::path::Path, file: &std::fs::File) {
-        let hidden = |m: &std::fs::Metadata| m.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0;
-        if std::fs::metadata(dir).is_ok_and(|m| hidden(&m)) {
-            return;
-        }
-        let Ok(meta) = file.metadata() else { return };
-        if hidden(&meta) {
-            let _ = std::fs::set_permissions(dir, meta.permissions());
-        }
-    }
-
-    /// The open met a removal in flight: the folder gone, or a delete
-    /// of it still pending, which Windows reports as a denial.
-    pub(super) fn lost_to_removal(e: &std::io::Error) -> bool {
-        e.kind() == std::io::ErrorKind::NotFound
-            || matches!(
-                e.raw_os_error(),
-                Some(ERROR_SHARING_VIOLATION | ERROR_DELETE_PENDING | ERROR_ACCESS_DENIED)
-            )
-    }
-
-    /// Always: a file opened without delete sharing cannot lose its
-    /// name while the handle is open.
-    pub(super) fn still_named(_file: &std::fs::File, _path: &std::path::Path) -> bool {
-        true
-    }
-
-    /// Let go first, then delete: the delete needs the handle closed,
-    /// since it was opened without delete sharing.
-    pub(super) fn release(file: std::fs::File, path: &std::path::Path) {
-        drop(file);
-        let _ = std::fs::remove_file(path);
-    }
-}
-
-#[cfg(test)]
-#[path = "download_parts_prop_test.rs"]
-mod prop_tests;
 #[cfg(test)]
 #[path = "download_parts_test.rs"]
 mod tests;

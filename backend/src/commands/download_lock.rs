@@ -95,7 +95,9 @@ pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::Pa
 #[path = "download_lock_acquire.rs"]
 mod acquire;
 #[path = "download_lock_os.rs"]
-mod os;
+// Shared with the download working folder, whose holds are opened,
+// hidden, checked and released exactly as lock files are.
+pub(super) mod os;
 #[path = "download_lock_release.rs"]
 mod release;
 #[path = "download_lock_remove.rs"]
