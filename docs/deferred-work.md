@@ -1217,8 +1217,9 @@ starting it, and delete it when you find it done.
 
 ## A scratch name that overflows where the target does not
 
-- **Publication's scratch file adds ~55 characters to the destination
-  path, so a folder deep enough can accept the episode's own name and
+- **Publication's scratch file adds about 60 characters to the
+  destination path — the hidden working folder and the scratch's own
+  name — so a folder deep enough can accept the episode's own name and
   reject the scratch's** — the transfer then fails on a target the
   user was allowed to choose.
 

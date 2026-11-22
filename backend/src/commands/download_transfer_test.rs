@@ -154,13 +154,25 @@ fn second_track(server: &MockServer) -> SubtitleTrack {
 }
 
 /// Every entry in `dir` whose name ends in `.vtt` — the sidecars at
-/// their names and any scratch sibling left behind.
+/// their names — and anything left in the working folder beside them,
+/// where a subtitle's scratch lives, listed under the folder's name.
 fn vtt_entries(dir: &std::path::Path) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(dir)
         .expect("dest")
         .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
         .filter(|n| n.ends_with(".vtt"))
         .collect();
+    let parts = super::super::download::parts::parts_dir(dir);
+    if let Ok(left) = std::fs::read_dir(&parts) {
+        let folder = parts.file_name().map(|n| n.to_string_lossy().into_owned());
+        for e in left.flatten() {
+            names.push(format!(
+                "{}/{}",
+                folder.as_deref().unwrap_or_default(),
+                e.file_name().to_string_lossy()
+            ));
+        }
+    }
     names.sort();
     names
 }

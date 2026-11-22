@@ -1,3 +1,5 @@
+#[cfg(unix)]
+use super::parts::parts_dir;
 use super::*;
 use crate::scraper::table_provider::TableProvider;
 
@@ -1954,16 +1956,17 @@ async fn a_scratch_that_survived_its_removal_is_still_the_guards_to_take() {
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Show Episode 1.mp4");
     std::fs::write(&target, b"the episode").expect("episode");
-    let scratch = Scratch::new(dest.path());
+    let scratch = Scratch::new(dest.path()).expect("scratch");
     std::fs::write(&scratch.path, b"the whole episode").expect("scratch");
     let scratch_path = scratch.path.clone();
     // A directory nothing can unlink from: every read inside
     // publication succeeds and the removal fails.
+    let folder = scratch_path.parent().expect("working folder").to_path_buf();
     let chmod = |mode: u32| {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(dest.path()).expect("meta").permissions();
+        let mut perms = std::fs::metadata(&folder).expect("meta").permissions();
         perms.set_mode(mode);
-        std::fs::set_permissions(dest.path(), perms).expect("chmod");
+        std::fs::set_permissions(&folder, perms).expect("chmod");
     };
     chmod(0o555);
 
@@ -2003,13 +2006,14 @@ async fn a_retired_scratch_the_retry_could_not_remove_is_swept_at_the_end() {
     // for good. A name this guard condemned stays its to remove
     // until the end.
     let dest = tempfile::tempdir().expect("dest");
-    let mut scratch = Scratch::new(dest.path());
+    let mut scratch = Scratch::new(dest.path()).expect("scratch");
     let old_partial = std::path::PathBuf::from(format!("{}.part", scratch.path.display()));
     std::fs::write(&old_partial, b"most of an episode").expect("partial");
 
-    dir_chmod(dest.path(), 0o555);
-    scratch.renew(dest.path());
-    dir_chmod(dest.path(), 0o755);
+    let folder = scratch.path.parent().expect("working folder").to_path_buf();
+    dir_chmod(&folder, 0o555);
+    scratch.renew();
+    dir_chmod(&folder, 0o755);
     assert!(
         old_partial.exists(),
         "the retirement's own removal failed, which is the premise"
@@ -2031,13 +2035,14 @@ async fn publication_does_not_orphan_what_a_retry_left_behind() {
     // ever remove it.
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Retried Show Episode 1.mp4");
-    let mut scratch = Scratch::new(dest.path());
+    let mut scratch = Scratch::new(dest.path()).expect("scratch");
     let old_partial = std::path::PathBuf::from(format!("{}.part", scratch.path.display()));
     std::fs::write(&old_partial, b"the condemned first attempt").expect("partial");
 
-    dir_chmod(dest.path(), 0o555);
-    scratch.renew(dest.path());
-    dir_chmod(dest.path(), 0o755);
+    let folder = scratch.path.parent().expect("working folder").to_path_buf();
+    dir_chmod(&folder, 0o555);
+    scratch.renew();
+    dir_chmod(&folder, 0o755);
     assert!(old_partial.exists(), "the retirement's removal failed");
 
     std::fs::write(&scratch.path, b"the whole episode").expect("retry output");
@@ -2223,16 +2228,11 @@ async fn a_refusal_names_the_file_after_a_stable_key() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn a_successful_download_does_not_sweep_the_folder_it_landed_in() {
-    // The sweep exists for the kill and the failure, where the tool's
-    // derived files sit orphaned beside a scratch nothing will rename.
-    // A publication that succeeded already consumed the scratch, so
-    // the sweep has nothing to find — but finding nothing still reads
-    // every entry in the destination, once per episode of a range
-    // download, on whatever filesystem the user chose. The walk is
-    // observable by what it removes: a file the tool derived from the
-    // scratch name must survive a download that ended with the
-    // episode published.
+async fn a_successful_download_leaves_only_the_episode() {
+    // A file the tool derived from the scratch name and left behind
+    // is in the working folder with it, under the download's key, and
+    // goes when the download does — published or not. The destination
+    // itself is never walked: what is read is the working folder.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     stage_tool(
@@ -2270,17 +2270,17 @@ async fn a_successful_download_does_not_sweep_the_folder_it_landed_in() {
         Some("video"),
         "the episode is published"
     );
-    let probes = std::fs::read_dir(dest.path())
+    // What the tool derived from the scratch name lives in the
+    // working folder with it, and goes with it: the folder the user
+    // sees holds the episode and nothing else, and no walk of it was
+    // needed to get there.
+    let left: Vec<String> = std::fs::read_dir(dest.path())
         .expect("dest")
         .filter_map(|e| e.ok())
-        .filter(|e| e.file_name().to_string_lossy().ends_with(".probe"))
-        .count();
-    assert_eq!(
-        probes, 1,
-        "a download that ended published does not go back over the \
-         destination — what the tool derived from the scratch name is \
-         the proof the walk did not happen"
-    );
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n != ".ani-gui-locks")
+        .collect();
+    assert_eq!(left, vec!["Swept Show Episode 1.mp4".to_string()]);
 }
 
 #[cfg(unix)]
@@ -2378,7 +2378,7 @@ async fn cancelling_takes_the_tools_own_temporaries_with_it() {
     // Everything the tool writes is on disk before the cancel: a cancel
     // that comes before it has nothing to leave behind, and proves
     // nothing.
-    until_dir(dest.path(), "the tool's temporaries", |names| {
+    until_dir(&parts_dir(dest.path()), "the tool's temporaries", |names| {
         [".part", ".ytdl", ".part-Frag7"]
             .iter()
             .all(|end| names.iter().any(|n| n.ends_with(end)))
@@ -2405,11 +2405,15 @@ async fn until_dir(
 ) -> Vec<String> {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
     loop {
+        // A folder not created yet has no names in it.
         let names: Vec<String> = std::fs::read_dir(dir)
-            .expect("dir")
-            .filter_map(|e| e.ok())
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .collect();
+            .map(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
         if cond(&names) {
             return names;
         }
@@ -2422,7 +2426,7 @@ async fn until_dir(
 }
 
 /// Every file in `dir` this app's transfer could have put there. The
-/// scratch name is `.ani-gui-<pid>-<uuid>…`, and nothing a tool
+/// scratch name is `.ani-gui-<pid>-<id>-<n>…`, and nothing a tool
 /// derives from it loses that prefix.
 ///
 /// Files only, because `.ani-gui-locks` shares the prefix and is not
@@ -2430,15 +2434,31 @@ async fn until_dir(
 /// destination's own volume and stays while any download in it runs. The
 /// production sweep is narrower still: it matches the full scratch
 /// file name, which no other entry can begin with.
+///
+/// The scratch and everything derived from it live in the working
+/// folder, so its files count too, and so does the folder itself: a
+/// download that is over leaves none of it.
 #[cfg(unix)]
 fn ours_in(dir: &std::path::Path) -> Vec<String> {
-    std::fs::read_dir(dir)
-        .expect("dest")
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.starts_with(".ani-gui-"))
-        .collect()
+    let files = |dir: &std::path::Path| -> Vec<String> {
+        std::fs::read_dir(dir)
+            .map(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .filter(|n| n.starts_with(".ani-gui-"))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let mut ours = files(dir);
+    let parts = parts_dir(dir);
+    if parts.exists() {
+        ours.push(format!("{}/", super::parts::PARTS_DIR));
+        ours.extend(files(&parts));
+    }
+    ours
 }
 
 #[cfg(unix)]
@@ -2477,8 +2497,8 @@ async fn cancelling_a_download_takes_its_scratch_file_with_it() {
     });
     // The partial file is on disk before the cancel: a cancel that
     // comes before it has nothing to leave behind, and proves nothing.
-    until_dir(dest.path(), "the partial file", |names| {
-        names.iter().any(|n| n.contains("part"))
+    until_dir(&parts_dir(dest.path()), "the partial file", |names| {
+        names.iter().any(|n| n.contains(".part"))
     })
     .await;
     running.abort();
@@ -2486,12 +2506,7 @@ async fn cancelling_a_download_takes_its_scratch_file_with_it() {
     // swept, before the join returns.
     let _ = running.await;
 
-    let leftovers: Vec<String> = std::fs::read_dir(dest.path())
-        .expect("dest")
-        .filter_map(|e| e.ok())
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.contains("part"))
-        .collect();
+    let leftovers = ours_in(dest.path());
     assert!(
         leftovers.is_empty(),
         "a cancelled transfer must not leave its partial file behind: {leftovers:?}"
@@ -3133,9 +3148,10 @@ async fn a_sidecar_the_user_already_has_is_preserved() {
 #[tokio::test]
 async fn a_sidecar_scratch_that_survived_its_removal_is_still_the_claims_to_take() {
     let dest = tempfile::tempdir().expect("dest");
-    let pen = tempfile::tempdir_in(dest.path()).expect("pen");
+    let hold = super::parts::Hold::take(dest.path(), false).expect("hold");
+    let pen = hold.dir().to_path_buf();
     let target = dest.path().join("Show Episode 9.en.vtt");
-    let scratch = pen.path().join(".ani-gui-9-9.part.vtt");
+    let scratch = hold.part(".part.vtt");
     std::fs::write(&scratch, b"WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n").expect("scratch");
     let mut claim = SidecarClaim {
         target: target.clone(),
@@ -3143,10 +3159,11 @@ async fn a_sidecar_scratch_that_survived_its_removal_is_still_the_claims_to_take
         file: None,
         installed: false,
         finished: false,
+        _hold: hold,
     };
     // The link needs the target's directory writable and the removal
     // the scratch's; only the latter is refused.
-    dir_chmod(pen.path(), 0o555);
+    dir_chmod(&pen, 0o555);
     let got = claim.install();
     assert!(got.is_ok(), "the track is delivered: {got:?}");
     assert_eq!(
@@ -3158,7 +3175,7 @@ async fn a_sidecar_scratch_that_survived_its_removal_is_still_the_claims_to_take
         scratch.exists(),
         "the removal failed inside the install, so the scratch is still here"
     );
-    dir_chmod(pen.path(), 0o755);
+    dir_chmod(&pen, 0o755);
     drop(claim);
     assert!(
         !scratch.exists(),
