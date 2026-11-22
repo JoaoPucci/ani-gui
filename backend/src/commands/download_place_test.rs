@@ -123,6 +123,21 @@ fn a_version_tag_anywhere_in_the_title_leaves_one_folder() {
 }
 
 #[test]
+fn a_space_the_title_spells_its_own_way_is_kept() {
+    // Japanese titles separate words with an ideographic space, and the
+    // episode's name keeps it: so does the folder, with a run read as
+    // its first space.
+    assert_eq!(
+        show_folder_name("進撃の巨人\u{3000}Season 2").as_deref(),
+        Some("進撃の巨人\u{3000}Season 2")
+    );
+    assert_eq!(
+        show_folder_name("Show\u{a0}\u{a0} Two").as_deref(),
+        Some("Show\u{a0}Two")
+    );
+}
+
+#[test]
 fn an_episode_an_earlier_version_saved_in_the_chosen_folder_is_found_there() {
     let chosen = tempfile::tempdir().expect("chosen");
     std::fs::write(chosen.path().join("Frieren Episode 2.mp4"), b"video").expect("seed");
