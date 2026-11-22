@@ -783,3 +783,61 @@ fn hand_over(holder: &mut std::fs::File, staging: &std::path::Path, lock_path: &
     std::fs::rename(staging, lock_path).expect("the next holder takes the name");
     drop(std::mem::replace(holder, next));
 }
+
+/// A waiter outlasts losses spread across many handovers.
+///
+/// Between handovers a waiter's open can lose to the removal that
+/// ends one: the lock directory gone as the last file left it, or a
+/// file that lost its name between the open and the check. Each such
+/// loss is someone else finishing, and a waiter that keeps finding the
+/// lock held between them is plainly on a volume that works — so the
+/// cap on losses has to count them in a row, not over the whole wait.
+/// Counted in total, four contenders handing one lock around on macOS
+/// CI ran a waiter past the cap and refused it outright.
+///
+/// Staged with a dangling link at the lock's name, which every open
+/// meets as "not found": between holders the name is that link for a
+/// moment, so the waiter loses an open or two there, then finds the
+/// next holder's file at the name and waits on it. Over the run that
+/// is more losses than the cap, and never more than a few in a row.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_waiter_outlasts_losses_spread_across_handovers() {
+    let _deadline = Deadline::arm();
+    let dest = tempfile::tempdir().expect("dest");
+    let target = dest.path().join("Busy Show Episode 10.mp4");
+    let lock_path = target_lock_path(&target).expect("a lock path");
+    let mut holder = Some(foreign_handle(&lock_path));
+    if let Some(file) = &holder {
+        fs4::FileExt::try_lock(file).expect("first holder");
+    }
+
+    let waiting = {
+        let target = target.clone();
+        tokio::spawn(async move { acquire_instance_lock(&target, long_deadline()).await })
+    };
+    let staging = dest.path().join("next holder");
+    let link = dest.path().join("removal in progress");
+    for _ in 0..40 {
+        // Waiting on the holder's file.
+        tokio::time::sleep(std::time::Duration::from_millis(110)).await;
+        // The holder goes, its name taken by what a removal looks like
+        // to an open; the waiter, overtaken, opens into it and loses.
+        std::os::unix::fs::symlink(dest.path().join("missing/dir/file"), &link)
+            .expect("stage a dangling link");
+        std::fs::rename(&link, &lock_path).expect("the link takes the name");
+        drop(holder.take());
+        tokio::time::sleep(std::time::Duration::from_millis(110)).await;
+        // The next holder takes the name, already locked.
+        let next = foreign_handle(&staging);
+        fs4::FileExt::try_lock(&next).expect("nobody else can know the staged file");
+        std::fs::rename(&staging, &lock_path).expect("the next holder takes the name");
+        holder = Some(next);
+    }
+    drop(holder);
+    let got = waiting.await.expect("join");
+    assert!(
+        got.is_ok(),
+        "a waiter that keeps finding the lock held must not be refused: {got:?}"
+    );
+}
