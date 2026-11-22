@@ -35,6 +35,7 @@ mod cour_ordinal_form;
 mod cour_pairing;
 pub mod cour_same_name;
 pub mod download;
+mod download_episode_stem;
 mod download_names;
 pub(crate) mod external_ids;
 pub(crate) mod held_fill;

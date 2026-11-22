@@ -268,7 +268,8 @@ where
                 });
             }
         };
-        let file_stem = super::download_names::episode_stem(dest, &serving.hit.title, &ep_no, None);
+        let file_stem =
+            super::download_episode_stem::episode_stem(dest, &serving.hit.title, &ep_no, None);
         tracing::info!(
             slug = %serving.hit.slug,
             episode = %ep_no,

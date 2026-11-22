@@ -377,8 +377,12 @@ where
     // version gave it where that version's download is in the folder.
     let played = crate::commands::play_native_record::matched_episode(&resolved, &args.episode);
     let former = crate::commands::play_native_merge::former_number(&resolved);
-    let file_stem =
-        super::download_names::episode_stem(&dest, &resolved.title, &played, former.as_deref());
+    let file_stem = super::download_episode_stem::episode_stem(
+        &dest,
+        &resolved.title,
+        &played,
+        former.as_deref(),
+    );
     let source = StreamSource {
         master_url: resolved.master_url,
         referer: resolved.referer,

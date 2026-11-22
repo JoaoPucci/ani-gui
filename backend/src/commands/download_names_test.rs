@@ -1,4 +1,5 @@
-use super::{episode_stem, file_safe, portable_name};
+use super::{file_safe, portable_name};
+use crate::commands::download_episode_stem::{episode_stem, not_a_device};
 use proptest::prelude::*;
 
 /// What Windows refuses anywhere in a file name: the nine reserved
@@ -331,7 +332,7 @@ proptest! {
         let dest = tempfile::tempdir().expect("dest");
         prop_assert_eq!(
             episode_stem(dest.path(), &title, "1", None),
-            super::not_a_device(format!("{title} Episode 1"))
+            not_a_device(format!("{title} Episode 1"))
         );
     }
 
