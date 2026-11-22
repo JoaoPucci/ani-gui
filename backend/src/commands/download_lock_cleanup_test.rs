@@ -19,6 +19,17 @@ fn long_deadline() -> tokio::time::Instant {
     tokio::time::Instant::now() + std::time::Duration::from_secs(30)
 }
 
+/// Whether `path` is gone, allowing for a delete that a moment's outside
+/// handle refused (Windows Defender or the indexer opening a new file)
+/// and that is being retried off the releasing thread.
+async fn gone_soon(path: &std::path::Path) -> bool {
+    let settled = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    while path.exists() && tokio::time::Instant::now() < settled {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    !path.exists()
+}
+
 /// A handle opened the way an outside party would, for staging a
 /// holder or a stale file.
 fn foreign_handle(path: &std::path::Path) -> std::fs::File {
@@ -50,11 +61,11 @@ async fn releasing_the_lock_removes_its_file_and_the_empty_directory() {
     drop(held);
 
     assert!(
-        !lock_path.exists(),
+        gone_soon(&lock_path).await,
         "a released lock must not leave its file behind"
     );
     assert!(
-        !lock_path.parent().expect("lock dir").exists(),
+        gone_soon(lock_path.parent().expect("lock dir")).await,
         "an emptied lock directory must not stay in the download folder"
     );
 }
@@ -81,7 +92,7 @@ async fn the_directory_stays_while_another_lock_is_in_it() {
         "a held lock's file survives a neighbour's cleanup"
     );
     drop(b);
-    assert!(!second_lock.parent().expect("lock dir").exists());
+    assert!(gone_soon(second_lock.parent().expect("lock dir")).await);
 }
 
 /// A waiter handed the lock after its holder removed the file holds
@@ -174,8 +185,11 @@ async fn contenders_removing_the_lock_never_hold_it_together() {
 
     assert_eq!(overlaps.load(Ordering::SeqCst), 0, "two holders overlapped");
     let lock_path = target_lock_path(&target).expect("a lock path");
-    assert!(!lock_path.exists(), "the last holder removes the file");
-    assert!(!lock_path.parent().expect("lock dir").exists());
+    assert!(
+        gone_soon(&lock_path).await,
+        "the last holder removes the file"
+    );
+    assert!(gone_soon(lock_path.parent().expect("lock dir")).await);
 }
 
 /// Lock files earlier versions left behind are removed when a download
@@ -195,7 +209,7 @@ async fn stale_lock_files_are_swept_and_held_ones_are_kept() {
         .expect("a lock");
     drop(held);
 
-    assert!(!stale.exists(), "an unheld leftover must be swept");
+    assert!(gone_soon(&stale).await, "an unheld leftover must be swept");
     assert!(live.is_file(), "a lock another instance holds must survive");
     drop(holder);
 }
@@ -279,7 +293,10 @@ async fn a_held_lock_file_cannot_be_deleted_on_windows() {
     );
     assert!(lock_path.is_file());
     drop(held);
-    assert!(!lock_path.exists(), "its holder removes it on release");
+    assert!(
+        gone_soon(&lock_path).await,
+        "its holder removes it on release"
+    );
 }
 
 /// A lock directory that cannot be created is a refusal, not a wait:
@@ -483,7 +500,7 @@ async fn a_waiter_cancelled_after_its_holder_left_leaves_nothing() {
         !lock_path.exists(),
         "a cancelled waiter must not leave the lock file behind"
     );
-    assert!(!lock_path.parent().expect("lock dir").exists());
+    assert!(gone_soon(lock_path.parent().expect("lock dir")).await);
 }
 
 /// A waiter that gives up never removes a file somebody else holds,
@@ -538,7 +555,7 @@ async fn a_release_outlasts_a_brief_outside_handle_on_windows() {
                 .open(&lock_path)
                 .expect("a scanner's open");
             opened_tx.send(()).expect("signal");
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            std::thread::sleep(std::time::Duration::from_millis(15));
             drop(handle);
         })
     };
