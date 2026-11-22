@@ -24,7 +24,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 | **OP / ED skip** | aniskip intervals — one-click or fully automatic. |
 | **Picture-in-Picture** | Pop the player out while it is open. |
 | **Background prefetch** | Adjacent episodes warm in advance. |
-| **Downloads** | Per-episode or ranged, progress dock. yt-dlp bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, downloaded by the Windows installer at install time, system PATH on AppImage). |
+| **Downloads** | Per-episode or ranged, progress dock. Each show gets a folder of its own inside the download folder you choose (`<folder>/<Show>/<Show> Episode N.mp4`, subtitles beside the video), the layout Plex, Jellyfin and Kodi read; episodes earlier versions saved straight into the download folder stay where they are and still count as downloaded. yt-dlp bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, downloaded by the Windows installer at install time, system PATH on AppImage). |
 | **Watch history** | Continue Watching — and a show's Play button — takes you back to the last episode you watched — resuming where you left it, or from its start if you left in its first 15 seconds — unless you finished it (its last 90 seconds, or to its end), when it goes on to the next episode. It also goes on when the app has no record of that episode: points are kept for the 200 most recently played episodes, in local storage that can be unavailable. Remove a single card or clear the lot from the rail. |
 | **External player** | One click to mpv / VLC / IINA / custom. |
 | **Watch together** | Hand the current stream to [Syncplay](https://syncplay.pl/) for a watch party. |
