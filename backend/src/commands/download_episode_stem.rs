@@ -14,7 +14,9 @@
 /// ones spelled with the title's leading dots, the ones from before
 /// the device rule, and the title as the provider gave it. The name
 /// this version gives leads each number's spellings, so where the
-/// visible and the dotted file are both there the visible one is it.
+/// visible and the dotted file are both there for one number the
+/// visible one is it. The former number is looked for before the
+/// episode's own, as it always was.
 ///
 /// The spelling from before the device rule is looked for only off
 /// Windows, which opens it as the device. The provider's spelling is
@@ -48,8 +50,9 @@ pub(crate) fn episode_stem(
     let mut earlier: Vec<String> = Vec::new();
     for n in former.into_iter().chain([episode]) {
         earlier.push(named(n));
-        // Before the device rule, the name was this one with its dot:
-        // an ordinary file off Windows, and the console on it.
+        // Before the device rule, an undotted title's name was this
+        // one with its dot: an ordinary file off Windows, and a device
+        // on it.
         if !cfg!(windows) && plain(n) != named(n) {
             earlier.push(plain(n));
         }
