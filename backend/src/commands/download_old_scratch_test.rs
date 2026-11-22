@@ -211,31 +211,14 @@ fn each_folder_is_swept_once_per_download() {
 #[tokio::test]
 async fn a_second_visit_by_the_same_download_does_not_sweep() {
     // A range's episodes after the first go into a folder it already
-    // swept: no second listing of it. A leftover that appears after
-    // the first visit is still there once a second visit's sweep would
-    // have finished.
+    // swept: no second listing of it.
     let dir = tempfile::tempdir().expect("dir");
+    let other = tempfile::tempdir().expect("other");
     let mut visits = OldScratchVisits::default();
-    let first = file_at(
-        dir.path(),
-        &old(".part.mp4"),
-        SystemTime::now() - MIN_AGE * 2,
-    );
-    visits.visit(dir.path());
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
-    while first.exists() {
-        assert!(tokio::time::Instant::now() < deadline, "first visit sweeps");
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    let later = file_at(
-        dir.path(),
-        &old(".part.vtt"),
-        SystemTime::now() - MIN_AGE * 2,
-    );
-    visits.visit(dir.path());
-    // Longer than the first visit's sweep of this folder took.
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    assert!(later.exists(), "the second visit did not sweep");
+    assert!(visits.visit(dir.path()), "the first visit sweeps");
+    assert!(visits.visit(other.path()), "so does another folder's");
+    assert!(!visits.visit(dir.path()), "a second visit starts none");
+    assert!(!visits.visit(other.path()));
 }
 
 #[tokio::test]
