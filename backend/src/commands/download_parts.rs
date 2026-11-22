@@ -5,6 +5,30 @@ use std::path::{Path, PathBuf};
 
 const KEY_PREFIX: &str = ".ani-gui-";
 
+/// The working folder's name inside a destination.
+pub(crate) const PARTS_DIR: &str = ".ani-gui-parts";
+
+/// Where `dest`'s unfinished files are to live.
+pub(crate) fn parts_dir(dest: &Path) -> PathBuf {
+    dest.join(PARTS_DIR)
+}
+
+/// What a name in the working folder is to the download that owns it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Entry {
+    /// `<key>.hold`, the file the owner keeps locked.
+    Hold,
+    /// `<key>-…`, one of the owner's files.
+    Part,
+}
+
+/// The key that owns `name`, and what the name is to it. Not yet
+/// answered: nothing owns anything.
+#[must_use]
+pub(crate) fn owner_of(_name: &str) -> Option<(&str, Entry)> {
+    None
+}
+
 /// A download's claim on its unfinished files: where they go, and a
 /// fresh name for each. For now every name sits beside the target.
 #[derive(Debug)]
@@ -37,3 +61,10 @@ impl Hold {
         ))
     }
 }
+
+#[cfg(test)]
+#[path = "download_parts_prop_test.rs"]
+mod prop_tests;
+#[cfg(test)]
+#[path = "download_parts_test.rs"]
+mod tests;

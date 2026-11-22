@@ -2213,3 +2213,8 @@ mod prop_tests;
 #[cfg(test)]
 #[path = "download_test.rs"]
 mod tests;
+// Whole transfers against the working folder stage stub tools as
+// shell scripts, which only a unix runner spawns.
+#[cfg(all(test, unix))]
+#[path = "download_parts_flow_test.rs"]
+mod parts_flow_tests;
