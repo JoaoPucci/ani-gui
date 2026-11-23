@@ -129,7 +129,10 @@ where
 {
     tokio::task::spawn_blocking(move || f(&path))
         .await
-        .map_err(|_| crate::error::AniError::Io)
+        .map_err(|e| {
+            tracing::warn!(error = %e, "download lock call ended without an answer");
+            crate::error::AniError::Io
+        })
 }
 
 /// Whether a download in this process has used the lock at

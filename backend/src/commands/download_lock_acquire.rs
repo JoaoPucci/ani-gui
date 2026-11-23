@@ -130,13 +130,14 @@ fn attempt(path: &std::path::Path, open: Option<Waiting>) -> Attempt {
     {
         Ok(waiting) => waiting,
         Err(e) if os::lost_to_removal(&e) => return Attempt::Lost,
-        Err(_) => return Attempt::Failed,
+        Err(e) => return refused("open", path, &e),
     };
     match waiting.file().map(fs4::FileExt::try_lock) {
         Some(Ok(())) => {}
         Some(Err(fs4::TryLockError::WouldBlock)) => return Attempt::Busy(waiting),
         // Dropping `waiting` gives the file up (see `Waiting`).
-        Some(Err(fs4::TryLockError::Error(_))) | None => return Attempt::Failed,
+        Some(Err(fs4::TryLockError::Error(e))) => return refused("lock", path, &e),
+        None => return Attempt::Failed,
     }
     let Some(lock) = waiting.into_lock() else {
         return Attempt::Failed;
@@ -159,12 +160,34 @@ fn attempt(path: &std::path::Path, open: Option<Waiting>) -> Attempt {
     }
 }
 
+/// Log why a try refused the lock, and refuse it.
+///
+/// The caller sees a bare I/O error and runs the download without the
+/// lock, so the log is the only place the cause can be read: the step
+/// that refused, and the error's kind and the system's own code.
+fn refused(step: &'static str, path: &std::path::Path, e: &std::io::Error) -> Attempt {
+    tracing::warn!(
+        path = %path.display(),
+        step,
+        kind = ?e.kind(),
+        // 0 when the error carries none: no system uses it for one.
+        code = e.raw_os_error().unwrap_or(0),
+        error = %e,
+        "download lock refused"
+    );
+    Attempt::Failed
+}
+
 /// Count one loss to a concurrent removal and wait a poll before the
 /// next attempt — or give up, past the cap on losses in a row or the
 /// deadline.
 async fn note_loss(losses: &mut u32, deadline: tokio::time::Instant) -> Result<()> {
     *losses += 1;
     if *losses > INSTANCE_LOCK_LOSSES {
+        tracing::warn!(
+            losses = *losses,
+            "download lock refused: every open lost to what looks like a removal"
+        );
         return Err(AniError::Io);
     }
     poll_until(deadline).await
