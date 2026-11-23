@@ -38,8 +38,13 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
 fn lines_of<F: Future>(f: impl FnOnce() -> F) -> Vec<String> {
     let captured = Captured::default();
     let subscriber = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::new("ani_gui=info"))
+        .with_env_filter(tracing_subscriber::EnvFilter::new(
+            crate::DEFAULT_LOG_FILTER,
+        ))
         .with_ansi(false)
+        // No timestamp: the lines are searched for ids, and a clock's
+        // digits would match one.
+        .without_time()
         .with_writer(captured.clone())
         .finish();
     let runtime = tokio::runtime::Builder::new_current_thread()
