@@ -179,35 +179,6 @@ jobs:
         run: |
           dir=$(sh tools/hostile-tmpdir.sh "$RUNNER_TEMP")
           printf 'TMPDIR=%s\n' "$dir" >> "$GITHUB_ENV"
-      - if: needs.filter.outputs.relevant == 'true' && matrix.os == 'macos-latest'
-        name: TEMPORARY loop the lock contention case
-        working-directory: backend
-        env:
-          RUSTFLAGS: '-D warnings'
-          http_proxy: http://proxy.invalid:9
-          https_proxy: http://proxy.invalid:9
-          all_proxy: http://proxy.invalid:9
-          no_proxy: 127.0.0.1,localhost,::1
-          CARGO_NET_OFFLINE: 'true'
-        run: |
-          set -o pipefail
-          echo "open files allowed: $(ulimit -n)"
-          bin=$(cargo test --workspace --all-features --lib --no-run --message-format=json | python3 -c 'import sys,json
-          for l in sys.stdin:
-              m=json.loads(l)
-              if m.get("reason")=="compiler-artifact" and m.get("executable") and m["target"]["name"]=="ani_gui" and m["profile"]["test"]: print(m["executable"])' | tail -1)
-          echo "binary: $bin"
-          test -x "$bin"
-          # The whole suite, as the failures were all seen: the case
-          # alone may never meet what the rest of the run does to it.
-          for i in 1 2 3 4 5 6 7 8; do
-            if ! "$bin" > "suite-$i.txt" 2>&1; then
-              grep -E "FAILED|panicked|download lock|refused" "suite-$i.txt" | head -200
-              echo "the suite failed on run $i"
-              exit 1
-            fi
-            echo "suite run $i passed"
-          done
       - if: needs.filter.outputs.relevant == 'true'
         name: cargo test --workspace
         working-directory: backend
