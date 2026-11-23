@@ -112,6 +112,32 @@ describe('changing the player type', () => {
 		expect(p.saved.at(-1)?.external_player_kind).toBe('iina');
 	});
 
+	it('saves nothing on a failed question when nobody listens for it', async () => {
+		const p = page(config('mpv', 'mpv'));
+		const ask = vi.fn(async () => {
+			throw new Error('offline');
+		});
+		await createKindChange(ask, p.current, p.save)('vlc');
+		expect(p.saved).toEqual([]);
+	});
+
+	it('saves from the config it asked about when the page lets go of its own meanwhile', async () => {
+		let cfg: Config | null = config('mpv', 'mpv');
+		const saved: Config[] = [];
+		const ask = vi.fn(async () => {
+			cfg = null;
+			return 'vlc';
+		});
+		await createKindChange(
+			ask,
+			() => cfg,
+			async (next) => {
+				saved.push(next);
+			}
+		)('vlc');
+		expect(saved).toEqual([config('vlc', 'vlc')]);
+	});
+
 	it('does nothing before the settings have loaded', async () => {
 		const ask = vi.fn(async () => 'vlc');
 		const save = vi.fn(async () => {});
