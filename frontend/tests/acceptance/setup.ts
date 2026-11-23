@@ -58,7 +58,8 @@ export const API_BASE = 'http://127.0.0.1:31337';
  * - the title search a page runs to name a show's provider entry;
  * - the backend's answer to which of a guessed Continue row's hits the
  *   row rules out, which a failed call answers with none;
- * - the availability reads and warms the home and list rows send;
+ * - the availability reads and warms the home and list rows send, and
+ *   the warm of the Continue strip's stills and banners Home sends;
  * - a signed-in tracker list a list row reads;
  * - the background warm of an episode the user has not asked for:
  *   with no EventSource installed it is a plain `/api/play` POST
@@ -82,6 +83,7 @@ const incidental = [
 	http.post(`${API_BASE}/api/history/guess/ruled-out`, absentBackend),
 	http.post(`${API_BASE}/api/availability/batch`, absentBackend),
 	http.post(`${API_BASE}/api/availability/warm`, absentBackend),
+	http.post(`${API_BASE}/api/continue/warm`, absentBackend),
 	http.post(`${API_BASE}/api/account/list/:provider`, absentBackend),
 	http.post(`${API_BASE}/api/play`, async ({ request, requestId }) => {
 		const body = (await request
