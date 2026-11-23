@@ -154,13 +154,25 @@ fn second_track(server: &MockServer) -> SubtitleTrack {
 }
 
 /// Every entry in `dir` whose name ends in `.vtt` — the sidecars at
-/// their names and any scratch sibling left behind.
+/// their names — and anything left in the working folder beside them,
+/// where a subtitle's scratch lives, listed under the folder's name.
 fn vtt_entries(dir: &std::path::Path) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(dir)
         .expect("dest")
         .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
         .filter(|n| n.ends_with(".vtt"))
         .collect();
+    let parts = super::super::download::parts::parts_dir(dir);
+    if let Ok(left) = std::fs::read_dir(&parts) {
+        let folder = parts.file_name().map(|n| n.to_string_lossy().into_owned());
+        for e in left.flatten() {
+            names.push(format!(
+                "{}/{}",
+                folder.as_deref().unwrap_or_default(),
+                e.file_name().to_string_lossy()
+            ));
+        }
+    }
     names.sort();
     names
 }
@@ -525,4 +537,64 @@ async fn sidecar_fetches_across_downloads_go_one_at_a_time_while_playback_is_liv
             "a track was asked for {apart:?} after the one before it answered"
         );
     }
+}
+
+/// A show's first download makes its folder; a folder that cannot be
+/// made — a file already holds its name — fails before any track or
+/// tool is asked for anything.
+#[cfg(unix)]
+#[tokio::test]
+async fn the_shows_folder_is_made_first_or_the_transfer_fails_before_fetching() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n"))
+        .mount(&server)
+        .await;
+    let chosen = tempfile::tempdir().expect("chosen");
+    let bin = tempfile::tempdir().expect("bin");
+    let ran = bin.path().join("ran");
+    let path_env = stage_tool(
+        bin.path(),
+        &format!("touch {}", crate::stub_file::sh_quote(&ran)),
+    );
+    let run = |dest: std::path::PathBuf| {
+        let server = &server;
+        let path_env = &path_env;
+        async move {
+            transfer_with_sidecars(
+                &reqwest::Client::new(),
+                &crate::proxy::host_budget::HostBudget::fresh(),
+                &source(server),
+                &dest,
+                "Show Episode 1",
+                Some("best"),
+                path_env,
+                std::time::Duration::from_secs(30),
+                &mut |_| {},
+                &super::super::download_pacing::Pacing::never(),
+            )
+            .await
+        }
+    };
+    let show = chosen.path().join("Show");
+    let written = run(show.clone()).await.expect("the transfer completes");
+    assert!(
+        show.join("Show Episode 1.mp4").is_file(),
+        "the episode is in the show's folder"
+    );
+    assert_eq!(written, vec![show.join("Show Episode 1.en.vtt")]);
+
+    std::fs::remove_file(&ran).expect("the tool ran");
+    let blocked = chosen.path().join("Blocked");
+    std::fs::write(&blocked, b"a file").expect("a file at the folder's name");
+    let got = run(blocked.clone()).await;
+    assert!(matches!(got, Err(crate::error::AniError::Io)), "{got:?}");
+    assert!(!ran.exists(), "no tool ran");
+    assert_eq!(std::fs::read(&blocked).expect("kept"), b"a file");
+    assert_eq!(
+        server.received_requests().await.map_or(0, |r| r.len()),
+        1,
+        "only the first transfer's track was asked for"
+    );
 }

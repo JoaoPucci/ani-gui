@@ -60,7 +60,8 @@ fn request(method: &Method, uri: &str, body: &'static str) -> axum::http::reques
 /// the routes in `api/mod.rs` itself across its kinds (reads, writes,
 /// deletes, the progress streams, the image), and one or more of each
 /// merged router (account, airing, franchise, refill) and of the
-/// modules with handlers of their own (flags, update, syncplay).
+/// modules with handlers of their own (flags, update, syncplay,
+/// link_rules).
 const ROUTES: &[(&str, &str, &str)] = &[
     ("GET", "/api/app-info", ""),
     ("GET", "/api/proxy-base-url", ""),
@@ -81,6 +82,7 @@ const ROUTES: &[(&str, &str, &str)] = &[
     ("POST", "/api/availability/batch", "{}"),
     ("DELETE", "/api/cache", ""),
     ("DELETE", "/api/cache/images", ""),
+    ("POST", "/api/history/card-lines", r#"{"rows":[]}"#),
     ("GET", "/api/flags", ""),
     ("GET", "/api/update-check", ""),
     ("GET", "/api/watched-at", ""),

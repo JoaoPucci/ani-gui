@@ -16,6 +16,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers } from './home-handlers';
+import { afterRead, watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -90,11 +91,13 @@ const OTHER = { ep_no: '1', id: 'allanime-2', title: 'Trigun' };
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
+let fetches: ReturnType<typeof watchPageFetches>;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	sessionLooks.clear();
 	window.localStorage.clear();
+	fetches = watchPageFetches();
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -237,9 +240,16 @@ describe('Continue Watching card artwork', () => {
 		await until(() => look() === 'image', 'the wait to run out', EPISODE_WAIT_CAP_MS + 2000);
 		expect(imageSource()).toBe(POSTER);
 
+		const readBefore = fetches.read.length;
 		episodes.release([episode(4, THUMB)]);
 		await until(() => cell()?.textContent?.includes('Episode title 4') === true, 'the details');
-		await sleep(50);
+		// The page has read the episode page it held, and drawn what
+		// that answer set off.
+		await until(
+			() => fetches.read.slice(readBefore).some((f) => f.path.startsWith('/api/kitsu/episodes/')),
+			'the episode page to be read'
+		);
+		await afterRead();
 		expect(imageSource()).toBe(POSTER);
 	});
 
@@ -424,9 +434,15 @@ describe('Continue Watching card artwork', () => {
 
 		search.release([show('1', 'Cowboy Bebop')]);
 		await until(() => resumeButton() !== null, 'the card to become clickable');
-		await sleep(50);
+		const readBefore = fetches.read.length;
 		episodes.release([episode(4, THUMB)]);
-		await sleep(50);
+		// The page has read the episode page it held, and drawn what
+		// that answer set off.
+		await until(
+			() => fetches.read.slice(readBefore).some((f) => f.path.startsWith('/api/kitsu/episodes/')),
+			'the episode page to be read'
+		);
+		await afterRead();
 		looks.stop();
 		expect(looks.seen).toEqual([`image | ${THUMB} | Cowboy Bebop Episode title 4`]);
 	});
@@ -475,7 +491,10 @@ describe('Continue Watching card artwork', () => {
 		server.use(...rowHandlers({ episodes: both }));
 		app = mount(HomePage, { target });
 		await until(() => imageSource() === THUMB, 'the card to settle on episode 4');
-		await sleep(50);
+		// Nothing the page asked is still out, and what the answers set
+		// off has been drawn: the card has nothing left to change on.
+		await fetches.settled('the page to settle');
+		await afterRead();
 		expect(imageSource()).toBe(THUMB);
 		expect(cell()?.textContent).toContain('Episode title 4');
 		expect(cell()?.querySelector('.resume-ep-num')?.textContent?.trim()).toBe('4');

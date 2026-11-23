@@ -22,6 +22,7 @@ import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page, setQuery, setUrl } from './page-state.svelte';
+import { afterRead, watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -127,6 +128,7 @@ class QuietObserver {
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
+let fetches: ReturnType<typeof watchPageFetches>;
 let savedObserver: unknown;
 let savedOffsetTop: PropertyDescriptor | undefined;
 let savedOffsetHeight: PropertyDescriptor | undefined;
@@ -136,6 +138,7 @@ beforeEach(() => {
 	mode = 'sub';
 	asked.length = 0;
 	server.use(...handlers());
+	fetches = watchPageFetches();
 	savedObserver = globalThis.IntersectionObserver;
 	globalThis.IntersectionObserver = QuietObserver as unknown as typeof IntersectionObserver;
 	// A card sits at its row in the grid: one card per 300px row.
@@ -180,8 +183,15 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-async function settle(steps = 30) {
-	for (let i = 0; i < steps; i++) await new Promise((r) => setTimeout(r, 5));
+/**
+ * Wait until the page has nothing out: every request it asked is
+ * answered and read, and what those answers set off has run. Only
+ * then does "Kitsu was asked exactly this" say nothing more was going
+ * to be asked.
+ */
+async function settle() {
+	await fetches.settled('the page to settle');
+	await afterRead();
 }
 
 function buttonNamed(name: string): HTMLButtonElement | null {
@@ -287,6 +297,7 @@ describe('back to the search page', () => {
 
 		buttonNamed(m.search_paging_load_more())!.click();
 		await until(() => cards().includes('Show 41'), 'the third page');
+		await settle();
 		expect(asked).toEqual(['frieren@40/year']);
 	});
 
@@ -315,6 +326,7 @@ describe('back to the search page', () => {
 
 		comeBack(kept);
 		await until(() => cards().includes('Show 21'), 'the search up to the card');
+		await settle();
 		expect(asked).toEqual(['frieren@0/year', 'frieren@20/year']);
 	});
 
@@ -331,11 +343,37 @@ describe('back to the search page', () => {
 		expect(window.scrollY).toBe(10 * ROW + 100);
 	});
 
+	it('offers no music filter, since search never answers a music video', async () => {
+		setQuery('frieren');
+		mountSearch();
+		navigated('link');
+		await until(() => cards().includes('Show 1'), 'the first page');
+
+		expect(buttonNamed(subtypeLabel('TV'))).not.toBeNull();
+		expect(buttonNamed(subtypeLabel('music'))).toBeNull();
+	});
+
+	it('brings back a search an earlier version kept filtered to music videos unfiltered', async () => {
+		const before = await browse();
+		const kept = leave() as { subtypes: string[] };
+		kept.subtypes = ['music'];
+
+		comeBack(kept);
+		await until(() => cards().length > 0, 'the results');
+		await settle();
+
+		expect(typeOn(subtypeLabel('TV'))).toBe(false);
+		expect(buttonNamed(m.search_chips_clear_button_aria_label())).toBeNull();
+		expect(cards()).toEqual(expect.arrayContaining(before));
+		expect(cards(), 'a film is back too: no filter is on').toContain('Show 2');
+	});
+
 	it('follows the address when the entry kept nothing', async () => {
 		setQuery('himmel');
 		mountSearch();
 		navigated('popstate');
 		await until(() => cards().includes('Show 1'), 'the search');
+		await settle();
 		expect(asked).toEqual(['himmel@0/relevance']);
 	});
 
@@ -349,6 +387,7 @@ describe('back to the search page', () => {
 		mountSearch();
 		navigated('link');
 		await until(() => cards().includes('Show 1'), 'the search');
+		await settle();
 		expect(asked).toEqual(['frieren@0/relevance']);
 		expect(orderChosen(m.search_sort_relevance())).toBe(true);
 		expect(typeOn(subtypeLabel('TV'))).toBe(false);
@@ -391,6 +430,7 @@ describe('back to the search page', () => {
 
 		setQuery('himmel');
 		await until(() => cards().includes('Show 1'), 'the next search');
+		await settle();
 		expect(asked).toEqual(['himmel@0/relevance']);
 		expect(orderChosen(m.search_sort_relevance())).toBe(true);
 		expect(typeOn(subtypeLabel('TV'))).toBe(false);

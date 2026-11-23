@@ -24,7 +24,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 | **OP / ED skip** | aniskip intervals — one-click or fully automatic. |
 | **Picture-in-Picture** | Pop the player out while it is open. |
 | **Background prefetch** | Adjacent episodes warm in advance. |
-| **Downloads** | Per-episode or ranged, progress dock. yt-dlp bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, installer-time fetch on Windows, system PATH on AppImage). |
+| **Downloads** | Per-episode or ranged, progress dock. Each show gets a folder of its own inside the download folder you choose (`<folder>/<Show>/<Show> Episode N.mp4`, subtitles beside the video), the folder-per-show convention media servers such as Plex, Jellyfin and Kodi organise series by; episodes earlier versions saved straight into the download folder stay where they are and still count as downloaded. yt-dlp bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, downloaded by the Windows installer at install time, system PATH on AppImage). |
 | **Watch history** | Continue Watching — and a show's Play button — takes you back to the last episode you watched — resuming where you left it, or from its start if you left in its first 15 seconds — unless you finished it (its last 90 seconds, or to its end), when it goes on to the next episode. It also goes on when the app has no record of that episode: points are kept for the 200 most recently played episodes, in local storage that can be unavailable. Remove a single card or clear the lot from the rail. |
 | **External player** | One click to mpv / VLC / IINA / custom. |
 | **Watch together** | Hand the current stream to [Syncplay](https://syncplay.pl/) for a watch party. |
@@ -34,7 +34,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 
 ## Install
 
-ani-gui is distributed as a desktop bundle. The transport it uses to reach the stream provider ships inside it, so browsing and playback need nothing else. Downloads additionally want `ffmpeg`, which each platform sources differently — see the tier notes below.
+ani-gui is distributed as a desktop bundle. The transport it uses to reach the stream provider ships inside it, so browsing and playback need nothing else. Each package installs the license texts of the tools it bundles, with the notices of the libraries built into them, under `resources/licenses/`. Downloads additionally want `ffmpeg`, which each platform sources differently — see the tier notes below.
 
 Platform support tiers:
 
@@ -47,8 +47,37 @@ Platform support tiers:
 <details>
 <summary><strong>Linux</strong> — tier 1 (tested on Ubuntu)</summary>
 
-- **AppImage** — download from the [releases page](https://github.com/JoaoPucci/ani-gui/releases), `chmod +x`, double-click. Its backend carries its own C library, so the AppImage does not need a distribution as new as the one it was built on. Install `ffmpeg` from your distro if you want downloads: the AppImage carries yt-dlp but not ffmpeg, and yt-dlp hands off to it whenever a stream arrives as MPEG-TS and has to be repackaged as MP4. Playback itself needs neither. The bundle launches with Chromium's setuid sandbox disabled (AppImage's read-only FUSE mount can't carry the SUID bit `chrome-sandbox` requires); the localhost-only architecture means the sandbox isn't load-bearing for the threat model. If you'd rather keep the sandbox, install the `.deb` instead.
-- **Debian / Ubuntu (`.deb`)** — `sudo apt install ./ani-gui_<version>_amd64.deb`. apt pulls in the recommended `ffmpeg` package (needed for the download feature) along the way; the post-install script sets the `chrome-sandbox` SUID bit Electron needs, so the sandbox stays on. `sudo dpkg -i …` still works but won't auto-install ffmpeg — drop into `apt --fix-broken install` or run `sudo apt install ffmpeg` separately if you used dpkg directly.
+- **AppImage** — download from the [releases page](https://github.com/JoaoPucci/ani-gui/releases), `chmod +x`, double-click. Its backend carries its own C library, so the AppImage does not need a distribution as new as the one it was built on. Install `ffmpeg` from your distro if you want downloads: the AppImage carries yt-dlp but not ffmpeg, and yt-dlp hands off to it whenever a stream arrives as MPEG-TS and has to be repackaged as MP4. Playback itself needs neither. Chromium's setuid sandbox can't work from an AppImage (its read-only mount can't carry the SUID bit `chrome-sandbox` needs), but Chromium has a second sandbox, built on user namespaces, that needs no helper. Each launch not started with `--no-sandbox` checks whether that one starts, and runs sandboxed when it does. Where it can't start, the app starts without the sandbox (`--no-sandbox`) and prints one line saying so on the terminal. On Ubuntu 23.10 and later that is the default: see below.
+- **Debian / Ubuntu (`.deb`)** — `sudo apt install ./ani-gui-<version>-amd64.deb`. apt pulls in the recommended `ffmpeg` package (needed for the download feature) along the way; the post-install script keeps Chromium's sandbox on everywhere. Where AppArmor supports it, it writes an AppArmor profile for the installed app (`/etc/apparmor.d/ani-gui`, removed with the package), which lets Ubuntu 23.10 and later start the sandbox built on user namespaces. It also sets the `chrome-sandbox` SUID bit, so the older setuid sandbox takes over on systems without user namespaces. `sudo dpkg -i …` still works but won't auto-install ffmpeg — drop into `apt --fix-broken install` or run `sudo apt install ffmpeg` separately if you used dpkg directly.
+- **GNOME 46 and 47 on Wayland (Ubuntu 24.04, for one)** — the start-up splash opens near the top-left of the screen rather than centred. GNOME places new windows itself and centres them only when its "Center New Windows" setting is on, which these versions leave off by default; most other native-Wayland apps open their windows the same way. To turn it on, run `gsettings set org.gnome.mutter center-new-windows true`, or install GNOME Tweaks (`sudo apt install gnome-tweaks` on Ubuntu) and switch on Windows → Center New Windows. GNOME 48 and later have it on by default, and KDE and X11 sessions centre the splash already.
+
+**The AppImage on Ubuntu 23.10 and later** runs without Chromium's sandbox. Ubuntu's AppArmor restricts unprivileged user namespaces and grants them per program, and no rule grants them to an AppImage, so the namespace sandbox can't start. You have two ways to keep the sandbox:
+
+- **Install the `.deb` instead.** It keeps the sandbox.
+- **Add an AppArmor rule for the AppImage yourself.** While it runs, the AppImage is mounted at `/tmp/.mount_` followed by the first six characters of its file name (`ani-gu` for the released file name) and six random ones. The rule below lets the app's binary at that path use user namespaces. Run this in a terminal (bash or zsh):
+
+  ```sh
+  sudo tee /etc/apparmor.d/ani-gui-appimage >/dev/null <<'EOF'
+  abi <abi/4.0>,
+  include <tunables/global>
+
+  profile ani-gui-appimage /tmp/.mount_ani-gu*/ani-gui.bin flags=(unconfined) {
+    userns,
+  }
+  EOF
+  sudo apparmor_parser -r /etc/apparmor.d/ani-gui-appimage
+  ```
+
+  The next launch picks the sandbox up by itself. To check, start the AppImage from a terminal: the line `Chromium's sandbox cannot start on this system` no longer appears. The rule matches by path, so if you renamed the AppImage to something that doesn't start with `ani-gu`, or set `TMPDIR`, change the path to match.
+
+  The rule weakens Ubuntu's protection somewhat. Anyone on the machine can create a folder of that name under `/tmp`, so any program placed there as `ani-gui.bin` gets the same exception.
+
+  To remove the rule:
+
+  ```sh
+  sudo apparmor_parser -R /etc/apparmor.d/ani-gui-appimage
+  sudo rm /etc/apparmor.d/ani-gui-appimage
+  ```
 
 </details>
 
@@ -57,7 +86,9 @@ Platform support tiers:
 
 NSIS installer (`.exe`). Run it; it installs per-user by default and creates Start menu and desktop shortcuts.
 
-The installer will fetch ffmpeg automatically the first time it runs (~80 MB) so the download feature works out of the box; the impersonating transport and yt-dlp are bundled directly. The ffmpeg fetch runs even when you already have ffmpeg installed via a per-user package manager (scoop, winget user-scope) — the installer's elevated context doesn't see per-user PATH entries, and the bundled copy is what the app uses at runtime in either case.
+The installer carries the impersonating transport, Mozilla's list of certificate authorities for it to verify sites with (a fresh Windows has not downloaded most of its own yet), and yt-dlp. It downloads ffmpeg (a ~90 MB zip) while it installs, so the download feature works out of the box without the installer carrying it. If the download fails — offline, say — the install still completes, playback works, and running the installer again online fetches it. An update of the same install keeps the downloaded ffmpeg, so it normally needs no network. It downloads again when a release pins a different ffmpeg version, when the copy or its version stamp cannot be carried over or read (a file copy that fails, which the installer's details list says), and when the update is in effect a fresh install: a switch between per-user and per-machine, another install folder, or an installer run with `--delete-app-data`. If the installer has not placed a copy and an `ffmpeg.exe` is already on `PATH`, it skips the download and the app uses that one; a copy the installer placed is the one the app uses, even when you have your own on `PATH`.
+
+The installer downloads ffmpeg from gyan.dev's [7.1.1 essentials build](https://github.com/GyanD/codexffmpeg/releases/tag/7.1.1); FFmpeg's source code for that version is at [n7.1.1](https://github.com/FFmpeg/FFmpeg/tree/n7.1.1). ani-gui does not redistribute it. The license texts of the tools the installer carries, with the notices of the libraries built into them, are installed in `resources\licenses\` in the install directory.
 
 </details>
 
@@ -71,7 +102,7 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    . "$HOME/.cargo/env"   # (or re-open the shell) so `cargo` is on PATH
    ```
    Windows: download and run `rustup-init.exe` from [rustup.rs](https://rustup.rs) — it sets up the MSVC toolchain and offers to install the Visual Studio build tools it needs.
-2. **Install Node 22.13–24 and enable corepack.** The repository pins its pnpm version in `package.json`, so `corepack enable` is the whole pnpm setup — corepack fetches the pinned version on first use. Node 25+ no longer bundles corepack; on those, install it first (`npm install -g corepack`) and the rest is unchanged. The Electron end-to-end suite and its helper tests need 22.13 at least ([docs/testing.md](docs/testing.md)); the frontend alone still runs on Node 20. Linux / macOS (via nvm — skip the curl step if you already have nvm or installed Node another way):
+2. **Install Node 22.13–24 and enable corepack.** Packaging needs 22.12 or later: electron-builder runs `@electron/rebuild`, which requires it. The repository pins its pnpm version in `package.json`, so `corepack enable` is the whole pnpm setup — corepack fetches the pinned version on first use. Node 25+ no longer bundles corepack; on those, install it first (`npm install -g corepack`) and the rest is unchanged. The Electron end-to-end suite and its helper tests need 22.13 at least ([docs/testing.md](docs/testing.md)); the frontend alone still runs on Node 20. Linux / macOS (via nvm — skip the curl step if you already have nvm or installed Node another way):
    ```sh
    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
    # re-open the shell (or `source ~/.bashrc`) so nvm is on PATH
@@ -105,7 +136,7 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    cd frontend
    pnpm dev
    ```
-   Terminal B, the Electron shell — spawns the backend binary from step 5, and on Windows also stages the bundled tools (impersonating transport, yt-dlp) next to it, so playback works:
+   Terminal B, the Electron shell — spawns the backend binary from step 5, and on Windows also stages the bundled tools (impersonating transport and its CA bundle, yt-dlp) next to it, so playback works:
    ```sh
    cd electron
    pnpm dev

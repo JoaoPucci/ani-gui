@@ -3202,11 +3202,12 @@ async fn dated_entries_the_catalogue_does_not_list_are_refused() {
 }
 
 /// A hit its own entry page files under the genre Hentai is never a
-/// pick: the app reads Kitsu anonymously, and Kitsu serves no adult
-/// entry that way, so no entry the app shows is one. Ohanashi de Te Koi
-/// (40684) and Tsubu★Doll (8404) played hentai OVAs on master, and the
-/// count-alone rule is what refuses them as recorded
-/// (`UNDATED_REFUSED`); the hentai's page is recorded beside them. Here
+/// pick: the app reads Kitsu anonymously, and Kitsu's search, browse
+/// and reads by id serve no adult entry that way, so no entry the app
+/// finds there is one; only a show bridged in by its MAL or AniList id
+/// can be. Ohanashi de Te Koi (40684) and Tsubu★Doll (8404) played
+/// hentai OVAs on master, and the count-alone rule is what refuses
+/// them as recorded (`UNDATED_REFUSED`); the hentai's page is recorded beside them. Here
 /// each entry is given the hentai's title among its names — so its
 /// count and a name vouch for it — and, dated, the hentai's own
 /// premiere year besides. The walk still takes nothing, dated or not:
