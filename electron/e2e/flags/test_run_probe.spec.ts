@@ -18,7 +18,7 @@
  * Pre-condition: `pnpm run package:e2e` has produced
  * `dist-e2e/linux-unpacked/`.
  */
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../policy-guard';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
