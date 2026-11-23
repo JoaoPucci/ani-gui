@@ -488,9 +488,12 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 		await page.route(hold, () => {
 			// Held: the search stays in flight.
 		});
-		await page.locator('a.brand').click();
-		await field.fill('bebop');
-		await field.press('Enter');
+		// A fresh page for a new query, so no pick in the topbar's results
+		// can take Enter elsewhere.
+		await page.goto(new URL('/search?q=bebop', page.url()).href, {
+			waitUntil: 'domcontentloaded'
+		});
+		await forcedColours(page);
 		const searching = page.locator('.search-progress');
 		await expect(searching).toBeVisible({ timeout: 15_000 });
 		await shows(page, searching, "the search's progress bar", () =>
