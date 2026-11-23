@@ -255,6 +255,12 @@ pub(crate) fn next_look(class: Class, turn: Option<Duration>, left: Duration) ->
     Some((turn - CLOSED_POLL).min(CLOSED_POLL))
 }
 
+/// When a held batch's wait for a turn runs out. A stub: `budget` after
+/// its wait began, whenever its last lookup joined.
+pub(crate) fn batch_deadline(started: Instant, _last_join: Instant, budget: Duration) -> Instant {
+    started + budget
+}
+
 /// What a lane hands the gate with its batch: the place it held, and
 /// when the lookups' wait for a turn runs out.
 struct Handoff {

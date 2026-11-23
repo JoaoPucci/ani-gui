@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use proptest::prelude::*;
 
-use super::{next_look, waits_for_turn, CLOSED_POLL};
+use super::{batch_deadline, next_look, waits_for_turn, CLOSED_POLL};
 use crate::meta::anilist_gate::Class;
 
 fn class() -> impl Strategy<Value = Class> {
@@ -24,10 +24,28 @@ proptest! {
     #[test]
     fn only_a_background_lookup_held_for_a_turn_waits_for_it(class in class(), turn in turn()) {
         let waits = waits_for_turn(class, turn);
-        prop_assert_eq!(
-            waits,
-            class == Class::Background && turn.is_some_and(|t| !t.is_zero())
-        );
+        if class != Class::Background || turn.is_none_or(|t| t.is_zero()) {
+            prop_assert!(!waits, "{class:?} {turn:?}");
+        }
+        if class == Class::Background && turn.is_some_and(|t| !t.is_zero()) {
+            prop_assert!(waits, "{turn:?}");
+        }
+    }
+
+    #[test]
+    fn a_held_batch_waits_as_long_as_its_latest_lookup_would_have(
+        began in 0u64..10_000,
+        joined in 0u64..10_000,
+        budget in 0u64..5_000,
+    ) {
+        let base = tokio::time::Instant::now();
+        let started = base + Duration::from_millis(began);
+        let last_join = base + Duration::from_millis(joined);
+        let budget = Duration::from_millis(budget);
+        let deadline = batch_deadline(started, last_join, budget);
+        prop_assert!(deadline >= started + budget);
+        prop_assert!(deadline >= last_join + budget);
+        prop_assert!(deadline == started + budget || deadline == last_join + budget);
     }
 
     #[test]

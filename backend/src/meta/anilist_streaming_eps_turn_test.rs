@@ -6,9 +6,10 @@
 //! of it, until its callers leave.
 //!
 //! Each test shares one gate for its mock AniList, paced as AniList's
-//! own, and runs on a paused clock from the first lookup on: the clock
-//! moves only from timer to timer, so the lookups arrive at the times
-//! the test gives them however slow the machine.
+//! own but with a long wait for a turn ([`PACED`]) unless it says
+//! otherwise, and those that stagger their lookups run on a paused
+//! clock: it moves only from timer to timer, so the lookups arrive at
+//! the times the test gives them however slow the machine.
 
 use std::time::Duration;
 
