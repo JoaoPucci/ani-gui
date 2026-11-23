@@ -78,7 +78,8 @@ async fn post_streaming_episodes(
     let url = base_override.unwrap_or(ANILIST_API);
     // The same transport, and so the same budget, as every other
     // public AniList request.
-    let bytes = crate::meta::anilist::post_graphql_public(client, url, body).await?;
+    let ask = crate::meta::anilist_gate::Ask::one(crate::meta::anilist_gate::Purpose::Stills);
+    let bytes = crate::meta::anilist::post_graphql_public(client, url, body, ask).await?;
     if media_is_absent(&bytes) {
         return Ok(None);
     }
