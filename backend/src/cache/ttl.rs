@@ -21,10 +21,11 @@ pub const EPISODES_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
 
 /// How long a row that follows a show's airing is kept: a finished
 /// show's for [`ANIME_DETAIL_TTL`] (7d), any other show's — airing, to
-/// come, or of a status nobody said — for a day. Its Kitsu detail and
-/// episode pages follow Kitsu's status (the pages through the detail
-/// row held when they are written); its AniList episode stills follow
-/// AniList's status for the same media.
+/// come, or of a status nobody said — for a day. Its Kitsu detail
+/// follows Kitsu's status; its episode pages and AniList episode stills
+/// keep the week only once the show has settled, a week past its end
+/// date (`commands::show_settled`), the stills also needing AniList's
+/// own FINISHED.
 #[must_use]
 pub const fn show_row_ttl(finished: bool) -> Duration {
     if finished {

@@ -35,8 +35,8 @@ pub(crate) fn anilist_eps_thumbs_key(kitsu_id: &str) -> String {
 }
 
 /// Writes the outcome of an AniList lookup to the cache. `Ok(listing)`
-/// keeps a finished show's for the week and any other's for a day
-/// ([`listing_ttl`]); `Err(())` uses the
+/// keeps a settled finished show's for the week and any other's for a
+/// day ([`listing_ttl`]); `Err(())` uses the
 /// short [`ANILIST_STREAMING_EPS_NO_IDS_TTL`]: a show Kitsu maps to
 /// neither tracker. A lookup that got no answer never comes here.
 fn cache_anilist_eps_thumbs(
@@ -52,14 +52,16 @@ fn cache_anilist_eps_thumbs(
     }
 }
 
-/// How long the outcome of an AniList lookup is kept, in seconds. A
-/// listing follows AniList's status for the media whose stills it holds
-/// ([`show_row_ttl`]): a finished show's stills, or
-/// its having none, do not change, so they keep the week; any other
-/// show's are asked again daily as its episodes air.
-fn listing_ttl(outcome: &std::result::Result<StreamingListing, ()>, _settled: bool) -> u64 {
+/// How long the outcome of an AniList lookup is kept, in seconds
+/// ([`show_row_ttl`]). The week only when AniList's status for the
+/// media says FINISHED and Kitsu's held detail says the show has
+/// `settled` ([`crate::commands::show_settled`]): by then its stills,
+/// or its having none, no longer change. Any other show's are asked
+/// again daily, an airing show's as its episodes air and a just
+/// finished show's while its last stills come in.
+fn listing_ttl(outcome: &std::result::Result<StreamingListing, ()>, settled: bool) -> u64 {
     match outcome {
-        Ok(listing) => show_row_ttl(listing.finished).as_secs(),
+        Ok(listing) => show_row_ttl(listing.finished && settled).as_secs(),
         Err(()) => ANILIST_STREAMING_EPS_NO_IDS_TTL.as_secs(),
     }
 }

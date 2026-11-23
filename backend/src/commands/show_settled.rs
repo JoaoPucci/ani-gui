@@ -6,11 +6,22 @@
 use crate::cache::{meta_cache_get, SqlitePool};
 use crate::meta::kitsu::KitsuAnimeRef;
 
+/// Days past a show's end date before its rows are read as settled.
+/// AniList calls a show FINISHED around its last airing and Kitsu from
+/// the day after its end date, while the last episodes' stills and
+/// titles often come in after that; a week is the same window the
+/// detail row itself is kept for.
+pub(crate) const SETTLE_DAYS: i64 = 7;
+
 /// Whether a show of `status` that ended on `end_date` (Kitsu's
-/// `YYYY-MM-DD`) has settled by `today` (days since 1970-01-01).
+/// `YYYY-MM-DD`) has settled by `today` (days since 1970-01-01): it is
+/// `finished`, and its end date is a real, full date at least
+/// [`SETTLE_DAYS`] back. A month-only or missing end says nothing.
 #[must_use]
-pub(crate) fn settled_finish(status: Option<&str>, _end_date: Option<&str>, _today: i64) -> bool {
+pub(crate) fn settled_finish(status: Option<&str>, end_date: Option<&str>, today: i64) -> bool {
     status == Some("finished")
+        && crate::account::episode_map_rules::days(end_date)
+            .is_some_and(|ended| today - ended >= SETTLE_DAYS)
 }
 
 /// [`settled_finish`] over the show's held detail row, read from the
