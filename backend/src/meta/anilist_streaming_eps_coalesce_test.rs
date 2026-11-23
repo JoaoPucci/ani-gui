@@ -96,6 +96,110 @@ async fn lookups_arriving_while_the_first_is_out_go_together() {
     );
 }
 
+/// The stand-in answering single lookups after `delay` and pages at once.
+struct SlowSingles(FakeAniList, Duration);
+
+impl wiremock::Respond for SlowSingles {
+    fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
+        let single = matches!(
+            Asked::of(&request.body),
+            Some(Asked::ByMal(_) | Asked::ById(_))
+        );
+        let answer = self.0.respond(request);
+        if single {
+            answer.set_delay(self.1)
+        } else {
+            answer
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_page_that_cannot_be_read_still_answers_each_show_in_time() {
+    // AniList nulls a media element of the page, so each gathered show
+    // is asked by its single lookup. Those go together, not one after
+    // another, so every show is answered inside a caller's budget.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("malIds"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[null]}}}"#,
+        ))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(SlowSingles(fake(9), Duration::from_millis(300)))
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let base = server.uri();
+    let lane = "unreadable-page";
+    let ask = |mal| {
+        tokio::time::timeout(
+            Duration::from_millis(900),
+            in_background(streaming_listing_coalesced(
+                &client,
+                lane,
+                by_mal(mal),
+                Some(&base),
+            )),
+        )
+    };
+    let ask = &ask;
+    let rest = async {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        futures_util::future::join_all((1..=4).map(ask)).await
+    };
+    let (first, rest) = tokio::join!(ask(9), rest);
+    assert!(first.is_ok_and(|a| a.is_ok()));
+    for (got, m) in rest.into_iter().zip(&fake(9).media) {
+        let got = got.expect("answered in time");
+        assert_eq!(got.expect("answered"), m.listing());
+    }
+}
+
+#[tokio::test]
+async fn a_show_its_page_answered_is_not_held_behind_a_single_lookup() {
+    // Two media record MAL id 1, so its show is asked by the single
+    // lookup, which is slow. The show the page answered is answered
+    // with the page, not after that lookup.
+    let mut fake = fake(9);
+    fake.media.push(FakeMedia {
+        id: 500,
+        mal: Some(1),
+        listed: 1,
+    });
+    let server = serve(SlowSingles(fake, Duration::from_millis(600))).await;
+    let client = reqwest::Client::new();
+    let base = server.uri();
+    let lane = "not-held-behind";
+    let started = tokio::time::Instant::now();
+    let (client, base) = (&client, base.as_str());
+    let ask = |mal| async move {
+        let got = in_background(streaming_listing_coalesced(
+            client,
+            lane,
+            by_mal(mal),
+            Some(base),
+        ))
+        .await;
+        (got, started.elapsed())
+    };
+    let ask = &ask;
+    let rest = async {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::join!(ask(1), ask(2))
+    };
+    let (_, ((one, _), (two, two_took))) = tokio::join!(ask(9), rest);
+    assert!(one.is_ok());
+    assert!(two.is_ok());
+    assert!(
+        two_took < Duration::from_millis(450),
+        "the page's show waited for the single lookup: {two_took:?}"
+    );
+}
+
 #[tokio::test]
 async fn a_lookup_arriving_while_a_batch_is_out_does_not_wait_for_it() {
     // A's batch takes 600 ms to answer. B, arriving 200 ms in, goes out

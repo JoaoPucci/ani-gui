@@ -264,6 +264,36 @@ async fn a_page_that_cannot_be_read_hands_its_shows_to_their_single_lookups() {
 }
 
 #[tokio::test]
+async fn shows_of_an_unreadable_page_naming_one_mal_id_each_read_their_own_fallback() {
+    // Two shows name MAL id 1, which AniList has no media for, beside
+    // different AniList ids. The page cannot be read, so nothing shows
+    // AniList knows the MAL id: each show's single lookup falls back to
+    // its own AniList id.
+    let fake = FakeAniList {
+        media: vec![media(50, None), media(60, None)],
+    };
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("malIds"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[null]}}}"#,
+        ))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(fake.clone())
+        .mount(&server)
+        .await;
+    let wants = vec![want(Some(1), Some(50)), want(Some(1), Some(60))];
+    let got = listings(
+        streaming_listings_batch(&reqwest::Client::new(), &wants, Some(&server.uri())).await,
+    );
+    assert_eq!(got[0], media(50, None).listing());
+    assert_eq!(got[1], media(60, None).listing());
+}
+
+#[tokio::test]
 async fn a_rate_limited_page_answers_every_show_with_the_refusal() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
