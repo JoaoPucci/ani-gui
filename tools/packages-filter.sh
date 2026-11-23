@@ -46,9 +46,10 @@ changed=$(git diff --name-only --no-renames "$base...$head")
 # hook requires on every platform; the AppImage repack and the modules
 # it requires; the linker flags the backend is built with and the
 # toolchain that builds it; and this workflow with its filter, the
-# AppImage start-up check it runs and the install actions it calls. A change to the app's code changes what a
-# package carries, not how it is built, and the other workflows build
-# and test that code on every platform.
+# AppImage start-up check it runs and the install actions it calls. A
+# change to the app's code changes what a package carries, not how it
+# is built, and the other workflows build and test that code on every
+# platform.
 if printf '%s\n' "$changed" |
     grep -qE '^(electron/package\.json$|electron/electron-builder\.|(electron/)?\.npmrc$|electron/build-resources/|electron/scripts/fetch-(windows|linux)-deps\.mjs$|electron/scripts/repack-appimage\.mjs$|electron/lib/(dep-staging|linux-launcher|appimage-tree|sandbox-probe)\.cjs$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|backend/\.cargo/|rust-toolchain\.toml$|tools/packages-filter\.sh$|tools/appimage-catalog-check\.sh$|\.github/workflows/packages\.yml$|\.github/actions/(pnpm|apt)-install/)'; then
     echo 'build=true'
