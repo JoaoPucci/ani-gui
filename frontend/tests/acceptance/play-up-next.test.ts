@@ -1070,18 +1070,18 @@ describe('the Up next card at a finale', () => {
 	});
 });
 
-/** A show of 24 episodes the player was opened on before it was reused. */
+/** A show of 24 episodes the player was opened on before its id moved. */
 const OPENED_ON = { id: '9001', title: 'Long Saga', episodes: 24 };
 
 /**
- * Opens Long Saga's episode 12, then moves the page, reused, to Second
+ * Opens Long Saga's episode 12, then moves the page's id to Second
  * Arc's finale (episode 12 of 12). The route mounts a new page for
  * another show (`routes/play/[id]/+layout.svelte`); this drives the page
  * itself through the id change its guard still covers: the page keeps
  * the detail and availability it read at mount, Long Saga's, while the
  * franchise is read again for Second Arc.
  */
-async function openReused(options: { autoPlayNext?: boolean } = {}) {
+async function openMovedToAnotherShow(options: { autoPlayNext?: boolean } = {}) {
 	const fetches = watchPageFetches();
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
@@ -1157,16 +1157,16 @@ async function openReused(options: { autoPlayNext?: boolean } = {}) {
 	return { video, fetches };
 }
 
-describe('the Up next card on a player reused for another show', () => {
+describe('the Up next card on a player whose id moves to another show', () => {
 	it('shows at the finale, though the show it opened on has more episodes', async () => {
-		const { video } = await openReused();
+		const { video } = await openMovedToAnotherShow();
 		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		expect(cardLinks().map((a) => a.getAttribute('href'))).toEqual(['/anime/50']);
 	});
 
 	it('plays nothing further at the end, even with auto-play on', async () => {
-		const { video, fetches } = await openReused({ autoPlayNext: true });
+		const { video, fetches } = await openMovedToAnotherShow({ autoPlayNext: true });
 		await playTo(video, 1395);
 		const before = fetches.sent.length;
 		const streamsBefore = SilentEventSource.opened.length;
@@ -1179,7 +1179,7 @@ describe('the Up next card on a player reused for another show', () => {
 	});
 
 	it('leaves the next-episode button closed at the finale', async () => {
-		const { video } = await openReused();
+		const { video } = await openMovedToAnotherShow();
 		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		const next = target.querySelector<HTMLButtonElement>(
