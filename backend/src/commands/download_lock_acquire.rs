@@ -2,6 +2,7 @@
 //! held is still the file at the lock's name.
 
 use super::on_blocking_pool;
+use super::open::{log_refusal, open_creating};
 use super::os;
 use super::release::{sweep_once, InstanceLock};
 use super::waiting::Waiting;
@@ -12,19 +13,33 @@ use crate::error::{AniError, Result};
 /// enough that the handover is not what the user notices.
 const INSTANCE_LOCK_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 
-/// How many times an attempt's open may lose to a concurrent removal —
-/// the directory or the file found mid-delete — before the lock is
-/// given up as unobtainable. Each loss is one remover winning a race,
-/// so a real contention ends in a handful; the cap is for a
+/// How many times in a row an attempt's open may lose to a concurrent
+/// removal — the directory or the file found mid-delete — before the
+/// lock is given up as unobtainable. Each loss is one remover winning a
+/// race, so a real contention ends in a handful; the cap is for a
 /// volume that answers every open with a refusal that only looks like
 /// a removal (Windows reports a delete in progress and a plain denial
-/// with the same code), which would otherwise poll to the deadline.
+/// with the same code; macOS answered an open during contention with
+/// the code it gives a bad argument),
+/// which would otherwise poll to the deadline.
 /// Giving up is the lock's ordinary best-effort failure.
 ///
-/// A lock taken on a file that lost its name while this waited does not
-/// count: that is a holder finishing and another taking over, which a
-/// waiter queued behind a busy episode sees once per handover, and the
-/// volume plainly works.
+/// In a row, because a try that finds the lock held starts the count
+/// again: the volume opened and locked the file, so it plainly works,
+/// and the losses before were others' handovers. A waiter queued behind
+/// a busy episode can meet one at any handover for as long as the
+/// episode keeps changing hands, and counted over the whole wait enough
+/// handovers would refuse it on a working volume.
+///
+/// The reset leaves one case a volume that never works can still poll
+/// to the deadline: one whose open files never match their path (the
+/// overlay and FUSE mounts below) with another instance contending,
+/// whose brief hold can answer a try as busy. The deadline bounds it.
+///
+/// A lock taken on a file that lost its name while this waited is not
+/// counted at all: that is a holder finishing and another taking over,
+/// which such a waiter sees once per handover. Since a busy try always
+/// comes before it, the reset alone would leave it at most one count.
 const INSTANCE_LOCK_LOSSES: u32 = 40;
 
 /// Take the lock that crosses app instances for `target`, waiting for
@@ -71,6 +86,8 @@ pub(crate) async fn acquire_instance_lock(
         match on_blocking_pool(path.clone(), move |p| attempt(p, open)).await? {
             Attempt::Held(lock) => return Ok(lock),
             Attempt::Busy(waiting) => {
+                // Held by another: the volume works (see the cap).
+                losses = 0;
                 busy = Some(waiting);
                 poll_until(deadline).await?;
             }
@@ -116,13 +133,14 @@ fn attempt(path: &std::path::Path, open: Option<Waiting>) -> Attempt {
     {
         Ok(waiting) => waiting,
         Err(e) if os::lost_to_removal(&e) => return Attempt::Lost,
-        Err(_) => return Attempt::Failed,
+        Err(e) => return refused("open", path, &e),
     };
     match waiting.file().map(fs4::FileExt::try_lock) {
         Some(Ok(())) => {}
         Some(Err(fs4::TryLockError::WouldBlock)) => return Attempt::Busy(waiting),
         // Dropping `waiting` gives the file up (see `Waiting`).
-        Some(Err(fs4::TryLockError::Error(_))) | None => return Attempt::Failed,
+        Some(Err(fs4::TryLockError::Error(e))) => return refused("lock", path, &e),
+        None => return Attempt::Failed,
     }
     let Some(lock) = waiting.into_lock() else {
         return Attempt::Failed;
@@ -145,11 +163,22 @@ fn attempt(path: &std::path::Path, open: Option<Waiting>) -> Attempt {
     }
 }
 
+/// Log why a try refused the lock (see [`log_refusal`]), and refuse it.
+fn refused(step: &'static str, path: &std::path::Path, e: &std::io::Error) -> Attempt {
+    log_refusal(step, path, e);
+    Attempt::Failed
+}
+
 /// Count one loss to a concurrent removal and wait a poll before the
-/// next attempt — or give up, past the cap or the deadline.
+/// next attempt — or give up, past the cap on losses in a row or the
+/// deadline.
 async fn note_loss(losses: &mut u32, deadline: tokio::time::Instant) -> Result<()> {
     *losses += 1;
     if *losses > INSTANCE_LOCK_LOSSES {
+        tracing::warn!(
+            losses = *losses,
+            "download lock refused: every open lost to what looks like a removal"
+        );
         return Err(AniError::Io);
     }
     poll_until(deadline).await
@@ -166,12 +195,6 @@ async fn poll_until(deadline: tokio::time::Instant) -> Result<()> {
     Ok(())
 }
 
-/// Open the lock file at `path`, creating it and its directory, and
-/// hide the directory where a leading dot does not.
-fn open_creating(path: &std::path::Path) -> std::io::Result<std::fs::File> {
-    let dir = path.parent().unwrap_or(path);
-    std::fs::create_dir_all(dir)?;
-    let file = os::lock_file_options().create(true).open(path)?;
-    os::hide_dir(dir, &file);
-    Ok(file)
-}
+#[cfg(test)]
+#[path = "download_lock_acquire_test.rs"]
+mod tests;

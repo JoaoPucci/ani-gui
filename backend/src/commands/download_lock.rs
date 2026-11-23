@@ -107,6 +107,8 @@ pub(crate) async fn sweep_lock_leftovers(folder: &std::path::Path) {
 // enough to read whole.
 #[path = "download_lock_acquire.rs"]
 mod acquire;
+#[path = "download_lock_open.rs"]
+mod open;
 #[path = "download_lock_os.rs"]
 // Shared with the download working folder, whose holds are opened,
 // hidden, checked and released exactly as lock files are.
@@ -129,7 +131,10 @@ where
 {
     tokio::task::spawn_blocking(move || f(&path))
         .await
-        .map_err(|_| crate::error::AniError::Io)
+        .map_err(|e| {
+            tracing::warn!(error = %e, "download lock call ended without an answer");
+            crate::error::AniError::Io
+        })
 }
 
 /// Whether a download in this process has used the lock at

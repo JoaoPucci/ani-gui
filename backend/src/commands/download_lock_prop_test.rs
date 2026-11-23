@@ -12,6 +12,7 @@
 //! itself, so they need no stub and run wherever the suite runs.
 
 use super::download::{acquire_instance_lock, target_lock_path};
+use super::download_lock_deadline_test::Deadline;
 use crate::error::AniError;
 
 /// The lock actually excludes a second handle, and lets go afterwards.
@@ -23,6 +24,7 @@ use crate::error::AniError;
 /// instances writing one file while every unix test stayed green.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_held_lock_excludes_a_second_holder_and_releases() {
+    let _deadline = Deadline::arm();
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Locked Show Episode 1.mp4");
     let lock_path = target_lock_path(&target).expect("a lock path for the target");
