@@ -97,8 +97,10 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 2' HUP INT TERM
 
-ldd --version | head -n 1
-firejail --version | head -n 1
+# sed, not head: head closing the pipe early makes ldd print a write
+# error after its first line.
+ldd --version | sed -n 1p
+firejail --version | sed -n 1p
 if [ -r /proc/sys/kernel/unprivileged_userns_clone ]; then
     echo "kernel.unprivileged_userns_clone = $(cat /proc/sys/kernel/unprivileged_userns_clone)"
 fi
