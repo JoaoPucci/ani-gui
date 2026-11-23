@@ -222,17 +222,13 @@ jobs:
         # musl. The target goes on the toolchain rust-toolchain.toml
         # pins, which cargo uses here.
         run: rustup target add x86_64-unknown-linux-musl
-      - uses: Swatinem/rust-cache@v2
-        # e2e.yml's cache, which master saves from the same build (the
-        # release backend for the musl target), on a pull request only.
-        # e2e.yml runs on ubuntu-latest, so its compiled dependencies
-        # come from another image; a run started by hand, which may be
-        # a release, compiles everything on the pinned one.
-        if: github.event_name == 'pull_request'
-        with:
-          save-if: ${{ github.ref == 'refs/heads/master' }}
-          workspaces: backend
-          shared-key: e2e
+      # No Rust cache, on a pull request either: e2e.yml's, which this
+      # job once restored there, is compiled on ubuntu-latest, and an
+      # AppImage built over it here crashed at start-up (a general
+      # protection fault in the backend's cache-helper thread, under
+      # the catalog job) where the same source compiled from scratch,
+      # as a run started by hand compiles it, did not. A pull request
+      # now builds the package a release would.
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
