@@ -11,24 +11,24 @@
 // process to be gone, on every platform:
 //
 // - Electron's own relaunch (`app.relaunch()`), everywhere but the
-//   AppImage: the .deb, the Windows installer's install, and `pnpm
-//   dev`. Electron starts a helper that waits for this process to exit
-//   (on Linux it is told when its parent dies, on Windows it waits on
-//   the parent's handle) and then runs this binary with this process's
-//   arguments, in its environment. The binary is on disk for good, and
-//   the .deb's launcher environment and switches carry over as they
-//   are: the new process starts on the same display platform as this
-//   one. (The relaunch build-resources/after-pack.cjs warns about
-//   switched platforms, XWayland to Wayland, inside one launch; this
-//   one switches nothing. The end-to-end suite restarts the unpacked
-//   tree this way: on X11 in CI, and on Wayland when run locally under
-//   tools/headless-wayland.sh.) Under `pnpm dev` the new Electron is
-//   no longer attached to the dev script's terminal, and the Vite
-//   server it loads from has to be still running. Started from a
+//   AppImage: the .deb, the Windows installer's install, and `pnpm dev`.
+//   Electron starts a helper that waits for this process to exit (on
+//   Linux it is told when its parent dies, on Windows it waits on the
+//   parent's handle) and then runs this binary with this process's
+//   arguments, in the environment it was asked in (below). The binary is
+//   on disk for good, and the .deb's launcher environment and switches
+//   carry over as they are: the new process starts on the same display
+//   platform as this one. (The relaunch build-resources/after-pack.cjs
+//   warns about switched platforms, XWayland to Wayland, inside one
+//   launch; this one switches nothing. The end-to-end suite restarts the
+//   unpacked tree this way: on X11 in CI, and on Wayland when run
+//   locally under tools/headless-wayland.sh.) Under `pnpm dev` the new
+//   Electron is no longer attached to the dev script's terminal, and the
+//   Vite server it loads from has to be still running. Started from a
 //   terminal through the .deb's launcher (lib/linux-launcher.cjs), the
-//   new process is not that launcher's child: the launcher exits
-//   shortly after this one, and the terminal's stops no longer reach
-//   the new process.
+//   new process is not that launcher's child: the launcher exits shortly
+//   after this one, and the terminal's stops no longer reach the new
+//   process.
 // - The AppImage. Its binary sits on a FUSE mount that goes away the
 //   moment this process exits, so neither it nor Electron's helper
 //   (which runs from the same mount) can be what starts the new one.
@@ -46,6 +46,14 @@
 //   XDG_DATA_DIRS, GSETTINGS_SCHEMA_DIR) pass through: the new AppRun
 //   prefixes its own mount ahead of them, and a directory that no
 //   longer exists is skipped.
+//
+// Both start the new instance from the user's environment, not the one
+// Electron has rewritten in this process (lib/child-env.cjs): the
+// caller plans the restart from the rebuilt one, and Electron's relaunch,
+// which starts its relauncher from this process's environment at the
+// call, is asked for inside `asUser`. Started from Electron's, the new
+// instance's Electron would keep Unity as the session's desktop and
+// hand it to everything it opens.
 //
 // The AppImage is recognised by $APPIMAGE and $APPDIR together with
 // this binary living under $APPDIR: another AppImage (an editor run as
@@ -114,15 +122,20 @@ function relaunchPlan({ platform, env, execPath, argv, pid, realpath }) {
 }
 
 /**
- * Arrange `plan`; the caller then ends this process. Throws, before
+ * Arrange `plan`; the caller then ends this process. Electron's relaunch
+ * is asked for inside `asUser` (lib/child-env.cjs withUserEnv), which
+ * holds the user's environment in place for the call. Throws, before
  * anything is started, when the waiter's shell is missing, so the
  * caller can keep the app up instead of quitting into nothing. The
  * waiter is detached in a session of its own and let go: it outlives
  * this process, and a failure after it started can only be logged.
  */
-function relaunch(plan, { app, spawn, exists = fs.existsSync, logError = console.error }) {
+function relaunch(
+  plan,
+  { app, spawn, exists = fs.existsSync, logError = console.error, asUser = (open) => open() },
+) {
   if (plan.kind === "relaunch") {
-    app.relaunch();
+    asUser(() => app.relaunch());
     return;
   }
   if (!exists(plan.command)) throw new Error(`cannot restart: ${plan.command} is missing`);

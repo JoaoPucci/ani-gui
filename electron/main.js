@@ -559,15 +559,17 @@ const splash = splashController({
   // process has exited (lib/relaunch.cjs). The quit that follows is the
   // one closing the splash starts (onDismissed above).
   onRestart: () =>
+    // The new instance starts from the user's environment, not
+    // Electron's (lib/child-env.cjs, lib/relaunch.cjs).
     relaunch(
       relaunchPlan({
         platform: process.platform,
-        env: process.env,
+        env: userEnv(),
         execPath: process.execPath,
         argv: process.argv,
         pid: process.pid,
       }),
-      { app, spawn, logError: console.error },
+      { app, spawn, logError: console.error, asUser },
     ),
   // Above the splash's title. A dev run is the one that loads the Vite
   // dev server (IS_DEV), whose frontend labels the rail's version
