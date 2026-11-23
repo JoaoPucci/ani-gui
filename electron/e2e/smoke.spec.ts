@@ -1,7 +1,7 @@
 /**
  * Smoke test: launches the packaged Electron app from
- * `dist/linux-unpacked/ani-gui` (electron-builder's pre-AppImage
- * output), stubs every request its pages make of the Rust backend's
+ * `dist-e2e/linux-unpacked/ani-gui` (electron-builder's unpacked tree
+ * of the e2e package, lib/e2e-package.cjs), stubs every request its pages make of the Rust backend's
  * HTTP API, and asserts the home page reaches a recognizable rendered
  * state. An API request no stub answers fails the test, and the launch
  * helper keeps the backend itself off the network, so nothing here
@@ -13,8 +13,8 @@
  * sidecar backend at `process.resourcesPath/ani-gui-backend`. None
  * of those wire correctly when `electron .` is run from source.
  *
- * Pre-condition: `pnpm run package` (or the chained `pnpm e2e`) has
- * produced `dist/linux-unpacked/`.
+ * Pre-condition: `pnpm run package:e2e` (or the chained `pnpm e2e`)
+ * has produced `dist-e2e/linux-unpacked/`.
  */
 import { type ElectronApplication } from "@playwright/test";
 import { expect, test } from "./policy-guard";
@@ -47,7 +47,7 @@ import { answer } from "./stubs";
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
     throw new Error(
-      `prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package`,
+      `prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package:e2e`,
     );
   }
 });
@@ -280,14 +280,20 @@ test("a test launch takes its flags from the test, not from GitHub", async () =>
   // backend never fetches the live flags file (backend/src/flags/
   // launch.rs, and backend/tests/flags_launch.rs, which watches the
   // network to prove it). The window was opened with the flags the
-  // backend decided, before its first page rendered.
+  // backend decided, before its first page rendered: with no file, the
+  // defaults of what the package declares. The package under test is a
+  // test-run build (`pnpm run package:e2e`), which declares the probe
+  // the flags specs turn on and off (e2e/flags/), off.
   const { app, page } = await launchAppWithStubs();
   try {
     const seen = await page.evaluate(() => ({
       origin: window.aniGui?.flagsOrigin,
       flags: window.aniGui?.flags,
     }));
-    expect(seen).toEqual({ origin: "test", flags: {} });
+    expect(seen).toEqual({
+      origin: "test",
+      flags: { test_run_probe: false },
+    });
   } finally {
     await app.close();
   }
@@ -784,6 +790,13 @@ test("the renderer cannot change the launch's flags", async () => {
         // Strict code throws; sloppy code is ignored. Either way it fails.
       }
       try {
+        // The probe the package under test declares, off: turning it
+        // on from the page fails the same way.
+        flags.test_run_probe = true;
+      } catch {
+        // As above.
+      }
+      try {
         bridge.flags = { injected: true };
       } catch {
         // As above.
@@ -794,7 +807,11 @@ test("the renderer cannot change the launch's flags", async () => {
         flags: window.aniGui?.flags,
       };
     });
-    expect(seen).toEqual({ flagsFrozen: true, bridgeFrozen: true, flags: {} });
+    expect(seen).toEqual({
+      flagsFrozen: true,
+      bridgeFrozen: true,
+      flags: { test_run_probe: false },
+    });
   } finally {
     await app.close();
   }
