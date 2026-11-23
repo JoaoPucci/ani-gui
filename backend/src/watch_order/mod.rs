@@ -23,6 +23,7 @@ pub mod entry;
 pub mod franchise_link;
 pub mod franchise_page;
 pub mod graph;
+pub mod handoff;
 mod no_clear_place;
 pub mod page_model;
 pub mod place;
@@ -171,6 +172,10 @@ mod chain_tests;
 #[cfg(test)]
 #[path = "up_next_test.rs"]
 mod up_next_tests;
+
+#[cfg(test)]
+#[path = "handoff_test.rs"]
+mod handoff_tests;
 
 #[cfg(test)]
 #[path = "progress_test.rs"]
