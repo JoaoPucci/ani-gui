@@ -57,10 +57,9 @@ jobs:
 
   crap:
     needs: filter
-    # The name is the status check the master ruleset requires, so it
-    # outlives the tool it names: lizard no longer runs here. Renaming
-    # it is a ruleset change too.
-    name: lizard + ratchet
+    # The name is the status check the master ruleset requires:
+    # renaming it is a ruleset change too.
+    name: CRAP + ratchet
     runs-on: ubuntu-latest
     steps:
       - if: needs.filter.outputs.relevant != 'true'

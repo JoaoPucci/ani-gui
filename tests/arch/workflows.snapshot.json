@@ -50,7 +50,7 @@
       "lint": "Shellcheck + Shfmt (per-file dialect)"
     },
     "crap.yml": {
-      "crap": "lizard + ratchet",
+      "crap": "CRAP + ratchet",
       "filter": "filter"
     },
     "e2e.yml": {
