@@ -646,7 +646,7 @@ hash of the file, a public key of one line, a signature file with a
 <https://jedisct1.github.io/minisign/>] The trusted comment carries the
 asset's file name and version, and the app checks them, so an old
 signed release cannot be passed off as a new one. [proposal] The
-notification-center proposal leans towards minisign for its remote
+notification-center proposal recommends minisign for its remote
 notices as well [source:
 [`notification-center.md`](notification-center.md), section 3], and
 the backend already verifies the remote flags file with minisign
