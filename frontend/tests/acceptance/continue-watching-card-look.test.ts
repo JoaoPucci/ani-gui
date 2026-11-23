@@ -239,7 +239,8 @@ describe('Continue Watching card artwork', () => {
 		app = mount(HomePage, { target });
 		await until(() => resumeButton() !== null, 'the matched card');
 		const looks = watchLooks();
-		await sleep(700);
+		// Past the old 400 ms wait, well inside the 1000 ms one.
+		await sleep(600);
 		expect(look()).toBe('pending');
 		episodes.release([episode(4, THUMB)]);
 		await until(() => look() === 'image', 'the card to settle');
