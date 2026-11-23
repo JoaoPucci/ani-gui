@@ -1232,7 +1232,8 @@
 		strip.walk(
 			reads
 				.keep(loadWatchOrder(currentId, watchOrderSources, reads.signal))
-				.then((w) => (id === currentId ? w : null))
+				.then((w) => (id === currentId ? w : null)),
+			currentId
 		);
 		void reads
 			.keep(detailServed)

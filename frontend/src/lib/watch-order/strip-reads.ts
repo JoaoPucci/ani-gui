@@ -36,14 +36,17 @@ export function stripReads<T>(deps: StripReadDeps<T>): StripReads<T> {
 	let latest = 0;
 	let walking = false;
 	let linkedWhileWalking = false;
+	// The key the current walk was started with.
+	let visit: string | undefined;
 	const reread = () => {
 		const shown = deps.current();
 		if (shown === null) return;
 		const mine = ++latest;
 		const gen = generation;
+		const key = visit;
 		void deps.reread(shown).then(
 			(w) => {
-				if (w !== null && mine === latest && gen === generation) deps.show(w, undefined);
+				if (w !== null && mine === latest && gen === generation) deps.show(w, key);
 			},
 			() => {}
 		);
@@ -60,14 +63,15 @@ export function stripReads<T>(deps: StripReadDeps<T>): StripReads<T> {
 		return true;
 	};
 	return {
-		walk(answer) {
+		walk(answer, key) {
 			const gen = ++generation;
+			visit = key;
 			walking = true;
 			linkedWhileWalking = false;
 			void answer.then(
 				(d) => {
 					if (gen !== generation) return;
-					if (d !== null) deps.show(d, undefined);
+					if (d !== null) deps.show(d, key);
 					walked(gen);
 				},
 				() => walked(gen)
