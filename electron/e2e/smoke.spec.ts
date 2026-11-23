@@ -150,7 +150,7 @@ async function launchAppWithStubsOnce(
   // The show's watch order, as the backend answers for a show alone:
   // no strip and no franchise link.
   await stub("**/api/watch-order/*/show", (r) =>
-    answer(r, json({ order: "linked", strip: null, link: null })),
+    answer(r, json({ order: "linked", strip: null, link: null, history: true })),
   );
   // The walk's first hop, which the page holds the strip's room by:
   // nothing, for a show alone.
