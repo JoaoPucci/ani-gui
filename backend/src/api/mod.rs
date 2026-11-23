@@ -983,6 +983,10 @@ mod flags_tests;
 mod external_standard_tests;
 
 #[cfg(test)]
+#[path = "external_kind_change_test.rs"]
+mod external_kind_change_tests;
+
+#[cfg(test)]
 #[path = "wire_probe_test.rs"]
 mod wire_probe;
 

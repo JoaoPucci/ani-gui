@@ -9,12 +9,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AniError, Result};
 
+#[path = "external_player_kind_change.rs"]
+mod kind_change;
 #[path = "external_player_program.rs"]
 mod program;
 #[path = "external_player_template.rs"]
 mod template;
 #[path = "external_player_tokens.rs"]
 mod tokens;
+pub use kind_change::command_after_kind_change;
 pub use program::{
     launch_program_with, player_program, standard_program_found, standard_program_found_on,
     standard_program_unknown, syncplay_player_with, StandardProgram,
