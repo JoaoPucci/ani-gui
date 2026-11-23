@@ -91,6 +91,57 @@ describe('captionModes', () => {
 	});
 });
 
+// A playlist rendition whose fragment is on its way keeps its cues
+// only while its track is not disabled ($lib/play/caption-engine).
+describe('the track left hidden', () => {
+	it('is hidden, not disabled, when it is not the one shown', () => {
+		expect(captionModes([sub('showing'), sub(), sub()], 2, 0)).toEqual(['hidden', null, 'showing']);
+	});
+
+	it('shows when it is the one shown', () => {
+		expect(captionModes([sub(), sub()], 0, 0)).toEqual(['showing', null]);
+	});
+
+	it('is hidden with captions off', () => {
+		expect(captionModes([sub('showing'), sub('showing')], 'off', 1)).toEqual([
+			'disabled',
+			'hidden'
+		]);
+	});
+
+	it('is applied to the live list', () => {
+		const list = [sub('showing'), sub()];
+		applyCaptionPick(list, 'off', 0);
+		expect(list.map((t) => t.mode)).toEqual(['hidden', 'disabled']);
+	});
+
+	it('for any pick and track left hidden, the chosen track shows, the hidden one is hidden, every other subtitle track is disabled, and other kinds are untouched', () => {
+		fc.assert(
+			fc.property(
+				fc.array(fc.record({ kind: fc.constantFrom(...KINDS), mode: fc.constantFrom(...MODES) }), {
+					maxLength: 40
+				}),
+				fc.oneof(fc.constant<'off'>('off'), fc.nat(45)),
+				fc.option(fc.nat(45), { nil: undefined }),
+				(tracks: PickableTrack[], target: CaptionTarget, hidden: number | undefined) => {
+					const before = tracks.map((t) => ({ ...t }));
+					const list = tracks.map((t) => ({ ...t }));
+					applyCaptionPick(list, target, hidden);
+					list.forEach((t, i) => {
+						if (!isCaption(before[i])) expect(t.mode).toBe(before[i].mode);
+						else if (target === i) expect(t.mode).toBe('showing');
+						else if (hidden === i) expect(t.mode).toBe('hidden');
+						else expect(t.mode).toBe('disabled');
+					});
+					captionModes(before, target, hidden).forEach((mode, i) => {
+						if (mode !== null) expect(mode).not.toBe(before[i].mode);
+					});
+				}
+			)
+		);
+	});
+});
+
 describe('applyCaptionPick', () => {
 	it('writes the modes onto the live list', () => {
 		const list = [sub('showing'), sub()];
