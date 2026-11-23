@@ -1913,6 +1913,10 @@ export interface ShowView {
 	order: WatchOrder;
 	strip: StripWire | null;
 	link: LinkWire | null;
+	/** Whether the history rows were read: false where they could not
+	 *  be, and the answer carries no progress for that reason. A page
+	 *  reading again after a history link keeps what it drew. */
+	history: boolean;
 }
 
 /** One title of the franchise page's main story. */
@@ -1977,6 +1981,10 @@ export interface FranchiseWire {
 export interface FranchiseView {
 	order: WatchOrder;
 	page: FranchiseWire | null;
+	/** Whether the history rows were read: false where they could not
+	 *  be, and the answer carries no progress for that reason. A page
+	 *  reading again after a history link keeps what it drew. */
+	history: boolean;
 }
 
 /** What follows a finale, its entries as the card shows them. */
@@ -2003,6 +2011,10 @@ export type UpNextWire =
 /** `POST /api/watch-order/:id/up-next`'s answer. */
 export interface UpNextView {
 	card: UpNextWire | null;
+	/** Whether the history rows were read: false where they could not
+	 *  be, and the answer carries no progress for that reason. A page
+	 *  reading again after a history link keeps what it drew. */
+	history: boolean;
 }
 
 /** A Continue card moved on: the entry played through, and the one after it. */

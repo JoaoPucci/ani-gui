@@ -1109,6 +1109,7 @@
     },
     "FranchiseView": {
       "full": {
+        "history": true,
         "order": "released",
         "page": {
           "alone": true,
@@ -1240,6 +1241,7 @@
         }
       },
       "min": {
+        "history": false,
         "order": "released",
         "page": null
       }
@@ -2348,6 +2350,7 @@
     },
     "ShowView": {
       "full": {
+        "history": true,
         "link": {
           "complete": true,
           "similar_hidden": [
@@ -2471,6 +2474,7 @@
         }
       },
       "min": {
+        "history": false,
         "link": null,
         "order": "linked",
         "strip": null
@@ -2752,10 +2756,12 @@
             }
           },
           "kind": "franchise"
-        }
+        },
+        "history": true
       },
       "min": {
-        "card": null
+        "card": null,
+        "history": false
       }
     },
     "UpNextWire.entry": {

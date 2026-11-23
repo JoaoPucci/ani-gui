@@ -5,9 +5,13 @@
 //!
 //! A franchise that cannot be read fails the read (the page shows no
 //! strip, no card); history that cannot be read reads as no rows (a
-//! strip without progress).
+//! strip without progress), and the answer says so (`history` false),
+//! so a page reading it again after a history link keeps the progress
+//! it drew.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+
+use crate::history::HistoryEntry;
 
 use crate::app::AppState;
 use crate::error::Result;
@@ -35,21 +39,27 @@ pub fn ids_of(f: &Franchise) -> Vec<String> {
         .collect()
 }
 
-/// The rows `ids` resume from, or none when the history cannot be read.
-fn rows_for(state: &AppState, ids: &[String]) -> Vec<HistoryRow> {
-    crate::commands::history::history_by_kitsu_each(state, ids)
-        .map(|named| {
-            named
-                .into_iter()
-                .filter_map(|(kitsu_id, row)| {
-                    row.map(|r| HistoryRow {
-                        kitsu_id: Some(kitsu_id),
-                        ep_no: r.ep_no,
-                    })
-                })
-                .collect()
+/// The rows the resume lookup named, each under the id that named it,
+/// whatever id the row itself recorded: the strip counts a row toward
+/// the entry whose own page would resume from it.
+#[must_use]
+pub fn rows_from_named(named: BTreeMap<String, Option<HistoryEntry>>) -> Vec<HistoryRow> {
+    named
+        .into_iter()
+        .filter_map(|(kitsu_id, row)| {
+            row.map(|r| HistoryRow {
+                kitsu_id: Some(kitsu_id),
+                ep_no: r.ep_no,
+            })
         })
-        .unwrap_or_default()
+        .collect()
+}
+
+/// The rows `ids` resume from, or none when the history cannot be read.
+fn rows_for(state: &AppState, ids: &[String]) -> Option<Vec<HistoryRow>> {
+    crate::commands::history::history_by_kitsu_each(state, ids)
+        .ok()
+        .map(rows_from_named)
 }
 
 /// The order setting, linked where the settings cannot be read.
@@ -59,7 +69,8 @@ fn order(state: &AppState) -> WatchOrder {
 }
 
 /// `id`'s franchise and the rows its entries resume from.
-async fn read(state: &AppState, id: &str) -> Result<(Franchise, Vec<HistoryRow>)> {
+/// `rows` is none when the history cannot be read.
+async fn read(state: &AppState, id: &str) -> Result<(Franchise, Option<Vec<HistoryRow>>)> {
     let franchise = crate::commands::franchise::franchise(state, id).await?;
     let rows = rows_for(state, &ids_of(&franchise));
     Ok((franchise, rows))
@@ -71,7 +82,15 @@ async fn read(state: &AppState, id: &str) -> Result<(Franchise, Vec<HistoryRow>)
 /// As the walk's.
 pub async fn show(state: &AppState, id: &str, today: &str) -> Result<ShowView> {
     let (franchise, rows) = read(state, id).await?;
-    Ok(show_view(&franchise, &rows, id, order(state), today))
+    let mut view = show_view(
+        &franchise,
+        rows.as_deref().unwrap_or_default(),
+        id,
+        order(state),
+        today,
+    );
+    view.history = rows.is_some();
+    Ok(view)
 }
 
 /// What the franchise page draws for `id` on `today`.
@@ -80,7 +99,15 @@ pub async fn show(state: &AppState, id: &str, today: &str) -> Result<ShowView> {
 /// As the walk's.
 pub async fn franchise_page(state: &AppState, id: &str, today: &str) -> Result<FranchiseView> {
     let (franchise, rows) = read(state, id).await?;
-    Ok(franchise_view(&franchise, &rows, id, order(state), today))
+    let mut view = franchise_view(
+        &franchise,
+        rows.as_deref().unwrap_or_default(),
+        id,
+        order(state),
+        today,
+    );
+    view.history = rows.is_some();
+    Ok(view)
 }
 
 /// What the player's Up next card shows for `id` at `episode`. The
@@ -105,7 +132,9 @@ pub async fn up_next(state: &AppState, id: &str, today: &str, episode: f64) -> R
         episode,
         own: own.as_ref(),
     };
-    Ok(up_next_view(&franchise, &rows, at))
+    let mut view = up_next_view(&franchise, rows.as_deref().unwrap_or_default(), at);
+    view.history = rows.is_some();
+    Ok(view)
 }
 
 /// The hand-off from `id`, the entry a Continue row played through: the

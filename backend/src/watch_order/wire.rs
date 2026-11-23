@@ -148,6 +148,10 @@ pub struct ShowView {
     pub strip: Option<StripWire>,
     /// The lone franchise link, where the page shows no strip.
     pub link: Option<LinkWire>,
+    /// Whether the history rows were read: false where the history
+    /// could not be, and the answer carries no progress for that reason
+    /// (a page drawing one already keeps it).
+    pub history: bool,
 }
 
 /// The show page's view of `franchise` for `id`.
@@ -190,7 +194,12 @@ pub fn show_view(
             similar_hidden: l.similar_hidden.into_iter().collect(),
         })
     };
-    ShowView { order, strip, link }
+    ShowView {
+        order,
+        strip,
+        link,
+        history: true,
+    }
 }
 
 /// One title of the franchise page's main story.
@@ -291,6 +300,10 @@ pub struct FranchiseView {
     pub order: WatchOrder,
     /// The page, where there is a franchise to show.
     pub page: Option<FranchiseWire>,
+    /// Whether the history rows were read: false where the history
+    /// could not be, and the answer carries no progress for that reason
+    /// (a page drawing one already keeps it).
+    pub history: bool,
 }
 
 fn row_wire(read: Reading<'_>, r: FranchiseRow) -> RowWire {
@@ -360,7 +373,11 @@ pub fn franchise_view(
             art: p.art,
         }
     });
-    FranchiseView { order, page }
+    FranchiseView {
+        order,
+        page,
+        history: true,
+    }
 }
 
 /// What follows a finale, its entries as the card shows them.
@@ -399,6 +416,10 @@ pub enum UpNextWire {
 pub struct UpNextView {
     /// The card, where the episode is a finale that has one.
     pub card: Option<UpNextWire>,
+    /// Whether the history rows were read: false where the history
+    /// could not be, and the answer carries no progress for that reason
+    /// (a page drawing one already keeps it).
+    pub history: bool,
 }
 
 /// The player's view of `franchise` for `id` at `episode`. `own` is the
@@ -429,7 +450,10 @@ pub fn up_next_view(franchise: &Franchise, rows: &[HistoryRow], at: Finale<'_>) 
             })
         }
     });
-    UpNextView { card }
+    UpNextView {
+        card,
+        history: true,
+    }
 }
 
 /// What Home sends to read its rail's hand-offs.

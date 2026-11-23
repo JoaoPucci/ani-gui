@@ -576,7 +576,8 @@
             "kind": "one"
           },
           "kind": "entry"
-        }
+        },
+        "history": true
       }
     },
     {
@@ -592,7 +593,8 @@
         "episodes": 12
       },
       "answer": {
-        "card": null
+        "card": null,
+        "history": true
       }
     },
     {
@@ -627,7 +629,8 @@
             "kind": "one"
           },
           "kind": "entry"
-        }
+        },
+        "history": true
       }
     },
     {
@@ -678,7 +681,8 @@
             "kind": "choices"
           },
           "kind": "entry"
-        }
+        },
+        "history": true
       }
     },
     {
@@ -713,7 +717,8 @@
             "kind": "unaired"
           },
           "kind": "entry"
-        }
+        },
+        "history": true
       }
     },
     {
@@ -729,7 +734,8 @@
         "episodes": 12
       },
       "answer": {
-        "card": null
+        "card": null,
+        "history": true
       }
     },
     {
@@ -768,7 +774,8 @@
             "kind": "one"
           },
           "kind": "entry"
-        }
+        },
+        "history": true
       }
     },
     {
@@ -808,7 +815,8 @@
             "kind": "one"
           },
           "kind": "entry"
-        }
+        },
+        "history": true
       }
     },
     {
@@ -843,7 +851,8 @@
             "kind": "one"
           },
           "kind": "entry"
-        }
+        },
+        "history": true
       }
     },
     {
@@ -874,7 +883,8 @@
             }
           },
           "kind": "franchise"
-        }
+        },
+        "history": true
       }
     },
     {
@@ -909,7 +919,8 @@
             "kind": "one"
           },
           "kind": "entry"
-        }
+        },
+        "history": true
       }
     },
     {
@@ -925,7 +936,8 @@
         "episodes": 12
       },
       "answer": {
-        "card": null
+        "card": null,
+        "history": true
       }
     },
     {
@@ -960,7 +972,8 @@
             "kind": "one"
           },
           "kind": "entry"
-        }
+        },
+        "history": true
       }
     },
     {
@@ -995,7 +1008,8 @@
             "kind": "one"
           },
           "kind": "entry"
-        }
+        },
+        "history": true
       }
     },
     {
@@ -1011,7 +1025,8 @@
         "episodes": 12
       },
       "answer": {
-        "card": null
+        "card": null,
+        "history": true
       }
     }
   ],

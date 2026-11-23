@@ -118,7 +118,13 @@ pub(crate) fn decide(suite: &Suite, case: &Case) -> Value {
     let rows = rows(f, case.resumes.as_ref());
     let today = suite.today.as_str();
     let id = case.id.as_str();
-    let json = |v: &dyn erased::Ser| v.value();
+    // The route says whether it could read the history: a case with no
+    // resumes is one where it could not.
+    let json = |v: &dyn erased::Ser| {
+        let mut v = v.value();
+        v["history"] = Value::Bool(case.resumes.is_some());
+        v
+    };
     match case.route.as_str() {
         "show" => json(&show_view(f, &rows, id, case.order, today)),
         "franchise" => json(&franchise_view(f, &rows, id, case.order, today)),

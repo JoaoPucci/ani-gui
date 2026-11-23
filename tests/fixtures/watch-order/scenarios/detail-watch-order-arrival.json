@@ -123,6 +123,7 @@
       "franchise": "b30be6035460",
       "resumes": {},
       "answer": {
+        "history": true,
         "link": null,
         "order": "linked",
         "strip": {
@@ -201,6 +202,7 @@
       "franchise": "794750e325b0",
       "resumes": {},
       "answer": {
+        "history": true,
         "link": {
           "complete": true,
           "similar_hidden": [
@@ -230,6 +232,7 @@
       "franchise": "8fc71258dd6b",
       "resumes": {},
       "answer": {
+        "history": true,
         "link": null,
         "order": "linked",
         "strip": null

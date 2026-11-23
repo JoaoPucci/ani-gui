@@ -130,6 +130,7 @@ fn show(full: bool) -> ShowView {
         order: WatchOrder::Linked,
         strip: some(full, strip(true)),
         link: some(full, link(true)),
+        history: full,
     }
 }
 
@@ -186,6 +187,7 @@ fn franchise_view(full: bool) -> FranchiseView {
     FranchiseView {
         order: WatchOrder::Released,
         page: some(full, page(true)),
+        history: full,
     }
 }
 
@@ -273,8 +275,12 @@ pub(super) fn responses(out: &mut Map<String, Value>) {
         response(
             &UpNextView {
                 card: Some(UpNextWire::Franchise(chain_end(true))),
+                history: true,
             },
-            &UpNextView { card: None },
+            &UpNextView {
+                card: None,
+                history: false,
+            },
         ),
     );
     put(

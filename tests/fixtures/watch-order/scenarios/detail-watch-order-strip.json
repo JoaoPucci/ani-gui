@@ -403,6 +403,7 @@
       "franchise": "29efb968e91f",
       "resumes": {},
       "answer": {
+        "history": true,
         "link": null,
         "order": "linked",
         "strip": {
@@ -484,6 +485,7 @@
         "5": "3"
       },
       "answer": {
+        "history": true,
         "link": null,
         "order": "linked",
         "strip": {
@@ -581,6 +583,7 @@
       "franchise": "29efb968e91f",
       "resumes": {},
       "answer": {
+        "history": true,
         "link": null,
         "order": "released",
         "strip": {
@@ -663,6 +666,7 @@
         "5": "3"
       },
       "answer": {
+        "history": true,
         "link": null,
         "order": "linked",
         "strip": {
@@ -760,6 +764,7 @@
       "franchise": "9c15d6f7ba14",
       "resumes": {},
       "answer": {
+        "history": true,
         "link": null,
         "order": "linked",
         "strip": {
@@ -840,6 +845,7 @@
       "franchise": "29efb968e91f",
       "resumes": null,
       "answer": {
+        "history": false,
         "link": null,
         "order": "linked",
         "strip": {
@@ -919,6 +925,7 @@
       "franchise": "11244231500c",
       "resumes": {},
       "answer": {
+        "history": true,
         "link": null,
         "order": "linked",
         "strip": {
@@ -976,6 +983,7 @@
       "franchise": "5702e1229d2e",
       "resumes": {},
       "answer": {
+        "history": true,
         "link": null,
         "order": "linked",
         "strip": {
@@ -1048,6 +1056,7 @@
       "franchise": "660717d0d5fe",
       "resumes": {},
       "answer": {
+        "history": true,
         "link": null,
         "order": "linked",
         "strip": null
@@ -1061,6 +1070,7 @@
       "franchise": "919c9652718a",
       "resumes": {},
       "answer": {
+        "history": true,
         "link": {
           "complete": true,
           "similar_hidden": [
@@ -1091,6 +1101,7 @@
       "franchise": "f3340cced690",
       "resumes": {},
       "answer": {
+        "history": true,
         "link": {
           "complete": false,
           "similar_hidden": [
@@ -1121,6 +1132,7 @@
       "franchise": "54d734aa1c75",
       "resumes": {},
       "answer": {
+        "history": true,
         "link": null,
         "order": "linked",
         "strip": null
@@ -1134,6 +1146,7 @@
       "franchise": "9ddd40d6467e",
       "resumes": {},
       "answer": {
+        "history": true,
         "link": null,
         "order": "linked",
         "strip": null

@@ -495,7 +495,8 @@ const RESPONSES: Record<string, Record<string, string>> = {
 	ShowView: {
 		order: 'string',
 		strip: 'object|null',
-		link: 'object|null'
+		link: 'object|null',
+		history: 'boolean'
 	} satisfies Spec<ShowView>,
 	StripWire: {
 		kind: 'string',
@@ -539,7 +540,11 @@ const RESPONSES: Record<string, Record<string, string>> = {
 	StripSeams: { before: 'string|null', after: 'string|null' } satisfies Spec<StripSeams>,
 	Eyebrow: { position: 'number', total: 'number' } satisfies Spec<Eyebrow>,
 	WatchingView: { entry: 'object', episode: 'number' } satisfies Spec<WatchingView>,
-	FranchiseView: { order: 'string', page: 'object|null' } satisfies Spec<FranchiseView>,
+	FranchiseView: {
+		order: 'string',
+		page: 'object|null',
+		history: 'boolean'
+	} satisfies Spec<FranchiseView>,
 	FranchiseWire: {
 		name: 'string',
 		art: 'object',
@@ -569,7 +574,7 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		position: 'number|null'
 	} satisfies Spec<ResumeWire>,
 	TitleRef: { id: 'string', title: 'string' } satisfies Spec<TitleRef>,
-	UpNextView: { card: 'object|null' } satisfies Spec<UpNextView>,
+	UpNextView: { card: 'object|null', history: 'boolean' } satisfies Spec<UpNextView>,
 	ChainEndCard: {
 		name: 'string',
 		id: 'string',

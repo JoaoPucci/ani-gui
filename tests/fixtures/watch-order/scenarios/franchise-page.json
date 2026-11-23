@@ -1329,6 +1329,7 @@
       "franchise": "239f3dc0ae2c",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -1512,6 +1513,7 @@
       "franchise": "239f3dc0ae2c",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "released",
         "page": {
           "alone": false,
@@ -1698,6 +1700,7 @@
         "50": "3"
       },
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -1905,6 +1908,7 @@
         "50": "3"
       },
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -2111,6 +2115,7 @@
         "50": "3"
       },
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -2315,6 +2320,7 @@
       "franchise": "ef706ac14ac5",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -2454,6 +2460,7 @@
       "franchise": "39e05fc3fc12",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -2666,6 +2673,7 @@
       "franchise": "14ceaab4a27c",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -2838,6 +2846,7 @@
         "50": "3"
       },
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -3029,6 +3038,7 @@
       "franchise": "903256663743",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -3228,6 +3238,7 @@
       "franchise": "7ae3764ac7b5",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -3390,6 +3401,7 @@
       "franchise": "77c1f7cef747",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -3539,6 +3551,7 @@
       "franchise": "da3828c7c2d2",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -3722,6 +3735,7 @@
       "franchise": "54d734aa1c75",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": true,
@@ -3801,6 +3815,7 @@
       "franchise": "d82e37cf2b5b",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "linked",
         "page": null
       }
@@ -3813,6 +3828,7 @@
       "franchise": "e644f16537ac",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -4022,6 +4038,7 @@
       "franchise": "709645efc39f",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -4218,6 +4235,7 @@
       "franchise": "b1b16c65a6b1",
       "resumes": {},
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
@@ -4298,6 +4316,7 @@
         "50": "5"
       },
       "answer": {
+        "history": true,
         "order": "linked",
         "page": {
           "alone": false,
