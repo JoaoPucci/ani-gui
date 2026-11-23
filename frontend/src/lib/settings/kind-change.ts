@@ -8,8 +8,8 @@
  * quick second change is asked about from where the first one left the
  * command. A question that fails changes nothing, and `onFail` hears of
  * it: the new type saved with the old command is the state the rule
- * exists to prevent. A command the user edits while the answer is on its way is
- * theirs, and the answer does not replace it.
+ * exists to prevent. A command the user edits while the answer is on
+ * its way is theirs, and the answer does not replace it.
  */
 
 import type { Config, ExternalPlayerKind } from '$lib/api';
@@ -24,7 +24,7 @@ export type AskCommand = (
 /**
  * A change of type for the config `current` returns, saved through
  * `save`; `onFail` hears of a question that failed. Each call's
- * promise settles once its change is saved.
+ * promise settles once its change is saved, or given up.
  */
 export function createKindChange(
 	ask: AskCommand,
