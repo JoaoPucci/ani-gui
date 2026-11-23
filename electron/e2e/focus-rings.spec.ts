@@ -55,8 +55,15 @@
  * `:focus-visible` in its selector, found through the page's style
  * sheets and the element's `matches`.
  *
- * What it does not reach: the Account, About and Debug pages, the
- * player's page, and menus, dialogs and popovers that open on demand.
+ * Two more tests walk what shows only in some states, at the desktop
+ * size: Home with a guessed Continue Watching card, a pinned sign-in
+ * toast and the update badge; the card's link dialog; a show's page
+ * with a download in flight, which shows the download bar; and the
+ * player's page with the skip button up and the note on a guessed
+ * session. Each requires the walk to reach those controls.
+ *
+ * What it does not reach: the Account, About and Debug pages, and the
+ * menus, dialogs and popovers other than the link dialog.
  * Of what clips, it models an ancestor's overflow and the window, not an
  * ancestor's rounded corners, clip-path or mask. Where the window cannot
  * be maximized (CI's Xvfb has no window manager), the maximized pass is
@@ -73,10 +80,28 @@ import { type CDPSession, type ElectronApplication, type Page } from '@playwrigh
 import { expect, test } from './policy-guard';
 import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
+import http from 'node:http';
+import type net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { appInfo, defaultSettings, topRated, trending } from './fixtures/kitsu';
-import { appWindow, launchPackagedApp, packagedBinary, stopApp, stopDeadApp } from './launch';
+import {
+	appInfo,
+	continueHistory,
+	continueKitsuEpisode6,
+	continueKitsuMatch,
+	defaultSettings,
+	topRated,
+	trending
+} from './fixtures/kitsu';
+import {
+	appWindow,
+	cardLinesAnswer,
+	launchPackagedApp,
+	packagedBinary,
+	stopApp,
+	stopDeadApp
+} from './launch';
+import { playFromContinue, routeRealPlay, writeReplayConfig } from './real-play';
 import { answer } from './stubs';
 
 test.beforeAll(() => {
@@ -250,11 +275,13 @@ interface Stop {
 	clips: Clip[];
 	/** Which of the controls this change is about it is, if any. */
 	kind: Kind;
+	/** The selectors asked about that the control matches. */
+	hits: string[];
 }
 
 /** The focused control's rings and what may clip them, read in one frame. */
-function readStop(page: Page): Promise<Stop | null> {
-	return page.evaluate(() => {
+function readStop(page: Page, selectors: readonly string[] = []): Promise<Stop | null> {
+	return page.evaluate((selectors) => {
 		const el = document.activeElement as HTMLElement | null;
 		if (!el || el === document.body) return null;
 		const px = (v: string) => Number.parseFloat(v) || 0;
@@ -406,12 +433,18 @@ function readStop(page: Page): Promise<Stop | null> {
 		}
 
 		// Rings the control's focus draws on what it holds: a style rule
-		// whose selector names `:focus-visible` matches the element, which
-		// is not itself focused, and it draws a ring.
+		// whose selector names `:focus-visible` and that sets an outline
+		// or a shadow matches the element, which is not itself focused,
+		// and the element draws a ring. A rule that only moves or grows
+		// it (a scrubber's thumb) draws none.
 		const focusRules: CSSStyleRule[] = [];
 		const collect = (rules: CSSRuleList) => {
 			for (const r of rules) {
-				if (r instanceof CSSStyleRule && r.selectorText.includes(':focus-visible')) {
+				if (
+					r instanceof CSSStyleRule &&
+					r.selectorText.includes(':focus-visible') &&
+					(r.style.boxShadow !== '' || r.style.outlineStyle !== '')
+				) {
 					focusRules.push(r);
 				}
 				if ('cssRules' in r && (r as CSSGroupingRule).cssRules) {
@@ -483,9 +516,10 @@ function readStop(page: Page): Promise<Stop | null> {
 			inset,
 			rule,
 			room,
-			kind
+			kind,
+			hits: selectors.filter((s) => el.matches(s))
 		};
-	});
+	}, selectors);
 }
 
 /** Resolves once nothing that scrolls the focused control has moved
@@ -514,11 +548,19 @@ function settled(page: Page): Promise<void> {
 }
 
 /** Moves focus with `key` until it comes round to where it began, and
- *  reads every stop. The page's first Tab enters it at the top; its
- *  first Shift+Tab, at the bottom. */
-async function walk(page: Page, key: 'Tab' | 'Shift+Tab'): Promise<Stop[]> {
-	await page.mouse.click(1, 1);
-	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+ *  reads every stop, noting which of `selectors` each matches. The
+ *  page's first Tab enters it at the top; its first Shift+Tab, at the
+ *  bottom. Inside a dialog (`fresh: false`) the walk starts from where
+ *  focus is, since a click outside would close it. */
+async function walk(
+	page: Page,
+	key: 'Tab' | 'Shift+Tab',
+	{ selectors = [], fresh = true }: { selectors?: readonly string[]; fresh?: boolean } = {}
+): Promise<Stop[]> {
+	if (fresh) {
+		await page.mouse.click(1, 1);
+		await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+	}
 	const stops: Stop[] = [];
 	const seen = new Set<string>();
 	let wrapped = false;
@@ -537,7 +579,7 @@ async function walk(page: Page, key: 'Tab' | 'Shift+Tab'): Promise<Stop[]> {
 			break;
 		}
 		seen.add(id);
-		const stop = await readStop(page);
+		const stop = await readStop(page, selectors);
 		if (stop) stops.push(stop);
 	}
 	expect(wrapped, `${key} came round to where it began`).toBe(true);
@@ -550,14 +592,27 @@ const inside = (inner: Box, outer: Box) =>
 	inner.top >= outer.top - 0.5 &&
 	inner.bottom <= outer.bottom + 0.5;
 
-function assertStops(stops: Stop[], at: string, required: readonly Kind[]) {
+function assertStops(
+	stops: Stop[],
+	at: string,
+	required: readonly Kind[],
+	need: readonly string[] = []
+) {
 	expect(
 		stops.length,
 		`${at}: the keyboard reached controls (${stops.map((s) => s.name).join(' | ')})`
-	).toBeGreaterThan(3);
+	).toBeGreaterThan(2);
 	const kinds = new Set(stops.map((s) => s.kind));
 	for (const k of required) {
 		expect.soft(kinds.has(k), `${at}: the walk reached a ${k} control`).toBe(true);
+	}
+	for (const sel of need) {
+		expect
+			.soft(
+				stops.some((s) => s.hits.includes(sel)),
+				`${at}: the walk reached ${sel} (${stops.map((s) => s.name).join(' | ')})`
+			)
+			.toBe(true);
 	}
 	for (const s of stops) {
 		const where = `${at}: ${s.name} ${JSON.stringify(s)}`;
@@ -769,3 +824,271 @@ async function shoot(page: Page, suffix: string) {
 		clip: { x: 0, y: 0, width: 160, height: 200 }
 	});
 }
+
+/** One row, which Continue Watching guesses: it records no show. */
+const guessedHistory = [{ id: 'allmanga-test-show', ep_no: '5', title: 'Continue Test Show' }];
+
+const continueEpisodes = Array.from({ length: 12 }, (_, i) => ({
+	...continueKitsuEpisode6,
+	id: `ep-${i + 1}`,
+	number: i + 1,
+	relative_number: i + 1,
+	canonical_title: `Episode ${i + 1}`
+}));
+
+/** A message from the shipped English catalogue. */
+function message(file: string, key: string): string {
+	const p = path.resolve(__dirname, '../../frontend/messages/en', `${file}.json`);
+	return JSON.parse(fs.readFileSync(p, 'utf8'))[key] as string;
+}
+
+/** Mounts the first page again, so it asks through the stubs in place
+ *  now (see home-continue.spec.ts). */
+async function remount(page: Page) {
+	const url = page.url();
+	await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
+	await page.goto('about:blank');
+	await page.goto(url, { waitUntil: 'domcontentloaded' });
+}
+
+/** Replaces the page's EventSource with one that stays open and says
+ *  nothing: a download started then stays in flight. */
+async function silentStreams(page: Page) {
+	await page.evaluate(() => {
+		class SilentSource {
+			readonly url: string;
+			readyState = 1;
+			constructor(url: string) {
+				this.url = url;
+			}
+			addEventListener() {}
+			removeEventListener() {}
+			close() {
+				this.readyState = 2;
+			}
+		}
+		(window as unknown as { EventSource: unknown }).EventSource = SilentSource;
+	});
+}
+
+test('the rings on Continue Watching, its link dialog, a toast, the update badge and the download bar are drawn once and whole', async () => {
+	test.setTimeout(240_000);
+	const { app, page } = await launch();
+	try {
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		await sizeViewport(page, 1440, 900);
+		// A sign-in the keyring holds that ran out with no way to renew
+		// it: the app pins a toast that offers to sign in again.
+		await app.evaluate(({ ipcMain }) => {
+			ipcMain.removeHandler('ani-gui:account:get-token');
+			ipcMain.handle('ani-gui:account:get-token', (_e, provider: string) =>
+				provider === 'anilist'
+					? {
+							ok: true,
+							payload: {
+								access_token: 'expired',
+								refresh_token: null,
+								expires_at_epoch_s: 1,
+								user_id: '1',
+								username: 'tester',
+								avatar_url: null
+							}
+						}
+					: { ok: false, kind: 'not_found' }
+			);
+		});
+		await page.route('**/api/**', async (r) => {
+			const p = new URL(r.request().url()).pathname;
+			const j = (body: unknown) =>
+				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+			if (p === '/api/history') return j(guessedHistory);
+			if (p === '/api/history/card-lines') {
+				return j(cardLinesAnswer(r.request().postDataJSON()));
+			}
+			if (p === '/api/watched-at') return j({ [guessedHistory[0].id]: 1_700_000_000 });
+			// A mapping no play stored: the card's show is a guess.
+			if (p.endsWith('/played')) return j(null);
+			if (p.startsWith('/api/allmanga-kitsu-map/')) return j(continueKitsuMatch.id);
+			if (p === `/api/kitsu/anime/${continueKitsuMatch.id}`) return j(continueKitsuMatch);
+			if (p === `/api/kitsu/episodes/${continueKitsuMatch.id}`) return j(continueEpisodes);
+			if (p.startsWith('/api/title-match')) return j(null);
+			if (p === '/api/history/link-verdict') return j({ offer: 'guess', kept: false });
+			if (p === '/api/history/link-group') return j([guessedHistory[0].id]);
+			if (p === '/api/history/link-candidates') {
+				return j(manyTopRated.slice(0, 6).map((ref) => ({ ref, current: false, warnings: [] })));
+			}
+			if (p.startsWith('/api/update-check')) {
+				return j({
+					tag: 'v99.0.0',
+					name: 'v99.0.0',
+					url: 'https://github.com/JoaoPucci/ani-gui/releases/tag/v99.0.0',
+					publishedAt: '2026-01-01T00:00:00Z',
+					body: ''
+				});
+			}
+			if (p === '/api/download/default-dir') return j('/tmp/ani-gui-e2e-downloads');
+			return r.fallback();
+		});
+		await remount(page);
+		await silentStreams(page);
+
+		const resume = page.locator('.resume-link').first();
+		await expect(resume).toBeVisible({ timeout: 15_000 });
+		await expect(page.locator('.update-badge')).toBeVisible({ timeout: 15_000 });
+		await expect(page.locator('.toast .action')).toBeVisible({ timeout: 15_000 });
+		await page.evaluate(
+			() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+		);
+		const homeNeeds = [
+			'.resume-link',
+			'.resume-delete',
+			'.update-badge',
+			'.toast .action',
+			'.toast .dismiss'
+		];
+		for (const key of ['Tab', 'Shift+Tab'] as const) {
+			const at = `home with Continue Watching, ${key}`;
+			assertStops(await walk(page, key, { selectors: homeNeeds }), at, ['brand'], homeNeeds);
+		}
+
+		// The link dialog, opened from the card's pill.
+		await resume.focus();
+		await page.keyboard.press('Enter');
+		const dialog = page.getByRole('dialog');
+		await expect(dialog).toBeVisible();
+		await expect(dialog.locator('.ls-row').first()).toBeVisible({ timeout: 15_000 });
+		await page.keyboard.press('Tab');
+		await page.keyboard.press('Shift+Tab');
+		for (const key of ['Tab', 'Shift+Tab'] as const) {
+			const at = `the link dialog, ${key}`;
+			assertStops(
+				await walk(page, key, { selectors: ['.ls-row'], fresh: false }),
+				at,
+				[],
+				['.ls-row']
+			);
+		}
+		await page.keyboard.press('Escape');
+		await expect(dialog).toBeHidden();
+
+		// A download in flight shows the bar along the window's bottom.
+		await page.locator(`a[href$="/anime/${topRated[0].id}"]`).first().click();
+		await expect.poll(() => page.url()).toContain(`/anime/${topRated[0].id}`);
+		const download = page.getByRole('button', {
+			name: message('detail', 'download_button'),
+			exact: true
+		});
+		await expect(download).toBeEnabled({ timeout: 15_000 });
+		await download.click();
+		const dlDialog = page.getByRole('dialog');
+		await expect(dlDialog).toBeVisible();
+		await dlDialog.getByRole('button', { name: message('download', 'button_confirm') }).click();
+		await expect(page.locator('.dl-bar-cancel')).toBeVisible({ timeout: 15_000 });
+		for (const key of ['Tab', 'Shift+Tab'] as const) {
+			const at = `a show's page with a download, ${key}`;
+			assertStops(
+				await walk(page, key, { selectors: ['.dl-bar-cancel'] }),
+				at,
+				[],
+				['.dl-bar-cancel']
+			);
+		}
+	} finally {
+		await stopApp(app);
+	}
+});
+
+/** A server for the captions media fixture, standing in for a
+ *  provider's CDN (see player-start.spec.ts). */
+async function mediaServer(): Promise<{ origin: string; close: () => void }> {
+	const dir = path.join(__dirname, 'fixtures', 'captions');
+	const types: Record<string, string> = {
+		'.m3u8': 'application/vnd.apple.mpegurl',
+		'.ts': 'video/mp2t'
+	};
+	const server = http.createServer((req, res) => {
+		const name = path.basename(new URL(req.url ?? '/', 'http://x').pathname);
+		const file = path.join(dir, name);
+		if (!existsSync(file)) {
+			res.writeHead(404).end();
+			return;
+		}
+		const body = fs.readFileSync(file);
+		res.writeHead(200, {
+			'content-type': types[path.extname(name)] ?? 'application/octet-stream',
+			'content-length': body.length
+		});
+		res.end(body);
+	});
+	await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+	const { port } = server.address() as net.AddressInfo;
+	return { origin: `http://127.0.0.1:${port}`, close: () => server.close() };
+}
+
+test("the rings on the player's skip button and its guess note are drawn once and whole", async () => {
+	test.setTimeout(180_000);
+	const media = await mediaServer();
+	const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ani-gui-focus-rings-player-'));
+	writeReplayConfig(profile, 'locale = "en"\n');
+	const app = await launchPackagedApp(
+		{
+			...process.env,
+			XDG_STATE_HOME: path.join(profile, 'state'),
+			XDG_CONFIG_HOME: path.join(profile, 'config'),
+			XDG_CACHE_HOME: path.join(profile, 'cache'),
+			XDG_DATA_HOME: path.join(profile, 'data'),
+			ANI_GUI_UNATTENDED: '1'
+		},
+		{ profile }
+	);
+	try {
+		const page = await appWindow(app);
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		const play = await routeRealPlay(page, {
+			profile,
+			settings: { locale: 'en', use_custom_player_controls: true },
+			stream: { upstreamUrl: `${media.origin}/master.m3u8`, mediaKind: 'hls' }
+		});
+		// The opening runs from the first second, so the skip button shows;
+		// the session is a guess, so the note under the player asks about
+		// it.
+		await page.route('**/api/**', async (r) => {
+			const p = new URL(r.request().url()).pathname;
+			const j = (body: unknown) =>
+				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+			if (p.startsWith('/api/aniskip/')) {
+				return j([{ skip_type: 'op', start_time: 1, end_time: 600 }]);
+			}
+			if (p === '/api/history/link-verdict') return j({ offer: 'guess', kept: false });
+			if (p === '/api/history/link-group') return j([continueHistory[0].id]);
+			if (p === '/api/history/card-lines') {
+				return j(cardLinesAnswer(r.request().postDataJSON()));
+			}
+			// A mapping no play stored: the card's show is a guess.
+			if (p.endsWith('/played')) return j(null);
+			return r.fallback();
+		});
+		await remount(page);
+		await sizeViewport(page, 1440, 900);
+		await playFromContinue(page, play);
+		const skip = page.locator('.player-skip-btn');
+		await expect(skip).toBeVisible({ timeout: 30_000 });
+		// Held inside the button's window while the walk runs.
+		await page.evaluate(() => {
+			const video = document.querySelector('video');
+			if (!video) return;
+			video.pause();
+			video.currentTime = 2;
+		});
+		await expect(skip).toBeVisible();
+		await expect(page.locator('.guess-slip .act').first()).toBeVisible({ timeout: 15_000 });
+		const needs = ['.player-skip-btn', '.guess-slip .act', '.guess-slip .hide'];
+		for (const key of ['Tab', 'Shift+Tab'] as const) {
+			const at = `the player, ${key}`;
+			assertStops(await walk(page, key, { selectors: needs }), at, [], needs);
+		}
+	} finally {
+		await stopApp(app);
+		media.close();
+	}
+});
