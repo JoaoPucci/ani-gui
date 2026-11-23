@@ -16,7 +16,10 @@
 #   - it has to still be there 20 seconds after it appeared;
 #   - the app's log has to show its backend reporting ready, and no
 #     "startup failed": the dialog the app shows when its backend does
-#     not start is a window of the app's class too.
+#     not start is a window of the app's class too;
+#   - the log has to show the main window's first page rendered: the
+#     splash is a window of the app's class as well, and stays up,
+#     offering Restart and Quit, while that page never comes.
 #
 # The launch has no network, as the catalog's has none. Before it, the
 # same firejail is asked to list the network interfaces it leaves, and
@@ -43,7 +46,8 @@
 # through a loop device. .github/workflows/packages.yml installs them
 # and runs this on the AppImage it built.
 #
-# What this does NOT check: anything after the first page renders.
+# What this does NOT check: anything after the first page renders,
+# or what that page shows (the screenshot is kept, not read).
 # Playback, search and every other request need the network the
 # launch does not have; the check says the AppImage starts on the
 # catalog's system, nothing more.
@@ -190,6 +194,10 @@ if ! app_window; then
 fi
 if ! grep -q 'backend ready' "$out/app.log"; then
     echo "FAIL: the backend never reported ready"
+    failed=1
+fi
+if ! grep -qF "[main] app's first page rendered" "$out/app.log"; then
+    echo "FAIL: the app's first page never rendered"
     failed=1
 fi
 if grep -q 'startup failed' "$out/app.log"; then
