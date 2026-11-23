@@ -107,6 +107,8 @@ pub(crate) async fn sweep_lock_leftovers(folder: &std::path::Path) {
 // enough to read whole.
 #[path = "download_lock_acquire.rs"]
 mod acquire;
+#[path = "download_lock_open.rs"]
+mod open;
 #[path = "download_lock_os.rs"]
 // Shared with the download working folder, whose holds are opened,
 // hidden, checked and released exactly as lock files are.

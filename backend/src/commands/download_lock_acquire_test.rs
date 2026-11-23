@@ -1,6 +1,7 @@
 //! Opening the lock file while other downloads remove its directory.
 
-use super::{attempt, open_creating_with, os, Attempt};
+use super::super::open::open_creating_with;
+use super::{attempt, os, Attempt};
 use crate::commands::download_lock_deadline_test::Deadline;
 use crate::commands::download_lock_log_test::{interest_from_every_thread, Captured};
 
