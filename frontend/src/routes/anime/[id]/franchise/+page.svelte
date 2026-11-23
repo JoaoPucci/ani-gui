@@ -1,79 +1,68 @@
 <!--
-  The franchise page for the show with this id: its franchise and the
-  watch history read together ($lib/watch-order/loader), drawn in the
-  order the settings choose once that read has settled. A franchise
-  that cannot be read, or answers with no main story, says so, with
-  Try again. A franchise that is the show alone says that instead.
+  The franchise page for the show with this id: the backend's answer
+  for it ($lib/watch-order/loader), which reads the franchise, the
+  watch history and the order setting together and decides everything
+  the page draws. A franchise that cannot be read, or answers with no
+  main story, says so, with Try again. A franchise that is the show
+  alone says that instead.
 -->
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
-	import { settingsGet, type Config } from '$lib/api';
-	import { beginVisit } from '$lib/navigation/visit';
+	import type { FranchiseView as FranchiseAnswer } from '$lib/api';
 	import { pageTrail } from '$lib/page-trail';
 	import { m } from '$lib/paraglide/messages';
 	import FranchiseView from '$lib/watch-order/FranchiseView.svelte';
-	import { localDay } from '$lib/watch-order/entry';
-	import { franchisePage, franchiseTrail } from '$lib/watch-order/franchise-page';
+	import { franchiseTrail } from '$lib/watch-order/franchise-page';
 	import { latestRead } from '$lib/watch-order/latest-read';
-	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
+	import { visitRead, type WatchOrderAnswer } from '$lib/watch-order/loader';
 	import { followLink } from '$lib/watch-order/link-reread';
 	import { onHistoryLinked } from '$lib/history/link-deps';
 	import { watchOrderSources } from '$lib/watch-order/sources';
-	import { settledOrder } from '$lib/watch-order/page-model';
 
 	const id = $derived(page.params.id ?? '');
-	const today = localDay(new Date());
-
-	// The settings read is the page's visit's: leaving the page cancels
-	// it ($lib/navigation/visit), and an ended visit's answer is never
-	// drawn.
-	let config = $state<Config | null>(null);
-	let configFailed = $state(false);
-	const pageReads = beginVisit();
-	void pageReads
-		.keep(settingsGet({ signal: pageReads.signal }))
-		.then((c) => (config = c))
-		.catch(() => (configFailed = true));
 
 	// One read per show and per Try again. Only the latest read's
 	// answer is drawn, so an older one landing late never replaces it,
 	// and a read superseded, or still out when the page goes, is
 	// cancelled ($lib/watch-order/latest-read).
-	let data = $state<WatchOrderData | null>(null);
+	let data = $state<WatchOrderAnswer<FranchiseAnswer> | null>(null);
 	let attempt = $state(0);
-	const reads = latestRead<WatchOrderData>((d) => (data = d));
+	const reads = latestRead<WatchOrderAnswer<FranchiseAnswer> | null>((d) => (data = d));
+	const readPage = (showId: string) => (signal: AbortSignal) =>
+		visitRead((s) => watchOrderSources.franchise(showId, s), signal);
 	$effect(() => {
 		const current = id;
 		void attempt;
-		reads.start((signal) => loadWatchOrder(current, watchOrderSources, signal));
+		reads.start(readPage(current));
 	});
-	// A history link answered while the page is on screen reads the rows
+	// A history link answered while the page is on screen reads the page
 	// again, the page staying drawn meanwhile, or the show afresh while
 	// its first read is out ($lib/watch-order/link-reread).
-	const stopHearing = onHistoryLinked(() => followLink(reads, id, data, watchOrderSources));
+	const stopHearing = onHistoryLinked(() => {
+		if (id) followLink(reads, data, readPage(id));
+	});
 	onDestroy(() => {
 		stopHearing();
 		reads.stop();
-		pageReads.end();
 	});
 
-	const order = $derived(settledOrder(config, configFailed));
-	const model = $derived(data && order ? franchisePage(data, id, order) : null);
+	const view = $derived(data?.view ?? null);
+	const model = $derived(view?.page ?? null);
 	// The topbar names the show the page was opened from, once the
 	// franchise has been read.
 	$effect(() => {
-		if (model) pageTrail.name(page.url.pathname, franchiseTrail(model, id));
+		if (model) pageTrail.name(page.url.pathname, franchiseTrail(model));
 	});
 </script>
 
 {#if model?.alone}
 	<p class="none">{m.watchorder_franchise_none()}</p>
-{:else if model}
+{:else if model && view}
 	{#key id}
-		<FranchiseView {model} {today} />
+		<FranchiseView {model} order={view.order} />
 	{/key}
-{:else if data && order}
+{:else if data}
 	<div class="failed">
 		<p>{m.watchorder_franchise_failed()}</p>
 		<button type="button" class="btn btn-outline" onclick={() => attempt++}

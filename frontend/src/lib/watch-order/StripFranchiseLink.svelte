@@ -1,7 +1,6 @@
 <!--
   The strip's way to the franchise page, at the end of its footer, or
-  on its own on a show page with no strip (./page-model's
-  franchiseLinkOnly): posters from different parts of the franchise,
+  on its own on a show page with no strip (`$lib/api` `LinkWire`): posters from different parts of the franchise,
   fanned on one arc (./PosterFan), beside "See the whole franchise"
   and what the page holds. Hovering or focusing the link opens the fan
   and lays a faint plate under the whole link, which is one target.
@@ -11,29 +10,26 @@
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import type { WatchOrderStack } from '$lib/api';
 	import Icon from '$lib/components/Icon.svelte';
 	import PosterFan from './PosterFan.svelte';
 	import { stackCards } from './stack-fan';
 	import { stackPartsText, stackTotal } from './strip-copy';
-	import { franchiseSummary } from './strip-view';
 	import { m } from '$lib/paraglide/messages';
-	import type { WatchRun } from './types';
 
 	let {
-		run,
-		front,
+		stack,
 		id,
 		complete
 	}: {
-		run: WatchRun;
-		/** The main-story entry the stack is fronted by. */
-		front: string;
+		/** The stack's posters and counts, fronted by a main-story entry. */
+		stack: WatchOrderStack;
 		id: string;
 		/** False for a franchise read in part: the stack gives no counts. */
 		complete: boolean;
 	} = $props();
 
-	const summary = $derived(franchiseSummary(run, front));
+	const summary = $derived(stack.summary);
 	const parts = $derived(stackPartsText(summary, complete));
 	const total = $derived(stackTotal(summary, complete));
 	const cards = $derived(stackCards(summary.posters, 3));

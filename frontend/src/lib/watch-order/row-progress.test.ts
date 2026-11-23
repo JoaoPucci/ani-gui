@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
+import type { ProgressView, ViewEntry } from '$lib/api';
 import { m } from '$lib/paraglide/messages';
-import { progressOf, progressShare } from './entry';
 import { captionParts, rowProgress } from './row-progress';
-import { entryArb } from './testing/arbitraries';
-import type { EntryProgress, WatchEntry } from './types';
 
-const entry = (episodes: number | null): WatchEntry => ({
+const entry = (episodes: number | null, progress: ProgressView): ViewEntry => ({
 	id: '1',
 	title: 'Saga',
 	subtype: 'TV',
@@ -14,16 +12,19 @@ const entry = (episodes: number | null): WatchEntry => ({
 	episodes,
 	status: episodes === null ? 'current' : 'finished',
 	poster: null,
-	cover: null
+	cover: null,
+	unaired: false,
+	progress
 });
 
-function row(e: WatchEntry, progress: EntryProgress | undefined) {
-	return { entry: e, progress, share: progressShare(progressOf(e, progress)) };
+/** A row as the backend answers it: the entry's progress, and its share. */
+function row(episodes: number | null, progress: ProgressView, share = 0) {
+	return { entry: entry(episodes, progress), share };
 }
 
 describe('a franchise row’s progress', () => {
 	it('captions a title part-way through, with the line filled to the share watched', () => {
-		expect(rowProgress(row(entry(14), 6))).toEqual({
+		expect(rowProgress(row(14, { kind: 'partway', episode: 6, total: 14 }, 6 / 14))).toEqual({
 			kind: 'partway',
 			caption: m.watchorder_meta_progress({ episode: 6, total: 14 }),
 			share: 6 / 14
@@ -31,38 +32,41 @@ describe('a franchise row’s progress', () => {
 	});
 
 	it('says a finished title is watched, with no line', () => {
-		expect(rowProgress(row(entry(14), 'watched'))).toEqual({
+		expect(rowProgress(row(14, { kind: 'watched' }, 1))).toEqual({
 			kind: 'watched',
 			caption: m.watchorder_meta_watched()
 		});
 	});
 
 	it('captions a title with no known total by its episode alone, with no line', () => {
-		expect(rowProgress(row(entry(null), 5))).toEqual({
+		expect(rowProgress(row(null, { kind: 'partway', episode: 5, total: null }))).toEqual({
 			kind: 'open',
 			caption: m.watchorder_meta_progress_open({ episode: 5 })
 		});
 	});
 
 	it('shows nothing for a title not started', () => {
-		expect(rowProgress(row(entry(14), undefined))).toEqual({ kind: 'none' });
+		expect(rowProgress(row(14, { kind: 'none' }))).toEqual({ kind: 'none' });
 	});
 
 	it('draws a line only where it measures a title part-way through a known total', () => {
-		const progress = fc.option(
-			fc.oneof(fc.constant<'watched'>('watched'), fc.integer({ min: 1, max: 40 })),
-			{ nil: undefined }
+		const progress = fc.oneof(
+			fc.constant<ProgressView>({ kind: 'none' }),
+			fc.constant<ProgressView>({ kind: 'watched' }),
+			fc.record({
+				kind: fc.constant<'partway'>('partway'),
+				episode: fc.integer({ min: 1, max: 40 }),
+				total: fc.option(fc.integer({ min: 1, max: 40 }), { nil: null })
+			})
 		);
+		const share = fc.double({ min: 0, max: 1, noNaN: true });
 		fc.assert(
-			fc.property(entryArb('1'), progress, (e, p) => {
-				const view = rowProgress(row(e, p));
-				const measured = typeof p === 'number' && e.episodes !== null;
+			fc.property(progress, share, (p, sh) => {
+				const view = rowProgress(row(p.kind === 'partway' ? p.total : 12, p, sh));
+				const measured = p.kind === 'partway' && p.total !== null;
 				expect(view.kind === 'partway').toBe(measured);
-				if (view.kind === 'partway') {
-					expect(view.share).toBeGreaterThan(0);
-					expect(view.share).toBeLessThanOrEqual(1);
-				}
-				expect(view.kind === 'none').toBe(p === undefined);
+				if (view.kind === 'partway') expect(view.share).toBe(sh);
+				expect(view.kind === 'none').toBe(p.kind === 'none');
 			})
 		);
 	});

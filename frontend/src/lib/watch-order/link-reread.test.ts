@@ -1,55 +1,51 @@
 import { describe, expect, it, vi } from 'vitest';
 import { followLink } from './link-reread';
 import { latestRead } from './latest-read';
-import type { WatchOrderData, WatchOrderSources } from './loader';
-import type { FranchiseData } from './types';
+import type { WatchOrderAnswer } from './loader';
 
-const FRANCHISE = {
-	anchor: '7',
-	entries: [],
-	links: [],
-	versions: [],
-	films: [],
-	sides: [],
-	recaps: [],
-	parents: {},
-	complete: true
-} as unknown as FranchiseData;
 const settle = () => new Promise((r) => setTimeout(r, 0));
+type Answer = WatchOrderAnswer<string>;
 
-function harness(named: Record<string, { kitsu_id: string; ep_no: string } | null>) {
-	const shown: (WatchOrderData | null)[] = [];
-	const reads = latestRead<WatchOrderData>((d) => shown.push(d));
-	const sources: WatchOrderSources = {
-		franchise: vi.fn(async () => FRANCHISE),
-		named: vi.fn(async () => named)
-	};
-	return { shown, reads, sources };
+function harness(fresh: Answer | null) {
+	const shown: (Answer | null)[] = [];
+	const reads = latestRead<Answer | null>((d) => shown.push(d));
+	const read = vi.fn(async () => fresh);
+	return { shown, reads, read };
 }
 
 describe('followLink', () => {
-	it('reads the rows again against the franchise shown, keeping it shown meanwhile', async () => {
-		const { shown, reads, sources } = harness({ '7': { kitsu_id: '7', ep_no: '3' } });
-		followLink(reads, '7', { franchise: FRANCHISE, rows: [] }, sources);
+	it('reads the page again, keeping what is shown meanwhile', async () => {
+		const { shown, reads, read } = harness({ view: 'after the link' });
+		followLink(reads, { view: 'before' }, read);
 		expect(shown).toEqual([]);
 		await settle();
-		expect(sources.franchise).not.toHaveBeenCalled();
-		expect(shown.at(-1)).toEqual({ franchise: FRANCHISE, rows: [{ kitsu_id: '7', ep_no: '3' }] });
+		expect(read).toHaveBeenCalledOnce();
+		expect(shown.at(-1)).toEqual({ view: 'after the link' });
+	});
+
+	it('keeps what is shown when the read again fails', async () => {
+		for (const fresh of [{ view: null }, null]) {
+			const { shown, reads, read } = harness(fresh);
+			followLink(reads, { view: 'before' }, read);
+			await settle();
+			expect(shown).toEqual([{ view: 'before' }]);
+		}
 	});
 
 	it('reads the show afresh when nothing is shown yet', async () => {
-		const { shown, reads, sources } = harness({});
-		followLink(reads, '7', null, sources);
+		const { shown, reads, read } = harness({ view: 'first' });
+		followLink(reads, null, read);
 		expect(shown).toEqual([null]);
 		await settle();
-		expect(sources.franchise).toHaveBeenCalledOnce();
-		expect(shown.at(-1)).toEqual({ franchise: FRANCHISE, rows: [] });
+		expect(read).toHaveBeenCalledOnce();
+		expect(shown.at(-1)).toEqual({ view: 'first' });
 	});
 
-	it('reads nothing for a page with no show', () => {
-		const { shown, reads, sources } = harness({});
-		followLink(reads, '', null, sources);
+	it('leaves a page whose franchise could not be read as it is', async () => {
+		const { shown, reads, read } = harness({ view: 'never' });
+		followLink(reads, { view: null }, read);
+		await settle();
+		expect(read).not.toHaveBeenCalled();
 		expect(shown).toEqual([]);
-		expect(sources.franchise).not.toHaveBeenCalled();
 	});
 });

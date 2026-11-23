@@ -6,17 +6,16 @@
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { imageProxyUrl } from '$lib/api';
+	import { imageProxyUrl, type ViewEntry } from '$lib/api';
 	import Icon from '$lib/components/Icon.svelte';
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
-	import type { WatchEntry } from './types';
 
 	let {
 		entry,
 		episode
 	}: {
-		entry: WatchEntry;
+		entry: ViewEntry;
 		episode: number;
 	} = $props();
 

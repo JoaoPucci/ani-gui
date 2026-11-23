@@ -2,12 +2,13 @@
  * The meta line under a watch-order card, in PosterCard's voice: format,
  * year, then progress or the episode count. An unaired entry shows its
  * date (or that none is announced) in place of the year and count.
+ * Whether it has aired and how far it was watched are the backend's
+ * readings, carried on the entry (`ViewEntry`).
  */
 import { m } from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
 import { subtypeLabel } from '$lib/search/subtype-label';
-import { isUnaired, progressOf, yearOf } from './entry';
-import type { EntryProgress, WatchEntry } from './types';
+import type { ViewEntry } from '$lib/api';
 
 export interface MetaSegment {
 	readonly text: string;
@@ -26,16 +27,17 @@ function comingText(start: string | null): string {
 	return m.watchorder_meta_coming({ date });
 }
 
-export function metaLine(
-	entry: WatchEntry,
-	progress: EntryProgress | undefined,
-	today: string
-): MetaSegment[] {
+/**
+ * `entry`'s meta line. `withProgress` false leaves its progress out,
+ * for a card that shows it elsewhere (a franchise row's own column),
+ * and gives the episode count in its place.
+ */
+export function metaLine(entry: ViewEntry, withProgress = true): MetaSegment[] {
 	const out: MetaSegment[] = [{ text: subtypeLabel(entry.subtype), kind: 'word' }];
-	if (isUnaired(entry, today)) return [...out, { text: comingText(entry.start), kind: 'word' }];
-	const year = yearOf(entry);
+	if (entry.unaired) return [...out, { text: comingText(entry.start), kind: 'word' }];
+	const year = entry.start?.slice(0, 4);
 	if (year) out.push({ text: year, kind: 'num' });
-	const p = progressOf(entry, progress);
+	const p = withProgress ? entry.progress : { kind: 'none' as const };
 	if (p.kind === 'watched') out.push({ text: m.watchorder_meta_watched(), kind: 'watched' });
 	else if (p.kind === 'partway')
 		out.push({

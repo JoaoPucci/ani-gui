@@ -21,24 +21,25 @@
 	import StripTrio from './StripTrio.svelte';
 	import { arriveCss, arriveOf, heldShape, leaveOf, type FirstHop, type Gone } from './arrival';
 	import { holdScroll, windowScroll } from './scroll-hold';
-	import type { FranchiseLink, WatchOrderPage } from './page-model';
+	import type { LinkWire, StripWire, WatchOrder } from '$lib/api';
 
 	let {
 		model,
 		link,
+		order,
 		hop,
 		answered,
-		id,
-		today
+		id
 	}: {
-		model: WatchOrderPage | null;
-		link: FranchiseLink | null;
+		model: StripWire | null;
+		link: LinkWire | null;
+		/** The order the backend read the strip in. */
+		order: WatchOrder;
 		/** The walk's first hop, if it came in time; null if not. */
 		hop: FirstHop | null;
-		/** Whether the walk (and the order setting) have answered. */
+		/** Whether the walk has answered. */
 		answered: boolean;
 		id: string;
-		today: string;
 	} = $props();
 
 	const held = $derived(heldShape(hop, answered));
@@ -75,11 +76,11 @@
 
 {#if model}
 	<div class="watch-order" bind:this={drawnEl} in:arrive>
-		<StripTrio {model} {id} {today} />
+		<StripTrio {model} {order} {id} />
 	</div>
 {:else if link}
 	<div class="watch-order watch-order-link" bind:this={drawnEl} in:arrive>
-		<StripFranchiseLink run={link.run} front={link.front} {id} complete={link.complete} />
+		<StripFranchiseLink stack={link.stack} {id} complete={link.complete} />
 	</div>
 {:else if held}
 	<div

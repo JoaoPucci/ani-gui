@@ -1,35 +1,34 @@
 import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
+import type { Handoff } from '$lib/api';
 import {
-	createFranchiseReads,
-	createNamedReads,
+	createHandoffReads,
 	handoffWalksAtOnce,
 	HANDOFF_WALKS_ON_OWN_LANE,
 	HANDOFF_WALKS_ON_SHARED_LANE
 } from './handoff-reads';
-import type { FranchiseData } from './types';
+import type { WatchEntry } from './types';
 
-const franchise = (anchor: string): FranchiseData => ({
-	anchor,
-	name: `Franchise ${anchor}`,
-	name_from: anchor,
-	entries: [],
-	links: [],
-	versions: [],
-	films: [],
-	sides: [],
-	recaps: [],
-	parents: {},
-	complete: true
+const entry = (id: string): WatchEntry => ({
+	id,
+	title: `Entry ${id}`,
+	subtype: 'TV',
+	start: '2020-01-01',
+	episodes: 12,
+	status: 'finished',
+	poster: null,
+	cover: null
 });
+/** The hand-off read for `id`: on to the entry after it. */
+const franchise = (id: string): Handoff => ({ finished: entry(id), next: entry(`${id}0`) });
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-describe('createFranchiseReads', () => {
+describe('createHandoffReads', () => {
 	it('reads a series once however often it is wanted, and hands it on', async () => {
 		const read = vi.fn(async (id: string) => franchise(id));
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
+		const reads = createHandoffReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('7');
 		reads.want('7');
 		await flush();
@@ -43,7 +42,7 @@ describe('createFranchiseReads', () => {
 	it('reads each series it is asked for', async () => {
 		const read = vi.fn(async (id: string) => franchise(id));
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
+		const reads = createHandoffReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('7');
 		reads.want('8');
 		await flush();
@@ -56,7 +55,7 @@ describe('createFranchiseReads', () => {
 			throw new Error('503');
 		});
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
+		const reads = createHandoffReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('7');
 		await flush();
 		reads.want('7');
@@ -66,17 +65,17 @@ describe('createFranchiseReads', () => {
 	});
 });
 
-describe('createFranchiseReads, when the page goes', () => {
+describe('createHandoffReads, when the page goes', () => {
 	it('cancels every read still out, and hands on no answer after', async () => {
 		const signals: AbortSignal[] = [];
-		const answers: Array<(f: FranchiseData) => void> = [];
+		const answers: Array<(f: Handoff) => void> = [];
 		const read = (id: string, signal: AbortSignal) => {
 			void id;
 			signals.push(signal);
-			return new Promise<FranchiseData>((r) => answers.push(r));
+			return new Promise<Handoff>((r) => answers.push(r));
 		};
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
+		const reads = createHandoffReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('7');
 		reads.want('8');
 		reads.stop();
@@ -88,8 +87,8 @@ describe('createFranchiseReads, when the page goes', () => {
 
 	it('leaves the reads running until then', () => {
 		const signals: AbortSignal[] = [];
-		const reads = createFranchiseReads(
-			(id, signal) => (signals.push(signal), new Promise<FranchiseData>(() => {})),
+		const reads = createHandoffReads(
+			(id, signal) => (signals.push(signal), new Promise<Handoff>(() => {})),
 			vi.fn(),
 			HANDOFF_WALKS_ON_OWN_LANE
 		);
@@ -113,7 +112,7 @@ describe('handoffWalksAtOnce', () => {
 	});
 });
 
-describe('createFranchiseReads, on the franchise lane', () => {
+describe('createHandoffReads, on the franchise lane', () => {
 	// The walks have the franchise lane's six connections to themselves:
 	// Home's own calls, a Continue card's resume among them, go to the
 	// API lane.
@@ -122,12 +121,12 @@ describe('createFranchiseReads, on the franchise lane', () => {
 
 	/** Reads that answer when the test says, with how many are out. */
 	function held() {
-		const out = new Map<string, (f: FranchiseData | Error) => void>();
+		const out = new Map<string, (f: Handoff | Error) => void>();
 		const started: string[] = [];
 		const read = (id: string, signal: AbortSignal) => {
 			started.push(id);
-			return new Promise<FranchiseData>((resolve, reject) => {
-				const end = (f: FranchiseData | Error) => {
+			return new Promise<Handoff>((resolve, reject) => {
+				const end = (f: Handoff | Error) => {
 					out.delete(id);
 					if (f instanceof Error) reject(f);
 					else resolve(f);
@@ -141,7 +140,7 @@ describe('createFranchiseReads, on the franchise lane', () => {
 
 	it(`walks at most ${AT_ONCE} series at once, and the next as one answers`, async () => {
 		const { out, started, read } = held();
-		const reads = createFranchiseReads(read, vi.fn(), HANDOFF_WALKS_ON_OWN_LANE);
+		const reads = createHandoffReads(read, vi.fn(), HANDOFF_WALKS_ON_OWN_LANE);
 		for (const id of ids(8)) reads.want(id);
 		expect(started).toEqual(ids(6));
 		out.get('1')!(franchise('1'));
@@ -155,7 +154,7 @@ describe('createFranchiseReads, on the franchise lane', () => {
 	it('starts none of the waiting reads once the page has gone', async () => {
 		const { out, started, read } = held();
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
+		const reads = createHandoffReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		for (const id of ids(8)) reads.want(id);
 		reads.stop();
 		await flush();
@@ -172,7 +171,7 @@ describe('createFranchiseReads, on the franchise lane', () => {
 				async (wants, answers) => {
 					const { out, started, read } = held();
 					const settled = vi.fn();
-					const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
+					const reads = createHandoffReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 					let peak = 0;
 					const watch = () => (peak = Math.max(peak, out.size));
 					for (const id of wants) {
@@ -204,15 +203,15 @@ describe('createFranchiseReads, on the franchise lane', () => {
 	});
 });
 
-describe('createFranchiseReads, sharing the API origin', () => {
+describe('createHandoffReads, sharing the API origin', () => {
 	it('keeps to the budget it is given, and starts the next as one answers', async () => {
-		const out = new Map<string, (f: FranchiseData) => void>();
+		const out = new Map<string, (f: Handoff) => void>();
 		const started: string[] = [];
 		const read = (id: string) => {
 			started.push(id);
-			return new Promise<FranchiseData>((resolve) => out.set(id, resolve));
+			return new Promise<Handoff>((resolve) => out.set(id, resolve));
 		};
-		const reads = createFranchiseReads(read, vi.fn(), HANDOFF_WALKS_ON_SHARED_LANE);
+		const reads = createHandoffReads(read, vi.fn(), HANDOFF_WALKS_ON_SHARED_LANE);
 		for (const id of ['1', '2', '3', '4']) reads.want(id);
 		expect(started).toEqual(['1', '2']);
 		out.get('1')!(franchise('1'));
@@ -221,89 +220,68 @@ describe('createFranchiseReads, sharing the API origin', () => {
 	});
 });
 
-describe('createNamedReads, when the page goes or the history changes', () => {
+describe('createHandoffReads, when the history changes', () => {
 	const hanging = () => {
 		const signals: AbortSignal[] = [];
-		const read = (ids: readonly string[], signal: AbortSignal) => {
-			void ids;
+		const read = (id: string, signal: AbortSignal) => {
+			void id;
 			signals.push(signal);
-			return new Promise<Record<string, unknown>>(() => {});
+			return new Promise<Handoff | null>(() => {});
 		};
 		return { signals, read };
 	};
 
-	it('cancels the lookups still out when the page goes', () => {
+	it('cancels the reads whose answers forgetting drops, and leaves the next ones running', () => {
 		const { signals, read } = hanging();
-		const reads = createNamedReads(read, vi.fn());
-		reads.want('20');
-		reads.want('30');
-		reads.stop();
-		expect(signals.map((s) => s.aborted)).toEqual([true, true]);
-	});
-
-	it('cancels the lookups whose answers forgetting drops, and leaves the next ones running', () => {
-		const { signals, read } = hanging();
-		const reads = createNamedReads(read, vi.fn());
+		const reads = createHandoffReads(read, vi.fn(), HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('20');
 		reads.forget();
 		reads.want('20');
 		expect(signals.map((s) => s.aborted)).toEqual([true, false]);
 	});
 
-	it('hands on no answer once stopped', async () => {
-		const settled = vi.fn();
-		let answer!: (rows: Record<string, unknown>) => void;
-		const reads = createNamedReads(() => new Promise((r) => (answer = r)), settled);
-		reads.want('20');
-		reads.stop();
-		answer({ '20': { ep_no: '1' } });
-		await flush();
-		expect(settled).not.toHaveBeenCalled();
-	});
-});
-
-describe('createNamedReads', () => {
-	it('asks the resume lookup about an id once, and says whether a row resumes it', async () => {
-		const read = vi.fn(async (ids: readonly string[]) =>
-			Object.fromEntries(ids.map((id) => [id, id === '20' ? { ep_no: '3' } : null]))
-		);
-		const settled = vi.fn();
-		const reads = createNamedReads(read, settled);
-		reads.want('20');
-		reads.want('20');
-		reads.want('30');
-		await flush();
-		reads.want('20');
-		await flush();
-		expect(read).toHaveBeenCalledTimes(2);
-		expect(read.mock.calls[0][0]).toEqual(['20']);
-		expect(settled).toHaveBeenCalledWith('20', true);
-		expect(settled).toHaveBeenCalledWith('30', false);
-	});
-
-	it('settles a lookup that fails as unknown', async () => {
-		const settled = vi.fn();
-		const reads = createNamedReads(() => Promise.reject(new Error('no backend')), settled);
-		reads.want('20');
-		await flush();
-		expect(settled).toHaveBeenCalledWith('20', null);
-	});
-
 	it('asks again after forgetting, and drops an answer still out from before', async () => {
-		let answer!: (rows: Record<string, unknown>) => void;
+		let answer!: (h: Handoff | null) => void;
 		const read = vi
-			.fn<(ids: readonly string[]) => Promise<Record<string, unknown>>>()
+			.fn<(id: string, signal: AbortSignal) => Promise<Handoff | null>>()
 			.mockImplementationOnce(() => new Promise((r) => (answer = r)))
-			.mockImplementation(async () => ({ '20': { ep_no: '1' } }));
+			.mockImplementation(async (id) => franchise(id));
 		const settled = vi.fn();
-		const reads = createNamedReads(read, settled);
+		const reads = createHandoffReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('20');
 		reads.forget();
 		reads.want('20');
 		await flush();
-		answer({ '20': null });
+		answer(null);
 		await flush();
 		expect(read).toHaveBeenCalledTimes(2);
-		expect(settled.mock.calls).toEqual([['20', true]]);
+		expect(settled.mock.calls).toEqual([['20', franchise('20')]]);
+	});
+
+	it('drops the reads still waiting for the budget, and reads only what is wanted after', async () => {
+		const started: string[] = [];
+		const read = (id: string, signal: AbortSignal) => {
+			started.push(id);
+			return new Promise<Handoff | null>((_, reject) =>
+				signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+			);
+		};
+		const reads = createHandoffReads(read, vi.fn(), HANDOFF_WALKS_ON_SHARED_LANE);
+		for (const id of ['1', '2', '3', '4']) reads.want(id);
+		expect(started).toEqual(['1', '2']);
+		reads.forget();
+		reads.want('5');
+		await flush();
+		expect(started).toEqual(['1', '2', '5']);
+	});
+
+	it('does nothing once stopped', async () => {
+		const read = vi.fn(async (id: string) => franchise(id));
+		const reads = createHandoffReads(read, vi.fn(), HANDOFF_WALKS_ON_OWN_LANE);
+		reads.stop();
+		reads.forget();
+		reads.want('7');
+		await flush();
+		expect(read).not.toHaveBeenCalled();
 	});
 });

@@ -6,27 +6,14 @@ import {
 	settledAnswer,
 	visitAnswer
 } from './session-memo';
-import type { WatchOrderData } from './loader';
-import type { FranchiseData } from './types';
+import type { ShowView } from '$lib/api';
+import type { ShowAnswer } from './session-memo';
 
-const franchise = (anchor: string): FranchiseData => ({
-	anchor,
-	name: `Franchise ${anchor}`,
-	name_from: anchor,
-	entries: [],
-	links: [],
-	versions: [],
-	films: [],
-	sides: [],
-	recaps: [],
-	parents: {},
-	complete: true
+/** A show's answer; `similar` tells two answers for one show apart. */
+const answer = (id: string, similar = '1'): ShowAnswer => ({
+	view: { order: 'linked', strip: null, link: null, similar } as unknown as ShowView
 });
-const answer = (id: string, ep = '1'): WatchOrderData => ({
-	franchise: franchise(id),
-	rows: [{ kitsu_id: id, ep_no: ep }]
-});
-const failed: WatchOrderData = { franchise: null, rows: [] };
+const failed: ShowAnswer = { view: null };
 
 afterEach(forgetAnswers);
 
@@ -78,6 +65,12 @@ describe("a show page visit's answer", () => {
 	it('keeps the earlier answer for a visit whose read failed', () => {
 		settledAnswer('1', answer('1'));
 		expect(visitAnswer('1', failed, new AbortController().signal)).toEqual(answer('1'));
+	});
+
+	it('draws nothing for a visit whose read was cut off before it answered', () => {
+		settledAnswer('1', answer('1', '3'));
+		expect(visitAnswer('1', null, new AbortController().signal)).toBeNull();
+		expect(rememberedAnswer('1')).toEqual(answer('1', '3'));
 	});
 
 	it('draws nothing for a visit that ended, and leaves the memo as it was', () => {

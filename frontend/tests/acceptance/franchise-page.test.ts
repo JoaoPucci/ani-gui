@@ -8,6 +8,13 @@
 // opened from marked, and the other versions, films and side stories
 // on rails, the recaps too. A franchise that cannot be read
 // says so and offers to try again.
+//
+// What the page lists, in what order, numbered how, and where Resume
+// goes is the backend's answer (`POST /api/watch-order/:id/franchise`),
+// served as recorded for each scenario's inputs
+// (./watch-order-answers.ts) and asserted by name in
+// backend/src/watch_order/scenario_franchise_page_test.rs. These
+// scenarios hold what the page draws from it.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -18,7 +25,7 @@ import { get } from 'svelte/store';
 
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
-import { appConfig } from './home-handlers';
+import { answerResponse, type ScenarioInputs } from './watch-order-answers';
 import { m } from '../../src/lib/paraglide/messages';
 import { setLocale } from '../../src/lib/paraglide/runtime';
 
@@ -38,11 +45,10 @@ import { watchPageFetches } from './page-fetches';
 import FranchisePage from '../../src/routes/anime/[id]/franchise/+page.svelte';
 import {
 	__resetApiBaseForTests,
-	type Config,
 	type Franchise,
-	type HistoryEntry,
 	type FranchiseEntry,
-	type LinkOutcome
+	type LinkOutcome,
+	type WatchOrder
 } from '../../src/lib/api';
 import { appLinkDeps } from '../../src/lib/history/link-deps';
 import { breadcrumb } from '../../src/lib/breadcrumb';
@@ -96,6 +102,8 @@ const FRANCHISE: Franchise = {
 	complete: true
 };
 
+const SUITE = 'franchise-page';
+
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
@@ -124,9 +132,12 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 
 type HistoryRowFixture = { ep_no: string; id: string; title: string; kitsu_id?: string };
 
+/** The walk's answer: a franchise or a failure, at once or held until it lands. */
+type Walk = Franchise | 'fail' | Promise<Franchise | 'fail'>;
+
 interface Options {
-	order?: Config['watch_order'];
-	franchise?: () => Response | Promise<Response>;
+	order?: WatchOrder;
+	franchise?: () => Walk;
 	history?: HistoryRowFixture[];
 	/**
 	 * The row the backend names for an id where it is not the row that
@@ -136,27 +147,46 @@ interface Options {
 	named?: Record<string, HistoryRowFixture>;
 }
 
+/**
+ * What the resume lookup names for each id: the row that recorded it,
+ * or the one the backend names for it where that is another.
+ */
+function resumesOf(
+	history: HistoryRowFixture[] = [],
+	named: Record<string, HistoryRowFixture> = {}
+): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const r of history) if (r.kitsu_id) out[r.kitsu_id] = r.ep_no;
+	for (const [id, r] of Object.entries(named)) out[id] = r.ep_no;
+	return out;
+}
+
+/**
+ * The franchise route for `id`: the backend's answer recorded for the
+ * walk `walk` answers, the history as it stands when the read comes in,
+ * and the order setting.
+ */
+function franchiseRoute(id: string, walk: () => Walk, opts: Options, onRead?: () => void) {
+	return http.post(`${API_BASE}/api/watch-order/${id}/franchise`, async () => {
+		onRead?.();
+		const resumes = resumesOf(opts.history, opts.named);
+		const w = await walk();
+		if (w === 'fail') return new HttpResponse(null, { status: 503 });
+		const inputs: ScenarioInputs = {
+			route: 'franchise',
+			id,
+			order: opts.order ?? 'linked',
+			franchise: w,
+			resumes
+		};
+		return answerResponse(SUITE, inputs);
+	});
+}
+
 function useFranchise(opts: Options = {}) {
 	const calls = { franchise: 0 };
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json<Config>({ ...appConfig(), watch_order: opts.order ?? 'linked' })
-		),
-		http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, () => {
-			calls.franchise++;
-			return opts.franchise ? opts.franchise() : HttpResponse.json<Franchise>(FRANCHISE);
-		}),
-		// The rows the franchise's entries resume from, as the resume
-		// lookup names them.
-		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
-			const { ids } = (await request.json()) as { ids: string[] };
-			const rows = opts.history ?? [];
-			return HttpResponse.json<Record<string, HistoryEntry | null>>(
-				Object.fromEntries(
-					ids.map((k) => [k, opts.named?.[k] ?? rows.find((r) => r.kitsu_id === k) ?? null])
-				)
-			);
-		})
+		franchiseRoute(KITSU_ID, opts.franchise ?? (() => FRANCHISE), opts, () => calls.franchise++)
 	);
 	return calls;
 }
@@ -268,10 +298,11 @@ describe('franchise page', () => {
 		);
 	});
 
-	it("follows a link's rows once it answers, without blanking the page or walking again", async () => {
+	it("follows a link's rows once it answers, without blanking the page", async () => {
 		// A link answered while the page is on screen (made on the show
 		// page or the player just before coming here) rewrites which show
-		// a history row belongs to: the page reads the rows again.
+		// a history row belongs to: the page reads its answer again, the
+		// one drawn staying on screen until the new one lands.
 		const history: HistoryRowFixture[] = [];
 		const calls = useFranchise({ history });
 		server.use(
@@ -294,34 +325,33 @@ describe('franchise page', () => {
 		clearInterval(watch);
 		expect(resumeLink()!.getAttribute('href')).toBe('/anime/50');
 		expect(blanked).toBe(false);
-		expect(calls.franchise).toBe(1);
+		// The backend reads the franchise and the rows together, so the
+		// link reads the page once more: one read for the visit, one for
+		// the link, and no more.
+		expect(calls.franchise).toBe(2);
 	});
 
 	it('follows a link answered while its rows were still being read', async () => {
-		// The rows read went out before the link wrote, so its answer is
-		// the history from before it.
+		// The page's first read went out before the link wrote, so its
+		// answer is the history from before it.
 		const history: HistoryRowFixture[] = [];
-		useFranchise({ history });
 		let release: (() => void) | null = null;
 		let first = true;
+		useFranchise({
+			history,
+			franchise: () => {
+				if (!first) return FRANCHISE;
+				first = false;
+				return new Promise<Franchise>((r) => (release = () => r(FRANCHISE)));
+			}
+		});
 		server.use(
-			http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
-				const { ids } = (await request.json()) as { ids: string[] };
-				const answer = Object.fromEntries(
-					ids.map((k) => [k, history.find((r) => r.kitsu_id === k) ?? null])
-				);
-				if (first) {
-					first = false;
-					await new Promise<void>((r) => (release = r));
-				}
-				return HttpResponse.json<Record<string, HistoryEntry | null>>(answer);
-			}),
 			http.post(`${API_BASE}/api/history/link`, () =>
 				HttpResponse.json<LinkOutcome>({ kitsu_id: '50', linked: [] })
 			)
 		);
 		app = mount(FranchisePage, { target });
-		await until(() => release !== null, 'the rows read');
+		await until(() => release !== null, 'the first read');
 		history.push({ id: 'hianime:saga-final', title: 'Saga Final', ep_no: '3', kitsu_id: '50' });
 		await appLinkDeps().link('hianime:saga-final', ['hianime:saga-final'], '50');
 		release!();
@@ -364,14 +394,13 @@ describe('franchise page', () => {
 
 	it('leaves out the rails the franchise has nothing for', async () => {
 		useFranchise({
-			franchise: () =>
-				HttpResponse.json<Franchise>({
-					...FRANCHISE,
-					versions: [],
-					films: [],
-					sides: [],
-					recaps: []
-				})
+			franchise: () => ({
+				...FRANCHISE,
+				versions: [],
+				films: [],
+				sides: [],
+				recaps: []
+			})
 		});
 		app = mount(FranchisePage, { target });
 		await until(() => rows().length === 4, 'the main story');
@@ -385,12 +414,11 @@ describe('franchise page', () => {
 	it('sets the ways to continue side by side where the story branches', async () => {
 		const ALT = entry('51', 'Saga: Final Arc Alternate', 'TV', '2014-06-01');
 		useFranchise({
-			franchise: () =>
-				HttpResponse.json<Franchise>({
-					...FRANCHISE,
-					entries: [...FRANCHISE.entries, ALT],
-					links: [...FRANCHISE.links, ['42', '51']]
-				})
+			franchise: () => ({
+				...FRANCHISE,
+				entries: [...FRANCHISE.entries, ALT],
+				links: [...FRANCHISE.links, ['42', '51']]
+			})
 		});
 		app = mount(FranchisePage, { target });
 		await until(() => rows().length === 5, 'the main story');
@@ -407,7 +435,7 @@ describe('franchise page', () => {
 
 	it('says when there may be more titles than it shows', async () => {
 		useFranchise({
-			franchise: () => HttpResponse.json<Franchise>({ ...FRANCHISE, complete: false })
+			franchise: () => ({ ...FRANCHISE, complete: false })
 		});
 		app = mount(FranchisePage, { target });
 		await until(() => rows().length === 4, 'the main story');
@@ -417,7 +445,7 @@ describe('franchise page', () => {
 	it('claims no places, total or beginning when there may be more titles', async () => {
 		// The read may have missed titles before the first one it lists.
 		useFranchise({
-			franchise: () => HttpResponse.json<Franchise>({ ...FRANCHISE, complete: false })
+			franchise: () => ({ ...FRANCHISE, complete: false })
 		});
 		app = mount(FranchisePage, { target });
 		await until(() => rows().length === 4, 'the main story');
@@ -429,7 +457,7 @@ describe('franchise page', () => {
 
 	it('still resumes the title being watched when there may be more titles, with no place', async () => {
 		useFranchise({
-			franchise: () => HttpResponse.json<Franchise>({ ...FRANCHISE, complete: false }),
+			franchise: () => ({ ...FRANCHISE, complete: false }),
 			history: [{ id: 'hianime:saga-final', title: 'Saga Final', ep_no: '3', kitsu_id: '50' }]
 		});
 		app = mount(FranchisePage, { target });
@@ -442,13 +470,12 @@ describe('franchise page', () => {
 	it('heads ways on without a count when there may be more titles', async () => {
 		const ALT = entry('51', 'Saga: Final Arc Alternate', 'TV', '2014-06-01');
 		useFranchise({
-			franchise: () =>
-				HttpResponse.json<Franchise>({
-					...FRANCHISE,
-					entries: [...FRANCHISE.entries, ALT],
-					links: [...FRANCHISE.links, ['42', '51']],
-					complete: false
-				})
+			franchise: () => ({
+				...FRANCHISE,
+				entries: [...FRANCHISE.entries, ALT],
+				links: [...FRANCHISE.links, ['42', '51']],
+				complete: false
+			})
 		});
 		app = mount(FranchisePage, { target });
 		await until(() => rows().length === 5, 'the main story');
@@ -461,16 +488,15 @@ describe('franchise page', () => {
 		// Saga, Second Arc and Final Arc each list the next as a sequel,
 		// and Final Arc lists Saga: a loop with no clear order.
 		useFranchise({
-			franchise: () =>
-				HttpResponse.json<Franchise>({
-					...FRANCHISE,
-					entries: [SAGA, SECOND, FINAL],
-					links: [
-						['10', '42'],
-						['42', '50'],
-						['50', '10']
-					]
-				})
+			franchise: () => ({
+				...FRANCHISE,
+				entries: [SAGA, SECOND, FINAL],
+				links: [
+					['10', '42'],
+					['42', '50'],
+					['50', '10']
+				]
+			})
 		});
 		app = mount(FranchisePage, { target });
 		await until(() => rows().length === 3, 'the main story');
@@ -479,17 +505,16 @@ describe('franchise page', () => {
 
 	it('heads a loop without a count when there may be more titles', async () => {
 		useFranchise({
-			franchise: () =>
-				HttpResponse.json<Franchise>({
-					...FRANCHISE,
-					entries: [SAGA, SECOND, FINAL],
-					links: [
-						['10', '42'],
-						['42', '50'],
-						['50', '10']
-					],
-					complete: false
-				})
+			franchise: () => ({
+				...FRANCHISE,
+				entries: [SAGA, SECOND, FINAL],
+				links: [
+					['10', '42'],
+					['42', '50'],
+					['50', '10']
+				],
+				complete: false
+			})
 		});
 		app = mount(FranchisePage, { target });
 		await until(() => rows().length === 3, 'the main story');
@@ -507,7 +532,7 @@ describe('franchise page', () => {
 
 	it('gives the recaps no count when there may be more titles', async () => {
 		useFranchise({
-			franchise: () => HttpResponse.json<Franchise>({ ...FRANCHISE, complete: false })
+			franchise: () => ({ ...FRANCHISE, complete: false })
 		});
 		app = mount(FranchisePage, { target });
 		await until(() => rail(m.watchorder_franchise_recaps()) !== null, 'the recaps');
@@ -519,8 +544,7 @@ describe('franchise page', () => {
 	it('says the franchise could not be loaded, and loads it on Try again', async () => {
 		let fail = true;
 		const calls = useFranchise({
-			franchise: () =>
-				fail ? new HttpResponse(null, { status: 503 }) : HttpResponse.json<Franchise>(FRANCHISE)
+			franchise: () => (fail ? 'fail' : FRANCHISE)
 		});
 		app = mount(FranchisePage, { target });
 		await until(
@@ -538,11 +562,7 @@ describe('franchise page', () => {
 	it('shows the franchise of the show it moves to, not the one before', async () => {
 		useFranchise();
 		const OTHER = '50';
-		server.use(
-			http.get(`${API_BASE}/api/kitsu/franchise/${OTHER}`, () =>
-				HttpResponse.json<Franchise>({ ...FRANCHISE, anchor: OTHER })
-			)
-		);
+		server.use(franchiseRoute(OTHER, () => ({ ...FRANCHISE, anchor: OTHER }), {}));
 		app = mount(FranchisePage, { target });
 		await until(() => row('42')?.getAttribute('aria-current') === 'true', 'the first page');
 		setParams({ id: OTHER });
@@ -563,16 +583,15 @@ describe('franchise page', () => {
 
 	it('says the show has nothing around it when the franchise is the show alone', async () => {
 		useFranchise({
-			franchise: () =>
-				HttpResponse.json<Franchise>({
-					...FRANCHISE,
-					entries: [SECOND],
-					links: [],
-					versions: [],
-					films: [],
-					sides: [],
-					recaps: []
-				})
+			franchise: () => ({
+				...FRANCHISE,
+				entries: [SECOND],
+				links: [],
+				versions: [],
+				films: [],
+				sides: [],
+				recaps: []
+			})
 		});
 		app = mount(FranchisePage, { target });
 		await until(
@@ -588,7 +607,7 @@ describe('franchise page', () => {
 		// An answer with no main story at all cannot be drawn: it is a
 		// read that went wrong, not a show with nothing around it.
 		useFranchise({
-			franchise: () => HttpResponse.json<Franchise>({ ...FRANCHISE, entries: [], links: [] })
+			franchise: () => ({ ...FRANCHISE, entries: [], links: [] })
 		});
 		app = mount(FranchisePage, { target });
 		await until(
@@ -604,22 +623,19 @@ describe('franchise page', () => {
 		const held = new Promise<void>((r) => (release = r));
 		let calls = 0;
 		let lateAnswered = false;
-		useFranchise();
 		const OTHER = '50';
-		server.use(
-			http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, async () => {
+		useFranchise({
+			franchise: async () => {
 				calls++;
 				if (calls === 1) {
 					await held;
 					lateAnswered = true;
-					return new HttpResponse(null, { status: 503 });
+					return 'fail';
 				}
-				return HttpResponse.json<Franchise>(FRANCHISE);
-			}),
-			http.get(`${API_BASE}/api/kitsu/franchise/${OTHER}`, () =>
-				HttpResponse.json<Franchise>({ ...FRANCHISE, anchor: OTHER })
-			)
-		);
+				return FRANCHISE;
+			}
+		});
+		server.use(franchiseRoute(OTHER, () => ({ ...FRANCHISE, anchor: OTHER }), {}));
 		app = mount(FranchisePage, { target });
 		await until(() => calls === 1, 'the first read');
 		setParams({ id: OTHER });
@@ -638,17 +654,16 @@ describe('franchise page', () => {
 		// Arc: Side Arc has no number, and Origins only leads into it.
 		const SIDE_ARC = entry('45', 'Saga: Side Arc', 'TV', '2013-06-01');
 		useFranchise({
-			franchise: () =>
-				HttpResponse.json<Franchise>({
-					...FRANCHISE,
-					entries: [SAGA, SECOND, ORIGINS, SIDE_ARC, FINAL],
-					links: [
-						['10', '42'],
-						['42', '50'],
-						['5', '45'],
-						['45', '50']
-					]
-				})
+			franchise: () => ({
+				...FRANCHISE,
+				entries: [SAGA, SECOND, ORIGINS, SIDE_ARC, FINAL],
+				links: [
+					['10', '42'],
+					['42', '50'],
+					['5', '45'],
+					['45', '50']
+				]
+			})
 		});
 		app = mount(FranchisePage, { target });
 		await until(() => rows().length === 5, 'the main story');
@@ -668,18 +683,17 @@ describe('franchise page', () => {
 	it('keeps the titles with no clear place apart when there may be more titles', async () => {
 		const SIDE_ARC = entry('45', 'Saga: Side Arc', 'TV', '2013-06-01');
 		useFranchise({
-			franchise: () =>
-				HttpResponse.json<Franchise>({
-					...FRANCHISE,
-					entries: [SAGA, SECOND, ORIGINS, SIDE_ARC, FINAL],
-					links: [
-						['10', '42'],
-						['42', '50'],
-						['5', '45'],
-						['45', '50']
-					],
-					complete: false
-				})
+			franchise: () => ({
+				...FRANCHISE,
+				entries: [SAGA, SECOND, ORIGINS, SIDE_ARC, FINAL],
+				links: [
+					['10', '42'],
+					['42', '50'],
+					['5', '45'],
+					['45', '50']
+				],
+				complete: false
+			})
 		});
 		app = mount(FranchisePage, { target });
 		await until(() => rows().length === 5, 'the main story');
@@ -698,16 +712,15 @@ describe('franchise page', () => {
 
 	it('draws the page when the one title it lists is another show', async () => {
 		useFranchise({
-			franchise: () =>
-				HttpResponse.json<Franchise>({
-					...FRANCHISE,
-					entries: [FINAL],
-					links: [],
-					versions: [],
-					films: [],
-					sides: [],
-					recaps: []
-				})
+			franchise: () => ({
+				...FRANCHISE,
+				entries: [FINAL],
+				links: [],
+				versions: [],
+				films: [],
+				sides: [],
+				recaps: []
+			})
 		});
 		app = mount(FranchisePage, { target });
 		await until(() => rows().length === 1, 'the one title');
@@ -725,8 +738,7 @@ describe('franchise page progress', () => {
 	const AIRING = { ...FINAL, episodes: null, status: 'current' };
 	const progressFranchise = () =>
 		useFranchise({
-			franchise: () =>
-				HttpResponse.json<Franchise>({ ...FRANCHISE, entries: [ORIGINS, SAGA, SECOND, AIRING] }),
+			franchise: () => ({ ...FRANCHISE, entries: [ORIGINS, SAGA, SECOND, AIRING] }),
 			history: [
 				{ id: 'hianime:saga', title: 'Saga', ep_no: '12', kitsu_id: '10' },
 				{ id: 'hianime:saga-2', title: 'Saga 2', ep_no: '6', kitsu_id: '42' },
@@ -844,12 +856,13 @@ describe('franchise page — leaving it while Kitsu is slow', () => {
 		let release: (() => void) | null = null;
 		useFranchise({
 			franchise: () =>
-				new Promise<Response>((resolve) => {
-					release = () => resolve(new HttpResponse(null, { status: 503 }));
+				new Promise<'fail'>((resolve) => {
+					release = () => resolve('fail');
 				})
 		});
 		app = mount(FranchisePage, { target });
-		const franchiseRead = (f: { path: string }) => f.path === `/api/kitsu/franchise/${KITSU_ID}`;
+		const franchiseRead = (f: { path: string }) =>
+			f.path === `/api/watch-order/${KITSU_ID}/franchise`;
 		await until(() => fetches.sent.some(franchiseRead), 'the franchise read');
 		unmount(app);
 		app = null;
@@ -860,28 +873,20 @@ describe('franchise page — leaving it while Kitsu is slow', () => {
 		}
 	});
 
-	it('cancels the settings read still out, as every page does when it goes', async () => {
+	it('sends no settings read of its own: the order comes with the answer', async () => {
+		// The backend reads the order setting with the franchise and the
+		// history, so the page has no settings read to wait on, or to
+		// leave out when it goes. It sends the viewer's day, which
+		// "Coming …" is judged against.
 		const fetches = watchPageFetches();
-		let release: (() => void) | null = null;
-		useFranchise();
-		server.use(
-			http.get(
-				`${API_BASE}/api/settings`,
-				() =>
-					new Promise<Response>((resolve) => {
-						release = () => resolve(HttpResponse.json<Config>(appConfig()));
-					})
-			)
-		);
+		useFranchise({ order: 'released' });
 		app = mount(FranchisePage, { target });
-		const settingsRead = (f: { path: string }) => f.path === '/api/settings';
-		await until(() => fetches.sent.some(settingsRead), 'the settings read');
-		unmount(app);
-		app = null;
-		try {
-			await until(() => fetches.failed.some(settingsRead), 'the settings read cancelled', 2000);
-		} finally {
-			(release as (() => void) | null)?.();
-		}
+		await until(() => rows().length === 4, 'the main story');
+		await fetches.settled('the page');
+		expect(fetches.sent.some((f) => f.path === '/api/settings')).toBe(false);
+		const read = fetches.sent.find((f) => f.path === `/api/watch-order/${KITSU_ID}/franchise`);
+		expect(read?.method).toBe('POST');
+		expect(read?.body.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+		expect(target.textContent).toContain(m.watchorder_franchise_order_note_released());
 	});
 });

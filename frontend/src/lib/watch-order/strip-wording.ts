@@ -9,7 +9,7 @@
  * before"/"Released after" there. A side story's parents are its
  * parents in either order.
  */
-import type { WatchOrder } from './by-start';
+import type { WatchOrder } from '$lib/api';
 
 export type ColumnWord = 'prequel' | 'sequel' | 'parent' | 'released_before' | 'released_after';
 

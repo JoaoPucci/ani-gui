@@ -17,44 +17,41 @@
   the columns read as one thing without becoming a card. Its footer,
   centred, holds the card for the entry being watched elsewhere in the
   run, when there is one, and the way to the franchise page. Every
-  reading comes from the page model (`./page-model`); this component
-  only draws it.
+  reading is the backend's (`$lib/api` `StripWire`); this component
+  only words and draws it.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { imageProxyUrl } from '$lib/api';
+	import { imageProxyUrl, type StripWire, type ViewEntry, type WatchOrder } from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
 	import MetaLine from './MetaLine.svelte';
 	import StripFranchiseLink from './StripFranchiseLink.svelte';
 	import StripWatching from './StripWatching.svelte';
 	import { metaLine, numeral } from './meta';
-	import type { WatchOrderPage } from './page-model';
 	import {
 		captionText,
 		columnCountText,
 		columnKeyText,
+		emptyColumn,
 		emptyColumnText,
 		seamKeyText
 	} from './strip-copy';
-	import { emptyColumn } from './strip-view';
 	import { relationKey } from './strip-wording';
-	import type { WatchEntry } from './types';
 
-	let { model, id, today }: { model: WatchOrderPage; id: string; today: string } = $props();
+	let { model, order, id }: { model: StripWire; order: WatchOrder; id: string } = $props();
 
-	const view = $derived(model.view);
 	const caption = $derived(captionText(model.caption));
 	const headingId = $props.id();
 	const keyOf = (side: 'before' | 'after') => {
-		const list = side === 'before' ? view.before : view.after;
+		const list = side === 'before' ? model.before : model.after;
 		const seam = model.seams[side];
 		if (seam) return seamKeyText(seam);
-		return columnKeyText(relationKey(model.order, view.kind, side, list.length));
+		return columnKeyText(relationKey(order, model.kind, side, list.length));
 	};
 </script>
 
-{#snippet tile(e: WatchEntry, mirror: boolean)}
+{#snippet tile(e: ViewEntry, mirror: boolean)}
 	<a
 		class="tile"
 		class:mirror
@@ -69,17 +66,15 @@
 		</span>
 		<span class="tile-text">
 			<span class="tile-title">{e.title}</span>
-			<span class="tile-meta"
-				><MetaLine segments={metaLine(e, model.progress[e.id], today)} stacked /></span
-			>
+			<span class="tile-meta"><MetaLine segments={metaLine(e)} stacked /></span>
 		</span>
 	</a>
 {/snippet}
 
 {#snippet column(side: 'before' | 'after')}
-	{@const list = side === 'before' ? view.before : view.after}
-	{@const count = columnCountText(view.kind, side, list.length, model.complete)}
-	{@const empty = emptyColumn(view, side, model.complete)}
+	{@const list = side === 'before' ? model.before : model.after}
+	{@const count = columnCountText(model.kind, side, list.length, model.complete)}
+	{@const empty = emptyColumn(model, side)}
 	<p class="col-key key-{side}">{list.length > 0 ? keyOf(side) : ''}</p>
 	<p class="col-count key-{side}">{count ?? ''}</p>
 	<div class="col col-{side}">
@@ -127,12 +122,7 @@
 					</div>
 				{/if}
 				<div class="slot">
-					<StripFranchiseLink
-						run={model.mainRun}
-						front={model.front}
-						{id}
-						complete={model.complete}
-					/>
+					<StripFranchiseLink stack={model.stack} {id} complete={model.complete} />
 				</div>
 			</footer>
 		</div>

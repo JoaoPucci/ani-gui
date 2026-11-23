@@ -6,6 +6,15 @@
 // no history row of its own; otherwise the row keeps its ordinary
 // card. Only a row at such a finale asks for its series. A show outside
 // the main story moves on along its own chain.
+//
+// The backend decides all of it: the rail (`POST /api/watch-order/rail`,
+// answered by its fake, `railHandler`) says which rows ask and which
+// show a hand-off, and each asking series' hand-off (`POST
+// /api/watch-order/:id/handoff`) is the answer the backend recorded for
+// the franchise the walk answers, the rows the resume lookup names and
+// the order setting. These scenarios assert what Home draws from those
+// answers and which reads it sends; the decisions are asserted by name
+// in backend/src/watch_order/scenario_handoff_test.rs.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -16,6 +25,7 @@ import { page } from './page-state.svelte';
 import { appConfig, homeHandlers, kitsuRef } from './home-handlers';
 import { watchPageFetches } from './page-fetches';
 import { availabilityAnswer, errorAnswer } from '../answers';
+import { answerResponse, railHandler, type ScenarioInputs } from './watch-order-answers';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -36,7 +46,6 @@ import {
 	type Config,
 	type Franchise,
 	type FranchiseEntry,
-	type HistoryEntry,
 	type KitsuAnimeRef
 } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
@@ -133,9 +142,15 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
+const SUITE = 'continue-watching-handoff';
+
+/** The walk's answer: a franchise, one held until it lands, or a failure. */
+type Walk = Franchise | 'fail';
+
 interface Scenario {
 	history: ReturnType<typeof row>[];
-	franchise?: () => Response | Promise<Response>;
+	/** The first show's series, as the walk answers it; `lineFrom10` by default. */
+	franchise?: () => Walk | Promise<Walk>;
 	order?: Config['watch_order'];
 	/** The settings read's answer; the Watch order `order` by default. */
 	settings?: () => Response;
@@ -146,16 +161,33 @@ interface Scenario {
 	 * is not the row that recorded it (`history_claim::names`).
 	 */
 	named?: Record<string, ReturnType<typeof row>>;
-	/** The resume lookup fails. */
+	/** The resume lookup fails: the hand-off reads answer as the backend does then. */
 	namedFails?: boolean;
-	/** The resume lookup's answer, in place of the scenario's rows. */
-	namedAnswer?: () => Promise<Response>;
 }
 
-/** Mounts Home over `history`, the first show's series answered by `franchise`. */
+/**
+ * Mounts Home over `history`, the first show's series answered by
+ * `franchise`. Returns the ids whose hand-off Home read, in order.
+ */
 function mountHome(s: Scenario) {
 	const asked: string[] = [];
 	const removed = new Set<string>();
+	// What the resume lookup names for each id, among the rows still in
+	// history: the scenario's named row, else the row that recorded it;
+	// none when the lookup cannot be read.
+	const resumes = (): Record<string, string> | null => {
+		if (s.namedFails) return null;
+		const out: Record<string, string> = {};
+		for (const r of s.history)
+			if (r.kitsu_id && !removed.has(r.id) && !(r.kitsu_id in out)) out[r.kitsu_id] = r.ep_no;
+		for (const [id, r] of Object.entries(s.named ?? {})) if (!removed.has(r.id)) out[id] = r.ep_no;
+		return out;
+	};
+	const walk = (id: string): Walk | Promise<Walk> => {
+		if (id === '30') return lineFrom30;
+		if (id !== '10') return 'fail';
+		return s.franchise ? s.franchise() : lineFrom10;
+	};
 	server.use(
 		...homeHandlers({ history: s.history }, [
 			http.get(`${API_BASE}/api/settings`, () =>
@@ -201,28 +233,22 @@ function mountHome(s: Scenario) {
 				removed.add(String(params.id));
 				return new HttpResponse(null, { status: 204 });
 			}),
-			// The backend's resume lookup: the row each id resumes from,
-			// among the rows still in history.
-			http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
-				if (s.namedFails) return new HttpResponse(null, { status: 503 });
-				if (s.namedAnswer) return s.namedAnswer();
-				const { ids } = (await request.json()) as { ids: string[] };
-				const kept = (r: ReturnType<typeof row> | undefined) =>
-					r && !removed.has(r.id) ? r : null;
-				return HttpResponse.json<Record<string, HistoryEntry | null>>(
-					Object.fromEntries(
-						ids.map((k) => [
-							k,
-							kept(s.named?.[k]) ?? kept(s.history.find((r) => r.kitsu_id === k)) ?? null
-						])
-					)
-				);
-			}),
-			http.get(`${API_BASE}/api/kitsu/franchise/:id`, ({ params }) => {
-				asked.push(String(params.id));
-				if (params.id === '30') return HttpResponse.json<Franchise>(lineFrom30);
-				if (params.id !== '10') return HttpResponse.error();
-				return s.franchise ? s.franchise() : HttpResponse.json<Franchise>(lineFrom10);
+			railHandler(SUITE),
+			// A series' hand-off: the backend walks the franchise and asks
+			// its resume lookup about the entry it would move on to.
+			http.post(`${API_BASE}/api/watch-order/:id/handoff`, async ({ params }) => {
+				const id = String(params.id);
+				asked.push(id);
+				const w = await walk(id);
+				if (w === 'fail') return new HttpResponse(null, { status: 503 });
+				const inputs: ScenarioInputs = {
+					route: 'handoff',
+					id,
+					order: s.order ?? 'linked',
+					franchise: w,
+					resumes: resumes()
+				};
+				return answerResponse(SUITE, inputs);
 			})
 		])
 	);
@@ -310,20 +336,19 @@ describe('Continue Watching after a finale', () => {
 		const main = entry('5', 'Arc of the Moon', '2019-01-01', 13);
 		mountHome({
 			history: [row('13')],
-			franchise: () =>
-				HttpResponse.json<Franchise>({
-					...lineFrom10,
-					entries: [main],
-					links: [],
-					chain: {
-						entries: [main, FIRST_E, SECOND_E],
-						links: [
-							['5', '10'],
-							['10', '20']
-						],
-						seams: ['5']
-					}
-				})
+			franchise: () => ({
+				...lineFrom10,
+				entries: [main],
+				links: [],
+				chain: {
+					entries: [main, FIRST_E, SECOND_E],
+					links: [
+						['5', '10'],
+						['10', '20']
+					],
+					seams: ['5']
+				}
+			})
 		});
 		await until(() => handoffTo('20') !== null, 'the card to move on along the chain');
 		expect(handoffTo('20')!.getAttribute('aria-label')).toBe(
@@ -362,7 +387,7 @@ describe('Continue Watching after a finale', () => {
 	it('keeps the ordinary card, with no error, when the series cannot be read', async () => {
 		const asked = mountHome({
 			history: [row('13'), controlRow()],
-			franchise: () => new HttpResponse(null, { status: 503 })
+			franchise: () => 'fail'
 		});
 		const movedOn = everHeld(() => handoffTo('20') !== null);
 		await settled(asked);
@@ -373,7 +398,7 @@ describe('Continue Watching after a finale', () => {
 	it('keeps the ordinary card where the show leads two ways as linked', async () => {
 		const asked = mountHome({
 			history: [row('13'), controlRow()],
-			franchise: () => HttpResponse.json<Franchise>(forkFrom10)
+			franchise: () => forkFrom10
 		});
 		const movedOn = everHeld(() => handoffTo('20') !== null || handoffTo('25') !== null);
 		await settled(asked);
@@ -384,7 +409,7 @@ describe('Continue Watching after a finale', () => {
 	it('moves on to the next show by release date when the setting says so', async () => {
 		mountHome({
 			history: [row('13')],
-			franchise: () => HttpResponse.json<Franchise>(forkFrom10),
+			franchise: () => forkFrom10,
 			order: 'released'
 		});
 		await until(() => handoffTo('20') !== null, 'the card to move on as released');
@@ -465,7 +490,7 @@ describe('Continue Watching after a finale', () => {
 	it('keeps the ordinary card when the series was read only in part', async () => {
 		const asked = mountHome({
 			history: [row('13'), controlRow()],
-			franchise: () => HttpResponse.json<Franchise>({ ...lineFrom10, complete: false })
+			franchise: () => ({ ...lineFrom10, complete: false })
 		});
 		const movedOn = everHeld(() => handoffTo('20') !== null);
 		await settled(asked);
@@ -495,49 +520,63 @@ describe('Continue Watching after a finale', () => {
 });
 
 describe('Continue Watching hand-off — leaving Home', () => {
-	it('cancels a series read still out, so a slow franchise walk holds no connection', async () => {
+	it('cancels a hand-off read still out, so a slow franchise walk holds no connection', async () => {
 		const fetches = watchPageFetches();
 		let release: (() => void) | null = null;
-		// Kitsu is slow: the first show's series read stays open.
+		// Kitsu is slow: the first show's hand-off read stays open while
+		// the backend walks its series (and then asks its resume lookup,
+		// which is the backend's own read now, inside this one).
 		mountHome({
 			history: [row('13')],
 			franchise: () =>
-				new Promise<Response>((resolve) => {
-					release = () => resolve(new HttpResponse(null, { status: 503 }));
+				new Promise<Walk>((resolve) => {
+					release = () => resolve('fail');
 				})
 		});
-		const seriesRead = (f: { path: string }) => f.path === '/api/kitsu/franchise/10';
-		await until(() => fetches.sent.some(seriesRead), "the first show's series read");
+		const handoffRead = (f: { path: string; method: string }) =>
+			f.method === 'POST' && f.path === '/api/watch-order/10/handoff';
+		await until(() => fetches.sent.some(handoffRead), "the first show's hand-off read");
 		unmount(app!);
 		app = null;
 		try {
-			await until(() => fetches.failed.some(seriesRead), 'the series read cancelled', 2000);
+			await until(() => fetches.failed.some(handoffRead), 'the hand-off read cancelled', 2000);
 		} finally {
 			(release as (() => void) | null)?.();
 		}
 	});
 
-	it('cancels a resume lookup still out', async () => {
+	it('cancels a rail read still out', async () => {
+		// The resume lookup this case used to hold is read by the
+		// backend inside the hand-off read now (the case above); what
+		// Home itself still has out besides is its rail read.
 		const fetches = watchPageFetches();
-		let release: (() => void) | null = null;
-		// The card would move on once the lookup says no row resumes
-		// the next show; the lookup stays open.
-		mountHome({
-			history: [row('13')],
-			namedAnswer: () =>
-				new Promise<Response>((resolve) => {
-					release = () => resolve(new HttpResponse(null, { status: 503 }));
-				})
-		});
-		const lookup = (f: { path: string; method: string }) =>
-			f.method === 'POST' && f.path === '/api/history/by-kitsu';
-		await until(() => fetches.sent.some(lookup), 'the resume lookup');
+		const holding: Array<() => void> = [];
+		mountHome({ history: [row('13')] });
+		server.use(
+			http.post(
+				`${API_BASE}/api/watch-order/rail`,
+				() =>
+					new Promise<Response>((resolve) =>
+						holding.push(() => resolve(new HttpResponse(null, { status: 503 })))
+					)
+			)
+		);
+		const railRead = (f: { path: string; method: string }) =>
+			f.method === 'POST' && f.path === '/api/watch-order/rail';
+		await until(() => fetches.sent.some(railRead), 'the rail read');
+		await fetches.settled('the reads besides the rail', { except: railRead });
 		unmount(app!);
 		app = null;
 		try {
-			await until(() => fetches.failed.some(lookup), 'the resume lookup cancelled', 2000);
+			// Every rail read Home sent has been cancelled: the ones a
+			// later read superseded, and the last, by Home going.
+			await until(
+				() => fetches.failed.filter(railRead).length === fetches.sent.filter(railRead).length,
+				'every rail read cancelled',
+				2000
+			);
 		} finally {
-			(release as (() => void) | null)?.();
+			for (const end of holding) end();
 		}
 	});
 });

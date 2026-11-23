@@ -1,23 +1,29 @@
 /**
  * What a watch-order read through `latestRead` does when a history link
  * answers ($lib/history/link-deps `onHistoryLinked`): a link can move a
- * row onto an entry of the franchise, so the rows are read again. With
- * an answer shown, they are read against its franchise, which stays
- * shown meanwhile (`refresh`, `rereadRows`). With none yet, the walk
- * still out may have read its rows before the link, so the show is
- * read afresh. The player's Up next card and the franchise page read
- * through it.
+ * row onto an entry of the franchise, so the page is read again. With
+ * a view shown, it stays shown until the new read answers, and stays
+ * if that read fails (`refresh`). With none yet, the read still out may
+ * have read the history before the link, so the show is read afresh. A
+ * page that answered with no view (its franchise could not be read)
+ * stays as it is: a link does not make a franchise readable. The
+ * player's Up next card and the franchise page read through it.
  */
 import type { LatestRead } from './latest-read';
-import { loadWatchOrder, rereadRows, type WatchOrderData, type WatchOrderSources } from './loader';
+import type { WatchOrderAnswer } from './loader';
 
-export function followLink(
-	reads: LatestRead<WatchOrderData>,
-	showId: string,
-	shown: WatchOrderData | null,
-	sources: WatchOrderSources
+export function followLink<T>(
+	reads: LatestRead<WatchOrderAnswer<T> | null>,
+	shown: WatchOrderAnswer<T> | null,
+	read: (signal: AbortSignal) => Promise<WatchOrderAnswer<T> | null>
 ): void {
-	if (!showId) return;
-	if (shown) reads.refresh((signal) => rereadRows(shown, sources, signal));
-	else reads.start((signal) => loadWatchOrder(showId, sources, signal));
+	if (shown === null) {
+		reads.start(read);
+		return;
+	}
+	if (shown.view === null) return;
+	reads.refresh(async (signal) => {
+		const fresh = await read(signal);
+		return fresh?.view ? fresh : shown;
+	});
 }

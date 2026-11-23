@@ -1,6 +1,6 @@
 <!--
-  The player's "Up next" card at a finale (./chain-end's playerUpNext
-  decides which). It takes the skip pill's corner, surface and accent
+  The player's "Up next" card at a finale (the backend's answer decides
+  which, `$lib/api` `UpNextWire`). It takes the skip pill's corner, surface and accent
   border, and grows into a card: the next entry's poster beside its
   title and meta, the ways on, the next entry not aired yet, or, at
   the end of a chain that leads nowhere, the whole franchise, fanning
@@ -14,7 +14,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { imageProxyUrl } from '$lib/api';
+	import { imageProxyUrl, type UpNextWire, type ViewEntry } from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
 	import { settle } from '$lib/motion/settle';
@@ -24,8 +24,6 @@
 	import { metaLine } from './meta';
 	import { stackCards } from './stack-fan';
 	import { stackTotal } from './strip-copy';
-	import type { WatchEntry } from './types';
-	import type { PlayerUpNext } from './chain-end';
 	import {
 		cardAccentId,
 		cardAnnouncement,
@@ -37,13 +35,11 @@
 
 	let {
 		card: shown,
-		today,
 		announce,
 		onannounce,
 		ondismiss
 	}: {
-		card: PlayerUpNext;
-		today: string;
+		card: UpNextWire;
 		/** False once this viewing has announced the card. */
 		announce: boolean;
 		onannounce: () => void;
@@ -51,10 +47,9 @@
 	} = $props();
 
 	const entries = $derived(shown.kind === 'entry' ? cardEntries(shown) : []);
-	const progress = $derived(shown.kind === 'entry' ? shown.card.progress : {});
 	const accent = $derived(accentFor(cardAccentId(shown)));
 	const key = $derived(cardKey(shown));
-	const image = (e: WatchEntry) => imageProxyUrl(e.poster);
+	const image = (e: ViewEntry) => imageProxyUrl(e.poster);
 
 	// Filled after mount: a live region that already holds its text
 	// when it appears is not announced by every screen reader.
@@ -93,14 +88,14 @@
 	}
 </script>
 
-{#snippet inner(e: WatchEntry, compact: boolean)}
+{#snippet inner(e: ViewEntry, compact: boolean)}
 	<span class="art" class:compact>
 		{#if image(e)}<img src={image(e)} alt="" />{/if}
 	</span>
 	<span class="text">
 		{#if !compact}<span class="key">{key}</span>{/if}
 		<span class="title">{e.title}</span>
-		<MetaLine segments={metaLine(e, progress[e.id], today)} />
+		<MetaLine segments={metaLine(e)} />
 	</span>
 {/snippet}
 
@@ -149,7 +144,7 @@
 				<span class="franchise-meta">{franchiseCardMeta(franchise.summary)}</span>
 			</span>
 		</a>
-	{:else if shown.card.upNext.kind === 'choices'}
+	{:else if shown.card.kind === 'choices'}
 		<p class="key list-key">{key}</p>
 		<ul class="choices">
 			{#each entries as e (e.id)}
@@ -165,16 +160,16 @@
 				</li>
 			{/each}
 		</ul>
-	{:else if shown.card.upNext.kind === 'unaired'}
-		<div class="row single">{@render inner(shown.card.upNext.entry, false)}</div>
+	{:else if shown.card.kind === 'unaired'}
+		<div class="row single">{@render inner(shown.card.entry, false)}</div>
 	{:else}
 		<a
 			class="row single"
-			href={resolve('/anime/[id]', { id: shown.card.upNext.entry.id })}
-			title={shown.card.upNext.entry.title}
-			aria-label={shown.card.upNext.entry.title}
+			href={resolve('/anime/[id]', { id: shown.card.entry.id })}
+			title={shown.card.entry.title}
+			aria-label={shown.card.entry.title}
 		>
-			{@render inner(shown.card.upNext.entry, false)}
+			{@render inner(shown.card.entry, false)}
 		</a>
 	{/if}
 </div>

@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { m } from '$lib/paraglide/messages';
-import { FIXTURE_RUNS } from './fixtures/runs';
+import type { FranchiseSummary } from '$lib/api';
 import {
 	captionText,
 	columnCountText,
 	columnKeyText,
+	emptyColumn,
 	emptyColumnText,
 	seamKeyText,
 	stackPartsText,
 	stackTotal
 } from './strip-copy';
-import { franchiseSummary, type FranchiseSummary } from './strip-view';
 import type { ColumnWord } from './strip-wording';
 
 describe('the strip copy', () => {
@@ -46,6 +46,19 @@ describe('the strip copy', () => {
 		expect(columnCountText('side', 'before', 2, true)).toBeNull();
 	});
 
+	it('says the run starts or ends, or that nothing follows a side story', () => {
+		expect(emptyColumn({ kind: 'run', complete: true }, 'before')).toBe('first');
+		expect(emptyColumn({ kind: 'run', complete: true }, 'after')).toBe('last');
+		expect(emptyColumn({ kind: 'side', complete: true }, 'before')).toBe('first');
+		expect(emptyColumn({ kind: 'side', complete: true }, 'after')).toBe('side_end');
+	});
+
+	it('says nothing in an empty column of a franchise read in part: entries may be missing there', () => {
+		for (const kind of ['run', 'side'] as const)
+			for (const side of ['before', 'after'] as const)
+				expect(emptyColumn({ kind, complete: false }, side)).toBeNull();
+	});
+
 	it('says why a column is empty', () => {
 		expect(emptyColumnText('first')).toBe('The story starts here');
 		expect(emptyColumnText('last')).toBe('Nothing after this yet');
@@ -68,9 +81,11 @@ describe('the strip copy', () => {
 });
 
 describe('stackPartsText', () => {
+	// JoJo's counts as the backend's summary gives them.
+	const jojo: FranchiseSummary = { total: 15, main: 9, films: 4, sides: 1, recaps: 1, posters: [] };
+
 	it("lists JoJo's parts: the main story, films and versions, side stories, recaps", () => {
-		const jojo = FIXTURE_RUNS.find((r) => r.key === 'jojo')!;
-		expect(stackPartsText(franchiseSummary(jojo, jojo.nameId), true)).toEqual([
+		expect(stackPartsText(jojo, true)).toEqual([
 			'9 in the main story',
 			'4 films and versions',
 			'1 side story',
@@ -79,10 +94,9 @@ describe('stackPartsText', () => {
 	});
 
 	it('gives no counts for a franchise read in part: they may be short', () => {
-		const jojo = FIXTURE_RUNS.find((r) => r.key === 'jojo')!;
-		expect(stackPartsText(franchiseSummary(jojo, jojo.nameId), false)).toEqual([]);
-		expect(stackTotal(franchiseSummary(jojo, jojo.nameId), false)).toBeNull();
-		expect(stackTotal(franchiseSummary(jojo, jojo.nameId), true)).toBe(15);
+		expect(stackPartsText(jojo, false)).toEqual([]);
+		expect(stackTotal(jojo, false)).toBeNull();
+		expect(stackTotal(jojo, true)).toBe(15);
 	});
 
 	it('leaves out a part the franchise has none of, never the main story', () => {
