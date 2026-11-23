@@ -77,6 +77,7 @@ use crate::commands::card_line::{CardLine, CardRow};
 use crate::commands::continue_guess::RuledOutRequest;
 use crate::commands::download::{DownloadArgs, DownloadProgress, DownloadResponse};
 use crate::commands::external_player::ExternalPlayerKind;
+use crate::commands::external_player::StandardProgram;
 use crate::commands::history_link::{LinkArgs, LinkGroupArgs, LinkOutcome, LinkedRow};
 use crate::commands::history_number::HistoryNumber;
 use crate::commands::link_candidates::CandidatesArgs;
@@ -224,6 +225,10 @@ fn responses() -> Value {
     put("SkipInterval", response(&skip(), &skip()));
     put("AiringStatus", response(&airing(true), &airing(false)));
     put("UpcomingEpisode", response(&upcoming(), &upcoming()));
+    put(
+        "StandardProgram",
+        response(&standard_program(true), &standard_program(false)),
+    );
     // No field of the config can be left out, so its one sample is both.
     // Not `Config::default()`: its Syncplay path differs per platform.
     put("Config", response(&config(), &config()));
@@ -469,6 +474,14 @@ fn airing(full: bool) -> AiringStatus {
         next_episode: some(full, 7),
         next_airing_at: some(full, 1_700_000_000),
         upcoming: if full { vec![upcoming()] } else { Vec::new() },
+    }
+}
+
+fn standard_program(full: bool) -> StandardProgram {
+    StandardProgram {
+        name: some(full, "vlc"),
+        path: some(full, "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe".to_owned()),
+        supported: full,
     }
 }
 
