@@ -98,6 +98,13 @@ case "${STUB_APP:?}" in
     no-backend)
         : >"$w"
         ;;
+    splash-only)
+        # The backend is up and the splash shows, but the main window
+        # never renders its first page: the splash stays, offering
+        # Restart and Quit, and nothing logs a startup failure.
+        echo '[backend] INFO ani_gui_backend: ani-gui-backend ready lanes=[]'
+        : >"$w"
+        ;;
     startup-failed)
         : >"$w"
         echo '[main] startup failed: Error: backend exited before handshake (code=1, signal=null)'
@@ -138,6 +145,12 @@ EOF
     STUB_APP=no-backend run sh "$CHECK" "$APPIMAGE" "$OUT"
     [ "$status" -eq 1 ]
     [[ "$output" == *"FAIL: the backend never reported ready"* ]]
+}
+
+@test "a splash that never gives way to the first page fails" {
+    STUB_APP=splash-only run sh "$CHECK" "$APPIMAGE" "$OUT"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"FAIL: the app's first page never rendered"* ]]
 }
 
 @test "the failed-startup dialog is a window, and fails on the logged failure" {
