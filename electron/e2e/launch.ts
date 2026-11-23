@@ -38,6 +38,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { launchRefusal } from '../lib/e2e-display.cjs';
+import { appEnv, TEST_RUN_ENV } from '../lib/e2e-launch-env.cjs';
 import { stopOwnGroup } from '../lib/own-group.cjs';
 import { guardOutput, guardPolicy, recordAppOutput } from './policy-guard';
 import { answer } from './stubs';
@@ -70,7 +71,7 @@ export const testLaunchSwitches = ['--no-sandbox', '--mute-audio'] as const;
  *  or the defaults — and never asks GitHub for the live file, so a
  *  flipped flag or a slow CDN cannot change a test's result
  *  (backend/src/flags/launch.rs). */
-export const testRunEnv = { ANI_GUI_UNATTENDED: '1' } as const;
+export const testRunEnv: Readonly<Record<string, string>> = TEST_RUN_ENV;
 
 /** A proxy that lets nothing through. It answers every request with
  *  403 and closes, and records the request line: `CONNECT host:port`
@@ -95,34 +96,6 @@ async function refusingProxy(): Promise<{ origin: string; seen: string[]; close:
 	server.unref();
 	const { port } = server.address() as net.AddressInfo;
 	return { origin: `http://127.0.0.1:${port}`, seen, close: () => server.close() };
-}
-
-/** The proxy settings every test launch carries, pointing at `origin`:
- *  the backend's HTTP clients (reqwest) and the provider transport
- *  (curl) both read them, in either case. Loopback is exempt, so the
- *  backend still reaches a spec's own local servers — a media fixture,
- *  an upstream that never answers — and the renderer its backend. */
-function proxyEnv(origin: string): Record<string, string> {
-	const env: Record<string, string> = {};
-	for (const name of ['http_proxy', 'https_proxy', 'all_proxy']) {
-		env[name] = origin;
-		env[name.toUpperCase()] = origin;
-	}
-	const loopback = '127.0.0.1,localhost,::1';
-	env.no_proxy = loopback;
-	env.NO_PROXY = loopback;
-	return env;
-}
-
-/** `env` without a test run's flags file. */
-function withoutFlagsFile(env: Record<string, string> | undefined): Record<string, string> {
-	const { ANI_GUI_TEST_FLAGS_FILE: _dropped, ...rest } = env ?? {};
-	return rest;
-}
-
-/** The variable that names `file` as the test run's flags file. */
-function flagsEnv(file: string | undefined): Record<string, string> {
-	return file === undefined ? {} : { ANI_GUI_TEST_FLAGS_FILE: file };
 }
 
 /** Removes the scratch directory `dir`, that path alone. A failure is
@@ -211,12 +184,7 @@ export async function launchPackagedApp(
 		app = await _electron.launch({
 			executablePath: binary,
 			args: [...testLaunchSwitches, ...switches],
-			env: {
-				...withoutFlagsFile(env),
-				...flagsEnv(flagsFile),
-				...proxyEnv(proxy.origin),
-				...testRunEnv
-			}
+			env: appEnv(env, { proxyOrigin: proxy.origin, flagsFile })
 		});
 	} catch (err) {
 		proxy.close();
@@ -242,8 +210,9 @@ export async function launchPackagedApp(
  *  stdout and stderr lead to (terminal-closed.spec.ts): the driver
  *  keeps both as pipes it reads itself. Otherwise the same launch as
  *  launchPackagedApp — the display refusal, testLaunchSwitches, the
- *  refusing proxy and a test run's environment — and the same policy
- *  guard, over the child's stdout and stderr where they are pipes (the
+ *  refusing proxy and a test run's environment (lib/e2e-launch-env.cjs,
+ *  which drops a flags file the shell left set; this launch names
+ *  none) — and the same policy guard, over the child's stdout and stderr where they are pipes (the
  *  driver's page listeners need Playwright attached, which it is not).
  *
  *  `via` is a program to start the app under, which gets the app's
@@ -274,7 +243,7 @@ export async function spawnPackagedApp(
 	let child: ChildProcess;
 	try {
 		child = spawn(command[0], command.slice(1), {
-			env: { ...env, ...proxyEnv(proxy.origin), ...testRunEnv },
+			env: appEnv(env, { proxyOrigin: proxy.origin }),
 			stdio,
 			detached: true
 		});
