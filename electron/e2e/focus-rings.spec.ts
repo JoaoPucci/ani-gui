@@ -72,15 +72,18 @@
  *
  * A forced-colours theme (a Windows contrast theme) drops every box
  * shadow, so there a ring must be an outline. With the theme emulated,
- * a last test walks Home, a show's page, Settings and Search at the
- * desktop size, and the state tests walk their screens again: every
+ * a last test walks Home, a show's page (also with an episode typed),
+ * Settings and Search at the desktop size, and the state tests walk their screens again: every
  * stop must show an outline the eye can see (its own or its chip's on
- * a visible control, or one its focus draws on an element beside or
- * inside it), whole, and the window buttons only on their chip. The
+ * a visible control, or one its focus draws on an element inside,
+ * beside or hugging it), whole (but for an outline drawn inside it),
+ * and the window buttons only on their chip. The
  * smallest and the maximized windows are not walked in that theme.
  *
- * What it does not reach: the Account, About and Debug pages, and the
- * menus, dialogs and popovers other than the link dialog.
+ * What it does not reach: the Account, About and Debug pages, Home's
+ * empty and error states, and the menus, dialogs and popovers other
+ * than the link dialog and the download list. A ring on an element
+ * beside the control that is much larger than it is not seen.
  * Of what clips, it models an ancestor's overflow and the window, not an
  * ancestor's rounded corners, clip-path or mask. Where the window cannot
  * be maximized (CI's Xvfb has no window manager), the maximized pass is
@@ -97,8 +100,14 @@
  * A ring on an element inside a control is found only through a rule
  * that sets its outline or shadow under `:focus-visible`: one drawn
  * through `:focus-within`, or by a rule that changes only an outline's
- * colour, width or offset, is not seen. Rings under the mouse are not
- * either: the walk keeps the pointer in the window's corner.
+ * colour, width or offset, is not seen.
+ *
+ * Under the mouse: at the desktop size, the forward walks of the four
+ * pages (and of the show's page with an episode typed) rest the mouse
+ * on every stop that shows, and a hover style must neither replace its
+ * ring nor add a second; the read must find the control under the
+ * mouse. Whether a lifted, hovered control's ring stays whole is not
+ * checked, and the state tests do not rest the mouse.
  */
 import { type CDPSession, type ElectronApplication, type Page } from '@playwright/test';
 import { expect, test } from './policy-guard';
@@ -315,8 +324,8 @@ interface Stop {
 	 *  slider's frame. */
 	relatedRinged: boolean;
 	/** Those rings beside or around it, each with what clips that element
-	 *  and how far its colour is from what it is drawn on (an outline
-	 *  counts as fully seen: a forced-colours theme picks its colour). */
+	 *  and how far its colour (its outline's, or its outermost hard
+	 *  shadow's) is from what it is drawn on, 0 to 765 over RGB. */
 	relatedRings: { name: string; ring: Box; clips: Clip[]; contrast: number }[];
 	/** Rings its focus draws on a larger element around it, which do not
 	 *  count as its ring but do count as a second one. */
@@ -324,6 +333,8 @@ interface Stop {
 	/** Where its own outline and its chip's outline lie, if it draws
 	 *  them: what a forced-colours theme shows of its ring. */
 	outlines: Box[];
+	/** Whether the mouse is over it (`:hover`). */
+	hovering: boolean;
 	/** The selectors asked about that the control matches. */
 	hits: string[];
 }
@@ -522,9 +533,6 @@ function readStop(page: Page, selectors: readonly string[] = []): Promise<Stop |
 				r.height > 1
 			);
 		};
-		// An outline its focus draws on an element next to it or inside
-		// it: any element under its parent a `:focus-visible` rule
-		// matches.
 		// Rings its focus draws beside it or around it: on an element
 		// under its parent, or on an ancestor, that a `:focus-visible` or
 		// `:focus-within` rule matches. Only an element hugging the
@@ -559,7 +567,11 @@ function readStop(page: Page, selectors: readonly string[] = []): Promise<Stop |
 			if (lined(ds)) relatedOutlined = true;
 			const by = reach(ds);
 			const on = ground(d.parentElement ?? d);
-			const edge = spread.length > 0 ? rgba(spread[spread.length - 1].colour) : null;
+			const edge = lined(ds)
+				? rgba(ds.outlineColor)
+				: spread.length > 0
+					? rgba(spread[spread.length - 1].colour)
+					: null;
 			relatedRings.push({
 				name: `${d.tagName.toLowerCase()}.${[...d.classList].join('.')}`,
 				ring:
@@ -567,14 +579,9 @@ function readStop(page: Page, selectors: readonly string[] = []): Promise<Stop |
 						? { left: dr.left, right: dr.right, top: dr.top, bottom: dr.bottom }
 						: grow(dr, by),
 				clips: clipsFor(d),
-				contrast:
-					lined(ds) || !edge
-						? 765
-						: on.reduce(
-								(sum, v, i) =>
-									sum + Math.abs(edge[i] * (edge[3] / 255) + v * (1 - edge[3] / 255) - v),
-								0
-							)
+				contrast: edge
+					? on.reduce((sum, v, i) => sum + Math.abs(edge[i] - v) * (edge[3] / 255), 0)
+					: 0
 			});
 		}
 		const relatedRinged = relatedRings.length > 0;
@@ -666,6 +673,7 @@ function readStop(page: Page, selectors: readonly string[] = []): Promise<Stop |
 						]
 					: [])
 			],
+			hovering: el.matches(':hover'),
 			hits: selectors.filter((s) => el.matches(s))
 		};
 	}, selectors);
@@ -703,7 +711,7 @@ function settled(page: Page): Promise<void> {
  *  focus is, since a click outside would close it. */
 async function walk(
 	page: Page,
-	key: 'Tab' | 'Shift+Tab',
+	key: 'Tab' | 'Shift+Tab' | 'ArrowDown' | 'ArrowUp',
 	{
 		selectors = [],
 		fresh = true,
@@ -784,12 +792,13 @@ function assertStops(
 	stops: Stop[],
 	at: string,
 	required: readonly Kind[],
-	need: readonly string[] = []
+	need: readonly string[] = [],
+	least = 4
 ) {
 	expect(
 		stops.length,
 		`${at}: the keyboard reached controls (${stops.map((s) => s.name).join(' | ')})`
-	).toBeGreaterThan(3);
+	).toBeGreaterThanOrEqual(least);
 	const kinds = new Set(stops.map((s) => s.kind));
 	for (const k of required) {
 		expect.soft(kinds.has(k), `${at}: the walk reached a ${k} control`).toBe(true);
@@ -881,6 +890,7 @@ const views = [
 function assertHovered(stops: Stop[], at: string) {
 	for (const s of stops) {
 		const where = `${at}: ${s.name} ${JSON.stringify(s)}`;
+		expect.soft(s.hovering, `${where}: is under the mouse`).toBe(true);
 		expect.soft(ringed(s), `${where}: shows a ring`).toBe(true);
 		expect.soft(s.twice, `${where}: draws an outline and a ring shadow`).toBe(false);
 	}
@@ -892,9 +902,10 @@ function assertForced(
 	stops: Stop[],
 	at: string,
 	required: readonly Kind[],
-	need: readonly string[] = []
+	need: readonly string[] = [],
+	least = 4
 ) {
-	expect(stops.length, `${at}: the keyboard reached controls`).toBeGreaterThan(3);
+	expect(stops.length, `${at}: the keyboard reached controls`).toBeGreaterThanOrEqual(least);
 	const kinds = new Set(stops.map((s) => s.kind));
 	for (const k of required) {
 		expect.soft(kinds.has(k), `${at}: the walk reached a ${k} control`).toBe(true);
@@ -1300,8 +1311,9 @@ test('the rings on Continue Watching, its link dialog, a toast, the update badge
 		await forcedColours(page, false);
 
 		// The download list, opened from the topbar: its rows clip what
-		// overflows them.
-		// Leaving the list closes it, so each walk opens it again.
+		// overflows them. It is a menu: the arrow keys move through its
+		// actions and wrap, and Tab leaves it (and closes it), so each
+		// walk opens it again.
 		const openList = async () => {
 			await page.locator('.dl-dock-trigger').focus();
 			if (!(await page.locator('.dl-dock-pop').isVisible())) await page.keyboard.press('Enter');
@@ -1310,12 +1322,13 @@ test('the rings on Continue Watching, its link dialog, a toast, the update badge
 		};
 		for (const forced of [false, true]) {
 			await forcedColours(page, forced);
-			for (const key of ['Tab', 'Shift+Tab'] as const) {
+			for (const key of ['ArrowDown', 'ArrowUp'] as const) {
 				await openList();
 				const at = `the download list${forced ? ', forced colours' : ''}, ${key}`;
 				const stops = await walk(page, key, { selectors: ['.dl-row-act'], fresh: false });
-				if (forced) assertForced(stops, at, [], ['.dl-row-act']);
-				else assertStops(stops, at, [], ['.dl-row-act']);
+				// One download in flight: its one action is the whole list.
+				if (forced) assertForced(stops, at, [], ['.dl-row-act'], 1);
+				else assertStops(stops, at, [], ['.dl-row-act'], 1);
 			}
 		}
 	} finally {
