@@ -58,6 +58,10 @@ fn fate_zero_second_season_forks_and_entries_after_the_fork_are_unnumbered() {
     let fate = run("fate");
     assert_eq!(next_ids(&fate, "7658"), ["323", "9718"]);
     assert_eq!(placement(&fate, "7658", Linked).position, Some(2));
+    assert_eq!(
+        ids(&placement(&fate, "7658", Linked).after),
+        ["323", "9718"]
+    );
     assert_eq!(placement(&fate, "7882", Linked).position, None);
 }
 

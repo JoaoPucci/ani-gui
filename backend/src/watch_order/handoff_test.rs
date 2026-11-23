@@ -427,3 +427,57 @@ proptest! {
         }
     }
 }
+
+/// A rail of one row at Bleach's finale, its series' hand-off read, and
+/// every history row but `unmatched` matched.
+fn rail_request(unmatched: Option<&str>) -> super::wire::RailRequest {
+    let history = ["r", "other"]
+        .iter()
+        .map(|id| PlayedRow {
+            id: (*id).into(),
+            kitsu_id: None,
+        })
+        .collect();
+    let matches = [("r", Some("43078")), ("other", None)]
+        .iter()
+        .filter(|(id, _)| Some(*id) != unmatched)
+        .map(|(id, m)| ((*id).to_string(), m.map(Into::into)))
+        .collect();
+    super::wire::RailRequest {
+        rows: vec![AskRow {
+            row_id: "r".into(),
+            matched: Some(finished(Some(13))),
+            ep_no: "13".into(),
+            playable_count: None,
+            left_part_way: false,
+        }],
+        history,
+        matches,
+        series: [("43078".to_string(), Some(to("20", "43078")))]
+            .into_iter()
+            .collect(),
+    }
+}
+
+#[test]
+fn the_rail_waits_for_the_played_set_while_a_row_is_still_being_matched() {
+    let waiting = super::wire::rail_view(&rail_request(Some("other")));
+    assert_eq!(waiting.asks.get("r"), Some(&Some("43078".to_string())));
+    assert!(waiting.handoffs.is_empty());
+    let known = super::wire::rail_view(&rail_request(None));
+    assert_eq!(known.handoffs.get("r"), Some(&to("20", "43078")));
+}
+
+proptest! {
+    #[test]
+    fn unclaimed_moves_on_only_with_a_hand_off_the_lookup_says_no_row_resumes(
+        has in any::<bool>(),
+        named in prop::option::of(any::<bool>()),
+    ) {
+        let h = to("20", "10");
+        prop_assert_eq!(
+            unclaimed_handoff(has.then(|| h.clone()), named),
+            (has && named == Some(false)).then_some(h)
+        );
+    }
+}

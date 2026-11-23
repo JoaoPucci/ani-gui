@@ -273,6 +273,7 @@ fn the_parity_record_is_what_these_modules_decide() {
     let (Some(a), Some(b)) = (recorded["cases"].as_array(), now["cases"].as_array()) else {
         panic!("cases");
     };
+    assert!(a.len() > 400, "the record holds the renderer's whole grid");
     assert_eq!(a.len(), b.len(), "the record holds every case");
     for (was, is) in a.iter().zip(b) {
         assert_eq!(was, is, "{}", is["input"]["name"]);

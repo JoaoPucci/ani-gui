@@ -231,6 +231,34 @@ async fn the_routes_read_the_order_setting() {
 }
 
 #[tokio::test]
+async fn settings_that_cannot_be_read_read_as_the_linked_order() {
+    // Garbled, and a directory where the file should be: the renderer
+    // no longer waits for its own settings read, so the backend's
+    // fallback is the order every page draws in.
+    for garble in [true, false] {
+        let td = tempfile::tempdir().expect("td");
+        let state = jojo(&td);
+        if garble {
+            std::fs::write(&state.config_path, "watch_order = [ not toml").expect("config");
+        } else {
+            std::fs::create_dir_all(&state.config_path).expect("a directory");
+        }
+        let router = router(state);
+        for page in ["show", "franchise"] {
+            let (status, got) = call(
+                &router,
+                "POST",
+                &format!("/api/watch-order/7158/{page}"),
+                json!({ "today": TODAY }),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{page}");
+            assert_eq!(got["order"], "linked", "{page}");
+        }
+    }
+}
+
+#[tokio::test]
 async fn history_that_cannot_be_read_draws_the_strip_without_progress() {
     let td = tempfile::tempdir().expect("td");
     let state = jojo(&td);

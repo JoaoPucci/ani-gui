@@ -161,6 +161,8 @@ fn strip_view_is_a_members_placement_in_its_run() {
     for order in [Linked, Released] {
         let v = strip_view(&run("fate"), "7658", order);
         let p = placement(&run("fate"), "7658", order);
+        assert_eq!(v.kind, StripKind::Run);
+        assert_eq!(v.in_cycle, p.in_cycle);
         assert_eq!(
             (v.position, v.total, v.before, v.after),
             (p.position, p.total, p.before, p.after)
