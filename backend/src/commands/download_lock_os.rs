@@ -27,6 +27,12 @@ mod imp {
     /// The directory went between creating it and opening the file in
     /// it: another instance removed it as it emptied.
     pub(crate) fn lost_to_removal(e: &std::io::Error) -> bool {
+        lost_to_removal_on(e, cfg!(target_os = "macos"))
+    }
+
+    /// [`lost_to_removal`], for macOS or not as `macos` says — so both
+    /// answers can be checked wherever the tests run.
+    pub(crate) fn lost_to_removal_on(e: &std::io::Error, _macos: bool) -> bool {
         e.kind() == std::io::ErrorKind::NotFound
     }
 

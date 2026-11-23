@@ -106,3 +106,39 @@ fn a_refused_try_logs_its_cause() {
         assert!(log.contains(part), "the log must carry {part}: {log}");
     }
 }
+
+/// On macOS an open in a lock directory a release is removing can fail
+/// with "invalid argument" rather than "not found": seen on macOS CI,
+/// where a contender's open of `.ani-gui-locks/Busy Show Episode 1.mp4`
+/// failed with code 22 while three others took and released the lock,
+/// and the waiter was refused. It is a loss to that removal, retried
+/// under the cap on losses in a row like any other. Elsewhere the code
+/// means what it says — Linux answers an open in a removed directory
+/// with "not found" — and stays a refusal.
+#[cfg(unix)]
+#[test]
+fn an_invalid_argument_is_a_loss_on_macos_only() {
+    let _deadline = Deadline::arm();
+    let invalid = std::io::Error::from_raw_os_error(22);
+    assert_eq!(invalid.kind(), std::io::ErrorKind::InvalidInput, "EINVAL");
+    assert!(
+        os::lost_to_removal_on(&invalid, true),
+        "macOS: an open meeting a removal in flight"
+    );
+    assert!(
+        !os::lost_to_removal_on(&invalid, false),
+        "elsewhere: a refusal"
+    );
+}
+
+#[cfg(unix)]
+proptest::proptest! {
+    /// Which codes are a loss: "not found" everywhere, and on macOS
+    /// "invalid argument" too — nothing else on either.
+    #[test]
+    fn only_not_found_and_macos_invalid_argument_are_losses(code in 0i32..64, macos: bool) {
+        let e = std::io::Error::from_raw_os_error(code);
+        let expected = e.kind() == std::io::ErrorKind::NotFound || (macos && code == 22);
+        proptest::prop_assert_eq!(os::lost_to_removal_on(&e, macos), expected);
+    }
+}
