@@ -4,6 +4,7 @@ import { getLocale } from '$lib/paraglide/runtime';
 import type { RefillEnded } from './refill/refill-waiter';
 import {
 	__resetApiBaseForTests,
+	windowLaneIsOwn,
 	allmangaKitsuMapDelete,
 	allmangaKitsuMapGet,
 	allmangaKitsuMapPlayed,
@@ -1010,6 +1011,18 @@ describe('apiBase configuration', () => {
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await appInfo();
 		expect(lastCall(fetchMock).url).toBe('http://127.0.0.1:9999/api/app-info');
+	});
+	it('tells whether a lane has an origin of its own, off the preload bridge', () => {
+		type LaneWin = { window?: { aniGui?: { apiBase?: string; lanes?: Record<string, string> } } };
+		const w = globalThis as unknown as LaneWin;
+		// Browser-only dev: no bridge, so every lane shares the API's origin.
+		expect(windowLaneIsOwn('franchise')).toBe(false);
+		w.window = { aniGui: { apiBase: 'http://127.0.0.1:9999' } };
+		expect(windowLaneIsOwn('franchise')).toBe(false);
+		w.window = {
+			aniGui: { apiBase: 'http://127.0.0.1:9999', lanes: { franchise: 'http://127.0.0.1:9998' } }
+		};
+		expect(windowLaneIsOwn('franchise')).toBe(true);
 	});
 });
 
