@@ -2,9 +2,9 @@
  * What the packaged app starts on Linux starts with the user's desktop
  * environment, and the app itself keeps the one Electron gave it.
  *
- * Electron rewrites its own environment as it starts: on a session whose
- * desktop names Ubuntu, XDG_CURRENT_DESKTOP becomes `Unity`, with the session's value
- * kept in ORIGINAL_XDG_CURRENT_DESKTOP, CHROME_DESKTOP names the app's
+ * Electron rewrites its own environment as it starts: on Ubuntu's
+ * sessions, among others, XDG_CURRENT_DESKTOP becomes `Unity`, with the
+ * session's value kept in ORIGINAL_XDG_CURRENT_DESKTOP, CHROME_DESKTOP names the app's
  * desktop file, and Chromium's GTK start-up adds GDK_BACKEND (and, under
  * X11, NO_AT_BRIDGE). A browser started from a link with all of that
  * believes it runs on Unity and puts its window buttons on the left.
