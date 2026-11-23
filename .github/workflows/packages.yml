@@ -160,6 +160,29 @@ jobs:
         working-directory: electron
         run: pnpm run package:win
 
+      - name: The installer's backend trusts no test-run key
+        # The search e2e.yml's release-shaped jobs make (see there for
+        # why the key and the probe flag must not be in a release),
+        # here on the release backend package:win built, the file the
+        # installer stages (build.win.extraResources).
+        # tests/arch/test_run_key.sh holds that this step exists.
+        working-directory: electron
+        shell: bash
+        run: |
+          set -euo pipefail
+          backend=../backend/target/release/ani-gui-backend.exe
+          test -f "$backend"
+          key=$(head -n 1 ../backend/tests/fixtures/flags-signature/test-run-key.pub | tr -d '\r')
+          test -n "$key"
+          if grep -qaF -- "$key" "$backend"; then
+            echo "the installer's backend carries the test-run key" >&2
+            exit 1
+          fi
+          if grep -qaF -- test_run_probe "$backend"; then
+            echo "the installer's backend declares the test-run probe" >&2
+            exit 1
+          fi
+
       - name: Record what was built
         id: built
         shell: bash
@@ -251,6 +274,27 @@ jobs:
         # No GitHub token in the environment, as on Windows.
         working-directory: electron
         run: pnpm run package:release
+
+      - name: The packaged backend trusts no test-run key
+        # The search e2e.yml's release-shaped job makes (see there for
+        # why the key and the probe flag must not be in a release),
+        # here on the backend the AppImage and the .deb carry.
+        # tests/arch/test_run_key.sh holds that this step exists.
+        working-directory: electron
+        run: |
+          set -euo pipefail
+          backend=dist/linux-unpacked/resources/ani-gui-backend
+          test -f "$backend"
+          key=$(head -n 1 ../backend/tests/fixtures/flags-signature/test-run-key.pub)
+          test -n "$key"
+          if grep -qaF -- "$key" "$backend"; then
+            echo "the packaged backend carries the test-run key" >&2
+            exit 1
+          fi
+          if grep -qaF -- test_run_probe "$backend"; then
+            echo "the packaged backend declares the test-run probe" >&2
+            exit 1
+          fi
 
       - name: The packaged backend needs no system C library
         # The same assertion e2e.yml makes of its build.
