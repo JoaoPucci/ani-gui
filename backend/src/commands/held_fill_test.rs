@@ -318,8 +318,9 @@ async fn a_ticket_never_issued_has_ended_unlanded() {
     );
 }
 
-/// The AniList id each request to `server` asked for, in order.
-async fn asked_ids(server: &MockServer) -> Vec<u64> {
+/// The AniList ids each request to `server` asked for, in order: one
+/// for a single lookup, the page's for a batched one.
+async fn asked_ids(server: &MockServer) -> Vec<Vec<u64>> {
     server
         .received_requests()
         .await
@@ -327,9 +328,31 @@ async fn asked_ids(server: &MockServer) -> Vec<u64> {
         .iter()
         .filter_map(|r| {
             let body: serde_json::Value = serde_json::from_slice(&r.body).ok()?;
-            body["variables"]["id"].as_u64()
+            let vars = &body["variables"];
+            match vars["ids"].as_array() {
+                Some(ids) => Some(ids.iter().filter_map(serde_json::Value::as_u64).collect()),
+                None => vars["id"].as_u64().map(|id| vec![id]),
+            }
         })
         .collect()
+}
+
+/// AniList's page answering a batched lookup of `ids`, each listed as
+/// [`LISTING`] lists its one episode.
+fn listing_page(ids: &[u32]) -> String {
+    let media: Vec<serde_json::Value> = ids
+        .iter()
+        .map(|id| {
+            serde_json::json!({
+                "id": id,
+                "episodes": null,
+                "status": "RELEASING",
+                "streamingEpisodes": [{"title": "Episode 1 - One", "thumbnail": "https://x.cdn/1.jpg"}],
+            })
+        })
+        .collect();
+    serde_json::json!({ "data": { "Page": { "pageInfo": { "hasNextPage": false }, "media": media } } })
+        .to_string()
 }
 
 #[tokio::test]
@@ -338,9 +361,18 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
     // this client for two seconds; both are held back. The user leaves
     // and opens another page, which asks for 42, 43 and 44 inside the
     // pause. Every fresh fill of the page on screen goes before either
-    // leftover retry, and the leftovers still land in the cache.
+    // leftover retry, and the leftovers still land in the cache. The
+    // three fresh fills miss together, so they share one request.
     let kitsu = kitsu(&[("40", 40), ("41", 41), ("42", 42), ("43", 43), ("44", 44)]).await;
     let anilist = anilist(Some(1), 2, LISTING).await;
+    Mock::given(method("POST"))
+        .and(wiremock::matchers::body_partial_json(
+            serde_json::json!({ "variables": { "ids": [42, 43, 44] } }),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_string(listing_page(&[42, 43, 44])))
+        .with_priority(2)
+        .mount(&anilist)
+        .await;
     let _gate = share_for_tests(&anilist.uri(), ANILIST);
     let state = state(&kitsu.uri());
 
@@ -373,23 +405,29 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+    for s in ["42", "43", "44"] {
+        assert!(
+            row(&state, &format!("anilist:eps-thumbs:v2:k{s}")).is_some(),
+            "fresh fill {s} was not kept"
+        );
+    }
     let ids = asked_ids(&anilist).await;
     let last_fresh = ids
         .iter()
-        .rposition(|id| (42..=44).contains(id))
+        .rposition(|asked| asked.iter().any(|id| (42..=44).contains(id)))
         .expect("fresh");
     let first_retry = ids
         .iter()
         .enumerate()
         .skip(1)
-        .find(|&(_, id)| (40..=41).contains(id))
+        .find(|&(_, asked)| asked.iter().any(|id| (40..=41).contains(id)))
         .map(|(i, _)| i)
         .expect("a retry");
     assert!(last_fresh < first_retry, "fresh fills go first: {ids:?}");
     assert_eq!(
-        ids.len(),
-        6,
-        "the refusal, three fresh fills, two retries: {ids:?}"
+        ids,
+        vec![vec![40], vec![42, 43, 44], vec![40], vec![41]],
+        "the refusal, the three fresh fills in one request, two retries"
     );
 }
 

@@ -33,6 +33,20 @@ fn fake() -> BoxedStrategy<FakeAniList> {
         .boxed()
 }
 
+/// [`fake`] with no MAL id recorded by two media: the first media to
+/// record one keeps it.
+fn unshared_fake() -> BoxedStrategy<FakeAniList> {
+    fake()
+        .prop_map(|mut fake| {
+            let mut seen = std::collections::HashSet::new();
+            for m in &mut fake.media {
+                m.mal = m.mal.filter(|x| seen.insert(*x));
+            }
+            fake
+        })
+        .boxed()
+}
+
 /// Shows as Kitsu maps them: ids drawn past the stand-in's range too, so
 /// that some name media AniList does not have.
 fn wants() -> BoxedStrategy<Vec<Want>> {
@@ -146,12 +160,9 @@ proptest! {
 
     #[test]
     fn shows_no_two_media_share_cost_one_request_per_space_and_page(
-        fake in fake(),
+        fake in unshared_fake(),
         wants in wants(),
     ) {
-        let mut seen = std::collections::HashSet::new();
-        let unshared = fake.media.iter().all(|m| m.mal.is_none_or(|x| seen.insert(x)));
-        prop_assume!(unshared);
         let (_, asked) = run(&fake, &wants, None);
         let pages = |n: usize| n.div_ceil(PAGE_CAP);
         let mals: std::collections::BTreeSet<u32> = wants.iter().filter_map(|w| w.mal).collect();
