@@ -213,3 +213,7 @@ mod scenario_handoff_tests;
 #[cfg(test)]
 #[path = "scenario_arrival_test.rs"]
 mod scenario_arrival_tests;
+
+#[cfg(test)]
+#[path = "text_test.rs"]
+mod text_tests;
