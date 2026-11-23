@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { clock, episodeNumeral, veilMode, type VeilInput } from './start-veil';
+import { clock, episodeInPages, episodeNumeral, veilMode, type VeilInput } from './start-veil';
+import { episodeAnswer } from '$lib/testing/wire-answers';
 import type { StartPhase } from './start-state';
 
 const base: VeilInput = {
@@ -107,6 +108,64 @@ describe('episodeNumeral', () => {
 			fc.property(fc.integer({ min: 0, max: 5000 }), (n) => {
 				expect(Number(episodeNumeral(n))).toBe(n);
 			})
+		);
+	});
+});
+
+describe('episodeInPages', () => {
+	const ep = (id: string, number: number | null, relative: number | null = null) =>
+		episodeAnswer({ id, number, relative_number: relative });
+
+	it('finds the episode on whichever cached page holds it', () => {
+		const pages = new Map([
+			[1, [ep('a', 1), ep('b', 2)]],
+			[2, [ep('c', 21), ep('d', 22)]]
+		]);
+		expect(episodeInPages(pages.values(), 22)?.id).toBe('d');
+		expect(episodeInPages(pages.values(), 1)?.id).toBe('a');
+	});
+
+	it('reads the relative number when the episode has no absolute one', () => {
+		const pages = [[ep('a', null, 3)]];
+		expect(episodeInPages(pages, 3)?.id).toBe('a');
+	});
+
+	it('prefers the absolute number over the relative one', () => {
+		const pages = [[ep('a', 13, 1), ep('b', 1, 1)]];
+		expect(episodeInPages(pages, 1)?.id).toBe('b');
+	});
+
+	it('is null when no cached page holds the episode', () => {
+		expect(episodeInPages([[ep('a', 1)]], 2)).toBeNull();
+		expect(episodeInPages([], 1)).toBeNull();
+		expect(episodeInPages([[ep('a', null, null)]], -1)).toBeNull();
+	});
+
+	it('returns an episode whose number is the one asked, or nothing when none has it', () => {
+		fc.assert(
+			fc.property(
+				fc.array(
+					fc.array(
+						fc.record({
+							number: fc.option(fc.integer({ min: 0, max: 30 }), { nil: null }),
+							relative: fc.option(fc.integer({ min: 0, max: 30 }), { nil: null })
+						}),
+						{ maxLength: 6 }
+					),
+					{ maxLength: 4 }
+				),
+				fc.integer({ min: 0, max: 30 }),
+				(raw, wanted) => {
+					const pages = raw.map((page, p) =>
+						page.map((e, i) => ep(`${p}-${i}`, e.number, e.relative))
+					);
+					const found = episodeInPages(pages, wanted);
+					const shown = (e: ReturnType<typeof ep>) => e.number ?? e.relative_number;
+					const any = pages.flat().some((e) => shown(e) === wanted);
+					expect(found === null).toBe(!any);
+					if (found) expect(shown(found)).toBe(wanted);
+				}
+			)
 		);
 	});
 });
