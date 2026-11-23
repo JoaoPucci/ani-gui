@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import fc from 'fast-check';
 import { createCapAuthority } from './cap-authority';
 
 describe('createCapAuthority', () => {
@@ -98,5 +99,36 @@ describe('createCapAuthority — count and provenance move together', () => {
 			count: 13,
 			approximate: true
 		});
+	});
+
+	it("forgets a row's pin once the row is matched to another show", () => {
+		// A failed resume of Black Clover's one-episode special pinned an
+		// exact cap of 1. Linked to the series, the row's cap is the
+		// series', not the special's.
+		const a = createCapAuthority();
+		a.recordClickCap('h1', 1, false);
+		a.recordClickCap('h2', 12, false);
+		a.forget('h1');
+		expect(a.resolveLoaderCap('h1', { count: 170, approximate: true })).toEqual({
+			count: 170,
+			approximate: true
+		});
+		// Another row keeps its own.
+		expect(a.resolveLoaderCap('h2', { count: 25, approximate: false }).count).toBe(12);
+	});
+
+	it('passes any loader cap through for a forgotten row, whatever was pinned', () => {
+		const cap = fc.record({
+			count: fc.option(fc.nat(500), { nil: null }),
+			approximate: fc.boolean()
+		});
+		fc.assert(
+			fc.property(fc.nat(500), fc.boolean(), cap, (count, approximate, loader) => {
+				const a = createCapAuthority();
+				a.recordClickCap('h1', count, approximate);
+				a.forget('h1');
+				expect(a.resolveLoaderCap('h1', loader)).toEqual(loader);
+			})
+		);
 	});
 });

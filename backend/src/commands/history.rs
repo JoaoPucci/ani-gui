@@ -27,9 +27,10 @@ pub use super::history_remove::{history_clear, history_delete};
 /// reading the evidence proved for the row's Kitsu entry
 /// ([`super::play_native_appended::extra_for_slot`]).
 ///
-/// The row's Kitsu entry is the one it records, else `claimed_for` —
-/// the entry a lookup claimed the row for — else the one its show id
-/// maps to.
+/// The row's Kitsu entry is `claimed_for` — the entry a lookup claimed
+/// the row for, which for a row whose recorded entry Kitsu deleted is
+/// another — else the one it records, else the one its show id maps
+/// to.
 fn to_kitsu_numbering(
     state: &crate::app::AppState,
     numbering: &Numbering,
@@ -119,64 +120,7 @@ pub fn history_by_kitsu(
     state: &crate::app::AppState,
     kitsu_id: &str,
 ) -> Result<Option<HistoryEntry>> {
-    if kitsu_id.is_empty() {
-        return Ok(None);
-    }
-    // Under the writers' guard, as the list is.
-    crate::history::guard::hold(&state.history_path, |_| {
-        history_by_kitsu_held(state, kitsu_id)
-    })
-}
-
-fn history_by_kitsu_held(
-    state: &crate::app::AppState,
-    kitsu_id: &str,
-) -> Result<Option<HistoryEntry>> {
-    let entries = read_all(&state.history_path)?;
-    // Two providers can leave two rows for one show, one under each
-    // provider's id. The one the user watched last is the one to
-    // resume from, by the rule the Continue Watching strip applies to
-    // the same rows ([`super::history_resume::resumes_over`]): the
-    // latest watched-at stamp wins, a stamped row beats an unstamped
-    // one, the further progress decides when the stamps do not — in
-    // the entry's numbering, the one the strip counts in, since two
-    // providers' rows can count from different offsets — and file
-    // order stands only when the rows are equal on every count.
-    // A read the cache cannot serve is the caller's error, never a
-    // row without a mapping or a stamp: taken as one, the row watched
-    // last would lose to its sibling's older stamp, or be skipped for
-    // it, and the page would resume the stale episode. The stamp is
-    // the later of the row's own moment and the cache's
-    // ([`super::history_resume::latest_of`]): a watch writes its
-    // moment beside the row, so a cache that refused the stamp still
-    // leaves the row ranked as the watch it was.
-    let mut best: Option<(HistoryEntry, Option<i64>)> = None;
-    let numbering = Numbering::read(&state.history_path);
-    for entry in entries {
-        // The id the row records is the show the user played; the
-        // reverse mapping stands in only for a row without one, or one
-        // whose recorded entry Kitsu has since deleted
-        // ([`super::history_claim::names`]).
-        if !super::history_claim::row_names(state, &entry, kitsu_id)? {
-            continue;
-        }
-        let stamp = super::history_resume::latest_of(
-            entry.watched_at,
-            crate::commands::kitsu::watched_at_get(state, &entry.id)?,
-        );
-        let entry = to_kitsu_numbering(state, &numbering, entry, Some(kitsu_id));
-        let newer = match &best {
-            None => true,
-            Some((current, current_stamp)) => super::history_resume::resumes_over(
-                (stamp, &entry.ep_no),
-                (*current_stamp, &current.ep_no),
-            ),
-        };
-        if newer {
-            best = Some((entry, stamp));
-        }
-    }
-    Ok(best.map(|(entry, _)| entry))
+    by_kitsu::history_by_kitsu_except(state, kitsu_id, |_| false)
 }
 
 /// Every show's watched-at moment, for the Continue Watching strip
@@ -206,6 +150,10 @@ pub fn watched_at_all(
 // complexity bar.
 #[path = "history_checked.rs"]
 mod checked;
+
+#[path = "history_by_kitsu.rs"]
+mod by_kitsu;
+pub use by_kitsu::history_by_kitsu_except;
 pub(crate) use checked::history_list_checked;
 
 #[cfg(test)]

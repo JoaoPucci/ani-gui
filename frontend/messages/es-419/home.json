@@ -10,6 +10,8 @@
 	"hero_error_title": "El catálogo no está disponible.",
 	"hero_error_body": "Kitsu no respondió. La búsqueda local sigue funcionando — escribe un título.",
 	"hero_error_cta": "Abrir búsqueda",
+	"hero_empty_title": "Nada para destacar por ahora.",
+	"hero_empty_body": "La lista de tendencias llegó vacía. La búsqueda sigue funcionando, escribe un título.",
 	"hero_skeleton_eyebrow_key": "Cargando",
 	"strip_continue_eyebrow": "Seguir viendo",
 	"strip_continue_caption": "retomar desde el historial",
@@ -43,5 +45,10 @@
 	"clear_confirm_button": "Borrar todo",
 	"clear_history_failed": "No se pudo borrar el historial. Inténtalo de nuevo.",
 	"delete_failed": "No se pudo quitar \"{title}\" del historial. Inténtalo de nuevo.",
-	"hero_error_eyebrow_value": "Sin respuesta de Kitsu"
+	"hero_error_eyebrow_value": "Sin respuesta de Kitsu",
+	"resume_guess_note": "Puede que no sea el anime que buscabas. En tu historial está como «{title}».",
+	"link_not_watched": "¿No es lo que viste?",
+	"link_pick_button": "Elegir el anime correcto",
+	"link_on_card": "En la tarjeta",
+	"link_check_failed": "No se pudo comprobar el anime. Inténtalo de nuevo."
 }

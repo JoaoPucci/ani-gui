@@ -38,13 +38,21 @@ import { accountStore } from '../../src/lib/account/store.svelte';
 import { markRefreshed } from '../../src/lib/account/watch-later-refresh';
 import { listChanges } from '../../src/lib/account/list-changes';
 import { m } from '../../src/lib/paraglide/messages';
+import type {
+	AvailabilityBatchResponse,
+	Config,
+	HistoryEntry,
+	KitsuAnimeRef
+} from '../../src/lib/api';
+import type { ListEntry } from '../../src/lib/account/types';
+import { errorAnswer } from '../answers';
 
 // Eight trending shows: the hero takes the first three, the row lists
 // the rest, from "Airing 4" on.
 const TRENDING = Array.from({ length: 8 }, (_, i) => kitsuRef(`t${i + 1}`, `Airing ${i + 1}`, 12));
 const TOP_RATED = [kitsuRef('r1', 'Classic One', 12), kitsuRef('r2', 'Classic Two', 12)];
 const PLANNED = [kitsuRef('w1', 'Planned One', 12)];
-const HISTORY = [{ id: 'h1', ep_no: '3', title: 'Watched Show' }];
+const HISTORY: HistoryEntry[] = [{ id: 'h1', ep_no: '3', title: 'Watched Show' }];
 
 const SIGN_IN = {
 	access_token: 'test-bearer',
@@ -89,26 +97,26 @@ function handlers(s: Scenario): HttpHandler[] {
 	return homeHandlers({ history: s.historyRows ?? [], mode: s.mode }, [
 		http.get(`${API_BASE}/api/settings`, async () => {
 			await s.settings;
-			return HttpResponse.json(appConfig(s.mode));
+			return HttpResponse.json<Config>(appConfig(s.mode));
 		}),
 		http.get(`${API_BASE}/api/history`, async () => {
 			await s.history;
-			return HttpResponse.json(s.historyRows ?? []);
+			return HttpResponse.json<HistoryEntry[]>(s.historyRows ?? []);
 		}),
 		http.get(`${API_BASE}/api/kitsu/trending-anilist`, async () => {
 			await s.trending;
 			return s.trendingFails
-				? HttpResponse.json({ error: 'error.network' }, { status: 503 })
-				: HttpResponse.json(s.trendingShows ?? TRENDING);
+				? errorAnswer(503)
+				: HttpResponse.json<KitsuAnimeRef[]>(s.trendingShows ?? TRENDING);
 		}),
 		http.get(`${API_BASE}/api/kitsu/top-rated`, async () => {
 			await s.topRated;
-			return HttpResponse.json(TOP_RATED);
+			return HttpResponse.json<KitsuAnimeRef[]>(TOP_RATED);
 		}),
 		http.get(`${API_BASE}/api/account/list/anilist/cached`, async () => {
 			listReads += 1;
 			await s.list;
-			return HttpResponse.json(
+			return HttpResponse.json<ListEntry[]>(
 				(s.planned ?? PLANNED).map((p, i) => ({
 					provider: 'anilist',
 					media_id: 100 + i,
@@ -121,12 +129,14 @@ function handlers(s: Scenario): HttpHandler[] {
 				}))
 			);
 		}),
-		http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () => HttpResponse.json(s.planned ?? PLANNED)),
+		http.post(`${API_BASE}/api/kitsu/by-mal-ids`, () =>
+			HttpResponse.json<KitsuAnimeRef[]>(s.planned ?? PLANNED)
+		),
 		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 			const body = (await request.json()) as { kitsu_ids: string[]; mode: string };
 			for (const id of body.kitsu_ids) filtered.add(id);
 			modes.push(body.mode);
-			return HttpResponse.json({
+			return HttpResponse.json<AvailabilityBatchResponse>({
 				cached: Object.fromEntries(body.kitsu_ids.map((id) => [id, true])),
 				playable_episode_counts: {}
 			});

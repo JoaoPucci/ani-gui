@@ -49,7 +49,9 @@ pub struct KitsuAnimeRef {
     /// Common keys: `en`, `en_jp` (romanized JP), `en_us`, `ja_jp` (kana).
     /// Used by the play flow to retry provider lookups under the romanized
     /// form when the canonical (often English) name doesn't match its
-    /// index — see `commands/play.rs`. Always present, possibly empty.
+    /// index — see `commands/play.rs`. Always present, possibly empty;
+    /// absent in a ref the renderer sends back from an older cache.
+    #[serde(default)]
     pub titles: HashMap<String, String>,
     /// Romanized mashup aliases Kitsu serves under
     /// `attributes.abbreviatedTitles` (e.g. `"Yuu Gi Ou: Duel Monsters
@@ -58,7 +60,9 @@ pub struct KitsuAnimeRef {
     /// when the canonical/localized names surface a wrong sibling — so
     /// the play/availability resolver appends them as last-resort
     /// fallback queries (see `altTitlesFromKitsu`). Always present,
-    /// possibly empty.
+    /// possibly empty; absent in a ref the renderer sends back from an
+    /// older cache.
+    #[serde(default)]
     pub abbreviated_titles: Vec<String>,
     /// URL slug Kitsu uses on its public site (`kitsu.io/anime/<slug>`).
     pub slug: Option<String>,
@@ -251,12 +255,17 @@ where
     }
 }
 
-/// The provider never indexes music videos, so a Kitsu `subtype ==
-/// "music"` entry (a YOASOBI MV, an OP/ED single, etc.) can never resolve
-/// to playback. Drop these from every list surface so they never appear
-/// as a pickable card. Detail-by-id (`parse_anime_response`) is
-/// intentionally NOT filtered; a directly-opened music entry still loads
-/// and is shown as unavailable.
+/// Whether a Kitsu entry is a music video (`subtype == "music"`: a
+/// YOASOBI MV, an OP/ED single, etc.). Every list surface drops these.
+/// The provider does carry some: hianime listed 81 music videos on
+/// 2026-11-16, of which about 20 played and the rest answered "not
+/// found". Kitsu lists far more than that, so offering them would fill
+/// search with cards the availability filter then takes away as not
+/// carried. The ratio is what keeps them out, and the filter is to be
+/// revisited with the deferred-work entry on search results the
+/// provider turns out not to carry. Detail-by-id
+/// (`parse_anime_response`) is intentionally NOT filtered; a
+/// directly-opened music entry still loads and is shown as unavailable.
 fn is_music_subtype(subtype: Option<&str>) -> bool {
     subtype.is_some_and(|s| s.eq_ignore_ascii_case("music"))
 }
@@ -377,9 +386,10 @@ pub fn parse_anime_response(body: &[u8]) -> Result<KitsuAnimeRef> {
 /// the reply does not include, since such a reply says nothing of the
 /// show.
 ///
-/// Used by [`KitsuClient::lookup_by_mal_id`] — the AniList trending
-/// bridge feeds MAL ids in and gets full Kitsu refs out, in a single
-/// round-trip per lookup.
+/// Used by [`KitsuClient::lookup_by_mal_id`] and
+/// [`KitsuClient::lookup_by_anilist_id`] — the AniList trending feed and
+/// the Watch Later rail feed tracker ids in and get full Kitsu refs out,
+/// in a single round-trip per lookup.
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the body isn't valid
@@ -431,9 +441,15 @@ pub fn parse_mappings_response(body: &[u8]) -> Result<Option<KitsuAnimeRef>> {
         .ok_or_else(|| AniError::ParseFailed {
             detail: format!("kitsu mappings parse: anime {target_id} not included"),
         })?;
-    // Single chokepoint for every MAL→Kitsu bridge (AniList trending feed +
-    // Watch Later rail): a music-subtype mapping resolves to None so it never
-    // reaches a list surface or the availability warmer.
+    // Every bridge from a tracker id to a Kitsu card resolves its id
+    // here (`lookup_by_mal_id` and `lookup_by_anilist_id`, behind the
+    // AniList trending feed and the Watch Later rail, whose cached ids
+    // were written from this parse), so a music-subtype mapping
+    // resolves to None and never reaches a list surface or the
+    // availability warmer. It is not the only mappings reader: the episode
+    // map's owner lookup (`anime_by_external_id`) parses with
+    // `kitsu_mapped::parse_mapped_anime_response`, which drops music
+    // entries on its own.
     Ok(Some(into_ref(anime)).filter(|r| !is_music_subtype(r.subtype.as_deref())))
 }
 
@@ -907,6 +923,12 @@ impl KitsuClient {
 #[path = "kitsu_mapped.rs"]
 mod mapped;
 pub use mapped::KitsuMapped;
+#[path = "kitsu_adult.rs"]
+mod adult;
+pub use adult::{drop_nsfw, is_nsfw};
+#[cfg(test)]
+#[path = "kitsu_adult_test.rs"]
+mod adult_tests;
 #[path = "kitsu_relations.rs"]
 mod relations;
 pub use relations::{
@@ -978,10 +1000,11 @@ mod tests {
 
     #[test]
     fn parse_search_drops_music_subtype_entries() {
-        // The provider never indexes music videos (the YOASOBI
-        // "Idol" MV etc.), so a `subtype == "music"` Kitsu hit can never
-        // resolve to playback. It must not appear in ANY list surface —
-        // search, trending, and top-rated all route through here.
+        // Search never offers a music video (the YOASOBI "Idol" MV
+        // etc.): Kitsu lists far more than the provider serves (see
+        // `is_music_subtype`). A `subtype == "music"` hit must not appear
+        // in ANY list surface — search, trending, and top-rated all route
+        // through here.
         let body = br#"{"data":[
             {"id":"1","type":"anime","attributes":{"canonicalTitle":"Real Show","subtype":"TV"}},
             {"id":"2","type":"anime","attributes":{"canonicalTitle":"Idol","subtype":"music"}}
@@ -1297,8 +1320,10 @@ mod tests {
         // The MAL→Kitsu bridge (lookup_by_mal_id) feeds both the AniList
         // trending feed and the Watch Later rail. A Plan-to-Watch MAL entry
         // mapping to a Kitsu `subtype: music` item must not surface there —
-        // music can never resolve on the provider — so the mappings parser
-        // returns None for it (the single chokepoint for every bridge).
+        // no list surface offers a music video (see `is_music_subtype`) —
+        // so the mappings parser returns None for it (every card bridge
+        // resolves its id here; the episode map's lookup in `kitsu_mapped` drops
+        // music on its own).
         let body = br#"{"data":[{"type":"mappings","relationships":{"item":{"data":{"id":"42","type":"anime"}}}}],
             "included":[{"id":"42","type":"anime","attributes":{"canonicalTitle":"Idol","subtype":"music"}}]}"#;
         assert!(parse_mappings_response(body).expect("parses").is_none());

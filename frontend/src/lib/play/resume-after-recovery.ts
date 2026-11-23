@@ -15,6 +15,12 @@
  * pager's unreflected marker learned). Near-zero positions are not
  * worth carrying: the restart the user resents is losing minutes,
  * not a second.
+ *
+ * "Switch to it now" carries its point across to the picked show's
+ * player through the same carrier, with `carry`, when it opens the
+ * card's episode: there the point is the one the confirmation named,
+ * 0:00 included, so it is kept exactly and wins over a position the
+ * pick kept. A switch to the pick's own episode carries none.
  */
 import { nextWrite } from './write-order';
 
@@ -29,6 +35,16 @@ export class RecoveryResume {
 			currentTime >= MIN_CARRY_SECONDS
 				? { showId, episode, at: currentTime, written: nextWrite() }
 				: null;
+	}
+
+	/** Carry `at` seconds to the next attach of `episode` of `showId`
+	 *  exactly as asked: a switch to a picked show says where it picks
+	 *  up, and 0:00 is a point there, not the want of one, so the pick's
+	 *  own saved position does not take its place. A value that is no
+	 *  number of seconds carries nothing. */
+	carry(showId: string, episode: number, at: number): void {
+		this.pending =
+			Number.isFinite(at) && at >= 0 ? { showId, episode, at, written: nextWrite() } : null;
 	}
 
 	/** The position the media attach for `episode` of `showId` should

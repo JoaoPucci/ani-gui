@@ -52,6 +52,9 @@ class FakeEventSource {
 
 let fetched: Array<{ url: string; init?: RequestInit }> = [];
 
+/** Answers every request with `body`. These tests are about where a
+ *  request goes, not what comes back, so the body is read as no
+ *  route's type. */
 function answering(body: unknown = {}) {
 	return vi.fn(async (url: string, init?: RequestInit) => {
 		fetched.push({ url, init });

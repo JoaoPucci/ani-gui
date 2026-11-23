@@ -28,7 +28,15 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 // about route behaviour.
 import { m } from '../../src/lib/paraglide/messages';
 
-function ref(id: string, title: string) {
+import type {
+	AvailabilityBatchResponse,
+	AvailabilityResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuSearchPage
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
+function ref(id: string, title: string): KitsuAnimeRef {
 	return {
 		id,
 		canonical_title: title,
@@ -41,11 +49,15 @@ function ref(id: string, title: string) {
 		episode_count: 12,
 		status: 'finished',
 		start_date: '2019-01-01',
-		average_rating: null
+		average_rating: null,
+		end_date: null,
+		subtype: null,
+		age_rating: null,
+		popularity_rank: null
 	};
 }
 
-const CONFIG = {
+const CONFIG: Config = {
 	locale: 'en',
 	mode: 'sub',
 	download_quality: 'best',
@@ -55,11 +67,11 @@ const CONFIG = {
 	syncplay_binary: '',
 	image_cache_cap_mb: 100,
 	auto_play_next: false,
+	cache_resolutions: false,
 	download_bottom_bar_enabled: true,
 	auto_skip_op: false,
 	auto_skip_ed: false,
 	use_custom_player_controls: true,
-	auto_update_anicli: false,
 	update_include_prereleases: false,
 	primary_account: ''
 };
@@ -68,11 +80,13 @@ const CONFIG = {
  *  route fetches on mount, which the setup would otherwise reject. */
 function baseHandlers() {
 	return [
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(CONFIG)),
-		http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(CONFIG)),
+		http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+			HttpResponse.json<KitsuAnimeRef[]>([])
+		),
+		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability/batch`, () =>
-			HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+			HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 		)
 	];
 }
@@ -131,14 +145,16 @@ describe('/search late prune', () => {
 		server.use(
 			...baseHandlers(),
 			http.post(`${API_BASE}/api/kitsu/search/page`, () =>
-				HttpResponse.json({
+				HttpResponse.json<KitsuSearchPage>({
 					hits: [ref('1', 'Gone One'), ref('2', 'Gone Two')],
 					next_offset: null
 				})
 			),
 			http.post(`${API_BASE}/api/availability`, async () => {
 				await probesHeld;
-				return HttpResponse.json({ available: false, episode_count: 0, approximate: false });
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: false, episode_count: 0 })
+				);
 			})
 		);
 
@@ -179,6 +195,7 @@ describe('/search late prune', () => {
 		// of it reaches a handler.
 		let staleBatchRead = false;
 		let staleProbeAsked = false;
+		let staleSearchCancelled = false;
 		const realFetch = globalThis.fetch;
 		const sent = (init?: RequestInit) =>
 			(typeof init?.body === 'string' ? JSON.parse(init.body) : {}) as {
@@ -190,7 +207,11 @@ describe('/search late prune', () => {
 				typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 			const path = new URL(href).pathname;
 			if (path === '/api/availability' && sent(init).kitsu_id === '9') staleProbeAsked = true;
-			const resp = await realFetch(input, init);
+			const first = path === '/api/kitsu/search/page' && searchCalls === 0;
+			const resp = await realFetch(input, init).catch((e: unknown) => {
+				if (first && init?.signal?.aborted) staleSearchCancelled = true;
+				throw e;
+			});
 			if (path === '/api/availability/batch' && sent(init).kitsu_ids?.includes('9')) {
 				const read = resp.text.bind(resp);
 				resp.text = async () => {
@@ -209,7 +230,7 @@ describe('/search late prune', () => {
 			// The stale run's cache read, its last network call: a run
 			// that has been replaced asks the provider nothing more.
 			http.post(`${API_BASE}/api/availability/batch`, () =>
-				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 			),
 			...baseHandlers(),
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
@@ -219,14 +240,25 @@ describe('/search late prune', () => {
 					// The stale run: held open, then answered with
 					// results that must never reach the screen.
 					await firstAHeld;
-					return HttpResponse.json({ hits: [ref('9', 'Stale Result')], next_offset: null });
+					return HttpResponse.json<KitsuSearchPage>({
+						hits: [ref('9', 'Stale Result')],
+						next_offset: null
+					});
 				}
 				if (query === 'trigun')
-					return HttpResponse.json({ hits: [ref('5', 'Interim Result')], next_offset: null });
-				return HttpResponse.json({ hits: [ref('7', 'Fresh Result')], next_offset: null });
+					return HttpResponse.json<KitsuSearchPage>({
+						hits: [ref('5', 'Interim Result')],
+						next_offset: null
+					});
+				return HttpResponse.json<KitsuSearchPage>({
+					hits: [ref('7', 'Fresh Result')],
+					next_offset: null
+				});
 			}),
 			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({ available: true, episode_count: 12, approximate: false })
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: true, episode_count: 12 })
+				)
 			)
 		);
 
@@ -240,26 +272,22 @@ describe('/search late prune', () => {
 		setQuery('cowboy');
 		await until(() => screen().includes('Fresh Result'), 're-running the original query to render');
 
-		// Only now does the very first run answer. Its generation is
-		// two behind, so its results are dropped rather than painted
-		// over the ones the user is looking at.
+		// The very first run was replaced twice over: its page read is
+		// cancelled rather than left holding an API connection, so its
+		// answer, released now, is never read. A run that reads nothing
+		// more caches nothing and probes nothing either.
 		//
-		// The wait is on the stale run reaching the end of its own
-		// pipeline, not on a fixed delay: a timed bet can expire before
-		// a loaded worker has carried the released response through its
-		// calls, and would then pass with the guard removed. Its last
-		// call is its cache read — a replaced run sends no probe, which
-		// would hold a slot the current run's probes need — and once it
-		// has read that answer the rest is microtasks: whether to probe,
-		// and the fetch a probe would make, are decided in them. So
-		// flushing those plus a Svelte tick is enough to let a broken
-		// guard paint, or ask.
+		// The wait is on the cancellation itself, not on a fixed delay:
+		// once the page read has rejected, what the run does next is
+		// microtasks, so flushing those plus a Svelte tick is enough to
+		// let a broken guard paint, or ask.
+		await until(() => staleSearchCancelled, "the stale run's page read to be cancelled");
 		releaseFirstA();
-		await until(() => staleBatchRead, "the stale run's cache answer to be read");
 		await tick();
 		await new Promise((r) => setTimeout(r, 0));
 		await tick();
 
+		expect(staleBatchRead, 'a replaced run reads no cache answer').toBe(false);
 		expect(screen()).not.toContain('Stale Result');
 		expect(screen()).toContain('Fresh Result');
 		expect(staleProbeAsked, 'a replaced run probes nothing').toBe(false);

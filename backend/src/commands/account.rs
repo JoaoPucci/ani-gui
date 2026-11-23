@@ -434,10 +434,9 @@ pub fn status_from_snake(s: &str) -> Option<ListStatus> {
 /// Cap on the renderer-supplied Watch-Later bridge batch. The home
 /// rail's largest plausible Plan-to-Watch is a few hundred titles;
 /// 500 leaves comfortable headroom while bounding the fan-out cost
-/// per request to a fixed worst case. Under
-/// the permissive CORS layer a cross-origin page could otherwise
-/// POST an unbounded `mal_ids` array and burn N concurrent Kitsu
-/// requests per call.
+/// per request to a fixed worst case, so even a caller holding the
+/// launch's secret cannot POST an unbounded `mal_ids` array and burn
+/// N concurrent Kitsu requests per call.
 pub const WATCH_LATER_BRIDGE_MAX_IDS: usize = 500;
 
 /// Concurrent in-flight Kitsu `/mappings` lookups during the
@@ -453,8 +452,9 @@ pub const WATCH_LATER_BRIDGE_MAX_IDS: usize = 500;
 const WATCH_LATER_BRIDGE_CONCURRENCY: usize = 8;
 
 /// Bridge a list of MAL ids to Kitsu refs, preserving input order,
-/// dropping ids Kitsu can't map, and listing a Kitsu show two ids lead
-/// to once, at the first (`rail_cards`). Used by the home page's Watch
+/// dropping ids Kitsu can't map and shows it marks nsfw, and listing a
+/// Kitsu show two ids lead to once, at the first (`rail_cards`). Used
+/// by the home page's Watch
 /// Later rail so cached `user_list_cache` rows render with the same
 /// Kitsu metadata + availability filter as the rest of the home.
 ///
@@ -696,11 +696,18 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
 /// show once, as its first card, the rest in input order. Two MAL ids
 /// can lead to the same Kitsu show, and the rail keys its cards by
 /// Kitsu id, so a show handed to it twice would be a duplicate key.
+///
+/// A show Kitsu marks nsfw is left out: Kitsu hides it from search,
+/// browse and its own anime pages, and only the mappings lookup names
+/// it. Its mapping is still remembered, as any card's is, so the next
+/// load does not bridge it again; the cut is made here, on every card,
+/// whether a load resolved it just now or from what an earlier one
+/// cached.
 fn rail_cards(
     cards: Vec<crate::meta::kitsu::KitsuAnimeRef>,
 ) -> Vec<crate::meta::kitsu::KitsuAnimeRef> {
     let mut seen = std::collections::HashSet::new();
-    cards
+    crate::meta::kitsu::drop_nsfw(cards)
         .into_iter()
         .filter(|c| seen.insert(c.id.clone()))
         .collect()

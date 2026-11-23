@@ -22,6 +22,7 @@ import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page, setQuery, setUrl } from './page-state.svelte';
+import { afterRead, watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -39,10 +40,16 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 import { subtypeLabel } from '../../src/lib/search/subtype-label';
 
+import type {
+	AvailabilityBatchResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuSearchPage
+} from '../../src/lib/api';
 const ROW = 300;
 
 /** Show `n` of a search: odd ids are TV series, even ones films. */
-function ref(n: number) {
+function ref(n: number): KitsuAnimeRef {
 	return {
 		id: String(n),
 		canonical_title: `Show ${n}`,
@@ -56,12 +63,15 @@ function ref(n: number) {
 		status: 'finished',
 		start_date: '2019-01-01',
 		average_rating: null,
-		subtype: n % 2 === 1 ? 'TV' : 'movie'
+		subtype: n % 2 === 1 ? 'TV' : 'movie',
+		end_date: null,
+		age_rating: null,
+		popularity_rank: null
 	};
 }
 
 let mode = 'sub';
-const config = () => ({
+const config = (): Config => ({
 	locale: 'en',
 	mode,
 	download_quality: 'best',
@@ -71,11 +81,11 @@ const config = () => ({
 	syncplay_binary: '',
 	image_cache_cap_mb: 100,
 	auto_play_next: false,
+	cache_resolutions: false,
 	download_bottom_bar_enabled: true,
 	auto_skip_op: false,
 	auto_skip_ed: false,
 	use_custom_player_controls: true,
-	auto_update_anicli: false,
 	update_include_prereleases: false,
 	primary_account: ''
 });
@@ -85,12 +95,14 @@ const asked: string[] = [];
 
 function handlers() {
 	return [
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(config())),
-		http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(config())),
+		http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+			HttpResponse.json<KitsuAnimeRef[]>([])
+		),
+		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 			const { kitsu_ids } = (await request.json()) as { kitsu_ids: string[] };
-			return HttpResponse.json({
+			return HttpResponse.json<AvailabilityBatchResponse>({
 				cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
 				playable_episode_counts: {}
 			});
@@ -100,7 +112,7 @@ function handlers() {
 			const body = (await request.json()) as { query: string; offset: number; sort?: string };
 			asked.push(`${body.query}@${body.offset}/${body.sort ?? 'relevance'}`);
 			const hits = Array.from({ length: 20 }, (_, i) => ref(body.offset + i + 1));
-			return HttpResponse.json({
+			return HttpResponse.json<KitsuSearchPage>({
 				hits,
 				next_offset: body.offset + 20 < 100 ? body.offset + 20 : null
 			});
@@ -117,6 +129,7 @@ class QuietObserver {
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
+let fetches: ReturnType<typeof watchPageFetches>;
 let savedObserver: unknown;
 let savedOffsetTop: PropertyDescriptor | undefined;
 let savedOffsetHeight: PropertyDescriptor | undefined;
@@ -126,6 +139,7 @@ beforeEach(() => {
 	mode = 'sub';
 	asked.length = 0;
 	server.use(...handlers());
+	fetches = watchPageFetches();
 	savedObserver = globalThis.IntersectionObserver;
 	globalThis.IntersectionObserver = QuietObserver as unknown as typeof IntersectionObserver;
 	// A card sits at its row in the grid: one card per 300px row.
@@ -170,8 +184,15 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-async function settle(steps = 30) {
-	for (let i = 0; i < steps; i++) await new Promise((r) => setTimeout(r, 5));
+/**
+ * Wait until the page has nothing out: every request it asked is
+ * answered and read, and what those answers set off has run. Only
+ * then does "Kitsu was asked exactly this" say nothing more was going
+ * to be asked.
+ */
+async function settle() {
+	await fetches.settled('the page to settle');
+	await afterRead();
 }
 
 function buttonNamed(name: string): HTMLButtonElement | null {
@@ -277,6 +298,7 @@ describe('back to the search page', () => {
 
 		buttonNamed(m.search_paging_load_more())!.click();
 		await until(() => cards().includes('Show 41'), 'the third page');
+		await settle();
 		expect(asked).toEqual(['frieren@40/year']);
 	});
 
@@ -305,6 +327,7 @@ describe('back to the search page', () => {
 
 		comeBack(kept);
 		await until(() => cards().includes('Show 21'), 'the search up to the card');
+		await settle();
 		expect(asked).toEqual(['frieren@0/year', 'frieren@20/year']);
 	});
 
@@ -321,11 +344,37 @@ describe('back to the search page', () => {
 		expect(window.scrollY).toBe(10 * ROW + 100);
 	});
 
+	it('offers no music filter, since search never answers a music video', async () => {
+		setQuery('frieren');
+		mountSearch();
+		navigated('link');
+		await until(() => cards().includes('Show 1'), 'the first page');
+
+		expect(buttonNamed(subtypeLabel('TV'))).not.toBeNull();
+		expect(buttonNamed(subtypeLabel('music'))).toBeNull();
+	});
+
+	it('brings back a search an earlier version kept filtered to music videos unfiltered', async () => {
+		const before = await browse();
+		const kept = leave() as { subtypes: string[] };
+		kept.subtypes = ['music'];
+
+		comeBack(kept);
+		await until(() => cards().length > 0, 'the results');
+		await settle();
+
+		expect(typeOn(subtypeLabel('TV'))).toBe(false);
+		expect(buttonNamed(m.search_chips_clear_button_aria_label())).toBeNull();
+		expect(cards()).toEqual(expect.arrayContaining(before));
+		expect(cards(), 'a film is back too: no filter is on').toContain('Show 2');
+	});
+
 	it('follows the address when the entry kept nothing', async () => {
 		setQuery('himmel');
 		mountSearch();
 		navigated('popstate');
 		await until(() => cards().includes('Show 1'), 'the search');
+		await settle();
 		expect(asked).toEqual(['himmel@0/relevance']);
 	});
 
@@ -339,6 +388,7 @@ describe('back to the search page', () => {
 		mountSearch();
 		navigated('link');
 		await until(() => cards().includes('Show 1'), 'the search');
+		await settle();
 		expect(asked).toEqual(['frieren@0/relevance']);
 		expect(orderChosen(m.search_sort_relevance())).toBe(true);
 		expect(typeOn(subtypeLabel('TV'))).toBe(false);
@@ -381,6 +431,7 @@ describe('back to the search page', () => {
 
 		setQuery('himmel');
 		await until(() => cards().includes('Show 1'), 'the next search');
+		await settle();
 		expect(asked).toEqual(['himmel@0/relevance']);
 		expect(orderChosen(m.search_sort_relevance())).toBe(true);
 		expect(typeOn(subtypeLabel('TV'))).toBe(false);

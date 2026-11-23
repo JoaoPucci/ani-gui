@@ -38,6 +38,15 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 const KITSU_ID = '42';
 const EPISODES = 30;
 
@@ -92,47 +101,62 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
 function mountShow() {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({
+			HttpResponse.json<KitsuAnimeRef>({
 				...kitsuRef(KITSU_ID, 'Long Show', EPISODES),
 				status: 'finished',
-				poster_image: { large: 'https://media.kitsu.app/anime/42/poster_image/large.jpg' }
+				poster_image: {
+					tiny: null,
+					small: null,
+					medium: null,
+					large: 'https://media.kitsu.app/anime/42/poster_image/large.jpg',
+					original: null
+				}
 			})
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: EPISODES, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
-			HttpResponse.json(kitsuEpisodes(EPISODES))
-		),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: EPISODES,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: EPISODES,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
 		),
-		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/tmp'))
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(EPISODES))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: EPISODES,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/tmp'))
 	);
 	app = mount(DetailPage, { target });
 }
@@ -173,7 +197,10 @@ describe.each([
 			'the episode to be picked out'
 		);
 		// The scroll waits a frame for the tile to be laid out.
-		await new Promise((r) => setTimeout(r, 100));
+		await until(
+			() => motion.scrolls.some((s) => s.startsWith('scrollIntoView')),
+			'the strip to scroll to the episode'
+		);
 
 		expect(motion.glides).toEqual(reduced ? [] : [expect.stringContaining('scrollIntoView')]);
 	});
@@ -183,7 +210,10 @@ describe.each([
 		await until(() => tile(1) !== null, 'the first tile');
 		tile(1)!.click();
 		await until(() => target.querySelector('[role="status"] .anim') !== null, 'the loader');
-		await until(() => motion.lottie().length > 0, 'the loader animation to load');
+		await until(
+			() => motion.lottie().length > 0 && motion.settled(),
+			'the loader animation to load'
+		);
 
 		const played = motion.lottie().includes('play') || motion.lottie().includes('load:autoplay');
 		expect(played).toBe(!reduced);

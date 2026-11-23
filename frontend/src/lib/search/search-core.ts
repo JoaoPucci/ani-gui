@@ -16,8 +16,16 @@ import { checkpointAt, type Settled } from './resume';
 import { searchTurns } from './turns';
 
 export interface SearchRunnerDeps {
-	/** One page of the Kitsu search in `order`, starting at `offset`. */
-	searchPage: (q: string, offset: number, order: SearchOrder) => Promise<KitsuSearchPage>;
+	/** One page of the Kitsu search in `order`, starting at `offset`.
+	 *  `signal` is the search's run: it aborts once another search
+	 *  replaces this one or the runner stops, so the read is cancelled
+	 *  rather than left holding an API connection. */
+	searchPage: (
+		q: string,
+		offset: number,
+		order: SearchOrder,
+		signal: AbortSignal
+	) => Promise<KitsuSearchPage>;
 	/** Settings fetch; rejections fall back to a null config (the
 	 *  mode picker defaults to 'sub'), never to the error state. */
 	getConfig: () => Promise<Config | null>;
@@ -61,8 +69,9 @@ export interface Search {
 	emptyStreak: number;
 	/** Pages loaded, counting any a resume brought back. */
 	loaded: number;
-	/** The probes this search's pages ask: ended when another search
-	 *  replaces it, since the page's path does not change. */
+	/** The run this search's page reads and probes go out in: ended
+	 *  when another search replaces it, since the page's path does not
+	 *  change, and when the runner stops. */
 	probes: ProbeRun;
 	/** Where it stood when its last page settled; null before then. */
 	settled: Settled | null;
@@ -91,7 +100,7 @@ export function createSearchCore(deps: SearchRunnerDeps) {
 	/** Fetch `s`'s next page and run it through the filter. Rejects
 	 *  only when the page itself could not be fetched. */
 	const fetchPage = async (s: Search) => {
-		const page = await deps.searchPage(s.q, s.next ?? 0, s.order);
+		const page = await deps.searchPage(s.q, s.next ?? 0, s.order, s.probes.signal);
 		// A superseded search still runs its page through the filter,
 		// as it always has; its emissions are what the guard drops.
 		s.next = page.next_offset;

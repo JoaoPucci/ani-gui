@@ -8,10 +8,13 @@
 
 pub mod anilist;
 pub mod anilist_airing;
+pub(crate) mod anilist_batch;
 pub(crate) mod anilist_gate;
 pub mod anilist_media;
 pub(crate) mod anilist_pages;
 pub mod anilist_streaming_eps;
+#[cfg(test)]
+pub(crate) mod anilist_streaming_eps_fake_test;
 pub mod anilist_user;
 pub mod aniskip;
 pub mod github;

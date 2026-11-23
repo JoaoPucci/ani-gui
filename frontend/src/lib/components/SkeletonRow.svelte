@@ -25,8 +25,8 @@
 		<div class="skel-card" aria-hidden="true">
 			<div class="skel-poster"></div>
 			<div class="skel-body">
-				<span class="skel-title" style="--bar: 85%;">&nbsp;</span>
-				<span class="skel-title" style="--bar: 55%;">&nbsp;</span>
+				<span class="skel-title skel-title-long">&nbsp;</span>
+				<span class="skel-title skel-title-short">&nbsp;</span>
 				<span class="skel-meta">&nbsp;</span>
 			</div>
 		</div>
@@ -69,6 +69,14 @@
 	}
 	.skel-title::before {
 		block-size: 0.75rem;
+	}
+	/* The two title lines' widths, as classes: the window's content
+	   security policy refuses a static style attribute. */
+	.skel-title-long {
+		--bar: 85%;
+	}
+	.skel-title-short {
+		--bar: 55%;
 	}
 	.skel-meta {
 		display: inline-flex;

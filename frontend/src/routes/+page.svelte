@@ -58,10 +58,13 @@
 	import { resolve } from '$app/paths';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { createNavigationClaims } from '$lib/navigation/claims';
+	import { beginVisit } from '$lib/navigation/visit';
 	import {
 		allmangaKitsuMapGet,
 		checkAvailability,
+		continueWarm,
 		historyClear,
+		historyCardLines,
 		historyDelete,
 		historyList,
 		historyNumber,
@@ -119,13 +122,18 @@
 	import { createCapAuthority } from '$lib/history/cap-authority';
 	import { makeStartResume, type ResumePlayArgs } from '$lib/history/start-resume';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
+	import { warmContinueStrip } from '$lib/history/strip-warm';
 	import { retryApproximateCaps, rowWorthRetrying } from '$lib/history/approximate-retry';
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { kitsuEntryGone, resolveKitsuMatchWithTrust } from '$lib/history/match';
 	import { createRowTrust } from '$lib/history/row-trust';
 	import { guessedId, recordableId, withGuess, withRow } from '$lib/play/play-origin';
+	import { failedResumeGuess, openCardLink as runOpenCardLink } from '$lib/history/open-card-link';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
+	import { CardLines } from '$lib/history/card-lines.svelte';
+	import { cardOf } from '$lib/history/focus-return';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { createConfirmRun } from '$lib/history/confirm-run';
 	import { toastStore } from '$lib/toasts/store.svelte';
@@ -141,6 +149,7 @@
 	import { splitTrending } from '$lib/hero/rotation';
 	import { HISTORY_WAIT_MS, homeRows, keepShown, type HomeRows } from '$lib/home/rows';
 	import { loadDiscoveryRows, LOADING, type RowLoad } from '$lib/rows/discovery';
+	import { heroState } from '$lib/hero/state';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayArgs } from '$lib/play/play-args';
@@ -154,6 +163,11 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
+	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
+	import GuessMark from '$lib/components/GuessMark.svelte';
+	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
+	import { appLinkDeps, onHistoryLinked } from '$lib/history/link-deps';
+	import { createCardRelink } from '$lib/history/card-relink';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
 	import { continueEpisode } from '$lib/play/next-episode';
@@ -325,14 +339,16 @@
 	// An episode left part-way keeps its position; the Continue card
 	// goes back to it rather than on to the next one.
 	const leftPartWay = (kitsuId: string, episode: number) => readPosition(kitsuId, episode) !== null;
-	// Aborted when Home is left: a Continue card's refill landing after
-	// is not fetched ($lib/refill/refill).
-	const refills = new AbortController();
-	onDestroy(() => refills.abort());
+	// Home's reads, cancelled when it is left: each holds an API
+	// connection until it answers, and what a cancelled one answers
+	// reaches nothing ($lib/navigation/visit). A Continue card's refill
+	// landing after is not fetched either ($lib/refill/refill).
+	const pageReads = beginVisit();
+	onDestroy(pageReads.end);
 	const rowReady = makeContinueRowReadyHandler({
 		historyById,
 		fetchKitsuEpisodes: kitsuEpisodes,
-		signal: refills.signal,
+		signal: pageReads.signal,
 		setMatch: (id, m) => {
 			historyMatches = { ...historyMatches, [id]: m };
 		},
@@ -355,7 +371,7 @@
 	// A card's row, read again for each answer that can put it right —
 	// its match, its probe, a retried probe. Those reads can answer out
 	// of order: the latest asked counts.
-	const rowNumberNow = latestReads(historyNumber);
+	const rowNumberNow = latestReads((id: string) => historyNumber(id, { signal: pageReads.signal }));
 	async function readRowAgain(id: string) {
 		const kitsuId = historyMatches[id]?.id;
 		const next = await refreshedRows(
@@ -423,8 +439,14 @@
 		setBusy: (busy) => (deleteBusy = busy),
 		close: () => (deleteCandidate = null)
 	});
+	// One modal at a time. A confirm does not open over a resume's
+	// loading or failure overlay, and a resume does not start under a
+	// confirm. The modal layer already keeps the page behind each of
+	// them out of reach; this is the rule where the openings are decided.
+	const resumeOverlayUp = () => resumeBusy !== null || resumeFailure !== null;
+	const confirmUp = () => deleteCandidate !== null || clearConfirmOpen;
 	function openDeleteFor(entry: HistoryEntry, displayTitle: string) {
-		if (clearRun.busy) return;
+		if (clearRun.busy || resumeOverlayUp()) return;
 		deleteRun.open(() => (deleteCandidate = { entry, displayTitle }));
 	}
 	function cancelDelete() {
@@ -466,6 +488,7 @@
 			applyRemaining: (rows, removedIds) => {
 				deleteAnimationGate.open(removedIds, shiftedSurvivorIds(snapshot, removedIds));
 				history = rows;
+				historyWrites++;
 			},
 			matches: historyMatches,
 			historyDelete,
@@ -486,7 +509,7 @@
 		close: () => (clearConfirmOpen = false)
 	});
 	function openClearConfirm() {
-		if (deleteRun.busy) return;
+		if (deleteRun.busy || resumeOverlayUp()) return;
 		clearRun.open(() => (clearConfirmOpen = true));
 	}
 	function cancelClear() {
@@ -497,6 +520,7 @@
 			async () => {
 				await historyClear();
 				history = [];
+				historyWrites++;
 			},
 			() => toastStore.push({ kind: 'error', message: m.home_clear_history_failed() })
 		);
@@ -519,13 +543,93 @@
 	let settingsRead = $state(false);
 	let resumeBusy = $state<string | null>(null);
 	let resumeProgress = $state<string | null>(null);
-	let resumeFailure = $state<{ title: string; message: string } | null>(null);
+	let resumeFailure = $state<{
+		title: string;
+		message: string;
+		/** A guessed card's failure: its row, guess and episode, for the
+		 *  overlay's "Pick the right show". */
+		guess?: { row: string; matchId: string; title: string; episode: number };
+	} | null>(null);
+
+	// A guessed card's way to the picker — its pill, and its failed
+	// resume's button. A link reads the cards again where they stand;
+	// nothing navigates ($lib/history/in-place-link.svelte.ts).
+	// The cards are read again on every link that answers while this
+	// Home is on screen, made from here or anywhere else — a link can
+	// answer after the Home it was made on was left
+	// ($lib/history/link-deps.ts) — so the session itself reads nothing.
+	const cardLink = new InPlaceLinkSession({
+		...appLinkDeps(),
+		notify: (notice) => toastStore.push(notice),
+		// The card's show's own Sub or Dub, else the Settings default, as
+		// its resume plays it; none known before the settings are read.
+		audioInForce: (shown) => (config ? audioFor(shown, pickAvailabilityMode(config)) : null)
+	});
+	const stopHearing = onHistoryLinked(() => void relink.reread().catch(() => {}));
+	// A link answered after the user left Home does nothing here.
+	onDestroy(() => {
+		stopHearing();
+		cardLink.leave();
+	});
+	// Its lifecycle is $lib/history/open-card-link.ts.
+	function openCardLink(row: string | null, matchId: string, episode: number) {
+		return runOpenCardLink(row, matchId, episode, {
+			// A resume's loading overlay is a modal too: a pill whose
+			// lines answer once one started opens nothing over it.
+			busy: () => deleteRun.busy || clearRun.busy || resumeBusy !== null,
+			dismissFailure: () => {
+				resumeFailure = null;
+			},
+			stillGuessed: (r, id) => relink.stillGuessed(r, id),
+			checkFailed: () => toastStore.push({ kind: 'error', message: m.home_link_check_failed() }),
+			start: (ep) => void cardLink.start(ep)
+		});
+	}
+	// Rows found no longer guessed since the cards were read: their pill
+	// goes rather than open nothing ($lib/history/card-relink.ts).
+	const settledRows = new SvelteSet<string>();
+	// Removes and clears landed: a card read out before one answers again.
+	let historyWrites = 0;
+	const relink = createCardRelink({
+		// A check another card's overtook answers for nothing; one that
+		// could not be read answers that ($lib/history/card-relink.ts).
+		offerStands: async (row, matchId) =>
+			(await cardLink.arrive(row, matchId)) ? (cardLink.stands ?? 'unread') : null,
+		settled: settledRows,
+		current: () => history ?? [],
+		// Cancelled with Home's other reads when it is left.
+		list: () => historyList({ signal: pageReads.signal }),
+		order: (rows) => sortByWatchedAt(rows, historyWatchedAt),
+		setHistory: (rows) => {
+			history = rows;
+			for (const h of rows) historyById.set(h.id, h);
+		},
+		// rowTrust is declared further down: read it at the call.
+		resolveMatch: (h) => rowTrust.resolveMatch(h),
+		forget: (id) => {
+			capAuthority.forget(id);
+			const { [id]: _former, ...counts } = historyPlayableCounts;
+			void _former;
+			historyPlayableCounts = counts;
+		},
+		publish: (id, match) => publishLoaderCap(id, match, match?.episode_count ?? null, true),
+		writes: () => historyWrites
+	});
+	/** The card that stands for the history row `row`. */
+	function cardButton(row: string): HTMLElement | null {
+		return cardOf(document, row);
+	}
 
 	const trendingSplit = $derived(splitTrending(trending ?? []));
 	const heroRotation = $derived<KitsuAnimeRef[]>(trendingSplit.hero);
-	const featured = $derived(
-		heroRotation.length > 0 ? heroRotation[heroIndex % heroRotation.length] : null
+	const heroView = $derived(
+		heroState({
+			rotation: trending === null ? null : heroRotation,
+			failed: trendingFailed,
+			index: heroIndex
+		})
 	);
+	const featured = $derived(heroView.kind === 'featured' ? heroView.show : null);
 	// The row leaves out the rotation's shows, so the user doesn't see
 	// the hero title also pinned as a card of the row below.
 	const trendingTail = $derived(trendingSplit.row);
@@ -558,7 +662,11 @@
 	});
 
 	onMount(() => {
-		settingsPromise = settingsGet().catch(() => null as Config | null);
+		// Every read Home starts takes the page visit's signal; what it
+		// answers after the page has gone reaches nothing
+		// ($lib/navigation/visit).
+		const signal = pageReads.signal;
+		settingsPromise = settingsGet({ signal }).catch(() => null as Config | null);
 		void settingsPromise.then((c) => {
 			if (c) config = c;
 			settingsRead = true;
@@ -577,8 +685,14 @@
 			keepConfig: () => {},
 			pickMode: pickAvailabilityMode,
 			rows: [
-				(mode) => kitsuTrendingAnilist().then((t) => filterAvailable(t, mode)),
-				(mode) => kitsuTopRated().then((t) => filterAvailable(t, mode))
+				(mode) =>
+					pageReads.keep(
+						kitsuTrendingAnilist({ signal }).then((t) => filterAvailable(t, mode, { signal }))
+					),
+				(mode) =>
+					pageReads.keep(
+						kitsuTopRated({ signal }).then((t) => filterAvailable(t, mode, { signal }))
+					)
 			],
 			onRow: (index, row) => {
 				catalogue[index] = row;
@@ -597,7 +711,15 @@
 		// with it.
 		const continueProbes = probeScope.begin();
 		const historyWait = setTimeout(() => (historyWaitOver = true), HISTORY_WAIT_MS);
-		Promise.all([historyList(), watchedAtAll().catch(() => ({}) as Record<string, number>)])
+		// A link landing meanwhile reads the cards once this load has
+		// published, never under it ($lib/history/card-relink.ts `hold`).
+		const firstLoad = pageReads
+			.keep(
+				Promise.all([
+					historyList({ signal }),
+					watchedAtAll({ signal }).catch(() => ({}) as Record<string, number>)
+				])
+			)
 			.then(([h, watchedAt]) => {
 				// Continue Watching ordering: stamped rows on top,
 				// most recently watched first. Rows that resolved but
@@ -625,6 +747,14 @@
 				// Part 1's episode 1.
 				historyById.clear();
 				for (const h of history) historyById.set(h.id, h);
+				// The whole strip's stills and banners, asked of the backend
+				// at once, before any card's row is ready
+				// ($lib/history/strip-warm).
+				warmContinueStrip(history, { warm: continueWarm, signal: pageReads.signal });
+				// The load's answers are about the shows the rows are now: a
+				// row linked before one lands has moved on, and the answer is
+				// dropped ($lib/history/card-relink.ts).
+				const fromLoad = relink.since();
 				void loadContinueWatchingState(history, {
 					resolveMatch: rowTrust.resolveMatch,
 					// makeFetchAvailability keeps the args-mapping closure
@@ -634,6 +764,7 @@
 					// rows and only pay the provider roundtrip on misses.
 					fetchAvailability: makeFetchAvailability(checkAvailability),
 					signal: continueProbes.signal,
+					shouldProbe: fromLoad,
 					getMode: () => settingsPromise.then(pickAvailabilityMode),
 					// A show with its own audio is probed in it.
 					modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
@@ -642,6 +773,7 @@
 					// shared with startResume so a click-time cap
 					// refinement refreshes the same badge metadata.
 					onRowReady: (id, m, count, approximate) => {
+						if (!fromLoad(id)) return;
 						publishLoaderCap(id, m, count, approximate === true);
 						// Read the row again once its match is known — the
 						// stamp can name its former number with no listing
@@ -673,7 +805,9 @@
 						// A show with its own audio is asked about in it.
 						modeFor: (kitsuId, fallback) => audioFor(kitsuId, fallback),
 						// The retry pays for the listing the first probe
-						// did not: read the row again after it.
+						// did not: read the row again after it. A row matched
+						// again never gets here: the retry asks shouldRetry
+						// after every answer, before this.
 						onRefined: (id, count) => {
 							publishLoaderCap(id, historyMatches[id] ?? null, count, false);
 							void readRowAgain(id);
@@ -685,7 +819,10 @@
 						// interactive lookup — or when the user removes it
 						// from the strip. The route survives a delete, so
 						// the teardown flag does not cover that one.
+						// …or when it is matched again: the retry would ask about
+						// the show it was.
 						shouldRetry: (id) =>
+							fromLoad(id) &&
 							rowWorthRetrying(
 								id,
 								new Set((history ?? []).map((h) => h.id)),
@@ -697,6 +834,7 @@
 			.catch(() => {
 				history = [];
 			});
+		relink.hold(firstLoad);
 
 		// The retry loop above sits out breaker cooldowns between
 		// probes, so it comfortably outlives a user who lands on home
@@ -729,8 +867,12 @@
 		const filterMode = pickAvailabilityMode(config);
 		const deps = buildWatchLaterDeps();
 		const ticket = watchLaterLoads.start(true);
-		void loadWatchLater(deps)
-			.then((refs) => filterAvailable(refs, filterMode))
+		void pageReads
+			.keep(
+				loadWatchLater(deps).then((refs) =>
+					filterAvailable(refs, filterMode, { signal: pageReads.signal })
+				)
+			)
 			.then((refs) => {
 				if (!watchLaterLoads.current(ticket)) return; // a newer load superseded this one
 				watchLater = refs;
@@ -796,10 +938,13 @@
 						: null;
 			if (acct) credentials[key] = { bearer: acct.access_token, userId: acct.user_id };
 		}
+		// Its reads are Home's: cancelled when Home is left.
+		const signal = pageReads.signal;
 		return {
 			credentials,
-			fetchCachedList,
-			kitsuByMalIds,
+			fetchCachedList: (provider: Provider, bearer: string, userId?: string) =>
+				fetchCachedList(provider, bearer, userId, { signal }),
+			kitsuByMalIds: (malIds: number[]) => kitsuByMalIds(malIds, { signal }),
 			primary: primaryAccountStore.value
 		};
 	}
@@ -821,8 +966,10 @@
 		// `finally` reports the load finished, which a refresh waits on.
 		const ticket = watchLaterLoads.start(false);
 		try {
-			const refs = await loadWatchLater(deps);
-			const filtered = await filterAvailable(refs, filterMode);
+			const refs = await pageReads.keep(loadWatchLater(deps));
+			const filtered = await pageReads.keep(
+				filterAvailable(refs, filterMode, { signal: pageReads.signal })
+			);
 			if (!watchLaterLoads.current(ticket)) return; // a newer load superseded this one
 			if (moved && watchLater) {
 				watchLaterMotion.open(
@@ -990,8 +1137,24 @@
 	// then opens its play as one, which records the guess only when the
 	// play lands on the card's own listing ($lib/play/play-origin.ts).
 	const rowTrust = createRowTrust((entry) =>
-		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null))
+		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null), { signal: pageReads.signal })
 	);
+	// The line each card stands for, and whether its pill shows — a
+	// guess, or a line the user named a show for, which can be changed
+	// again — as the backend answers from the rows as they are matched
+	// ($lib/history/card-lines.svelte.ts).
+	const cardLines = new CardLines(historyCardLines);
+	$effect(() => {
+		cardLines.update(
+			(history ?? []).map((h) => ({
+				id: h.id,
+				guessed_from: h.guessed_from ?? null,
+				show: historyMatches[h.id]?.id ?? null,
+				guess: rowTrust.isGuess(h.id),
+				named: h.named === true
+			}))
+		);
+	});
 	const playArgsFor = (a: ResumePlayArgs) =>
 		buildPlayArgs({
 			title: a.title,
@@ -1006,6 +1169,8 @@
 			// A guess names its card's row, and the session answers whether
 			// the play landed on that row's own listing.
 			guessRow: a.row,
+			// …or, with no guess, its line, whose show the backend keeps.
+			cardRow: a.cardRow,
 			// …and its guess, apart from the page's id, which the resolve
 			// records on that row when it lands there.
 			guessId: guessedId(a.guess === true, a.match.id)
@@ -1019,13 +1184,14 @@
 	onDestroy(() => navigationClaims.left());
 	const startResume = makeStartResume({
 		claimNavigation: () => navigationClaims.claim(),
+		since: () => relink.since(),
 		leftPartWay,
 		markStarted: (kitsuId, episode, row) => markStarted(kitsuId, episode, undefined, row),
 		currentNumber: (entryId) => historyNumber(entryId),
 		movePosition: (kitsuId, from, to) => movePosition(kitsuId, from, to),
 		followPlayed: (kitsuId, session, requested) => followPlayed(kitsuId, session, requested),
 		warm: (a) => playStream({ ...playArgsFor(a), prefetch: true }, () => {}),
-		isBusy: () => !!resumeBusy,
+		isBusy: () => !!resumeBusy || confirmUp(),
 		isGuess: (entryId) => rowTrust.isGuess(entryId),
 		onBusy: (id) => {
 			resumeBusy = id;
@@ -1036,7 +1202,7 @@
 		// The shared mapper, default phrasing; the other audio's answer
 		// comes from the availability cache for the show and episode
 		// the resume asked for.
-		onFailure: async (title, e, args, isCurrent) => {
+		onFailure: async (title, e, args, isCurrent, lineUnread) => {
 			const message = await describePlayFailureFromCache(e, {
 				kitsuId: args.match.id,
 				mode: args.mode,
@@ -1045,7 +1211,23 @@
 			// Moved on while the message was worded: it is about a click
 			// the viewer left behind.
 			if (isCurrent?.() === false) return;
-			resumeFailure = { title, message };
+			// The pick it offers, for a guess ($lib/history/open-card-link).
+			const guess = await failedResumeGuess(
+				{
+					guess: args.guess,
+					row: args.row,
+					matchId: args.match.id,
+					episode: args.episode,
+					unread: lineUnread
+				},
+				{
+					line: (row) => historyById.get(row),
+					stillGuessed: (row, id) => relink.stillGuessed(row, id),
+					isCurrent: () => isCurrent?.() !== false
+				}
+			);
+			if (guess === null) return;
+			resumeFailure = { title, message, guess };
 		},
 		getSettings: () => resolveResumeSettings(config, settingsPromise),
 		// A show with its own audio plays in it.
@@ -1075,7 +1257,7 @@
 		resolvePlay: (a, onProgress) => {
 			const args = playArgsFor(a);
 			return getOrFire(
-				makeKey(a.match.id, a.episode, a.mode, args.version, a.row, args.caption),
+				makeKey(a.match.id, a.episode, a.mode, args.version, a.row, args.caption, a.cardRow),
 				(emit, signal) => playStream(args, emit, signal),
 				(p) => onProgress(progressLabel(p))
 			);
@@ -1243,20 +1425,44 @@
 				{/each}
 			</div>
 		{/if}
-	{:else if trendingFailed}
-		<div class="hero-empty">
-			<p class="eyebrow">
-				<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
-				<span class="eyebrow-rule" aria-hidden="true"></span>
-				<span class="eyebrow-value">{m.home_hero_error_eyebrow_value()}</span>
-			</p>
-			<h1 class="hero-title">{m.home_hero_error_title()}</h1>
-			<p class="hero-snippet">{m.home_hero_error_body()}</p>
-			<div class="hero-actions">
-				<a class="btn btn-primary" href={resolve('/search')}>
-					<span>{m.home_hero_error_cta()}</span>
-					<span aria-hidden="true">→</span>
-				</a>
+	{:else if heroView.kind === 'failed'}
+		<!-- In a .hero-layer like the featured text, so the message
+		     sits low in the banner rather than under the topbar. -->
+		<div class="hero-layer">
+			<div class="hero-empty">
+				<p class="eyebrow">
+					<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
+					<span class="eyebrow-rule" aria-hidden="true"></span>
+					<span class="eyebrow-value">{m.home_hero_error_eyebrow_value()}</span>
+				</p>
+				<h1 class="hero-title">{m.home_hero_error_title()}</h1>
+				<p class="hero-snippet">{m.home_hero_error_body()}</p>
+				<div class="hero-actions">
+					<a class="btn btn-primary" href={resolve('/search')}>
+						<span>{m.home_hero_error_cta()}</span>
+						<span aria-hidden="true">→</span>
+					</a>
+				</div>
+			</div>
+		</div>
+	{:else if heroView.kind === 'empty'}
+		<!-- Trending answered with no show to feature. Kitsu did answer,
+		     so the failure's "no answer" line is left out. -->
+		<!-- In a .hero-layer like the featured text, so the message
+		     sits low in the banner rather than under the topbar. -->
+		<div class="hero-layer">
+			<div class="hero-empty">
+				<p class="eyebrow">
+					<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
+				</p>
+				<h1 class="hero-title">{m.home_hero_empty_title()}</h1>
+				<p class="hero-snippet">{m.home_hero_empty_body()}</p>
+				<div class="hero-actions">
+					<a class="btn btn-primary" href={resolve('/search')}>
+						<span>{m.home_hero_error_cta()}</span>
+						<span aria-hidden="true">→</span>
+					</a>
+				</div>
 			</div>
 		</div>
 	{:else}
@@ -1264,11 +1470,14 @@
 		<div class="hero-skel" aria-busy="true">
 			<div class="hero-skel-img"></div>
 		</div>
-		<div class="hero-body">
-			<p class="eyebrow"><span class="eyebrow-key">{m.home_hero_skeleton_eyebrow_key()}</span></p>
-			<div class="line line-skel" style="inline-size: 50%; block-size: 3rem;"></div>
-			<div class="line line-skel" style="inline-size: 70%;"></div>
-			<div class="line line-skel" style="inline-size: 60%;"></div>
+		<!-- Low in the banner, where the text it stands in for will sit. -->
+		<div class="hero-layer">
+			<div class="hero-body hero-body-skel">
+				<p class="eyebrow"><span class="eyebrow-key">{m.home_hero_skeleton_eyebrow_key()}</span></p>
+				<div class="line line-skel w-50 h-3rem"></div>
+				<div class="line line-skel w-70"></div>
+				<div class="line line-skel w-60"></div>
+			</div>
 		</div>
 	{/if}
 </section>
@@ -1426,6 +1635,16 @@
 							)
 			})}
 			{@const initials = (card.text?.show ?? target.displayTitle).slice(0, 2).toUpperCase()}
+			<!-- The line the card stands for: a row a card's play wrote on
+			     another listing stands for the line clicked, as the backend answers
+			     ($lib/history/card-lines.svelte). -->
+			{@const line = cardLines.lineOf(entry.id)}
+			<!-- A guess, or a line the user named a show for, which can be
+			     changed again ($lib/history/card-lines.svelte). -->
+			{@const guessed =
+				resumable && match && cardLines.correctable(entry.id) && !settledRows.has(line)
+					? match
+					: null}
 			<!-- Both transitions are gated on `deleteAnimationGate` so
 		     they only run for user-confirmed deletes. On home
 		     re-mount, `dedupeHistoryByKitsuId` collapses Kitsu-group
@@ -1441,6 +1660,7 @@
 				class="resume-cell"
 				style="--accent: {accent};"
 				data-entry-id={entry.id}
+				data-card-row={line}
 				out:cwOutScale
 				animate:cwFlip
 			>
@@ -1466,7 +1686,15 @@
 						aria-busy={card.look === null}
 						disabled={!!resumeBusy && !isResuming}
 						onclick={() =>
-							startResume(entry, match, match?.episode_count ?? null, match?.status === 'finished')}
+							startResume(
+								entry,
+								match,
+								match?.episode_count ?? null,
+								match?.status === 'finished',
+								// The line the card stands for as the rows are now;
+								// null when it could not be read.
+								cardLines.settled().then(() => cardLines.clickLineOf(entry.id))
+							)}
 					>
 						{@render cardFace(card, initials)}
 						{@render cardBody(card, target.displayTitle)}
@@ -1487,6 +1715,30 @@
 					</a>
 				{/if}
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+				<!-- A guessed card's pill, on hover or keyboard focus, at the
+				     corner the delete chip leaves free: it opens the picker
+				     in place. -->
+				{#if guessed}
+					<button
+						type="button"
+						class="resume-link"
+						disabled={resumeBusy !== null || deleteBusy || clearBusy}
+						onclick={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							const id = guessed.id;
+							// The line the pill was drawn for: an answer that
+							// names another acts on none.
+							const drawn = line;
+							void cardLines
+								.settled()
+								.then(() => openCardLink(cardLines.clickLineOf(entry.id, drawn), id, nextEpisode));
+						}}
+					>
+						<GuessMark size={14} />
+						<span class="resume-link-words">{m.home_link_not_watched()}</span>
+					</button>
+				{/if}
 				<!-- Delete chip sits AFTER the card in DOM so role-based
 			     queries land on the card first (Playwright's
 			     `getByRole('button').first()` was picking up the
@@ -1518,13 +1770,48 @@
 	</Strip>
 {/if}
 
-<LoadingOverlay visible={resumeBusy !== null} progress={resumeProgress} />
+<LoadingOverlay modal visible={resumeBusy !== null} progress={resumeProgress} />
 {#if resumeFailure}
 	<ErrorOverlay
 		headline={m.home_error_resume_headline({ title: resumeFailure.title })}
-		body={resumeFailure.message}
+		body={resumeFailure.guess
+			? `${resumeFailure.message} ${m.home_resume_guess_note({ title: resumeFailure.guess.title })}`
+			: resumeFailure.message}
 		onDismiss={() => (resumeFailure = null)}
+		pickLabel={resumeFailure.guess ? m.home_link_pick_button() : undefined}
+		pickIcon={guessMarkIcon}
+		onPick={() => {
+			const g = resumeFailure?.guess;
+			if (g) void openCardLink(g.row, g.matchId, g.episode);
+		}}
 	/>
+{/if}
+
+{#snippet guessMarkIcon()}<GuessMark size={16} />{/snippet}
+
+{#if cardLink.offer}
+	{@const linkRow = cardLink.offer.entry.id}
+	<!-- Home's own accent, not the last per-show one a card set. -->
+	<div class="card-link-accent">
+		<LinkShowDialog
+			open={cardLink.open}
+			returnFocus={() => cardButton(linkRow)}
+			savedTitle={cardLink.offer.entry.title}
+			episode={cardLink.episode}
+			currentLabel={m.home_link_on_card()}
+			candidates={cardLink.candidates}
+			failed={cardLink.failed}
+			chosen={cardLink.chosen}
+			warnings={cardLink.warnings}
+			rowCount={cardLink.group?.length ?? null}
+			busy={cardLink.busy}
+			error={cardLink.error}
+			onSearch={(q) => void cardLink.search(q)}
+			onChoose={(c) => cardLink.choose(c)}
+			onConfirm={() => void cardLink.confirm()}
+			onCancel={() => cardLink.cancel()}
+		/>
+	</div>
 {/if}
 
 <ConfirmDialog
@@ -2013,6 +2300,12 @@
 		position: absolute;
 		inset: 0;
 	}
+	/* In the flex layer the body shrinks to its content, which for
+	   the placeholder is only the eyebrow, and the lines' percentage
+	   widths would resolve against that. Take the full measure. */
+	.hero-body-skel {
+		flex: 1;
+	}
 	.hero-skel-img {
 		inline-size: 100%;
 		block-size: 100%;
@@ -2053,6 +2346,77 @@
 	   land on the exact same beat of the hover transition. The chip
 	   sits outside the card's click target (resume-card is a sibling,
 	   not an ancestor) so its click never triggers play. */
+	/* A guessed card's "≈ Not what you watched?" pill: shown as the
+	   delete chip is, on hover or keyboard focus, at the other top
+	   corner. The card is a fixed 16rem and the chip, 2.25rem wide and
+	   popped 0.625rem out, covers its last 1.625rem: the pill stops a
+	   --space-2 short of it. Words that outgrow that wrap to two
+	   balanced lines, the ≈ beside the first, every word still read. */
+	.resume-link {
+		position: absolute;
+		z-index: 2;
+		inset-block-start: var(--space-2);
+		inset-inline-start: var(--space-2);
+		max-inline-size: calc(100% - 2 * var(--space-2) - 1.625rem);
+		display: inline-flex;
+		align-items: flex-start;
+		gap: var(--space-1);
+		line-height: 1.25;
+		text-align: start;
+		padding: var(--space-1) var(--space-3);
+		border: 1px solid color-mix(in oklab, var(--accent-persimmon) 45%, var(--ink-300));
+		border-radius: var(--radius-pill);
+		background: color-mix(in oklab, var(--ink-000) 84%, transparent);
+		font-size: var(--type-micro);
+		font-weight: 600;
+		color: var(--bone-100);
+		cursor: pointer;
+		opacity: 0;
+		transform: scale(0.92);
+		pointer-events: none;
+		transition:
+			opacity var(--dur-fast) var(--ease-out-soft),
+			transform var(--dur-fast) var(--ease-out-soft),
+			border-color var(--dur-fast) var(--ease-out-soft);
+	}
+	.resume-cell:hover .resume-link,
+	.resume-cell:focus-within .resume-link {
+		opacity: 1;
+		/* Rides the card's hover lift, as the delete chip does. */
+		transform: translateY(-3px);
+		pointer-events: auto;
+	}
+	/* Held while a resume runs: a link then would race the click's cap. */
+	.resume-link:disabled {
+		cursor: progress;
+	}
+	.resume-link:hover:not(:disabled),
+	.resume-link:focus-visible {
+		border-color: var(--accent-persimmon);
+	}
+	.resume-link:focus-visible {
+		outline: 2px solid var(--accent-persimmon);
+		outline-offset: 2px;
+	}
+	.resume-link :global(.guess-mark) {
+		flex: none;
+		/* Centred on the first line's box. */
+		margin-block-start: calc((1lh - 14px) / 2);
+		color: var(--accent-persimmon);
+	}
+	.resume-link-words {
+		min-inline-size: 0;
+		text-wrap: balance;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.resume-link {
+			transition: none;
+		}
+	}
+	.card-link-accent {
+		display: contents;
+		--accent: var(--accent-persimmon);
+	}
 	.resume-delete {
 		position: absolute;
 		/* Anchored half-outside the top-right corner so the chip
@@ -2465,5 +2829,20 @@
 	/* Lands with the artwork. */
 	.resume-body.look-landed {
 		animation: look-in var(--dur-slow) var(--ease-out-soft);
+	}
+	/* Skeleton line sizes. Classes, not static style attributes: the
+	   renderer's content security policy refuses inline style attributes,
+	   and Svelte parses a static one as markup. */
+	.line.h-3rem {
+		block-size: 3rem;
+	}
+	.line.w-50 {
+		inline-size: 50%;
+	}
+	.line.w-60 {
+		inline-size: 60%;
+	}
+	.line.w-70 {
+		inline-size: 70%;
 	}
 </style>

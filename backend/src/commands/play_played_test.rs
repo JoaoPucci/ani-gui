@@ -3,7 +3,7 @@
 use super::*;
 use crate::commands::play_native_test_provider::{stitched_recap, STITCHED, STITCHED_SLUG};
 
-fn state(td: &tempfile::TempDir) -> AppState {
+fn state(td: &tempfile::TempDir) -> crate::scratch::Scratch<AppState> {
     let mut state = super::tests::state_with_proxy_origin();
     state
         .providers
@@ -272,8 +272,10 @@ async fn a_cached_watch_overtaken_by_another_leaves_that_watchs_row() {
     crate::commands::play_native_record::record_watch(&state, &later, None).await;
     let cached = first_recap_row("http://x");
     let watch = crate::commands::play_cache::cached_watch(&cached, "12.5");
-    crate::commands::play_native_record::record_watch_requested_at(&state, &watch, None, begun)
-        .await;
+    crate::commands::play_native_record::record_watch_requested_at(
+        &state, &watch, None, begun, None,
+    )
+    .await;
     assert_eq!(listed_as(&state), "12.75");
 }
 
@@ -524,7 +526,7 @@ async fn a_watch_marked_on_a_prefetched_recap_reads_back_as_the_recap() {
     play_with_progress(&state, &prefetch, |_| {})
         .await
         .expect("prefetches the recap");
-    let router = crate::api::build_api_router(std::sync::Arc::new(state.clone()));
+    let router = crate::api::test_router(std::sync::Arc::new(state.clone()));
     let response = router
         .oneshot(
             axum::http::Request::builder()
@@ -626,6 +628,7 @@ async fn a_fresh_play_overtaken_by_a_later_watch_leaves_that_watchs_stamp() {
         &recap,
         "0.5",
         begun_before,
+        None,
         None,
     );
     assert_eq!(cumulative_listed(&state), "1");
@@ -756,7 +759,7 @@ async fn a_mark_watched_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
     play_with_progress(&state, &prefetch, |_| {})
         .await
         .expect("prefetches the recap");
-    let router = crate::api::build_api_router(std::sync::Arc::new(state.clone()));
+    let router = crate::api::test_router(std::sync::Arc::new(state.clone()));
     let body = serde_json::json!({
         "title": CUMULATIVE_S2,
         "episode": "0.5",

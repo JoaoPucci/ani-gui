@@ -14,6 +14,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { watchPageFetches } from './page-fetches';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -36,15 +37,26 @@ import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { editorFlights } from '../../src/lib/account/editor-flights.svelte';
 import type { Flight } from '../../src/lib/account/editor-flight';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import type { EntryView, ListEntry } from '../../src/lib/account/types';
+import { errorAnswer, availabilityAnswer } from '../answers';
 const KITSU_ID = '50498';
 const OTHER_ID = '50499';
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 /** The tracker's entry for the show, as a read would find it now. */
-let entry: { status: string; progress: number } = { status: 'planning', progress: 0 };
+let entry: EntryView = { status: 'planning', progress: 0 };
 let entryReads = 0;
 let progressWrites = 0;
+let fetches: ReturnType<typeof watchPageFetches>;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
@@ -60,48 +72,58 @@ beforeEach(() => {
 	entry = { status: 'planning', progress: 0 };
 	entryReads = 0;
 	progressWrites = 0;
+	fetches = watchPageFetches();
 	for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, 'Planned Show', 12), status: 'finished' })
-		),
-		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(KITSU_ID, 'Planned Show', 12),
+				status: 'finished'
 			})
 		),
-		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
+		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
 		http.get(`${API_BASE}/api/account/entry/anilist`, () => {
 			entryReads += 1;
-			return HttpResponse.json(entry);
+			return HttpResponse.json<EntryView | null>(entry);
 		}),
 		// The progress write: held back once for a second, then taken —
 		// the tracker now has the show as Watching.
 		http.post(`${API_BASE}/api/account/update/anilist`, () => {
 			progressWrites += 1;
 			if (progressWrites === 1) {
-				return HttpResponse.json(
-					{
-						kind: 'rate_limited',
-						key: 'error.network.rate_limited',
-						retry_after_secs: 1,
-						refused_by: 'anilist'
-					},
-					{ status: 429 }
-				);
+				return errorAnswer(429, {
+					kind: 'rate_limited',
+					key: 'error.network.rate_limited',
+					retry_after_secs: 1,
+					refused_by: 'anilist'
+				});
 			}
 			entry = { status: 'watching', progress: 1 };
-			return HttpResponse.json(null);
+			return HttpResponse.json<ListEntry | null>(null);
 		})
 	);
 	target = document.createElement('div');
@@ -124,6 +146,12 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
+/** The reads of the show's list entry the page has sent, counted as it
+ *  sends them: a handler sees a request only once MSW has carried it
+ *  there. */
+const entryReadsSent = () =>
+	fetches.sent.filter((f) => f.path === '/api/account/entry/anilist').length;
+
 /** The list control's trigger, by the status it shows. */
 const listShows = (label: string) =>
 	Array.from(target.querySelectorAll('button')).some((b) => (b.textContent ?? '').includes(label));
@@ -144,10 +172,13 @@ describe("detail route — a held progress write for the show lands while it's o
 	it("leaves the entry alone for another show's write", async () => {
 		app = mount(DetailPage, { target });
 		await until(() => listShows(m.detail_list_status_planning()), 'the entry as it was');
-		const before = entryReads;
+		const before = entryReadsSent();
 		await syncWatchedToTrackers(OTHER_ID, 1);
-		await new Promise((r) => setTimeout(r, 100));
-		expect(entryReads).toBe(before);
+		// The write has said it settled. A read of the entry waits only
+		// on the sign-in's bearer before it is sent, so once nothing the
+		// page asked is still out, a read the write set off has been sent.
+		await fetches.settled('the page to settle after the write');
+		expect(entryReadsSent()).toBe(before);
 	});
 });
 
@@ -162,14 +193,11 @@ describe('detail route — a held progress write lands while the entry read wait
 			http.get(`${API_BASE}/api/account/entry/anilist`, () => {
 				entryReads += 1;
 				refusals += 1;
-				return HttpResponse.json(
-					{
-						kind: 'rate_limited',
-						key: 'error.network.rate_limited',
-						retry_after_secs: refusals === 1 ? 2 : 1
-					},
-					{ status: 429 }
-				);
+				return errorAnswer(429, {
+					kind: 'rate_limited',
+					key: 'error.network.rate_limited',
+					retry_after_secs: refusals === 1 ? 2 : 1
+				});
 			})
 		);
 		const pending = syncWatchedToTrackers(KITSU_ID, 1);
@@ -192,14 +220,11 @@ describe('detail route — an editor save made elsewhere lands while the entry r
 			http.get(`${API_BASE}/api/account/entry/anilist`, () => {
 				entryReads += 1;
 				refusals += 1;
-				return HttpResponse.json(
-					{
-						kind: 'rate_limited',
-						key: 'error.network.rate_limited',
-						retry_after_secs: refusals === 1 ? 2 : 1
-					},
-					{ status: 429 }
-				);
+				return errorAnswer(429, {
+					kind: 'rate_limited',
+					key: 'error.network.rate_limited',
+					retry_after_secs: refusals === 1 ? 2 : 1
+				});
 			})
 		);
 		const held: Flight = { kind: 'saving' };

@@ -36,13 +36,12 @@
  * so nothing depends on Kitsu or the provider being reachable.
  */
 import {
-	expect,
-	test,
 	type ElectronApplication,
 	type Locator,
 	type Page
 } from '@playwright/test';
-import { killTree, withColdLaunchRetry } from '../lib/cold-launch.cjs';
+import { expect, test } from './policy-guard';
+import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -54,7 +53,15 @@ import {
 	topRated,
 	trending
 } from './fixtures/kitsu';
-import { appWindow, launchPackagedApp, packagedBinary } from './launch';
+import {
+	appWindow,
+	cardLinesAnswer,
+	launchPackagedApp,
+	packagedBinary,
+	stopApp,
+	stopDeadApp
+} from './launch';
+import { answer } from './stubs';
 
 /** Two rows: the first resolves to the stubbed show and is the one
  *  deleted, so the second has a gap to close. */
@@ -97,7 +104,7 @@ async function launchOnce(
 		XDG_CACHE_HOME: path.join(tmp, 'cache'),
 		XDG_DATA_HOME: path.join(tmp, 'data'),
 		ANI_GUI_UNATTENDED: '1'
-	});
+	}, { profile: tmp });
 	onLaunch(app);
 	const page = await appWindow(app);
 
@@ -107,7 +114,7 @@ async function launchOnce(
 		const p = u.pathname;
 		const method = r.request().method();
 		const j = (body: unknown) =>
-			r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+			answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
 		if (p === '/api/app-info') return j(appInfo);
 		if (p === '/api/settings') return j(defaultSettings);
@@ -115,14 +122,15 @@ async function launchOnce(
 		if (p === '/api/kitsu/top-rated') return j(topRated);
 		if (p.startsWith('/api/image')) {
 			return images
-				? r.fulfill({ status: 200, contentType: 'image/png', body: PIXEL })
-				: r.fulfill({ status: 503 });
+				? answer(r, { status: 200, contentType: 'image/png', body: PIXEL })
+				: answer(r, { status: 503 });
 		}
 		if (p === '/api/history') return j(rows);
+		if (p === '/api/history/card-lines') return j(cardLinesAnswer(r.request().postDataJSON()));
 		if (p.startsWith('/api/history/') && method === 'DELETE') {
 			const id = decodeURIComponent(p.split('/')[3] ?? '');
 			rows = rows.filter((row) => row.id !== id);
-			return r.fulfill({ status: 204 });
+			return answer(r, { status: 204 });
 		}
 		if (p === '/api/watched-at') {
 			return j(Object.fromEntries(rows.map((row) => [row.id, 1_700_000_000])));
@@ -138,7 +146,7 @@ async function launchOnce(
 			return j({ available: true, episode_count: 12, extra_episodes: [] });
 		}
 		if (p === '/api/play/stream') {
-			return r.fulfill({
+			return answer(r, {
 				status: 200,
 				contentType: 'text/event-stream',
 				body: `event: done\ndata: ${JSON.stringify({
@@ -151,6 +159,9 @@ async function launchOnce(
 				})}\n\n`
 			});
 		}
+		// The backend answers skip times with a list, empty when it knows
+		// none; the page reads it as one once the length is known.
+		if (p.startsWith('/api/aniskip/')) return j([]);
 		return j(null);
 	});
 
@@ -187,8 +198,7 @@ async function launch(reduced = true, images = false) {
 				const dead = pending;
 				pending = null;
 				if (dead) {
-					killTree(dead.process().pid);
-					await dead.close();
+					await stopDeadApp(dead);
 				}
 			}
 		}
@@ -301,8 +311,7 @@ test('Home, a deleted Continue Watching card and a show’s page stand still', a
 		await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 		await expectStill(page, 'scrolling a show’s page');
 	} finally {
-		killTree(app.process().pid);
-		await app.close();
+		await stopApp(app);
 	}
 });
 
@@ -360,8 +369,7 @@ test('a Continue Watching card that has landed shows its artwork and text', asyn
 			expect(s.display, `${s.what} is displayed`).not.toBe('none');
 		}
 	} finally {
-		killTree(app.process().pid);
-		await app.close();
+		await stopApp(app);
 	}
 });
 
@@ -384,8 +392,7 @@ test('the player and its overlay stand still', async () => {
 		await page.locator('li[data-ep-num="7"] button').first().click();
 		await expectStill(page, 'switching episodes', 1_000);
 	} finally {
-		killTree(app.process().pid);
-		await app.close();
+		await stopApp(app);
 	}
 });
 
@@ -431,7 +438,6 @@ test('with motion on, the same hover and delete do move', async () => {
 		}
 		expect(seen.length).toBeGreaterThan(0);
 	} finally {
-		killTree(app.process().pid);
-		await app.close();
+		await stopApp(app);
 	}
 });

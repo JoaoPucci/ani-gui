@@ -29,45 +29,24 @@ vi.mock('$app/state', () => ({
 import SearchPage from '../../src/routes/search/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
+import type { AvailabilityBatchResponse, Config, KitsuAnimeRef } from '../../src/lib/api';
+import { configAnswer, errorAnswer, kitsuRefAnswer } from '../answers';
 
-function ref(id: string, title: string) {
-	return {
+function ref(id: string, title: string): KitsuAnimeRef {
+	return kitsuRefAnswer({
 		id,
 		canonical_title: title,
-		titles: {},
-		abbreviated_titles: [],
 		slug: title.toLowerCase().replace(/\s+/g, '-'),
-		synopsis: null,
-		poster_image: null,
-		cover_image: null,
 		episode_count: 12,
 		status: 'finished',
-		start_date: '2019-01-01',
-		average_rating: null
-	};
+		start_date: '2019-01-01'
+	});
 }
 
 const TRENDING = [ref('t1', 'Airing One'), ref('t2', 'Airing Two')];
 const TOP_RATED = [ref('r1', 'Classic One'), ref('r2', 'Classic Two')];
 
-const CONFIG = {
-	locale: 'en',
-	mode: 'sub',
-	download_quality: 'best',
-	external_player: '',
-	external_player_kind: 'mpv',
-	external_player_custom_args: '',
-	syncplay_binary: '',
-	image_cache_cap_mb: 100,
-	auto_play_next: false,
-	download_bottom_bar_enabled: true,
-	auto_skip_op: false,
-	auto_skip_ed: false,
-	use_custom_player_controls: true,
-	auto_update_anicli: false,
-	update_include_prereleases: false,
-	primary_account: ''
-};
+const CONFIG: Config = configAnswer({ mode: 'sub' });
 
 /** A request held until the scenario lets it answer. */
 function held() {
@@ -89,23 +68,19 @@ function handlers(opts: {
 	topRatedFails?: boolean;
 }) {
 	return [
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(CONFIG)),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(CONFIG)),
 		http.get(`${API_BASE}/api/kitsu/trending-anilist`, async () => {
 			await opts.trending;
-			return opts.trendingFails
-				? HttpResponse.json({ error: 'error.network' }, { status: 503 })
-				: HttpResponse.json(TRENDING);
+			return opts.trendingFails ? errorAnswer(503) : HttpResponse.json<KitsuAnimeRef[]>(TRENDING);
 		}),
 		http.get(`${API_BASE}/api/kitsu/top-rated`, async () => {
 			await opts.topRated;
-			return opts.topRatedFails
-				? HttpResponse.json({ error: 'error.network' }, { status: 503 })
-				: HttpResponse.json(TOP_RATED);
+			return opts.topRatedFails ? errorAnswer(503) : HttpResponse.json<KitsuAnimeRef[]>(TOP_RATED);
 		}),
 		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 			const { kitsu_ids } = (await request.json()) as { kitsu_ids: string[] };
 			for (const id of kitsu_ids) filtered.add(id);
-			return HttpResponse.json({
+			return HttpResponse.json<AvailabilityBatchResponse>({
 				cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
 				playable_episode_counts: {}
 			});
@@ -333,15 +308,13 @@ describe('/search with no query: the discovery rows', () => {
 		const modes: string[] = [];
 		const recording = (settingsFail: boolean, rowsFail: boolean) => [
 			http.get(`${API_BASE}/api/settings`, () =>
-				settingsFail
-					? HttpResponse.json({ error: 'error.network' }, { status: 503 })
-					: HttpResponse.json({ ...CONFIG, mode: 'dub' })
+				settingsFail ? errorAnswer(503) : HttpResponse.json<Config>({ ...CONFIG, mode: 'dub' })
 			),
 			...handlers({ trendingFails: rowsFail, topRatedFails: rowsFail }).slice(1, 3),
 			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 				const body = (await request.json()) as { kitsu_ids: string[]; mode: string };
 				modes.push(body.mode);
-				return HttpResponse.json({
+				return HttpResponse.json<AvailabilityBatchResponse>({
 					cached: Object.fromEntries(body.kitsu_ids.map((id) => [id, true])),
 					playable_episode_counts: {}
 				});

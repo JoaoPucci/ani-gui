@@ -101,6 +101,20 @@ export function movePosition(
 	return false;
 }
 
+/** The episodes of `showId` with a kept position: the ones Continue
+ *  takes as left part-way ({@link readPosition} not null). */
+export function keptEpisodes(
+	showId: string,
+	storage: PositionStorage | null = defaultStorage()
+): number[] {
+	const prefix = `${showId}:`;
+	return load(storage)
+		.map(([k]) => k)
+		.filter((k) => k.startsWith(prefix))
+		.map((k) => Number(k.slice(prefix.length)))
+		.filter((n) => Number.isFinite(n) && n > 0);
+}
+
 /** Where `episode` of `showId` was left, or null. */
 export function readPosition(
 	showId: string,

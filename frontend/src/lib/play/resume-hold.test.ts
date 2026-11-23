@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { resumeStartAt } from './resume-hold';
+import { noHold, resumeStartAt } from './resume-hold';
 
 // A point is a position in seconds; null is no point at all.
 const point = fc.option(fc.double({ min: -10, max: 10_000, noNaN: true }), { nil: null });
@@ -29,5 +29,17 @@ describe('resumeStartAt', () => {
 				else expect(at).toBeNull();
 			})
 		);
+	});
+});
+
+describe('noHold', () => {
+	it('holds nothing: a seek moves the playhead, and release and end do nothing', () => {
+		const video = { currentTime: 0 } as HTMLVideoElement;
+		const hold = noHold(video);
+		hold.seekTo(42);
+		expect(video.currentTime).toBe(42);
+		hold.release();
+		hold.end();
+		expect(video.currentTime).toBe(42);
 	});
 });

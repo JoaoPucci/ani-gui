@@ -182,3 +182,76 @@ body.shown .status { transition: opacity 220ms var(--ease-out-soft); }
 body.reduced *, body.reduced *::before, body.reduced *::after {
   animation: none !important; transition: none !important;
 }
+
+/* — The stuck state (lib/splash-stuck.cjs): the first page has not
+   said it rendered 15 s after the splash painted. The stall line takes
+   the "taking longer than usual" words, the rail's pending stretch
+   breathes (it is the step that is late), and two actions come in
+   under the line. The film keeps running: the app is alive and still
+   trying, which is the honest picture. — */
+.title { position: relative; }
+/* Stuck: the line and the actions join the flow, so the column grows
+   and the stage re-centres it (title, rail, line, actions). The rise
+   is not a jump: progress.js measures the column before and after and
+   hands the distance over as --rise, and the column glides up from
+   where it stood (a FLIP) on the transport's ease. */
+body.stuck .title { margin-block-end: 0; }
+body.stuck .status { position: static; display: block; margin-block-start: 10px; text-wrap: balance; }
+body.shown .title.rising { animation: rise 420ms var(--ease-out-soft) both; }
+@keyframes rise { from { transform: translateY(var(--rise, 0px)); } }
+
+.actions {
+  margin-block-start: 14px;
+  /* Wraps rather than widening the column: the title column is the
+     stage's flexible track, and a row wider than it would push the
+     rail and the line past the window's margin. */
+  display: flex; flex-wrap: wrap; gap: 8px;
+  /* The buttons take clicks inside the window's drag region. */
+  -webkit-app-region: no-drag;
+}
+.actions[hidden] { display: none; }
+/* They come in once the column has nearly risen, not during it. An
+   animation, not a transition: they leave display:none in the same
+   frame, which a transition has no "before" for. */
+body.shown.stuck .actions { animation: actions 260ms var(--ease-out-soft) 280ms backwards; }
+@keyframes actions { from { opacity: 0; transform: translateY(4px); } }
+
+/* The two actions borrow the gate's own drawing: the aperture plate is
+   a pair of sienna hairlines across the strip, and Restart is that —
+   hairlines above and below, the frame between them faintly lit.
+   Quit is the same shape unlit. No pill, no fill to shout with. */
+.act {
+  -webkit-app-region: no-drag; cursor: pointer; appearance: none; margin: 0;
+  font: 500 11px/1 var(--font-mono); letter-spacing: 0.04em; text-transform: none;
+  padding: 8px 9px; border: 0; border-radius: 0;
+  border-block: 1px solid color-mix(in oklab, var(--bone-300) 22%, transparent);
+  background: transparent; color: var(--bone-300);
+  transition: color 140ms var(--ease-out-soft), background-color 140ms var(--ease-out-soft),
+    border-color 140ms var(--ease-out-soft);
+}
+.act-restart {
+  color: var(--bone-100);
+  border-block-color: color-mix(in oklab, var(--brand) 70%, transparent);
+  background: color-mix(in oklab, var(--brand) 9%, transparent);
+}
+.act:hover { color: var(--bone-100); border-block-color: color-mix(in oklab, var(--bone-300) 60%, transparent); }
+.act-restart:hover { background: color-mix(in oklab, var(--brand) 18%, transparent); border-block-color: var(--brand); }
+.act:active { background: color-mix(in oklab, var(--bone-300) 8%, transparent); transform: translateY(1px); }
+.act-restart:active { background: color-mix(in oklab, var(--brand) 26%, transparent); }
+/* Keyboard focus in bone, not sienna, so it stays distinct from
+   Restart's own hairlines. */
+.act:focus { outline: none; }
+.act:focus-visible { outline: 2px solid var(--bone-100); outline-offset: 2px; }
+
+/* The late stretch: lit, but dimmed, and breathing over three beats
+   of the transport — the step that has not landed. No halo: a glow on
+   a dimmed stretch muddies it. Still (reduced motion, or a splash never
+   told to move) it rests dimly within the breath's range, with no
+   animation: a merely paused one would hold its first keyframe instead. */
+@keyframes late { 0%, 100% { opacity: 0.10; } 50% { opacity: 0.35; } }
+.rail i.late::after {
+  clip-path: inset(0 0 0 0); box-shadow: none;
+  animation: late calc(3 * var(--beat)) var(--ease-in-out) infinite;
+}
+body.reduced .rail i.late::after, body:not(.shown) .rail i.late::after { animation: none; opacity: 0.18; }
+@media (prefers-reduced-motion: reduce) { .rail i.late::after { animation: none; opacity: 0.18; } }

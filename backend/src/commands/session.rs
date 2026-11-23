@@ -1,13 +1,17 @@
-//! `create_session` command — the frontend hands the backend a resolved
-//! upstream HLS URL (with referer) and gets back the
-//! proxy URL hls.js / `<video>` should fetch.
+//! `create_session_with_kind` — hands the backend a resolved upstream
+//! HLS URL (with referer) and gets back the proxy URL hls.js /
+//! `<video>` should fetch.
 //!
 //! The URL comes from the resolver: the play path walks the provider
 //! and hands the master playlist here. The contract predates that — it
 //! was written against a paste field — and is unchanged by it, which is
 //! the point of taking a URL rather than a show.
+//!
+//! It is reached only through a play — a fresh resolve, or the replay
+//! of a cached one. No route takes a URL from a caller and opens a
+//! session on it.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use url::Url;
 
 use crate::app::AppState;
@@ -15,18 +19,16 @@ use crate::error::{AniError, Result};
 use crate::proxy::{MediaKind, SessionSubtitle, StreamSession};
 use crate::scraper::provider::SubtitleTrack;
 
-/// Frontend → backend payload. All URLs are strings on the wire.
-#[derive(Debug, Clone, Deserialize)]
+/// What the play path builds for a resolved stream, fresh or replayed.
+#[derive(Debug, Clone)]
 pub struct CreateSessionArgs {
     /// Upstream master playlist (or single media playlist) URL.
     pub upstream_url: String,
     /// `Referer:` header the upstream CDN expects (empty string if none).
     pub referer: String,
-    /// Sidecar subtitle tracks the resolve listed beside the stream.
-    /// Attached by the resolver alone: the public session route
-    /// refuses a caller-supplied list, since the proxy fetches a
-    /// session's tracks on the caller's behalf.
-    #[serde(default)]
+    /// Sidecar subtitle tracks the resolve listed beside the stream —
+    /// the resolver's to name, since the proxy fetches a session's
+    /// tracks on the caller's behalf.
     pub subtitles: Vec<SubtitleTrack>,
 }
 
@@ -90,28 +92,38 @@ pub struct CreateSessionResponse {
     /// would. False for every other play.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub own_listing: bool,
+    /// Whether a play a card no guess opened asked for
+    /// ([`crate::commands::play::PlayArgs::card_row`]) keeps the other
+    /// show the card's line records ([`crate::commands::guess_guard::line_kept`]):
+    /// it records nothing there, and the renderer writes no tracker for
+    /// it. False for every other play.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub line_kept: bool,
 }
 
-/// Validate the inputs and register a new [`StreamSession`] in
-/// [`AppState::sessions`]. Infers the [`MediaKind`] from the upstream
-/// URL extension; callers with stronger signal (e.g. a HEAD response)
-/// should use [`create_session_with_kind`] instead.
+/// The proxy URL a session's media is fetched at. The path segment
+/// matches the media kind — the proxy router has a separate handler
+/// for each, so picking the wrong one would 415. The renderer composes
+/// the same URL from a session id it carries in a page's address
+/// (`frontend/src/lib/play/media-url.ts`); `backend/wire-contract.json`
+/// publishes this one's answers for its test to hold it to.
+#[must_use]
+pub fn media_url(origin_base: &str, session: &str, kind: MediaKind) -> String {
+    let path = match kind {
+        MediaKind::Hls => "master.m3u8",
+        MediaKind::Mp4 => "file.mp4",
+    };
+    format!("{origin_base}/s/{session}/{path}")
+}
+
+/// Validate the inputs and register a new [`StreamSession`] of `kind`
+/// in [`AppState::sessions`]. The kind is the caller's, never read off
+/// the URL: a resolve's master is HLS because its body opened as a
+/// playlist, and a replay takes the kind its cached row holds.
 ///
 /// # Errors
 /// - [`AniError::ParseFailed`] if `upstream_url` is not a parseable
 ///   URL or uses a scheme other than `http`/`https`.
-pub fn create_session(state: &AppState, args: &CreateSessionArgs) -> Result<CreateSessionResponse> {
-    let upstream = parse_http_url(&args.upstream_url, "upstream_url")?;
-    let kind = MediaKind::from_url(&upstream).unwrap_or(MediaKind::Hls);
-    create_session_inner(state, args, upstream, kind)
-}
-
-/// Like [`create_session`], but takes an explicit [`MediaKind`] decided
-/// by the caller (typically via a HEAD round-trip when the URL
-/// extension is ambiguous).
-///
-/// # Errors
-/// Same as [`create_session`].
 pub fn create_session_with_kind(
     state: &AppState,
     args: &CreateSessionArgs,
@@ -144,13 +156,7 @@ fn create_session_inner(
     state.sessions.insert(session);
 
     let session_str = id.as_string();
-    // The path segment matches the media kind — the proxy router has
-    // a separate handler for each, so picking the wrong one would 415.
-    let path = match media_kind {
-        MediaKind::Hls => "master.m3u8",
-        MediaKind::Mp4 => "file.mp4",
-    };
-    let media_url = format!("{}/s/{}/{}", state.proxy_origin.base, session_str, path);
+    let media_url = media_url(&state.proxy_origin.base, &session_str, media_kind);
     let subtitles = tracks
         .iter()
         .enumerate()
@@ -170,6 +176,7 @@ fn create_session_inner(
         former_episode: None,
         episode_unverified: false,
         own_listing: false,
+        line_kept: false,
     })
 }
 
@@ -190,13 +197,17 @@ fn parse_http_url(s: &str, field: &str) -> Result<Url> {
 mod subtitle_tests;
 
 #[cfg(test)]
+#[path = "session_media_url_test.rs"]
+mod media_url_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::path::PathBuf;
 
-    fn make_state(port: u16) -> AppState {
-        AppState {
+    fn make_state(port: u16) -> crate::scratch::Scratch<AppState> {
+        let dirs = crate::scratch::dir();
+        let state = AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -205,32 +216,34 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", port),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/y/history"),
+            history_path: dirs.history(),
             providers: crate::provider_set::ProviderSet::for_tests(),
-            image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+            image_cache_dir: dirs.images(),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
-            config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-            state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            config_path: dirs.config(),
+            state_dir: dirs.state(),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
             flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
-        }
+        };
+        dirs.hold(state)
     }
 
     #[test]
-    fn create_session_returns_proxy_url_built_from_origin_and_session_id() {
+    fn a_session_returns_proxy_url_built_from_origin_and_session_id() {
         let state = make_state(40_000);
-        let resp = create_session(
+        let resp = create_session_with_kind(
             &state,
             &CreateSessionArgs {
                 upstream_url: "https://cdn.example/master.m3u8".into(),
                 referer: "https://allmanga.to".into(),
                 subtitles: Vec::new(),
             },
+            MediaKind::Hls,
         )
         .expect("ok");
 
@@ -251,15 +264,16 @@ mod tests {
     }
 
     #[test]
-    fn create_session_inserts_into_session_table_with_referer_and_upstream() {
+    fn a_session_is_inserted_into_session_table_with_referer_and_upstream() {
         let state = make_state(40_001);
-        let resp = create_session(
+        let resp = create_session_with_kind(
             &state,
             &CreateSessionArgs {
                 upstream_url: "https://cdn.example/master.m3u8".into(),
                 referer: "https://allmanga.to".into(),
                 subtitles: Vec::new(),
             },
+            MediaKind::Hls,
         )
         .unwrap();
 
@@ -275,13 +289,14 @@ mod tests {
     #[test]
     fn invalid_upstream_url_returns_parse_failed() {
         let state = make_state(40_004);
-        let r = create_session(
+        let r = create_session_with_kind(
             &state,
             &CreateSessionArgs {
                 upstream_url: "not a url".into(),
                 referer: String::new(),
                 subtitles: Vec::new(),
             },
+            MediaKind::Hls,
         );
         assert!(matches!(r, Err(AniError::ParseFailed { .. })));
         assert_eq!(state.sessions.len(), 0, "no session leaked on error");
@@ -290,13 +305,14 @@ mod tests {
     #[test]
     fn non_http_upstream_scheme_is_rejected() {
         let state = make_state(40_005);
-        let r = create_session(
+        let r = create_session_with_kind(
             &state,
             &CreateSessionArgs {
                 upstream_url: "file:///etc/passwd".into(),
                 referer: String::new(),
                 subtitles: Vec::new(),
             },
+            MediaKind::Hls,
         );
         assert!(matches!(r, Err(AniError::ParseFailed { .. })));
         assert_eq!(state.sessions.len(), 0);
@@ -305,13 +321,14 @@ mod tests {
     #[test]
     fn http_scheme_is_accepted() {
         let state = make_state(40_007);
-        let resp = create_session(
+        let resp = create_session_with_kind(
             &state,
             &CreateSessionArgs {
                 upstream_url: "http://insecure.example/master.m3u8".into(),
                 referer: String::new(),
                 subtitles: Vec::new(),
             },
+            MediaKind::Hls,
         )
         .expect("plain http allowed");
         assert_eq!(state.sessions.len(), 1);
@@ -333,6 +350,7 @@ mod tests {
             former_episode: None,
             episode_unverified: false,
             own_listing: false,
+            line_kept: false,
         };
         let s = serde_json::to_string(&r).unwrap();
         assert!(s.contains("\"session_id\":\"abc\""));
@@ -340,21 +358,22 @@ mod tests {
         assert!(s.contains("\"media_kind\":\"hls\""));
     }
 
-    /// HLS upstreams (.m3u8) get a media_url that points at the
-    /// /master.m3u8 proxy endpoint and a media_kind of "hls"; MP4
-    /// upstreams (.mp4) get /file.mp4 and "mp4". The renderer uses
-    /// media_kind to pick hls.js vs `<video src>`, so the response
-    /// must carry both signals atomically.
+    /// An HLS session gets a media_url that points at the /master.m3u8
+    /// proxy endpoint and a media_kind of "hls"; an MP4 session gets
+    /// /file.mp4 and "mp4". The renderer uses media_kind to pick hls.js
+    /// vs `<video src>`, so the response must carry both signals
+    /// atomically.
     #[test]
-    fn create_session_with_mp4_upstream_returns_mp4_kind_and_file_mp4_url() {
+    fn an_mp4_session_returns_mp4_kind_and_file_mp4_url() {
         let state = make_state(40_010);
-        let resp = create_session(
+        let resp = create_session_with_kind(
             &state,
             &CreateSessionArgs {
                 upstream_url: "https://video.example/1080/file.mp4".into(),
                 referer: "https://allmanga.to".into(),
                 subtitles: Vec::new(),
             },
+            MediaKind::Mp4,
         )
         .expect("ok");
         assert_eq!(resp.media_kind, crate::proxy::MediaKind::Mp4);
@@ -367,15 +386,16 @@ mod tests {
     }
 
     #[test]
-    fn create_session_with_hls_upstream_returns_hls_kind_and_master_m3u8_url() {
+    fn an_hls_session_returns_hls_kind_and_master_m3u8_url() {
         let state = make_state(40_011);
-        let resp = create_session(
+        let resp = create_session_with_kind(
             &state,
             &CreateSessionArgs {
                 upstream_url: "https://cdn.example/master.m3u8".into(),
                 referer: "https://allmanga.to".into(),
                 subtitles: Vec::new(),
             },
+            MediaKind::Hls,
         )
         .expect("ok");
         assert_eq!(resp.media_kind, crate::proxy::MediaKind::Hls);

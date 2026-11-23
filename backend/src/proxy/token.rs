@@ -85,23 +85,6 @@ pub enum MediaKind {
     Mp4,
 }
 
-impl MediaKind {
-    /// Cheap classifier from the URL path's extension. Returns `None`
-    /// when the extension is missing or unknown — caller is expected
-    /// to fall back to a HEAD request in that case.
-    #[must_use]
-    pub fn from_url(url: &url::Url) -> Option<Self> {
-        let path = url.path();
-        let last_segment = path.rsplit('/').next().unwrap_or("");
-        let ext = last_segment.rsplit('.').next().unwrap_or("");
-        match ext.to_ascii_lowercase().as_str() {
-            "m3u8" => Some(Self::Hls),
-            "mp4" => Some(Self::Mp4),
-            _ => None,
-        }
-    }
-}
-
 /// Strongly typed UUID for stream sessions. Wraps [`Uuid`] for clarity at
 /// API boundaries.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
@@ -197,21 +180,10 @@ pub struct StreamSession {
 }
 
 impl StreamSession {
-    /// Build a session with the default TTL. Infers `media_kind` from
-    /// the URL extension; defaults to [`MediaKind::Hls`] when the
-    /// extension is missing — preserves the legacy behaviour for
-    /// upstreams that lack a clean extension. Callers that have
-    /// stronger signal (e.g. a HEAD response) should use
-    /// [`Self::new_with_kind`] instead.
-    #[must_use]
-    pub fn new(upstream_url: url::Url, referer: impl Into<String>) -> Self {
-        let kind = MediaKind::from_url(&upstream_url).unwrap_or(MediaKind::Hls);
-        Self::new_with_kind(upstream_url, kind, referer)
-    }
-
-    /// Build a session with an explicit [`MediaKind`]. Use this when
-    /// the caller has classified the upstream by HEAD response or
-    /// other side-channel signal.
+    /// Build a session of `media_kind`, which its opener names — HLS
+    /// for a resolve's validated master and for a download's relay
+    /// ([`Self::background`]), the stored kind for a replayed cache
+    /// row. Nothing reads the kind off the URL.
     #[must_use]
     pub fn new_with_kind(
         upstream_url: url::Url,
@@ -575,51 +547,10 @@ mod tests {
         AppSecret::from_bytes([7u8; 32])
     }
 
-    /// A selected link can be either an HLS master playlist
-    /// (`*.m3u8`) or a direct MP4 (`*.mp4` from wixmp/sharepoint/etc).
-    /// The proxy needs to know which so it can either rewrite the
-    /// manifest or stream the bytes through with `Range` support; the
-    /// frontend needs to know which so it can pick hls.js vs a plain
-    /// `<video src=...>`. URL-extension detection is the fast path.
-    #[test]
-    fn media_kind_from_url_detects_hls() {
-        let url = url::Url::parse("https://example.com/abc/master.m3u8").unwrap();
-        assert_eq!(MediaKind::from_url(&url), Some(MediaKind::Hls));
-    }
-
-    #[test]
-    fn media_kind_from_url_detects_mp4() {
-        let url =
-            url::Url::parse("https://video.wixstatic.com/video/bd1bd7_xxxx/1080p/mp4/file.mp4")
-                .unwrap();
-        assert_eq!(MediaKind::from_url(&url), Some(MediaKind::Mp4));
-    }
-
-    #[test]
-    fn media_kind_from_url_ignores_query_and_fragment() {
-        let with_query =
-            url::Url::parse("https://example.com/abc/master.m3u8?token=xyz&exp=42").unwrap();
-        assert_eq!(MediaKind::from_url(&with_query), Some(MediaKind::Hls));
-        let with_frag = url::Url::parse("https://example.com/file.mp4#t=0").unwrap();
-        assert_eq!(MediaKind::from_url(&with_frag), Some(MediaKind::Mp4));
-    }
-
-    #[test]
-    fn media_kind_from_url_returns_none_for_unknown_extension() {
-        let url = url::Url::parse("https://example.com/embed/abc123").unwrap();
-        assert_eq!(MediaKind::from_url(&url), None);
-    }
-
-    #[test]
-    fn media_kind_from_url_is_case_insensitive() {
-        let url = url::Url::parse("https://example.com/PLAYLIST.M3U8").unwrap();
-        assert_eq!(MediaKind::from_url(&url), Some(MediaKind::Hls));
-    }
-
     #[test]
     fn stream_session_carries_media_kind() {
-        let url = url::Url::parse("https://video.example/file.mp4").unwrap();
-        let sess = StreamSession::new(url, "ref");
+        let url = url::Url::parse("https://video.example/file").unwrap();
+        let sess = StreamSession::new_with_kind(url, MediaKind::Mp4, "ref");
         assert_eq!(sess.media_kind, MediaKind::Mp4);
     }
 
@@ -685,8 +616,9 @@ mod tests {
     #[test]
     fn session_table_round_trip() {
         let table = SessionTable::new();
-        let sess = StreamSession::new(
+        let sess = StreamSession::new_with_kind(
             url::Url::parse("https://example.com/master.m3u8").unwrap(),
+            MediaKind::Hls,
             "https://allmanga.to",
         );
         let id = sess.id;
@@ -704,8 +636,9 @@ mod tests {
     #[test]
     fn expired_session_is_evicted_on_get() {
         let table = SessionTable::new();
-        let mut sess = StreamSession::new(
+        let mut sess = StreamSession::new_with_kind(
             url::Url::parse("https://example.com/master.m3u8").unwrap(),
+            MediaKind::Hls,
             "ref",
         );
         sess.expires_at = SystemTime::now() - Duration::from_secs(1);
@@ -717,9 +650,16 @@ mod tests {
     #[test]
     fn sweep_evicts_only_expired() {
         let table = SessionTable::new();
-        let live = StreamSession::new(url::Url::parse("https://a.example/m.m3u8").unwrap(), "ref");
-        let mut dead =
-            StreamSession::new(url::Url::parse("https://b.example/m.m3u8").unwrap(), "ref");
+        let live = StreamSession::new_with_kind(
+            url::Url::parse("https://a.example/m.m3u8").unwrap(),
+            MediaKind::Hls,
+            "ref",
+        );
+        let mut dead = StreamSession::new_with_kind(
+            url::Url::parse("https://b.example/m.m3u8").unwrap(),
+            MediaKind::Hls,
+            "ref",
+        );
         dead.expires_at = SystemTime::now() - Duration::from_secs(1);
         let live_id = table.insert(live);
         let dead_id = table.insert(dead);

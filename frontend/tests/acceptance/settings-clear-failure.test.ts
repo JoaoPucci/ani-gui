@@ -13,6 +13,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { appConfig } from './home-handlers';
+import { afterRead, watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -30,22 +31,26 @@ import SettingsPage from '../../src/routes/settings/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
-const APP_INFO = {
+import type { AppInfo, Config } from '../../src/lib/api';
+import { appInfoAnswer, errorAnswer } from '../answers';
+const APP_INFO = appInfoAnswer({
 	version: '0.12.0',
 	history_path: '/home/u/.local/state/ani-gui/history',
 	proxy_base_url: 'http://127.0.0.1:31337',
 	removed_legacy_paths: []
-};
-const refused = () => HttpResponse.json({ key: 'error.io.generic', kind: 'io' }, { status: 500 });
+});
+const refused = () => errorAnswer(500, { key: 'error.io.generic', kind: 'io' });
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
+let fetches: ReturnType<typeof watchPageFetches>;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	fetches = watchPageFetches();
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
-		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO)),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
+		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json<AppInfo>(APP_INFO)),
 		http.delete(`${API_BASE}/api/history`, refused),
 		http.delete(`${API_BASE}/api/cache/images`, refused)
 	);
@@ -131,20 +136,19 @@ describe('settings — a failed clear', () => {
 		await until(() => button(m.settings_clear_history_button()) !== null, 'the page');
 		button(m.settings_clear_history_button())!.click();
 		await until(() => alertHeadline() === m.settings_clear_history_failed(), 'the clear error');
-		let put = false;
-		server.use(
-			http.put(`${API_BASE}/api/settings`, () => {
-				put = true;
-				return new HttpResponse(null, { status: 204 });
-			})
-		);
+		const saves = () =>
+			fetches.sent.filter((f) => f.method === 'PUT' && f.path === '/api/settings').length;
+		const savesBefore = saves();
 		(
 			target.querySelector(
 				`input[aria-label="${m.settings_cache_resolutions_aria_label()}"]`
 			) as HTMLInputElement
 		).click();
-		await until(() => put, 'the save');
-		await new Promise((r) => setTimeout(r, 50));
+		await until(() => saves() > savesBefore, 'the save');
+		// The save has landed on the page: nothing it asked is still out,
+		// and what the answer set off has run.
+		await fetches.settled('the save to land');
+		await afterRead();
 		expect(alertHeadline()).toBe(m.settings_clear_history_failed());
 	});
 });

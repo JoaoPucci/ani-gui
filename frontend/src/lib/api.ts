@@ -11,24 +11,13 @@
  * accepts snake_case in API DTO interfaces only.
  */
 
-/**
- * Resolve the base URL of the local backend (e.g.
- * `http://127.0.0.1:42337`). Cached after the first call.
- *
- * Detection order:
- *   1. `window.aniGui.apiBase` — Electron preload script injection.
- *   2. `import.meta.env.VITE_ANI_GUI_API_BASE` — browser-only dev
- *      (run `cargo run --bin ani-gui-backend` and `pnpm dev` with
- *      the env var set to the printed URL).
- *
- * Throws if neither is available — the renderer can't function
- * without a backend address.
- */
 import type { StreamProvider } from '$lib/history/show-key';
+import { notePlayed } from '$lib/history/guess-plays';
 import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
 import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
 import { laneBase, type Lane } from '$lib/backend/lanes';
+import { withSecretHeader } from '$lib/backend/secret';
 import { getLocale } from '$lib/paraglide/runtime';
 import { probeLimiter } from '$lib/availability/probe-limiter';
 import { probeScope } from '$lib/availability/probe-scope';
@@ -54,10 +43,10 @@ declare global {
 			 *  `apiBase`. */
 			lanes?: Partial<Record<string, string>>;
 			/** Per-process random secret printed by the Rust backend at
-			 *  startup and threaded through Electron's preload. Sent as
-			 *  the `x-ani-gui-internal-secret` header on the few backend
-			 *  paths that need a renderer-only gate beyond the bearer —
-			 *  specifically the disconnect-after-expiry cache wipe. Absent in browser-only dev. */
+			 *  startup and threaded through Electron's preload. Every
+			 *  request to the backend's API carries it, which the backend
+			 *  answers no request without (`$lib/backend/secret`). Absent
+			 *  in browser-only dev. */
 			internalSecret?: string;
 			/** Node's `process.platform` value forwarded from the Electron
 			 *  main process — 'win32' | 'linux' | 'darwin' | 'freebsd' |
@@ -73,6 +62,10 @@ declare global {
 			 *  `defaults` or `test`; null when the window opened
 			 *  without them. */
 			flagsOrigin?: string | null;
+			/** Tell the main process the app's first page has mounted,
+			 *  before it has drawn a frame (`$lib/app-ready`). Absent in
+			 *  browser-only dev. */
+			appMounted?: () => void;
 			/** Tell the main process the app's first page has rendered,
 			 *  which the window's reveal waits for (`$lib/app-ready`).
 			 *  Absent in browser-only dev. */
@@ -124,6 +117,21 @@ declare global {
 	}
 }
 
+/**
+ * Resolve the base URL of the local backend (e.g.
+ * `http://127.0.0.1:42337`). Cached after the first call.
+ *
+ * Detection order:
+ *   1. `window.aniGui.apiBase` — Electron preload script injection.
+ *   2. `import.meta.env.VITE_ANI_GUI_API_BASE` — browser-only dev
+ *      (run `cargo run --bin ani-gui-backend` and `pnpm dev` with
+ *      the env var set to the printed URL). Such a tab has no
+ *      launch secret ($lib/backend/secret), so the backend refuses
+ *      its API requests.
+ *
+ * Throws if neither is available — the renderer can't function
+ * without a backend address.
+ */
 async function apiBase(): Promise<string> {
 	if (apiBaseCache !== null) return apiBaseCache;
 	if (typeof window !== 'undefined' && window.aniGui?.apiBase) {
@@ -191,8 +199,8 @@ async function expect2xx<T>(resp: Response): Promise<T> {
 		}
 		throw detail;
 	}
-	// Tolerate any 2xx with an empty body (the external-player
-	// endpoint returns 202 Accepted with no JSON to parse). `.json()`
+	// Tolerate any 2xx with an empty body (a 202 Accepted with no
+	// JSON to parse, say). `.json()`
 	// throws "Unexpected end of JSON input" on an empty body, which
 	// surfaced as a confusing toast even though the action succeeded.
 	if (resp.status === 204) return undefined as T;
@@ -201,32 +209,43 @@ async function expect2xx<T>(resp: Response): Promise<T> {
 	return JSON.parse(text) as T;
 }
 
-async function getJson<T>(path: string): Promise<T> {
-	const resp = await fetch(await url(path));
+async function getJson<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+	const at = await url(path, opts.lane);
+	const init = withSecretHeader(opts.signal ? { signal: opts.signal } : undefined);
+	const resp = await (init ? fetch(at, init) : fetch(at));
 	return expect2xx<T>(resp);
 }
 
 /** A GET's JSON body, with the tickets of the refills it was served
- *  without (`$lib/refill/refill`). */
-async function getJsonServed<T>(path: string): Promise<Served<T>> {
-	const resp = await fetch(await url(path));
+ *  without (`$lib/refill/refill`). `signal` cancels the request. */
+async function getJsonServed<T>(path: string, signal?: AbortSignal): Promise<Served<T>> {
+	const at = await url(path);
+	const init = withSecretHeader(signal ? { signal } : undefined);
+	const resp = await (init ? fetch(at, init) : fetch(at));
 	const data = await expect2xx<T>(resp);
 	// A response built without headers (a test's stand-in) has none.
 	const headers = resp.headers as Headers | undefined;
 	return { data, refills: parseRefills(headers?.get(REFILL_HEADER)) };
 }
 
+/** Body of `/api/refills/wait` and `/api/refills/release`. */
+export interface RefillsBody {
+	tickets: number[];
+}
+
 /** Wait until one of `tickets` has ended; `[]` past the backend's own
  *  limit. */
 export function refillsWait(tickets: number[], signal: AbortSignal): Promise<RefillEnded[]> {
-	return postJson<RefillEnded[]>('/api/refills/wait', { tickets }, { signal });
+	const body: RefillsBody = { tickets };
+	return postJson<RefillEnded[]>('/api/refills/wait', body, { signal });
 }
 
 /** The page showing these tickets' fills has gone. Best effort: a
  *  release that fails leaves the retry ranked as on screen a moment
  *  longer. */
 export function refillsRelease(tickets: number[]): void {
-	void postJson<void>('/api/refills/release', { tickets }).catch(() => {});
+	const body: RefillsBody = { tickets };
+	void postJson<void>('/api/refills/release', body).catch(() => {});
 }
 
 /** The renderer's one waiter on refills. */
@@ -234,7 +253,7 @@ const refillWaiter = new RefillWaiter(refillsWait, undefined, refillsRelease);
 
 /** What a read the page waits on a refill for takes: what to do with
  *  the read fetched once more after the refill landed, and what says
- *  the page has gone. */
+ *  the page has gone — which cancels the read itself too. */
 export interface RefillOptions<T> {
 	onRefill?: (data: T) => void;
 	signal?: AbortSignal;
@@ -248,7 +267,7 @@ async function getJsonRefilled<T>(
 	refetchPath: string,
 	opts: RefillOptions<T>
 ): Promise<T> {
-	const served = await getJsonServed<T>(path);
+	const served = await getJsonServed<T>(path, opts.signal);
 	const apply = opts.onRefill;
 	if (apply) {
 		void refetchOnRefill(served, {
@@ -283,6 +302,16 @@ interface RequestOptions {
 	signal?: AbortSignal;
 }
 
+/**
+ * What a read takes: the signal of the visit that asked for it. A read
+ * holds one of the API lane's six connections until it answers, so the
+ * page that started it passes the signal and aborts it when the viewer
+ * leaves ($lib/navigation/visit); the read then rejects with the abort.
+ */
+export interface ReadOptions {
+	signal?: AbortSignal;
+}
+
 async function postJson<T>(path: string, body: unknown, opts: RequestOptions = {}): Promise<T> {
 	const init: RequestInit = {
 		method: 'POST',
@@ -290,21 +319,24 @@ async function postJson<T>(path: string, body: unknown, opts: RequestOptions = {
 		body: JSON.stringify(body)
 	};
 	if (opts.signal) init.signal = opts.signal;
-	const resp = await fetch(await url(path, opts.lane), init);
+	const resp = await fetch(await url(path, opts.lane), withSecretHeader(init));
 	return expect2xx<T>(resp);
 }
 
 async function putJson<T>(path: string, body: unknown): Promise<T> {
-	const resp = await fetch(await url(path), {
-		method: 'PUT',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify(body)
-	});
+	const resp = await fetch(
+		await url(path),
+		withSecretHeader({
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(body)
+		})
+	);
 	return expect2xx<T>(resp);
 }
 
 async function deleteJson<T>(path: string): Promise<T> {
-	const resp = await fetch(await url(path), { method: 'DELETE' });
+	const resp = await fetch(await url(path), withSecretHeader({ method: 'DELETE' }));
 	return expect2xx<T>(resp);
 }
 
@@ -321,18 +353,24 @@ export interface AppInfo {
 	/** What the boot sweep over a retired streaming provider's rows
 	 *  changed; empty on every launch that found none. The page decides
 	 *  what to show via `$lib/diagnostics/retired-sweep`. */
-	retired_provider_sweep?: RetiredSweepReport;
+	retired_provider_sweep: RetiredSweepReport;
 	/** What the launch's cache reclaim deleted; zero on every launch
 	 *  that found nothing to reclaim. The page decides what to show via
 	 *  `$lib/diagnostics/cache-reclaim`. */
-	cache_reclaim?: CacheReclaimReport;
+	cache_reclaim: CacheReclaimReport;
 }
 
-/** One row from the watch-history file. */
+/** One row from the watch-history file, as `/api/history` lists it. */
 export interface HistoryEntry {
 	ep_no: string;
 	id: string;
 	title: string;
+	/** The moment of the watch that wrote the row, in milliseconds since
+	 *  the epoch. Absent on a row no watch wrote and on rows from before
+	 *  the column. Continue Watching ranks by `/api/watched-at`
+	 *  ({@link watchedAtAll}), which already takes the later of this and
+	 *  the stamp kept beside the history. */
+	watched_at?: number;
 	/** Kitsu id of the show the user played, recorded with the watch.
 	 *  Absent on rows written before history recorded it. */
 	kitsu_id?: string;
@@ -340,13 +378,21 @@ export interface HistoryEntry {
 	 *  (`hianime:jojos-bizarre-adventure-2000-5182` names 2000), read by
 	 *  the backend; absent when it names none. */
 	key_year?: number;
+	/** The Continue card whose play wrote this row on another listing —
+	 *  JoJo's 2000 card for the 2012 listing's row its play wrote. Home's
+	 *  card stands for that line while it is a guess of the same show, or
+	 *  named for it, as the backend answers (`historyCardLines`). */
+	guessed_from?: string;
+	/** The row records a show the user named for it (a pick in the
+	 *  picker, or Yes): every surface offers to change it again. */
+	named?: boolean;
 }
 
-/** Input to `cmd_create_session`. */
-export interface CreateSessionArgs {
-	upstream_url: string;
-	referer: string;
-}
+/** A history row as `/api/history/by-kitsu/:id` answers it: the row
+ *  alone, without what `/api/history` reads beside it (the year its
+ *  show key names, the card whose play wrote it, and whether
+ *  the user named its show). */
+export type HistoryRowByKitsu = Omit<HistoryEntry, 'key_year' | 'guessed_from' | 'named'>;
 
 /** What kind of media the resolved upstream serves. The renderer uses
  *  this to pick hls.js vs. a plain `<video src>` for direct MP4 streams
@@ -354,7 +400,6 @@ export interface CreateSessionArgs {
 export const MEDIA_KINDS = ['hls', 'mp4'] as const;
 export type MediaKind = (typeof MEDIA_KINDS)[number];
 
-/** Output of `cmd_create_session` — proxy URLs the player should fetch. */
 /** One sidecar subtitle track a session offers, behind the proxy. */
 export interface SessionSubtitle {
 	lang: string;
@@ -364,11 +409,13 @@ export interface SessionSubtitle {
 	url: string;
 }
 
+/** A play's session — proxy URLs the player should fetch. */
 export interface CreateSessionResponse {
 	session_id: string;
 	/** Full proxy URL the player should fetch. For HLS sessions this
 	 *  points at `…/s/<id>/master.m3u8`; for MP4 sessions at
-	 *  `…/s/<id>/file.mp4`. The frontend never composes the path itself. */
+	 *  `…/s/<id>/file.mp4`. A page that carries only the session id
+	 *  composes the same URL with `$lib/play/media-url`. */
 	media_url: string;
 	/** Tells the renderer which player to mount around `media_url`. */
 	media_kind: MediaKind;
@@ -376,12 +423,11 @@ export interface CreateSessionResponse {
 	 *  (no fresh resolve). The play page uses it to decide
 	 *  whether a player error is silently retryable: cache hits can
 	 *  be evicted + re-resolved; fresh fetches already exhausted the
-	 *  resolve path so the user should see the error. Optional for
-	 *  forward compat with older backends — treat absence as `false`. */
-	cache_hit?: boolean;
-	/** Sidecar subtitle tracks the resolve listed; absent or empty when
-	 *  the stream carries none outside its playlist. */
-	subtitles?: SessionSubtitle[];
+	 *  resolve path so the user should see the error. */
+	cache_hit: boolean;
+	/** Sidecar subtitle tracks the resolve listed; empty when the
+	 *  stream carries none outside its playlist. */
+	subtitles: SessionSubtitle[];
 	/** The episode the session plays, as the app numbers it — the
 	 *  request, unless the request named it by a number it no longer
 	 *  carries ("24.5" for the recap that is "12.5" now). Absent from
@@ -404,6 +450,10 @@ export interface CreateSessionResponse {
 	 *  landed on that row's own listing. Absent (false) otherwise and
 	 *  from older backends. */
 	own_listing?: boolean;
+	/** A card's play no guess opened that the backend kept off its
+	 *  line, which records another show: record no id, and write no
+	 *  tracker for it. */
+	line_kept?: boolean;
 }
 
 /** Which copy of a season a version is: the provider lists some
@@ -426,16 +476,6 @@ export interface VersionInfo {
  *  emits on the backend. Snake_case to match the Rust serde tag. */
 export type ExternalPlayerKind = 'mpv' | 'vlc' | 'iina' | 'custom';
 
-/** Input to `cmd_open_external_player`. */
-export interface LaunchExternalPlayerArgs {
-	stream_url: string;
-	referer?: string | null;
-	title?: string | null;
-	player_command: string;
-	player_kind?: ExternalPlayerKind;
-	custom_args_template?: string | null;
-}
-
 /**
  * The backend's error envelope, as every error the app raises carries
  * it — an HTTP error body or an SSE error event — and so what api.ts
@@ -457,7 +497,13 @@ export interface AniErrorPayload {
 	detail?: string;
 	status?: number;
 	retry_after_secs?: number | null;
+	/** The tracker that refused, on a rate limit an account write met. */
+	refused_by?: string;
 	binary?: string;
+	/** Where a stream server failed (`embed`, …) and which host, on a
+	 *  stream server failure. For logs, like `detail`. */
+	stage?: string;
+	host?: string | null;
 }
 
 /** Portrait poster URLs (5:7) at Kitsu's pre-rendered sizes. */
@@ -530,17 +576,15 @@ export interface KitsuAnimeRef {
 	 *  (kana). Missing keys are absent from the map entirely. The play
 	 *  flow uses these to retry provider lookups when the canonical
 	 *  title (often English) doesn't match the provider's index — see
-	 *  {@link altTitlesFromKitsu}. May be missing on cached responses
-	 *  produced before titles were surfaced; treat as `?:`. */
-	titles?: Record<string, string>;
+	 *  {@link altTitlesFromKitsu}. */
+	titles: Record<string, string>;
 	/** Romanized mashup aliases Kitsu serves under
 	 *  `attributes.abbreviatedTitles` (e.g. `"Yuu Gi Ou: Duel Monsters
 	 *  5DS"`). Distinct from {@link KitsuAnimeRef.titles}; for some shows
 	 *  (Yu-Gi-Oh! 5D's) one of these is the only string that resolves to
 	 *  the right series on the provider, so {@link altTitlesFromKitsu} appends
-	 *  them as last-resort fallback queries. May be missing on cached
-	 *  responses produced before the field was surfaced; treat as `?:`. */
-	abbreviated_titles?: string[];
+	 *  them as last-resort fallback queries. */
+	abbreviated_titles: string[];
 	slug: string | null;
 	synopsis: string | null;
 	start_date: string | null;
@@ -557,7 +601,7 @@ export interface KitsuAnimeRef {
 	 *  it: from the trending feed, which carries every entry's, or from
 	 *  the null-cover backfill, which asks AniList for it. Absent
 	 *  otherwise. */
-	anilist_banner?: string | null;
+	anilist_banner?: string;
 }
 
 /**
@@ -615,16 +659,16 @@ export function yearFromKitsuRef(ref: KitsuAnimeRef | null | undefined): number 
 	return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-export function appInfo(): Promise<AppInfo> {
-	return getJson<AppInfo>('/api/app-info');
+export function appInfo(opts: ReadOptions = {}): Promise<AppInfo> {
+	return getJson<AppInfo>('/api/app-info', opts);
 }
 
 export function proxyBaseUrl(): Promise<string> {
 	return getJson<string>('/api/proxy-base-url');
 }
 
-export function historyList(): Promise<HistoryEntry[]> {
-	return getJson<HistoryEntry[]>('/api/history');
+export function historyList(opts: ReadOptions = {}): Promise<HistoryEntry[]> {
+	return getJson<HistoryEntry[]>('/api/history', opts);
 }
 
 /** Clears the history, and with it where each episode was left. */
@@ -640,6 +684,182 @@ export function historyDelete(id: string): Promise<void> {
 	return deleteJson<void>(`/api/history/${encodeURIComponent(id)}`);
 }
 
+/** A history row as a link left it, and the Kitsu id it had before. */
+export interface LinkedRow {
+	row: string;
+	previous: string | null;
+	ep_no: string;
+	watched_at: number | null;
+}
+
+/** What a link wrote: the id asked for, which the rows in `linked`
+ *  record, and every row. */
+export interface LinkOutcome {
+	kitsu_id: string;
+	linked: LinkedRow[];
+	/** A correction asked after this one saved the line first: this one
+	 *  saved nothing, and the line keeps the later answer. */
+	overtaken?: boolean;
+}
+
+/** Body of `/api/history/link`: the card the link is made from, the
+ *  rows to link, and the show the user named. */
+export interface LinkBody {
+	card: string;
+	rows: string[];
+	kitsu_id: string;
+}
+
+/** Link history rows to the show the user named for them, from the
+ *  card whose row is `card`: only the rows of that card's listing among
+ *  `rows` are written. The card is named even when no row is left to
+ *  link. Rejects with Kitsu's 404/410 for an entry Kitsu deleted. */
+export function historyLink(card: string, rows: string[], kitsuId: string): Promise<LinkOutcome> {
+	const body: LinkBody = { card, rows, kitsu_id: kitsuId };
+	return postJson<LinkOutcome>('/api/history/link', body);
+}
+
+/** A history row with Continue Watching's match for it: the show's
+ *  Kitsu id (null when it matches none or could not be read), and
+ *  whether the match is one a play may record. */
+export interface RowMatch {
+	id: string;
+	show: string | null;
+	trusted: boolean;
+}
+
+/** A request for the rows a link from the card whose row is `card`
+ *  would write: the card shows `show`, `saved` is the show the user
+ *  named for its line when they did, and `rows` are the history's other
+ *  rows with their matches. */
+export interface LinkGroupRequest {
+	card: string;
+	show: string;
+	saved: string | null;
+	rows: RowMatch[];
+}
+
+/** The rows a link from the card would write: the card's own, and
+ *  every row the backend finds it stands for on the card's listing. */
+export function historyLinkGroup(request: LinkGroupRequest): Promise<string[]> {
+	return postJson<string[]>('/api/history/link-group', request);
+}
+
+/** What a link to a show would be worth a second look for: the
+ *  backend's stable key, which the picker words. */
+export type LinkWarning = 'season' | 'episode';
+
+/** A show offered for a guessed row, whether the card shows it now,
+ *  and what a link to it would be worth a second look for. */
+export interface LinkCandidate {
+	ref: KitsuAnimeRef;
+	current: boolean;
+	warnings: LinkWarning[];
+}
+
+/** A request for a guessed row's candidates: the row, its saved title
+ *  as Continue Watching searches it, the show the card shows, the
+ *  episode the card offers, and the words the user typed (null for the
+ *  picker's own searches). */
+export interface CandidatesRequest {
+	row: string;
+	title: string;
+	current: KitsuAnimeRef | null;
+	query: string | null;
+	episode: number;
+}
+
+/** The candidates for a guessed row, in the order the picker lists
+ *  them, each with its warnings. The picker's own searches never fail
+ *  the answer; a typed search's failure rejects. */
+export function historyLinkCandidates(
+	request: CandidatesRequest,
+	opts: ReadOptions = {}
+): Promise<LinkCandidate[]> {
+	return postJson<LinkCandidate[]>('/api/history/link-candidates', request, {
+		signal: opts.signal
+	});
+}
+
+/** A row as Continue Watching shows it, for the line its card stands
+ *  for: its match's show, whether that is a guess, and whether the user
+ *  named it. */
+export interface CardLineRow {
+	id: string;
+	guessed_from: string | null;
+	show: string | null;
+	guess: boolean;
+	named: boolean;
+}
+
+/** The line a card stands for, and whether it can be corrected. */
+export interface CardLine {
+	line: string;
+	correctable: boolean;
+}
+
+/** Body of `/api/history/card-lines`: the rows Continue Watching
+ *  shows, as it matches them. */
+export interface CardLinesBody {
+	rows: CardLineRow[];
+}
+
+/** The line each card stands for, by row id. */
+export function historyCardLines(rows: CardLineRow[]): Promise<Record<string, CardLine>> {
+	const body: CardLinesBody = { rows };
+	return postJson<Record<string, CardLine>>('/api/history/card-lines', body);
+}
+
+/** What a surface knows of a card's line, for its question. */
+export interface VerdictRequest {
+	page: string;
+	show: string | null;
+	trusted: boolean;
+	named: boolean;
+	asks_guess: boolean;
+	carried: boolean;
+	picked: boolean;
+	in_player: boolean;
+}
+
+/** What the surface offers for the line, and whether the line keeps a
+ *  pick of another show. */
+export interface LinkVerdict {
+	offer: 'guess' | 'again' | null;
+	kept: boolean;
+}
+
+/** Whether a surface asks about a card's line. */
+export function historyLinkVerdict(
+	request: VerdictRequest,
+	opts: ReadOptions = {}
+): Promise<LinkVerdict> {
+	return postJson<LinkVerdict>('/api/history/link-verdict', request, { signal: opts.signal });
+}
+
+/** What "Switch to it now" asks of the show picked for a card: the
+ *  card's row, the episode playing, the pick's count, and its episodes
+ *  with a kept position (left part-way). */
+export interface SwitchEpisodeRequest {
+	pick: string;
+	card: string;
+	episode: number;
+	episode_count: number | null;
+	part_way: number[];
+}
+
+/** Where the switch opens the pick: its own episode, further than the
+ *  card's, or null for the card's episode and point. */
+export interface SwitchEpisode {
+	episode: number | null;
+}
+
+/** Where a switch opens the show picked for a card, as the backend
+ *  decides it (`commands/switch_episode.rs`). */
+export function historySwitchEpisode(request: SwitchEpisodeRequest): Promise<SwitchEpisode> {
+	return postJson<SwitchEpisode>('/api/history/switch-episode', request);
+}
+
 /** Find the most-recent history entry whose show id maps to this Kitsu
  *  id, via the (show id → kitsu_id) reverse cache the play path stamps
  *  on each successful resolve. Used by the detail page to swap "Play
@@ -647,8 +867,14 @@ export function historyDelete(id: string): Promise<void> {
  *  this show before. Returns `null` when there's no such mapped entry,
  *  which includes a row the cache has never been stamped for — a play
  *  made without a Kitsu id, or a row older than the mapping. */
-export function historyByKitsu(kitsuId: string): Promise<HistoryEntry | null> {
-	return getJson<HistoryEntry | null>(`/api/history/by-kitsu/${encodeURIComponent(kitsuId)}`);
+export function historyByKitsu(
+	kitsuId: string,
+	opts: ReadOptions = {}
+): Promise<HistoryRowByKitsu | null> {
+	return getJson<HistoryRowByKitsu | null>(
+		`/api/history/by-kitsu/${encodeURIComponent(kitsuId)}`,
+		opts
+	);
 }
 
 /** The episode one history row reads as now, and the number it read as
@@ -661,16 +887,8 @@ export interface HistoryNumber {
 /** What the history row of show `id` reads as now — a Continue card
  *  asks before it resumes, since the row may have been put right since
  *  the page read it. `null` when no row is the show's. */
-export function historyNumber(id: string): Promise<HistoryNumber | null> {
-	return getJson<HistoryNumber | null>(`/api/history/${encodeURIComponent(id)}/number`);
-}
-
-export function createSession(args: CreateSessionArgs): Promise<CreateSessionResponse> {
-	return postJson<CreateSessionResponse>('/api/sessions', args);
-}
-
-export function openExternalPlayer(args: LaunchExternalPlayerArgs): Promise<void> {
-	return postJson<void>('/api/external-player', args);
+export function historyNumber(id: string, opts: ReadOptions = {}): Promise<HistoryNumber | null> {
+	return getJson<HistoryNumber | null>(`/api/history/${encodeURIComponent(id)}/number`, opts);
 }
 
 /** Body for the play endpoints — same shape on both `/api/play` and
@@ -705,6 +923,13 @@ export interface PlayArgs {
 	 *  overwrite the user's actual click. Click handlers leave this
 	 *  unset (defaults to false on the wire). */
 	prefetch?: boolean;
+	/** `true` when the caller records the watch itself once its player
+	 *  opened on the stream (mark-watched): the resolve writes no
+	 *  history row, while still running at a click's priority, which a
+	 *  prefetch does not. The player's switch to a picked show sets it,
+	 *  so a viewer who leaves, or a player that cannot open, leaves the
+	 *  history as it was. */
+	record_later?: boolean;
 	/** Kitsu id of the anime the user is playing. Frontend passes the
 	 *  id from `/anime/[kitsu_id]`'s URL so the backend can persist
 	 *  an `(provider show_id → kitsu_id)` reverse mapping. The home
@@ -729,6 +954,9 @@ export interface PlayArgs {
 	 *  opened the play from. The session answers whether the play
 	 *  landed on that row's own listing (`own_listing`). */
 	guess_row?: string;
+	/** The history row of a Continue card that opened the play with no
+	 *  guess: the backend keeps the show that line records against it. */
+	card_row?: string;
 	/** The Kitsu id the guessed card guessed, sent with `guess_row` in
 	 *  place of `kitsu_id`: the backend records it on the row the
 	 *  resolve writes only when the play landed on that row's own
@@ -773,7 +1001,10 @@ export function play(args: PlayArgs): Promise<CreateSessionResponse> {
  *  No session is registered — the player streams from the upstream
  *  directly with the resolved Referer. */
 export function playExternal(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/external', withUiLocale(args), { lane: 'resolve' });
+	// Noted once its player started: a handoff that failed played nothing.
+	return postJson<void>('/api/play/external', withUiLocale(args), { lane: 'resolve' }).then(() =>
+		notePlayed(args)
+	);
 }
 
 /** Launch the resolved episode in the user's Syncplay binary. Same
@@ -783,7 +1014,10 @@ export function playExternal(args: PlayArgs): Promise<void> {
  *  Syncplay binary can't be spawned — caller surfaces the failure
  *  via the play page's `ErrorOverlay` with a syncplay.pl link. */
 export function playSyncplay(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/syncplay', withUiLocale(args), { lane: 'resolve' });
+	// Noted once its player started: a handoff that failed played nothing.
+	return postJson<void>('/api/play/syncplay', withUiLocale(args), { lane: 'resolve' }).then(() =>
+		notePlayed(args)
+	);
 }
 
 /** Drop the cached play resolution for `args` so the next play call
@@ -807,6 +1041,7 @@ export function evictPlayCache(args: PlayArgs): Promise<void> {
  *  Click handlers fire markWatched as a side-effect after getOrFire
  *  resolves. Best-effort: caller should `void markWatched(...).catch(()=>{})`. */
 export function markWatched(args: PlayArgs): Promise<void> {
+	notePlayed(args);
 	return postJson<void>('/api/play/mark-watched', args);
 }
 
@@ -865,8 +1100,10 @@ export function playStream(
 	if (args.alt_titles && args.alt_titles.length > 0)
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.prefetch === true) params.set('prefetch', '1');
+	if (args.record_later === true) params.set('record_later', '1');
 	if (args.version) params.set('version', args.version);
 	if (args.guess_row) params.set('guess_row', args.guess_row);
+	if (args.card_row) params.set('card_row', args.card_row);
 	if (args.guess_id) params.set('guess_id', args.guess_id);
 	if (args.caption) params.set('caption', args.caption);
 	params.set('locale', uiLocale());
@@ -879,6 +1116,8 @@ export function playStream(
 					reject(new Error('playStream: aborted'));
 					return;
 				}
+				// An EventSource cannot set a header: the main process adds
+				// the launch's secret to its request ($lib/backend/secret).
 				const es = new EventSource(url);
 				let settled = false;
 				const finish = (fn: () => void) => {
@@ -1013,6 +1252,8 @@ export function downloadStream(
 	return url(`/api/download/stream?${params.toString()}`, 'download').then(
 		(url) =>
 			new Promise<DownloadResponse>((resolve, reject) => {
+				// An EventSource cannot set a header: the main process adds
+				// the launch's secret to its request ($lib/backend/secret).
 				const es = new EventSource(url);
 				let settled = false;
 				const finish = (fn: () => void) => {
@@ -1066,8 +1307,8 @@ export function downloadStream(
  *  Returns null when neither $XDG_DOWNLOAD_DIR nor $HOME is available
  *  on the backend — the modal then asks the user to pick a path
  *  explicitly. */
-export function downloadDefaultDir(): Promise<string | null> {
-	return getJson<string | null>('/api/download/default-dir');
+export function downloadDefaultDir(opts: ReadOptions = {}): Promise<string | null> {
+	return getJson<string | null>('/api/download/default-dir', opts);
 }
 
 /** Wire payload for {@link checkAvailability}. Same title/mode/alt
@@ -1126,19 +1367,18 @@ export interface AvailabilityResponse {
 	 *  the per-show detail fetch — the scraper gate refused the fetch,
 	 *  or it failed. That number counts half episodes as whole ones, so
 	 *  it can run high, and by an unbounded amount when a show carries
-	 *  several. Absent on responses from before the backend reported
-	 *  provenance, which read as exact. */
-	episode_count_approximate?: boolean;
+	 *  several. */
+	episode_count_approximate: boolean;
 	/** True when the scraper gate refused the detail fetch outright,
 	 *  as opposed to the fetch being attempted and failing. Both leave
 	 *  the count approximate; only this one means nobody asked, which
-	 *  is why the cap retry does not spend an attempt on it. Absent on
-	 *  responses from before the backend reported it. */
+	 *  is why the cap retry does not spend an attempt on it. Absent
+	 *  (false) otherwise. */
 	gate_refused?: boolean;
 	/** The provider whose catalogue carries the show — the one that
-	 *  answered `available`. Absent on negative rows and on rows from
+	 *  answered `available`. `null` on negative rows and on rows from
 	 *  before the backend named it. */
-	provider?: StreamProvider;
+	provider: StreamProvider | null;
 	/** Present when the probe reached the provider and came back
 	 *  without a settled verdict, naming why ({@link UnsettledReason}).
 	 *  (A show found nowhere is the clean miss: settled, and kept.)
@@ -1146,9 +1386,9 @@ export interface AvailabilityResponse {
 	 *  persisted nothing. For every reason but `'refused'` the false
 	 *  means nothing; `'refused'` says the catalogue lists nothing
 	 *  named for the show, and reads as it not being in the catalogue.
-	 *  Read it through `$lib/availability/verdict`. A backend before
-	 *  reasons sends `true`. Absent from every settled answer. */
-	unsettled?: boolean | UnsettledReason;
+	 *  Read it through `$lib/availability/verdict`. Absent from every
+	 *  settled answer. */
+	unsettled?: UnsettledReason;
 	/** The show's versions, in the provider's order, when its pick has
 	 *  several; absent when it has one. */
 	versions?: VersionInfo[];
@@ -1197,25 +1437,58 @@ export interface AvailabilityBatchResponse {
 	cached: Record<string, boolean>;
 	playable_episode_counts: Record<string, number>;
 }
+
+/** Body of `/api/availability/batch`. */
+export interface AvailabilityBatchBody {
+	kitsu_ids: string[];
+	mode: string;
+}
+
 export function availabilityBatch(
 	kitsu_ids: string[],
-	mode: string
+	mode: string,
+	opts: ReadOptions = {}
 ): Promise<AvailabilityBatchResponse> {
-	return postJson<AvailabilityBatchResponse>('/api/availability/batch', {
-		kitsu_ids,
-		mode
+	const body: AvailabilityBatchBody = { kitsu_ids, mode };
+	return postJson<AvailabilityBatchResponse>('/api/availability/batch', body, {
+		signal: opts.signal
 	});
+}
+
+/** Hands the backend a Continue strip's recorded Kitsu ids, in strip
+ *  order, so it fills every card's stills and banner from AniList at
+ *  once instead of card by card as each row becomes ready. Answers
+ *  once the warm is done; aborting `signal` (Home left) drops it. */
+export function continueWarm(
+	kitsuIds: string[],
+	opts: { signal?: AbortSignal } = {}
+): Promise<void> {
+	return postJson<unknown>('/api/continue/warm', { kitsu_ids: kitsuIds }, opts).then(
+		() => undefined
+	);
+}
+
+/** Body of `/api/availability/warm`. */
+export interface AvailabilityWarmBody {
+	items: AvailabilityArgs[];
 }
 
 /** Fire-and-forget cache warmer. Hands the backend a list of titles
  *  to probe in the background; the cache is populated for the next
  *  list-view visit. List views never wait for the warm to finish. */
 export function availabilityWarm(items: AvailabilityArgs[]): Promise<void> {
-	return postJson<unknown>('/api/availability/warm', { items }).then(() => undefined);
+	const body: AvailabilityWarmBody = { items };
+	return postJson<unknown>('/api/availability/warm', body).then(() => undefined);
 }
 
-export function kitsuSearch(query: string): Promise<KitsuAnimeRef[]> {
-	return postJson<KitsuAnimeRef[]>('/api/kitsu/search', { query });
+/** Body of `/api/kitsu/search`. */
+export interface KitsuSearchBody {
+	query: string;
+}
+
+export function kitsuSearch(query: string, opts: ReadOptions = {}): Promise<KitsuAnimeRef[]> {
+	const body: KitsuSearchBody = { query };
+	return postJson<KitsuAnimeRef[]>('/api/kitsu/search', body, { signal: opts.signal });
 }
 
 /** One page of a Kitsu text search: its hits, and the offset the
@@ -1233,12 +1506,13 @@ export type SearchOrder = 'relevance' | 'year' | 'rating';
 export function kitsuSearchPage(
 	query: string,
 	offset: number,
-	order: SearchOrder = 'relevance'
+	order: SearchOrder = 'relevance',
+	opts: ReadOptions = {}
 ): Promise<KitsuSearchPage> {
 	// Kitsu's ranking is the route's default, so a ranked request
 	// carries no order.
 	const body = order === 'relevance' ? { query, offset } : { query, offset, sort: order };
-	return postJson<KitsuSearchPage>('/api/kitsu/search/page', body);
+	return postJson<KitsuSearchPage>('/api/kitsu/search/page', body, { signal: opts.signal });
 }
 
 /** One show's detail. A page showing its banner passes `onRefill`: when
@@ -1258,8 +1532,14 @@ export function kitsuAnimeDetail(
  * search misses a sequel — Kitsu's `filter[text]` drops Stone Ocean
  * Part 2 from its results entirely, but `filter[slug]` finds it.
  */
-export function kitsuAnimeBySlug(slug: string): Promise<KitsuAnimeRef | null> {
-	return getJson<KitsuAnimeRef | null>(`/api/kitsu/anime-by-slug/${encodeURIComponent(slug)}`);
+export function kitsuAnimeBySlug(
+	slug: string,
+	opts: ReadOptions = {}
+): Promise<KitsuAnimeRef | null> {
+	return getJson<KitsuAnimeRef | null>(
+		`/api/kitsu/anime-by-slug/${encodeURIComponent(slug)}`,
+		opts
+	);
 }
 
 /** AniList-backed trending — recency-weighted (AniList's `trending`
@@ -1268,8 +1548,13 @@ export function kitsuAnimeBySlug(slug: string): Promise<KitsuAnimeRef | null> {
  *  trending list. When AniList cannot answer, the backend serves
  *  the last list AniList gave, however stale, and Kitsu's own airing
  *  list only when it has none; the page still loads either way. */
-export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
-	return getJson<KitsuAnimeRef[]>('/api/kitsu/trending-anilist');
+export function kitsuTrendingAnilist(opts: ReadOptions = {}): Promise<KitsuAnimeRef[]> {
+	return getJson<KitsuAnimeRef[]>('/api/kitsu/trending-anilist', opts);
+}
+
+/** Body of `/api/kitsu/by-mal-ids`. */
+export interface KitsuByMalIdsBody {
+	mal_ids: number[];
 }
 
 /** Bridge a batch of MAL ids to Kitsu refs in one round-trip.
@@ -1280,21 +1565,24 @@ export function kitsuTrendingAnilist(): Promise<KitsuAnimeRef[]> {
  *  matching the rest of the home. Empty input → empty
  *  output (no round-trip needed).
  *
- *  Sends the renderer-only internal-secret header — backend gates
- *  the route on it so a cross-origin page under permissive CORS
- *  can't reach the handler. Also enforces
+ *  Like every API request it carries the launch's secret
+ *  ($lib/backend/secret), which this route's handler checks as well
+ *  as the API's gate. The backend also enforces
  *  a 500-id batch cap server-side; this client doesn't pre-truncate
  *  so callers see a 4xx if they're pushing past the limit. */
-export async function kitsuByMalIds(malIds: number[]): Promise<KitsuAnimeRef[]> {
+export async function kitsuByMalIds(
+	malIds: number[],
+	opts: ReadOptions = {}
+): Promise<KitsuAnimeRef[]> {
 	if (malIds.length === 0) return [];
-	const headers: Record<string, string> = { 'content-type': 'application/json' };
-	const secret = typeof window !== 'undefined' ? window.aniGui?.internalSecret : undefined;
-	if (secret) headers['x-ani-gui-internal-secret'] = secret;
-	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), {
+	const body: KitsuByMalIdsBody = { mal_ids: malIds };
+	const init: RequestInit = {
 		method: 'POST',
-		headers,
-		body: JSON.stringify({ mal_ids: malIds })
-	});
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(body)
+	};
+	if (opts.signal) init.signal = opts.signal;
+	const resp = await fetch(await url('/api/kitsu/by-mal-ids'), withSecretHeader(init));
 	return expect2xx<KitsuAnimeRef[]>(resp);
 }
 
@@ -1315,22 +1603,37 @@ export interface SkipInterval {
 export function aniskipGet(
 	kitsuId: string,
 	episode: string,
-	episodeLength: number
+	episodeLength: number,
+	opts: ReadOptions = {}
 ): Promise<SkipInterval[]> {
 	const qs = new URLSearchParams({ episode_length: String(episodeLength) });
 	return getJson<SkipInterval[]>(
-		`/api/aniskip/${encodeURIComponent(kitsuId)}/${encodeURIComponent(episode)}?${qs.toString()}`
+		`/api/aniskip/${encodeURIComponent(kitsuId)}/${encodeURIComponent(episode)}?${qs.toString()}`,
+		opts
 	);
 }
 
-/** Mirror of the backend's `meta::anilist::AiringStatus`. All-null =
+/** Mirror of the backend's `meta::anilist_airing::AiringStatus`. All-null =
  *  unknown airing data — the detail page must not gate episode tiles
  *  on it (see $lib/detail/episode-airing). */
 export interface AiringStatus {
+	/** Episodes aired so far; null = unknown (never gate on unknown). */
 	aired: number | null;
+	/** Number of the next episode to air, when scheduled. */
 	next_episode: number | null;
+	/** Epoch seconds of the next airing, when scheduled. */
 	next_airing_at: number | null;
-	upcoming?: { episode: number; airing_at: number }[];
+	/** Published future schedule (episode number → air time). Weekly
+	 *  shows publish a few weeks ahead; empty when none is published. */
+	upcoming: UpcomingEpisode[];
+}
+
+/** One future schedule row: episode number + its air time. */
+export interface UpcomingEpisode {
+	/** Episode number as AniList counts it (regular episodes only). */
+	episode: number;
+	/** Epoch seconds of this episode's scheduled airing. */
+	airing_at: number;
 }
 
 /** Airing schedule for a show — how many episodes are actually out
@@ -1338,16 +1641,18 @@ export interface AiringStatus {
  *  shows to grey out unaired tiles. */
 export function airingGet(
 	kitsuId: string,
-	opts: { refresh?: boolean } = {}
+	opts: { refresh?: boolean } & ReadOptions = {}
 ): Promise<AiringStatus> {
 	// `refresh` skips the cached row — only a click on an unaired tile
 	// sends it. `=true`, not `=1`: the backend parses a Rust bool.
 	const qs = opts.refresh ? '?refresh=true' : '';
-	return getJson<AiringStatus>(`/api/kitsu/airing/${encodeURIComponent(kitsuId)}${qs}`);
+	return getJson<AiringStatus>(`/api/kitsu/airing/${encodeURIComponent(kitsuId)}${qs}`, {
+		signal: opts.signal
+	});
 }
 
-export function kitsuTopRated(): Promise<KitsuAnimeRef[]> {
-	return getJson<KitsuAnimeRef[]>('/api/kitsu/top-rated');
+export function kitsuTopRated(opts: ReadOptions = {}): Promise<KitsuAnimeRef[]> {
+	return getJson<KitsuAnimeRef[]>('/api/kitsu/top-rated', opts);
 }
 
 /** One page of a show's episodes. A page showing their stills passes
@@ -1378,7 +1683,8 @@ export function kitsuTitleMatchGet(
 	title: string,
 	cour: number,
 	provider: StreamProvider | null,
-	year: number | null = null
+	year: number | null = null,
+	opts: ReadOptions = {}
 ): Promise<string | null> {
 	const qs = new URLSearchParams({ title, cour: String(cour) });
 	// A history row whose key names no provider asks without one.
@@ -1386,7 +1692,16 @@ export function kitsuTitleMatchGet(
 	// A row that names a year keeps its guess apart from a row titled
 	// alike that names another.
 	if (year !== null) qs.set('year', String(year));
-	return getJson<string | null>(`/api/title-match?${qs.toString()}`);
+	return getJson<string | null>(`/api/title-match?${qs.toString()}`, opts);
+}
+
+/** Body of `PUT /api/title-match`. */
+export interface TitleMatchBody {
+	title: string;
+	cour: number;
+	kitsu_id: string;
+	provider: StreamProvider | null;
+	year?: number;
 }
 
 /**
@@ -1403,8 +1718,9 @@ export function kitsuTitleMatchPut(
 	provider: StreamProvider | null,
 	year: number | null = null
 ): Promise<void> {
-	const body = { title, cour, kitsu_id: kitsuId, provider };
-	return putJson<void>('/api/title-match', year === null ? body : { ...body, year });
+	const body: TitleMatchBody = { title, cour, kitsu_id: kitsuId, provider };
+	if (year !== null) body.year = year;
+	return putJson<void>('/api/title-match', body);
 }
 
 /**
@@ -1420,8 +1736,11 @@ export function kitsuTitleMatchPut(
  * Shippuuden" for Naruto Shippuuden) that Kitsu's text search
  * can't recover from. Show_id is unambiguous; the title isn't.
  */
-export function allmangaKitsuMapGet(showId: string): Promise<string | null> {
-	return getJson<string | null>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}`);
+export function allmangaKitsuMapGet(
+	showId: string,
+	opts: ReadOptions = {}
+): Promise<string | null> {
+	return getJson<string | null>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}`, opts);
 }
 
 /**
@@ -1431,17 +1750,25 @@ export function allmangaKitsuMapGet(showId: string): Promise<string | null> {
  * doubts it. The mapping can change after a caller read it, so the
  * answer vouches only for the id it names.
  */
-export function allmangaKitsuMapPlayed(showId: string): Promise<string | null> {
-	return getJson<string | null>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}/played`);
+export function allmangaKitsuMapPlayed(
+	showId: string,
+	opts: ReadOptions = {}
+): Promise<string | null> {
+	return getJson<string | null>(
+		`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}/played`,
+		opts
+	);
 }
 
 /**
  * Evict a single `provider show_id → kitsu_id` reverse-mapping row.
  *
  * Fired by `resolveKitsuMatch` step 0 when the mapping is bound to a
- * music entry, which no provider show is. Dropping it lets subsequent
- * lookups re-resolve and the next successful play rewrite the mapping
- * correctly. A binding step 0 merely doubts is passed over and kept.
+ * music entry, which no play or resolve stores now (search never offers
+ * a music video), so such a mapping is never a show the app played.
+ * Dropping it lets subsequent lookups re-resolve and the next
+ * successful play rewrite the mapping correctly. A binding step 0
+ * merely doubts is passed over and kept.
  *
  * `kitsuId` names the id the caller judged: the row goes only while it
  * is still that one, so a mapping a play stored after the caller read
@@ -1471,7 +1798,8 @@ export function allmangaKitsuMapDelete(showId: string, kitsuId?: string): Promis
  */
 export function kitsuResolveAllmangaShowId(
 	showId: string,
-	bypassCache = false
+	bypassCache = false,
+	opts: ReadOptions = {}
 ): Promise<KitsuAnimeRef | null> {
 	// bypassCache: the resolver already read + rejected the reverse-cache row, so
 	// tell the backend to skip its fast path and re-resolve from the show id —
@@ -1481,8 +1809,18 @@ export function kitsuResolveAllmangaShowId(
 	// stub fallback.
 	const qs = bypassCache ? '?bypass_cache=true' : '';
 	return getJson<KitsuAnimeRef | null>(
-		`/api/kitsu/resolve-allmanga/${encodeURIComponent(showId)}${qs}`
+		`/api/kitsu/resolve-allmanga/${encodeURIComponent(showId)}${qs}`,
+		opts
 	);
+}
+
+/** Body of `/api/history/guess/ruled-out`. */
+export interface GuessRuledOutBody {
+	key: string;
+	title: string;
+	episode: number;
+	hits: KitsuAnimeRef[];
+	search: boolean;
 }
 
 /**
@@ -1499,15 +1837,11 @@ export function kitsuGuessRuledOut(
 	episode: number,
 	hits: KitsuAnimeRef[],
 	key: string,
-	search: boolean
+	search: boolean,
+	opts: ReadOptions = {}
 ): Promise<string[]> {
-	return postJson<string[]>('/api/history/guess/ruled-out', {
-		key,
-		title,
-		episode,
-		hits,
-		search
-	});
+	const body: GuessRuledOutBody = { key, title, episode, hits, search };
+	return postJson<string[]>('/api/history/guess/ruled-out', body, { signal: opts.signal });
 }
 
 /**
@@ -1517,12 +1851,12 @@ export function kitsuGuessRuledOut(
  * page Continue Watching sort: stamped rows on top (most recent
  * first), unstamped rows at the bottom in original file order.
  */
-export function watchedAtAll(): Promise<Record<string, number>> {
-	return getJson<Record<string, number>>('/api/watched-at');
+export function watchedAtAll(opts: ReadOptions = {}): Promise<Record<string, number>> {
+	return getJson<Record<string, number>>('/api/watched-at', opts);
 }
 
-export function settingsGet(): Promise<Config> {
-	return getJson<Config>('/api/settings');
+export function settingsGet(opts: ReadOptions = {}): Promise<Config> {
+	return getJson<Config>('/api/settings', opts);
 }
 
 export function settingsPut(cfg: Config): Promise<void> {
@@ -1568,5 +1902,7 @@ export function imageProxyUrl(httpsUrl: string | null | undefined): string | nul
 	if (!httpsUrl || !httpsUrl.startsWith('https://')) return null;
 	const base = windowLaneBase('image');
 	if (base === null) return null;
+	// An <img> cannot set a header: the main process adds the launch's
+	// secret to its request ($lib/backend/secret).
 	return `${base}/api/image?url=${encodeURIComponent(httpsUrl)}`;
 }

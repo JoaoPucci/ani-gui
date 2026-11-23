@@ -9,9 +9,10 @@
 //! stored string will not parse as one. The raw-segment branch built
 //! its own request and substituted a literal instead, so a session
 //! whose referer cannot become a header value made the proxy announce
-//! a provider the app no longer talks to. That path is reachable:
-//! `POST /api/sessions` validates `upstream_url` and stores `referer`
-//! verbatim.
+//! a provider the app no longer talks to. A fresh resolve's referer is
+//! an origin, or absent, and always parses; the guard is for what a session takes
+//! verbatim from elsewhere — a replay reads the referer its cache row
+//! holds, whatever wrote that row.
 
 use super::*;
 use tower::ServiceExt as _;
@@ -23,8 +24,9 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 async fn proxy_for(referer: &str, segment_url: &str) -> (Router, String) {
     let secret = AppSecret::from_bytes([7u8; 32]);
     let sessions = SessionTable::new();
-    let session = StreamSession::new(
+    let session = StreamSession::new_with_kind(
         url::Url::parse("https://cdn.example/master.m3u8").expect("master url"),
+        crate::proxy::MediaKind::Hls,
         referer.to_string(),
     );
     let id = session.id;

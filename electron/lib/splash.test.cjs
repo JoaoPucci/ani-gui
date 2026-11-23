@@ -23,7 +23,18 @@ const {
 } = require("./splash.cjs");
 const { STALL_MS, STEPS, stallTexts } = require("./splash-progress.cjs");
 const { LOCALES, messagesFor } = require("./main-messages.cjs");
-const { APP_READY_CHANNEL, APP_READY_WAIT_MS, appReadyWaiter, revealGate } = require("./app-window.cjs");
+const { APP_READY_CHANNEL, APP_READY_WAIT_MS, appReadyBound, appReadyWaiter, revealGate } = require("./app-window.cjs");
+const { guardedIpc } = require("./ipc-guard.cjs");
+const { appDocumentFrom } = require("./app-document.cjs");
+
+/** The guarded IPC main.js hands the app-ready wait (lib/ipc-guard.cjs);
+ *  `emit` sends as the app's main frame unless the event names another. */
+function appIpc() {
+  const raw = new EventEmitter();
+  const ipc = guardedIpc(raw, { app: appDocumentFrom({ isDev: false }), logError: () => {} });
+  ipc.emit = (channel, event) => raw.emit(channel, { senderFrame: { url: "app://localhost/", parent: null }, ...event });
+  return ipc;
+}
 
 test("the splash is a small frameless window above everything, shown once painted", () => {
   const o = splashWindowOptions();
@@ -101,6 +112,30 @@ test("a splash shows once it has painted, marked as the splash", () => {
   assert.deepEqual(windowCalls(), ["load:index.html", "show"]);
   splash.close();
   assert.deepEqual(windowCalls(), ["load:index.html", "show", "close"]);
+});
+
+test("the splash the controller opens takes its icon from the platform and whether the app is installed", () => {
+  const icon = path.join(__dirname, "..", "build-resources", "icon.png");
+  const cases = [
+    { platform: "win32", packaged: false, want: icon },
+    { platform: "win32", packaged: true, want: undefined },
+    { platform: "linux", packaged: true, want: icon },
+  ];
+  for (const { platform, packaged, want } of cases) {
+    let seen = null;
+    const win = fakeSplash();
+    const splash = splashController({
+      createWindow: (options) => {
+        seen = options;
+        return win;
+      },
+      logError: () => {},
+      platform,
+      packaged,
+    });
+    splash.show();
+    assert.equal(seen.icon, want, `${platform}, packaged ${packaged}`);
+  }
 });
 
 test("a splash suppressed before it painted never comes back on top of the failure report", () => {
@@ -807,18 +842,18 @@ test("what happened to the launch's splash can be read back afterwards", async (
   // reads this instead.
   const win = fakeSplash();
   const splash = splashController({ createWindow: () => win, logError: () => {} });
-  assert.deepEqual(lastSplashState(), { opened: false, shown: false, closed: false, suppressed: false, version: "", steps: 0, railLit: 0 });
+  assert.deepEqual(lastSplashState(), { opened: false, shown: false, closed: false, suppressed: false, version: "", steps: 0, railLit: 0, stuck: false, choice: null });
   splash.show();
-  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: false, version: "", steps: 0, railLit: 0 });
+  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: false, version: "", steps: 0, railLit: 0, stuck: false, choice: null });
   win.emit("ready-to-show");
   splash.motionPreference(false);
   await tick();
   splash.close();
-  assert.deepEqual(lastSplashState(), { opened: true, shown: true, closed: true, suppressed: false, version: "", steps: 0, railLit: 0 });
+  assert.deepEqual(lastSplashState(), { opened: true, shown: true, closed: true, suppressed: false, version: "", steps: 0, railLit: 0, stuck: false, choice: null });
   const failed = splashController({ createWindow: () => fakeSplash(), logError: () => {} });
   failed.show();
   failed.suppress();
-  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: true, version: "", steps: 0, railLit: 0 });
+  assert.deepEqual(lastSplashState(), { opened: true, shown: false, closed: false, suppressed: true, version: "", steps: 0, railLit: 0, stuck: false, choice: null });
 });
 
 test("the app's window can wait for the splash to be on screen, for a bounded time", async (t) => {
@@ -931,6 +966,7 @@ test("every way the splash cannot reach the screen releases the wait at once, no
 function fakeAppWindow() {
   const win = { calls: [], destroyed: false };
   win.isDestroyed = () => win.destroyed;
+  win.isVisible = () => false;
   win.maximize = () => win.calls.push("maximize");
   win.show = () => win.calls.push("show");
   return win;
@@ -1420,14 +1456,16 @@ test("a page that never says it rendered still completes the rail, and the revea
 
 /** The splash and the app window's wait for its renderer, through the
  *  reveal's gate (lib/app-window.cjs), as main.js wires them. */
-async function splashBeforeAPage(t) {
+async function splashBeforeAPage(t, { bound = false } = {}) {
   const logs = [];
   const painted = await paintedSplash(t, { log: (line) => logs.push(line) });
   await painted.splash.progress("backend");
   await painted.splash.progress("flags");
-  const ipc = new EventEmitter();
+  const ipc = appIpc();
   const contents = { id: 1 };
-  const waiter = appReadyWaiter(contents, ipc);
+  // `bound`: the wait main.js makes, with no bound while the splash
+  // stands in.
+  const waiter = appReadyWaiter(contents, ipc, bound ? { timeoutMs: appReadyBound(painted.splash) } : undefined);
   // The reveal closes the splash as the window shows (main.js
   // revealMaximized's afterShow).
   const gate = painted.watch(revealGate(painted.splash, waiter).then(() => painted.splash.close()));
@@ -1442,7 +1480,9 @@ async function splashBeforeAPage(t) {
     }
   };
   const rendered = () => ipc.emit(APP_READY_CHANNEL, { sender: contents });
-  const rail = () => painted.win.calls.filter((c) => c.includes("splashProgress")).at(-1);
+  // The rail's own calls: the stuck state (lib/splash-stuck.cjs) is
+  // another call to the same page object.
+  const rail = () => painted.win.calls.filter((c) => c.includes("splashProgress.set")).at(-1);
   const gone = () => painted.win.calls.filter((c) => c === "close" || c === "hide");
   return { ...painted, logs, gate, later, rendered, rail, gone };
 }
@@ -1464,18 +1504,17 @@ test("a page that renders late in a cold start keeps the splash up, its last str
   splash.close();
 });
 
-test("a page that never says it rendered keeps the splash up until the bound, then completes the rail and opens the reveal", async (t) => {
-  const { splash, logs, gate, later, rail, gone } = await splashBeforeAPage(t);
-  await later(APP_READY_WAIT_MS - 1);
+test("a page that never says it rendered keeps the splash up past the old bound, its last stretch pending, and opens no reveal", async (t) => {
+  // The wait used to give up at APP_READY_WAIT_MS and reveal the window
+  // whether or not it had rendered. While the splash stands in, it has
+  // no bound (appReadyBound): the splash goes stuck instead
+  // (lib/splash-stuck.test.cjs).
+  const { splash, logs, gate, later, rail, gone } = await splashBeforeAPage(t, { bound: true });
+  await later(APP_READY_WAIT_MS * 3);
   assert.equal(gate.done, false);
   assert.deepEqual(gone(), [], "the splash is still up");
   assert.equal(rail(), "js:window.splashProgress && window.splashProgress.set(2)");
-  await later(1);
-  assert.equal(rail(), "js:window.splashProgress && window.splashProgress.set(3)");
-  assert.equal(logs.filter((l) => l.includes("did not say it rendered")).length, 1);
-  assert.equal(gate.done, false, "held for the completed rail");
-  await later(SPLASH_COMPLETE_HOLD_MS);
-  assert.equal(gate.done, true);
+  assert.equal(logs.filter((l) => l.includes("did not say it rendered")).length, 0);
   splash.close();
 });
 
@@ -1500,4 +1539,137 @@ test("whatever steps did not land, the reveal's step lights the whole rail first
     ["js:window.splashProgress && window.splashProgress.set(3)"],
   );
   splash.close();
+});
+
+// The splash is made hidden and shown at ready-to-show, its first
+// paint. Under native Wayland without GPU compositing an unmapped
+// window may never paint, so the splash shows SPLASH_PAINT_WAIT_MS after
+// its page has loaded if no paint came first: nothing in its reveal may
+// need a frame from a window that is not on screen.
+const { SPLASH_PAINT_WAIT_MS } = require("./splash.cjs");
+
+test("a splash whose window never paints still shows, once its page has loaded", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = fakeSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.webContents.emit("did-finish-load");
+  const shows = () => win.calls.filter((c) => c === "show").length;
+  t.mock.timers.tick(SPLASH_PAINT_WAIT_MS - 1);
+  assert.equal(shows(), 0, "a paint may still come");
+  t.mock.timers.tick(1);
+  assert.equal(shows(), 1);
+  win.emit("ready-to-show");
+  assert.equal(shows(), 1, "shown once");
+});
+
+test("a splash that paints in time shows at its paint, and the load's bound adds no second show", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = fakeSplash();
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.emit("ready-to-show");
+  win.webContents.emit("did-finish-load");
+  t.mock.timers.tick(SPLASH_PAINT_WAIT_MS * 2);
+  assert.equal(win.calls.filter((c) => c === "show").length, 1);
+});
+
+test("a splash put away or closed before the load's bound is not shown by it", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const end of ["suppress", "close"]) {
+    const win = fakeSplash();
+    const splash = splashController({ createWindow: () => win, logError: () => {} });
+    splash.show();
+    win.webContents.emit("did-finish-load");
+    splash[end]();
+    t.mock.timers.tick(SPLASH_PAINT_WAIT_MS);
+    assert.equal(win.calls.filter((c) => c === "show").length, 0, end);
+  }
+});
+
+test("restacking the splash maps it again, on top, while it stands in; not once the boot is past it", () => {
+  const win = fakeSplash();
+  win.isVisible = () => true;
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.emit("ready-to-show");
+  win.calls.length = 0;
+  splash.restack();
+  assert.deepEqual(
+    win.calls.filter((c) => !c.startsWith("js:")),
+    ["hide", "show"],
+  );
+  splash.close();
+  win.calls.length = 0;
+  splash.restack();
+  assert.deepEqual(win.calls, []);
+});
+
+test("a hidden splash is not restacked: it was never shown, or was put away", () => {
+  const win = fakeSplash();
+  win.isVisible = () => false;
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  splash.restack();
+  assert.deepEqual(win.calls, ["load:index.html"]);
+});
+
+test("revealing a window already mapped by a wake shows it maximized, and says it is up directly", () => {
+  // A woken window was mapped behind the splash: no `show` event from
+  // a hidden-to-mapped change is coming for the listeners onMapped
+  // attaches, so the reveal hands over through onUp instead.
+  for (const maximized of [true, false]) {
+    const app = fakeAppWindow();
+    app.isVisible = () => true;
+    app.isMaximized = () => maximized;
+    revealMaximized(app, {
+      onMapped: () => app.calls.push("listening"),
+      onUp: () => app.calls.push("up"),
+      afterShow: () => app.calls.push("splash-closed"),
+    });
+    assert.deepEqual(
+      app.calls,
+      maximized ? ["show", "up", "splash-closed"] : ["maximize", "show", "up", "splash-closed"],
+      `maximized: ${maximized}`,
+    );
+  }
+});
+
+test("a restack waits for the splash to have the focus back before it restacks again", () => {
+  // hide() and show() land asynchronously on Wayland: a focus the woken
+  // window takes again meanwhile must not start another hide and show,
+  // or the two windows could trade the focus until the reveal.
+  const win = fakeSplash();
+  win.isVisible = () => true;
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.emit("ready-to-show");
+  const restacks = () => win.calls.filter((c) => c === "hide").length;
+  splash.restack();
+  splash.restack();
+  assert.equal(restacks(), 1, "one restack in flight");
+  win.emit("focus");
+  splash.restack();
+  assert.equal(restacks(), 2, "the splash had the focus back");
+});
+
+test("a restack whose splash never gets the focus back does not block the next one for good", (t) => {
+  // A compositor may refuse to activate the splash (the person moved to
+  // another app meanwhile): the next restack still runs once the first
+  // has had RESTACK_SETTLE_MS to land.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { RESTACK_SETTLE_MS } = require("./splash.cjs");
+  const win = fakeSplash();
+  win.isVisible = () => true;
+  const splash = splashController({ createWindow: () => win, logError: () => {} });
+  splash.show();
+  win.emit("ready-to-show");
+  const restacks = () => win.calls.filter((c) => c === "hide").length;
+  splash.restack();
+  t.mock.timers.tick(RESTACK_SETTLE_MS - 1);
+  splash.restack();
+  assert.equal(restacks(), 1);
+  t.mock.timers.tick(1);
+  splash.restack();
+  assert.equal(restacks(), 2);
 });
