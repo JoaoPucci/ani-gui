@@ -65,6 +65,30 @@ test("a variable the user set and Chromium overwrote is passed on as the user se
   assert.strictEqual(env.GDK_BACKEND, "wayland");
 });
 
+test("a variable the toolkit took out after the snapshot stays out", () => {
+  // GTK unsets DESKTOP_STARTUP_ID at start-up so children do not inherit
+  // it; Chromium's Wayland platform takes XDG_ACTIVATION_TOKEN the same way.
+  const launch = { ...LAUNCH, SOMETHING_CONSUMED: "x" };
+  assert.ok(!("SOMETHING_CONSUMED" in linux(launch, NOW)));
+});
+
+test("the app's own launch's startup id and activation token never reach a child", () => {
+  // They were the app's, are good once, and a stale one can keep a window
+  // from coming forward. Even left in place, they are not passed on.
+  const launch = { ...LAUNCH, DESKTOP_STARTUP_ID: "app_TIME1", XDG_ACTIVATION_TOKEN: "t" };
+  const env = linux(launch, { ...NOW, DESKTOP_STARTUP_ID: "app_TIME1", XDG_ACTIVATION_TOKEN: "t" });
+  assert.ok(!("DESKTOP_STARTUP_ID" in env));
+  assert.ok(!("XDG_ACTIVATION_TOKEN" in env));
+});
+
+test("a variable named __proto__ is passed on like any other", () => {
+  const launch = JSON.parse('{"__proto__":"x","HOME":"/home/me"}');
+  const env = linux(launch);
+  assert.ok(Object.prototype.hasOwnProperty.call(env, "__proto__"));
+  assert.strictEqual(Object.getOwnPropertyDescriptor(env, "__proto__").value, "x");
+  assert.strictEqual(Object.getPrototypeOf(env), Object.prototype);
+});
+
 test("the app's own variables, exported after the snapshot, are passed on", () => {
   const env = linux(LAUNCH, { ...NOW, ANI_GUI_DEV: "1" });
   assert.strictEqual(env.ANI_GUI_DEV, "1");
@@ -212,6 +236,7 @@ test("property: a Linux child holds only what the user launched with or the app 
           assert.strictEqual(value, launch.ORIGINAL_XDG_CURRENT_DESKTOP);
         } else {
           assert.strictEqual(value, launch[key], key);
+          assert.ok(key in now, `${key} was taken out after the snapshot`);
         }
       }
     }),
