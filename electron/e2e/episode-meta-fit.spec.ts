@@ -13,12 +13,16 @@
  * app's four locales. A show of twelve episodes is answered so that
  * the catalogue lists seven, nine have aired and the tenth airs on the
  * 28th of September: episodes 8 and 9 are not listed yet, 10 gives its
- * airing date (September's is among the longest short month names) and
+ * airing date (September's short name is the longest in Spanish and
+ * ties the longest in Russian; in English and Portuguese every short
+ * month has the same letters) and
  * 11 and 12 are unaired. For each of those tiles, the meta line's words
  * sit on one line, inside the tile, and the line does not overflow its
  * box. A card in the player's strip is narrower (five to a row): its
  * episode number keeps one line, and its words may take two, inside the
- * card and without overflowing.
+ * card and without overflowing, with the dot before them on their line,
+ * not left at the end of the number's. Episodes 6 and 7, aired and
+ * listed, give their length (6 is the one playing).
  *
  * Every API request is stubbed, but for the player's play and stream,
  * which run on the backend's replay of a seeded row (see real-play.ts).
@@ -137,6 +141,7 @@ function fit(tile: Locator, meta: string) {
 		const box = el.getBoundingClientRect();
 		return {
 			text: line.textContent?.trim() ?? '',
+			rects: rects.length,
 			lines,
 			pastLeft: box.left - left,
 			pastRight: right - box.right,
@@ -151,6 +156,7 @@ async function assertFits(tile: Locator, meta: string, at: string, maxLines = 1)
 	if (!f) return;
 	const where = `${at} "${f.text}"`;
 	expect.soft(f.text.length, `${where}: says something`).toBeGreaterThan(0);
+	expect.soft(f.rects, `${where}: its words are drawn`).toBeGreaterThan(0);
 	expect
 		.soft(f.lines, `${where}: on ${maxLines === 1 ? 'one line' : `at most ${maxLines} lines`}`)
 		.toBeLessThanOrEqual(maxLines);
@@ -224,7 +230,7 @@ for (const locale of LOCALES) {
 			// The catalogue's count and the schedule are in.
 			await expect(tile(8)).toHaveClass(/ep-tile-recheck/, { timeout: 15_000 });
 			await expect(tile(10)).toHaveClass(/ep-tile-unaired/, { timeout: 15_000 });
-			for (const n of [8, 9, 10, 11, 12]) {
+			for (const n of [6, 7, 8, 9, 10, 11, 12]) {
 				await tile(n).scrollIntoViewIfNeeded();
 				await assertFits(tile(n), '.ep-meta', `${locale}, a show's episode ${n}`);
 			}
@@ -294,7 +300,7 @@ for (const locale of LOCALES) {
 				const card = (n: number) => page.locator(`li[data-ep-num="${n}"] .ep-card`);
 				await expect(card(8)).toHaveClass(/ep-card-recheck/, { timeout: 30_000 });
 				await expect(card(10)).toHaveClass(/ep-card-unaired/, { timeout: 15_000 });
-				for (const n of [8, 9, 10]) {
+				for (const n of [6, 7, 8, 9, 10]) {
 					await card(n).scrollIntoViewIfNeeded();
 					// A card is narrow at this window (five to a row): its
 					// number keeps one line, and its words may take a second,
@@ -306,6 +312,22 @@ for (const locale of LOCALES) {
 						`${locale}, the player's episode ${n}'s words`,
 						2
 					);
+					// The separator goes with the words: no line ends on it.
+					const dot = await card(n).evaluate((el) => {
+						const d = el.querySelector('.ep-card-foot-dot');
+						const w = el.querySelector('.ep-card-foot-len');
+						if (!d || !w) return null;
+						const range = document.createRange();
+						range.selectNodeContents(w);
+						const first = Array.from(range.getClientRects()).find((r) => r.width > 0);
+						const dr = d.getBoundingClientRect();
+						return first ? Math.abs(dr.top + dr.height / 2 - (first.top + first.height / 2)) : null;
+					});
+					if (dot !== null) {
+						expect
+							.soft(dot, `${locale}, the player's episode ${n}: its dot sits on its words' line`)
+							.toBeLessThanOrEqual(4);
+					}
 				}
 			} finally {
 				await stopApp(app);
