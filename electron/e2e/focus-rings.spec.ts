@@ -80,9 +80,14 @@
  * and the window buttons only on their chip. The
  * smallest and the maximized windows are not walked in that theme.
  *
- * What it does not reach: the Account, About and Debug pages, Home's
- * empty and error states, and the menus, dialogs and popovers other
- * than the link dialog and the download list. A ring on an element
+ * Home's hero with nothing to feature and with trending unanswered is
+ * walked too, at the desktop size, under the mouse and in forced
+ * colours; the player test types a number so the episode field's Go
+ * button is reached.
+ *
+ * What it does not reach: the Account, About and Debug pages, and the
+ * menus, dialogs and popovers other than the link dialog and the
+ * download list. A ring on an element
  * beside the control that is much larger than it is not seen.
  * Of what clips, it models an ancestor's overflow and the window, not an
  * ancestor's rounded corners, clip-path or mask. Where the window cannot
@@ -1428,7 +1433,11 @@ async function walkPlayer(origin: string) {
 			});
 		await hold();
 		await expect(page.locator('.guess-slip .act').first()).toBeVisible({ timeout: 15_000 });
-		const needs = ['.player-skip-btn', '.guess-slip .act', '.guess-slip .hide'];
+		// A number typed into the episode field turns on its Go button,
+		// inside the field's pill.
+		await page.locator('input.jump-input').first().fill('3');
+		await expect(page.locator('.ep-jump-go').first()).toBeEnabled();
+		const needs = ['.player-skip-btn', '.guess-slip .act', '.guess-slip .hide', '.ep-jump-go'];
 		for (const forced of [false, true]) {
 			await forcedColours(page, forced);
 			for (const key of ['Tab', 'Shift+Tab'] as const) {
@@ -1462,6 +1471,54 @@ test('in a forced-colours theme every focused control draws an outline', async (
 				const at = `${p.label}, forced colours, ${key}`;
 				assertForced(await walk(page, key, { selectors: p.need }), at, p.required, p.need);
 			}
+		}
+	} finally {
+		await stopApp(app);
+	}
+});
+
+test("the hero's empty and failed states ring their button, under the mouse too", async () => {
+	test.setTimeout(180_000);
+	const { page, app } = await launch();
+	try {
+		await sizeViewport(page, 1440, 900);
+		type Route = Parameters<Parameters<Page['route']>[1]>[0];
+		const states = [
+			// Trending answered with no show to feature.
+			{
+				label: 'empty',
+				answer: (r: Route) =>
+					answer(r, { status: 200, contentType: 'application/json', body: '[]' })
+			},
+			// Trending did not answer.
+			{ label: 'failed', answer: (r: Route) => answer(r, { status: 503 }) }
+		];
+		for (const state of states) {
+			// The latest route answers first; every other request falls
+			// back to the launch's stubs.
+			await page.route('**/api/**', async (r) => {
+				const p = new URL(r.request().url()).pathname;
+				if (p === '/api/kitsu/trending-anilist') return state.answer(r);
+				return r.fallback();
+			});
+			await remount(page);
+			const cta = page.locator('.hero-empty .btn-primary');
+			await expect(cta).toBeVisible({ timeout: 15_000 });
+			for (const forced of [false, true]) {
+				await forcedColours(page, forced);
+				const at = `the hero, ${state.label}${forced ? ', forced colours' : ''}`;
+				const hovered: Stop[] = [];
+				const stops = await walk(page, 'Tab', {
+					selectors: ['.btn-primary'],
+					hovered: forced ? undefined : hovered
+				});
+				if (forced) assertForced(stops, at, ['brand'], ['.btn-primary']);
+				else {
+					assertStops(stops, at, ['brand'], ['.btn-primary']);
+					assertHovered(hovered, `${at}, under the mouse`);
+				}
+			}
+			await forcedColours(page, false);
 		}
 	} finally {
 		await stopApp(app);
