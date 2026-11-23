@@ -209,6 +209,7 @@ describe('Russian headings end without a full stop', () => {
 		'download.dock_title',
 		'download.error_ffmpeg_missing_headline',
 		'home.hero_error_title',
+		'home.hero_empty_title',
 		'home.error_resume_headline',
 		'home.delete_confirm_title',
 		'home.clear_confirm_title',
