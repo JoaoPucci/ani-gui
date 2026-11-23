@@ -80,10 +80,10 @@ filter() {
     # every platform; the AppImage repack and the modules it requires;
     # the lockfile and workspace manifests that pin electron-builder;
     # the linker flags the backend is built with and the toolchain it
-    # is built by; this workflow with its filter and the install
-    # actions it calls. An electron-builder config file or an .npmrc
-    # does not exist today, and either would be read by the build the
-    # moment it did.
+    # is built by; this workflow with its filter, the AppImage start-up
+    # check it runs and the install actions it calls. An
+    # electron-builder config file or an .npmrc does not exist today,
+    # and either would be read by the build the moment it did.
     for path in electron/package.json \
         electron/build-resources/installer.nsh \
         electron/build-resources/deb-after-install.sh \
@@ -101,6 +101,7 @@ filter() {
         rust-toolchain.toml \
         .github/workflows/packages.yml \
         tools/packages-filter.sh \
+        tools/appimage-catalog-check.sh \
         .github/actions/pnpm-install/action.yml \
         .github/actions/apt-install/action.yml \
         electron/electron-builder.yml .npmrc electron/.npmrc; do
@@ -125,7 +126,8 @@ filter() {
         electron/scripts/fetch-linux-deps.mjs.orig \
         electron/lib/appimage-tree.test.cjs \
         backend/.cargo-notes.md \
-        .github/workflows/packages.yml.disabled; do
+        .github/workflows/packages.yml.disabled \
+        tools/appimage-catalog-check.sh.orig; do
         head=$(change "$path")
         run filter pull_request "$base" "$head"
         [ "$status" -eq 0 ]

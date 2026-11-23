@@ -202,7 +202,9 @@ release by hand. They can come from either of two places.
 (The e2e workflow also runs `pnpm run dist` on Linux to produce the
 `linux-unpacked/` build it tests against, and the Packages workflow
 builds every package on a pull request that changes how one is built,
-uploading nothing.)
+publishing none of them; on that pull request and on a run started by
+hand it also starts the AppImage the way the AppImageHub catalog's
+test does, as "Packages built in CI" in `docs/testing.md` describes.)
 
 | Target | Host | Command |
 |---|---|---|

@@ -371,7 +371,7 @@ Every PR runs all gating workflows; merge blocks until they're green:
 | `frontend.yml` | PR touches `frontend/**` | yes |
 | `arch.yml` | always | yes |
 | `mutation.yml` | nightly cron + manual dispatch | no (informational) |
-| `packages.yml` | every PR; the builds run only when the PR touches `electron/package.json`, `electron/build-resources/**`, `electron/scripts/fetch-{windows,linux}-deps.mjs`, `electron/scripts/repack-appimage.mjs`, `electron/lib/{dep-staging,linux-launcher,appimage-tree,sandbox-probe}.cjs`, an `electron/electron-builder.*` config, an `.npmrc` (root or `electron/`), `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, `backend/.cargo/**`, `rust-toolchain.toml`, `.github/actions/{pnpm,apt}-install/`, its filter or the workflow — decided by `tools/packages-filter.sh`, which `tests/bash/arch/packages_filter.bats` runs, from the PR's own changes since it branched; also started by hand | not yet; its `packages-build` job, which passes when the builds passed or were not needed, is the check to require |
+| `packages.yml` | every PR; the builds run only when the PR touches `electron/package.json`, `electron/build-resources/**`, `electron/scripts/fetch-{windows,linux}-deps.mjs`, `electron/scripts/repack-appimage.mjs`, `electron/lib/{dep-staging,linux-launcher,appimage-tree,sandbox-probe}.cjs`, an `electron/electron-builder.*` config, an `.npmrc` (root or `electron/`), `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, `backend/.cargo/**`, `rust-toolchain.toml`, `.github/actions/{pnpm,apt}-install/`, its filter, `tools/appimage-catalog-check.sh` or the workflow — decided by `tools/packages-filter.sh`, which `tests/bash/arch/packages_filter.bats` runs, from the PR's own changes since it branched; also started by hand | yes, its `packages-build` job, which passes when the builds and the AppImage start-up check passed or were not needed |
 
 ### Packages built in CI
 
@@ -385,17 +385,41 @@ the job asserts, and Electron, the AppImage runtime and the bundled
 tools arrive prebuilt); the job's summary reports the newest glibc any
 packaged binary needs.
 
-On a pull request it uploads nothing. Its `packages-build` job always
-reports, so it is the one name for the master ruleset to require: a
-required name from a workflow-level path filter would wait forever on
-every pull request the filter skipped. Once it is required, a Windows
-runner that GitHub cancels fails that job and blocks the merge until
-the run is re-run, as with the macOS leg of `rust.yml`.
+Every AppImage it builds is then started the way the AppImageHub
+catalog's test starts the released one: on an `ubuntu-22.04` runner
+(glibc 2.35), in Xvfb at 800x600 with icewm, under `firejail
+--noprofile --net=none --appimage`, with no network. The job, "AppImage
+starts on the catalog's system", runs `tools/appimage-catalog-check.sh`,
+which fails unless a window of the app's own class appears within 30
+seconds and is still there 20 seconds later, the app's log shows its
+backend ready and its first page rendered, and no startup failure is
+logged; the catalog itself asks only for a visible window, which the
+splash or the failed-startup dialog would give it. When the check
+fails, the job keeps the app's log and a screenshot as the
+`catalog-check-failure` artifact. A
+release whose AppImage needs a newer glibc than the catalog's, as
+v0.14.1's did, fails here rather than in the catalog. The firejail is
+Ubuntu 22.04's own (0.9.66), where the catalog installs a 2023 build of
+its own over it, so a failure particular to either firejail build
+would show in one and not the other.
+`tests/bash/arch/appimage_catalog_check.bats` holds the script's
+verdicts against stand-ins for the X server, the window manager,
+firejail and the app.
 
-Started by hand it uploads the packages. CI only builds them: they are
-unsigned, as the hand-built release packages are, and nothing in CI
-installs one or runs the app, so a Windows or Linux check is still done
-by hand on a real machine. To build a branch, tag or commit:
+On a pull request it publishes no package: the AppImage goes to the
+start-up check as a one-day artifact named `catalog-check-appimage`,
+and nothing else is uploaded. Its `packages-build` job always
+reports, so it is the one name the master ruleset requires: a
+required name from a workflow-level path filter would wait forever on
+every pull request the filter skipped. A Windows runner that GitHub
+cancels fails that job and blocks the merge until the run is re-run,
+as with the macOS leg of `rust.yml`.
+
+Started by hand it uploads the packages. They are unsigned, as the
+hand-built release packages are. Beyond the AppImage's start-up check
+nothing in CI installs a package or runs the app from one, so the
+Windows installer and the `.deb` are still checked by hand on a real
+machine. To build a branch, tag or commit:
 
 1. On GitHub, open the repository's **Actions** tab and choose
    **Packages** in the list of workflows on the left.
