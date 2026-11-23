@@ -368,8 +368,9 @@ describe('finaleCard on an entry outside the main story', () => {
 	});
 
 	it("ignores the player's reading of another show", () => {
-		// The page reused for another show still holds the first one's
-		// detail: an airing reading of it does not hide this finale's card.
+		// A page whose id moved to another show still holds the first
+		// one's detail: an airing reading of it does not hide this
+		// finale's card.
 		const other = { id: '10', status: 'current', episodes: 1 };
 		expect(chainEndCard(chainData('11', false), '11', 'linked', TODAY, 1, other)).not.toBeNull();
 		expect(playerUpNext(chainData('11', false), '11', 'linked', TODAY, 1, other)?.kind).toBe(
