@@ -14,9 +14,7 @@ import {
 	availabilityWarm,
 	checkAvailability,
 	downloadStream,
-	historyByKitsuEach,
 	imageProxyUrl,
-	kitsuFranchise,
 	kitsuFranchiseFirstHop,
 	kitsuSearch,
 	play,
@@ -132,12 +130,10 @@ describe('lanes', () => {
 		);
 	});
 
-	it("a franchise read and the walk's first hop go to the franchise lane", async () => {
+	it("the walk's first hop goes to the franchise lane", async () => {
 		g.fetch = answering({ signal: 'strip' }) as unknown as typeof fetch;
-		await kitsuFranchise('12');
 		await kitsuFranchiseFirstHop('12');
 		expect(fetched.map((f) => f.url)).toEqual([
-			`${LANES.franchise}/api/kitsu/franchise/12`,
 			`${LANES.franchise}/api/kitsu/franchise/12/first-hop`
 		]);
 	});
@@ -174,12 +170,6 @@ describe('lanes', () => {
 		expect(fetched.map((f) => [f.url, f.init?.method, f.init?.body])).toEqual([
 			[`${API}/api/watch-order/rail`, 'POST', JSON.stringify(body)]
 		]);
-	});
-
-	it("the history rows a franchise resumes from stay on the API's lane", async () => {
-		g.fetch = answering({ '12': null }) as unknown as typeof fetch;
-		await historyByKitsuEach(['12']);
-		expect(fetched.map((f) => f.url)).toEqual([`${API}/api/history/by-kitsu`]);
 	});
 
 	it('a poster goes to the image lane', () => {

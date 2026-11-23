@@ -2,8 +2,9 @@
  * One read at a time: each read supersedes the ones still out, and
  * only the latest read's answer is shown, so an older one landing late
  * never replaces it. The watch-order pages read through it: the play
- * page per show, and the franchise page per show and per Try again,
- * and both their rows again after a history link (`refresh`).
+ * page per viewing (a show and its episode), the franchise page per
+ * show and per Try again, both again after a history link (`refresh`),
+ * and Home's rail.
  *
  * Each read is handed a signal, aborted when a later read supersedes
  * it or the reads stop: a franchise read holds its response open while
