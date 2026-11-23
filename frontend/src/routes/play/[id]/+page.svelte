@@ -4875,14 +4875,13 @@
 											<span class="ep-card-foot-num"
 												>{m.play_episode_card_num({ episode: String(n) })}</span
 											>
+											<!-- The dot travels with the words, so when they move
+											     under the number it does not stay behind on its line. -->
 											{#if meta?.kind === 'unaired' && air.unaired}
-												<span class="ep-card-foot-dot" aria-hidden="true">·</span>
 												<span class="ep-card-foot-len">{unairedLabel(air.airsAt)}</span>
 											{:else if meta?.kind === 'not-listed'}
-												<span class="ep-card-foot-dot" aria-hidden="true">·</span>
 												<span class="ep-card-foot-len">{m.detail_ep_not_listed()}</span>
 											{:else if meta?.kind === 'length'}
-												<span class="ep-card-foot-dot" aria-hidden="true">·</span>
 												<span class="ep-card-foot-len"
 													>{m.play_episode_card_length_minutes({
 														minutes: String(meta.minutes)
@@ -6579,7 +6578,12 @@
 		font-variant-numeric: tabular-nums lining-nums;
 		white-space: nowrap;
 	}
-	.ep-card-foot-dot {
+	/* The dot before the length or the words, drawn with them so it
+	   moves under the number with them; not read out. */
+	.ep-card-foot-len::before {
+		content: '·' / '';
+		margin-inline-end: var(--space-2);
+		font-family: var(--font-body);
 		color: color-mix(in oklab, var(--bone-100) 24%, transparent);
 	}
 	.ep-card-foot-len {
