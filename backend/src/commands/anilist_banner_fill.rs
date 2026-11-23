@@ -26,7 +26,7 @@ pub(crate) async fn banner_for_show(
     anilist_base: Option<&str>,
 ) -> Result<Option<String>> {
     let lane = crate::commands::strip_warm::fill_lane(state, anilist_base);
-    let shared = format!("{lane}\u{0}{kitsu_id}");
+    let shared = shared_key(&lane, kitsu_id);
     BANNERS_IN_FLIGHT
         .run(shared, || async {
             let ids = crate::commands::external_ids::external_ids_for(state, kitsu_id).await?;
@@ -49,4 +49,17 @@ pub(crate) async fn banner_for_show(
             .await
         })
         .await
+}
+
+/// The key a show's banner lookup is shared under: per lane and show.
+fn shared_key(lane: &str, kitsu_id: &str) -> String {
+    format!("{lane}\u{0}{kitsu_id}")
+}
+
+/// How many callers wait on `kitsu_id`'s banner lookup now, beside the
+/// one running it.
+#[cfg(test)]
+pub(crate) fn sharing(state: &AppState, kitsu_id: &str, anilist_base: Option<&str>) -> usize {
+    let lane = crate::commands::strip_warm::fill_lane(state, anilist_base);
+    BANNERS_IN_FLIGHT.sharing(&shared_key(&lane, kitsu_id))
 }

@@ -8,10 +8,7 @@ const DAY: u64 = 24 * 60 * 60;
 
 fn entry(fetched_at: u64) -> CacheEntry {
     let doc = serde_json::json!({ "test_a": false });
-    CacheEntry {
-        fetched_at,
-        flags: doc.as_object().expect("object").clone(),
-    }
+    CacheEntry::admitted(fetched_at, doc.as_object().expect("object").clone())
 }
 
 #[test]
@@ -126,4 +123,74 @@ async fn a_symlink_at_the_cache_path_reads_as_nothing() {
     let link = td.path().join("remote-flags.json");
     std::os::unix::fs::symlink(&real, &link).expect("symlink");
     assert_eq!(read(&link).await, None);
+}
+
+/// Builds without the signature check (the remote flags' first
+/// release) cached the file as fetched, with nothing checked, and with
+/// no `verified` field. Read by this build, such an entry keeps its
+/// offs and loses its ons: they never verified.
+#[tokio::test]
+async fn a_cache_written_before_the_signature_check_reads_as_unsigned() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    let older = serde_json::json!({
+        "fetched_at": 42,
+        "flags": { "test_a": true, "test_b": false }
+    });
+    std::fs::write(&path, older.to_string()).expect("write");
+    let got = read(&path).await.expect("an entry");
+    assert_eq!(got.fetched_at, 42);
+    assert!(!got.verified);
+    assert_eq!(got.flags.get("test_a"), None);
+    assert_eq!(got.flags.get("test_b"), Some(&serde_json::json!(false)));
+}
+
+/// An entry marked as not known to have verified is admitted again, as
+/// unsigned, so it cannot turn a flag on either.
+#[tokio::test]
+async fn an_entry_not_known_to_have_verified_cannot_turn_a_flag_on() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    let unmarked = serde_json::json!({
+        "fetched_at": 42,
+        "verified": false,
+        "flags": { "test_a": true, "test_b": false }
+    });
+    std::fs::write(&path, unmarked.to_string()).expect("write");
+    let got = read(&path).await.expect("an entry");
+    assert_eq!(got.flags.get("test_a"), None);
+    assert_eq!(got.flags.get("test_b"), Some(&serde_json::json!(false)));
+}
+
+/// What this build caches it admitted first, so a `true` in it came
+/// from a verified file: the document says so by holding it, and the
+/// entry is written marked and reads back whole.
+#[tokio::test]
+async fn an_entry_written_from_a_verified_document_keeps_its_turn_on() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    let doc = serde_json::json!({ "test_a": true, "test_b": false });
+    write(
+        &path,
+        &CacheEntry::admitted(42, doc.as_object().expect("object").clone()),
+    )
+    .await;
+    let got = read(&path).await.expect("an entry");
+    assert!(got.verified);
+    assert_eq!(got.flags.get("test_a"), Some(&serde_json::json!(true)));
+}
+
+/// The mark is the document's own evidence, taken as it is written: an
+/// entry handed in marked verified, whose document holds nothing only a
+/// verified file keeps, is written unmarked.
+#[tokio::test]
+async fn the_mark_is_taken_from_the_document_as_it_is_written() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = td.path().join("remote-flags.json");
+    let mut claimed = entry(42);
+    claimed.verified = true;
+    write(&path, &claimed).await;
+    let on_disk: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).expect("read")).expect("json");
+    assert_eq!(on_disk["verified"], serde_json::json!(false));
 }
