@@ -622,17 +622,19 @@ the page gathered behind it, can be recorded in either order on a
 loaded runner, however far apart they were sent. Assert what such
 requests asked for in any order
 (`anilist_streaming_eps_fake_test::asked_in_any_order`). Where the
-order of sending is the point, read it from the AniList gate a test
-shares (`share_for_tests`): `let_go()` lists the class of each request
-it let go, in order, and `waiting()` counts the requests waiting for
-their turn.
+order is the point, read it from the AniList gate a test shares
+(`share_for_tests`): `let_go()` lists the class of each request in the
+order the gate let it go, and `waiting()` counts the requests other
+than retries waiting for their turn.
 
 A test that needs one request still out while another arrives holds
 the first (`crate::held`) instead of delaying it and hoping the second
 lands inside the delay. A test that needs a lookup inside a time
 window, such as a pause's last second, takes it there on a paused
 clock, which moves only from timer to timer, and lets the clock run
-again once the requests are queued.
+again once the requests are queued. Kitsu's mappings, cached first,
+keep the network out of that stretch: a paused clock jumps ahead while
+the runtime waits on a mock server's thread.
 
 ## Test-discipline expectations for AI agents
 
