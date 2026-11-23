@@ -14,6 +14,7 @@ use crate::meta::anilist_batch::{coalesced, Kind, Lanes, Want};
 pub(crate) struct Banner;
 
 impl Kind for Banner {
+    const NAME: &'static str = "banner";
     type Out = Option<String>;
     const BY_MAL_GQL: &'static str = "query BannerBatchByMal($malIds: [Int]) { \
         Page(page: 1, perPage: 50) { pageInfo { hasNextPage } \

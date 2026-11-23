@@ -56,6 +56,8 @@ pub(crate) type Keyed<T> = (HashMap<u32, T>, Vec<u32>);
 
 /// What one kind of batched lookup asks and reads.
 pub(crate) trait Kind: Send + Sync + 'static {
+    /// The kind's name in the log: `stills`, `banner`.
+    const NAME: &'static str;
     /// One show's answer; its default is what a show AniList has no
     /// media for reads.
     type Out: Clone + Default + Send + 'static;
@@ -98,7 +100,7 @@ pub(crate) async fn batch<K: Kind>(
     resolve(
         wants,
         |space, ids| ask_page::<K>(client, url, space, ids),
-        |want| K::single(client, want, base_override),
+        |want| single::<K>(client, want, base_override),
     )
     .await
 }
@@ -115,7 +117,7 @@ pub(crate) async fn batch_each<K: Kind>(
     resolve_each(
         wants,
         |space, ids| ask_page::<K>(client, url, space, ids),
-        |want| K::single(client, want, base_override),
+        |want| single::<K>(client, want, base_override),
         on_answer,
     )
     .await;
@@ -131,9 +133,31 @@ async fn ask_page<K: Kind>(
         Space::Mal => (K::BY_MAL_GQL, "malIds"),
         Space::AniList => (K::BY_ID_GQL, "ids"),
     };
+    let sent = match space {
+        Space::Mal => log::Sent::MalPage,
+        Space::AniList => log::Sent::AniListIdPage,
+    };
+    let count = ids.len();
     let body = serde_json::json!({ "query": query, "variables": { var: ids } });
-    let bytes = post_graphql_public(client, url, &body).await?;
-    parse_page(&bytes, space, K::FIELDS, K::read)
+    log::logged(K::NAME, sent, count, async {
+        let bytes = post_graphql_public(client, url, &body).await?;
+        parse_page(&bytes, space, K::FIELDS, K::read)
+    })
+    .await
+}
+
+/// One show's single lookup, logged as a lane's request.
+pub(crate) fn single<'a, K: Kind>(
+    client: &'a reqwest::Client,
+    want: Want,
+    base_override: Option<&'a str>,
+) -> impl Future<Output = Result<K::Out>> + Send + 'a {
+    log::logged(
+        K::NAME,
+        log::Sent::Single,
+        1,
+        K::single(client, want, base_override),
+    )
 }
 
 /// [`batch`] over any transport: `ask` answers one page of ids in a

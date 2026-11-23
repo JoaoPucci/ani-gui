@@ -225,7 +225,7 @@ async fn send<K: Kind>(
 ) {
     match wants {
         [] => {}
-        [one] => answer(0, K::single(client, *one, base).await),
+        [one] => answer(0, super::single::<K>(client, *one, base).await),
         _ => batch_each::<K>(client, wants, base, answer).await,
     }
 }

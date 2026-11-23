@@ -21,6 +21,7 @@ use crate::meta::anilist_pages::{Page, PAGE_CAP};
 pub(crate) struct Streaming;
 
 impl Kind for Streaming {
+    const NAME: &'static str = "stills";
     type Out = StreamingListing;
     /// [`super::STREAMING_EPS_BY_MAL_GQL`] for a page of MAL ids.
     const BY_MAL_GQL: &'static str = "query StreamingEpsBatchByMal($malIds: [Int]) { \
