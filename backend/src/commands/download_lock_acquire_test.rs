@@ -1,4 +1,6 @@
-//! Opening the lock file while other downloads remove its directory.
+//! Opening the lock file while other downloads remove its directory (the
+//! open module, reached through `super::super::open`), and what a try that
+//! refuses the lock logs and counts as a loss.
 
 use super::super::open::open_creating_with;
 use super::{attempt, os, Attempt};
