@@ -10,7 +10,7 @@
 //! Crunchyroll promotional crops AniList carries.
 
 use crate::app::AppState;
-use crate::cache::ttl::{ANILIST_STREAMING_EPS_NO_IDS_TTL, ANILIST_STREAMING_EPS_TTL};
+use crate::cache::ttl::{show_row_ttl, ANILIST_STREAMING_EPS_NO_IDS_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::error::AniError;
 use crate::meta::anilist_streaming_eps::StreamingListing;
@@ -35,7 +35,8 @@ pub(crate) fn anilist_eps_thumbs_key(kitsu_id: &str) -> String {
 }
 
 /// Writes the outcome of an AniList lookup to the cache. `Ok(listing)`
-/// uses the full [`ANILIST_STREAMING_EPS_TTL`]; `Err(())` uses the
+/// keeps a finished show's for the week and any other's for a day
+/// ([`listing_ttl`]); `Err(())` uses the
 /// short [`ANILIST_STREAMING_EPS_NO_IDS_TTL`]: a show Kitsu maps to
 /// neither tracker. A lookup that got no answer never comes here.
 fn cache_anilist_eps_thumbs(
@@ -50,10 +51,14 @@ fn cache_anilist_eps_thumbs(
     }
 }
 
-/// How long the outcome of an AniList lookup is kept, in seconds.
+/// How long the outcome of an AniList lookup is kept, in seconds. A
+/// listing follows AniList's status for the media whose stills it holds
+/// ([`show_row_ttl`]): a finished show's stills, or
+/// its having none, do not change, so they keep the week; any other
+/// show's are asked again daily as its episodes air.
 fn listing_ttl(outcome: &std::result::Result<StreamingListing, ()>) -> u64 {
     match outcome {
-        Ok(_) => ANILIST_STREAMING_EPS_TTL.as_secs(),
+        Ok(listing) => show_row_ttl(listing.finished).as_secs(),
         Err(()) => ANILIST_STREAMING_EPS_NO_IDS_TTL.as_secs(),
     }
 }

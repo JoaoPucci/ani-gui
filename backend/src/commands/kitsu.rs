@@ -11,11 +11,11 @@
 //! - Anime detail: `ANIME_DETAIL_TTL` (7d) for a finished show, a day
 //!   otherwise (`anime_detail_ttl`) — synopsis / titles / posters
 //!   change rarely.
+//! - Episode pages: as long as the held detail row says the show lives
+//!   (`held_status`), a day when none is held.
 
 use crate::app::AppState;
-use crate::cache::ttl::{
-    ANIME_DETAIL_TTL, DISCOVERY_TTL, EPISODES_TTL, TITLE_MATCH_TTL, TRENDING_TTL,
-};
+use crate::cache::ttl::{ANIME_DETAIL_TTL, DISCOVERY_TTL, TITLE_MATCH_TTL, TRENDING_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::anilist_eps_thumbs;
 use crate::commands::kitsu_warm::warm_signed_image_urls;
@@ -107,11 +107,11 @@ where
     Ok(hits)
 }
 
-/// First N episodes for a Kitsu anime. Cache key: `kitsu:episodes:<id>`,
-/// TTL [`ANIME_DETAIL_TTL`] (7 days). Note that for currently-airing
-/// shows new episodes appear weekly; the 7-day TTL means a busy fan can
-/// see a stale list for up to a week, which is the right tradeoff for a
-/// catalog browse — better than hammering Kitsu on every detail-page open.
+/// First N episodes for a Kitsu anime. Cache key:
+/// `kitsu:episodes:<id>:p<n>`, kept as long as the show's detail row
+/// would be ([`anime_detail_ttl`]): a week once the held detail says
+/// the show finished, a day otherwise, since an airing show gains an
+/// episode a week.
 ///
 /// Kitsu's episodes endpoint caps `page[limit]` at 20 (`code: 118 —
 /// "Limit exceeds maximum page size of 20"` if you push higher), unlike
@@ -280,10 +280,22 @@ async fn kitsu_episodes_fresh(
         .episodes(anime_id, page, EPISODES_PAGE_LIMIT)
         .await?;
     if let Ok(body) = serde_json::to_string(&eps) {
-        let _ = meta_cache_put(&state.cache_pool, key, &body, EPISODES_TTL.as_secs());
+        let ttl = anime_detail_ttl(held_status(state, anime_id).as_deref());
+        let _ = meta_cache_put(&state.cache_pool, key, &body, ttl);
         warm_signed_image_urls(state, &body);
     }
     Ok(eps)
+}
+
+/// The status the show's held detail row records: none when no row is
+/// served (absent, expired) or it cannot be read. An episode page
+/// carries no status of its own, and a card or the detail page reads
+/// the detail first, so the page lives as long as that row says a show
+/// of its status lives ([`anime_detail_ttl`]). Read from the cache
+/// only: a page never costs a detail request.
+fn held_status(state: &AppState, anime_id: &str) -> Option<String> {
+    let body = meta_cache_get(&state.cache_pool, &anime_detail_key(anime_id)).ok()??;
+    serde_json::from_str::<KitsuAnimeRef>(&body).ok()?.status
 }
 
 /// Look up an anime by its slug — Kitsu's URL-stable identifier.

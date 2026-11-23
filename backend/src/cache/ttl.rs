@@ -13,16 +13,18 @@ pub const DISCOVERY_TTL: Duration = Duration::from_secs(6 * 60 * 60); // 6h
 /// TTL for per-anime metadata (`/anime/:id`).
 pub const ANIME_DETAIL_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60); // 7d
 
-/// TTL for episode lists. Shorter than ANIME_DETAIL_TTL because new
-/// episodes appear weekly for currently-airing shows; a 1-day window
-/// caps staleness at a manageable level without burning Kitsu calls.
-/// For finished shows, the data is stable, but re-fetching once a day
-/// is cheap.
+/// The day an airing show's rows are kept for (see [`show_row_ttl`]):
+/// its status and count move as it airs, and it gains an episode a
+/// week, so its detail, its episode pages and its AniList episode
+/// stills are asked for again daily.
 pub const EPISODES_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
 
 /// How long a row that follows a show's airing is kept: a finished
 /// show's for [`ANIME_DETAIL_TTL`] (7d), any other show's — airing, to
-/// come, or of a status nobody said — for a day.
+/// come, or of a status nobody said — for a day. Its Kitsu detail and
+/// episode pages follow Kitsu's status (the pages through the detail
+/// row held when they are written); its AniList episode stills follow
+/// AniList's status for the same media.
 #[must_use]
 pub const fn show_row_ttl(finished: bool) -> Duration {
     if finished {
@@ -31,14 +33,6 @@ pub const fn show_row_ttl(finished: bool) -> Duration {
         EPISODES_TTL
     }
 }
-
-/// TTL for AniList `streamingEpisodes` lookups by MAL id, used to
-/// backfill per-episode thumbnails Kitsu doesn't carry. Aligned with
-/// [`EPISODES_TTL`] (1d) — Crunchyroll's per-episode metadata is
-/// stable enough that we don't burn AniList calls re-fetching, but a
-/// daily window picks up fresh stills as currently-airing shows
-/// release.
-pub const ANILIST_STREAMING_EPS_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
 
 /// Short negative-cache TTL for the episode-thumbnail backfill of a
 /// show Kitsu maps to neither AniList nor MAL — an answer, though one
