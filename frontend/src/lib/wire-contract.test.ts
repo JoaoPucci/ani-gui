@@ -68,6 +68,39 @@ import {
 	type DownloadResponse,
 	type ExternalPlayerKind,
 	type Franchise,
+	type AskRow,
+	type ChainEndCard,
+	type Eyebrow,
+	type FranchiseSummary,
+	type FranchiseView,
+	type FranchiseWire,
+	type Handoff,
+	type HandoffAnswer,
+	type HandoffMatch,
+	type LinkWire,
+	type NextWire,
+	type PlayedRow,
+	type ProgressView,
+	type RailRequest,
+	type RailView,
+	type ResumeWire,
+	type RowWire,
+	type SectionWire,
+	type Seam,
+	type ShowView,
+	type StripCaption,
+	type StripKind,
+	type StripSeams,
+	type StripWire,
+	type TitleRef,
+	type UpNextView,
+	type UpNextWire,
+	type ViewEntry,
+	type WatchOrder,
+	type WatchOrderDayBody,
+	type WatchOrderStack,
+	type WatchOrderUpNextBody,
+	type WatchingView,
 	type FranchiseChain,
 	type FranchiseEntry,
 	type GuessRuledOutBody,
@@ -310,6 +343,8 @@ function requestDrift(
 // — The renderer's side —————————————————————————————————————————————
 
 type ProgressOf<K extends PlayProgress['kind']> = Extract<PlayProgress, { kind: K }>;
+/** The variant of a tagged answer `T` whose `kind` is `K`. */
+type Tagged<T extends { kind: string }, K extends T['kind']> = Extract<T, { kind: K }>;
 
 /** Each response the backend publishes, by its backend name, and the
  *  spec of the renderer type that reads it. */
@@ -457,6 +492,148 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		complete: 'boolean',
 		chain: '?object'
 	} satisfies Spec<Franchise>,
+	ShowView: {
+		order: 'string',
+		strip: 'object|null',
+		link: 'object|null'
+	} satisfies Spec<ShowView>,
+	StripWire: {
+		kind: 'string',
+		caption: 'object',
+		eyebrow: 'object|null',
+		complete: 'boolean',
+		outside: 'boolean',
+		seams: 'object',
+		before: 'object[]',
+		after: 'object[]',
+		watching: 'object|null',
+		stack: 'object',
+		similar_hidden: 'string[]'
+	} satisfies Spec<StripWire>,
+	LinkWire: {
+		stack: 'object',
+		complete: 'boolean',
+		similar_hidden: 'string[]'
+	} satisfies Spec<LinkWire>,
+	WatchOrderStack: { front: 'string', summary: 'object' } satisfies Spec<WatchOrderStack>,
+	FranchiseSummary: {
+		total: 'number',
+		main: 'number',
+		films: 'number',
+		sides: 'number',
+		recaps: 'number',
+		posters: 'object[]'
+	} satisfies Spec<FranchiseSummary>,
+	ViewEntry: {
+		id: 'string',
+		title: 'string',
+		subtype: 'string|null',
+		start: 'string|null',
+		episodes: 'number|null',
+		status: 'string|null',
+		poster: 'string|null',
+		cover: 'string|null',
+		unaired: 'boolean',
+		progress: 'object'
+	} satisfies Spec<ViewEntry>,
+	StripSeams: { before: 'string|null', after: 'string|null' } satisfies Spec<StripSeams>,
+	Eyebrow: { position: 'number', total: 'number' } satisfies Spec<Eyebrow>,
+	WatchingView: { entry: 'object', episode: 'number' } satisfies Spec<WatchingView>,
+	FranchiseView: { order: 'string', page: 'object|null' } satisfies Spec<FranchiseView>,
+	FranchiseWire: {
+		name: 'string',
+		art: 'object',
+		total: 'number|null',
+		alone: 'boolean',
+		resume: 'object|null',
+		start: 'object|null',
+		sections: 'object[]',
+		versions: 'object[]',
+		films: 'object[]',
+		sides: 'object[]',
+		recaps: 'object[]',
+		recap_count: 'number|null',
+		partial: 'boolean',
+		opened_from: 'object|null'
+	} satisfies Spec<FranchiseWire>,
+	RowWire: {
+		entry: 'object',
+		position: 'number|null',
+		share: 'number',
+		leads_into: 'string|null',
+		here: 'boolean'
+	} satisfies Spec<RowWire>,
+	ResumeWire: {
+		entry: 'object',
+		episode: 'number',
+		position: 'number|null'
+	} satisfies Spec<ResumeWire>,
+	TitleRef: { id: 'string', title: 'string' } satisfies Spec<TitleRef>,
+	UpNextView: { card: 'object|null' } satisfies Spec<UpNextView>,
+	ChainEndCard: {
+		name: 'string',
+		id: 'string',
+		front: 'string',
+		summary: 'object'
+	} satisfies Spec<ChainEndCard>,
+	HandoffAnswer: { handoff: 'object|null' } satisfies Spec<HandoffAnswer>,
+	Handoff: { finished: 'object', next: 'object' } satisfies Spec<Handoff>,
+	RailView: { asks: 'object', handoffs: 'object' } satisfies Spec<RailView>,
+	'ProgressView.none': { kind: 'string' } satisfies Spec<Tagged<ProgressView, 'none'>>,
+	'ProgressView.watched': { kind: 'string' } satisfies Spec<Tagged<ProgressView, 'watched'>>,
+	'ProgressView.partway': {
+		kind: 'string',
+		episode: 'number',
+		total: 'number|null'
+	} satisfies Spec<Tagged<ProgressView, 'partway'>>,
+	'StripCaption.position': {
+		kind: 'string',
+		position: 'number',
+		total: 'number'
+	} satisfies Spec<Tagged<StripCaption, 'position'>>,
+	'StripCaption.numeral': {
+		kind: 'string',
+		position: 'number'
+	} satisfies Spec<Tagged<StripCaption, 'numeral'>>,
+	'StripCaption.partial': { kind: 'string' } satisfies Spec<Tagged<StripCaption, 'partial'>>,
+	'StripCaption.side': { kind: 'string' } satisfies Spec<Tagged<StripCaption, 'side'>>,
+	'StripCaption.film': { kind: 'string' } satisfies Spec<Tagged<StripCaption, 'film'>>,
+	'StripCaption.cycle': {
+		kind: 'string',
+		count: 'number'
+	} satisfies Spec<Tagged<StripCaption, 'cycle'>>,
+	'StripCaption.branch': { kind: 'string' } satisfies Spec<Tagged<StripCaption, 'branch'>>,
+	'StripCaption.alone': { kind: 'string' } satisfies Spec<Tagged<StripCaption, 'alone'>>,
+	'SectionWire.line': {
+		kind: 'string',
+		rows: 'object[]',
+		unplaced: 'boolean'
+	} satisfies Spec<Tagged<SectionWire, 'line'>>,
+	'SectionWire.ways': {
+		kind: 'string',
+		ways: 'array[]'
+	} satisfies Spec<Tagged<SectionWire, 'ways'>>,
+	'SectionWire.group': {
+		kind: 'string',
+		rows: 'object[]'
+	} satisfies Spec<Tagged<SectionWire, 'group'>>,
+	'NextWire.one': { kind: 'string', entry: 'object' } satisfies Spec<Tagged<NextWire, 'one'>>,
+	'NextWire.unaired': {
+		kind: 'string',
+		entry: 'object'
+	} satisfies Spec<Tagged<NextWire, 'unaired'>>,
+	'NextWire.choices': {
+		kind: 'string',
+		entries: 'object[]'
+	} satisfies Spec<Tagged<NextWire, 'choices'>>,
+	'UpNextWire.entry': {
+		kind: 'string',
+		card: 'object'
+	} satisfies Spec<Tagged<UpNextWire, 'entry'>>,
+	'UpNextWire.franchise': {
+		kind: 'string',
+		card: 'object'
+	} satisfies Spec<Tagged<UpNextWire, 'franchise'>>,
 	FranchiseChain: {
 		entries: 'object[]',
 		links: 'array[]',
@@ -694,6 +871,39 @@ const REQUESTS: Record<string, { spec: Record<string, string>; unsent?: string[]
 	},
 	SearchBody: { spec: { query: 'required' } satisfies BodySpec<KitsuSearchBody> },
 	KitsuByMalIdsBody: { spec: { mal_ids: 'required' } satisfies BodySpec<KitsuByMalIdsBody> },
+	WatchOrderDayBody: {
+		spec: { today: 'required' } satisfies BodySpec<WatchOrderDayBody>
+	},
+	WatchOrderUpNextBody: {
+		spec: { today: 'required', episode: 'required' } satisfies BodySpec<WatchOrderUpNextBody>
+	},
+	RailRequest: {
+		spec: {
+			rows: 'required',
+			history: 'required',
+			matches: 'required',
+			series: 'required'
+		} satisfies BodySpec<RailRequest>
+	},
+	AskRow: {
+		spec: {
+			row_id: 'required',
+			matched: 'optional',
+			ep_no: 'required',
+			playable_count: 'optional',
+			left_part_way: 'optional'
+		} satisfies BodySpec<AskRow>
+	},
+	HandoffMatch: {
+		spec: {
+			id: 'required',
+			status: 'optional',
+			episode_count: 'optional'
+		} satisfies BodySpec<HandoffMatch>
+	},
+	PlayedRow: {
+		spec: { id: 'required', kitsu_id: 'optional' } satisfies BodySpec<PlayedRow>
+	},
 	HistoryByKitsuBody: { spec: { ids: 'required' } satisfies BodySpec<HistoryByKitsuBody> },
 	WaitBody: { spec: { tickets: 'required' } satisfies BodySpec<RefillsBody> },
 	AuthUrlRequest: {
@@ -825,6 +1035,12 @@ const PROGRESS_KINDS = ['searching', 'matched', 'links_fetched'] as const;
 same<(typeof PROGRESS_KINDS)[number], PlayProgress['kind']>(true);
 const LINK_WARNINGS = ['season', 'episode'] as const;
 same<(typeof LINK_WARNINGS)[number], LinkWarning>(true);
+const WATCH_ORDERS = ['linked', 'released'] as const;
+same<(typeof WATCH_ORDERS)[number], WatchOrder>(true);
+const STRIP_KINDS = ['run', 'side'] as const;
+same<(typeof STRIP_KINDS)[number], StripKind>(true);
+const SEAMS = ['from', 'into'] as const;
+same<(typeof SEAMS)[number], Seam>(true);
 const OFFER_KINDS = ['guess', 'again'] as const;
 same<(typeof OFFER_KINDS)[number], NonNullable<LinkVerdict['offer']>>(true);
 
@@ -841,7 +1057,10 @@ const ENUMS: Record<string, readonly string[]> = {
 	PkceMethod: PKCE_METHODS,
 	Lane: LANES,
 	LinkWarning: LINK_WARNINGS,
-	OfferKind: OFFER_KINDS
+	OfferKind: OFFER_KINDS,
+	WatchOrder: WATCH_ORDERS,
+	StripKind: STRIP_KINDS,
+	Seam: SEAMS
 };
 
 // — The error envelope ——————————————————————————————————————————————

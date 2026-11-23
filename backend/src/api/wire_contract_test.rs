@@ -140,6 +140,9 @@ macro_rules! units {
     };
 }
 
+#[path = "wire_contract_watch_order_test.rs"]
+mod watch_order;
+
 const PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wire-contract.json");
 
 #[test]
@@ -285,6 +288,7 @@ fn responses() -> Value {
             &SwitchEpisode { episode: None },
         ),
     );
+    watch_order::responses(&mut out);
     Value::Object(out)
 }
 
@@ -760,7 +764,7 @@ fn request<T: DeserializeOwned>(min: &Value) -> Value {
 
 fn requests() -> Value {
     let pkce = json!({ "verifier": "v", "challenge": "c", "method": "plain" });
-    json!({
+    let mut all = json!({
         "PlayArgs": request::<PlayArgs>(&json!({
             "title": "Frieren", "episode": "1", "mode": "sub"
         })),
@@ -809,7 +813,9 @@ fn requests() -> Value {
         "SwitchArgs": request::<SwitchArgs>(&json!({
             "pick": "8063", "card": "hianime:frieren-18542", "episode": 2
         })),
-    })
+    });
+    watch_order::requests(all.as_object_mut().expect("an object"));
+    all
 }
 
 // — Enums ————————————————————————————————————————————————————————————
@@ -823,7 +829,7 @@ fn names<T: Serialize>(all: &[T]) -> Value {
 }
 
 fn enums() -> Value {
-    json!({
+    let mut all = json!({
         "MediaKind": names(&media_kinds()),
         "VersionKind": names(&version_kinds()),
         "UnsettledReason": names(&unsettled_reasons()),
@@ -837,7 +843,9 @@ fn enums() -> Value {
         "Lane": lanes().into_iter().map(Lane::name).collect::<Vec<_>>(),
         "LinkWarning": names(&link_warnings()),
         "OfferKind": names(&offer_kinds()),
-    })
+    });
+    watch_order::enums(all.as_object_mut().expect("an object"));
+    all
 }
 
 /// The lanes the launch handshake announces, by the names the renderer
