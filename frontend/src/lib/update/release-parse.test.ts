@@ -1,17 +1,16 @@
 /**
- * Tests for the GitHub release-payload parser.
- *
- * GitHub's `/releases/latest` endpoint returns a JSON object with a
- * larger field set; the notifier only needs five. The helper
- * normalises the response into a smaller shape and rejects payloads
- * that are missing load-bearing fields (so the badge never appears
- * pointing at a half-published release).
+ * Tests for `parseGitHubRelease`, the frontend's parser for a raw
+ * GitHub release object. The update notifier does not call it: it
+ * reads the backend's answer, built in `normalise` (`meta/github_choice.rs`),
+ * where the rules the badge and the dialog rely on are enforced. These
+ * cases hold the parser to the same rules.
  *
  * Drafts are skipped — they shouldn't show as available updates.
  * Pre-releases ARE accepted (our releases are all marked prerelease
  * today; future stable cuts will set prerelease=false).
  */
 
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { parseGitHubRelease, type ReleaseInfo } from './release-parse';
 
@@ -77,5 +76,46 @@ describe('parseGitHubRelease', () => {
 		expect(parseGitHubRelease('hi')).toBeNull();
 		expect(parseGitHubRelease(42)).toBeNull();
 		expect(parseGitHubRelease([])).toBeNull();
+	});
+
+	describe('the release link', () => {
+		// GitHub's html_url is https; anything else in that field is not
+		// a release page. The backend applies the same rule to the
+		// answer the update dialog links to.
+		it.each([
+			'javascript:alert(1)',
+			'file:///etc/passwd',
+			'file:///C:/Windows/System32/calc.exe',
+			'data:text/html,<p>x</p>',
+			'http://github.com/JoaoPucci/ani-gui/releases/tag/v0.4.0',
+			'app://localhost/settings',
+			'//github.com/JoaoPucci/ani-gui/releases',
+			'/releases/tag/v0.4.0',
+			'github.com/JoaoPucci/ani-gui/releases',
+			'not a url',
+			''
+		])('rejects a release whose html_url is %j', (url) => {
+			expect(parseGitHubRelease(valid({ html_url: url }))).toBeNull();
+		});
+
+		it('property: a parsed release always links to an https page', () => {
+			fc.assert(
+				fc.property(fc.oneof(fc.webUrl(), fc.string(), fc.constant('javascript:void 0')), (url) => {
+					const out = parseGitHubRelease(valid({ html_url: url }));
+					if (out === null) return;
+					const parsed = new URL(out.url);
+					expect(parsed.protocol).toBe('https:');
+					expect(parsed.hostname).not.toBe('');
+				})
+			);
+		});
+
+		it('property: every https URL is kept as given', () => {
+			fc.assert(
+				fc.property(fc.webUrl({ validSchemes: ['https'] }), (url) => {
+					expect(parseGitHubRelease(valid({ html_url: url }))?.url).toBe(url);
+				})
+			);
+		});
 	});
 });

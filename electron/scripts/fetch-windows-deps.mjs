@@ -1,5 +1,6 @@
 // Pre-build step for `package:win`: download the binaries the app
-// spawns that a Windows host will not have, and stage them under
+// spawns that a Windows host will not have, and the CA bundle one of
+// them verifies with, and stage them under
 // `build-resources/win/bin/`. electron-builder copies the dir into
 // the NSIS payload via `win.extraResources` in `package.json`,
 // landing at `<install>/resources/bin/<binary>` at runtime. The Rust
@@ -15,9 +16,11 @@
 //
 // Bundled today:
 //   - curl-impersonate.exe — the transport native resolution spawns.
+//   - cacert.pem           — the CA bundle that transport verifies with,
+//                            beside the Windows store (Windows only).
 //   - yt-dlp.exe           — the downloader.
-// Not bundled: ffmpeg. Too large (~80 MB compressed) to ship in the
-// installer, so the NSIS script fetches it at install time — see
+// Not bundled: ffmpeg. The NSIS installer downloads it at install
+// time instead — see `INSTALL_TIME_DEPS` below and
 // `build-resources/installer.nsh`.
 import { createWriteStream, existsSync, mkdirSync, statSync } from 'node:fs';
 import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
@@ -34,7 +37,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(electronDir, '..');
 
-// Each dep declares: pinned version, GitHub-releases URL, archive
+// Each dep declares: pinned version, download URL, archive
 // name + SHA-256, binary name (what gets dropped in build-resources),
 // and the path to the binary inside the archive (so we can extract
 // just the file, not the whole archive). The SHA-256 is captured on
@@ -85,6 +88,70 @@ export const DEPS = [
 		// the name as written — dropping the prefix fails the extract
 		// with "not found in archive".
 		archivePath: './curl-impersonate.exe',
+	},
+	// The CA bundle the transport verifies against, beside the Windows
+	// certificate store it already reads (`--ca-native`). curl's own
+	// extract of Mozilla's root store — the set Firefox ships — pinned
+	// by date like a release. The backend passes it as `--cacert`
+	// (CA_BUNDLE_FILE in backend/src/scraper/fetch.rs), and curl loads
+	// it in addition to the store, not instead of it.
+	//
+	// Staged under `binary` like the executables because the staging
+	// and the retired-file sweep key on that name; it is data, not a
+	// program, and the resolver never considers it one.
+	//
+	// Windows only, declared on the Linux side: a fresh Windows carries
+	// a minimal root store and downloads the rest only when Windows' own
+	// crypto stack builds a chain, and the transport copies the store as
+	// it stands without ever asking it to. The Linux transport reads the
+	// distribution's CA store, so `fetch-linux-deps.mjs` lists the same
+	// dependency in `SYSTEM_DEPS` and the .deb recommends it.
+	{
+		name: 'cacert',
+		dep: 'ca-certificates',
+		version: '2026-11-05',
+		archiveName: 'cacert-2026-11-05.pem',
+		url: 'https://curl.se/ca/cacert-2026-11-05.pem',
+		sha256: '427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285',
+		binary: 'cacert.pem',
+		directBinary: true,
+	},
+];
+
+// Dependencies the Windows package provides without carrying them: the
+// NSIS installer downloads each at install time (see
+// `build-resources/installer.nsh`), and this script neither downloads
+// nor stages them. Declared here so the arch checks and the credits
+// can tell a deliberate install-time download from a forgotten
+// dependency. tests/arch/windows_deps.sh holds installer.nsh to each
+// entry's version, URL and archive path, verbatim.
+export const INSTALL_TIME_DEPS = [
+	// ffmpeg: the muxer yt-dlp hands MPEG-TS to, and the downloader's
+	// fallback. Linux takes it from the distribution (the .deb
+	// recommends it — `SYSTEM_DEPS` in fetch-linux-deps.mjs); Windows
+	// has no package manager to recommend through, so the installer
+	// fetches it.
+	//
+	// Not carried in the package, for two reasons. The zip is ~90 MB,
+	// which is why the installer has downloaded it since 0.1.0. And the
+	// build is GPL: redistributing it would oblige an offer of its
+	// corresponding source, which cannot be made, because gyan.dev does
+	// not publish the versions of the libraries the essentials build
+	// links. Downloaded by the user's own installer from gyan.dev's
+	// release, it is not redistributed by this project.
+	//
+	// The installer keeps the copy across updates and fetches again
+	// only when this version changes; installer.nsh says how.
+	//
+	// Source: gyan.dev's essentials build, published on GitHub. Only
+	// ffmpeg.exe is installed; the zip's ffprobe and ffplay are not used.
+	{
+		name: 'ffmpeg',
+		dep: 'ffmpeg',
+		version: '7.1.1',
+		url: 'https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-essentials_build.zip',
+		binary: 'ffmpeg.exe',
+		archivePath: 'ffmpeg-7.1.1-essentials_build/bin/ffmpeg.exe',
 	},
 ];
 

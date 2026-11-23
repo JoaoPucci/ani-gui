@@ -92,6 +92,13 @@ pub struct CreateSessionResponse {
     /// would. False for every other play.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub own_listing: bool,
+    /// Whether a play a card no guess opened asked for
+    /// ([`crate::commands::play::PlayArgs::card_row`]) keeps the other
+    /// show the card's line records ([`crate::commands::guess_guard::line_kept`]):
+    /// it records nothing there, and the renderer writes no tracker for
+    /// it. False for every other play.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub line_kept: bool,
 }
 
 /// The proxy URL a session's media is fetched at. The path segment
@@ -169,6 +176,7 @@ fn create_session_inner(
         former_episode: None,
         episode_unverified: false,
         own_listing: false,
+        line_kept: false,
     })
 }
 
@@ -342,6 +350,7 @@ mod tests {
             former_episode: None,
             episode_unverified: false,
             own_listing: false,
+            line_kept: false,
         };
         let s = serde_json::to_string(&r).unwrap();
         assert!(s.contains("\"session_id\":\"abc\""));

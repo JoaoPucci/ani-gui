@@ -25,6 +25,10 @@
       "resolve",
       "download"
     ],
+    "LinkWarning": [
+      "season",
+      "episode"
+    ],
     "ListStatus": [
       "planning",
       "watching",
@@ -36,6 +40,10 @@
     "MediaKind": [
       "hls",
       "mp4"
+    ],
+    "OfferKind": [
+      "guess",
+      "again"
     ],
     "PkceMethod": [
       "plain",
@@ -245,6 +253,40 @@
         "items"
       ]
     },
+    "CandidatesArgs": {
+      "accepts": [
+        "current",
+        "episode",
+        "query",
+        "row",
+        "title"
+      ],
+      "requires": [
+        "episode",
+        "row",
+        "title"
+      ]
+    },
+    "CardLinesArgs": {
+      "accepts": [
+        "rows"
+      ],
+      "requires": [
+        "rows"
+      ]
+    },
+    "CardRow": {
+      "accepts": [
+        "guess",
+        "guessed_from",
+        "id",
+        "named",
+        "show"
+      ],
+      "requires": [
+        "id"
+      ]
+    },
     "Config": {
       "accepts": [
         "auto_play_next",
@@ -315,6 +357,31 @@
         "mal_ids"
       ]
     },
+    "LinkArgs": {
+      "accepts": [
+        "card",
+        "kitsu_id",
+        "rows"
+      ],
+      "requires": [
+        "card",
+        "kitsu_id",
+        "rows"
+      ]
+    },
+    "LinkGroupArgs": {
+      "accepts": [
+        "card",
+        "rows",
+        "saved",
+        "show"
+      ],
+      "requires": [
+        "card",
+        "rows",
+        "show"
+      ]
+    },
     "PkceWire": {
       "accepts": [
         "challenge",
@@ -331,6 +398,7 @@
       "accepts": [
         "alt_titles",
         "caption",
+        "card_row",
         "episode",
         "episode_count",
         "guess_id",
@@ -339,6 +407,7 @@
         "locale",
         "mode",
         "prefetch",
+        "record_later",
         "subtype",
         "title",
         "version",
@@ -356,6 +425,16 @@
       ],
       "requires": [
         "refresh_token"
+      ]
+    },
+    "RowMatch": {
+      "accepts": [
+        "id",
+        "show",
+        "trusted"
+      ],
+      "requires": [
+        "id"
       ]
     },
     "RuledOutRequest": {
@@ -390,6 +469,20 @@
         "kitsu_id"
       ]
     },
+    "SwitchArgs": {
+      "accepts": [
+        "card",
+        "episode",
+        "episode_count",
+        "part_way",
+        "pick"
+      ],
+      "requires": [
+        "card",
+        "episode",
+        "pick"
+      ]
+    },
     "TitleMatchBody": {
       "accepts": [
         "cour",
@@ -413,6 +506,21 @@
       ],
       "requires": [
         "kitsu_id"
+      ]
+    },
+    "VerdictArgs": {
+      "accepts": [
+        "asks_guess",
+        "carried",
+        "in_player",
+        "named",
+        "page",
+        "picked",
+        "show",
+        "trusted"
+      ],
+      "requires": [
+        "page"
       ]
     },
     "WaitBody": {
@@ -533,6 +641,16 @@
         "provider": null
       }
     },
+    "CardLine": {
+      "full": {
+        "correctable": true,
+        "line": "hianime:jojos-bizarre-adventure-2000-5182"
+      },
+      "min": {
+        "correctable": true,
+        "line": "hianime:jojos-bizarre-adventure-2000-5182"
+      }
+    },
     "Config": {
       "full": {
         "auto_play_next": true,
@@ -579,6 +697,7 @@
         "episode": "12.5",
         "episode_unverified": true,
         "former_episode": "24.5",
+        "line_kept": true,
         "media_kind": "hls",
         "media_url": "http://127.0.0.1:4100/s/3f1c/master.m3u8",
         "own_listing": true,
@@ -859,9 +978,11 @@
     "HistoryRow": {
       "full": {
         "ep_no": "8",
+        "guessed_from": "hianime:jojos-bizarre-adventure-2000-5182",
         "id": "hianime:frieren-18542",
         "key_year": 2023,
         "kitsu_id": "46474",
+        "named": true,
         "title": "Frieren",
         "watched_at": 1700000000000
       },
@@ -1034,6 +1155,103 @@
         "next_offset": null
       }
     },
+    "LinkCandidate": {
+      "full": {
+        "current": true,
+        "ref": {
+          "abbreviated_titles": [
+            "Frieren: Beyond Journey's End"
+          ],
+          "age_rating": "PG",
+          "anilist_banner": "https://s4.anilist.co/file/banner.jpg",
+          "average_rating": 8.5,
+          "canonical_title": "Frieren",
+          "cover_image": {
+            "large": "https://media.kitsu.app/c/large.jpg",
+            "original": "https://media.kitsu.app/c/original.jpg",
+            "small": "https://media.kitsu.app/c/small.jpg",
+            "tiny": "https://media.kitsu.app/c/tiny.jpg"
+          },
+          "end_date": "2024-03-22",
+          "episode_count": 28,
+          "id": "46474",
+          "popularity_rank": 120,
+          "poster_image": {
+            "large": "https://media.kitsu.app/p/large.jpg",
+            "medium": "https://media.kitsu.app/p/medium.jpg",
+            "original": "https://media.kitsu.app/p/original.jpg",
+            "small": "https://media.kitsu.app/p/small.jpg",
+            "tiny": "https://media.kitsu.app/p/tiny.jpg"
+          },
+          "slug": "sousou-no-frieren",
+          "start_date": "2023-09-29",
+          "status": "finished",
+          "subtype": "TV",
+          "synopsis": "An elf mage outlives her party.",
+          "titles": {
+            "en_jp": "Sousou no Frieren"
+          }
+        },
+        "warnings": [
+          "season",
+          "episode"
+        ]
+      },
+      "min": {
+        "current": false,
+        "ref": {
+          "abbreviated_titles": [],
+          "age_rating": null,
+          "average_rating": null,
+          "canonical_title": "Frieren",
+          "cover_image": null,
+          "end_date": null,
+          "episode_count": null,
+          "id": "46474",
+          "popularity_rank": null,
+          "poster_image": null,
+          "slug": null,
+          "start_date": null,
+          "status": null,
+          "subtype": null,
+          "synopsis": null,
+          "titles": {}
+        },
+        "warnings": []
+      }
+    },
+    "LinkOutcome": {
+      "full": {
+        "kitsu_id": "4013",
+        "linked": [
+          {
+            "ep_no": "2",
+            "previous": "7730",
+            "row": "hianime:jojos-bizarre-adventure-2000-5182",
+            "watched_at": 1700000000000
+          }
+        ],
+        "overtaken": true
+      },
+      "min": {
+        "kitsu_id": "4013",
+        "linked": []
+      }
+    },
+    "LinkedRow": {
+      "full": {
+        "ep_no": "2",
+        "previous": "7730",
+        "row": "hianime:jojos-bizarre-adventure-2000-5182",
+        "watched_at": 1700000000000
+      },
+      "min": {
+        "ep_no": "2",
+        "previous": null,
+        "row": "hianime:jojos-bizarre-adventure-2000-5182",
+        "watched_at": null
+      }
+    },
     "ListEntry": {
       "full": {
         "mal_id": 52991,
@@ -1156,6 +1374,14 @@
         "start_time": 90.5
       }
     },
+    "SwitchEpisode": {
+      "full": {
+        "episode": 7.0
+      },
+      "min": {
+        "episode": null
+      }
+    },
     "TokensResponse": {
       "full": {
         "access_token": "at",
@@ -1205,6 +1431,16 @@
       "min": {
         "anime_count": 120,
         "mean_score_0_to_10": null
+      }
+    },
+    "Verdict": {
+      "full": {
+        "kept": true,
+        "offer": "guess"
+      },
+      "min": {
+        "kept": false,
+        "offer": null
       }
     },
     "VersionInfo": {

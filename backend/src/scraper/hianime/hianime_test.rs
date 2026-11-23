@@ -2947,7 +2947,7 @@ fn the_client_names_itself() {
     let c = client();
     assert_eq!(c.id(), ProviderId::Hianime);
     assert_eq!(c.label(), "hianime");
-    assert_eq!(HIANIME_BASE, "https://hianime.at");
+    assert_eq!(HIANIME_BASE, "https://hianime.fm");
 }
 
 #[tokio::test]

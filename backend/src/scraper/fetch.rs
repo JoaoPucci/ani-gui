@@ -186,6 +186,10 @@ pub struct CurlImpersonateFetch {
     /// The matched candidate's target, passed as `--impersonate` when
     /// the resolved binary carries no fingerprint of its own.
     impersonate: Option<&'static str>,
+    /// The bundled directory holding [`CA_BUNDLE_FILE`], when this
+    /// transport reads one: the child runs there and names the file
+    /// relative to it. See [`trust_args`].
+    ca_bundle_dir: Option<PathBuf>,
     deadline: std::time::Duration,
 }
 
@@ -225,7 +229,24 @@ impl CurlImpersonateFetch {
         path_env: &str,
         suffixes: &[&str],
     ) -> Option<Self> {
+        Self::resolve_with(extra_dir, path_env, suffixes, READS_CA_BUNDLE)
+    }
+
+    /// [`Self::resolve_with_suffixes`] with the platform's bundle
+    /// policy explicit too, so the Windows arm is exercisable from any
+    /// platform's tests. `reads_bundle` attaches [`CA_BUNDLE_FILE`]
+    /// when it sits in `extra_dir` and the transport resolved from
+    /// there: the bundle belongs to the transport the package staged,
+    /// and a curl found on PATH keeps its own trust configuration.
+    pub(crate) fn resolve_with(
+        extra_dir: Option<&Path>,
+        path_env: &str,
+        suffixes: &[&str],
+        reads_bundle: bool,
+    ) -> Option<Self> {
         if let Some(dir) = extra_dir {
+            let ca_bundle_dir =
+                (reads_bundle && dir.join(CA_BUNDLE_FILE).is_file()).then(|| dir.to_path_buf());
             for cand in CURL_FAILOVER {
                 for file in candidate_names(cand.name, suffixes) {
                     let candidate = dir.join(&file);
@@ -233,6 +254,7 @@ impl CurlImpersonateFetch {
                         return Some(Self {
                             exe: candidate,
                             impersonate: cand.impersonate,
+                            ca_bundle_dir,
                             deadline: FETCH_TIMEOUT,
                         });
                     }
@@ -247,6 +269,7 @@ impl CurlImpersonateFetch {
                         return Some(Self {
                             exe: candidate,
                             impersonate: cand.impersonate,
+                            ca_bundle_dir: None,
                             deadline: FETCH_TIMEOUT,
                         });
                     }
@@ -265,6 +288,12 @@ impl CurlImpersonateFetch {
     /// any. `None` means the executable encodes its own fingerprint.
     pub fn impersonate(&self) -> Option<&'static str> {
         self.impersonate
+    }
+
+    /// The directory the child runs in to read [`CA_BUNDLE_FILE`],
+    /// when this transport reads one.
+    pub fn ca_bundle_dir(&self) -> Option<&Path> {
+        self.ca_bundle_dir.as_deref()
     }
 
     /// Replace the outer deadline — the seam the hang test drives;
@@ -316,14 +345,54 @@ const CIPHER_ARGS: &[&str] = &[];
 /// Windows' impersonate builds link BoringSSL, which carries no
 /// default CA bundle path on Windows and does not consult the system
 /// certificate store on its own: every TLS verify fails with curl
-/// exit 60. `--ca-native` (curl ≥ 8.2, feature `NativeCA`) turns the
-/// Windows store on — and inherits its updates and any
-/// enterprise-injected roots. Elsewhere the builds locate the
-/// platform's CA store by default and the flag stays off.
-#[cfg(windows)]
-const CA_ARGS: &[&str] = &["--ca-native"];
-#[cfg(not(windows))]
-const CA_ARGS: &[&str] = &[];
+/// exit 60. `--ca-native` (feature `NativeCA`) turns the Windows store
+/// on — and with it any root the machine was given on purpose: an
+/// enterprise's inspection proxy, a root policy installed. Elsewhere
+/// the builds locate the platform's CA store by default and the flag
+/// stays off.
+const NATIVE_CA: bool = cfg!(windows);
+
+/// Whether this platform's transport reads the CA bundle the package
+/// stages beside it ([`CA_BUNDLE_FILE`]). The native store alone is
+/// not enough on Windows: a fresh install carries a minimal root set
+/// and downloads the rest on demand, only when Windows' own crypto
+/// stack builds a chain. curl copies the store's current contents into
+/// BoringSSL and never asks Windows to build one, so a host whose root
+/// nobody on the machine has used yet fails to verify. Elsewhere the
+/// transport reads the distribution's store and no bundle is staged.
+const READS_CA_BUNDLE: bool = cfg!(windows);
+
+/// The file name of the CA bundle the Windows package stages in the
+/// bundled-binary directory: curl's extract of Mozilla's root store,
+/// pinned in `electron/scripts/fetch-windows-deps.mjs`.
+pub const CA_BUNDLE_FILE: &str = "cacert.pem";
+
+/// The trust-anchor flags for the child: the native store, the bundle,
+/// or both. curl loads the two additively (its OpenSSL-family backend
+/// imports the Windows ROOT and CA stores, then the file), so a chain
+/// verifies against either; and once the native store has loaded at
+/// least one certificate, a bundle that fails to load is skipped
+/// rather than failing the transfer (curl reports it only under
+/// `--verbose`).
+///
+/// The bundle is named relative to the child's working directory,
+/// which the spawn sets to the directory holding it. BoringSSL opens
+/// the file through the C runtime's narrow `fopen`, which on Windows
+/// reads the path in the ANSI code page, so an absolute path under a
+/// profile whose name falls outside that page would not open; the
+/// working directory is set through the wide API and the relative name
+/// is ASCII.
+pub(crate) fn trust_args(native: bool, bundle: bool) -> Vec<&'static str> {
+    let mut args = Vec::with_capacity(3);
+    if native {
+        args.push("--ca-native");
+    }
+    if bundle {
+        args.push("--cacert");
+        args.push(CA_BUNDLE_FILE);
+    }
+    args
+}
 
 /// `url` reduced to what a failure log may say: scheme, host, and
 /// the path with credential-shaped segments elided. The signed
@@ -375,14 +444,26 @@ pub(crate) fn split_trailer(text: &str) -> (&str, &str, &str) {
     (body, status.trim(), url.trim())
 }
 
+/// [`fetch_args_trusting`] for a transport that reads no bundle: the
+/// platform's native-store flag where it has one, and nothing else.
+#[cfg(test)]
+pub(crate) fn fetch_args(req: &FetchRequest, impersonate: Option<&str>) -> Vec<String> {
+    fetch_args_trusting(req, impersonate, &trust_args(NATIVE_CA, false))
+}
+
 /// The child's argv, without the executable. Pure so the flag set is
 /// assertable without spawning anything.
 ///
 /// `-w` appends the status and the effective URL after the body; the
 /// last line is split back off ([`split_trailer`]). The flag set began
 /// as the retired ani-cli script's own curl invocation, plus the
-/// impersonation target when the resolved binary needs one.
-pub(crate) fn fetch_args(req: &FetchRequest, impersonate: Option<&str>) -> Vec<String> {
+/// impersonation target when the resolved binary needs one, and the
+/// trust-anchor flags ([`trust_args`]) ahead of the trailer format.
+pub(crate) fn fetch_args_trusting(
+    req: &FetchRequest,
+    impersonate: Option<&str>,
+    trust: &[&str],
+) -> Vec<String> {
     let url = req.url.as_str();
     let mut args: Vec<String> = Vec::with_capacity(12 + 2 * req.headers.len());
     // First, where curl honors it: a user's ~/.curlrc can redirect
@@ -423,7 +504,7 @@ pub(crate) fn fetch_args(req: &FetchRequest, impersonate: Option<&str>) -> Vec<S
     args.push("--max-time".into());
     args.push("10".into());
     args.extend(CIPHER_ARGS.iter().map(|s| (*s).to_string()));
-    args.extend(CA_ARGS.iter().map(|s| (*s).to_string()));
+    args.extend(trust.iter().map(|s| (*s).to_string()));
     args.push("-w".into());
     // The status and the URL the transfer ended on, the URL last: a
     // status is digits and an effective URL carries no space, so the
@@ -507,9 +588,10 @@ impl CurlImpersonateFetch {
         let mut cmd = tokio::process::Command::new(&self.exe);
         // §5's subprocess environment: nothing the child prints may
         // depend on the terminal that launched the backend.
+        let trust = trust_args(NATIVE_CA, self.ca_bundle_dir.is_some());
         cmd.env("TERM", "dumb")
             .env("NO_COLOR", "1")
-            .args(fetch_args(req, self.impersonate))
+            .args(fetch_args_trusting(req, self.impersonate, &trust))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -517,6 +599,10 @@ impl CurlImpersonateFetch {
             // output() future, the child goes with it instead of
             // surviving as an orphan for its full hang.
             .kill_on_drop(true);
+        // Where the bundle's relative name resolves (see `trust_args`).
+        if let Some(dir) = &self.ca_bundle_dir {
+            cmd.current_dir(dir);
+        }
         // ETXTBSY is transient by construction — a fork elsewhere in
         // the process still holds the executable's write fd (the auto
         // -updater re-staging a binary; the test suite staging stubs)

@@ -33,12 +33,13 @@ import {
 	type ElectronApplication,
 	type Page
 } from '@playwright/test';
-import type { ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess, type StdioOptions } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { launchRefusal } from '../lib/e2e-display.cjs';
 import { stopOwnGroup } from '../lib/own-group.cjs';
+import { guardOutput, guardPolicy, recordAppOutput } from './policy-guard';
 import { answer } from './stubs';
 
 /** electron-builder's pre-AppImage output — the production code path:
@@ -133,7 +134,7 @@ process.once('exit', () => {
 	for (const dir of removedProfiles) removeScratch(dir);
 });
 
-function removeAfterExit(dir: string): void {
+export function removeAfterExit(dir: string): void {
 	removeScratch(dir);
 	removedProfiles.add(dir);
 	setTimeout(() => {
@@ -147,14 +148,24 @@ function removeAfterExit(dir: string): void {
  *  be looking at, which throws, saying how to run the suite instead.
  *  `binary` is another copy of the packaged tree's launcher, for a spec
  *  that ships the app a frontend of its own (splash-stuck.spec.ts).
+ *  `switches` go on the command line after testLaunchSwitches, which
+ *  they cannot take away: a spec that runs the app the way a machine
+ *  without GPU acceleration does passes `--disable-gpu`
+ *  (reveal-without-frames.spec.ts).
  *  `profile` is the scratch directory the spec made for this launch
  *  (its HOME or XDG directories): it is removed, that path alone, once
  *  the app has exited, and again once its backend has had time to stop,
  *  or at once if the launch never starts. A worker killed before its
- *  app exits leaves the profile behind. */
+ *  app exits leaves the profile behind. Every launch is guarded: a
+ *  content security policy violation the test did not declare fails it
+ *  (./policy-guard.ts). */
 export async function launchPackagedApp(
 	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env'],
-	{ binary = packagedBinary, profile }: { binary?: string; profile?: string } = {}
+	{
+		binary = packagedBinary,
+		profile,
+		switches = []
+	}: { binary?: string; profile?: string; switches?: readonly string[] } = {}
 ): Promise<ElectronApplication> {
 	const refusal = launchRefusal(env ?? {});
 	if (refusal) {
@@ -173,7 +184,7 @@ export async function launchPackagedApp(
 	try {
 		app = await _electron.launch({
 			executablePath: binary,
-			args: [...testLaunchSwitches],
+			args: [...testLaunchSwitches, ...switches],
 			env: { ...env, ...proxyEnv(proxy.origin), ...testRunEnv }
 		});
 	} catch (err) {
@@ -186,8 +197,88 @@ export async function launchPackagedApp(
 		if (profile) removeAfterExit(profile);
 	});
 	launched.set(app, { child: app.process(), exe });
+	// Kept for the report of a test that fails (policy-guard.ts appOutput).
+	// Playwright's driver hands the process over once the launch has
+	// resolved: what the app wrote before then is not seen.
+	recordAppOutput(app.process(), { since: 'its output from the moment the launch resolved' });
 	refused.set(app, proxy.seen);
+	guardPolicy(app);
 	return app;
+}
+
+/** Launch the packaged app as a plain child process, not through
+ *  Playwright's driver, for a spec that has to own what the app's
+ *  stdout and stderr lead to (terminal-closed.spec.ts): the driver
+ *  keeps both as pipes it reads itself. Otherwise the same launch as
+ *  launchPackagedApp — the display refusal, testLaunchSwitches, the
+ *  refusing proxy and a test run's environment — and the same policy
+ *  guard, over the child's stdout and stderr where they are pipes (the
+ *  driver's page listeners need Playwright attached, which it is not).
+ *
+ *  `via` is a program to start the app under, which gets the app's
+ *  command line as its arguments (a terminal of its own:
+ *  e2e/fixtures/terminal/on-a-terminal.py). The child — the app, or
+ *  that program — leads a process group of its own, as it does under
+ *  Playwright's driver, and is stopped the way lib/own-group.cjs
+ *  stops one: what it leaves in its group is killed in the turn its
+ *  exit is reported. If the test worker exits first, an app started
+ *  directly has its group killed then, while it is still unreaped. A
+ *  program started `via` the terminal fixture leads the terminal's
+ *  session, outside the worker's group, and the fixture kills its group
+ *  itself once the worker's exit closes the fixture's stdin. That
+ *  program is the launcher, and the app runs off the terminal as its
+ *  child, in a session of its own (lib/linux-launcher.cjs): the
+ *  fixture's kill ends the launcher, and the app gets the SIGTERM the
+ *  launcher arranged for that where setpriv can (`--pdeathsig`). The
+ *  spec removes its profile itself (removeAfterExit), once it has
+ *  looked at it. */
+export async function spawnPackagedApp(
+	env: NodeJS.ProcessEnv,
+	{ stdio, via = [] }: { stdio: StdioOptions; via?: string[] }
+): Promise<ChildProcess> {
+	const refusal = launchRefusal(env);
+	if (refusal) throw new Error(refusal);
+	const proxy = await refusingProxy();
+	const command = [...via, packagedBinary, ...testLaunchSwitches];
+	let child: ChildProcess;
+	try {
+		child = spawn(command[0], command.slice(1), {
+			env: { ...env, ...proxyEnv(proxy.origin), ...testRunEnv },
+			stdio,
+			detached: true
+		});
+	} catch (err) {
+		proxy.close();
+		throw err;
+	}
+	const killGroup = () => {
+		if (!child.pid) return;
+		try {
+			process.kill(-child.pid, 'SIGKILL');
+		} catch {
+			/* nothing left in the group */
+		}
+	};
+	const onWorkerExit = () => {
+		if (child.exitCode === null && child.signalCode === null) killGroup();
+	};
+	if (via.length === 0) process.once('exit', onWorkerExit);
+	child.once('exit', () => {
+		// The reap's own turn: the group id is still the child's.
+		killGroup();
+		process.removeListener('exit', onWorkerExit);
+		proxy.close();
+	});
+	child.once('error', () => {
+		// A spawn that failed: no process, and no exit to come.
+		if (child.pid !== undefined) return;
+		process.removeListener('exit', onWorkerExit);
+		proxy.close();
+	});
+	guardOutput([child.stdout, child.stderr]);
+	// Under `via`, the child is that program, not the app.
+	recordAppOutput(child, via.length ? { name: `${path.basename(via[via.length - 1])} (the app started under it)` } : {});
+	return child;
 }
 
 /** Every connection the launched app tried to open to a host beyond
@@ -207,11 +298,14 @@ const refused = new WeakMap<ElectronApplication, string[]>();
  *  must still tell an exited app from a running one then. */
 const launched = new WeakMap<ElectronApplication, { child: ChildProcess; exe: string }>();
 
-/** Stop an app this suite launched, and nothing else: SIGTERM to the
- *  process group Playwright created for it, SIGKILL to the same group if
- *  it is still there after `termMs`, and only while that group is
- *  provably the app's — the main process unreaped, leading its group,
- *  running the binary it was launched from (lib/own-group.cjs). Then
+/** Stop an app this suite launched, and nothing else: SIGTERM to its
+ *  main process alone, which quits it as a user's kill would, SIGKILL to
+ *  the process group Playwright created for it if it is still there
+ *  after `termMs`, and only while that group is provably the app's —
+ *  the main process unreaped, leading its group, running the binary it
+ *  was launched from (lib/own-group.cjs). An app that ends by a signal
+ *  the stop did not send crashed as it quit, or, before the stop,
+ *  crashed or was killed from outside it, and the stop throws. Then
  *  Playwright's close, which settles once the process has gone,
  *  whatever the stop did. An app that has already exited is closed without a signal.
  *
@@ -315,6 +409,27 @@ export async function routeContext(
 			if (!closed || attempt >= 3) throw err;
 		}
 	}
+}
+
+/** The backend's answer to Home's `POST /api/history/card-lines` for the
+ *  rows `body` names (`commands/card_line.rs`): each card stands for its
+ *  own row, or for the line its guessed play came from while both show
+ *  as the same show, and offers its pill while that line is a guess or
+ *  one the user named. */
+export function cardLinesAnswer(body: unknown): Record<string, { line: string; correctable: boolean }> {
+	type Row = { id: string; guessed_from?: string | null; show?: string | null; guess?: boolean; named?: boolean };
+	const rows = ((body as { rows?: Row[] } | null)?.rows ?? []) as Row[];
+	const lineOf = (shown: Row): Row => {
+		const from = shown.guessed_from;
+		if (!from || from === shown.id || !shown.guess || !shown.show) return shown;
+		return rows.find((r) => r.id === from && r.show === shown.show) ?? shown;
+	};
+	return Object.fromEntries(
+		rows.map((shown) => {
+			const line = lineOf(shown);
+			return [shown.id, { line: line.id, correctable: line.guess === true || line.named === true }];
+		})
+	);
 }
 
 /** Answers every backend API request that none of a spec's own stubs
